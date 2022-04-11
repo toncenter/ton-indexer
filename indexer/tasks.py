@@ -1,7 +1,9 @@
 from indexer.celery import app
 import asyncio
 import sys
+import os
 import json
+from pathlib import Path
 
 from config import settings
 from tApi.tonlib.client import TonlibClient
@@ -11,17 +13,21 @@ MASTERCHAIN_INDEX = -1
 MASTERCHAIN_SHARD = -9223372036854775808
 
 class IndexWorker():
-    def __init__(self, loop):
+    def __init__(self, loop, ls_index):
         with open(settings.indexer.liteserver_config, 'r') as f:
             tonlib_config = json.loads(f.read())
-        self.client = TonlibClient(0, 
+        
+        keystore = f'./private/ton_keystore_{ls_index}'
+        Path(keystore).mkdir(parents=True, exist_ok=True)
+
+        self.client = TonlibClient(ls_index, 
                       tonlib_config, 
-                      './private/ton_keystore',
+                      keystore,
                       loop,
                       cdll_path=None,
                       verbosity_level=0)
 
-        # loop.run_until_complete(self.client.init())
+        loop.run_until_complete(self.client.init())
 
     async def process_mc_seqno(self, seqno: int):
         shards = await self.client.getShards(seqno)
@@ -69,17 +75,9 @@ class IndexWorker():
         print('Num transactions:', len(transactions))
         return full_transactions 
 
-async def x():
-    loop = asyncio.get_running_loop()
-    worker = IndexWorker(loop)
-    await worker.client.init()
-    await worker.process_mc_seqno(19739805)
-
 @app.task()
-def get_block():
-    seqno = 19739805
-    asyncio.run(x())
-    # loop = asyncio.get_event_loop()
-    # loop.run_until_complete(x(loop))
-    # loop.run_until_complete()
+def get_block(master_seqno):
+    loop = asyncio.get_event_loop()
+    worker = IndexWorker(loop, 0)
+    return loop.run_until_complete(worker.process_mc_seqno(master_seqno))
 

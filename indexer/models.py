@@ -48,6 +48,8 @@ class Transaction:
         in_msg_raw = transaction_raw.get('in_msg')
         if in_msg_raw is not None:
             in_msg = Message(Message.Direction.msg_in, in_msg_raw)
+        else:
+            in_msg = None
         out_msgs = []
         for out_msg_raw in transaction_raw['out_msgs']:
             out_msgs.append(Message(Message.Direction.msg_out, out_msg_raw))
