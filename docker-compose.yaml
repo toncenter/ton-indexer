@@ -1,0 +1,14 @@
+version: '3.3'
+services:
+  indexer:
+    build:
+      context: .
+      dockerfile: deploy/indexer.Dockerfile
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+    depends_on:
+      - rabbitmq
+  rabbitmq:
+    image: rabbitmq
+    restart: unless-stopped

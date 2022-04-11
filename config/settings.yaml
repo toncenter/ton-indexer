@@ -1,0 +1,5 @@
+indexer:
+  webserver_workers: $TON_API_WEBSERVERS_WORKERS
+  liteserver_config: toncenter-game.conf
+  keystore: ./ton_keystore/
+  cdll: null

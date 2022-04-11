@@ -1,0 +1,13 @@
+aiocache
+aioprocessing
+aioredis
+crc16
+fastapi
+gunicorn
+loguru
+pydantic
+pyyaml
+redis
+ring
+tvm_valuetypes
+celery
