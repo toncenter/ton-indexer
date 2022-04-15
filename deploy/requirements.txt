@@ -11,3 +11,8 @@ redis
 ring
 tvm_valuetypes
 celery
+psycopg2-binary
+sqlalchemy
+sqlalchemy-utils
+tqdm
+requests
