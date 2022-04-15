@@ -1,3 +1,4 @@
+from celery.signals import worker_ready
 from indexer.celery import app
 import asyncio
 import sys
@@ -11,6 +12,13 @@ from indexer.models import BlockShort, BlockFull, Transaction, Message
 
 MASTERCHAIN_INDEX = -1
 MASTERCHAIN_SHARD = -9223372036854775808
+
+index_worker = None
+
+# @worker_ready.connect
+# def worker_ready():
+#     global index_worker
+#     index_worker = IndexWorker(loop, 0)
 
 class IndexWorker():
     def __init__(self, loop, ls_index):
@@ -76,8 +84,9 @@ class IndexWorker():
         return full_transactions 
 
 @app.task()
-def get_block(master_seqno):
+def get_block(mc_seqno_list):
     loop = asyncio.get_event_loop()
     worker = IndexWorker(loop, 0)
-    return loop.run_until_complete(worker.process_mc_seqno(master_seqno))
+    gathered = asyncio.gather(*[worker.process_mc_seqno(seqno) for seqno in mc_seqno_list])
+    return loop.run_until_complete(gathered)
 

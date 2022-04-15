@@ -12,3 +12,13 @@ services:
   rabbitmq:
     image: rabbitmq
     restart: unless-stopped
+  scheduler:
+    build:
+      context: .
+      dockerfile: deploy/scheduler.Dockerfile
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      WORKERS_COUNT: 5
+    depends_on:
+      - indexer
