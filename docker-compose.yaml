@@ -7,8 +7,11 @@ services:
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
+    secrets:
+      - postgres_password
     depends_on:
       - rabbitmq
+      - postgres
   rabbitmq:
     image: rabbitmq
     restart: unless-stopped
@@ -20,5 +23,37 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       WORKERS_COUNT: 5
+    secrets:
+      - postgres_password
     depends_on:
+      - postgres
       - indexer
+  postgres:
+    image: postgres
+    environment: 
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    ports:
+      - 5432:5432
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  jupyter:
+    build:
+      context: .
+      dockerfile: deploy/jupyter.Dockerfile
+    ports:
+      - 4000:4000
+    volumes:
+      - .:/app
+    secrets:
+      - postgres_password
+    command: "-m jupyter notebook . --ip=0.0.0.0 --port=4000 --allow-root --NotebookApp.token='' --NotebookApp.password=''"
+volumes:
+  postgres_data:
+    external: false
+secrets:
+  postgres_password:
+    file: private/postgres_password
+  

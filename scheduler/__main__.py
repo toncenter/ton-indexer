@@ -41,9 +41,14 @@
 
 import time
 from indexer.tasks import get_block
+from indexer.database import init_database, delete_database
 from config import settings
 
+
 def main():
+	delete_database()
+	init_database()
+
 	start_seqno = 19739805
 	parallel = settings.indexer.workers_count
 	current_seqno = start_seqno

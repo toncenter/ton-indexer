@@ -3,3 +3,9 @@ indexer:
   workers_count: ${WORKERS_COUNT}
   blocks_per_task: 30
   max_tasks_per_child: 3
+postgres:
+  host: postgres
+  port: 5432
+  user: postgres
+  password_file: /run/secrets/postgres_password
+  dbname: ton_index
