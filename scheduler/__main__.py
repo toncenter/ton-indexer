@@ -22,6 +22,11 @@ def forward_main(queue):
 		break
 
 	while True:
+		# TODO: 
+		# 1. get last masterchain block, its shards
+		# 2. for each shard seqno add this seqno block and all consequently previous_blocks 
+		#    until we meet the block already existing in db
+
 		time.sleep(2)
 		logger.info("Forward working")
 
