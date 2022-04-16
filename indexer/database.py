@@ -216,10 +216,7 @@ class MessageContent(Base):
     __tablename__ = 'message_contents'
     
     msg_id: int = Column(BigInteger, ForeignKey("messages.msg_id"), primary_key=True)
-    msg_type: str = Column(String)
     body: str = Column(String)
-    init_state: str = Column(String, ColumnDefault(""))
-    text: str = Column(String)
         
     msg = relationship("Message", backref=backref("content", cascade="save-update, merge, "
                                                 "delete, delete-orphan", uselist=False))
@@ -227,10 +224,7 @@ class MessageContent(Base):
     @classmethod
     def build(cls, raw, msg):
         return MessageContent(msg=msg,
-                              msg_type=raw['msg_data']['@type'],
-                              body=raw['msg_data'].get('body'),
-                              init_state=raw['msg_data'].get('init_state'),
-                              text=raw['msg_data'].get('text'))
+                              body=raw['msg_data'].get('body'))
 
 
 # find functions
