@@ -1,8 +1,10 @@
 indexer:
   liteserver_config: toncenter-game.conf
   workers_count: ${WORKERS_COUNT}
-  blocks_per_task: 30
-  max_tasks_per_child: 3
+  init_mc_seqno: 19739805
+  blocks_per_task: 1
+  max_tasks_per_child: 10
+  task_time_limit: 60
 postgres:
   host: postgres
   port: 5432

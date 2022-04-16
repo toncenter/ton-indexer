@@ -1,9 +1,10 @@
 version: '3.3'
 services:
-  indexer:
+  backward_indexer:
     build:
       context: .
       dockerfile: deploy/indexer.Dockerfile
+    command: --concurrency ${WORKERS_COUNT:-1} -Q backward_queue
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
@@ -12,22 +13,54 @@ services:
     depends_on:
       - rabbitmq
       - postgres
-  rabbitmq:
-    image: rabbitmq
-    restart: unless-stopped
-  scheduler:
+  backward_scheduler:
     build:
       context: .
       dockerfile: deploy/scheduler.Dockerfile
+    command: backward backward_queue
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
-      WORKERS_COUNT: 5
+      WORKERS_COUNT: ${WORKERS_COUNT:-1}
     secrets:
       - postgres_password
     depends_on:
+      backward_indexer:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+  forward_indexer:
+    build:
+      context: .
+      dockerfile: deploy/indexer.Dockerfile
+    command: --concurrency ${WORKERS_COUNT:-1} -Q forward_queue
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+    secrets:
+      - postgres_password
+    depends_on:
+      - rabbitmq
       - postgres
-      - indexer
+  forward_scheduler:
+    build:
+      context: .
+      dockerfile: deploy/scheduler.Dockerfile
+    command: forward forward_queue
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      WORKERS_COUNT: ${WORKERS_COUNT:-1}
+    secrets:
+      - postgres_password
+    depends_on:
+      forward_indexer:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+  rabbitmq:
+    image: rabbitmq
+    restart: unless-stopped
   postgres:
     image: postgres
     environment: 
@@ -39,17 +72,22 @@ services:
       - postgres_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-  jupyter:
-    build:
-      context: .
-      dockerfile: deploy/jupyter.Dockerfile
-    ports:
-      - 4000:4000
-    volumes:
-      - .:/app
-    secrets:
-      - postgres_password
-    command: "-m jupyter notebook . --ip=0.0.0.0 --port=4000 --allow-root --NotebookApp.token='' --NotebookApp.password=''"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  # jupyter:
+  #   build:
+  #     context: .
+  #     dockerfile: deploy/jupyter.Dockerfile
+  #   ports:
+  #     - 4000:4000
+  #   volumes:
+  #     - .:/app
+  #   secrets:
+  #     - postgres_password
+  #   command: "-m jupyter notebook . --ip=0.0.0.0 --port=4000 --allow-root --NotebookApp.token='' --NotebookApp.password=''"
 volumes:
   postgres_data:
     external: false

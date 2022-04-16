@@ -19,12 +19,6 @@ app.conf.update(
     accept_content=['pickle'],
     result_serializer='pickle',
     task_serializer='pickle',
-    worker_max_tasks_per_child=settings.indexer.max_tasks_per_child # recreate worker process after every max_tasks_per_child tasks
+    worker_max_tasks_per_child=settings.indexer.max_tasks_per_child, # recreate worker process after every max_tasks_per_child tasks
+    task_time_limit=settings.indexer.task_time_limit
 )
-
-# app.conf.beat_schedule = {
-#     "update_validation_cycle": {
-#         "task": "indexer.tasks.get_block",
-#         "schedule": 60.0
-#     }
-# }

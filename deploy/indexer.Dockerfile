@@ -18,4 +18,4 @@ COPY ${TON_CONFIG_FILE} liteserver_config.json
 ENV C_FORCE_ROOT 1
 
 # entrypoint
-ENTRYPOINT ["celery", "-A", "indexer", "worker", "-B", "--concurrency=5", "--loglevel=INFO"]
+ENTRYPOINT ["celery", "-A", "indexer", "worker", "--loglevel=INFO"]
