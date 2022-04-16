@@ -1,4 +1,4 @@
-from celery.signals import worker_ready, worker_process_init
+from celery.signals import worker_process_init
 from indexer.celery import app
 import asyncio
 import sys
@@ -44,7 +44,7 @@ class IndexWorker():
 
         loop.run_until_complete(self.client.init())
 
-    async def get_block_with_shards(self, seqno):
+    async def _get_block_with_shards(self, seqno):
         master_block = await self.client.lookupBlock(MASTERCHAIN_INDEX, MASTERCHAIN_SHARD, seqno)
         master_block.pop('@type')
         master_block.pop('@extra')
@@ -61,12 +61,12 @@ class IndexWorker():
         ]
         return blocks
 
-    async def get_block_header(self, block):
+    async def _get_block_header(self, block):
         return await self.client.getBlockHeader(block['workchain'],
                                                 block['shard'],
                                                 block['seqno'])
 
-    async def get_block_transactions(self, block):
+    async def _get_block_transactions(self, block):
         txs = []
         after_lt = None
         after_hash = None
@@ -87,22 +87,23 @@ class IndexWorker():
                 logger.warning('Txs is incomplete block(workchain={workchain}, shard={shard}, seqno={seqno})'.format(**block))
             txs.extend(loc['transactions'])
         return txs
-    async def get_transaction_details(self, tx):
+
+    async def _get_transaction_details(self, tx):
         tx_full = await self.client.getTransactions(account_address=tx['account'], 
                                                     from_transaction_lt=tx['lt'], 
                                                     from_transaction_hash=tx['hash'],
                                                     limit=1)
         return tx, tx_full[0]
     
-    async def get_raw_info(self, seqno):
-        blocks = await self.get_block_with_shards(seqno)
-        headers = await asyncio.gather(*[self.get_block_header(block) for block in blocks])
-        transactions = await asyncio.gather(*[self.get_block_transactions(block) for block in blocks])
-        transactions = [await asyncio.gather(*[self.get_transaction_details(tx) for tx in txes]) for txes in transactions]
+    async def _get_raw_info(self, seqno):
+        blocks = await self._get_block_with_shards(seqno)
+        headers = await asyncio.gather(*[self._get_block_header(block) for block in blocks])
+        transactions = await asyncio.gather(*[self._get_block_transactions(block) for block in blocks])
+        transactions = [await asyncio.gather(*[self._get_transaction_details(tx) for tx in txes]) for txes in transactions]
         return blocks, headers, transactions
 
     async def process_mc_seqno(self, seqno: int):
-        blocks, headers, transactions = await self.get_raw_info(seqno)
+        blocks, headers, transactions = await self._get_raw_info(seqno)
         session = get_session()()
 
         with session.begin():
@@ -112,8 +113,23 @@ class IndexWorker():
             except Exception as ee:
                 logger.warning(f'Failed to insert block(seqno={seqno}): {traceback.format_exc()}')
 
+    async def get_last_mc_block(self):
+        return await self.client.getMasterchainInfo()['last']
+
+    async def get_shards(self, mc_seqno):
+        return await self.client.getShards(mc_seqno)
+
+
 @app.task()
 def get_block(mc_seqno_list):
     gathered = asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in mc_seqno_list])
     return loop.run_until_complete(gathered)
+
+@app.task()
+def get_last_mc_block():
+    return loop.run_until_complete(index_worker.get_last_mc_block())
+
+@app.task()
+def get_shards(mc_seqno):
+    return loop.run_until_complete(index_worker.get_shards())
 
