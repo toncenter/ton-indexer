@@ -124,22 +124,24 @@ class IndexWorker():
                 logger.warning(f'Failed to insert block(seqno={seqno}): {traceback.format_exc()}')
 
     async def get_last_mc_block(self):
-        return await self.client.getMasterchainInfo()['last']
+        mc_info = await self.client.getMasterchainInfo()
+        return mc_info['last']
 
     async def get_shards(self, mc_seqno):
         return await self.client.getShards(mc_seqno)
 
 
-@app.task()
+@app.task(autoretry_for=(Exception,), retry_kwargs={'max_retries': 7, 'countdown': 0.5}, acks_late=True)
 def get_block(mc_seqno_list):
-    gathered = asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in mc_seqno_list])
+    session = get_session()()
+    with session.begin():
+        non_exist = list(filter(lambda x: not mc_block_exists(session, x), mc_seqno_list))
+
+    logger.info(f"{len(mc_seqno_list) - len(non_exist)} blocks already exist")
+    gathered = asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in non_exist])
     return loop.run_until_complete(gathered)
 
-@app.task()
+@app.task(autoretry_for=(Exception,), retry_kwargs={'max_retries': 7, 'countdown': 0.5}, acks_late=True)
 def get_last_mc_block():
     return loop.run_until_complete(index_worker.get_last_mc_block())
-
-@app.task()
-def get_shards(mc_seqno):
-    return loop.run_until_complete(index_worker.get_shards())
 

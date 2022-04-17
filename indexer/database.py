@@ -15,16 +15,15 @@ from config import settings as S
 from loguru import logger
 
 
+with open(S.postgres.password_file, 'r') as f:
+    db_password = f.read()
 # init database
 def get_engine(database):
-    with open(S.postgres.password_file, 'r') as f:
-        password = f.read()
-        logger.critical(f'Password: {password}')
-    engine = create_engine('postgresql://{user}:{password}@{host}:{port}/{dbname}'.format(host=S.postgres.host,
-                                                                                          port=S.postgres.port,
-                                                                                          user=S.postgres.user,
-                                                                                          password=password,
-                                                                                          dbname=database))
+    engine = create_engine('postgresql://{user}:{db_password}@{host}:{port}/{dbname}'.format(host=S.postgres.host,
+                                                                                             port=S.postgres.port,
+                                                                                             user=S.postgres.user,
+                                                                                             db_password=db_password,
+                                                                                             dbname=database))
     return engine
 
 # database
@@ -237,6 +236,9 @@ def find_object(session, cls, raw, key):
 def find_or_create(session, cls, raw, key, **build_kwargs):
     return find_object(session, cls, raw, key) or cls.build(raw, **build_kwargs)
 
+def mc_block_exists(session, seqno):
+    exists = session.query(Block.block_id).filter(Block.workchain == -1).filter(Block.seqno == seqno).first() is not None
+    return exists
 
 def insert_block_data(session, block: Block, block_header_raw, block_transactions):
     # block header

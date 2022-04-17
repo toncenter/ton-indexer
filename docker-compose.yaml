@@ -33,7 +33,7 @@ services:
     build:
       context: .
       dockerfile: deploy/indexer.Dockerfile
-    command: --concurrency ${WORKERS_COUNT:-1} -Q forward_queue
+    command: --concurrency 2 -Q forward_queue
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
@@ -50,7 +50,7 @@ services:
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
-      WORKERS_COUNT: ${WORKERS_COUNT:-1}
+      WORKERS_COUNT: 2
     secrets:
       - postgres_password
     depends_on:

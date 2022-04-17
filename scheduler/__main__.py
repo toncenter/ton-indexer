@@ -8,8 +8,7 @@ from config import settings
 from loguru import logger
 
 def forward_main(queue):
-	delete_database() # TODO: Remove closer to production
-
+	# delete_database() # TODO: Remove closer to production
 	init_database()
 
 	while True:
@@ -21,17 +20,23 @@ def forward_main(queue):
 		    continue
 		break
 
+	current_seqno = settings.indexer.init_mc_seqno + 1
 	while True:
-		# TODO: 
-		# 1. get last masterchain block, its shards
-		# 2. for each shard seqno add this seqno block and all consequently previous_blocks 
-		#    until we meet the block already existing in db
+		last_mc_block = get_last_mc_block.apply_async([], serializer='pickle', queue=queue).get()
+		if last_mc_block['seqno'] < current_seqno:
+			time.sleep(0.2)
+			continue
 
-		time.sleep(2)
-		logger.info("Forward working")
+		for seqno in range(current_seqno, last_mc_block['seqno'] + 1):
+			get_block.apply_async([[seqno]], serializer='pickle', queue=queue).get()
+
+		current_seqno = last_mc_block['seqno'] + 1
+
+		time.sleep(0.2)
+		logger.info(f"Current seqno: {current_seqno}")
 
 def backward_main(queue):
-	delete_database() # TODO: Remove closer to production
+	# delete_database() # TODO: Remove closer to production
 
 	init_database()
 
@@ -43,29 +48,25 @@ def backward_main(queue):
 		    time.sleep(3)
 		    continue
 		break
-
-	# TODO: 
-	# 1. get shards of settings.indexer.init_mc_seqno and index mc and all shards
-	# 2. for each shard query db to find already inserted blocks and exclude them from tasks
 
 	parallel = settings.indexer.workers_count
 	current_seqno = settings.indexer.init_mc_seqno
 	start_time = time.time()
-	while current_seqno > 0:
+
+	tasks_in_progress = []
+	while current_seqno >= 0:
+		tasks_in_progress = [task for task in tasks_in_progress if not task.ready()]
+		if len(tasks_in_progress) >= parallel:
+			time.sleep(0.05)
+			continue
+
+		bottom_bound = max(current_seqno - settings.indexer.blocks_per_task + 1, 0)
+		next_chunk = range(current_seqno, bottom_bound - 1, -1)
+
+		tasks_in_progress.append(get_block.apply_async([next_chunk], serializer='pickle', queue=queue))
+		current_seqno = bottom_bound - 1
+
 		print(f"Time: {time.time() - start_time} count: {settings.indexer.init_mc_seqno - current_seqno} seqno: {current_seqno}", flush=True)
-		args = []
-		for i in range(parallel):
-			args.append(range(current_seqno - i * settings.indexer.blocks_per_task, 
-				current_seqno - (i + 1) * settings.indexer.blocks_per_task, -1))
-		results = []
-		for i in range(parallel):
-			results.append(get_block.apply_async([args[i]], serializer='pickle', queue=queue))
-
-		for r in results:
-			r.get()
-		current_seqno = current_seqno - parallel * settings.indexer.blocks_per_task
-
-
 
 if __name__ == "__main__":
 	if sys.argv[1] == 'backward':
