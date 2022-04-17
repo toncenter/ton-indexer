@@ -48,16 +48,26 @@ class IndexWorker():
         master_block = await self.client.lookupBlock(MASTERCHAIN_INDEX, MASTERCHAIN_SHARD, seqno)
         master_block.pop('@type')
         master_block.pop('@extra')
-        master_block['masterchain_seqno'] = seqno
         
+        shards_blocks = []
         shards = await self.client.getShards(seqno)
+        shards = shards['shards']
+        if seqno > 0:
+            prev_shards = await self.client.getShards(seqno - 1)
+            prev_shards = prev_shards['shards']
+            if len(prev_shards) == len(shards):
+                for i, shard in enumerate(shards):
+                    prev_shard_seqno = prev_shards[i]['seqno']
+                    cur_shard_seqno = shard['seqno']
+                    shards_blocks += await asyncio.gather(*[self.client.lookupBlock(shard['workchain'], shard['shard'], seqno) 
+                                                                for seqno in range(prev_shard_seqno + 1, cur_shard_seqno + 1)])
+
         blocks = [master_block] + [
             {'workchain': s['workchain'],
             'shard': int(s['shard']),
             'seqno': s['seqno'],
             'root_hash': s['root_hash'],
-            'file_hash': s['file_hash'],
-            'masterchain_seqno': seqno} for s in shards['shards']
+            'file_hash': s['file_hash']} for s in shards_blocks
         ]
         return blocks
 
