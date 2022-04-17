@@ -116,7 +116,7 @@ class IndexWorker():
         blocks, headers, transactions = await self._get_raw_info(seqno)
         session = get_session()()
 
-        with session.begin() as session:
+        with session.begin():
             try:
                 insert_by_seqno(session, blocks, headers, transactions)
                 logger.info(f'Block(seqno={seqno}) inserted')
@@ -134,7 +134,7 @@ class IndexWorker():
 @app.task(autoretry_for=(Exception,), retry_kwargs={'max_retries': 7, 'countdown': 0.5}, acks_late=True)
 def get_block(mc_seqno_list):
     session = get_session()()
-    with session.begin() as session:
+    with session.begin():
         non_exist = list(filter(lambda x: not mc_block_exists(session, x), mc_seqno_list))
 
     logger.info(f"{len(mc_seqno_list) - len(non_exist)} blocks already exist")
