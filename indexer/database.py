@@ -26,18 +26,18 @@ def get_engine(database):
                                                                                              dbname=database))
     return engine
 
+engine = get_engine(S.postgres.dbname)
+
 # database
 Base = declarative_base()
 
 def delete_database():
-    engine = get_engine(S.postgres.dbname)
     if database_exists(engine.url):
         logger.info('Drop database')
         drop_database(engine.url)
 
 
 def init_database():
-    engine = get_engine(S.postgres.dbname)
     if not database_exists(engine.url):
         logger.info('Creating database')
         create_database(engine.url)
@@ -45,7 +45,6 @@ def init_database():
         
 
 def get_session():
-    engine = get_engine(S.postgres.dbname)
     Session = sessionmaker(bind=engine)
     return Session
 
