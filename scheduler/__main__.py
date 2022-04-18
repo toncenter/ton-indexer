@@ -55,7 +55,10 @@ def backward_main(queue):
 
 	tasks_in_progress = []
 	while current_seqno >= 0:
-		tasks_in_progress = [task for task in tasks_in_progress if not task.ready()]
+		finished_tasks = [task for task in tasks_in_progress if task.ready()]
+		for finished_task in finished_tasks:
+			finished_task.forget()
+		tasks_in_progress = [task for task in tasks_in_progress if task not in finished_tasks]
 		if len(tasks_in_progress) >= parallel:
 			time.sleep(0.05)
 			continue
@@ -66,7 +69,7 @@ def backward_main(queue):
 		tasks_in_progress.append(get_block.apply_async([next_chunk], serializer='pickle', queue=queue))
 		current_seqno = bottom_bound - 1
 
-		print(f"Time: {time.time() - start_time} count: {settings.indexer.init_mc_seqno - current_seqno} seqno: {current_seqno}", flush=True)
+		logger.info(f"Time: {time.time() - start_time} count: {settings.indexer.init_mc_seqno - current_seqno} seqno: {current_seqno}")
 
 if __name__ == "__main__":
 	if sys.argv[1] == 'backward':
