@@ -8,6 +8,8 @@ services:
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     secrets:
       - postgres_password
     depends_on:
@@ -21,6 +23,8 @@ services:
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       WORKERS_COUNT: ${WORKERS_COUNT:-1}
     secrets:
       - postgres_password
@@ -37,6 +41,8 @@ services:
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     secrets:
       - postgres_password
     depends_on:
@@ -50,6 +56,8 @@ services:
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       WORKERS_COUNT: 2
     secrets:
       - postgres_password
@@ -60,6 +68,9 @@ services:
         condition: service_healthy
   rabbitmq:
     image: rabbitmq
+    restart: unless-stopped
+  redis:
+    image: redis:latest
     restart: unless-stopped
   postgres:
     image: postgres
