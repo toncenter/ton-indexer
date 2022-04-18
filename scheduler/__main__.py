@@ -42,8 +42,6 @@ def backward_main(queue):
 
 	wait_for_broker_connection()
 
-	seqnos_already_in_db = session.query(Block.seqno).filter(Block.workchain==-1).all()
-
 	parallel = settings.indexer.workers_count
 	current_seqno = settings.indexer.init_mc_seqno
 	start_time = time.time()
