@@ -138,8 +138,12 @@ def get_block(mc_seqno_list):
         non_exist = list(filter(lambda x: not mc_block_exists(session, x), mc_seqno_list))
 
     logger.info(f"{len(mc_seqno_list) - len(non_exist)} blocks already exist")
-    gathered = asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in non_exist])
-    return loop.run_until_complete(gathered)
+    gathered = asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in non_exist], return_exceptions=True)
+    results = loop.run_until_complete(gathered)
+    for r in results:
+        if isinstance(r, Exception):
+            raise Exception("At least one block in task failed")
+    return results
 
 @app.task(autoretry_for=(Exception,), retry_kwargs={'max_retries': 7, 'countdown': 0.5}, acks_late=True)
 def get_last_mc_block():
