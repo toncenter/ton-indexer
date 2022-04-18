@@ -32,7 +32,7 @@ def get_existing_seqnos(min_seqno, max_seqno):
     return set(seqnos_already_in_db)
 
 def forward_main(queue):
-    init_database()
+    init_database(create=True)
 
     wait_for_broker_connection()
 
@@ -52,7 +52,7 @@ def forward_main(queue):
         logger.info(f"Current seqno: {current_seqno}")
 
 def backward_main(queue):
-    init_database()
+    init_database(create=False)
 
     wait_for_broker_connection()
 
