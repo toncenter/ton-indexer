@@ -50,7 +50,7 @@ def backward_main(queue):
 	while current_seqno >= 0:
 		finished_tasks = [task for task in tasks_in_progress if task.ready()]
 		for finished_task in finished_tasks:
-			finished_task.forget()
+			finished_task.get()
 		tasks_in_progress = [task for task in tasks_in_progress if task not in finished_tasks]
 		if len(tasks_in_progress) >= parallel:
 			time.sleep(0.05)
