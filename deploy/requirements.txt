@@ -10,7 +10,7 @@ pyyaml
 redis
 ring
 tvm_valuetypes
-celery
+celery[redis]
 psycopg2-binary
 sqlalchemy
 sqlalchemy-utils
