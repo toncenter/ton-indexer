@@ -7,10 +7,7 @@ from indexer.database import init_database, delete_database
 from config import settings
 from loguru import logger
 
-def forward_main(queue):
-	# delete_database() # TODO: Remove closer to production
-	init_database()
-
+def wait_for_broker_connection():
 	while True:
 		try:
 		    app.broker_connection().ensure_connection(max_retries=3)
@@ -19,6 +16,11 @@ def forward_main(queue):
 		    time.sleep(3)
 		    continue
 		break
+
+def forward_main(queue):
+	init_database()
+
+	wait_for_broker_connection()
 
 	current_seqno = settings.indexer.init_mc_seqno + 1
 	while True:
@@ -36,18 +38,11 @@ def forward_main(queue):
 		logger.info(f"Current seqno: {current_seqno}")
 
 def backward_main(queue):
-	# delete_database() # TODO: Remove closer to production
-
 	init_database()
 
-	while True:
-		try:
-		    app.broker_connection().ensure_connection(max_retries=3)
-		except Exception as ex:
-		    logger.warning(f"Can't connect to celery broker. Trying again...")
-		    time.sleep(3)
-		    continue
-		break
+	wait_for_broker_connection()
+
+	seqnos_already_in_db = session.query(Block.seqno).filter(Block.workchain==-1).all()
 
 	parallel = settings.indexer.workers_count
 	current_seqno = settings.indexer.init_mc_seqno
