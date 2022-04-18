@@ -1,4 +1,5 @@
 from copy import deepcopy
+from time import sleep
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -37,11 +38,13 @@ def delete_database():
         drop_database(engine.url)
 
 
-def init_database():
-    if not database_exists(engine.url):
-        logger.info('Creating database')
-        create_database(engine.url)
-        Base.metadata.create_all(engine)
+def init_database(create=False):
+    while not database_exists(engine.url):
+        if create:
+            logger.info('Creating database')
+            create_database(engine.url)
+            Base.metadata.create_all(engine)
+        sleep(0.5)
         
 
 def get_session():
