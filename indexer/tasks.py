@@ -102,7 +102,8 @@ class IndexWorker():
         tx_full = await self.client.getTransactions(account_address=tx['account'], 
                                                     from_transaction_lt=tx['lt'], 
                                                     from_transaction_hash=tx['hash'],
-                                                    limit=1)
+                                                    limit=1,
+                                                    decode_messages=False)
         return tx, tx_full[0]
     
     async def _get_raw_info(self, seqno):

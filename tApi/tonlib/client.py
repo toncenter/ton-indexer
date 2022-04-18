@@ -339,7 +339,7 @@ class TonlibClient:
         }
         return await self.tonlib_wrapper.execute(request)
 
-    async def getTransactions(self, account_address, from_transaction_lt=None, from_transaction_hash=None, to_transaction_lt=0, limit=10):
+    async def getTransactions(self, account_address, from_transaction_lt=None, from_transaction_hash=None, to_transaction_lt=0, limit=10, decode_messages=True):
         """
          Return all transactions between from_transaction_lt and to_transaction_lt
          if to_transaction_lt and to_transaction_hash are not defined returns all transactions
@@ -395,51 +395,53 @@ class TonlibClient:
                         t["in_msg"]["source"] = t["in_msg"]["source"]["account_address"]
                     if "destination" in t["in_msg"]:
                         t["in_msg"]["destination"] = t["in_msg"]["destination"]["account_address"]
-                    try:
-                        if "msg_data" in t["in_msg"]:
-                            dcd = ""
-                            if t["in_msg"]["msg_data"]["@type"] == "msg.dataRaw":
-                                msg_cell_boc = codecs.decode(codecs.encode(
-                                    t["in_msg"]["msg_data"]["body"], 'utf8'), 'base64')
-                                message_cell = deserialize_boc(msg_cell_boc)
-                                dcd = message_cell.data.data.tobytes()
-                                t["in_msg"]["message"] = codecs.decode(
-                                    codecs.encode(dcd, 'base64'), "utf8")
-                            elif t["in_msg"]["msg_data"]["@type"] == "msg.dataText":
-                                dcd = codecs.encode(
-                                    t["in_msg"]["msg_data"]["text"], 'utf8')
-                                t["in_msg"]["message"] = codecs.decode(
-                                    codecs.decode(dcd, 'base64'), "utf8")
-                    except Exception as e:
-                        t["in_msg"]["message"] = ""
-                        logger.warning(
-                            f"in_msg message decoding exception: {e}")
+                    if decode_messages:
+                        try:
+                            if "msg_data" in t["in_msg"]:
+                                dcd = ""
+                                if t["in_msg"]["msg_data"]["@type"] == "msg.dataRaw":
+                                    msg_cell_boc = codecs.decode(codecs.encode(
+                                        t["in_msg"]["msg_data"]["body"], 'utf8'), 'base64')
+                                    message_cell = deserialize_boc(msg_cell_boc)
+                                    dcd = message_cell.data.data.tobytes()
+                                    t["in_msg"]["message"] = codecs.decode(
+                                        codecs.encode(dcd, 'base64'), "utf8")
+                                elif t["in_msg"]["msg_data"]["@type"] == "msg.dataText":
+                                    dcd = codecs.encode(
+                                        t["in_msg"]["msg_data"]["text"], 'utf8')
+                                    t["in_msg"]["message"] = codecs.decode(
+                                        codecs.decode(dcd, 'base64'), "utf8")
+                        except Exception as e:
+                            t["in_msg"]["message"] = ""
+                            logger.warning(
+                                f"in_msg message decoding exception: {e}")
                 if "out_msgs" in t:
                     for o in t["out_msgs"]:
                         if "source" in o:
                             o["source"] = o["source"]["account_address"]
                         if "destination" in o:
                             o["destination"] = o["destination"]["account_address"]
-                        try:
-                            if "msg_data" in o:
-                                dcd = ""
-                                if o["msg_data"]["@type"] == "msg.dataRaw":
-                                    msg_cell_boc = codecs.decode(codecs.encode(
-                                        o["msg_data"]["body"], 'utf8'), 'base64')
-                                    message_cell = deserialize_boc(
-                                        msg_cell_boc)
-                                    dcd = message_cell.data.data.tobytes()
-                                    o["message"] = codecs.decode(
-                                        codecs.encode(dcd, 'base64'), "utf8")
-                                elif o["msg_data"]["@type"] == "msg.dataText":
-                                    dcd = codecs.encode(
-                                        o["msg_data"]["text"], 'utf8')
-                                    o["message"] = codecs.decode(
-                                        codecs.decode(dcd, 'base64'), "utf8")
-                        except Exception as e:
-                            o["message"] = ""
-                            logger.warning(
-                                f"out_msg message decoding exception: {e}")
+                        if decode_messages:
+                            try:
+                                if "msg_data" in o:
+                                    dcd = ""
+                                    if o["msg_data"]["@type"] == "msg.dataRaw":
+                                        msg_cell_boc = codecs.decode(codecs.encode(
+                                            o["msg_data"]["body"], 'utf8'), 'base64')
+                                        message_cell = deserialize_boc(
+                                            msg_cell_boc)
+                                        dcd = message_cell.data.data.tobytes()
+                                        o["message"] = codecs.decode(
+                                            codecs.encode(dcd, 'base64'), "utf8")
+                                    elif o["msg_data"]["@type"] == "msg.dataText":
+                                        dcd = codecs.encode(
+                                            o["msg_data"]["text"], 'utf8')
+                                        o["message"] = codecs.decode(
+                                            codecs.decode(dcd, 'base64'), "utf8")
+                            except Exception as e:
+                                o["message"] = ""
+                                logger.warning(
+                                    f"out_msg message decoding exception: {e}")
             except Exception as e:
                 logger.error(f"getTransaction exception: {e}")
         return all_transactions
