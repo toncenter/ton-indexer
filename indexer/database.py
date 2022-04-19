@@ -8,13 +8,15 @@ from sqlalchemy_utils import create_database, database_exists, drop_database
 
 from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index
 from sqlalchemy import ForeignKey, UniqueConstraint, Table
-from sqlalchemy import and_, ColumnDefault
+from sqlalchemy import and_, or_, ColumnDefault
 from sqlalchemy.orm import relationship, backref
 from dataclasses import dataclass
 
 from config import settings as S
 from loguru import logger
 
+MASTERCHAIN_INDEX = -1
+MASTERCHAIN_SHARD = -9223372036854775808
 
 with open(S.postgres.password_file, 'r') as f:
     db_password = f.read()
@@ -250,9 +252,14 @@ def find_object(session, cls, raw, key):
 def find_or_create(session, cls, raw, key, **build_kwargs):
     return find_object(session, cls, raw, key) or cls.build(raw, **build_kwargs)
 
-def mc_block_exists(session, seqno):
-    exists = session.query(Block.block_id).filter(Block.workchain == -1).filter(Block.seqno == seqno).first() is not None
-    return exists
+def mc_blocks_exists(session, seqnos):
+    seqno_filters = [Block.seqno == seqno for seqno in seqnos]
+    seqno_filters = or_(*seqno_filters)
+    existing_seqnos = session.query(Block.seqno).\
+                              filter(Block.workchain == MASTERCHAIN_INDEX).\
+                              filter(Block.shard == MASTERCHAIN_SHARD).\
+                              filter(seqno_filters)
+    return [x[0] for x in existing_seqnos]
 
 def insert_block_data(session, block: Block, block_header_raw, block_transactions):
     # block header

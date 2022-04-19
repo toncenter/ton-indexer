@@ -14,9 +14,6 @@ from tApi.tonlib.client import TonlibClient
 from indexer.database import *
 
 
-MASTERCHAIN_INDEX = -1
-MASTERCHAIN_SHARD = -9223372036854775808
-
 loop = None
 index_worker = None
 
@@ -141,7 +138,8 @@ class IndexWorker():
 def get_block(mc_seqno_list):
     session = get_session()()
     with session.begin():
-        non_exist = list(filter(lambda x: not mc_block_exists(session, x), mc_seqno_list))
+        existing_seqnos = mc_blocks_exists(session, mc_seqno_list)
+    non_exist = [seqno for seqno in mc_seqno_list if seqno not in existing_seqnos]
 
     logger.info(f"{len(mc_seqno_list) - len(non_exist)} blocks already exist")
     gathered = asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in non_exist], return_exceptions=True)
