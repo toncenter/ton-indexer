@@ -114,7 +114,11 @@ class IndexWorker():
         return blocks, headers, transactions
 
     async def process_mc_seqno(self, seqno: int):
-        blocks, headers, transactions = await self._get_raw_info(seqno)
+        try:
+            blocks, headers, transactions = await self._get_raw_info(seqno)
+        except Exception as e:
+            logger.warning(f'Failed to fetch block(seqno={seqno}): {traceback.format_exc()}')
+            raise e
         session = get_session()()
 
         with session.begin():
@@ -123,6 +127,7 @@ class IndexWorker():
                 logger.info(f'Block(seqno={seqno}) inserted')
             except Exception as ee:
                 logger.warning(f'Failed to insert block(seqno={seqno}): {traceback.format_exc()}')
+                raise ee
 
     async def get_last_mc_block(self):
         mc_info = await self.client.getMasterchainInfo()
@@ -132,7 +137,7 @@ class IndexWorker():
         return await self.client.getShards(mc_seqno)
 
 
-@app.task(autoretry_for=(Exception,), retry_kwargs={'max_retries': 7, 'countdown': 0.5}, acks_late=True)
+@app.task(autoretry_for=(Exception,), retry_kwargs={'max_retries': 7, 'countdown': 0.5})
 def get_block(mc_seqno_list):
     session = get_session()()
     with session.begin():
@@ -142,8 +147,8 @@ def get_block(mc_seqno_list):
     gathered = asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in non_exist], return_exceptions=True)
     results = loop.run_until_complete(gathered)
     for r in results:
-        if isinstance(r, Exception):
-            raise Exception("At least one block in task failed")
+        if isinstance(r, BaseException):
+            raise Exception(f"At least one block in task failed {r}")
     return results
 
 @app.task(autoretry_for=(Exception,), retry_kwargs={'max_retries': 7, 'countdown': 0.5}, acks_late=True)
