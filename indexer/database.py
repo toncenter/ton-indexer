@@ -123,7 +123,8 @@ class BlockHeader(Base):
     __table_args__ = (Index('block_headers_index_1', 'catchain_seqno'), 
                       Index('block_headers_index_2', 'min_ref_mc_seqno'),
                       Index('block_headers_index_3', 'prev_key_block_seqno'),
-                      Index('block_headers_index_4', 'start_lt', 'end_lt'),)
+                      Index('block_headers_index_4', 'start_lt', 'end_lt'),
+                      Index('block_headers_index_5', 'is_key_block'))
     
     @classmethod
     def build(cls, raw, block):
@@ -162,8 +163,11 @@ class Transaction(Base):
     block_id = Column(Integer, ForeignKey("blocks.block_id"))
     block = relationship("Block", backref="transactions")
     
-    __table_args__ = (Index('transactions_index_1', 'account', 'lt', 'hash', 'utime'),
-                      UniqueConstraint('account', 'lt', 'hash')
+    __table_args__ = (Index('transactions_index_1', 'account'),
+                      Index('transactions_index_2', 'utime'), 
+                      Index('transactions_index_3', 'hash'),
+                      Index('transactions_index_4', 'lt'),
+                      Index('transactions_index_5', 'account', 'utime')
                      )
     
     @classmethod
@@ -197,8 +201,11 @@ class Message(Base):
     in_tx = relationship("Transaction", backref="in_msg", uselist=False, foreign_keys=[in_tx_id])
 
     
-    __table_args__ = (Index('messages_index_1', 'source', 'destination', 'created_lt'),
-                      # UniqueConstraint('source', 'destination', 'created_lt')
+    __table_args__ = (Index('messages_index_1', 'source'),
+                      Index('messages_index_2', 'destination'),
+                      Index('messages_index_3', 'created_lt'),
+                      Index('messages_index_4', 'body_hash'),
+                      Index('messages_index_5', 'source', 'destination', 'created_lt'),
                      )
     
     @classmethod
