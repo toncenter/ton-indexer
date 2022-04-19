@@ -64,7 +64,7 @@ def backward_main(queue):
     logger.info(f"{len(seqnos_already_in_db)} seqnos already exist in DB")
     del seqnos_already_in_db
 
-    parallel = settings.indexer.workers_count
+    parallel = 2 * settings.indexer.workers_count
     start_time = time.time()
 
 
@@ -73,7 +73,7 @@ def backward_main(queue):
     while left_index < len(seqnos_to_process):
         finished_tasks = [task for task in tasks_in_progress if task.ready()]
         for finished_task in finished_tasks:
-            finished_task.get()
+            finished_task.forget()
         tasks_in_progress = [task for task in tasks_in_progress if task not in finished_tasks]
         if len(tasks_in_progress) >= parallel:
             time.sleep(0.05)
