@@ -4,6 +4,7 @@ aioredis
 crc16
 fastapi
 gunicorn
+uvicorn
 loguru
 pydantic
 pyyaml

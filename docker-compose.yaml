@@ -12,6 +12,7 @@ services:
       REDIS_PORT: 6379
     secrets:
       - postgres_password
+      - tonlib_config
     depends_on:
       - rabbitmq
       - postgres
@@ -28,6 +29,7 @@ services:
       WORKERS_COUNT: ${WORKERS_COUNT:-1}
     secrets:
       - postgres_password
+      - tonlib_config
     depends_on:
       backward_indexer:
         condition: service_started
@@ -45,6 +47,7 @@ services:
       REDIS_PORT: 6379
     secrets:
       - postgres_password
+      - tonlib_config
     depends_on:
       - rabbitmq
       - postgres
@@ -61,6 +64,7 @@ services:
       WORKERS_COUNT: 2
     secrets:
       - postgres_password
+      - tonlib_config
     depends_on:
       forward_indexer:
         condition: service_started
@@ -94,4 +98,6 @@ volumes:
 secrets:
   postgres_password:
     file: private/postgres_password
+  tonlib_config:
+    file: private/toncenter-game.json
   
