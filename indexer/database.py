@@ -165,7 +165,6 @@ class Transaction(Base):
     fee: int = Column(BigInteger)
     storage_fee: int = Column(BigInteger)
     other_fee: int = Column(BigInteger)
-    # FIXME: do we need to store "data" here?
     
     block_id = Column(Integer, ForeignKey("blocks.block_id"))
     block = relationship("Block", backref="transactions")
@@ -252,14 +251,28 @@ def find_object(session, cls, raw, key):
 def find_or_create(session, cls, raw, key, **build_kwargs):
     return find_object(session, cls, raw, key) or cls.build(raw, **build_kwargs)
 
-def mc_blocks_exists(session, seqnos):
+def get_existing_seqnos_from_list(session, seqnos):
     seqno_filters = [Block.seqno == seqno for seqno in seqnos]
     seqno_filters = or_(*seqno_filters)
     existing_seqnos = session.query(Block.seqno).\
                               filter(Block.workchain == MASTERCHAIN_INDEX).\
                               filter(Block.shard == MASTERCHAIN_SHARD).\
-                              filter(seqno_filters)
+                              filter(seqno_filters).\
+                              all()
     return [x[0] for x in existing_seqnos]
+
+def get_existing_seqnos_between_interval(session, min_seqno, max_seqno):
+    """
+    Returns set of tuples of existing seqnos: {(19891542,), (19891541,), (19891540,)}
+    """
+    seqnos_already_in_db = session.query(Block.seqno).\
+                                   filter(Block.workchain==MASTERCHAIN_INDEX).\
+                                   filter(Block.shard == MASTERCHAIN_SHARD).\
+                                   filter(Block.seqno >= min_seqno).\
+                                   filter(Block.seqno <= max_seqno).\
+                                   all()
+    
+    return set(seqnos_already_in_db)
 
 def insert_block_data(session, block: Block, block_header_raw, block_transactions):
     # block header
