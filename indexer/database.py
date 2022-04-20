@@ -233,7 +233,7 @@ class MessageContent(Base):
     body: str = Column(String)
         
     msg = relationship("Message", backref=backref("content", cascade="save-update, merge, "
-                                                "delete, delete-orphan", uselist=False))
+                                                  "delete, delete-orphan", uselist=False))
     
     @classmethod
     def build(cls, raw, msg):

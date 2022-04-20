@@ -88,17 +88,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-  # jupyter:
-  #   build:
-  #     context: .
-  #     dockerfile: deploy/jupyter.Dockerfile
-  #   ports:
-  #     - 4000:4000
-  #   volumes:
-  #     - .:/app
-  #   secrets:
-  #     - postgres_password
-  #   command: "-m jupyter notebook . --ip=0.0.0.0 --port=4000 --allow-root --NotebookApp.token='' --NotebookApp.password=''"
 volumes:
   postgres_data:
     external: false
