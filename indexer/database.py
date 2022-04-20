@@ -109,7 +109,7 @@ class BlockHeader(Base):
     block_id: int = Column(Integer, ForeignKey('blocks.block_id'), primary_key=True)
     global_id: int = Column(Integer)
     version: int = Column(Integer)
-    # flags: int = Column(Integer)
+    flags: int = Column(Integer)
     after_merge: bool = Column(Boolean)
     after_split: bool = Column(Boolean)
     before_split: bool = Column(Boolean)
@@ -121,7 +121,7 @@ class BlockHeader(Base):
     prev_key_block_seqno: int = Column(Integer)
     start_lt: int = Column(BigInteger)
     end_lt: int = Column(BigInteger)
-    # gen_utime: int = Column(BigInteger)
+    gen_utime: int = Column(BigInteger)
     vert_seqno: int = Column(Integer)
     
     block = relationship("Block", backref=backref("block_header", uselist=False))
@@ -131,7 +131,7 @@ class BlockHeader(Base):
                       Index('block_headers_index_3', 'prev_key_block_seqno'),
                       Index('block_headers_index_4', 'start_lt', 'end_lt'),
                       Index('block_headers_index_5', 'is_key_block'),
-                      #Index('block_headers_index_6', 'gen_utime')
+                      Index('block_headers_index_6', 'gen_utime')
                      )
     
     @classmethod
@@ -139,7 +139,7 @@ class BlockHeader(Base):
         return BlockHeader(block=block,
                            global_id=raw['global_id'],
                            version=raw['version'],
-                           # flags=raw['flags'],
+                           flags=raw['flags'],
                            after_merge=raw['after_merge'],
                            after_split=raw['after_split'],
                            before_split=raw['before_split'],
@@ -151,7 +151,7 @@ class BlockHeader(Base):
                            prev_key_block_seqno=raw['prev_key_block_seqno'],
                            start_lt=int(raw['start_lt']),
                            end_lt=int(raw['end_lt']),
-                           # gen_utime=int(raw['gen_utime']),
+                           gen_utime=int(raw['gen_utime']),
                            vert_seqno=raw['vert_seqno'])
 
 
