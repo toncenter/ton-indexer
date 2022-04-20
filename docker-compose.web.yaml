@@ -1,0 +1,15 @@
+version: '3.3'
+services:
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+    ports:
+      - 80:8081
+    secrets:
+      - postgres_password
+    restart: unless-stopped
+    command: -w=1 --bind=0.0.0.0:8081
+secrets:
+  postgres_password:
+    file: private/postgres_password

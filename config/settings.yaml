@@ -1,5 +1,5 @@
 indexer:
-  liteserver_config: toncenter-game.conf
+  liteserver_config: /run/secrets/tonlib_config
   workers_count: ${WORKERS_COUNT}
   init_mc_seqno: 19891542
   smallest_mc_seqno: 0

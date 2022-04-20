@@ -1,5 +1,6 @@
 from copy import deepcopy
 from time import sleep
+from typing import List, Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -10,7 +11,7 @@ from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index
 from sqlalchemy import ForeignKey, UniqueConstraint, Table
 from sqlalchemy import and_, or_, ColumnDefault
 from sqlalchemy.orm import relationship, backref
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 from config import settings as S
 from loguru import logger
@@ -20,6 +21,7 @@ MASTERCHAIN_SHARD = -9223372036854775808
 
 with open(S.postgres.password_file, 'r') as f:
     db_password = f.read()
+
 # init database
 def get_engine(database):
     engine = create_engine('postgresql://{user}:{db_password}@{host}:{port}/{dbname}'.format(host=S.postgres.host,
@@ -107,7 +109,7 @@ class BlockHeader(Base):
     block_id: int = Column(Integer, ForeignKey('blocks.block_id'), primary_key=True)
     global_id: int = Column(Integer)
     version: int = Column(Integer)
-    flags: int = Column(Integer)
+    # flags: int = Column(Integer)
     after_merge: bool = Column(Boolean)
     after_split: bool = Column(Boolean)
     before_split: bool = Column(Boolean)
@@ -119,7 +121,7 @@ class BlockHeader(Base):
     prev_key_block_seqno: int = Column(Integer)
     start_lt: int = Column(BigInteger)
     end_lt: int = Column(BigInteger)
-    gen_utime: int = Column(BigInteger)
+    # gen_utime: int = Column(BigInteger)
     vert_seqno: int = Column(Integer)
     
     block = relationship("Block", backref=backref("block_header", uselist=False))
@@ -129,14 +131,15 @@ class BlockHeader(Base):
                       Index('block_headers_index_3', 'prev_key_block_seqno'),
                       Index('block_headers_index_4', 'start_lt', 'end_lt'),
                       Index('block_headers_index_5', 'is_key_block'),
-                      Index('block_headers_index_6', 'gen_utime'))
+                      #Index('block_headers_index_6', 'gen_utime')
+                     )
     
     @classmethod
     def build(cls, raw, block):
         return BlockHeader(block=block,
                            global_id=raw['global_id'],
                            version=raw['version'],
-                           flags=raw['flags'],
+                           # flags=raw['flags'],
                            after_merge=raw['after_merge'],
                            after_split=raw['after_split'],
                            before_split=raw['before_split'],
@@ -148,7 +151,7 @@ class BlockHeader(Base):
                            prev_key_block_seqno=raw['prev_key_block_seqno'],
                            start_lt=int(raw['start_lt']),
                            end_lt=int(raw['end_lt']),
-                           gen_utime=int(raw['gen_utime']),
+                           # gen_utime=int(raw['gen_utime']),
                            vert_seqno=raw['vert_seqno'])
 
 
@@ -175,7 +178,7 @@ class Transaction(Base):
                       Index('transactions_index_4', 'lt'),
                       Index('transactions_index_5', 'account', 'utime')
                      )
-    
+
     @classmethod
     def build(cls, raw, raw_detail, block):
         return Transaction(block=block,
@@ -186,6 +189,16 @@ class Transaction(Base):
                            fee=int(raw_detail['fee']),
                            storage_fee=int(raw_detail['storage_fee']),
                            other_fee=int(raw_detail['other_fee']))
+
+    def asdict(self):
+        res = asdict(self)
+        try:
+            res['in_msg'] = [msg.asdict() for msg in self.in_msg]
+        except: pass
+        try:
+            res['out_msgs'] = [msg.asdict() for msg in self.out_msgs]
+        except: pass
+        return res
 
 
 @dataclass(init=False)
@@ -206,7 +219,6 @@ class Message(Base):
     in_tx_id = Column(BigInteger, ForeignKey("transactions.tx_id"))
     in_tx = relationship("Transaction", backref="in_msg", uselist=False, foreign_keys=[in_tx_id])
 
-    
     __table_args__ = (Index('messages_index_1', 'source'),
                       Index('messages_index_2', 'destination'),
                       Index('messages_index_3', 'created_lt'),
@@ -224,6 +236,13 @@ class Message(Base):
                        created_lt=raw['created_lt'],
                        body_hash=raw['body_hash'])
 
+    def asdict(self):
+        res = asdict(self)
+        try:
+            res['body'] = self.content.body
+        except: pass
+        return res
+
 
 @dataclass(init=False)
 class MessageContent(Base):
@@ -233,7 +252,7 @@ class MessageContent(Base):
     body: str = Column(String)
         
     msg = relationship("Message", backref=backref("content", cascade="save-update, merge, "
-                                                "delete, delete-orphan", uselist=False))
+                                                  "delete, delete-orphan", uselist=False))
     
     @classmethod
     def build(cls, raw, msg):
