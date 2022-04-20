@@ -12,6 +12,7 @@ services:
       REDIS_PORT: 6379
     secrets:
       - postgres_password
+      - tonlib_config
     depends_on:
       - rabbitmq
       - postgres
@@ -28,6 +29,7 @@ services:
       WORKERS_COUNT: ${WORKERS_COUNT:-1}
     secrets:
       - postgres_password
+      - tonlib_config
     depends_on:
       backward_indexer:
         condition: service_started
@@ -45,6 +47,7 @@ services:
       REDIS_PORT: 6379
     secrets:
       - postgres_password
+      - tonlib_config
     depends_on:
       - rabbitmq
       - postgres
@@ -61,6 +64,7 @@ services:
       WORKERS_COUNT: 2
     secrets:
       - postgres_password
+      - tonlib_config
     depends_on:
       forward_indexer:
         condition: service_started
@@ -88,21 +92,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-  # jupyter:
-  #   build:
-  #     context: .
-  #     dockerfile: deploy/jupyter.Dockerfile
-  #   ports:
-  #     - 4000:4000
-  #   volumes:
-  #     - .:/app
-  #   secrets:
-  #     - postgres_password
-  #   command: "-m jupyter notebook . --ip=0.0.0.0 --port=4000 --allow-root --NotebookApp.token='' --NotebookApp.password=''"
 volumes:
   postgres_data:
     external: false
 secrets:
   postgres_password:
     file: private/postgres_password
+  tonlib_config:
+    file: private/toncenter-game.json
   
