@@ -138,7 +138,7 @@ class IndexWorker():
 def get_block(mc_seqno_list):
     session = get_session()()
     with session.begin():
-        existing_seqnos = mc_blocks_exists(session, mc_seqno_list)
+        existing_seqnos = get_existing_seqnos_from_list(session, mc_seqno_list)
     non_exist = [seqno for seqno in mc_seqno_list if seqno not in existing_seqnos]
 
     logger.info(f"{len(mc_seqno_list) - len(non_exist)} blocks already exist")

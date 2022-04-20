@@ -3,7 +3,7 @@ import sys
 from celery.signals import worker_ready
 from indexer.celery import app
 from indexer.tasks import get_block, get_last_mc_block
-from indexer.database import init_database, Block, get_session
+from indexer.database import init_database, get_session, get_existing_seqnos_between_interval
 from config import settings
 from loguru import logger
 
@@ -17,18 +17,6 @@ def wait_for_broker_connection():
             continue
         logger.info(f"Connected to celery broker.")
         break
-
-
-
-def get_existing_seqnos(min_seqno, max_seqno):
-    """
-    Returns set of tuples of existing seqnos: {(19891542,), (19891541,), (19891540,)}
-    """
-    session = get_session()()
-    with session.begin():
-        seqnos_already_in_db = session.query(Block.seqno).filter(Block.workchain==-1).filter(Block.seqno >= min_seqno).filter(Block.seqno <= max_seqno).all()
-    
-    return set(seqnos_already_in_db)
 
 def dispatch_seqno_list(seqnos_to_process, queue):
     parallel = 2 * settings.indexer.workers_count
@@ -76,7 +64,9 @@ def forward_main(queue):
 
         seqnos_to_process = range(current_seqno, last_mc_block['seqno'] + 1)
         if is_first_iteration:
-            seqnos_already_in_db = get_existing_seqnos(current_seqno, last_mc_block['seqno'] + 1)
+            session = get_session()()
+            with session.begin():
+                seqnos_already_in_db = get_existing_seqnos_between_interval(current_seqno, last_mc_block['seqno'] + 1)
             logger.info(f"{len(seqnos_already_in_db)} seqnos already exist in DB")
             seqnos_to_process = [seqno for seqno in seqnos_to_process if (seqno,) not in seqnos_already_in_db]
             is_first_iteration = False
@@ -95,7 +85,9 @@ def backward_main(queue):
 
     logger.info(f"Backward scheduler started. From {settings.indexer.init_mc_seqno} to {settings.indexer.smallest_mc_seqno}.")
 
-    seqnos_already_in_db = get_existing_seqnos(settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
+    session = get_session()()
+    with session.begin():
+        seqnos_already_in_db = get_existing_seqnos_between_interval(settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
     seqnos_to_process = range(settings.indexer.init_mc_seqno, settings.indexer.smallest_mc_seqno - 1, -1)
     seqnos_to_process = [seqno for seqno in seqnos_to_process if (seqno,) not in seqnos_already_in_db]
     logger.info(f"{len(seqnos_already_in_db)} seqnos already exist in DB")
@@ -103,8 +95,10 @@ def backward_main(queue):
 
     dispatch_seqno_list(seqnos_to_process, queue)
 
-    seqnos_already_in_db = get_existing_seqnos(settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
-    seqnos_failed_to_process = [seqno for seqno in seqnos_to_process if seqno not in seqnos_already_in_db]
+    session = get_session()()
+    with session.begin():
+        seqnos_already_in_db = get_existing_seqnos_between_interval(settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
+    seqnos_failed_to_process = [seqno for seqno in seqnos_to_process if (seqno,) not in seqnos_already_in_db]
     logger.info(f"Backward scheduler completed. Failed to process {len(seqnos_failed_to_process)} seqnos")
 
 if __name__ == "__main__":
