@@ -4,7 +4,7 @@ import os, sys
 from fastapi import FastAPI
 from fastapi import Query
 
-from indexer.database import Block, Transaction, Message, get_session
+from indexer.database import Block, Transaction, Message, get_session, MASTERCHAIN_INDEX, MASTERCHAIN_SHARD
 from dataclasses import asdict, is_dataclass
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload
@@ -42,7 +42,7 @@ def getTransactionsByMasterchainSeqno(
     
     txs = []
     with Session(expire_on_commit=True) as session:
-        block = session.query(Block).filter(and_(Block.seqno == seqno, Block.workchain == -1)).first()
+        block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == seqno)).first()
         block_ids = [block.block_id] + [x.block_id for x in block.shards]
         if return_message_bodies:
             txs = session.query(Transaction) \
