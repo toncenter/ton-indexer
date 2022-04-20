@@ -18,8 +18,7 @@ def wait_for_broker_connection():
         logger.info(f"Connected to celery broker.")
         break
 
-def dispatch_seqno_list(mc_seqno_list, queue):
-    pass
+
 
 def get_existing_seqnos(min_seqno, max_seqno):
     """
@@ -31,10 +30,42 @@ def get_existing_seqnos(min_seqno, max_seqno):
     
     return set(seqnos_already_in_db)
 
+def dispatch_seqno_list(seqnos_to_process, queue):
+    parallel = 2 * settings.indexer.workers_count
+    left_index = 0
+    tasks_in_progress = []
+    while left_index < len(seqnos_to_process):
+        finished_tasks = [task for task in tasks_in_progress if task.ready()]
+        for finished_task in finished_tasks:
+            finished_task.forget()
+        tasks_in_progress = [task for task in tasks_in_progress if task not in finished_tasks]
+        if len(tasks_in_progress) >= parallel:
+            time.sleep(0.05)
+            continue
+
+        right_index = min(left_index + settings.indexer.blocks_per_task, len(seqnos_to_process))
+        next_chunk = seqnos_to_process[left_index:right_index]
+
+        logger.info(f"Dispatching chunk: [{left_index} (seqno: {seqnos_to_process[left_index]}), {right_index} (seqno: {seqnos_to_process[right_index]}))")
+        tasks_in_progress.append(get_block.apply_async([next_chunk], serializer='pickle', queue=queue))
+        
+        left_index = right_index
+
+    # wait for tasks_in_progress to complete 
+    while len(tasks_in_progress) > 0:
+        finished_tasks = [task for task in tasks_in_progress if task.ready()]
+        for finished_task in finished_tasks:
+            finished_task.forget()
+        tasks_in_progress = [task for task in tasks_in_progress if task not in finished_tasks]
+
 def forward_main(queue):
     init_database(create=True)
 
     wait_for_broker_connection()
+
+    logger.info(f"Forward scheduler started from {settings.indexer.init_mc_seqno}.")
+
+    is_first_iteration = True
 
     current_seqno = settings.indexer.init_mc_seqno + 1
     while True:
@@ -43,12 +74,18 @@ def forward_main(queue):
             time.sleep(0.2)
             continue
 
-        for seqno in range(current_seqno, last_mc_block['seqno'] + 1):
-            get_block.apply_async([[seqno]], serializer='pickle', queue=queue).get()
+        seqnos_to_process = range(current_seqno, last_mc_block['seqno'] + 1)
+        if is_first_iteration:
+            seqnos_already_in_db = get_existing_seqnos(current_seqno, last_mc_block['seqno'] + 1)
+            logger.info(f"{len(seqnos_already_in_db)} seqnos already exist in DB")
+            seqnos_to_process = [seqno for seqno in seqnos_to_process if (seqno,) not in seqnos_already_in_db]
+            is_first_iteration = False
+    
+
+        dispatch_seqno_list(seqnos_to_process, queue)
 
         current_seqno = last_mc_block['seqno'] + 1
 
-        time.sleep(0.2)
         logger.info(f"Current seqno: {current_seqno}")
 
 def backward_main(queue):
@@ -64,28 +101,11 @@ def backward_main(queue):
     logger.info(f"{len(seqnos_already_in_db)} seqnos already exist in DB")
     del seqnos_already_in_db
 
-    parallel = 2 * settings.indexer.workers_count
-    start_time = time.time()
+    dispatch_seqno_list(seqnos_to_process, queue)
 
-
-    left_index = 0
-    tasks_in_progress = []
-    while left_index < len(seqnos_to_process):
-        finished_tasks = [task for task in tasks_in_progress if task.ready()]
-        for finished_task in finished_tasks:
-            finished_task.forget()
-        tasks_in_progress = [task for task in tasks_in_progress if task not in finished_tasks]
-        if len(tasks_in_progress) >= parallel:
-            time.sleep(0.05)
-            continue
-
-        right_index = min(left_index + settings.indexer.blocks_per_task, len(seqnos_to_process))
-        next_chunk = seqnos_to_process[left_index:right_index]
-
-        logger.info(f"Dispatching chunk: [{left_index}, {right_index})")
-        tasks_in_progress.append(get_block.apply_async([next_chunk], serializer='pickle', queue=queue))
-        
-        left_index = right_index
+    seqnos_already_in_db = get_existing_seqnos(settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
+    seqnos_failed_to_process = [seqno for seqno in seqnos_to_process if seqno not in seqnos_already_in_db]
+    logger.info(f"Backward scheduler completed. Failed to process {len(seqnos_failed_to_process)} seqnos")
 
 if __name__ == "__main__":
     if sys.argv[1] == 'backward':
