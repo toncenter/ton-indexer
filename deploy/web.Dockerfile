@@ -13,4 +13,4 @@ COPY . /usr/src/ton-indexer
 WORKDIR /usr/src/ton-indexer
 
 # entrypoint
-ENTRYPOINT ["gunicorn", "indexer.web:app", "-k", "uvicorn.workers.UvicornWorker"]
+ENTRYPOINT ["gunicorn", "webserver.main:app", "-k", "uvicorn.workers.UvicornWorker"]
