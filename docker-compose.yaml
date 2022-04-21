@@ -1,5 +1,15 @@
 version: '3.3'
 services:
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+    ports:
+      - ${TON_INDEXER_HTTP_PORT}:8081
+    secrets:
+      - postgres_password
+    restart: unless-stopped
+    command: -w=1 --bind=0.0.0.0:8081
   backward_indexer:
     build:
       context: .
