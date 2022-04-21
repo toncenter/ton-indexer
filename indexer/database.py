@@ -194,7 +194,7 @@ class Transaction(Base):
     def asdict(self):
         res = asdict(self)
         res.pop('tx_id', None)
-        try
+        try:
             res['in_msg'] = [msg.asdict() for msg in self.in_msg]
         except:
             pass
