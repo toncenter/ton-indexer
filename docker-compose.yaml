@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: deploy/web.Dockerfile
     ports:
-      - ${TON_INDEXER_HTTP_PORT}:8081
+      - ${TON_INDEXER_HTTP_PORT:-80}:8081
     secrets:
       - postgres_password
     restart: unless-stopped
@@ -118,4 +118,4 @@ secrets:
   postgres_password:
     file: private/postgres_password
   tonlib_config:
-    file: ${TON_INDEXER_LITESERVER_CONFIG:?liteserver config file is required}
+    file: ${TON_INDEXER_LITE_SERVER_CONFIG:?liteserver config file is required}
