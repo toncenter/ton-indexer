@@ -34,9 +34,9 @@ def startup():
     logger.info('Service started successfully')
 
 @app.get('/getTransactionsByMasterchainSeqno')
-def getTransactionsByMasterchainSeqno(
+def get_transactions_by_masterchain_seqno(
     seqno: int = Query(..., description="Masterchain seqno"),
-    return_message_bodies: bool = Query(False, description="Return message bodies")
+    return_message_bodies: bool = Query(False, description="Include messages body")
     ):
     Session = get_session()
     
