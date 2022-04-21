@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: deploy/web.Dockerfile
     ports:
-      - ${:8081
+      - ${TON_INDEXER_HTTP_PORT}:8081
     secrets:
       - postgres_password
     restart: unless-stopped
