@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: deploy/indexer.Dockerfile
-    command: --concurrency ${WORKERS_COUNT:-1} -Q backward_queue
+    command: --concurrency ${TON_INDEXER_BACKWARD_WORKERS_COUNT:-5} -Q backward_queue
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
@@ -22,11 +22,13 @@ services:
       dockerfile: deploy/scheduler.Dockerfile
     command: backward backward_queue
     environment:
+      START_SEQNO: ${TON_INDEXER_START_SEQNO:?start masterchain seqno is required}
+      BOTTOM_SEQNO: ${TON_INDEXER_BOTTOM_SEQNO:?bottom masterchain seqno is required}
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      WORKERS_COUNT: ${WORKERS_COUNT:-1}
+      WORKERS_COUNT: ${TON_INDEXER_BACKWARD_WORKERS_COUNT:-5}
     secrets:
       - postgres_password
       - tonlib_config
@@ -39,7 +41,7 @@ services:
     build:
       context: .
       dockerfile: deploy/indexer.Dockerfile
-    command: --concurrency 2 -Q forward_queue
+    command: --concurrency ${TON_INDEXER_FORWARD_WORKERS_COUNT:-2} -Q forward_queue
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
@@ -57,11 +59,13 @@ services:
       dockerfile: deploy/scheduler.Dockerfile
     command: forward forward_queue
     environment:
+      START_SEQNO: ${TON_INDEXER_START_SEQNO:?start masterchain seqno is required}
+      BOTTOM_SEQNO: ${TON_INDEXER_BOTTOM_SEQNO:?bottom masterchain seqno is required}
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      WORKERS_COUNT: 2
+      WORKERS_COUNT: ${TON_INDEXER_FORWARD_WORKERS_COUNT:-2}
     secrets:
       - postgres_password
       - tonlib_config
@@ -99,5 +103,4 @@ secrets:
   postgres_password:
     file: private/postgres_password
   tonlib_config:
-    file: private/toncenter-game.json
-  
+    file: ${TON_INDEXER_LITESERVER_CONFIG:?liteserver config file is required}
