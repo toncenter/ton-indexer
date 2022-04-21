@@ -193,12 +193,11 @@ class Transaction(Base):
 
     def asdict(self):
         res = asdict(self)
-        try:
+        res.pop('tx_id', None)
+        if self.in_msg:
             res['in_msg'] = [msg.asdict() for msg in self.in_msg]
-        except: pass
-        try:
+        if self.out_msgs:
             res['out_msgs'] = [msg.asdict() for msg in self.out_msgs]
-        except: pass
         return res
 
 
@@ -241,9 +240,9 @@ class Message(Base):
 
     def asdict(self):
         res = asdict(self)
-        try:
+        res.pop('msg_id', None)
+        if self.content:
             res['body'] = self.content.body
-        except: pass
         return res
 
 
