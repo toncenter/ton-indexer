@@ -176,7 +176,8 @@ class Transaction(Base):
                       Index('transactions_index_2', 'utime'), 
                       Index('transactions_index_3', 'hash'),
                       Index('transactions_index_4', 'lt'),
-                      Index('transactions_index_5', 'account', 'utime')
+                      Index('transactions_index_5', 'account', 'utime'),
+                      Index('transactions_index_6', 'block_id')
                      )
 
     @classmethod
@@ -224,6 +225,8 @@ class Message(Base):
                       Index('messages_index_3', 'created_lt'),
                       Index('messages_index_4', 'body_hash'),
                       Index('messages_index_5', 'source', 'destination', 'created_lt'),
+                      Index('messages_index_6', 'in_tx_id'),
+                      Index('messages_index_7', 'out_tx_id'),
                      )
     
     @classmethod
