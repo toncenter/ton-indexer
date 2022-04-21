@@ -15,6 +15,7 @@ Prerequisites: docker, docker-compose
     - `TON_INDEXER_HTTP_PORT` *(default: 80)* — port for API webserver.
     - `TON_INDEXER_BACKWARD_WORKERS_COUNT` *(default: 5)* — number of parallel workers to process backward direction.
     - `TON_INDEXER_FORWARD_WORKERS_COUNT` *(default: 2)* — number of parallel workers to process forward direction.
+  - Create file `private/postgres_password` containing password to the Postgres database (without newline).
   - Build services: `docker-compose build`.
   - Run services: `docker-compose up -d`.
   - Stop services: `docker-compose down`. Run this command with`-v` flag to remove volume with Postgres DB.
