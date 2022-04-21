@@ -34,7 +34,7 @@ def dispatch_seqno_list(seqnos_to_process, queue):
         right_index = min(left_index + settings.indexer.blocks_per_task, len(seqnos_to_process))
         next_chunk = seqnos_to_process[left_index:right_index]
 
-        logger.info(f"Dispatching chunk: [{left_index} (seqno: {seqnos_to_process[left_index]}), {right_index} (seqno: {seqnos_to_process[right_index-1]}))")
+        logger.info(f"Dispatching chunk: [{left_index} (seqno: {seqnos_to_process[left_index]}), {right_index-1} (seqno: {seqnos_to_process[right_index-1]})]")
         tasks_in_progress.append(get_block.apply_async([next_chunk], serializer='pickle', queue=queue))
         
         left_index = right_index
@@ -99,7 +99,9 @@ def backward_main(queue):
     with session.begin():
         seqnos_already_in_db = get_existing_seqnos_between_interval(session, settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
     seqnos_failed_to_process = [seqno for seqno in seqnos_to_process if (seqno,) not in seqnos_already_in_db]
-    logger.info(f"Backward scheduler completed. Failed to process {len(seqnos_failed_to_process)} seqnos")
+    logger.info(f"Backward scheduler completed. Failed to process {len(seqnos_failed_to_process)} seqnos:")
+    for failed_seqno in seqnos_failed_to_process:
+        logger.info(f"\t{failed_seqno}")
 
 if __name__ == "__main__":
     if sys.argv[1] == 'backward':
