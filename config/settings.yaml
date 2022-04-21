@@ -1,8 +1,8 @@
 indexer:
   liteserver_config: /run/secrets/tonlib_config
   workers_count: ${WORKERS_COUNT}
-  init_mc_seqno: 19964466
-  smallest_mc_seqno: 0
+  init_mc_seqno: ${START_SEQNO}
+  smallest_mc_seqno: ${BOTTOM_SEQNO}
   blocks_per_task: 30
   max_tasks_per_child: 50
   task_time_limit: 60
