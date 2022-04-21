@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 description = ''
 app = FastAPI(
-    title="TONdex",
+    title="TON Index",
     description=description,
     version='0.1.0',
     docs_url='/',
@@ -43,6 +43,8 @@ def getTransactionsByMasterchainSeqno(
     txs = []
     with Session(expire_on_commit=True) as session:
         block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == seqno)).first()
+        if block is None:
+            raise Exception(f"Block ({MASTERCHAIN_INDEX}, {MASTERCHAIN_SHARD}, {seqno}) not found in DB")
         block_ids = [block.block_id] + [x.block_id for x in block.shards]
         if return_message_bodies:
             txs = session.query(Transaction) \
