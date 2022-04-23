@@ -55,19 +55,6 @@ def get_session():
     Session = sessionmaker(bind=engine)
     return Session
 
-
-shards_association = Table('shards', 
-                           Base.metadata,
-                           Column('masterchain_block_id', 
-                                  Integer, 
-                                  ForeignKey('blocks.block_id'), 
-                                  primary_key=True),
-                           Column('shard_block_id', 
-                                  Integer, 
-                                  ForeignKey('blocks.block_id'), 
-                                  primary_key=True))
-
-
 @dataclass(init=False)
 class Block(Base):
     __tablename__ = 'blocks'
@@ -78,20 +65,15 @@ class Block(Base):
     seqno: int = Column(Integer)
     root_hash: str = Column(String(44))
     file_hash: str = Column(String(44))
-    
-    __table_args__ = (Index('blocks_index_1', 'workchain', 'shard', 'seqno'), 
+    masterchain_block_id = Column(Integer, ForeignKey('blocks.block_id'))
+
+    shards = relationship("Block",
+        backref=backref('masterchain_block', remote_side=[block_id])
+    )
+
+    __table_args__ = (Index('blocks_index_1', 'workchain', 'shard', 'seqno'),
+                      Index('blocks_index_2', 'masterchain_block_id'),
                       UniqueConstraint('workchain', 'shard', 'seqno'))
-    
-    shards = relationship("Block", 
-                          shards_association,
-                          primaryjoin=(block_id == shards_association.c.masterchain_block_id),
-                          secondaryjoin=(block_id == shards_association.c.shard_block_id))
-    masterchain_blocks = relationship("Block", 
-                                      shards_association,
-                                      primaryjoin=(block_id == shards_association.c.shard_block_id),
-                                      secondaryjoin=(block_id == shards_association.c.masterchain_block_id),
-                                      viewonly=True)
-    
     
     @classmethod
     def build(cls, raw):

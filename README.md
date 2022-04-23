@@ -20,6 +20,10 @@ Prerequisites: docker, docker-compose
   - Run services: `docker-compose up -d`.
   - Stop services: `docker-compose down`. Run this command with`-v` flag to remove volume with Postgres DB.
 
+## DB schema
+
+![db-diagram](db-diagram.png)
+
 ## FAQ
 ### How to point the service to my own lite server?
 
