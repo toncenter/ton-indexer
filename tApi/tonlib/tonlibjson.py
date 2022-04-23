@@ -164,5 +164,5 @@ class TonLib:
             if float(i.split(":")[0]) <= now or cancel_all:
                 to_del.append(i)
         for i in to_del:
-            i.cancel()
+            self.futures[i].cancel()
             self.futures.pop(i)
