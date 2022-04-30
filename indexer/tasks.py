@@ -12,6 +12,7 @@ from config import settings
 from tApi.tonlib.client import TonlibClient
 
 from indexer.database import *
+from indexer.crud import *
 
 
 loop = None
