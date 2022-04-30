@@ -3,7 +3,8 @@ import sys
 from celery.signals import worker_ready
 from indexer.celery import app
 from indexer.tasks import get_block, get_last_mc_block
-from indexer.database import init_database, get_session, get_existing_seqnos_between_interval
+from indexer.database import init_database, get_session
+from indexer.crud import get_existing_seqnos_between_interval
 from config import settings
 from loguru import logger
 

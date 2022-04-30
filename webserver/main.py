@@ -1,14 +1,16 @@
 import logging
-import os, sys
+from typing import List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi import Query
 
-from indexer.database import Block, Transaction, Message, get_session, MASTERCHAIN_INDEX, MASTERCHAIN_SHARD
-from dataclasses import asdict, is_dataclass
-from sqlalchemy import and_
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import Session
 
+from tApi.tonlib.address_utils import detect_address
+
+from webserver import schemas
+from indexer.database import get_session
+from indexer.crud import get_transactions_by_seqno, get_transactions_by_address
 
 logging.basicConfig(format='%(asctime)s %(module)-15s %(message)s',
                     level=logging.INFO)
@@ -28,35 +30,38 @@ app = FastAPI(
     # root_path='/api/v2',
 )
 
+# Dependency
+def get_db():
+    db = get_session()()
+    try:
+        yield db
+    finally:
+        db.close()
 
 @app.on_event("startup")
 def startup():
     logger.info('Service started successfully')
 
-@app.get('/getTransactionsByMasterchainSeqno')
+@app.get('/getTransactionsByMasterchainSeqno', response_model=List[schemas.Transaction])
 def get_transactions_by_masterchain_seqno(
     seqno: int = Query(..., description="Masterchain seqno"),
-    return_message_bodies: bool = Query(False, description="Include messages body")
+    db: Session = Depends(get_db)
     ):
-    Session = get_session()
-    
-    txs = []
-    with Session(expire_on_commit=True) as session:
-        block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == seqno)).first()
-        if block is None:
-            raise Exception(f"Block ({MASTERCHAIN_INDEX}, {MASTERCHAIN_SHARD}, {seqno}) not found in DB")
-        block_ids = [block.block_id] + [x.block_id for x in block.shards]
-        if return_message_bodies:
-            txs = session.query(Transaction) \
-                        .filter(Transaction.block_id.in_(block_ids)) \
-                        .options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
-                        .options(joinedload(Transaction.out_msgs).joinedload(Message.content)) \
-                        .all()
-        else:
-            txs = session.query(Transaction) \
-                        .filter(Transaction.block_id.in_(block_ids)) \
-                        .options(joinedload(Transaction.in_msg)) \
-                        .options(joinedload(Transaction.out_msgs)) \
-                        .all()
+    db_transactions = get_transactions_by_seqno(db, seqno, False)
+    return [schemas.Transaction.from_orm(t) for t in db_transactions]
 
-    return [tx.asdict() for tx in txs]
+@app.get('/getTransactions', response_model=List[schemas.Transaction])
+def get_transactions(
+    address: str = Query(..., description="The addresses to get transactions. Can be specified in any form."),
+    start_utime: Optional[int] = Query(None, description="UTC timestamp to start searching transactions"),
+    end_utime: Optional[int] = Query(None, description="UTC timestamp to stop searching transactions. If not specified latest transactions are returned."),
+    limit: int = Query(20, description="Number of transactions to return"),
+    offset: int = Query(0, description="Number of rows to omit before the beginning of the result set"),
+    sort: str = Query("desc", description="Use `asc` to sort by ascending and `desc` to sort by descending"),
+    db: Session = Depends(get_db)
+    ):
+    raw_address = detect_address(address)["raw_form"]
+    db_transactions = get_transactions_by_address(db, raw_address, start_utime, end_utime, limit, offset, sort)
+    return [schemas.Transaction.from_orm(t) for t in db_transactions]
+
+

@@ -153,6 +153,9 @@ class Transaction(Base):
     
     block_id = Column(Integer, ForeignKey("blocks.block_id"))
     block = relationship("Block", backref="transactions")
+
+    in_msg = relationship("Message", uselist=False, back_populates="in_tx", foreign_keys="Message.in_tx_id")
+    out_msgs = relationship("Message", back_populates="out_tx", foreign_keys="Message.out_tx_id")
     
     __table_args__ = (Index('transactions_index_1', 'account'),
                       Index('transactions_index_2', 'utime'), 
@@ -173,20 +176,6 @@ class Transaction(Base):
                            storage_fee=int(raw_detail['storage_fee']),
                            other_fee=int(raw_detail['other_fee']))
 
-    def asdict(self):
-        res = asdict(self)
-        res.pop('tx_id', None)
-        try:
-            res['in_msg'] = [msg.asdict() for msg in self.in_msg]
-        except:
-            pass
-        try:
-            res['out_msgs'] = [msg.asdict() for msg in self.out_msgs]
-        except:
-            pass
-        return res
-
-
 @dataclass(init=False)
 class Message(Base):
     __tablename__ = 'messages'
@@ -200,10 +189,12 @@ class Message(Base):
     body_hash: str = Column(String(44))
     
     out_tx_id = Column(BigInteger, ForeignKey("transactions.tx_id"))
-    out_tx = relationship("Transaction", backref="out_msgs", foreign_keys=[out_tx_id])
+    # out_tx = relationship("Transaction", backref="out_msgs", foreign_keys=[out_tx_id])
+    out_tx = relationship("Transaction", back_populates="out_msgs", foreign_keys=[out_tx_id])
 
     in_tx_id = Column(BigInteger, ForeignKey("transactions.tx_id"))
-    in_tx = relationship("Transaction", backref="in_msg", uselist=False, foreign_keys=[in_tx_id])
+    # in_tx = relationship("Transaction", backref="in_msg", uselist=False, foreign_keys=[in_tx_id])
+    in_tx = relationship("Transaction", back_populates="in_msg", uselist=False, foreign_keys=[in_tx_id])
 
     __table_args__ = (Index('messages_index_1', 'source'),
                       Index('messages_index_2', 'destination'),
@@ -224,15 +215,6 @@ class Message(Base):
                        created_lt=raw['created_lt'],
                        body_hash=raw['body_hash'])
 
-    def asdict(self):
-        res = asdict(self)
-        res.pop('msg_id', None)
-        try:
-            res['body'] = self.content.body
-        except:
-            pass
-        return res
-
 
 @dataclass(init=False)
 class MessageContent(Base):
@@ -249,96 +231,3 @@ class MessageContent(Base):
         return MessageContent(msg=msg,
                               body=raw['msg_data'].get('body'))
 
-
-# find functions
-def find_object(session, cls, raw, key):
-    fltr = [getattr(cls, k) == raw.get(k, None) for k in key]
-    fltr = and_(*fltr)
-    return session.query(cls).filter(fltr).first()
-
-
-def find_or_create(session, cls, raw, key, **build_kwargs):
-    return find_object(session, cls, raw, key) or cls.build(raw, **build_kwargs)
-
-def get_existing_seqnos_from_list(session, seqnos):
-    seqno_filters = [Block.seqno == seqno for seqno in seqnos]
-    seqno_filters = or_(*seqno_filters)
-    existing_seqnos = session.query(Block.seqno).\
-                              filter(Block.workchain == MASTERCHAIN_INDEX).\
-                              filter(Block.shard == MASTERCHAIN_SHARD).\
-                              filter(seqno_filters).\
-                              all()
-    return [x[0] for x in existing_seqnos]
-
-def get_existing_seqnos_between_interval(session, min_seqno, max_seqno):
-    """
-    Returns set of tuples of existing seqnos: {(19891542,), (19891541,), (19891540,)}
-    """
-    seqnos_already_in_db = session.query(Block.seqno).\
-                                   filter(Block.workchain==MASTERCHAIN_INDEX).\
-                                   filter(Block.shard == MASTERCHAIN_SHARD).\
-                                   filter(Block.seqno >= min_seqno).\
-                                   filter(Block.seqno <= max_seqno).\
-                                   all()
-    
-    return set(seqnos_already_in_db)
-
-def insert_block_data(session, block: Block, block_header_raw, block_transactions):
-    # block header
-    block_header = BlockHeader.build(block_header_raw, block=block)
-    session.add(block_header)
-    
-    # block transactions
-    txs = []
-    msgs = []
-    for tx_raw, tx_details_raw in block_transactions:
-        tx = Transaction.build(tx_raw, tx_details_raw, block=block)
-        session.add(tx)
-        
-        # messages
-        if 'in_msg' in tx_details_raw:
-            in_msg_raw = deepcopy(tx_details_raw['in_msg'])
-            
-            in_msg = find_or_create(session, 
-                                    Message, 
-                                    in_msg_raw, 
-                                    ['source', 'destination', 'created_lt', 'body_hash', 'value', 'in_tx_id'])
-            in_msg.in_tx = tx
-            session.add(in_msg)
-            
-            in_msg_content = MessageContent.build(in_msg_raw, msg=in_msg)
-            session.add(in_msg_content)
-
-        for out_msg_raw in tx_details_raw['out_msgs']:
-            out_msg = find_or_create(session, 
-                                     Message, 
-                                     out_msg_raw, 
-                                     ['source', 'destination', 'created_lt', 'body_hash', 'value', 'out_tx_id'])
-            out_msg.out_tx = tx
-            session.add(out_msg)
-            
-            out_msg_content = MessageContent.build(out_msg_raw, msg=out_msg)
-            session.add(out_msg_content)
-    return block_header, txs, msgs
-
-
-def insert_by_seqno(session, blocks_raw, headers_raw, transactions_raw):
-    master_block = None
-    for block_raw, header_raw, txs_raw in zip(blocks_raw, headers_raw, transactions_raw):
-        block = None
-        if master_block is not None:
-            block = find_object(session, Block, block_raw, ['workchain', 'shard', 'seqno'])
-        
-        # building new block
-        if block is None:
-            block = Block.build(block_raw)
-            session.add(block)
-            insert_block_data(session, block, header_raw, txs_raw)
-        else:
-            logger.info(f'Found existsing block: {block}')
-        
-        # add shards
-        if master_block is None:
-            master_block = block
-        else:
-            master_block.shards.append(block)
