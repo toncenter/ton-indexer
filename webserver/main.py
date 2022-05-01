@@ -45,10 +45,11 @@ def startup():
 @app.get('/getTransactionsByMasterchainSeqno', response_model=List[schemas.Transaction])
 def get_transactions_by_masterchain_seqno(
     seqno: int = Query(..., description="Masterchain seqno"),
+    include_msg_bodies: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
-    db_transactions = get_transactions_by_seqno(db, seqno, False)
-    return [schemas.Transaction.from_orm(t) for t in db_transactions]
+    db_transactions = get_transactions_by_seqno(db, seqno)
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_bodies) for t in db_transactions]
 
 @app.get('/getTransactions', response_model=List[schemas.Transaction])
 def get_transactions(
@@ -58,10 +59,11 @@ def get_transactions(
     limit: int = Query(20, description="Number of transactions to return"),
     offset: int = Query(0, description="Number of rows to omit before the beginning of the result set"),
     sort: str = Query("desc", description="Use `asc` to sort by ascending and `desc` to sort by descending"),
+    include_msg_bodies: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
     raw_address = detect_address(address)["raw_form"]
     db_transactions = get_transactions_by_address(db, raw_address, start_utime, end_utime, limit, offset, sort)
-    return [schemas.Transaction.from_orm(t) for t in db_transactions]
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_bodies) for t in db_transactions]
 
 

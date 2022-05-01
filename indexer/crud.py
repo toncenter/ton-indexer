@@ -100,24 +100,14 @@ def insert_by_seqno(session, blocks_raw, headers_raw, transactions_raw):
         else:
             master_block.shards.append(block)
 
-def get_transactions_by_seqno(session, masterchain_seqno, include_msg_bodies):
+def get_transactions_by_seqno(session, masterchain_seqno):
     block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == masterchain_seqno)).first()
     if block is None:
         raise Exception(f"Block ({MASTERCHAIN_INDEX}, {MASTERCHAIN_SHARD}, {masterchain_seqno}) not found in DB")
     block_ids = [block.block_id] + [x.block_id for x in block.shards]
-    if include_msg_bodies:
-        txs = session.query(Transaction) \
-                    .filter(Transaction.block_id.in_(block_ids)) \
-                    .options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
-                    .options(joinedload(Transaction.out_msgs).joinedload(Message.content)) \
-                    .all()
-    else:
-        txs = session.query(Transaction) \
-                    .filter(Transaction.block_id.in_(block_ids)) \
-                    .options(joinedload(Transaction.in_msg)) \
-                    .options(joinedload(Transaction.out_msgs)) \
-                    .all()
-    return txs
+    return session.query(Transaction) \
+                .filter(Transaction.block_id.in_(block_ids))
+                .all()
 
 def get_transactions_by_address(session: Session, account: str, start_utime: Optional[int], end_utime: Optional[int], limit: int, offset: int, sort: str):
     query = session.query(Transaction).filter(Transaction.account == account)
