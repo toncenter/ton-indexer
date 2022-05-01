@@ -49,7 +49,7 @@ def get_transactions_by_masterchain_seqno(
     db: Session = Depends(get_db)
     ):
     db_transactions = get_transactions_by_seqno(db, seqno)
-    return [schemas.Transaction.transaction_from_orm(t, include_msg_bodies) for t in db_transactions]
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
 @app.get('/getTransactions', response_model=List[schemas.Transaction])
 def get_transactions(
@@ -64,6 +64,6 @@ def get_transactions(
     ):
     raw_address = detect_address(address)["raw_form"]
     db_transactions = get_transactions_by_address(db, raw_address, start_utime, end_utime, limit, offset, sort)
-    return [schemas.Transaction.transaction_from_orm(t, include_msg_bodies) for t in db_transactions]
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
 
