@@ -121,7 +121,7 @@ class BlockHeader(Base):
         return BlockHeader(block=block,
                            global_id=raw['global_id'],
                            version=raw['version'],
-                           flags=raw['flags'],
+                           flags=raw.get('flags', 0),
                            after_merge=raw['after_merge'],
                            after_split=raw['after_split'],
                            before_split=raw['before_split'],
@@ -134,7 +134,7 @@ class BlockHeader(Base):
                            start_lt=int(raw['start_lt']),
                            end_lt=int(raw['end_lt']),
                            gen_utime=int(raw['gen_utime']),
-                           vert_seqno=raw['vert_seqno'])
+                           vert_seqno=raw.get('vert_seqno', 0))
 
 
 @dataclass(init=False)
