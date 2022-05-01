@@ -106,7 +106,7 @@ def get_transactions_by_seqno(session, masterchain_seqno):
         raise Exception(f"Block ({MASTERCHAIN_INDEX}, {MASTERCHAIN_SHARD}, {masterchain_seqno}) not found in DB")
     block_ids = [block.block_id] + [x.block_id for x in block.shards]
     return session.query(Transaction) \
-                .filter(Transaction.block_id.in_(block_ids))
+                .filter(Transaction.block_id.in_(block_ids)) \
                 .all()
 
 def get_transactions_by_address(session: Session, account: str, start_utime: Optional[int], end_utime: Optional[int], limit: int, offset: int, sort: str):
