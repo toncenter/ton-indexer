@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class Block(BaseModel):
     workchain: int
-    shard: int
+    shard: str
     seqno: int
     root_hash: str
     file_hash: str
@@ -16,7 +16,7 @@ class Block(BaseModel):
     def block_from_orm_block_header(cls, obj):
         return Block(
             workchain=obj.block.workchain,
-            shard=obj.block.shard,
+            shard=str(obj.block.shard),
             seqno=obj.block.seqno,
             root_hash=obj.block.root_hash,
             file_hash=obj.block.file_hash,

@@ -24,11 +24,6 @@ app = FastAPI(
     description=description,
     version='0.1.0',
     docs_url='/',
-    # responses={
-    #     422: {'description': 'Validation Error'},
-    #     504: {'description': 'Lite Server Timeout'}
-    # },
-    # root_path='/api/v2',
 )
 
 # Dependency
@@ -68,17 +63,66 @@ def get_transactions_by_address(
     db_transactions = crud.get_transactions_by_address(db, raw_address, start_utime, end_utime, limit, offset, sort, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
+@app.get('/getTransactionsInBlock', response_model=List[schemas.Transaction])
+def get_transactions_in_block(
+    workchain: int = Query(..., description="Block's workchain"),
+    shard: int = Query(..., description="Block's shard"),
+    seqno: int = Query(..., description="Block's seqno"),
+    include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    db: Session = Depends(get_db)
+    ):
+    db_transactions = crud.get_transactions_in_block(db, workchain, shard, seqno, include_msg_body)
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
+
+@app.get('/getInMessageByTxID', response_model=Optional[schemas.Message])
+def get_in_message_by_transaction(
+    tx_lt: int = Query(..., description="Logical time of transaction"),
+    tx_hash: str = Query(..., description="Transaction hash"),
+    include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    db: Session = Depends(get_db)
+    ):
+    db_message = crud.get_in_message_by_transaction(db, tx_lt, tx_hash, include_msg_body)
+    return schemas.Message.message_from_orm(db_message, include_msg_body) if db_message else None
+
+@app.get('/getOutMessagesByTxID', response_model=List[schemas.Message])
+def get_out_message_by_transaction(
+    tx_lt: int = Query(..., description="Transaction logical time"),
+    tx_hash: str = Query(..., description="Transaction hash"),
+    include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    db: Session = Depends(get_db)
+    ):
+    db_messages = crud.get_out_messages_by_transaction(db, tx_lt, tx_hash, include_msg_body)
+    return [schemas.Message.message_from_orm(m, include_msg_body) for m in db_messages]
+
+@app.get('/getMessageByHash', response_model=List[schemas.Message])
+def get_message_by_hash(
+    msg_hash: str = Query(..., description="Message hash"),
+    include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    db: Session = Depends(get_db)
+    ):
+    db_messages = crud.get_messages_by_hash(db, msg_hash, include_msg_body)
+    return [schemas.Message.message_from_orm(m, include_msg_body) for m in db_messages]
+
+@app.get('/getTransactionByHash', response_model=List[schemas.Transaction])
+def get_transaction_by_hash(
+    tx_hash: str = Query(..., description="Transaction hash"),
+    include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    db: Session = Depends(get_db)
+    ):
+    db_transactions = crud.get_transactions_by_hash(db, tx_hash, include_msg_body)
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
+
 @app.get('/getBlocksByUnixTime', response_model=List[schemas.Block])
 def get_blocks_by_unix_time(
     start_utime: Optional[int] = Query(None, description="UTC timestamp to start searching blocks"),
     end_utime: Optional[int] = Query(None, description="UTC timestamp to stop searching blocks. If not specified latest blocks are returned."),
     workchain: Optional[int] = Query(None, description="Filter by workchain"),
     shard: Optional[int] = Query(None, description="Filter by shard"),
-    limit: int = Query(20, description="Number of transactions to return"),
+    limit: int = Query(20, description="Number of blocks to return"),
     offset: int = Query(0, description="Number of rows to omit before the beginning of the result set"),
     sort: str = Query("desc", description="Use `asc` to sort by ascending and `desc` to sort by descending"),
     db: Session = Depends(get_db)
     ):
     db_blocks = crud.get_blocks_by_unix_time(db, start_utime, end_utime, workchain, shard, limit, offset, sort)
     return [schemas.Block.block_from_orm_block_header(b) for b in db_blocks]
-    
+

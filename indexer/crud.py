@@ -141,6 +141,54 @@ def get_transactions_by_address(session: Session, account: str, start_utime: Opt
 
     return query.all()
 
+def get_transactions_in_block(session: Session, workchain: int, shard: int, seqno: int, include_msg_body: bool):
+    block = session.query(Block).filter(and_(Block.workchain == workchain, Block.shard == shard, Block.seqno == seqno)).first()
+
+    if block is None:
+        raise Exception(f"Block ({workchain}, {shard}, {seqno}) not found in DB")
+
+    query = session.query(Transaction) \
+            .filter(Transaction.block_id == block.block_id)
+
+    if include_msg_body:
+        query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
+                     .options(joinedload(Transaction.out_msgs).joinedload(Message.content))
+    else:
+        query = query.options(joinedload(Transaction.in_msg)) \
+                     .options(joinedload(Transaction.out_msgs))
+    
+    return query.all()
+
+def get_in_message_by_transaction(session: Session, tx_lt: int, tx_hash: int, include_msg_body: bool):
+    tx = session.query(Transaction).filter(Transaction.lt == tx_lt).filter(Transaction.hash == tx_hash).first()
+    if tx is None:
+        raise Exception(f"Transaction ({tx_lt}, {tx_hash}) not found in DB")
+
+    return session.query(Message).filter(Message.in_tx_id == tx.tx_id).first()
+
+def get_out_messages_by_transaction(session: Session, tx_lt: int, tx_hash: int, include_msg_body: bool):
+    tx = session.query(Transaction).filter(Transaction.lt == tx_lt).filter(Transaction.hash == tx_hash).first()
+    if tx is None:
+        raise Exception(f"Transaction ({tx_lt}, {tx_hash}) not found in DB")
+
+    return session.query(Message).filter(Message.out_tx_id == tx.tx_id).all()
+
+def get_messages_by_hash(session: Session, msg_hash: str, include_msg_body: bool):
+    query = session.query(Message).filter(Message.body_hash == msg_hash)
+    if include_msg_body:
+        query = query.options(joinedload(Message.content))
+    return query.all()
+
+def get_transactions_by_hash(session: Session, tx_hash: str, include_msg_body: bool):
+    query = session.query(Transaction).filter(Transaction.hash == tx_hash)
+    if include_msg_body:
+        query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
+                     .options(joinedload(Transaction.out_msgs).joinedload(Message.content))
+    else:
+        query = query.options(joinedload(Transaction.in_msg)) \
+                     .options(joinedload(Transaction.out_msgs))
+    return query.all()
+
 def get_blocks_by_unix_time(session: Session, start_utime: Optional[int], end_utime: Optional[int], workchain: Optional[int], shard: Optional[int], limit: int, offset: int, sort: str):
     query = session.query(BlockHeader).join(BlockHeader.block).options(contains_eager(BlockHeader.block))
     if start_utime is not None:
