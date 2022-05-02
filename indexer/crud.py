@@ -1,7 +1,7 @@
 from typing import Optional
 
 from sqlalchemy import and_
-from sqlalchemy.orm import joinedload, Session
+from sqlalchemy.orm import joinedload, Session, contains_eager
 
 from indexer.database import *
 from dataclasses import asdict
@@ -100,26 +100,64 @@ def insert_by_seqno(session, blocks_raw, headers_raw, transactions_raw):
         else:
             master_block.shards.append(block)
 
-def get_transactions_by_seqno(session, masterchain_seqno):
+def get_transactions_by_masterchain_seqno(session, masterchain_seqno: int, include_msg_body: bool):
     block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == masterchain_seqno)).first()
     if block is None:
         raise Exception(f"Block ({MASTERCHAIN_INDEX}, {MASTERCHAIN_SHARD}, {masterchain_seqno}) not found in DB")
     block_ids = [block.block_id] + [x.block_id for x in block.shards]
-    return session.query(Transaction) \
-                .filter(Transaction.block_id.in_(block_ids)) \
-                .all()
+    query = session.query(Transaction) \
+            .filter(Transaction.block_id.in_(block_ids))
 
-def get_transactions_by_address(session: Session, account: str, start_utime: Optional[int], end_utime: Optional[int], limit: int, offset: int, sort: str):
+    if include_msg_body:
+        query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
+                     .options(joinedload(Transaction.out_msgs).joinedload(Message.content))
+    else:
+        query = query.options(joinedload(Transaction.in_msg)) \
+                     .options(joinedload(Transaction.out_msgs))
+
+    return query.all()
+
+def get_transactions_by_address(session: Session, account: str, start_utime: Optional[int], end_utime: Optional[int], limit: int, offset: int, sort: str, include_msg_body: bool):
     query = session.query(Transaction).filter(Transaction.account == account)
     if start_utime is not None:
         query = query.filter(Transaction.utime >= start_utime)
     if end_utime is not None:
         query = query.filter(Transaction.utime <= end_utime)
+
+    if include_msg_body:
+        query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
+                     .options(joinedload(Transaction.out_msgs).joinedload(Message.content))
+    else:
+        query = query.options(joinedload(Transaction.in_msg)) \
+                     .options(joinedload(Transaction.out_msgs))
     
     if sort == 'asc':
         query = query.order_by(Transaction.utime.asc())
     elif sort == 'desc':
         query = query.order_by(Transaction.utime.desc())
+
+    query = query.limit(limit)
+    query = query.offset(offset)
+
+    return query.all()
+
+def get_blocks_by_unix_time(session: Session, start_utime: Optional[int], end_utime: Optional[int], workchain: Optional[int], shard: Optional[int], limit: int, offset: int, sort: str):
+    query = session.query(BlockHeader).join(BlockHeader.block).options(contains_eager(BlockHeader.block))
+    if start_utime is not None:
+        query = query.filter(BlockHeader.gen_utime >= start_utime)
+    if end_utime is not None:
+        query = query.filter(BlockHeader.gen_utime <= end_utime)
+
+    if workchain is not None:
+        query = query.filter(Block.workchain == workchain)
+
+    if shard is not None:
+        query = query.filter(Block.shard == shard)
+
+    if sort == 'asc':
+        query = query.order_by(BlockHeader.gen_utime.asc())
+    elif sort == 'desc':
+        query = query.order_by(BlockHeader.gen_utime.desc())
 
     query = query.limit(limit)
     query = query.offset(offset)

@@ -2,6 +2,29 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+class Block(BaseModel):
+    workchain: int
+    shard: int
+    seqno: int
+    root_hash: str
+    file_hash: str
+    gen_utime: int
+    start_lt: int
+    end_lt: int
+
+    @classmethod
+    def block_from_orm_block_header(cls, obj):
+        return Block(
+            workchain=obj.block.workchain,
+            shard=obj.block.shard,
+            seqno=obj.block.seqno,
+            root_hash=obj.block.root_hash,
+            file_hash=obj.block.file_hash,
+            gen_utime=obj.gen_utime,
+            start_lt=obj.start_lt,
+            end_lt=obj.end_lt
+        )
+
 class Message(BaseModel):
     source: str
     destination: str
