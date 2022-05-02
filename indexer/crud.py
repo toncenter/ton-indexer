@@ -7,6 +7,26 @@ from indexer.database import *
 from dataclasses import asdict
 from loguru import logger
 
+class DataNotFound(Exception):
+    pass
+
+class BlockNotFound(DataNotFound):
+    def __init__(self, workchain, shard, seqno):
+        self.workchain = workchain
+        self.shard = shard
+        self.seqno = seqno
+
+    def __str__(self):
+        return f"Block ({self.workchain}, {self.shard}, {self.seqno}) not found in DB"
+
+class TransactionNotFound(DataNotFound):
+    def __init__(self, lt, hash):
+        self.lt = lt
+        self.hash = hash
+
+    def __str__(self):
+        return f"Transaction ({self.lt}, {self.hash}) not found in DB"
+
 # find functions
 def find_object(session, cls, raw, key):
     fltr = [getattr(cls, k) == raw.get(k, None) for k in key]
@@ -103,7 +123,7 @@ def insert_by_seqno(session, blocks_raw, headers_raw, transactions_raw):
 def get_transactions_by_masterchain_seqno(session, masterchain_seqno: int, include_msg_body: bool):
     block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == masterchain_seqno)).first()
     if block is None:
-        raise Exception(f"Block ({MASTERCHAIN_INDEX}, {MASTERCHAIN_SHARD}, {masterchain_seqno}) not found in DB")
+        raise BlockNotFound(MASTERCHAIN_INDEX, MASTERCHAIN_SHARD, masterchain_seqno)
     block_ids = [block.block_id] + [x.block_id for x in block.shards]
     query = session.query(Transaction) \
             .filter(Transaction.block_id.in_(block_ids))
@@ -145,7 +165,7 @@ def get_transactions_in_block(session: Session, workchain: int, shard: int, seqn
     block = session.query(Block).filter(and_(Block.workchain == workchain, Block.shard == shard, Block.seqno == seqno)).first()
 
     if block is None:
-        raise Exception(f"Block ({workchain}, {shard}, {seqno}) not found in DB")
+        raise BlockNotFound(workchain, shard, seqno)
 
     query = session.query(Transaction) \
             .filter(Transaction.block_id == block.block_id)
@@ -162,14 +182,14 @@ def get_transactions_in_block(session: Session, workchain: int, shard: int, seqn
 def get_in_message_by_transaction(session: Session, tx_lt: int, tx_hash: int, include_msg_body: bool):
     tx = session.query(Transaction).filter(Transaction.lt == tx_lt).filter(Transaction.hash == tx_hash).first()
     if tx is None:
-        raise Exception(f"Transaction ({tx_lt}, {tx_hash}) not found in DB")
+        raise TransactionNotFound(tx_lt, tx_hash)
 
     return session.query(Message).filter(Message.in_tx_id == tx.tx_id).first()
 
 def get_out_messages_by_transaction(session: Session, tx_lt: int, tx_hash: int, include_msg_body: bool):
     tx = session.query(Transaction).filter(Transaction.lt == tx_lt).filter(Transaction.hash == tx_hash).first()
     if tx is None:
-        raise Exception(f"Transaction ({tx_lt}, {tx_hash}) not found in DB")
+        raise TransactionNotFound(tx_lt, tx_hash)
 
     return session.query(Message).filter(Message.out_tx_id == tx.tx_id).all()
 

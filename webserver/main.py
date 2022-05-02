@@ -1,8 +1,10 @@
 import logging
 from typing import List, Optional
 
-from fastapi import FastAPI, Depends
-from fastapi import Query
+from fastapi import FastAPI, Depends, Query, status
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import HTTPException
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,17 @@ def get_db():
     finally:
         db.close()
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse({'error' : str(exc.detail)}, status_code=exc.status_code)
+
+@app.exception_handler(crud.DataNotFound)
+async def tonlib_wront_result_exception_handler(request, exc):
+    return JSONResponse({'error' : str(exc)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@app.exception_handler(Exception)
+def generic_exception_handler(request, exc):
+    return JSONResponse({'error' : str(exc)}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 @app.on_event("startup")
 def startup():
@@ -59,7 +72,10 @@ def get_transactions_by_address(
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
-    raw_address = detect_address(address)["raw_form"]
+    try:
+        raw_address = detect_address(address)["raw_form"]
+    except Exception:
+        raise HTTPException(status_code=416, detail="Invalid address")
     db_transactions = crud.get_transactions_by_address(db, raw_address, start_utime, end_utime, limit, offset, sort, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
