@@ -1,5 +1,7 @@
 indexer:
   liteserver_config: /run/secrets/tonlib_config
+  use_ext_method: true
+  cdll_path: ./config/libtonlibjson.so.0.5
   workers_count: ${WORKERS_COUNT}
   init_mc_seqno: ${START_SEQNO}
   smallest_mc_seqno: ${BOTTOM_SEQNO}
