@@ -25,8 +25,8 @@ def configure_worker(signal=None, sender=None, **kwargs):
     loop = asyncio.get_event_loop()
     index_worker = IndexWorker(loop, 
                                0, 
-                               use_ext_method=settings.use_ext_method, 
-                               cdll_path=settings.cdll_path)
+                               use_ext_method=settings.indexer.use_ext_method, 
+                               cdll_path=settings.indexer.cdll_path)
 
 class IndexWorker():
     def __init__(self, loop, ls_index, use_ext_method=False, cdll_path=None):
