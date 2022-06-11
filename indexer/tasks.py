@@ -45,6 +45,8 @@ class IndexWorker():
                                    cdll_path=cdll_path,
                                    verbosity_level=0)
 
+        loop.run_until_complete(self.client.init())
+
     async def _get_block_with_shards(self, seqno):
         master_block = await self.client.lookup_block(MASTERCHAIN_INDEX, MASTERCHAIN_SHARD, seqno)
         master_block.pop('@type')
