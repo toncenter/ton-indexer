@@ -58,12 +58,22 @@ class IndexWorker():
         if seqno > 0:
             prev_shards = await self.client.get_shards(seqno - 1)
             prev_shards = prev_shards['shards']
-            if len(prev_shards) == len(shards):
-                for i, shard in enumerate(shards):
-                    prev_shard_seqno = prev_shards[i]['seqno']
-                    cur_shard_seqno = shard['seqno']
-                    shards_blocks += await asyncio.gather(*[self.client.lookup_block(shard['workchain'], shard['shard'], seqno) 
-                                                            for seqno in range(prev_shard_seqno + 1, cur_shard_seqno + 1)])
+
+            shards_queue = queue.SimpleQueue()
+            for s in shards:
+                shards_queue.put(s)
+            while not shards_queue.empty():
+                cur_shard_block = shards_queue.get_nowait()
+                if cur_shard_block in prev_shards:
+                    continue
+                if cur_shard_block in shards_blocks:
+                    continue
+                shards_blocks.append(cur_shard_block)
+                cur_shard_block_header = await self.client.get_block_header(cur_shard_block['workchain'],
+                                                                            cur_shard_block['shard'],
+                                                                            cur_shard_block['seqno'])
+                for prev_block in cur_shard_block_header['prev_blocks']:
+                    shards_queue.put(prev_block)
 
         blocks = [master_block] + [
             {'workchain': s['workchain'],
