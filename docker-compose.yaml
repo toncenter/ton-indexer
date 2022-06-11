@@ -36,6 +36,7 @@ services:
     environment:
       START_SEQNO: ${TON_INDEXER_START_SEQNO:?start masterchain seqno is required}
       BOTTOM_SEQNO: ${TON_INDEXER_BOTTOM_SEQNO:?bottom masterchain seqno is required}
+      USE_GET_BLOCK_TRANSACTIONS_EXT: ${TON_INDEXER_USE_GET_BLOCK_TRANSACTIONS_EXT:-0}
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       REDIS_HOST: redis

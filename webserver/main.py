@@ -8,7 +8,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from sqlalchemy.orm import Session
 
-from tApi.tonlib.address_utils import detect_address
+from pytonlib.utils.address import detect_address
 
 from webserver import schemas
 from indexer.database import get_session
