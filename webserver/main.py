@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from pytonlib.utils.address import detect_address
 
+from config import settings
+
 from webserver import schemas
 from indexer.database import get_session
 from indexer import crud
