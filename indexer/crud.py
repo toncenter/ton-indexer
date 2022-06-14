@@ -197,6 +197,7 @@ def get_messages_by_hash(session: Session, msg_hash: str, include_msg_body: bool
     query = session.query(Message).filter(Message.body_hash == msg_hash)
     if include_msg_body:
         query = query.options(joinedload(Message.content))
+    query = query.limit(500)
     return query.all()
 
 def get_transactions_by_hash(session: Session, tx_hash: str, include_msg_body: bool):
@@ -207,6 +208,7 @@ def get_transactions_by_hash(session: Session, tx_hash: str, include_msg_body: b
     else:
         query = query.options(joinedload(Transaction.in_msg)) \
                      .options(joinedload(Transaction.out_msgs))
+    query = query.limit(500)
     return query.all()
 
 def get_blocks_by_unix_time(session: Session, start_utime: Optional[int], end_utime: Optional[int], workchain: Optional[int], shard: Optional[int], limit: int, offset: int, sort: str):

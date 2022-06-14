@@ -1,3 +1,5 @@
+webserver:
+  root_path: ${ROOT_PATH}
 indexer:
   liteserver_config: /run/secrets/tonlib_config
   use_ext_method: ${USE_GET_BLOCK_TRANSACTIONS_EXT}

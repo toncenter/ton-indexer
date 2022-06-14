@@ -6,6 +6,8 @@ services:
       dockerfile: deploy/web.Dockerfile
     ports:
       - ${TON_INDEXER_HTTP_PORT:-80}:8081
+    environment:
+      ROOT_PATH: ${TON_INDEXER_ROOT_PATH:-/}
     secrets:
       - postgres_password
     restart: unless-stopped

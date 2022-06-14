@@ -25,6 +25,7 @@ app = FastAPI(
     title="TON Index",
     description=description,
     version='0.1.0',
+    root_path=settings.webserver.api_root_path,
     docs_url='/',
 )
 
