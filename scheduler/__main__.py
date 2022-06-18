@@ -104,10 +104,61 @@ def backward_main(queue):
     for failed_seqno in seqnos_failed_to_process:
         logger.info(f"\t{failed_seqno}")
 
+import asyncio
+from asgiref.sync import sync_to_async
+
+
+async def asyncify(task, *args, **kwargs):
+    delay = 0.1
+    async_result = await sync_to_async(task.apply_async)(*args, **kwargs)
+    while not async_result.ready():
+        await asyncio.sleep(delay)
+        delay = min(delay * 1.5, 2)  # exponential backoff, max 2 seconds
+    return async_result.get()
+
+class IndexScheduler:
+    def __init__(self, celery_queue):
+        self.celery_queue = celery_queue
+        # self.seqnos_to_process_queue = LifoQueue()
+        self.current_seqno = 9
+
+    def run(self):
+        self.loop = asyncio.get_event_loop()
+        self.get_new_blocks_task = self.loop.create_task(self._get_new_blocks())
+        self.index_blocks_task = self.loop.create_task(self._index_blocks())
+        self.read_results_task = self.loop.create_task(self._read_results())
+        self.loop.run_forever()
+
+    async def _get_new_blocks(self):
+        while True:
+            last_mc_block = await asyncify(get_last_mc_block, [], serializer='pickle', queue=self.celery_queue)
+            if last_mc_block['seqno'] < current_seqno:
+                await asyncio.sleep(0.2)
+                continue
+            current_seqno = last_mc_block['seqno'] + 1
+            logger.info(f"current_seqno {current_seqno}")
+
+            # seqnos_to_process = range(current_seqno, last_mc_block['seqno'] + 1)
+
+
+
+    async def _index_blocks(self):
+        pass
+
+    async def _read_results(self):
+        pass
+
+
+
+
 if __name__ == "__main__":
     if sys.argv[1] == 'backward':
         backward_main(sys.argv[2])
     elif sys.argv[1] == 'forward':
-        forward_main(sys.argv[2])
+        scheduler = IndexScheduler(sys.argv[2])
+        scheduler.run()
     else:
         raise Exception("Pass direction in argument: backward/forward")
+
+
+
