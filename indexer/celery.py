@@ -18,11 +18,12 @@ app = Celery('indexer',
 
 # Optional configuration, see the application user guide.
 app.conf.update(
-#     result_expires=3600, # what is it?
     accept_content=['pickle'],
-    result_serializer='pickle',
     task_serializer='pickle',
+    result_serializer='pickle',
+    result_expires=3600,
+    result_extended=True,
     worker_max_tasks_per_child=settings.indexer.max_tasks_per_child, # recreate worker process after every max_tasks_per_child tasks
-    task_time_limit=settings.indexer.task_time_limit
-    # task_reject_on_worker_lost=True
+    task_time_limit=settings.indexer.task_time_limit,
+    task_reject_on_worker_lost=True
 )

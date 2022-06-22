@@ -73,6 +73,7 @@ class IndexWorker():
                 cur_shard_block_header = await self.client.get_block_header(cur_shard_block['workchain'],
                                                                             cur_shard_block['shard'],
                                                                             cur_shard_block['seqno'])
+                logger.info(f"{cur_shard_block_header}")
                 for prev_block in cur_shard_block_header['prev_blocks']:
                     shards_queue.put(prev_block)
 
@@ -186,11 +187,7 @@ class IndexWorker():
         return self._get_raw_info(seqno)
 
     async def process_mc_seqno(self, seqno: int):
-        try:
-            blocks, headers, transactions = await self.get_raw_info(seqno)
-        except Exception as e:
-            logger.warning(f'Failed to fetch block(seqno={seqno}): {traceback.format_exc()}')
-            raise e
+        blocks, headers, transactions = await self.get_raw_info(seqno)
         session = get_session()()
 
         with session.begin():
@@ -205,26 +202,29 @@ class IndexWorker():
         mc_info = await self.client.get_masterchain_info()
         return mc_info['last']
 
-    async def get_shards(self, mc_seqno):
-        return await self.client.get_shards(mc_seqno)
 
-
-@app.task(autoretry_for=(Exception,), retry_kwargs={'max_retries': 7, 'countdown': 0.5})
-def get_block(mc_seqno_list):
+@app.task(bind=True, max_retries=None,  acks_late=True)
+def get_block(self, mc_seqno_list):
     session = get_session()()
     with session.begin():
         existing_seqnos = get_existing_seqnos_from_list(session, mc_seqno_list)
-    non_exist = [seqno for seqno in mc_seqno_list if seqno not in existing_seqnos]
+    seqnos_to_process = [seqno for seqno in mc_seqno_list if seqno not in existing_seqnos]
 
-    logger.info(f"{len(mc_seqno_list) - len(non_exist)} blocks already exist")
-    gathered = asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in non_exist], return_exceptions=True)
+    logger.info(f"{len(mc_seqno_list) - len(seqnos_to_process)} blocks already exist")
+    gathered = asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in seqnos_to_process], return_exceptions=True)
     results = loop.run_until_complete(gathered)
-    for r in results:
-        if isinstance(r, BaseException):
-            raise Exception(f"At least one block in task failed {r}")
-    return results
 
-@app.task(autoretry_for=(Exception,), retry_kwargs={'max_retries': 7, 'countdown': 0.5}, acks_late=True)
+    # overriding default retry logic
+    max_retry_count = 10
+    if self.request.retries < max_retry_count:
+        for seqno, r in zip(seqnos_to_process, results):
+            if isinstance(r, BaseException):
+                logger.error(f'Processing seqno {seqno} raised exception: {r} while executing. Retrying {self.request.retries} / {max_retry_count}.')
+                raise self.retry(exc=r, countdown=0.1 * self.request.retries)
+
+    return list(zip(seqnos_to_process, results))
+
+@app.task(acks_late=True)
 def get_last_mc_block():
     return loop.run_until_complete(index_worker.get_last_mc_block())
 
