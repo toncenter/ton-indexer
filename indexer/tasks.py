@@ -73,7 +73,6 @@ class IndexWorker():
                 cur_shard_block_header = await self.client.get_block_header(cur_shard_block['workchain'],
                                                                             cur_shard_block['shard'],
                                                                             cur_shard_block['seqno'])
-                logger.info(f"{cur_shard_block_header}")
                 for prev_block in cur_shard_block_header['prev_blocks']:
                     shards_queue.put(prev_block)
 

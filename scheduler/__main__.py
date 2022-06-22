@@ -137,7 +137,7 @@ class IndexScheduler:
                         self.is_liteserver_up = False
                 else:
                     if not self.is_liteserver_up:
-                        logger.critical(f"Lite Server is alive. Starting the indexing.")
+                        logger.info(f"Lite Server is alive. Starting the indexing.")
                         self.is_liteserver_up = True
                 await asyncio.sleep(2)
             except BaseException as e:
