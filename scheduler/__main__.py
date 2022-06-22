@@ -147,7 +147,6 @@ class BackwardScheduler(IndexScheduler):
     def __init__(self, celery_queue):
         super(BackwardScheduler, self).__init__(celery_queue)
         self.reschedule_failed_blocks = False
-        self.current_seqno = settings.indexer.init_mc_seqno + 1
     
     def run(self):
         self.loop = asyncio.get_event_loop()
@@ -188,6 +187,7 @@ class ForwardScheduler(IndexScheduler):
     def __init__(self, celery_queue):
         super(ForwardScheduler, self).__init__(celery_queue)
         self.reschedule_failed_blocks = True
+        self.current_seqno = settings.indexer.init_mc_seqno + 1
     
     def run(self):
         self.loop = asyncio.get_event_loop()
