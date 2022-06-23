@@ -154,8 +154,7 @@ class BackwardScheduler(IndexScheduler):
         self.check_liteserver_health_task = self.loop.create_task(self._check_liteserver_health())
         self.index_blocks_task = self.loop.create_task(self._index_blocks(return_on_empty=True))
         self.read_results_task = self.loop.create_task(self._read_results())
-        self.wait_finish_task = self.loop.create_task(self._wait_finish())
-        self.loop.run_until_complete(self.wait_finish_task)
+        self.loop.run_until_complete(self._wait_finish())
 
     def schedule_seqnos(self):
         logger.info(f"Backward scheduler started. From {settings.indexer.init_mc_seqno} to {settings.indexer.smallest_mc_seqno}.")
@@ -166,7 +165,7 @@ class BackwardScheduler(IndexScheduler):
         self.seqnos_to_process_queue.extend(seqnos_to_index)
 
     async def _wait_finish(self):
-        done, pending = await asyncio.wait([self.check_liteserver_health_task, self.index_blocks_task, self.read_results_task, self.wait_finish_task], return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait([self.check_liteserver_health_task, self.index_blocks_task, self.read_results_task], return_when=asyncio.FIRST_COMPLETED)
         done_task = done.pop()
         if done_task is self.index_blocks_task:
             while len(self.running_tasks) > 0:
