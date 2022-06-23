@@ -17,4 +17,5 @@ sqlalchemy
 sqlalchemy-utils
 tqdm
 requests
+asgiref
 pytonlib>=0.0.14
