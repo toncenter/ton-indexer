@@ -11,7 +11,7 @@ services:
     secrets:
       - postgres_password
     restart: unless-stopped
-    command: -w=1 --bind=0.0.0.0:8081
+    command: -w=${TON_INDEXER_WEBSERVER_WORKERS_COUNT:-1} --bind=0.0.0.0:8081
   backward_indexer:
     build:
       context: .
