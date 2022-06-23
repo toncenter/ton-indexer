@@ -221,7 +221,9 @@ def get_block(self, mc_seqno_list):
                 logger.error(f'Processing seqno {seqno} raised exception: {r} while executing. Retrying {self.request.retries} / {max_retry_count}.')
                 raise self.retry(exc=r, countdown=0.1 * self.request.retries)
 
-    return list(zip(seqnos_to_process, results))
+    task_result = list(zip(seqnos_to_process, results)) 
+    task_result += [(seqno, None) for seqno in existing_seqnos] # adding indexed seqnos from previous tries
+    return task_result
 
 @app.task(acks_late=True)
 def get_last_mc_block():
