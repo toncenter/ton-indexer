@@ -17,4 +17,4 @@ sqlalchemy
 sqlalchemy-utils
 tqdm
 requests
-pytonlib
+pytonlib>=0.0.14
