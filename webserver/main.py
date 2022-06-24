@@ -69,7 +69,7 @@ def get_transactions_by_address(
     address: str = Query(..., description="The address to get transactions. Can be sent in any form."),
     start_utime: Optional[int] = Query(None, description="UTC timestamp to start searching transactions"),
     end_utime: Optional[int] = Query(None, description="UTC timestamp to stop searching transactions. If not specified latest transactions are returned."),
-    limit: int = Query(20, description="Number of transactions to return"),
+    limit: int = Query(20, description="Number of transactions to return", ge=1, lt=1000),
     offset: int = Query(0, description="Number of rows to omit before the beginning of the result set"),
     sort: str = Query("desc", description="Use `asc` to sort by ascending and `desc` to sort by descending"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
@@ -137,7 +137,7 @@ def get_blocks_by_unix_time(
     end_utime: Optional[int] = Query(None, description="UTC timestamp to stop searching blocks. If not specified latest blocks are returned."),
     workchain: Optional[int] = Query(None, description="Filter by workchain"),
     shard: Optional[int] = Query(None, description="Filter by shard"),
-    limit: int = Query(20, description="Number of blocks to return"),
+    limit: int = Query(20, description="Number of blocks to return", ge=1, lt=1000),
     offset: int = Query(0, description="Number of rows to omit before the beginning of the result set"),
     sort: str = Query("desc", description="Use `asc` to sort by ascending and `desc` to sort by descending"),
     db: Session = Depends(get_db)
