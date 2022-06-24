@@ -145,3 +145,14 @@ def get_blocks_by_unix_time(
     db_blocks = crud.get_blocks_by_unix_time(db, start_utime, end_utime, workchain, shard, limit, offset, sort)
     return [schemas.Block.block_from_orm_block_header(b) for b in db_blocks]
 
+@app.get('/getActiveAccountsCountInPeriod', response_model=schemas.CountResponse)
+def get_active_accounts_count_in_period(
+    start_utime: Optional[int] = Query(None, description="UTC timestamp of period start"),
+    end_utime: Optional[int] = Query(None, description="UTC timestamp of period end"),
+    db: Session = Depends(get_db)
+    ):
+    if end_utime - start_utime > 60 * 60 * 24 * 7:
+        raise HTTPException(status_code=416, detail="Max period is 7 days.")
+    count = crud.get_active_accounts_count_in_period(db, start_utime, end_utime)
+    return schemas.CountResponse(count=count)
+

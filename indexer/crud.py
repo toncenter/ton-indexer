@@ -234,3 +234,9 @@ def get_blocks_by_unix_time(session: Session, start_utime: Optional[int], end_ut
 
     return query.all()
 
+def get_active_accounts_count_in_period(session: Session, start_utime: int, end_utime: int):
+    query = session.query(Transaction.account)
+                   .filter(Transaction.utime >= start_utime)
+                   .filter(Transaction.utime <= end_utime)
+                   .distinct()
+    return query.count()
