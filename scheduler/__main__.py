@@ -84,22 +84,23 @@ class IndexScheduler:
         if seqno_result is None:
             logger.debug("Masterchain block {seqno} was indexed.", seqno=seqno)
         elif isinstance(seqno_result, LiteServerTimeout):
-            logger.critical("Masterchain block was not indexed because Lite Server is not responding: {exception}.",
-                exception=seqno_result)
+            logger.critical("Masterchain block {seqno} was not indexed because Lite Server is not responding: {exception}.", 
+                seqno=seqno, exception=seqno_result)
             logger.critical("Block {seqno} is rescheduled", seqno=seqno)
             self.seqnos_to_process_queue.appendleft(seqno)
         elif isinstance(seqno_result, BlockDeleted):
-            logger.critical("Masterchain block was {seqno} not indexed because Lite Server already deleted this block", seqno=seqno)
+            logger.critical("Masterchain block {seqno} was not indexed because Lite Server already deleted this block", seqno=seqno)
             logger.critical("Block {seqno} is skipped", seqno=seqno)
-        elif isinstance(seqno_result, TonlibError):
-            logger.critical("Masterchain block {seqno} was not indexed. Exception occured: {exception}", seqno=seqno, exception=seqno_result)
+        elif isinstance(seqno_result, BaseException):
+            logger.critical("Masterchain block {seqno} was not indexed. Exception of type {exc_type} occured: {exception}", 
+                seqno=seqno, exc_type=type(seqno_result).__name__, exception=seqno_result)
             if self.reschedule_failed_blocks:
                 logger.critical("Block {seqno} is rescheduled", seqno=seqno)
                 self.seqnos_to_process_queue.appendleft(seqno)
             else:
                 logger.critical("Block {seqno} is skipped", seqno=seqno)
         else:
-            raise RuntimeError("Unexpected get_block result type for block {seqno}: {result}", seqno=seqno, result=seqno_result)
+            raise RuntimeError(f"Unexpected get_block result type for block {seqno}: {seqno_result}")
 
     async def _read_results(self):
         while True:
