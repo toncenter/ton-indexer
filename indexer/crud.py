@@ -179,6 +179,31 @@ def get_transactions_in_block(session: Session, workchain: int, shard: int, seqn
     
     return query.all()
 
+def get_chain_last_transactions(session: Session, workchain: Optional[int], start_utime: Optional[int], end_utime: Optional[int], limit: int, offset: int, include_msg_body: bool):
+    query = session.query(Transaction)
+
+    if workchain is not None:
+        query = query.join(Transaction.block).options(contains_eager(Transaction.block)).filter(Block.workchain == workchain)
+
+    if start_utime is not None:
+        query = query.filter(Transaction.utime >= start_utime)
+    if end_utime is not None:
+        query = query.filter(Transaction.utime <= end_utime)
+
+    if include_msg_body:
+        query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
+                     .options(joinedload(Transaction.out_msgs).joinedload(Message.content))
+    else:
+        query = query.options(joinedload(Transaction.in_msg)) \
+                     .options(joinedload(Transaction.out_msgs))
+
+    query = query.order_by(Transaction.utime.desc())
+
+    query = query.limit(limit)
+    query = query.offset(offset)
+
+    return query.all()
+    
 def get_in_message_by_transaction(session: Session, tx_lt: int, tx_hash: int, include_msg_body: bool):
     tx = session.query(Transaction).filter(Transaction.lt == tx_lt).filter(Transaction.hash == tx_hash).first()
     if tx is None:
@@ -235,8 +260,9 @@ def get_blocks_by_unix_time(session: Session, start_utime: Optional[int], end_ut
     return query.all()
 
 def get_active_accounts_count_in_period(session: Session, start_utime: int, end_utime: int):
-    query = session.query(Transaction.account)
-                   .filter(Transaction.utime >= start_utime)
-                   .filter(Transaction.utime <= end_utime)
+    query = session.query(Transaction.account) \
+                   .filter(Transaction.utime >= start_utime) \
+                   .filter(Transaction.utime <= end_utime) \
                    .distinct()
+
     return query.count()
