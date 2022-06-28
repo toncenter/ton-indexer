@@ -77,3 +77,6 @@ class Transaction(BaseModel):
             in_msg=in_msg,
             out_msgs=out_msgs
         )
+
+class CountResponse(BaseModel):
+    count: int
