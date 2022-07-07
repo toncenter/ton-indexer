@@ -56,6 +56,16 @@ class Transaction(BaseModel):
     fee: int
     storage_fee: int
     other_fee: int
+    transaction_type: str
+    compute_exit_code: Optional[int]
+    compute_gas_used: Optional[int]
+    compute_gas_limit: Optional[int]
+    compute_gas_credit: Optional[int]
+    compute_gas_fees: Optional[int]
+    compute_vm_steps: Optional[int]
+    action_result_code: Optional[int]
+    action_total_fwd_fees: Optional[int]
+    action_total_action_fees: Optional[int]
     in_msg: Optional[Message]
     out_msgs: List[Message] = []
 
@@ -74,6 +84,16 @@ class Transaction(BaseModel):
             fee=obj.fee,
             storage_fee=obj.storage_fee,
             other_fee=obj.other_fee,
+            transaction_type=obj.transaction_type,
+            compute_exit_code=obj.compute_exit_code,
+            compute_gas_used=obj.compute_gas_used,
+            compute_gas_limit=obj.compute_gas_limit,
+            compute_gas_credit=obj.compute_gas_credit,
+            compute_gas_fees=obj.compute_gas_fees,
+            compute_vm_steps=obj.compute_vm_steps,
+            action_result_code=obj.action_result_code,
+            action_total_fwd_fees=obj.action_total_fwd_fees,
+            action_total_action_fees=obj.action_total_action_fees,
             in_msg=in_msg,
             out_msgs=out_msgs
         )

@@ -152,13 +152,13 @@ class Transaction(Base):
     fee: int = Column(BigInteger)
     storage_fee: int = Column(BigInteger)
     other_fee: int = Column(BigInteger)
-    transaction_type = Column(ENUM('trans_storage', 'trans_ord', 'trans_tick_tock', \
+    transaction_type = Column(Enum('trans_storage', 'trans_ord', 'trans_tick_tock', \
         'trans_split_prepare', 'trans_split_install', 'trans_merge_prepare', 'trans_merge_install', name='trans_type'))
     compute_exit_code: int = Column(Integer)
     compute_gas_used: int = Column(Integer)
     compute_gas_limit: int = Column(Integer)
     compute_gas_credit: int = Column(Integer)
-    compute_gas_fees: int = Column(BigInteger),
+    compute_gas_fees: int = Column(BigInteger)
     compute_vm_steps: int = Column(Integer)
     action_result_code: int = Column(Integer)
     action_total_fwd_fees: int = Column(BigInteger)
@@ -180,18 +180,28 @@ class Transaction(Base):
 
     @classmethod
     def build(cls, raw, raw_detail, block):
-        parsed_tx = parse_transaction(raw_detail['data'])
-        description = parsed_tx['description']
-        transaction_type = description['type']
-        compute_exit_code = description.get('compute_ph', {}).get('exit_code')
-        compute_gas_used = description.get('compute_ph', {}).get('gas_used')
-        compute_gas_limit = description.get('compute_ph', {}).get('gas_limit')
-        compute_gas_credit = description.get('compute_ph', {}).get('gas_credit')
-        compute_gas_fees = description.get('compute_ph', {}).get('gas_fees')
-        compute_vm_steps = description.get('compute_ph', {}).get('vm_steps')
-        action_result_code = description.get('action', {}).get('result_code')
-        action_total_fwd_fees = description.get('action', {}).get('total_fwd_fees')
-        action_total_action_fees = description.get('action', {}).get('total_action_fees')
+        try:
+            parsed_tx = parse_transaction(raw_detail['data'])
+        except:
+            logger.error(f"Error parsing transaction data {raw_detail['data']}")
+            raise
+        
+        def safe_get(dict_val, keys):
+            res = dict_val
+            for key in keys:
+                res = res.get(key) if res else None
+            return res
+
+        transaction_type = safe_get(parsed_tx, ['description', 'type'])
+        compute_exit_code = safe_get(parsed_tx, ['description', 'compute_ph', 'exit_code'])
+        compute_gas_used = safe_get(parsed_tx, ['description', 'compute_ph', 'gas_used'])
+        compute_gas_limit = safe_get(parsed_tx, ['description', 'compute_ph', 'gas_limit'])
+        compute_gas_credit = safe_get(parsed_tx, ['description', 'compute_ph', 'gas_credit'])
+        compute_gas_fees = safe_get(parsed_tx, ['description', 'compute_ph', 'gas_fees'])
+        compute_vm_steps = safe_get(parsed_tx, ['description', 'compute_ph', 'vm_steps'])
+        action_result_code = safe_get(parsed_tx, ['description', 'action', 'result_code'])
+        action_total_fwd_fees = safe_get(parsed_tx, ['description', 'action', 'total_fwd_fees'])
+        action_total_action_fees = safe_get(parsed_tx, ['description', 'action', 'total_action_fees'])
         return Transaction(block=block,
                            account=raw['account'],
                            lt=raw['lt'],
