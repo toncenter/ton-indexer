@@ -2,12 +2,14 @@ from copy import deepcopy
 from time import sleep
 from typing import List, Optional
 
+from pytonlib.utils.tlb import parse_transaction
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import create_database, database_exists, drop_database
 
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index
+from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum
 from sqlalchemy import ForeignKey, UniqueConstraint, Table
 from sqlalchemy import and_, or_, ColumnDefault
 from sqlalchemy.orm import relationship, backref
@@ -150,6 +152,17 @@ class Transaction(Base):
     fee: int = Column(BigInteger)
     storage_fee: int = Column(BigInteger)
     other_fee: int = Column(BigInteger)
+    transaction_type = Column(ENUM('trans_storage', 'trans_ord', 'trans_tick_tock', \
+        'trans_split_prepare', 'trans_split_install', 'trans_merge_prepare', 'trans_merge_install', name='trans_type'))
+    compute_exit_code: int = Column(Integer)
+    compute_gas_used: int = Column(Integer)
+    compute_gas_limit: int = Column(Integer)
+    compute_gas_credit: int = Column(Integer)
+    compute_gas_fees: int = Column(BigInteger),
+    compute_vm_steps: int = Column(Integer)
+    action_result_code: int = Column(Integer)
+    action_total_fwd_fees: int = Column(BigInteger)
+    action_total_action_fees: int = Column(BigInteger)
     
     block_id = Column(Integer, ForeignKey("blocks.block_id"))
     block = relationship("Block", backref="transactions")
@@ -167,6 +180,18 @@ class Transaction(Base):
 
     @classmethod
     def build(cls, raw, raw_detail, block):
+        parsed_tx = parse_transaction(raw_detail['data'])
+        description = parsed_tx['description']
+        transaction_type = description['type']
+        compute_exit_code = description.get('compute_ph', {}).get('exit_code')
+        compute_gas_used = description.get('compute_ph', {}).get('gas_used')
+        compute_gas_limit = description.get('compute_ph', {}).get('gas_limit')
+        compute_gas_credit = description.get('compute_ph', {}).get('gas_credit')
+        compute_gas_fees = description.get('compute_ph', {}).get('gas_fees')
+        compute_vm_steps = description.get('compute_ph', {}).get('vm_steps')
+        action_result_code = description.get('action', {}).get('result_code')
+        action_total_fwd_fees = description.get('action', {}).get('total_fwd_fees')
+        action_total_action_fees = description.get('action', {}).get('total_action_fees')
         return Transaction(block=block,
                            account=raw['account'],
                            lt=raw['lt'],
@@ -174,7 +199,18 @@ class Transaction(Base):
                            utime=raw_detail['utime'],
                            fee=int(raw_detail['fee']),
                            storage_fee=int(raw_detail['storage_fee']),
-                           other_fee=int(raw_detail['other_fee']))
+                           other_fee=int(raw_detail['other_fee']),
+                           transaction_type=transaction_type,
+                           compute_exit_code=compute_exit_code,
+                           compute_gas_used=compute_gas_used,
+                           compute_gas_limit=compute_gas_limit,
+                           compute_gas_credit=compute_gas_credit,
+                           compute_gas_fees=compute_gas_fees,
+                           compute_vm_steps=compute_vm_steps,
+                           action_result_code=action_result_code,
+                           action_total_fwd_fees=action_total_fwd_fees,
+                           action_total_action_fees=action_total_action_fees
+                          )
 
 @dataclass(init=False)
 class Message(Base):
