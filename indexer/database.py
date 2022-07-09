@@ -1,8 +1,10 @@
+import codecs
 from copy import deepcopy
 from time import sleep
 from typing import List, Optional
 
 from pytonlib.utils.tlb import parse_transaction
+from tvm_valuetypes.cell import deserialize_boc
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -233,6 +235,8 @@ class Message(Base):
     ihr_fee: int = Column(BigInteger)
     created_lt: int = Column(BigInteger)
     body_hash: str = Column(String(44))
+    op: int = Column(Integer)
+    comment: str = Column(String)
     
     out_tx_id = Column(BigInteger, ForeignKey("transactions.tx_id"))
     # out_tx = relationship("Transaction", backref="out_msgs", foreign_keys=[out_tx_id])
@@ -253,13 +257,25 @@ class Message(Base):
     
     @classmethod
     def build(cls, raw):
+        msg_body = raw['msg_data']['body']
+        msg_cell_boc = codecs.decode(codecs.encode(msg_body, 'utf8'), 'base64')
+        message_cell = deserialize_boc(msg_cell_boc)
+        op = None
+        comment = None
+        if len(message_cell.data.data) >= 32:
+            op = int.from_bytes(message_cell.data.data[:32].tobytes(), 'big')
+            if op == 0:
+                comment = codecs.decode(message_cell.data.data[32:], 'utf8')
+
         return Message(source=raw['source'],
                        destination=raw['destination'],
                        value=int(raw['value']),
                        fwd_fee=int(raw['fwd_fee']),
                        ihr_fee=int(raw['ihr_fee']),
                        created_lt=raw['created_lt'],
-                       body_hash=raw['body_hash'])
+                       body_hash=raw['body_hash'],
+                       op=op,
+                       comment=comment)
 
 
 @dataclass(init=False)
