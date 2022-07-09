@@ -263,9 +263,12 @@ class Message(Base):
         op = None
         comment = None
         if len(message_cell.data.data) >= 32:
-            op = int.from_bytes(message_cell.data.data[:32].tobytes(), 'big', signed=True)
-            if op == 0:
-                comment = codecs.decode(message_cell.data.data[32:], 'utf8')
+            try:
+                op = int.from_bytes(message_cell.data.data[:32].tobytes(), 'big', signed=True)
+                if op == 0:
+                    comment = codecs.decode(message_cell.data.data[32:], 'utf8')
+            except BaseException as e:
+                logger.error(f"Error parsing message comment and op: {e}, msg cell: {message_cell}")
 
         return Message(source=raw['source'],
                        destination=raw['destination'],
