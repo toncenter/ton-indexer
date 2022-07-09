@@ -263,7 +263,7 @@ class Message(Base):
         op = None
         comment = None
         if len(message_cell.data.data) >= 32:
-            op = int.from_bytes(message_cell.data.data[:32].tobytes(), 'big')
+            op = int.from_bytes(message_cell.data.data[:32].tobytes(), 'big', signed=True)
             if op == 0:
                 comment = codecs.decode(message_cell.data.data[32:], 'utf8')
 

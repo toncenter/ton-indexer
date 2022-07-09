@@ -32,6 +32,8 @@ class Message(BaseModel):
     fwd_fee: int
     ihr_fee: int
     created_lt: int
+    op: Optional[int]
+    comment: Optional[str]
     body_hash: str
     body: Optional[str]
 
@@ -44,6 +46,8 @@ class Message(BaseModel):
             fwd_fee=obj.fwd_fee,
             ihr_fee=obj.ihr_fee,
             created_lt=obj.created_lt,
+            op=obj.op,
+            comment=obj.comment,
             body_hash=obj.body_hash,
             body=obj.content.body if include_msg_bodies else None
         )
