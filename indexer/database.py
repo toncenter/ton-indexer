@@ -237,6 +237,10 @@ class Message(Base):
     body_hash: str = Column(String(44))
     op: int = Column(Integer)
     comment: str = Column(String)
+    ihr_disabled: bool = Column(Boolean)
+    bounce: bool = Column(Boolean)
+    bounced: bool = Column(Boolean)
+    import_fee: int = Column(BigInteger)
     
     out_tx_id = Column(BigInteger, ForeignKey("transactions.tx_id"))
     # out_tx = relationship("Transaction", backref="out_msgs", foreign_keys=[out_tx_id])
@@ -275,10 +279,15 @@ class Message(Base):
                        value=int(raw['value']),
                        fwd_fee=int(raw['fwd_fee']),
                        ihr_fee=int(raw['ihr_fee']),
-                       created_lt=raw['created_lt'],
+                       created_lt=int(raw['created_lt']),
                        body_hash=raw['body_hash'],
                        op=op,
-                       comment=comment)
+                       comment=comment,
+                       ihr_disabled=raw['ihr_disabled'] if raw['ihr_disabled'] != -1 else None,
+                       bounce=int(raw['bounce']) if int(raw['bounce']) != -1 else None,
+                       bounced=int(raw['bounced']) if (raw['bounced']) != -1 else None,
+                       import_fee=int(raw['import_fee']) if int(raw['import_fee']) != -1 else None,
+                      )
 
 
 @dataclass(init=False)
