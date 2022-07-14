@@ -1,5 +1,6 @@
 import logging
 from typing import List, Optional
+from datetime import datetime
 
 from fastapi import FastAPI, Depends, Query, status
 from fastapi.responses import JSONResponse
@@ -148,6 +149,15 @@ def get_transaction_by_hash(
     db: Session = Depends(get_db)
     ):
     db_transactions = crud.get_transactions_by_hash(db, tx_hash, include_msg_body)
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
+
+@app.get('/getTransactionByInMessageHash', response_model=List[schemas.Transaction])
+def get_transaction_by_in_message_hash(
+    msg_hash: str = Query(..., description="Transaction hash"),
+    include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    db: Session = Depends(get_db)
+    ):
+    db_transactions = crud.get_transactions_by_in_message_hash(db, msg_hash, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
 @app.get('/getBlocksByUnixTime', response_model=List[schemas.Block])

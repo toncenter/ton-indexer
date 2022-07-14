@@ -236,6 +236,18 @@ def get_transactions_by_hash(session: Session, tx_hash: str, include_msg_body: b
     query = query.limit(500)
     return query.all()
 
+def get_transactions_by_in_message_hash(session: Session, msg_hash: str, include_msg_body: bool):
+    query = session.query(Transaction).join(Transaction.in_msg).options(contains_eager(Transaction.in_msg))
+    query = query.filter(Message.body_hash == msg_hash)
+    if include_msg_body:
+        query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
+                     .options(joinedload(Transaction.out_msgs).joinedload(Message.content))
+    else:
+        query = query.options(joinedload(Transaction.in_msg)) \
+                     .options(joinedload(Transaction.out_msgs))
+    query = query.order_by(Transaction.utime.desc()).limit(500)
+    return query.all()
+
 def get_blocks_by_unix_time(session: Session, start_utime: Optional[int], end_utime: Optional[int], workchain: Optional[int], shard: Optional[int], limit: int, offset: int, sort: str):
     query = session.query(BlockHeader).join(BlockHeader.block).options(contains_eager(BlockHeader.block))
     if start_utime is not None:
