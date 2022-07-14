@@ -49,7 +49,7 @@ class IndexScheduler:
         with session.begin():
             seqnos_already_in_db = get_existing_seqnos_between_interval(session, low_seqno, high_seqno)
         logger.info(f"{len(seqnos_already_in_db)} seqnos already exist in DB")
-        return [seqno for seqno in range(low_seqno, high_seqno) if (seqno,) not in seqnos_already_in_db]
+        return [seqno for seqno in range(low_seqno, high_seqno + 1) if (seqno,) not in seqnos_already_in_db]
 
     async def _index_blocks(self, return_on_empty):
         while True:
