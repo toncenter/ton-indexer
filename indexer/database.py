@@ -270,9 +270,13 @@ class Message(Base):
             try:
                 op = int.from_bytes(message_cell.data.data[:32].tobytes(), 'big', signed=True)
                 if op == 0:
-                    comment = codecs.decode(message_cell.data.data[32:], 'utf8').replace('\x00', '')
+                    comment = codecs.decode(message_cell.data.data[32:], 'utf8')
+                    while len(message_cell.refs) > 0 and len(comment) < 2048:
+                        message_cell = message_cell.refs[0]
+                        comment += codecs.decode(message_cell.data.data[32:], 'utf8')
+                    comment = comment.replace('\x00', '')
             except BaseException as e:
-                logger.error(f"Error parsing message comment and op: {e}, msg cell: {message_cell}")
+                logger.error(f"Error parsing message comment and op: {e}, msg body: {msg_body}")
 
         return Message(source=raw['source'],
                        destination=raw['destination'],
@@ -285,7 +289,7 @@ class Message(Base):
                        comment=comment,
                        ihr_disabled=raw['ihr_disabled'] if raw['ihr_disabled'] != -1 else None,
                        bounce=int(raw['bounce']) if int(raw['bounce']) != -1 else None,
-                       bounced=int(raw['bounced']) if (raw['bounced']) != -1 else None,
+                       bounced=int(raw['bounced']) if int(raw['bounced']) != -1 else None,
                        import_fee=int(raw['import_fee']) if int(raw['import_fee']) != -1 else None,
                       )
 
