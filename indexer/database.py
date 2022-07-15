@@ -261,13 +261,13 @@ class Message(Base):
     
     @classmethod
     def build(cls, raw):
-        msg_body = raw['msg_data']['body']
-        msg_cell_boc = codecs.decode(codecs.encode(msg_body, 'utf8'), 'base64')
-        message_cell = deserialize_boc(msg_cell_boc)
         op = None
         comment = None
-        if len(message_cell.data.data) >= 32:
-            try:
+        msg_body = raw['msg_data']['body']
+        try:
+            msg_cell_boc = codecs.decode(codecs.encode(msg_body, 'utf8'), 'base64')
+            message_cell = deserialize_boc(msg_cell_boc)
+            if len(message_cell.data.data) >= 32:
                 op = int.from_bytes(message_cell.data.data[:32].tobytes(), 'big', signed=True)
                 if op == 0:
                     comment = codecs.decode(message_cell.data.data[32:], 'utf8')
@@ -275,8 +275,8 @@ class Message(Base):
                         message_cell = message_cell.refs[0]
                         comment += codecs.decode(message_cell.data.data[32:], 'utf8')
                     comment = comment.replace('\x00', '')
-            except BaseException as e:
-                logger.error(f"Error parsing message comment and op: {e}, msg body: {msg_body}")
+        except BaseException as e:
+            logger.error(f"Error parsing message comment and op: {e}, msg body: {msg_body}")
 
         return Message(source=raw['source'],
                        destination=raw['destination'],
