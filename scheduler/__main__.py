@@ -66,10 +66,9 @@ class IndexScheduler:
                         if return_on_empty and len(chunk) == 0:
                             return
                         break
-                    finally:
-                        chunk.append(seqno_to_process)
+                    chunk.append(seqno_to_process)
                 if len(chunk) == 0:
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(0.1)
                     continue
 
                 await self.max_parallel_tasks_semaphore.acquire()
