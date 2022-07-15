@@ -66,7 +66,8 @@ class IndexScheduler:
                         if return_on_empty and len(chunk) == 0:
                             return
                         break
-                    chunk.append(seqno_to_process)
+                    finally:
+                        chunk.append(seqno_to_process)
                 if len(chunk) == 0:
                     await asyncio.sleep(0.3)
                     continue
@@ -119,7 +120,7 @@ class IndexScheduler:
                         for (seqno, seqno_result) in result:
                             self.handle_get_block_result(seqno, seqno_result)
 
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
             except asyncio.CancelledError:
                 logger.warning("Task _read_results was cancelled")
                 return
