@@ -34,6 +34,7 @@ class Message(BaseModel):
     created_lt: int
     op: Optional[int]
     comment: Optional[str]
+    hash: str
     body_hash: str
     body: Optional[str]
 
@@ -48,6 +49,7 @@ class Message(BaseModel):
             created_lt=obj.created_lt,
             op=obj.op,
             comment=obj.comment,
+            hash=obj.hash,
             body_hash=obj.body_hash,
             body=obj.content.body if include_msg_bodies else None
         )

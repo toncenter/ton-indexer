@@ -79,7 +79,7 @@ def insert_block_data(session, block: Block, block_header_raw, block_transaction
             in_msg = find_or_create(session, 
                                     Message, 
                                     in_msg_raw, 
-                                    ['source', 'destination', 'created_lt', 'body_hash', 'value', 'in_tx_id'])
+                                    ['source', 'destination', 'created_lt', 'hash', 'body_hash', 'value', 'in_tx_id'])
             in_msg.in_tx = tx
             session.add(in_msg)
             
@@ -90,7 +90,7 @@ def insert_block_data(session, block: Block, block_header_raw, block_transaction
             out_msg = find_or_create(session, 
                                      Message, 
                                      out_msg_raw, 
-                                     ['source', 'destination', 'created_lt', 'body_hash', 'value', 'out_tx_id'])
+                                     ['source', 'destination', 'created_lt', 'hash', 'body_hash', 'value', 'out_tx_id'])
             out_msg.out_tx = tx
             session.add(out_msg)
             
@@ -219,7 +219,7 @@ def get_out_messages_by_transaction(session: Session, tx_lt: int, tx_hash: int, 
     return session.query(Message).filter(Message.out_tx_id == tx.tx_id).all()
 
 def get_messages_by_hash(session: Session, msg_hash: str, include_msg_body: bool):
-    query = session.query(Message).filter(Message.body_hash == msg_hash)
+    query = session.query(Message).filter(Message.hash == msg_hash)
     if include_msg_body:
         query = query.options(joinedload(Message.content))
     query = query.limit(500)
@@ -238,7 +238,7 @@ def get_transactions_by_hash(session: Session, tx_hash: str, include_msg_body: b
 
 def get_transactions_by_in_message_hash(session: Session, msg_hash: str, include_msg_body: bool):
     query = session.query(Transaction).join(Transaction.in_msg).options(contains_eager(Transaction.in_msg))
-    query = query.filter(Message.body_hash == msg_hash)
+    query = query.filter(Message.hash == msg_hash)
     if include_msg_body:
         query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
                      .options(joinedload(Transaction.out_msgs).joinedload(Message.content))

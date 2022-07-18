@@ -10,7 +10,7 @@ pydantic
 pyyaml
 redis
 ring
-git+https://github.com/dungeon-master-666/tvm_valuetypes.git@special_cells
+git+https://github.com/toncenter/tvm_valuetypes.git
 celery[redis]
 psycopg2-binary
 sqlalchemy
