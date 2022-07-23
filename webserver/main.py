@@ -14,7 +14,7 @@ from pytonlib.utils.address import detect_address
 from config import settings
 
 from webserver import schemas
-from indexer.database import get_session
+from indexer.database import SessionMaker
 from indexer import crud
 
 logging.basicConfig(format='%(asctime)s %(module)-15s %(message)s',
@@ -34,7 +34,7 @@ app = FastAPI(
 
 # Dependency
 def get_db():
-    db = get_session()()
+    db = SessionMaker()
     try:
         yield db
     finally:
@@ -57,7 +57,7 @@ def startup():
     logger.info('Service started successfully')
 
 @app.get('/getTransactionsByMasterchainSeqno', response_model=List[schemas.Transaction])
-def get_transactions_by_masterchain_seqno(
+async def get_transactions_by_masterchain_seqno(
     seqno: int = Query(..., description="Masterchain seqno"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
@@ -65,11 +65,11 @@ def get_transactions_by_masterchain_seqno(
     """
     Get transactions by masterchain seqno across all workchains and shardchains.
     """
-    db_transactions = crud.get_transactions_by_masterchain_seqno(db, seqno, include_msg_body)
+    db_transactions = await db.run_sync(crud.get_transactions_by_masterchain_seqno, seqno, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
 @app.get('/getTransactionsByAddress', response_model=List[schemas.Transaction])
-def get_transactions_by_address(
+async def get_transactions_by_address(
     address: str = Query(..., description="The address to get transactions. Can be sent in any form."),
     start_utime: Optional[int] = Query(None, description="UTC timestamp to start searching transactions"),
     end_utime: Optional[int] = Query(None, description="UTC timestamp to stop searching transactions. If not specified latest transactions are returned."),
@@ -83,22 +83,22 @@ def get_transactions_by_address(
         raw_address = detect_address(address)["raw_form"]
     except Exception:
         raise HTTPException(status_code=416, detail="Invalid address")
-    db_transactions = crud.get_transactions_by_address(db, raw_address, start_utime, end_utime, limit, offset, sort, include_msg_body)
+    db_transactions = await db.run_sync(crud.get_transactions_by_address, raw_address, start_utime, end_utime, limit, offset, sort, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
 @app.get('/getTransactionsInBlock', response_model=List[schemas.Transaction])
-def get_transactions_in_block(
+async def get_transactions_in_block(
     workchain: int = Query(..., description="Block workchain"),
     shard: int = Query(..., description="Block shard"),
     seqno: int = Query(..., description="Block seqno"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
-    db_transactions = crud.get_transactions_in_block(db, workchain, shard, seqno, include_msg_body)
+    db_transactions = await db.run_sync(crud.get_transactions_in_block, workchain, shard, seqno, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
 @app.get('/getChainLastTransactions', response_model=List[schemas.Transaction])
-def get_chain_last_transactions(
+async def get_chain_last_transactions(
     workchain: Optional[int] = Query(..., description="Transactions workchain"),
     start_utime: Optional[int] = Query(None, description="UTC timestamp to start searching transactions"),
     end_utime: Optional[int] = Query(None, description="UTC timestamp to stop searching transactions. If not specified latest transactions are returned."),
@@ -110,58 +110,58 @@ def get_chain_last_transactions(
     """
     Get latest transaction in workchain. Response is sorted desceding by transaction timestamp.
     """
-    db_transactions = crud.get_chain_last_transactions(db, workchain, start_utime, end_utime, limit, offset, include_msg_body)
+    db_transactions = await db.run_sync(crud.get_chain_last_transactions, workchain, start_utime, end_utime, limit, offset, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]    
 
 @app.get('/getInMessageByTxID', response_model=Optional[schemas.Message])
-def get_in_message_by_transaction(
+async def get_in_message_by_transaction(
     tx_lt: int = Query(..., description="Logical time of transaction"),
     tx_hash: str = Query(..., description="Transaction hash"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
-    db_message = crud.get_in_message_by_transaction(db, tx_lt, tx_hash, include_msg_body)
+    db_message = await db.run_sync(crud.get_in_message_by_transaction, tx_lt, tx_hash, include_msg_body)
     return schemas.Message.message_from_orm(db_message, include_msg_body) if db_message else None
 
 @app.get('/getOutMessagesByTxID', response_model=List[schemas.Message])
-def get_out_message_by_transaction(
+async def get_out_message_by_transaction(
     tx_lt: int = Query(..., description="Transaction logical time"),
     tx_hash: str = Query(..., description="Transaction hash"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
-    db_messages = crud.get_out_messages_by_transaction(db, tx_lt, tx_hash, include_msg_body)
+    db_messages = await db.run_sync(crud.get_out_messages_by_transaction, tx_lt, tx_hash, include_msg_body)
     return [schemas.Message.message_from_orm(m, include_msg_body) for m in db_messages]
 
 @app.get('/getMessageByHash', response_model=List[schemas.Message])
-def get_message_by_hash(
+async def get_message_by_hash(
     msg_hash: str = Query(..., description="Message hash"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
-    db_messages = crud.get_messages_by_hash(db, msg_hash, include_msg_body)
+    db_messages = await db.run_sync(crud.get_messages_by_hash, msg_hash, include_msg_body)
     return [schemas.Message.message_from_orm(m, include_msg_body) for m in db_messages]
 
 @app.get('/getTransactionByHash', response_model=List[schemas.Transaction])
-def get_transaction_by_hash(
+async def get_transaction_by_hash(
     tx_hash: str = Query(..., description="Transaction hash"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
-    db_transactions = crud.get_transactions_by_hash(db, tx_hash, include_msg_body)
+    db_transactions = await db.run_sync(crud.get_transactions_by_hash, tx_hash, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
 @app.get('/getTransactionByInMessageHash', response_model=List[schemas.Transaction])
-def get_transaction_by_in_message_hash(
+async def get_transaction_by_in_message_hash(
     msg_hash: str = Query(..., description="Transaction hash"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
-    db_transactions = crud.get_transactions_by_in_message_hash(db, msg_hash, include_msg_body)
+    db_transactions = await db.run_sync(crud.get_transactions_by_in_message_hash, msg_hash, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
 @app.get('/getBlocksByUnixTime', response_model=List[schemas.Block])
-def get_blocks_by_unix_time(
+async def get_blocks_by_unix_time(
     start_utime: Optional[int] = Query(None, description="UTC timestamp to start searching blocks"),
     end_utime: Optional[int] = Query(None, description="UTC timestamp to stop searching blocks. If not specified latest blocks are returned."),
     workchain: Optional[int] = Query(None, description="Filter by workchain"),
@@ -171,11 +171,11 @@ def get_blocks_by_unix_time(
     sort: str = Query("desc", description="Use `asc` to sort by ascending and `desc` to sort by descending"),
     db: Session = Depends(get_db)
     ):
-    db_blocks = crud.get_blocks_by_unix_time(db, start_utime, end_utime, workchain, shard, limit, offset, sort)
+    db_blocks = await db.run_sync(crud.get_blocks_by_unix_time, start_utime, end_utime, workchain, shard, limit, offset, sort)
     return [schemas.Block.block_from_orm_block_header(b) for b in db_blocks]
 
 @app.get('/getActiveAccountsCountInPeriod', response_model=schemas.CountResponse)
-def get_active_accounts_count_in_period(
+async def get_active_accounts_count_in_period(
     start_utime: int = Query(..., description="UTC timestamp of period start"),
     end_utime: Optional[int] = Query(None, description="UTC timestamp of period end. If not specified now time is used."),
     db: Session = Depends(get_db)
@@ -184,5 +184,5 @@ def get_active_accounts_count_in_period(
         end_utime = int(datetime.utcnow().timestamp())
     if end_utime - start_utime > 60 * 60 * 24 * 7:
         raise HTTPException(status_code=416, detail="Max period is 7 days.")
-    count = crud.get_active_accounts_count_in_period(db, start_utime, end_utime)
+    count = await db.run_sync(crud.get_active_accounts_count_in_period, start_utime, end_utime)
     return schemas.CountResponse(count=count)

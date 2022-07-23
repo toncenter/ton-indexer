@@ -6,7 +6,7 @@ import sys
 import traceback
 from indexer.celery import app
 from indexer.tasks import get_block, get_last_mc_block
-from indexer.database import init_database, get_session
+from indexer.database import init_database, SessionMaker
 from indexer.crud import get_existing_seqnos_between_interval
 from pytonlib import TonlibError, LiteServerTimeout, BlockDeleted
 from config import settings
@@ -36,7 +36,7 @@ class IndexScheduler:
     def __init__(self, celery_queue):
         self.celery_queue = celery_queue
         self.seqnos_to_process_queue = deque()
-        self.max_parallel_tasks_semaphore = asyncio.Semaphore(4 * settings.indexer.workers_count)
+        self.max_parallel_tasks_semaphore = None
         self.running_tasks = set()
         self.is_liteserver_up = None
         self.reschedule_failed_blocks = None
@@ -44,10 +44,9 @@ class IndexScheduler:
     def run(self):
         raise RuntimeError('abstract method')
 
-    def _not_indexed_seqnos_between(self, low_seqno, high_seqno):
-        session = get_session()()
-        with session.begin():
-            seqnos_already_in_db = get_existing_seqnos_between_interval(session, low_seqno, high_seqno)
+    async def _not_indexed_seqnos_between(self, low_seqno, high_seqno):
+        async with SessionMaker() as session:
+            seqnos_already_in_db = await get_existing_seqnos_between_interval(session, low_seqno, high_seqno)
         logger.info(f"{len(seqnos_already_in_db)} seqnos already exist in DB")
         return [seqno for seqno in range(low_seqno, high_seqno + 1) if (seqno,) not in seqnos_already_in_db]
 
@@ -151,16 +150,17 @@ class BackwardScheduler(IndexScheduler):
     
     def run(self):
         self.loop = asyncio.get_event_loop()
-        self.schedule_seqnos()
+        self.max_parallel_tasks_semaphore = asyncio.Semaphore(4 * settings.indexer.workers_count)
+        self.loop.run_until_complete(self.schedule_seqnos())
         self.check_liteserver_health_task = self.loop.create_task(self._check_liteserver_health())
         self.index_blocks_task = self.loop.create_task(self._index_blocks(return_on_empty=True))
         self.read_results_task = self.loop.create_task(self._read_results())
         self.loop.run_until_complete(self._wait_finish())
 
-    def schedule_seqnos(self):
+    async def schedule_seqnos(self):
         logger.info(f"Backward scheduler started. From {settings.indexer.init_mc_seqno} to {settings.indexer.smallest_mc_seqno}.")
 
-        seqnos_to_index = self._not_indexed_seqnos_between(settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
+        seqnos_to_index = await self._not_indexed_seqnos_between(settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
         seqnos_to_index.reverse()
 
         self.seqnos_to_process_queue.extend(seqnos_to_index)
@@ -174,7 +174,7 @@ class BackwardScheduler(IndexScheduler):
             self.read_results_task.cancel()
             await self.read_results_task
             logger.info('Backward scheduler finished working')
-            not_indexed = self._not_indexed_seqnos_between(settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
+            not_indexed = await self._not_indexed_seqnos_between(settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
             if len(not_indexed) > 0:
                 logger.info('Failed to index following seqnos: {seqnos}', seqnos=not_indexed)
             else:
@@ -191,6 +191,7 @@ class ForwardScheduler(IndexScheduler):
     
     def run(self):
         self.loop = asyncio.get_event_loop()
+        self.max_parallel_tasks_semaphore = asyncio.Semaphore(4 * settings.indexer.workers_count)
         self.check_liteserver_health_task = self.loop.create_task(self._check_liteserver_health())
         self.get_new_blocks_task = self.loop.create_task(self._get_new_blocks())
         self.index_blocks_task = self.loop.create_task(self._index_blocks(return_on_empty=False))
@@ -215,7 +216,7 @@ class ForwardScheduler(IndexScheduler):
                 logger.info("New masterchain block: {seqno}", seqno=last_mc_block['seqno'])
 
                 if is_first_iteration:
-                    new_seqnos = self._not_indexed_seqnos_between(self.current_seqno, last_mc_block['seqno'] + 1)
+                    new_seqnos = await self._not_indexed_seqnos_between(self.current_seqno, last_mc_block['seqno'] + 1)
                     is_first_iteration = False
                 else:
                     new_seqnos = range(self.current_seqno, last_mc_block['seqno'] + 1)

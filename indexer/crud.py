@@ -2,6 +2,9 @@ from typing import Optional
 
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload, Session, contains_eager
+from sqlalchemy.future import select
+from sqlalchemy import update
+
 
 from indexer.database import *
 from dataclasses import asdict
@@ -27,98 +30,116 @@ class TransactionNotFound(DataNotFound):
     def __str__(self):
         return f"Transaction ({self.lt}, {self.hash}) not found in DB"
 
-# find functions
-def find_object(session, cls, raw, key):
-    fltr = [getattr(cls, k) == raw.get(k, None) for k in key]
-    fltr = and_(*fltr)
-    return session.query(cls).filter(fltr).first()
-
-
-def find_or_create(session, cls, raw, key, **build_kwargs):
-    return find_object(session, cls, raw, key) or cls.build(raw, **build_kwargs)
-
-def get_existing_seqnos_from_list(session, seqnos):
+async def get_existing_seqnos_from_list(session, seqnos):
     seqno_filters = [Block.seqno == seqno for seqno in seqnos]
     seqno_filters = or_(*seqno_filters)
-    existing_seqnos = session.query(Block.seqno).\
+    existing_seqnos = await session.execute(select(Block.seqno).\
                               filter(Block.workchain == MASTERCHAIN_INDEX).\
                               filter(Block.shard == MASTERCHAIN_SHARD).\
-                              filter(seqno_filters).\
-                              all()
+                              filter(seqno_filters))
+    existing_seqnos = existing_seqnos.all()
     return [x[0] for x in existing_seqnos]
 
-def get_existing_seqnos_between_interval(session, min_seqno, max_seqno):
+async def get_existing_seqnos_between_interval(session, min_seqno, max_seqno):
     """
     Returns set of tuples of existing seqnos: {(19891542,), (19891541,), (19891540,)}
     """
-    seqnos_already_in_db = session.query(Block.seqno).\
+    seqnos_already_in_db = await session.execute(select(Block.seqno).\
                                    filter(Block.workchain==MASTERCHAIN_INDEX).\
                                    filter(Block.shard == MASTERCHAIN_SHARD).\
                                    filter(Block.seqno >= min_seqno).\
-                                   filter(Block.seqno <= max_seqno).\
-                                   all()
-    
+                                   filter(Block.seqno <= max_seqno))
+    seqnos_already_in_db = seqnos_already_in_db.all()
     return set(seqnos_already_in_db)
 
-def insert_block_data(session, block: Block, block_header_raw, block_transactions):
-    # block header
-    block_header = BlockHeader.build(block_header_raw, block=block)
-    session.add(block_header)
-    
-    # block transactions
-    txs = []
-    msgs = []
-    for tx_raw, tx_details_raw in block_transactions:
-        tx = Transaction.build(tx_raw, tx_details_raw, block=block)
-        session.add(tx)
-        
-        # messages
-        if 'in_msg' in tx_details_raw:
-            in_msg_raw = deepcopy(tx_details_raw['in_msg'])
-            
-            in_msg = find_or_create(session, 
-                                    Message, 
-                                    in_msg_raw, 
-                                    ['source', 'destination', 'created_lt', 'hash', 'body_hash', 'value', 'in_tx_id'])
-            in_msg.in_tx = tx
-            session.add(in_msg)
-            
-            in_msg_content = MessageContent.build(in_msg_raw, msg=in_msg)
-            session.add(in_msg_content)
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
-        for out_msg_raw in tx_details_raw['out_msgs']:
-            out_msg = find_or_create(session, 
-                                     Message, 
-                                     out_msg_raw, 
-                                     ['source', 'destination', 'created_lt', 'hash', 'body_hash', 'value', 'out_tx_id'])
-            out_msg.out_tx = tx
-            session.add(out_msg)
-            
-            out_msg_content = MessageContent.build(out_msg_raw, msg=out_msg)
-            session.add(out_msg_content)
-    return block_header, txs, msgs
+async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_raw):
+    meta = Base.metadata
+    block_t = meta.tables[Block.__tablename__]
+    block_headers_t = meta.tables[BlockHeader.__tablename__]
+    transaction_t = meta.tables[Transaction.__tablename__]
+    message_t = meta.tables[Message.__tablename__]
+    message_content_t = meta.tables[MessageContent.__tablename__]
 
+    async with engine.begin() as conn:
+        mc_block_id = None
+        shard_headers = []
+        in_msgs_by_hash = {}
+        out_msgs_by_hash = {}
+        msg_contents_by_hash = {}
+        for block_raw, header_raw, txs_raw in zip(blocks_raw, headers_raw, transactions_raw):
+            s_block = Block.raw_block_to_dict(block_raw)
+            s_block['masterchain_block_id'] = mc_block_id
 
-def insert_by_seqno(session, blocks_raw, headers_raw, transactions_raw):
-    master_block = None
-    for block_raw, header_raw, txs_raw in zip(blocks_raw, headers_raw, transactions_raw):
-        block = None
-        if master_block is not None:
-            block = find_object(session, Block, block_raw, ['workchain', 'shard', 'seqno'])
+            res = await conn.execute(block_t.insert(), [s_block])
+            block_id = res.inserted_primary_key[0]
+            if mc_block_id is None:
+                mc_block_id = block_id
+
+            s_header = BlockHeader.raw_header_to_dict(header_raw)
+            s_header['block_id'] = block_id
+            shard_headers.append(s_header)
+
+            for tx_raw, tx_details_raw in txs_raw:
+                tx = Transaction.raw_transaction_to_dict(tx_raw, tx_details_raw)
+                tx['block_id'] = block_id
+                res = await conn.execute(transaction_t.insert(), [tx])
+
+                if 'in_msg' in tx_details_raw:
+                    in_msg_raw = tx_details_raw['in_msg']
+                    in_msg = Message.raw_msg_to_dict(in_msg_raw)
+                    in_msg['in_tx_id'] = res.inserted_primary_key[0]
+                    in_msg['out_tx_id'] = None
+                    in_msgs_by_hash[in_msg['hash']] = in_msg
+                    msg_contents_by_hash[in_msg['hash']] = MessageContent.raw_msg_to_content_dict(in_msg_raw)
+                for out_msg_raw in tx_details_raw['out_msgs']:
+                    out_msg = Message.raw_msg_to_dict(out_msg_raw)
+                    out_msg['out_tx_id'] = res.inserted_primary_key[0]
+                    out_msg['in_tx_id'] = None
+                    out_msgs_by_hash[out_msg['hash']] = out_msg
+                    msg_contents_by_hash[out_msg['hash']] = MessageContent.raw_msg_to_content_dict(out_msg_raw)
+
+        await conn.execute(block_headers_t.insert(), shard_headers)
+
+        for in_msg_hash, in_msg in in_msgs_by_hash.items():
+            if in_msg_hash in out_msgs_by_hash:
+                in_msg['out_tx_id'] = out_msgs_by_hash[in_msg_hash]['out_tx_id']
+                out_msgs_by_hash.pop(in_msg_hash)
         
-        # building new block
-        if block is None:
-            block = Block.build(block_raw)
-            session.add(block)
-            insert_block_data(session, block, header_raw, txs_raw)
-        else:
-            logger.info(f'Found existsing block: {block}')
-        
-        # add shards
-        if master_block is None:
-            master_block = block
-        else:
-            master_block.shards.append(block)
+        q = select(message_t.c.hash).where(message_t.c.hash.in_(in_msgs_by_hash.keys()) & message_t.c.in_tx_id.is_(None))
+        existing_in_msgs = await conn.execute(q)
+        for e_in_msg in existing_in_msgs.all():
+            hash = e_in_msg['hash']
+            q = update(message_t).where(message_t.c.hash == hash).values(in_tx_id=in_msgs_by_hash[hash]['in_tx_id'])
+            await conn.execute(q)
+            in_msgs_by_hash.pop(hash)
+
+        q = select(message_t.c.hash).where(message_t.c.hash.in_(out_msgs_by_hash.keys()) & message_t.c.out_tx_id.is_(None))
+        existing_out_msgs = await conn.execute(q)
+        for e_out_msg in existing_out_msgs.all():
+            hash = e_out_msg['hash']
+            q = update(message_t).where(message_t.c.hash == hash).values(out_tx_id=out_msgs_by_hash[hash]['out_tx_id'])
+            await conn.execute(q)
+            out_msgs_by_hash.pop(hash)
+
+        msgs_to_insert = list(out_msgs_by_hash.values()) + list(in_msgs_by_hash.values())
+        if len(msgs_to_insert):
+            msg_ids = []
+            for chunk in chunks(msgs_to_insert, 1000):
+                msg_ids = (await conn.execute(message_t.insert().returning(message_t.c.msg_id).values(chunk))).all()
+
+            contents = []
+            for i, msg_id_tuple in enumerate(msg_ids):
+                content = msg_contents_by_hash[msgs_to_insert[i]['hash']]
+                content['msg_id'] = msg_id_tuple[0]
+                contents.append(content)
+
+            for chunk in chunks(contents, 3000):
+                await conn.execute(message_content_t.insert(), chunk)
 
 def get_transactions_by_masterchain_seqno(session, masterchain_seqno: int, include_msg_body: bool):
     block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == masterchain_seqno)).first()
