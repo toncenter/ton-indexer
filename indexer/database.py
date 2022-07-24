@@ -38,7 +38,7 @@ def get_engine(database):
                                                                                              port=S.postgres.port,
                                                                                              user=S.postgres.user,
                                                                                              db_password=db_password,
-                                                                                             dbname=database), echo=False)
+                                                                                             dbname=database), pool_size=20, max_overflow=10, echo=False)
     return engine
 
 engine = get_engine(S.postgres.dbname)
