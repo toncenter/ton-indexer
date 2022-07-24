@@ -187,31 +187,30 @@ class IndexWorker():
 
     async def process_mc_seqno(self, seqno: int):
         blocks, headers, transactions = await self.get_raw_info(seqno)
-        session = get_session()()
-
-        with session.begin():
-            try:
-                insert_by_seqno(session, blocks, headers, transactions)
-                logger.info(f'Block(seqno={seqno}) inserted')
-            except Exception as ee:
-                logger.warning(f'Failed to insert block(seqno={seqno}): {traceback.format_exc()}')
-                raise ee
+        try:
+            await insert_by_seqno_core(engine, blocks, headers, transactions)
+            logger.info(f'Block(seqno={seqno}) inserted')
+        except Exception as ee:
+            logger.warning(f'Failed to insert block(seqno={seqno}): {traceback.format_exc()}')
+            raise ee
 
     async def get_last_mc_block(self):
         mc_info = await self.client.get_masterchain_info()
         return mc_info['last']
 
-
-@app.task(bind=True, max_retries=None,  acks_late=True)
-def get_block(self, mc_seqno_list):
-    session = get_session()()
-    with session.begin():
-        existing_seqnos = get_existing_seqnos_from_list(session, mc_seqno_list)
+async def _get_block(mc_seqno_list):
+    async with SessionMaker() as session:
+        existing_seqnos = await get_existing_seqnos_from_list(session, mc_seqno_list)
     seqnos_to_process = [seqno for seqno in mc_seqno_list if seqno not in existing_seqnos]
 
     logger.info(f"{len(mc_seqno_list) - len(seqnos_to_process)} blocks already exist")
-    gathered = asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in seqnos_to_process], return_exceptions=True)
-    results = loop.run_until_complete(gathered)
+    return seqnos_to_process, await asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in seqnos_to_process], return_exceptions=True)
+    
+@app.task(bind=True, max_retries=None,  acks_late=True)
+def get_block(self, mc_seqno_list):
+    seqnos_to_process, results = loop.run_until_complete(_get_block(mc_seqno_list))
+
+    existing_seqnos = [seqno for seqno in mc_seqno_list if seqno not in seqnos_to_process]
 
     # overriding default retry logic
     max_retry_count = 10

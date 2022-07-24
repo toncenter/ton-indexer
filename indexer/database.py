@@ -1,8 +1,11 @@
+import codecs
+import asyncio
 from copy import deepcopy
 from time import sleep
 from typing import List, Optional
 
 from pytonlib.utils.tlb import parse_transaction
+from tvm_valuetypes.cell import deserialize_boc
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -15,6 +18,11 @@ from sqlalchemy import and_, or_, ColumnDefault
 from sqlalchemy.orm import relationship, backref
 from dataclasses import dataclass, asdict
 
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+
 from config import settings as S
 from loguru import logger
 
@@ -26,43 +34,47 @@ with open(S.postgres.password_file, 'r') as f:
 
 # init database
 def get_engine(database):
-    engine = create_engine('postgresql://{user}:{db_password}@{host}:{port}/{dbname}'.format(host=S.postgres.host,
+    engine = create_async_engine('postgresql+asyncpg://{user}:{db_password}@{host}:{port}/{dbname}'.format(host=S.postgres.host,
                                                                                              port=S.postgres.port,
                                                                                              user=S.postgres.user,
                                                                                              db_password=db_password,
-                                                                                             dbname=database))
+                                                                                             dbname=database), pool_size=20, max_overflow=10, echo=False)
     return engine
 
 engine = get_engine(S.postgres.dbname)
 
+SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
+
 # database
 Base = declarative_base()
 
+utils_url = str(engine.url).replace('+asyncpg', '')
+
 def delete_database():
-    if database_exists(engine.url):
+    if database_exists(utils_url):
         logger.info('Drop database')
-        drop_database(engine.url)
+        drop_database(utils_url)
 
 
 def init_database(create=False):
-    while not database_exists(engine.url):
+    while not database_exists(utils_url):
         if create:
             logger.info('Creating database')
-            create_database(engine.url)
-            Base.metadata.create_all(engine)
-        sleep(0.5)
-        
+            create_database(utils_url)
 
-def get_session():
-    Session = sessionmaker(bind=engine)
-    return Session
+            async def create_tables():
+                async with engine.begin() as conn:
+                    await conn.run_sync(Base.metadata.create_all)
+            asyncio.run(create_tables())
+        sleep(0.5)
+
 
 @dataclass(init=False)
 class Block(Base):
     __tablename__ = 'blocks'
     block_id: int = Column(Integer, autoincrement=True, primary_key=True)
     
-    workchain: int = Column(Integer)
+    workchain: int = Column(Integer, nullable=False)
     shard: int = Column(BigInteger)
     seqno: int = Column(Integer)
     root_hash: str = Column(String(44))
@@ -76,14 +88,14 @@ class Block(Base):
     __table_args__ = (Index('blocks_index_1', 'workchain', 'shard', 'seqno'),
                       Index('blocks_index_2', 'masterchain_block_id'),
                       UniqueConstraint('workchain', 'shard', 'seqno'))
-    
+
     @classmethod
-    def build(cls, raw):
-        return Block(workchain=raw['workchain'],
-                     shard=raw['shard'],
-                     seqno=raw['seqno'],
-                     root_hash=raw['root_hash'],
-                     file_hash=raw['file_hash'])
+    def raw_block_to_dict(cls, raw_block):
+        return {'workchain': raw_block['workchain'],
+                'shard': int(raw_block['shard']),
+                'seqno': raw_block['seqno'],
+                'root_hash': raw_block['root_hash'],
+                'file_hash': raw_block['file_hash'] }
 
 
 @dataclass(init=False)
@@ -117,26 +129,27 @@ class BlockHeader(Base):
                       Index('block_headers_index_5', 'is_key_block'),
                       Index('block_headers_index_6', 'gen_utime')
                      )
-    
+
     @classmethod
-    def build(cls, raw, block):
-        return BlockHeader(block=block,
-                           global_id=raw['global_id'],
-                           version=raw['version'],
-                           flags=raw.get('flags', 0),
-                           after_merge=raw['after_merge'],
-                           after_split=raw['after_split'],
-                           before_split=raw['before_split'],
-                           want_merge=raw['want_merge'],
-                           validator_list_hash_short=raw['validator_list_hash_short'],
-                           catchain_seqno=raw['catchain_seqno'],
-                           min_ref_mc_seqno=raw['min_ref_mc_seqno'],
-                           is_key_block=raw['is_key_block'],
-                           prev_key_block_seqno=raw['prev_key_block_seqno'],
-                           start_lt=int(raw['start_lt']),
-                           end_lt=int(raw['end_lt']),
-                           gen_utime=int(raw['gen_utime']),
-                           vert_seqno=raw.get('vert_seqno', 0))
+    def raw_header_to_dict(cls, raw_header):
+        return {
+            'global_id': raw_header['global_id'],
+            'version': raw_header['version'],
+            'flags': raw_header.get('flags', 0),
+            'after_merge': raw_header['after_merge'],
+            'after_split': raw_header['after_split'],
+            'before_split': raw_header['before_split'],
+            'want_merge': raw_header['want_merge'],
+            'validator_list_hash_short': raw_header['validator_list_hash_short'],
+            'catchain_seqno': raw_header['catchain_seqno'],
+            'min_ref_mc_seqno': raw_header['min_ref_mc_seqno'],
+            'is_key_block': raw_header['is_key_block'],
+            'prev_key_block_seqno': raw_header['prev_key_block_seqno'],
+            'start_lt': int(raw_header['start_lt']),
+            'end_lt': int(raw_header['end_lt']),
+            'gen_utime': int(raw_header['gen_utime']),
+            'vert_seqno': raw_header.get('vert_seqno', 0)
+        }
 
 
 @dataclass(init=False)
@@ -177,9 +190,9 @@ class Transaction(Base):
                       Index('transactions_index_5', 'account', 'utime'),
                       Index('transactions_index_6', 'block_id')
                      )
-
+    
     @classmethod
-    def build(cls, raw, raw_detail, block):
+    def raw_transaction_to_dict(cls, raw, raw_detail):
         try:
             parsed_tx = parse_transaction(raw_detail['data'])
         except:
@@ -202,25 +215,25 @@ class Transaction(Base):
         action_result_code = safe_get(parsed_tx, ['description', 'action', 'result_code'])
         action_total_fwd_fees = safe_get(parsed_tx, ['description', 'action', 'total_fwd_fees'])
         action_total_action_fees = safe_get(parsed_tx, ['description', 'action', 'total_action_fees'])
-        return Transaction(block=block,
-                           account=raw['account'],
-                           lt=raw['lt'],
-                           hash=raw['hash'],
-                           utime=raw_detail['utime'],
-                           fee=int(raw_detail['fee']),
-                           storage_fee=int(raw_detail['storage_fee']),
-                           other_fee=int(raw_detail['other_fee']),
-                           transaction_type=transaction_type,
-                           compute_exit_code=compute_exit_code,
-                           compute_gas_used=compute_gas_used,
-                           compute_gas_limit=compute_gas_limit,
-                           compute_gas_credit=compute_gas_credit,
-                           compute_gas_fees=compute_gas_fees,
-                           compute_vm_steps=compute_vm_steps,
-                           action_result_code=action_result_code,
-                           action_total_fwd_fees=action_total_fwd_fees,
-                           action_total_action_fees=action_total_action_fees
-                          )
+        return {
+            'account': raw['account'],
+            'lt': int(raw['lt']),
+            'hash': raw['hash'],
+            'utime': raw_detail['utime'],
+            'fee': int(raw_detail['fee']),
+            'storage_fee': int(raw_detail['storage_fee']),
+            'other_fee': int(raw_detail['other_fee']),
+            'transaction_type': transaction_type,
+            'compute_exit_code': compute_exit_code,
+            'compute_gas_used': compute_gas_used,
+            'compute_gas_limit': compute_gas_limit,
+            'compute_gas_credit': compute_gas_credit,
+            'compute_gas_fees': compute_gas_fees,
+            'compute_vm_steps': compute_vm_steps,
+            'action_result_code': action_result_code,
+            'action_total_fwd_fees': action_total_fwd_fees,
+            'action_total_action_fees': action_total_action_fees
+        }
 
 @dataclass(init=False)
 class Message(Base):
@@ -232,7 +245,14 @@ class Message(Base):
     fwd_fee: int = Column(BigInteger)
     ihr_fee: int = Column(BigInteger)
     created_lt: int = Column(BigInteger)
+    hash: str = Column(String(44))
     body_hash: str = Column(String(44))
+    op: int = Column(Integer)
+    comment: str = Column(String)
+    ihr_disabled: bool = Column(Boolean)
+    bounce: bool = Column(Boolean)
+    bounced: bool = Column(Boolean)
+    import_fee: int = Column(BigInteger)
     
     out_tx_id = Column(BigInteger, ForeignKey("transactions.tx_id"))
     # out_tx = relationship("Transaction", backref="out_msgs", foreign_keys=[out_tx_id])
@@ -245,21 +265,48 @@ class Message(Base):
     __table_args__ = (Index('messages_index_1', 'source'),
                       Index('messages_index_2', 'destination'),
                       Index('messages_index_3', 'created_lt'),
-                      Index('messages_index_4', 'body_hash'),
-                      Index('messages_index_5', 'source', 'destination', 'created_lt'),
-                      Index('messages_index_6', 'in_tx_id'),
-                      Index('messages_index_7', 'out_tx_id'),
+                      Index('messages_index_4', 'hash'),
+                      Index('messages_index_5', 'body_hash'),
+                      Index('messages_index_6', 'source', 'destination', 'created_lt'),
+                      Index('messages_index_7', 'in_tx_id'),
+                      Index('messages_index_8', 'out_tx_id'),
                      )
     
     @classmethod
-    def build(cls, raw):
-        return Message(source=raw['source'],
-                       destination=raw['destination'],
-                       value=int(raw['value']),
-                       fwd_fee=int(raw['fwd_fee']),
-                       ihr_fee=int(raw['ihr_fee']),
-                       created_lt=raw['created_lt'],
-                       body_hash=raw['body_hash'])
+    def raw_msg_to_dict(cls, raw):
+        op = None
+        comment = None
+        msg_body = raw['msg_data']['body']
+        try:
+            msg_cell_boc = codecs.decode(codecs.encode(msg_body, 'utf8'), 'base64')
+            message_cell = deserialize_boc(msg_cell_boc)
+            if len(message_cell.data.data) >= 32:
+                op = int.from_bytes(message_cell.data.data[:32].tobytes(), 'big', signed=True)
+                if op == 0:
+                    comment = codecs.decode(message_cell.data.data[32:], 'utf8')
+                    while len(message_cell.refs) > 0 and len(comment) < 2048:
+                        message_cell = message_cell.refs[0]
+                        comment += codecs.decode(message_cell.data.data[32:], 'utf8')
+                    comment = comment.replace('\x00', '')
+        except BaseException as e:
+            logger.error(f"Error parsing message comment and op: {e}, msg body: {msg_body}")
+
+        return {
+            'source': raw['source'],
+            'destination': raw['destination'],
+            'value': int(raw['value']),
+            'fwd_fee': int(raw['fwd_fee']),
+            'ihr_fee': int(raw['ihr_fee']),
+            'created_lt': int(raw['created_lt']),
+            'hash': raw['hash'],
+            'body_hash': raw['body_hash'],
+            'op': op,
+            'comment': comment,
+            'ihr_disabled': raw['ihr_disabled'] if raw['ihr_disabled'] != -1 else None,
+            'bounce': int(raw['bounce']) if int(raw['bounce']) != -1 else None,
+            'bounced': int(raw['bounced']) if int(raw['bounced']) != -1 else None,
+            'import_fee': int(raw['import_fee']) if int(raw['import_fee']) != -1 else None,
+        }
 
 
 @dataclass(init=False)
@@ -271,9 +318,10 @@ class MessageContent(Base):
         
     msg = relationship("Message", backref=backref("content", cascade="save-update, merge, "
                                                   "delete, delete-orphan", uselist=False))
-    
+
     @classmethod
-    def build(cls, raw, msg):
-        return MessageContent(msg=msg,
-                              body=raw['msg_data'].get('body'))
+    def raw_msg_to_content_dict(cls, raw_msg):
+        return {
+            'body': raw_msg['msg_data'].get('body')
+        }
 
