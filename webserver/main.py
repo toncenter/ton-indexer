@@ -33,12 +33,9 @@ app = FastAPI(
 )
 
 # Dependency
-def get_db():
-    db = SessionMaker()
-    try:
+async def get_db():
+    async with SessionMaker() as db:
         yield db
-    finally:
-        db.close()
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
