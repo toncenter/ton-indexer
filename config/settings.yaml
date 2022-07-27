@@ -9,7 +9,7 @@ indexer:
   smallest_mc_seqno: ${BOTTOM_SEQNO}
   blocks_per_task: 30
   max_tasks_per_child: 50
-  task_time_limit: 600
+  task_time_limit: 1200
 postgres:
   host: postgres
   port: 5432

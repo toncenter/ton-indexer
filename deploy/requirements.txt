@@ -19,4 +19,4 @@ sqlalchemy-utils
 tqdm
 requests
 asgiref
-pytonlib==0.0.22
+pytonlib==0.0.30

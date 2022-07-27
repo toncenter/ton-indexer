@@ -110,17 +110,23 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
                 in_msg['out_tx_id'] = out_msgs_by_hash[in_msg_hash]['out_tx_id']
                 out_msgs_by_hash.pop(in_msg_hash)
         
-        q = select(message_t.c.hash).where(message_t.c.hash.in_(in_msgs_by_hash.keys()) & message_t.c.in_tx_id.is_(None))
-        existing_in_msgs = await conn.execute(q)
-        for e_in_msg in existing_in_msgs.all():
+        existing_in_msgs = []
+        for chunk in chunks(list(in_msgs_by_hash.keys()), 10000):
+            q = select(message_t.c.hash).where(message_t.c.hash.in_(chunk) & message_t.c.in_tx_id.is_(None))
+            r = await conn.execute(q)
+            existing_in_msgs += r.all()
+        for e_in_msg in existing_in_msgs:
             hash = e_in_msg['hash']
             q = update(message_t).where(message_t.c.hash == hash).values(in_tx_id=in_msgs_by_hash[hash]['in_tx_id'])
             await conn.execute(q)
             in_msgs_by_hash.pop(hash)
 
-        q = select(message_t.c.hash).where(message_t.c.hash.in_(out_msgs_by_hash.keys()) & message_t.c.out_tx_id.is_(None))
-        existing_out_msgs = await conn.execute(q)
-        for e_out_msg in existing_out_msgs.all():
+        existing_out_msgs = []
+        for chunk in chunks(list(out_msgs_by_hash.keys()), 10000):
+            q = select(message_t.c.hash).where(message_t.c.hash.in_(chunk) & message_t.c.out_tx_id.is_(None))
+            r = await conn.execute(q)
+            existing_out_msgs += r.all()
+        for e_out_msg in existing_out_msgs:
             hash = e_out_msg['hash']
             q = update(message_t).where(message_t.c.hash == hash).values(out_tx_id=out_msgs_by_hash[hash]['out_tx_id'])
             await conn.execute(q)
