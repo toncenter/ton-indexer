@@ -1,4 +1,5 @@
 from typing import Optional
+from collections import defaultdict
 
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload, Session, contains_eager
@@ -68,8 +69,8 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
     async with engine.begin() as conn:
         mc_block_id = None
         shard_headers = []
-        in_msgs_by_hash = {}
-        out_msgs_by_hash = {}
+        in_msgs_by_hash = defaultdict(list)
+        out_msgs_by_hash = defaultdict(list)
         msg_contents_by_hash = {}
         for block_raw, header_raw, txs_raw in zip(blocks_raw, headers_raw, transactions_raw):
             s_block = Block.raw_block_to_dict(block_raw)
@@ -94,20 +95,24 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
                     in_msg = Message.raw_msg_to_dict(in_msg_raw)
                     in_msg['in_tx_id'] = res.inserted_primary_key[0]
                     in_msg['out_tx_id'] = None
-                    in_msgs_by_hash[in_msg['hash']] = in_msg
+                    in_msgs_by_hash[in_msg['hash']].append(in_msg)
                     msg_contents_by_hash[in_msg['hash']] = MessageContent.raw_msg_to_content_dict(in_msg_raw)
                 for out_msg_raw in tx_details_raw['out_msgs']:
                     out_msg = Message.raw_msg_to_dict(out_msg_raw)
                     out_msg['out_tx_id'] = res.inserted_primary_key[0]
                     out_msg['in_tx_id'] = None
-                    out_msgs_by_hash[out_msg['hash']] = out_msg
+                    out_msgs_by_hash[out_msg['hash']].append(out_msg)
                     msg_contents_by_hash[out_msg['hash']] = MessageContent.raw_msg_to_content_dict(out_msg_raw)
 
         await conn.execute(block_headers_t.insert(), shard_headers)
 
-        for in_msg_hash, in_msg in in_msgs_by_hash.items():
+        for in_msg_hash, in_msgs_list in in_msgs_by_hash.items():
             if in_msg_hash in out_msgs_by_hash:
-                in_msg['out_tx_id'] = out_msgs_by_hash[in_msg_hash]['out_tx_id']
+                assert len(in_msgs_list) == 1, "Multiple inbound messages match outbound message"
+                in_msg = in_msgs_list[0]
+                assert len(out_msgs_by_hash[in_msg_hash]) == 1, "Multiple outbound messages match inbound message"
+                out_msg = out_msgs_by_hash[in_msg_hash][0]
+                in_msg['out_tx_id'] = out_msg['out_tx_id']
                 out_msgs_by_hash.pop(in_msg_hash)
         
         existing_in_msgs = []
@@ -117,7 +122,9 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
             existing_in_msgs += r.all()
         for e_in_msg in existing_in_msgs:
             hash = e_in_msg['hash']
-            q = update(message_t).where(message_t.c.hash == hash).values(in_tx_id=in_msgs_by_hash[hash]['in_tx_id'])
+            assert len(in_msgs_by_hash[hash]) == 1
+            in_tx_id = in_msgs_by_hash[hash][0]['in_tx_id']
+            q = update(message_t).where(message_t.c.hash == hash).values(in_tx_id=in_tx_id)
             await conn.execute(q)
             in_msgs_by_hash.pop(hash)
 
@@ -128,19 +135,22 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
             existing_out_msgs += r.all()
         for e_out_msg in existing_out_msgs:
             hash = e_out_msg['hash']
-            q = update(message_t).where(message_t.c.hash == hash).values(out_tx_id=out_msgs_by_hash[hash]['out_tx_id'])
+            assert len(out_msgs_by_hash[hash]) == 1
+            out_tx_id = out_msgs_by_hash[hash][0]['out_tx_id']
+            q = update(message_t).where(message_t.c.hash == hash).values(out_tx_id=out_tx_id)
             await conn.execute(q)
             out_msgs_by_hash.pop(hash)
 
         msgs_to_insert = list(out_msgs_by_hash.values()) + list(in_msgs_by_hash.values())
+        msgs_to_insert = [item for sublist in msgs_to_insert for item in sublist] # flatten
         if len(msgs_to_insert):
             msg_ids = []
             for chunk in chunks(msgs_to_insert, 1000):
-                msg_ids = (await conn.execute(message_t.insert().returning(message_t.c.msg_id).values(chunk))).all()
+                msg_ids += (await conn.execute(message_t.insert().returning(message_t.c.msg_id).values(chunk))).all()
 
             contents = []
             for i, msg_id_tuple in enumerate(msg_ids):
-                content = msg_contents_by_hash[msgs_to_insert[i]['hash']]
+                content = msg_contents_by_hash[msgs_to_insert[i]['hash']].copy() # copy is necessary because there might be duplicates, but msg_id differ
                 content['msg_id'] = msg_id_tuple[0]
                 contents.append(content)
 
