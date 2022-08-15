@@ -189,9 +189,9 @@ def get_transactions_by_address(session: Session, account: str, start_utime: Opt
                      .options(joinedload(Transaction.out_msgs))
     
     if sort == 'asc':
-        query = query.order_by(Transaction.utime.asc())
+        query = query.order_by(Transaction.utime.asc(), Transaction.lt.asc())
     elif sort == 'desc':
-        query = query.order_by(Transaction.utime.desc())
+        query = query.order_by(Transaction.utime.desc(), Transaction.lt.desc())
 
     query = query.limit(limit)
     query = query.offset(offset)
@@ -234,7 +234,7 @@ def get_chain_last_transactions(session: Session, workchain: Optional[int], star
         query = query.options(joinedload(Transaction.in_msg)) \
                      .options(joinedload(Transaction.out_msgs))
 
-    query = query.order_by(Transaction.utime.desc())
+    query = query.order_by(Transaction.utime.desc(), Transaction.lt.desc())
 
     query = query.limit(limit)
     query = query.offset(offset)
