@@ -173,7 +173,7 @@ class Transaction(Base):
     compute_gas_credit: int = Column(Integer)
     compute_gas_fees: int = Column(BigInteger)
     compute_vm_steps: int = Column(Integer)
-    compute_skip_reason: str = Column(String)
+    compute_skip_reason: str = Column(Enum('cskip_no_state', 'cskip_bad_state', 'cskip_no_gas', name='compute_skip_reason_type'))
     action_result_code: int = Column(Integer)
     action_total_fwd_fees: int = Column(BigInteger)
     action_total_action_fees: int = Column(BigInteger)
