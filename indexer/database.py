@@ -173,6 +173,7 @@ class Transaction(Base):
     compute_gas_credit: int = Column(Integer)
     compute_gas_fees: int = Column(BigInteger)
     compute_vm_steps: int = Column(Integer)
+    compute_skip_reason: str = Column(Enum('cskip_no_state', 'cskip_bad_state', 'cskip_no_gas', name='compute_skip_reason_type'))
     action_result_code: int = Column(Integer)
     action_total_fwd_fees: int = Column(BigInteger)
     action_total_action_fees: int = Column(BigInteger)
@@ -212,6 +213,7 @@ class Transaction(Base):
         compute_gas_credit = safe_get(parsed_tx, ['description', 'compute_ph', 'gas_credit'])
         compute_gas_fees = safe_get(parsed_tx, ['description', 'compute_ph', 'gas_fees'])
         compute_vm_steps = safe_get(parsed_tx, ['description', 'compute_ph', 'vm_steps'])
+        compute_skip_reason = safe_get(parsed_tx, ['description', 'compute_ph', 'reason'])
         action_result_code = safe_get(parsed_tx, ['description', 'action', 'result_code'])
         action_total_fwd_fees = safe_get(parsed_tx, ['description', 'action', 'total_fwd_fees'])
         action_total_action_fees = safe_get(parsed_tx, ['description', 'action', 'total_action_fees'])
@@ -230,6 +232,7 @@ class Transaction(Base):
             'compute_gas_credit': compute_gas_credit,
             'compute_gas_fees': compute_gas_fees,
             'compute_vm_steps': compute_vm_steps,
+            'compute_skip_reason': compute_skip_reason,
             'action_result_code': action_result_code,
             'action_total_fwd_fees': action_total_fwd_fees,
             'action_total_action_fees': action_total_action_fees
