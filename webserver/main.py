@@ -163,10 +163,10 @@ async def lookup_masterchain_block(
     seqno: int,
     db: Session = Depends(get_db)
     ):
-    masterchain_id = -1
-    if workchain == masterchain_id:
+    if workchain == -1:
         raise HTTPException(status_code=416, detail="Provided block is in masterchain")
     mc_block = await db.run_sync(crud.lookup_masterchain_block, workchain, shard, seqno)
+    return schemas.Block.block_from_orm_block_header(mc_block)
 
 @app.get('/getTransactionByInMessageHash', response_model=List[schemas.Transaction])
 async def get_transaction_by_in_message_hash(
