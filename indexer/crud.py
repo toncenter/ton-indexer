@@ -308,6 +308,19 @@ def get_blocks_by_unix_time(session: Session, start_utime: Optional[int], end_ut
 
     return query.all()
 
+def get_block_by_transaction(session: Session, tx_hash: str):
+    query = session.query(Transaction).filter(Transaction.hash == tx_hash).options(joinedload(Transaction.block).joinedload(Block.block_header))
+    tx = query.first()
+    if tx is None:
+        raise TransactionNotFound(None, tx_hash)
+    return tx.block.block_header
+
+def lookup_masterchain_block(session: Session, workchain: int, shard: int, seqno: int):
+    query = session.query(Block).filter(and_(Block.workchain == workchain, Block.shard == shard, Block.seqno == seqno)) \
+                                .options(joinedload(Block.masterchain_block))
+    block = query.first()
+    return block.block_header
+
 def get_active_accounts_count_in_period(session: Session, start_utime: int, end_utime: int):
     query = session.query(Transaction.account) \
                    .filter(Transaction.utime >= start_utime) \
