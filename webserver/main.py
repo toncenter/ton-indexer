@@ -148,6 +148,29 @@ async def get_transaction_by_hash(
     db_transactions = await db.run_sync(crud.get_transactions_by_hash, tx_hash, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
+@app.get('/getBlockByTransaction', response_model=schemas.Block)
+async def get_block_by_transaction(
+    tx_hash: str = Query(..., description="Transaction hash"),
+    db: Session = Depends(get_db)
+    ):
+    block = await db.run_sync(crud.get_block_by_transaction, tx_hash)
+    return schemas.Block.block_from_orm_block_header(block)
+
+@app.get('/lookupMasterchainBlock', response_model=schemas.Block)
+async def lookup_masterchain_block(
+    workchain: int,
+    shard: int,
+    seqno: int,
+    db: Session = Depends(get_db)
+    ):
+    """
+    Accepts shardchain block and returns corresponding masterchain.
+    """
+    if workchain == -1:
+        raise HTTPException(status_code=416, detail="Provided block resides in masterchain")
+    mc_block = await db.run_sync(crud.lookup_masterchain_block, workchain, shard, seqno)
+    return schemas.Block.block_from_orm_block_header(mc_block)
+
 @app.get('/getTransactionByInMessageHash', response_model=List[schemas.Transaction])
 async def get_transaction_by_in_message_hash(
     msg_hash: str = Query(..., description="Transaction hash"),

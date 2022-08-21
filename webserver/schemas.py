@@ -63,6 +63,7 @@ class Transaction(BaseModel):
     storage_fee: int
     other_fee: int
     transaction_type: str
+    compute_skip_reason: Optional[str]
     compute_exit_code: Optional[int]
     compute_gas_used: Optional[int]
     compute_gas_limit: Optional[int]
@@ -91,6 +92,7 @@ class Transaction(BaseModel):
             storage_fee=obj.storage_fee,
             other_fee=obj.other_fee,
             transaction_type=obj.transaction_type,
+            compute_skip_reason=obj.compute_skip_reason,
             compute_exit_code=obj.compute_exit_code,
             compute_gas_used=obj.compute_gas_used,
             compute_gas_limit=obj.compute_gas_limit,
