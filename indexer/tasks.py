@@ -44,7 +44,8 @@ class IndexWorker():
                                    keystore,
                                    loop,
                                    cdll_path=cdll_path,
-                                   verbosity_level=0)
+                                   verbosity_level=0,
+                                   tonlib_timeout=60)
 
         loop.run_until_complete(self.client.init())
 

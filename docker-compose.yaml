@@ -101,6 +101,7 @@ services:
   postgres:
     image: postgres
     restart: unless-stopped
+    shm_size: 1gb
     environment: 
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
