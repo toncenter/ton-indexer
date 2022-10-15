@@ -287,9 +287,9 @@ class Message(Base):
                 op = int.from_bytes(message_cell.data.data[:32].tobytes(), 'big', signed=True)
                 if op == 0:
                     comment = codecs.decode(message_cell.data.data[32:], 'utf8')
-                    while len(message_cell.refs) > 0 and len(comment) < 2048:
+                    while len(message_cell.refs) > 0:
                         message_cell = message_cell.refs[0]
-                        comment += codecs.decode(message_cell.data.data[32:], 'utf8')
+                        comment += codecs.decode(message_cell.data.data, 'utf8')
                     comment = comment.replace('\x00', '')
         except BaseException as e:
             comment = None
