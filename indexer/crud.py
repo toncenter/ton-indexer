@@ -5,10 +5,13 @@ from sqlalchemy import and_
 from sqlalchemy.orm import joinedload, Session, contains_eager
 from sqlalchemy.future import select
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timedelta
 
 
 from indexer.database import *
 from dataclasses import asdict
+from config import settings
 from loguru import logger
 
 class DataNotFound(Exception):
@@ -74,6 +77,7 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
     transaction_t = meta.tables[Transaction.__tablename__]
     message_t = meta.tables[Message.__tablename__]
     message_content_t = meta.tables[MessageContent.__tablename__]
+    accounts_t = meta.tables[KnownAccounts.__tablename__]
 
     async with engine.begin() as conn:
         mc_block_id = None
@@ -123,7 +127,7 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
                 out_msg = out_msgs_by_hash[in_msg_hash][0]
                 in_msg['out_tx_id'] = out_msg['out_tx_id']
                 out_msgs_by_hash.pop(in_msg_hash)
-        
+
         existing_in_msgs = []
         for chunk in chunks(list(in_msgs_by_hash.keys()), 10000):
             q = select(message_t.c.hash).where(message_t.c.hash.in_(chunk) & message_t.c.in_tx_id.is_(None))
@@ -152,6 +156,7 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
 
         msgs_to_insert = list(out_msgs_by_hash.values()) + list(in_msgs_by_hash.values())
         msgs_to_insert = [item for sublist in msgs_to_insert for item in sublist] # flatten
+
         if len(msgs_to_insert):
             msg_ids = []
             for chunk in chunks(msgs_to_insert, 1000):
@@ -165,6 +170,19 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
 
             for chunk in chunks(contents, 3000):
                 await conn.execute(message_content_t.insert(), chunk)
+
+        if settings.indexer.discover_accounts_enabled:
+            unique_addresses = set()
+            for msg in msgs_to_insert:
+                if len(msg['source']) > 0:
+                    unique_addresses.add(msg['source'])
+                if len(msg['destination']) > 0:
+                    unique_addresses.add(msg['destination'])
+            for address in unique_addresses:
+                address_check = await conn.execute(select(KnownAccounts.address).filter(KnownAccounts.address == address))
+                if address_check.first() is None:
+                    await conn.execute(accounts_t.insert(), [KnownAccounts.from_address(address)])
+                    logger.info(f"New address discovered: {address}")
 
 def get_transactions_by_masterchain_seqno(session, masterchain_seqno: int, include_msg_body: bool):
     block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == masterchain_seqno)).first()
@@ -369,3 +387,42 @@ def get_active_accounts_count_in_period(session: Session, start_utime: int, end_
                    .distinct()
 
     return query.count()
+
+async def get_known_accounts_not_indexed(session: Session, limit: int):
+    query = await session.execute(select(KnownAccounts.address) \
+                    .filter(KnownAccounts.last_check_time == None) \
+                    .limit(limit))
+
+    return query.all()
+
+async def get_known_accounts_long_since_check(session: Session, min_days: int, limit: int):
+    query = await session.execute(select(KnownAccounts.address) \
+                                  .filter(KnownAccounts.last_check_time != None) \
+                                  .filter(KnownAccounts.last_check_time < int((datetime.today() - timedelta(days=min_days)).timestamp())) \
+                                  .order_by(KnownAccounts.last_check_time.asc()) \
+                                  .limit(limit))
+
+    return query.all()
+
+async def insert_account(account_raw, address):
+    meta = Base.metadata
+    accounts_state_t = meta.tables[AccountState.__tablename__]
+    accounts_t = meta.tables[KnownAccounts.__tablename__]
+    code_t = meta.tables[Code.__tablename__]
+
+    s_state = AccountState.raw_account_info_to_content_dict(account_raw, address)
+
+    if s_state['code_hash'] is not None:
+        async with engine.begin() as conn:
+            ch_res = await conn.execute(select(Code).filter(Code.hash == s_state['code_hash']))
+            if ch_res.first() is None:
+                await conn.execute(code_t.insert().values({'hash': s_state['code_hash'], 'code': account_raw['code']}))
+
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(accounts_state_t.insert().values(s_state))
+        except IntegrityError:
+            logger.warning(f"Account {address} has the same state, ignoring")
+
+    async with engine.begin() as conn:
+        await conn.execute(accounts_t.update().where(accounts_t.c.address == s_state['address']).values(last_check_time=int(datetime.today().timestamp())))

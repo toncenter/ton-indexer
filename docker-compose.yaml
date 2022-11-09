@@ -11,6 +11,9 @@ services:
     secrets:
       - postgres_password
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     command: -w=${TON_INDEXER_WEBSERVER_WORKERS_COUNT:-1} --bind=0.0.0.0:8081
   backward_indexer:
     build:
@@ -50,6 +53,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       WORKERS_COUNT: ${TON_INDEXER_BACKWARD_WORKERS_COUNT:-5}
+      DISCOVER_ACCOUNTS_ENABLED: ${DISCOVER_ACCOUNTS_ENABLED:-false}
     secrets:
       - postgres_password
     depends_on:
@@ -69,6 +73,7 @@ services:
       REDIS_PORT: 6379
       USE_GET_BLOCK_TRANSACTIONS_EXT: ${TON_INDEXER_USE_GET_BLOCK_TRANSACTIONS_EXT:-0}
       LITESERVER_INDEX: ${LITESERVER_INDEX_FORWARD:-0}
+      DISCOVER_ACCOUNTS_ENABLED: ${DISCOVER_ACCOUNTS_ENABLED:-false}
     secrets:
       - postgres_password
       - tonlib_config
@@ -92,6 +97,45 @@ services:
     depends_on:
       <<: *common-depends-on
       forward_indexer:
+        condition: service_started
+  accounts_indexer:
+    build:
+      context: .
+      dockerfile: deploy/indexer.Dockerfile
+    command: --concurrency ${TON_INDEXER_ACCOUNTS_WORKERS_COUNT:-2} -Q accounts_queue
+    restart: unless-stopped
+    profiles:
+      - accounts_index
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LITESERVER_INDEX: ${LITESERVER_INDEX_ACCOUNTS:-0}
+    secrets:
+      - postgres_password
+      - tonlib_config
+    depends_on: *common-depends-on
+  accounts_scheduler:
+    build:
+      context: .
+      dockerfile: deploy/scheduler.Dockerfile
+    command: accounts accounts_queue create
+    restart: unless-stopped
+    profiles:
+      - accounts_index
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      WORKERS_COUNT: ${TON_INDEXER_ACCOUNTS_WORKERS_COUNT:-2}
+      ACCOUNTS_INDEX_MIN_INTERVAL_DAYS: ${ACCOUNTS_INDEX_MIN_INTERVAL_DAYS:-30}
+    secrets:
+      - postgres_password
+    depends_on:
+      <<: *common-depends-on
+      accounts_indexer:
         condition: service_started
   rabbitmq:
     image: rabbitmq

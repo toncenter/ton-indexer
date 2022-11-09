@@ -3,6 +3,7 @@ import asyncio
 from copy import deepcopy
 from time import sleep
 from typing import List, Optional
+from datetime import datetime
 
 from pytonlib.utils.tlb import parse_transaction
 from tvm_valuetypes.cell import deserialize_boc
@@ -56,18 +57,29 @@ def delete_database():
         drop_database(utils_url)
 
 
-def init_database(create=False):
-    while not database_exists(utils_url):
+async def check_database_inited(url):
+    if not database_exists(url):
+        return False
+    return True
+
+
+async def init_database(create=False):
+    logger.info(f"Create db ${utils_url}")
+    logger.info(database_exists(utils_url))
+    while not check_database_inited(utils_url):
+        logger.info("Create db")
         if create:
             logger.info('Creating database')
             create_database(utils_url)
+        asyncio.sleep(0.5)
 
-            async def create_tables():
-                async with engine.begin() as conn:
-                    await conn.run_sync(Base.metadata.create_all)
-            asyncio.run(create_tables())
-        sleep(0.5)
+    if create:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
+
+def cell_b64(cell):
+    return codecs.encode(cell.hash(), "base64").decode().strip()
 
 @dataclass(init=False)
 class Block(Base):
@@ -329,3 +341,60 @@ class MessageContent(Base):
             'body': raw_msg['msg_data'].get('body')
         }
 
+@dataclass(init=False)
+class Code(Base):
+    __tablename__ = 'code'
+
+    hash: str = Column(String, primary_key=True)
+    code: str = Column(String)
+
+@dataclass(init=False)
+class AccountState(Base):
+    __tablename__ = 'account_state'
+
+    state_id: int = Column(BigInteger, primary_key=True)
+    address: str = Column(String)
+    check_time: int = Column(BigInteger)
+    last_tx_lt: int = Column(BigInteger)
+    last_tx_hash: str = Column(String)
+    balance: int = Column(BigInteger)
+
+    code_hash: str = Column(String)
+    data: str = Column(String)
+
+    __table_args__ = (Index('account_state_index_1', 'address', 'last_tx_lt'),
+                      UniqueConstraint('address', 'last_tx_lt'))
+
+    @classmethod
+    def raw_account_info_to_content_dict(cls, raw, address):
+        code_cell = None
+        if len(raw['code']) > 0:
+            code_cell_boc = codecs.decode(codecs.encode(raw['code'], 'utf8'), 'base64')
+            code_cell = deserialize_boc(code_cell_boc)
+
+        return {
+            'address': address,
+            'check_time': int(datetime.today().timestamp()),
+            'last_tx_lt': int(raw['last_transaction_id']['lt']) if 'last_transaction_id' in raw else None,
+            'last_tx_hash': raw['last_transaction_id']['hash'] if 'last_transaction_id' in raw else None,
+            'balance': int(raw['balance']),
+            'code_hash': cell_b64(code_cell) if code_cell is not None else None,
+            'data':  raw['data']
+        }
+
+
+@dataclass(init=False)
+class KnownAccounts(Base):
+    __tablename__ = 'accounts'
+
+    address: str = Column(String, primary_key=True)
+    last_check_time: int = Column(BigInteger)
+
+    __table_args__ = (Index('known_accounts_index_1', 'last_check_time'),)
+
+    @classmethod
+    def from_address(cls, address):
+        return {
+            'address': address,
+            'last_check_time': None
+        }

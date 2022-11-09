@@ -199,6 +199,10 @@ class IndexWorker():
         mc_info = await self.client.get_masterchain_info()
         return mc_info['last']
 
+    async def get_account_info(self, address):
+        account = await self.client.raw_get_account_state(address)
+        return account
+
 async def _get_block(mc_seqno_list):
     async with SessionMaker() as session:
         existing_seqnos = await get_existing_seqnos_from_list(session, mc_seqno_list)
@@ -206,6 +210,15 @@ async def _get_block(mc_seqno_list):
 
     logger.info(f"{len(mc_seqno_list) - len(seqnos_to_process)} blocks already exist")
     return seqnos_to_process, await asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in seqnos_to_process], return_exceptions=True)
+
+async def process_account_info(addresses):
+    for address in addresses:
+        try:
+            account_raw = await index_worker.get_account_info(address)
+        except BaseException as e:
+            logger.error(f"Unable to process account {address}, error: {e}, type {type(e)}")
+            continue
+        await insert_account(account_raw, address)
     
 @app.task(bind=True, max_retries=None,  acks_late=True)
 def get_block(self, mc_seqno_list):
@@ -224,6 +237,12 @@ def get_block(self, mc_seqno_list):
     task_result = list(zip(seqnos_to_process, results)) 
     task_result += [(seqno, None) for seqno in existing_seqnos] # adding indexed seqnos from previous tries
     return task_result
+
+@app.task(bind=True, acks_late=True)
+def get_account(self, addresses):
+    loop.run_until_complete(process_account_info(addresses))
+    logger.info(f"Processing finished for {self.request.id}: {len(addresses)} processed")
+    return len(addresses)
 
 @app.task(acks_late=True)
 def get_last_mc_block():

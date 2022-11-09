@@ -11,6 +11,10 @@ indexer:
   blocks_per_task: 30
   max_tasks_per_child: 50
   task_time_limit: 1200
+  accounts_index_batch: 1000
+  accounts_index_min_interval_days: ${ACCOUNTS_INDEX_MIN_INTERVAL_DAYS}
+  accounts_per_task: 50
+  discover_accounts_enabled: ${DISCOVER_ACCOUNTS_ENABLED}
 postgres:
   host: postgres
   port: 5432
