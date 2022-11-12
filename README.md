@@ -9,7 +9,8 @@ Recommended hardware: 2 CPU, 16 GB RAM, 200 GB disk, SSD recommended.
 Prerequisites: docker, docker-compose
 
   - Setup environment variables:
-    - `TON_INDEXER_LITE_SERVER_CONFIG` *(required)* — path to liteserver config file with your liteserver. If config file contains more than 1 lite server the first one will be used.
+    - `TON_INDEXER_LITE_SERVER_CONFIG` *(required)* — path to liteserver config file with your liteserver. If config file contains more than 1 lite server `LITESERVER_INDEX_BACKWARD` / `LITESERVER_INDEX_FORWARD` will be used.
+    - `LITESERVER_INDEX_BACKWARD` / `LITESERVER_INDEX_FORWARD` *(default: 0)* — index of liteserver from the config file for backward/forward indexer
     - `TON_INDEXER_START_SEQNO` *(required)* — masterchain seqno to start with. The service starts indexing from this value in 2 directions: to the latest blocks and to the earliest blocks.
     - `TON_INDEXER_BOTTOM_SEQNO` *(required)* — the earliest masterchain seqno. The service will not index blocks earlier this value. Make sure that this seqno exists in lite server that you are using.
     - `TON_INDEXER_HTTP_PORT` *(default: 80)* — port for API webserver.
