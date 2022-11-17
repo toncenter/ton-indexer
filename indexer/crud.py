@@ -31,6 +31,15 @@ class TransactionNotFound(DataNotFound):
     def __str__(self):
         return f"Transaction ({self.lt}, {self.hash}) not found in DB"
 
+class MessageNotFound(DataNotFound):
+    def __init__(self, source, destination, created_lt):
+        self.source = source
+        self.destination = destination
+        self.created_lt = created_lt
+
+    def __str__(self):
+        return f"Message not found source: {self.source} destination: {self.destination} created_lt: {self.created_lt}"
+
 async def get_existing_seqnos_from_list(session, seqnos):
     seqno_filters = [Block.seqno == seqno for seqno in seqnos]
     seqno_filters = or_(*seqno_filters)
@@ -285,6 +294,26 @@ def get_transactions_by_in_message_hash(session: Session, msg_hash: str, include
     query = query.order_by(Transaction.utime.desc()).limit(500)
     return query.all()
 
+def get_source_transaction_by_message(session: Session, source: str, destination: str, msg_lt: int):
+    query = session.query(Transaction).join(Transaction.out_msgs).options(contains_eager(Transaction.out_msgs))
+    query = query.filter(and_(Message.destination == destination, Message.source == source, Message.created_lt == msg_lt))
+    query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
+                 .options(joinedload(Transaction.out_msgs).joinedload(Message.content))
+    transaction = query.first()
+    if transaction is None:
+        raise MessageNotFound(source, destination, msg_lt)
+    return transaction
+
+def get_destination_transaction_by_message(session: Session, source: str, destination: str, msg_lt: int):
+    query = session.query(Transaction).join(Transaction.in_msg).options(contains_eager(Transaction.in_msg))
+    query = query.filter(and_(Message.destination == destination, Message.source == source, Message.created_lt == msg_lt))
+    query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
+                 .options(joinedload(Transaction.out_msgs).joinedload(Message.content))
+    transaction = query.first()
+    if transaction is None:
+        raise MessageNotFound(source, destination, msg_lt)
+    return transaction
+    
 def get_blocks_by_unix_time(session: Session, start_utime: Optional[int], end_utime: Optional[int], workchain: Optional[int], shard: Optional[int], limit: int, offset: int, sort: str):
     query = session.query(BlockHeader).join(BlockHeader.block).options(contains_eager(BlockHeader.block))
     if start_utime is not None:

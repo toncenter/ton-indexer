@@ -180,6 +180,33 @@ async def get_transaction_by_in_message_hash(
     db_transactions = await db.run_sync(crud.get_transactions_by_in_message_hash, msg_hash, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
 
+@app.get('/getSourceTransactionByMessage', response_model=schemas.Transaction)
+async def get_source_transaction_by_message(
+    source: str = Query(..., description="Source address"),
+    destination: str = Query(..., description="Destination address"),
+    msg_lt: int = Query(..., description="Creation lt of the message"),
+    db: Session = Depends(get_db)
+    ):
+    """
+    Get transaction of `source` address by incoming message on `destination` address.
+    """
+    db_transaction = await db.run_sync(crud.get_source_transaction_by_message, source, destination, msg_lt)
+    return schemas.Transaction.transaction_from_orm(db_transaction, True)
+
+@app.get('/getDestinationTransactionByMessage', response_model=schemas.Transaction)
+async def get_destination_transaction_by_message(
+    source: str = Query(..., description="Sender address"),
+    destination: str = Query(..., description="Receiver address"),
+    msg_lt: int = Query(..., description="Creation lt of the message"),
+    db: Session = Depends(get_db)
+    ):
+    """
+    Get transaction of `destination` address by outcoming message on `source` address.
+    """
+    db_transaction = await db.run_sync(crud.get_destination_transaction_by_message, source, destination, msg_lt)
+    return schemas.Transaction.transaction_from_orm(db_transaction, True)
+
+
 @app.get('/getBlocksByUnixTime', response_model=List[schemas.Block])
 async def get_blocks_by_unix_time(
     start_utime: Optional[int] = Query(None, description="UTC timestamp to start searching blocks"),
