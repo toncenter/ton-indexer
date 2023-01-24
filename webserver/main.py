@@ -110,23 +110,29 @@ async def get_chain_last_transactions(
     db_transactions = await db.run_sync(crud.get_chain_last_transactions, workchain, start_utime, end_utime, limit, offset, include_msg_body)
     return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]    
 
-@app.get('/getInMessageByTxID', response_model=Optional[schemas.Message])
+@app.get('/getInMessageByTxID', response_model=Optional[schemas.Message], deprecated=True)
 async def get_in_message_by_transaction(
     tx_lt: int = Query(..., description="Logical time of transaction"),
     tx_hash: str = Query(..., description="Transaction hash"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
+    """
+    Deprecated in favor of `getTransactionByHash`.
+    """
     db_message = await db.run_sync(crud.get_in_message_by_transaction, tx_lt, tx_hash, include_msg_body)
     return schemas.Message.message_from_orm(db_message, include_msg_body) if db_message else None
 
-@app.get('/getOutMessagesByTxID', response_model=List[schemas.Message])
+@app.get('/getOutMessagesByTxID', response_model=List[schemas.Message], deprecated=True)
 async def get_out_message_by_transaction(
     tx_lt: int = Query(..., description="Transaction logical time"),
     tx_hash: str = Query(..., description="Transaction hash"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     db: Session = Depends(get_db)
     ):
+    """
+    Deprecated in favor of `getTransactionByHash`.
+    """
     db_messages = await db.run_sync(crud.get_out_messages_by_transaction, tx_lt, tx_hash, include_msg_body)
     return [schemas.Message.message_from_orm(m, include_msg_body) for m in db_messages]
 

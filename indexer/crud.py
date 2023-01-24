@@ -255,14 +255,20 @@ def get_in_message_by_transaction(session: Session, tx_lt: int, tx_hash: int, in
     if tx is None:
         raise TransactionNotFound(tx_lt, tx_hash)
 
-    return session.query(Message).filter(Message.in_tx_id == tx.tx_id).first()
+    query = session.query(Message).filter(Message.in_tx_id == tx.tx_id)
+    if include_msg_body:
+        query = query.options(joinedload(Message.content))
+    return query.first()
 
 def get_out_messages_by_transaction(session: Session, tx_lt: int, tx_hash: int, include_msg_body: bool):
     tx = session.query(Transaction).filter(Transaction.lt == tx_lt).filter(Transaction.hash == tx_hash).first()
     if tx is None:
         raise TransactionNotFound(tx_lt, tx_hash)
 
-    return session.query(Message).filter(Message.out_tx_id == tx.tx_id).all()
+    query = session.query(Message).filter(Message.out_tx_id == tx.tx_id)
+    if include_msg_body:
+        query = query.options(joinedload(Message.content))
+    return query.all()
 
 def get_messages_by_hash(session: Session, msg_hash: str, include_msg_body: bool):
     query = session.query(Message).filter(Message.hash == msg_hash)
