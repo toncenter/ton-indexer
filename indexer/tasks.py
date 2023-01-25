@@ -218,7 +218,12 @@ async def process_account_info(addresses):
         except BaseException as e:
             logger.error(f"Unable to process account {address}, error: {e}, type {type(e)}")
             continue
-        await insert_account(account_raw, address)
+        try:
+            await insert_account(account_raw, address)
+        except NotImplementedError: # some accounts has broken account state
+            logger.error(f"NotImplementedError for {address}")
+            continue
+            
     
 @app.task(bind=True, max_retries=None,  acks_late=True)
 def get_block(self, mc_seqno_list):

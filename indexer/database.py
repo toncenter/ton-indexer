@@ -187,6 +187,7 @@ class Transaction(Base):
     compute_vm_steps: int = Column(Integer)
     compute_skip_reason: str = Column(Enum('cskip_no_state', 'cskip_bad_state', 'cskip_no_gas', name='compute_skip_reason_type'))
     action_result_code: int = Column(Integer)
+    created_time: int = Column(BigInteger)
     action_total_fwd_fees: int = Column(BigInteger)
     action_total_action_fees: int = Column(BigInteger)
     
@@ -247,7 +248,8 @@ class Transaction(Base):
             'compute_skip_reason': compute_skip_reason,
             'action_result_code': action_result_code,
             'action_total_fwd_fees': action_total_fwd_fees,
-            'action_total_action_fees': action_total_action_fees
+            'action_total_action_fees': action_total_action_fees,
+            'created_time': int(datetime.today().timestamp())
         }
 
 @dataclass(init=False)
@@ -268,6 +270,7 @@ class Message(Base):
     bounce: bool = Column(Boolean)
     bounced: bool = Column(Boolean)
     import_fee: int = Column(BigInteger)
+    created_time: int = Column(BigInteger)
     
     out_tx_id = Column(BigInteger, ForeignKey("transactions.tx_id"))
     # out_tx = relationship("Transaction", backref="out_msgs", foreign_keys=[out_tx_id])
@@ -322,6 +325,7 @@ class Message(Base):
             'bounce': int(raw['bounce']) if int(raw['bounce']) != -1 else None,
             'bounced': int(raw['bounced']) if int(raw['bounced']) != -1 else None,
             'import_fee': int(raw['import_fee']) if int(raw['import_fee']) != -1 else None,
+            'created_time': int(datetime.today().timestamp())
         }
 
 
@@ -398,3 +402,4 @@ class KnownAccounts(Base):
             'address': address,
             'last_check_time': None
         }
+
