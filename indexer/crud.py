@@ -79,6 +79,7 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
     message_t = meta.tables[Message.__tablename__]
     message_content_t = meta.tables[MessageContent.__tablename__]
     accounts_t = meta.tables[KnownAccounts.__tablename__]
+    outbox_t = meta.tables[ParseOutbox.__tablename__]
 
     async with engine.begin() as conn:
         mc_block_id = None
@@ -171,6 +172,17 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
 
             for chunk in chunks(contents, 3000):
                 await conn.execute(message_content_t.insert(), chunk)
+
+            # using min_block_time as outbox time to avoid mess with single message utime
+            min_block_time = min(map(lambda x: x['gen_utime'], shard_headers))
+            insert_res = await conn.execute(insert_pg(outbox_t)
+                                            .values([ParseOutbox.generate(ParseOutbox.PARSE_TYPE_MESSAGE,
+                                                                          msg_id_tuple[0],
+                                                                          min_block_time) for msg_id_tuple in msg_ids])
+                                            .on_conflict_do_nothing())
+            if insert_res.rowcount > 0:
+                logger.info(f"{insert_res.rowcount} outbox items added")
+
 
         if settings.indexer.discover_accounts_enabled:
             unique_addresses = set()

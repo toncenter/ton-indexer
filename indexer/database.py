@@ -413,3 +413,26 @@ class KnownAccounts(Base):
             'last_check_time': None
         }
 
+
+@dataclass(init=False)
+class ParseOutbox(Base):
+    __tablename__ = 'parse_outbox'
+
+    PARSE_TYPE_MESSAGE = 1
+    PARSE_TYPE_ACCOUNT = 2
+
+    outbox_id: int = Column(BigInteger, primary_key=True)
+    added_time: int = Column(BigInteger)
+    entity_type = Column(BigInteger)
+    entity_id: int = Column(BigInteger)
+
+    __table_args__ = (Index('parse_outbox_index_1', 'added_time'),
+                      UniqueConstraint('entity_type', 'entity_id')
+                      )
+    @classmethod
+    def generate(cls, entity_type, entity_id, added_time):
+        return {
+            'entity_type': entity_type,
+            'entity_id': entity_id,
+            'added_time': added_time
+        }
