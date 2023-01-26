@@ -1,5 +1,6 @@
 import codecs
 import asyncio
+from os import environ
 from copy import deepcopy
 from time import sleep
 from typing import List, Optional
@@ -30,16 +31,24 @@ from loguru import logger
 MASTERCHAIN_INDEX = -1
 MASTERCHAIN_SHARD = -9223372036854775808
 
-with open(S.postgres.password_file, 'r') as f:
-    db_password = f.read()
+try:
+    with open(S.postgres.password_file, 'r') as f:
+        db_password = f.read()
+except:
+    logger.info("pg password file not found, using PGPASSWORD env var")
+    db_password = environ["PGPASSWORD"]
 
 # init database
 def get_engine(database):
-    engine = create_async_engine('postgresql+asyncpg://{user}:{db_password}@{host}:{port}/{dbname}'.format(host=S.postgres.host,
-                                                                                             port=S.postgres.port,
-                                                                                             user=S.postgres.user,
-                                                                                             db_password=db_password,
-                                                                                             dbname=database), pool_size=20, max_overflow=10, echo=False)
+    if "PGCONNECTION_URL" in environ:
+        connection_url = environ["PGCONNECTION_URL"]
+    else:
+        connection_url = 'postgresql+asyncpg://{user}:{db_password}@{host}:{port}/{dbname}'.format(host=S.postgres.host,
+                                                                                  port=S.postgres.port,
+                                                                                  user=S.postgres.user,
+                                                                                  db_password=db_password,
+                                                                                  dbname=database)
+    engine = create_async_engine(connection_url, pool_size=20, max_overflow=10, echo=False)
     return engine
 
 engine = get_engine(S.postgres.dbname)
@@ -66,7 +75,7 @@ async def check_database_inited(url):
 async def init_database(create=False):
     logger.info(f"Create db ${utils_url}")
     logger.info(database_exists(utils_url))
-    while not check_database_inited(utils_url):
+    while not await check_database_inited(utils_url):
         logger.info("Create db")
         if create:
             logger.info('Creating database')
@@ -76,6 +85,7 @@ async def init_database(create=False):
     if create:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+    logger.info("DB ready")
 
 
 def cell_b64(cell):

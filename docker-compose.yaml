@@ -27,7 +27,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       USE_GET_BLOCK_TRANSACTIONS_EXT: ${TON_INDEXER_USE_GET_BLOCK_TRANSACTIONS_EXT:-0}
-      LITESERVER_INDEX: ${LITESERVER_INDEX_BACKWARD:-0}
+      LITESERVER_INDEX: ${LITESERVER_INDEX_FORWARD:-0}
+      LITESERVER_CONFIG: ${LITESERVER_CONFIG:-/run/secrets/tonlib_config}
+      CDLL_PATH: ${CDLL_PATH:-./config/libtonlibjson.so.0.5}
     secrets:
       - postgres_password
       - tonlib_config
@@ -81,6 +83,8 @@ services:
       REDIS_PORT: 6379
       USE_GET_BLOCK_TRANSACTIONS_EXT: ${TON_INDEXER_USE_GET_BLOCK_TRANSACTIONS_EXT:-0}
       LITESERVER_INDEX: ${LITESERVER_INDEX_FORWARD:-0}
+      LITESERVER_CONFIG: ${LITESERVER_CONFIG:-/run/secrets/tonlib_config}
+      CDLL_PATH: ${CDLL_PATH:-./config/libtonlibjson.so.0.5}
       DISCOVER_ACCOUNTS_ENABLED: ${DISCOVER_ACCOUNTS_ENABLED:-false}
     secrets:
       - postgres_password
@@ -121,7 +125,9 @@ services:
       RABBITMQ_PORT: 5672
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      LITESERVER_INDEX: ${LITESERVER_INDEX_ACCOUNTS:-0}
+      LITESERVER_INDEX: ${LITESERVER_INDEX_FORWARD:-0}
+      LITESERVER_CONFIG: ${LITESERVER_CONFIG:-/run/secrets/tonlib_config}
+      CDLL_PATH: ${CDLL_PATH:-./config/libtonlibjson.so.0.5}
     secrets:
       - postgres_password
       - tonlib_config

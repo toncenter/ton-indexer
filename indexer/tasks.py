@@ -220,7 +220,7 @@ async def process_account_info(addresses):
             continue
         try:
             await insert_account(account_raw, address)
-        except NotImplementedError: # some accounts has broken account state
+        except NotImplementedError: # some accounts have broken account state
             logger.error(f"NotImplementedError for {address}")
             continue
             

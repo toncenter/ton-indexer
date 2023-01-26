@@ -4,6 +4,7 @@ from collections import defaultdict
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload, Session, contains_eager
 from sqlalchemy.future import select
+from sqlalchemy.dialects.postgresql import insert as insert_pg
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta
@@ -178,11 +179,12 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
                     unique_addresses.add(msg['source'])
                 if len(msg['destination']) > 0:
                     unique_addresses.add(msg['destination'])
-            for address in unique_addresses:
-                address_check = await conn.execute(select(KnownAccounts.address).filter(KnownAccounts.address == address))
-                if address_check.first() is None:
-                    await conn.execute(accounts_t.insert(), [KnownAccounts.from_address(address)])
-                    logger.info(f"New address discovered: {address}")
+            insert_res = await conn.execute(insert_pg(accounts_t)
+                   .values([KnownAccounts.from_address(address) for address in unique_addresses])
+                   .on_conflict_do_nothing())
+            if insert_res.rowcount > 0:
+                logger.info(f"New addresses discovered: {insert_res.rowcount}/{len(unique_addresses)}")
+
 
 def get_transactions_by_masterchain_seqno(session, masterchain_seqno: int, include_msg_body: bool):
     block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == masterchain_seqno)).first()
