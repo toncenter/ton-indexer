@@ -20,6 +20,8 @@ parser:
   task_time_limit: 1200
   poll_interval: 5
   batch_size: 1
+  executor:
+    url: ${PARSER_EXECUTOR_URL}
   retry:
     timeout: 300
 postgres:

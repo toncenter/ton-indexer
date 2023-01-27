@@ -331,7 +331,7 @@ class AccountsIndexer(BaseScheduler):
                     try:
                         async_result.get()
                     except BaseException as e:
-                        logger.error(f"Task {async_result} raised unknown exception: {exception}. Rescheduling the task's chunk.", async_result=async_result, exception=e)
+                        logger.error(f"Task {async_result} raised unknown exception: {e}. Rescheduling the task's chunk.", async_result=async_result, exception=e)
                     for item in chunk:
                         self.processing_now.remove((item,))
 

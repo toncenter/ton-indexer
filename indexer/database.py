@@ -444,7 +444,7 @@ Models for parsed data
 """
 @dataclass(init=False)
 class JettonTransfer(Base):
-    __tablename__ = 'jetton_transfer'
+    __tablename__ = 'jetton_transfers'
 
     id: int = Column(BigInteger, primary_key=True)
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
@@ -466,4 +466,44 @@ class JettonTransfer(Base):
                       Index('jetton_transfer_index_3', 'query_id'),
                       UniqueConstraint('msg_id')
                       )
+
+
+@dataclass(init=False)
+class JettonWallet(Base):
+    __tablename__ = 'jetton_wallets'
+
+    id: int = Column(BigInteger, primary_key=True)
+    state_id: int = Column(BigInteger, ForeignKey('account_state.state_id'))
+    address: str = Column(String)
+    owner: str = Column(String)
+    jetton_master: str = Column(String)
+    balance: decimal.Decimal = Column(Numeric(scale=0)) # NOTE: it is not actual balance, just balance associated with state_id
+
+
+    __table_args__ = (Index('jetton_wallet_index_1', 'owner'),
+                      Index('jetton_wallet_index_2', 'jetton_master'),
+                      UniqueConstraint('address')
+                      )
+
+@dataclass(init=False)
+class JettonMaster(Base):
+    __tablename__ = 'jetton_master'
+
+    id: int = Column(BigInteger, primary_key=True)
+    state_id: int = Column(BigInteger, ForeignKey('account_state.state_id'))
+    address: str = Column(String)
+    total_supply: decimal.Decimal = Column(Numeric(scale=0))
+    mintable: str = Column(String)
+    admin_address: str = Column(String)
+    jetton_wallet_code: str = Column(String)
+    symbol: str = Column(String)
+    name: str = Column(String)
+    image: str = Column(String)
+    image_data: str = Column(String)
+    decimals: int = Column(BigInteger)
+    metadata_url: str = Column(String)
+    description: str = Column(String)
+
+
+    __table_args__ = (UniqueConstraint('address'), )
 

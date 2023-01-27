@@ -23,9 +23,6 @@ def setup_periodic_tasks(sender, **kwargs):
     logger.info("Setting up periodic parser invocation")
     sender.add_periodic_task(settings.parser.poll_interval, parse_outbox_task.s("test"), name='Parser task')
 
-async def extract_message_context(session: Session, msg_id: int) -> MessageContext:
-    msg = await get_messages_context(session, msg_id)
-    return msg
 
 async def parse_outbox():
     logger.info("Starting parse outbox loop")
@@ -43,10 +40,14 @@ async def parse_outbox():
                 successful = True
                 try:
                     if task.entity_type == ParseOutbox.PARSE_TYPE_MESSAGE:
-                        ctx = await extract_message_context(session, task.entity_id)
-                        for parser in ALL_PARSERS:
-                            if parser.predicate.match(ctx):
-                                await parser.parse(session, ctx)
+                        ctx = await get_messages_context(session, task.entity_id)
+                    elif task.entity_type == ParseOutbox.PARSE_TYPE_ACCOUNT:
+                        ctx = await get_account_context(session, task.entity_id)
+                    else:
+                        raise Exception(f"entity_type not supported: {task.entity_type}")
+                    for parser in ALL_PARSERS:
+                        if parser.predicate.match(ctx):
+                            await parser.parse(session, ctx)
                 except Exception as e:
                     logger.error(f'Failed to perform parsing for outbox item {task.outbox_id}: {traceback.format_exc()}')
                     await postpone_outbox_item(session, task.outbox_id, settings.parser.retry.timeout)
