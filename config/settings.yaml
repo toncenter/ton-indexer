@@ -1,15 +1,27 @@
 webserver:
   api_root_path: ${ROOT_PATH}
 indexer:
-  liteserver_config: /run/secrets/tonlib_config
+  liteserver_config: ${LITESERVER_CONFIG}
+  ls_index: ${LITESERVER_INDEX}
   use_ext_method: ${USE_GET_BLOCK_TRANSACTIONS_EXT}
-  cdll_path: ./config/libtonlibjson.so.0.5
+  cdll_path: ${CDLL_PATH}
   workers_count: ${WORKERS_COUNT}
   init_mc_seqno: ${START_SEQNO}
   smallest_mc_seqno: ${BOTTOM_SEQNO}
   blocks_per_task: 30
   max_tasks_per_child: 50
   task_time_limit: 1200
+  accounts_index_batch: 1000
+  accounts_index_min_interval_days: ${ACCOUNTS_INDEX_MIN_INTERVAL_DAYS}
+  accounts_per_task: 50
+  discover_accounts_enabled: ${DISCOVER_ACCOUNTS_ENABLED}
+parser:
+  max_tasks_per_child: 60
+  task_time_limit: 1200
+  poll_interval: 5
+  batch_size: 1
+  retry:
+    timeout: 300
 postgres:
   host: postgres
   port: 5432

@@ -11,6 +11,9 @@ services:
     secrets:
       - postgres_password
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     command: -w=${TON_INDEXER_WEBSERVER_WORKERS_COUNT:-1} --bind=0.0.0.0:8081
   backward_indexer:
     build:
@@ -24,18 +27,33 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       USE_GET_BLOCK_TRANSACTIONS_EXT: ${TON_INDEXER_USE_GET_BLOCK_TRANSACTIONS_EXT:-0}
+      LITESERVER_INDEX: ${LITESERVER_INDEX_FORWARD:-0}
+      LITESERVER_CONFIG: ${LITESERVER_CONFIG:-/run/secrets/tonlib_config}
+      CDLL_PATH: ${CDLL_PATH:-./config/libtonlibjson.so.0.5}
     secrets:
       - postgres_password
       - tonlib_config
+    logging:
+      &logging
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: "50m"
     depends_on:
-      - rabbitmq
-      - postgres
+      &common-depends-on
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
   backward_scheduler:
     build:
       context: .
       dockerfile: deploy/scheduler.Dockerfile
     command: backward backward_queue
     restart: on-failure
+    logging: *logging
     environment:
       START_SEQNO: ${TON_INDEXER_START_SEQNO:?start masterchain seqno is required}
       BOTTOM_SEQNO: ${TON_INDEXER_BOTTOM_SEQNO:?bottom masterchain seqno is required}
@@ -44,38 +62,41 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       WORKERS_COUNT: ${TON_INDEXER_BACKWARD_WORKERS_COUNT:-5}
+      DISCOVER_ACCOUNTS_ENABLED: ${DISCOVER_ACCOUNTS_ENABLED:-false}
     secrets:
       - postgres_password
-      - tonlib_config
     depends_on:
+      <<: *common-depends-on
       backward_indexer:
         condition: service_started
-      postgres:
-        condition: service_healthy
   forward_indexer:
     build:
       context: .
       dockerfile: deploy/indexer.Dockerfile
     command: --concurrency ${TON_INDEXER_FORWARD_WORKERS_COUNT:-2} -Q forward_queue
     restart: unless-stopped
+    logging: *logging
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       REDIS_HOST: redis
       REDIS_PORT: 6379
       USE_GET_BLOCK_TRANSACTIONS_EXT: ${TON_INDEXER_USE_GET_BLOCK_TRANSACTIONS_EXT:-0}
+      LITESERVER_INDEX: ${LITESERVER_INDEX_FORWARD:-0}
+      LITESERVER_CONFIG: ${LITESERVER_CONFIG:-/run/secrets/tonlib_config}
+      CDLL_PATH: ${CDLL_PATH:-./config/libtonlibjson.so.0.5}
+      DISCOVER_ACCOUNTS_ENABLED: ${DISCOVER_ACCOUNTS_ENABLED:-false}
     secrets:
       - postgres_password
       - tonlib_config
-    depends_on:
-      - rabbitmq
-      - postgres
+    depends_on: *common-depends-on
   forward_scheduler:
     build:
       context: .
       dockerfile: deploy/scheduler.Dockerfile
     command: forward forward_queue
     restart: unless-stopped
+    logging: *logging
     environment:
       START_SEQNO: ${TON_INDEXER_START_SEQNO:?start masterchain seqno is required}
       BOTTOM_SEQNO: ${TON_INDEXER_BOTTOM_SEQNO:?bottom masterchain seqno is required}
@@ -86,12 +107,53 @@ services:
       WORKERS_COUNT: ${TON_INDEXER_FORWARD_WORKERS_COUNT:-2}
     secrets:
       - postgres_password
-      - tonlib_config
     depends_on:
+      <<: *common-depends-on
       forward_indexer:
         condition: service_started
-      postgres:
-        condition: service_healthy
+  accounts_indexer:
+    build:
+      context: .
+      dockerfile: deploy/indexer.Dockerfile
+    command: --concurrency ${TON_INDEXER_ACCOUNTS_WORKERS_COUNT:-2} -Q accounts_queue
+    restart: unless-stopped
+    logging: *logging
+    profiles:
+      - accounts_index
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LITESERVER_INDEX: ${LITESERVER_INDEX_FORWARD:-0}
+      LITESERVER_CONFIG: ${LITESERVER_CONFIG:-/run/secrets/tonlib_config}
+      CDLL_PATH: ${CDLL_PATH:-./config/libtonlibjson.so.0.5}
+    secrets:
+      - postgres_password
+      - tonlib_config
+    depends_on: *common-depends-on
+  accounts_scheduler:
+    build:
+      context: .
+      dockerfile: deploy/scheduler.Dockerfile
+    command: accounts accounts_queue create
+    restart: unless-stopped
+    logging: *logging
+    profiles:
+      - accounts_index
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      WORKERS_COUNT: ${TON_INDEXER_ACCOUNTS_WORKERS_COUNT:-2}
+      ACCOUNTS_INDEX_MIN_INTERVAL_DAYS: ${ACCOUNTS_INDEX_MIN_INTERVAL_DAYS:-30}
+    secrets:
+      - postgres_password
+    depends_on:
+      <<: *common-depends-on
+      accounts_indexer:
+        condition: service_started
   rabbitmq:
     image: rabbitmq
     restart: unless-stopped

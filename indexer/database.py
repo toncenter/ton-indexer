@@ -1,8 +1,11 @@
 import codecs
 import asyncio
+from os import environ
+import decimal
 from copy import deepcopy
 from time import sleep
 from typing import List, Optional
+from datetime import datetime
 
 from pytonlib.utils.tlb import parse_transaction
 from tvm_valuetypes.cell import deserialize_boc
@@ -12,7 +15,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import create_database, database_exists, drop_database
 
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum
+from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric, LargeBinary
 from sqlalchemy import ForeignKey, UniqueConstraint, Table
 from sqlalchemy import and_, or_, ColumnDefault
 from sqlalchemy.orm import relationship, backref
@@ -29,16 +32,24 @@ from loguru import logger
 MASTERCHAIN_INDEX = -1
 MASTERCHAIN_SHARD = -9223372036854775808
 
-with open(S.postgres.password_file, 'r') as f:
-    db_password = f.read()
+try:
+    with open(S.postgres.password_file, 'r') as f:
+        db_password = f.read()
+except:
+    logger.info("pg password file not found, using PGPASSWORD env var")
+    db_password = environ["PGPASSWORD"]
 
 # init database
 def get_engine(database):
-    engine = create_async_engine('postgresql+asyncpg://{user}:{db_password}@{host}:{port}/{dbname}'.format(host=S.postgres.host,
-                                                                                             port=S.postgres.port,
-                                                                                             user=S.postgres.user,
-                                                                                             db_password=db_password,
-                                                                                             dbname=database), pool_size=20, max_overflow=10, echo=False)
+    if "PGCONNECTION_URL" in environ:
+        connection_url = environ["PGCONNECTION_URL"]
+    else:
+        connection_url = 'postgresql+asyncpg://{user}:{db_password}@{host}:{port}/{dbname}'.format(host=S.postgres.host,
+                                                                                  port=S.postgres.port,
+                                                                                  user=S.postgres.user,
+                                                                                  db_password=db_password,
+                                                                                  dbname=database)
+    engine = create_async_engine(connection_url, pool_size=20, max_overflow=10, echo=False)
     return engine
 
 engine = get_engine(S.postgres.dbname)
@@ -56,18 +67,30 @@ def delete_database():
         drop_database(utils_url)
 
 
-def init_database(create=False):
-    while not database_exists(utils_url):
+async def check_database_inited(url):
+    if not database_exists(url):
+        return False
+    return True
+
+
+async def init_database(create=False):
+    logger.info(f"Create db ${utils_url}")
+    logger.info(database_exists(utils_url))
+    while not await check_database_inited(utils_url):
+        logger.info("Create db")
         if create:
             logger.info('Creating database')
             create_database(utils_url)
+        asyncio.sleep(0.5)
 
-            async def create_tables():
-                async with engine.begin() as conn:
-                    await conn.run_sync(Base.metadata.create_all)
-            asyncio.run(create_tables())
-        sleep(0.5)
+    if create:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    logger.info("DB ready")
 
+
+def cell_b64(cell):
+    return codecs.encode(cell.hash(), "base64").decode().strip()
 
 @dataclass(init=False)
 class Block(Base):
@@ -175,6 +198,7 @@ class Transaction(Base):
     compute_vm_steps: int = Column(Integer)
     compute_skip_reason: str = Column(Enum('cskip_no_state', 'cskip_bad_state', 'cskip_no_gas', name='compute_skip_reason_type'))
     action_result_code: int = Column(Integer)
+    created_time: int = Column(BigInteger)
     action_total_fwd_fees: int = Column(BigInteger)
     action_total_action_fees: int = Column(BigInteger)
     
@@ -235,7 +259,8 @@ class Transaction(Base):
             'compute_skip_reason': compute_skip_reason,
             'action_result_code': action_result_code,
             'action_total_fwd_fees': action_total_fwd_fees,
-            'action_total_action_fees': action_total_action_fees
+            'action_total_action_fees': action_total_action_fees,
+            'created_time': int(datetime.today().timestamp())
         }
 
 @dataclass(init=False)
@@ -256,6 +281,7 @@ class Message(Base):
     bounce: bool = Column(Boolean)
     bounced: bool = Column(Boolean)
     import_fee: int = Column(BigInteger)
+    created_time: int = Column(BigInteger)
     
     out_tx_id = Column(BigInteger, ForeignKey("transactions.tx_id"))
     # out_tx = relationship("Transaction", backref="out_msgs", foreign_keys=[out_tx_id])
@@ -310,6 +336,7 @@ class Message(Base):
             'bounce': int(raw['bounce']) if int(raw['bounce']) != -1 else None,
             'bounced': int(raw['bounced']) if int(raw['bounced']) != -1 else None,
             'import_fee': int(raw['import_fee']) if int(raw['import_fee']) != -1 else None,
+            'created_time': int(datetime.today().timestamp())
         }
 
 
@@ -328,4 +355,115 @@ class MessageContent(Base):
         return {
             'body': raw_msg['msg_data'].get('body')
         }
+
+@dataclass(init=False)
+class Code(Base):
+    __tablename__ = 'code'
+
+    hash: str = Column(String, primary_key=True)
+    code: str = Column(String)
+
+@dataclass(init=False)
+class AccountState(Base):
+    __tablename__ = 'account_state'
+
+    state_id: int = Column(BigInteger, primary_key=True)
+    address: str = Column(String)
+    check_time: int = Column(BigInteger)
+    last_tx_lt: int = Column(BigInteger)
+    last_tx_hash: str = Column(String)
+    balance: int = Column(BigInteger)
+
+    code_hash: str = Column(String)
+    data: str = Column(String)
+
+    __table_args__ = (Index('account_state_index_1', 'address', 'last_tx_lt'),
+                      UniqueConstraint('address', 'last_tx_lt'))
+
+    @classmethod
+    def raw_account_info_to_content_dict(cls, raw, address):
+        code_cell = None
+        if len(raw['code']) > 0:
+            code_cell_boc = codecs.decode(codecs.encode(raw['code'], 'utf8'), 'base64')
+            code_cell = deserialize_boc(code_cell_boc)
+
+        return {
+            'address': address,
+            'check_time': int(datetime.today().timestamp()),
+            'last_tx_lt': int(raw['last_transaction_id']['lt']) if 'last_transaction_id' in raw else None,
+            'last_tx_hash': raw['last_transaction_id']['hash'] if 'last_transaction_id' in raw else None,
+            'balance': int(raw['balance']),
+            'code_hash': cell_b64(code_cell) if code_cell is not None else None,
+            'data':  raw['data']
+        }
+
+
+@dataclass(init=False)
+class KnownAccounts(Base):
+    __tablename__ = 'accounts'
+
+    address: str = Column(String, primary_key=True)
+    last_check_time: int = Column(BigInteger)
+
+    __table_args__ = (Index('known_accounts_index_1', 'last_check_time'),)
+
+    @classmethod
+    def from_address(cls, address):
+        return {
+            'address': address,
+            'last_check_time': None
+        }
+
+
+@dataclass(init=False)
+class ParseOutbox(Base):
+    __tablename__ = 'parse_outbox'
+
+    PARSE_TYPE_MESSAGE = 1
+    PARSE_TYPE_ACCOUNT = 2
+
+    outbox_id: int = Column(BigInteger, primary_key=True)
+    added_time: int = Column(BigInteger)
+    entity_type = Column(BigInteger)
+    entity_id: int = Column(BigInteger)
+
+    __table_args__ = (Index('parse_outbox_index_1', 'added_time'),
+                      UniqueConstraint('entity_type', 'entity_id')
+                      )
+    @classmethod
+    def generate(cls, entity_type, entity_id, added_time):
+        return {
+            'entity_type': entity_type,
+            'entity_id': entity_id,
+            'added_time': added_time
+        }
+
+
+"""
+Models for parsed data
+"""
+@dataclass(init=False)
+class JettonTransfer(Base):
+    __tablename__ = 'jetton_transfer'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    successful: bool = Column(Boolean)
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    query_id: str = Column(String)
+    amount: decimal.Decimal = Column(Numeric(scale=0)) # in some cases Jetton amount is larger than pgsql int8 (bigint)
+    source_owner: str = Column(String)
+    destination_owner: str = Column(String)
+    source_wallet: str = Column(String)
+    response_destination: str = Column(String)
+    custom_payload: str = Column(LargeBinary)
+    forward_ton_amount: int = Column(BigInteger)
+    forward_payload: str = Column(LargeBinary)
+
+
+    __table_args__ = (Index('jetton_transfer_index_1', 'source_owner'),
+                      Index('jetton_transfer_index_2', 'destination_owner'),
+                      Index('jetton_transfer_index_3', 'query_id'),
+                      UniqueConstraint('msg_id')
+                      )
 

@@ -4,11 +4,15 @@ from collections import defaultdict
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload, Session, contains_eager
 from sqlalchemy.future import select
-from sqlalchemy import update
+from sqlalchemy.dialects.postgresql import insert as insert_pg
+from sqlalchemy import update, delete
+from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timedelta
 
 
 from indexer.database import *
 from dataclasses import asdict
+from config import settings
 from loguru import logger
 
 class DataNotFound(Exception):
@@ -74,6 +78,8 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
     transaction_t = meta.tables[Transaction.__tablename__]
     message_t = meta.tables[Message.__tablename__]
     message_content_t = meta.tables[MessageContent.__tablename__]
+    accounts_t = meta.tables[KnownAccounts.__tablename__]
+    outbox_t = meta.tables[ParseOutbox.__tablename__]
 
     async with engine.begin() as conn:
         mc_block_id = None
@@ -123,7 +129,7 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
                 out_msg = out_msgs_by_hash[in_msg_hash][0]
                 in_msg['out_tx_id'] = out_msg['out_tx_id']
                 out_msgs_by_hash.pop(in_msg_hash)
-        
+
         existing_in_msgs = []
         for chunk in chunks(list(in_msgs_by_hash.keys()), 10000):
             q = select(message_t.c.hash).where(message_t.c.hash.in_(chunk) & message_t.c.in_tx_id.is_(None))
@@ -152,6 +158,7 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
 
         msgs_to_insert = list(out_msgs_by_hash.values()) + list(in_msgs_by_hash.values())
         msgs_to_insert = [item for sublist in msgs_to_insert for item in sublist] # flatten
+
         if len(msgs_to_insert):
             msg_ids = []
             for chunk in chunks(msgs_to_insert, 1000):
@@ -165,6 +172,31 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
 
             for chunk in chunks(contents, 3000):
                 await conn.execute(message_content_t.insert(), chunk)
+
+            # using min_block_time as outbox time to avoid mess with single message utime
+            min_block_time = min(map(lambda x: x['gen_utime'], shard_headers))
+            insert_res = await conn.execute(insert_pg(outbox_t)
+                                            .values([ParseOutbox.generate(ParseOutbox.PARSE_TYPE_MESSAGE,
+                                                                          msg_id_tuple[0],
+                                                                          min_block_time) for msg_id_tuple in msg_ids])
+                                            .on_conflict_do_nothing())
+            if insert_res.rowcount > 0:
+                logger.info(f"{insert_res.rowcount} outbox items added")
+
+
+        if settings.indexer.discover_accounts_enabled:
+            unique_addresses = set()
+            for msg in msgs_to_insert:
+                if len(msg['source']) > 0:
+                    unique_addresses.add(msg['source'])
+                if len(msg['destination']) > 0:
+                    unique_addresses.add(msg['destination'])
+            insert_res = await conn.execute(insert_pg(accounts_t)
+                   .values([KnownAccounts.from_address(address) for address in unique_addresses])
+                   .on_conflict_do_nothing())
+            if insert_res.rowcount > 0:
+                logger.info(f"New addresses discovered: {insert_res.rowcount}/{len(unique_addresses)}")
+
 
 def get_transactions_by_masterchain_seqno(session, masterchain_seqno: int, include_msg_body: bool):
     block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == masterchain_seqno)).first()
@@ -369,3 +401,103 @@ def get_active_accounts_count_in_period(session: Session, start_utime: int, end_
                    .distinct()
 
     return query.count()
+
+async def get_known_accounts_not_indexed(session: Session, limit: int):
+    query = await session.execute(select(KnownAccounts.address) \
+                    .filter(KnownAccounts.last_check_time == None) \
+                    .limit(limit))
+
+    return query.all()
+
+async def get_known_accounts_long_since_check(session: Session, min_days: int, limit: int):
+    query = await session.execute(select(KnownAccounts.address) \
+                                  .filter(KnownAccounts.last_check_time != None) \
+                                  .filter(KnownAccounts.last_check_time < int((datetime.today() - timedelta(days=min_days)).timestamp())) \
+                                  .order_by(KnownAccounts.last_check_time.asc()) \
+                                  .limit(limit))
+
+    return query.all()
+
+async def insert_account(account_raw, address):
+    meta = Base.metadata
+    accounts_state_t = meta.tables[AccountState.__tablename__]
+    accounts_t = meta.tables[KnownAccounts.__tablename__]
+    code_t = meta.tables[Code.__tablename__]
+
+    s_state = AccountState.raw_account_info_to_content_dict(account_raw, address)
+
+    if s_state['code_hash'] is not None:
+        async with engine.begin() as conn:
+            ch_res = await conn.execute(select(Code).filter(Code.hash == s_state['code_hash']))
+            if ch_res.first() is None:
+                await conn.execute(code_t.insert().values({'hash': s_state['code_hash'], 'code': account_raw['code']}))
+
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(accounts_state_t.insert().values(s_state))
+        except IntegrityError:
+            logger.warning(f"Account {address} has the same state, ignoring")
+
+    async with engine.begin() as conn:
+        await conn.execute(accounts_t.update().where(accounts_t.c.address == s_state['address']).values(last_check_time=int(datetime.today().timestamp())))
+
+async def get_outbox_items(session: Session, limit: int) -> ParseOutbox:
+    res = await session.execute(select(ParseOutbox)\
+                    .filter(ParseOutbox.added_time < int(datetime.today().timestamp()))
+                    .order_by(ParseOutbox.added_time.asc()).limit(limit))
+    return res.all()
+
+
+async def remove_outbox_item(session: Session, outbox_id: int):
+    return await session.execute(delete(ParseOutbox).where(ParseOutbox.outbox_id == outbox_id))
+
+async def postpone_outbox_item(session: Session, outbox_id: int, seconds: int):
+    await session.execute(update(ParseOutbox).where(ParseOutbox.outbox_id == outbox_id)\
+                          .values(added_time=int(datetime.today().timestamp()) + seconds))
+
+async def get_originated_msg_id(session: Session, msg: Message) -> int:
+    if msg.out_tx_id is None:
+        return msg.msg_id
+    tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == msg.out_tx_id))).first()[0]
+
+    messages = (await session.execute(select(Message).filter(Message.in_tx_id == tx.tx_id))).all()
+    assert len(messages) == 1, f"Unable to get source message for tx {tx.tx_id}"
+    return await get_originated_msg_id(session, messages[0][0])
+
+"""
+Upserts data, primary key must be equals "id" 
+"""
+async def upsert_entity(session: Session, item: any, constraint='msg_id'):
+    meta = Base.metadata
+    entity_t = meta.tables[item.__tablename__]
+    item = asdict(item)
+    del item['id']
+    stmt = insert_pg(entity_t).values([item])
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[constraint],
+        set_=stmt.excluded
+    )
+    return await session.execute(stmt)
+
+
+"""
+Single container for message context - message itself, source transaction and content
+"""
+@dataclass
+class MessageContext:
+    message: Message
+    source_tx: Transaction
+    content: MessageContent
+
+async def get_messages_context(session: Session, msg_id: int) -> MessageContext:
+    message = (await session.execute(select(Message).filter(Message.msg_id == msg_id))).first()[0]
+    content = (await session.execute(select(MessageContent).filter(MessageContent.msg_id == msg_id))).first()[0]
+    if message.out_tx_id:
+        tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == message.out_tx_id))).first()[0]
+    else:
+        tx = None
+    return MessageContext(
+        message=message,
+        source_tx=tx,
+        content=content
+    )
