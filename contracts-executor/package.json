@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "body-parser": "^1.20.1",
+    "express": "^4.18.2",
+    "ton": "^12.2.6",
+    "ton-contract-executor": "^0.6.0"
+  }
+}
