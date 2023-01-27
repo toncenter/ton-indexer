@@ -12,6 +12,12 @@ from parser.bitreader import BitReader
 
 logging.getLogger("requests").setLevel(logging.WARNING)
 
+def opt_apply(value, func):
+    if value is not None:
+        return func(value)
+    else:
+        return None
+
 # Simple parser predicate
 class ParserPredicate:
     def __init__(self, context_class):
@@ -31,7 +37,7 @@ class OpCodePredicate(ParserPredicate):
         self.opcode = opcode
 
     def _internal_match(self, context: MessageContext):
-        return context.message.op == self.opcode
+        return context.source_tx is not None and context.message.op == self.opcode
 
 class ActiveAccountsPredicate(ParserPredicate):
     def __init__(self):
@@ -123,8 +129,12 @@ class ContractsExecutorParser(Parser):
         super(ContractsExecutorParser, self).__init__(predicate)
         self.executor_url = settings.parser.executor.url
 
-    def _execute(self, code, data, method, types):
-        res = requests.post(self.executor_url, json={'code': code, 'data': data, 'method': method, 'expected': types})
+    def _execute(self, code, data, method, types, address=None):
+        req = {'code': code, 'data': data, 'method': method,
+               'expected': types, 'address': address}
+        if address is not None:
+            req[address] = address
+        res = requests.post(self.executor_url, json=req)
         assert res.status_code == 200, "Error during contract executor call: %s" % res
         res = res.json()
         if res['exit_code'] != 0:
@@ -159,8 +169,10 @@ class JettonWalletParser(ContractsExecutorParser):
         logger.info(f"Adding jetton wallet {wallet}")
 
         await upsert_entity(session, wallet, constraint="address")
-        await ensure_account_known(session, owner)
-        await ensure_account_known(session, jetton)
+        if owner is not None:
+            await ensure_account_known(session, owner)
+        if jetton is not None:
+            await ensure_account_known(session, jetton)
 
 class RemoteDataFetcher:
     def __init__(self, ipfs_gateway='https://w3s.link/ipfs/'):
@@ -201,7 +213,8 @@ class JettonMasterParser(ContractsExecutorParser):
     async def parse(self, session: Session, context: AccountContext):
         try:
             wallet_data = self._execute(context.code.code, context.account.data, 'get_jetton_data',
-                                        ["int", "int", "address", "metadata", "cell_hash"])
+                                        ["int", "int", "address", "metadata", "cell_hash"],
+                                        address=context.account.address)
             total_supply, mintable, admin_address, jetton_content, wallet_hash = wallet_data
         except:
             # we invoke get method on all contracts so ignore errors
@@ -236,7 +249,7 @@ class JettonMasterParser(ContractsExecutorParser):
             name = metadata.get('name', None),
             image = metadata.get('image', None),
             image_data = metadata.get('image_data', None),
-            decimals = metadata.get('decimals', None),
+            decimals = opt_apply(metadata.get('decimals', None), int),
             metadata_url = metadata_url,
             description = metadata.get('description', None)
         )
