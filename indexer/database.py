@@ -1,6 +1,7 @@
 import codecs
 import asyncio
 from os import environ
+import decimal
 from copy import deepcopy
 from time import sleep
 from typing import List, Optional
@@ -14,7 +15,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import create_database, database_exists, drop_database
 
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum
+from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric, LargeBinary
 from sqlalchemy import ForeignKey, UniqueConstraint, Table
 from sqlalchemy import and_, or_, ColumnDefault
 from sqlalchemy.orm import relationship, backref
@@ -436,3 +437,33 @@ class ParseOutbox(Base):
             'entity_id': entity_id,
             'added_time': added_time
         }
+
+
+"""
+Models for parsed data
+"""
+@dataclass(init=False)
+class JettonTransfer(Base):
+    __tablename__ = 'jetton_transfer'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    successful: bool = Column(Boolean)
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    query_id: str = Column(String)
+    amount: decimal.Decimal = Column(Numeric(scale=0)) # in some cases Jetton amount is larger than pgsql int8 (bigint)
+    source_owner: str = Column(String)
+    destination_owner: str = Column(String)
+    source_wallet: str = Column(String)
+    response_destination: str = Column(String)
+    custom_payload: str = Column(LargeBinary)
+    forward_ton_amount: int = Column(BigInteger)
+    forward_payload: str = Column(LargeBinary)
+
+
+    __table_args__ = (Index('jetton_transfer_index_1', 'source_owner'),
+                      Index('jetton_transfer_index_2', 'destination_owner'),
+                      Index('jetton_transfer_index_3', 'query_id'),
+                      UniqueConstraint('msg_id')
+                      )
+

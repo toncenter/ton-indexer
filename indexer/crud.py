@@ -5,7 +5,7 @@ from sqlalchemy import and_
 from sqlalchemy.orm import joinedload, Session, contains_eager
 from sqlalchemy.future import select
 from sqlalchemy.dialects.postgresql import insert as insert_pg
-from sqlalchemy import update
+from sqlalchemy import update, delete
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta
 
@@ -440,3 +440,64 @@ async def insert_account(account_raw, address):
 
     async with engine.begin() as conn:
         await conn.execute(accounts_t.update().where(accounts_t.c.address == s_state['address']).values(last_check_time=int(datetime.today().timestamp())))
+
+async def get_outbox_items(session: Session, limit: int) -> ParseOutbox:
+    res = await session.execute(select(ParseOutbox)\
+                    .filter(ParseOutbox.added_time < int(datetime.today().timestamp()))
+                    .order_by(ParseOutbox.added_time.asc()).limit(limit))
+    return res.all()
+
+
+async def remove_outbox_item(session: Session, outbox_id: int):
+    return await session.execute(delete(ParseOutbox).where(ParseOutbox.outbox_id == outbox_id))
+
+async def postpone_outbox_item(session: Session, outbox_id: int, seconds: int):
+    await session.execute(update(ParseOutbox).where(ParseOutbox.outbox_id == outbox_id)\
+                          .values(added_time=int(datetime.today().timestamp()) + seconds))
+
+async def get_originated_msg_id(session: Session, msg: Message) -> int:
+    if msg.out_tx_id is None:
+        return msg.msg_id
+    tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == msg.out_tx_id))).first()[0]
+
+    messages = (await session.execute(select(Message).filter(Message.in_tx_id == tx.tx_id))).all()
+    assert len(messages) == 1, f"Unable to get source message for tx {tx.tx_id}"
+    return await get_originated_msg_id(session, messages[0][0])
+
+"""
+Upserts data, primary key must be equals "id" 
+"""
+async def upsert_entity(session: Session, item: any, constraint='msg_id'):
+    meta = Base.metadata
+    entity_t = meta.tables[item.__tablename__]
+    item = asdict(item)
+    del item['id']
+    stmt = insert_pg(entity_t).values([item])
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[constraint],
+        set_=stmt.excluded
+    )
+    return await session.execute(stmt)
+
+
+"""
+Single container for message context - message itself, source transaction and content
+"""
+@dataclass
+class MessageContext:
+    message: Message
+    source_tx: Transaction
+    content: MessageContent
+
+async def get_messages_context(session: Session, msg_id: int) -> MessageContext:
+    message = (await session.execute(select(Message).filter(Message.msg_id == msg_id))).first()[0]
+    content = (await session.execute(select(MessageContent).filter(MessageContent.msg_id == msg_id))).first()[0]
+    if message.out_tx_id:
+        tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == message.out_tx_id))).first()[0]
+    else:
+        tx = None
+    return MessageContext(
+        message=message,
+        source_tx=tx,
+        content=content
+    )
