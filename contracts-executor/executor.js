@@ -2,7 +2,7 @@
 
 // Simple node.js contract executor
 // It uses ton-contract-executor with pre-build WASM ton version (OMG!)
-  const { SmartContract, TvmRunnerAsynchronous }  = require("ton-contract-executor");
+const { SmartContract }  = require("ton-contract-executor");
 const { Cell, Address } = require("ton");
 const bodyParser = require('body-parser')
 const express = require('express');

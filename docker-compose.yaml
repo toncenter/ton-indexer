@@ -154,6 +154,30 @@ services:
       <<: *common-depends-on
       accounts_indexer:
         condition: service_started
+  parser:
+    build:
+      context: .
+      dockerfile: deploy/parser.Dockerfile
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PARSER_EXECUTOR_URL: ${PARSER_EXECUTOR_URL:-http://contracts-executor:9090/execute}
+    secrets:
+      - postgres_password
+    depends_on:
+      <<: *common-depends-on
+      executor:
+        condition: service_started
+  contracts-executor:
+    build:
+      context: .
+      dockerfile: deploy/contracts-executor.Dockerfile
+    restart: unless-stopped
+    logging: *logging
   rabbitmq:
     image: rabbitmq
     restart: unless-stopped
