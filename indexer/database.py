@@ -220,6 +220,9 @@ class Transaction(Base):
     def raw_transaction_to_dict(cls, raw, raw_detail):
         try:
             parsed_tx = parse_transaction(raw_detail['data'])
+        except NotImplementedError as e:
+            logger.error(f"Error parsing transaction data {raw_detail['data']}: {e}")
+            return None
         except:
             logger.error(f"Error parsing transaction data {raw_detail['data']}")
             raise

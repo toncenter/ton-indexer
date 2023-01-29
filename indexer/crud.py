@@ -102,6 +102,8 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
 
             for tx_raw, tx_details_raw in txs_raw:
                 tx = Transaction.raw_transaction_to_dict(tx_raw, tx_details_raw)
+                if tx is None:
+                    continue
                 tx['block_id'] = block_id
                 res = await conn.execute(transaction_t.insert(), [tx])
 
@@ -494,24 +496,30 @@ async def ensure_account_known(session: Session, address: str):
 
 
 """
-Single container for message context - message itself, source transaction and content
+Single container for message context - message itself, source and destination transaction and content
 """
 @dataclass
 class MessageContext:
     message: Message
     source_tx: Transaction
+    destination_tx: Transaction
     content: MessageContent
 
 async def get_messages_context(session: Session, msg_id: int) -> MessageContext:
     message = (await session.execute(select(Message).filter(Message.msg_id == msg_id))).first()[0]
     content = (await session.execute(select(MessageContent).filter(MessageContent.msg_id == msg_id))).first()[0]
     if message.out_tx_id:
-        tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == message.out_tx_id))).first()[0]
+        source_tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == message.out_tx_id))).first()[0]
     else:
-        tx = None
+        source_tx = None
+    if message.in_tx_id:
+        destination_tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == message.in_tx_id))).first()[0]
+    else:
+        destination_tx = None
     return MessageContext(
         message=message,
-        source_tx=tx,
+        source_tx=source_tx,
+        destination_tx=destination_tx,
         content=content
     )
 

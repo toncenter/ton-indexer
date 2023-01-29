@@ -24,7 +24,7 @@ class ParserPredicate:
         self.context_class = context_class
 
     def match(self, context: any) -> bool:
-        if not isinstance(context, self.context_class):
+        if self.context_class and not isinstance(context, self.context_class):
             return False
         return self._internal_match(context)
 
@@ -38,6 +38,41 @@ class OpCodePredicate(ParserPredicate):
 
     def _internal_match(self, context: MessageContext):
         return context.source_tx is not None and context.message.op == self.opcode
+
+"""
+Requires existence of source_tx in the MessageContext. Otherwise raises an exception.
+In some cases source_tx could be absent at the time we do parsing.  In this cases
+it is better to reject processing and re-launch it later
+"""
+class SourceTxRequiredPredicate(ParserPredicate):
+    def __init__(self, delegate: ParserPredicate):
+        super(SourceTxRequiredPredicate, self).__init__(context_class=None)
+        self.delegate = delegate
+
+    def _internal_match(self, context: MessageContext):
+        res = self.delegate.match(context)
+        if res:
+            if context.source_tx is None:
+                logger.warning(f"source_tx is not found for message {context.message.msg_id}")
+                raise Exception(f"No source_tx for {context.message.msg_id}")
+        return res
+
+"""
+The same as SourceTxRequiredPredicate but for destination_tx
+"""
+class DestinationTxRequiredPredicate(ParserPredicate):
+    def __init__(self, delegate: ParserPredicate):
+        super(DestinationTxRequiredPredicate, self).__init__(context_class=None)
+        self.delegate = delegate
+
+    def _internal_match(self, context: MessageContext):
+        res = self.delegate.match(context)
+        if res:
+            if context.destination_tx is None:
+                logger.warning(f"destination_tx is not found for message {context.message.msg_id}")
+                raise Exception(f"No destination_tx for {context.message.msg_id}")
+        return res
+
 
 class ActiveAccountsPredicate(ParserPredicate):
     def __init__(self):
@@ -67,7 +102,7 @@ transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress
 """
 class JettonTransferParser(Parser):
     def __init__(self):
-        super(JettonTransferParser, self).__init__(OpCodePredicate(0x0f8a7ea5))
+        super(JettonTransferParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x0f8a7ea5)))
 
     @staticmethod
     def parser_name() -> str:
@@ -101,9 +136,13 @@ class JettonTransferParser(Parser):
         except Exception as e:
             logger.error(f"Unable to parse forward payload {e}")
 
+        """
+        destination_tx for jetton transfer contains internal_transfer (it is not enforced by TEP-74)
+        execution and it has to be successful
+        """
         transfer = JettonTransfer(
             msg_id = context.message.msg_id,
-            successful = context.source_tx.action_result_code == 0 and context.source_tx.compute_exit_code == 0, # TODO check
+            successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0, # TODO check
             originated_msg_id = await get_originated_msg_id(session, context.message),
             query_id = str(query_id),
             amount = amount,
