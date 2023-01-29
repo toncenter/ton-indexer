@@ -118,8 +118,6 @@ services:
     command: --concurrency ${TON_INDEXER_ACCOUNTS_WORKERS_COUNT:-2} -Q accounts_queue
     restart: unless-stopped
     logging: *logging
-    profiles:
-      - accounts_index
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
@@ -139,8 +137,6 @@ services:
     command: accounts accounts_queue create
     restart: unless-stopped
     logging: *logging
-    profiles:
-      - accounts_index
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
@@ -170,7 +166,7 @@ services:
       - postgres_password
     depends_on:
       <<: *common-depends-on
-      executor:
+      contracts-executor:
         condition: service_started
   contracts-executor:
     build:
