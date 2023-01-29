@@ -13,7 +13,7 @@ ring
 git+https://github.com/toncenter/tvm_valuetypes.git
 celery[redis]
 psycopg2-binary
-sqlalchemy[asyncio]
+sqlalchemy[asyncio]==1.4.46
 asyncpg
 sqlalchemy-utils
 tqdm
