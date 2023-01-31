@@ -102,6 +102,8 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
 
             for tx_raw, tx_details_raw in txs_raw:
                 tx = Transaction.raw_transaction_to_dict(tx_raw, tx_details_raw)
+                if tx is None:
+                    continue
                 tx['block_id'] = block_id
                 res = await conn.execute(transaction_t.insert(), [tx])
 
@@ -423,23 +425,30 @@ async def insert_account(account_raw, address):
     accounts_state_t = meta.tables[AccountState.__tablename__]
     accounts_t = meta.tables[KnownAccounts.__tablename__]
     code_t = meta.tables[Code.__tablename__]
+    outbox_t = meta.tables[ParseOutbox.__tablename__]
 
     s_state = AccountState.raw_account_info_to_content_dict(account_raw, address)
 
-    if s_state['code_hash'] is not None:
-        async with engine.begin() as conn:
-            ch_res = await conn.execute(select(Code).filter(Code.hash == s_state['code_hash']))
-            if ch_res.first() is None:
-                await conn.execute(code_t.insert().values({'hash': s_state['code_hash'], 'code': account_raw['code']}))
-
     async with engine.begin() as conn:
-        try:
-            await conn.execute(accounts_state_t.insert().values(s_state))
-        except IntegrityError:
+        if s_state['code_hash'] is not None:
+            await conn.execute(insert_pg(code_t).values({
+                'hash': s_state['code_hash'],
+                'code': account_raw['code']}).on_conflict_do_nothing())
+
+        res = await conn.execute(insert_pg(accounts_state_t).returning(accounts_state_t.c.state_id)\
+                                 .values([s_state]).on_conflict_do_nothing())
+        if res.rowcount == 0:
             logger.warning(f"Account {address} has the same state, ignoring")
+        else:
+            await conn.execute(insert_pg(outbox_t)
+                                            .values(ParseOutbox.generate(ParseOutbox.PARSE_TYPE_ACCOUNT,
+                                                                         res.first()[0],
+                                                                         int(datetime.today().timestamp())))
+                                            .on_conflict_do_nothing())
 
-    async with engine.begin() as conn:
-        await conn.execute(accounts_t.update().where(accounts_t.c.address == s_state['address']).values(last_check_time=int(datetime.today().timestamp())))
+        await conn.execute(accounts_t.update().where(accounts_t.c.address == s_state['address'])\
+                           .values(last_check_time=int(datetime.today().timestamp())))
+
 
 async def get_outbox_items(session: Session, limit: int) -> ParseOutbox:
     res = await session.execute(select(ParseOutbox)\
@@ -480,24 +489,49 @@ async def upsert_entity(session: Session, item: any, constraint='msg_id'):
     return await session.execute(stmt)
 
 
+async def ensure_account_known(session: Session, address: str):
+    await session.execute(insert_pg(KnownAccounts)
+                                    .values(KnownAccounts.from_address(address))
+                                    .on_conflict_do_nothing())
+
+
 """
-Single container for message context - message itself, source transaction and content
+Single container for message context - message itself, source and destination transaction and content
 """
 @dataclass
 class MessageContext:
     message: Message
     source_tx: Transaction
+    destination_tx: Transaction
     content: MessageContent
 
 async def get_messages_context(session: Session, msg_id: int) -> MessageContext:
     message = (await session.execute(select(Message).filter(Message.msg_id == msg_id))).first()[0]
     content = (await session.execute(select(MessageContent).filter(MessageContent.msg_id == msg_id))).first()[0]
     if message.out_tx_id:
-        tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == message.out_tx_id))).first()[0]
+        source_tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == message.out_tx_id))).first()[0]
     else:
-        tx = None
+        source_tx = None
+    if message.in_tx_id:
+        destination_tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == message.in_tx_id))).first()[0]
+    else:
+        destination_tx = None
     return MessageContext(
         message=message,
-        source_tx=tx,
+        source_tx=source_tx,
+        destination_tx=destination_tx,
         content=content
     )
+
+"""
+Container for account context - account itself and its code (BOC)
+"""
+@dataclass
+class AccountContext:
+    account: AccountState
+    code: Code
+
+async def get_account_context(session: Session, state_id: int) -> AccountContext:
+    account = (await session.execute(select(AccountState).filter(AccountState.state_id == state_id))).first()[0]
+    code = (await session.execute(select(Code).filter(Code.hash == account.code_hash))).first()[0] if account.code_hash is not None else None
+    return AccountContext(account=account, code=code)
