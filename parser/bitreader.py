@@ -21,6 +21,9 @@ class BitReader:
     def read_remaining(self):
         return self.array
 
+    def slice_bits(self):
+        return len(self.array)
+
     # based on pytonlib: https://github.com/toncenter/pytonlib/blob/main/pytonlib/utils/address.py
     @staticmethod
     def calc_crc(message):
