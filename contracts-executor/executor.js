@@ -22,20 +22,31 @@ METADATA_KEYS = {
   95542036767220248279389797734652506193411128639728265318048579598694325246656: 'render_type'
 }
 
+function parseSnakeFormat(slice) {
+  let buff = slice.readRemainingBytes().toString();
+  for (let ref of slice.refs) {
+    buff += parseSnakeFormat(ref.beginParse())
+  }
+  return buff
+}
 
-function parseStrValue(slice) {
+function parseStrValue(slice, is_first=false) {
   if (slice.remaining == 0) {
     if (slice.refs.length > 0) {
-      return slice.refs.map(cell => parseStrValue(cell.beginParse())).join('');
+      return slice.refs.map((cell, idx) => parseStrValue(cell.beginParse(), idx == 0)).join('')
     } else {
       return undefined;
     }
   }
-  const tag = slice.readUint(8);
-  if (tag == 0) {
-    return slice.readRemainingBytes().toString();
+  if (is_first) {
+    const tag = slice.readUint(8);
+    if (tag == 0) {
+      return parseSnakeFormat(slice)
+    } else {
+      throw new Error("Wrong content tag: " + tag)
+    }
   } else {
-    throw new Error("Wrong content tag: " + tag)
+    return parseSnakeFormat(slice)
   }
 }
 
@@ -111,8 +122,8 @@ async function execute(req) {
               content: content.readRemainingBytes().toString()
             }
           }
-        } catch {
-          console.warn("Unable to parse metadata", value)
+        } catch (e) {
+          console.warn("Unable to parse metadata", value, e)
         }
       } else if (req.expected[idx] == 'boc') {
         return value.toBoc().toString("base64");
