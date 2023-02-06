@@ -535,3 +535,6 @@ async def get_account_context(session: Session, state_id: int) -> AccountContext
     account = (await session.execute(select(AccountState).filter(AccountState.state_id == state_id))).first()[0]
     code = (await session.execute(select(Code).filter(Code.hash == account.code_hash))).first()[0] if account.code_hash is not None else None
     return AccountContext(account=account, code=code)
+
+async def get_messages_by_in_tx_id(session: Session, in_tx_id: int) -> MessageContext:
+    return (await session.execute(select(Message).filter(Message.in_tx_id == in_tx_id))).first()[0]

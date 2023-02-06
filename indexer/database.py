@@ -462,11 +462,63 @@ class JettonTransfer(Base):
     custom_payload: str = Column(LargeBinary)
     forward_ton_amount: int = Column(BigInteger)
     forward_payload: str = Column(LargeBinary)
+    sub_op: int = Column(BigInteger)
 
 
     __table_args__ = (Index('jetton_transfer_index_1', 'source_owner'),
                       Index('jetton_transfer_index_2', 'destination_owner'),
                       Index('jetton_transfer_index_3', 'query_id'),
+                      UniqueConstraint('msg_id')
+                      )
+
+"""
+op::internal_transfer without preceding op::transfer message, it is typically used for minting
+"""
+@dataclass(init=False)
+class JettonMint(Base):
+    __tablename__ = 'jetton_mint'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    successful: bool = Column(Boolean)
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    query_id: str = Column(String)
+    amount: decimal.Decimal = Column(Numeric(scale=0))
+    minter: str = Column(String) # sender of internal_transfer
+    from_address: str = Column(String) # equals to minter?
+    wallet: str = Column(String)
+    response_destination: str = Column(String)
+    forward_ton_amount: int = Column(BigInteger)
+    forward_payload: str = Column(LargeBinary)
+    sub_op: int = Column(BigInteger)
+
+
+    __table_args__ = (Index('jetton_mint_index_1', 'minter'),
+                      Index('jetton_mint_index_2', 'wallet'),
+                      UniqueConstraint('msg_id')
+                      )
+
+
+"""
+op::burn request
+"""
+@dataclass(init=False)
+class JettonBurn(Base):
+    __tablename__ = 'jetton_burn'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    successful: bool = Column(Boolean)
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    query_id: str = Column(String)
+    amount: decimal.Decimal = Column(Numeric(scale=0))
+    owner: str = Column(String) # jettons owner
+    wallet: str = Column(String)
+    response_destination: str = Column(String)
+    custom_payload: str = Column(LargeBinary)
+
+    __table_args__ = (Index('jetton_burn_index_1', 'owner'),
+                      Index('jetton_burn_index_2', 'wallet'),
                       UniqueConstraint('msg_id')
                       )
 

@@ -18,7 +18,7 @@ indexer:
 parser:
   max_tasks_per_child: 60
   task_time_limit: 1200
-  poll_interval: 5
+  poll_interval: 120
   batch_size: 1
   executor:
     url: ${PARSER_EXECUTOR_URL}

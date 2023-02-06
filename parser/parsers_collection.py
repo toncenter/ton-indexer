@@ -1,6 +1,7 @@
 from indexer.database import *
 from indexer.crud import *
 import codecs
+import time
 import json
 import requests
 import logging
@@ -136,6 +137,11 @@ class JettonTransferParser(Parser):
         except Exception as e:
             logger.error(f"Unable to parse forward payload {e}")
 
+        sub_op = None
+        if forward_payload is not None:
+            fp_reader = BitReader(forward_payload.data.data)
+            if fp_reader.slice_bits() >= 32:
+                sub_op = fp_reader.read_uint(32)
         """
         destination_tx for jetton transfer contains internal_transfer (it is not enforced by TEP-74)
         execution and it has to be successful
@@ -152,11 +158,131 @@ class JettonTransferParser(Parser):
             response_destination = response_destination,
             custom_payload = custom_payload.serialize_boc() if custom_payload is not None else None,
             forward_ton_amount = forward_ton_amount,
-            forward_payload = forward_payload.serialize_boc() if forward_payload is not None else None
+            forward_payload = forward_payload.serialize_boc() if forward_payload is not None else None,
+            sub_op = sub_op
         )
         logger.info(f"Adding jetton transfer {transfer}")
         
         await upsert_entity(session, transfer)
+
+
+"""
+TEP-74 jetton standard does not specify mint format but it has recommended form of internal_transfer message:
+
+internal_transfer  query_id:uint64 amount:(VarUInteger 16) from:MsgAddress
+                     response_address:MsgAddress
+                     forward_ton_amount:(VarUInteger 16)
+                     forward_payload:(Either Cell ^Cell)
+                     = InternalMsgBody;
+
+So mint is an internal_transfer without preceding transfer message
+"""
+class JettonMintParser(Parser):
+    def __init__(self):
+        super(JettonMintParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x178d4519)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "JettonMinter"
+
+    async def parse(self, session: Session, context: MessageContext):
+        # ensure we have no transfer operation before
+        prev_message = await get_messages_by_in_tx_id(session, context.source_tx.tx_id)
+        if prev_message.op == 0x0f8a7ea5:
+            # skip ordinary chain transfer => internal_transfer
+            return
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        op_id = reader.read_uint(32) # internal_transfer#0x178d4519
+        query_id = reader.read_uint(64)
+        amount = reader.read_coins()
+        from_address = reader.read_address()
+        response_destination = reader.read_address()
+        forward_ton_amount = reader.read_coins()
+        # TODO move Either parsing to utils
+        forward_payload = None
+        try:
+            if reader.read_uint(1):
+                forward_payload = cell.refs.pop(0)
+            else:
+                # in-place, read the rest of the cell slice and refs
+                forward_payload = cell.copy()
+                slice = CellData()
+                slice.data = reader.read_remaining()
+                forward_payload.data = slice
+        except Exception as e:
+            logger.error(f"Unable to parse forward payload {e}")
+
+        sub_op = None
+        if forward_payload is not None:
+            fp_reader = BitReader(forward_payload.data.data)
+            if fp_reader.slice_bits() >= 32:
+                sub_op = fp_reader.read_uint(32)
+
+
+        mint = JettonMint(
+            msg_id = context.message.msg_id,
+            successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0,
+            originated_msg_id = await get_originated_msg_id(session, context.message),
+            query_id = str(query_id),
+            amount = amount,
+            minter = context.message.source,
+            wallet = context.message.destination,
+            from_address = from_address,
+            response_destination = response_destination,
+            forward_ton_amount = forward_ton_amount,
+            forward_payload = forward_payload.serialize_boc() if forward_payload is not None else None,
+            sub_op = sub_op
+        )
+        logger.info(f"Adding jetton mint {mint}")
+
+        await upsert_entity(session, mint)
+
+
+"""
+TEP-74:
+
+burn#595f07bc query_id:uint64 amount:(VarUInteger 16)
+              response_destination:MsgAddress custom_payload:(Maybe ^Cell)
+              = InternalMsgBody;
+"""
+class JettonBurnParser(Parser):
+    def __init__(self):
+        super(JettonBurnParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x595f07bc)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "JettonBurn"
+
+    async def parse(self, session: Session, context: MessageContext):
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        op_id = reader.read_uint(32) # burn#595f07bc
+        query_id = reader.read_uint(64)
+        amount = reader.read_coins()
+        response_destination = reader.read_address()
+        custom_payload = None
+        # TODO move Maybe parsing to utils
+        try:
+            if reader.read_uint(1):
+                custom_payload = cell.refs.pop(0)
+        except:
+            logger.warning("Wrong custom payload format")
+
+        burn = JettonBurn(
+            msg_id = context.message.msg_id,
+            successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0,
+            originated_msg_id = await get_originated_msg_id(session, context.message),
+            query_id = str(query_id),
+            amount = amount,
+            owner = context.message.source,
+            wallet = context.message.destination,
+            response_destination = response_destination,
+            custom_payload = custom_payload.serialize_boc() if custom_payload is not None else None
+        )
+        logger.info(f"Adding jetton burn {burn}")
+
+        await upsert_entity(session, burn)
 
 
 """
