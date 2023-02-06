@@ -263,8 +263,11 @@ class JettonBurnParser(Parser):
         response_destination = reader.read_address()
         custom_payload = None
         # TODO move Maybe parsing to utils
-        if reader.read_uint(1):
-            custom_payload = cell.refs.pop(0)
+        try:
+            if reader.read_uint(1):
+                custom_payload = cell.refs.pop(0)
+        except:
+            logger.warning("Wrong custom payload format")
 
         burn = JettonBurn(
             msg_id = context.message.msg_id,
