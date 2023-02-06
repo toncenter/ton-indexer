@@ -278,7 +278,7 @@ class JettonBurnParser(Parser):
             owner = context.message.source,
             wallet = context.message.destination,
             response_destination = response_destination,
-            custom_payload = custom_payload
+            custom_payload = custom_payload.serialize_boc() if custom_payload is not None else None
         )
         logger.info(f"Adding jetton transfer {burn}")
 
