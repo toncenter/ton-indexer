@@ -234,7 +234,7 @@ class JettonMintParser(Parser):
             forward_payload = forward_payload.serialize_boc() if forward_payload is not None else None,
             sub_op = sub_op
         )
-        logger.info(f"Adding jetton transfer {mint}")
+        logger.info(f"Adding jetton mint {mint}")
 
         await upsert_entity(session, mint)
 
@@ -280,7 +280,7 @@ class JettonBurnParser(Parser):
             response_destination = response_destination,
             custom_payload = custom_payload.serialize_boc() if custom_payload is not None else None
         )
-        logger.info(f"Adding jetton transfer {burn}")
+        logger.info(f"Adding jetton burn {burn}")
 
         await upsert_entity(session, burn)
 
