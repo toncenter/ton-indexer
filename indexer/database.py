@@ -386,9 +386,12 @@ class AccountState(Base):
     @classmethod
     def raw_account_info_to_content_dict(cls, raw, address):
         code_cell = None
-        if len(raw['code']) > 0:
-            code_cell_boc = codecs.decode(codecs.encode(raw['code'], 'utf8'), 'base64')
-            code_cell = deserialize_boc(code_cell_boc)
+        try:
+            if len(raw['code']) > 0:
+                code_cell_boc = codecs.decode(codecs.encode(raw['code'], 'utf8'), 'base64')
+                code_cell = deserialize_boc(code_cell_boc)
+        except NotImplementedError:
+            logger.error(f"NotImplementedError for {address}")
 
         return {
             'address': address,
