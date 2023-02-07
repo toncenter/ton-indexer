@@ -456,6 +456,8 @@ class JettonTransfer(Base):
 
     id: int = Column(BigInteger, primary_key=True)
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
     successful: bool = Column(Boolean)
     originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
     query_id: str = Column(String)
@@ -485,6 +487,8 @@ class JettonMint(Base):
 
     id: int = Column(BigInteger, primary_key=True)
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
     successful: bool = Column(Boolean)
     originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
     query_id: str = Column(String)
@@ -513,6 +517,8 @@ class JettonBurn(Base):
 
     id: int = Column(BigInteger, primary_key=True)
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
     successful: bool = Column(Boolean)
     originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
     query_id: str = Column(String)
