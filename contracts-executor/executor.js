@@ -100,7 +100,7 @@ async function execute(req) {
           const layout = content.readUint(8).toNumber();
           if (layout == 0) {
             console.log("On chain metadata layout detected")
-            const data = content.readDict(256, (slice) => parseStrValue(slice));
+            const data = content.readDict(256, (slice) => parseStrValue(slice).replace('\x00', ''));
             let outData = {};
             data.forEach((value, key) => {
               if (parseInt(key) in METADATA_KEYS) {
