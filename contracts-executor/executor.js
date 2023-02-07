@@ -30,7 +30,7 @@ function parseSnakeFormat(slice) {
   return buff
 }
 
-function parseStrValue(slice, is_first=false) {
+function parseStrValue(slice, is_first=true) {
   if (slice.remaining == 0) {
     if (slice.refs.length > 0) {
       return slice.refs.map((cell, idx) => parseStrValue(cell.beginParse(), idx == 0)).join('')
