@@ -460,9 +460,9 @@ async def get_outbox_items(session: Session, limit: int) -> ParseOutbox:
 async def remove_outbox_item(session: Session, outbox_id: int):
     return await session.execute(delete(ParseOutbox).where(ParseOutbox.outbox_id == outbox_id))
 
-async def postpone_outbox_item(session: Session, outbox_id: int, seconds: int):
-    await session.execute(update(ParseOutbox).where(ParseOutbox.outbox_id == outbox_id)\
-                          .values(added_time=int(datetime.today().timestamp()) + seconds))
+async def postpone_outbox_item(session: Session, outbox: ParseOutbox, seconds: int):
+    await session.execute(update(ParseOutbox).where(ParseOutbox.outbox_id == outbox.outbox_id)\
+                          .values(added_time=int(datetime.today().timestamp()) + seconds, attempts=outbox.attempts  +1))
 
 async def get_originated_msg_id(session: Session, msg: Message) -> int:
     if msg.out_tx_id is None:

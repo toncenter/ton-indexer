@@ -50,7 +50,7 @@ async def parse_outbox():
                             await parser.parse(session, ctx)
                 except Exception as e:
                     logger.error(f'Failed to perform parsing for outbox item {task.outbox_id}: {traceback.format_exc()}')
-                    await postpone_outbox_item(session, task.outbox_id, settings.parser.retry.timeout)
+                    await postpone_outbox_item(session, task, settings.parser.retry.timeout)
                     await asyncio.sleep(1) # simple throttling
                     successful = False
                 if successful:

@@ -386,9 +386,12 @@ class AccountState(Base):
     @classmethod
     def raw_account_info_to_content_dict(cls, raw, address):
         code_cell = None
-        if len(raw['code']) > 0:
-            code_cell_boc = codecs.decode(codecs.encode(raw['code'], 'utf8'), 'base64')
-            code_cell = deserialize_boc(code_cell_boc)
+        try:
+            if len(raw['code']) > 0:
+                code_cell_boc = codecs.decode(codecs.encode(raw['code'], 'utf8'), 'base64')
+                code_cell = deserialize_boc(code_cell_boc)
+        except NotImplementedError:
+            logger.error(f"NotImplementedError for {address}")
 
         return {
             'address': address,
@@ -429,16 +432,18 @@ class ParseOutbox(Base):
     added_time: int = Column(BigInteger)
     entity_type = Column(BigInteger)
     entity_id: int = Column(BigInteger)
+    attempts: int = Column(BigInteger)
 
     __table_args__ = (Index('parse_outbox_index_1', 'added_time'),
                       UniqueConstraint('entity_type', 'entity_id')
                       )
     @classmethod
-    def generate(cls, entity_type, entity_id, added_time):
+    def generate(cls, entity_type, entity_id, added_time, attempts=0):
         return {
             'entity_type': entity_type,
             'entity_id': entity_id,
-            'added_time': added_time
+            'added_time': added_time,
+            'attempts': attempts
         }
 
 
@@ -451,6 +456,8 @@ class JettonTransfer(Base):
 
     id: int = Column(BigInteger, primary_key=True)
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
     successful: bool = Column(Boolean)
     originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
     query_id: str = Column(String)
@@ -480,6 +487,8 @@ class JettonMint(Base):
 
     id: int = Column(BigInteger, primary_key=True)
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
     successful: bool = Column(Boolean)
     originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
     query_id: str = Column(String)
@@ -508,6 +517,8 @@ class JettonBurn(Base):
 
     id: int = Column(BigInteger, primary_key=True)
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
     successful: bool = Column(Boolean)
     originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
     query_id: str = Column(String)

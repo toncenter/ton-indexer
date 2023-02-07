@@ -280,7 +280,7 @@ class AccountsIndexer(BaseScheduler):
                 logger.warning("Task _push_to_queue was cancelled")
                 return
             except BaseException as e:
-                logger.error("Task _push_to_queue raised exception: {exception}", exception=e)
+                logger.error(f"Task _push_to_queue raised exception: {exception}", exception=e)
 
     async def _index_accounts(self):
         while True:
@@ -289,7 +289,10 @@ class AccountsIndexer(BaseScheduler):
                     await asyncio.sleep(1)
                     continue
 
-                await self.max_parallel_tasks_semaphore.acquire()
+                if len(self.running_tasks) > 4 * settings.indexer.workers_count:
+                    await asyncio.sleep(1)
+                    continue
+
                 chunk = []
                 while len(chunk) < settings.indexer.accounts_per_task:
                     try:
@@ -326,7 +329,6 @@ class AccountsIndexer(BaseScheduler):
                     self.running_tasks = still_running
 
                 for task, chunk in done_tasks:
-                    self.max_parallel_tasks_semaphore.release()
                     async_result = task.result()
                     try:
                         async_result.get()

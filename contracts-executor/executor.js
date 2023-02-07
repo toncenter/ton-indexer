@@ -22,20 +22,36 @@ METADATA_KEYS = {
   95542036767220248279389797734652506193411128639728265318048579598694325246656: 'render_type'
 }
 
+function parseSnakeFormat(slice) {
 
-function parseStrValue(slice) {
+  let buff = slice.readRemainingBytes().toString();
+  for (let ref of slice.refs) {
+    buff += parseSnakeFormat(ref.beginParse())
+  }
+  return buff
+}
+
+function safe(x) {
+  return x.replace("\00", "")
+}
+
+function parseStrValue(slice, is_first=true) {
   if (slice.remaining == 0) {
     if (slice.refs.length > 0) {
-      return slice.refs.map(cell => parseStrValue(cell.beginParse())).join('');
+      return slice.refs.map((cell, idx) => parseStrValue(cell.beginParse(), idx == 0)).join('')
     } else {
       return undefined;
     }
   }
-  const tag = slice.readUint(8);
-  if (tag == 0) {
-    return slice.readRemainingBytes().toString();
+  if (is_first) {
+    const tag = slice.readUint(8);
+    if (tag == 0) {
+      return parseSnakeFormat(slice)
+    } else {
+      throw new Error("Wrong content tag: " + tag)
+    }
   } else {
-    throw new Error("Wrong content tag: " + tag)
+    return parseSnakeFormat(slice)
   }
 }
 
@@ -89,11 +105,11 @@ async function execute(req) {
           const layout = content.readUint(8).toNumber();
           if (layout == 0) {
             console.log("On chain metadata layout detected")
-            const data = content.readDict(256, (slice) => parseStrValue(slice));
+            const data = content.readDict(256, (slice) => safe(parseStrValue(slice)));
             let outData = {};
             data.forEach((value, key) => {
               if (parseInt(key) in METADATA_KEYS) {
-                outData[METADATA_KEYS[parseInt(key)]] = value;
+                outData[METADATA_KEYS[parseInt(key)]] = safe(value);
               } else {
                 throw new Error("Unknown metadata field: " + key);
               }
@@ -111,8 +127,8 @@ async function execute(req) {
               content: content.readRemainingBytes().toString()
             }
           }
-        } catch {
-          console.warn("Unable to parse metadata", value)
+        } catch (e) {
+          console.warn("Unable to parse metadata", value, e)
         }
       } else if (req.expected[idx] == 'boc') {
         return value.toBoc().toString("base64");

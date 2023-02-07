@@ -6,6 +6,7 @@ TODO get rid of it and switch to tonsdk
 
 from bitarray import bitarray
 import codecs
+import logging
 
 class BitReader:
 
@@ -71,7 +72,8 @@ class BitReader:
         elif addr_type == '00':  # addr_none
             return None
         else:
-            raise Exception(f"Unsupported addr type: {addr_type}")
+            logging.warning(f"Unsupported addr type: {addr_type}")
+            return None
 
     """
     var_uint$_ {n:#} len:(#< n) value:(uint (len * 8)) = VarUInteger n;

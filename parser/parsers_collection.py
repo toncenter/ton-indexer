@@ -148,7 +148,9 @@ class JettonTransferParser(Parser):
         """
         transfer = JettonTransfer(
             msg_id = context.message.msg_id,
-            successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0, # TODO check
+            created_lt = context.message.created_lt,
+            utime = context.destination_tx.utime,
+            successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0,
             originated_msg_id = await get_originated_msg_id(session, context.message),
             query_id = str(query_id),
             amount = amount,
@@ -222,6 +224,8 @@ class JettonMintParser(Parser):
 
         mint = JettonMint(
             msg_id = context.message.msg_id,
+            created_lt = context.message.created_lt,
+            utime = context.destination_tx.utime,
             successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0,
             originated_msg_id = await get_originated_msg_id(session, context.message),
             query_id = str(query_id),
@@ -271,6 +275,8 @@ class JettonBurnParser(Parser):
 
         burn = JettonBurn(
             msg_id = context.message.msg_id,
+            created_lt = context.message.created_lt,
+            utime = context.destination_tx.utime,
             successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0,
             originated_msg_id = await get_originated_msg_id(session, context.message),
             query_id = str(query_id),
