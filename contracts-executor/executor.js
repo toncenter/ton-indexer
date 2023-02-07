@@ -23,11 +23,16 @@ METADATA_KEYS = {
 }
 
 function parseSnakeFormat(slice) {
+
   let buff = slice.readRemainingBytes().toString();
   for (let ref of slice.refs) {
     buff += parseSnakeFormat(ref.beginParse())
   }
   return buff
+}
+
+function safe(x) {
+  return x.replace("\00", "")
 }
 
 function parseStrValue(slice, is_first=true) {
@@ -100,11 +105,11 @@ async function execute(req) {
           const layout = content.readUint(8).toNumber();
           if (layout == 0) {
             console.log("On chain metadata layout detected")
-            const data = content.readDict(256, (slice) => parseStrValue(slice).replace('\x00', ''));
+            const data = content.readDict(256, (slice) => safe(parseStrValue(slice)));
             let outData = {};
             data.forEach((value, key) => {
               if (parseInt(key) in METADATA_KEYS) {
-                outData[METADATA_KEYS[parseInt(key)]] = value;
+                outData[METADATA_KEYS[parseInt(key)]] = safe(value);
               } else {
                 throw new Error("Unknown metadata field: " + key);
               }
