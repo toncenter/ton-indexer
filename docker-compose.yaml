@@ -3,7 +3,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: deploy/web.Dockerfile
+      dockerfile: deploy/api.Dockerfile
     ports:
       - ${TON_INDEXER_HTTP_PORT:-80}:8081
     environment:
@@ -100,8 +100,9 @@ services:
     restart: unless-stopped
   postgres:
     image: postgres
+    command: postgres -c 'max_connections=5000'
     restart: unless-stopped
-    shm_size: 1gb
+    shm_size: 8gb
     environment: 
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password

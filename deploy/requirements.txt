@@ -19,4 +19,5 @@ sqlalchemy-utils
 tqdm
 requests
 asgiref
-pytonlib==0.0.32
+git+https://github.com/toncenter/pytonlib.git@msg_bodies
+uvloop
