@@ -1,3 +1,6 @@
 [submodule "external/pybind11"]
 	path = external/pybind11
 	url = https://github.com/pybind/pybind11.git
+[submodule "external/ton"]
+	path = external/ton
+	url = https://github.com/ton-blockchain/ton
