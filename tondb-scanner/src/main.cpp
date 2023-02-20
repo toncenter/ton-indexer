@@ -7,8 +7,11 @@
 #include "td/utils/check.h"
 
 #include "validator/manager-disk.h"
+#include "validator/db/rootdb.hpp"
 
 #include "crypto/vm/cp0.h"
+
+using namespace ton::validator;
 
 class DbScanner: public td::actor::Actor {
 private:
@@ -24,28 +27,34 @@ public:
     db_root_ = db_root;
   }
 
-  td::Status create_validator_options() {
-    opts_ = ton::validator::ValidatorManagerOptions::create(
-      ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()},
-      ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()});
-    return td::Status::OK();
-  }
+  // td::Status create_validator_options() {
+  //   opts_ = ton::validator::ValidatorManagerOptions::create(
+  //     ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()},
+  //     ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()});
+  //   return td::Status::OK();
+  // }
 
   void run() {
     std::cout << "Running!" << std::endl;
 
-    auto top_block_str = td::Slice("(-1,8000000000000000,0):B0495C92E8472EBD35F6278C1F6F89D46ADB361861BEB2F80379189CA1C5648A:2E6E0C7CA165389C4759C0331F24C7C47898DDFE62AA3CB1F74CA1E27B610D1C");
+    auto top_block_str = td::Slice("(-1,8000000000000000,7002925):AB657E913624D4C1E3316E6CC0BBCB24CEC6868F7532314B99EE9C7DE5438A45:F2788947E2A453863BC213ACAE48DA7904C8F2610731B5BB25194494A6C09FE2");
     bool status = block::parse_block_id_ext(top_block_str, shard_top_block_id_);
     if (!status) {
       std::cout << "ERROR parsing block" << std::endl;
     }
+    
+    auto db = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_);
 
-    auto Sr = create_validator_options();
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<BlockHandle> R) {
+      if (R.is_error()) {
+        LOG(ERROR) << R.move_as_error();
+      } else {
+        auto k = R.move_as_ok();
+        LOG(ERROR) << "GOT HANDLE";
+      }
+    });
 
-    auto opts = opts_;
-    opts.write().set_initial_sync_disabled(false);
-    validator_manager_ = ton::validator::ValidatorManagerDiskFactory::create(ton::PublicKeyHash::zero(), opts, shard_,
-                                                                             shard_top_block_id_, db_root_);
+    td::actor::send_closure(db, &RootDb::get_block_handle, shard_top_block_id_, std::move(P));
   }
 };
 
