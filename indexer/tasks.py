@@ -50,8 +50,17 @@ class InterfaceDetector:
         }
         load_smc_response = await self.client.tonlib_wrapper.execute(load_smc_request, timeout=self.client.tonlib_timeout)
         smc_id = load_smc_response['id']
-        
-        interfaces = await asyncio.gather(*[self.is_jetton_wallet(smc_id), self.is_jetton_master(smc_id), self.is_nft_item(smc_id), self.is_nft_collection(smc_id)])
+        detectors = [
+            self.is_jetton_wallet, 
+            self.is_jetton_master, 
+            self.is_nft_item, 
+            self.is_nft_collection,
+            self.is_nft_royalty,
+            self.is_domain,
+            self.is_subscription,
+            self.is_auction
+        ]
+        interfaces = await asyncio.gather(*[d(smc_id) for d in detectors])
         interfaces = [item for sublist in interfaces for item in sublist]
 
         return interfaces
@@ -116,6 +125,52 @@ class InterfaceDetector:
         except:
             return []
         return ["nft_collection"]
+
+    async def is_nft_royalty(self, smc_id):
+        r = await self.run_get_method(smc_id, 'royalty_params')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            assert len(r['stack']) == 3
+            read_stack_num(r['stack'][0])
+            read_stack_num(r['stack'][1])
+            read_stack_slice(r['stack'][2])
+        except:
+            return []
+        return ["nft_royalty"]
+
+    async def is_domain(self, smc_id):
+        r = await self.run_get_method(smc_id, 'get_domain')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            read_stack_cell(r['stack'][0])
+        except:
+            return []
+        return ["domain"]
+
+    async def is_subscription(self, smc_id):
+        r = await self.run_get_method(smc_id, 'get_subscription_data')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            assert len(r['stack']) == 10
+        except:
+            return []
+        return ["subscription"]
+    
+    async def is_auction(self, smc_id):
+        r = await self.run_get_method(smc_id, 'get_auction_info')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            assert len(r['stack']) == 3
+            read_stack_slice(r['stack'][0])
+            read_stack_num(r['stack'][1])
+            read_stack_num(r['stack'][2])
+        except:
+            return []
+        return ["auction"]
 
 
 class IndexWorker():
@@ -257,7 +312,7 @@ class IndexWorker():
                                                      decode_messages=False)
         return tx, tx_full[0]
     
-    async def _get_code_hash(self, tx, tx_detail, mc_block):
+    async def _get_code_hash_and_balance(self, tx, tx_detail, mc_block):
         request = {
             '@type': 'withBlock',
             'id': mc_block,
@@ -270,6 +325,7 @@ class IndexWorker():
         }
         acc_state = await self.client.tonlib_wrapper.execute(request, timeout=self.client.tonlib_timeout)
         tx_detail['code_hash'] = acc_state['code_hash']
+        tx_detail['balance'] = acc_state['balance']
         return tx, tx_detail
 
     async def _get_raw_info(self, seqno):
@@ -283,7 +339,7 @@ class IndexWorker():
         #     if spec_actions > 0:
 
 
-        transactions = [await asyncio.gather(*[self._get_code_hash(tx, tx_detail, blocks[0]) for tx, tx_detail in txes]) for txes in transactions]
+        transactions = [await asyncio.gather(*[self._get_code_hash_and_balance(tx, tx_detail, blocks[0]) for tx, tx_detail in txes]) for txes in transactions]
 
         return blocks, headers, transactions
     
@@ -291,7 +347,7 @@ class IndexWorker():
         blocks = await self._get_block_with_shards(seqno)
         headers = await asyncio.gather(*[self._get_block_header(block) for block in blocks])
         transactions = await asyncio.gather(*[self._get_block_transactions_ext(block) for block in blocks])
-        transactions = [await asyncio.gather(*[self._get_code_hash(tx, tx_detail, blocks[0]) for tx, tx_detail in txes]) for txes in transactions]
+        transactions = [await asyncio.gather(*[self._get_code_hash_and_balance(tx, tx_detail, blocks[0]) for tx, tx_detail in txes]) for txes in transactions]
         return blocks, headers, transactions
     
     def get_raw_info(self, seqno):

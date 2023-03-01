@@ -173,11 +173,15 @@ class Transaction(Base):
     
     tx_id: int = Column(BigInteger, autoincrement=True, primary_key=True)
     account: str = Column(String)
-    account_code_hash: str = Column(String, ForeignKey("code_hash.code_hash"))
-    account_code_hash_rel = relationship("CodeHashInterfaces")
+    account_code_hash: str = Column(String)
+    # account_code_hash_rel = relationship("CodeHashInterfaces")
+    account_code_hash_rel = relationship('CodeHashInterfaces', foreign_keys=[account_code_hash],
+                                primaryjoin='CodeHashInterfaces.code_hash == Transaction.account_code_hash')
+
     lt: int = Column(BigInteger)
     hash: str = Column(String(44))
     
+    balance: int = Column(BigInteger)
     utime: int = Column(BigInteger)
     fee: int = Column(BigInteger)
     storage_fee: int = Column(BigInteger)
@@ -239,6 +243,7 @@ class Transaction(Base):
             'account_code_hash': raw_detail['code_hash'],
             'lt': int(raw['lt']),
             'hash': raw['hash'],
+            'balance': int(raw_detail['balance']),
             'utime': raw_detail['utime'],
             'fee': int(raw_detail['fee']),
             'storage_fee': int(raw_detail['storage_fee']),
@@ -273,6 +278,7 @@ class Message(Base):
     ihr_disabled: bool = Column(Boolean)
     bounce: bool = Column(Boolean)
     bounced: bool = Column(Boolean)
+    has_init_state: bool = Column(Boolean)
     import_fee: int = Column(BigInteger)
     
     out_tx_id = Column(BigInteger, ForeignKey("transactions.tx_id"))
@@ -329,6 +335,7 @@ class Message(Base):
             'ihr_disabled': raw['ihr_disabled'] if raw['ihr_disabled'] != -1 else None,
             'bounce': int(raw['bounce']) if int(raw['bounce']) != -1 else None,
             'bounced': int(raw['bounced']) if int(raw['bounced']) != -1 else None,
+            'has_init_state': int(raw['has_init_state']),
             'import_fee': int(raw['import_fee']) if int(raw['import_fee']) != -1 else None,
         }
 
@@ -353,5 +360,14 @@ class CodeHashInterfaces(Base):
     __tablename__ = 'code_hash'
 
     code_hash = Column(String, primary_key=True)
-    interfaces = Column(ARRAY(Enum('nft_item', 'nft_editable', 'nft_collection', 'jetton_wallet', 'jetton_master', name='interface_name')))
+    interfaces = Column(ARRAY(Enum('nft_item', 
+                                   'nft_editable', 
+                                   'nft_collection', 
+                                   'nft_royalty',
+                                   'jetton_wallet', 
+                                   'jetton_master',
+                                   'domain',
+                                   'subscription',
+                                   'auction',
+                                   name='interface_name')))
 
