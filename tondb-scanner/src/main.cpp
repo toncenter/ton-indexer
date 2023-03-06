@@ -1,4 +1,5 @@
 #include <iostream>
+#include <queue>
 
 #include "td/utils/port/signals.h"
 #include "td/utils/OptionParser.h"
@@ -13,17 +14,65 @@
 
 using namespace ton::validator;
 
+// class IndexQuery: public td::actor::Actor {
+// private:
+//   const int mc_seqno_;
+//   td::actor::ActorId<ton::validator::RootDb> db_;
+//   td::Promise<td::Ref<BlockData>> promise_;
+
+// public:
+//   IndexQuery(int mc_seqno, td::actor::ActorId<ton::validator::RootDb> db, td::Promise<td::Ref<BlockData>> &&promise) : 
+//     db_(db), 
+//     mc_seqno_(mc_seqno),
+//     promise_(promise) {
+//   }
+
+//   void start_up() override {
+//     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ConstBlockHandle> R) {
+//       td::actor::send_closure(SelfId, &IndexQuery::got_block_handle, std::move(R));
+//     });
+
+//     td::actor::send_closure(db_, &RootDb::get_block_by_seqno, ton::AccountIdPrefixFull(ton::masterchainId, ton::shardIdAll), mc_seqno_, std::move(P));
+//   }
+
+//   void got_block_handle(td::Result<ConstBlockHandle> handle) {
+//     if (handle.is_error()) {
+//       promise_.set_result(handle);
+//       return;
+//     }
+
+//     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<BlockData>> R) {
+//       td::actor::send_closure(SelfId, &IndexQuery::got_block_data, std::move(R));
+//     });
+
+//     td::actor::send_closure(db_, &RootDb::get_block_data, handle.move_as_ok(), std::move(P));
+//   }
+
+//   void got_block_data(td::Result<td::Ref<BlockData>> block_data) {
+//     promise_.set_result(std::move(block_data));
+//   }
+// };
+
 class DbScanner: public td::actor::Actor {
 private:
   td::actor::ActorOwn<ton::validator::ValidatorManagerInterface> validator_manager_;
-
-  std::string db_root_;
   td::actor::ActorOwn<ton::validator::RootDb> db_;
 
-public:
+  std::string db_root_;
+  int bottom_seqno_{0};
+  
+  std::queue<int> seqnos_to_process_;
+  std::set<int> seqnos_in_progress;
+  int last_known_seqno_{0};
 
+public:
   void set_db_root(std::string db_root) {
     db_root_ = db_root;
+  }
+
+  void set_bottom_seqno(int seqno) {
+    bottom_seqno_ = seqno;
+    last_known_seqno_ = seqno;
   }
 
   void start_up() override {
@@ -31,20 +80,40 @@ public:
   }
 
   void run() {
-    std::cout << "Running!" << std::endl;
-    
     db_ = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_);
+  }
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ConstBlockHandle> R) {
-      if (R.is_error()) {
-        LOG(ERROR) << R.move_as_error();
-      } else {
-        auto k = R.move_as_ok();
-        LOG(ERROR) << "GOT HANDLE";
-      }
+private:
+  void update_last_mc_seqno() {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<int> R) {
+      R.ensure();
+      td::actor::send_closure(SelfId, &DbScanner::set_last_mc_seqno, R.move_as_ok());
     });
 
-    td::actor::send_closure(db_, &RootDb::get_block_by_seqno, ton::AccountIdPrefixFull(ton::masterchainId, ton::shardIdAll), 7139009, std::move(P));
+    td::actor::send_closure(db_, &RootDb::get_max_masterchain_seqno, std::move(P));
+  }
+
+  void set_last_mc_seqno(int mc_seqno) {
+    if (mc_seqno > last_known_seqno_) {
+      LOG(INFO) << "New masterchain seqno: " << mc_seqno;
+    }
+    for (int s = last_known_seqno_ + 1; s < mc_seqno; s++) {
+      seqnos_to_process_.push(s);
+    }
+  }
+
+  void catch_up_with_primary() {
+    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Unit> R) {
+      R.ensure();
+    });
+    td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, std::move(R));
+  }
+
+  void schedule_for_processing() {
+    // auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Unit> R) {
+      
+    // });
+    // td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, std::move(R));
   }
 
   void alarm() override {
@@ -53,25 +122,9 @@ public:
       return;
     }
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<int> R) {
-      if (R.is_error()) {
-        LOG(ERROR) << R.move_as_error();
-      } else {
-        auto k = R.move_as_ok();
-        LOG(INFO) << "Max masterchain seqno: " << k;
-      }
-    });
-
-    td::actor::send_closure(db_, &RootDb::get_max_masterchain_seqno, std::move(P));
-
-    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Unit> R) {
-      if (R.is_error()) {
-        LOG(ERROR) << R.move_as_error();
-      } else {
-        LOG(INFO) << "Catch up with primary successful";
-      }
-    });
-    td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, std::move(R));
+    td::actor::send_closure(actor_id(this), &DbScanner::update_last_mc_seqno);
+    td::actor::send_closure(actor_id(this), &DbScanner::catch_up_with_primary);
+    td::actor::send_closure(actor_id(this), &DbScanner::schedule_for_processing);
   }
 };
 
