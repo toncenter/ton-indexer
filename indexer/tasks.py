@@ -194,7 +194,6 @@ class IndexWorker():
 
     async def _get_block_with_shards(self, seqno):
         master_block = await self.client.lookup_block(MASTERCHAIN_INDEX, MASTERCHAIN_SHARD, seqno)
-        # master_block.pop('@type')
         master_block.pop('@extra')
         
         shards_blocks = []
@@ -332,12 +331,6 @@ class IndexWorker():
         headers = await asyncio.gather(*[self._get_block_header(block) for block in blocks])
         transactions = await asyncio.gather(*[self._get_block_transactions(block) for block in blocks])
         transactions = [await asyncio.gather(*[self._get_transaction_details(tx) for tx in txes]) for txes in transactions]
-        # for tx_id, tx_details in transactions:
-        #     tx_parsed = parse_tlb_object(tx_details["data"], Transaction)
-        #     spec_actions = tx_parsed['description'].get('action', {}).get('spec_actions', 0)
-        #     if spec_actions > 0:
-
-
         transactions = [await asyncio.gather(*[self._get_code_hash_and_balance(tx, tx_detail, blocks[0]) for tx, tx_detail in txes]) for txes in transactions]
 
         return blocks, headers, transactions
