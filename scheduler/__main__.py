@@ -11,7 +11,7 @@ from indexer.crud import get_existing_seqnos_between_interval
 from pytonlib import TonlibError, LiteServerTimeout, BlockDeleted
 from config import settings
 from loguru import logger
-
+from sqlalchemy.exc import IntegrityError
 
 def wait_for_broker_connection():
     while True:
@@ -156,6 +156,8 @@ class IndexScheduler:
     def handle_insert_blocks_result(self, seqno, seqno_result, arg):
         if seqno_result is None:
             logger.debug("Masterchain block {seqno} was inserted to DB.", seqno=seqno)
+        elif isinstance(seqno_result, IntegrityError):
+            logger.critical("Masterchain block {seqno} already exists in DB, skipping", seqno=seqno)
         elif isinstance(seqno_result, BaseException):
             logger.critical("Masterchain block {seqno} failed to insert to DB. Exception of type {exc_type} occured: {exception}", 
                 seqno=seqno, exc_type=type(seqno_result).__name__, exception=seqno_result)

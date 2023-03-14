@@ -13,7 +13,7 @@ from indexer.database import SessionMaker
 from indexer import crud
 
 # TODO: Move to pytonlib
-from pytonlib.utils.common import b64str_to_hex
+from pytonlib.utils.common import hex_to_b64str
 def hash_to_b64(b64_or_hex_hash):
     """
     Detect encoding of transactions hash and if necessary convert it to Base64.
@@ -23,7 +23,7 @@ def hash_to_b64(b64_or_hex_hash):
         return b64_or_hex_hash
     if len(b64_or_hex_hash) == 64:
         # Hash is hex
-        return b64str_to_hex(b64_or_hex_hash)
+        return hex_to_b64str(b64_or_hex_hash)
     raise ValueError("Invalid hash")
 
 
@@ -56,13 +56,14 @@ UINT32_MAX = 2**32 - 1
 async def get_transactions_by_masterchain_seqno(
     seqno: int = Query(..., description="Masterchain seqno", ge=0, le=UINT32_MAX),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    include_block: bool = Query(False, description="If true response contains corresponding block for each transaction"),
     db: Session = Depends(get_db)
     ):
     """
     Get transactions by masterchain seqno across all workchains and shardchains.
     """
-    db_transactions = await db.run_sync(crud.get_transactions_by_masterchain_seqno, seqno, include_msg_body)
-    return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
+    db_transactions = await db.run_sync(crud.get_transactions_by_masterchain_seqno, seqno, include_msg_body, include_block)
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body, include_block) for t in db_transactions]
 
 @router.get('/getTransactionsByAddress', response_model=List[schemas.Transaction])
 async def get_transactions_by_address(
@@ -73,6 +74,7 @@ async def get_transactions_by_address(
     offset: int = Query(0, description="Number of rows to omit before the beginning of the result set"),
     sort: str = Query("desc", description="Use `asc` to get oldest transactions first and `desc` to get newest first."),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    include_block: bool = Query(False, description="If true response contains corresponding block for each transaction"),
     db: Session = Depends(get_db)
     ):
     """
@@ -82,12 +84,12 @@ async def get_transactions_by_address(
         raw_address = detect_address(address)["raw_form"]
     except Exception:
         raise HTTPException(status_code=416, detail="Invalid address")
-    db_transactions = await db.run_sync(crud.get_transactions_by_address, raw_address, start_utime, end_utime, limit, offset, sort, include_msg_body)
-    return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
+    db_transactions = await db.run_sync(crud.get_transactions_by_address, raw_address, start_utime, end_utime, limit, offset, sort, include_msg_body, include_block)
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body, include_block) for t in db_transactions]
 
 @router.get('/getTransactionsInBlock', response_model=List[schemas.Transaction])
 async def get_transactions_in_block(
-    workchain: int = Query(..., description="Block workchain", ge=0, le=INT32_MAX),
+    workchain: int = Query(..., description="Block workchain", ge=INT32_MIN, le=INT32_MAX),
     shard: int = Query(..., description="Block shard", ge=INT64_MIN, le=INT64_MAX),
     seqno: int = Query(..., description="Block seqno", ge=0, le=UINT32_MAX),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
@@ -97,23 +99,24 @@ async def get_transactions_in_block(
     Get transactions included in specified block.
     """
     db_transactions = await db.run_sync(crud.get_transactions_in_block, workchain, shard, seqno, include_msg_body)
-    return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body, False) for t in db_transactions]
 
 @router.get('/getChainLastTransactions', response_model=List[schemas.Transaction])
 async def get_chain_last_transactions(
-    workchain: Optional[int] = Query(..., description="Transactions workchain", ge=0, le=INT32_MAX),
+    workchain: Optional[int] = Query(..., description="Transactions workchain", ge=INT32_MIN, le=INT32_MAX),
     start_utime: Optional[int] = Query(None, description="UTC timestamp to start searching transactions", ge=0, le=UINT32_MAX),
     end_utime: Optional[int] = Query(None, description="UTC timestamp to stop searching transactions. If not specified latest transactions are returned.", ge=0, le=UINT32_MAX),
     limit: int = Query(20, description="Number of transactions to return, maximum value is 1000", ge=1, lt=1000),
     offset: int = Query(0, description="Number of rows to omit before the beginning of the result set"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    include_block: bool = Query(False, description="If true response contains corresponding block for each transaction"),
     db: Session = Depends(get_db)
     ):
     """
     Get latest transaction in workchain. Response is sorted desceding by transaction timestamp.
     """
-    db_transactions = await db.run_sync(crud.get_chain_last_transactions, workchain, start_utime, end_utime, limit, offset, include_msg_body)
-    return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]    
+    db_transactions = await db.run_sync(crud.get_chain_last_transactions, workchain, start_utime, end_utime, limit, offset, include_msg_body, include_block)
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body, include_block) for t in db_transactions]    
 
 @router.get('/getMessagesByHash', response_model=List[schemas.Message])
 async def get_messages_by_hash(
@@ -142,14 +145,15 @@ async def get_messages_by_hash(
 async def get_transaction_by_hash(
     tx_hash: str = Query(..., description="Transaction hash"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    include_block: bool = Query(False, description="If true response contains corresponding block for each transaction"),
     db: Session = Depends(get_db)
     ):
     """
     Get transaction with specified hash.
     """
     tx_hash = hash_to_b64(tx_hash)
-    db_transaction = await db.run_sync(crud.get_transaction_by_hash, tx_hash, include_msg_body)
-    return schemas.Transaction.transaction_from_orm(db_transaction, include_msg_body)
+    db_transaction = await db.run_sync(crud.get_transaction_by_hash, tx_hash, include_msg_body, include_block)
+    return schemas.Transaction.transaction_from_orm(db_transaction, include_msg_body, include_block)
 
 @router.get('/getBlockByTransaction', response_model=schemas.Block)
 async def get_block_by_transaction(
@@ -165,7 +169,7 @@ async def get_block_by_transaction(
 
 @router.get('/lookupMasterchainBlock', response_model=schemas.Block)
 async def lookup_masterchain_block(
-    workchain: int = Query(..., description="Block workchain", ge=0, le=INT32_MAX),
+    workchain: int = Query(..., description="Block workchain", ge=INT32_MIN, le=INT32_MAX),
     shard: int = Query(..., description="Block shardchain", ge=INT64_MIN, le=INT64_MAX),
     seqno: int = Query(..., description="Block seqno", ge=0, le=UINT32_MAX),
     db: Session = Depends(get_db)
@@ -182,6 +186,7 @@ async def lookup_masterchain_block(
 async def get_transaction_by_in_message_hash(
     msg_hash: str = Query(..., description="Inbound message hash"),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
+    include_block: bool = Query(False, description="If true response contains corresponding block for each transaction"),
     db: Session = Depends(get_db)
     ):
     """
@@ -189,8 +194,8 @@ async def get_transaction_by_in_message_hash(
     since collisions of message hashes can occur.
     """
     msg_hash = hash_to_b64(msg_hash)
-    db_transactions = await db.run_sync(crud.get_transactions_by_in_message_hash, msg_hash, include_msg_body)
-    return [schemas.Transaction.transaction_from_orm(t, include_msg_body) for t in db_transactions]
+    db_transactions = await db.run_sync(crud.get_transactions_by_in_message_hash, msg_hash, include_msg_body, include_block)
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body, include_block) for t in db_transactions]
 
 @router.get('/getSourceTransactionByMessage', response_model=schemas.Transaction)
 async def get_source_transaction_by_message(
@@ -208,7 +213,7 @@ async def get_source_transaction_by_message(
     except Exception:
         raise HTTPException(status_code=416, detail="Invalid address")
     db_transaction = await db.run_sync(crud.get_source_transaction_by_message, source, destination, msg_lt)
-    return schemas.Transaction.transaction_from_orm(db_transaction, True)
+    return schemas.Transaction.transaction_from_orm(db_transaction, True, True)
 
 @router.get('/getDestinationTransactionByMessage', response_model=schemas.Transaction)
 async def get_destination_transaction_by_message(
@@ -220,14 +225,19 @@ async def get_destination_transaction_by_message(
     """
     Get transaction of `destination` address by outcoming message on `source` address.
     """
+    try:
+        source = detect_address(source)["raw_form"]
+        destination = detect_address(destination)["raw_form"]
+    except Exception:
+        raise HTTPException(status_code=416, detail="Invalid address")
     db_transaction = await db.run_sync(crud.get_destination_transaction_by_message, source, destination, msg_lt)
-    return schemas.Transaction.transaction_from_orm(db_transaction, True)
+    return schemas.Transaction.transaction_from_orm(db_transaction, True, True)
 
 @router.get('/getBlocks', response_model=List[schemas.Block])
 async def get_blocks(
     start_utime: Optional[int] = Query(None, description="UTC timestamp to start searching blocks", ge=0, le=UINT64_MAX),
     end_utime: Optional[int] = Query(None, description="UTC timestamp to stop searching blocks. If not specified latest blocks are returned.", ge=0, le=UINT64_MAX),
-    workchain: Optional[int] = Query(None, description="Filter by workchain", ge=0, le=INT32_MAX),
+    workchain: Optional[int] = Query(None, description="Filter by workchain", ge=INT32_MIN, le=INT32_MAX),
     shard: Optional[int] = Query(None, description="Filter by shard", ge=INT64_MIN, le=INT64_MAX),
     limit: int = Query(20, description="Number of blocks to return, maximum limit is 1000", ge=1, lt=1000),
     offset: int = Query(0, description="Number of rows to omit before the beginning of the result set"),

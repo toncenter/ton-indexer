@@ -149,7 +149,9 @@ async def insert_by_seqno_core(engine, blocks_raw, headers_raw, transactions_raw
                     out_msgs_by_hash[out_msg['hash']].append(out_msg)
                     msg_contents_by_hash[out_msg['hash']] = MessageContent.raw_msg_to_content_dict(out_msg_raw)
 
-        txs_res = (await conn.execute(transaction_t.insert().returning(transaction_t.c.tx_id).values(txs))).all()
+        txs_res = []
+        for chunk in chunks(txs, 1000):
+            txs_res += (await conn.execute(transaction_t.insert().returning(transaction_t.c.tx_id).values(chunk))).all()
 
         for pk, tx in zip(txs_res, tx_details):
             if 'in_msg' in tx:
@@ -224,17 +226,22 @@ def get_account_code_hashes_by_masterchain_seqno(session, masterchain_seqno: int
     
     return query.all()
 
-def augment_transaction_query(query, include_msg_body: bool):
+def augment_transaction_query(query, include_msg_body: bool, include_block: bool):
     if include_msg_body:
-        return query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
-                    .options(joinedload(Transaction.in_msg).joinedload(Message.out_tx).joinedload(Transaction.account_code_hash_rel)) \
-                    .options(joinedload(Transaction.out_msgs).joinedload(Message.content)) \
-                    .options(joinedload(Transaction.out_msgs).joinedload(Message.in_tx).joinedload(Transaction.account_code_hash_rel)) \
-                    .options(joinedload(Transaction.account_code_hash_rel))
-    return query.options(joinedload(Transaction.in_msg)) \
-                .options(joinedload(Transaction.out_msgs))
+        query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
+                     .options(joinedload(Transaction.in_msg).joinedload(Message.out_tx).joinedload(Transaction.account_code_hash_rel)) \
+                     .options(joinedload(Transaction.out_msgs).joinedload(Message.content)) \
+                     .options(joinedload(Transaction.out_msgs).joinedload(Message.in_tx).joinedload(Transaction.account_code_hash_rel)) \
+                     .options(joinedload(Transaction.account_code_hash_rel))
+    else:
+        query = query.options(joinedload(Transaction.in_msg)) \
+                     .options(joinedload(Transaction.out_msgs))
+    if include_block:
+        query = query.options(joinedload(Transaction.block).joinedload(Block.block_header))
+    
+    return query
 
-def get_transactions_by_masterchain_seqno(session, masterchain_seqno: int, include_msg_body: bool):
+def get_transactions_by_masterchain_seqno(session, masterchain_seqno: int, include_msg_body: bool, include_block=False):
     block = session.query(Block).filter(and_(Block.workchain == MASTERCHAIN_INDEX, Block.shard == MASTERCHAIN_SHARD, Block.seqno == masterchain_seqno)).first()
     if block is None:
         raise BlockNotFound(MASTERCHAIN_INDEX, MASTERCHAIN_SHARD, masterchain_seqno)
@@ -242,18 +249,18 @@ def get_transactions_by_masterchain_seqno(session, masterchain_seqno: int, inclu
     query = session.query(Transaction) \
             .filter(Transaction.block_id.in_(block_ids))
 
-    query = augment_transaction_query(query, include_msg_body)
+    query = augment_transaction_query(query, include_msg_body, include_block)
 
     return query.all()
 
-def get_transactions_by_address(session: Session, account: str, start_utime: Optional[int], end_utime: Optional[int], limit: int, offset: int, sort: str, include_msg_body: bool):
+def get_transactions_by_address(session: Session, account: str, start_utime: Optional[int], end_utime: Optional[int], limit: int, offset: int, sort: str, include_msg_body: bool, include_block=False):
     query = session.query(Transaction).filter(Transaction.account == account)
     if start_utime is not None:
         query = query.filter(Transaction.utime >= start_utime)
     if end_utime is not None:
         query = query.filter(Transaction.utime <= end_utime)
 
-    query = augment_transaction_query(query, include_msg_body)
+    query = augment_transaction_query(query, include_msg_body, include_block)
     
     if sort == 'asc':
         query = query.order_by(Transaction.utime.asc(), Transaction.lt.asc())
@@ -274,11 +281,12 @@ def get_transactions_in_block(session: Session, workchain: int, shard: int, seqn
     query = session.query(Transaction) \
             .filter(Transaction.block_id == block.block_id)
 
-    query = augment_transaction_query(query, include_msg_body)
+    query = augment_transaction_query(query, include_msg_body, False)
     
     return query.all()
 
-def get_chain_last_transactions(session: Session, workchain: Optional[int], start_utime: Optional[int], end_utime: Optional[int], limit: int, offset: int, include_msg_body: bool):
+def get_chain_last_transactions(session: Session, workchain: Optional[int], start_utime: Optional[int], end_utime: Optional[int], 
+        limit: int, offset: int, include_msg_body: bool, include_block=False):
     query = session.query(Transaction)
 
     if workchain is not None:
@@ -289,7 +297,7 @@ def get_chain_last_transactions(session: Session, workchain: Optional[int], star
     if end_utime is not None:
         query = query.filter(Transaction.utime <= end_utime)
 
-    query = augment_transaction_query(query, include_msg_body)
+    query = augment_transaction_query(query, include_msg_body, include_block)
 
     query = query.order_by(Transaction.utime.desc(), Transaction.lt.desc())
 
@@ -334,25 +342,25 @@ def get_transactions_by_hash(session: Session, tx_hash: str, include_msg_body: b
     query = query.limit(500)
     return query.all()
 
-def get_transaction_by_hash(session: Session, tx_hash: str, include_msg_body: bool):
+def get_transaction_by_hash(session: Session, tx_hash: str, include_msg_body: bool, include_block=False):
     query = session.query(Transaction).filter(Transaction.hash == tx_hash)
-    query = augment_transaction_query(query, include_msg_body)
+    query = augment_transaction_query(query, include_msg_body, include_block)
     tx = query.first()
     if tx is None:
         raise TransactionNotFound(tx_hash)
     return tx
 
-def get_transactions_by_in_message_hash(session: Session, msg_hash: str, include_msg_body: bool):
+def get_transactions_by_in_message_hash(session: Session, msg_hash: str, include_msg_body: bool, include_block: bool = False):
     query = session.query(Transaction).join(Transaction.in_msg).options(contains_eager(Transaction.in_msg))
     query = query.filter(Message.hash == msg_hash)
-    query = augment_transaction_query(query, include_msg_body)
+    query = augment_transaction_query(query, include_msg_body, include_block)
     query = query.order_by(Transaction.utime.desc()).limit(500)
     return query.all()
 
 def get_source_transaction_by_message(session: Session, source: str, destination: str, msg_lt: int):
     query = session.query(Transaction).join(Transaction.out_msgs).options(contains_eager(Transaction.out_msgs))
     query = query.filter(and_(Message.destination == destination, Message.source == source, Message.created_lt == msg_lt))
-    query = augment_transaction_query(query, True)
+    query = augment_transaction_query(query, True, True)
     transaction = query.first()
     if transaction is None:
         raise MessageNotFound(source, destination, msg_lt)
@@ -361,7 +369,7 @@ def get_source_transaction_by_message(session: Session, source: str, destination
 def get_destination_transaction_by_message(session: Session, source: str, destination: str, msg_lt: int):
     query = session.query(Transaction).join(Transaction.in_msg).options(contains_eager(Transaction.in_msg))
     query = query.filter(and_(Message.destination == destination, Message.source == source, Message.created_lt == msg_lt))
-    query = augment_transaction_query(query, True)
+    query = augment_transaction_query(query, True, True)
     transaction = query.first()
     if transaction is None:
         raise MessageNotFound(source, destination, msg_lt)

@@ -188,7 +188,6 @@ class IndexWorker():
                                    keystore,
                                    loop,
                                    cdll_path=cdll_path,
-                                   verbosity_level=3,
                                    tonlib_timeout=60)
 
         loop.run_until_complete(self.client.init())
@@ -414,12 +413,6 @@ def get_block(self, mc_seqno_list):
     return task_result
 
 async def _fetch_blocks(mc_seqno_list):
-    # async with SessionMaker() as session:
-    #     existing_seqnos = await get_existing_seqnos_from_list(session, mc_seqno_list)
-    # seqnos_to_process = [seqno for seqno in mc_seqno_list if seqno not in existing_seqnos]
-    seqnos_to_process = mc_seqno_list
-
-    logger.info(f"{len(mc_seqno_list) - len(seqnos_to_process)} blocks already exist")
     bht = await asyncio.gather(*[index_worker.fetch_mc_seqno(seqno) for seqno in seqnos_to_process], return_exceptions=True)
     return list(zip(seqnos_to_process, bht))
 
@@ -427,20 +420,6 @@ async def _fetch_blocks(mc_seqno_list):
 @app.task(bind=True, max_retries=None, acks_late=True)
 def fetch_blocks(self, mc_seqno_list):
     return loop.run_until_complete(_fetch_blocks(mc_seqno_list))
-
-    # existing_seqnos = [seqno for seqno in mc_seqno_list if seqno not in seqnos_to_process]
-
-    # overriding default retry logic
-    # max_retry_count = 10
-    # if self.request.retries < max_retry_count:
-    #     for seqno, r in zip(seqnos_to_process, results):
-    #         if isinstance(r, BaseException):
-    #             logger.error(f'Processing seqno {seqno} raised exception: {r} while executing. Retrying {self.request.retries} / {max_retry_count}.')
-    #             raise self.retry(exc=r, countdown=0.1 * self.request.retries)
-
-    # task_result = list(zip(seqnos_to_process, results)) 
-    # task_result += [(seqno, None) for seqno in existing_seqnos] # adding indexed seqnos from previous tries
-    # return task_result
 
 async def _insert_blocks(seqno_blocks_tuples):
     tasks = []
@@ -454,8 +433,6 @@ async def _insert_blocks(seqno_blocks_tuples):
 @app.task(bind=True, max_retries=None, acks_late=True)
 def insert_blocks(self, seqno_blocks_tuples):
     return loop.run_until_complete(_insert_blocks(seqno_blocks_tuples))
-
-
 
 @app.task(acks_late=True)
 def get_last_mc_block():

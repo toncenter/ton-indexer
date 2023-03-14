@@ -2,6 +2,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from pytonlib.utils.address import detect_address
+
 class Block(BaseModel):
     workchain: int
     shard: str
@@ -41,8 +43,8 @@ class Message(BaseModel):
     @classmethod
     def message_from_orm(cls, obj, include_msg_bodies):
         return Message(
-            source=obj.source,
-            destination=obj.destination,
+            source=detect_address(obj.source)["bounceable"]["b64url"] if len(obj.source) else '',
+            destination=detect_address(obj.destination)["bounceable"]["b64url"] if len(obj.destination) else '',
             value=obj.value,
             fwd_fee=obj.fwd_fee,
             ihr_fee=obj.ihr_fee,

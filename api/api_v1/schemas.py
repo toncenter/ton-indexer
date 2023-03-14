@@ -11,14 +11,14 @@ class Block(BaseModel):
     root_hash: str
     file_hash: str
     gen_utime: int
-    start_lt: int
-    end_lt: int
+    start_lt: str
+    end_lt: str
 
     @classmethod
     def block_from_orm_block_header(cls, obj):
         return Block(
             workchain=obj.block.workchain,
-            shard=str(obj.block.shard),
+            shard=obj.block.shard,
             seqno=obj.block.seqno,
             root_hash=obj.block.root_hash,
             file_hash=obj.block.file_hash,
@@ -223,116 +223,122 @@ class RawBody(InternalMsgBody):
     boc: str
 
 def get_msg_body_annotation(body, op, source_interfaces, dest_interfaces):
-    def int32_twos_complement(hexstr):
-        value = int(hexstr, 16)
-        if value & (1 << 31):
-            value -= 1 << 32
-        return value
-
+    op = f'0x{(op & 0xffffffff):08x}' if op is not None else None
     result = None
-    if 'nft_item' in dest_interfaces:
-        if op == int32_twos_complement('0x5fcc3d14'):
-            obj = tlb.boc_to_object(body, tlb.NftTransferMessage)
-            result = NftTransfer.from_tlb(obj)
-        elif op == int32_twos_complement('0x2fcb26a2'):
-            obj = tlb.boc_to_object(body, tlb.NftGetStaticDataMessage)
-            result = NftGetStaticData.from_tlb(obj)
-    if 'nft_item' in source_interfaces:
-        if op == int32_twos_complement('0x05138d91'):
-            obj = tlb.boc_to_object(body, tlb.NftOwnershipAssignedMessage)
-            result = NftOwnershipAssigned.from_tlb(obj)
-        elif op == int32_twos_complement('0xd53276db'):
-            obj = tlb.boc_to_object(body, tlb.NftExcessesMessage)
-            result = NftExcesses.from_tlb(obj)
-        elif op == int32_twos_complement('0x8b771735'):
-            obj = tlb.boc_to_object(body, tlb.NftReportStaticDataMessage)
-            result = NftReportStaticData.from_tlb(obj)
-    if 'jetton_wallet' in dest_interfaces:
-        if op == int32_twos_complement('0x0f8a7ea5'):
-            obj = tlb.boc_to_object(body, tlb.JettonTransferMessage)
-            result = JettonTransfer.from_tlb(obj)
-        elif op == int32_twos_complement('0x595f07bc'):
-            obj = tlb.boc_to_object(body, tlb.JettonBurnMessage)
-            result = JettonBurn.from_tlb(obj)
-        elif op == int32_twos_complement('0x178d4519'):
-            obj = tlb.boc_to_object(body, tlb.JettonInternalTransferMessage)
-            result = JettonInternalTransfer.from_tlb(obj)
-    if 'jetton_wallet' in source_interfaces:
-        if op == int32_twos_complement('0xd53276db'):
-            obj = tlb.boc_to_object(body, tlb.JettonExcessesMessage)
-            result = JettonExcesses.from_tlb(obj)
-        elif op == int32_twos_complement('0x7362d09c'):
-            obj = tlb.boc_to_object(body, tlb.JettonTransferNotificationMessage)
-            result = JettonTransferNotification.from_tlb(obj)
-    if 'jetton_master' in dest_interfaces:
-        if op == int32_twos_complement('0x7bdd97de'):
-            obj = tlb.boc_to_object(body, tlb.JettonBurnNotificationMessage)
-            result = JettonBurnNotification.from_tlb(obj)
+    try:
+        if 'nft_item' in dest_interfaces:
+            if op == '0x5fcc3d14':
+                obj = tlb.boc_to_object(body, tlb.NftTransferMessage)
+                result = NftTransfer.from_tlb(obj)
+            elif op == '0x2fcb26a2':
+                obj = tlb.boc_to_object(body, tlb.NftGetStaticDataMessage)
+                result = NftGetStaticData.from_tlb(obj)
+        if 'nft_item' in source_interfaces:
+            if op == '0x05138d91':
+                obj = tlb.boc_to_object(body, tlb.NftOwnershipAssignedMessage)
+                result = NftOwnershipAssigned.from_tlb(obj)
+            elif op == '0xd53276db':
+                obj = tlb.boc_to_object(body, tlb.NftExcessesMessage)
+                result = NftExcesses.from_tlb(obj)
+            elif op == '0x8b771735':
+                obj = tlb.boc_to_object(body, tlb.NftReportStaticDataMessage)
+                result = NftReportStaticData.from_tlb(obj)
+        if 'jetton_wallet' in dest_interfaces:
+            if op == '0x0f8a7ea5':
+                obj = tlb.boc_to_object(body, tlb.JettonTransferMessage)
+                result = JettonTransfer.from_tlb(obj)
+            elif op == '0x595f07bc':
+                obj = tlb.boc_to_object(body, tlb.JettonBurnMessage)
+                result = JettonBurn.from_tlb(obj)
+            elif op == '0x178d4519':
+                obj = tlb.boc_to_object(body, tlb.JettonInternalTransferMessage)
+                result = JettonInternalTransfer.from_tlb(obj)
+        if 'jetton_wallet' in source_interfaces:
+            if op == '0xd53276db':
+                obj = tlb.boc_to_object(body, tlb.JettonExcessesMessage)
+                result = JettonExcesses.from_tlb(obj)
+            elif op == '0x7362d09c':
+                obj = tlb.boc_to_object(body, tlb.JettonTransferNotificationMessage)
+                result = JettonTransferNotification.from_tlb(obj)
+        if 'jetton_master' in dest_interfaces:
+            if op == '0x7bdd97de':
+                obj = tlb.boc_to_object(body, tlb.JettonBurnNotificationMessage)
+                result = JettonBurnNotification.from_tlb(obj)
 
-    if op == 0:
-        obj = tlb.boc_to_object(body, tlb.CommentMessage)
-        result = Comment.from_tlb(obj)
+        if op == '0x00000000':
+            obj = tlb.boc_to_object(body, tlb.CommentMessage)
+            result = Comment.from_tlb(obj)
+    except BaseException as e:
+        logger.error(f"Error parsing msg with op {op}: {e}")
 
     if result is None:
         result = RawBody(boc=body)
 
-    logger.info(f"MSG BODY: {result}")
     return result
 
 class Message(BaseModel):
     source: str
     destination: str
-    value: int
-    fwd_fee: int
-    ihr_fee: int
-    created_lt: int
-    op: Optional[int]
+    value: str
+    fwd_fee: str
+    ihr_fee: str
+    import_fee: Optional[str]
+    created_lt: str
+    op: Optional[str]
     hash: str
     body_hash: str
+    bounce: Optional[bool]
+    bounced: Optional[bool]
+    has_init_state: bool
     body: Union[NftTransfer, NftOwnershipAssigned, NftExcesses, TextComment, NftGetStaticData, NftReportStaticData,
                 JettonTransfer, JettonBurn, JettonBurnNotification, JettonInternalTransfer, JettonTransferNotification, JettonExcesses,
                 TextComment, BinaryComment, RawBody, None] = Field(..., discriminator='type')
 
     @classmethod
     def message_from_orm(cls, obj, body_model):
-        logger.info(f'm_f_o {obj} ----- {body_model}')
+        op = f'0x{(obj.op & 0xffffffff):08x}' if obj.op is not None else None
         return Message(
             source=obj.source,
             destination=obj.destination,
             value=obj.value,
             fwd_fee=obj.fwd_fee,
             ihr_fee=obj.ihr_fee,
+            import_fee=obj.import_fee,
             created_lt=obj.created_lt,
-            op=obj.op,
+            op=op,
             hash=obj.hash,
             body_hash=obj.body_hash,
-            body=body_model
+            body=body_model,
+            bounce=obj.bounce,
+            bounced=obj.bounced,
+            has_init_state=obj.has_init_state
         )
 
 class Transaction(BaseModel):
     account: str
-    lt: int
+    lt: str
     hash: str
     utime: int
-    fee: int
-    storage_fee: int
-    other_fee: int
+    fee: str
+    storage_fee: str
+    other_fee: str
     transaction_type: str
     compute_skip_reason: Optional[str]
     compute_exit_code: Optional[int]
-    compute_gas_used: Optional[int]
-    compute_gas_limit: Optional[int]
-    compute_gas_credit: Optional[int]
-    compute_gas_fees: Optional[int]
+    compute_gas_used: Optional[str]
+    compute_gas_limit: Optional[str]
+    compute_gas_credit: Optional[str]
+    compute_gas_fees: Optional[str]
     compute_vm_steps: Optional[int]
     action_result_code: Optional[int]
-    action_total_fwd_fees: Optional[int]
-    action_total_action_fees: Optional[int]
-    in_msg: Optional[Message]
+    action_total_fwd_fees: Optional[str]
+    action_total_action_fees: Optional[str]
+    in_msg: Optional[Message] = None
     out_msgs: List[Message] = []
+    block: Optional[Block] = None
 
     @classmethod
-    def transaction_from_orm(cls, obj, include_msg_bodies):
+    def transaction_from_orm(cls, obj, include_msg_bodies, include_block):
         if obj.in_msg is not None:
             body_model = None
             if include_msg_bodies:
@@ -341,7 +347,7 @@ class Transaction(BaseModel):
                 source_interfaces = obj.in_msg.out_tx.account_code_hash_rel.interfaces if obj.in_msg.out_tx else []
                 dest_interfaces = obj.account_code_hash_rel.interfaces
                 body_model = get_msg_body_annotation(body, op, source_interfaces, dest_interfaces)
-            
+
             in_msg = Message.message_from_orm(obj.in_msg, body_model)
         else:
             in_msg = None
@@ -356,7 +362,10 @@ class Transaction(BaseModel):
                 body_model = get_msg_body_annotation(body, op, source_interfaces, dest_interfaces)
             
             out_msgs.append(Message.message_from_orm(out_msg, body_model))
-
+        
+        block = None
+        if include_block:
+            block = Block.block_from_orm_block_header(obj.block.block_header)
         return Transaction(
             account=obj.account,
             lt=obj.lt,
@@ -377,7 +386,8 @@ class Transaction(BaseModel):
             action_total_fwd_fees=obj.action_total_fwd_fees,
             action_total_action_fees=obj.action_total_action_fees,
             in_msg=in_msg,
-            out_msgs=out_msgs
+            out_msgs=out_msgs,
+            block=block
         )
 
 class CountResponse(BaseModel):
