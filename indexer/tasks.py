@@ -11,10 +11,13 @@ from pathlib import Path
 
 from config import settings
 from pytonlib import TonlibClient
+from pytonlib.utils.tokens import *
+from tvm_valuetypes import serialize_tvm_stack
 
 from indexer.database import *
 from indexer.crud import *
 
+import uvloop
 
 loop = None
 index_worker = None
@@ -23,11 +26,152 @@ index_worker = None
 def configure_worker(signal=None, sender=None, **kwargs):
     global loop
     global index_worker
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     loop = asyncio.get_event_loop()
     index_worker = IndexWorker(loop, 
                                0, 
                                use_ext_method=settings.indexer.use_ext_method, 
                                cdll_path=settings.indexer.cdll_path)
+
+class InterfaceDetector:
+    def __init__(self, client: TonlibClient):
+        self.client = client
+
+    async def detect_interfaces(self, mc_block: dict, address: str):
+        load_smc_request = {
+            '@type': 'withBlock',
+            'id': mc_block,
+            'function': {
+                '@type': 'smc.load',
+                'account_address': {
+                    'account_address': address
+                }
+            }
+        }
+        load_smc_response = await self.client.tonlib_wrapper.execute(load_smc_request, timeout=self.client.tonlib_timeout)
+        smc_id = load_smc_response['id']
+        detectors = [
+            self.is_jetton_wallet, 
+            self.is_jetton_master, 
+            self.is_nft_item, 
+            self.is_nft_collection,
+            self.is_nft_royalty,
+            self.is_domain,
+            self.is_subscription,
+            self.is_auction
+        ]
+        interfaces = await asyncio.gather(*[d(smc_id) for d in detectors])
+        interfaces = [item for sublist in interfaces for item in sublist]
+
+        return interfaces
+
+    async def run_get_method(self, smc_id, method_name):
+        method = {'@type': 'smc.methodIdName', 'name': method_name}
+        request = {
+            '@type': 'smc.runGetMethod',
+            'id': smc_id,
+            'method': method,
+            'stack': []
+        }
+        r = await self.client.tonlib_wrapper.execute(request, timeout=self.client.tonlib_timeout)
+        r['stack'] = serialize_tvm_stack(r['stack'])
+        return r
+
+    async def is_jetton_wallet(self, smc_id):
+        r = await self.run_get_method(smc_id, 'get_wallet_data')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            jetton_wallet_data = parse_jetton_wallet_data(r['stack'])
+        except:
+            return []
+        return ["jetton_wallet"]
+
+    async def is_jetton_master(self, smc_id):
+        r = await self.run_get_method(smc_id, 'get_jetton_data')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            jetton_master_data = parse_jetton_master_data(r['stack'])
+        except:
+            return []
+        return ["jetton_master"]
+
+    async def is_nft_item(self, smc_id):
+        r = await self.run_get_method(smc_id, 'get_nft_data')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            nft_item_data = parse_nft_item_data(r['stack'])
+        except:
+            return []
+        interfaces = ["nft_item"]
+        r = await self.run_get_method(smc_id, 'get_editor')
+        if len(r['stack']) == 1:
+            try:
+                read_stack_cell(r['stack'][0])
+                interfaces.append("nft_editable")
+            except:
+                pass
+            
+        return interfaces
+
+    async def is_nft_collection(self, smc_id):
+        r = await self.run_get_method(smc_id, 'get_collection_data')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            nft_collection_data = parse_nft_collection_data(r['stack'])
+        except:
+            return []
+        return ["nft_collection"]
+
+    async def is_nft_royalty(self, smc_id):
+        r = await self.run_get_method(smc_id, 'royalty_params')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            assert len(r['stack']) == 3
+            read_stack_num(r['stack'][0])
+            read_stack_num(r['stack'][1])
+            read_stack_slice(r['stack'][2])
+        except:
+            return []
+        return ["nft_royalty"]
+
+    async def is_domain(self, smc_id):
+        r = await self.run_get_method(smc_id, 'get_domain')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            read_stack_cell(r['stack'][0])
+        except:
+            return []
+        return ["domain"]
+
+    async def is_subscription(self, smc_id):
+        r = await self.run_get_method(smc_id, 'get_subscription_data')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            assert len(r['stack']) == 10
+        except:
+            return []
+        return ["subscription"]
+    
+    async def is_auction(self, smc_id):
+        r = await self.run_get_method(smc_id, 'get_auction_info')
+        if r['exit_code'] != 0:
+            return []
+        try:
+            assert len(r['stack']) == 3
+            read_stack_slice(r['stack'][0])
+            read_stack_num(r['stack'][1])
+            read_stack_num(r['stack'][2])
+        except:
+            return []
+        return ["auction"]
+
 
 class IndexWorker():
     def __init__(self, loop, ls_index, use_ext_method=False, cdll_path=None):
@@ -44,14 +188,12 @@ class IndexWorker():
                                    keystore,
                                    loop,
                                    cdll_path=cdll_path,
-                                   verbosity_level=0,
                                    tonlib_timeout=60)
 
         loop.run_until_complete(self.client.init())
 
     async def _get_block_with_shards(self, seqno):
         master_block = await self.client.lookup_block(MASTERCHAIN_INDEX, MASTERCHAIN_SHARD, seqno)
-        master_block.pop('@type')
         master_block.pop('@extra')
         
         shards_blocks = []
@@ -168,17 +310,36 @@ class IndexWorker():
                                                      decode_messages=False)
         return tx, tx_full[0]
     
+    async def _get_code_hash_and_balance(self, tx, tx_detail, mc_block):
+        request = {
+            '@type': 'withBlock',
+            'id': mc_block,
+            'function': {
+                '@type': 'raw.getAccountState',
+                'account_address': {
+                    'account_address': tx['account']
+                }
+            }
+        }
+        acc_state = await self.client.tonlib_wrapper.execute(request, timeout=self.client.tonlib_timeout)
+        tx_detail['code_hash'] = acc_state['code_hash']
+        tx_detail['balance'] = acc_state['balance']
+        return tx, tx_detail
+
     async def _get_raw_info(self, seqno):
         blocks = await self._get_block_with_shards(seqno)
         headers = await asyncio.gather(*[self._get_block_header(block) for block in blocks])
         transactions = await asyncio.gather(*[self._get_block_transactions(block) for block in blocks])
         transactions = [await asyncio.gather(*[self._get_transaction_details(tx) for tx in txes]) for txes in transactions]
+        transactions = [await asyncio.gather(*[self._get_code_hash_and_balance(tx, tx_detail, blocks[0]) for tx, tx_detail in txes]) for txes in transactions]
+
         return blocks, headers, transactions
     
     async def _get_raw_info_ext(self, seqno):
         blocks = await self._get_block_with_shards(seqno)
         headers = await asyncio.gather(*[self._get_block_header(block) for block in blocks])
         transactions = await asyncio.gather(*[self._get_block_transactions_ext(block) for block in blocks])
+        transactions = [await asyncio.gather(*[self._get_code_hash_and_balance(tx, tx_detail, blocks[0]) for tx, tx_detail in txes]) for txes in transactions]
         return blocks, headers, transactions
     
     def get_raw_info(self, seqno):
@@ -195,9 +356,28 @@ class IndexWorker():
             logger.warning(f'Failed to insert block(seqno={seqno}): {traceback.format_exc()}')
             raise ee
 
+    async def fetch_mc_seqno(self, seqno: int):
+        blocks, headers, transactions = await self.get_raw_info(seqno)
+        return blocks, headers, transactions
+
+    async def insert_mc_seqno(self, seqno, bht):
+        blocks, headers,  transactions = bht
+        try:
+            await insert_by_seqno_core(engine, blocks, headers, transactions)
+            logger.info(f'Block(seqno={seqno}) inserted')
+        except Exception as ee:
+            logger.warning(f'Failed to insert block(seqno={seqno}): {traceback.format_exc()}')
+            raise ee
+        
+
     async def get_last_mc_block(self):
         mc_info = await self.client.get_masterchain_info()
         return mc_info['last']
+
+    async def get_interfaces(self, mc_block, account, code_hash):
+        detector = InterfaceDetector(self.client)
+        interfaces = await detector.detect_interfaces(mc_block, account)
+        return (code_hash, interfaces)
 
 async def _get_block(mc_seqno_list):
     async with SessionMaker() as session:
@@ -207,7 +387,7 @@ async def _get_block(mc_seqno_list):
     logger.info(f"{len(mc_seqno_list) - len(seqnos_to_process)} blocks already exist")
     return seqnos_to_process, await asyncio.gather(*[index_worker.process_mc_seqno(seqno) for seqno in seqnos_to_process], return_exceptions=True)
     
-@app.task(bind=True, max_retries=None,  acks_late=True)
+@app.task(bind=True, max_retries=None, acks_late=True)
 def get_block(self, mc_seqno_list):
     seqnos_to_process, results = loop.run_until_complete(_get_block(mc_seqno_list))
 
@@ -225,7 +405,58 @@ def get_block(self, mc_seqno_list):
     task_result += [(seqno, None) for seqno in existing_seqnos] # adding indexed seqnos from previous tries
     return task_result
 
+async def _fetch_blocks(mc_seqno_list):
+    bht = await asyncio.gather(*[index_worker.fetch_mc_seqno(seqno) for seqno in mc_seqno_list], return_exceptions=True)
+    return list(zip(mc_seqno_list, bht))
+
+
+@app.task(bind=True, max_retries=None, acks_late=True)
+def fetch_blocks(self, mc_seqno_list):
+    return loop.run_until_complete(_fetch_blocks(mc_seqno_list))
+
+async def _insert_blocks(seqno_blocks_tuples):
+    tasks = []
+    seqnos_to_process = []
+    for seqno, bht in seqno_blocks_tuples:
+        tasks.append(index_worker.insert_mc_seqno(seqno, bht))
+        seqnos_to_process.append(seqno)
+    
+    return zip(seqnos_to_process, await asyncio.gather(*tasks, return_exceptions=True))
+
+@app.task(bind=True, max_retries=None, acks_late=True)
+def insert_blocks(self, seqno_blocks_tuples):
+    return loop.run_until_complete(_insert_blocks(seqno_blocks_tuples))
+
 @app.task(acks_late=True)
 def get_last_mc_block():
     return loop.run_until_complete(index_worker.get_last_mc_block())
 
+async def _index_interfaces(seqno, bht):
+    try:
+        transactions = bht[2]
+        code_hashes_accounts = {}
+        for block_txs in transactions:
+            for tx, tx_detail in block_txs:
+                code_hashes_accounts[tx_detail['code_hash']] = tx['account']
+
+        async with SessionMaker() as session:
+            existing_code_hashes = await get_existing_code_hashes(session, code_hashes_accounts.keys())
+
+        for hash in existing_code_hashes:
+            code_hashes_accounts.pop(hash)
+
+        if len(code_hashes_accounts) > 0:
+            mc_block = bht[0][0]
+            code_hash_interfaces = await asyncio.gather(*[index_worker.get_interfaces(mc_block, account, code_hash) for (code_hash, account) in code_hashes_accounts.items()])
+            await insert_code_hash_interfaces_core(engine, code_hash_interfaces)
+    except Exception as ee:
+        logger.warning(f'Failed to index interfaces block(seqno={seqno}): {traceback.format_exc()}')
+        raise ee
+
+@app.task(acks_late=True)
+def index_interfaces(seqno_bht: list):
+    task = asyncio.gather(*[_index_interfaces(seqno, bht) for seqno, bht in seqno_bht], return_exceptions=True)
+    results = loop.run_until_complete(task)
+
+    task_result = list(zip(map(lambda x: x[0], seqno_bht), results)) 
+    return task_result

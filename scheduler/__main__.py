@@ -5,13 +5,13 @@ import time
 import sys
 import traceback
 from indexer.celery import app
-from indexer.tasks import get_block, get_last_mc_block
+from indexer.tasks import get_last_mc_block, fetch_blocks, insert_blocks, index_interfaces
 from indexer.database import init_database, SessionMaker
 from indexer.crud import get_existing_seqnos_between_interval
 from pytonlib import TonlibError, LiteServerTimeout, BlockDeleted
 from config import settings
 from loguru import logger
-
+from sqlalchemy.exc import IntegrityError
 
 def wait_for_broker_connection():
     while True:
@@ -36,8 +36,12 @@ class IndexScheduler:
     def __init__(self, celery_queue):
         self.celery_queue = celery_queue
         self.seqnos_to_process_queue = deque()
+        self.blocks_to_insert_queue = deque()
+        self.blocks_to_index_interfaces_queue = deque()
         self.max_parallel_tasks_semaphore = None
-        self.running_tasks = set()
+        self.fetch_blocks_running_tasks = set()
+        self.insert_blocks_running_tasks = set()
+        self.index_interfaces_running_tasks = set()
         self.is_liteserver_up = None
         self.reschedule_failed_blocks = None
 
@@ -50,7 +54,7 @@ class IndexScheduler:
         logger.info(f"{len(seqnos_already_in_db)} seqnos already exist in DB")
         return [seqno for seqno in range(low_seqno, high_seqno + 1) if (seqno,) not in seqnos_already_in_db]
 
-    async def _index_blocks(self, return_on_empty):
+    async def _fetch_blocks(self, return_on_empty):
         while True:
             try:
                 if not self.is_liteserver_up:
@@ -60,38 +64,62 @@ class IndexScheduler:
                 chunk = []
                 while len(chunk) < settings.indexer.blocks_per_task:
                     try:
-                        seqno_to_process = self.seqnos_to_process_queue.popleft()
+                        seqno_to_fetch = self.seqnos_to_process_queue.popleft()
                     except IndexError:
                         if return_on_empty and len(chunk) == 0:
                             return
                         break
-                    chunk.append(seqno_to_process)
-                if len(chunk) == 0:
+                    chunk.append(seqno_to_fetch)
+                if len(chunk) > 0:
+                    await self.max_parallel_tasks_semaphore.acquire()
+                    task = asyncify(fetch_blocks, [chunk], serializer='pickle', queue=self.celery_queue)
+                    self.fetch_blocks_running_tasks.add(self.loop.create_task(task))
+                else:
                     await asyncio.sleep(0.1)
                     continue
-
-                await self.max_parallel_tasks_semaphore.acquire()
-                task = asyncify(get_block, [chunk], serializer='pickle', queue=self.celery_queue)
-                self.running_tasks.add(self.loop.create_task(task))
             except asyncio.CancelledError:
-                logger.warning("Task _index_blocks was cancelled")
+                logger.warning("Task _fetch_blocks was cancelled")
                 return
             except BaseException as e:
-                logger.error("Task _index_blocks raised exception: {exception}", exception=e)
+                logger.error("Task _fetch_blocks raised exception: {exception}", exception=e)
 
-    def handle_get_block_result(self, seqno, seqno_result):
-        if seqno_result is None:
-            logger.debug("Masterchain block {seqno} was indexed.", seqno=seqno)
+    async def _insert_blocks(self):
+        while True:
+            try:
+                chunk = []
+                while len(chunk) < settings.indexer.blocks_per_task:
+                    try:
+                        block_to_insert = self.blocks_to_insert_queue.popleft()
+                    except IndexError:
+                        break
+                    chunk.append(block_to_insert)
+                if len(chunk) > 0:
+                    task = asyncify(insert_blocks, [chunk], serializer='pickle', queue=self.celery_queue)
+                    self.insert_blocks_running_tasks.add(self.loop.create_task(task))
+                else:
+                    await asyncio.sleep(0.1)
+                    continue
+            except asyncio.CancelledError:
+                logger.warning("Task _insert_blocks was cancelled")
+                return
+            except BaseException as e:
+                logger.error("Task _insert_blocks raised exception: {exception}", exception=e)
+
+    def handle_fetch_blocks_result(self, seqno, seqno_result):
+        if isinstance(seqno_result, tuple):
+            logger.debug("Masterchain block {seqno} was fetched.", seqno=seqno)
+            self.blocks_to_insert_queue.append((seqno, seqno_result))
+            self.blocks_to_index_interfaces_queue.append((seqno, seqno_result))
         elif isinstance(seqno_result, LiteServerTimeout):
-            logger.critical("Masterchain block {seqno} was not indexed because Lite Server is not responding: {exception}.", 
+            logger.critical("Masterchain block {seqno} failed to fetch because Lite Server is not responding: {exception}.", 
                 seqno=seqno, exception=seqno_result)
             logger.critical("Block {seqno} is rescheduled", seqno=seqno)
             self.seqnos_to_process_queue.appendleft(seqno)
         elif isinstance(seqno_result, BlockDeleted):
-            logger.critical("Masterchain block {seqno} was not indexed because Lite Server already deleted this block", seqno=seqno)
+            logger.critical("Masterchain block {seqno} failed to fetch because Lite Server already deleted this block", seqno=seqno)
             logger.critical("Block {seqno} is skipped", seqno=seqno)
         elif isinstance(seqno_result, BaseException):
-            logger.critical("Masterchain block {seqno} was not indexed. Exception of type {exc_type} occured: {exception}", 
+            logger.critical("Masterchain block {seqno} failed to fetch. Exception of type {exc_type} occured: {exception}", 
                 seqno=seqno, exc_type=type(seqno_result).__name__, exception=seqno_result)
             if self.reschedule_failed_blocks:
                 logger.critical("Block {seqno} is rescheduled", seqno=seqno)
@@ -99,13 +127,13 @@ class IndexScheduler:
             else:
                 logger.critical("Block {seqno} is skipped", seqno=seqno)
         else:
-            raise RuntimeError(f"Unexpected get_block result type for block {seqno}: {seqno_result}")
+            raise RuntimeError(f"Unexpected fetch_blocks result type for block {seqno}: {seqno_result}")
 
-    async def _read_results(self):
+    async def _fetch_blocks_read_results(self):
         while True:
             try:
-                done_tasks = set(filter(lambda x: x.done(), self.running_tasks))
-                self.running_tasks = set(filter(lambda x: x not in done_tasks, self.running_tasks))
+                done_tasks = set(filter(lambda x: x.done(), self.fetch_blocks_running_tasks))
+                self.fetch_blocks_running_tasks = set(filter(lambda x: x not in done_tasks, self.fetch_blocks_running_tasks))
                 for task in done_tasks:
                     self.max_parallel_tasks_semaphore.release()
                     async_result = task.result()
@@ -116,14 +144,109 @@ class IndexScheduler:
                         self.seqnos_to_process_queue.extendleft(async_result.args[0])
                     else:
                         for (seqno, seqno_result) in result:
-                            self.handle_get_block_result(seqno, seqno_result)
+                            self.handle_fetch_blocks_result(seqno, seqno_result)
 
                 await asyncio.sleep(0.3)
             except asyncio.CancelledError:
-                logger.warning("Task _read_results was cancelled")
+                logger.warning("Task _fetch_blocks_read_results was cancelled")
                 return
             except BaseException as e:
-                logger.error(f"Task _read_results raised exception: {e}. {traceback.format_exc()}")
+                logger.error(f"Task _fetch_blocks_read_results raised exception: {e}. {traceback.format_exc()}")
+
+    def handle_insert_blocks_result(self, seqno, seqno_result, arg):
+        if seqno_result is None:
+            logger.debug("Masterchain block {seqno} was inserted to DB.", seqno=seqno)
+        elif isinstance(seqno_result, IntegrityError):
+            logger.critical("Masterchain block {seqno} already exists in DB, skipping", seqno=seqno)
+        elif isinstance(seqno_result, BaseException):
+            logger.critical("Masterchain block {seqno} failed to insert to DB. Exception of type {exc_type} occured: {exception}", 
+                seqno=seqno, exc_type=type(seqno_result).__name__, exception=seqno_result)
+            logger.critical("Block {seqno} is rescheduled", seqno=seqno)
+            self.blocks_to_insert_queue.appendleft(arg)
+        else:
+            raise RuntimeError(f"Unexpected insert_blocks result type for block {seqno}: {seqno_result}")
+
+    async def _insert_blocks_read_results(self):
+        while True:
+            try:
+                done_tasks = set(filter(lambda x: x.done(), self.insert_blocks_running_tasks))
+                self.insert_blocks_running_tasks = set(filter(lambda x: x not in done_tasks, self.insert_blocks_running_tasks))
+                for task in done_tasks:
+                    async_result = task.result()
+                    param = async_result.args[0]
+                    try:
+                        result = async_result.get()
+                    except BaseException as e:
+                        logger.error("Task {async_result} raised unknown exception: {exception}. Rescheduling the task's chunk.", async_result=async_result, exception=e)
+                        self.blocks_to_insert_queue.extendleft(param)
+                    else:
+                        for ((seqno, seqno_result), arg) in zip(result, param):
+                            self.handle_insert_blocks_result(seqno, seqno_result, arg)
+
+                await asyncio.sleep(0.3)
+            except asyncio.CancelledError:
+                logger.warning("Task _insert_blocks_read_results was cancelled")
+                return
+            except BaseException as e:
+                logger.error(f"Task _insert_blocks_read_results raised exception: {e}. {traceback.format_exc()}")
+
+    async def _index_interfaces(self):
+        while True:
+            try:
+                chunk = []
+                while len(chunk) < settings.indexer.blocks_per_task:
+                    try:
+                        blocks_to_index_interfaces = self.blocks_to_index_interfaces_queue.popleft()
+                    except IndexError:
+                        break
+                    chunk.append(blocks_to_index_interfaces)
+                if len(chunk) > 0:
+                    task = asyncify(index_interfaces, [chunk], serializer='pickle', queue=self.celery_queue)
+                    self.index_interfaces_running_tasks.add(self.loop.create_task(task))
+                else:
+                    await asyncio.sleep(0.1)
+                    continue
+            except asyncio.CancelledError:
+                logger.warning("Task _index_accounts_interfaces was cancelled")
+                return
+            except BaseException as e:
+                logger.error("Task _index_accounts_interfaces raised exception: {exception}", exception=e)
+    
+    def handle_index_interfaces_result(self, seqno, seqno_result, arg):
+        if seqno_result is None:
+            logger.debug("Masterchain block {seqno} interfaces were indexed.", seqno=seqno)
+        elif isinstance(seqno_result, BaseException):
+            logger.critical("Masterchain block {seqno} failed to index interfaces. Exception of type {exc_type} occured: {exception}", 
+                seqno=seqno, exc_type=type(seqno_result).__name__, exception=seqno_result)
+            logger.critical("Block {seqno} indexing interfaces is rescheduled", seqno=seqno)
+            self.blocks_to_index_interfaces_queue.appendleft(arg)
+        else:
+            raise RuntimeError(f"Unexpected insert_blocks result type for block {seqno}: {seqno_result}")
+
+    async def _index_interfaces_read_results(self):
+        while True:
+            try:
+                done_tasks = set(filter(lambda x: x.done(), self.index_interfaces_running_tasks))
+                self.index_interfaces_running_tasks = set(filter(lambda x: x not in done_tasks, self.index_interfaces_running_tasks))
+                for task in done_tasks:
+                    async_result = task.result()
+                    param = async_result.args[0]
+                    try:
+                        result = async_result.get()
+                    except BaseException as e:
+                        logger.error("Task {async_result} raised unknown exception: {exception}. Rescheduling the task's chunk.", async_result=async_result, exception=e)
+                        self.blocks_to_index_interfaces_queue.extendleft(param)
+                    else:
+                        for ((seqno, seqno_result), arg) in zip(result, param):
+                            self.handle_index_interfaces_result(seqno, seqno_result, arg)
+
+                await asyncio.sleep(0.3)
+            except asyncio.CancelledError:
+                logger.warning("Task _index_interfaces_read_results was cancelled")
+                return
+            except BaseException as e:
+                logger.error(f"Task _index_interfaces_read_results raised exception: {e}. {traceback.format_exc()}")
+
     
     async def _check_liteserver_health(self):
         while True:
@@ -153,8 +276,12 @@ class BackwardScheduler(IndexScheduler):
         self.max_parallel_tasks_semaphore = asyncio.Semaphore(4 * settings.indexer.workers_count)
         self.loop.run_until_complete(self.schedule_seqnos())
         self.check_liteserver_health_task = self.loop.create_task(self._check_liteserver_health())
-        self.index_blocks_task = self.loop.create_task(self._index_blocks(return_on_empty=True))
-        self.read_results_task = self.loop.create_task(self._read_results())
+        self.fetch_blocks_task = self.loop.create_task(self._fetch_blocks(return_on_empty=True))
+        self.fetch_blocks_read_results_task = self.loop.create_task(self._fetch_blocks_read_results())
+        self.insert_blocks_task = self.loop.create_task(self._insert_blocks())
+        self.insert_blocks_read_results_task = self.loop.create_task(self._insert_blocks_read_results())
+        self.index_interfaces_task = self.loop.create_task(self._index_interfaces())
+        self.index_interfaces_read_results_task = self.loop.create_task(self._index_interfaces_read_results())
         self.loop.run_until_complete(self._wait_finish())
 
     async def schedule_seqnos(self):
@@ -166,13 +293,19 @@ class BackwardScheduler(IndexScheduler):
         self.seqnos_to_process_queue.extend(seqnos_to_index)
 
     async def _wait_finish(self):
-        done, pending = await asyncio.wait([self.check_liteserver_health_task, self.index_blocks_task, self.read_results_task], return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait([
+            self.check_liteserver_health_task, 
+            self.fetch_blocks_task, self.fetch_blocks_read_results_task, 
+            self.insert_blocks_task, self.insert_blocks_read_results_task,
+            self.index_interfaces_task, self.index_interfaces_read_results_task], return_when=asyncio.FIRST_COMPLETED)
         done_task = done.pop()
-        if done_task is self.index_blocks_task:
-            while len(self.running_tasks) > 0:
+        if done_task is self.fetch_blocks_task:
+            while len(self.fetch_blocks_running_tasks) > 0 or len(self.insert_blocks_running_tasks) > 0 or len(self.index_interfaces_running_tasks) > 0:
                 await asyncio.sleep(0.5)
-            self.read_results_task.cancel()
-            await self.read_results_task
+            self.fetch_blocks_read_results_task.cancel()
+            await self.fetch_blocks_read_results_task
+            self.insert_blocks_read_results_task.cancel()
+            await self.insert_blocks_read_results_task
             logger.info('Backward scheduler finished working')
             not_indexed = await self._not_indexed_seqnos_between(settings.indexer.smallest_mc_seqno, settings.indexer.init_mc_seqno)
             if len(not_indexed) > 0:
@@ -194,9 +327,19 @@ class ForwardScheduler(IndexScheduler):
         self.max_parallel_tasks_semaphore = asyncio.Semaphore(4 * settings.indexer.workers_count)
         self.check_liteserver_health_task = self.loop.create_task(self._check_liteserver_health())
         self.get_new_blocks_task = self.loop.create_task(self._get_new_blocks())
-        self.index_blocks_task = self.loop.create_task(self._index_blocks(return_on_empty=False))
-        self.read_results_task = self.loop.create_task(self._read_results())
-        done, pending = self.loop.run_until_complete(asyncio.wait([self.check_liteserver_health_task, self.get_new_blocks_task, self.index_blocks_task, self.read_results_task], return_when=asyncio.FIRST_COMPLETED))
+        self.fetch_blocks_task = self.loop.create_task(self._fetch_blocks(return_on_empty=False))
+        self.fetch_blocks_read_results_task = self.loop.create_task(self._fetch_blocks_read_results())
+        self.insert_blocks_task = self.loop.create_task(self._insert_blocks())
+        self.insert_blocks_read_results_task = self.loop.create_task(self._insert_blocks_read_results())
+        self.index_interfaces_task = self.loop.create_task(self._index_interfaces())
+        self.index_interfaces_read_results_task = self.loop.create_task(self._index_interfaces_read_results())
+        orchestra = [
+            self.check_liteserver_health_task, self.get_new_blocks_task, 
+            self.fetch_blocks_task, self.fetch_blocks_read_results_task, 
+            self.insert_blocks_task, self.insert_blocks_read_results_task, 
+            self.index_interfaces_task, self.index_interfaces_read_results_task
+        ]
+        done, pending = self.loop.run_until_complete(asyncio.wait(orchestra, return_when=asyncio.FIRST_COMPLETED))
         logger.critical(f"Task {done.pop()} unexpectedly stopped. Aborting the execution.")
         sys.exit(-1)
 
@@ -216,7 +359,7 @@ class ForwardScheduler(IndexScheduler):
                 logger.info("New masterchain block: {seqno}", seqno=last_mc_block['seqno'])
 
                 if is_first_iteration:
-                    new_seqnos = await self._not_indexed_seqnos_between(self.current_seqno, last_mc_block['seqno'] + 1)
+                    new_seqnos = await self._not_indexed_seqnos_between(self.current_seqno, last_mc_block['seqno'])
                     is_first_iteration = False
                 else:
                     new_seqnos = range(self.current_seqno, last_mc_block['seqno'] + 1)

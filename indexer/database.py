@@ -5,6 +5,7 @@ from time import sleep
 from typing import List, Optional
 
 from pytonlib.utils.tlb import parse_transaction
+from pytonlib.utils.address import detect_address
 from tvm_valuetypes.cell import deserialize_boc
 
 from sqlalchemy import create_engine
@@ -13,15 +14,18 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import create_database, database_exists, drop_database
 
 from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum
-from sqlalchemy import ForeignKey, UniqueConstraint, Table
+from sqlalchemy import ForeignKey, UniqueConstraint, Table, exc
 from sqlalchemy import and_, or_, ColumnDefault
 from sqlalchemy.orm import relationship, backref
 from dataclasses import dataclass, asdict
+
+from sqlalchemy.dialects.postgresql import ARRAY
 
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+import asyncpg
 
 from config import settings as S
 from loguru import logger
@@ -50,12 +54,6 @@ Base = declarative_base()
 
 utils_url = str(engine.url).replace('+asyncpg', '')
 
-def delete_database():
-    if database_exists(utils_url):
-        logger.info('Drop database')
-        drop_database(utils_url)
-
-
 def init_database(create=False):
     while not database_exists(utils_url):
         if create:
@@ -68,6 +66,23 @@ def init_database(create=False):
             asyncio.run(create_tables())
         sleep(0.5)
 
+
+# from sqlalchemy import event
+# from sqlalchemy.engine import Engine
+# import time
+# import logging
+# logger1 = logging.getLogger("myapp.sqltime")
+# logger1.setLevel(logging.DEBUG)
+# @event.listens_for(Engine, "before_cursor_execute")
+# def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+#     conn.info.setdefault("query_start_time", []).append(time.time())
+#     # logger1.debug(f"Start Query: {statement}")
+
+
+# @event.listens_for(Engine, "after_cursor_execute")
+# def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+#     total = time.time() - conn.info["query_start_time"].pop(-1)
+#     logger1.debug(f"Query Complete: {statement}! Total Time: {total}")
 
 @dataclass(init=False)
 class Block(Base):
@@ -158,9 +173,15 @@ class Transaction(Base):
     
     tx_id: int = Column(BigInteger, autoincrement=True, primary_key=True)
     account: str = Column(String)
+    account_code_hash: str = Column(String)
+    # account_code_hash_rel = relationship("CodeHashInterfaces")
+    account_code_hash_rel = relationship('CodeHashInterfaces', foreign_keys=[account_code_hash],
+                                primaryjoin='CodeHashInterfaces.code_hash == Transaction.account_code_hash')
+
     lt: int = Column(BigInteger)
     hash: str = Column(String(44))
     
+    balance: int = Column(BigInteger)
     utime: int = Column(BigInteger)
     fee: int = Column(BigInteger)
     storage_fee: int = Column(BigInteger)
@@ -177,7 +198,7 @@ class Transaction(Base):
     action_result_code: int = Column(Integer)
     action_total_fwd_fees: int = Column(BigInteger)
     action_total_action_fees: int = Column(BigInteger)
-    
+
     block_id = Column(Integer, ForeignKey("blocks.block_id"))
     block = relationship("Block", backref="transactions")
 
@@ -219,8 +240,10 @@ class Transaction(Base):
         action_total_action_fees = safe_get(parsed_tx, ['description', 'action', 'total_action_fees'])
         return {
             'account': raw['account'],
+            'account_code_hash': raw_detail['code_hash'],
             'lt': int(raw['lt']),
             'hash': raw['hash'],
+            'balance': int(raw_detail['balance']),
             'utime': raw_detail['utime'],
             'fee': int(raw_detail['fee']),
             'storage_fee': int(raw_detail['storage_fee']),
@@ -255,6 +278,7 @@ class Message(Base):
     ihr_disabled: bool = Column(Boolean)
     bounce: bool = Column(Boolean)
     bounced: bool = Column(Boolean)
+    has_init_state: bool = Column(Boolean)
     import_fee: int = Column(BigInteger)
     
     out_tx_id = Column(BigInteger, ForeignKey("transactions.tx_id"))
@@ -294,10 +318,12 @@ class Message(Base):
         except BaseException as e:
             comment = None
             logger.error(f"Error parsing message comment and op: {e}, msg body: {msg_body}")
-
+        
+        source = detect_address(raw['source'])["raw_form"] if len(raw['source']) else ""
+        destination = detect_address(raw['destination'])["raw_form"] if len(raw['destination']) else ""
         return {
-            'source': raw['source'],
-            'destination': raw['destination'],
+            'source': source,
+            'destination': destination,
             'value': int(raw['value']),
             'fwd_fee': int(raw['fwd_fee']),
             'ihr_fee': int(raw['ihr_fee']),
@@ -309,6 +335,7 @@ class Message(Base):
             'ihr_disabled': raw['ihr_disabled'] if raw['ihr_disabled'] != -1 else None,
             'bounce': int(raw['bounce']) if int(raw['bounce']) != -1 else None,
             'bounced': int(raw['bounced']) if int(raw['bounced']) != -1 else None,
+            'has_init_state': int(raw['has_init_state']),
             'import_fee': int(raw['import_fee']) if int(raw['import_fee']) != -1 else None,
         }
 
@@ -328,4 +355,19 @@ class MessageContent(Base):
         return {
             'body': raw_msg['msg_data'].get('body')
         }
+
+class CodeHashInterfaces(Base):
+    __tablename__ = 'code_hash'
+
+    code_hash = Column(String, primary_key=True)
+    interfaces = Column(ARRAY(Enum('nft_item', 
+                                   'nft_editable', 
+                                   'nft_collection', 
+                                   'nft_royalty',
+                                   'jetton_wallet', 
+                                   'jetton_master',
+                                   'domain',
+                                   'subscription',
+                                   'auction',
+                                   name='interface_name')))
 
