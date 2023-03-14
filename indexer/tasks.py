@@ -406,8 +406,8 @@ def get_block(self, mc_seqno_list):
     return task_result
 
 async def _fetch_blocks(mc_seqno_list):
-    bht = await asyncio.gather(*[index_worker.fetch_mc_seqno(seqno) for seqno in seqnos_to_process], return_exceptions=True)
-    return list(zip(seqnos_to_process, bht))
+    bht = await asyncio.gather(*[index_worker.fetch_mc_seqno(seqno) for seqno in mc_seqno_list], return_exceptions=True)
+    return list(zip(mc_seqno_list, bht))
 
 
 @app.task(bind=True, max_retries=None, acks_late=True)
