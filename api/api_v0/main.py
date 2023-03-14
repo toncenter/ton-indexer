@@ -17,43 +17,12 @@ from . import schemas
 from indexer.database import SessionMaker
 from indexer import crud
 
-# logging.basicConfig(format='%(asctime)s %(module)-15s %(message)s',
-#                     level=logging.INFO)
-# logger = logging.getLogger(__name__)
-# logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
-
-
-# description = ''
-# app = FastAPI(
-#     title="TON Index",
-#     description=description,
-#     version='0.1.0',
-#     root_path=settings.webserver.api_root_path,
-#     docs_url='/',
-# )
-
 router = APIRouter()
 
 # Dependency
 async def get_db():
     async with SessionMaker() as db:
         yield db
-
-# @router.exception_handler(StarletteHTTPException)
-# async def http_exception_handler(request, exc):
-#     return JSONResponse({'error' : str(exc.detail)}, status_code=exc.status_code)
-
-# @router.exception_handler(crud.DataNotFound)
-# async def tonlib_wront_result_exception_handler(request, exc):
-#     return JSONResponse({'error' : str(exc)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# @router.exception_handler(Exception)
-# def generic_exception_handler(request, exc):
-#     return JSONResponse({'error' : str(exc)}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
-
-# @router.on_event("startup")
-# def startup():
-#     logger.info('Service started successfully')
 
 @router.get('/getTransactionsByMasterchainSeqno', response_model=List[schemas.Transaction])
 async def get_transactions_by_masterchain_seqno(
