@@ -357,7 +357,12 @@ class IndexWorker():
             raise ee
 
     async def fetch_mc_seqno(self, seqno: int):
-        blocks, headers, transactions = await self.get_raw_info(seqno)
+        try:
+            blocks, headers, transactions = await self.get_raw_info(seqno)
+        except Exception as ee:
+            logger.warning(f'Failed to fetch block(seqno={seqno}): {traceback.format_exc()}')
+            raise ee
+        
         return blocks, headers, transactions
 
     async def insert_mc_seqno(self, seqno, bht):
