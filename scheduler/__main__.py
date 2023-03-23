@@ -139,6 +139,7 @@ class IndexScheduler:
                     async_result = task.result()
                     try:
                         result = async_result.get()
+                        async_result.forget()
                     except BaseException as e:
                         logger.error("Task {async_result} raised unknown exception: {exception}. Rescheduling the task's chunk.", async_result=async_result, exception=e)
                         self.seqnos_to_process_queue.extendleft(async_result.args[0])
@@ -176,6 +177,7 @@ class IndexScheduler:
                     param = async_result.args[0]
                     try:
                         result = async_result.get()
+                        async_result.forget()
                     except BaseException as e:
                         logger.error("Task {async_result} raised unknown exception: {exception}. Rescheduling the task's chunk.", async_result=async_result, exception=e)
                         self.blocks_to_insert_queue.extendleft(param)
@@ -233,6 +235,7 @@ class IndexScheduler:
                     param = async_result.args[0]
                     try:
                         result = async_result.get()
+                        async_result.forget()
                     except BaseException as e:
                         logger.error("Task {async_result} raised unknown exception: {exception}. Rescheduling the task's chunk.", async_result=async_result, exception=e)
                         self.blocks_to_index_interfaces_queue.extendleft(param)
@@ -254,6 +257,7 @@ class IndexScheduler:
                 try:
                     last_mc_block_async_result = await asyncify(get_last_mc_block, [], serializer='pickle', queue=self.celery_queue)
                     last_mc_block_async_result.get()
+                    last_mc_block_async_result.forget()
                 except LiteServerTimeout:
                     if self.is_liteserver_up or self.is_liteserver_up is None:
                         logger.critical(f"Lite Server is not responding. Pausing indexing until it's not alive.")
@@ -353,6 +357,7 @@ class ForwardScheduler(IndexScheduler):
 
                 last_mc_block_async_result = await asyncify(get_last_mc_block, [], serializer='pickle', queue=self.celery_queue)
                 last_mc_block = last_mc_block_async_result.get()
+                last_mc_block_async_result.forget()
                 if last_mc_block['seqno'] < self.current_seqno:
                     await asyncio.sleep(0.2)
                     continue
