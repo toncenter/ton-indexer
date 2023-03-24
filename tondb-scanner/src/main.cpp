@@ -13,15 +13,141 @@
 
 #include "crypto/vm/cp0.h"
 
+#include "db-schema.hpp"
+
+#include <pqxx/pqxx>
+
 using namespace ton::validator;
 
-class InsertManager: public td::actor::Actor {
-  
+
+class InsertOneMcSeqno: public td::actor::Actor {
+private:
+  std::vector<schema::Block> blocks_;
+  td::Promise<td::Unit> promise_;
+public:
+  InsertOneMcSeqno(std::vector<schema::Block> blocks, td::Promise<td::Unit> promise): blocks_(std::move(blocks)), promise_(std::move(promise)) {
+  }
+
+  void prepare_insert_blocks(pqxx::connection &conn) {
+    conn.prepare("insert_block",
+              "INSERT INTO blocks (workchain, shard, seqno, root_hash, file_hash, mc_block_workchain, mc_block_shard, mc_block_seqno, global_id, version, after_merge, before_split, after_split, want_split, key_block, vert_seqno_incr, flags, gen_utime, start_lt, end_lt, validator_list_hash_short, gen_catchain_seqno, min_ref_mc_seqno, prev_key_block_seqno, vert_seqno, master_ref_seqno, rand_seed, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28) ON CONFLICT DO NOTHING;");
+  }
+
+  void insert_blocks(pqxx::work &transaction) {
+    for (const auto& block : blocks_) {
+      transaction.exec_prepared("insert_block" 
+        ,block.workchain 
+        ,block.shard 
+        ,block.seqno 
+        ,block.root_hash 
+        ,block.file_hash 
+        ,block.mc_block_workchain ? std::to_string(block.mc_block_workchain.value()).c_str() : nullptr
+        ,block.mc_block_shard ? std::to_string(block.mc_block_shard.value()).c_str() : nullptr
+        ,block.mc_block_seqno ? std::to_string(block.mc_block_seqno.value()).c_str() : nullptr
+        ,block.global_id 
+        ,block.version 
+        ,block.after_merge 
+        ,block.before_split 
+        ,block.after_split 
+        ,block.want_split 
+        ,block.key_block 
+        ,block.vert_seqno_incr 
+        ,block.flags 
+        ,block.gen_utime 
+        ,block.start_lt 
+        ,block.end_lt 
+        ,block.validator_list_hash_short 
+        ,block.gen_catchain_seqno 
+        ,block.min_ref_mc_seqno 
+        ,block.prev_key_block_seqno 
+        ,block.vert_seqno 
+        ,block.master_ref_seqno ? std::to_string(block.master_ref_seqno.value()).c_str() : nullptr
+        ,block.rand_seed 
+        ,block.created_by);
+    }
+  }
+
+  void start_up() {
+    try {
+      pqxx::connection c("dbname=ton_index user=postgres password=123 hostaddr=127.0.0.1 port=54321");
+      if (!c.is_open()) {
+        promise_.set_error(td::Status::Error("Failed to open database"));
+        stop();
+        return;
+      }
+      prepare_insert_blocks(c);
+      pqxx::work txn(c);
+      insert_blocks(txn);
+      txn.commit();
+      promise_.set_value(td::Unit());
+      stop();
+    } catch (const std::exception &e) {
+      promise_.set_error(td::Status::Error(PSLICE() << "Error inserting to PG: " << e.what()));
+      stop();
+    }
+  }
 };
 
-struct BlockDataState {
-  td::Ref<BlockData> block_data;
-  td::Ref<ShardState> block_state;
+class InsertManager: public td::actor::Actor {
+private:
+  std::queue<std::vector<BlockDataState>> insert_queue_;
+  std::queue<td::Promise<td::Unit>> promise_queue_;
+public:
+  InsertManager() { // std::vector<BlockDataState> block_ds, td::Promise<td::Unit> promise): block_ds_(std::move(block_ds)), promise_(std::move(promise)) {
+  }
+
+  void start_up() override {
+    alarm_timestamp() = td::Timestamp::in(1.0);
+  }
+
+   void alarm() override {
+    LOG(INFO) << "insert_queue_ size: " << insert_queue_.size();
+
+    std::vector<td::Promise<td::Unit>> promises;
+    std::vector<schema::Block> schema_blocks;
+    while (!insert_queue_.empty() && schema_blocks.size() < 1000) {
+      auto block_ds = insert_queue_.front();
+      insert_queue_.pop();
+
+      auto promise = std::move(promise_queue_.front());
+      promise_queue_.pop();
+
+      auto schema_block = schema::BlockToSchema(std::move(block_ds));
+      auto parse_res = schema_block.parse();
+      if (parse_res.is_error()) {
+        promise.set_error(parse_res.move_as_error_prefix("Error parsing block: "));
+        continue;
+      }
+      promises.push_back(std::move(promise));
+      auto blocks = schema_block.get_blocks();
+      schema_blocks.insert(schema_blocks.end(), blocks.begin(), blocks.end());
+    }
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), promises = std::move(promises)](td::Result<td::Unit> R) mutable {
+      if (R.is_error()) {
+        LOG(ERROR) << "Error inserting to PG: " << R.move_as_error();
+        for (auto& p : promises) {
+          p.set_error(R.move_as_error());
+        }
+        return;
+      }
+      
+      for (auto& p : promises) {
+        p.set_result(td::Unit());
+      }
+    });
+    td::actor::create_actor<InsertOneMcSeqno>("insertonemcseqno", std::move(schema_blocks), std::move(P)).release();
+
+    if (!insert_queue_.empty()) {
+      alarm_timestamp() = td::Timestamp::in(0.1);
+    } else {
+      alarm_timestamp() = td::Timestamp::in(1.0);
+    }
+   }
+
+  void insert(std::vector<BlockDataState> block_ds, td::Promise<td::Unit> promise) {
+    insert_queue_.push(std::move(block_ds));
+    promise_queue_.push(std::move(promise));
+  }
 };
 
 class GetBlockDataState: public td::actor::Actor {
@@ -308,7 +434,7 @@ private:
   
   std::queue<int> seqnos_to_process_;
   std::set<int> seqnos_in_progress_;
-  int max_parallel_fetch_actors_{3000};
+  int max_parallel_fetch_actors_{1};
   int last_known_seqno_{-1};
 
 public:
@@ -386,6 +512,16 @@ private:
     for (auto& blk: blks) {
       LOG(INFO) << "Got block data and state for " << blk.block_data->block_id().id.to_str();
     }
+
+    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> res) {
+      if (res.is_ok()) {
+        LOG(INFO) << "MC seqno " << mc_seqno << " insert success";
+      } else {
+        LOG(INFO) << "MC seqno " << mc_seqno << " insert failed: " << res.move_as_error();
+      }
+    });
+
+    td::actor::send_closure(insert_manager_, &InsertManager::insert, std::move(blks), std::move(R));
   }
 
   void alarm() override {
