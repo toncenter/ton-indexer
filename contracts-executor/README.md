@@ -8,8 +8,11 @@ Starts an HTTP server with ``POST /execute`` method:
     "code": "te6cckECDQEA...", # base64 encoded code cell
     "data": "te6cckECDQEA...", # base64 encoded data cell
     "method": "get_data", # get-method data,
+    "gas_limit": 10000 # gas limit
+    "arguments": [], # get-method arguments
     "address": "EQ...", # contract address
-    "expected": ["int", "int", "address", "metadata", "cell_hash"] # method signature
+    "expected": ["int", "int", "address", "metadata", "cell_hash"], # method signature
+    "parse_list": true # parse output as a lisp-style list
 }
 ```
             

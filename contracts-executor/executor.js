@@ -2,8 +2,8 @@
 
 // Simple node.js contract executor
 // It uses ton-contract-executor with pre-build WASM ton version (OMG!)
-const { SmartContract }  = require("ton-contract-executor");
-const { Cell, Address } = require("ton");
+const { SmartContract, stackInt, stackSlice, stackCell}  = require("ton-contract-executor");
+const { Cell, Address, beginCell} = require("ton");
 const bodyParser = require('body-parser')
 const express = require('express');
 const app = express();
@@ -55,87 +55,142 @@ function parseStrValue(slice, is_first=true) {
   }
 }
 
+function formatOutput(result, expected) {
+  return result.slice(0, expected.length).map((value, idx) => {
+    if (expected[idx] == 'int') {
+      try {
+        return value.toString(10);
+      } catch {
+        console.warn("Unable to parse int", value)
+      }
+    } else if (expected[idx] == 'address') {
+      try {
+        if (value.constructor.name === "BN") {
+          return beginCell().storeUint(4, 3).storeUint(0, 8).storeUint(value, 256)
+            .endCell().beginParse().readAddress().toFriendly();// .toFriendly();
+        } else {
+          return value.readAddress().toFriendly();
+        }
+      } catch(e) {
+        throw e;
+        console.warn("Unable to parse address", value)
+      }
+    } else if (expected[idx] == 'cell_hash') {
+      try {
+        return value.hash().toString('base64')
+      } catch {
+        console.warn("Unable to parse address", value)
+      }
+    } else if (expected[idx] == 'metadata') {
+      try {
+        const content = value.beginParse();
+        if (content.remaining == 0) {
+          console.warn("Wrong content layout format, zero bits")
+          return {};
+        }
+        const layout = content.readUint(8).toNumber();
+        if (layout == 0) {
+          console.log("On chain metadata layout detected")
+          const data = content.readDict(256, (slice) => safe(parseStrValue(slice)));
+          let outData = {};
+          data.forEach((value, key) => {
+            if (parseInt(key) in METADATA_KEYS) {
+              outData[METADATA_KEYS[parseInt(key)]] = safe(value);
+            } else {
+              throw new Error("Unknown metadata field: " + key);
+            }
+          })
+          console.log("On chain dict parsed", outData);
+          return {
+            content_layout: 'on-chain',
+            content: outData
+          }
+        } else {
+          console.log("Off chain metadata layout detected")
+          let out = ''
+          let currentCell = content
+          while (true) {
+            out += currentCell.readRemainingBytes().toString()
+            if (currentCell.remainingRefs > 0) {
+              currentCell = currentCell.readRef()
+            } else {
+              break
+            }
+          }
+          return {
+            content_layout: 'off-chain',
+            content: out
+          }
+        }
+      } catch (e) {
+        console.warn("Unable to parse metadata", value, e)
+      }
+    } else if (expected[idx] == 'boc') {
+      return value.toBoc().toString("base64");
+    } else {
+      throw new Error("Mapping type " + expected[idx] + " not supported")
+    }
+  })
+}
+
 async function execute(req) {
-    console.log("Executing %s", req.method);
+    let gas_limit = req.gas_limit
+    console.log("Executing %s with gas limit %s", req.method, gas_limit)
     let contract = await SmartContract.fromCell(
         Cell.fromBoc(Buffer.from(req.code, 'base64'))[0],
         Cell.fromBoc(Buffer.from(req.data, 'base64'))[0]
     )
-  
+
     if (req.address !== undefined && req.address !== null && req.address.startsWith("EQ")) {
       contract.setC7Config({myself: Address.parse(req.address)})
     }
     let res;
     try {
-      res = await contract.invokeGetMethod(req.method, []);
+      let argsFormatted = []
+      if (req.arguments) {
+        for (let arg of req.arguments) {
+          if (typeof arg == "number") {
+            argsFormatted.push(stackInt(arg))
+          } else if (typeof arg == "string") {
+            if (arg.startsWith("E")) { // parse address
+              argsFormatted.push(stackSlice(beginCell().storeAddress(Address.parse(arg)).endCell()))
+            } else { // otherwise treat as base64-encoded boc
+              argsFormatted.push(stackCell(Cell.fromBoc(Buffer.from(arg, 'base64'))[0]))
+            }
+          } else {
+            throw new Error("Argument type is not supported: " + typeof arg)
+          }
+        }
+      }
+
+
+      res = await contract.invokeGetMethod(req.method, args=argsFormatted, opts=gas_limit ? {gasLimits: {limit: gas_limit}} : {});
+      console.log("finish execution for %s, exit code is %s, gas consumed %s", req.method, res.exit_code, res.gas_consumed)
     } catch (e) {
       console.log("Unable to execute contract", e)
       return {exit_code: -100};
     }
-    if (res.result.length != req.expected.length) {
+    if (res.result.length != req.expected.length && req.parse_list === undefined) {
       console.warn("wrong result size: " + res.result.length + ", expected " +
         req.expected.length + " (" + req.expected)
     }
-    res.result = res.result.slice(0, req.expected.length).map((value, idx) => {
-      if (req.expected[idx] == 'int') {
-        try {
-          return value.toString(10);
-        } catch {
-          console.warn("Unable to parse int", value)
+
+    if (req.parse_list) {
+      let out = []
+      let current = res.result[0]
+      while (current) {
+        if (current.length == 2) {
+          out.push(formatOutput(current[0], req.expected));
+          current = current[1];
+        } else {
+          console.warn("broken list")
+          break;
         }
-      } else if (req.expected[idx] == 'address') {
-        try {
-          return value.readAddress().toFriendly();
-        } catch {
-          console.warn("Unable to parse address", value)
-        }
-      } else if (req.expected[idx] == 'cell_hash') {
-        try {
-          return value.hash().toString('base64')
-        } catch {
-          console.warn("Unable to parse address", value)
-        }
-      } else if (req.expected[idx] == 'metadata') {
-        try {
-          const content = value.beginParse();
-          if (content.remaining == 0) {
-            console.warn("Wrong content layout format, zero bits")
-            return {};
-          }
-          const layout = content.readUint(8).toNumber();
-          if (layout == 0) {
-            console.log("On chain metadata layout detected")
-            const data = content.readDict(256, (slice) => safe(parseStrValue(slice)));
-            let outData = {};
-            data.forEach((value, key) => {
-              if (parseInt(key) in METADATA_KEYS) {
-                outData[METADATA_KEYS[parseInt(key)]] = safe(value);
-              } else {
-                throw new Error("Unknown metadata field: " + key);
-              }
-            })
-            console.log("On chain dict parsed", outData);
-            return {
-              content_layout: 'on-chain',
-              content: outData
-            }
-          } else {
-            console.log("Off chain metadata layout detected")
-            // console.log(content.readRemainingBytes().toString(), content.remaining, content.remainingRefs)
-            return {
-              content_layout: 'off-chain',
-              content: content.readRemainingBytes().toString()
-            }
-          }
-        } catch (e) {
-          console.warn("Unable to parse metadata", value, e)
-        }
-      } else if (req.expected[idx] == 'boc') {
-        return value.toBoc().toString("base64");
-      } else {
-        throw new Error("Mapping type " + req.expected[idx] + " not supported")
       }
-    })
+      res.result = out
+    } else {
+      res.result = formatOutput(res.result, req.expected);
+    }
     return res;
 }
 
