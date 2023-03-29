@@ -338,7 +338,7 @@ def get_messages_by_hash(session: Session, msg_hash: str, include_msg_body: bool
 
 def get_transactions_by_hash(session: Session, tx_hash: str, include_msg_body: bool):
     query = session.query(Transaction).filter(Transaction.hash == tx_hash)
-    query = augment_transaction_query(query, include_msg_body)
+    query = augment_transaction_query(query, include_msg_body, False)
     query = query.limit(500)
     return query.all()
 
