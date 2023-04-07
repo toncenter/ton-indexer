@@ -4,6 +4,7 @@ add_executable(tondb-scanner src/main.cpp)
 
 target_include_directories(tondb-scanner 
     PUBLIC external/ton
+    PUBLIC external/libpqxx
 )
 
 target_link_directories(tondb-scanner
@@ -11,4 +12,5 @@ target_link_directories(tondb-scanner
 )
 
 target_link_libraries(tondb-scanner overlay tdutils tdactor adnl tl_api dht
-        catchain validatorsession validator-disk ton_validator validator-disk)
+        catchain validatorsession validator-disk ton_validator validator-disk 
+        pqxx pq)
