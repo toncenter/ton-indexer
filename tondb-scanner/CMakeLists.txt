@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.13)
 
-add_executable(tondb-scanner src/main.cpp)
+add_executable(tondb-scanner 
+    src/main.cpp
+    src/InsertManagerPostgres.cpp
+    src/DbScanner.cpp)
 
 target_include_directories(tondb-scanner 
     PUBLIC external/ton
