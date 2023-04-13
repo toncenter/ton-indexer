@@ -1,7 +1,7 @@
 #include "InsertManagerPostgres.h"
 #include "BlockToSchema.hpp"
 #include <pqxx/pqxx>
-
+#include <chrono>
 
 #define TO_SQL_BOOL(x) ((x) ? "TRUE" : "FALSE")
 #define TO_SQL_STRING(x) ("'" + (x) + "'")
@@ -11,11 +11,15 @@
 
 class InsertBatchMcSeqnos: public td::actor::Actor {
 private:
+  std::string connection_string_;
   std::vector<schema::BlockToSchema> mc_blocks_;
   td::Promise<td::Unit> promise_;
 public:
-  InsertBatchMcSeqnos(std::vector<schema::BlockToSchema> mc_blocks, td::Promise<td::Unit> promise): mc_blocks_(std::move(mc_blocks)), promise_(std::move(promise)) {
-  }
+  InsertBatchMcSeqnos(std::string connection_string, std::vector<schema::BlockToSchema> mc_blocks, td::Promise<td::Unit> promise): 
+    connection_string_(std::move(connection_string)), 
+    mc_blocks_(std::move(mc_blocks)), 
+    promise_(std::move(promise))
+  {}
 
   void insert_blocks(pqxx::work &transaction) {
     std::ostringstream query;
@@ -67,7 +71,7 @@ public:
     }
     query << " ON CONFLICT DO NOTHING";
 
-    LOG(DEBUG) << "Running SQL query: " << query.str();
+    // LOG(DEBUG) << "Running SQL query: " << query.str();
     transaction.exec0(query.str());
   }
 
@@ -117,7 +121,7 @@ public:
     }
     query << " ON CONFLICT DO NOTHING";
 
-    LOG(DEBUG) << "Running SQL query: " << query.str();
+    // LOG(DEBUG) << "Running SQL query: " << query.str();
     transaction.exec0(query.str());
   }
   
@@ -154,7 +158,7 @@ public:
     }
     query << " ON CONFLICT DO NOTHING";
 
-    LOG(DEBUG) << "Running SQL query: " << query.str();
+    // LOG(DEBUG) << "Running SQL query: " << query.str();
     transaction.exec0(query.str());
 
     query.str("");
@@ -181,7 +185,7 @@ public:
     }
     query << " ON CONFLICT DO NOTHING";
 
-    LOG(DEBUG) << "Running SQL query: " << query.str();
+    // LOG(DEBUG) << "Running SQL query: " << query.str();
     transaction.exec0(query.str());
   }
 
@@ -205,7 +209,7 @@ public:
     }
     query << " ON CONFLICT DO NOTHING";
 
-    LOG(DEBUG) << "Running SQL query: " << query.str();
+    // LOG(DEBUG) << "Running SQL query: " << query.str();
     transaction.exec0(query.str());
   }
 
@@ -232,13 +236,13 @@ public:
       }
     }
     query << " ON CONFLICT DO NOTHING";
-    LOG(DEBUG) << "Running SQL query: " << query.str();
+    // LOG(DEBUG) << "Running SQL query: " << query.str();
     transaction.exec0(query.str());
   }
 
   void start_up() {
     try {
-      pqxx::connection c("dbname=ton_index user=postgres password=XXX hostaddr=127.0.0.1 port=5432");
+      pqxx::connection c(connection_string_);
       if (!c.is_open()) {
         promise_.set_error(td::Status::Error("Failed to open database"));
         stop();
@@ -260,16 +264,36 @@ public:
   }
 };
 
+InsertManagerPostgres::InsertManagerPostgres(): 
+    inserted_count_(0),
+    start_time_(std::chrono::high_resolution_clock::now()) 
+{}
+
 void InsertManagerPostgres::start_up() {
   alarm_timestamp() = td::Timestamp::in(1.0);
 }
 
+void InsertManagerPostgres::report_statistics() {
+  auto now_time_ = std::chrono::high_resolution_clock::now();
+  auto last_report_seconds_ = std::chrono::duration_cast<std::chrono::seconds>(now_time_ - last_verbose_time_);
+  if (last_report_seconds_.count() > 3) {
+    last_verbose_time_ = now_time_;
+
+    auto total_seconds_ = std::chrono::duration_cast<std::chrono::seconds>(now_time_ - start_time_);
+    auto tasks_per_second = double(inserted_count_) / total_seconds_.count();
+
+    LOG(INFO) << "Queue size: " << insert_queue_.size() << " Tasks per second: " << tasks_per_second;
+  }
+}
+
 void InsertManagerPostgres::alarm() {
+  report_statistics();
+
   LOG(DEBUG) << "insert queue size: " << insert_queue_.size();
 
   std::vector<td::Promise<td::Unit>> promises;
   std::vector<schema::BlockToSchema> schema_blocks;
-  while (!insert_queue_.empty() && schema_blocks.size() < 100) {
+  while (!insert_queue_.empty() && schema_blocks.size() < 2048) {
     auto block_ds = insert_queue_.front();
     insert_queue_.pop();
 
@@ -286,6 +310,8 @@ void InsertManagerPostgres::alarm() {
     }
     promises.push_back(std::move(promise));
     schema_blocks.push_back(std::move(schema_block));
+
+    ++inserted_count_;  // FIXME: increasing before insertion. Move this line in promise P
   }
   if (!schema_blocks.empty()) {
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), promises = std::move(promises)](td::Result<td::Unit> R) mutable {
@@ -301,8 +327,8 @@ void InsertManagerPostgres::alarm() {
         p.set_result(td::Unit());
       }
     });
-
-    td::actor::create_actor<InsertBatchMcSeqnos>("insertbatchmcseqnos", std::move(schema_blocks), std::move(P)).release();
+    LOG(ERROR) << credential.getConnectionString();
+    td::actor::create_actor<InsertBatchMcSeqnos>("insertbatchmcseqnos", credential.getConnectionString(), std::move(schema_blocks), std::move(P)).release();
   }
 
   if (!insert_queue_.empty()) {

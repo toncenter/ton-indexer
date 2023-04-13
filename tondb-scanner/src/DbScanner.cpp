@@ -324,7 +324,7 @@ void DbScanner::schedule_for_processing() {
     td::actor::send_closure(SelfId, &DbScanner::seqno_fetched, mc_seqno, std::move(res));
     });
 
-    LOG(INFO) << "Creating IndexQuery for mc seqno " << mc_seqno;
+    LOG(DEBUG) << "Creating IndexQuery for mc seqno " << mc_seqno;
     td::actor::create_actor<IndexQuery>("indexquery", mc_seqno, db_.get(), std::move(R)).release();
     seqnos_in_progress_.insert(mc_seqno);
   }
@@ -341,14 +341,14 @@ void DbScanner::seqno_fetched(int mc_seqno, td::Result<std::vector<BlockDataStat
 
   auto blks = blocks_data_state.move_as_ok();
   for (auto& blk: blks) {
-    LOG(INFO) << "Got block data and state for " << blk.block_data->block_id().id.to_str();
+    LOG(DEBUG) << "Got block data and state for " << blk.block_data->block_id().id.to_str();
   }
 
   auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> res) {
     if (res.is_ok()) {
-      LOG(INFO) << "MC seqno " << mc_seqno << " insert success";
+      LOG(DEBUG) << "MC seqno " << mc_seqno << " insert success";
     } else {
-      LOG(INFO) << "MC seqno " << mc_seqno << " insert failed: " << res.move_as_error();
+      LOG(WARNING) << "MC seqno " << mc_seqno << " insert failed: " << res.move_as_error();
     }
   });
 
