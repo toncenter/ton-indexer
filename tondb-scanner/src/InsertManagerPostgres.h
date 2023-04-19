@@ -31,6 +31,8 @@ public:
   void set_password(std::string value) { credential.password = std::move(value); }
   void set_dbname(std::string value) { credential.dbname = std::move(value); }
 
+  void set_batch_size(int value) { batch_size = value; }
+
   void start_up() override;
   void alarm() override;
 

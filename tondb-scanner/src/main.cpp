@@ -66,6 +66,31 @@ int main(int argc, char *argv[]) {
     return td::Status::OK();
   });
 
+  p.add_checked_option('M', "max-parallel-tasks", "Max parallel index queries (default: 1024)",
+               [&](td::Slice fname) { 
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --max-parallel-tasks: not a number");
+    }
+    td::actor::send_closure(scanner, &DbScanner::set_max_parallel_fetch_actors, v);
+    return td::Status::OK();
+  });
+
+  p.add_checked_option(' ', "insert-batch-size", "Insert batch size (default: 1024)",
+               [&](td::Slice fname) { 
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --insert-batch-size: not a number");
+    }
+    td::actor::send_closure(insert_manager, &InsertManagerPostgres::set_batch_size, v);
+    return td::Status::OK();
+  });
+
+
   // SET_VERBOSITY_LEVEL(VERBOSITY_NAME(DEBUG));
   td::actor::Scheduler scheduler({32});
   scheduler.run_in_context([&] { insert_manager = td::actor::create_actor<InsertManagerPostgres>("insertmanager"); });

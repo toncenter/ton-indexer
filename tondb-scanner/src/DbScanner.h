@@ -51,4 +51,5 @@ private:
   void schedule_for_processing();
   void seqno_fetched(int mc_seqno, td::Result<MasterchainBlockDataState> blocks_data_state);
   void seqno_parsed(int mc_seqno, td::Result<ParsedBlock> parsed_block);
+  void reschedule_seqno(int mc_seqno);
 };

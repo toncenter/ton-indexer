@@ -20,7 +20,7 @@ public:
     mc_blocks_(std::move(mc_blocks)), 
     promise_(std::move(promise))
   {
-    LOG(ERROR) << "Created InsertBatchMcSeqnos with " << mc_blocks_.size() << "blocks";
+    LOG(DEBUG) << "Created InsertBatchMcSeqnos with " << mc_blocks_.size() << "blocks";
   }
 
   void insert_blocks(pqxx::work &transaction) {
@@ -277,13 +277,16 @@ void InsertManagerPostgres::start_up() {
 void InsertManagerPostgres::report_statistics() {
   auto now_time_ = std::chrono::high_resolution_clock::now();
   auto last_report_seconds_ = std::chrono::duration_cast<std::chrono::seconds>(now_time_ - last_verbose_time_);
-  if (last_report_seconds_.count() > 3) {
+  if (last_report_seconds_.count() > 10) {
     last_verbose_time_ = now_time_;
 
     auto total_seconds_ = std::chrono::duration_cast<std::chrono::seconds>(now_time_ - start_time_);
     auto tasks_per_second = double(inserted_count_) / total_seconds_.count();
 
-    LOG(INFO) << "Queue size: " << insert_queue_.size() << " Tasks per second: " << tasks_per_second;
+    LOG(INFO) << "Total: " << inserted_count_ 
+              << " Time: " << total_seconds_.count() 
+              << " (TPS: " << tasks_per_second << ")"
+              << " Queued: " << insert_queue_.size();
   }
 }
 
@@ -303,7 +306,9 @@ void InsertManagerPostgres::alarm() {
 
     promises.push_back(std::move(promise));
     schema_blocks.push_back(std::move(schema_block));
-
+    if(inserted_count_ == 0) {
+      start_time_ = std::chrono::high_resolution_clock::now();
+    }
     ++inserted_count_;  // FIXME: increasing before insertion. Move this line in promise P
   }
   if (!schema_blocks.empty()) {

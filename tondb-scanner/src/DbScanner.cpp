@@ -359,10 +359,16 @@ void DbScanner::seqno_parsed(int mc_seqno, td::Result<ParsedBlock> parsed_block)
       LOG(DEBUG) << "MC seqno " << mc_seqno << " insert success";
     } else {
       LOG(DEBUG) << "MC seqno " << mc_seqno << " insert failed: " << res.move_as_error();
+      td::actor::send_closure(SelfId, &DbScanner::reschedule_seqno, mc_seqno);
     }
   });
 
   td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, parsed_block.move_as_ok(), std::move(R));
+}
+
+void DbScanner::reschedule_seqno(int mc_seqno) {
+  LOG(WARNING) << "MC Seqno " << mc_seqno << " rescheduled";
+  seqnos_to_process_.push(mc_seqno);
 }
 
 void DbScanner::alarm() {
