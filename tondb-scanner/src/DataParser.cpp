@@ -569,7 +569,7 @@ ParseManager::ParseManager() {
 }
 
 void ParseManager::parse(int mc_seqno, MasterchainBlockDataState mc_block, td::Promise<ParsedBlock> promise) {
-    auto parse_query = td::actor::create_actor<ParseQuery>("parsequery", mc_seqno, std::move(mc_block), std::move(promise));
+    td::actor::create_actor<ParseQuery>("parsequery", mc_seqno, std::move(mc_block), std::move(promise)).release();
 }
 
 void ParseManager::start_up() {
