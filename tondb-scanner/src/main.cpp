@@ -7,7 +7,9 @@
 #include "crypto/vm/cp0.h"
 
 #include "InsertManagerPostgres.h"
+#include "DataParser.h"
 #include "DbScanner.h"
+
 
 int main(int argc, char *argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);
@@ -27,6 +29,7 @@ int main(int argc, char *argv[]) {
 
   td::actor::ActorOwn<DbScanner> scanner;
   td::actor::ActorOwn<InsertManagerPostgres> insert_manager;
+  td::actor::ActorOwn<ParseManager> parse_manager;
 
   p.add_option('D', "db", "Path to TON DB folder",
                [&](td::Slice fname) { td::actor::send_closure(scanner, &DbScanner::set_db_root, fname.str()); });
@@ -66,7 +69,8 @@ int main(int argc, char *argv[]) {
   // SET_VERBOSITY_LEVEL(VERBOSITY_NAME(DEBUG));
   td::actor::Scheduler scheduler({32});
   scheduler.run_in_context([&] { insert_manager = td::actor::create_actor<InsertManagerPostgres>("insertmanager"); });
-  scheduler.run_in_context([&] { scanner = td::actor::create_actor<DbScanner>("scanner", insert_manager.get()); });
+  scheduler.run_in_context([&] { parse_manager = td::actor::create_actor<ParseManager>("parsemanager"); });
+  scheduler.run_in_context([&] { scanner = td::actor::create_actor<DbScanner>("scanner", insert_manager.get(), parse_manager.get()); });
   scheduler.run_in_context([&] { p.run(argc, argv).ensure(); });
   scheduler.run_in_context([&] { td::actor::send_closure(scanner, &DbScanner::run); });
   scheduler.run();

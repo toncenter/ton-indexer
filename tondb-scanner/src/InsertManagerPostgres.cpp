@@ -12,14 +12,16 @@
 class InsertBatchMcSeqnos: public td::actor::Actor {
 private:
   std::string connection_string_;
-  std::vector<schema::BlockToSchema> mc_blocks_;
+  std::vector<ParsedBlock> mc_blocks_;
   td::Promise<td::Unit> promise_;
 public:
-  InsertBatchMcSeqnos(std::string connection_string, std::vector<schema::BlockToSchema> mc_blocks, td::Promise<td::Unit> promise): 
+  InsertBatchMcSeqnos(std::string connection_string, std::vector<ParsedBlock> mc_blocks, td::Promise<td::Unit> promise): 
     connection_string_(std::move(connection_string)), 
     mc_blocks_(std::move(mc_blocks)), 
     promise_(std::move(promise))
-  {}
+  {
+    LOG(ERROR) << "Created InsertBatchMcSeqnos with " << mc_blocks_.size() << "blocks";
+  }
 
   void insert_blocks(pqxx::work &transaction) {
     std::ostringstream query;
@@ -31,7 +33,7 @@ public:
 
     bool is_first = true;
     for (const auto& mc_block : mc_blocks_) {
-      for (const auto& block : mc_block.get_blocks()) {
+      for (const auto& block : mc_block.blocks_) {
         if (is_first) {
           is_first = false;
         } else {
@@ -84,7 +86,7 @@ public:
                                        "action_total_action_fees) VALUES ";
     bool is_first = true;
     for (const auto& mc_block : mc_blocks_) {
-      for (const auto& transaction : mc_block.get_transactions()) {
+      for (const auto& transaction : mc_block.transactions_) {
         if (is_first) {
           is_first = false;
         } else {
@@ -131,7 +133,7 @@ public:
                                  "ihr_disabled, bounce, bounced, import_fee, body_hash, init_state_hash) VALUES ";
     bool is_first = true;
     for (const auto& mc_block : mc_blocks_) {
-      for (const auto& message : mc_block.get_messages()) {
+      for (const auto& message : mc_block.messages_) {
         if (is_first) {
           is_first = false;
         } else {
@@ -165,7 +167,7 @@ public:
     is_first = true;
     query << "INSERT INTO message_contents (hash, body) VALUES ";
     for (const auto& mc_block : mc_blocks_) {
-      for (const auto& message : mc_block.get_messages()) {
+      for (const auto& message : mc_block.messages_) {
         if (is_first) {
           is_first = false;
         } else {
@@ -194,7 +196,7 @@ public:
     query << "INSERT INTO transaction_messages (transaction_hash, message_hash, direction) VALUES ";
     bool is_first = true;
     for (const auto& mc_block : mc_blocks_) {
-      for (const auto& tx_msg : mc_block.get_transaction_messages()) {
+      for (const auto& tx_msg : mc_block.transaction_messages_) {
         if (is_first) {
           is_first = false;
         } else {
@@ -218,7 +220,7 @@ public:
     query << "INSERT INTO account_states (hash, account, balance, account_status, frozen_hash, code_hash, data_hash) VALUES ";
     bool is_first = true;
     for (const auto& mc_block : mc_blocks_) {
-      for (const auto& account_state : mc_block.get_account_states()) {
+      for (const auto& account_state : mc_block.account_states_) {
         if (is_first) {
           is_first = false;
         } else {
@@ -256,11 +258,10 @@ public:
       insert_account_states(txn);
       txn.commit();
       promise_.set_value(td::Unit());
-      stop();
     } catch (const std::exception &e) {
       promise_.set_error(td::Status::Error(PSLICE() << "Error inserting to PG: " << e.what()));
-      stop();
     }
+    stop();
   }
 };
 
@@ -292,22 +293,14 @@ void InsertManagerPostgres::alarm() {
   LOG(DEBUG) << "insert queue size: " << insert_queue_.size();
 
   std::vector<td::Promise<td::Unit>> promises;
-  std::vector<schema::BlockToSchema> schema_blocks;
-  while (!insert_queue_.empty() && schema_blocks.size() < 2048) {
-    auto block_ds = insert_queue_.front();
+  std::vector<ParsedBlock> schema_blocks;
+  while (!insert_queue_.empty() && schema_blocks.size() < batch_size) {
+    auto schema_block = insert_queue_.front();
     insert_queue_.pop();
 
     auto promise = std::move(promise_queue_.front());
     promise_queue_.pop();
 
-    auto schema_block = schema::BlockToSchema(std::move(block_ds));
-    auto parse_res = schema_block.parse();
-
-    if (parse_res.is_error()) {
-      LOG(ERROR) << "Error parsing block: " << parse_res.error();
-      promise.set_error(parse_res.move_as_error_prefix("Error parsing block: "));
-      continue;
-    }
     promises.push_back(std::move(promise));
     schema_blocks.push_back(std::move(schema_block));
 
@@ -327,18 +320,28 @@ void InsertManagerPostgres::alarm() {
         p.set_result(td::Unit());
       }
     });
-    LOG(ERROR) << credential.getConnectionString();
     td::actor::create_actor<InsertBatchMcSeqnos>("insertbatchmcseqnos", credential.getConnectionString(), std::move(schema_blocks), std::move(P)).release();
   }
 
   if (!insert_queue_.empty()) {
-    alarm_timestamp() = td::Timestamp::in(0.1);
+    alarm_timestamp() = td::Timestamp::in(0.001);
   } else {
     alarm_timestamp() = td::Timestamp::in(1.0);
   }
 }
 
-void InsertManagerPostgres::insert(std::vector<BlockDataState> block_ds, td::Promise<td::Unit> promise) {
+void InsertManagerPostgres::insert(ParsedBlock block_ds, td::Promise<td::Unit> promise) {
   insert_queue_.push(std::move(block_ds));
   promise_queue_.push(std::move(promise));
+}
+
+
+std::string InsertManagerPostgres::PostgresCredential::getConnectionString()  {
+  return (
+    "hostaddr=" + host +
+    " port=" + std::to_string(port) + 
+    (user.length() ? " user=" + user : "") +
+    (password.length() ? " password=" + password : "") +
+    (dbname.length() ? " dbname=" + dbname : "")
+  );
 }
