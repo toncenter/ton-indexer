@@ -36,7 +36,7 @@ public:
   InsertManagerPostgres();
 
   void set_host(std::string value) { credential.host = std::move(value); }
-  void set_port(int value) { credential.host = value; }
+  void set_port(int value) { credential.port = value; }
   void set_user(std::string value) { credential.user = std::move(value); }
   void set_password(std::string value) { credential.password = std::move(value); }
   void set_dbname(std::string value) { credential.dbname = std::move(value); }
