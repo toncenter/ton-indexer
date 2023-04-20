@@ -81,7 +81,7 @@ class IndexQuery: public td::actor::Actor {
 private:
   const int mc_seqno_;
   td::actor::ActorId<ton::validator::RootDb> db_;
-  td::Promise<std::vector<BlockDataState>> promise_;
+  td::Promise<MasterchainBlockDataState> promise_;
 
   td::Ref<BlockData> mc_block_data_;
   td::Ref<MasterchainState> mc_block_state_;
@@ -92,11 +92,11 @@ private:
   std::vector<ton::BlockIdExt> shard_block_ids_;
   std::queue<ton::BlockIdExt> blocks_queue_;
 
-  std::vector<BlockDataState> result_;
+  MasterchainBlockDataState result_;
 
 public:
 
-  IndexQuery(int mc_seqno, td::actor::ActorId<ton::validator::RootDb> db, td::Promise<std::vector<BlockDataState>> promise) : 
+  IndexQuery(int mc_seqno, td::actor::ActorId<ton::validator::RootDb> db, td::Promise<MasterchainBlockDataState> promise) : 
     db_(db), 
     mc_seqno_(mc_seqno),
     promise_(std::move(promise)) {
@@ -320,8 +320,8 @@ void DbScanner::schedule_for_processing() {
     auto mc_seqno = seqnos_to_process_.front();
     seqnos_to_process_.pop();
 
-    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<std::vector<BlockDataState>> res) {
-    td::actor::send_closure(SelfId, &DbScanner::seqno_fetched, mc_seqno, std::move(res));
+    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<MasterchainBlockDataState> res) {
+      td::actor::send_closure(SelfId, &DbScanner::seqno_fetched, mc_seqno, std::move(res));
     });
 
     LOG(DEBUG) << "Creating IndexQuery for mc seqno " << mc_seqno;
@@ -330,29 +330,45 @@ void DbScanner::schedule_for_processing() {
   }
 }
 
-void DbScanner::seqno_fetched(int mc_seqno, td::Result<std::vector<BlockDataState>> blocks_data_state) {
-  CHECK(seqnos_in_progress_.erase(mc_seqno) == 1);
-
+void DbScanner::seqno_fetched(int mc_seqno, td::Result<MasterchainBlockDataState> blocks_data_state) {
   if (blocks_data_state.is_error()) {
     LOG(ERROR) << "mc_seqno " << mc_seqno << " failed to fetch BlockDataState: " << blocks_data_state.move_as_error();
+    CHECK(seqnos_in_progress_.erase(mc_seqno) == 1);
     seqnos_to_process_.push(mc_seqno);
     return;
   }
 
-  auto blks = blocks_data_state.move_as_ok();
-  for (auto& blk: blks) {
-    LOG(DEBUG) << "Got block data and state for " << blk.block_data->block_id().id.to_str();
+  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlock> res) {
+    td::actor::send_closure(SelfId, &DbScanner::seqno_parsed, mc_seqno, std::move(res));
+  });
+
+  td::actor::send_closure(parse_manager_, &ParseManager::parse, mc_seqno, blocks_data_state.move_as_ok(), std::move(R));
+}
+
+void DbScanner::seqno_parsed(int mc_seqno, td::Result<ParsedBlock> parsed_block) {
+  CHECK(seqnos_in_progress_.erase(mc_seqno) == 1);
+
+  if (parsed_block.is_error()) {
+    LOG(ERROR) << "mc_seqno " << mc_seqno << " failed to parse BlockDataState: " << parsed_block.move_as_error();
+    seqnos_to_process_.push(mc_seqno);
+    return;
   }
 
   auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> res) {
     if (res.is_ok()) {
       LOG(DEBUG) << "MC seqno " << mc_seqno << " insert success";
     } else {
-      LOG(WARNING) << "MC seqno " << mc_seqno << " insert failed: " << res.move_as_error();
+      LOG(DEBUG) << "MC seqno " << mc_seqno << " insert failed: " << res.move_as_error();
+      td::actor::send_closure(SelfId, &DbScanner::reschedule_seqno, mc_seqno);
     }
   });
 
-  td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, std::move(blks), std::move(R));
+  td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, parsed_block.move_as_ok(), std::move(R));
+}
+
+void DbScanner::reschedule_seqno(int mc_seqno) {
+  LOG(WARNING) << "MC Seqno " << mc_seqno << " rescheduled";
+  seqnos_to_process_.push(mc_seqno);
 }
 
 void DbScanner::alarm() {

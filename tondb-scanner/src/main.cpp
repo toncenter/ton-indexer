@@ -7,7 +7,9 @@
 #include "crypto/vm/cp0.h"
 
 #include "InsertManagerPostgres.h"
+#include "DataParser.h"
 #include "DbScanner.h"
+
 
 int main(int argc, char *argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);
@@ -27,6 +29,7 @@ int main(int argc, char *argv[]) {
 
   td::actor::ActorOwn<DbScanner> scanner;
   td::actor::ActorOwn<InsertManagerPostgres> insert_manager;
+  td::actor::ActorOwn<ParseManager> parse_manager;
 
   p.add_option('D', "db", "Path to TON DB folder",
                [&](td::Slice fname) { td::actor::send_closure(scanner, &DbScanner::set_db_root, fname.str()); });
@@ -63,10 +66,36 @@ int main(int argc, char *argv[]) {
     return td::Status::OK();
   });
 
+  p.add_checked_option('M', "max-parallel-tasks", "Max parallel index queries (default: 1024)",
+               [&](td::Slice fname) { 
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --max-parallel-tasks: not a number");
+    }
+    td::actor::send_closure(scanner, &DbScanner::set_max_parallel_fetch_actors, v);
+    return td::Status::OK();
+  });
+
+  p.add_checked_option(' ', "insert-batch-size", "Insert batch size (default: 1024)",
+               [&](td::Slice fname) { 
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --insert-batch-size: not a number");
+    }
+    td::actor::send_closure(insert_manager, &InsertManagerPostgres::set_batch_size, v);
+    return td::Status::OK();
+  });
+
+
   // SET_VERBOSITY_LEVEL(VERBOSITY_NAME(DEBUG));
   td::actor::Scheduler scheduler({32});
   scheduler.run_in_context([&] { insert_manager = td::actor::create_actor<InsertManagerPostgres>("insertmanager"); });
-  scheduler.run_in_context([&] { scanner = td::actor::create_actor<DbScanner>("scanner", insert_manager.get()); });
+  scheduler.run_in_context([&] { parse_manager = td::actor::create_actor<ParseManager>("parsemanager"); });
+  scheduler.run_in_context([&] { scanner = td::actor::create_actor<DbScanner>("scanner", insert_manager.get(), parse_manager.get()); });
   scheduler.run_in_context([&] { p.run(argc, argv).ensure(); });
   scheduler.run_in_context([&] { td::actor::send_closure(scanner, &DbScanner::run); });
   scheduler.run();
