@@ -24,6 +24,27 @@ def setup_periodic_tasks(sender, **kwargs):
     sender.add_periodic_task(settings.parser.poll_interval, parse_outbox_task.s("test"), name='Parser task')
 
 
+async def process_item(session: SessionMaker, task: ParseOutbox):
+    # logger.info(f"Got task {task}")
+    successful = True
+    try:
+        if task.entity_type == ParseOutbox.PARSE_TYPE_MESSAGE:
+            ctx = await get_messages_context(session, task.entity_id)
+        elif task.entity_type == ParseOutbox.PARSE_TYPE_ACCOUNT:
+            ctx = await get_account_context(session, task.entity_id)
+        else:
+            raise Exception(f"entity_type not supported: {task.entity_type}")
+        for parser in ALL_PARSERS:
+            if parser.predicate.match(ctx):
+                await parser.parse(session, ctx)
+    except Exception as e:
+        logger.error(f'Failed to perform parsing for outbox item {task.outbox_id}: {traceback.format_exc()}')
+        await postpone_outbox_item(session, task, settings.parser.retry.timeout)
+        await asyncio.sleep(1) # simple throttling
+        successful = False
+    if successful:
+        await remove_outbox_item(session, task.outbox_id)
+
 async def parse_outbox():
     logger.info("Starting parse outbox loop")
 
@@ -34,27 +55,9 @@ async def parse_outbox():
             if len(tasks) == 0:
                 logger.info("Parser outbox is empty, exiting")
                 break
-            for task in tasks:
-                task = task[0]
-                # logger.info(f"Got task {task}")
-                successful = True
-                try:
-                    if task.entity_type == ParseOutbox.PARSE_TYPE_MESSAGE:
-                        ctx = await get_messages_context(session, task.entity_id)
-                    elif task.entity_type == ParseOutbox.PARSE_TYPE_ACCOUNT:
-                        ctx = await get_account_context(session, task.entity_id)
-                    else:
-                        raise Exception(f"entity_type not supported: {task.entity_type}")
-                    for parser in ALL_PARSERS:
-                        if parser.predicate.match(ctx):
-                            await parser.parse(session, ctx)
-                except Exception as e:
-                    logger.error(f'Failed to perform parsing for outbox item {task.outbox_id}: {traceback.format_exc()}')
-                    await postpone_outbox_item(session, task, settings.parser.retry.timeout)
-                    await asyncio.sleep(1) # simple throttling
-                    successful = False
-                if successful:
-                    await remove_outbox_item(session, task.outbox_id)
+            tasks = [process_item(session, task[0]) for task in tasks]
+            await asyncio.gather(*tasks)
+
             await session.commit()
 
 @app.task

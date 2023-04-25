@@ -573,3 +573,101 @@ class JettonMaster(Base):
 
     __table_args__ = (UniqueConstraint('address'), )
 
+
+# NFTs
+"""
+transfer#5fcc3d14 
+    query_id:uint64 
+    new_owner:MsgAddress 
+    response_destination:MsgAddress 
+    custom_payload:(Maybe ^Cell) 
+    forward_amount:(VarUInteger 16) 
+    forward_payload:(Either Cell ^Cell)
+"""
+@dataclass(init=False)
+class NFTTransfer(Base):
+    __tablename__ = 'nft_transfers'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
+    successful: bool = Column(Boolean)
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    query_id: str = Column(String)
+    current_owner: str = Column(String)
+    new_owner: str = Column(String)
+    nft_item: str = Column(String)
+    response_destination: str = Column(String)
+    custom_payload: str = Column(LargeBinary)
+    forward_ton_amount: int = Column(BigInteger)
+    forward_payload: str = Column(LargeBinary)
+
+
+    __table_args__ = (Index('nft_transfer_index_1', 'current_owner'),
+                      Index('nft_transfer_index_2', 'new_owner'),
+                      Index('nft_transfer_index_3', 'query_id'),
+                      Index('nft_transfer_index_4', 'nft_item'),
+                      UniqueConstraint('msg_id')
+                      )
+
+@dataclass(init=False)
+class NFTItem(Base):
+    __tablename__ = 'nft_item'
+
+    id: int = Column(BigInteger, primary_key=True)
+    state_id: int = Column(BigInteger, ForeignKey('account_state.state_id'))
+    address: str = Column(String)
+    index: str = Column(String) # it is better to store index as a string to avoid overflow for some collections
+    collection: str = Column(String)
+    owner: str = Column(String)
+    name: str = Column(String)
+    description: str = Column(String)
+    image: str = Column(String)
+    image_data: str = Column(String)
+    attributes: str = Column(String)
+
+
+    __table_args__ = (
+        UniqueConstraint('address'),
+        Index('nft_item_index_1', 'collection'),
+        Index('nft_item_index_2', 'owner')
+    )
+
+@dataclass(init=False)
+class NFTCollection(Base):
+    __tablename__ = 'nft_collection'
+
+    id: int = Column(BigInteger, primary_key=True)
+    state_id: int = Column(BigInteger, ForeignKey('account_state.state_id'))
+    address: str = Column(String)
+    next_item_index: int = Column(BigInteger)
+    owner: str = Column(String)  # owner of NFT on sell
+    name: str = Column(String)
+    image: str = Column(String)
+    image_data: str = Column(String)
+    metadata_url: str = Column(String)
+    description: str = Column(String)
+
+    __table_args__ = (
+        UniqueConstraint('address'),
+    )
+
+@dataclass(init=False)
+class NFTItemSale(Base):
+    __tablename__ = 'nft_item_sale'
+
+    id: int = Column(BigInteger, primary_key=True)
+    state_id: int = Column(BigInteger, ForeignKey('account_state.state_id'))
+    address: str = Column(String)
+    nft_item: str = Column(String)  # address
+    marketplace: str = Column(String)  # address
+    owner: str = Column(String)  # owner of NFT on sell
+    price: decimal.Decimal = Column(Numeric(scale=0))
+    # TODO royalty, fees
+
+
+    __table_args__ = (
+        UniqueConstraint('address'),
+        Index('nft_item_sale_index_1', 'nft_item')
+    )
