@@ -671,13 +671,14 @@ class NFTItemSaleParser(ContractsExecutorParser):
         """
         super(NFTItemSaleParser, self).__init__(
             predicate=ContractPredicate(supported=SALE_CONTRACTS.keys()))
+        self.SALE_CONTRACTS = SALE_CONTRACTS
 
     @staticmethod
     def parser_name() -> str:
         return "NFTItemSaleParser"
 
     async def parse(self, session: Session, context: AccountContext):
-        contract = NFTItemSaleParser.SALE_CONTRACTS[context.code.hash]
+        contract = self.SALE_CONTRACTS[context.code.hash]
         sale_data = await self._execute(context.code.code, context.account.data, 'get_sale_data',
                                   contract.signature,
                                   address=context.account.address)
