@@ -20,3 +20,4 @@ tqdm
 requests
 asgiref
 pytonlib==0.0.46
+aiohttp

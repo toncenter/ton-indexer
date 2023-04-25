@@ -126,7 +126,13 @@ function formatOutput(result, expected) {
         console.warn("Unable to parse metadata", value, e)
       }
     } else if (expected[idx] == 'boc') {
-      return value.toBoc().toString("base64");
+      try {
+        return value.toBoc().toString("base64");
+      } catch (e) {
+        return value.toCell().toBoc().toString("base64");
+      }
+    } else if (expected[idx] == 'string') {
+      return value.readRemainingBytes().toString()
     } else {
       throw new Error("Mapping type " + expected[idx] + " not supported")
     }

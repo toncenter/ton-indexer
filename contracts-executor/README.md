@@ -22,6 +22,8 @@ some meaningful form. Supported types:
 * ``int`` - converts BN to number (returned as string, not int)
 * ``address`` - reads address from slice and converts to friendly format (``EQ..``)
 * ``cell_hash`` - computes Cell hash
+* ``boc`` - returns base64 representation of cell
+* ``string`` - returns string representation of slice
 * ``metadata`` - reads [TEP-64](https://github.com/ton-blockchain/TEPs/blob/master/text/0064-token-data-standard.md) metadata
 
 Returns list of results 
