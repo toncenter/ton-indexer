@@ -4,14 +4,19 @@ services:
     build:
       context: .
       dockerfile: deploy/api.Dockerfile
-    ports:
-      - ${TON_INDEXER_HTTP_PORT:-80}:8081
+    # ports:
+    #   - ${TON_INDEXER_HTTP_PORT:-80}:8081
     environment:
       ROOT_PATH: ${TON_INDEXER_ROOT_PATH:-/}
     secrets:
       - postgres_password
     restart: unless-stopped
     command: -w=${TON_INDEXER_WEBSERVER_WORKERS_COUNT:-1} --bind=0.0.0.0:8081
+    networks:
+      internal:
+      toncenter-global:
+        aliases:
+          - testnet-b-indexer-api
   backward_indexer:
     build:
       context: .
@@ -27,6 +32,8 @@ services:
     secrets:
       - postgres_password
       - tonlib_config
+    networks:
+      internal:
     depends_on:
       - rabbitmq
       - postgres
@@ -47,6 +54,8 @@ services:
     secrets:
       - postgres_password
       - tonlib_config
+    networks:
+      internal:
     depends_on:
       backward_indexer:
         condition: service_started
@@ -67,6 +76,8 @@ services:
     secrets:
       - postgres_password
       - tonlib_config
+    networks:
+      internal:
     depends_on:
       - rabbitmq
       - postgres
@@ -87,6 +98,8 @@ services:
     secrets:
       - postgres_password
       - tonlib_config
+    networks:
+      internal:
     depends_on:
       forward_indexer:
         condition: service_started
@@ -95,19 +108,25 @@ services:
   rabbitmq:
     image: rabbitmq
     restart: unless-stopped
+    networks:
+      internal:
   redis:
     image: redis:latest
     restart: unless-stopped
+    networks:
+      internal:
   postgres:
     image: postgres:14
-    command: postgres -c max_connections=1000 -c shared_buffers=4GB -c work_mem=2GB
+    command: postgres -c max_connections=1000 -c shared_buffers=2GB -c work_mem=2GB
     restart: unless-stopped
-    shm_size: 12gb
+    shm_size: 8gb
+    networks:
+      internal:
     environment: 
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-    ports:
-      - 5432:5432
+    # ports:
+    #   - 5432:5432
     secrets:
       - postgres_password
     volumes:
@@ -120,6 +139,10 @@ services:
 volumes:
   postgres_data:
     external: false
+networks:
+  internal:
+  toncenter-global:
+    external: true
 secrets:
   postgres_password:
     file: private/postgres_password

@@ -47,5 +47,5 @@ def startup():
     logger.info('Service started successfully')
 
 app.include_router(router_v0, prefix='/v0', include_in_schema=False, deprecated=True)
-app.include_router(router_v0, prefix='', include_in_schema=False, deprecated=True)
+app.include_router(router_v0, prefix='', include_in_schema=True, deprecated=True)
 app.include_router(router_v1, prefix='/v1')

@@ -226,7 +226,7 @@ def get_account_code_hashes_by_masterchain_seqno(session, masterchain_seqno: int
     
     return query.all()
 
-def augment_transaction_query(query, include_msg_body: bool, include_block: bool):
+def augment_transaction_query(query, include_msg_body: bool, include_block: bool=False):
     if include_msg_body:
         query = query.options(joinedload(Transaction.in_msg).joinedload(Message.content)) \
                      .options(joinedload(Transaction.in_msg).joinedload(Message.out_tx).joinedload(Transaction.account_code_hash_rel)) \
