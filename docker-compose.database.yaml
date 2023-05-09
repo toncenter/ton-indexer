@@ -1,0 +1,50 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:14
+    environment: 
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DBNAME: ton_index
+    ports:
+      - target: 5432
+        published: 5432
+        mode: host
+    secrets:
+      - postgres_password
+    command: postgres -c max_connections=1024 -c shared_buffers=4GB -c work_mem=2GB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    tmpfs:
+      - /shm_tmp:size=12G
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - type: tmpfs
+        target: /dev/shm
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: any
+      placement:
+        constraints:
+          - "node.labels.${TONCENTER_ENV:?}.indexer.storage==true"
+    networks:
+      internal:
+
+volumes:
+  postgres_data:
+    external: false
+
+networks:
+  internal:
+    attachable: true
+    external: false
+
+secrets:
+  postgres_password:
+    file: private/postgres_password
