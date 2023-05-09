@@ -23,7 +23,7 @@ app = FastAPI(title="TON Index",
               description=description,
               version='0.1.0',
               root_path=settings.api_root_path,
-              openapi_url=settings.api_root_path + '/openapi.json',
+              # openapi_url=settings.api_root_path + '/openapi.json',
               docs_url='/')
 
 @app.exception_handler(StarletteHTTPException)
