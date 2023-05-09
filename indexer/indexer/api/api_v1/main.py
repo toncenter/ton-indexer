@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from pytonlib.utils.address import detect_address
 
 from indexer.core.database import SessionMaker
-from indexer.core import schemas
+from indexer.api.api_v1 import schemas
 from indexer.core import crud
 
 

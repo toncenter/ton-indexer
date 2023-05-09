@@ -6,8 +6,8 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from indexer.core import crud
-from api.api_v0.main import router as router_v0
-from api.api_v1.main import router as router_v1
+from indexer.api.api_v0.main import router as router_v0
+from indexer.api.api_v1.main import router as router_v1
 
 from indexer.core.settings import Settings
 
