@@ -19,14 +19,12 @@ logging.basicConfig(format='%(asctime)s %(module)-15s %(message)s',
 logger = logging.getLogger(__name__)
 
 description = ''
-app = FastAPI(
-    title="TON Index",
-    description=description,
-    version='0.1.0',
-    root_path=settings.api_root_path,
-    openapi_url=settings.api_root_path + '/openapi.json'
-    docs_url='/',
-)
+app = FastAPI(title="TON Index",
+              description=description,
+              version='0.1.0',
+              root_path=settings.api_root_path,
+              openapi_url=settings.api_root_path + '/openapi.json',
+              docs_url='/')
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):

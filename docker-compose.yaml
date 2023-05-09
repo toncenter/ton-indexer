@@ -20,6 +20,41 @@ x-indexer-environment: &indexer-environment
   TON_INDEXER_BOTTOM_SEQNO:
 
 services:
+  postgres:
+    image: postgres:14
+    environment: 
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DBNAME: ton_index
+    ports:
+      - target: 5432
+        published: 5432
+        mode: host
+    secrets:
+      - postgres_password
+    command: postgres -c max_connections=1024 -c shared_buffers=4GB -c work_mem=2GB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    tmpfs:
+      - /shm_tmp:size=12G
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - type: tmpfs
+        target: /dev/shm
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: any
+      placement:
+        constraints:
+          - "node.labels.${TONCENTER_ENV:?}.indexer.storage==true"
+    networks:
+      internal:
+
   rabbitmq:
     image: rabbitmq:latest
     deploy:
@@ -47,7 +82,7 @@ services:
       internal:
   
   indexer-worker:
-    image: ${DOCKER_REGISTRY:-docker.io/toncenter}/ton-indexer:${IMAGE_TAG:?}
+    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer:${IMAGE_TAG:?}
     build:
       context: indexer
       dockerfile: Dockerfile
@@ -72,23 +107,23 @@ services:
     tty: true
     networks:
       internal:
-  # indexer-scheduler-backward:
-  #   image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer:${IMAGE_TAG:?}
-  #   command: python3 -m indexer.scheduler --queue backward_queue backward
-  #   environment: *indexer-environment
-  #   secrets:
-  #     - postgres_password
-  #     - tonlib_config
-  #   networks:
-  #     internal:
-  #   deploy:
-  #     mode: replicated
-  #     replicas: 1
-  #     restart_policy:
-  #       condition: on-failure
-  #     placement:
-  #       constraints:
-  #         - "node.labels.${TONCENTER_ENV:?}.indexer.worker==true"
+  indexer-scheduler-backward:
+    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer:${IMAGE_TAG:?}
+    command: python3 -m indexer.scheduler --queue backward_queue backward
+    environment: *indexer-environment
+    secrets:
+      - postgres_password
+      - tonlib_config
+    networks:
+      internal:
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - "node.labels.${TONCENTER_ENV:?}.indexer.worker==true"
 
   indexer-scheduler-forward:
     image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer:${IMAGE_TAG:?}
@@ -114,7 +149,10 @@ services:
       - postgres_password
       - tonlib_config
     command: gunicorn indexer.api.main:app -k uvicorn.workers.UvicornWorker --bind=0.0.0.0:8081 -w 8
-    environment: *indexer-environment 
+    environment: *indexer-environment
+    ports:
+      - target: 8081
+        published: ${TON_INDEXER_API_PORT:8081}
     deploy:
       mode: replicated
       replicas: 1
@@ -123,16 +161,15 @@ services:
           - "node.labels.${TONCENTER_ENV:?}.indexer.api==true"
     networks:
       internal:
-      toncenter-global:
-        aliases:
-          - ${TONCENTER_ENV:?}-indexer-api
+
+volumes:
+  postgres_data:
+    external: false
 
 networks:
   internal:
     attachable: true
     external: false
-  toncenter-global:
-    external: true
 
 secrets:
   postgres_password:
