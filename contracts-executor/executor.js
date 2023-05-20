@@ -72,7 +72,7 @@ function formatOutput(result, expected) {
           return value.readAddress().toFriendly();
         }
       } catch(e) {
-        throw e;
+        // throw e;
         console.warn("Unable to parse address", value)
       }
     } else if (expected[idx] == 'cell_hash') {

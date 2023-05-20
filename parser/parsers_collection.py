@@ -346,7 +346,18 @@ class ContractsExecutorParser(Parser):
                 metadata['content_layout'] = content['content_layout']
             else:
                 metadata = content['content']
-                metadata_url = None
+                if 'uri' in metadata:
+                    logger.info(f"Semi on-chain layout detected, uri: {metadata['uri']}")
+                    metadata_url = metadata['uri']
+                    metadata_json = await self.fetcher.fetch(metadata_url)
+                    try:
+                        aux_metadata = json.loads(metadata_json)
+                        for k, v in aux_metadata.items():
+                            metadata[k] = v
+                    except Exception as e:
+                        logger.error(f"Failed to parse metadata for {metadata_url}: {e}")
+                else:
+                    metadata_url = None
 
         return metadata_url, metadata
 
