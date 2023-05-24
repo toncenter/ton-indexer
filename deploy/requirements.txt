@@ -17,6 +17,7 @@ sqlalchemy[asyncio]==1.4.46
 asyncpg
 sqlalchemy-utils
 tqdm
+typing_extensions==4.5.0
 requests
 asgiref
 pytonlib==0.0.46
