@@ -539,3 +539,9 @@ async def get_account_context(session: Session, state_id: int) -> AccountContext
 
 async def get_messages_by_in_tx_id(session: Session, in_tx_id: int) -> MessageContext:
     return (await session.execute(select(Message).filter(Message.in_tx_id == in_tx_id))).first()[0]
+
+async def get_wallet(session: Session, wallet_address: str) -> JettonWallet:
+    res = (await session.execute(select(JettonWallet).filter(JettonWallet.address == wallet_address))).first()
+    if not res:
+        return None
+    return res[0]
