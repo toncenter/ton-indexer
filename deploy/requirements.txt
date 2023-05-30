@@ -21,3 +21,4 @@ requests
 asgiref
 pytonlib==0.0.46
 aiohttp
+kafka-python==2.0.2

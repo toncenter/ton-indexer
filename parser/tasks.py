@@ -3,6 +3,7 @@ from parser.celery import app
 import asyncio
 import traceback
 from config import settings
+from parser.eventbus import EventBus
 from indexer.database import *
 from indexer.crud import *
 from parser.parsers_collection import ALL_PARSERS
@@ -24,7 +25,7 @@ def setup_periodic_tasks(sender, **kwargs):
     sender.add_periodic_task(settings.parser.poll_interval, parse_outbox_task.s("test"), name='Parser task')
 
 
-async def process_item(session: SessionMaker, task: ParseOutbox):
+async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOutbox):
     # logger.info(f"Got task {task}")
     successful = True
     try:
@@ -36,7 +37,7 @@ async def process_item(session: SessionMaker, task: ParseOutbox):
             raise Exception(f"entity_type not supported: {task.entity_type}")
         for parser in ALL_PARSERS:
             if parser.predicate.match(ctx):
-                await parser.parse(session, ctx)
+                await parser.parse(session, ctx, eventbus)
     except Exception as e:
         logger.error(f'Failed to perform parsing for outbox item {task.outbox_id}: {traceback.format_exc()}')
         await postpone_outbox_item(session, task, settings.parser.retry.timeout)
@@ -48,6 +49,8 @@ async def process_item(session: SessionMaker, task: ParseOutbox):
 async def parse_outbox():
     logger.info("Starting parse outbox loop")
 
+    eventbus = EventBus(settings.eventbus.kafka.broker, settings.eventbus.kafka.topic)
+
     while True:
         async with SessionMaker() as session:
             # batch mode is supported but not recommended due to batch processing occurs in one transaction
@@ -55,7 +58,7 @@ async def parse_outbox():
             if len(tasks) == 0:
                 logger.info("Parser outbox is empty, exiting")
                 break
-            tasks = [process_item(session, task[0]) for task in tasks]
+            tasks = [process_item(session, eventbus, task[0]) for task in tasks]
             await asyncio.gather(*tasks)
 
             await session.commit()

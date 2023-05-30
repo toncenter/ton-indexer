@@ -30,3 +30,7 @@ postgres:
   user: postgres
   password_file: /run/secrets/postgres_password
   dbname: ton_index
+eventbus:
+  kafka:
+    broker: ${EVENTBUS_KAFKA_BROKER}
+    topic: ${EVENTBUS_KAFKA_TOPIC}

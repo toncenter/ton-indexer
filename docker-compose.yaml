@@ -162,6 +162,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       PARSER_EXECUTOR_URL: ${PARSER_EXECUTOR_URL:-http://contracts-executor:9090/execute}
+      EVENTBUS_KAFKA_BROKER: ${EVENTBUS_KAFKA_BROKER:-kafka:9092}
+      EVENTBUS_KAFKA_TOPIC: ${EVENTBUS_KAFKA_TOPIC:-ton_events}
     secrets:
       - postgres_password
     depends_on:

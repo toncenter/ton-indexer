@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from parser.bitreader import BitReader
 from dataclasses import dataclass
+from parser.eventbus import EventBus, Event
 
 
 logging.getLogger("requests").setLevel(logging.WARNING)
@@ -99,7 +100,7 @@ class Parser:
     def __init__(self, predicate: ParserPredicate):
         self.predicate = predicate
 
-    async def parse(self, session: Session, context: any):
+    async def parse(self, session: Session, context: any, eventbus: EventBus=None):
         raise Error("Not supported")
 
     def _parse_boc(self, b64data):
@@ -121,7 +122,7 @@ class JettonTransferParser(Parser):
     def parser_name() -> str:
         return "JettonTransfer"
 
-    async def parse(self, session: Session, context: MessageContext):
+    async def parse(self, session: Session, context: MessageContext, eventbus=None):
         logger.info(f"Parsing jetton transfer for message {context.message.msg_id}")
         cell = self._parse_boc(context.content.body)
         reader = BitReader(cell.data.data)
@@ -158,11 +159,12 @@ class JettonTransferParser(Parser):
         destination_tx for jetton transfer contains internal_transfer (it is not enforced by TEP-74)
         execution and it has to be successful
         """
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
         transfer = JettonTransfer(
             msg_id = context.message.msg_id,
             created_lt = context.message.created_lt,
             utime = context.destination_tx.utime,
-            successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0,
+            successful = successful,
             originated_msg_id = await get_originated_msg_id(session, context.message),
             query_id = str(query_id),
             amount = amount,
@@ -176,8 +178,27 @@ class JettonTransferParser(Parser):
             sub_op = sub_op
         )
         logger.info(f"Adding jetton transfer {transfer}")
-        
         await upsert_entity(session, transfer)
+
+        if successful:
+            wallet = await get_wallet(session, context.message.destination)
+            if not wallet:
+                raise Exception(f"Wallet not inited yet {context.message.destination}")
+            eventbus.push_event(Event(
+                event_scope="Jetton",
+                event_target=wallet.jetton_master,
+                finding_type="Info",
+                event_type="Transfer",
+                severity="Medium",
+                data={
+                    "master": wallet.jetton_master,
+                    "amount": amount,
+                    "query_id": query_id,
+                    "source_wallet": context.message.destination,
+                    "source_owner": context.message.source,
+                    "destination_owner": destination
+                }
+            ))
 
 
 """
@@ -199,7 +220,7 @@ class JettonMintParser(Parser):
     def parser_name() -> str:
         return "JettonMinter"
 
-    async def parse(self, session: Session, context: MessageContext):
+    async def parse(self, session: Session, context: MessageContext, eventbus: EventBus=None):
         # ensure we have no transfer operation before
         prev_message = await get_messages_by_in_tx_id(session, context.source_tx.tx_id)
         if prev_message.op == 0x0f8a7ea5:
@@ -270,7 +291,7 @@ class JettonBurnParser(Parser):
     def parser_name() -> str:
         return "JettonBurn"
 
-    async def parse(self, session: Session, context: MessageContext):
+    async def parse(self, session: Session, context: MessageContext, eventbus: EventBus=None):
         cell = self._parse_boc(context.content.body)
         reader = BitReader(cell.data.data)
         op_id = reader.read_uint(32) # burn#595f07bc
@@ -370,7 +391,7 @@ class JettonWalletParser(ContractsExecutorParser):
     def parser_name() -> str:
         return "JettonWalletParser"
 
-    async def parse(self, session: Session, context: AccountContext):
+    async def parse(self, session: Session, context: AccountContext, eventbus: EventBus=None):
         wallet_data = await self._execute(context.code.code, context.account.data, 'get_wallet_data',
                                     ["int", "address", "address", "cell_hash"])
         try:
@@ -434,7 +455,7 @@ class JettonMasterParser(ContractsExecutorParser):
     def parser_name() -> str:
         return "JettonMasterParser"
 
-    async def parse(self, session: Session, context: AccountContext):
+    async def parse(self, session: Session, context: AccountContext, eventbus: EventBus=None):
         wallet_data = await self._execute(context.code.code, context.account.data, 'get_jetton_data',
                                     ["int", "int", "address", "metadata", "cell_hash"],
                                     address=context.account.address)
@@ -480,7 +501,7 @@ class NFTTransferParser(Parser):
     def parser_name() -> str:
         return "NFTTransfer"
 
-    async def parse(self, session: Session, context: MessageContext):
+    async def parse(self, session: Session, context: MessageContext, eventbus: EventBus=None):
         logger.info(f"Parsing NFT transfer for message {context.message.msg_id}")
         cell = self._parse_boc(context.content.body)
         reader = BitReader(cell.data.data)
@@ -533,7 +554,7 @@ class NFTCollectionParser(ContractsExecutorParser):
     def parser_name() -> str:
         return "NFTCollectionParser"
 
-    async def parse(self, session: Session, context: AccountContext):
+    async def parse(self, session: Session, context: AccountContext, eventbus: EventBus=None):
         collection_data = await self._execute(context.code.code, context.account.data, 'get_collection_data',
                                  ["int", "metadata", "address"],
                                  address=context.account.address)
@@ -570,7 +591,7 @@ class NFTItemParser(ContractsExecutorParser):
     def parser_name() -> str:
         return "NFTItemParser"
 
-    async def parse(self, session: Session, context: AccountContext):
+    async def parse(self, session: Session, context: AccountContext, eventbus: EventBus=None):
         nft_data = await self._execute(context.code.code, context.account.data, 'get_nft_data',
                                  ["int", "int", "address", "address", "boc"],
                                  address=context.account.address)
@@ -688,7 +709,7 @@ class NFTItemSaleParser(ContractsExecutorParser):
     def parser_name() -> str:
         return "NFTItemSaleParser"
 
-    async def parse(self, session: Session, context: AccountContext):
+    async def parse(self, session: Session, context: AccountContext, eventbus: EventBus=None):
         contract = self.SALE_CONTRACTS[context.code.hash]
         sale_data = await self._execute(context.code.code, context.account.data, 'get_sale_data',
                                   contract.signature,
