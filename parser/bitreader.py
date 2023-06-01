@@ -88,3 +88,18 @@ class BitReader:
 
     def read_uint(self, num):
         return int(self.read_bits(num).to01(), 2)
+
+
+    def read_dedust_asset(self):
+        kind = int(self.read_bits(4).to01(), 2)
+        if kind == 0:
+            return "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c"
+        elif kind == 1:
+            wc = int(self.read_bits(8).to01(), 2)
+            account_id = int(self.read_bits(256).to01(), 2).to_bytes(32, "big")
+            tag = b'\xff' if wc == -1 else wc.to_bytes(1, "big")
+            addr = b'\x11' + tag + account_id
+            return codecs.decode(codecs.encode(addr + BitReader.calc_crc(addr), "base64"), "utf-8").strip() \
+                .replace('/', '_').replace("+", '-')
+        else:
+            raise Error(f"Unsupported asset kind {kind}")

@@ -39,9 +39,10 @@ class ParserPredicate:
 class OpCodePredicate(ParserPredicate):
     def __init__(self, opcode):
         super(OpCodePredicate, self).__init__(MessageContext)
-        self.opcode = opcode
+        self.opcode = opcode if opcode < 0x80000000 else -1 * (0x100000000 - opcode)
 
     def _internal_match(self, context: MessageContext):
+        # logger.info(f"_internal_match: {context.source_tx} {context.message.op} == {self.opcode}")
         return context.source_tx is not None and context.message.op == self.opcode
 
 """
@@ -730,6 +731,41 @@ class NFTItemSaleParser(ContractsExecutorParser):
 
         await upsert_entity(session, item, constraint="address")
 
+class DedustV2SwapExtOutParser(Parser):
+    def __init__(self):
+        super(DedustV2SwapExtOutParser, self).__init__(SourceTxRequiredPredicate(OpCodePredicate(0x9c610de3)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "DedustV2SwapExtOut"
+
+    async def parse(self, session: Session, context: MessageContext, eventbus=None):
+        logger.info(f"Parsing dedust swap ext_out message {context.message.msg_id}")
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        op_id = reader.read_uint(32) # swap#9c610de3
+        asset_in = reader.read_dedust_asset()
+        asset_out = reader.read_dedust_asset()
+        amount_in = reader.read_coins()
+        amount_out = reader.read_coins()
+
+        payload_reader = BitReader(cell.refs.pop(0).data.data)
+        sender_addr = payload_reader.read_address()
+
+        swap = DexSwapParsed(
+            msg_id=context.message.msg_id,
+            originated_msg_id=await get_originated_msg_id(session, context.message),
+            platform="dedust",
+            swap_utime=context.source_tx.utime,
+            swap_user=sender_addr,
+            swap_pool=context.message.source,
+            swap_src_token=asset_in,
+            swap_dst_token=asset_out,
+            swap_src_amount=amount_in,
+            swap_dst_amount=amount_out,
+        )
+        logger.info(f"Adding dedust swap {swap}")
+        await upsert_entity(session, swap)
 
 # Collect all declared parsers
 
