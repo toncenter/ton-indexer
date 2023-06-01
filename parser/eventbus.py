@@ -20,6 +20,10 @@ class Event:
     # timestamp: int = None # will be generated at push_event
 
 class EventBus:
+    def push_event(self, event: Event):
+        pass
+
+class KafkaEventBus:
     def __init__(self, kafka_broker, topic):
         self.producer = KafkaProducer(bootstrap_servers=kafka_broker)
         self.topic = topic
@@ -30,3 +34,7 @@ class EventBus:
         event['event_id'] = str(uuid.uuid4())
         event['bot_id'] = "ton-indexer"
         self.producer.send(self.topic, json.dumps(event).encode("utf-8"))
+
+class NullEventBus:
+    def push_event(self, event: Event):
+        pass

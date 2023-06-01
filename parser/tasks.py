@@ -3,7 +3,7 @@ from parser.celery import app
 import asyncio
 import traceback
 from config import settings
-from parser.eventbus import EventBus
+from parser.eventbus import EventBus, KafkaEventBus, NullEventBus
 from indexer.database import *
 from indexer.crud import *
 from parser.parsers_collection import ALL_PARSERS
@@ -48,8 +48,10 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
 
 async def parse_outbox():
     logger.info("Starting parse outbox loop")
-
-    eventbus = EventBus(settings.eventbus.kafka.broker, settings.eventbus.kafka.topic)
+    if settings.eventbus.enabled == 'true':
+        eventbus = KafkaEventBus(settings.eventbus.kafka.broker, settings.eventbus.kafka.topic)
+    else:
+        eventbus = NullEventBus()
 
     while True:
         async with SessionMaker() as session:

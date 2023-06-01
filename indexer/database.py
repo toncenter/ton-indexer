@@ -671,3 +671,24 @@ class NFTItemSale(Base):
         UniqueConstraint('address'),
         Index('nft_item_sale_index_1', 'nft_item')
     )
+
+@dataclass(init=False)
+class DexSwapParsed(Base):
+    __tablename__ = 'dex_swap_parsed'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    platform: str = Column(String)  # platform name
+    swap_utime: int = Column(BigInteger)
+    swap_user: str = Column(String)
+    swap_pool: str = Column(String)
+    swap_src_token: str = Column(String)
+    swap_dst_token: str = Column(String)
+    swap_src_amount: decimal.Decimal = Column(Numeric(scale=0))
+    swap_dst_amount: decimal.Decimal = Column(Numeric(scale=0))
+
+    __table_args__ = (
+        UniqueConstraint('msg_id'),
+        Index('dex_swap_parsed_index_1', 'swap_user')
+    )
