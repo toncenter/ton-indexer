@@ -193,7 +193,7 @@ class JettonTransferParser(Parser):
                 severity="Medium",
                 data={
                     "master": wallet.jetton_master,
-                    "amount": amount,
+                    "amount": str(amount),
                     "query_id": query_id,
                     "source_wallet": context.message.destination,
                     "source_owner": context.message.source,
@@ -287,7 +287,7 @@ class JettonMintParser(Parser):
                 severity="Medium",
                 data={
                     "master": wallet.jetton_master,
-                    "amount": amount,
+                    "amount": str(amount),
                     "query_id": query_id,
                     "destination_wallet": context.message.destination,
                     "minter": context.message.source,
@@ -354,7 +354,7 @@ class JettonBurnParser(Parser):
                 severity="Medium",
                 data={
                     "master": wallet.jetton_master,
-                    "amount": amount,
+                    "amount": str(amount),
                     "query_id": query_id,
                     "destination_wallet": context.message.destination,
                     "destination_owner": wallet.owner
@@ -833,8 +833,8 @@ class DedustV2SwapExtOutParser(Parser):
                 "pool": context.message.source,
                 "asset_in": asset_in,
                 "asset_out": asset_out,
-                "amount_in": amount_in,
-                "amount_out": amount_out,
+                "amount_in": str(amount_in),
+                "amount_out": str(amount_out),
                 "swap_user": sender_addr
             }
         ))
