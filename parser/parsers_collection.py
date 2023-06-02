@@ -589,7 +589,7 @@ class NFTTransferParser(Parser):
                 raise Exception(f"NFT not inited yet {context.message.destination}")
             eventbus.push_event(Event(
                 event_scope="NFT",
-                event_target=wallet.jetton_master,
+                event_target=nft.collection,
                 finding_type="Info",
                 event_type="Transfer",
                 severity="Medium",
