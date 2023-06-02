@@ -193,7 +193,7 @@ class JettonTransferParser(Parser):
                 severity="Medium",
                 data={
                     "master": wallet.jetton_master,
-                    "amount": amount,
+                    "amount": str(amount),
                     "query_id": query_id,
                     "source_wallet": context.message.destination,
                     "source_owner": context.message.source,
@@ -255,12 +255,12 @@ class JettonMintParser(Parser):
             if fp_reader.slice_bits() >= 32:
                 sub_op = fp_reader.read_uint(32)
 
-
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
         mint = JettonMint(
             msg_id = context.message.msg_id,
             created_lt = context.message.created_lt,
             utime = context.destination_tx.utime,
-            successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0,
+            successful = successful,
             originated_msg_id = await get_originated_msg_id(session, context.message),
             query_id = str(query_id),
             amount = amount,
@@ -273,8 +273,27 @@ class JettonMintParser(Parser):
             sub_op = sub_op
         )
         logger.info(f"Adding jetton mint {mint}")
-
         await upsert_entity(session, mint)
+
+        if successful:
+            wallet = await get_wallet(session, context.message.destination)
+            if not wallet:
+                raise Exception(f"Wallet not inited yet {context.message.destination}")
+            eventbus.push_event(Event(
+                event_scope="Jetton",
+                event_target=wallet.jetton_master,
+                finding_type="Info",
+                event_type="Mint",
+                severity="Medium",
+                data={
+                    "master": wallet.jetton_master,
+                    "amount": str(amount),
+                    "query_id": query_id,
+                    "destination_wallet": context.message.destination,
+                    "minter": context.message.source,
+                    "destination_owner": wallet.owner
+                }
+            ))
 
 
 """
@@ -306,12 +325,12 @@ class JettonBurnParser(Parser):
                 custom_payload = cell.refs.pop(0)
         except:
             logger.warning("Wrong custom payload format")
-
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
         burn = JettonBurn(
             msg_id = context.message.msg_id,
             created_lt = context.message.created_lt,
             utime = context.destination_tx.utime,
-            successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0,
+            successful = successful,
             originated_msg_id = await get_originated_msg_id(session, context.message),
             query_id = str(query_id),
             amount = amount,
@@ -321,8 +340,26 @@ class JettonBurnParser(Parser):
             custom_payload = custom_payload.serialize_boc() if custom_payload is not None else None
         )
         logger.info(f"Adding jetton burn {burn}")
-
         await upsert_entity(session, burn)
+
+        if successful:
+            wallet = await get_wallet(session, context.message.destination)
+            if not wallet:
+                raise Exception(f"Wallet not inited yet {context.message.destination}")
+            eventbus.push_event(Event(
+                event_scope="Jetton",
+                event_target=wallet.jetton_master,
+                finding_type="Info",
+                event_type="Burn",
+                severity="Medium",
+                data={
+                    "master": wallet.jetton_master,
+                    "amount": str(amount),
+                    "query_id": query_id,
+                    "destination_wallet": context.message.destination,
+                    "destination_owner": wallet.owner
+                }
+            ))
 
 
 """
@@ -527,11 +564,12 @@ class NFTTransferParser(Parser):
         except Exception as e:
             logger.error(f"Unable to parse forward payload {e}")
 
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
         transfer = NFTTransfer(
             msg_id=context.message.msg_id,
             created_lt=context.message.created_lt,
             utime=context.destination_tx.utime,
-            successful=context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0,
+            successful=successful,
             originated_msg_id=await get_originated_msg_id(session, context.message),
             query_id=str(query_id),
             current_owner=context.message.source,
@@ -543,8 +581,26 @@ class NFTTransferParser(Parser):
             forward_payload=forward_payload.serialize_boc() if forward_payload is not None else None
         )
         logger.info(f"Adding NFT transfer {transfer}")
-
         await upsert_entity(session, transfer)
+
+        if successful:
+            nft = await get_nft(session, context.message.destination)
+            if not nft:
+                raise Exception(f"NFT not inited yet {context.message.destination}")
+            eventbus.push_event(Event(
+                event_scope="NFT",
+                event_target=nft.collection,
+                finding_type="Info",
+                event_type="Transfer",
+                severity="Medium",
+                data={
+                    "collection": nft.collection,
+                    "name": nft.name,
+                    "nft_item": context.message.destination,
+                    "new_owner": new_owner,
+                    "previous_owner": context.message.source,
+                }
+            ))
 
 class NFTCollectionParser(ContractsExecutorParser):
     def __init__(self):
@@ -766,6 +822,24 @@ class DedustV2SwapExtOutParser(Parser):
         )
         logger.info(f"Adding dedust swap {swap}")
         await upsert_entity(session, swap)
+
+        eventbus.push_event(Event(
+            event_scope="DEX",
+            event_target="dedust",
+            finding_type="Info",
+            event_type="Swap",
+            severity="Medium",
+            data={
+                "pool": context.message.source,
+                "asset_in": asset_in,
+                "asset_out": asset_out,
+                "amount_in": str(amount_in),
+                "amount_out": str(amount_out),
+                "swap_user": sender_addr
+            }
+        ))
+
+
 
 # Collect all declared parsers
 

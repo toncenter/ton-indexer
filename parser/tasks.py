@@ -47,8 +47,8 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
         await remove_outbox_item(session, task.outbox_id)
 
 async def parse_outbox():
-    logger.info("Starting parse outbox loop")
-    if settings.eventbus.enabled == 'true':
+    logger.info(f"Starting parse outbox loop, eventbus enabled: {settings.eventbus.enabled}")
+    if settings.eventbus.enabled:
         eventbus = KafkaEventBus(settings.eventbus.kafka.broker, settings.eventbus.kafka.topic)
     else:
         eventbus = NullEventBus()

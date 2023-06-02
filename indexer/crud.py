@@ -545,3 +545,9 @@ async def get_wallet(session: Session, wallet_address: str) -> JettonWallet:
     if not res:
         return None
     return res[0]
+
+async def get_nft(session: Session, item_address: str) -> NFTItem:
+    res = (await session.execute(select(NFTItem).filter(NFTItem.address == item_address))).first()
+    if not res:
+        return None
+    return res[0]
