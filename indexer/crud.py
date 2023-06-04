@@ -551,3 +551,9 @@ async def get_nft(session: Session, item_address: str) -> NFTItem:
     if not res:
         return None
     return res[0]
+
+async def get_nft_sale(session: Session, sale_address: str) -> NFTItemSale:
+    res = (await session.execute(select(NFTItemSale).filter(NFTItemSale.address == sale_address))).first()
+    if not res:
+        return None
+    return res[0]

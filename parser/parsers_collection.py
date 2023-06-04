@@ -602,6 +602,28 @@ class NFTTransferParser(Parser):
                 }
             ))
 
+            prev_owner_sale = await get_nft_sale(session, context.message.source)
+            # TODO ensure we have already parsed it
+            if prev_owner_sale is not None:
+                # Exclude sales cancellation
+                if prev_owner_sale.owner != new_owner:
+                    eventbus.push_event(Event(
+                        event_scope="NFT",
+                        event_target=nft.collection,
+                        finding_type="Info",
+                        event_type="Sale",
+                        severity="Medium",
+                        data={
+                            "collection": nft.collection,
+                            "name": nft.name,
+                            "nft_item": context.message.destination,
+                            "new_owner": new_owner,
+                            "previous_owner": prev_owner_sale.owner,
+                            "price": prev_owner_sale.price,
+                            "marketplace": prev_owner_sale.marketplace
+                        }
+                    ))
+
 class NFTCollectionParser(ContractsExecutorParser):
     def __init__(self):
         super(NFTCollectionParser, self).__init__()
