@@ -619,7 +619,7 @@ class NFTTransferParser(Parser):
                             "nft_item": context.message.destination,
                             "new_owner": new_owner,
                             "previous_owner": prev_owner_sale.owner,
-                            "price": int(prev_owner_sale.price / 1000000000),
+                            "price": int(prev_owner_sale.price) / 1000000000,
                             "marketplace": prev_owner_sale.marketplace
                         }
                     ))
