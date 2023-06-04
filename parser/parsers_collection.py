@@ -655,7 +655,7 @@ class NFTCollectionParser(ContractsExecutorParser):
             image=metadata.get('image', None),
             image_data=metadata.get('image_data', None),
             metadata_url=metadata_url,
-            description=metadata.get('description', None)
+            description=str(metadata.get('description', ''))
         )
         logger.info(f"Adding NFT collection {collection}")
 
