@@ -602,6 +602,28 @@ class NFTTransferParser(Parser):
                 }
             ))
 
+            prev_owner_sale = await get_nft_sale(session, context.message.source)
+            # TODO ensure we have already parsed it
+            if prev_owner_sale is not None:
+                # Exclude sales cancellation
+                if prev_owner_sale.owner != new_owner:
+                    eventbus.push_event(Event(
+                        event_scope="NFT",
+                        event_target=nft.collection,
+                        finding_type="Info",
+                        event_type="Sale",
+                        severity="Medium",
+                        data={
+                            "collection": nft.collection,
+                            "name": nft.name,
+                            "nft_item": context.message.destination,
+                            "new_owner": new_owner,
+                            "previous_owner": prev_owner_sale.owner,
+                            "price": int(prev_owner_sale.price) / 1000000000,
+                            "marketplace": prev_owner_sale.marketplace
+                        }
+                    ))
+
 class NFTCollectionParser(ContractsExecutorParser):
     def __init__(self):
         super(NFTCollectionParser, self).__init__()
@@ -633,7 +655,7 @@ class NFTCollectionParser(ContractsExecutorParser):
             image=metadata.get('image', None),
             image_data=metadata.get('image_data', None),
             metadata_url=metadata_url,
-            description=metadata.get('description', None)
+            description=str(metadata.get('description', ''))
         )
         logger.info(f"Adding NFT collection {collection}")
 
@@ -840,6 +862,72 @@ class DedustV2SwapExtOutParser(Parser):
         ))
 
 
+class HugeTonTransfersParser(Parser):
+    class MessageValuePredicate(ParserPredicate):
+        def __init__(self, min_value):
+            super(HugeTonTransfersParser.MessageValuePredicate, self).__init__(MessageContext)
+            self.min_value = min_value
+
+        def _internal_match(self, context: MessageContext):
+            return context.message.value > self.min_value
+
+    def __init__(self):
+        # 1000 TON
+        super(HugeTonTransfersParser, self).__init__(HugeTonTransfersParser.MessageValuePredicate(min_value=1000 * 1000000000))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "HugeTonTransfersParser"
+
+    async def parse(self, session: Session, context: MessageContext, eventbus=None):
+        logger.info(f"Detected new significant TON transfer {context.message.msg_id}")
+
+        eventbus.push_event(Event(
+            event_scope="TON",
+            event_target=context.message.destination,
+            finding_type="Info",
+            event_type="Transfer",
+            severity="Medium",
+            data={
+                "amount": int(context.message.value / 1000000000),
+                "source": context.message.source,
+                "destination": context.message.destination,
+                "msg_hash": context.message.hash
+            }
+        ))
+
+class HasTextCommentParser(Parser):
+    class HasTextCommentPredicate(ParserPredicate):
+        def __init__(self):
+            super(HasTextCommentParser.HasTextCommentPredicate, self).__init__(MessageContext)
+
+        def _internal_match(self, context: MessageContext):
+            return context.message.comment is not None and len(context.message.comment.strip()) > 0
+
+    def __init__(self):
+        super(HasTextCommentParser, self).__init__(HasTextCommentParser.HasTextCommentPredicate())
+
+    @staticmethod
+    def parser_name() -> str:
+        return "HasTextCommentParser"
+
+    async def parse(self, session: Session, context: MessageContext, eventbus=None):
+        logger.info(f"Detected new TON transfer with comment {context.message.msg_id}")
+
+        eventbus.push_event(Event(
+            event_scope="TON",
+            event_target=context.message.destination,
+            finding_type="Info",
+            event_type="Comment",
+            severity="Medium",
+            data={
+                "amount": context.message.value / 1000000000,
+                "source": context.message.source,
+                "destination": context.message.destination,
+                "msg_hash": context.message.hash,
+                "comment": context.message.comment
+            }
+        ))
 
 # Collect all declared parsers
 
