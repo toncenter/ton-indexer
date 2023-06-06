@@ -225,3 +225,7 @@ sandbox/
 
 # vs code
 .vscode/
+
+
+tondb-scanner/src/tokens.cpp
+tondb-scanner/src/tokens.h

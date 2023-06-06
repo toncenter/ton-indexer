@@ -7,6 +7,7 @@
 #include "crypto/block/block-parse.h"
 #include "validator/interfaces/block.h"
 #include "validator/interfaces/shard.h"
+#include "convert-utils.h"
 
 using namespace ton::validator; //TODO: remove this
 
@@ -14,11 +15,11 @@ class ParseQuery: public td::actor::Actor {
 private:
   const int mc_seqno_;
   MasterchainBlockDataState mc_block_;
-  ParsedBlock result;
-  td::Promise<ParsedBlock> promise_;
+  ParsedBlockPtr result;
+  td::Promise<ParsedBlockPtr> promise_;
 public:
-  ParseQuery(int mc_seqno, MasterchainBlockDataState mc_block, td::Promise<ParsedBlock> promise)
-    : mc_seqno_(mc_seqno), mc_block_(std::move(mc_block)), promise_(std::move(promise)) {}
+  ParseQuery(int mc_seqno, MasterchainBlockDataState mc_block, td::Promise<ParsedBlockPtr> promise)
+    : mc_seqno_(mc_seqno), mc_block_(std::move(mc_block)), result(std::make_shared<ParsedBlock>()), promise_(std::move(promise)) {}
 
   void start_up() override {
     auto status = parse_impl();
@@ -48,7 +49,7 @@ private:
       if (!mc_block) {
           mc_block = schema_block;
       }
-      result.blocks_.push_back(schema_block);
+      result->blocks_.push_back(schema_block);
 
       // transactions and messages
       std::set<td::Bits256> addresses;
@@ -117,7 +118,8 @@ private:
       body = vm::load_cell_slice_ref(message.body->prefetch_ref());
     }
     auto body_cell = vm::CellBuilder().append_cellslice(*body).finalize();
-    TRY_RESULT(body_boc, to_bytes(body_cell));
+    msg.body_cell = body_cell;
+    TRY_RESULT(body_boc, convert::to_bytes(body_cell));
     msg.body = body_boc.value();
     msg.body_hash = td::base64_encode(body_cell->get_hash().as_slice());
 
@@ -134,7 +136,7 @@ private:
         init_state_cell = init_state_cs.fetch_ref();
       }
     }
-    TRY_RESULT_ASSIGN(msg.init_state, to_bytes(init_state_cell));
+    TRY_RESULT_ASSIGN(msg.init_state, convert::to_bytes(init_state_cell));
     if (init_state_cell.not_null()) {
       msg.init_state_hash = td::base64_encode(init_state_cell->get_hash().as_slice());
     }
@@ -150,11 +152,11 @@ private:
           return td::Status::Error("Failed to unpack CommonMsgInfo::int_msg_info");
         }
 
-        TRY_RESULT_ASSIGN(msg.value, to_balance(msg_info.value));
-        TRY_RESULT_ASSIGN(msg.source, to_std_address(msg_info.src));
-        TRY_RESULT_ASSIGN(msg.destination, to_std_address(msg_info.dest));
-        TRY_RESULT_ASSIGN(msg.fwd_fee, to_balance(msg_info.fwd_fee));
-        TRY_RESULT_ASSIGN(msg.ihr_fee, to_balance(msg_info.ihr_fee));
+        TRY_RESULT_ASSIGN(msg.value, convert::to_balance(msg_info.value));
+        TRY_RESULT_ASSIGN(msg.source, convert::to_raw_address(msg_info.src));
+        TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest));
+        TRY_RESULT_ASSIGN(msg.fwd_fee, convert::to_balance(msg_info.fwd_fee));
+        TRY_RESULT_ASSIGN(msg.ihr_fee, convert::to_balance(msg_info.ihr_fee));
         msg.created_lt = msg_info.created_lt;
         msg.created_at = msg_info.created_at;
         msg.bounce = msg_info.bounce;
@@ -169,8 +171,8 @@ private:
         }
         
         // msg.source = null, because it is external
-        TRY_RESULT_ASSIGN(msg.destination, to_std_address(msg_info.dest))
-        TRY_RESULT_ASSIGN(msg.import_fee, to_balance(msg_info.import_fee));
+        TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest))
+        TRY_RESULT_ASSIGN(msg.import_fee, convert::to_balance(msg_info.import_fee));
         return msg;
       }
       case block::gen::CommonMsgInfo::ext_out_msg_info: {
@@ -178,7 +180,7 @@ private:
         if (!tlb::csr_unpack(message.info, msg_info)) {
           return td::Status::Error("Failed to unpack CommonMsgInfo::ext_out_msg_info");
         }
-        TRY_RESULT_ASSIGN(msg.source, to_std_address(msg_info.src));
+        TRY_RESULT_ASSIGN(msg.source, convert::to_raw_address(msg_info.src));
         // msg.destination = null, because it is external
         msg.created_lt = static_cast<uint64_t>(msg_info.created_lt);
         msg.created_at = static_cast<uint32_t>(msg_info.created_at);
@@ -187,46 +189,6 @@ private:
     }
 
     return td::Status::Error("Unknown CommonMsgInfo tag");
-  }
-
-  td::Result<td::int64> to_balance(vm::CellSlice& balance_slice) {
-    auto balance = block::tlb::t_Grams.as_integer_skip(balance_slice);
-    if (balance.is_null()) {
-        return td::Status::Error("Failed to unpack balance");
-    }
-    auto res = balance->to_long();
-    if (res == td::int64(~0ULL << 63)) {
-        return td::Status::Error("Failed to unpack balance (2)");
-    }
-    return res;
-  }
-
-  td::Result<td::int64> to_balance(td::Ref<vm::CellSlice> balance_ref) {
-    vm::CellSlice balance_slice = *balance_ref;
-    return to_balance(balance_slice);
-  }
-
-  td::Result<td::optional<std::string>> to_bytes(td::Ref<vm::Cell> cell) {
-    if (cell.is_null()) {
-      return td::optional<std::string>();
-    }
-    TRY_RESULT(boc, vm::std_boc_serialize(cell, vm::BagOfCells::Mode::WithCRC32C));
-    return td::base64_encode(boc.as_slice().str());
-  }
-
-  td::Result<std::string> to_std_address(td::Ref<vm::CellSlice> cs) {
-    auto tag = block::gen::MsgAddressInt().get_tag(*cs);
-    if (tag < 0) {
-      return td::Status::Error("Failed to read MsgAddressInt tag");
-    }
-    if (tag != block::gen::MsgAddressInt::addr_std) {
-      return "";
-    }
-    block::gen::MsgAddressInt::Record_addr_std addr;
-    if (!tlb::csr_unpack(cs, addr)) {
-      return td::Status::Error("Failed to unpack MsgAddressInt");
-    }
-    return std::to_string(addr.workchain_id) + ":" + addr.address.to_hex();
   }
 
   td::Status process_transaction_descr(schema::Transaction& schema_tx, vm::CellSlice& td_cs, int tag, td::Ref<vm::CellSlice>& compute_ph, td::Ref<vm::CellSlice>& action_ph) {
@@ -333,11 +295,11 @@ private:
       schema_tx.action_result_code = action.result_code;
       auto& total_fwd_fees_cs = action.total_fwd_fees.write();
       if (total_fwd_fees_cs.fetch_ulong(1) == 1) {
-        TRY_RESULT_ASSIGN(schema_tx.action_total_fwd_fees, to_balance(total_fwd_fees_cs));
+        TRY_RESULT_ASSIGN(schema_tx.action_total_fwd_fees, convert::to_balance(total_fwd_fees_cs));
       }
       auto& total_action_fees_cs = action.total_action_fees.write();
       if (total_action_fees_cs.fetch_ulong(1) == 1) {
-        TRY_RESULT_ASSIGN(schema_tx.action_total_action_fees, to_balance(total_action_fees_cs));
+        TRY_RESULT_ASSIGN(schema_tx.action_total_action_fees, convert::to_balance(total_action_fees_cs));
       }
     }
     return td::Status::OK();
@@ -399,7 +361,7 @@ private:
           schema_tx.lt = trans.lt;
           schema_tx.utime = trans.now;
 
-          TRY_RESULT_ASSIGN(schema_tx.fees, to_balance(trans.total_fees));
+          TRY_RESULT_ASSIGN(schema_tx.fees, convert::to_balance(trans.total_fees));
 
           td::RefInt256 storage_fees;
           if (!block::tlb::t_TransactionDescr.get_storage_fees(trans.description, storage_fees)) {
@@ -428,14 +390,16 @@ private:
           if (is_just == -1) {
             auto msg = trans.r1.in_msg->prefetch_ref();
             TRY_RESULT(in_msg, parse_message(trans.r1.in_msg->prefetch_ref()));
+            schema_tx.in_msg_from = in_msg.source;
+            schema_tx.in_msg_body = in_msg.body_cell;
 
-            result.messages_.push_back(in_msg);
+            result->messages_.push_back(in_msg);
 
             schema::TransactionMessage tx_msg;
             tx_msg.transaction_hash = schema_tx.hash;
             tx_msg.message_hash = in_msg.hash;
             tx_msg.direction = "in";
-            result.transaction_messages_.push_back(tx_msg);
+            result->transaction_messages_.push_back(tx_msg);
           }
 
           if (trans.outmsg_cnt != 0) {
@@ -443,13 +407,13 @@ private:
             for (int x = 0; x < trans.outmsg_cnt; x++) {
               TRY_RESULT(out_msg, parse_message(dict.lookup_ref(td::BitArray<15>{x})));
 
-              result.messages_.push_back(out_msg);
+              result->messages_.push_back(out_msg);
 
               schema::TransactionMessage tx_msg;
               tx_msg.transaction_hash = schema_tx.hash;
               tx_msg.message_hash = out_msg.hash;
               tx_msg.direction = "out";
-              result.transaction_messages_.push_back(tx_msg);
+              result->transaction_messages_.push_back(tx_msg);
             }
           }
 
@@ -461,7 +425,7 @@ private:
           schema_tx.account_state_hash_before = td::base64_encode(state_hash_update.old_hash.as_slice());
           schema_tx.account_state_hash_after = td::base64_encode(state_hash_update.new_hash.as_slice());
 
-          result.transactions_.push_back(schema_tx);
+          result->transactions_.push_back(schema_tx);
 
           addresses.insert(cur_addr);
         }
@@ -482,9 +446,7 @@ private:
     for (auto &addr : addresses) {
       auto shard_account_csr = accounts_dict.lookup(addr);
       if (shard_account_csr.is_null()) {
-        if (addr.to_hex() != "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEF"){
-          LOG(WARNING) << "Could not find account " << addr.to_hex() << " in shard state";
-        }
+        // account is uninitialized after this block
         continue;
       } 
       td::Ref<vm::Cell> account_root = shard_account_csr->prefetch_ref();
@@ -495,14 +457,14 @@ private:
         continue;
       case block::gen::Account::account: {
         TRY_RESULT(account, parse_account(account_root));
-        result.account_states_.push_back(account);
+        result->account_states_.push_back(account);
         break;
       }
       default:
         return td::Status::Error("Unknown account tag");
       }
     }
-    LOG(DEBUG) << "Parsed " << result.account_states_.size() << " account states";
+    LOG(DEBUG) << "Parsed " << result->account_states_.size() << " account states";
     return td::Status::OK();
   }
 
@@ -519,8 +481,9 @@ private:
 
     schema::AccountState schema_account;
     schema_account.hash = hash;
-    TRY_RESULT_ASSIGN(schema_account.account, to_std_address(account.addr));
-    TRY_RESULT_ASSIGN(schema_account.balance, to_balance(storage.balance));
+    TRY_RESULT_ASSIGN(schema_account.account, convert::to_raw_address(account.addr));
+    TRY_RESULT_ASSIGN(schema_account.balance, convert::to_balance(storage.balance));
+    schema_account.last_trans_lt = storage.last_trans_lt;
 
     int account_state_tag = block::gen::t_AccountState.get_tag(storage.state.write());
     switch (account_state_tag) {
@@ -548,11 +511,13 @@ private:
         }
         auto& code_cs = state_init.code.write();
         if (code_cs.fetch_long(1) != 0) {
-          schema_account.code_hash = td::base64_encode(code_cs.prefetch_ref()->get_hash().as_slice());
+          schema_account.code = code_cs.prefetch_ref();
+          schema_account.code_hash = td::base64_encode(schema_account.code->get_hash().as_slice());
         }
         auto& data_cs = state_init.data.write();
         if (data_cs.fetch_long(1) != 0) {
-          schema_account.data_hash = td::base64_encode(data_cs.prefetch_ref()->get_hash().as_slice());
+          schema_account.data = data_cs.prefetch_ref();
+          schema_account.data_hash = td::base64_encode(schema_account.data->get_hash().as_slice());
         }
         break;
       }
@@ -568,7 +533,7 @@ ParseManager::ParseManager() {
     
 }
 
-void ParseManager::parse(int mc_seqno, MasterchainBlockDataState mc_block, td::Promise<ParsedBlock> promise) {
+void ParseManager::parse(int mc_seqno, MasterchainBlockDataState mc_block, td::Promise<ParsedBlockPtr> promise) {
     td::actor::create_actor<ParseQuery>("parsequery", mc_seqno, std::move(mc_block), std::move(promise)).release();
 }
 

@@ -7,5 +7,5 @@ public:
     ParseManager();
     void start_up() override;
 
-    void parse(int, MasterchainBlockDataState, td::Promise<ParsedBlock>);
+    void parse(int, MasterchainBlockDataState, td::Promise<ParsedBlockPtr>);
 };

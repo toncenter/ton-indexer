@@ -39,6 +39,10 @@ struct Transaction {
   td::optional<int32_t> action_result_code;
   td::optional<uint64_t> action_total_fwd_fees;
   td::optional<uint64_t> action_total_action_fees;
+
+  // for interface parsing (TODO: refactor)
+  td::optional<std::string> in_msg_from;
+  td::Ref<vm::Cell> in_msg_body;
 };
 
 struct Message {
@@ -60,6 +64,9 @@ struct Message {
   std::string body_hash;
   td::optional<std::string> init_state;
   td::optional<std::string> init_state_hash;
+
+  // for interface parsing (TODO: refactor)
+  td::Ref<vm::Cell> body_cell;
 };
 
 struct TransactionMessage {
@@ -107,8 +114,11 @@ struct AccountState {
   uint64_t balance;
   std::string account_status; // "uninit", "frozen", "active"
   td::optional<std::string> frozen_hash;
+  td::Ref<vm::Cell> code;
   td::optional<std::string> code_hash;
+  td::Ref<vm::Cell> data;
   td::optional<std::string> data_hash;
+  uint64_t last_trans_lt;
 };
 
 }
