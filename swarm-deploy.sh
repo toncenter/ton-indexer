@@ -31,27 +31,16 @@ if [[ -z "$NETWORK_ID" ]]; then
 fi
 echo "Network ID of toncenter-global: $NETWORK_ID"
 
-# deploy db
+# deploy with compose file
+COMPOSE_FILE=docker-compose.swarm.yaml
 if [[ $# -eq 2 ]]; then
-case "$2" in
-    --only-db)
-        echo "Deploying only database"
-        docker stack deploy --with-registry-auth -c docker-compose.database.yaml ${STACK_NAME}
-        exit 0
-        ;;
-    --db)
-        echo "Deploying database"
-        docker stack deploy --with-registry-auth -c docker-compose.database.yaml ${STACK_NAME}
-        ;;
-    *)
-        echo "Unknown arg '$2'"
-        exit 1
-esac
+COMPOSE_FILE=$2
+echo "Deploying compose file ${COMPOSE_FILE}"
 fi
 
 # build image
-docker compose -f docker-compose.swarm.yaml build
-docker compose -f docker-compose.swarm.yaml push
+docker compose -f ${COMPOSE_FILE} build
+docker compose -f ${COMPOSE_FILE} push
 
 # deploy stack
-docker stack deploy --with-registry-auth -c docker-compose.swarm.yaml ${STACK_NAME}
+docker stack deploy --with-registry-auth -c ${COMPOSE_FILE} ${STACK_NAME}

@@ -13,7 +13,7 @@ else
     echo "Postgres password file not specified!"
     exit 1
 fi
-export TON_INDEXER_PG_DSN="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DBNAME}"
+export TON_INDEXER_PG_DSN="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DBNAME}"
 printenv
 
 exec $@
