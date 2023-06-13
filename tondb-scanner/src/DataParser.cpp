@@ -49,14 +49,15 @@ private:
       if (!mc_block) {
           mc_block = schema_block;
       }
-      result->blocks_.push_back(schema_block);
 
       // transactions and messages
       std::set<td::Bits256> addresses;
-      TRY_STATUS(parse_transactions(block_ds.block_data->block_id(), blk, info, extra, addresses));
+      TRY_RESULT_ASSIGN(schema_block.transactions, parse_transactions(block_ds.block_data->block_id(), blk, info, extra, addresses));
 
       // account states
       TRY_STATUS(parse_account_states(block_ds.block_state, addresses));
+
+      result->blocks_.push_back(schema_block);
     }
     return td::Status::OK();
   }
@@ -103,7 +104,7 @@ private:
 
   td::Result<schema::Message> parse_message(td::Ref<vm::Cell> msg_cell) {
     schema::Message msg;
-    msg.hash = td::base64_encode(msg_cell->get_hash().as_slice());
+    msg.hash = msg_cell->get_hash().bits();
 
     block::gen::Message::Record message;
     if (!tlb::type_unpack_cell(msg_cell, block::gen::t_Message_Any, message)) {
@@ -117,11 +118,13 @@ private:
     } else {
       body = vm::load_cell_slice_ref(message.body->prefetch_ref());
     }
-    auto body_cell = vm::CellBuilder().append_cellslice(*body).finalize();
-    msg.body_cell = body_cell;
-    TRY_RESULT(body_boc, convert::to_bytes(body_cell));
-    msg.body = body_boc.value();
-    msg.body_hash = td::base64_encode(body_cell->get_hash().as_slice());
+    msg.body = vm::CellBuilder().append_cellslice(*body).finalize();
+
+    TRY_RESULT(body_boc, convert::to_bytes(msg.body));
+    if (!body_boc) {
+      return td::Status::Error("Failed to convert message body to bytes");
+    }
+    msg.body_boc = body_boc.value();
 
     if (body->prefetch_long(32) != vm::CellSlice::fetch_long_eof) {
       msg.opcode = body->prefetch_long(32);
@@ -131,14 +134,15 @@ private:
     auto& init_state_cs = message.init.write();
     if (init_state_cs.fetch_ulong(1) == 1) {
       if (init_state_cs.fetch_long(1) == 0) {
-        init_state_cell = vm::CellBuilder().append_cellslice(init_state_cs).finalize();
+        msg.init_state = vm::CellBuilder().append_cellslice(init_state_cs).finalize();
       } else {
-        init_state_cell = init_state_cs.fetch_ref();
+        msg.init_state = init_state_cs.fetch_ref();
       }
-    }
-    TRY_RESULT_ASSIGN(msg.init_state, convert::to_bytes(init_state_cell));
-    if (init_state_cell.not_null()) {
-      msg.init_state_hash = td::base64_encode(init_state_cell->get_hash().as_slice());
+      TRY_RESULT(init_state_boc, convert::to_bytes(msg.init_state));
+      if (!init_state_boc) {
+        return td::Status::Error("Failed to convert message init state to bytes");
+      }
+      msg.init_state_boc = init_state_boc.value();
     }
         
     auto tag = block::gen::CommonMsgInfo().get_tag(*message.info);
@@ -191,123 +195,300 @@ private:
     return td::Status::Error("Unknown CommonMsgInfo tag");
   }
 
-  td::Status process_transaction_descr(schema::Transaction& schema_tx, vm::CellSlice& td_cs, int tag, td::Ref<vm::CellSlice>& compute_ph, td::Ref<vm::CellSlice>& action_ph) {
+  td::Result<schema::TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs) {
+    block::gen::TrStoragePhase::Record phase_data;
+    if (!tlb::unpack(cs, phase_data)) {
+      return td::Status::Error("Failed to unpack TrStoragePhase");
+    }
+    schema::TrStoragePhase phase;
+    TRY_RESULT_ASSIGN(phase.storage_fees_collected, convert::to_balance(phase_data.storage_fees_collected));
+    auto& storage_fees_due = phase_data.storage_fees_due.write();
+    if (storage_fees_due.fetch_ulong(1) == 1) {
+      TRY_RESULT_ASSIGN(phase.storage_fees_due, convert::to_balance(storage_fees_due));
+    }
+    phase.status_change = static_cast<schema::AccStatusChange>(phase_data.status_change);
+    return phase;
+  }
+
+  td::Result<schema::TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs) {
+    block::gen::TrCreditPhase::Record phase_data;
+    if (!tlb::unpack(cs, phase_data)) {
+      return td::Status::Error("Failed to unpack TrCreditPhase");
+    }
+    schema::TrCreditPhase phase;
+    auto& due_fees_collected = phase_data.due_fees_collected.write();
+    if (due_fees_collected.fetch_ulong(1) == 1) {
+      TRY_RESULT_ASSIGN(phase.due_fees_collected, convert::to_balance(due_fees_collected));
+    }
+    TRY_RESULT_ASSIGN(phase.credit, convert::to_balance(phase_data.credit));
+    return phase;
+  }
+
+  td::Result<schema::TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs) {
+    int compute_ph_tag = block::gen::t_TrComputePhase.get_tag(cs);
+    if (compute_ph_tag == block::gen::TrComputePhase::tr_phase_compute_vm) {
+      block::gen::TrComputePhase::Record_tr_phase_compute_vm compute_vm;
+      if (!tlb::unpack(cs, compute_vm)) {
+        return td::Status::Error("Error unpacking tr_phase_compute_vm");
+      }
+      schema::TrComputePhase_vm res;
+      res.success = compute_vm.success;
+      res.msg_state_used = compute_vm.msg_state_used;
+      res.account_activated = compute_vm.account_activated;
+      TRY_RESULT_ASSIGN(res.gas_fees, convert::to_balance(compute_vm.gas_fees));
+      res.gas_used = block::tlb::t_VarUInteger_7.as_uint(*compute_vm.r1.gas_used);
+      res.gas_limit = block::tlb::t_VarUInteger_7.as_uint(*compute_vm.r1.gas_limit);
+      auto& gas_credit = compute_vm.r1.gas_credit.write();
+      if (gas_credit.fetch_ulong(1)) {
+        res.gas_credit = block::tlb::t_VarUInteger_3.as_uint(gas_credit);
+      }
+      res.mode = compute_vm.r1.mode;
+      res.exit_code = compute_vm.r1.exit_code;
+      auto& exit_arg = compute_vm.r1.exit_arg.write();
+      if (exit_arg.fetch_ulong(1)) {
+        res.exit_arg = exit_arg.fetch_long(32);
+      }
+      res.vm_steps = compute_vm.r1.vm_steps;
+      res.vm_init_state_hash = compute_vm.r1.vm_init_state_hash;
+      res.vm_final_state_hash = compute_vm.r1.vm_final_state_hash;
+      return res;
+    } else if (compute_ph_tag == block::gen::TrComputePhase::tr_phase_compute_skipped) {
+      block::gen::TrComputePhase::Record_tr_phase_compute_skipped skip;
+      if (!tlb::unpack(cs, skip)) {
+        return td::Status::Error("Error unpacking tr_phase_compute_skipped");
+      }
+      return schema::TrComputePhase_skipped{static_cast<schema::ComputeSkipReason>(skip.reason)};
+    }
+    return td::Status::OK();
+  }
+
+  td::Result<schema::StorageUsedShort> parse_storage_used_short(vm::CellSlice& cs) {
+    block::gen::StorageUsedShort::Record info;
+    if (!tlb::unpack(cs, info)) {
+      return td::Status::Error("Error unpacking StorageUsedShort");
+    }
+    schema::StorageUsedShort res;
+    res.bits = block::tlb::t_VarUInteger_7.as_uint(*info.bits);
+    res.cells = block::tlb::t_VarUInteger_7.as_uint(*info.cells);
+    return res;
+  }
+  
+  td::Result<schema::TrActionPhase> parse_tr_action_phase(vm::CellSlice& cs) {
+    block::gen::TrActionPhase::Record info;
+    if (!tlb::unpack(cs, info)) {
+      return td::Status::Error("Error unpacking TrActionPhase");
+    }
+    schema::TrActionPhase res;
+    res.success = info.success;
+    res.valid = info.valid;
+    res.no_funds = info.no_funds;
+    res.status_change = static_cast<schema::AccStatusChange>(info.status_change);
+    auto& total_fwd_fees = info.total_fwd_fees.write();
+    if (total_fwd_fees.fetch_ulong(1) == 1) {
+      TRY_RESULT_ASSIGN(res.total_fwd_fees, convert::to_balance(info.total_fwd_fees));
+    }
+    auto& total_action_fees = info.total_action_fees.write();
+    if (total_action_fees.fetch_ulong(1) == 1) {
+      TRY_RESULT_ASSIGN(res.total_action_fees, convert::to_balance(info.total_action_fees));
+    }
+    res.result_code = info.result_code;
+    auto& result_arg = info.result_arg.write();
+    if (result_arg.fetch_ulong(1)) {
+      res.result_arg = result_arg.fetch_long(32);
+    }
+    res.tot_actions = info.tot_actions;
+    res.spec_actions = info.spec_actions;
+    res.skipped_actions = info.skipped_actions;
+    res.msgs_created = info.msgs_created;
+    res.action_list_hash = info.action_list_hash;
+    TRY_RESULT_ASSIGN(res.tot_msg_size, parse_storage_used_short(info.tot_msg_size.write()));
+    return res;
+  }
+
+  td::Result<schema::TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs) {
+    int bounce_ph_tag = block::gen::t_TrBouncePhase.get_tag(cs);
+    switch (bounce_ph_tag) {
+      case block::gen::TrBouncePhase::tr_phase_bounce_negfunds: {
+        block::gen::TrBouncePhase::Record_tr_phase_bounce_negfunds negfunds;
+        if (!tlb::unpack(cs, negfunds)) {
+          return td::Status::Error("Error unpacking tr_phase_bounce_negfunds");
+        }
+        return schema::TrBouncePhase_negfunds();
+      }
+      case block::gen::TrBouncePhase::tr_phase_bounce_nofunds: {
+        block::gen::TrBouncePhase::Record_tr_phase_bounce_nofunds nofunds;
+        if (!tlb::unpack(cs, nofunds)) {
+          return td::Status::Error("Error unpacking tr_phase_bounce_nofunds");
+        }
+        schema::TrBouncePhase_nofunds res;
+        TRY_RESULT_ASSIGN(res.msg_size, parse_storage_used_short(nofunds.msg_size.write()));
+        TRY_RESULT_ASSIGN(res.req_fwd_fees, convert::to_balance(nofunds.req_fwd_fees));
+        return res;
+      }
+      case block::gen::TrBouncePhase::tr_phase_bounce_ok: {
+        block::gen::TrBouncePhase::Record_tr_phase_bounce_ok ok;
+        if (!tlb::unpack(cs, ok)) {
+          return td::Status::Error("Error unpacking tr_phase_bounce_ok");
+        }
+        schema::TrBouncePhase_ok res;
+        TRY_RESULT_ASSIGN(res.msg_size, parse_storage_used_short(ok.msg_size.write()));
+        TRY_RESULT_ASSIGN(res.msg_fees, convert::to_balance(ok.msg_fees));
+        TRY_RESULT_ASSIGN(res.fwd_fees, convert::to_balance(ok.fwd_fees));
+        return res;
+      }
+      default:
+        return td::Status::Error("Unknown TrBouncePhase tag");
+    }
+  }
+
+  td::Result<schema::SplitMergeInfo> parse_split_merge_info(td::Ref<vm::CellSlice>& cs) {
+    block::gen::SplitMergeInfo::Record info;
+    if (!tlb::csr_unpack(cs, info)) {
+      return td::Status::Error("Error unpacking SplitMergeInfo");
+    }
+    schema::SplitMergeInfo res;
+    res.cur_shard_pfx_len = info.cur_shard_pfx_len;
+    res.acc_split_depth = info.acc_split_depth;
+    res.this_addr = info.this_addr;
+    res.sibling_addr = info.sibling_addr;
+    return res;
+  }
+
+  td::Result<schema::TransactionDescr> process_transaction_descr(vm::CellSlice& td_cs) {
+    auto tag = block::gen::t_TransactionDescr.get_tag(td_cs);
     switch (tag) {
       case block::gen::TransactionDescr::trans_ord: {
-        schema_tx.transaction_type = "trans_ord";
         block::gen::TransactionDescr::Record_trans_ord ord;
         if (!tlb::unpack_exact(td_cs, ord)) {
           return td::Status::Error("Error unpacking trans_ord");
         }
-        compute_ph = ord.compute_ph;
-        action_ph = ord.action;
-        break;
+        schema::TransactionDescr_ord res;
+        res.credit_first = ord.credit_first;
+        auto& storage_ph = ord.storage_ph.write();
+        if (storage_ph.fetch_ulong(1) == 1) {
+          TRY_RESULT_ASSIGN(res.storage_ph, parse_tr_storage_phase(storage_ph));
+        }
+        auto& credit_ph = ord.credit_ph.write();
+        if (credit_ph.fetch_ulong(1) == 1) {
+          TRY_RESULT_ASSIGN(res.credit_ph, parse_tr_credit_phase(credit_ph));
+        }
+        TRY_RESULT_ASSIGN(res.compute_ph, parse_tr_compute_phase(ord.compute_ph.write()));
+        auto& action = ord.action.write();
+        if (action.fetch_ulong(1) == 1) {
+          auto action_cs = vm::load_cell_slice(action.fetch_ref());
+          TRY_RESULT_ASSIGN(res.action, parse_tr_action_phase(action_cs));
+        }
+        res.aborted = ord.aborted;
+        auto& bounce = ord.bounce.write();
+        if (bounce.fetch_ulong(1)) {
+          TRY_RESULT_ASSIGN(res.bounce, parse_tr_bounce_phase(bounce));
+        }
+        res.destroyed = ord.destroyed;
+        return res;
       }
       case block::gen::TransactionDescr::trans_storage: {
-        schema_tx.transaction_type = "trans_storage";
-        break;
+        block::gen::TransactionDescr::Record_trans_storage storage;
+        if (!tlb::unpack_exact(td_cs, storage)) {
+          return td::Status::Error("Error unpacking trans_storage");
+        }
+        schema::TransactionDescr_storage res;
+        TRY_RESULT_ASSIGN(res.storage_ph, parse_tr_storage_phase(storage.storage_ph.write()));
+        return res;
       }
       case block::gen::TransactionDescr::trans_tick_tock: {
-        schema_tx.transaction_type = "trans_tick_tock";
         block::gen::TransactionDescr::Record_trans_tick_tock tick_tock;
         if (!tlb::unpack_exact(td_cs, tick_tock)) {
           return td::Status::Error("Error unpacking trans_tick_tock");
         }
-        compute_ph = tick_tock.compute_ph;
-        action_ph = tick_tock.action;
-        break;
+        schema::TransactionDescr_tick_tock res;
+        res.is_tock = tick_tock.is_tock;
+        TRY_RESULT_ASSIGN(res.storage_ph, parse_tr_storage_phase(tick_tock.storage_ph.write()));
+        TRY_RESULT_ASSIGN(res.compute_ph, parse_tr_compute_phase(tick_tock.compute_ph.write()));
+        auto& action = tick_tock.action.write();
+        if (action.fetch_ulong(1) == 1) {
+          auto action_cs = vm::load_cell_slice(action.fetch_ref());
+          TRY_RESULT_ASSIGN(res.action, parse_tr_action_phase(action_cs));
+        }
+        res.aborted = tick_tock.aborted;
+        res.destroyed = tick_tock.destroyed;
+        return res;
       }
       case block::gen::TransactionDescr::trans_split_prepare: {
-        schema_tx.transaction_type = "trans_split_prepare";
         block::gen::TransactionDescr::Record_trans_split_prepare split_prepare;
         if (!tlb::unpack_exact(td_cs, split_prepare)) {
           return td::Status::Error("Error unpacking trans_split_prepare");
         }
-        compute_ph = split_prepare.compute_ph;
-        action_ph = split_prepare.action;
-        break;
+        schema::TransactionDescr_split_prepare res;
+        TRY_RESULT_ASSIGN(res.split_info, parse_split_merge_info(split_prepare.split_info));
+        auto& storage_ph = split_prepare.storage_ph.write();
+        if (storage_ph.fetch_ulong(1)) {
+          TRY_RESULT_ASSIGN(res.storage_ph, parse_tr_storage_phase(storage_ph));
+        }
+        TRY_RESULT_ASSIGN(res.compute_ph, parse_tr_compute_phase(split_prepare.compute_ph.write()));
+        auto& action = split_prepare.action.write();
+        if (action.fetch_ulong(1)) {
+          auto action_cs = vm::load_cell_slice(action.fetch_ref());
+          TRY_RESULT_ASSIGN(res.action, parse_tr_action_phase(action_cs));
+        }
+        res.aborted = split_prepare.aborted;
+        res.destroyed = split_prepare.destroyed;
+        return res;
       }
       case block::gen::TransactionDescr::trans_split_install: {
-        schema_tx.transaction_type = "trans_split_install";
-        break;
+        block::gen::TransactionDescr::Record_trans_split_install split_install;
+        if (!tlb::unpack_exact(td_cs, split_install)) {
+          return td::Status::Error("Error unpacking trans_split_install");
+        }
+        schema::TransactionDescr_split_install res;
+        TRY_RESULT_ASSIGN(res.split_info, parse_split_merge_info(split_install.split_info));
+        res.installed = split_install.installed;
+        return res;
       }
       case block::gen::TransactionDescr::trans_merge_prepare: {
-        schema_tx.transaction_type = "trans_merge_prepare";
-        break;
+        block::gen::TransactionDescr::Record_trans_merge_prepare merge_prepare;
+        if (!tlb::unpack_exact(td_cs, merge_prepare)) {
+          return td::Status::Error("Error unpacking trans_merge_prepare");
+        }
+        schema::TransactionDescr_merge_prepare res;
+        TRY_RESULT_ASSIGN(res.split_info, parse_split_merge_info(merge_prepare.split_info));
+        TRY_RESULT_ASSIGN(res.storage_ph, parse_tr_storage_phase(merge_prepare.storage_ph.write()));
+        res.aborted = merge_prepare.aborted;
+        return res;
       }
       case block::gen::TransactionDescr::trans_merge_install: {
-        schema_tx.transaction_type = "trans_merge_install";
         block::gen::TransactionDescr::Record_trans_merge_install merge_install;
         if (!tlb::unpack_exact(td_cs, merge_install)) {
           return td::Status::Error("Error unpacking trans_merge_install");
         }
-        compute_ph = merge_install.compute_ph;
-        action_ph = merge_install.action;
-        break;
+        schema::TransactionDescr_merge_install res;
+        TRY_RESULT_ASSIGN(res.split_info, parse_split_merge_info(merge_install.split_info));
+        auto& storage_ph = merge_install.storage_ph.write();
+        if (storage_ph.fetch_ulong(1)) {
+          TRY_RESULT_ASSIGN(res.storage_ph, parse_tr_storage_phase(storage_ph));
+        }
+        auto& credit_ph = merge_install.credit_ph.write();
+        if (credit_ph.fetch_ulong(1)) {
+          TRY_RESULT_ASSIGN(res.credit_ph, parse_tr_credit_phase(credit_ph));
+        }
+        TRY_RESULT_ASSIGN(res.compute_ph, parse_tr_compute_phase(merge_install.compute_ph.write()));
+        auto& action = merge_install.action.write();
+        if (action.fetch_ulong(1)) {
+          auto action_cs = vm::load_cell_slice(action.fetch_ref());
+          TRY_RESULT_ASSIGN(res.action, parse_tr_action_phase(action_cs));
+        }
+        res.aborted = merge_install.aborted;
+        res.destroyed = merge_install.destroyed;
+        return res;
       }
+      default:
+        return td::Status::Error("Unknown transaction description type");
     }
-    return td::Status::OK();
   }
 
-  td::Status process_compute_phase(schema::Transaction& schema_tx, td::Ref<vm::CellSlice>& compute_ph) {
-    int compute_ph_tag = block::gen::t_TrComputePhase.get_tag(*compute_ph);
-    if (compute_ph_tag == block::gen::TrComputePhase::tr_phase_compute_vm) {
-      block::gen::TrComputePhase::Record_tr_phase_compute_vm compute_vm;
-      if (!tlb::csr_unpack(compute_ph, compute_vm)) {
-        return td::Status::Error("Error unpacking tr_phase_compute_vm");
-      }
-      schema_tx.compute_exit_code = compute_vm.r1.exit_code;
-      schema_tx.compute_gas_used = block::tlb::t_VarUInteger_7.as_uint(*compute_vm.r1.gas_used);
-      schema_tx.compute_gas_limit = block::tlb::t_VarUInteger_7.as_uint(*compute_vm.r1.gas_limit);
-      schema_tx.compute_gas_credit = block::tlb::t_VarUInteger_3.as_uint(*compute_vm.r1.gas_credit);
-      schema_tx.compute_gas_fees = block::tlb::t_Grams.as_uint(*compute_vm.gas_fees);
-      schema_tx.compute_vm_steps = compute_vm.r1.vm_steps;
-    } else if (compute_ph_tag == block::gen::TrComputePhase::tr_phase_compute_skipped) {
-      block::gen::TrComputePhase::Record_tr_phase_compute_skipped skip;
-      if (!tlb::csr_unpack(compute_ph, skip)) {
-        return td::Status::Error("Error unpacking tr_phase_compute_skipped");
-      }
-      switch (skip.reason) {
-        case block::gen::ComputeSkipReason::cskip_no_state:
-          schema_tx.compute_skip_reason = "cskip_no_state";
-          break;
-        case block::gen::ComputeSkipReason::cskip_bad_state:
-          schema_tx.compute_skip_reason = "cskip_bad_state";
-          break;
-        case block::gen::ComputeSkipReason::cskip_no_gas:
-          schema_tx.compute_skip_reason = "cskip_no_gas";
-          break;
-        // case block::gen::ComputeSkipReason::cskip_suspended:
-        //   schema_tx.compute_skip_reason = "cskip_suspended";
-        //   break;
-      }
-    }
-    return td::Status::OK();
-  }
-
-  td::Status process_action_phase(schema::Transaction& schema_tx, td::Ref<vm::CellSlice>& action_ph) {
-    auto& action_cs = action_ph.write();
-    if (action_cs.fetch_ulong(1) == 1) {
-      block::gen::TrActionPhase::Record action;
-      if (!tlb::unpack_cell(action_cs.fetch_ref(), action)) {
-        return td::Status::Error("Error unpacking TrActionPhase");
-      }
-      schema_tx.action_result_code = action.result_code;
-      auto& total_fwd_fees_cs = action.total_fwd_fees.write();
-      if (total_fwd_fees_cs.fetch_ulong(1) == 1) {
-        TRY_RESULT_ASSIGN(schema_tx.action_total_fwd_fees, convert::to_balance(total_fwd_fees_cs));
-      }
-      auto& total_action_fees_cs = action.total_action_fees.write();
-      if (total_action_fees_cs.fetch_ulong(1) == 1) {
-        TRY_RESULT_ASSIGN(schema_tx.action_total_action_fees, convert::to_balance(total_action_fees_cs));
-      }
-    }
-    return td::Status::OK();
-  }
-
-  td::Status parse_transactions(const ton::BlockIdExt& blk_id, const block::gen::Block::Record &block, 
+  td::Result<std::vector<schema::Transaction>> parse_transactions(const ton::BlockIdExt& blk_id, const block::gen::Block::Record &block, 
                                 const block::gen::BlockInfo::Record &info, const block::gen::BlockExtra::Record &extra,
                                 std::set<td::Bits256> &addresses) {
+    std::vector<schema::Transaction> res;
     try {
       vm::AugmentedDictionary acc_dict{vm::load_cell_slice_ref(extra.account_blocks), 256, block::tlb::aug_ShardAccountBlocks};
 
@@ -352,68 +533,29 @@ private:
           }
 
           schema::Transaction schema_tx;
-          schema_tx.block_workchain = blk_id.id.workchain;
-          schema_tx.block_shard = static_cast<int64_t>(blk_id.id.shard);
-          schema_tx.block_seqno = blk_id.id.seqno;
 
-          schema_tx.account = std::to_string(blk_id.id.workchain) + ":" + cur_addr.to_hex();
-          schema_tx.hash = td::base64_encode(tvalue->get_hash().as_slice());
+          schema_tx.account = block::StdAddress(blk_id.id.workchain, cur_addr);
+          schema_tx.hash = tvalue->get_hash().bits();
           schema_tx.lt = trans.lt;
-          schema_tx.utime = trans.now;
+          schema_tx.prev_trans_hash = trans.prev_trans_hash;
+          schema_tx.prev_trans_lt = trans.prev_trans_lt;
+          schema_tx.now = trans.now;
 
-          TRY_RESULT_ASSIGN(schema_tx.fees, convert::to_balance(trans.total_fees));
+          schema_tx.orig_status = static_cast<schema::AccountStatus>(trans.orig_status);
+          schema_tx.end_status = static_cast<schema::AccountStatus>(trans.end_status);
 
-          td::RefInt256 storage_fees;
-          if (!block::tlb::t_TransactionDescr.get_storage_fees(trans.description, storage_fees)) {
-            return td::Status::Error("Failed to fetch storage fee from transaction");
-          }
-          schema_tx.storage_fees = storage_fees->to_long();
+          TRY_RESULT_ASSIGN(schema_tx.total_fees, convert::to_balance(trans.total_fees));
 
-          auto td_cs = vm::load_cell_slice(trans.description);
-          int tag = block::gen::t_TransactionDescr.get_tag(td_cs);
-          td::Ref<vm::CellSlice> compute_ph;
-          td::Ref<vm::CellSlice> action_ph;
-          
-          TRY_STATUS(process_transaction_descr(schema_tx, td_cs, tag, compute_ph, action_ph));
-
-          if (compute_ph.not_null()) {
-            TRY_STATUS(process_compute_phase(schema_tx, compute_ph));
-          }
-          if (action_ph.not_null()) {
-            TRY_STATUS(process_action_phase(schema_tx, action_ph));
-          }
-
-          auto is_just = trans.r1.in_msg->prefetch_long(1);
-          if (is_just == trans.r1.in_msg->fetch_long_eof) {
-            return td::Status::Error("Failed to parse long");
-          }
-          if (is_just == -1) {
+          if (trans.r1.in_msg->prefetch_long(1)) {
             auto msg = trans.r1.in_msg->prefetch_ref();
-            TRY_RESULT(in_msg, parse_message(trans.r1.in_msg->prefetch_ref()));
-            schema_tx.in_msg_from = in_msg.source;
-            schema_tx.in_msg_body = in_msg.body_cell;
-
-            result->messages_.push_back(in_msg);
-
-            schema::TransactionMessage tx_msg;
-            tx_msg.transaction_hash = schema_tx.hash;
-            tx_msg.message_hash = in_msg.hash;
-            tx_msg.direction = "in";
-            result->transaction_messages_.push_back(tx_msg);
+            TRY_RESULT_ASSIGN(schema_tx.in_msg, parse_message(trans.r1.in_msg->prefetch_ref()));
           }
 
           if (trans.outmsg_cnt != 0) {
             vm::Dictionary dict{trans.r1.out_msgs, 15};
             for (int x = 0; x < trans.outmsg_cnt; x++) {
               TRY_RESULT(out_msg, parse_message(dict.lookup_ref(td::BitArray<15>{x})));
-
-              result->messages_.push_back(out_msg);
-
-              schema::TransactionMessage tx_msg;
-              tx_msg.transaction_hash = schema_tx.hash;
-              tx_msg.message_hash = out_msg.hash;
-              tx_msg.direction = "out";
-              result->transaction_messages_.push_back(tx_msg);
+              schema_tx.out_msgs.push_back(std::move(out_msg));
             }
           }
 
@@ -422,10 +564,13 @@ private:
             return td::Status::Error("Failed to unpack state_update");
           }
           
-          schema_tx.account_state_hash_before = td::base64_encode(state_hash_update.old_hash.as_slice());
-          schema_tx.account_state_hash_after = td::base64_encode(state_hash_update.new_hash.as_slice());
+          schema_tx.account_state_hash_before = state_hash_update.old_hash;
+          schema_tx.account_state_hash_after = state_hash_update.new_hash;
 
-          result->transactions_.push_back(schema_tx);
+          auto descr_cs = vm::load_cell_slice(trans.description);
+          TRY_RESULT_ASSIGN(schema_tx.description, process_transaction_descr(descr_cs));
+
+          res.push_back(schema_tx);
 
           addresses.insert(cur_addr);
         }
@@ -433,7 +578,7 @@ private:
     } catch (vm::VmError err) {
         return td::Status::Error(PSLICE() << "error while parsing AccountBlocks : " << err.get_msg());
     }
-    return td::Status::OK();
+    return res;
   }
 
   td::Status parse_account_states(const td::Ref<ShardState>& block_state, std::set<td::Bits256> &addresses) {
@@ -469,7 +614,6 @@ private:
   }
 
   td::Result<schema::AccountState> parse_account(td::Ref<vm::Cell> account_root) {
-    auto hash = td::base64_encode(account_root->get_hash().as_slice());
     block::gen::Account::Record_account account;
     if (!tlb::unpack_cell(account_root, account)) {
       return td::Status::Error("Failed to unpack Account");
@@ -480,8 +624,9 @@ private:
     }
 
     schema::AccountState schema_account;
-    schema_account.hash = hash;
-    TRY_RESULT_ASSIGN(schema_account.account, convert::to_raw_address(account.addr));
+    schema_account.hash = account_root->get_hash().bits();
+    TRY_RESULT(account_addr, convert::to_raw_address(account.addr));
+    TRY_RESULT_ASSIGN(schema_account.account, block::StdAddress::parse(account_addr));
     TRY_RESULT_ASSIGN(schema_account.balance, convert::to_balance(storage.balance));
     schema_account.last_trans_lt = storage.last_trans_lt;
 

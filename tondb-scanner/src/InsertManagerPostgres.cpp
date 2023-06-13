@@ -91,116 +91,280 @@ public:
     transaction.exec0(query.str());
   }
 
+  std::string stringify(schema::ComputeSkipReason compute_skip_reason) {
+    switch (compute_skip_reason) {
+        case schema::ComputeSkipReason::cskip_no_state: return "no_state";
+        case schema::ComputeSkipReason::cskip_bad_state: return "bad_state";
+        case schema::ComputeSkipReason::cskip_no_gas: return "no_gas";
+    };
+    UNREACHABLE();
+  }
+
+  std::string stringify(schema::AccStatusChange acc_status_change) {
+    switch (acc_status_change) {
+        case schema::AccStatusChange::acst_unchanged: return "unchanged";
+        case schema::AccStatusChange::acst_frozen: return "frozen";
+        case schema::AccStatusChange::acst_deleted: return "deleted";
+    };
+    UNREACHABLE();
+  }
+
+  std::string stringify(schema::AccountStatus account_status)
+  {
+    switch (account_status) {
+        case schema::AccountStatus::frozen: return "frozen";
+        case schema::AccountStatus::uninit: return "uninit";
+        case schema::AccountStatus::active: return "active";
+        case schema::AccountStatus::nonexist: return "nonexist";
+    };
+    UNREACHABLE();
+  }
+
+  std::string jsonify(const schema::SplitMergeInfo& info) {
+    auto jb = td::JsonBuilder();
+    auto c = jb.enter_object();
+    c("cur_shard_pfx_len", static_cast<int>(info.cur_shard_pfx_len));
+    c("acc_split_depth", static_cast<int>(info.acc_split_depth));
+    c("this_addr", info.this_addr.to_hex());
+    c("sibling_addr", info.sibling_addr.to_hex());
+    c.leave();
+    return jb.string_builder().as_cslice().str();
+  }
+
+  std::string jsonify(const schema::StorageUsedShort& s) {
+    auto jb = td::JsonBuilder();
+    auto c = jb.enter_object();
+    c("cells", std::to_string(s.cells));
+    c("bits", std::to_string(s.bits));
+    c.leave();
+    return jb.string_builder().as_cslice().str();
+  }
+
+  std::string jsonify(const schema::TrStoragePhase& s) {
+    auto jb = td::JsonBuilder();
+    auto c = jb.enter_object();
+    c("storage_fees_collected", std::to_string(s.storage_fees_collected));
+    if (s.storage_fees_due) {
+      c("storage_fees_due", std::to_string(*(s.storage_fees_due)));
+    }
+    c("status_change", stringify(s.status_change));
+    c("storage_fees_collected", std::to_string(s.storage_fees_collected));
+    if (s.storage_fees_due) {
+      c("storage_fees_due", std::to_string(*(s.storage_fees_due)));
+    }
+    c.leave();
+    return jb.string_builder().as_cslice().str();
+  }
+
+  std::string jsonify(const schema::TrCreditPhase& c) {
+    auto jb = td::JsonBuilder();
+    auto cc = jb.enter_object();
+    cc("due_fees_collected", std::to_string(c.due_fees_collected));
+    cc("credit", std::to_string(c.credit));
+    cc.leave();
+    return jb.string_builder().as_cslice().str();
+  }
+
+  std::string jsonify(const schema::TrActionPhase& action) {
+    auto jb = td::JsonBuilder();
+    auto c = jb.enter_object();
+    c("success", td::JsonBool(action.success));
+    c("valid", td::JsonBool(action.valid));
+    c("no_funds", td::JsonBool(action.no_funds));
+    td::StringBuilder status_change_sb;
+    status_change_sb << action.status_change;
+    c("status_change", status_change_sb.as_cslice().str());
+    if (action.total_fwd_fees) {
+      c("total_fwd_fees", std::to_string(*(action.total_fwd_fees)));
+    }
+    if (action.total_action_fees) {
+      c("total_action_fees", std::to_string(*(action.total_action_fees)));
+    }
+    c("result_code", action.result_code);
+    if (action.result_arg) {
+      c("result_arg", *(action.result_arg));
+    }
+    c("tot_actions", action.tot_actions);
+    c("spec_actions", action.spec_actions);
+    c("skipped_actions", action.skipped_actions);
+    c("msgs_created", action.msgs_created);
+    c("action_list_hash", td::base64_encode(action.action_list_hash.as_slice()));
+    c("tot_msg_size", td::JsonRaw(jsonify(action.tot_msg_size)));
+    c.leave();
+    return jb.string_builder().as_cslice().str();
+  }
+
+  std::string jsonify(const schema::TrBouncePhase& bounce) {
+    auto jb = td::JsonBuilder();
+    auto c = jb.enter_object();
+    if (std::holds_alternative<schema::TrBouncePhase_negfunds>(bounce)) {
+      c("type", "negfunds");
+    } else if (std::holds_alternative<schema::TrBouncePhase_nofunds>(bounce)) {
+      const auto& nofunds = std::get<schema::TrBouncePhase_nofunds>(bounce);
+      c("type", "nofunds");
+      c("msg_size", td::JsonRaw(jsonify(nofunds.msg_size)));
+      c("req_fwd_fees", std::to_string(nofunds.req_fwd_fees));
+    } else if (std::holds_alternative<schema::TrBouncePhase_ok>(bounce)) {
+      const auto& ok = std::get<schema::TrBouncePhase_ok>(bounce);
+      c("type", "ok");
+      c("msg_size", td::JsonRaw(jsonify(ok.msg_size)));
+      c("msg_fees", std::to_string(ok.msg_fees));
+      c("fwd_fees", std::to_string(ok.fwd_fees));
+    }
+    c.leave();
+    return jb.string_builder().as_cslice().str();
+  }
+
+  std::string jsonify(const schema::TrComputePhase& compute) {
+    auto jb = td::JsonBuilder();
+    auto c = jb.enter_object();
+    if (std::holds_alternative<schema::TrComputePhase_skipped>(compute)) {
+      c("type", "skipped");
+      c("skip_reason", stringify(std::get<schema::TrComputePhase_skipped>(compute).reason));
+    } else if (std::holds_alternative<schema::TrComputePhase_vm>(compute)) {
+      c("type", "vm");
+      auto& computed = std::get<schema::TrComputePhase_vm>(compute);
+      c("success", td::JsonBool(computed.success));
+      c("msg_state_used", td::JsonBool(computed.msg_state_used));
+      c("account_activated", td::JsonBool(computed.account_activated));
+      c("gas_fees", std::to_string(computed.gas_fees));
+      c("gas_used",std::to_string(computed.gas_used));
+      c("gas_limit", std::to_string(computed.gas_limit));
+      if (computed.gas_credit) {
+        c("gas_credit", std::to_string(*(computed.gas_credit)));
+      }
+      c("mode", computed.mode);
+      c("exit_code", computed.exit_code);
+      if (computed.exit_arg) {
+        c("exit_arg", *(computed.exit_arg));
+      }
+      c("vm_steps", static_cast<int64_t>(computed.vm_steps));
+      c("vm_init_state_hash", td::base64_encode(computed.vm_init_state_hash.as_slice()));
+      c("vm_final_state_hash", td::base64_encode(computed.vm_final_state_hash.as_slice()));
+    }
+    c.leave();
+    return jb.string_builder().as_cslice().str();
+  }
+
+  std::string jsonify(schema::TransactionDescr descr) {
+    char tmp[10000]; // Adjust the size if needed
+    td::StringBuilder sb(td::MutableSlice{tmp, sizeof(tmp)});
+    td::JsonBuilder jb(std::move(sb));
+
+    auto obj = jb.enter_object();
+    if (std::holds_alternative<schema::TransactionDescr_ord>(descr)) {
+      const auto& ord = std::get<schema::TransactionDescr_ord>(descr);
+      obj("type", "ord");
+      obj("credit_first", td::JsonBool(ord.credit_first));
+      obj("storage_ph", td::JsonRaw(jsonify(ord.storage_ph)));
+      obj("credit_ph", td::JsonRaw(jsonify(ord.credit_ph)));
+      obj("compute_ph", td::JsonRaw(jsonify(ord.compute_ph)));
+      if (ord.action.has_value()) {
+        obj("action", td::JsonRaw(jsonify(ord.action.value())));
+      }
+      obj("aborted", td::JsonBool(ord.aborted));
+      obj("bounce", td::JsonRaw(jsonify(ord.bounce)));
+      obj("destroyed", td::JsonBool(ord.destroyed));
+      obj.leave();
+    }
+    else if (std::holds_alternative<schema::TransactionDescr_storage>(descr)) {
+      const auto& storage = std::get<schema::TransactionDescr_storage>(descr);
+      obj("type", "storage");
+      obj("storage_ph", td::JsonRaw(jsonify(storage.storage_ph)));
+      obj.leave();
+    }
+    else if (std::holds_alternative<schema::TransactionDescr_tick_tock>(descr)) {
+      const auto& tt = std::get<schema::TransactionDescr_tick_tock>(descr);
+      obj("type", "tick_tock");
+      obj("is_tock", td::JsonBool(tt.is_tock));
+      obj("storage_ph", td::JsonRaw(jsonify(tt.storage_ph)));
+      obj("compute_ph", td::JsonRaw(jsonify(tt.compute_ph)));
+      if (tt.action.has_value()) {
+        obj("action", td::JsonRaw(jsonify(tt.action.value())));
+      }
+      obj("aborted", td::JsonBool(tt.aborted));
+      obj("destroyed", td::JsonBool(tt.destroyed));
+      obj.leave();
+    }
+    else if (std::holds_alternative<schema::TransactionDescr_split_prepare>(descr)) {
+      const auto& split = std::get<schema::TransactionDescr_split_prepare>(descr);
+      obj("type", "split_prepare");
+      obj("split_info", td::JsonRaw(jsonify(split.split_info)));
+      if (split.storage_ph.has_value()) {
+        obj("storage_ph", td::JsonRaw(jsonify(split.storage_ph.value())));
+      }
+      obj("compute_ph", td::JsonRaw(jsonify(split.compute_ph)));
+      if (split.action.has_value()) {
+        obj("action", td::JsonRaw(jsonify(split.action.value())));
+      }
+      obj("aborted", td::JsonBool(split.aborted));
+      obj("destroyed", td::JsonBool(split.destroyed));
+      obj.leave();
+    }
+    else if (std::holds_alternative<schema::TransactionDescr_split_install>(descr)) {
+      const auto& split = std::get<schema::TransactionDescr_split_install>(descr);
+      obj("type", "split_install");
+      obj("split_info", td::JsonRaw(jsonify(split.split_info)));
+      obj("installed", td::JsonBool(split.installed));
+      obj.leave();
+    }
+    else if (std::holds_alternative<schema::TransactionDescr_merge_prepare>(descr)) {
+      const auto& merge = std::get<schema::TransactionDescr_merge_prepare>(descr);
+      obj("type", "merge_prepare");
+      obj("split_info", td::JsonRaw(jsonify(merge.split_info)));
+      obj("storage_ph", td::JsonRaw(jsonify(merge.storage_ph)));
+      obj("aborted", td::JsonBool(merge.aborted));
+      obj.leave();
+    }
+    else if (std::holds_alternative<schema::TransactionDescr_merge_install>(descr)) {
+      const auto& merge = std::get<schema::TransactionDescr_merge_install>(descr);
+      obj("type", "merge_install");
+      obj("split_info", td::JsonRaw(jsonify(merge.split_info)));
+      if (merge.storage_ph.has_value()) {
+        obj("storage_ph", td::JsonRaw(jsonify(merge.storage_ph.value())));
+      }
+      if (merge.credit_ph.has_value()) {
+        obj("credit_ph", td::JsonRaw(jsonify(merge.credit_ph.value())));
+      }
+      obj("compute_ph", td::JsonRaw(jsonify(merge.compute_ph)));
+      if (merge.action.has_value()) {
+        obj("action", td::JsonRaw(jsonify(merge.action.value())));
+      }
+      obj("aborted", td::JsonBool(merge.aborted));
+      obj("destroyed", td::JsonBool(merge.destroyed));
+      obj.leave();
+    }
+
+    return jb.string_builder().as_cslice().str();
+  }
+
   void insert_transactions(pqxx::work &transaction) {
     std::ostringstream query;
-    query << "INSERT INTO transactions (block_workchain, block_shard, block_seqno, account, hash, lt, utime, transaction_type, "
-                                       "account_state_hash_before, account_state_hash_after, fees, storage_fees, in_fwd_fees, computation_fees, "
-                                       "action_fees, compute_exit_code, compute_gas_used, compute_gas_limit, compute_gas_credit, "
-                                       "compute_gas_fees, compute_vm_steps, compute_skip_reason, action_result_code, action_total_fwd_fees, "
-                                       "action_total_action_fees) VALUES ";
+    query << "INSERT INTO transactions (block_workchain, block_shard, block_seqno, account, hash, lt, now, orig_status, end_status, "
+                                       "total_fees, account_state_hash_before, account_state_hash_after, description) VALUES ";
     bool is_first = true;
     for (const auto& mc_block : mc_blocks_) {
-      for (const auto& transaction : mc_block->transactions_) {
-        if (is_first) {
-          is_first = false;
-        } else {
-          query << ", ";
-        }
-        query << "("
-              << transaction.block_workchain << ","
-              << transaction.block_shard << ","
-              << transaction.block_seqno << ","
-              << "'" << transaction.account << "',"
-              << "'" << transaction.hash << "',"
-              << transaction.lt << ","
-              << transaction.utime << ","
-              << "'" << transaction.transaction_type << "',"
-              << "'" << transaction.account_state_hash_before << "',"
-              << "'" << transaction.account_state_hash_after << "',"
-              << transaction.fees << ","
-              << transaction.storage_fees << ","
-              << transaction.in_fwd_fees << ","
-              << transaction.computation_fees << ","
-              << transaction.action_fees << ","
-              << TO_SQL_OPTIONAL(transaction.compute_exit_code) << ","
-              << TO_SQL_OPTIONAL(transaction.compute_gas_used) << ","
-              << TO_SQL_OPTIONAL(transaction.compute_gas_limit) << ","
-              << TO_SQL_OPTIONAL(transaction.compute_gas_credit) << ","
-              << TO_SQL_OPTIONAL(transaction.compute_gas_fees) << ","
-              << TO_SQL_OPTIONAL(transaction.compute_vm_steps) << ","
-              << TO_SQL_OPTIONAL_STRING(transaction.compute_skip_reason) << ","
-              << TO_SQL_OPTIONAL(transaction.action_result_code) << ","
-              << TO_SQL_OPTIONAL(transaction.action_total_fwd_fees) << ","
-              << TO_SQL_OPTIONAL(transaction.action_total_action_fees)
-              << ")";
-      }
-    }
-    if (is_first) {
-      return;
-    }
-    query << " ON CONFLICT DO NOTHING";
-
-    // LOG(DEBUG) << "Running SQL query: " << query.str();
-    transaction.exec0(query.str());
-  }
-  
-  void insert_messsages(pqxx::work &transaction) {
-    std::ostringstream query;
-    query << "INSERT INTO messages (hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, opcode, "
-                                 "ihr_disabled, bounce, bounced, import_fee, body_hash, init_state_hash) VALUES ";
-    bool is_first = true;
-    for (const auto& mc_block : mc_blocks_) {
-      for (const auto& message : mc_block->messages_) {
-        if (is_first) {
-          is_first = false;
-        } else {
-          query << ", ";
-        }
-        query << "("
-              << "'" << message.hash << "',"
-              << (message.source ? "'" + message.source.value() + "'" : "NULL") << ","
-              << (message.destination ? "'" + message.destination.value() + "'" : "NULL") << ","
-              << (message.value ? std::to_string(message.value.value()) : "NULL") << ","
-              << (message.fwd_fee ? std::to_string(message.fwd_fee.value()) : "NULL") << ","
-              << (message.ihr_fee ? std::to_string(message.ihr_fee.value()) : "NULL") << ","
-              << (message.created_lt ? std::to_string(message.created_lt.value()) : "NULL") << ","
-              << (message.created_at ? std::to_string(message.created_at.value()) : "NULL") << ","
-              << (message.opcode ? std::to_string(message.opcode.value()) : "NULL") << ","
-              << (message.ihr_disabled ? TO_SQL_BOOL(message.ihr_disabled.value()) : "NULL") << ","
-              << (message.bounce ? TO_SQL_BOOL(message.bounce.value()) : "NULL") << ","
-              << (message.bounced ? TO_SQL_BOOL(message.bounced.value()) : "NULL") << ","
-              << (message.import_fee ? std::to_string(message.import_fee.value()) : "NULL") << ","
-              << "'" << message.body_hash << "',"
-              << (message.init_state_hash ? "'" + message.init_state_hash.value() + "'" : "NULL")
-              << ")";
-      }
-    }
-    if (is_first) {
-      return;
-    }
-    query << " ON CONFLICT DO NOTHING";
-
-    // LOG(DEBUG) << "Running SQL query: " << query.str();
-    transaction.exec0(query.str());
-
-    query.str("");
-    is_first = true;
-    query << "INSERT INTO message_contents (hash, body) VALUES ";
-    for (const auto& mc_block : mc_blocks_) {
-      for (const auto& message : mc_block->messages_) {
-        if (is_first) {
-          is_first = false;
-        } else {
-          query << ", ";
-        }
-        query << "("
-              << "'" << message.body_hash << "',"
-              << "'" << message.body << "'"
-              << ")";
-        if (message.init_state_hash) {
-          query << ", ("
-                << "'" << message.init_state_hash.value() << "',"
-                << "'" << message.init_state.value() << "'"
+      for (const auto &blk : mc_block->blocks_) {
+        for (const auto& transaction : blk.transactions) {
+          if (is_first) {
+            is_first = false;
+          } else {
+            query << ", ";
+          }
+          query << "("
+                << blk.workchain << ","
+                << blk.shard << ","
+                << blk.seqno << ","
+                << TO_SQL_STRING(convert::to_raw_address(transaction.account)) << ","
+                << TO_SQL_STRING(td::base64_encode(transaction.hash.as_slice())) << ","
+                << transaction.lt << ","
+                << transaction.now << ","
+                << TO_SQL_STRING(stringify(transaction.orig_status)) << ","
+                << TO_SQL_STRING(stringify(transaction.end_status)) << ","
+                << transaction.total_fees << ","
+                << TO_SQL_STRING(td::base64_encode(transaction.account_state_hash_before.as_slice())) << ","
+                << TO_SQL_STRING(td::base64_encode(transaction.account_state_hash_after.as_slice())) << ","
+                << "'" << jsonify(transaction.description) << "'"
                 << ")";
         }
       }
@@ -213,24 +377,114 @@ public:
     // LOG(DEBUG) << "Running SQL query: " << query.str();
     transaction.exec0(query.str());
   }
-
-  void insert_tx_msgs(pqxx::work &transaction) {
-    std::ostringstream query;
-    query << "INSERT INTO transaction_messages (transaction_hash, message_hash, direction) VALUES ";
-    bool is_first = true;
+  
+  void insert_messsages(pqxx::work &transaction) {
+    std::vector<schema::Message> messages;
+    struct TxMsg {
+      std::string tx_hash;
+      std::string msg_hash;
+      std::string direction; // in or out
+    };
+    std::vector<TxMsg> tx_msgs;
+    std::set<td::Bits256> message_hashes;
     for (const auto& mc_block : mc_blocks_) {
-      for (const auto& tx_msg : mc_block->transaction_messages_) {
-        if (is_first) {
-          is_first = false;
-        } else {
-          query << ", ";
+      for (const auto& blk : mc_block->blocks_) {
+        for (const auto& transaction : blk.transactions) {
+          if (transaction.in_msg.has_value()) {
+            if (message_hashes.find(transaction.in_msg.value().hash) == message_hashes.end()) {
+              messages.push_back(transaction.in_msg.value());
+            }
+            tx_msgs.push_back({td::base64_encode(transaction.hash.as_slice()), td::base64_encode(transaction.in_msg.value().hash.as_slice()), "in"});
+          }
+          for (const auto& message : transaction.out_msgs) {
+            if (message_hashes.find(message.hash) == message_hashes.end()) {
+              messages.push_back(message);
+            }
+            tx_msgs.push_back({td::base64_encode(transaction.hash.as_slice()), td::base64_encode(message.hash.as_slice()), "out"});
+          }
         }
-        query << "("
-              << TO_SQL_STRING(tx_msg.transaction_hash) << ","
-              << TO_SQL_STRING(tx_msg.message_hash) << ","
-              << TO_SQL_STRING(tx_msg.direction)
+      }
+    }
+
+    std::ostringstream query;
+    query << "INSERT INTO messages (hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, opcode, "
+                                 "ihr_disabled, bounce, bounced, import_fee, body_hash, init_state_hash) VALUES ";
+    bool is_first = true;
+    for (const auto& message : messages) {
+      if (is_first) {
+        is_first = false;
+      } else {
+        query << ", ";
+      }
+      query << "("
+            << "'" << td::base64_encode(message.hash.as_slice()) << "',"
+            << (message.source ? "'" + message.source.value() + "'" : "NULL") << ","
+            << (message.destination ? "'" + message.destination.value() + "'" : "NULL") << ","
+            << (message.value ? std::to_string(message.value.value()) : "NULL") << ","
+            << (message.fwd_fee ? std::to_string(message.fwd_fee.value()) : "NULL") << ","
+            << (message.ihr_fee ? std::to_string(message.ihr_fee.value()) : "NULL") << ","
+            << (message.created_lt ? std::to_string(message.created_lt.value()) : "NULL") << ","
+            << (message.created_at ? std::to_string(message.created_at.value()) : "NULL") << ","
+            << (message.opcode ? std::to_string(message.opcode.value()) : "NULL") << ","
+            << (message.ihr_disabled ? TO_SQL_BOOL(message.ihr_disabled.value()) : "NULL") << ","
+            << (message.bounce ? TO_SQL_BOOL(message.bounce.value()) : "NULL") << ","
+            << (message.bounced ? TO_SQL_BOOL(message.bounced.value()) : "NULL") << ","
+            << (message.import_fee ? std::to_string(message.import_fee.value()) : "NULL") << ","
+            << "'" << td::base64_encode(message.body->get_hash().as_slice()) << "',"
+            << (message.init_state.not_null() ? TO_SQL_STRING(td::base64_encode(message.init_state->get_hash().as_slice())) : "NULL")
+            << ")";
+    }
+    if (is_first) {
+      return;
+    }
+    query << " ON CONFLICT DO NOTHING";
+
+    // LOG(DEBUG) << "Running SQL query: " << query.str();
+    transaction.exec0(query.str());
+
+    query.str("");
+    is_first = true;
+    query << "INSERT INTO message_contents (hash, body) VALUES ";
+    for (const auto& message : messages) {
+      if (is_first) {
+        is_first = false;
+      } else {
+        query << ", ";
+      }
+
+      query << "("
+            << "'" << td::base64_encode(message.body->get_hash().as_slice()) << "',"
+            << TO_SQL_STRING(message.body_boc)
+            << ")";
+      if (message.init_state_boc) {
+        query << ", ("
+              << "'" << td::base64_encode(message.init_state->get_hash().as_slice()) << "',"
+              << TO_SQL_STRING(message.init_state_boc.value())
               << ")";
       }
+    }
+    if (is_first) {
+      return;
+    }
+    query << " ON CONFLICT DO NOTHING";
+
+    // LOG(DEBUG) << "Running SQL query: " << query.str();
+    transaction.exec0(query.str());
+
+    query.str("");
+    query << "INSERT INTO transaction_messages (transaction_hash, message_hash, direction) VALUES ";
+    is_first = true;
+    for (const auto& tx_msg : tx_msgs) {
+      if (is_first) {
+        is_first = false;
+      } else {
+        query << ", ";
+      }
+      query << "("
+            << TO_SQL_STRING(tx_msg.tx_hash) << ","
+            << TO_SQL_STRING(tx_msg.msg_hash) << ","
+            << TO_SQL_STRING(tx_msg.direction)
+            << ")";
     }
     if (is_first) {
       return;
@@ -253,8 +507,8 @@ public:
           query << ", ";
         }
         query << "("
-              << TO_SQL_STRING(account_state.hash) << ","
-              << TO_SQL_STRING(account_state.account) << ","
+              << TO_SQL_STRING(td::base64_encode(account_state.hash.as_slice())) << ","
+              << TO_SQL_STRING(convert::to_raw_address(account_state.account)) << ","
               << account_state.balance << ","
               << TO_SQL_STRING(account_state.account_status) << ","
               << TO_SQL_OPTIONAL_STRING(account_state.frozen_hash) << ","
@@ -362,7 +616,7 @@ public:
         query << "("
               << "'" << transfer.transaction_hash << "',"
               << transfer.query_id << ","
-              << "'" << transfer.nft_item << "',"
+              << "'" << convert::to_raw_address(transfer.nft_item) << "',"
               << "'" << transfer.old_owner << "',"
               << "'" << transfer.new_owner << "',"
               << "'" << transfer.response_destination << "',"
@@ -394,7 +648,6 @@ public:
       insert_blocks(txn);
       insert_transactions(txn);
       insert_messsages(txn);
-      insert_tx_msgs(txn);
       insert_account_states(txn);
       insert_jetton_transfers(txn);
       insert_jetton_burns(txn);

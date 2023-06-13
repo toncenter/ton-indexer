@@ -381,7 +381,7 @@ public:
       td::actor::send_closure(SelfId, &JettonWalletDetector::parse_transfer_impl, transaction, std::move(cs), std::move(promise));
     });
 
-    check_cache(block::StdAddress::parse(transaction.account).move_as_ok(), std::move(P));
+    check_cache(transaction.account, std::move(P));
   }
 
   void parse_transfer_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonTransfer> promise) {
@@ -435,7 +435,7 @@ public:
       td::actor::send_closure(SelfId, &JettonWalletDetector::parse_burn_impl, transaction, std::move(cs), std::move(promise));
     });
 
-    check_cache(block::StdAddress::parse(transaction.account).move_as_ok(), std::move(P));
+    check_cache(transaction.account, std::move(P));
   }
 
   void parse_burn_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonBurn> promise) {
@@ -676,7 +676,7 @@ public:
       td::actor::send_closure(SelfId, &NFTItemDetector::parse_transfer_impl, transaction, std::move(cs), std::move(promise));
     });
 
-    check_cache(block::StdAddress::parse(transaction.account).move_as_ok(), std::move(P));
+    check_cache(transaction.account, std::move(P));
   }
 
   void parse_transfer_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<NFTTransfer> promise) {
@@ -690,10 +690,10 @@ public:
     transfer.transaction_hash = transaction.hash;
     transfer.query_id = transfer_record.query_id;
     transfer.nft_item = transaction.account;
-    if (!transaction.in_msg_from) {
+    if (!transaction.in_msg.has_value() || !transaction.in_msg.value().source) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSE_ERROR, "Failed to fetch NFT old owner address"));
     }
-    transfer.old_owner = transaction.in_msg_from.value();
+    transfer.old_owner = transaction.in_msg.value().source.value();
     auto new_owner = convert::to_raw_address(transfer_record.new_owner);
     if (new_owner.is_error()) {
       promise.set_error(new_owner.move_as_error());
