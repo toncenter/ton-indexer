@@ -13,6 +13,8 @@ class InsertManagerInterface: public td::actor::Actor {
 public:
   virtual void insert(ParsedBlockPtr block_ds, td::Promise<td::Unit> promise) = 0;
 
+  virtual void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise) = 0;
+
   virtual void upsert_jetton_wallet(JettonWalletData jetton_wallet, td::Promise<td::Unit> promise) = 0;
   virtual void get_jetton_wallet(std::string address, td::Promise<JettonWalletData> promise) = 0;
 

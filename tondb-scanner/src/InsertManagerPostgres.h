@@ -38,6 +38,7 @@ public:
 
   void report_statistics();
 
+  void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise);
   void insert(ParsedBlockPtr block_ds, td::Promise<td::Unit> promise) override;
   void upsert_jetton_wallet(JettonWalletData jetton_wallet, td::Promise<td::Unit> promise) override;
   void get_jetton_wallet(std::string address, td::Promise<JettonWalletData> promise) override;

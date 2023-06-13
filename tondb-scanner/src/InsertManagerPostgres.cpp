@@ -1297,3 +1297,19 @@ std::string InsertManagerPostgres::PostgresCredential::getConnectionString()  {
     (dbname.length() ? " dbname=" + dbname : "")
   );
 }
+
+
+void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise) {
+  LOG(INFO) << "Reading existing seqnos";
+  std::vector<std::uint32_t> existing_mc_seqnos;
+  try {
+    pqxx::connection c(credential.getConnectionString());
+    pqxx::work txn(c);
+    for (auto [seqno]: txn.query<std::uint32_t>("select seqno from blocks where workchain = -1")) {
+      existing_mc_seqnos.push_back(seqno);
+    }
+  } catch (const std::exception &e) {
+    promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error selecting from PG: " << e.what()));
+  }
+  promise.set_result(std::move(existing_mc_seqnos));
+}
