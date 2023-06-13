@@ -1,52 +1,180 @@
 #pragma once
+#include <string>
+#include <optional>
+#include <variant>
+#include <vector>
+#include "crypto/common/bitstring.h"
 
 namespace schema {
 
-struct Transaction {
-  // Corresponding block
-  int32_t block_workchain;
-  int64_t block_shard;
-  int32_t block_seqno;
+struct Message;
 
-  // Transaction details
-  std::string account;
-  std::string hash;
-  uint64_t lt;
-  uint32_t utime;
-  std::string transaction_type;
-
-  // Account state change
-  std::string account_state_hash_before;
-  std::string account_state_hash_after;
-
-  // Fees
-  uint64_t fees{0};
-  uint64_t storage_fees{0};
-  uint64_t in_fwd_fees{0};
-  uint64_t computation_fees{0};
-  uint64_t action_fees{0};
-
-  // Computation phase
-  td::optional<int32_t> compute_exit_code;
-  td::optional<uint32_t> compute_gas_used;
-  td::optional<uint32_t> compute_gas_limit;
-  td::optional<uint32_t> compute_gas_credit;
-  td::optional<uint32_t> compute_gas_fees;
-  td::optional<uint32_t> compute_vm_steps;
-  td::optional<std::string> compute_skip_reason;
-
-  // Action phase
-  td::optional<int32_t> action_result_code;
-  td::optional<uint64_t> action_total_fwd_fees;
-  td::optional<uint64_t> action_total_action_fees;
-
-  // for interface parsing (TODO: refactor)
-  td::optional<std::string> in_msg_from;
-  td::Ref<vm::Cell> in_msg_body;
+enum AccountStatus {
+  uninit = 0,
+  frozen = 1,
+  active = 2,
+  nonexist = 3
 };
 
+enum AccStatusChange {
+  acst_unchanged = 0,
+  acst_frozen = 2,
+  acst_deleted = 3
+};
+
+struct TrStoragePhase {
+  uint64_t storage_fees_collected;
+  std::optional<uint64_t> storage_fees_due;
+  AccStatusChange status_change;
+};
+
+struct TrCreditPhase {
+  uint64_t due_fees_collected;
+  uint64_t credit;
+};
+
+enum ComputeSkipReason {
+  cskip_no_state = 0,
+  cskip_bad_state = 1,
+  cskip_no_gas = 2
+};
+
+struct TrComputePhase_skipped {
+  ComputeSkipReason reason;
+};
+
+struct TrComputePhase_vm {
+  bool success;
+  bool msg_state_used;
+  bool account_activated;
+  uint64_t gas_fees;
+  uint64_t gas_used;
+  uint64_t gas_limit;
+  std::optional<uint64_t> gas_credit;
+  int8_t mode;
+  int32_t exit_code;
+  std::optional<int32_t> exit_arg;
+  uint32_t vm_steps;
+  td::Bits256 vm_init_state_hash;
+  td::Bits256 vm_final_state_hash;
+};
+
+using TrComputePhase = std::variant<TrComputePhase_skipped, 
+                                    TrComputePhase_vm>;
+
+struct StorageUsedShort {
+  uint64_t cells;
+  uint64_t bits;
+};
+
+struct TrActionPhase {
+  bool success;
+  bool valid;
+  bool no_funds;
+  AccStatusChange status_change;
+  std::optional<uint64_t> total_fwd_fees;
+  std::optional<uint64_t> total_action_fees;
+  int32_t result_code;
+  std::optional<int32_t> result_arg;
+  uint16_t tot_actions;
+  uint16_t spec_actions;
+  uint16_t skipped_actions;
+  uint16_t msgs_created;
+  td::Bits256 action_list_hash;
+  StorageUsedShort tot_msg_size;
+};
+
+struct TrBouncePhase_negfunds {
+};
+
+struct TrBouncePhase_nofunds {
+  StorageUsedShort msg_size;
+  uint64_t req_fwd_fees;
+};
+
+struct TrBouncePhase_ok {
+  StorageUsedShort msg_size;
+  uint64_t msg_fees;
+  uint64_t fwd_fees;
+};
+
+using TrBouncePhase = std::variant<TrBouncePhase_negfunds, 
+                                   TrBouncePhase_nofunds, 
+                                   TrBouncePhase_ok>;
+
+struct SplitMergeInfo {
+  uint8_t cur_shard_pfx_len;
+  uint8_t acc_split_depth;
+  td::Bits256 this_addr;
+  td::Bits256 sibling_addr;
+};
+
+struct TransactionDescr_ord {
+  bool credit_first;
+  TrStoragePhase storage_ph;
+  TrCreditPhase credit_ph;
+  TrComputePhase compute_ph;
+  std::optional<TrActionPhase> action;
+  bool aborted;
+  TrBouncePhase bounce;
+  bool destroyed;
+};
+
+struct TransactionDescr_storage {
+  TrStoragePhase storage_ph;
+};
+
+struct TransactionDescr_tick_tock {
+  bool is_tock;
+  TrStoragePhase storage_ph;
+  TrComputePhase compute_ph;
+  std::optional<TrActionPhase> action;
+  bool aborted;
+  bool destroyed;
+};
+
+struct TransactionDescr_split_prepare {
+  SplitMergeInfo split_info;
+  std::optional<TrStoragePhase> storage_ph;
+  TrComputePhase compute_ph;
+  std::optional<TrActionPhase> action;
+  bool aborted;
+  bool destroyed;
+};
+
+struct TransactionDescr_split_install {
+  SplitMergeInfo split_info;
+  // Transaction prepare_transaction;
+  bool installed;
+};
+
+struct TransactionDescr_merge_prepare {
+  SplitMergeInfo split_info;
+  TrStoragePhase storage_ph;
+  bool aborted;
+};
+
+struct TransactionDescr_merge_install {
+  SplitMergeInfo split_info;
+  // Transaction prepare_transaction;
+  std::optional<TrStoragePhase> storage_ph;
+  std::optional<TrCreditPhase> credit_ph;
+  TrComputePhase compute_ph;
+  std::optional<TrActionPhase> action;
+  bool aborted;
+  bool destroyed;
+};
+
+using TransactionDescr = std::variant<TransactionDescr_ord, 
+                                       TransactionDescr_storage, 
+                                       TransactionDescr_tick_tock, 
+                                       TransactionDescr_split_prepare, 
+                                       TransactionDescr_split_install, 
+                                       TransactionDescr_merge_prepare, 
+                                       TransactionDescr_merge_install>;
+
 struct Message {
-  std::string hash;
+  td::Bits256 hash;
   td::optional<std::string> source;
   td::optional<std::string> destination;
   td::optional<uint64_t> value;
@@ -60,19 +188,33 @@ struct Message {
   td::optional<bool> bounced;
   td::optional<uint64_t> import_fee;
 
-  std::string body;
-  std::string body_hash;
-  td::optional<std::string> init_state;
-  td::optional<std::string> init_state_hash;
+  td::Ref<vm::Cell> body;
+  std::string body_boc;
 
-  // for interface parsing (TODO: refactor)
-  td::Ref<vm::Cell> body_cell;
+  td::Ref<vm::Cell> init_state;
+  td::optional<std::string> init_state_boc;
 };
 
-struct TransactionMessage {
-  std::string transaction_hash;
-  std::string message_hash;
-  std::string direction; // "in" or "out"
+struct Transaction {
+  td::Bits256 hash;
+  block::StdAddress account;
+  uint64_t lt;
+  td::Bits256 prev_trans_hash;
+  uint64_t prev_trans_lt;
+  uint32_t now;
+
+  AccountStatus orig_status;
+  AccountStatus end_status;
+
+  std::optional<Message> in_msg;
+  std::vector<Message> out_msgs;
+
+  uint64_t total_fees;
+
+  td::Bits256 account_state_hash_before;
+  td::Bits256 account_state_hash_after;
+
+  TransactionDescr description;
 };
 
 struct Block {
@@ -106,11 +248,13 @@ struct Block {
   td::optional<int32_t> master_ref_seqno;
   std::string rand_seed;
   std::string created_by;
+
+  std::vector<Transaction> transactions;
 };
 
 struct AccountState {
-  std::string hash;
-  std::string account;
+  td::Bits256 hash;
+  block::StdAddress account;
   uint64_t balance;
   std::string account_status; // "uninit", "frozen", "active"
   td::optional<std::string> frozen_hash;

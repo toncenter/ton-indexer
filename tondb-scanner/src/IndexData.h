@@ -32,7 +32,7 @@ struct JettonWalletData {
 };
 
 struct JettonTransfer {
-  std::string transaction_hash;
+  td::Bits256 transaction_hash;
   uint64_t query_id;
   td::RefInt256 amount;
   std::string destination;
@@ -43,7 +43,7 @@ struct JettonTransfer {
 };
 
 struct JettonBurn {
-  std::string transaction_hash;
+  td::Bits256 transaction_hash;
   uint64_t query_id;
   td::RefInt256 amount;
   std::string response_destination;
@@ -75,9 +75,9 @@ struct NFTItemData {
 };
 
 struct NFTTransfer {
-  std::string transaction_hash;
+  td::Bits256 transaction_hash;
   uint64_t query_id;
-  std::string nft_item;
+  block::StdAddress nft_item;
   std::string old_owner;
   std::string new_owner;
   std::string response_destination;
@@ -100,9 +100,6 @@ struct ParsedBlock {
   MasterchainBlockDataState mc_block_;
 
   std::vector<schema::Block> blocks_;
-  std::vector<schema::Transaction> transactions_;
-  std::vector<schema::Message> messages_;
-  std::vector<schema::TransactionMessage> transaction_messages_;
   std::vector<schema::AccountState> account_states_;
 
   std::vector<BlockchainEvent> events_;

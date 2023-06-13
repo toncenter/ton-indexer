@@ -19,7 +19,13 @@ void EventProcessor::process(ParsedBlockPtr block, td::Promise<> &&promise) {
       promise.set_error(res.move_as_error_prefix("Failed to process account states for mc block " + std::to_string(block->blocks_[0].seqno) + ": "));
       return;
     }
-    td::actor::send_closure(SelfId, &EventProcessor::process_transactions, block->transactions_, promise.wrap([block](std::vector<BlockchainEvent> events) {
+    std::vector<schema::Transaction> transactions;
+    for (const auto& block : block->blocks_) {
+      for (const auto& transaction : block.transactions) {
+        transactions.push_back(transaction);
+      }
+    }
+    td::actor::send_closure(SelfId, &EventProcessor::process_transactions, std::move(transactions), promise.wrap([block](std::vector<BlockchainEvent> events) {
       block->events_ = std::move(events);
       return td::Unit();
     }));
@@ -32,15 +38,12 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
   auto ig = mp.init_guard();
   ig.add_promise(std::move(promise));
   for (const auto& account_state : account_states) {
-    if (account_state.account == "-1:5555555555555555555555555555555555555555555555555555555555555555" || 
-        account_state.account == "-1:3333333333333333333333333333333333333333333333333333333333333333") {
+    auto raw_address = convert::to_raw_address(account_state.account);
+    if (raw_address == "-1:5555555555555555555555555555555555555555555555555555555555555555" || 
+        raw_address == "-1:3333333333333333333333333333333333333333333333333333333333333333") {
       continue;
     }
-    auto address_res = block::StdAddress::parse(account_state.account);
-    if (address_res.is_error()) {
-      continue;
-    }
-    auto address = address_res.move_as_ok();
+    auto& address = account_state.account;
     
     auto code_cell = account_state.code;
     auto data_cell = account_state.data; 
@@ -124,7 +127,7 @@ void EventProcessor::process_transactions(const std::vector<schema::Transaction>
   ig.add_promise(std::move(P));
 
   for (auto& tx : transactions) {
-    if (tx.in_msg_body.is_null()) {
+    if (!tx.in_msg || tx.in_msg.value().body.is_null()) {
       // tx doesn't have in_msg, skipping
       continue;
     }
@@ -145,7 +148,7 @@ void EventProcessor::process_transactions(const std::vector<schema::Transaction>
       promise.set_value(td::Unit());
     };
 
-    auto cs = vm::load_cell_slice_ref(tx.in_msg_body);
+    auto cs = vm::load_cell_slice_ref(tx.in_msg.value().body);
     switch (tokens::gen::t_InternalMsgBody.check_tag(*cs)) {
       case tokens::gen::InternalMsgBody::transfer_jetton: 
         td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_transfer, tx, cs, 
