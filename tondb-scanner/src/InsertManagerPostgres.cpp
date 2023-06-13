@@ -1309,7 +1309,7 @@ void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uin
       existing_mc_seqnos.push_back(seqno);
     }
   } catch (const std::exception &e) {
-    promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
+    promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error selecting from PG: " << e.what()));
   }
   promise.set_result(std::move(existing_mc_seqnos));
 }
