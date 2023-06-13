@@ -131,6 +131,7 @@ class Block(Base):
 
     transactions = relationship("Transaction", back_populates="block")
 
+AccountStatus = Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status')
 
 class Transaction(Base):
     __tablename__ = 'transactions'
@@ -149,11 +150,13 @@ class Transaction(Base):
 
     account = Column(String)
     hash = Column(String, primary_key=True)
-    utime = Column(Integer)
     lt = Column(BigInteger)
+    now = Column(Integer)
 
-    transaction_type = Column(Enum('trans_storage', 'trans_ord', 'trans_tick_tock', \
-        'trans_split_prepare', 'trans_split_install', 'trans_merge_prepare', 'trans_merge_install', name='trans_type'))
+    orig_status = Column(AccountStatus)
+    end_status = Column(AccountStatus)
+
+    total_fees = Column(BigInteger)
 
     account_state_hash_before = Column(String)#, ForeignKey('account_states.hash'))
     account_state_hash_after = Column(String)#, ForeignKey('account_states.hash'))
@@ -161,24 +164,7 @@ class Transaction(Base):
     old_account_state = relationship("AccountState", foreign_keys=[account_state_hash_before], viewonly=True)
     new_account_state = relationship("AccountState", foreign_keys=[account_state_hash_after], viewonly=True)
 
-    fees = Column(BigInteger)
-    storage_fees = Column(BigInteger)
-    in_fwd_fees = Column(BigInteger)
-    computation_fees = Column(BigInteger)
-    action_fees = Column(BigInteger)
-
-    compute_exit_code: int = Column(Integer)
-    compute_gas_used: int = Column(BigInteger)
-    compute_gas_limit: int = Column(BigInteger)
-    compute_gas_credit: int = Column(BigInteger)
-    compute_gas_fees: int = Column(BigInteger)
-    compute_vm_steps: int = Column(BigInteger)
-    compute_skip_reason: str = Column(Enum('cskip_no_state', 'cskip_bad_state', 'cskip_no_gas', name='compute_skip_reason_type'))
-
-    action_result_code: int = Column(Integer)
-    action_total_fwd_fees: int = Column(BigInteger)
-    action_total_action_fees: int = Column(BigInteger)
-
+    description = Column(JSONB)
 
 class AccountState(Base):
     __tablename__ = 'account_states'

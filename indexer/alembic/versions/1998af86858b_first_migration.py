@@ -1,8 +1,8 @@
 """First migration
 
-Revision ID: ce9d049a01db
+Revision ID: 1998af86858b
 Revises: 
-Create Date: 2023-05-30 23:46:54.591494
+Create Date: 2023-06-13 17:50:08.750175
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = 'ce9d049a01db'
+revision = '1998af86858b'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -173,26 +173,14 @@ def upgrade():
     sa.Column('block_seqno', sa.Integer(), nullable=True),
     sa.Column('account', sa.String(), nullable=True),
     sa.Column('hash', sa.String(), nullable=False),
-    sa.Column('utime', sa.Integer(), nullable=True),
     sa.Column('lt', sa.BigInteger(), nullable=True),
-    sa.Column('transaction_type', sa.Enum('trans_storage', 'trans_ord', 'trans_tick_tock', 'trans_split_prepare', 'trans_split_install', 'trans_merge_prepare', 'trans_merge_install', name='trans_type'), nullable=True),
+    sa.Column('now', sa.Integer(), nullable=True),
+    sa.Column('orig_status', sa.Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status'), nullable=True),
+    sa.Column('end_status', sa.Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status'), nullable=True),
+    sa.Column('total_fees', sa.BigInteger(), nullable=True),
     sa.Column('account_state_hash_before', sa.String(), nullable=True),
     sa.Column('account_state_hash_after', sa.String(), nullable=True),
-    sa.Column('fees', sa.BigInteger(), nullable=True),
-    sa.Column('storage_fees', sa.BigInteger(), nullable=True),
-    sa.Column('in_fwd_fees', sa.BigInteger(), nullable=True),
-    sa.Column('computation_fees', sa.BigInteger(), nullable=True),
-    sa.Column('action_fees', sa.BigInteger(), nullable=True),
-    sa.Column('compute_exit_code', sa.Integer(), nullable=True),
-    sa.Column('compute_gas_used', sa.BigInteger(), nullable=True),
-    sa.Column('compute_gas_limit', sa.BigInteger(), nullable=True),
-    sa.Column('compute_gas_credit', sa.BigInteger(), nullable=True),
-    sa.Column('compute_gas_fees', sa.BigInteger(), nullable=True),
-    sa.Column('compute_vm_steps', sa.BigInteger(), nullable=True),
-    sa.Column('compute_skip_reason', sa.Enum('cskip_no_state', 'cskip_bad_state', 'cskip_no_gas', name='compute_skip_reason_type'), nullable=True),
-    sa.Column('action_result_code', sa.Integer(), nullable=True),
-    sa.Column('action_total_fwd_fees', sa.BigInteger(), nullable=True),
-    sa.Column('action_total_action_fees', sa.BigInteger(), nullable=True),
+    sa.Column('description', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.ForeignKeyConstraint(['block_workchain', 'block_shard', 'block_seqno'], ['blocks.workchain', 'blocks.shard', 'blocks.seqno'], ),
     sa.PrimaryKeyConstraint('hash')
     )
