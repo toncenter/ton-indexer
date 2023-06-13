@@ -1,0 +1,38 @@
+version: '3.9'
+
+x-indexer-environment: &indexer-environment
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+  POSTGRES_DBNAME: ton_index
+  POSTGRES_DBROOT: /tondb
+
+services:
+  index-worker:
+    build:
+      context: ton-index-cpp
+      dockerfile: Dockerfile
+    secrets:
+      - postgres_password
+    volumes:
+      - /var/ton-work/db:/tondb
+    environment: *indexer-environment
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - "node.labels.${TONCENTER_ENV:?}.indexer.worker==true"
+    networks:
+      internal:
+    command: -F 2
+
+networks:
+  internal:
+    attachable: true
+    external: false
+
+secrets:
+  postgres_password:
+    file: private/postgres_password
