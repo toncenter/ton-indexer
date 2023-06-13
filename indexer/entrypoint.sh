@@ -16,4 +16,4 @@ fi
 export TON_INDEXER_PG_DSN="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DBNAME}"
 printenv
 
-exec $@
+exec "$@"
