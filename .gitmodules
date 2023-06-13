@@ -3,7 +3,8 @@
 	url = https://github.com/pybind/pybind11.git
 [submodule "external/ton"]
 	path = external/ton
-	url = https://github.com/ton-blockchain/ton
+	url = https://github.com/dungeon-master-666/ton
+	branch = db-scanner
 [submodule "external/libpqxx"]
 	path = external/libpqxx
 	url = https://github.com/jtv/libpqxx.git
