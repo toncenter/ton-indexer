@@ -391,14 +391,17 @@ public:
       for (const auto& blk : mc_block->blocks_) {
         for (const auto& transaction : blk.transactions) {
           if (transaction.in_msg.has_value()) {
-            if (message_hashes.find(transaction.in_msg.value().hash) == message_hashes.end()) {
-              messages.push_back(transaction.in_msg.value());
+            auto &msg = transaction.in_msg.value();
+            if (message_hashes.find(msg.hash) == message_hashes.end()) {
+              messages.push_back(msg);
+              message_hashes.insert(msg.hash);
             }
             tx_msgs.push_back({td::base64_encode(transaction.hash.as_slice()), td::base64_encode(transaction.in_msg.value().hash.as_slice()), "in"});
           }
           for (const auto& message : transaction.out_msgs) {
             if (message_hashes.find(message.hash) == message_hashes.end()) {
               messages.push_back(message);
+              message_hashes.insert(message.hash);
             }
             tx_msgs.push_back({td::base64_encode(transaction.hash.as_slice()), td::base64_encode(message.hash.as_slice()), "out"});
           }
