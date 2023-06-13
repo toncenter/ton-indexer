@@ -8,7 +8,7 @@ if [ ! -z "$POSTGRES_PASSWORD_FILE" ]; then
         echo "Password file specified, but not found"
         exit 1
     fi
-    export POSTGRES_PASSWORD=$(cat ${POSTGRES_PASSWORD_FILE})
+    POSTGRES_PASSWORD=$(cat ${POSTGRES_PASSWORD_FILE})
 elif [ ! -z "$POSTGRES_PASSWORD" ]; then
     echo "Postgres password specified"
 else
@@ -17,7 +17,7 @@ else
 fi
 
 echo "Postgres host: $POSTGRES_HOST"
-export POSTGRES_HOST_IP=$(dig +short ${POSTGRES_HOST})
+POSTGRES_HOST_IP=$(dig +short ${POSTGRES_HOST})
 
-printenv
+ulimit -n 1000000
 tondb-scanner -D $POSTGRES_DBROOT -H $POSTGRES_HOST_IP -U $POSTGRES_USER -P $POSTGRES_PASSWORD -B $POSTGRES_DBNAME $@

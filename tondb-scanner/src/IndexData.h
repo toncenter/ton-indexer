@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <variant>
+#include <set>
 #include "crypto/common/refcnt.hpp"
 #include "validator/interfaces/block.h"
 #include "validator/interfaces/shard.h"

@@ -18,10 +18,11 @@ private:
 
   std::string db_root_;
   
-  std::queue<int> seqnos_to_process_;
-  std::set<int> seqnos_in_progress_;
-  int max_parallel_fetch_actors_{2000};
-  int last_known_seqno_{-1};
+  std::queue<std::uint32_t> seqnos_to_process_;
+  std::set<std::uint32_t> seqnos_in_progress_;
+  std::set<std::uint32_t> existing_mc_seqnos_;
+  int max_parallel_fetch_actors_{2048};
+  std::uint32_t last_known_seqno_{0};
 
 public:
   DbScanner(td::actor::ActorId<InsertManagerInterface> insert_manager, td::actor::ActorId<ParseManager> parse_manager) 
@@ -54,5 +55,6 @@ private:
   void seqno_fetched(int mc_seqno, td::Result<MasterchainBlockDataState> blocks_data_state);
   void seqno_parsed(int mc_seqno, td::Result<ParsedBlockPtr> parsed_block);
   void interfaces_processed(int mc_seqno, ParsedBlockPtr parsed_block, td::Result<td::Unit> result);
+  void got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R);
   void reschedule_seqno(int mc_seqno);
 };

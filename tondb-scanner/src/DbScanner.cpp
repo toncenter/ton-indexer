@@ -280,7 +280,22 @@ public:
 };
 
 void DbScanner::start_up() {
-  alarm_timestamp() = td::Timestamp::in(3.0);
+  auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<std::vector<std::uint32_t>> R) {
+    td::actor::send_closure(SelfId, &DbScanner::got_existing_seqnos, std::move(R));
+  });
+  td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_existing_seqnos, std::move(P));
+}
+
+void DbScanner::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R) {
+  if (R.is_error()) {
+    LOG(ERROR) << "Error inserting to PG: " << R.move_as_error();
+    return;
+  }
+  for (auto value : R.move_as_ok()) {
+    existing_mc_seqnos_.insert(value);
+  }
+  LOG(INFO) << "Found " << existing_mc_seqnos_.size() << " existing mc seqnos";
+  alarm_timestamp() = td::Timestamp::in(1.0);
 }
 
 void DbScanner::run() {
@@ -301,10 +316,17 @@ void DbScanner::set_last_mc_seqno(int mc_seqno) {
   if (mc_seqno > last_known_seqno_) {
     LOG(INFO) << "New masterchain seqno: " << mc_seqno;
   }
-  if (last_known_seqno_ != -1) {
-    for (int s = last_known_seqno_ + 1; s < mc_seqno + 1; s++) {
-      seqnos_to_process_.push(s);
-    }
+  if (last_known_seqno_ != 0) {
+    int skipping_count = 0;
+    for (std::uint32_t s = last_known_seqno_ + 1; s < mc_seqno + 1; s++) 
+      if (existing_mc_seqnos_.find(s) != existing_mc_seqnos_.end()) {
+        skipping_count++;
+      }
+      else {
+        seqnos_to_process_.push(s);
+      }
+      if (skipping_count > 0)
+        LOG(INFO) << "Skipped existing seqnos: " << skipping_count;
   }
   last_known_seqno_ = mc_seqno;
 }
