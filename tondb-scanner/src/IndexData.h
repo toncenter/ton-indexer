@@ -5,6 +5,8 @@
 #include "crypto/common/refcnt.hpp"
 #include "validator/interfaces/block.h"
 #include "validator/interfaces/shard.h"
+#include "crypto/block/block-auto.h"
+#include "crypto/block/block-parse.h"
 
 namespace schema {
 
