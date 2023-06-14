@@ -27,6 +27,7 @@ services:
     networks:
       internal:
     command: -F 2
+    restart: unless-stopped
 
 networks:
   internal:
