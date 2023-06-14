@@ -86,7 +86,6 @@ def init_database(create=False):
 #     total = time.time() - conn.info["query_start_time"].pop(-1)
 #     logger1.debug(f"Query Complete: {statement}! Total Time: {total}")
 
-@dataclass(init=False)
 class Block(Base):
     __tablename__ = 'blocks'
     __table_args__ = (
@@ -106,7 +105,7 @@ class Block(Base):
     mc_block_shard: str = Column(BigInteger, nullable=True)
     mc_block_seqno: int = Column(Integer, nullable=True)
 
-    masterchain_block = relationship("Block", remote_side=[workchain, shard, seqno], backref='shard_blocks')
+    masterchain_block = relationship("Block", remote_side=[workchain, shard, seqno], backref='shard_blocks', cascade="all, delete")
 
     global_id: int = Column(Integer)
     version: int = Column(Integer)
@@ -129,7 +128,7 @@ class Block(Base):
     rand_seed: str = Column(String(44))
     created_by: str = Column(String)
 
-    transactions = relationship("Transaction", back_populates="block")
+    transactions = relationship("Transaction", back_populates="block", cascade="all, delete")
 
 AccountStatus = Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status')
 
@@ -146,7 +145,7 @@ class Transaction(Base):
     block_shard = Column(BigInteger)
     block_seqno = Column(Integer)
 
-    block = relationship("Block", back_populates="transactions")
+    block = relationship("Block", back_populates="transactions", cascade="all, delete")
 
     account = Column(String)
     hash = Column(String, primary_key=True)
@@ -177,7 +176,6 @@ class AccountState(Base):
     code_hash = Column(String)
     data_hash = Column(String)
 
-@dataclass(init=False)
 class Message(Base):
     __tablename__ = 'messages'
     hash: str = Column(String(44), primary_key=True)
@@ -202,12 +200,11 @@ class TransactionMessage(Base):
     message_hash = Column(String(44), ForeignKey('messages.hash'), primary_key=True)
     direction = Column(Enum('in', 'out', name="direction"), primary_key=True)
 
-    transaction = relationship("Transaction", back_populates="messages")
-    message = relationship("Message", back_populates="transactions")
+    transaction = relationship("Transaction", back_populates="messages", cascade="all, delete")
+    message = relationship("Message", back_populates="transactions", cascade="all, delete")
 
 
 
-@dataclass(init=False)
 class MessageContent(Base):
     __tablename__ = 'message_contents'
     
