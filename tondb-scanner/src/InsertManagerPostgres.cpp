@@ -148,10 +148,6 @@ public:
       c("storage_fees_due", std::to_string(*(s.storage_fees_due)));
     }
     c("status_change", stringify(s.status_change));
-    c("storage_fees_collected", std::to_string(s.storage_fees_collected));
-    if (s.storage_fees_due) {
-      c("storage_fees_due", std::to_string(*(s.storage_fees_due)));
-    }
     c.leave();
     return jb.string_builder().as_cslice().str();
   }
@@ -171,9 +167,7 @@ public:
     c("success", td::JsonBool(action.success));
     c("valid", td::JsonBool(action.valid));
     c("no_funds", td::JsonBool(action.no_funds));
-    td::StringBuilder status_change_sb;
-    status_change_sb << action.status_change;
-    c("status_change", status_change_sb.as_cslice().str());
+    c("status_change", stringify(action.status_change));
     if (action.total_fwd_fees) {
       c("total_fwd_fees", std::to_string(*(action.total_fwd_fees)));
     }

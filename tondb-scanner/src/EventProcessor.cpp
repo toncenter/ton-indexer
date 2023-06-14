@@ -30,10 +30,10 @@ void EventProcessor::process(ParsedBlockPtr block, td::Promise<> &&promise) {
       return td::Unit();
     }));
   });
-  process_states(block->account_states_, std::move(P));
+  process_states(block->account_states_, block->mc_block_, std::move(P));
 }
 
-void EventProcessor::process_states(const std::vector<schema::AccountState>& account_states, td::Promise<td::Unit> &&promise) {
+void EventProcessor::process_states(const std::vector<schema::AccountState>& account_states, const MasterchainBlockDataState& blocks_ds, td::Promise<td::Unit> &&promise) {
   td::MultiPromise mp;
   auto ig = mp.init_guard();
   ig.add_promise(std::move(promise));
@@ -63,7 +63,7 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
       }
       td::actor::send_closure(interface_manager_, &InterfaceManager::set_interface, code_cell->get_hash(), IT_JETTON_MASTER, master_data.is_ok(), std::move(promise));
     });
-    td::actor::send_closure(jetton_master_detector_, &JettonMasterDetector::detect, address, code_cell, data_cell, last_tx_lt, std::move(P1));
+    td::actor::send_closure(jetton_master_detector_, &JettonMasterDetector::detect, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(P1));
 
     auto P2 = td::PromiseCreator::lambda([this, code_cell, address, promise = ig.get_promise()](td::Result<JettonWalletData> wallet_data) mutable {
       if (wallet_data.is_error()) {
@@ -77,7 +77,7 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
       }
       td::actor::send_closure(interface_manager_, &InterfaceManager::set_interface, code_cell->get_hash(), IT_JETTON_WALLET, wallet_data.is_ok(), std::move(promise));
     });
-    td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::detect, address, code_cell, data_cell, last_tx_lt, std::move(P2));
+    td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::detect, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(P2));
 
     auto P3 = td::PromiseCreator::lambda([this, code_cell, address, promise = ig.get_promise()](td::Result<NFTCollectionData> nft_collection_data) mutable {
       if (nft_collection_data.is_error()) {
@@ -91,7 +91,7 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
       }
       td::actor::send_closure(interface_manager_, &InterfaceManager::set_interface, code_cell->get_hash(), IT_NFT_COLLECTION, nft_collection_data.is_ok(), std::move(promise));
     });
-    td::actor::send_closure(nft_collection_detector_, &NFTCollectionDetector::detect, address, code_cell, data_cell, last_tx_lt, std::move(P3));
+    td::actor::send_closure(nft_collection_detector_, &NFTCollectionDetector::detect, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(P3));
 
     auto P4 = td::PromiseCreator::lambda([this, code_cell, address, promise = ig.get_promise()](td::Result<NFTItemData> nft_item_data) mutable {
       if (nft_item_data.is_error()) {
@@ -105,7 +105,7 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
       }
       td::actor::send_closure(interface_manager_, &InterfaceManager::set_interface, code_cell->get_hash(), IT_NFT_ITEM, nft_item_data.is_ok(), std::move(promise));
     });
-    td::actor::send_closure(nft_item_detector_, &NFTItemDetector::detect, address, code_cell, data_cell, last_tx_lt, std::move(P4));
+    td::actor::send_closure(nft_item_detector_, &NFTItemDetector::detect, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(P4));
   }
 }
 

@@ -8,17 +8,76 @@
 #include "td/utils/base64.h"
 #include "IndexData.h"
 #include "td/actor/MultiPromise.h"
+#include "ton/ton-shard.h"
 #include "convert-utils.h"
 #include "InsertManager.h"
 #include "tokens.h"
 #include "crypto/block/block-parse.h"
 #include "parse_token_data.h"
+#include "DataParser.h"
 
 enum SmcInterface {
   IT_JETTON_MASTER,
   IT_JETTON_WALLET,
   IT_NFT_COLLECTION,
   IT_NFT_ITEM
+};
+
+class FetchAccountFromShard: public td::actor::Actor {
+private:
+  MasterchainBlockDataState blocks_ds_;
+  block::StdAddress address_;
+  td::Promise<schema::AccountState> promise_;
+public:
+  FetchAccountFromShard(MasterchainBlockDataState blocks_ds, block::StdAddress address, td::Promise<schema::AccountState> promise) 
+    : blocks_ds_(blocks_ds), address_(address), promise_(std::move(promise)) {
+  }
+
+  void start_up() override {
+    for (auto& block_ds : blocks_ds_) {
+      if (ton::shard_contains(block_ds.block_state->get_shard(), ton::extract_addr_prefix(address_.workchain, address_.addr))) {
+        auto root = block_ds.block_state->root_cell();
+        block::gen::ShardStateUnsplit::Record sstate;
+        if (!tlb::unpack_cell(root, sstate)) {
+          promise_.set_error(td::Status::Error("Failed to unpack ShardStateUnsplit"));
+        }
+        vm::AugmentedDictionary accounts_dict{vm::load_cell_slice_ref(sstate.accounts), 256, block::tlb::aug_ShardAccounts};
+        
+        auto shard_account_csr = accounts_dict.lookup(address_.addr);
+        if (shard_account_csr.is_null()) {
+          promise_.set_error(td::Status::Error(ErrorCode::NOT_FOUND_ERROR, "Account not found in accounts_dict"));
+          stop();
+          return;
+        } 
+        td::Ref<vm::Cell> account_root = shard_account_csr->prefetch_ref();
+
+        int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account_root));
+        switch (account_tag) {
+        case block::gen::Account::account_none:
+          promise_.set_error(td::Status::Error("Account is empty"));
+          stop();
+          return;
+        case block::gen::Account::account: {
+          auto account_r = ParseQuery::parse_account(account_root);
+          if (account_r.is_error()) {
+            promise_.set_error(account_r.move_as_error());
+            stop();
+            return;
+          }
+          promise_.set_value(account_r.move_as_ok());
+          stop();
+          return;
+        }
+        default:
+          promise_.set_error(td::Status::Error("Unknown account tag"));
+          stop();
+          return;
+        }
+      }
+    }
+    promise_.set_error(td::Status::Error(ErrorCode::NOT_FOUND_ERROR, "Account not found in shards"));
+    stop();
+  }
 };
 
 class InterfaceManager: public td::actor::Actor {
@@ -47,7 +106,7 @@ public:
 template <typename T>
 class InterfaceDetector: public td::actor::Actor {
 public:
-  virtual void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, td::Promise<T> promise) = 0;
+  virtual void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<T> promise) = 0;
   virtual ~InterfaceDetector() = default;
 };
 
@@ -89,7 +148,6 @@ public:
         return;
       }
     });
-    // You need to implement upsert_data() in the child class
     td::actor::send_closure(insert_manager_, &InsertManagerInterface::upsert_entity<T>, data, std::move(P));
 
     return td::Status::OK();
@@ -111,7 +169,7 @@ public:
     , insert_manager_(insert_manager) {
   }
 
-  void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, td::Promise<JettonMasterData> promise) override {
+  void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonMasterData> promise) override {
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<bool> code_hash_is_master) mutable {
       if (code_hash_is_master.is_error()) {
         if (code_hash_is_master.error().code() == ErrorCode::NOT_FOUND_ERROR) { // check for this code hash was not performed
@@ -132,6 +190,18 @@ public:
     });
 
     td::actor::send_closure(interface_manager_, &InterfaceManager::check_interface, code_cell->get_hash(), IT_JETTON_MASTER, std::move(P));
+  }
+
+  void detect_from_shard(const MasterchainBlockDataState& blocks_ds, block::StdAddress address, td::Promise<JettonMasterData> promise) {
+    auto R = td::PromiseCreator::lambda([this, address, promise = std::move(promise)](td::Result<schema::AccountState> account_state_r) mutable {
+      if (account_state_r.is_error()) {
+        promise.set_error(account_state_r.move_as_error());
+        return;
+      }
+      auto account_state = account_state_r.move_as_ok();
+      detect_impl(address, account_state.code, account_state.data, account_state.last_trans_lt, std::move(promise));
+    });
+    td::actor::create_actor<FetchAccountFromShard>("fetchaccountfromshard", blocks_ds, address, std::move(R)).release();
   }
 
   void detect_continue(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<JettonMasterData> promise) {
@@ -195,8 +265,8 @@ public:
     if (jetton_content.is_ok()) {
       data.jetton_content = jetton_content.move_as_ok();
     } else {
-      LOG(ERROR) << "Failed to parse jetton content for " << convert::to_raw_address(address) << ": " << jetton_content.error();
-      LOG(ERROR) << convert::to_bytes(stack[3].as_cell()).move_as_ok().value();
+      LOG(WARNING) << "Failed to parse jetton content for " << convert::to_raw_address(address) << ": " << jetton_content.error();
+      LOG(WARNING) << convert::to_bytes(stack[3].as_cell()).move_as_ok().value();
     }
     data.jetton_wallet_code_hash = stack[4].as_cell()->get_hash();
     
@@ -205,10 +275,17 @@ public:
     promise.set_value(std::move(data));
   }
 
-  void get_wallet_address(block::StdAddress master_address, block::StdAddress owner_address, td::Promise<block::StdAddress> promise) {
-    auto P = td::PromiseCreator::lambda([this, master_address, owner_address, promise = std::move(promise)](td::Result<JettonMasterData> r) mutable {
+  void get_wallet_address(const MasterchainBlockDataState& blocks_ds, block::StdAddress master_address, block::StdAddress owner_address, td::Promise<block::StdAddress> promise) {
+    auto P = td::PromiseCreator::lambda([this, blocks_ds, master_address, owner_address, promise = std::move(promise)](td::Result<JettonMasterData> r) mutable {
       if (r.is_error()) {
-        promise.set_error(r.move_as_error());
+        auto R = td::PromiseCreator::lambda([this, promise = std::move(promise), blocks_ds, master_address, owner_address](td::Result<JettonMasterData> r) mutable {
+          if (r.is_error()) {
+            promise.set_error(r.move_as_error());
+          } else {
+            get_wallet_address_impl(r.move_as_ok(), master_address, owner_address, std::move(promise));
+          }
+        });
+        detect_from_shard(blocks_ds, master_address, std::move(R));
         return;
       }
       get_wallet_address_impl(r.move_as_ok(), master_address, owner_address, std::move(promise));
@@ -277,11 +354,11 @@ public:
     , insert_manager_(insert_manager) {
   }
 
-  void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, td::Promise<JettonWalletData> promise) override {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<bool> code_hash_is_wallet) mutable {
+  void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonWalletData> promise) override {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), address, code_cell, data_cell, last_tx_lt, blocks_ds, promise = std::move(promise)](td::Result<bool> code_hash_is_wallet) mutable {
       if (code_hash_is_wallet.is_error()) {
         if (code_hash_is_wallet.error().code() == ErrorCode::NOT_FOUND_ERROR) { // check for code hash was not performed
-          td::actor::send_closure(SelfId, &JettonWalletDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+          td::actor::send_closure(SelfId, &JettonWalletDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
           return;
         }
 
@@ -294,14 +371,14 @@ public:
         return;
       }
 
-      td::actor::send_closure(SelfId, &JettonWalletDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+      td::actor::send_closure(SelfId, &JettonWalletDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
 
     td::actor::send_closure(interface_manager_, &InterfaceManager::check_interface, code_cell->get_hash(), IT_JETTON_WALLET, std::move(P));
   }
 
-  void detect_continue(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<JettonWalletData> promise) {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), this, address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<JettonWalletData> cached_res) mutable {
+  void detect_continue(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonWalletData> promise) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), this, address, code_cell, data_cell, last_tx_lt, blocks_ds, promise = std::move(promise)](td::Result<JettonWalletData> cached_res) mutable {
       if (cached_res.is_ok()) {
         auto cached_data = cached_res.move_as_ok();
         if ((data_cell->get_hash() == cached_data.data_hash && code_cell->get_hash() == cached_data.code_hash) 
@@ -310,13 +387,13 @@ public:
           return;
         }
       }
-      td::actor::send_closure(SelfId, &JettonWalletDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+      td::actor::send_closure(SelfId, &JettonWalletDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
 
     check_cache(address, std::move(P));
   }
 
-  void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<JettonWalletData> promise) {
+  void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonWalletData> promise) {
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
     args.set_now(td::Time::now());
@@ -365,7 +442,7 @@ public:
       // LOG(WARNING) << "Jetton Wallet code hash mismatch: " << stack[3].as_cell()->get_hash().to_hex() << " != " << code_cell->get_hash().to_hex();
     // }
 
-    verify_belonging_to_master(std::move(data), std::move(promise));
+    verify_belonging_to_master(std::move(data), blocks_ds, std::move(promise));
   }
 
   void parse_transfer(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonTransfer> promise) {
@@ -469,7 +546,7 @@ public:
 
 private:
   // checks belonging of address to Jetton Master by calling get_wallet_address
-  void verify_belonging_to_master(JettonWalletData data, td::Promise<JettonWalletData> &&promise) {
+  void verify_belonging_to_master(JettonWalletData data, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonWalletData> &&promise) {
     auto master_addr = block::StdAddress::parse(data.jetton);
     if (master_addr.is_error()) {
       promise.set_error(master_addr.move_as_error_prefix(PSLICE() << "Failed to parse jetton master address (" << data.jetton << "): "));
@@ -483,20 +560,12 @@ private:
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), this, data, promise = std::move(promise)](td::Result<block::StdAddress> R) mutable {
       if (R.is_error()) {
-        if (R.error().code() == ErrorCode::NOT_FOUND_ERROR) {
-          // Jetton master is not available, so we can't verify address.
-          // We will add it to cache and return it as is.
-          // TODO: figure out what to do in this case properly
-          add_to_cache(block::StdAddress::parse(data.address).move_as_ok(), data);
-          promise.set_value(std::move(data));
-        } else {
-          LOG(ERROR) << "Failed to get wallet address from master: " << R.error();
-          promise.set_error(R.move_as_error());
-        }
+        LOG(WARNING) << "Jetton Master is not available, so we can't verify address " << data.address << ": " << R.error();
+        promise.set_error(td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, R.error().message()));
       } else {
         auto address = R.move_as_ok();
         if (convert::to_raw_address(address) != data.address) {
-          LOG(ERROR) << "Jetton Master returned wrong address: " << convert::to_raw_address(address);
+          LOG(WARNING) << "Jetton Master returned wrong address: " << convert::to_raw_address(address) << " expected: " << data.address;
           promise.set_error(td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Couldn't verify Jetton Wallet. Possibly scam."));
         } else {
           add_to_cache(address, data);
@@ -505,7 +574,7 @@ private:
       }
     });
 
-    td::actor::send_closure(jetton_master_detector_, &JettonMasterDetector::get_wallet_address, master_addr.move_as_ok(), owner_addr.move_as_ok(), std::move(P));
+    td::actor::send_closure(jetton_master_detector_, &JettonMasterDetector::get_wallet_address, blocks_ds, master_addr.move_as_ok(), owner_addr.move_as_ok(), std::move(P));
   }
 };
 
@@ -524,12 +593,18 @@ public:
     , insert_manager_(insert_manager) {
   }
 
-  void get_from_cache(block::StdAddress address, td::Promise<NFTCollectionData> promise) {
-    // TODO: fetch from shards
-    check_cache(address, std::move(promise));
+  void get_from_cache_or_shard(block::StdAddress address, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTCollectionData> promise) {
+    auto R = td::PromiseCreator::lambda([this, address, blocks_ds, promise = std::move(promise)](td::Result<NFTCollectionData> r) mutable {
+      if (r.is_error()) {
+        detect_from_shard(blocks_ds, address, std::move(promise));
+      } else {
+        promise.set_value(r.move_as_ok());
+      }
+    });
+    check_cache(address, std::move(R));
   }
 
-  void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, td::Promise<NFTCollectionData> promise) override {
+  void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTCollectionData> promise) override {
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<bool> code_hash_is_collection) mutable {
       if (code_hash_is_collection.is_error()) {
         if (code_hash_is_collection.error().code() == ErrorCode::NOT_FOUND_ERROR) { 
@@ -552,6 +627,18 @@ public:
     td::actor::send_closure(interface_manager_, &InterfaceManager::check_interface, code_cell->get_hash(), IT_NFT_COLLECTION, std::move(P));
   }
 private:
+  void detect_from_shard(const MasterchainBlockDataState& blocks_ds, block::StdAddress address, td::Promise<NFTCollectionData> promise) {
+    auto R = td::PromiseCreator::lambda([this, address, promise = std::move(promise)](td::Result<schema::AccountState> account_state_r) mutable {
+      if (account_state_r.is_error()) {
+        promise.set_error(account_state_r.move_as_error());
+        return;
+      }
+      auto account_state = account_state_r.move_as_ok();
+      detect_impl(address, account_state.code, account_state.data, account_state.last_trans_lt, std::move(promise));
+    });
+    td::actor::create_actor<FetchAccountFromShard>("fetchaccountfromshard", blocks_ds, address, std::move(R)).release();
+  }
+
   void detect_continue(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<NFTCollectionData> promise) {
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), this, address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<NFTCollectionData> cached_res) mutable {
       if (cached_res.is_ok()) {
@@ -613,8 +700,8 @@ private:
     if (collection_content.is_ok()) {
       data.collection_content = collection_content.move_as_ok();
     } else {
-      LOG(ERROR) << "Failed to parse collection content for " << convert::to_raw_address(address) << ": " << collection_content.error();
-      LOG(ERROR) << convert::to_bytes(stack[1].as_cell()).move_as_ok().value();
+      LOG(WARNING) << "Failed to parse collection content for " << convert::to_raw_address(address) << ": " << collection_content.error();
+      LOG(WARNING) << convert::to_bytes(stack[1].as_cell()).move_as_ok().value();
     }
     
     add_to_cache(address, data);
@@ -640,11 +727,11 @@ public:
     , collection_detector_(collection_detector) {
   }
 
-  void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, td::Promise<NFTItemData> promise) override {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<bool> code_hash_is_collection) mutable {
+  void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTItemData> promise) override {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), address, code_cell, data_cell, last_tx_lt, blocks_ds, promise = std::move(promise)](td::Result<bool> code_hash_is_collection) mutable {
       if (code_hash_is_collection.is_error()) {
         if (code_hash_is_collection.error().code() == ErrorCode::NOT_FOUND_ERROR) { 
-          td::actor::send_closure(SelfId, &NFTItemDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+          td::actor::send_closure(SelfId, &NFTItemDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
           return;
         }
 
@@ -657,7 +744,7 @@ public:
         return;
       }
 
-      td::actor::send_closure(SelfId, &NFTItemDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+      td::actor::send_closure(SelfId, &NFTItemDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
 
     td::actor::send_closure(interface_manager_, &InterfaceManager::check_interface, code_cell->get_hash(), IT_NFT_COLLECTION, std::move(P));
@@ -718,8 +805,8 @@ public:
   }
 
 private:
-  void detect_continue(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<NFTItemData> promise) {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), this, address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<NFTItemData> cached_res) mutable {
+  void detect_continue(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTItemData> promise) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), this, address, code_cell, data_cell, last_tx_lt, blocks_ds, promise = std::move(promise)](td::Result<NFTItemData> cached_res) mutable {
       if (cached_res.is_ok()) {
         auto cached_data = cached_res.move_as_ok();
         if ((data_cell->get_hash() == cached_data.data_hash && code_cell->get_hash() == cached_data.code_hash) 
@@ -728,13 +815,13 @@ private:
           return;
         }
       }
-      td::actor::send_closure(SelfId, &NFTItemDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+      td::actor::send_closure(SelfId, &NFTItemDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
 
     check_cache(address, std::move(P));
   }
 
-  void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<NFTItemData> promise) {
+  void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTItemData> promise) {
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
     args.set_now(td::Time::now());
@@ -786,8 +873,8 @@ private:
       if (content.is_ok()) {
         data.content = content.move_as_ok();
       } else {
-        LOG(ERROR) << "Failed to parse content for " << convert::to_raw_address(address) << ": " << content.error();
-        LOG(ERROR) << convert::to_bytes(stack[4].as_cell()).move_as_ok().value();
+        LOG(WARNING) << "Failed to parse content for " << convert::to_raw_address(address) << ": " << content.error();
+        LOG(WARNING) << convert::to_bytes(stack[4].as_cell()).move_as_ok().value();
       }
       add_to_cache(address, data);
       promise.set_value(std::move(data));
@@ -799,15 +886,11 @@ private:
         promise.set_error(collection_address.move_as_error());
         return;
       }
-      td::actor::send_closure(collection_detector_, &NFTCollectionDetector::get_from_cache, collection_address.move_as_ok(), 
+      td::actor::send_closure(collection_detector_, &NFTCollectionDetector::get_from_cache_or_shard, collection_address.move_as_ok(), blocks_ds,
                               td::PromiseCreator::lambda([this, ind_content, address, data, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<NFTCollectionData> collection_res) mutable {
         if (collection_res.is_error()) {
           LOG(ERROR) << "Failed to get collection for " << convert::to_raw_address(address) << ": " << collection_res.error();
-          if (collection_res.error().code() == ErrorCode::NOT_FOUND_ERROR) {
-            promise.set_error(td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Collection was not indexed yet"));
-          } else {
-            promise.set_error(collection_res.move_as_error());
-          }
+          promise.set_error(collection_res.move_as_error_prefix("Failed to get collection for " + convert::to_raw_address(address) + ": "));
           return;
         }
 
@@ -822,8 +905,8 @@ private:
 
         auto verify_r = verify_belonging_to_collection(data, collection_data);
         if (verify_r.is_error()) {
-          LOG(ERROR) << "Failed to verify belonging to collection for " << convert::to_raw_address(address);
-          promise.set_error(verify_r.move_as_error_prefix(PSLICE() << "Failed to verify belonging to collection for " << convert::to_raw_address(address)));
+          LOG(ERROR) << "Failed to verify belonging to collection for " << convert::to_raw_address(address) << ": " << verify_r.error();
+          promise.set_error(verify_r.move_as_error_prefix(PSLICE() << "Failed to verify belonging to collection for " << convert::to_raw_address(address) << ": " << verify_r.error()));
         }
 
         add_to_cache(address, data);
