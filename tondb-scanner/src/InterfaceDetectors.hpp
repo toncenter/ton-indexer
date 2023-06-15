@@ -476,6 +476,11 @@ public:
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSE_ERROR, "Failed to unpack transfer amount"));
       return;
     }
+    if (!transaction.in_msg || !transaction.in_msg->source) {
+      promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSE_ERROR, "Failed to unpack transfer source"));
+      return;
+    }
+    transfer.source = transaction.in_msg->source.value();
     auto destination = convert::to_raw_address(transfer_record.destination);
     if (destination.is_error()) {
       promise.set_error(destination.move_as_error());
@@ -525,6 +530,11 @@ public:
     JettonBurn burn;
     burn.transaction_hash = transaction.hash;
     burn.query_id = burn_record.query_id;
+    if (!transaction.in_msg || !transaction.in_msg->source) {
+      promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSE_ERROR, "Failed to unpack burn source"));
+      return;
+    }
+    burn.owner = transaction.in_msg->source.value();
     burn.amount = block::tlb::t_VarUInteger_16.as_integer(burn_record.amount);
     if (burn.amount.is_null()) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSE_ERROR, "Failed to unpack burn amount"));

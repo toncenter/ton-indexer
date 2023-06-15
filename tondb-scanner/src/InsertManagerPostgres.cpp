@@ -524,7 +524,7 @@ public:
 
   void insert_jetton_transfers(pqxx::work &transaction) {
     std::ostringstream query;
-    query << "INSERT INTO jetton_transfers (transaction_hash, query_id, amount, destination, response_destination, custom_payload, forward_ton_amount, forward_payload) VALUES ";
+    query << "INSERT INTO jetton_transfers (transaction_hash, query_id, amount, source, destination, response_destination, custom_payload, forward_ton_amount, forward_payload) VALUES ";
     bool is_first = true;
     for (const auto& mc_block : mc_blocks_) {
       for (const auto& transfer : mc_block->get_events<JettonTransfer>()) {
@@ -540,11 +540,12 @@ public:
         auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : td::optional<std::string>{};
 
         query << "("
-              << "'" << transfer.transaction_hash << "',"
+              << TO_SQL_STRING(td::base64_encode(transfer.transaction_hash.as_slice())) << ","
               << transfer.query_id << ","
               << (transfer.amount.not_null() ? transfer.amount->to_dec_string() : "NULL") << ","
-              << "'" << transfer.destination << "',"
-              << "'" << transfer.response_destination << "',"
+              << TO_SQL_STRING(transfer.source) << ","
+              << TO_SQL_STRING(transfer.destination) << ","
+              << TO_SQL_STRING(transfer.response_destination) << ","
               << TO_SQL_OPTIONAL_STRING(custom_payload_boc) << ","
               << (transfer.forward_ton_amount.not_null() ? transfer.forward_ton_amount->to_dec_string() : "NULL") << ","
               << TO_SQL_OPTIONAL_STRING(forward_payload_boc)
@@ -562,7 +563,7 @@ public:
 
   void insert_jetton_burns(pqxx::work &transaction) {
     std::ostringstream query;
-    query << "INSERT INTO jetton_burns (transaction_hash, query_id, amount, response_destination, custom_payload) VALUES ";
+    query << "INSERT INTO jetton_burns (transaction_hash, query_id, owner, amount, response_destination, custom_payload) VALUES ";
     bool is_first = true;
     for (const auto& mc_block : mc_blocks_) {
       for (const auto& burn : mc_block->get_events<JettonBurn>()) {
@@ -576,10 +577,11 @@ public:
         auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
 
         query << "("
-              << "'" << burn.transaction_hash << "',"
+              << TO_SQL_STRING(td::base64_encode(burn.transaction_hash.as_slice())) << ","
               << burn.query_id << ","
+              << TO_SQL_STRING(burn.owner) << ","
               << (burn.amount.not_null() ? burn.amount->to_dec_string() : "NULL") << ","
-              << "'" << burn.response_destination << "',"
+              << TO_SQL_STRING(burn.response_destination) << ","
               << TO_SQL_OPTIONAL_STRING(custom_payload_boc)
               << ")";
       }
@@ -611,12 +613,12 @@ public:
         auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : td::optional<std::string>{};
 
         query << "("
-              << "'" << transfer.transaction_hash << "',"
+              << TO_SQL_STRING(td::base64_encode(transfer.transaction_hash.as_slice())) << ","
               << transfer.query_id << ","
-              << "'" << convert::to_raw_address(transfer.nft_item) << "',"
-              << "'" << transfer.old_owner << "',"
-              << "'" << transfer.new_owner << "',"
-              << "'" << transfer.response_destination << "',"
+              << TO_SQL_STRING(convert::to_raw_address(transfer.nft_item)) << ","
+              << TO_SQL_STRING(transfer.old_owner) << ","
+              << TO_SQL_STRING(transfer.new_owner) << ","
+              << TO_SQL_STRING(transfer.response_destination) << ","
               << TO_SQL_OPTIONAL_STRING(custom_payload_boc) << ","
               << (transfer.forward_amount.not_null() ? transfer.forward_amount->to_dec_string() : "NULL") << ","
               << TO_SQL_OPTIONAL_STRING(forward_payload_boc)
