@@ -641,16 +641,31 @@ public:
         stop();
         return;
       }
-      pqxx::work txn(c);
-      insert_blocks(txn);
-      insert_transactions(txn);
-      insert_messsages(txn);
-      insert_account_states(txn);
-      insert_jetton_transfers(txn);
-      insert_jetton_burns(txn);
-      insert_nft_transfers(txn);
-      txn.commit();
-      promise_.set_value(td::Unit());
+
+      bool success = false;
+      const int MAX_RETRY_COUNT = 3;
+      int retry_count = 0;
+      while (!success && retry_count < MAX_RETRY_COUNT) {
+        try {
+          pqxx::work txn(c);
+          insert_blocks(txn);
+          insert_transactions(txn);
+          insert_messsages(txn);
+          insert_account_states(txn);
+          insert_jetton_transfers(txn);
+          insert_jetton_burns(txn);
+          insert_nft_transfers(txn);
+          txn.commit();
+          promise_.set_value(td::Unit());
+          success = true;
+        } catch (const pqxx::deadlock_detected &e) {
+          retry_count++;
+        }
+      }
+
+      if (!success) {
+        promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, "Max retry count exceeded while trying to resolve deadlock"));
+      }
     } catch (const std::exception &e) {
       promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
     }
