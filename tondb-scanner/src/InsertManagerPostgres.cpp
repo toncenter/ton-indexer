@@ -1317,8 +1317,8 @@ void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uin
     for (auto [seqno]: txn.query<std::uint32_t>("select seqno from blocks where workchain = -1")) {
       existing_mc_seqnos.push_back(seqno);
     }
+    promise.set_result(std::move(existing_mc_seqnos));
   } catch (const std::exception &e) {
     promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error selecting from PG: " << e.what()));
   }
-  promise.set_result(std::move(existing_mc_seqnos));
 }
