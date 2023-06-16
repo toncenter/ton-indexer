@@ -857,7 +857,8 @@ class DedustV2SwapExtOutParser(Parser):
                 "asset_out": asset_out,
                 "amount_in": str(amount_in),
                 "amount_out": str(amount_out),
-                "swap_user": sender_addr
+                "swap_user": sender_addr,
+                "db_ref": context.message.msg_id
             }
         ))
 
