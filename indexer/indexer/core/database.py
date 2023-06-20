@@ -259,6 +259,7 @@ class JettonTransfers(Base):
     transaction_hash = Column(String, primary_key=True)
     query_id: int = Column(Numeric)
     amount: int = Column(Numeric)
+    source = Column(String)
     destination = Column(String)
     response_destination = Column(String)
     custom_payload = Column(String)
@@ -269,6 +270,7 @@ class JettonBurn(Base):
     __tablename__ = 'jetton_burns'
     transaction_hash = Column(String, primary_key=True)
     query_id: int = Column(Numeric)
+    owner: str = Column(String)
     amount: int = Column(Numeric)
     response_destination = Column(String)
     custom_payload = Column(String)
