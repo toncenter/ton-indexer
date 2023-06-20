@@ -6,7 +6,7 @@ from config import settings
 from parser.eventbus import EventBus, KafkaEventBus, NullEventBus
 from indexer.database import *
 from indexer.crud import *
-from parser.parsers_collection import ALL_PARSERS
+from parser.parsers_collection import ALL_PARSERS, GeneratedEvent
 
 from loguru import logger
 
@@ -28,6 +28,13 @@ def setup_periodic_tasks(sender, **kwargs):
 async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOutbox):
     # logger.info(f"Got task {task}")
     successful = True
+    delayedEvents = []
+    def generated_events_iterator(g):
+        if type(g) == GeneratedEvent:
+            yield g
+        elif type(g) == list:
+            for event in g:
+                yield event
     try:
         if task.entity_type == ParseOutbox.PARSE_TYPE_MESSAGE:
             ctx = await get_messages_context(session, task.entity_id)
@@ -37,7 +44,13 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
             raise Exception(f"entity_type not supported: {task.entity_type}")
         for parser in ALL_PARSERS:
             if parser.predicate.match(ctx):
-                await parser.parse(session, ctx, eventbus)
+                generated = await parser.parse(session, ctx)
+                if generated:
+                    for event in generated_events_iterator(generated):
+                        if event.waitCommit:
+                            delayedEvents.append(event.event)
+                        else:
+                            eventbus.push_event(event.event)
     except Exception as e:
         logger.error(f'Failed to perform parsing for outbox item {task.outbox_id}: {traceback.format_exc()}')
         await postpone_outbox_item(session, task, settings.parser.retry.timeout)
@@ -45,6 +58,7 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
         successful = False
     if successful:
         await remove_outbox_item(session, task.outbox_id)
+    return delayedEvents
 
 async def parse_outbox():
     logger.info(f"Starting parse outbox loop, eventbus enabled: {settings.eventbus.enabled}")
@@ -61,9 +75,13 @@ async def parse_outbox():
                 logger.info("Parser outbox is empty, exiting")
                 break
             tasks = [process_item(session, eventbus, task[0]) for task in tasks]
-            await asyncio.gather(*tasks)
+            res = await asyncio.gather(*tasks)
 
             await session.commit()
+            for delayedEvents in res:
+                for event in delayedEvents:
+                    logger.info(f"Sending delayed event: {event}")
+                    eventbus.push_event(event)
 
 @app.task
 def parse_outbox_task(arg):
