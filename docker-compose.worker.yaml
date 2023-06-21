@@ -16,7 +16,8 @@ services:
     secrets:
       - postgres_password
     volumes:
-      - /var/ton-work/db:/tondb
+      # - /var/ton-work/db:/tondb
+      - /zpool/ton-work-testnet/db:/tondb
     environment: *indexer-environment
     deploy:
       mode: replicated
