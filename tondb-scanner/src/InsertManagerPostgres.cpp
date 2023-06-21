@@ -1,5 +1,6 @@
 #include <pqxx/pqxx>
 #include <chrono>
+#include <mutex>
 #include "td/utils/JsonBuilder.h"
 #include "InsertManagerPostgres.h"
 #include "convert-utils.h"
@@ -19,6 +20,8 @@ std::string content_to_json_string(const std::map<std::string, std::string> &con
 
   return jetton_content_json.string_builder().as_cslice().str();
 }
+
+std::mutex insert_mutex;
 
 class InsertBatchMcSeqnos: public td::actor::Actor {
 private:
@@ -644,29 +647,18 @@ public:
         return;
       }
 
-      bool success = false;
-      const int MAX_RETRY_COUNT = 3;
-      int retry_count = 0;
-      while (!success && retry_count < MAX_RETRY_COUNT) {
-        try {
-          pqxx::work txn(c);
-          insert_blocks(txn);
-          insert_transactions(txn);
-          insert_messsages(txn);
-          insert_account_states(txn);
-          insert_jetton_transfers(txn);
-          insert_jetton_burns(txn);
-          insert_nft_transfers(txn);
-          txn.commit();
-          promise_.set_value(td::Unit());
-          success = true;
-        } catch (const pqxx::deadlock_detected &e) {
-          retry_count++;
-        }
-      }
-
-      if (!success) {
-        promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, "Max retry count exceeded while trying to resolve deadlock"));
+      {
+        std::lock_guard<std::mutex> guard(insert_mutex);
+        pqxx::work txn(c);
+        insert_blocks(txn);
+        insert_transactions(txn);
+        insert_messsages(txn);
+        insert_account_states(txn);
+        insert_jetton_transfers(txn);
+        insert_jetton_burns(txn);
+        insert_nft_transfers(txn);
+        txn.commit();
+        promise_.set_value(td::Unit());
       }
     } catch (const std::exception &e) {
       promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
