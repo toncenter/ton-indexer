@@ -1,8 +1,8 @@
 """First migration
 
-Revision ID: 6c577321347b
+Revision ID: 7261ecfa4aad
 Revises: 
-Create Date: 2023-06-20 12:02:20.393859
+Create Date: 2023-06-21 13:03:15.174730
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '6c577321347b'
+revision = '7261ecfa4aad'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -68,6 +68,7 @@ def upgrade():
     op.create_table('jetton_burns',
     sa.Column('transaction_hash', sa.String(), nullable=False),
     sa.Column('query_id', sa.Numeric(), nullable=True),
+    sa.Column('owner', sa.String(), nullable=True),
     sa.Column('amount', sa.Numeric(), nullable=True),
     sa.Column('response_destination', sa.String(), nullable=True),
     sa.Column('custom_payload', sa.String(), nullable=True),
@@ -91,6 +92,7 @@ def upgrade():
     sa.Column('transaction_hash', sa.String(), nullable=False),
     sa.Column('query_id', sa.Numeric(), nullable=True),
     sa.Column('amount', sa.Numeric(), nullable=True),
+    sa.Column('source', sa.String(), nullable=True),
     sa.Column('destination', sa.String(), nullable=True),
     sa.Column('response_destination', sa.String(), nullable=True),
     sa.Column('custom_payload', sa.String(), nullable=True),
