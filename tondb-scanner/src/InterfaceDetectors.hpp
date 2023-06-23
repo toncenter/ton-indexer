@@ -559,12 +559,12 @@ private:
   void verify_belonging_to_master(JettonWalletData data, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonWalletData> &&promise) {
     auto master_addr = block::StdAddress::parse(data.jetton);
     if (master_addr.is_error()) {
-      promise.set_error(master_addr.move_as_error_prefix(PSLICE() << "Failed to parse jetton master address (" << data.jetton << "): "));
+      promise.set_error(td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, PSLICE() << "Failed to parse jetton master address (" << data.jetton << "): "));
       return;
     }
     auto owner_addr = block::StdAddress::parse(data.owner);
     if (owner_addr.is_error()) {
-      promise.set_error(owner_addr.move_as_error_prefix(PSLICE() << "Failed to parse jetton owner address (" << data.owner << "): "));
+      promise.set_error(td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, PSLICE() << "Failed to parse jetton owner address (" << data.owner << "): "));
       return;
     }
 
@@ -893,7 +893,7 @@ private:
       auto collection_address = block::StdAddress::parse(data.collection_address);
       if (collection_address.is_error()) {
         LOG(ERROR) << "Failed to parse collection address for " << convert::to_raw_address(address) << ": " << collection_address.error();
-        promise.set_error(collection_address.move_as_error());
+        promise.set_error(td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, PSLICE() << "Failed to parse collection address for " << convert::to_raw_address(address) << ": " << collection_address.error()));
         return;
       }
       td::actor::send_closure(collection_detector_, &NFTCollectionDetector::get_from_cache_or_shard, collection_address.move_as_ok(), blocks_ds,

@@ -92,11 +92,15 @@ td::Result<std::map<std::string, std::string>> parse_token_data(td::Ref<vm::Cell
       if (!tlb::csr_unpack(cs, offchain_record)) {
         return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Failed to unpack offchain token data");
       }
-      auto uri = parse_snake_data(offchain_record.uri);
-      if (uri.is_error()) {
-        return uri.move_as_error();
+      auto uri_r = parse_snake_data(offchain_record.uri);
+      if (uri_r.is_error()) {
+        return uri_r.move_as_error();
       }
-      return std::map<std::string, std::string>{{"uri", uri.move_as_ok()}};
+      auto uri = uri_r.move_as_ok();
+      if (!td::check_utf8(uri)) {
+        return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Invalid uri");
+      }
+      return std::map<std::string, std::string>{{"uri", std::move(uri)}};
     }
     case tokens::gen::FullContent::onchain: {
       tokens::gen::FullContent::Record_onchain onchain_record;
@@ -111,12 +115,17 @@ td::Result<std::map<std::string, std::string>> parse_token_data(td::Ref<vm::Cell
         for (auto attr : attributes) {
           auto value = dict.lookup_ref(td::sha256_bits256(attr));
           if (value.not_null()) {
-            auto attr_data = parse_content_data(value);
-            if (attr_data.is_error()) {
-              LOG(ERROR) << "Failed to parse attribute " << attr << ": " << attr_data.move_as_error().to_string();
+            auto attr_data_r = parse_content_data(value);
+            if (attr_data_r.is_error()) {
+              LOG(ERROR) << "Failed to parse attribute " << attr << ": " << attr_data_r.move_as_error().message();
               continue;
             }
-            res[attr] = attr_data.move_as_ok();
+            auto attr_data = attr_data_r.move_as_ok();
+            if (!td::check_utf8(attr_data)) {
+              LOG(ERROR) << "Invalid data (not utf8) in attribute " << attr;
+              continue;
+            }
+            res[attr] = std::move(attr_data);
           }
         }
         return res;
