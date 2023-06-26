@@ -28,6 +28,10 @@ private:
   std::string connection_string_;
   std::vector<ParsedBlockPtr> mc_blocks_;
   td::Promise<td::Unit> promise_;
+
+  int transactions_count{0};
+  int messages_count{0};
+  int blocks_count{0};
 public:
   InsertBatchMcSeqnos(std::string connection_string, std::vector<ParsedBlockPtr> mc_blocks, td::Promise<td::Unit> promise): 
     connection_string_(std::move(connection_string)), 
@@ -83,6 +87,7 @@ public:
               << TO_SQL_STRING(block.rand_seed) << ","
               << TO_SQL_STRING(block.created_by)
               << ")";
+        ++blocks_count;
       }
     }
     if (is_first) {
@@ -363,6 +368,7 @@ public:
                 << TO_SQL_STRING(td::base64_encode(transaction.account_state_hash_after.as_slice())) << ","
                 << "'" << jsonify(transaction.description) << "'"
                 << ")";
+          ++transactions_count;
         }
       }
     }
@@ -405,6 +411,8 @@ public:
         }
       }
     }
+
+    messages_count = messages.size();
 
     std::ostringstream query;
     query << "INSERT INTO messages (hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, opcode, "
@@ -658,6 +666,12 @@ public:
         insert_jetton_burns(txn);
         insert_nft_transfers(txn);
         txn.commit();
+
+        LOG(INFO) << "Inserted " 
+                  << mc_blocks_.size() << " mc blocks, "
+                  << blocks_count << " blocks, " 
+                  << transactions_count << " txs, " 
+                  << messages_count << " msgs";
         promise_.set_value(td::Unit());
       }
     } catch (const std::exception &e) {
@@ -756,7 +770,7 @@ public:
 
       if (result.size() != 1) {
         if (result.size() == 0) {
-          promise_.set_error(td::Status::Error(ErrorCode::NOT_FOUND_ERROR, PSLICE() << "Jetton Wallet for address " << address_ << " not found"));
+          promise_.set_error(td::Status::Error(ErrorCode::ENTITY_NOT_FOUND, PSLICE() << "Jetton Wallet for address " << address_ << " not found"));
         } else {
           promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Jetton Wallet for address " << address_ << " is not unique (found " << result.size() << " wallets)"));
         }
@@ -895,7 +909,7 @@ public:
 
       if (result.size() != 1) {
         if (result.size() == 0) {
-          promise_.set_error(td::Status::Error(ErrorCode::NOT_FOUND_ERROR, PSLICE() << "Jetton master not found: " << address_));
+          promise_.set_error(td::Status::Error(ErrorCode::ENTITY_NOT_FOUND, PSLICE() << "Jetton master not found: " << address_));
         } else {
           promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Jetton master not unique: " << address_ << ", found " << result.size() << " records"));
         }
@@ -1037,7 +1051,7 @@ public:
 
       if (result.size() != 1) {
         if (result.size() == 0) {
-          promise_.set_error(td::Status::Error(ErrorCode::NOT_FOUND_ERROR, PSLICE() << "NFT Collection not found: " << address_));
+          promise_.set_error(td::Status::Error(ErrorCode::ENTITY_NOT_FOUND, PSLICE() << "NFT Collection not found: " << address_));
         } else {
           promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "NFT Collection not unique: " << address_ << ", found " << result.size() << " records"));
         }
@@ -1154,7 +1168,7 @@ public:
 
       if (result.size() != 1) {
         if (result.empty()) {
-          promise_.set_error(td::Status::Error(ErrorCode::NOT_FOUND_ERROR, "NFT item not found"));
+          promise_.set_error(td::Status::Error(ErrorCode::ENTITY_NOT_FOUND, "NFT item not found"));
         } else {
           promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, "Multiple NFT items found with same address"));
         }
