@@ -53,57 +53,57 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
     auto last_tx_lt = account_state.last_trans_lt;
     auto P1 = td::PromiseCreator::lambda([this, code_cell, address, promise = ig.get_promise()](td::Result<JettonMasterData> master_data) mutable {
       if (master_data.is_error()) {
-        if (master_data.error().code() != ErrorCode::SMC_INTERFACE_PARSE_ERROR) {
-          LOG(ERROR) << "Failed to detect interface JETTON_MASTER for " << convert::to_raw_address(address) << ": " << master_data.move_as_error();
+        if (master_data.error().code() == ErrorCode::DB_ERROR) {
+          LOG(ERROR) << "Error inserting entity JETTON_MASTER to db " << convert::to_raw_address(address) << ": " << master_data.error().message();
           promise.set_error(master_data.move_as_error());
           return;
         }
       } else {
         LOG(DEBUG) << "Detected interface JETTON_MASTER for " << convert::to_raw_address(address);
       }
-      td::actor::send_closure(interface_manager_, &InterfaceManager::set_interface, code_cell->get_hash(), IT_JETTON_MASTER, master_data.is_ok(), std::move(promise));
+      promise.set_value(td::Unit());
     });
     td::actor::send_closure(jetton_master_detector_, &JettonMasterDetector::detect, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(P1));
 
     auto P2 = td::PromiseCreator::lambda([this, code_cell, address, promise = ig.get_promise()](td::Result<JettonWalletData> wallet_data) mutable {
       if (wallet_data.is_error()) {
-        if (wallet_data.error().code() != ErrorCode::SMC_INTERFACE_PARSE_ERROR) {
-          LOG(ERROR) << "Failed to detect interface JETTON_WALLET for " << convert::to_raw_address(address) << ": " << wallet_data.move_as_error();
+        if (wallet_data.error().code() == ErrorCode::DB_ERROR) {
+          LOG(ERROR) << "Error inserting entity JETTON_WALLET to db " << convert::to_raw_address(address) << ": " << wallet_data.error().message();
           promise.set_error(wallet_data.move_as_error());
           return;
         }
       } else {
         LOG(DEBUG) << "Detected interface JETTON_WALLET for " << convert::to_raw_address(address);
       }
-      td::actor::send_closure(interface_manager_, &InterfaceManager::set_interface, code_cell->get_hash(), IT_JETTON_WALLET, wallet_data.is_ok(), std::move(promise));
+      promise.set_value(td::Unit());
     });
     td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::detect, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(P2));
 
     auto P3 = td::PromiseCreator::lambda([this, code_cell, address, promise = ig.get_promise()](td::Result<NFTCollectionData> nft_collection_data) mutable {
       if (nft_collection_data.is_error()) {
-        if (nft_collection_data.error().code() != ErrorCode::SMC_INTERFACE_PARSE_ERROR) {
-          LOG(ERROR) << "Failed to detect interface NFT_COLLECTION for " << convert::to_raw_address(address) << ": " << nft_collection_data.move_as_error();
+        if (nft_collection_data.error().code() == ErrorCode::DB_ERROR) {
+          LOG(ERROR) << "Error inserting entity NFT_COLLECTION to db " << convert::to_raw_address(address) << ": " << nft_collection_data.error().message();
           promise.set_error(nft_collection_data.move_as_error());
           return;
         }
       } else {
-        LOG(DEBUG) << "Detected interface JETTON_WALLET for " << convert::to_raw_address(address);
+        LOG(DEBUG) << "Detected interface NFT_COLLECTION for " << convert::to_raw_address(address);
       }
-      td::actor::send_closure(interface_manager_, &InterfaceManager::set_interface, code_cell->get_hash(), IT_NFT_COLLECTION, nft_collection_data.is_ok(), std::move(promise));
+      promise.set_value(td::Unit());
     });
     td::actor::send_closure(nft_collection_detector_, &NFTCollectionDetector::detect, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(P3));
 
     auto P4 = td::PromiseCreator::lambda([this, code_cell, address, promise = ig.get_promise()](td::Result<NFTItemData> nft_item_data) mutable {
       if (nft_item_data.is_error()) {
-        if (nft_item_data.error().code() != ErrorCode::SMC_INTERFACE_PARSE_ERROR) {
-          LOG(ERROR) << "Failed to detect interface NFT_ITEM for " << convert::to_raw_address(address) << ": " << nft_item_data.move_as_error();
+        if (nft_item_data.error().code() == ErrorCode::DB_ERROR) {
+          LOG(ERROR) << "Error inserting entity NFT_ITEM to db " << convert::to_raw_address(address) << ": " << nft_item_data.error().message();
           promise.set_error(nft_item_data.move_as_error());
           return;
         }
       } else {
-        LOG(DEBUG) << "Detected interface JETTON_WALLET for " << convert::to_raw_address(address);
+        LOG(DEBUG) << "Detected interface NFT_ITEM for " << convert::to_raw_address(address);
       }
-      td::actor::send_closure(interface_manager_, &InterfaceManager::set_interface, code_cell->get_hash(), IT_NFT_ITEM, nft_item_data.is_ok(), std::move(promise));
+      promise.set_value(td::Unit());
     });
     td::actor::send_closure(nft_item_detector_, &NFTItemDetector::detect, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(P4));
   }
@@ -136,8 +136,8 @@ void EventProcessor::process_transactions(const std::vector<schema::Transaction>
     auto process = [events, tx, &ig](auto&& event, td::Promise<> promise) mutable {
       if (event.is_error()) {
         LOG(DEBUG) << "Failed to parse event (tx hash " << tx.hash << "): " << event.error();
-        if (event.error().code() != ErrorCode::EVENT_PARSE_ERROR) {
-          // we set promise to error only in case of some internal error (like db error)
+        if (event.error().code() == ErrorCode::DB_ERROR) {
+          // we set promise to error only in case of db error
           promise.set_error(event.move_as_error());
           return;
         }

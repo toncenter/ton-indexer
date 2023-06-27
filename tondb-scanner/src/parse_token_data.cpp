@@ -22,7 +22,7 @@ td::Result<std::string> parse_snake_data(td::Ref<vm::CellSlice> data) {
   }
   
   if (!bw.byte_aligned()) {
-    return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Not byte aligned");
+    return td::Status::Error("Not byte aligned");
   }
 
   return std::string(buffer, bw.get_byte_ptr());
@@ -51,12 +51,12 @@ td::Result<std::string> parse_chunks_data(td::Ref<vm::CellSlice> data) {
     }
 
     if (!bw.byte_aligned()) {
-      return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Not byte aligned");
+      return td::Status::Error("Not byte aligned");
     }
 
     return std::string(buffer, bw.get_byte_ptr());
   } catch (vm::VmError& err) {
-    return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, PSLICE() << "Exception while parsing chunks data: " << err.get_msg());
+    return td::Status::Error(PSLICE() << "Exception while parsing chunks data: " << err.get_msg());
   }
 }
 
@@ -66,19 +66,19 @@ td::Result<std::string> parse_content_data(td::Ref<vm::Cell> data) {
     case tokens::gen::ContentData::snake: {
       tokens::gen::ContentData::Record_snake snake_record;
       if (!tlb::csr_unpack(cs, snake_record)) {
-        return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Failed to unpack snake token data");
+        return td::Status::Error("Failed to unpack snake token data");
       }
       return parse_snake_data(snake_record.data);
     }
     case tokens::gen::ContentData::chunks: {
       tokens::gen::ContentData::Record_chunks chunks_record;
       if (!tlb::csr_unpack(cs, chunks_record)) {
-        return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Failed to unpack chunks token data");
+        return td::Status::Error("Failed to unpack chunks token data");
       }
       return parse_chunks_data(chunks_record.data);
     }
     default:
-      return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Unknown content data");
+      return td::Status::Error("Unknown content data");
   }
 }
 
@@ -90,18 +90,22 @@ td::Result<std::map<std::string, std::string>> parse_token_data(td::Ref<vm::Cell
     case tokens::gen::FullContent::offchain: {
       tokens::gen::FullContent::Record_offchain offchain_record;
       if (!tlb::csr_unpack(cs, offchain_record)) {
-        return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Failed to unpack offchain token data");
+        return td::Status::Error("Failed to unpack offchain token data");
       }
-      auto uri = parse_snake_data(offchain_record.uri);
-      if (uri.is_error()) {
-        return uri.move_as_error();
+      auto uri_r = parse_snake_data(offchain_record.uri);
+      if (uri_r.is_error()) {
+        return uri_r.move_as_error();
       }
-      return std::map<std::string, std::string>{{"uri", uri.move_as_ok()}};
+      auto uri = uri_r.move_as_ok();
+      if (!td::check_utf8(uri)) {
+        return td::Status::Error("Invalid uri");
+      }
+      return std::map<std::string, std::string>{{"uri", std::move(uri)}};
     }
     case tokens::gen::FullContent::onchain: {
       tokens::gen::FullContent::Record_onchain onchain_record;
       if (!tlb::csr_unpack(cs, onchain_record)) {
-        return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Failed to unpack onchain token data");
+        return td::Status::Error("Failed to unpack onchain token data");
       }
 
       try {
@@ -111,20 +115,29 @@ td::Result<std::map<std::string, std::string>> parse_token_data(td::Ref<vm::Cell
         for (auto attr : attributes) {
           auto value = dict.lookup_ref(td::sha256_bits256(attr));
           if (value.not_null()) {
-            auto attr_data = parse_content_data(value);
-            if (attr_data.is_error()) {
-              LOG(ERROR) << "Failed to parse attribute " << attr << ": " << attr_data.move_as_error().to_string();
+            auto attr_data_r = parse_content_data(value);
+            if (attr_data_r.is_error()) {
+              LOG(ERROR) << "Failed to parse attribute " << attr << ": " << attr_data_r.move_as_error().message();
               continue;
             }
-            res[attr] = attr_data.move_as_ok();
+            auto attr_data = attr_data_r.move_as_ok();
+            if (attr == "image_data") {
+              res[attr] = td::base64_encode(attr_data);
+            } else {
+              if (!td::check_utf8(attr_data)) {
+                LOG(ERROR) << "Invalid data (not utf8) in attribute " << attr;
+                continue;
+              }
+              res[attr] = std::move(attr_data);
+            }
           }
         }
         return res;
       } catch (vm::VmError& err) {
-        return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, PSLICE() << "Failed to parse onchain dictionary: " << err.get_msg());
+        return td::Status::Error(PSLICE() << "Failed to parse onchain dictionary: " << err.get_msg());
       }
     }
     default:
-      return td::Status::Error(ErrorCode::SMC_INTERFACE_PARSE_ERROR, "Unknown token data type");
+      return td::Status::Error("Unknown token data type");
   }
 }
