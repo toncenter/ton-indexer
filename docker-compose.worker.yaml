@@ -17,7 +17,8 @@ services:
       - postgres_password
     volumes:
       # - /var/ton-work/db:/tondb
-      - /zpool/ton-work-testnet/db:/tondb
+      - /zpool/ton-work/db:/tondb
+      # - /zpool/ton-work-testnet/db:/tondb
     environment: *indexer-environment
     deploy:
       mode: replicated
@@ -27,7 +28,7 @@ services:
           - "node.labels.${TONCENTER_ENV:?}.indexer.worker==true"
     networks:
       internal:
-    command: -F 2
+    command: -F 2 -M 1024 --insert-batch-size 512
     restart: unless-stopped
 
 networks:

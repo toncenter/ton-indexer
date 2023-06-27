@@ -2,25 +2,12 @@ version: '3.9'
 
 
 x-indexer-environment: &indexer-environment
-  POSTGRES_HOST: postgres
-  POSTGRES_PORT: 5432
-  POSTGRES_USER: postgres
+  POSTGRES_HOST:
+  POSTGRES_PORT:
+  POSTGRES_USER:
   POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-  POSTGRES_DBNAME: ton_index
-  TON_INDEXER_LITESERVER_CONFIG: /run/secrets/tonlib_config
-  TON_INDEXER_AMQP_DSN: amqp://rabbitmq:5672
-  TON_INDEXER_REDIS_DSN: redis://redis:6379
-  TON_INDEXER_CDLL_PATH: /app/libtonlibjson.so
+  POSTGRES_DBNAME:
   TON_INDEXER_API_ROOT_PATH:
-  TON_INDEXER_BLOCKS_PER_TASK:
-  TON_INDEXER_MAX_TASKS_PER_CHILD:
-  TON_INDEXER_TASK_TIME_LIMIT: 1200
-  TON_INDEXER_MIN_WORKERS:
-  TON_INDEXER_MAX_WORKERS:
-  TON_INDEXER_MAX_SCHEDULED_TASKS:
-  TON_INDEXER_USE_EXT_METHOD:
-  TON_INDEXER_START_SEQNO:
-  TON_INDEXER_BOTTOM_SEQNO:
 
 services:
   alembic:
@@ -28,9 +15,6 @@ services:
     build:
       context: indexer
       dockerfile: Dockerfile
-      args:
-        TON_REPO:
-        TON_BRANCH:
     environment: *indexer-environment 
     secrets:
       - postgres_password
@@ -51,4 +35,4 @@ networks:
 
 secrets:
   postgres_password:
-    file: private/postgres_password
+    file: ${POSTGRES_PASSWORD_FILE:-private/postgres_password}

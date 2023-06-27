@@ -4,9 +4,9 @@ services:
   postgres:
     image: postgres:14
     environment: 
-      POSTGRES_USER: postgres
+      POSTGRES_USER:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      POSTGRES_DBNAME: ton_index
+      POSTGRES_DBNAME:
     ports:
       - target: 5432
         published: 5432
@@ -52,4 +52,4 @@ networks:
 
 secrets:
   postgres_password:
-    file: private/postgres_password
+    file: ${POSTGRES_PASSWORD_FILE:-private/postgres_password}

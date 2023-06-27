@@ -1,24 +1,14 @@
-import codecs
 import asyncio
-from copy import deepcopy
 from time import sleep
-from typing import List, Optional
 
-from pytonlib.utils.tlb import parse_transaction
-from pytonlib.utils.address import detect_address
-from tvm_valuetypes.cell import deserialize_boc
-
-from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy_utils import create_database, database_exists, drop_database
+from sqlalchemy_utils import create_database, database_exists
 
 from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric
 from sqlalchemy.schema import ForeignKeyConstraint
-from sqlalchemy import ForeignKey, UniqueConstraint, Table, exc
-from sqlalchemy import and_, or_, ColumnDefault
-from sqlalchemy.orm import relationship, backref
-from dataclasses import dataclass, asdict
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import relationship
 
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import JSONB
@@ -27,7 +17,6 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-import asyncpg
 
 from indexer.core.settings import Settings
 from loguru import logger
@@ -68,23 +57,6 @@ def init_database(create=False):
             asyncio.run(create_tables())
         sleep(0.5)
 
-
-# from sqlalchemy import event
-# from sqlalchemy.engine import Engine
-# import time
-# import logging
-# logger1 = logging.getLogger("myapp.sqltime")
-# logger1.setLevel(logging.DEBUG)
-# @event.listens_for(Engine, "before_cursor_execute")
-# def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-#     conn.info.setdefault("query_start_time", []).append(time.time())
-#     # logger1.debug(f"Start Query: {statement}")
-
-
-# @event.listens_for(Engine, "after_cursor_execute")
-# def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-#     total = time.time() - conn.info["query_start_time"].pop(-1)
-#     logger1.debug(f"Query Complete: {statement}! Total Time: {total}")
 
 class Block(Base):
     __tablename__ = 'blocks'
