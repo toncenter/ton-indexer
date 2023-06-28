@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from parser.bitreader import BitReader
 from dataclasses import dataclass
+from aiokafka import AIOKafkaProducer
 from parser.eventbus import Event
 
 
@@ -483,7 +484,7 @@ class RemoteDataFetcher:
                 logger.error(f"No schema for URL: {url}")
                 return None
             else:
-                if parsed_url.netloc == 'localhost':
+                if parsed_url.netloc == 'localhost' or parsed_url.netloc in ["ton-metadata.fanz.ee", "startupmarket.io", "mashamimosa.ru", "server.tonguys.org"]:
                     return None
                 retry = 0
                 while retry < self.max_attempts:
@@ -944,6 +945,54 @@ class HasTextCommentParser(Parser):
                 "comment": context.message.comment
             }
         ))
+
+
+## Forwards all messages to kafka
+class MessagesToKafka(Parser):
+    class SuccessfulPredicate(ParserPredicate):
+        def __init__(self):
+            super(MessagesToKafka.SuccessfulPredicate, self).__init__(MessageContext)
+            self.enabled = settings.eventbus.messages.enabled
+
+
+        def _internal_match(self, context: MessageContext):
+            if not self.enabled:
+                return False
+            if context.destination_tx is None:
+                logger.warning(f"destination_tx is not found for message {context.message.msg_id}")
+                raise Exception(f"No destination_tx for {context.message.msg_id}")
+            return context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
+
+    def __init__(self):
+        super(MessagesToKafka, self).__init__(MessagesToKafka.SuccessfulPredicate())
+        self.producer = None
+        self.topic = settings.eventbus.messages.topic
+
+    @staticmethod
+    def parser_name() -> str:
+        return "MessagesToKafka"
+
+    async def parse(self, session: Session, context: MessageContext):
+        if not self.producer:
+            self.producer = AIOKafkaProducer(bootstrap_servers=settings.eventbus.kafka.broker)
+            await self.producer.start()
+        msg = {
+            'msg_id': context.message.msg_id,
+            'source': context.message.source,
+            'destination': context.message.destination,
+            'value': context.message.value,
+            'op': context.message.op,
+            'hash': context.message.hash,
+            'created_lt': context.message.created_lt,
+            'fwd_fee': context.message.fwd_fee,
+            'ihr_fee': context.message.ihr_fee,
+            'import_fee': context.message.import_fee,
+            'utime': context.destination_tx.utime,
+            'content': context.content.body
+        }
+        # logger.info(json.dumps(msg))
+        await self.producer.send_and_wait(self.topic, json.dumps(msg).encode("utf-8"))
+
 
 # Collect all declared parsers
 

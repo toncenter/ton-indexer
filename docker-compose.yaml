@@ -165,6 +165,7 @@ services:
       EVENTBUS_KAFKA_BROKER: ${EVENTBUS_KAFKA_BROKER:-kafka:9092}
       EVENTBUS_KAFKA_TOPIC: ${EVENTBUS_KAFKA_TOPIC:-ton_events}
       EVENTBUS_ENABLED: ${EVENTBUS_ENABLED:-true}
+      MESSAGES_KAFKA_STREAM: ${MESSAGES_KAFKA_STREAM:-false}
     secrets:
       - postgres_password
     depends_on:
