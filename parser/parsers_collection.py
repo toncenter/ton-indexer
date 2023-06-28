@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.future import select
 from parser.bitreader import BitReader
 from dataclasses import dataclass
-from kafka import KafkaProducer
+from aiokafka import AIOKafkaProducer
 from parser.eventbus import Event
 
 
@@ -484,7 +484,7 @@ class RemoteDataFetcher:
                 logger.error(f"No schema for URL: {url}")
                 return None
             else:
-                if parsed_url.netloc == 'localhost':
+                if parsed_url.netloc == 'localhost' or parsed_url.netloc in ["ton-metadata.fanz.ee", "startupmarket.io", "mashamimosa.ru", "server.tonguys.org"]:
                     return None
                 retry = 0
                 while retry < self.max_attempts:
@@ -965,7 +965,7 @@ class MessagesToKafka(Parser):
 
     def __init__(self):
         super(MessagesToKafka, self).__init__(MessagesToKafka.SuccessfulPredicate())
-        self.producer = KafkaProducer(bootstrap_servers=settings.eventbus.kafka.broker)
+        self.producer = None
         self.topic = settings.eventbus.messages.topic
 
     @staticmethod
@@ -973,6 +973,9 @@ class MessagesToKafka(Parser):
         return "MessagesToKafka"
 
     async def parse(self, session: Session, context: MessageContext):
+        if not self.producer:
+            self.producer = AIOKafkaProducer(bootstrap_servers=settings.eventbus.kafka.broker)
+            await self.producer.start()
         msg = {
             'msg_id': context.message.msg_id,
             'source': context.message.source,
@@ -988,7 +991,7 @@ class MessagesToKafka(Parser):
             'content': context.content.body
         }
         # logger.info(json.dumps(msg))
-        self.producer.send(self.topic, json.dumps(msg).encode("utf-8"))
+        await self.producer.send_and_wait(self.topic, json.dumps(msg).encode("utf-8"))
 
 
 # Collect all declared parsers
