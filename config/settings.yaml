@@ -33,7 +33,7 @@ postgres:
 eventbus:
   enabled: ${EVENTBUS_ENABLED}
   messages:
-    enabled: ${MESSAGES_STREAM_ENABLED}
+    enabled: ${MESSAGES_KAFKA_STREAM}
     topic: messages
   kafka:
     broker: ${EVENTBUS_KAFKA_BROKER}
