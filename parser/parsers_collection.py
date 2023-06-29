@@ -956,7 +956,7 @@ class MessagesToKafka(Parser):
 
 
         def _internal_match(self, context: MessageContext):
-            if not self.enabled:
+            if not self.enabled or context.message.destination == '': # log message
                 return False
             if context.destination_tx is None:
                 logger.warning(f"destination_tx is not found for message {context.message.msg_id}")
