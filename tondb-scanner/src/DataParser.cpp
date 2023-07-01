@@ -11,16 +11,6 @@
 
 using namespace ton::validator; //TODO: remove this
 
-// class ParseQuery: public td::actor::Actor {
-// private:
-//   const int mc_seqno_;
-//   MasterchainBlockDataState mc_block_;
-//   ParsedBlockPtr result;
-//   td::Promise<ParsedBlockPtr> promise_;
-// public:
-//   ParseQuery(int mc_seqno, MasterchainBlockDataState mc_block, td::Promise<ParsedBlockPtr> promise)
-//     : mc_seqno_(mc_seqno), mc_block_(std::move(mc_block)), result(std::make_shared<ParsedBlock>()), promise_(std::move(promise)) {}
-
 void ParseQuery::start_up() {
   auto status = parse_impl();
   if(status.is_error()) {

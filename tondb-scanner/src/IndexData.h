@@ -40,6 +40,7 @@ enum ComputeSkipReason {
   cskip_no_state = block::gen::ComputeSkipReason::cskip_no_state,
   cskip_bad_state = block::gen::ComputeSkipReason::cskip_bad_state,
   cskip_no_gas = block::gen::ComputeSkipReason::cskip_no_gas,
+  cskip_suspended = block::gen::ComputeSkipReason::cskip_suspended,
 };
 
 struct TrComputePhase_skipped {

@@ -104,6 +104,7 @@ public:
         case schema::ComputeSkipReason::cskip_no_state: return "no_state";
         case schema::ComputeSkipReason::cskip_bad_state: return "bad_state";
         case schema::ComputeSkipReason::cskip_no_gas: return "no_gas";
+        case schema::ComputeSkipReason::cskip_suspended: return "suspended";
     };
     UNREACHABLE();
   }
