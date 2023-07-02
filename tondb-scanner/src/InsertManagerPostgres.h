@@ -1,6 +1,9 @@
 #pragma once
 #include <queue>
+#include <pqxx/pqxx>
 #include "InsertManager.h"
+
+class InsertBatchMcSeqnos;
 
 class InsertManagerPostgres: public InsertManagerInterface {
 private:
@@ -8,6 +11,7 @@ private:
   std::queue<td::Promise<td::Unit>> promise_queue_;
 
   int batch_size{2048};
+  td::actor::ActorOwn<InsertBatchMcSeqnos> insert_batch_seqnos_actor_;
 
   struct PostgresCredential {
     std::string host = "127.0.0.1";
@@ -38,7 +42,7 @@ public:
 
   void report_statistics();
 
-  void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise);
+  void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise) override;
   void insert(ParsedBlockPtr block_ds, td::Promise<td::Unit> promise) override;
   void upsert_jetton_wallet(JettonWalletData jetton_wallet, td::Promise<td::Unit> promise) override;
   void get_jetton_wallet(std::string address, td::Promise<JettonWalletData> promise) override;
@@ -48,4 +52,32 @@ public:
   void get_nft_collection(std::string address, td::Promise<NFTCollectionData> promise) override;
   void upsert_nft_item(NFTItemData nft_item, td::Promise<td::Unit> promise) override;
   void get_nft_item(std::string address, td::Promise<NFTItemData> promise) override;
+};
+
+class InsertBatchMcSeqnos: public td::actor::Actor {
+public:
+  void insert(std::string connection_string, std::vector<ParsedBlockPtr> mc_blocks, td::Promise<td::Unit> promise);
+private:
+  std::string stringify(schema::ComputeSkipReason compute_skip_reason);
+  std::string stringify(schema::AccStatusChange acc_status_change);
+  std::string stringify(schema::AccountStatus account_status);
+  std::string jsonify(const schema::SplitMergeInfo& info);
+  std::string jsonify(const schema::StorageUsedShort& s);
+  std::string jsonify(const schema::TrStoragePhase& s);
+  std::string jsonify(const schema::TrCreditPhase& c);
+  std::string jsonify(const schema::TrActionPhase& action);
+  std::string jsonify(const schema::TrBouncePhase& bounce);
+  std::string jsonify(const schema::TrComputePhase& compute);
+  std::string jsonify(schema::TransactionDescr descr);
+  void insert_blocks(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_transactions(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_messsages(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_account_states(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_jetton_transfers(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_jetton_burns(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_nft_transfers(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+
+  int transactions_count_{0};
+  int messages_count_{0};
+  int blocks_count_{0};
 };
