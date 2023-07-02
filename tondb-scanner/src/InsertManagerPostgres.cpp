@@ -343,7 +343,7 @@ public:
 
   void insert_transactions(pqxx::work &transaction) {
     std::ostringstream query;
-    query << "INSERT INTO transactions (block_workchain, block_shard, block_seqno, account, hash, lt, now, orig_status, end_status, "
+    query << "INSERT INTO transactions (block_workchain, block_shard, block_seqno, account, hash, lt, prev_trans_hash, prev_trans_lt, now, orig_status, end_status, "
                                        "total_fees, account_state_hash_before, account_state_hash_after, description) VALUES ";
     bool is_first = true;
     for (const auto& mc_block : mc_blocks_) {
@@ -362,6 +362,8 @@ public:
                 << TO_SQL_STRING(td::base64_encode(transaction.hash.as_slice())) << ","
                 << transaction.lt << ","
                 << transaction.now << ","
+                << TO_SQL_STRING(td::base64_encode(transaction.prev_trans_hash.as_slice())) << ","
+                << transaction.prev_trans_lt << ","
                 << TO_SQL_STRING(stringify(transaction.orig_status)) << ","
                 << TO_SQL_STRING(stringify(transaction.end_status)) << ","
                 << transaction.total_fees << ","
