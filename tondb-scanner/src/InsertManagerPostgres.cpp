@@ -19,8 +19,6 @@ std::string content_to_json_string(const std::map<std::string, std::string> &con
   return jetton_content_json.string_builder().as_cslice().str();
 }
 
-std::mutex insert_mutex;
-
 void InsertBatchMcSeqnos::insert_blocks(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
   query << "INSERT INTO blocks (workchain, shard, seqno, root_hash, file_hash, mc_block_workchain, "
@@ -636,25 +634,22 @@ void InsertBatchMcSeqnos::insert(std::string connection_string, std::vector<Pars
       return;
     }
 
-    {
-      std::lock_guard<std::mutex> guard(insert_mutex);
-      pqxx::work txn(c);
-      insert_blocks(txn, mc_blocks);
-      insert_transactions(txn, mc_blocks);
-      insert_messsages(txn, mc_blocks);
-      insert_account_states(txn, mc_blocks);
-      insert_jetton_transfers(txn, mc_blocks);
-      insert_jetton_burns(txn, mc_blocks);
-      insert_nft_transfers(txn, mc_blocks);
-      txn.commit();
+    pqxx::work txn(c);
+    insert_blocks(txn, mc_blocks);
+    insert_transactions(txn, mc_blocks);
+    insert_messsages(txn, mc_blocks);
+    insert_account_states(txn, mc_blocks);
+    insert_jetton_transfers(txn, mc_blocks);
+    insert_jetton_burns(txn, mc_blocks);
+    insert_nft_transfers(txn, mc_blocks);
+    txn.commit();
 
-      LOG(INFO) << "Inserted " 
-                << mc_blocks.size() << " mc blocks, "
-                << blocks_count_ << " blocks, " 
-                << transactions_count_ << " txs, " 
-                << messages_count_ << " msgs";
-      promise.set_value(td::Unit());
-    }
+    LOG(INFO) << "Inserted " 
+              << mc_blocks.size() << " mc blocks, "
+              << blocks_count_ << " blocks, " 
+              << transactions_count_ << " txs, " 
+              << messages_count_ << " msgs";
+    promise.set_value(td::Unit());
   } catch (const std::exception &e) {
     promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
   }
