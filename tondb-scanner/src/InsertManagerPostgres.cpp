@@ -394,11 +394,39 @@ void InsertBatchMcSeqnos::insert_messsages(pqxx::work &transaction, std::vector<
   }
 
   messages_count_ = messages.size();
+  if (!messages_count_) {
+    return;
+  }
 
   std::ostringstream query;
+  bool is_first = true;
+  query << "INSERT INTO message_contents (hash, body) VALUES ";
+  for (const auto& message : messages) {
+    if (is_first) {
+      is_first = false;
+    } else {
+      query << ", ";
+    }
+
+    query << "("
+          << "'" << td::base64_encode(message.body->get_hash().as_slice()) << "',"
+          << TO_SQL_STRING(message.body_boc)
+          << ")";
+    if (message.init_state_boc) {
+      query << ", ("
+            << "'" << td::base64_encode(message.init_state->get_hash().as_slice()) << "',"
+            << TO_SQL_STRING(message.init_state_boc.value())
+            << ")";
+    }
+  }
+  query << " ON CONFLICT DO NOTHING";
+
+  // LOG(DEBUG) << "Running SQL query: " << query.str();
+  transaction.exec0(query.str());
+
   query << "INSERT INTO messages (hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, opcode, "
                                 "ihr_disabled, bounce, bounced, import_fee, body_hash, init_state_hash) VALUES ";
-  bool is_first = true;
+  is_first = true;
   for (const auto& message : messages) {
     if (is_first) {
       is_first = false;
@@ -422,35 +450,6 @@ void InsertBatchMcSeqnos::insert_messsages(pqxx::work &transaction, std::vector<
           << "'" << td::base64_encode(message.body->get_hash().as_slice()) << "',"
           << (message.init_state.not_null() ? TO_SQL_STRING(td::base64_encode(message.init_state->get_hash().as_slice())) : "NULL")
           << ")";
-  }
-  if (is_first) {
-    return;
-  }
-  query << " ON CONFLICT DO NOTHING";
-
-  // LOG(DEBUG) << "Running SQL query: " << query.str();
-  transaction.exec0(query.str());
-
-  query.str("");
-  is_first = true;
-  query << "INSERT INTO message_contents (hash, body) VALUES ";
-  for (const auto& message : messages) {
-    if (is_first) {
-      is_first = false;
-    } else {
-      query << ", ";
-    }
-
-    query << "("
-          << "'" << td::base64_encode(message.body->get_hash().as_slice()) << "',"
-          << TO_SQL_STRING(message.body_boc)
-          << ")";
-    if (message.init_state_boc) {
-      query << ", ("
-            << "'" << td::base64_encode(message.init_state->get_hash().as_slice()) << "',"
-            << TO_SQL_STRING(message.init_state_boc.value())
-            << ")";
-    }
   }
   if (is_first) {
     return;
