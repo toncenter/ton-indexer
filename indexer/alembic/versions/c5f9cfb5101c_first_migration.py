@@ -172,6 +172,8 @@ def upgrade():
     sa.Column('account', sa.String(), nullable=True),
     sa.Column('hash', sa.String(), nullable=False),
     sa.Column('lt', sa.BigInteger(), nullable=True),
+    sa.Column('prev_trans_hash', sa.String(), nullable=True),
+    sa.Column('prev_trans_lt', sa.BigInteger(), nullable=True),
     sa.Column('now', sa.Integer(), nullable=True),
     sa.Column('orig_status', sa.Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status'), nullable=True),
     sa.Column('end_status', sa.Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status'), nullable=True),
