@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from time import sleep
+from typing import Optional
 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -168,13 +169,6 @@ class AccountState(Base):
     code_hash = Column(String)
     data_hash = Column(String)
 
-    # transaction_before = relationship("Transaction", 
-    #                                   foreign_keys=[hash],
-    #                                   back_populates='new_account_state')
-    # transaction_after = relationship("Transaction", 
-    #                                  foreign_keys=[hash],
-    #                                  back_populates='old_account_state')
-
 
 class Message(Base):
     __tablename__ = 'messages'
@@ -192,7 +186,7 @@ class Message(Base):
     bounced: bool = Column(Boolean)
     import_fee: int = Column(BigInteger)
     body_hash: str = Column(String(44), ForeignKey("message_contents.hash"))
-    init_state_hash: str = Column(String(44))
+    init_state_hash: Optional[str] = Column(String(44), nullable=True)
 
     transactions = relationship("TransactionMessage", back_populates="message")
     message_content = relationship("MessageContent", back_populates="message")

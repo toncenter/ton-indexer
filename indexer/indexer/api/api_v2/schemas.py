@@ -2,8 +2,21 @@ from enum import Enum
 from typing import List, Optional, Literal, Union, Any, Dict
 from pydantic import BaseModel, Field
 
+from indexer.core.utils import b64_to_hex, address_to_raw, int_to_hex
+
 import logging
 logger = logging.getLogger(__name__)
+
+
+
+def hash_type(value):
+    return b64_to_hex(value) if value else None
+
+def address_type(value):
+    return address_to_raw(value) if value else None
+
+def shard_type(value):
+    return int_to_hex(value, length=64, signed=True) if value else None
 
 
 class BlockReference(BaseModel):
@@ -29,7 +42,7 @@ class Block(BaseModel):
     vert_seqno_incr: bool
     flags: int
 
-    gen_utime: int
+    gen_utime: str
     start_lt: str
     end_lt: str
 
@@ -48,10 +61,10 @@ class Block(BaseModel):
     @classmethod
     def from_orm(cls, obj):
         return Block(workchain=obj.workchain,
-                     shard=obj.shard,
+                     shard=shard_type(obj.shard),
                      seqno=obj.seqno,
-                     root_hash=obj.root_hash,
-                     file_hash=obj.file_hash,
+                     root_hash=hash_type(obj.root_hash),
+                     file_hash=hash_type(obj.file_hash),
                      global_id=obj.global_id,
                      version=obj.version,
                      after_merge=obj.after_merge,
@@ -70,10 +83,10 @@ class Block(BaseModel):
                      prev_key_block_seqno=obj.prev_key_block_seqno,
                      vert_seqno=obj.vert_seqno,
                      master_ref_seqno=obj.master_ref_seqno,
-                     rand_seed=obj.rand_seed,
-                     created_by=obj.created_by,
+                     rand_seed=hash_type(obj.rand_seed),
+                     created_by=hash_type(obj.created_by),
                      masterchain_block_ref=BlockReference(workchain=obj.mc_block_workchain, 
-                                                          shard=obj.mc_block_shard, 
+                                                          shard=shard_type(obj.mc_block_shard), 
                                                           seqno=obj.mc_block_seqno) 
                                            if obj.mc_block_seqno is not None else None)
 
@@ -91,7 +104,7 @@ class MessageContent(BaseModel):
 
     @classmethod
     def from_orm(cls, obj):
-        return MessageContent(hash=obj.hash,
+        return MessageContent(hash=hash_type(obj.hash),
                               body=obj.body)
 
 
@@ -99,25 +112,25 @@ class Message(BaseModel):
     hash: str
     source: str
     destination: str
-    value: Optional[int]
-    fwd_fee: Optional[int]
-    ihr_fee: Optional[int]
-    created_lt: Optional[int]
-    created_at: Optional[int]
+    value: Optional[str]
+    fwd_fee: Optional[str]
+    ihr_fee: Optional[str]
+    created_lt: Optional[str]
+    created_at: Optional[str]
     opcode: Optional[int]
     ihr_disabled: Optional[bool]
     bounce: Optional[bool]
-    import_fee: Optional[int]
+    import_fee: Optional[str]
     body_hash: str
     init_state_hash: Optional[str]
 
     message_content: Optional[MessageContent]
 
     @classmethod
-    def from_orm(cls, obj, include_msg_body=False):
-        return Message(hash=obj.hash,
-                       source=obj.source or 'addr_none',
-                       destination=obj.destination or 'addr_none',
+    def from_orm(cls, obj):
+        return Message(hash=hash_type(obj.hash),
+                       source=address_to_raw(obj.source) or 'addr_none',
+                       destination=address_to_raw(obj.destination) or 'addr_none',
                        value=obj.value,
                        fwd_fee=obj.fwd_fee,
                        ihr_fee=obj.ihr_fee,
@@ -127,16 +140,15 @@ class Message(BaseModel):
                        ihr_disabled=obj.ihr_disabled,
                        bounce=obj.bounce,
                        import_fee=obj.import_fee,
-                       body_hash=obj.body_hash,
-                       init_state_hash=obj.init_state_hash,
-                       message_content=MessageContent.from_orm(obj.message_content) 
-                                       if include_msg_body else None)
+                       body_hash=hash_type(obj.body_hash),
+                       init_state_hash=hash_type(obj.init_state_hash),
+                       message_content=MessageContent.from_orm(obj.message_content))
 
 
 class AccountState(BaseModel):
     hash: str
     account: str
-    balance: int
+    balance: str
     account_status: AccountStatus
     frozen_hash: str
     code_hash: str
@@ -144,26 +156,26 @@ class AccountState(BaseModel):
 
     @classmethod
     def from_orm(cls, obj):
-        return AccountState(hash=obj.hash,
-                            account=obj.account,
+        return AccountState(hash=hash_type(obj.hash),
+                            account=address_type(obj.account),
                             balance=obj.balance,
                             account_status=AccountStatus(obj.account_status),
-                            frozen_hash=obj.frozen_hash,
-                            code_hash=obj.code_hash,
-                            data_hash=obj.data_hash)
+                            frozen_hash=hash_type(obj.frozen_hash),
+                            code_hash=hash_type(obj.code_hash),
+                            data_hash=hash_type(obj.data_hash))
 
 
 class Transaction(BaseModel):
     account: str
     hash: str
-    lt: int
+    lt: str
 
     now: int
 
     orig_status: AccountStatus
     end_status: AccountStatus
 
-    total_fees: int
+    total_fees: str
 
     account_state_hash_before: str
     account_state_hash_after: str
@@ -175,27 +187,27 @@ class Transaction(BaseModel):
     out_msgs: List[Message]
 
     @classmethod
-    def from_orm(cls, obj, include_msg_body=False):
+    def from_orm(cls, obj):
         in_msg = None
         out_msgs = []
         for tx_msg in obj.messages:
-            msg = Message.from_orm(tx_msg.message, include_msg_body=include_msg_body)
+            msg = Message.from_orm(tx_msg.message)
             if tx_msg.direction == 'in':
                 in_msg = msg
             else:
                 out_msgs.append(msg)
-        return Transaction(account=obj.account,
-                           hash=obj.hash,
+        return Transaction(account=address_type(obj.account),
+                           hash=hash_type(obj.hash),
                            lt=obj.lt,
                            now=obj.now,
                            orig_status=AccountStatus(obj.orig_status),
                            end_status=AccountStatus(obj.end_status),
                            total_fees=obj.total_fees,
-                           account_state_hash_after=obj.account_state_hash_after,
-                           account_state_hash_before=obj.account_state_hash_before,
+                           account_state_hash_after=hash_type(obj.account_state_hash_after),
+                           account_state_hash_before=hash_type(obj.account_state_hash_before),
                            description=obj.description,
                            block_ref=BlockReference(workchain=obj.block_workchain, 
-                                                    shard=obj.block_shard, 
+                                                    shard=shard_type(obj.block_shard), 
                                                     seqno=obj.block_seqno),
                            in_msg=in_msg,
                            out_msgs=out_msgs)
