@@ -1,5 +1,4 @@
 from typing import Optional
-
 from pydantic import (
     BaseSettings,
     PostgresDsn
@@ -8,7 +7,7 @@ from pydantic import (
 
 class Settings(BaseSettings):
     # redis_dsn: RedisDsn = 'redis://localhost:6379'
-    pg_dsn: PostgresDsn = 'postgres+asyncpg://localhost:5432/ton_index_a'
+    pg_dsn: PostgresDsn = 'postgresql+asyncpg://localhost:5432/ton_index_a'
     # amqp_dsn: AmqpDsn = 'amqp://localhost:5672'
 
     # use_ext_method: bool = False

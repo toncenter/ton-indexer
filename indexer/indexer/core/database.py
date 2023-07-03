@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from time import sleep
 
 from sqlalchemy.ext.declarative import declarative_base
@@ -19,12 +20,15 @@ from sqlalchemy.future import select
 
 
 from indexer.core.settings import Settings
-from loguru import logger
+
+
+logger = logging.getLogger(__name__)
 
 MASTERCHAIN_INDEX = -1
 MASTERCHAIN_SHARD = -9223372036854775808
 
 settings = Settings()
+
 
 # init database
 def get_engine(settings: Settings):
@@ -36,14 +40,14 @@ def get_engine(settings: Settings):
                                  echo=False)
     return engine
 
-engine = get_engine(settings)
 
+engine = get_engine(settings)
 SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
 
 # database
 Base = declarative_base()
-
 utils_url = str(engine.url).replace('+asyncpg', '')
+
 
 def init_database(create=False):
     while not database_exists(utils_url):
@@ -58,6 +62,12 @@ def init_database(create=False):
         sleep(0.5)
 
 
+# types
+AccountStatus = Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status')
+
+
+
+# classes
 class Block(Base):
     __tablename__ = 'blocks'
     __table_args__ = (
@@ -77,7 +87,9 @@ class Block(Base):
     mc_block_shard: str = Column(BigInteger, nullable=True)
     mc_block_seqno: int = Column(Integer, nullable=True)
 
-    masterchain_block = relationship("Block", remote_side=[workchain, shard, seqno], backref='shard_blocks', cascade="all, delete")
+    masterchain_block = relationship("Block", 
+                                     remote_side=[workchain, shard, seqno], 
+                                     backref='shard_blocks')
 
     global_id: int = Column(Integer)
     version: int = Column(Integer)
@@ -100,9 +112,8 @@ class Block(Base):
     rand_seed: str = Column(String(44))
     created_by: str = Column(String)
 
-    transactions = relationship("Transaction", back_populates="block", cascade="all, delete")
+    transactions = relationship("Transaction", back_populates="block")
 
-AccountStatus = Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status')
 
 class Transaction(Base):
     __tablename__ = 'transactions'
@@ -117,7 +128,7 @@ class Transaction(Base):
     block_shard = Column(BigInteger)
     block_seqno = Column(Integer)
 
-    block = relationship("Block", back_populates="transactions", cascade="all, delete")
+    block = relationship("Block", back_populates="transactions")
 
     account = Column(String)
     hash = Column(String, primary_key=True)
@@ -129,13 +140,22 @@ class Transaction(Base):
 
     total_fees = Column(BigInteger)
 
-    account_state_hash_before = Column(String)#, ForeignKey('account_states.hash'))
-    account_state_hash_after = Column(String)#, ForeignKey('account_states.hash'))
+    account_state_hash_before = Column(String)
+    account_state_hash_after = Column(String)
 
-    old_account_state = relationship("AccountState", foreign_keys=[account_state_hash_before], viewonly=True)
-    new_account_state = relationship("AccountState", foreign_keys=[account_state_hash_after], viewonly=True)
+    old_account_state = relationship("AccountState", 
+                                     foreign_keys=[account_state_hash_before],
+                                     primaryjoin="AccountState.hash == Transaction.account_state_hash_before", 
+                                     viewonly=True)
+    new_account_state = relationship("AccountState", 
+                                     foreign_keys=[account_state_hash_after],
+                                     primaryjoin="AccountState.hash == Transaction.account_state_hash_after", 
+                                     viewonly=True)
 
     description = Column(JSONB)
+    
+    messages = relationship("TransactionMessage", back_populates="transaction")
+
 
 class AccountState(Base):
     __tablename__ = 'account_states'
@@ -147,6 +167,14 @@ class AccountState(Base):
     frozen_hash = Column(String)
     code_hash = Column(String)
     data_hash = Column(String)
+
+    # transaction_before = relationship("Transaction", 
+    #                                   foreign_keys=[hash],
+    #                                   back_populates='new_account_state')
+    # transaction_after = relationship("Transaction", 
+    #                                  foreign_keys=[hash],
+    #                                  back_populates='old_account_state')
+
 
 class Message(Base):
     __tablename__ = 'messages'
@@ -163,8 +191,12 @@ class Message(Base):
     bounce: bool = Column(Boolean)
     bounced: bool = Column(Boolean)
     import_fee: int = Column(BigInteger)
-    body_hash: str = Column(String(44))
+    body_hash: str = Column(String(44), ForeignKey("message_contents.hash"))
     init_state_hash: str = Column(String(44))
+
+    transactions = relationship("TransactionMessage", back_populates="message")
+    message_content = relationship("MessageContent", back_populates="message")
+
 
 class TransactionMessage(Base):
     __tablename__ = 'transaction_messages'
@@ -172,32 +204,18 @@ class TransactionMessage(Base):
     message_hash = Column(String(44), ForeignKey('messages.hash'), primary_key=True)
     direction = Column(Enum('in', 'out', name="direction"), primary_key=True)
 
-    transaction = relationship("Transaction", back_populates="messages", cascade="all, delete")
-    message = relationship("Message", back_populates="transactions", cascade="all, delete")
-
+    transaction = relationship("Transaction", back_populates="messages")
+    message = relationship("Message", back_populates="transactions")
 
 
 class MessageContent(Base):
     __tablename__ = 'message_contents'
     
-    hash: int = Column(String, primary_key=True)
+    hash: str = Column(String(44), primary_key=True)
     body: str = Column(String)
 
+    message = relationship("Message", back_populates="message_content")
 
-class CodeHashInterfaces(Base):
-    __tablename__ = 'code_hash'
-
-    code_hash = Column(String, primary_key=True)
-    interfaces = Column(ARRAY(Enum('nft_item', 
-                                   'nft_editable', 
-                                   'nft_collection', 
-                                   'nft_royalty',
-                                   'jetton_wallet', 
-                                   'jetton_master',
-                                   'domain',
-                                   'subscription',
-                                   'auction',
-                                   name='interface_name')))
 
 class JettonWallet(Base):
     __tablename__ = 'jetton_wallets'
@@ -208,6 +226,7 @@ class JettonWallet(Base):
     last_transaction_lt = Column(BigInteger)
     code_hash = Column(String)
     data_hash = Column(String)
+
 
 class JettonMaster(Base):
     __tablename__ = 'jetton_masters'
@@ -223,6 +242,7 @@ class JettonMaster(Base):
     code_boc = Column(String)
     data_boc = Column(String)
 
+
 class JettonTransfers(Base):
     __tablename__ = 'jetton_transfers'
     transaction_hash = Column(String, primary_key=True)
@@ -235,6 +255,7 @@ class JettonTransfers(Base):
     forward_ton_amount: int = Column(Numeric)
     forward_payload = Column(String)
 
+
 class JettonBurn(Base):
     __tablename__ = 'jetton_burns'
     transaction_hash = Column(String, primary_key=True)
@@ -243,6 +264,7 @@ class JettonBurn(Base):
     amount: int = Column(Numeric)
     response_destination = Column(String)
     custom_payload = Column(String)
+
 
 class NFTCollection(Base):
     __tablename__ = 'nft_collections'
@@ -256,6 +278,7 @@ class NFTCollection(Base):
     code_boc = Column(String)
     data_boc = Column(String)
 
+
 class NFTItem(Base):
     __tablename__ = 'nft_items'
     address = Column(String, primary_key=True)
@@ -267,6 +290,7 @@ class NFTItem(Base):
     last_transaction_lt = Column(BigInteger)
     code_hash = Column(String)
     data_hash = Column(String)
+
 
 class NFTTransfer(Base):
     __tablename__ = 'nft_transfers'
