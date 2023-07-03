@@ -134,6 +134,8 @@ class Transaction(Base):
     account = Column(String)
     hash = Column(String, primary_key=True)
     lt = Column(BigInteger)
+    prev_trans_hash = Column(String)
+    prev_trans_lt = Column(BigInteger)
     now = Column(Integer)
 
     orig_status = Column(AccountStatus)
