@@ -424,6 +424,7 @@ void InsertBatchMcSeqnos::insert_messsages(pqxx::work &transaction, std::vector<
   // LOG(DEBUG) << "Running SQL query: " << query.str();
   transaction.exec0(query.str());
 
+  query.str("");
   query << "INSERT INTO messages (hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, opcode, "
                                 "ihr_disabled, bounce, bounced, import_fee, body_hash, init_state_hash) VALUES ";
   is_first = true;
