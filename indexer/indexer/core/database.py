@@ -146,14 +146,14 @@ class Transaction(Base):
     account_state_hash_before = Column(String)
     account_state_hash_after = Column(String)
 
-    old_account_state = relationship("AccountState", 
-                                     foreign_keys=[account_state_hash_before],
-                                     primaryjoin="AccountState.hash == Transaction.account_state_hash_before", 
-                                     viewonly=True)
-    new_account_state = relationship("AccountState", 
-                                     foreign_keys=[account_state_hash_after],
-                                     primaryjoin="AccountState.hash == Transaction.account_state_hash_after", 
-                                     viewonly=True)
+    account_state_before = relationship("AccountState", 
+                                        foreign_keys=[account_state_hash_before],
+                                        primaryjoin="AccountState.hash == Transaction.account_state_hash_before", 
+                                        viewonly=True)
+    account_state_after = relationship("AccountState", 
+                                       foreign_keys=[account_state_hash_after],
+                                       primaryjoin="AccountState.hash == Transaction.account_state_hash_after", 
+                                       viewonly=True)
 
     description = Column(JSONB)
     
@@ -192,6 +192,10 @@ class Message(Base):
 
     transactions = relationship("TransactionMessage", back_populates="message")
     message_content = relationship("MessageContent", back_populates="message")
+    init_state = relationship("MessageContent", 
+                              foreign_keys=[init_state_hash],
+                              primaryjoin="Message.init_state_hash == MessageContent.hash", 
+                              viewonly=True)
 
 
 class TransactionMessage(Base):

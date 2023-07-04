@@ -162,8 +162,8 @@ def augment_transaction_query(query: Query,
     query = query.options(msg_join)
 
     if include_account_state:
-        query = query.options(joinedload(Transaction.new_account_state)) \
-                     .options(joinedload(Transaction.old_account_state))
+        query = query.options(joinedload(Transaction.account_state_after)) \
+                     .options(joinedload(Transaction.account_state_before))
     return query
 
 
@@ -240,9 +240,9 @@ def get_block_transactions(session: Session,
 
 def get_transactions_by_masterchain_seqno(session: Session, 
                                           masterchain_seqno: int, 
-                                          include_msg_body: bool=False, 
+                                          include_msg_body: bool=True, 
                                           include_block: bool=False,
-                                          include_account_state: bool=False,
+                                          include_account_state: bool=True,
                                           limit: Optional[int]=None,
                                           offset: Optional[int]=None,
                                           sort: Optional[str]=None):
@@ -279,9 +279,9 @@ def get_transactions(session: Session,
                      end_lt: Optional[str]=None,
                      start_utime: Optional[str]=None,
                      end_utime: Optional[str]=None,
-                     include_msg_body: bool=False, 
+                     include_msg_body: bool=True, 
                      include_block: bool=False,
-                     include_account_state: bool=False,
+                     include_account_state: bool=True,
                      limit: Optional[int]=None,
                      offset: Optional[int]=None,
                      sort: Optional[str]=None):
@@ -295,7 +295,7 @@ def get_transactions(session: Session,
         query = query.filter(Transaction.block_seqno == seqno)  # TODO: index
 
     if account is not None:
-        query = query.filter(Transaction.account == account)  # TODO: index
+        query = query.filter(Transaction.account == account.upper())  # TODO: index
 
     if hash is not None:
         query = query.filter(Transaction.hash == hash)  # TODO: index
@@ -349,7 +349,8 @@ def get_adjacent_transactions(session: Session,
 def augment_message_query(query: Query,
                           include_msg_body: bool):
     if include_msg_body:
-        query = query.options(joinedload(Message.message_content))
+        query = query.options(joinedload(Message.message_content)) \
+                     .options(joinedload(Message.init_state))
     return query
 
 

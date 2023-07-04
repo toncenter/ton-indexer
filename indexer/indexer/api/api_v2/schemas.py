@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 def hash_type(value):
-    return b64_to_hex(value) if value else None
+    return b64_to_hex(value).upper() if value else None
 
 def address_type(value):
-    return address_to_raw(value) if value else None
+    return address_to_raw(value).upper() if value else None
 
 def shard_type(value):
-    return int_to_hex(value, length=64, signed=True) if value else None
+    return int_to_hex(value, length=64, signed=True).upper() if value else None
 
 
 class BlockReference(BaseModel):
@@ -120,17 +120,19 @@ class Message(BaseModel):
     opcode: Optional[int]
     ihr_disabled: Optional[bool]
     bounce: Optional[bool]
+    bounced: Optional[bool]
     import_fee: Optional[str]
     body_hash: str
     init_state_hash: Optional[str]
 
     message_content: Optional[MessageContent]
+    init_state: Optional[MessageContent]
 
     @classmethod
     def from_orm(cls, obj):
         return Message(hash=hash_type(obj.hash),
-                       source=address_to_raw(obj.source) or 'addr_none',
-                       destination=address_to_raw(obj.destination) or 'addr_none',
+                       source=address_type(obj.source) or 'addr_none',
+                       destination=address_type(obj.destination) or 'addr_none',
                        value=obj.value,
                        fwd_fee=obj.fwd_fee,
                        ihr_fee=obj.ihr_fee,
@@ -139,10 +141,12 @@ class Message(BaseModel):
                        opcode=obj.opcode,
                        ihr_disabled=obj.ihr_disabled,
                        bounce=obj.bounce,
+                       bounced=obj.bounced,
                        import_fee=obj.import_fee,
                        body_hash=hash_type(obj.body_hash),
                        init_state_hash=hash_type(obj.init_state_hash),
-                       message_content=MessageContent.from_orm(obj.message_content))
+                       message_content=MessageContent.from_orm(obj.message_content) if obj.message_content else None,
+                       init_state=MessageContent.from_orm(obj.init_state) if obj.init_state else None)
 
 
 class AccountState(BaseModel):
@@ -150,7 +154,7 @@ class AccountState(BaseModel):
     account: str
     balance: str
     account_status: AccountStatus
-    frozen_hash: str
+    frozen_hash: Optional[str]
     code_hash: str
     data_hash: str
 
@@ -180,11 +184,17 @@ class Transaction(BaseModel):
     account_state_hash_before: str
     account_state_hash_after: str
 
+    prev_trans_hash: str
+    prev_trans_lt: str
+
     description: Any
 
     block_ref: Optional[BlockReference]
     in_msg: Optional[Message]
     out_msgs: List[Message]
+
+    account_state_before: Optional[AccountState]
+    account_state_after: Optional[AccountState]
 
     @classmethod
     def from_orm(cls, obj):
@@ -205,9 +215,13 @@ class Transaction(BaseModel):
                            total_fees=obj.total_fees,
                            account_state_hash_after=hash_type(obj.account_state_hash_after),
                            account_state_hash_before=hash_type(obj.account_state_hash_before),
+                           prev_trans_hash=hash_type(obj.prev_trans_hash),
+                           prev_trans_lt=obj.prev_trans_lt,
                            description=obj.description,
                            block_ref=BlockReference(workchain=obj.block_workchain, 
                                                     shard=shard_type(obj.block_shard), 
                                                     seqno=obj.block_seqno),
                            in_msg=in_msg,
-                           out_msgs=out_msgs)
+                           out_msgs=out_msgs,
+                           account_state_before=AccountState.from_orm(obj.account_state_before) if obj.account_state_before else None,
+                           account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,)

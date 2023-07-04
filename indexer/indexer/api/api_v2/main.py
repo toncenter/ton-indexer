@@ -123,7 +123,6 @@ async def get_masterchain_block_transactions(
     """
     txs = await db.run_sync(crud.get_transactions_by_masterchain_seqno,
                             masterchain_seqno=seqno,
-                            include_msg_body=True,
                             limit=limit,
                             offset=offset,
                             sort=sort)
@@ -150,7 +149,6 @@ async def get_workchain_block_transactions(
                             end_utime=end_utime,
                             start_lt=start_lt,
                             end_lt=end_lt,
-                            include_msg_body=True,
                             limit=limit,
                             offset=offset,
                             sort=sort)
@@ -196,7 +194,6 @@ async def get_workchain_block_transactions(
                             workchain=workchain,
                             shard=shard,
                             seqno=seqno,
-                            include_msg_body=True,
                             limit=limit,
                             offset=offset,
                             sort=sort)
@@ -210,9 +207,6 @@ async def get_transaction(
     hash = hash_to_b64(hash)
     txs = await db.run_sync(crud.get_transactions,
                             hash=hash,
-                            include_msg_body=True,
-                            include_block=True,
-                            include_account_state=True,  # TODO: is it required?
                             limit=2)
     if len(txs) < 1:
         raise exceptions.TransactionNotFound(tx_hash=hash) 
@@ -229,7 +223,6 @@ async def get_transaction_ancestor(
     txs = await db.run_sync(crud.get_adjacent_transactions,
                             hash=hash,
                             direction='in',
-                            include_msg_body=True,
                             limit=2)
     if len(txs) < 1:
         raise exceptions.TransactionNotFound(adjacent_tx_hash=hash, direction='in') 
@@ -249,7 +242,6 @@ async def get_transaction_descendants(
     txs = await db.run_sync(crud.get_adjacent_transactions,
                             hash=hash,
                             direction='out',
-                            include_msg_body=True,
                             limit=limit,
                             offset=offset,
                             sort=sort)
@@ -259,10 +251,25 @@ async def get_transaction_descendants(
 
 
 # accounts
-@router.get('/account/{account_addr}/transactions')
+@router.get('/account/{account}/transactions')
 async def get_account_state(
     account: str = Path(..., description="The account address to get transactions. Can be sent in hex or base64url form."),
+    start_utime: Optional[int] = Query(None, description="UTC timestamp to start searching transactions", ge=0, le=UINT32_MAX),
+    end_utime: Optional[int] = Query(None, description="UTC timestamp to stop searching transactions. If not specified latest transactions are returned.", ge=0, le=UINT32_MAX),
+    start_lt: Optional[int] = Query(None, description="Logical time to start searching transactions", ge=0, le=UINT64_MAX),
+    end_lt: Optional[int] = Query(None, description="Logical time to stop searching transactions. If not specified latest transactions are returned.", ge=0, le=UINT64_MAX),
+    limit: int = Query(128, description='Limit number of queried rows. Use to batch read', ge=1, le=256),
+    offset: int = Query(0, description='Skip first <offset> rows. Use to batch read', ge=0),
+    sort: str = Query('desc', description='Sort transactions by lt.', enum=['none', 'asc', 'desc']),
     db: AsyncSession = Depends(get_db)):
     account = address_to_raw(account)
-    
-    return
+    txs = await db.run_sync(crud.get_transactions,
+                            start_utime=start_utime,
+                            end_utime=end_utime,
+                            start_lt=start_lt,
+                            end_lt=end_lt,
+                            account=account,
+                            limit=limit,
+                            offset=offset,
+                            sort=sort)
+    return [schemas.Transaction.from_orm(tx) for tx in txs]
