@@ -9,6 +9,13 @@ from indexer.core.database import (
     Transaction,
     TransactionMessage,
     Message,
+    NFTCollection,
+    NFTItem,
+    NFTTransfer,
+    JettonMaster,
+    JettonWallet,
+    JettonTransfer,
+    JettonBurn,
     MASTERCHAIN_INDEX,
     MASTERCHAIN_SHARD
 )
@@ -379,6 +386,194 @@ def get_messages(session: Session,
     return query.all()
 
 
+# nfts
+def get_nft_collections(session: Session,
+                        address: Optional[str]=None,
+                        owner_address: Optional[str]=None,
+                        limit: Optional[int]=None,
+                        offset: Optional[int]=None):
+    query = session.query(NFTCollection)
+    if address is not None:
+        query = query.filter(NFTCollection.address == address)  # TODO: index
+    if owner_address is not None:
+        query = query.filter(NFTCollection.owner_address == owner_address)  # TODO: index
+    query = limit_query(query, limit, offset)
+    return query.all()
+
+
+def get_nft_items(session: Session,
+                  address: Optional[str]=None,
+                  index: Optional[int]=None,
+                  collection_address: Optional[str]=None,
+                  owner_address: Optional[str]=None,
+                  limit: Optional[int]=None,
+                  offset: Optional[int]=None,):
+    query = session.query(NFTItem)
+    if address is not None:
+        query = query.filter(NFTItem.address == address)  # TODO: index
+    if index is not None:
+        query = query.filter(NFTItem.index == index)  # TODO: index
+    if collection_address is not None:
+        query = query.filter(NFTItem.collection_address == collection_address)  # TODO: index
+    if owner_address is not None:
+        query = query.filter(NFTItem.owner_address == owner_address)  # TODO: index
+    query = limit_query(query, limit, offset)
+    query = query.options(joinedload(NFTItem.collection))
+    return query.all()
+
+
+def get_nft_transfers(session: Session,
+                      nft_item: Optional[str]=None,
+                      nft_collection: Optional[str]=None,
+                      account: Optional[str]=None,
+                      direction: Optional[str]=None,
+                      start_lt: Optional[str]=None,
+                      end_lt: Optional[str]=None,
+                      start_utime: Optional[str]=None,
+                      end_utime: Optional[str]=None,
+                      limit: Optional[int]=None,
+                      offset: Optional[int]=None,
+                      sort: Optional[str]=None):
+    query = session.query(NFTTransfer).join(NFTTransfer.transaction).join(NFTTransfer.nft_item)
+    if nft_item is not None:
+        query = query.filter(NFTTransfer.nft_item_address == nft_item)
+    if nft_collection is not None:
+        query = query.filter(NFTItem.collection_address == nft_collection)
+    if account is not None:
+        if direction == 'in':
+            fltr = NFTTransfer.new_owner == account
+        elif direction == 'out':
+            fltr = NFTTransfer.old_owner == account
+        elif direction is None:
+            fltr = or_(NFTTransfer.new_owner == account,
+                       NFTTransfer.old_owner == account)
+        else:
+            raise ValueError(f"Unknown nft transfer direction :'{direction}'")
+        query = query.filter(fltr)
+    query = query_transactions_by_lt(query, start_lt, end_lt)
+    query = query_transactions_by_utime(query, start_utime, end_utime)
+    query = sort_transaction_query_by_lt(query, sort)
+    query = limit_query(query, limit, offset)
+    query = query.options(joinedload(NFTTransfer.nft_item))
+    query = query.options(joinedload(NFTTransfer.transaction))
+    return query.all()
+
+
+def get_account_nft_collections(session: Session,
+                                address: str,
+                                limit: Optional[int]=None,
+                                offset: Optional[int]=None,):
+    query = session.query(NFTCollection).join(NFTCollection.items)
+    query = query.filter(NFTItem.owner_address == address)
+    query = limit_query(query, limit, offset)
+    query = query.distinct()
+    return query.all()
+
+
+# jettons
+def get_jetton_masters(session: Session,
+                       address: Optional[str]=None,
+                       admin_address: Optional[str]=None,
+                       limit: Optional[int]=None,
+                       offset: Optional[int]=None):
+    query = session.query(JettonMaster)
+    if address is not None:
+        query = query.filter(JettonMaster.address == address)
+    if admin_address is not None:
+        query = query.filter(JettonMaster.admin_address == admin_address)
+    query = limit_query(query, limit, offset)
+    return query.all()
+
+
+def get_jetton_wallets(session: Session,
+                       address: Optional[str]=None,
+                       owner_address: Optional[str]=None,
+                       jetton_address: Optional[str]=None,
+                       limit: Optional[int]=None,
+                       offset: Optional[int]=None):
+    query = session.query(JettonWallet)
+    if address is not None:
+        query = query.filter(JettonWallet.address == address)
+    if owner_address is not None:
+        query = query.filter(JettonWallet.owner == owner_address)
+    if jetton_address is not None:
+        query = query.filter(JettonWallet.jetton == jetton_address)    
+    query = limit_query(query, limit, offset)
+    return query.all()
+
+
+def get_jetton_transfers(session: Session,
+                         account: Optional[str]=None,
+                         direction: Optional[str]=None,
+                         jetton_account: Optional[str]=None,
+                         jetton_master: Optional[str]=None,
+                         start_lt: Optional[str]=None,
+                         end_lt: Optional[str]=None,
+                         start_utime: Optional[str]=None,
+                         end_utime: Optional[str]=None,
+                         limit: Optional[int]=None,
+                         offset: Optional[int]=None,
+                         sort: Optional[str]=None):
+    query = session.query(JettonTransfer) \
+                   .join(JettonTransfer.jetton_wallet) \
+                   .join(JettonTransfer.transaction)
+    if account is not None:
+        if direction == 'in':
+            fltr = JettonTransfer.destination == account
+        elif direction == 'out':
+            fltr = JettonTransfer.source == account
+        elif direction is None:
+            fltr = or_(JettonTransfer.source == account,
+                       JettonTransfer.destination == account)
+        else:
+            raise ValueError(f"Unknown nft transfer direction :'{direction}'")
+        query = query.filter(fltr)
+    if jetton_account is not None:
+        query = query.filter(JettonTransfer.jetton_wallet_address == jetton_account)
+    if jetton_master is not None:
+        query = query.filter(JettonWallet.jetton == jetton_master)
+    
+    query = query_transactions_by_lt(query, start_lt, end_lt)
+    query = query_transactions_by_utime(query, start_utime, end_utime)
+    query = sort_transaction_query_by_lt(query, sort)
+    query = limit_query(query, limit, offset)
+    query = query.options(joinedload(JettonTransfer.jetton_wallet))
+    query = query.options(joinedload(JettonTransfer.transaction))
+    return query.all()
+
+
+def get_jetton_burns(session: Session,
+                     account: Optional[str]=None,
+                     jetton_account: Optional[str]=None,
+                     jetton_master: Optional[str]=None,
+                     start_lt: Optional[str]=None,
+                     end_lt: Optional[str]=None,
+                     start_utime: Optional[str]=None,
+                     end_utime: Optional[str]=None,
+                     limit: Optional[int]=None,
+                     offset: Optional[int]=None,
+                     sort: Optional[str]=None):
+    query = session.query(JettonBurn) \
+                   .join(JettonBurn.jetton_wallet) \
+                   .join(JettonBurn.transaction)
+    if account is not None:
+        query = query.filter(JettonBurn.owner == account)
+    if jetton_account is not None:
+        query = query.filter(JettonBurn.jetton_wallet_address == jetton_account)
+    if jetton_master is not None:
+        query = query.filter(JettonWallet.jetton == jetton_master)
+    
+    query = query_transactions_by_lt(query, start_lt, end_lt)
+    query = query_transactions_by_utime(query, start_utime, end_utime)
+    query = sort_transaction_query_by_lt(query, sort)
+    query = limit_query(query, limit, offset)
+    query = query.options(joinedload(JettonBurn.jetton_wallet))
+    query = query.options(joinedload(JettonBurn.transaction))
+    return query.all()
+
+
+
+
 # DEPRECATED
 def get_transactions_by_in_message_hash(session: Session,
                                         msg_hash: str,
@@ -397,7 +592,7 @@ def get_transactions_by_in_message_hash(session: Session,
 
 
 def get_transactions_by_message(session: Session,
-                                direction: Optional[str],
+                                direction: Optional[str]=None,
                                 source: Optional[str]=None,
                                 destination: Optional[str]=None,
                                 created_lt: Optional[int]=None,

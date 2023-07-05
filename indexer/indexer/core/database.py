@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from time import sleep
-from typing import Optional
+from typing import Optional, List
 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -227,6 +227,18 @@ class JettonWallet(Base):
     code_hash = Column(String)
     data_hash = Column(String)
 
+    transfers: List["JettonTransfer"] = relationship("JettonTransfer",
+                                                     foreign_keys=[address],
+                                                     primaryjoin="JettonWallet.address == JettonTransfer.jetton_wallet_address")
+    burns: List["JettonBurn"] = relationship("JettonBurn",
+                                             foreign_keys=[address],
+                                             primaryjoin="JettonWallet.address == JettonBurn.jetton_wallet_address")
+    
+    jetton_master: "JettonMaster" = relationship("JettonMaster",
+                                                 foreign_keys=[jetton],
+                                                 primaryjoin="JettonWallet.jetton == JettonMaster.address")
+
+
 
 class JettonMaster(Base):
     __tablename__ = 'jetton_masters'
@@ -243,27 +255,39 @@ class JettonMaster(Base):
     data_boc = Column(String)
 
 
-class JettonTransfers(Base):
+class JettonTransfer(Base):
     __tablename__ = 'jetton_transfers'
-    transaction_hash = Column(String, primary_key=True)
+    transaction_hash = Column(String, ForeignKey("transactions.hash"), primary_key=True)
     query_id: int = Column(Numeric)
     amount: int = Column(Numeric)
     source = Column(String)
     destination = Column(String)
+    jetton_wallet_address = Column(String)
     response_destination = Column(String)
     custom_payload = Column(String)
     forward_ton_amount: int = Column(Numeric)
     forward_payload = Column(String)
 
+    transaction: Transaction = relationship("Transaction")
+    jetton_wallet: JettonWallet = relationship("JettonWallet",
+                                               foreign_keys=[jetton_wallet_address],
+                                               primaryjoin="JettonWallet.address == JettonTransfer.jetton_wallet_address")
+
 
 class JettonBurn(Base):
     __tablename__ = 'jetton_burns'
-    transaction_hash = Column(String, primary_key=True)
+    transaction_hash = Column(String, ForeignKey("transactions.hash"), primary_key=True)
     query_id: int = Column(Numeric)
     owner: str = Column(String)
+    jetton_wallet_address: str = Column(String)
     amount: int = Column(Numeric)
     response_destination = Column(String)
     custom_payload = Column(String)
+
+    transaction: Transaction = relationship("Transaction")
+    jetton_wallet: JettonWallet = relationship("JettonWallet",
+                                               foreign_keys=[jetton_wallet_address],
+                                               primaryjoin="JettonWallet.address == JettonBurn.jetton_wallet_address")
 
 
 class NFTCollection(Base):
@@ -278,28 +302,45 @@ class NFTCollection(Base):
     code_boc = Column(String)
     data_boc = Column(String)
 
+    items: List["NFTItem"] = relationship('NFTItem',
+                                          foreign_keys=[address],
+                                          primaryjoin="NFTCollection.address == NFTItem.collection_address",)
+
 
 class NFTItem(Base):
     __tablename__ = 'nft_items'
     address = Column(String, primary_key=True)
     init: bool = Column(Boolean)
     index: int = Column(Numeric)
-    collection_address = Column(String)
-    owner_address = Column(String)
+    collection_address = Column(String)  # TODO: index
+    owner_address = Column(String)  # TODO: index
     content = Column(JSONB)
     last_transaction_lt = Column(BigInteger)
     code_hash = Column(String)
     data_hash = Column(String)
 
+    collection: Optional[NFTCollection] = relationship('NFTCollection', 
+                                                       foreign_keys=[collection_address],
+                                                       primaryjoin="NFTCollection.address == NFTItem.collection_address",)
+    
+    transfers: List["NFTTransfer"] = relationship('NFTTransfer',
+                                                  foreign_keys=[address],
+                                                  primaryjoin="NFTItem.address == NFTTransfer.nft_item_address",)
+
 
 class NFTTransfer(Base):
     __tablename__ = 'nft_transfers'
-    transaction_hash = Column(String, primary_key=True)
+    transaction_hash = Column(String, ForeignKey("transactions.hash"), primary_key=True)
     query_id: int = Column(Numeric)
-    nft_item = Column(String)
-    old_owner = Column(String)
-    new_owner = Column(String)
+    nft_item_address = Column(String)  # TODO: index
+    old_owner = Column(String)  # TODO: index
+    new_owner = Column(String)  # TODO: index
     response_destination = Column(String)
     custom_payload = Column(String)
     forward_amount: int = Column(Numeric)
     forward_payload = Column(String)
+
+    transaction: Transaction = relationship("Transaction")
+    nft_item: NFTItem = relationship("NFTItem",
+                                     foreign_keys=[nft_item_address],
+                                     primaryjoin="NFTItem.address == NFTTransfer.nft_item_address",)

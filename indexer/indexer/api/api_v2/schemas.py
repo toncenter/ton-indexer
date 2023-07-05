@@ -13,7 +13,7 @@ def hash_type(value):
     return b64_to_hex(value).upper() if value else None
 
 def address_type(value):
-    return address_to_raw(value).upper() if value else None
+    return address_to_raw(value).upper() if value and value != 'addr_none' else None
 
 def shard_type(value):
     return int_to_hex(value, length=64, signed=True).upper() if value else None
@@ -225,3 +225,186 @@ class Transaction(BaseModel):
                            out_msgs=out_msgs,
                            account_state_before=AccountState.from_orm(obj.account_state_before) if obj.account_state_before else None,
                            account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,)
+
+
+class NFTCollection(BaseModel):
+    address: str
+    owner_address: Optional[str]
+    last_transaction_lt: str
+    next_item_index: str
+    collection_content: Any
+    
+    code_hash: str
+    code_boc: str
+    data_hash: str
+    data_boc: str
+    
+    @classmethod
+    def from_orm(cls, obj):
+        return NFTCollection(address=address_type(obj.address),
+                             owner_address=address_type(obj.owner_address),
+                             last_transaction_lt=obj.last_transaction_lt,
+                             next_item_index=obj.next_item_index,
+                             collection_content=obj.collection_content,
+                             code_hash=hash_type(obj.code_hash),
+                             code_boc=obj.code_boc,
+                             data_hash=hash_type(obj.data_hash),
+                             data_boc=obj.data_boc,)
+
+
+class NFTItem(BaseModel):
+    address: str
+    collection_address: str
+    owner_address: str
+    init: bool
+    index: str
+    last_transaction_lt: str
+    code_hash: str
+    data_hash: str
+    content: Any
+
+    collection: Optional[NFTCollection]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return NFTItem(address=address_type(obj.address),
+                       collection_address=address_type(obj.collection_address),
+                       owner_address=address_type(obj.owner_address),
+                       init=obj.init,
+                       index=obj.index,
+                       last_transaction_lt=obj.last_transaction_lt,
+                       code_hash=hash_type(obj.code_hash),
+                       data_hash=hash_type(obj.data_hash),
+                       content=obj.content,
+                       collection=NFTCollection.from_orm(obj.collection) if obj.collection else None)
+
+
+class NFTTransfer(BaseModel):
+    query_id: str
+    nft_address: str
+    transaction_hash: str
+    transaction_lt: str
+    transaction_now: int
+    old_owner: str
+    new_owner: str
+    response_destination: Optional[str]
+    custom_payload: Optional[str]
+    forward_amount: str
+    forward_payload: Optional[str]
+
+    # transaction: Optional[Transaction]
+    # nft_item: Optional[NFTItem]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return NFTTransfer(query_id=obj.query_id,
+                           nft_address=address_type(obj.nft_item_address),
+                           transaction_hash=hash_type(obj.transaction_hash),
+                           transaction_lt=obj.transaction.lt,  # TODO: maybe fix
+                           transaction_now=obj.transaction.now,  # TODO: maybe fix
+                           old_owner=address_type(obj.old_owner),
+                           new_owner=address_type(obj.new_owner),
+                           response_destination=address_type(obj.response_destination),
+                           custom_payload=obj.custom_payload,
+                           forward_amount=obj.forward_amount,
+                           forward_payload=obj.forward_payload,)
+
+
+class JettonMaster(BaseModel):
+    address: str
+    total_supply: str
+    mintable: bool
+    admin_address: str
+    last_transaction_lt: str
+    jetton_wallet_code_hash: str
+    jetton_content: Any
+    code_hash: str
+    code_boc: str
+    data_hash: str
+    data_boc: str
+
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonMaster(address=address_type(obj.address),
+                            total_supply=obj.total_supply,
+                            mintable=obj.mintable,
+                            admin_address=address_type(obj.admin_address),
+                            last_transaction_lt=obj.last_transaction_lt,
+                            jetton_wallet_code_hash=obj.jetton_wallet_code_hash,
+                            jetton_content=obj.jetton_content,
+                            code_hash=hash_type(obj.code_hash),
+                            code_boc=obj.code_boc,
+                            data_hash=hash_type(obj.data_hash),
+                            data_boc=obj.data_boc,)
+
+
+class JettonWallet(BaseModel):
+    address: str
+    balance: str
+    owner: str
+    jetton: str
+    last_transaction_lt: str
+    code_hash: str
+    data_hash: str
+    
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonWallet(address=address_type(obj.address),
+                            balance=obj.balance,
+                            owner=address_type(obj.owner),
+                            jetton=address_type(obj.jetton),
+                            last_transaction_lt=obj.last_transaction_lt,
+                            code_hash=hash_type(obj.code_hash),
+                            data_hash=hash_type(obj.data_hash),)
+
+
+class JettonTransfer(BaseModel):
+    query_id: str
+    source: str
+    destination: str
+    jetton_master: str
+    transaction_hash: str
+    transaction_lt: str
+    transaction_now: int
+    response_destination: Optional[str]
+    custom_payload: Optional[str]
+    forward_ton_amount: str
+    forward_payload: Optional[str]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonTransfer(query_id=obj.query_id,
+                              source=address_type(obj.source),
+                              destination=address_type(obj.destination),
+                              jetton_master=address_type(obj.jetton_wallet.jetton),
+                              transaction_hash=hash_type(obj.transaction_hash),
+                              transaction_lt=obj.transaction.lt,  # TODO: maybe fix
+                              transaction_now=obj.transaction.now,  # TODO: maybe fix
+                              response_destination=address_type(obj.response_destination),
+                              custom_payload=obj.custom_payload,
+                              forward_ton_amount=obj.forward_ton_amount,
+                              forward_payload=obj.forward_payload,)
+
+
+class JettonBurn(BaseModel):
+    query_id: str
+    owner: str
+    jetton_master: str
+    transaction_hash: str
+    transaction_lt: str
+    transaction_now: int
+    response_destination: Optional[str]
+    custom_payload: Optional[str]
+    
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonBurn(query_id=obj.query_id,
+                          owner=address_type(obj.owner),
+                          jetton_master=address_type(obj.jetton_wallet.jetton),
+                          transaction_hash=hash_type(obj.transaction_hash),
+                          transaction_lt=obj.transaction.lt,  # TODO: maybe fix
+                          transaction_now=obj.transaction.now,  # TODO: maybe fix
+                          response_destination=address_type(obj.response_destination),
+                          custom_payload=obj.custom_payload,)
+
+
