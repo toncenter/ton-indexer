@@ -331,7 +331,11 @@ class JettonBurnParser(Parser):
         op_id = reader.read_uint(32) # burn#595f07bc
         query_id = reader.read_uint(64)
         amount = reader.read_coins()
-        response_destination = reader.read_address()
+        try:
+            response_destination = reader.read_address()
+        except:
+            logger.warning("Wrong response destination format")
+            response_destination = None
         custom_payload = None
         # TODO move Maybe parsing to utils
         try:
@@ -579,6 +583,10 @@ class NFTTransferParser(Parser):
             logger.error(f"Unable to parse forward payload {e}")
 
         successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
+        try:
+            fp = forward_payload.serialize_boc()
+        except:
+            fp = None
         transfer = NFTTransfer(
             msg_id=context.message.msg_id,
             created_lt=context.message.created_lt,
@@ -592,7 +600,7 @@ class NFTTransferParser(Parser):
             response_destination=response_destination,
             custom_payload=custom_payload.serialize_boc() if custom_payload is not None else None,
             forward_ton_amount=forward_ton_amount,
-            forward_payload=forward_payload.serialize_boc() if forward_payload is not None else None
+            forward_payload=fp if forward_payload is not None else None
         )
         logger.info(f"Adding NFT transfer {transfer}")
         await upsert_entity(session, transfer)
