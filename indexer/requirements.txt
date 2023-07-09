@@ -3,7 +3,7 @@ aiocache
 aioprocessing
 aioredis
 crc16
-fastapi
+fastapi<0.100
 gunicorn
 uvicorn
 loguru
@@ -20,5 +20,5 @@ sqlalchemy-utils
 tqdm
 requests
 asgiref
-pytonlib==0.0.46
+pytonlib>=0.0.48
 uvloop

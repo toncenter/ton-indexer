@@ -28,7 +28,7 @@ services:
           - "node.labels.${TONCENTER_ENV:?}.indexer.worker==true"
     networks:
       internal:
-    command: -F 1 -M 1536 --insert-batch-size 512
+    command: -F 1 -M 2048 --insert-batch-size 512
     restart: unless-stopped
 
 networks:
