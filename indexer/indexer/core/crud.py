@@ -69,20 +69,6 @@ def get_blocks_by_unix_time(session: Session,
     return query.all()
 
 
-# def get_workchain_last_block(session: Session,
-#                              workchain: int,
-#                              shard: int):
-#     query = session.query(Block) \
-#                    .filter(Block.workchain == workchain) \
-#                    .filter(Block.shard == shard)
-#     block = query.first()
-#     if not block:
-#         raise BlockNotFound(workchain=workchain, 
-#                             shard=shard,
-#                             seqno='latest')
-#     return block
-
-
 def get_masterchain_block_shards(session: Session,
                                  seqno: int,
                                  include_mc_block: bool=False):
@@ -128,14 +114,14 @@ def get_blocks(session: Session,
         query = query.filter(Block.file_hash == file_hash)
 
     if from_gen_utime is not None:
-        query = query.filter(Block.gen_utime == from_gen_utime)
+        query = query.filter(Block.gen_utime >= from_gen_utime)
     if to_gen_utime is not None:
-        query = query.filter(Block.gen_utime == to_gen_utime)
+        query = query.filter(Block.gen_utime <= to_gen_utime)
 
     if from_start_lt is not None:
-        query = query.filter(Block.start_lt == from_start_lt)
+        query = query.filter(Block.start_lt >= from_start_lt)
     if to_start_lt is not None:
-        query = query.filter(Block.start_lt == to_start_lt)
+        query = query.filter(Block.start_lt <= to_start_lt)
 
     if sort_gen_utime == 'asc':
         query = query.order_by(Block.gen_utime.asc())
@@ -202,49 +188,11 @@ def query_transactions_by_lt(query: Query,
     if start_lt is not None:
         query = query.filter(Transaction.lt >= start_lt)
     if end_lt is not None:
-        query = query.filter(Transaction.lt >= end_lt)
+        query = query.filter(Transaction.lt <= end_lt)
     return query
 
 
 # Transactions
-def get_chain_last_transactions(session: Session, 
-                                workchain: Optional[int], 
-                                start_utime: Optional[int], 
-                                end_utime: Optional[int], 
-                                limit: int, 
-                                offset: int, 
-                                include_msg_body: bool=False, 
-                                include_block: bool=False,
-                                include_account_state: bool=False,):
-    query = session.query(Transaction)
-    if workchain is not None:
-        query = query.filter(Transaction.block_workchain == workchain)
-    
-    query = query_transactions_by_utime(query, start_utime, end_utime)
-    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
-    query = query.order_by(Transaction.lt.desc())  # TODO: index
-    query = limit_query(query, limit, offset)
-    return query.all()
-
-
-def get_block_transactions(session: Session,
-                           workchain: int,
-                           shard: int,
-                           seqno: int,
-                           include_msg_body: bool=False, 
-                           include_block: bool=False,
-                           include_account_state: bool=False,
-                           limit: Optional[int]=None,
-                           offset: Optional[int]=None,):
-    query = session.query(Transaction)
-    query = query.filter(Transaction.block_workchain == workchain) \
-                 .filter(Transaction.block_shard == shard) \
-                 .filter(Transaction.block_seqno == seqno)  # TODO: index
-    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
-    query = limit_query(query, limit, offset)
-    return query.all()
-
-
 def get_transactions_by_masterchain_seqno(session: Session, 
                                           masterchain_seqno: int, 
                                           include_msg_body: bool=True, 
@@ -282,6 +230,7 @@ def get_transactions(session: Session,
                      seqno: Optional[int]=None,
                      account: Optional[str]=None,
                      hash: Optional[str]=None,
+                     lt: Optional[str]=None,
                      start_lt: Optional[str]=None,
                      end_lt: Optional[str]=None,
                      start_utime: Optional[str]=None,
@@ -307,6 +256,9 @@ def get_transactions(session: Session,
     if hash is not None:
         query = query.filter(Transaction.hash == hash)  # TODO: index
 
+    if lt is not None:
+        query = query.filter(Transaction.lt == lt)  # TODO: index
+
     query = query_transactions_by_lt(query, start_lt, end_lt)
     query = query_transactions_by_utime(query, start_utime, end_utime)
     query = sort_transaction_query_by_lt(query, sort)
@@ -317,6 +269,7 @@ def get_transactions(session: Session,
 
 def get_adjacent_transactions(session: Session,
                               hash: str,
+                              lt: Optional[str]=None,
                               direction: Optional[str]=None,
                               include_msg_body: bool=False, 
                               include_block: bool=False,
@@ -367,7 +320,7 @@ def get_messages(session: Session,
                  source: Optional[str]=None,
                  destination: Optional[str]=None,
                  body_hash: Optional[str]=None,
-                 include_msg_body: bool=False,
+                 include_msg_body: bool=True,
                  limit: Optional[int]=None,
                  offset: Optional[int]=None):
     query = session.query(Message)
@@ -572,14 +525,12 @@ def get_jetton_burns(session: Session,
     return query.all()
 
 
-
-
 # DEPRECATED
 def get_transactions_by_in_message_hash(session: Session,
                                         msg_hash: str,
-                                        include_msg_body: bool=False,
-                                        include_block: bool=False,
-                                        include_account_state: bool=False):
+                                        include_msg_body: bool=True,
+                                        include_block: bool=True,
+                                        include_account_state: bool=True):
     query = session.query(Transaction).join(Transaction.messages)
     query = augment_transaction_query(query, 
                                       include_msg_body, 
@@ -597,9 +548,9 @@ def get_transactions_by_message(session: Session,
                                 destination: Optional[str]=None,
                                 created_lt: Optional[int]=None,
                                 hash: Optional[str]=None,
-                                include_msg_body: bool=False,
-                                include_block: bool=False,
-                                include_account_state: bool=False,
+                                include_msg_body: bool=True,
+                                include_block: bool=True,
+                                include_account_state: bool=True,
                                 limit: Optional[int]=None,
                                 offset: Optional[int]=None,
                                 sort: Optional[str]=None):
