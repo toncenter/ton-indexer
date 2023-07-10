@@ -26,5 +26,3 @@ COPY scripts/entrypoint.sh /entrypoint.sh
 COPY --from=builder /app/build/tondb-scanner/tondb-scanner /usr/bin/tondb-scanner
 
 ENTRYPOINT [ "/entrypoint.sh" ]
-# ENTRYPOINT [ "tondb-scanner" ]
-# ENTRYPOINT [ "/bin/bash" ]

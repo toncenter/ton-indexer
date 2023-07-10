@@ -100,6 +100,3 @@ int main(int argc, char *argv[]) {
   scheduler.run_in_context([&] { td::actor::send_closure(scanner, &DbScanner::run); });
   scheduler.run();
 }
-
-
-
