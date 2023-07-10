@@ -363,19 +363,24 @@ class JettonBurnParser(Parser):
         if successful:
             wallet = await get_wallet(session, context.message.destination)
             if not wallet:
-                raise Exception(f"Wallet not inited yet {context.message.destination}")
+                jetton_master = await get_jetton_master(session, context.message.destination) # special case for some jettons
+                if not jetton_master:
+                    raise Exception(f"Wallet not inited yet {context.message.destination}")
+                jetton_master = jetton_master.address
+            else:
+                jetton_master = wallet.jetton_master
             return GeneratedEvent(event=Event(
                 event_scope="Jetton",
-                event_target=wallet.jetton_master,
+                event_target=jetton_master,
                 finding_type="Info",
                 event_type="Burn",
                 severity="Medium",
                 data={
-                    "master": wallet.jetton_master,
+                    "master": jetton_master,
                     "amount": str(amount),
                     "query_id": query_id,
                     "destination_wallet": context.message.destination,
-                    "destination_owner": wallet.owner
+                    "destination_owner": wallet.owner if wallet else None
                 }
             ))
 
