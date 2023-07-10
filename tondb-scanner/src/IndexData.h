@@ -301,6 +301,7 @@ struct JettonTransfer {
   td::RefInt256 amount;
   std::string source;
   std::string destination;
+  std::string jetton_wallet;
   std::string response_destination;
   td::Ref<vm::Cell> custom_payload;
   td::RefInt256 forward_ton_amount;
@@ -311,6 +312,7 @@ struct JettonBurn {
   td::Bits256 transaction_hash;
   uint64_t query_id;
   std::string owner;
+  std::string jetton_wallet;
   td::RefInt256 amount;
   std::string response_destination;
   td::Ref<vm::Cell> custom_payload;

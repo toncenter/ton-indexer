@@ -477,6 +477,7 @@ public:
       return;
     }
     transfer.source = transaction.in_msg->source.value();
+    transfer.jetton_wallet = convert::to_raw_address(transaction.account);
     auto destination = convert::to_raw_address(transfer_record.destination);
     if (destination.is_error()) {
       promise.set_error(destination.move_as_error());
@@ -532,6 +533,7 @@ public:
       return;
     }
     burn.owner = transaction.in_msg->source.value();
+    burn.jetton_wallet = convert::to_raw_address(transaction.account);
     burn.amount = block::tlb::t_VarUInteger_16.as_integer(burn_record.amount);
     if (burn.amount.is_null()) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to unpack burn amount"));

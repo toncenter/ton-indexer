@@ -516,7 +516,7 @@ void InsertBatchMcSeqnos::insert_account_states(pqxx::work &transaction, std::ve
 
 void InsertBatchMcSeqnos::insert_jetton_transfers(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
-  query << "INSERT INTO jetton_transfers (transaction_hash, query_id, amount, source, destination, response_destination, custom_payload, forward_ton_amount, forward_payload) VALUES ";
+  query << "INSERT INTO jetton_transfers (transaction_hash, query_id, amount, source, destination, jetton_wallet_address, response_destination, custom_payload, forward_ton_amount, forward_payload) VALUES ";
   bool is_first = true;
   for (const auto& mc_block : mc_blocks) {
     for (const auto& transfer : mc_block->get_events<JettonTransfer>()) {
@@ -537,6 +537,7 @@ void InsertBatchMcSeqnos::insert_jetton_transfers(pqxx::work &transaction, std::
             << (transfer.amount.not_null() ? transfer.amount->to_dec_string() : "NULL") << ","
             << TO_SQL_STRING(transfer.source) << ","
             << TO_SQL_STRING(transfer.destination) << ","
+            << TO_SQL_STRING(transfer.jetton_wallet) << ","
             << TO_SQL_STRING(transfer.response_destination) << ","
             << TO_SQL_OPTIONAL_STRING(custom_payload_boc) << ","
             << (transfer.forward_ton_amount.not_null() ? transfer.forward_ton_amount->to_dec_string() : "NULL") << ","
@@ -555,7 +556,7 @@ void InsertBatchMcSeqnos::insert_jetton_transfers(pqxx::work &transaction, std::
 
 void InsertBatchMcSeqnos::insert_jetton_burns(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
-  query << "INSERT INTO jetton_burns (transaction_hash, query_id, owner, amount, response_destination, custom_payload) VALUES ";
+  query << "INSERT INTO jetton_burns (transaction_hash, query_id, owner, jetton_wallet_address, amount, response_destination, custom_payload) VALUES ";
   bool is_first = true;
   for (const auto& mc_block : mc_blocks) {
     for (const auto& burn : mc_block->get_events<JettonBurn>()) {
@@ -572,6 +573,7 @@ void InsertBatchMcSeqnos::insert_jetton_burns(pqxx::work &transaction, std::vect
             << TO_SQL_STRING(td::base64_encode(burn.transaction_hash.as_slice())) << ","
             << burn.query_id << ","
             << TO_SQL_STRING(burn.owner) << ","
+            << TO_SQL_STRING(burn.jetton_wallet) << ","
             << (burn.amount.not_null() ? burn.amount->to_dec_string() : "NULL") << ","
             << TO_SQL_STRING(burn.response_destination) << ","
             << TO_SQL_OPTIONAL_STRING(custom_payload_boc)
@@ -589,7 +591,7 @@ void InsertBatchMcSeqnos::insert_jetton_burns(pqxx::work &transaction, std::vect
 
 void InsertBatchMcSeqnos::insert_nft_transfers(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
-  query << "INSERT INTO nft_transfers (transaction_hash, query_id, nft_item, old_owner, new_owner, response_destination, custom_payload, forward_amount, forward_payload) VALUES ";
+  query << "INSERT INTO nft_transfers (transaction_hash, query_id, nft_item_address, old_owner, new_owner, response_destination, custom_payload, forward_amount, forward_payload) VALUES ";
   bool is_first = true;
   for (const auto& mc_block : mc_blocks) {
     for (const auto& transfer : mc_block->get_events<NFTTransfer>()) {
