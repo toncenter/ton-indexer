@@ -5,17 +5,144 @@
 
 using namespace ton::validator;
 
+struct MyHash {
+    std::size_t operator()(const ton::BlockIdExt& k) const {
+        return std::hash<std::string>()(k.to_str());
+    }
+};
+
+class DbCacheWrapper: public td::actor::Actor {
+private:
+  td::actor::ActorId<RootDb> db_;
+  std::list<ton::BlockIdExt> block_data_cache_order_;
+  std::unordered_map<ton::BlockIdExt, td::Ref<BlockData>, MyHash> block_data_cache_;
+  std::unordered_map<ton::BlockIdExt, std::vector<td::Promise<td::Ref<BlockData>>>, MyHash> block_data_pending_requests_;
+
+  std::list<ton::BlockIdExt> block_state_cache_order_;
+  std::unordered_map<ton::BlockIdExt, td::Ref<ShardState>, MyHash> block_state_cache_;
+  std::unordered_map<ton::BlockIdExt, std::vector<td::Promise<td::Ref<ShardState>>>, MyHash> block_state_pending_requests_;
+
+  size_t max_cache_size_;
+
+public:
+  DbCacheWrapper(td::actor::ActorId<RootDb> db, size_t max_cache_size = 10000)
+    : db_(db), max_cache_size_(max_cache_size) {
+  }
+  
+  void get_block_data(ConstBlockHandle handle, td::Promise<td::Ref<BlockData>> promise) {
+    auto it = block_data_cache_.find(handle->id());
+    if (it != block_data_cache_.end()) {
+      auto res = it->second;
+      promise.set_value(std::move(res)); // Cache hit
+      // Move the accessed item to the end of the list
+      block_data_cache_order_.remove(handle->id());
+      block_data_cache_order_.push_back(handle->id());
+    } else {
+      // Check if there are pending requests for this block
+      auto pending_it = block_data_pending_requests_.find(handle->id());
+      if (pending_it != block_data_pending_requests_.end()) {
+        // If a request is pending, add the promise to the list of pending promises
+        pending_it->second.push_back(std::move(promise));
+      } else {
+        // Cache miss - initiate a request to the database
+        block_data_pending_requests_[handle->id()].push_back(std::move(promise));
+
+        auto cache_miss_callback = [this, SelfId = actor_id(this), handle](td::Result<td::Ref<BlockData>> res) mutable {
+          td::actor::send_closure(SelfId, &DbCacheWrapper::got_block_data, handle, std::move(res));
+        };
+        td::actor::send_closure(db_, &RootDb::get_block_data, handle, std::move(cache_miss_callback));
+      }
+    }
+  }
+
+  void got_block_data(ConstBlockHandle handle, td::Result<td::Ref<BlockData>> res) {
+    if (res.is_ok()) {
+      // Check if the cache is full
+      if (block_data_cache_.size() >= max_cache_size_) {
+        // Erase the least recently used item
+        block_data_cache_.erase(block_data_cache_order_.front());
+        block_data_cache_order_.pop_front();
+      }
+
+      // Add the item to the cache and to the end of the list
+      block_data_cache_[handle->id()] = res.ok_ref();
+      block_data_cache_order_.push_back(handle->id());
+    }
+
+    auto it = block_data_pending_requests_.find(handle->id());
+    if (it != block_data_pending_requests_.end()) {
+      for (auto& pending_promise : it->second) {
+        auto res2 = res.ok();
+        pending_promise.set_result(res2);
+      }
+      block_data_pending_requests_.erase(handle->id());
+    }
+  }
+
+  void get_block_state(ConstBlockHandle handle, td::Promise<td::Ref<ShardState>> promise) {
+    auto it = block_state_cache_.find(handle->id());
+    if (it != block_state_cache_.end()) {
+      auto res = it->second;
+      promise.set_value(std::move(res)); // Cache hit
+      // Move the accessed item to the end of the list
+      block_state_cache_order_.remove(handle->id());
+      block_state_cache_order_.push_back(handle->id());
+    } else {
+      // Check if there are pending requests for this block
+      auto pending_it = block_state_pending_requests_.find(handle->id());
+      if (pending_it != block_state_pending_requests_.end()) {
+        // If a request is pending, add the promise to the list of pending promises
+        pending_it->second.push_back(std::move(promise));
+      } else {
+        // Cache miss - initiate a request to the database
+        block_state_pending_requests_[handle->id()].push_back(std::move(promise));
+
+        auto cache_miss_callback = [this, SelfId = actor_id(this), handle](td::Result<td::Ref<ShardState>> res) mutable {
+          td::actor::send_closure(SelfId, &DbCacheWrapper::got_block_state, handle, std::move(res));
+        };
+        td::actor::send_closure(db_, &RootDb::get_block_state, handle, std::move(cache_miss_callback));
+      }
+    }
+  }
+
+  void got_block_state(ConstBlockHandle handle, td::Result<td::Ref<ShardState>> res) {
+    if (res.is_ok()) {
+      // Check if the cache is full
+      if (block_state_cache_.size() >= max_cache_size_) {
+        // Erase the least recently used item
+        block_state_cache_.erase(block_state_cache_order_.front());
+        block_state_cache_order_.pop_front();
+      }
+
+      // Add the item to the cache and to the end of the list
+      block_state_cache_[handle->id()] = res.ok_ref();
+      block_state_cache_order_.push_back(handle->id());
+    }
+
+    auto it = block_state_pending_requests_.find(handle->id());
+    if (it != block_state_pending_requests_.end()) {
+      for (auto& pending_promise : it->second) {
+        auto res2 = res.ok();
+        pending_promise.set_result(res2);
+      }
+      block_state_pending_requests_.erase(handle->id());
+    }
+  }
+};
+
 class GetBlockDataState: public td::actor::Actor {
 private:
   td::actor::ActorId<ton::validator::RootDb> db_;
+  td::actor::ActorId<DbCacheWrapper> cache_db_;
   td::Promise<BlockDataState> promise_;
   ton::BlockIdExt blk_;
 
   td::Ref<BlockData> block_data_;
   td::Ref<ShardState> block_state_;
 public:
-  GetBlockDataState(td::actor::ActorId<ton::validator::RootDb> db, ton::BlockIdExt blk, td::Promise<BlockDataState> promise) :
+  GetBlockDataState(td::actor::ActorId<ton::validator::RootDb> db, td::actor::ActorId<DbCacheWrapper> cache_db, ton::BlockIdExt blk, td::Promise<BlockDataState> promise) :
     db_(db),
+    cache_db_(cache_db),
     blk_(blk),
     promise_(std::move(promise)) {
   }
@@ -37,12 +164,12 @@ public:
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<BlockData>> res) {
       td::actor::send_closure(SelfId, &GetBlockDataState::got_block_data, std::move(res));
     });
-    td::actor::send_closure(db_, &RootDb::get_block_data, handle.ok(), std::move(P));
+    td::actor::send_closure(cache_db_, &DbCacheWrapper::get_block_data, handle.ok(), std::move(P));
 
     auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<ShardState>> res) {
       td::actor::send_closure(SelfId, &GetBlockDataState::got_block_state, std::move(res));
     });
-    td::actor::send_closure(db_, &RootDb::get_block_state, handle.ok(), std::move(R));
+    td::actor::send_closure(cache_db_, &DbCacheWrapper::get_block_state, handle.ok(), std::move(R));
   }
 
   void got_block_data(td::Result<td::Ref<BlockData>> block_data) {
@@ -81,6 +208,7 @@ class IndexQuery: public td::actor::Actor {
 private:
   const int mc_seqno_;
   td::actor::ActorId<ton::validator::RootDb> db_;
+  td::actor::ActorId<DbCacheWrapper> cache_db_;
   td::Promise<MasterchainBlockDataState> promise_;
 
   td::Ref<BlockData> mc_block_data_;
@@ -95,9 +223,9 @@ private:
   MasterchainBlockDataState result_;
 
 public:
-
-  IndexQuery(int mc_seqno, td::actor::ActorId<ton::validator::RootDb> db, td::Promise<MasterchainBlockDataState> promise) : 
+  IndexQuery(int mc_seqno, td::actor::ActorId<ton::validator::RootDb> db, td::actor::ActorId<DbCacheWrapper> cache_db, td::Promise<MasterchainBlockDataState> promise) : 
     db_(db), 
+    cache_db_(cache_db),
     mc_seqno_(mc_seqno),
     promise_(std::move(promise)) {
   }
@@ -124,12 +252,12 @@ public:
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<BlockData>> res) {
       td::actor::send_closure(SelfId, &IndexQuery::got_mc_block_data, std::move(res));
     });
-    td::actor::send_closure(db_, &RootDb::get_block_data, handle.ok(), std::move(P));
+    td::actor::send_closure(cache_db_, &DbCacheWrapper::get_block_data, handle.ok(), std::move(P));
 
     auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<ShardState>> res) {
       td::actor::send_closure(SelfId, &IndexQuery::got_mc_block_state, std::move(res));
     });
-    td::actor::send_closure(db_, &RootDb::get_block_state, handle.ok(), std::move(R));
+    td::actor::send_closure(cache_db_, &DbCacheWrapper::get_block_state, handle.ok(), std::move(R));
   }
 
   void got_prev_block_handle(td::Result<ConstBlockHandle> handle) {
@@ -143,7 +271,7 @@ public:
       td::actor::send_closure(SelfId, &IndexQuery::got_mc_prev_block_state, std::move(res));
     });
 
-    td::actor::send_closure(db_, &RootDb::get_block_state, handle.move_as_ok(), std::move(P));
+    td::actor::send_closure(cache_db_, &DbCacheWrapper::get_block_state, handle.move_as_ok(), std::move(P));
   }
 
   void got_mc_block_data(td::Result<td::Ref<BlockData>> block_data) {
@@ -252,7 +380,7 @@ public:
           promise.set_value(td::Unit());
         }
       });
-      td::actor::create_actor<GetBlockDataState>("getblockdatastate", db_, blk, std::move(Q)).release();
+      td::actor::create_actor<GetBlockDataState>("getblockdatastate", db_, cache_db_, blk, std::move(Q)).release();
     }
 
     if (no_shard_blocks) {
@@ -298,8 +426,11 @@ void DbScanner::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R) {
   alarm_timestamp() = td::Timestamp::in(1.0);
 }
 
+td::actor::ActorOwn<DbCacheWrapper> cache_db_;
+
 void DbScanner::run() {
   db_ = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_);
+  cache_db_ = td::actor::create_actor<DbCacheWrapper>("cache_db", db_.get());
   event_processor_ = td::actor::create_actor<EventProcessor>("event_processor", insert_manager_);
 }
 
@@ -348,7 +479,7 @@ void DbScanner::schedule_for_processing() {
     });
 
     LOG(DEBUG) << "Creating IndexQuery for mc seqno " << mc_seqno;
-    td::actor::create_actor<IndexQuery>("indexquery", mc_seqno, db_.get(), std::move(R)).release();
+    td::actor::create_actor<IndexQuery>("indexquery", mc_seqno, db_.get(), cache_db_.get(), std::move(R)).release();
     seqnos_in_progress_.insert(mc_seqno);
   }
 }
@@ -356,8 +487,7 @@ void DbScanner::schedule_for_processing() {
 void DbScanner::seqno_fetched(int mc_seqno, td::Result<MasterchainBlockDataState> blocks_data_state) {
   if (blocks_data_state.is_error()) {
     LOG(ERROR) << "mc_seqno " << mc_seqno << " failed to fetch BlockDataState: " << blocks_data_state.move_as_error();
-    CHECK(seqnos_in_progress_.erase(mc_seqno) == 1);
-    seqnos_to_process_.push(mc_seqno);
+    reschedule_seqno(mc_seqno);
     return;
   }
 
@@ -369,8 +499,6 @@ void DbScanner::seqno_fetched(int mc_seqno, td::Result<MasterchainBlockDataState
 }
 
 void DbScanner::seqno_parsed(int mc_seqno, td::Result<ParsedBlockPtr> parsed_block) {
-  CHECK(seqnos_in_progress_.erase(mc_seqno) == 1);
-
   if (parsed_block.is_error()) {
     LOG(ERROR) << "mc_seqno " << mc_seqno << " failed to parse BlockDataState: " << parsed_block.move_as_error();
     reschedule_seqno(mc_seqno);
@@ -390,9 +518,10 @@ void DbScanner::interfaces_processed(int mc_seqno, ParsedBlockPtr parsed_block, 
     reschedule_seqno(mc_seqno);
     return;
   }
-  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> res) {
+  auto R = td::PromiseCreator::lambda([this, SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> res) {
     if (res.is_ok()) {
       LOG(DEBUG) << "MC seqno " << mc_seqno << " insert success";
+      seqnos_in_progress_.erase(mc_seqno);
     } else {
       LOG(DEBUG) << "MC seqno " << mc_seqno << " insert failed: " << res.move_as_error();
       td::actor::send_closure(SelfId, &DbScanner::reschedule_seqno, mc_seqno);
@@ -404,6 +533,7 @@ void DbScanner::interfaces_processed(int mc_seqno, ParsedBlockPtr parsed_block, 
 
 void DbScanner::reschedule_seqno(int mc_seqno) {
   LOG(WARNING) << "MC Seqno " << mc_seqno << " rescheduled";
+  seqnos_in_progress_.erase(mc_seqno);
   seqnos_to_process_.push(mc_seqno);
 }
 

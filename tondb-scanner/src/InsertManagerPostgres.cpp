@@ -362,13 +362,9 @@ void InsertBatchMcSeqnos::insert_transactions(pqxx::work &transaction, std::vect
   transaction.exec0(query.str());
 }
 
+
 void InsertBatchMcSeqnos::insert_messsages(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::vector<schema::Message> messages;
-  struct TxMsg {
-    std::string tx_hash;
-    std::string msg_hash;
-    std::string direction; // in or out
-  };
   std::vector<TxMsg> tx_msgs;
   std::set<td::Bits256> message_hashes;
   for (const auto& mc_block : mc_blocks) {
@@ -397,9 +393,28 @@ void InsertBatchMcSeqnos::insert_messsages(pqxx::work &transaction, std::vector<
   if (!messages_count_) {
     return;
   }
+  
+  insert_messages_contents(messages, transaction);
+  insert_messages_impl(messages, transaction);
+  insert_messages_txs(tx_msgs, transaction);
+}
 
+const int max_chunk_size = 1000000;
+
+void InsertBatchMcSeqnos::insert_messages_contents(const std::vector<schema::Message>& messages, pqxx::work& transaction) {
   std::ostringstream query;
   bool is_first = true;
+  size_t chunk_size = 0;
+  auto exec_query = [&]() {
+    query << " ON CONFLICT DO NOTHING";
+    transaction.exec0(query.str());
+    query.str("");
+    query.clear();
+    query << "INSERT INTO message_contents (hash, body) VALUES ";
+    is_first = true;
+    chunk_size = 0;
+  };
+
   query << "INSERT INTO message_contents (hash, body) VALUES ";
   for (const auto& message : messages) {
     if (is_first) {
@@ -418,16 +433,35 @@ void InsertBatchMcSeqnos::insert_messsages(pqxx::work &transaction, std::vector<
             << TO_SQL_STRING(message.init_state_boc.value())
             << ")";
     }
+    chunk_size += query.str().length();
+
+    if (chunk_size >= max_chunk_size) {
+      exec_query();
+    }
   }
-  query << " ON CONFLICT DO NOTHING";
 
-  // LOG(DEBUG) << "Running SQL query: " << query.str();
-  transaction.exec0(query.str());
+  if (!is_first) {
+    exec_query();
+  }
+}
 
-  query.str("");
+void InsertBatchMcSeqnos::insert_messages_impl(const std::vector<schema::Message>& messages, pqxx::work& transaction) {
+  std::ostringstream query;
+  bool is_first = true;
+  size_t chunk_size = 0;
+  auto exec_query = [&]() {
+    query << " ON CONFLICT DO NOTHING";
+    transaction.exec0(query.str());
+    query.str("");
+    query.clear();
+    query << "INSERT INTO messages (hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, opcode, "
+                                  "ihr_disabled, bounce, bounced, import_fee, body_hash, init_state_hash) VALUES ";
+    is_first = true;
+    chunk_size = 0;
+  };
+
   query << "INSERT INTO messages (hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, opcode, "
                                 "ihr_disabled, bounce, bounced, import_fee, body_hash, init_state_hash) VALUES ";
-  is_first = true;
   for (const auto& message : messages) {
     if (is_first) {
       is_first = false;
@@ -451,20 +485,36 @@ void InsertBatchMcSeqnos::insert_messsages(pqxx::work &transaction, std::vector<
           << "'" << td::base64_encode(message.body->get_hash().as_slice()) << "',"
           << (message.init_state.not_null() ? TO_SQL_STRING(td::base64_encode(message.init_state->get_hash().as_slice())) : "NULL")
           << ")";
-  }
-  if (is_first) {
-    return;
-  }
-  query << " ON CONFLICT DO NOTHING";
 
-  // LOG(DEBUG) << "Running SQL query: " << query.str();
-  transaction.exec0(query.str());
+    chunk_size += query.str().length();
 
-  query.str("");
+    if (chunk_size >= max_chunk_size) {
+      exec_query();
+    }
+  }
+
+  if (!is_first) {
+    exec_query();
+  }
+}
+
+void InsertBatchMcSeqnos::insert_messages_txs(const std::vector<TxMsg>& tx_msgs, pqxx::work& transaction) {
+  std::ostringstream query;
+  bool is_first = true;
+  size_t chunk_size = 0;
+  auto exec_query = [&]() {
+    query << " ON CONFLICT DO NOTHING";
+    transaction.exec0(query.str());
+    query.str("");
+    query.clear();
+    query << "INSERT INTO transaction_messages (transaction_hash, message_hash, direction) VALUES ";
+    is_first = true;
+    chunk_size = 0;
+  };
+
   query << "INSERT INTO transaction_messages (transaction_hash, message_hash, direction) VALUES ";
-  is_first = true;
   for (const auto& tx_msg : tx_msgs) {
-    if (is_first) {
+   if (is_first) {
       is_first = false;
     } else {
       query << ", ";
@@ -474,15 +524,19 @@ void InsertBatchMcSeqnos::insert_messsages(pqxx::work &transaction, std::vector<
           << TO_SQL_STRING(tx_msg.msg_hash) << ","
           << TO_SQL_STRING(tx_msg.direction)
           << ")";
-  }
-  if (is_first) {
-    return;
-  }
-  query << " ON CONFLICT DO NOTHING";
 
-  // LOG(DEBUG) << "Running SQL query: " << query.str();
-  transaction.exec0(query.str());
+    chunk_size += query.str().length();
+
+    if (chunk_size >= max_chunk_size) {
+      exec_query();
+    }
+  }
+
+  if (!is_first) {
+    exec_query();
+  }
 }
+
 
 void InsertBatchMcSeqnos::insert_account_states(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
@@ -629,6 +683,8 @@ void InsertBatchMcSeqnos::insert_nft_transfers(pqxx::work &transaction, std::vec
 }
 
 void InsertBatchMcSeqnos::insert(std::string connection_string, std::vector<ParsedBlockPtr> mc_blocks, td::Promise<td::Unit> promise) {
+  // promise.set_result(td::Unit());
+  // return;
   try {
     pqxx::connection c(connection_string);
     if (!c.is_open()) {
@@ -646,11 +702,11 @@ void InsertBatchMcSeqnos::insert(std::string connection_string, std::vector<Pars
     insert_nft_transfers(txn, mc_blocks);
     txn.commit();
 
-    LOG(INFO) << "Inserted " 
-              << mc_blocks.size() << " mc blocks, "
-              << blocks_count_ << " blocks, " 
-              << transactions_count_ << " txs, " 
-              << messages_count_ << " msgs";
+    // LOG(INFO) << "Inserted " 
+    //           << mc_blocks.size() << " mc blocks, "
+    //           << blocks_count_ << " blocks, " 
+    //           << transactions_count_ << " txs, " 
+    //           << messages_count_ << " msgs";
     promise.set_value(td::Unit());
   } catch (const std::exception &e) {
     promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
@@ -1180,7 +1236,8 @@ public:
 InsertManagerPostgres::InsertManagerPostgres(): 
     inserted_count_(0),
     start_time_(std::chrono::high_resolution_clock::now()),
-    insert_batch_seqnos_actor_(td::actor::create_actor<InsertBatchMcSeqnos>("insert_batch_mc_seqnos"))
+    // insert_batch_seqnos_actor_(td::actor::create_actor<InsertBatchMcSeqnos>("insert_batch_mc_seqnos"))
+    insert_batch_seqnos_actor_(td::actor::create_actor<InsertBatchMcSeqnos>(td::actor::ActorOptions().with_name("insert_batch_mc_seqnos").with_poll()))
 {
 }
 
@@ -1239,6 +1296,7 @@ void InsertManagerPostgres::alarm() {
         p.set_result(td::Unit());
       }
     });
+    LOG(INFO) << "Insert actor mailbox size: " << insert_batch_seqnos_actor_.get().actor_info().mailbox().reader().calc_size() << " " << schema_blocks.size();
     td::actor::send_closure(insert_batch_seqnos_actor_, &InsertBatchMcSeqnos::insert, credential.getConnectionString(), std::move(schema_blocks), std::move(P));
   }
 
