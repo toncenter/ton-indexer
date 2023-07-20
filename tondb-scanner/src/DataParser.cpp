@@ -590,7 +590,7 @@ td::Status ParseQuery::parse_account_states(const td::Ref<ShardState>& block_sta
     case block::gen::Account::account_none:
       continue;
     case block::gen::Account::account: {
-      TRY_RESULT(account, parse_account(account_root));
+      TRY_RESULT(account, parse_account(std::move(account_root)));
       result->account_states_.push_back(account);
       break;
     }

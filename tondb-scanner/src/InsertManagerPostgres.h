@@ -58,6 +58,12 @@ class InsertBatchMcSeqnos: public td::actor::Actor {
 public:
   void insert(std::string connection_string, std::vector<ParsedBlockPtr> mc_blocks, td::Promise<td::Unit> promise);
 private:
+  struct TxMsg {
+    std::string tx_hash;
+    std::string msg_hash;
+    std::string direction; // in or out
+  };
+
   std::string stringify(schema::ComputeSkipReason compute_skip_reason);
   std::string stringify(schema::AccStatusChange acc_status_change);
   std::string stringify(schema::AccountStatus account_status);
@@ -72,6 +78,9 @@ private:
   void insert_blocks(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
   void insert_transactions(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
   void insert_messsages(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_messages_contents(const std::vector<schema::Message>& messages, pqxx::work& transaction);
+  void insert_messages_impl(const std::vector<schema::Message>& messages, pqxx::work& transaction);
+  void insert_messages_txs(const std::vector<TxMsg>& messages, pqxx::work& transaction);
   void insert_account_states(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
   void insert_jetton_transfers(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
   void insert_jetton_burns(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
