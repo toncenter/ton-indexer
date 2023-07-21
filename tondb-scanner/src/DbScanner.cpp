@@ -25,7 +25,7 @@ private:
   size_t max_cache_size_;
 
 public:
-  DbCacheWrapper(td::actor::ActorId<RootDb> db, size_t max_cache_size = 10000)
+  DbCacheWrapper(td::actor::ActorId<RootDb> db, size_t max_cache_size = 5000)
     : db_(db), max_cache_size_(max_cache_size) {
   }
   
@@ -521,7 +521,7 @@ void DbScanner::interfaces_processed(int mc_seqno, ParsedBlockPtr parsed_block, 
   auto R = td::PromiseCreator::lambda([this, SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> res) {
     if (res.is_ok()) {
       LOG(DEBUG) << "MC seqno " << mc_seqno << " insert success";
-      seqnos_in_progress_.erase(mc_seqno);
+      td::actor::send_closure(SelfId, &DbScanner::seqno_completed, mc_seqno);
     } else {
       LOG(DEBUG) << "MC seqno " << mc_seqno << " insert failed: " << res.move_as_error();
       td::actor::send_closure(SelfId, &DbScanner::reschedule_seqno, mc_seqno);
@@ -529,6 +529,10 @@ void DbScanner::interfaces_processed(int mc_seqno, ParsedBlockPtr parsed_block, 
   });
 
   td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, std::move(parsed_block), std::move(R));
+}
+
+void DbScanner::seqno_completed(int mc_seqno) {
+  seqnos_in_progress_.erase(mc_seqno);
 }
 
 void DbScanner::reschedule_seqno(int mc_seqno) {

@@ -56,5 +56,6 @@ private:
   void seqno_parsed(int mc_seqno, td::Result<ParsedBlockPtr> parsed_block);
   void interfaces_processed(int mc_seqno, ParsedBlockPtr parsed_block, td::Result<td::Unit> result);
   void got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R);
+  void seqno_completed(int mc_seqno);
   void reschedule_seqno(int mc_seqno);
 };
