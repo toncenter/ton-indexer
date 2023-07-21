@@ -193,7 +193,6 @@ def upgrade():
     sa.Column('transaction_hash', sa.String(length=44), nullable=False),
     sa.Column('message_hash', sa.String(length=44), nullable=False),
     sa.Column('direction', sa.Enum('in', 'out', name='direction'), nullable=False),
-    sa.ForeignKeyConstraint(['message_hash'], ['messages.hash'], ),
     sa.ForeignKeyConstraint(['transaction_hash'], ['transactions.hash'], ),
     sa.PrimaryKeyConstraint('transaction_hash', 'message_hash', 'direction')
     )

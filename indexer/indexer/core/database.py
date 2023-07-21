@@ -201,11 +201,15 @@ class Message(Base):
 class TransactionMessage(Base):
     __tablename__ = 'transaction_messages'
     transaction_hash = Column(String(44), ForeignKey('transactions.hash'), primary_key=True)
-    message_hash = Column(String(44), ForeignKey('messages.hash'), primary_key=True)
+    message_hash = Column(String(44), primary_key=True)
     direction = Column(Enum('in', 'out', name="direction"), primary_key=True)
 
     transaction = relationship("Transaction", back_populates="messages")
-    message = relationship("Message", back_populates="transactions")
+    # message = relationship("Message", back_populates="transactions")
+    message = relationship("Message", back_populates="transactions", 
+                                      foreign_keys=[message_hash],
+                                      primaryjoin="TransactionMessage.message_hash == Message.hash", 
+                                      viewonly=True)
 
 
 class MessageContent(Base):
