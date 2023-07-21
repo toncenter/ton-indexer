@@ -190,7 +190,10 @@ class Message(Base):
     body_hash: str = Column(String(44), ForeignKey("message_contents.hash"))
     init_state_hash: Optional[str] = Column(String(44), nullable=True)
 
-    transactions = relationship("TransactionMessage", back_populates="message")
+    transactions = relationship("TransactionMessage", 
+                                foreign_keys=[hash],
+                                primaryjoin="TransactionMessage.message_hash == Message.hash", 
+                                viewonly=True)
     message_content = relationship("MessageContent", back_populates="message")
     init_state = relationship("MessageContent", 
                               foreign_keys=[init_state_hash],
@@ -206,8 +209,7 @@ class TransactionMessage(Base):
 
     transaction = relationship("Transaction", back_populates="messages")
     # message = relationship("Message", back_populates="transactions")
-    message = relationship("Message", back_populates="transactions", 
-                                      foreign_keys=[message_hash],
+    message = relationship("Message", foreign_keys=[message_hash],
                                       primaryjoin="TransactionMessage.message_hash == Message.hash", 
                                       viewonly=True)
 
