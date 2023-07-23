@@ -72,8 +72,7 @@ public:
     auto it = block_data_pending_requests_.find(handle->id());
     if (it != block_data_pending_requests_.end()) {
       for (auto& pending_promise : it->second) {
-        auto res2 = res.ok();
-        pending_promise.set_result(res2);
+        pending_promise.set_result(res.clone());
       }
       block_data_pending_requests_.erase(handle->id());
     }
@@ -122,8 +121,7 @@ public:
     auto it = block_state_pending_requests_.find(handle->id());
     if (it != block_state_pending_requests_.end()) {
       for (auto& pending_promise : it->second) {
-        auto res2 = res.ok();
-        pending_promise.set_result(res2);
+        pending_promise.set_result(res.clone());
       }
       block_state_pending_requests_.erase(handle->id());
     }
