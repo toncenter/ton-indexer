@@ -5,6 +5,7 @@ import json
 import aiohttp
 import asyncio
 import logging
+import time
 from urllib.parse import urlparse
 from tvm_valuetypes import deserialize_boc
 from tvm_valuetypes.cell import CellData
@@ -744,7 +745,14 @@ class NFTItemParser(ContractsExecutorParser):
                 domain,  = await self._execute(context.code.code, context.account.data, 'get_domain',
                                                ["string"],
                                                address=context.account.address)
-
+                if owner_address is None:
+                    logger.info(f"No owner for {context.account.address}, checking auction info")
+                    max_bid_address, max_bid_amount, auction_end_time = await self._execute(context.code.code, context.account.data, 'get_auction_info',
+                                                   ["address", "int", "int"],
+                                                   address=context.account.address)
+                    if int(auction_end_time) < time.time():
+                        logger.info(f"Discovered actual owner for {context.account.address}: {max_bid_address}")
+                        owner_address = max_bid_address
                 item = NFTItem(
                     state_id=context.account.state_id,
                     address=context.account.address,
