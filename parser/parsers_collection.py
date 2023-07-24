@@ -215,6 +215,31 @@ class JettonTransferParser(Parser):
                 }
             ))
 
+"""
+Special parser which only fires event with msg_id of jetton transfer in order to parse
+it in the further steps of ETL pipeline. JettonTransferParser has possibility to 
+fail during parsing so this parser provides guarantees event would be triggered (at least once).
+"""
+class JettonTransferEventParser(Parser):
+    def __init__(self):
+        super(JettonTransferEventParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x0f8a7ea5)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "JettonTransferEvent"
+
+    async def parse(self, session: Session, context: MessageContext):
+        return GeneratedEvent(event=Event(
+            event_scope="Jetton",
+            event_target="",
+            finding_type="Internal",
+            event_type="TransferInternalEvent",
+            severity="Medium",
+            data={
+                "db_ref": context.message.msg_id
+            }
+        ), waitCommit=True)
+
 
 """
 TEP-74 jetton standard does not specify mint format but it has recommended form of internal_transfer message:
