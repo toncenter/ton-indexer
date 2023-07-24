@@ -11,7 +11,7 @@ private:
   std::queue<td::Promise<td::Unit>> promise_queue_;
 
   int batch_size{2048};
-  // td::actor::ActorOwn<InsertBatchMcSeqnos> insert_batch_seqnos_actor_;
+  td::actor::ActorOwn<InsertBatchMcSeqnos> insert_batch_seqnos_actor_;
 
   struct PostgresCredential {
     std::string host = "127.0.0.1";
@@ -56,15 +56,8 @@ public:
 
 class InsertBatchMcSeqnos: public td::actor::Actor {
 public:
-  InsertBatchMcSeqnos(std::string connection_string, std::vector<ParsedBlockPtr> mc_blocks, td::Promise<td::Unit>&& promise) :
-    connection_string_(std::move(connection_string)), mc_blocks_(std::move(mc_blocks)), promise_(std::move(promise)) {}
-  
-  void start_up();
+  void insert(std::string connection_string, std::vector<ParsedBlockPtr> mc_blocks, td::Promise<td::Unit> promise);
 private:
-  std::string connection_string_;
-  std::vector<ParsedBlockPtr> mc_blocks_;
-  td::Promise<td::Unit> promise_;
-
   struct TxMsg {
     std::string tx_hash;
     std::string msg_hash;
@@ -82,16 +75,16 @@ private:
   std::string jsonify(const schema::TrBouncePhase& bounce);
   std::string jsonify(const schema::TrComputePhase& compute);
   std::string jsonify(schema::TransactionDescr descr);
-  void insert_blocks(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);
-  void insert_transactions(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);
-  void insert_messsages(pqxx::work &transaction, const std::vector<schema::Message> &messages, const std::vector<TxMsg> &tx_msgs);
+  void insert_blocks(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_transactions(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_messsages(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
   void insert_messages_contents(const std::vector<schema::Message>& messages, pqxx::work& transaction);
   void insert_messages_impl(const std::vector<schema::Message>& messages, pqxx::work& transaction);
   void insert_messages_txs(const std::vector<TxMsg>& messages, pqxx::work& transaction);
-  void insert_account_states(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);
-  void insert_jetton_transfers(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);
-  void insert_jetton_burns(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);
-  void insert_nft_transfers(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_account_states(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_jetton_transfers(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_jetton_burns(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_nft_transfers(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks);
 
   int transactions_count_{0};
   int messages_count_{0};

@@ -1,5 +1,4 @@
 #include <chrono>
-#include <mutex>
 #include "td/utils/JsonBuilder.h"
 #include "InsertManagerPostgres.h"
 #include "convert-utils.h"
@@ -20,80 +19,7 @@ std::string content_to_json_string(const std::map<std::string, std::string> &con
   return jetton_content_json.string_builder().as_cslice().str();
 }
 
-struct BitArrayHasher {
-  std::size_t operator()(const td::Bits256& k) const {
-    std::size_t seed = 0;
-    for(const auto& el : k.as_array()) {
-        seed ^= std::hash<td::uint8>{}(el) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    }
-    return seed;
-  }
-};
-// This set is used as a synchronization mechanism to prevent multiple queries for the same message
-// Otherwise Posgres will throw an error deadlock_detected
-std::unordered_set<td::Bits256, BitArrayHasher> messages_in_progress;
-std::mutex messages_in_progress_mutex;
-
-void InsertBatchMcSeqnos::start_up() {
-  std::vector<schema::Message> messages;
-  std::vector<TxMsg> tx_msgs;
-  {
-    std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
-    for (const auto& mc_block : mc_blocks_) {
-      for (const auto& blk : mc_block->blocks_) {
-        for (const auto& transaction : blk.transactions) {
-          if (transaction.in_msg.has_value()) {
-            auto &msg = transaction.in_msg.value();
-            if (messages_in_progress.find(msg.hash) == messages_in_progress.end()) {
-              messages.push_back(msg);
-              messages_in_progress.insert(msg.hash);
-            }
-            tx_msgs.push_back({td::base64_encode(transaction.hash.as_slice()), td::base64_encode(transaction.in_msg.value().hash.as_slice()), "in"});
-          }
-          for (const auto& message : transaction.out_msgs) {
-            if (messages_in_progress.find(message.hash) == messages_in_progress.end()) {
-              messages.push_back(message);
-              messages_in_progress.insert(message.hash);
-            }
-            tx_msgs.push_back({td::base64_encode(transaction.hash.as_slice()), td::base64_encode(message.hash.as_slice()), "out"});
-          }
-        }
-      }
-    }
-  }
-
-  try {
-    pqxx::connection c(connection_string_);
-    if (!c.is_open()) {
-      promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, "Failed to open database"));
-      return;
-    }
-
-    pqxx::work txn(c);
-    insert_blocks(txn, mc_blocks_);
-    insert_transactions(txn, mc_blocks_);
-    insert_messsages(txn, messages, tx_msgs);
-    insert_account_states(txn, mc_blocks_);
-    insert_jetton_transfers(txn, mc_blocks_);
-    insert_jetton_burns(txn, mc_blocks_);
-    insert_nft_transfers(txn, mc_blocks_);
-    txn.commit();
-
-    promise_.set_value(td::Unit());
-  } catch (const std::exception &e) {
-    promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
-  }
-
-  {
-    std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
-    for (const auto& msg : messages) {
-      messages_in_progress.erase(msg.hash);
-    }
-  }
-  stop();
-}
-
-void InsertBatchMcSeqnos::insert_blocks(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks) {
+void InsertBatchMcSeqnos::insert_blocks(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
   query << "INSERT INTO blocks (workchain, shard, seqno, root_hash, file_hash, mc_block_workchain, "
                                 "mc_block_shard, mc_block_seqno, global_id, version, after_merge, before_split, "
@@ -393,7 +319,7 @@ std::string InsertBatchMcSeqnos::jsonify(schema::TransactionDescr descr) {
   return jb.string_builder().as_cslice().str();
 }
 
-void InsertBatchMcSeqnos::insert_transactions(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks) {
+void InsertBatchMcSeqnos::insert_transactions(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
   query << "INSERT INTO transactions (block_workchain, block_shard, block_seqno, account, hash, lt, prev_trans_hash, prev_trans_lt, now, orig_status, end_status, "
                                       "total_fees, account_state_hash_before, account_state_hash_after, description) VALUES ";
@@ -437,7 +363,32 @@ void InsertBatchMcSeqnos::insert_transactions(pqxx::work &transaction, const std
 }
 
 
-void InsertBatchMcSeqnos::insert_messsages(pqxx::work &transaction, const std::vector<schema::Message> &messages, const std::vector<TxMsg> &tx_msgs) {
+void InsertBatchMcSeqnos::insert_messsages(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
+  std::vector<schema::Message> messages;
+  std::vector<TxMsg> tx_msgs;
+  std::set<td::Bits256> message_hashes;
+  for (const auto& mc_block : mc_blocks) {
+    for (const auto& blk : mc_block->blocks_) {
+      for (const auto& transaction : blk.transactions) {
+        if (transaction.in_msg.has_value()) {
+          auto &msg = transaction.in_msg.value();
+          if (message_hashes.find(msg.hash) == message_hashes.end()) {
+            messages.push_back(msg);
+            message_hashes.insert(msg.hash);
+          }
+          tx_msgs.push_back({td::base64_encode(transaction.hash.as_slice()), td::base64_encode(transaction.in_msg.value().hash.as_slice()), "in"});
+        }
+        for (const auto& message : transaction.out_msgs) {
+          if (message_hashes.find(message.hash) == message_hashes.end()) {
+            messages.push_back(message);
+            message_hashes.insert(message.hash);
+          }
+          tx_msgs.push_back({td::base64_encode(transaction.hash.as_slice()), td::base64_encode(message.hash.as_slice()), "out"});
+        }
+      }
+    }
+  }
+
   messages_count_ = messages.size();
   if (!messages_count_) {
     return;
@@ -587,7 +538,7 @@ void InsertBatchMcSeqnos::insert_messages_txs(const std::vector<TxMsg>& tx_msgs,
 }
 
 
-void InsertBatchMcSeqnos::insert_account_states(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks) {
+void InsertBatchMcSeqnos::insert_account_states(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
   query << "INSERT INTO account_states (hash, account, balance, account_status, frozen_hash, code_hash, data_hash) VALUES ";
   bool is_first = true;
@@ -617,7 +568,7 @@ void InsertBatchMcSeqnos::insert_account_states(pqxx::work &transaction, const s
   transaction.exec0(query.str());
 }
 
-void InsertBatchMcSeqnos::insert_jetton_transfers(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks) {
+void InsertBatchMcSeqnos::insert_jetton_transfers(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
   query << "INSERT INTO jetton_transfers (transaction_hash, query_id, amount, source, destination, jetton_wallet_address, response_destination, custom_payload, forward_ton_amount, forward_payload) VALUES ";
   bool is_first = true;
@@ -657,7 +608,7 @@ void InsertBatchMcSeqnos::insert_jetton_transfers(pqxx::work &transaction, const
   transaction.exec0(query.str());
 }
 
-void InsertBatchMcSeqnos::insert_jetton_burns(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks) {
+void InsertBatchMcSeqnos::insert_jetton_burns(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
   query << "INSERT INTO jetton_burns (transaction_hash, query_id, owner, jetton_wallet_address, amount, response_destination, custom_payload) VALUES ";
   bool is_first = true;
@@ -692,7 +643,7 @@ void InsertBatchMcSeqnos::insert_jetton_burns(pqxx::work &transaction, const std
   transaction.exec0(query.str());
 }
 
-void InsertBatchMcSeqnos::insert_nft_transfers(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks) {
+void InsertBatchMcSeqnos::insert_nft_transfers(pqxx::work &transaction, std::vector<ParsedBlockPtr>& mc_blocks) {
   std::ostringstream query;
   query << "INSERT INTO nft_transfers (transaction_hash, query_id, nft_item_address, old_owner, new_owner, response_destination, custom_payload, forward_amount, forward_payload) VALUES ";
   bool is_first = true;
@@ -730,6 +681,39 @@ void InsertBatchMcSeqnos::insert_nft_transfers(pqxx::work &transaction, const st
   // LOG(DEBUG) << "Running SQL query: " << query.str();
   transaction.exec0(query.str());
 }
+
+void InsertBatchMcSeqnos::insert(std::string connection_string, std::vector<ParsedBlockPtr> mc_blocks, td::Promise<td::Unit> promise) {
+  try {
+    pqxx::connection c(connection_string);
+    if (!c.is_open()) {
+      promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, "Failed to open database"));
+      return;
+    }
+
+    pqxx::work txn(c);
+    insert_blocks(txn, mc_blocks);
+    insert_transactions(txn, mc_blocks);
+    insert_messsages(txn, mc_blocks);
+    insert_account_states(txn, mc_blocks);
+    insert_jetton_transfers(txn, mc_blocks);
+    insert_jetton_burns(txn, mc_blocks);
+    insert_nft_transfers(txn, mc_blocks);
+    txn.commit();
+
+    // LOG(INFO) << "Inserted " 
+    //           << mc_blocks.size() << " mc blocks, "
+    //           << blocks_count_ << " blocks, " 
+    //           << transactions_count_ << " txs, " 
+    //           << messages_count_ << " msgs";
+    promise.set_value(td::Unit());
+  } catch (const std::exception &e) {
+    promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
+  }
+  blocks_count_ = 0;
+  transactions_count_ = 0;
+  messages_count_ = 0;
+}
+
 
 class UpsertJettonWallet: public td::actor::Actor {
 private:
@@ -1249,7 +1233,8 @@ public:
 
 InsertManagerPostgres::InsertManagerPostgres(): 
     inserted_count_(0),
-    start_time_(std::chrono::high_resolution_clock::now())
+    start_time_(std::chrono::high_resolution_clock::now()),
+    insert_batch_seqnos_actor_(td::actor::create_actor<InsertBatchMcSeqnos>("insert_batch_mc_seqnos"))
 {
 }
 
@@ -1308,7 +1293,8 @@ void InsertManagerPostgres::alarm() {
         p.set_result(td::Unit());
       }
     });
-    td::actor::create_actor<InsertBatchMcSeqnos>("insert_batch_mc_seqnos", credential.getConnectionString(), std::move(schema_blocks), std::move(P)).release();
+    // LOG(INFO) << "Insert actor mailbox size: " << insert_batch_seqnos_actor_.get().actor_info().mailbox().reader().calc_size() << " " << schema_blocks.size();
+    td::actor::send_closure(insert_batch_seqnos_actor_, &InsertBatchMcSeqnos::insert, credential.getConnectionString(), std::move(schema_blocks), std::move(P));
   }
 
   if (!insert_queue_.empty()) {
