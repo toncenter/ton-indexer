@@ -1,8 +1,8 @@
 """base
 
-Revision ID: 007d16058242
+Revision ID: 74f15fe195b6
 Revises: 
-Create Date: 2023-07-09 13:17:15.311085
+Create Date: 2023-07-26 10:40:38.417139
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '007d16058242'
+revision = '74f15fe195b6'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -89,6 +89,24 @@ def upgrade():
     sa.Column('body', sa.String(), nullable=True),
     sa.PrimaryKeyConstraint('hash')
     )
+    op.create_table('messages',
+    sa.Column('hash', sa.String(length=44), nullable=False),
+    sa.Column('source', sa.String(), nullable=True),
+    sa.Column('destination', sa.String(), nullable=True),
+    sa.Column('value', sa.BigInteger(), nullable=True),
+    sa.Column('fwd_fee', sa.BigInteger(), nullable=True),
+    sa.Column('ihr_fee', sa.BigInteger(), nullable=True),
+    sa.Column('created_lt', sa.BigInteger(), nullable=True),
+    sa.Column('created_at', sa.BigInteger(), nullable=True),
+    sa.Column('opcode', sa.Integer(), nullable=True),
+    sa.Column('ihr_disabled', sa.Boolean(), nullable=True),
+    sa.Column('bounce', sa.Boolean(), nullable=True),
+    sa.Column('bounced', sa.Boolean(), nullable=True),
+    sa.Column('import_fee', sa.BigInteger(), nullable=True),
+    sa.Column('body_hash', sa.String(length=44), nullable=True),
+    sa.Column('init_state_hash', sa.String(length=44), nullable=True),
+    sa.PrimaryKeyConstraint('hash')
+    )
     op.create_table('nft_collections',
     sa.Column('address', sa.String(), nullable=False),
     sa.Column('next_item_index', sa.Numeric(), nullable=True),
@@ -112,25 +130,6 @@ def upgrade():
     sa.Column('code_hash', sa.String(), nullable=True),
     sa.Column('data_hash', sa.String(), nullable=True),
     sa.PrimaryKeyConstraint('address')
-    )
-    op.create_table('messages',
-    sa.Column('hash', sa.String(length=44), nullable=False),
-    sa.Column('source', sa.String(), nullable=True),
-    sa.Column('destination', sa.String(), nullable=True),
-    sa.Column('value', sa.BigInteger(), nullable=True),
-    sa.Column('fwd_fee', sa.BigInteger(), nullable=True),
-    sa.Column('ihr_fee', sa.BigInteger(), nullable=True),
-    sa.Column('created_lt', sa.BigInteger(), nullable=True),
-    sa.Column('created_at', sa.BigInteger(), nullable=True),
-    sa.Column('opcode', sa.Integer(), nullable=True),
-    sa.Column('ihr_disabled', sa.Boolean(), nullable=True),
-    sa.Column('bounce', sa.Boolean(), nullable=True),
-    sa.Column('bounced', sa.Boolean(), nullable=True),
-    sa.Column('import_fee', sa.BigInteger(), nullable=True),
-    sa.Column('body_hash', sa.String(length=44), nullable=True),
-    sa.Column('init_state_hash', sa.String(length=44), nullable=True),
-    sa.ForeignKeyConstraint(['body_hash'], ['message_contents.hash'], ),
-    sa.PrimaryKeyConstraint('hash')
     )
     op.create_table('transactions',
     sa.Column('block_workchain', sa.Integer(), nullable=True),
@@ -206,9 +205,9 @@ def downgrade():
     op.drop_table('jetton_transfers')
     op.drop_table('jetton_burns')
     op.drop_table('transactions')
-    op.drop_table('messages')
     op.drop_table('nft_items')
     op.drop_table('nft_collections')
+    op.drop_table('messages')
     op.drop_table('message_contents')
     op.drop_table('jetton_wallets')
     op.drop_table('jetton_masters')
