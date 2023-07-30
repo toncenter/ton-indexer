@@ -5,128 +5,103 @@
 
 using namespace ton::validator;
 
-struct MyHash {
-    std::size_t operator()(const ton::BlockIdExt& k) const {
-        return std::hash<std::string>()(k.to_str());
-    }
-};
-
-class DbCacheWrapper: public td::actor::Actor {
-private:
-  td::actor::ActorId<RootDb> db_;
-  std::list<ton::BlockIdExt> block_data_cache_order_;
-  std::unordered_map<ton::BlockIdExt, td::Ref<BlockData>, MyHash> block_data_cache_;
-  std::unordered_map<ton::BlockIdExt, std::vector<td::Promise<td::Ref<BlockData>>>, MyHash> block_data_pending_requests_;
-
-  std::list<ton::BlockIdExt> block_state_cache_order_;
-  std::unordered_map<ton::BlockIdExt, td::Ref<ShardState>, MyHash> block_state_cache_;
-  std::unordered_map<ton::BlockIdExt, std::vector<td::Promise<td::Ref<ShardState>>>, MyHash> block_state_pending_requests_;
-
-  size_t max_cache_size_;
-
-public:
-  DbCacheWrapper(td::actor::ActorId<RootDb> db, size_t max_cache_size = 5000)
-    : db_(db), max_cache_size_(max_cache_size) {
-  }
-  
-  void get_block_data(ConstBlockHandle handle, td::Promise<td::Ref<BlockData>> promise) {
-    auto it = block_data_cache_.find(handle->id());
-    if (it != block_data_cache_.end()) {
-      auto res = it->second;
-      promise.set_value(std::move(res)); // Cache hit
-      // Move the accessed item to the end of the list
-      block_data_cache_order_.remove(handle->id());
-      block_data_cache_order_.push_back(handle->id());
+void DbCacheWrapper::get_block_data(ConstBlockHandle handle, td::Promise<td::Ref<BlockData>> promise) {
+  auto it = block_data_cache_.find(handle->id());
+  if (it != block_data_cache_.end()) {
+    auto res = it->second;
+    promise.set_value(std::move(res)); // Cache hit
+    // Move the accessed item to the end of the list
+    block_data_cache_order_.remove(handle->id());
+    block_data_cache_order_.push_back(handle->id());
+  } else {
+    // Check if there are pending requests for this block
+    auto pending_it = block_data_pending_requests_.find(handle->id());
+    if (pending_it != block_data_pending_requests_.end()) {
+      // If a request is pending, add the promise to the list of pending promises
+      pending_it->second.push_back(std::move(promise));
     } else {
-      // Check if there are pending requests for this block
-      auto pending_it = block_data_pending_requests_.find(handle->id());
-      if (pending_it != block_data_pending_requests_.end()) {
-        // If a request is pending, add the promise to the list of pending promises
-        pending_it->second.push_back(std::move(promise));
-      } else {
-        // Cache miss - initiate a request to the database
-        block_data_pending_requests_[handle->id()].push_back(std::move(promise));
+      // Cache miss - initiate a request to the database
+      block_data_pending_requests_[handle->id()].push_back(std::move(promise));
 
-        auto cache_miss_callback = [this, SelfId = actor_id(this), handle](td::Result<td::Ref<BlockData>> res) mutable {
-          td::actor::send_closure(SelfId, &DbCacheWrapper::got_block_data, handle, std::move(res));
-        };
-        td::actor::send_closure(db_, &RootDb::get_block_data, handle, std::move(cache_miss_callback));
-      }
+      auto cache_miss_callback = [this, SelfId = actor_id(this), handle](td::Result<td::Ref<BlockData>> res) mutable {
+        td::actor::send_closure(SelfId, &DbCacheWrapper::got_block_data, handle, std::move(res));
+      };
+      td::actor::send_closure(db_, &RootDb::get_block_data, handle, std::move(cache_miss_callback));
     }
   }
+}
 
-  void got_block_data(ConstBlockHandle handle, td::Result<td::Ref<BlockData>> res) {
-    if (res.is_ok()) {
-      // Check if the cache is full
-      if (block_data_cache_.size() >= max_cache_size_) {
-        // Erase the least recently used item
-        block_data_cache_.erase(block_data_cache_order_.front());
-        block_data_cache_order_.pop_front();
-      }
-
-      // Add the item to the cache and to the end of the list
-      block_data_cache_[handle->id()] = res.ok_ref();
-      block_data_cache_order_.push_back(handle->id());
+void DbCacheWrapper::got_block_data(ConstBlockHandle handle, td::Result<td::Ref<BlockData>> res) {
+  if (res.is_ok()) {
+    // Check if the cache is full
+    if (block_data_cache_.size() >= max_cache_size_) {
+      // Erase the least recently used item
+      block_data_cache_.erase(block_data_cache_order_.front());
+      block_data_cache_order_.pop_front();
     }
 
-    auto it = block_data_pending_requests_.find(handle->id());
-    if (it != block_data_pending_requests_.end()) {
-      for (auto& pending_promise : it->second) {
-        pending_promise.set_result(res.clone());
-      }
-      block_data_pending_requests_.erase(handle->id());
-    }
+    // Add the item to the cache and to the end of the list
+    block_data_cache_[handle->id()] = res.ok_ref();
+    block_data_cache_order_.push_back(handle->id());
   }
 
-  void get_block_state(ConstBlockHandle handle, td::Promise<td::Ref<ShardState>> promise) {
-    auto it = block_state_cache_.find(handle->id());
-    if (it != block_state_cache_.end()) {
-      auto res = it->second;
-      promise.set_value(std::move(res)); // Cache hit
-      // Move the accessed item to the end of the list
-      block_state_cache_order_.remove(handle->id());
-      block_state_cache_order_.push_back(handle->id());
+  auto it = block_data_pending_requests_.find(handle->id());
+  if (it != block_data_pending_requests_.end()) {
+    for (auto& pending_promise : it->second) {
+      pending_promise.set_result(res.clone());
+    }
+    block_data_pending_requests_.erase(handle->id());
+  }
+}
+
+void DbCacheWrapper::get_block_state(ConstBlockHandle handle, td::Promise<td::Ref<ShardState>> promise) {
+  auto it = block_state_cache_.find(handle->id());
+  if (it != block_state_cache_.end()) {
+    auto res = it->second;
+    promise.set_value(std::move(res)); // Cache hit
+    // Move the accessed item to the end of the list
+    block_state_cache_order_.remove(handle->id());
+    block_state_cache_order_.push_back(handle->id());
+  } else {
+    // Check if there are pending requests for this block
+    auto pending_it = block_state_pending_requests_.find(handle->id());
+    if (pending_it != block_state_pending_requests_.end()) {
+      // If a request is pending, add the promise to the list of pending promises
+      pending_it->second.push_back(std::move(promise));
     } else {
-      // Check if there are pending requests for this block
-      auto pending_it = block_state_pending_requests_.find(handle->id());
-      if (pending_it != block_state_pending_requests_.end()) {
-        // If a request is pending, add the promise to the list of pending promises
-        pending_it->second.push_back(std::move(promise));
-      } else {
-        // Cache miss - initiate a request to the database
-        block_state_pending_requests_[handle->id()].push_back(std::move(promise));
+      // Cache miss - initiate a request to the database
+      block_state_pending_requests_[handle->id()].push_back(std::move(promise));
 
-        auto cache_miss_callback = [this, SelfId = actor_id(this), handle](td::Result<td::Ref<ShardState>> res) mutable {
-          td::actor::send_closure(SelfId, &DbCacheWrapper::got_block_state, handle, std::move(res));
-        };
-        td::actor::send_closure(db_, &RootDb::get_block_state, handle, std::move(cache_miss_callback));
-      }
+      auto cache_miss_callback = [this, SelfId = actor_id(this), handle](td::Result<td::Ref<ShardState>> res) mutable {
+        td::actor::send_closure(SelfId, &DbCacheWrapper::got_block_state, handle, std::move(res));
+      };
+      td::actor::send_closure(db_, &RootDb::get_block_state, handle, std::move(cache_miss_callback));
     }
   }
+}
 
-  void got_block_state(ConstBlockHandle handle, td::Result<td::Ref<ShardState>> res) {
-    if (res.is_ok()) {
-      // Check if the cache is full
-      if (block_state_cache_.size() >= max_cache_size_) {
-        // Erase the least recently used item
-        block_state_cache_.erase(block_state_cache_order_.front());
-        block_state_cache_order_.pop_front();
-      }
-
-      // Add the item to the cache and to the end of the list
-      block_state_cache_[handle->id()] = res.ok_ref();
-      block_state_cache_order_.push_back(handle->id());
+void DbCacheWrapper::got_block_state(ConstBlockHandle handle, td::Result<td::Ref<ShardState>> res) {
+  if (res.is_ok()) {
+    // Check if the cache is full
+    if (block_state_cache_.size() >= max_cache_size_) {
+      // Erase the least recently used item
+      block_state_cache_.erase(block_state_cache_order_.front());
+      block_state_cache_order_.pop_front();
     }
 
-    auto it = block_state_pending_requests_.find(handle->id());
-    if (it != block_state_pending_requests_.end()) {
-      for (auto& pending_promise : it->second) {
-        pending_promise.set_result(res.clone());
-      }
-      block_state_pending_requests_.erase(handle->id());
-    }
+    // Add the item to the cache and to the end of the list
+    block_state_cache_[handle->id()] = res.ok_ref();
+    block_state_cache_order_.push_back(handle->id());
   }
-};
+
+  auto it = block_state_pending_requests_.find(handle->id());
+  if (it != block_state_pending_requests_.end()) {
+    for (auto& pending_promise : it->second) {
+      pending_promise.set_result(res.clone());
+    }
+    block_state_pending_requests_.erase(handle->id());
+  }
+}
 
 class GetBlockDataState: public td::actor::Actor {
 private:
@@ -424,11 +399,9 @@ void DbScanner::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R) {
   alarm_timestamp() = td::Timestamp::in(1.0);
 }
 
-td::actor::ActorOwn<DbCacheWrapper> cache_db_;
-
 void DbScanner::run() {
   db_ = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_);
-  cache_db_ = td::actor::create_actor<DbCacheWrapper>("cache_db", db_.get());
+  db_caching_ = td::actor::create_actor<DbCacheWrapper>("cache_db", db_.get(), max_parallel_fetch_actors_);
   event_processor_ = td::actor::create_actor<EventProcessor>("event_processor", insert_manager_);
 }
 
@@ -477,7 +450,7 @@ void DbScanner::schedule_for_processing() {
     });
 
     LOG(DEBUG) << "Creating IndexQuery for mc seqno " << mc_seqno;
-    td::actor::create_actor<IndexQuery>("indexquery", mc_seqno, db_.get(), cache_db_.get(), std::move(R)).release();
+    td::actor::create_actor<IndexQuery>("indexquery", mc_seqno, db_.get(), db_caching_.get(), std::move(R)).release();
     seqnos_in_progress_.insert(mc_seqno);
   }
 }

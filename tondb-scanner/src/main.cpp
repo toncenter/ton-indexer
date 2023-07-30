@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
     return td::Status::OK();
   });
 
-  p.add_checked_option('M', "max-parallel-tasks", "Max parallel index queries (default: 1024)",
+  p.add_checked_option('M', "max-parallel-tasks", "Max parallel MC seqnos in progress (default: 2048)",
                [&](td::Slice fname) { 
     int v;
     try {
@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
     return td::Status::OK();
   });
 
-  p.add_checked_option(' ', "insert-batch-size", "Insert batch size (default: 1024)",
+  p.add_checked_option(' ', "insert-batch-size", "Insert batch size (default: 512)",
                [&](td::Slice fname) { 
     int v;
     try {
@@ -86,7 +86,19 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --insert-batch-size: not a number");
     }
-    td::actor::send_closure(insert_manager, &InsertManagerPostgres::set_batch_size, v);
+    td::actor::send_closure(insert_manager, &InsertManagerPostgres::set_batch_blocks_count, v);
+    return td::Status::OK();
+  });
+
+  p.add_checked_option(' ', "insert-parallel-actors", "Number of parallel insert actors (default: 3)",
+               [&](td::Slice fname) { 
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --insert-parallel-actors: not a number");
+    }
+    td::actor::send_closure(insert_manager, &InsertManagerPostgres::set_parallel_inserts_actors, v);
     return td::Status::OK();
   });
 
