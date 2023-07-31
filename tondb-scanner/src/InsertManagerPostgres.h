@@ -38,7 +38,7 @@ public:
   void set_dbname(std::string value) { credential.dbname = std::move(value); }
 
   void set_batch_blocks_count(int value) { batch_blocks_count_ = value; }
-  void set_parallel_inserts_actors(int value) { parallel_insert_actors_ = value; }
+  void set_parallel_inserts_actors(int value) { max_parallel_insert_actors_ = value; }
 
   void start_up() override;
   void alarm() override;
