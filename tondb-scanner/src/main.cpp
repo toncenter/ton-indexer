@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
     return td::Status::OK();
   });
 
-  p.add_checked_option(' ', "insert-batch-size", "Insert batch size (default: 512)",
+  p.add_checked_option('b', "insert-batch-size", "Insert batch size (default: 512)",
                [&](td::Slice fname) { 
     int v;
     try {
@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
     return td::Status::OK();
   });
 
-  p.add_checked_option(' ', "insert-parallel-actors", "Number of parallel insert actors (default: 3)",
+  p.add_checked_option('w', "insert-parallel-actors", "Number of parallel insert actors (default: 3)",
                [&](td::Slice fname) { 
     int v;
     try {
