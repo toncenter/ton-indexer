@@ -44,6 +44,9 @@ while [[ $# -gt 0 ]]; do
         --batch-size)
             TASK_ARGS="${TASK_ARGS} --insert-batch-size $2"
             shift; shift;;
+        --insert-workers)
+            TASK_ARGS="${TASK_ARGS} --insert-parallel-actors $2"
+            shift; shift;;
         -f|--force)
             FORCE_BUILD=1
             shift;;
