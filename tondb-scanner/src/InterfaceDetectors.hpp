@@ -126,18 +126,9 @@ public:
     if (it != cache_.end()) {
       auto res = it->second;
       promise.set_value(std::move(res));
-      return;
+    } else {
+      promise.set_error(td::Status::Error(ErrorCode::ENTITY_NOT_FOUND));
     }
-
-    td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_entity<T>, convert::to_raw_address(address), 
-                            promise.wrap([this, address](td::Result<T> r_data) mutable -> td::Result<T> {
-      if (r_data.is_error()) {
-        return r_data.move_as_error();
-      }
-      auto data = r_data.move_as_ok();
-      cache_.emplace(convert::to_raw_address(address), data);
-      return data;
-    }));
   }
 
   void add_to_cache(block::StdAddress address, T data, td::Promise<td::Unit> promise) {
