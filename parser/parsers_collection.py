@@ -158,11 +158,15 @@ class JettonTransferParser(Parser):
             if reader.read_uint(1):
                 forward_payload = cell.refs.pop(0)
             else:
-                # in-place, read the rest of the cell slice and refs
-                forward_payload = cell.copy()
-                slice = CellData()
-                slice.data = reader.read_remaining()
-                forward_payload.data = slice
+                if destination == 'EQB3ncyBUTjZUA5EnFKR5_EnOMI9V1tTEAAPaiU71gc4TiUt' and reader.slice_bits() < 32 and len(cell.refs) > 0:
+                    # Some ston.fi users send message with wrong layout, but ston.fi router accepts it
+                    forward_payload = cell.refs.pop(0)
+                else:
+                    # in-place, read the rest of the cell slice and refs
+                    forward_payload = cell.copy()
+                    slice = CellData()
+                    slice.data = reader.read_remaining()
+                    forward_payload.data = slice
         except Exception as e:
             logger.error(f"Unable to parse forward payload {e}")
 
