@@ -251,7 +251,7 @@ def get_transactions(session: Session,
         query = query.filter(Transaction.block_seqno == seqno)  # TODO: index
 
     if account is not None:
-        query = query.filter(Transaction.account == account.upper())  # TODO: index
+        query = query.filter(Transaction.account == account)  # TODO: index
 
     if hash is not None:
         query = query.filter(Transaction.hash == hash)  # TODO: index

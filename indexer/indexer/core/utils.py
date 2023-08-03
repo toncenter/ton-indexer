@@ -86,7 +86,7 @@ def address_to_raw(address):
     if address is None or address == 'addr_none':
         return None
     try:
-        raw_address = detect_address(address)["raw_form"]
+        raw_address = detect_address(address)["raw_form"].upper()
     except Exception:
         raise ValueError(f"Invalid address: '{address}'")
     return raw_address
