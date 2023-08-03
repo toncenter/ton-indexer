@@ -2,7 +2,7 @@ aiocache
 aioprocessing
 aioredis
 crc16
-fastapi
+fastapi<0.100
 gunicorn
 uvicorn
 loguru
