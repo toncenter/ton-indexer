@@ -12,7 +12,10 @@ std::string content_to_json_string(const std::map<std::string, std::string> &con
   td::JsonBuilder jetton_content_json;
   auto obj = jetton_content_json.enter_object();
   for (auto &attr : content) {
-    obj(attr.first, attr.second);
+    auto value = attr.second;
+    // We erase all \0 bytes because Postgres can't contain such strings
+    value.erase(std::remove(value.begin(), value.end(), '\0'), value.end());
+    obj(attr.first, value);
   }
   obj.leave();
 
