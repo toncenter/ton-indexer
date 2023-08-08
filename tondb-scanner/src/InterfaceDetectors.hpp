@@ -184,6 +184,10 @@ public:
         return;
       }
       auto account_state = account_state_r.move_as_ok();
+      if (account_state.account_status != "active") {
+        promise.set_error(td::Status::Error("Account is not active"));
+        return;
+      }
       detect_impl(address, account_state.code, account_state.data, account_state.last_trans_lt, std::move(promise));
     });
     td::actor::create_actor<FetchAccountFromShard>("fetchaccountfromshard", blocks_ds, address, std::move(R)).release();
