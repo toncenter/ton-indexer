@@ -880,20 +880,6 @@ public:
     LOG(DEBUG) << "Created UpsertJettonMaster";
   }
 
-  td::optional<std::string> prepare_jetton_content(JettonMasterData &master_data) {
-    if (!master_data.jetton_content) {
-      return {};
-    }
-    td::JsonBuilder jetton_content_json;
-    auto obj = jetton_content_json.enter_object();
-    for (auto &attr : master_data.jetton_content.value()) {
-      obj(attr.first, attr.second);
-    }
-    obj.leave();
-
-    return jetton_content_json.string_builder().as_cslice().str();
-  }
-
   void start_up() override {
     try {
       pqxx::connection c(connection_string_);
@@ -921,14 +907,12 @@ public:
                           "data_boc = EXCLUDED.data_boc "
                           "WHERE jetton_masters.last_transaction_lt < EXCLUDED.last_transaction_lt;";
 
-      auto jetton_content = prepare_jetton_content(master_data_);
-
       txn.exec_params(query,
                       master_data_.address,
                       master_data_.total_supply,
                       master_data_.mintable,
                       master_data_.admin_address ? master_data_.admin_address.value().c_str() : nullptr,
-                      jetton_content ? jetton_content.value().c_str() : nullptr,
+                      master_data_.jetton_content ? content_to_json_string(master_data_.jetton_content.value()).c_str() : nullptr,
                       td::base64_encode(master_data_.jetton_wallet_code_hash.as_slice()),
                       td::base64_encode(master_data_.data_hash.as_slice()),
                       td::base64_encode(master_data_.code_hash.as_slice()),
@@ -1026,20 +1010,6 @@ public:
     LOG(DEBUG) << "Created UpsertNFTCollection";
   }
 
-  td::optional<std::string> prepare_collection_content(NFTCollectionData &collection) {
-    if (!collection.collection_content) {
-      return {};
-    }
-    td::JsonBuilder collection_content_json;
-    auto obj = collection_content_json.enter_object();
-    for (auto &attr : collection.collection_content.value()) {
-      obj(attr.first, attr.second);
-    }
-    obj.leave();
-
-    return collection_content_json.string_builder().as_cslice().str();
-  }
-
   void start_up() override {
     try {
       pqxx::connection c(connection_string_);
@@ -1064,14 +1034,12 @@ public:
                           "code_boc = EXCLUDED.code_boc, "
                           "data_boc = EXCLUDED.data_boc "
                           "WHERE nft_collections.last_transaction_lt < EXCLUDED.last_transaction_lt;";
-
-      auto collection_content = prepare_collection_content(collection_);
-
+      
       txn.exec_params(query,
                       collection_.address,
                       collection_.next_item_index->to_dec_string(),
                       collection_.owner_address ? collection_.owner_address.value().c_str() : nullptr,
-                      collection_content ? collection_content.value().c_str() : nullptr,
+                      collection_.collection_content ? content_to_json_string(collection_.collection_content.value()).c_str() : nullptr,
                       td::base64_encode(collection_.data_hash.as_slice()),
                       td::base64_encode(collection_.code_hash.as_slice()),
                       collection_.last_transaction_lt,
