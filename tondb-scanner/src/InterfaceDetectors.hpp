@@ -745,14 +745,14 @@ public:
         return;
       }
       if (!code_hash_is_collection.move_as_ok()) {
-        promise.set_error(td::Status::Error(ErrorCode::CACHED_CODE_HASH_NO_ENTITY, "Code hash is not a NFT Collection"));
+        promise.set_error(td::Status::Error(ErrorCode::CACHED_CODE_HASH_NO_ENTITY, "Code hash is not a NFT Item"));
         return;
       }
 
       td::actor::send_closure(SelfId, &NFTItemDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
 
-    td::actor::send_closure(interface_manager_, &InterfaceManager::check_interface, code_cell->get_hash(), IT_NFT_COLLECTION, std::move(P));
+    td::actor::send_closure(interface_manager_, &InterfaceManager::check_interface, code_cell->get_hash(), IT_NFT_ITEM, std::move(P));
   }
 
   void parse_transfer(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<NFTTransfer> promise) {
