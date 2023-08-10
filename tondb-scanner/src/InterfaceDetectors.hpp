@@ -907,7 +907,7 @@ private:
         return;
       }
       td::actor::send_closure(collection_detector_, &NFTCollectionDetector::get_from_cache_or_shard, collection_address.move_as_ok(), blocks_ds,
-                              td::PromiseCreator::lambda([this, ind_content, address, data, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<NFTCollectionData> collection_res) mutable {
+                              td::PromiseCreator::lambda([this, SelfId = actor_id(this), ind_content, address, data, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<NFTCollectionData> collection_res) mutable {
         if (collection_res.is_error()) {
           LOG(ERROR) << "Failed to get collection for " << convert::to_raw_address(address) << ": " << collection_res.error();
           promise.set_error(collection_res.move_as_error_prefix("Failed to get collection for " + convert::to_raw_address(address) + ": "));
@@ -938,7 +938,7 @@ private:
           promise.set_result(std::move(data));
         });
 
-        td::actor::send_closure(actor_id(this), &NFTItemDetector::add_to_cache, address, std::move(data), std::move(cache_promise));
+        td::actor::send_closure(SelfId, &NFTItemDetector::add_to_cache, address, std::move(data), std::move(cache_promise));
       }));
     }
   }
