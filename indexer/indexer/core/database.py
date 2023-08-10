@@ -355,39 +355,39 @@ class NFTTransfer(Base):
 
 
 # Indexes
-Index("blocks_index_1", Block.workchain, Block.shard, Block.seqno, postgresql_using='btree', postgresql_concurrently=True)
+# Index("blocks_index_1", Block.workchain, Block.shard, Block.seqno, postgresql_using='btree', postgresql_concurrently=True)
 Index("blocks_index_2", Block.gen_utime, postgresql_using='btree', postgresql_concurrently=True)
 Index("blocks_index_3", Block.mc_block_workchain, Block.mc_block_shard, Block.mc_block_seqno, postgresql_using='btree', postgresql_concurrently=True)
 
 Index("transactions_index_1", Transaction.block_workchain, Transaction.block_shard, Transaction.block_seqno, postgresql_using='btree', postgresql_concurrently=True)
 Index("transactions_index_2", Transaction.account, postgresql_using='btree', postgresql_concurrently=True)
-Index("transactions_index_3", Transaction.hash, postgresql_using='btree', postgresql_concurrently=True)
+# Index("transactions_index_3", Transaction.hash, postgresql_using='btree', postgresql_concurrently=True)
 Index("transactions_index_4", Transaction.lt, postgresql_using='btree', postgresql_concurrently=True)
 # Index("transactions_index_5", Transaction.account_state_hash_before, postgresql_using='btree', postgresql_concurrently=True)
 # Index("transactions_index_6", Transaction.account_state_hash_after, postgresql_using='btree', postgresql_concurrently=True)
 
-Index('account_states_index_1', AccountState.hash, postgresql_using='btree', postgresql_concurrently=True)
+# Index('account_states_index_1', AccountState.hash, postgresql_using='btree', postgresql_concurrently=True)
 # Index('account_states_index_2', AccountState.code_hash, postgresql_using='btree', postgresql_concurrently=True)
 
-Index("messages_index_1", Message.hash, postgresql_using='btree', postgresql_concurrently=True)
+# Index("messages_index_1", Message.hash, postgresql_using='btree', postgresql_concurrently=True)
 Index("messages_index_2", Message.source, postgresql_using='btree', postgresql_concurrently=True)
 Index("messages_index_3", Message.destination, postgresql_using='btree', postgresql_concurrently=True)
 Index("messages_index_4", Message.created_lt, postgresql_using='btree', postgresql_concurrently=True)
-Index("messages_index_5", Message.created_at, postgresql_using='btree', postgresql_concurrently=True)
+# Index("messages_index_5", Message.created_at, postgresql_using='btree', postgresql_concurrently=True)
 # Index("messages_index_6", Message.body_hash, postgresql_using='btree', postgresql_concurrently=True)
 # Index("messages_index_7", Message.init_state_hash, postgresql_using='btree', postgresql_concurrently=True)
 
-Index("transaction_messages_index_1", TransactionMessage.transaction_hash, postgresql_using='btree', postgresql_concurrently=True)
+# Index("transaction_messages_index_1", TransactionMessage.transaction_hash, postgresql_using='btree', postgresql_concurrently=True)
 Index("transaction_messages_index_2", TransactionMessage.message_hash, postgresql_using='btree', postgresql_concurrently=True)
 
-Index("message_contents_index_1", MessageContent.hash, postgresql_using='btree', postgresql_concurrently=True)
+# Index("message_contents_index_1", MessageContent.hash, postgresql_using='btree', postgresql_concurrently=True)
 
-Index("jetton_wallets_index_1", JettonWallet.address, postgresql_using='btree', postgresql_concurrently=True)
+# Index("jetton_wallets_index_1", JettonWallet.address, postgresql_using='btree', postgresql_concurrently=True)
 Index("jetton_wallets_index_2", JettonWallet.owner, postgresql_using='btree', postgresql_concurrently=True)
 Index("jetton_wallets_index_3", JettonWallet.jetton, postgresql_using='btree', postgresql_concurrently=True)
 # Index("jetton_wallets_index_4", JettonWallet.code_hash, postgresql_using='btree', postgresql_concurrently=True)
 
-Index("jetton_masters_index_1", JettonMaster.address, postgresql_using='btree', postgresql_concurrently=True)
+# Index("jetton_masters_index_1", JettonMaster.address, postgresql_using='btree', postgresql_concurrently=True)
 Index("jetton_masters_index_2", JettonMaster.admin_address, postgresql_using='btree', postgresql_concurrently=True)
 # Index("jetton_masters_index_3", JettonMaster.code_hash, postgresql_using='btree', postgresql_concurrently=True)
 
@@ -401,11 +401,11 @@ Index("jetton_transfers_index_4", JettonTransfer.jetton_wallet_address, postgres
 Index("jetton_burns_index_2", JettonBurn.owner, postgresql_using='btree', postgresql_concurrently=True)
 Index("jetton_burns_index_3", JettonBurn.jetton_wallet_address, postgresql_using='btree', postgresql_concurrently=True)
 
-Index("nft_collections_index_1", NFTCollection.address, postgresql_using='btree', postgresql_concurrently=True)
+# Index("nft_collections_index_1", NFTCollection.address, postgresql_using='btree', postgresql_concurrently=True)
 Index("nft_collections_index_2", NFTCollection.owner_address, postgresql_using='btree', postgresql_concurrently=True)
 # Index("nft_collections_index_3", NFTCollection.code_hash, postgresql_using='btree', postgresql_concurrently=True)
 
-Index("nft_items_index_1", NFTItem.address, postgresql_using='btree', postgresql_concurrently=True)
+# Index("nft_items_index_1", NFTItem.address, postgresql_using='btree', postgresql_concurrently=True)
 Index("nft_items_index_2", NFTItem.collection_address, postgresql_using='btree', postgresql_concurrently=True)
 Index("nft_items_index_3", NFTItem.owner_address, postgresql_using='btree', postgresql_concurrently=True)
 
