@@ -112,16 +112,16 @@ public:
 };
 
 template <class T>
-class CacheManager {
+class InterfaceStorage {
 public:
   std::map<std::string, T> cache_{};
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
 
-  CacheManager(td::actor::ActorId<InsertManagerInterface> insert_manager) 
+  InterfaceStorage(td::actor::ActorId<InsertManagerInterface> insert_manager) 
     : insert_manager_(insert_manager) {
   }
 
-  void check_cache(block::StdAddress address, td::Promise<T> promise) {
+  void check(block::StdAddress address, td::Promise<T> promise) {
     auto it = cache_.find(convert::to_raw_address(address));
     if (it != cache_.end()) {
       auto res = it->second;
@@ -131,7 +131,7 @@ public:
     }
   }
 
-  void add_to_cache(block::StdAddress address, T data, td::Promise<td::Unit> promise) {
+  void add(block::StdAddress address, T data, td::Promise<td::Unit> promise) {
     cache_.emplace(convert::to_raw_address(address), data);
     
     auto P = td::PromiseCreator::lambda([this, address, promise = std::move(promise)](td::Result<td::Unit> r_unit) mutable {
@@ -148,14 +148,14 @@ public:
 
 /// @brief Detects Jetton Master according to TEP 74
 /// Checks that get_jetton_data() returns (int total_supply, int mintable, slice admin_address, cell jetton_content, cell jetton_wallet_code)
-class JettonMasterDetector: public InterfaceDetector<JettonMasterData>,
-                            public CacheManager<JettonMasterData> {
+class JettonMasterDetector: public InterfaceDetector<JettonMasterData> {
 private:
   td::actor::ActorId<InterfaceManager> interface_manager_;
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
+  InterfaceStorage<JettonMasterData> storage_;
 public:
   JettonMasterDetector(td::actor::ActorId<InterfaceManager> interface_manager, td::actor::ActorId<InsertManagerInterface> insert_manager) 
-    : CacheManager<JettonMasterData>(insert_manager)
+    : storage_(insert_manager_)
     , interface_manager_(interface_manager)
     , insert_manager_(insert_manager) {
   }
@@ -205,8 +205,7 @@ public:
       }
       td::actor::send_closure(SelfId, &JettonMasterDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, std::move(promise));
     });
-
-    check_cache(address, std::move(P));
+    storage_.check(address, std::move(P));
   }
 
   void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<JettonMasterData> promise) {
@@ -268,7 +267,7 @@ public:
       }
       promise.set_result(std::move(data));
     });
-    add_to_cache(address, std::move(data), std::move(cache_promise));
+    storage_.add(address, std::move(data), std::move(cache_promise));
   }
 
   void get_wallet_address(const MasterchainBlockDataState& blocks_ds, block::StdAddress master_address, block::StdAddress owner_address, td::Promise<block::StdAddress> promise) {
@@ -286,7 +285,7 @@ public:
       }
       get_wallet_address_impl(r.move_as_ok(), master_address, owner_address, std::move(promise));
     });
-    check_cache(master_address, std::move(P));
+    storage_.check(master_address, std::move(P));
   }
 
   void get_wallet_address_impl(JettonMasterData data, block::StdAddress master_address, block::StdAddress owner_address, td::Promise<block::StdAddress> P) {
@@ -334,17 +333,17 @@ public:
 /// @brief Detects Jetton Wallet according to TEP 74
 /// Checks that get_wallet_data() returns (int balance, slice owner, slice jetton, cell jetton_wallet_code) 
 /// and corresponding jetton master recognizes this wallet
-class JettonWalletDetector: public InterfaceDetector<JettonWalletData>,
-                            public CacheManager<JettonWalletData> {
+class JettonWalletDetector: public InterfaceDetector<JettonWalletData> {
 private:
   td::actor::ActorId<JettonMasterDetector> jetton_master_detector_;
   td::actor::ActorId<InterfaceManager> interface_manager_;
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
+  InterfaceStorage<JettonWalletData> storage_;
 public:
   JettonWalletDetector(td::actor::ActorId<JettonMasterDetector> jetton_master_detector,
                        td::actor::ActorId<InterfaceManager> interface_manager,
                        td::actor::ActorId<InsertManagerInterface> insert_manager) 
-    : CacheManager<JettonWalletData>(insert_manager)
+    : storage_(insert_manager)
     , jetton_master_detector_(jetton_master_detector)
     , interface_manager_(interface_manager)
     , insert_manager_(insert_manager) {
@@ -380,7 +379,7 @@ public:
       td::actor::send_closure(SelfId, &JettonWalletDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
 
-    check_cache(address, std::move(P));
+    storage_.check(address, std::move(P));
   }
 
   void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonWalletData> promise) {
@@ -449,7 +448,7 @@ public:
       td::actor::send_closure(SelfId, &JettonWalletDetector::parse_transfer_impl, transaction, std::move(cs), std::move(promise));
     });
 
-    check_cache(transaction.account, std::move(P));
+    storage_.check(transaction.account, std::move(P));
   }
 
   void parse_transfer_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonTransfer> promise) {
@@ -510,7 +509,7 @@ public:
       td::actor::send_closure(SelfId, &JettonWalletDetector::parse_burn_impl, transaction, std::move(cs), std::move(promise));
     });
 
-    check_cache(transaction.account, std::move(P));
+    storage_.check(transaction.account, std::move(P));
   }
 
   void parse_burn_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonBurn> promise) {
@@ -579,26 +578,30 @@ private:
             }
             promise.set_result(std::move(data));
           });
-          add_to_cache(address, std::move(data), std::move(cache_promise));
+          td::actor::send_closure(SelfId, &JettonWalletDetector::add_to_cache, address, std::move(data), std::move(cache_promise));
         }
       }
     });
 
     td::actor::send_closure(jetton_master_detector_, &JettonMasterDetector::get_wallet_address, blocks_ds, master_addr.move_as_ok(), owner_addr.move_as_ok(), std::move(P));
   }
+
+  void add_to_cache(block::StdAddress address, JettonWalletData data, td::Promise<td::Unit> promise) {
+    storage_.add(address, data, std::move(promise));
+  }
 };
 
 
 /// @brief Detects NFT Collection according to your specific standard
 /// Checks that get_collection_data() returns (int next_item_index, cell collection_content, slice owner_address)
-class NFTCollectionDetector: public InterfaceDetector<NFTCollectionData>,
-                             public CacheManager<NFTCollectionData> {
+class NFTCollectionDetector: public InterfaceDetector<NFTCollectionData> {
 private:
   td::actor::ActorId<InterfaceManager> interface_manager_;
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
+  InterfaceStorage<NFTCollectionData> storage_;
 public:
   NFTCollectionDetector(td::actor::ActorId<InterfaceManager> interface_manager, td::actor::ActorId<InsertManagerInterface> insert_manager) 
-    : CacheManager<NFTCollectionData>(insert_manager)
+    : storage_(insert_manager)
     , interface_manager_(interface_manager)
     , insert_manager_(insert_manager) {
   }
@@ -611,7 +614,7 @@ public:
         promise.set_value(r.move_as_ok());
       }
     });
-    check_cache(address, std::move(R));
+    storage_.check(address, std::move(R));
   }
 
   void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTCollectionData> promise) override {
@@ -656,7 +659,7 @@ private:
       td::actor::send_closure(SelfId, &NFTCollectionDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, std::move(promise));
     });
 
-    check_cache(address, std::move(P));
+    storage_.check(address, std::move(P));
   }
 
   void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<NFTCollectionData> promise) {
@@ -717,22 +720,22 @@ private:
       }
       promise.set_result(std::move(data));
     });
-    add_to_cache(address, std::move(data), std::move(cache_promise));
+    storage_.add(address, std::move(data), std::move(cache_promise));
   }
 };
 
 
 /// @brief Detects NFT Item according to your specific standard
 /// Checks that get_nft_data() returns (int init?, int index, slice collection_address, slice owner_address, cell individual_content)
-class NFTItemDetector: public InterfaceDetector<NFTItemData>,
-                       public CacheManager<NFTItemData> {
+class NFTItemDetector: public InterfaceDetector<NFTItemData> {
 private:
   td::actor::ActorId<InterfaceManager> interface_manager_;
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
   td::actor::ActorId<NFTCollectionDetector> collection_detector_;
+  InterfaceStorage<NFTItemData> storage_;
 public:
   NFTItemDetector(td::actor::ActorId<InterfaceManager> interface_manager, td::actor::ActorId<InsertManagerInterface> insert_manager, td::actor::ActorId<NFTCollectionDetector> collection_detector) 
-    : CacheManager<NFTItemData>(insert_manager)
+    : storage_(insert_manager)
     , interface_manager_(interface_manager)
     , insert_manager_(insert_manager)
     , collection_detector_(collection_detector) {
@@ -768,7 +771,7 @@ public:
       td::actor::send_closure(SelfId, &NFTItemDetector::parse_transfer_impl, transaction, std::move(cs), std::move(promise));
     });
 
-    check_cache(transaction.account, std::move(P));
+    storage_.check(transaction.account, std::move(P));
   }
 
   void parse_transfer_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<NFTTransfer> promise) {
@@ -826,7 +829,7 @@ private:
       td::actor::send_closure(SelfId, &NFTItemDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
 
-    check_cache(address, std::move(P));
+    storage_.check(address, std::move(P));
   }
 
   void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTItemData> promise) {
@@ -894,7 +897,7 @@ private:
         }
         promise.set_result(std::move(data));
       });
-      add_to_cache(address, std::move(data), std::move(cache_promise));
+      storage_.add(address, std::move(data), std::move(cache_promise));
     } else {
       auto ind_content = stack[4].as_cell();
       auto collection_address = block::StdAddress::parse(data.collection_address);
@@ -904,7 +907,7 @@ private:
         return;
       }
       td::actor::send_closure(collection_detector_, &NFTCollectionDetector::get_from_cache_or_shard, collection_address.move_as_ok(), blocks_ds,
-                              td::PromiseCreator::lambda([this, ind_content, address, data, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<NFTCollectionData> collection_res) mutable {
+                              td::PromiseCreator::lambda([this, SelfId = actor_id(this), ind_content, address, data, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<NFTCollectionData> collection_res) mutable {
         if (collection_res.is_error()) {
           LOG(ERROR) << "Failed to get collection for " << convert::to_raw_address(address) << ": " << collection_res.error();
           promise.set_error(collection_res.move_as_error_prefix("Failed to get collection for " + convert::to_raw_address(address) + ": "));
@@ -934,9 +937,14 @@ private:
           }
           promise.set_result(std::move(data));
         });
-        add_to_cache(address, std::move(data), std::move(cache_promise));
+
+        td::actor::send_closure(SelfId, &NFTItemDetector::add_to_cache, address, std::move(data), std::move(cache_promise));
       }));
     }
+  }
+
+  void add_to_cache(block::StdAddress address, NFTItemData data, td::Promise<td::Unit> promise) {
+    storage_.add(address, data, std::move(promise));
   }
 
   td::Status verify_belonging_to_collection(const NFTItemData& item_data, const NFTCollectionData& collection_data) {
