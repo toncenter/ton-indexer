@@ -1291,9 +1291,9 @@ void InsertManagerPostgres::alarm() {
     auto P = td::PromiseCreator::lambda([this, promises = std::move(promises)](td::Result<td::Unit> R) mutable {
       parallel_insert_actors_--;
       if (R.is_error()) {
-        LOG(ERROR) << "Error inserting to PG: " << R.move_as_error();
+        LOG(ERROR) << "Error inserting to PG: " << R.error();
         for (auto& p : promises) {
-          p.set_error(R.move_as_error());
+          p.set_error(R.error().clone());
         }
         return;
       }
