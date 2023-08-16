@@ -109,6 +109,7 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
   }
 }
 
+std::mutex events_mutex;
 void EventProcessor::process_transactions(const std::vector<schema::Transaction>& transactions, td::Promise<std::vector<BlockchainEvent>> &&promise) {
   LOG(DEBUG) << "Detecting tokens transactions " << transactions.size();
 
@@ -133,7 +134,7 @@ void EventProcessor::process_transactions(const std::vector<schema::Transaction>
     }
 
     // template lambda to process td::Result<T> event
-    auto process = [events, tx, &ig](auto&& event, td::Promise<> promise) mutable {
+    auto process = [events, &tx, &ig](auto&& event, td::Promise<> promise) mutable {
       if (event.is_error()) {
         LOG(DEBUG) << "Failed to parse event (tx hash " << tx.hash << "): " << event.error();
         if (event.error().code() == ErrorCode::DB_ERROR) {
@@ -142,7 +143,8 @@ void EventProcessor::process_transactions(const std::vector<schema::Transaction>
           return;
         }
       } else {
-        LOG(DEBUG) << "Event: " << event.move_as_ok().transaction_hash;
+        LOG(DEBUG) << "Event: " << event.ok().transaction_hash;
+        std::lock_guard<std::mutex> guard(events_mutex);
         events->push_back(event.move_as_ok());
       }
       promise.set_value(td::Unit());
@@ -152,21 +154,21 @@ void EventProcessor::process_transactions(const std::vector<schema::Transaction>
     switch (tokens::gen::t_InternalMsgBody.check_tag(*cs)) {
       case tokens::gen::InternalMsgBody::transfer_jetton: 
         td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_transfer, tx, cs, 
-          td::PromiseCreator::lambda([events, tx, process, promise = ig.get_promise()](td::Result<JettonTransfer> transfer) mutable { 
+          td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<JettonTransfer> transfer) mutable { 
             process(std::move(transfer), std::move(promise));
           })
         );
         break;
       case tokens::gen::InternalMsgBody::burn: 
         td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_burn, tx, cs, 
-          td::PromiseCreator::lambda([events, tx, process, promise = ig.get_promise()](td::Result<JettonBurn> burn) mutable { 
+          td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<JettonBurn> burn) mutable { 
             process(std::move(burn), std::move(promise));
           })
         );
         break;
       case tokens::gen::InternalMsgBody::transfer_nft: 
         td::actor::send_closure(nft_item_detector_, &NFTItemDetector::parse_transfer, tx, cs, 
-          td::PromiseCreator::lambda([events, tx, process, promise = ig.get_promise()](td::Result<NFTTransfer> transfer) mutable { 
+          td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<NFTTransfer> transfer) mutable { 
             process(std::move(transfer), std::move(promise));
           })
         );
