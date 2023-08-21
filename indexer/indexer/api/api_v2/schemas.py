@@ -155,8 +155,8 @@ class AccountState(BaseModel):
     balance: str
     account_status: AccountStatus
     frozen_hash: Optional[str]
-    code_hash: str
-    data_hash: str
+    code_hash: Optional[str]
+    data_hash: Optional[str]
 
     @classmethod
     def from_orm(cls, obj):
