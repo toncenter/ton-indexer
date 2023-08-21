@@ -92,12 +92,15 @@ def address_to_raw(address):
     return raw_address
 
 
+hex_prefix = '0x'
+
 # int64 <-> hex
 @optional_value
 def hex_to_int(value):
+    if value.startswith(hex_prefix):
+        value = value[len(hex_prefix):]
     return ba2int(hex2ba(value), signed=True)
-
 
 @optional_value
 def int_to_hex(value, length=64, signed=True):
-    return ba2hex(int2ba(value, length=length, signed=signed))
+    return hex_prefix + ba2hex(int2ba(value, length=length, signed=signed))
