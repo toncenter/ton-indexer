@@ -117,7 +117,7 @@ class Message(BaseModel):
     ihr_fee: Optional[str]
     created_lt: Optional[str]
     created_at: Optional[str]
-    opcode: Optional[int]
+    opcode: Optional[str]
     ihr_disabled: Optional[bool]
     bounce: Optional[bool]
     bounced: Optional[bool]
@@ -131,14 +131,14 @@ class Message(BaseModel):
     @classmethod
     def from_orm(cls, obj):
         return Message(hash=hash_type(obj.hash),
-                       source=address_type(obj.source) or 'addr_none',
-                       destination=address_type(obj.destination) or 'addr_none',
+                       source=address_type(obj.source),
+                       destination=address_type(obj.destination),
                        value=obj.value,
                        fwd_fee=obj.fwd_fee,
                        ihr_fee=obj.ihr_fee,
                        created_lt=obj.created_lt,
                        created_at=obj.created_at,
-                       opcode=obj.opcode,
+                       opcode=f'0x{(obj.opcode & 0xffffffff):08x}' if obj.opcode is not None else None,
                        ihr_disabled=obj.ihr_disabled,
                        bounce=obj.bounce,
                        bounced=obj.bounced,
@@ -235,9 +235,7 @@ class NFTCollection(BaseModel):
     collection_content: Any
     
     code_hash: str
-    code_boc: str
     data_hash: str
-    data_boc: str
     
     @classmethod
     def from_orm(cls, obj):
@@ -247,9 +245,7 @@ class NFTCollection(BaseModel):
                              next_item_index=obj.next_item_index,
                              collection_content=obj.collection_content,
                              code_hash=hash_type(obj.code_hash),
-                             code_boc=obj.code_boc,
-                             data_hash=hash_type(obj.data_hash),
-                             data_boc=obj.data_boc,)
+                             data_hash=hash_type(obj.data_hash),)
 
 
 class NFTItem(BaseModel):
@@ -319,9 +315,7 @@ class JettonMaster(BaseModel):
     jetton_wallet_code_hash: str
     jetton_content: Any
     code_hash: str
-    code_boc: str
     data_hash: str
-    data_boc: str
 
     @classmethod
     def from_orm(cls, obj):
@@ -333,9 +327,7 @@ class JettonMaster(BaseModel):
                             jetton_wallet_code_hash=obj.jetton_wallet_code_hash,
                             jetton_content=obj.jetton_content,
                             code_hash=hash_type(obj.code_hash),
-                            code_boc=obj.code_boc,
-                            data_hash=hash_type(obj.data_hash),
-                            data_boc=obj.data_boc,)
+                            data_hash=hash_type(obj.data_hash),)
 
 
 class JettonWallet(BaseModel):
