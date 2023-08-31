@@ -38,13 +38,13 @@ while [[ $# -gt 0 ]]; do
         --from)
             TASK_ARGS="${TASK_ARGS} --from $2"
             shift; shift;;
-        --max-parallel)
+        --max-parallel-tasks)
             TASK_ARGS="${TASK_ARGS} --max-parallel-tasks $2"
             shift; shift;;
-        --batch-size)
+        --insert-batch-size)
             TASK_ARGS="${TASK_ARGS} --insert-batch-size $2"
             shift; shift;;
-        --insert-workers)
+        --insert-parallel-actors)
             TASK_ARGS="${TASK_ARGS} --insert-parallel-actors $2"
             shift; shift;;
         -f|--force)
