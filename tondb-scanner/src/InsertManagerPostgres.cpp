@@ -134,7 +134,7 @@ void InsertBatchMcSeqnos::insert_blocks(pqxx::work &transaction, const std::vect
                                 "mc_block_shard, mc_block_seqno, global_id, version, after_merge, before_split, "
                                 "after_split, want_split, key_block, vert_seqno_incr, flags, gen_utime, start_lt, "
                                 "end_lt, validator_list_hash_short, gen_catchain_seqno, min_ref_mc_seqno, "
-                                "prev_key_block_seqno, vert_seqno, master_ref_seqno, rand_seed, created_by) VALUES ";
+                                "prev_key_block_seqno, vert_seqno, master_ref_seqno, rand_seed, created_by, tx_count) VALUES ";
 
   bool is_first = true;
   for (const auto& mc_block : mc_blocks) {
@@ -172,7 +172,8 @@ void InsertBatchMcSeqnos::insert_blocks(pqxx::work &transaction, const std::vect
             << block.vert_seqno << ","
             << TO_SQL_OPTIONAL(block.master_ref_seqno) << ","
             << TO_SQL_STRING(block.rand_seed) << ","
-            << TO_SQL_STRING(block.created_by)
+            << TO_SQL_STRING(block.created_by) << ","
+            << block.transactions.size()
             << ")";
       ++blocks_count_;
     }
