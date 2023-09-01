@@ -16,8 +16,16 @@ else
     exit 1
 fi
 
-echo "Postgres host: $POSTGRES_HOST"
 POSTGRES_HOST_IP=$(dig +short ${POSTGRES_HOST})
+if [[ -z "$POSTGRES_HOST_IP" ]]; then
+    POSTGRES_HOST_IP=$POSTGRES_HOST
+fi
+echo "Postgres host: $POSTGRES_HOST (ip: $POSTGRES_HOST_IP)"
 
 ulimit -n 1000000
-tondb-scanner -D $POSTGRES_DBROOT -H $POSTGRES_HOST_IP -U $POSTGRES_USER -P $POSTGRES_PASSWORD -B $POSTGRES_DBNAME $@
+tondb-scanner --host $POSTGRES_HOST_IP \
+              --port $POSTGRES_PORT \
+              --user $POSTGRES_USER \
+              --password $POSTGRES_PASSWORD \
+              --dbname $POSTGRES_DBNAME \
+              --db /tondb $@
