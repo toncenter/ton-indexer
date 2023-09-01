@@ -1,4 +1,4 @@
-# TON Index C++
+# TON Index (C++ Worker)
 
 This is a C++ worker for [TON indexer](https://github.com/kdimentionaltree/ton-indexer/tree/cpp-indexer). This worker reads data from TON node files, parse TL-B schemas and insert data to PostgreSQL database.
 
