@@ -54,6 +54,8 @@ class Block(BaseModel):
     master_ref_seqno: Optional[int]
     rand_seed: str
     created_by: str
+    
+    tx_count: Optional[int]
 
     masterchain_block_ref: Optional[BlockReference]
 
@@ -85,6 +87,7 @@ class Block(BaseModel):
                      master_ref_seqno=obj.master_ref_seqno,
                      rand_seed=hash_type(obj.rand_seed),
                      created_by=hash_type(obj.created_by),
+                     tx_count=obj.tx_count,
                      masterchain_block_ref=BlockReference(workchain=obj.mc_block_workchain, 
                                                           shard=shard_type(obj.mc_block_shard), 
                                                           seqno=obj.mc_block_seqno) 
@@ -250,8 +253,8 @@ class NFTCollection(BaseModel):
 
 class NFTItem(BaseModel):
     address: str
-    collection_address: str
-    owner_address: str
+    collection_address: Optional[str]
+    owner_address: Optional[str]
     init: bool
     index: str
     last_transaction_lt: str

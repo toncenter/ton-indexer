@@ -15,8 +15,9 @@ def hash_type(value):
 def address_type(value):
     return address_to_raw(value).upper() if value and value != 'addr_none' else None
 
+
 def shard_type(value):
-    return int_to_hex(value, length=64, signed=True).upper() if value else None
+    return '0x' + int_to_hex(value, length=64, signed=True).upper() if value else None
 
 
 class BlockReference(BaseModel):
@@ -55,6 +56,8 @@ class Block(BaseModel):
     rand_seed: str
     created_by: str
 
+    tx_count: Optional[int]
+
     masterchain_block_ref: Optional[BlockReference]
 
 
@@ -85,6 +88,7 @@ class Block(BaseModel):
                      master_ref_seqno=obj.master_ref_seqno,
                      rand_seed=hash_type(obj.rand_seed),
                      created_by=hash_type(obj.created_by),
+                     tx_count=obj.tx_count,
                      masterchain_block_ref=BlockReference(workchain=obj.mc_block_workchain, 
                                                           shard=shard_type(obj.mc_block_shard), 
                                                           seqno=obj.mc_block_seqno) 

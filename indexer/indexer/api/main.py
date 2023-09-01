@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI, status, Depends
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -11,6 +11,7 @@ from indexer.api.api_wordy.main import router as router_wordy
 
 from indexer.core import exceptions
 from indexer.core.settings import Settings
+from indexer.api.deps.apikey import api_key_dep
 
 
 logging.basicConfig(format='%(asctime)s %(module)-15s %(message)s',
@@ -24,7 +25,8 @@ app = FastAPI(title="TON Index",
               description=description,
               version='0.1.0',
               root_path=settings.api_root_path,
-              docs_url='/')
+              docs_url='/',
+              dependencies=[Depends(api_key_dep)])
 
 
 @app.exception_handler(StarletteHTTPException)
