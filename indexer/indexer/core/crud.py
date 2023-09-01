@@ -179,7 +179,7 @@ def query_transactions_by_utime(query: Query,
     if start_utime is not None:
         query = query.filter(Transaction.now >= start_utime)
     if end_utime is not None:
-        query = query.filter(Transaction.now >= end_utime)
+        query = query.filter(Transaction.now <= end_utime)
     return query
 
 

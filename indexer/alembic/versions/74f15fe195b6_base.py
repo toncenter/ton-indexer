@@ -57,6 +57,7 @@ def upgrade():
     sa.Column('master_ref_seqno', sa.Integer(), nullable=True),
     sa.Column('rand_seed', sa.String(length=44), nullable=True),
     sa.Column('created_by', sa.String(), nullable=True),
+    sa.Column('tx_count', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['mc_block_workchain', 'mc_block_shard', 'mc_block_seqno'], ['blocks.workchain', 'blocks.shard', 'blocks.seqno'], ),
     sa.PrimaryKeyConstraint('workchain', 'shard', 'seqno')
     )

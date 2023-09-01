@@ -141,7 +141,7 @@ async def get_blocks(
 
 @router.get("/masterchainBlockShards", response_model=List[schemas.Block])
 async def get_masterchain_block_shards(
-    seqno: int = Path(..., description='Masterchain block seqno'),
+    seqno: int = Query(..., description='Masterchain block seqno'),
     include_mc_block: bool = Query(False, description='Include masterchain block'),
     db: AsyncSession = Depends(get_db)):
     """
@@ -215,7 +215,7 @@ async def get_transactions_by_masterchain_block(
 
 @router.get('/adjacentTransactions', response_model=List[schemas.Transaction])
 async def get_adjacent_transactions(
-    hash: str = Query(None, description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
+    hash: str = Query(..., description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
     direction: Optional[str] = Query('both', description='Direction transactions by lt.', enum=['in', 'out', 'both']),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
