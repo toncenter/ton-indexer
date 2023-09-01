@@ -1,166 +1,97 @@
 version: '3.9'
 
-x-indexer-environment: &indexer-environment
-  POSTGRES_USER: postgres
+x-indexer-environment: &index-common
+  POSTGRES_HOST:
+  POSTGRES_PORT:
+  POSTGRES_USER:
   POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-  POSTGRES_DBNAME: ton_index
-  TON_INDEXER_LITESERVER_CONFIG: /run/secrets/tonlib_config
-  TON_INDEXER_AMQP_DSN: amqp://rabbitmq:5672
-  TON_INDEXER_REDIS_DSN: redis://redis:6379
-  TON_INDEXER_CDLL_PATH: /app/libtonlibjson.so
+  POSTGRES_DBNAME:
+  POSTGRES_PUBLISH_PORT:
+
+x-index-api: &index-api
   TON_INDEXER_API_ROOT_PATH:
-  TON_INDEXER_BLOCKS_PER_TASK:
-  TON_INDEXER_MAX_TASKS_PER_CHILD:
-  TON_INDEXER_TASK_TIME_LIMIT: 1200
-  TON_INDEXER_MIN_WORKERS:
-  TON_INDEXER_MAX_WORKERS:
-  TON_INDEXER_MAX_SCHEDULED_TASKS:
-  TON_INDEXER_USE_EXT_METHOD:
-  TON_INDEXER_START_SEQNO:
-  TON_INDEXER_BOTTOM_SEQNO:
+  TON_INDEXER_API_PORT:
+  <<: *index-common
+
+x-index-worker: &index-worker
+  TON_WORKER_FROM:
+  <<: *index-common
 
 services:
-  postgres:
-    image: postgres:14
-    environment: 
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      POSTGRES_DBNAME: ton_index
-    ports:
-      - target: 5432
-        published: 5432
-        mode: host
+  index-api:
+    build:
+      context: indexer
+      dockerfile: Dockerfile
     secrets:
       - postgres_password
-    command: postgres -c max_connections=1024 -c shared_buffers=4GB -c work_mem=2GB
+    command: gunicorn indexer.api.main:app -k uvicorn.workers.UvicornWorker --bind=0.0.0.0:8081 -w ${TON_INDEXER_WORKERS:-1}
+    ports:
+      - target: 8081
+        published: ${TON_INDEXER_API_PORT:-8081}
+        protocol: tcp
+        mode: host
+    environment: *index-api
+    networks:
+      internal:
+    depends_on:
+      - alembic
+
+  alembic:
+    build:
+      context: indexer
+      dockerfile: Dockerfile
+    environment: *index-api 
+    secrets:
+      - postgres_password
+    command: alembic upgrade head
+    networks:
+      internal:
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  index-worker:
+    build:
+      context: ton-index-cpp
+      dockerfile: Dockerfile
+    secrets:
+      - postgres_password
+    volumes:
+      - ${TON_WORKER_DBROOT}:/tondb
+    environment: *index-worker
+    networks:
+      internal:
+    command: --from ${TON_WORKER_FROM:-1} \ 
+             --max-parallel-tasks ${TON_WORKER_MAX_PARALLEL_TASKS:-1024} \
+             --insert-batch-size ${TON_WORKER_INSERT_BATCH_SIZE:-512} \
+             --insert-parallel-actors ${TON_WORKER_INSERT_PARALLEL_ACTORS:-3}
+    restart: unless-stopped
+    depends_on:
+      alembic:
+        condition: service_completed_successfully
+
+  postgres:
+    image: postgres:15
+    environment: *index-common
+    ports:
+      - ${POSTGRES_PUBLISH_PORT:-5432}:5432
+    secrets:
+      - postgres_password
+    command: postgres -c max_connections=1024 -c shared_buffers=4GB -c work_mem=64MB -c max_wal_size=1GB
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
-    tmpfs:
-      - /shm_tmp:size=12G
+    shm_size: 2G
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - type: tmpfs
-        target: /dev/shm
-    deploy:
-      mode: replicated
-      replicas: 1
-      restart_policy:
-        condition: any
-      placement:
-        constraints:
-          - "node.labels.${TONCENTER_ENV:?}.indexer.storage==true"
     networks:
       internal:
-
-  rabbitmq:
-    image: rabbitmq:latest
-    deploy:
-      mode: replicated
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints:
-          - "node.labels.${TONCENTER_ENV:?}.indexer.broker==true"
-    networks:
-      internal:
-
-  redis:
-    image: redis:latest
-    deploy:
-      mode: replicated
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints:
-          - "node.labels.${TONCENTER_ENV:?}.indexer.broker==true"
-    networks:
-      internal:
-  
-  indexer-worker:
-    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer:${IMAGE_TAG:?}
-    build:
-      context: indexer
-      dockerfile: Dockerfile
-      args:
-        TON_REPO:
-        TON_BRANCH:
-    command: celery -A indexer.core worker --loglevel=INFO -E --autoscale=${TON_INDEXER_MAX_WORKERS:-8},${TON_INDEXER_MIN_WORKERS:-1} \
-             -Q backward_queue,forward_queue
-    environment: *indexer-environment
-    secrets:
-      - postgres_password
-      - tonlib_config
-    deploy:
-      mode: replicated
-      replicas: 1
-      restart_policy:
-        condition: any
-        delay: 30s
-      placement:
-        constraints:
-          - "node.labels.${TONCENTER_ENV:?}.indexer.worker==true"
-    tty: true
-    networks:
-      internal:
-  indexer-scheduler-backward:
-    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer:${IMAGE_TAG:?}
-    command: python3 -m indexer.scheduler --queue backward_queue backward
-    environment: *indexer-environment
-    secrets:
-      - postgres_password
-      - tonlib_config
-    networks:
-      internal:
-    deploy:
-      mode: replicated
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints:
-          - "node.labels.${TONCENTER_ENV:?}.indexer.worker==true"
-
-  indexer-scheduler-forward:
-    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer:${IMAGE_TAG:?}
-    command: python3 -m indexer.scheduler --init --queue forward_queue forward
-    environment: *indexer-environment
-    secrets:
-      - postgres_password
-      - tonlib_config
-    networks:
-      internal:
-    deploy:
-      mode: replicated
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints:
-          - "node.labels.${TONCENTER_ENV:?}.indexer.worker==true"
-
-  indexer-api:
-    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer:${IMAGE_TAG:?}
-    secrets:
-      - postgres_password
-      - tonlib_config
-    command: gunicorn indexer.api.main:app -k uvicorn.workers.UvicornWorker --bind=0.0.0.0:8081 -w 8
-    environment: *indexer-environment
-    ports:
-      - target: 8081
-        published: ${TON_INDEXER_API_PORT:8081}
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - "node.labels.${TONCENTER_ENV:?}.indexer.api==true"
-    networks:
-      internal:
+    logging:
+      driver: local
+      options:
+        max-size: 4G
 
 volumes:
   postgres_data:
@@ -174,5 +105,3 @@ networks:
 secrets:
   postgres_password:
     file: private/postgres_password
-  tonlib_config:
-    file: ${TON_INDEXER_LITESERVER_CONFIG:?}

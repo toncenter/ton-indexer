@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 settings = Settings()
-description = ''
+description = 'TON Index collects data from a full node to PostgreSQL database and provides convenient API to an indexed blockchain.'
 app = FastAPI(title="TON Index",
               description=description,
-              version='0.1.0',
+              version='1.0.0',
               root_path=settings.api_root_path,
               docs_url='/',
               dependencies=[Depends(api_key_dep)])
