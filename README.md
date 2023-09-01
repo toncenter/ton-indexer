@@ -1,44 +1,67 @@
 # TON Indexer
 
-TON Indexer stores blocks, transactions, messages in Postgres database and provides convenient API.
+TON Indexer stores blocks, transactions, messages, NFTs, Jettons and DNS domains in PostgreSQL database and provides convenient API.
 
-## Building and running
+TON node stores data in a key-value database RocksDB. This database support only simple queries and doesn't support any kind of data filtering. An SQL database perfectly suitable for storage and retrieval data. We insert data with SQL transactions and using masterchain blocks as an atomic unit of insert to guarantee a data integrity. Indexes allows to quickly filter required data in a database.
 
-Recommended hardware: 2 CPU, 16 GB RAM, 200 GB disk, SSD recommended.
+TON Indexer stack consists of:
+1. `postgres`: PostgreSQL server to store indexed data and perform queries.
+2. `index-api`: FastAPI server with convinient endpoints to access database.
+3. `alembic`: alembic service to run database migrations.
+4. `index-worker`: TON Index worker to read and parse data from TON node database.
 
-Prerequisites: docker, docker-compose
+## How to run
 
-  - Setup environment variables:
-    - `TON_INDEXER_LITE_SERVER_CONFIG` *(required)* — path to liteserver config file with your liteserver. If config file contains more than 1 lite server the first one will be used.
-    - `TON_INDEXER_START_SEQNO` *(required)* — masterchain seqno to start with. The service starts indexing from this value in 2 directions: to the latest blocks and to the earliest blocks.
-    - `TON_INDEXER_BOTTOM_SEQNO` *(required)* — the earliest masterchain seqno. The service will not index blocks earlier this value. Make sure that this seqno exists in lite server that you are using.
-    - `TON_INDEXER_HTTP_PORT` *(default: 80)* — port for API webserver.
-    - `TON_INDEXER_WEBSERVER_WORKERS_COUNT` *(default: 1)* - number of webserver gunicorn workers.
-    - `TON_INDEXER_BACKWARD_WORKERS_COUNT` *(default: 5)* — number of parallel workers to process backward direction.
-    - `TON_INDEXER_FORWARD_WORKERS_COUNT` *(default: 2)* — number of parallel workers to process forward direction.
-  - Create file `private/postgres_password` containing password to the Postgres database (without newline).
-  - Build services: `docker-compose build`.
-  - Run services: `docker-compose up -d`.
-  - Stop services: `docker-compose down`. Run this command with`-v` flag to remove volume with Postgres DB.
+Requirements:
+* Docker and Docker compose (see [instruction](https://docs.docker.com/engine/install/)).
+* Running TON full node (archival for full indexing).
+* Recommended hardware: 
+  * Database and API: 4 CPU, 32 GB RAM, 200GB disk, SSD recommended (more than 1TB required for archival indexing).
+  * Worker: 4 CPU, 32 GB RAM, SSD recommended (for archival: 8 CPUs, 64 GB RAM, SSD recommended).
+* To increase history indexing performance: 
+  * Remove PostgreSQL indexes: `docker compose run --rm alembic alembic downgrade -1`.
+  * Create indexes after indexer will catch up TON network: `docker compose up alembic`.
 
-## DB schema
+Do the following steps to setup TON Indexer:
+* Clone repository: `git clone --recursive --branch cpp-indexer https://github.com/kdimentionaltree/ton-indexer`.
+  * If you've forgot `--recursive` flag you can use command: `git submodule update --recursive --init`.
+* Create *.env* file with command `./configure.sh`.
+  * Run `./configure.sh --worker` to configure TON Index worker.
+* Adjust parameters in *.env* file (see [list of available parameters](#available-parameters)).
+* Build docker images: `docker compose build postgres alembic index-api`.
+* Run stack: `docker compose up -d postgres alembic index-api`.
+  * To start worker use command `docker compose up -d worker` after creating all services.
 
-![db-diagram](db-diagram.png)
+**NOTE:** we recommend use to setup indexer stack and index worker on a separate servers. To install index worker to **Systemd** check this [instruction](https://github.com/kdimentionaltree/ton-index-cpp).
 
-## FAQ
-### How to point the service to my own lite server?
+### Available parameters
 
-To use your own lite server you should set `TON_INDEXER_LITE_SERVER_CONFIG` to config file with your only lite server.
+* PostgreSQL parameters:
+  * `POSTGRES_HOST`: PostgreSQL host. Can be IP or FQDN. Default: `postgres`.
+  * `POSTGRES_PORT`: PostgreSQL port. Default: `5432`.
+  * `POSTGRES_USER`: PostgreSQL port. Default: `postgres`.
+  * Set password in file `private/postgres_password`.
+  * `POSTGRES_DBNAME`: PostgreSQL database name. You can change database name to use one instance of PostgreSQL for different TON networks (but we strongly recommend to use separate instances). Default: `ton_index`.
+  * `POSTGRES_PUBLISH_PORT`: a port to publish. Change this port if you host multiple indexers on the same host. Default: `5432`.
+* API parameters:
+  * `TON_INDEXER_API_ROOT_PATH`: root path for reverse proxy setups. Keep it blank if you don't use reverse proxies. Default: `<blank>`.
+  * `TON_INDEXER_API_PORT`: a port to expose. You need check if this port is busy. Use different ports in case of multiple indexer instances on the same host. Default: `8081`.
+  * `TON_INDEXER_WORKERS`: number of API workers. Default: `4`.
+* TON worker parameters:
+  * `TON_WORKER_DBROOT`: path to TON full node database. Use default value if you've installed node with `mytonctrl`. Default: `/var/ton-work/db`.
+  * `TON_WORKER_FROM`: masterchain seqno to start indexing. Set 1 to full index, set last masterchain seqno to collect only new blocks (use [/api/v2/getMasterchainInfo](https://toncenter.com/api/v2/getMasterchainInfo) to get last masterchain block seqno).
+  * `TON_WORKER_MAX_PARALLEL_TASKS`: max parallel reading actors. Adjust this parameter to decrease RAM usage. Default: `1024`.
+  * `TON_WORKER_INSERT_BATCH_SIZE`: max masterchain seqnos per INSERT query. Small value will decrease indexing performance. Great value will increase RAM usage. Default: `512`.
+  * `TON_WORKER_INSERT_PARALLEL_ACTORS`: number of parallel INSERT transactions. Increasing this number will increase PostgreSQL server RAM usage. Default: `3`.
 
-- If you use MyTonCtrl on your node you can generate config file with these commands: 
-    ```
-    $ mytonctrl
-    MyTonCtrl> installer
-    MyTonInstaller> clcf
-    ```
-    Config file will be saved at `/usr/bin/ton/local.config.json`.
-- If you don't use MyTonCtrl: copy `config/mainnet.json` and overwrite section `liteservers` with your liteservers ip, port and public key. To get public key from `liteserver.pub` file use the following script:
-    ```
-    python -c 'import codecs; f=open("liteserver.pub", "rb+"); pub=f.read()[4:]; print(str(codecs.encode(pub,"base64")).replace("\n",""))'
-    ```
-- Once config file is created assign variable `TON_INDEXER_LITE_SERVER_CONFIG` and restart the services.
+# FAQ
+
+## How to point an TON Index worker to existing PostgreSQL instance
+* Remove PostgreSQL container: `docker compose rm postgres` (add flag `-v` to remove volumes).
+* Setup PostgreSQL credentials in *.env* file.
+* Run alembic migration: `docker compose up alembic`.
+* Run index worker: `docker compose index-worker`.
+
+## How to update code
+* Pull new commits: `git pull`.
+* Update submodules: `git submodule update --recursive --init`.
