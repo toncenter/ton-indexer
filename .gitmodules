@@ -1,0 +1,3 @@
+[submodule "ton-index-cpp"]
+	path = ton-index-cpp
+	url = https://github.com/kdimentionaltree/ton-index-cpp

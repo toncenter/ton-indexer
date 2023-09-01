@@ -124,4 +124,5 @@ venv.bak/
 .DS_Store
 
 /sandbox
-
+.env*
+sandbox.ipynb
