@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # min_workers: int = 1
 
     api_root_path: str = ''
+    api_title: str = ''
 
     class Config:
         env_prefix = 'ton_indexer_'

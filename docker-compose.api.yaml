@@ -7,6 +7,7 @@ x-indexer-environment: &indexer-environment
   POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
   POSTGRES_DBNAME:
   TON_INDEXER_API_ROOT_PATH:
+  TON_INDEXER_API_TITLE:
 
 services:
   index-api:
