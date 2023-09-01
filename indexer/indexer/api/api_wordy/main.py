@@ -14,7 +14,7 @@ from indexer.core.utils import (
     hex_to_int
 )
 
-from indexer.api.api_v2 import schemas
+from indexer.api.api_wordy import schemas
 from indexer.core.database import SessionMaker
 from indexer.core.settings import Settings
 from indexer.core.database import (
@@ -1000,7 +1000,7 @@ async def get_nft_transfers(
     end_lt: Optional[int] = Query(None, description='Query transactions with `lt <= end_lt`'),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
-    sort: str = Query('desc', description='Sort transactions by lt.', enum=['none', 'asc', 'desc']),
+    sort: str = Query('desc', description='Sort transactions by lt.', enum=['asc', 'desc']),
     db: AsyncSession = Depends(get_db)):
     """
     Get NFT transfers by specified filters.
@@ -1116,7 +1116,7 @@ async def get_jetton_burns(
     end_lt: Optional[int] = Query(None, description='Query transactions with `lt <= end_lt`'),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
-    sort: str = Query('desc', description='Sort transactions by lt.', enum=['none', 'asc', 'desc']),
+    sort: str = Query('desc', description='Sort transactions by lt.', enum=['asc', 'desc']),
     db: AsyncSession = Depends(get_db)):
     """
     Get Jetton burns by specified filters.
