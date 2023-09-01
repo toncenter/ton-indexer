@@ -151,8 +151,9 @@ def augment_transaction_query(query: Query,
     
     msg_join = joinedload(Transaction.messages).joinedload(TransactionMessage.message)
     if include_msg_body:
-        msg_join = msg_join.joinedload(Message.message_content)
-    query = query.options(msg_join)
+        msg_join_1 = msg_join.joinedload(Message.message_content)
+        msg_join_2 = msg_join.joinedload(Message.init_state)
+    query = query.options(msg_join_1).options(msg_join_2)
 
     if include_account_state:
         query = query.options(joinedload(Transaction.account_state_after)) \

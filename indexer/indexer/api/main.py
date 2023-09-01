@@ -6,7 +6,8 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from indexer.api.api_v1.main import router as router_v1
-from indexer.api.api_v2.main import router as router_v2
+from indexer.api.api_old.main import router as router_old
+from indexer.api.api_wordy.main import router as router_wordy
 
 from indexer.core import exceptions
 from indexer.core.settings import Settings
@@ -56,5 +57,6 @@ def startup():
     logger.info('Service started successfully')
 
 
-app.include_router(router_v2, prefix='/v2', include_in_schema=True, deprecated=False, tags=['v2'])
-app.include_router(router_v1, prefix='/v1', include_in_schema=True, deprecated=False, tags=['v1'])
+app.include_router(router_v1, prefix='/v1', include_in_schema=True, deprecated=False)
+app.include_router(router_old, prefix='/old', include_in_schema=False, deprecated=False, tags=['old'])
+app.include_router(router_wordy, prefix='/wordy', include_in_schema=False, deprecated=False, tags=['wordy'])
