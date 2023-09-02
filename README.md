@@ -39,7 +39,7 @@ Do the following steps to setup TON Indexer:
   * `POSTGRES_HOST`: PostgreSQL host. Can be IP or FQDN. Default: `postgres`.
   * `POSTGRES_PORT`: PostgreSQL port. Default: `5432`.
   * `POSTGRES_USER`: PostgreSQL user. Default: `postgres`.
-  * Set password in the file private/postgres_password. Ensure there is no newline character (\n) at the end.
+  * Set password in the file `private/postgres_password`. Ensure there is no newline character (\n) at the end.
   * `POSTGRES_DBNAME`: PostgreSQL database name. You can change the database name to use one instance of PostgreSQL for different TON networks (but we strongly recommend using separate instances). Default: `ton_index`.
   * `POSTGRES_PUBLISH_PORT`: a port to publish. Change this port if you host multiple indexers on the same host. Default: `5432`.
 * API parameters:
