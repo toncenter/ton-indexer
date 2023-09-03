@@ -573,6 +573,6 @@ def get_transactions_by_message(session: Session,
                                       include_msg_body, 
                                       include_block,
                                       include_account_state)
-    query = limit_query(query, limit, offset)
     query = sort_transaction_query_by_lt(query, sort)
+    query = limit_query(query, limit, offset)
     return query.all()

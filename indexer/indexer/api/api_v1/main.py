@@ -212,6 +212,26 @@ async def get_transactions_by_masterchain_block(
                             sort=sort)
     return [schemas.Transaction.from_orm(tx) for tx in txs]
 
+@router.get('/transactionsByMessage', response_model=List[schemas.Transaction])
+async def get_transactions_by_message(
+    direction: Optional[str] = Query(..., description='Message direction.', enum=['in', 'out']),
+    msg_hash: Optional[str] = Query(..., description='Message hash. Acceptable in hex, base64 and base64url forms.'),
+    limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
+    offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
+    db: AsyncSession = Depends(get_db)):
+    """
+    Get transactions whose inbound/outbound message has the specified hash. This endpoint returns list of Transaction objects
+    since collisions of message hashes can occur.
+    """
+    msg_hash = hash_to_b64(msg_hash)
+    db_transactions = await db.run_sync(crud.get_transactions_by_message,
+                                        direction=direction,
+                                        hash=msg_hash,
+                                        include_block=False,
+                                        limit=limit,
+                                        offset=offset,
+                                        sort='desc')
+    return [schemas.Transaction.from_orm(tx) for tx in db_transactions]
 
 @router.get('/adjacentTransactions', response_model=List[schemas.Transaction])
 async def get_adjacent_transactions(
