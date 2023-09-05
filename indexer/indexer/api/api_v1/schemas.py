@@ -245,7 +245,7 @@ class NFTCollection(BaseModel):
         return NFTCollection(address=address_type(obj.address),
                              owner_address=address_type(obj.owner_address),
                              last_transaction_lt=obj.last_transaction_lt,
-                             next_item_index=obj.next_item_index,
+                             next_item_index=int(obj.next_item_index),
                              collection_content=obj.collection_content,
                              code_hash=hash_type(obj.code_hash),
                              data_hash=hash_type(obj.data_hash),)
@@ -270,7 +270,7 @@ class NFTItem(BaseModel):
                        collection_address=address_type(obj.collection_address),
                        owner_address=address_type(obj.owner_address),
                        init=obj.init,
-                       index=obj.index,
+                       index=int(obj.index),
                        last_transaction_lt=obj.last_transaction_lt,
                        code_hash=hash_type(obj.code_hash),
                        data_hash=hash_type(obj.data_hash),
@@ -296,7 +296,7 @@ class NFTTransfer(BaseModel):
 
     @classmethod
     def from_orm(cls, obj):
-        return NFTTransfer(query_id=obj.query_id,
+        return NFTTransfer(query_id=int(obj.query_id),
                            nft_address=address_type(obj.nft_item_address),
                            transaction_hash=hash_type(obj.transaction_hash),
                            transaction_lt=obj.transaction.lt,  # TODO: maybe fix
@@ -305,7 +305,7 @@ class NFTTransfer(BaseModel):
                            new_owner=address_type(obj.new_owner),
                            response_destination=address_type(obj.response_destination),
                            custom_payload=obj.custom_payload,
-                           forward_amount=obj.forward_amount,
+                           forward_amount=int(obj.forward_amount),
                            forward_payload=obj.forward_payload,)
 
 
@@ -323,7 +323,7 @@ class JettonMaster(BaseModel):
     @classmethod
     def from_orm(cls, obj):
         return JettonMaster(address=address_type(obj.address),
-                            total_supply=obj.total_supply,
+                            total_supply=int(obj.total_supply),
                             mintable=obj.mintable,
                             admin_address=address_type(obj.admin_address),
                             last_transaction_lt=obj.last_transaction_lt,
@@ -345,7 +345,7 @@ class JettonWallet(BaseModel):
     @classmethod
     def from_orm(cls, obj):
         return JettonWallet(address=address_type(obj.address),
-                            balance=obj.balance,
+                            balance=int(obj.balance),
                             owner=address_type(obj.owner),
                             jetton=address_type(obj.jetton),
                             last_transaction_lt=obj.last_transaction_lt,
@@ -368,7 +368,7 @@ class JettonTransfer(BaseModel):
 
     @classmethod
     def from_orm(cls, obj):
-        return JettonTransfer(query_id=obj.query_id,
+        return JettonTransfer(query_id=int(obj.query_id),
                               source=address_type(obj.source),
                               destination=address_type(obj.destination),
                               jetton_master=address_type(obj.jetton_wallet.jetton),
@@ -377,7 +377,7 @@ class JettonTransfer(BaseModel):
                               transaction_now=obj.transaction.now,  # TODO: maybe fix
                               response_destination=address_type(obj.response_destination),
                               custom_payload=obj.custom_payload,
-                              forward_ton_amount=obj.forward_ton_amount,
+                              forward_ton_amount=int(obj.forward_ton_amount),
                               forward_payload=obj.forward_payload,)
 
 
@@ -393,7 +393,7 @@ class JettonBurn(BaseModel):
     
     @classmethod
     def from_orm(cls, obj):
-        return JettonBurn(query_id=obj.query_id,
+        return JettonBurn(query_id=int(obj.query_id),
                           owner=address_type(obj.owner),
                           jetton_master=address_type(obj.jetton_wallet.jetton),
                           transaction_hash=hash_type(obj.transaction_hash),
