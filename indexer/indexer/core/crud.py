@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import joinedload, Session, Query, contains_eager
+from sqlalchemy.orm import joinedload, Session, Query, contains_eager, aliased
 from indexer.core.database import (
     Block,
     Transaction,
@@ -153,7 +153,7 @@ def augment_transaction_query(query: Query,
     if include_msg_body:
         msg_join_1 = msg_join.joinedload(Message.message_content)
         msg_join_2 = msg_join.joinedload(Message.init_state)
-    query = query.options(msg_join_1).options(msg_join_2)
+        query = query.options(msg_join_1).options(msg_join_2)
 
     if include_account_state:
         query = query.options(joinedload(Transaction.account_state_after)) \
@@ -272,9 +272,9 @@ def get_adjacent_transactions(session: Session,
                               hash: str,
                               lt: Optional[str]=None,
                               direction: Optional[str]=None,
-                              include_msg_body: bool=False, 
+                              include_msg_body: bool=True, 
                               include_block: bool=False,
-                              include_account_state: bool=False,
+                              include_account_state: bool=True,
                               limit: Optional[int]=None,
                               offset: Optional[int]=None,
                               sort: Optional[str]=None):
@@ -303,6 +303,35 @@ def get_adjacent_transactions(session: Session,
     query = sort_transaction_query_by_lt(query, sort)
     query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
     query = limit_query(query, limit, offset)
+    return query.all()
+
+
+def get_transaction_trace(session: Session, 
+                          hash: str,
+                          include_msg_body: bool=True, 
+                          include_block: bool=False,
+                          include_account_state: bool=True,
+                          sort: Optional[str]=None):
+    TM1 = aliased(TransactionMessage)
+    TM2 = aliased(TransactionMessage)
+
+    # find transaction trace
+    tx_hashes = {hash}
+    new_tx_hashes = {hash}
+    while new_tx_hashes:
+        query = session.query(TM1.transaction_hash.label('tx1'), TM2.transaction_hash.label('tx2')) \
+                        .join(TM2, TM1.message_hash == TM2.message_hash) \
+                        .filter(TM1.transaction_hash.in_(new_tx_hashes)) \
+                        .filter(TM1.transaction_hash != TM2.transaction_hash)
+        new_tx_hashes = {x[1] for x in query.all()} - tx_hashes
+        tx_hashes = tx_hashes | new_tx_hashes
+    
+    # query transactions
+    query = session.query(Transaction)
+    query = query.filter(Transaction.hash.in_(tx_hashes))
+
+    query = sort_transaction_query_by_lt(query, sort)
+    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
     return query.all()
 
 

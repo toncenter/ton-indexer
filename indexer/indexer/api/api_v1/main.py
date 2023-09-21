@@ -252,6 +252,23 @@ async def get_adjacent_transactions(
                             direction=direction,
                             limit=limit,
                             offset=offset,
+                            sort=sort,
+                            include_msg_body=True,
+                            include_account_state=True)
+    return [schemas.Transaction.from_orm(tx) for tx in res]
+
+
+@router.get('/transactionTrace', response_model=List[schemas.Transaction])
+async def get_transaction_trace(
+    hash: str = Query(..., description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
+    sort: str = Query('asc', description='Sort transactions by lt.', enum=['none', 'asc', 'desc']),
+    db: AsyncSession = Depends(get_db)):
+    """
+    Get trace graph for specified transaction.
+    """
+    hash = hash_to_b64(hash)
+    res = await db.run_sync(crud.get_transaction_trace,
+                            hash=hash,
                             sort=sort)
     return [schemas.Transaction.from_orm(tx) for tx in res]
 
