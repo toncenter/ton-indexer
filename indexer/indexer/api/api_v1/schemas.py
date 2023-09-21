@@ -230,6 +230,17 @@ class Transaction(BaseModel):
                            account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,)
 
 
+class TransactionTrace(BaseModel):
+    transaction: Transaction
+    children: List["TransactionTrace"]
+
+    @classmethod
+    def from_orm(cls, obj):
+        transaction = Transaction.from_orm(obj['transaction'])
+        children = [TransactionTrace.from_orm(x) for x in obj['children']]
+        return TransactionTrace(transaction=transaction, children=children)            
+
+
 class NFTCollection(BaseModel):
     address: str
     owner_address: Optional[str]

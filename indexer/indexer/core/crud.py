@@ -318,12 +318,17 @@ def get_transaction_trace(session: Session,
     # find transaction trace
     tx_hashes = {hash}
     new_tx_hashes = {hash}
+    edges = set()
     while new_tx_hashes:
-        query = session.query(TM1.transaction_hash.label('tx1'), TM2.transaction_hash.label('tx2')) \
+        query = session.query(TM1.transaction_hash.label('tx1'), TM2.transaction_hash.label('tx2'), TM1.direction.label('dir')) \
                         .join(TM2, TM1.message_hash == TM2.message_hash) \
                         .filter(TM1.transaction_hash.in_(new_tx_hashes)) \
                         .filter(TM1.transaction_hash != TM2.transaction_hash)
-        new_tx_hashes = {x[1] for x in query.all()} - tx_hashes
+        res = query.all()
+        for a, b, dir in res:
+            edge = (a, b) if dir == 'out' else (b, a)
+            edges.add(edge)
+        new_tx_hashes = {x[1] for x in res} - tx_hashes
         tx_hashes = tx_hashes | new_tx_hashes
     
     # query transactions
@@ -332,7 +337,22 @@ def get_transaction_trace(session: Session,
 
     query = sort_transaction_query_by_lt(query, sort)
     query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
-    return query.all()
+    transactions = query.all()
+    transactions = {x.hash: x for x in transactions}
+
+    # build tree
+    nodes = {}
+    for a, b in edges:
+        left = {'transaction': transactions[a], 'children': []} if a not in nodes else nodes[a]
+        right = {'transaction': transactions[b], 'children': []} if b not in nodes else nodes[b]
+        left['children'].append(right)
+        nodes[a] = left
+        nodes[b] = right
+
+    root_hash = list(tx_hashes - {x[1] for x in edges})
+    assert len(root_hash) == 1, 'multiple roots!?'
+    root_hash = root_hash[0]
+    return nodes[root_hash]
 
 
 # Message utils
