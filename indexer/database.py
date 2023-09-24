@@ -386,6 +386,7 @@ class AccountState(Base):
 
     @classmethod
     def raw_account_info_to_content_dict(cls, raw, address):
+        code_hash = None
         try:
             if len(raw['code']) > 0:
                 code_cell_boc = codecs.decode(codecs.encode(raw['code'], 'utf8'), 'base64')
