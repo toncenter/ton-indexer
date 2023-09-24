@@ -6,6 +6,7 @@ from copy import deepcopy
 from time import sleep
 from typing import List, Optional
 from datetime import datetime
+import hashlib
 
 from pytonlib.utils.tlb import parse_transaction
 from tvm_valuetypes.cell import deserialize_boc
@@ -385,13 +386,14 @@ class AccountState(Base):
 
     @classmethod
     def raw_account_info_to_content_dict(cls, raw, address):
-        code_cell = None
+        code_hash = None
         try:
             if len(raw['code']) > 0:
                 code_cell_boc = codecs.decode(codecs.encode(raw['code'], 'utf8'), 'base64')
-                code_cell = deserialize_boc(code_cell_boc)
+                code_hash = cell_b64(deserialize_boc(code_cell_boc))
         except NotImplementedError:
             logger.error(f"NotImplementedError for {address}")
+            code_hash = codecs.decode(codecs.encode(hashlib.sha256(codecs.encode(raw['code'], 'utf8')).digest(), "base64"), 'utf-8').strip()
 
         return {
             'address': address,
@@ -399,7 +401,7 @@ class AccountState(Base):
             'last_tx_lt': int(raw['last_transaction_id']['lt']) if 'last_transaction_id' in raw else None,
             'last_tx_hash': raw['last_transaction_id']['hash'] if 'last_transaction_id' in raw else None,
             'balance': int(raw['balance']),
-            'code_hash': cell_b64(code_cell) if code_cell is not None else None,
+            'code_hash': code_hash,
             'data':  raw['data']
         }
 
