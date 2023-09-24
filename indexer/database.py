@@ -687,6 +687,7 @@ class DexSwapParsed(Base):
     swap_dst_token: str = Column(String)
     swap_src_amount: decimal.Decimal = Column(Numeric(scale=0))
     swap_dst_amount: decimal.Decimal = Column(Numeric(scale=0))
+    referral_address: str = Column(String)
 
     __table_args__ = (
         UniqueConstraint('msg_id'),

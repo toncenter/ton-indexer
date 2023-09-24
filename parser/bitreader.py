@@ -102,4 +102,4 @@ class BitReader:
             return codecs.decode(codecs.encode(addr + BitReader.calc_crc(addr), "base64"), "utf-8").strip() \
                 .replace('/', '_').replace("+", '-')
         else:
-            raise Error(f"Unsupported asset kind {kind}")
+            raise Exception(f"Unsupported asset kind {kind}")

@@ -885,6 +885,9 @@ class DedustV2SwapExtOutParser(Parser):
 
     async def parse(self, session: Session, context: MessageContext):
         logger.info(f"Parsing dedust swap ext_out message {context.message.msg_id}")
+        if context.message.source == 'EQA0a6c40n_Kejx_Wj0vowdeYCFYG9XnLdLMRHihXc27cng5' or context.message.source == 'EQDpuDAY31FH2jM9PysFsmJ3aXMMReGYb_P65aDOXVYDcCJX':
+            logger.warning(f"Skipping non-stable pool {context.message.source}")
+            return
         cell = self._parse_boc(context.content.body)
         reader = BitReader(cell.data.data)
         op_id = reader.read_uint(32) # swap#9c610de3
@@ -895,6 +898,7 @@ class DedustV2SwapExtOutParser(Parser):
 
         payload_reader = BitReader(cell.refs.pop(0).data.data)
         sender_addr = payload_reader.read_address()
+        referral_addr = payload_reader.read_address()
 
         swap = DexSwapParsed(
             msg_id=context.message.msg_id,
@@ -907,6 +911,7 @@ class DedustV2SwapExtOutParser(Parser):
             swap_dst_token=asset_out,
             swap_src_amount=amount_in,
             swap_dst_amount=amount_out,
+            referral_address=referral_addr
         )
         logger.info(f"Adding dedust swap {swap}")
         await upsert_entity(session, swap)
