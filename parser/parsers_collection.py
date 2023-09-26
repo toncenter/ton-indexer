@@ -720,7 +720,7 @@ class NFTCollectionParser(ContractsExecutorParser):
 
         res = await upsert_entity(session, collection, constraint="address")
         if res.rowcount > 0:
-            logger.info("Discovered new NFT collection")
+            logger.info(f"Discovered new NFT collection {context.account.address}")
             return GeneratedEvent(event=Event(
                 event_scope="NFT",
                 event_target=context.account.address,
@@ -790,7 +790,7 @@ class NFTItemParser(ContractsExecutorParser):
 
                 res = await upsert_entity(session, item, constraint="address")
                 if res.rowcount > 0:
-                    logger.info("Discovered new TON DNS item")
+                    logger.info(f"Discovered new TON DNS item {context.account.address}")
                     return GeneratedEvent(event=Event(
                         event_scope="NFT",
                         event_target=collection_address,
@@ -847,7 +847,7 @@ class NFTItemParser(ContractsExecutorParser):
 
         res = await upsert_entity(session, item, constraint="address")
         if res.rowcount > 0:
-            logger.info("Discovered new NFT item")
+            logger.info(f"Discovered new NFT item {context.account.address}")
             return GeneratedEvent(event=Event(
                 event_scope="NFT",
                 event_target=collection_address,
