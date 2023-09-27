@@ -718,7 +718,24 @@ class NFTCollectionParser(ContractsExecutorParser):
         )
         logger.info(f"Adding NFT collection {collection}")
 
-        await upsert_entity(session, collection, constraint="address")
+        res = await upsert_entity(session, collection, constraint="address")
+        if res.rowcount > 0:
+            logger.info(f"Discovered new NFT collection {context.account.address}")
+            return GeneratedEvent(event=Event(
+                event_scope="NFT",
+                event_target=context.account.address,
+                finding_type="Info",
+                event_type="NewCollection",
+                severity="Medium",
+                data={
+                    "collection": context.account.address,
+                    "name": metadata.get('name', None),
+                    "image": metadata.get('image', None),
+                    "image_data": metadata.get('image_data', None),
+                    "metadata_url": metadata_url,
+                    "owner": owner
+                }
+            ), waitCommit=False)
 
 class NFTItemParser(ContractsExecutorParser):
     def __init__(self):
@@ -771,7 +788,25 @@ class NFTItemParser(ContractsExecutorParser):
                 )
                 logger.info(f"Adding TON DNS item {item}")
 
-                await upsert_entity(session, item, constraint="address")
+                res = await upsert_entity(session, item, constraint="address")
+                if res.rowcount > 0:
+                    logger.info(f"Discovered new TON DNS item {context.account.address}")
+                    return GeneratedEvent(event=Event(
+                        event_scope="NFT",
+                        event_target=collection_address,
+                        finding_type="Info",
+                        event_type="NewItem",
+                        severity="Medium",
+                        data={
+                            "nft_item": context.account.address,
+                            "collection": collection_address,
+                            "name": domain,
+                            "image": None,
+                            "image_data": None,
+                            "metadata_url": None,
+                            "owner": owner_address
+                        }
+                    ), waitCommit=False)
                 return
             logger.info(f"Getting collection info for {collection_address}")
             # need to retry query and get content as BOC
@@ -810,7 +845,25 @@ class NFTItemParser(ContractsExecutorParser):
         )
         logger.info(f"Adding NFT item {item}")
 
-        await upsert_entity(session, item, constraint="address")
+        res = await upsert_entity(session, item, constraint="address")
+        if res.rowcount > 0:
+            logger.info(f"Discovered new NFT item {context.account.address}")
+            return GeneratedEvent(event=Event(
+                event_scope="NFT",
+                event_target=collection_address,
+                finding_type="Info",
+                event_type="NewItem",
+                severity="Medium",
+                data={
+                    "nft_item": context.account.address,
+                    "collection": collection_address,
+                    "name": metadata.get('name', None),
+                    "image": metadata.get('image', None),
+                    "image_data": metadata.get('image_data', None),
+                    "metadata_url": metadata_url,
+                    "owner": owner_address
+                }
+            ), waitCommit=False)
 
 @dataclass
 class SaleContract:
