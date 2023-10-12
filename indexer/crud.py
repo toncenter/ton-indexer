@@ -465,6 +465,15 @@ async def postpone_outbox_item(session: Session, outbox: ParseOutbox, seconds: i
                           .values(added_time=int(datetime.today().timestamp()) + seconds,
                                   attempts=(outbox.attempts + 1) if outbox.attempts else 1))
 
+async def get_prev_msg_id(session: Session, msg: Message) -> int:
+    if msg.out_tx_id is None:
+        return None
+    tx = (await session.execute(select(Transaction).filter(Transaction.tx_id == msg.out_tx_id))).first()[0]
+
+    messages = (await session.execute(select(Message).filter(Message.in_tx_id == tx.tx_id))).all()
+    assert len(messages) == 1, f"Unable to get prev message for tx {tx.tx_id}"
+    return messages[0][0].msg_id
+
 async def get_originated_msg_id(session: Session, msg: Message) -> int:
     if msg.out_tx_id is None:
         return msg.msg_id
@@ -563,3 +572,15 @@ async def get_nft_sale(session: Session, sale_address: str) -> NFTItemSale:
     if not res:
         return None
     return res[0]
+
+async def get_evaa_withdraw(session: Session, msg_id: int) -> EvaaWithdraw:
+    withdraw = (await session.execute(select(EvaaWithdraw).filter(EvaaWithdraw.msg_id == msg_id))).first()
+    if not withdraw:
+        return None
+    return withdraw[0]
+
+async def update_approved(session: Session, withdraw: EvaaWithdraw, approved: bool):
+    await session.execute(update(EvaaWithdraw).where(EvaaWithdraw.id == withdraw.id) \
+                          .values(approved=approved))
+
+

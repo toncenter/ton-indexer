@@ -1056,12 +1056,16 @@ class HasTextCommentParser(Parser):
 
 
 class EvaaRouterPredicate(ParserPredicate):
-    def __init__(self, delegate: ParserPredicate):
+    def __init__(self, delegate: ParserPredicate, direction = "destination"):
         super(EvaaRouterPredicate, self).__init__(MessageContext)
+        assert direction in ["destination", "source"]
+        self.direction = direction
         self.delegate = delegate
 
     def _internal_match(self, context: MessageContext):
-        if context.message.destination == 'EQC8rUZqR_pWV1BylWUlPNBzyiTYVoBEmQkMIQDZXICfnuRr':
+        if self.direction == "destination" and context.message.destination == 'EQC8rUZqR_pWV1BylWUlPNBzyiTYVoBEmQkMIQDZXICfnuRr':
+            return self.delegate.match(context)
+        if self.direction == "source" and context.message.source == 'EQC8rUZqR_pWV1BylWUlPNBzyiTYVoBEmQkMIQDZXICfnuRr':
             return self.delegate.match(context)
         return False
 
@@ -1092,7 +1096,7 @@ class EvaaSupplyParser(Parser):
 
         successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
 
-        transfer = EvaaSupply(
+        supply = EvaaSupply(
             msg_id=context.message.msg_id,
             created_lt=context.message.created_lt,
             utime=context.destination_tx.utime,
@@ -1105,48 +1109,89 @@ class EvaaSupplyParser(Parser):
             repay_amount_principal=repay_amount_principal,
             supply_amount_principal=supply_amount_principal
         )
-        logger.info(f"Adding EVAA supply {transfer}")
-        await upsert_entity(session, transfer)
+        logger.info(f"Adding EVAA supply {supply}")
+        await upsert_entity(session, supply)
 
-# class EvaaWithdrawCollateralizedParser(Parser):
-#     def __init__(self):
-#         super(EvaaWithdrawCollateralizedParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(OpCodePredicate(0x211))))
-#
-#     @staticmethod
-#     def parser_name() -> str:
-#         return "EvaaWithdrawCollateralized"
-#
-#     async def parse(self, session: Session, context: MessageContext):
-#         logger.info(f"Parsing EVAA withdraw_collateralized message {context.message.msg_id}")
-#         cell = self._parse_boc(context.content.body)
-#         reader = BitReader(cell.data.data)
-#         reader.read_uint(32) # 0x211
-#         query_id = reader.read_uint(64)
-#         owner_address = reader.read_address()
-#         asset_id = evaa_asset_to_str(reader.read_uint(256))
-#         withdraw_amount_current = reader.read_coins()
-#         borrow_amount_principal = reader.read_int(64)
-#         reclaim_amount_principal = reader.read_int(64)
-#
-#         successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
-#
-#         # repay_amount_principal: decimal.Decimal = Column(Numeric(scale=0))
-#         # supply_amount_principal: decimal.Decimal = Column(Numeric(scale=0))
-#         transfer = EvaaSupply(
-#             msg_id=context.message.msg_id,
-#             created_lt=context.message.created_lt,
-#             utime=context.destination_tx.utime,
-#             successful=successful,
-#             originated_msg_id=await get_originated_msg_id(session, context.message),
-#             query_id=str(query_id),
-#             amount=amount_supplied,
-#             asset_id=asset_id,
-#             owner_address=owner_address,
-#             repay_amount_principal=repay_amount_principal,
-#             supply_amount_principal=supply_amount_principal
-#         )
-#         logger.info(f"Adding EVAA supply {transfer}")
-#         await upsert_entity(session, transfer)
+class EvaaWithdrawCollateralizedParser(Parser):
+    def __init__(self):
+        super(EvaaWithdrawCollateralizedParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(OpCodePredicate(0x211))))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "EvaaWithdrawCollateralized"
+
+    async def parse(self, session: Session, context: MessageContext):
+        logger.info(f"Parsing EVAA withdraw_collateralized message {context.message.msg_id}")
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        reader.read_uint(32) # 0x211
+        query_id = reader.read_uint(64)
+        owner_address = reader.read_address()
+        asset_id = evaa_asset_to_str(reader.read_uint(256))
+        withdraw_amount_current = reader.read_uint(64)
+        borrow_amount_principal = reader.read_int(64)
+        reclaim_amount_principal = reader.read_int(64)
+
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
+
+        existing = get_evaa_withdraw(session, msg_id=context.message.msg_id)
+        if not existing:
+            withdraw = EvaaWithdraw(
+                msg_id=context.message.msg_id,
+                created_lt=context.message.created_lt,
+                utime=context.destination_tx.utime,
+                successful=successful,
+                originated_msg_id=await get_originated_msg_id(session, context.message),
+                query_id=str(query_id),
+                amount=withdraw_amount_current,
+                asset_id=asset_id,
+                owner_address=owner_address,
+                borrow_amount_principal=borrow_amount_principal,
+                reclaim_amount_principal=reclaim_amount_principal,
+                approved=None
+            )
+            logger.info(f"Adding EVAA withdraw {withdraw}")
+            await upsert_entity(session, withdraw)
+
+class EvaaWithdrawSuccessParser(Parser):
+    def __init__(self):
+        super(EvaaWithdrawSuccessParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(OpCodePredicate(0x211a)),
+                                                                            direction="source"))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "EvaaWithdrawSuccess"
+
+    async def parse(self, session: Session, context: MessageContext):
+        logger.info(f"Parsing EVAA withdraw_success message {context.message.msg_id}")
+        collaterized_msg_id = await get_prev_msg_id(session, context.message)
+        logger.info(f"Discovered collateralized msg_id for {context.message.msg_id}: {collaterized_msg_id}")
+        if collaterized_msg_id and context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0:
+            existing = get_evaa_withdraw(session, msg_id=context.message.msg_id)
+            if not existing:
+                raise Exception("Unable to find existing withdraw_collateralized, may be it was not parsed yet")
+            logger.info("Approving withdraw")
+            update_approved(session, withdraw=existing, approved=True)
+
+class EvaaWithdrawFailParser(Parser):
+    def __init__(self):
+        super(EvaaWithdrawFailParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(OpCodePredicate(0x211f)),
+                                                                            direction="source"))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "EvaaWithdrawFail"
+
+    async def parse(self, session: Session, context: MessageContext):
+        logger.info(f"Parsing EVAA withdraw_fail message {context.message.msg_id}")
+        collaterized_msg_id = await get_prev_msg_id(session, context.message)
+        logger.info(f"Discovered collateralized msg_id for {context.message.msg_id}: {collaterized_msg_id}")
+        if collaterized_msg_id and context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0:
+            existing = get_evaa_withdraw(session, msg_id=context.message.msg_id)
+            if not existing:
+                raise Exception("Unable to find existing withdraw_collateralized, may be it was not parsed yet")
+            logger.info("Rejecting withdraw")
+            update_approved(session, withdraw=existing, approved=False)
 
 ## Forwards all messages to kafka
 class MessagesToKafka(Parser):

@@ -721,28 +721,28 @@ class EvaaSupply(Base):
                       UniqueConstraint('msg_id')
                       )
 
-# @dataclass(init=False)
-# class EvaaWithdraw(Base):
-#     __tablename__ = 'evaa_withdraw'
-#
-#     id: int = Column(BigInteger, primary_key=True)
-#     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
-#     created_lt: int = Column(BigInteger)
-#     utime: int = Column(BigInteger)
-#     successful: bool = Column(Boolean)
-#     originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
-#     query_id: str = Column(String)
-#     amount: decimal.Decimal = Column(Numeric(scale=0)) # amount_supplied
-#     asset_id: str = Column(String)
-#     owner_address: str = Column(String)
-#     borrow_amount_principal: decimal.Decimal = Column(Numeric(scale=0))
-#     reclaim_amount_principal: decimal.Decimal = Column(Numeric(scale=0))
-#
-#
-#     __table_args__ = (Index('evaa_withdraw_1', 'owner_address'),
-#                       UniqueConstraint('msg_id')
-#                       )
-#
+@dataclass(init=False)
+class EvaaWithdraw(Base):
+    __tablename__ = 'evaa_withdraw'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
+    successful: bool = Column(Boolean)
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    query_id: str = Column(String)
+    amount: decimal.Decimal = Column(Numeric(scale=0)) # withdraw_amount_current
+    asset_id: str = Column(String)
+    owner_address: str = Column(String)
+    borrow_amount_principal: decimal.Decimal = Column(Numeric(scale=0))
+    reclaim_amount_principal: decimal.Decimal = Column(Numeric(scale=0))
+    approved: bool = Column(Boolean)
+
+    __table_args__ = (Index('evaa_withdraw_1', 'owner_address'),
+                      UniqueConstraint('msg_id')
+                      )
+
 #
 # @dataclass(init=False)
 # class EvaaLiquidation(Base):
