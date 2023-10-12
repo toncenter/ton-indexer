@@ -1057,7 +1057,7 @@ class HasTextCommentParser(Parser):
 
 class EvaaRouterPredicate(ParserPredicate):
     def __init__(self, delegate: ParserPredicate):
-        super(EvaaRouterPredicate, self).__init__(context_class=None)
+        super(EvaaRouterPredicate, self).__init__(MessageContext)
         self.delegate = delegate
 
     def _internal_match(self, context: MessageContext):
