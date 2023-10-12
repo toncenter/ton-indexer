@@ -1134,7 +1134,7 @@ class EvaaWithdrawCollateralizedParser(Parser):
 
         successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
 
-        existing = get_evaa_withdraw(session, msg_id=context.message.msg_id)
+        existing = await get_evaa_withdraw(session, msg_id=context.message.msg_id)
         if not existing:
             withdraw = EvaaWithdraw(
                 msg_id=context.message.msg_id,
@@ -1167,11 +1167,11 @@ class EvaaWithdrawSuccessParser(Parser):
         collaterized_msg_id = await get_prev_msg_id(session, context.message)
         logger.info(f"Discovered collateralized msg_id for {context.message.msg_id}: {collaterized_msg_id}")
         if collaterized_msg_id and context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0:
-            existing = get_evaa_withdraw(session, msg_id=context.message.msg_id)
+            existing = await get_evaa_withdraw(session, msg_id=context.message.msg_id)
             if not existing:
                 raise Exception("Unable to find existing withdraw_collateralized, may be it was not parsed yet")
             logger.info("Approving withdraw")
-            update_approved(session, withdraw=existing, approved=True)
+            await update_approved(session, withdraw=existing, approved=True)
 
 class EvaaWithdrawFailParser(Parser):
     def __init__(self):
@@ -1187,11 +1187,11 @@ class EvaaWithdrawFailParser(Parser):
         collaterized_msg_id = await get_prev_msg_id(session, context.message)
         logger.info(f"Discovered collateralized msg_id for {context.message.msg_id}: {collaterized_msg_id}")
         if collaterized_msg_id and context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0:
-            existing = get_evaa_withdraw(session, msg_id=context.message.msg_id)
+            existing = await get_evaa_withdraw(session, msg_id=context.message.msg_id)
             if not existing:
                 raise Exception("Unable to find existing withdraw_collateralized, may be it was not parsed yet")
             logger.info("Rejecting withdraw")
-            update_approved(session, withdraw=existing, approved=False)
+            await update_approved(session, withdraw=existing, approved=False)
 
 ## Forwards all messages to kafka
 class MessagesToKafka(Parser):
