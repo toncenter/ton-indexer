@@ -89,6 +89,13 @@ class BitReader:
     def read_uint(self, num):
         return int(self.read_bits(num).to01(), 2)
 
+    def read_int(self, num):
+        b = self.read_bits(num).to01()
+        v = int(self.read_bits(num).to01(), 2)
+        if b[0] == '1':
+            v = v - (1 << num)
+        return v
+
 
     def read_dedust_asset(self):
         kind = int(self.read_bits(4).to01(), 2)
