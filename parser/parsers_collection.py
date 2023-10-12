@@ -1086,14 +1086,12 @@ class EvaaSupplyParser(Parser):
         query_id = reader.read_uint(64)
         owner_address = reader.read_address()
         asset_id = evaa_asset_to_str(reader.read_uint(256))
-        amount_supplied = reader.read_coins()
+        amount_supplied = reader.read_uint(64)
         repay_amount_principal = reader.read_int(64)
         supply_amount_principal = reader.read_int(64)
 
         successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
 
-        # repay_amount_principal: decimal.Decimal = Column(Numeric(scale=0))
-        # supply_amount_principal: decimal.Decimal = Column(Numeric(scale=0))
         transfer = EvaaSupply(
             msg_id=context.message.msg_id,
             created_lt=context.message.created_lt,
@@ -1109,6 +1107,46 @@ class EvaaSupplyParser(Parser):
         )
         logger.info(f"Adding EVAA supply {transfer}")
         await upsert_entity(session, transfer)
+
+# class EvaaWithdrawCollateralizedParser(Parser):
+#     def __init__(self):
+#         super(EvaaWithdrawCollateralizedParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(OpCodePredicate(0x211))))
+#
+#     @staticmethod
+#     def parser_name() -> str:
+#         return "EvaaWithdrawCollateralized"
+#
+#     async def parse(self, session: Session, context: MessageContext):
+#         logger.info(f"Parsing EVAA withdraw_collateralized message {context.message.msg_id}")
+#         cell = self._parse_boc(context.content.body)
+#         reader = BitReader(cell.data.data)
+#         reader.read_uint(32) # 0x211
+#         query_id = reader.read_uint(64)
+#         owner_address = reader.read_address()
+#         asset_id = evaa_asset_to_str(reader.read_uint(256))
+#         withdraw_amount_current = reader.read_coins()
+#         borrow_amount_principal = reader.read_int(64)
+#         reclaim_amount_principal = reader.read_int(64)
+#
+#         successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
+#
+#         # repay_amount_principal: decimal.Decimal = Column(Numeric(scale=0))
+#         # supply_amount_principal: decimal.Decimal = Column(Numeric(scale=0))
+#         transfer = EvaaSupply(
+#             msg_id=context.message.msg_id,
+#             created_lt=context.message.created_lt,
+#             utime=context.destination_tx.utime,
+#             successful=successful,
+#             originated_msg_id=await get_originated_msg_id(session, context.message),
+#             query_id=str(query_id),
+#             amount=amount_supplied,
+#             asset_id=asset_id,
+#             owner_address=owner_address,
+#             repay_amount_principal=repay_amount_principal,
+#             supply_amount_principal=supply_amount_principal
+#         )
+#         logger.info(f"Adding EVAA supply {transfer}")
+#         await upsert_entity(session, transfer)
 
 ## Forwards all messages to kafka
 class MessagesToKafka(Parser):
