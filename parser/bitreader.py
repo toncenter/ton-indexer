@@ -91,7 +91,7 @@ class BitReader:
 
     def read_int(self, num):
         b = self.read_bits(num).to01()
-        v = int(self.read_bits(num).to01(), 2)
+        v = int(b, 2)
         if b[0] == '1':
             v = v - (1 << num)
         return v
