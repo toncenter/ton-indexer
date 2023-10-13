@@ -1196,7 +1196,7 @@ class EvaaWithdrawSuccessParser(Parser):
 
 class EvaaWithdrawFailParser(Parser):
     def __init__(self):
-        super(EvaaWithdrawFailParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(OpCodePredicate(0x211f)),
+        super(EvaaWithdrawFailParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(AlwaysTrue(context_class=MessageContext)),
                                                                             direction="source"))
 
     @staticmethod
@@ -1204,16 +1204,30 @@ class EvaaWithdrawFailParser(Parser):
         return "EvaaWithdrawFail"
 
     async def parse(self, session: Session, context: MessageContext):
-        logger.info(f"Parsing EVAA withdraw_fail message {context.message.msg_id}")
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        try:
+            reader.read_coins() # version
+            reader.read_uint(3) # flags
+            op = reader.read_uint(32)
+            query_id = reader.read_uint(64)
+        except:
+            logger.info("Not an EVAA message")
+            return
+        if op != 0x211f:
+            logger.info(f"Skipping message with opcode {op}")
+            return
+        logger.info(f"Parsing possible EVAA withdraw_fail message {context.message.msg_id}")
         collaterized_msg_id = await get_prev_msg_id(session, context.message)
         logger.info(f"Discovered collateralized msg_id for {context.message.msg_id}: {collaterized_msg_id}")
         if collaterized_msg_id and context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0:
-            existing = await get_evaa_withdraw(session, msg_id=context.message.msg_id)
+            existing = await get_evaa_withdraw(session, msg_id=collaterized_msg_id)
             if not existing:
                 raise Exception("Unable to find existing withdraw_collateralized, may be it was not parsed yet")
+
             logger.info("Rejecting withdraw")
             await update_approved(session, withdraw=existing, approved=False)
-
+            
 # class EvaaLiquidationSatisfiedParser(Parser):
 #     def __init__(self):
 #         super(EvaaLiquidationSatisfiedParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(OpCodePredicate(0x311))))
