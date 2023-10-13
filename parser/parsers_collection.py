@@ -1162,7 +1162,7 @@ class EvaaWithdrawCollateralizedParser(Parser):
 
 class EvaaWithdrawSuccessParser(Parser):
     def __init__(self):
-        super(EvaaWithdrawSuccessParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(AlwaysTrue()),
+        super(EvaaWithdrawSuccessParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(AlwaysTrue(context_class=MessageContext)),
                                                                             direction="source"))
 
     @staticmethod
