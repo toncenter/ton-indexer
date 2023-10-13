@@ -40,7 +40,7 @@ class ParserPredicate:
 
 class AlwaysTrue(ParserPredicate):
     def __init__(self, context_class):
-        super(ParserPredicate, self).__init__(context_class)
+        super(AlwaysTrue, self).__init__(context_class)
 
     def _internal_match(self, context):
         return True
