@@ -579,8 +579,19 @@ async def get_evaa_withdraw(session: Session, msg_id: int) -> EvaaWithdraw:
         return None
     return withdraw[0]
 
-async def update_approved(session: Session, withdraw: EvaaWithdraw, approved: bool):
+async def get_evaa_liquidation(session: Session, msg_id: int) -> EvaaLiquidation:
+    liquidation = (await session.execute(select(EvaaLiquidation).filter(EvaaLiquidation.msg_id == msg_id))).first()
+    if not liquidation:
+        return None
+    return liquidation[0]
+
+async def update_evaa_withdraw_approved(session: Session, withdraw: EvaaWithdraw, approved: bool):
     await session.execute(update(EvaaWithdraw).where(EvaaWithdraw.id == withdraw.id) \
                           .values(approved=approved))
+
+
+async def update_evaa_liquidation_approved(session: Session, liquidation: EvaaLiquidation, approved: bool):
+    await session.execute(update(EvaaLiquidation).where(EvaaLiquidation.id == liquidation.id) \
+                      .values(approved=approved))
 
 

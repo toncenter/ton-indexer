@@ -1192,7 +1192,7 @@ class EvaaWithdrawSuccessParser(Parser):
                 raise Exception("Unable to find existing withdraw_collateralized, may be it was not parsed yet")
 
             logger.info("Approving withdraw")
-            await update_approved(session, withdraw=existing, approved=True)
+            await update_evaa_withdraw_approved(session, withdraw=existing, approved=True)
 
 class EvaaWithdrawFailParser(Parser):
     def __init__(self):
@@ -1226,48 +1226,128 @@ class EvaaWithdrawFailParser(Parser):
                 raise Exception("Unable to find existing withdraw_collateralized, may be it was not parsed yet")
 
             logger.info("Rejecting withdraw")
-            await update_approved(session, withdraw=existing, approved=False)
+            await update_evaa_withdraw_approved(session, withdraw=existing, approved=False)
             
-# class EvaaLiquidationSatisfiedParser(Parser):
-#     def __init__(self):
-#         super(EvaaLiquidationSatisfiedParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(OpCodePredicate(0x311))))
-#
-#     @staticmethod
-#     def parser_name() -> str:
-#         return "EvaaWithdrawCollateralized"
-#
-#     async def parse(self, session: Session, context: MessageContext):
-#         logger.info(f"Parsing EVAA withdraw_collateralized message {context.message.msg_id}")
-#         cell = self._parse_boc(context.content.body)
-#         reader = BitReader(cell.data.data)
-#         reader.read_uint(32) # 0x211
-#         query_id = reader.read_uint(64)
-#         owner_address = reader.read_address()
-#         asset_id = evaa_asset_to_str(reader.read_uint(256))
-#         withdraw_amount_current = reader.read_uint(64)
-#         borrow_amount_principal = reader.read_int(64)
-#         reclaim_amount_principal = reader.read_int(64)
-#
-#         successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
-#
-#         existing = await get_evaa_withdraw(session, msg_id=context.message.msg_id)
-#         if not existing:
-#             withdraw = EvaaWithdraw(
-#                 msg_id=context.message.msg_id,
-#                 created_lt=context.message.created_lt,
-#                 utime=context.destination_tx.utime,
-#                 successful=successful,
-#                 originated_msg_id=await get_originated_msg_id(session, context.message),
-#                 query_id=str(query_id),
-#                 amount=withdraw_amount_current,
-#                 asset_id=asset_id,
-#                 owner_address=owner_address,
-#                 borrow_amount_principal=borrow_amount_principal,
-#                 reclaim_amount_principal=reclaim_amount_principal,
-#                 approved=None
-#             )
-#             logger.info(f"Adding EVAA withdraw {withdraw}")
-#             await upsert_entity(session, withdraw)
+class EvaaLiquidationSatisfiedParser(Parser):
+    def __init__(self):
+        super(EvaaLiquidationSatisfiedParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(OpCodePredicate(0x311))))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "EvaaLiquidationSatisfied"
+
+    async def parse(self, session: Session, context: MessageContext):
+        logger.info(f"Parsing EVAA liquidate_satisfied message {context.message.msg_id}")
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        reader.read_uint(32) # 0x311
+        query_id = reader.read_uint(64)
+        owner_address = reader.read_address()
+        liquidator_address = reader.read_address()
+        transferred_asset_id = evaa_asset_to_str(reader.read_uint(256))
+        ref = cell.refs.pop(0)
+        reader = BitReader(ref.data.data)
+        delta_loan_principal = reader.read_int(64)
+        liquidatable_amount = reader.read_uint(64)
+        protocol_gift = reader.read_uint(64)
+        collateral_asset_id = evaa_asset_to_str(reader.read_uint(256))
+        delta_collateral_principal = reader.read_int(64)
+        collateral_reward = reader.read_uint(64)
+        min_collateral_amount = reader.read_uint(64)
+
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
+
+        existing = await get_evaa_liquidation(session, msg_id=context.message.msg_id)
+        if not existing:
+            liqudation = EvaaLiquidation(
+                msg_id=context.message.msg_id,
+                created_lt=context.message.created_lt,
+                utime=context.destination_tx.utime,
+                successful=successful,
+                originated_msg_id=await get_originated_msg_id(session, context.message),
+                query_id=str(query_id),
+                amount=liquidatable_amount,
+                protocol_gift=protocol_gift,
+                collateral_reward=collateral_reward,
+                min_collateral_amount=min_collateral_amount,
+                transferred_asset_id=transferred_asset_id,
+                collateral_asset_id=collateral_asset_id,
+                owner_address=owner_address,
+                liquidator_address=liquidator_address,
+                delta_loan_principal=delta_loan_principal,
+                delta_collateral_principal=delta_collateral_principal,
+                approved=None
+            )
+            logger.info(f"Adding EVAA liquidation {liqudation}")
+            await upsert_entity(session, liqudation)
+
+class EvaaLiquidationSuccessParser(Parser):
+    def __init__(self):
+        super(EvaaWithdrawSuccessParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(AlwaysTrue(context_class=MessageContext)),
+                                                                            direction="source"))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "EvaaLiquidationSuccess"
+
+    async def parse(self, session: Session, context: MessageContext):
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        try:
+            reader.read_coins() # version
+            reader.read_uint(3) # flags
+            op = reader.read_uint(32)
+            query_id = reader.read_uint(64)
+        except:
+            logger.info("Not an EVAA message")
+            return
+        if op != 0x311a:
+            logger.info(f"Skipping message with opcode {op}")
+            return
+        logger.info(f"Parsing possible EVAA liquidation_success message {context.message.msg_id}")
+        satisfied_msg_id = await get_prev_msg_id(session, context.message)
+        logger.info(f"Discovered liquidation_satisfied msg_id for {context.message.msg_id}: {satisfied_msg_id}")
+        if satisfied_msg_id and context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0:
+            existing = await get_evaa_liquidation(session, msg_id=satisfied_msg_id)
+            if not existing:
+                raise Exception("Unable to find existing liquidation_satisfied, may be it was not parsed yet")
+
+            logger.info("Approving liquidation")
+            await update_evaa_liquidation_approved(session, liquidation=existing, approved=True)
+
+class EvaaLiquidationFailParser(Parser):
+    def __init__(self):
+        super(EvaaWithdrawSuccessParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(AlwaysTrue(context_class=MessageContext)),
+                                                                            direction="source"))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "EvaaLiquidationFail"
+
+    async def parse(self, session: Session, context: MessageContext):
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        try:
+            reader.read_coins() # version
+            reader.read_uint(3) # flags
+            op = reader.read_uint(32)
+            query_id = reader.read_uint(64)
+        except:
+            logger.info("Not an EVAA message")
+            return
+        if op != 0x311f:
+            logger.info(f"Skipping message with opcode {op}")
+            return
+        logger.info(f"Parsing possible EVAA liquidation_fail message {context.message.msg_id}")
+        satisfied_msg_id = await get_prev_msg_id(session, context.message)
+        logger.info(f"Discovered liquidation_satisfied msg_id for {context.message.msg_id}: {satisfied_msg_id}")
+        if satisfied_msg_id and context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0:
+            existing = await get_evaa_liquidation(session, msg_id=satisfied_msg_id)
+            if not existing:
+                raise Exception("Unable to find existing liquidation_satisfied, may be it was not parsed yet")
+
+            logger.info("Rejecting liquidation")
+            await update_evaa_liquidation_approved(session, liquidation=existing, approved=False)
 
 ## Forwards all messages to kafka
 class MessagesToKafka(Parser):
