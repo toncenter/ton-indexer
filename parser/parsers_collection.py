@@ -1283,7 +1283,7 @@ class EvaaLiquidationSatisfiedParser(Parser):
 
 class EvaaLiquidationSuccessParser(Parser):
     def __init__(self):
-        super(EvaaWithdrawSuccessParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(AlwaysTrue(context_class=MessageContext)),
+        super(EvaaLiquidationSuccessParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(AlwaysTrue(context_class=MessageContext)),
                                                                             direction="source"))
 
     @staticmethod
@@ -1317,7 +1317,7 @@ class EvaaLiquidationSuccessParser(Parser):
 
 class EvaaLiquidationFailParser(Parser):
     def __init__(self):
-        super(EvaaWithdrawSuccessParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(AlwaysTrue(context_class=MessageContext)),
+        super(EvaaLiquidationFailParser, self).__init__(EvaaRouterPredicate(DestinationTxRequiredPredicate(AlwaysTrue(context_class=MessageContext)),
                                                                             direction="source"))
 
     @staticmethod
