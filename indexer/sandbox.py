@@ -8,9 +8,10 @@ from tqdm.auto import tqdm
 
 import indexer.core.database as D
 from indexer.core.database import SessionMaker, SyncSessionMaker
-from sqlalchemy import and_
+from sqlalchemy import and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, Query, joinedload, contains_eager
+from sqlalchemy.orm import Session, Query, joinedload, sessionmaker
+from sqlalchemy.dialects.postgresql import insert
 
 from collections import defaultdict
 
@@ -20,16 +21,17 @@ DISABLE = False
 SHOW_TXS = False
 
 # queries
-def query_transactions(session: Session) -> Query:
+def query_new_transactions(session: Session) -> Query:
+    # query = session.query(D.Transaction) \
+    #                .options(joinedload(D.Transaction.messages)) \
+    #                .options(joinedload(D.Transaction.messages).joinedload(D.TransactionMessage.message)) \
+    #                .outerjoin(D.Transaction.event) \
+    #                .filter(D.EventTransaction.event_id.is_(None))
     query = session.query(D.Transaction) \
                    .options(joinedload(D.Transaction.messages)) \
-                   .options(joinedload(D.Transaction.messages).joinedload(D.TransactionMessage.message))
-    query = query.order_by(D.Transaction.lt.asc())
+                   .options(joinedload(D.Transaction.messages).joinedload(D.TransactionMessage.message)) \
+                   .filter(D.Transaction.event_id.is_(None))
     return query
-
-
-def count_new_transactions(session: Session):
-    return session.query(D.Transaction).filter(D.Transaction.event_id.is_(None)).count()
 
 
 # utils
@@ -92,7 +94,7 @@ class EventGraph:
         return list(self.txs.keys())
 
     def get_edges(self):
-        return [(self.txs[left], self.txs[right]) for left, right in self.edges]
+        return [(self.txs[left][0], self.txs[right][0]) for left, right in self.edges]
 
     def __repr__(self):
         return f"Event(txs: {len(self.txs)}, edges: {len(self.edges)})"
@@ -111,13 +113,22 @@ class EdgeDetector:
         self.events: Dict[str, EventGraph] = {}
 
         self._finished_events = 0
+        self._merge_count = 0
         self._found_edges = 0
         self._last_stats_timestamp = datetime.now().timestamp()
+
+        self._session_maker: Session = None
+
+    def set_session_maker(self, session_maker: sessionmaker) -> "EdgeDetector":
+        self._session_maker = session_maker
 
     def print_stats(self) -> "EdgeDetector":
         new_timestamp = datetime.now().timestamp()
         if new_timestamp - self._last_stats_timestamp > 5:
-            print(f'events: {self._finished_events}, txs: {len(self.events)}, edges found: {self._found_edges} (active: {len(self.edges)})')
+            print(f'events: {self._finished_events}, '
+                  f'txs: {len(self.events)}, '
+                  f'merges: {self._merge_count}, '
+                  f'edges found: {self._found_edges} (active: {len(self.edges)})')
             if SHOW_TXS and self.edges:
                 tx = list(self.edges.values())[random.choice(range(len(self.edges)))]
                 print('=' * 90)
@@ -128,6 +139,31 @@ class EdgeDetector:
                 print('=' * 90)
             self._last_stats_timestamp = new_timestamp
         return self
+
+    def insert_event(self, event: EventGraph) -> "EdgeDetector":
+        with self._session_maker() as session:
+            with session.begin():
+                event_id = hash(tuple(sorted(event.get_tx_hashes())))
+                
+                # event
+                data = [{'id': event_id, 'meta': {}}]
+                session.execute(insert(D.Event).on_conflict_do_nothing(), data)
+
+                # # event_transaction
+                # data = [{'event_id': event_id, 'tx_hash': tx_hash} for tx_hash in event.txs]
+                # session.execute(insert(D.EventTransaction).on_conflict_do_nothing(), data)
+                for tx_hash in event.txs:
+                    session.execute(update(D.Transaction)
+                                    .where(D.Transaction.hash == tx_hash)
+                                    .values(event_id=event_id))
+
+                # event_edges
+                data = [{'event_id': event_id,
+                        'left_tx_hash': edge[0],
+                        'right_tx_hash': edge[1]} for edge in event.edges]
+                session.execute(insert(D.EventEdge).on_conflict_do_nothing(), data)
+        return self
+            
 
     def process_tx(self, tx: D.Transaction) -> "EdgeDetector":
         if tx.description['type'] == 'tick_tock':
@@ -167,7 +203,8 @@ class EdgeDetector:
                 elif edge[0].hash in self.events and edge[1].hash in self.events:
                     event = self.events[edge[0].hash]
                     right = self.events[edge[1].hash]
-                    print(f'Merge events: {event} <- {right}')
+                    # print(f'Merge events: {event} <- {right}')
+                    self._merge_count += 1
                     for edge in right.get_edges():
                         event.add_edge(edge)
                     for tx_hash in right.get_tx_hashes():
@@ -186,7 +223,7 @@ class EdgeDetector:
                         self.events.pop(tx_hash)
                     # TODO: insert event
                     self._finished_events += 1
-                    del event
+                    self.insert_event(event)
             elif message_type == 'ord':
                 # edge found
                 self.edges[(msg_hash, is_input)] = tx
@@ -197,23 +234,33 @@ class EdgeDetector:
 # instance
 if __name__ == '__main__':
     edge_detector = EdgeDetector()
+    edge_detector.set_session_maker(SyncSessionMaker)
+
+    batch_size = 2048
 
     try:
         with SyncSessionMaker() as session:
-            query = query_transactions(session)
-            # query = query.filter(D.Transaction.event_id.is_(None))
-            # query = query.filter(and_(D.Transaction.lt >= 1229773000001, D.Transaction.lt <= 1231067000010))
-            query = query.yield_per(16 * 1024).enable_eagerloads(False)
-            
+            query = query_new_transactions(session)
+            query = query.order_by(D.Transaction.lt.asc())
+            # query = query.filter(and_(D.Transaction.lt >= 1229773000001, D.Transaction.lt <= 1231067000010))  # DEBUG: big event
+            print('Counting new transactions')
+            print(query)
+            raise RuntimeError(1)
             total = query.count()
-            pbar = tqdm(total=total, smoothing=0.001, disable=DISABLE)
-            for tx in query:
-                edge_detector.process_tx(tx)
-                pbar.update(1)
+            
+        print('Detecting events')
+        pbar = tqdm(total=total, smoothing=0.001, disable=DISABLE)
+        while True:
+            with SyncSessionMaker() as session:
+                query = query_new_transactions(session)
+                query = query.order_by(D.Transaction.lt.asc())
+                total = query.limit(batch_size)
+                for tx in query:
+                    edge_detector.process_tx(tx)
+                    pbar.update(1)
     except KeyboardInterrupt:
         print('Gracefully stopped')
     except:
         print(traceback.format_exc())
     exit(0)
 # end script
-

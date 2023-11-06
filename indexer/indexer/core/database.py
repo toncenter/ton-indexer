@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from time import sleep
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
 from sqlalchemy.ext.declarative import declarative_base
@@ -132,20 +132,35 @@ class Block(Base):
     transactions = relationship("Transaction", back_populates="block")
 
 
-# class Event(Base):
-#     __tablename__ = 'events'
-#     id: int = Column(BigInteger, primary_key=True)
-#     transactions: List["Transaction"] = relationship("Transaction", 
-#                                                      foreign_keys=[id],
-#                                                      primaryjoin="Event.id == Transaction.event_id",
-#                                                      viewonly=True)
+class Event(Base):
+    __tablename__ = 'events'
+    id: int = Column(BigInteger, primary_key=True)
+    meta: Dict[str, Any] = Column(JSONB)
+    
+    # transactions: List["EventTransaction"] = relationship("EventTransaction", back_populates="event")
+    transactions: List["Transaction"] = relationship("Transaction", 
+                                                     foreign_keys=[id],
+                                                     primaryjoin='Event.id == Transaction.event_id',
+                                                     viewonly=True)
+    edges: List["EventEdge"] = relationship("EventEdge", back_populates="event")
 
 
-# 
-# class EventEdge(Base):
-#     __tablename__ = 'event_graph'
-#     event_id: int = Column(BigInteger, primary_key=True)
-#     left_tx_hash: str = Column()
+# class EventTransaction(Base):
+#     __tablename__ = 'event_transactions'
+#     event_id: int = Column(BigInteger, ForeignKey("events.id"), primary_key=True)
+#     tx_hash: str = Column(String, ForeignKey("transactions.hash"), primary_key=True)
+
+#     event: Event = relationship("Event", back_populates="transactions")
+#     transactions: List["Transaction"] = relationship("Transaction", back_populates="event")
+
+
+class EventEdge(Base):
+    __tablename__ = 'event_graph'
+    event_id: int = Column(BigInteger, ForeignKey("events.id"), primary_key=True)
+    left_tx_hash: str = Column(String, primary_key=True)
+    right_tx_hash: str = Column(String, primary_key=True)
+
+    event: "Event" = relationship("Event", back_populates="edges")
 
 
 class Transaction(Base):
@@ -178,8 +193,7 @@ class Transaction(Base):
     account_state_hash_before = Column(String)
     account_state_hash_after = Column(String)
 
-    # event_id: Optional[int] = Column(BigInteger)
-
+    event_id: Optional[int] = Column(BigInteger)
     account_state_before = relationship("AccountState", 
                                         foreign_keys=[account_state_hash_before],
                                         primaryjoin="AccountState.hash == Transaction.account_state_hash_before", 
@@ -188,12 +202,14 @@ class Transaction(Base):
                                        foreign_keys=[account_state_hash_after],
                                        primaryjoin="AccountState.hash == Transaction.account_state_hash_after", 
                                        viewonly=True)
-    # event: Optional["Event"] = relationship("Event", 
-    #                               foreign_keys=[event_id],
-    #                               primaryjoin="Event.id == Transaction.event_id")
     description = Column(JSONB)
     
     messages: List["TransactionMessage"] = relationship("TransactionMessage", back_populates="transaction")
+    event: Optional["Event"] = relationship("Event", 
+                                  foreign_keys=[event_id],
+                                  primaryjoin="Transaction.event_id == Event.id",
+                                  viewonly=True)
+    # event: Event = relationship("EventTransaction", back_populates="transactions")
 
 
 class AccountState(Base):
@@ -274,10 +290,12 @@ class JettonWallet(Base):
 
     transfers: List["JettonTransfer"] = relationship("JettonTransfer",
                                                      foreign_keys=[address],
-                                                     primaryjoin="JettonWallet.address == JettonTransfer.jetton_wallet_address")
+                                                     primaryjoin="JettonWallet.address == JettonTransfer.jetton_wallet_address",
+                                                     viewonly=True)
     burns: List["JettonBurn"] = relationship("JettonBurn",
                                              foreign_keys=[address],
-                                             primaryjoin="JettonWallet.address == JettonBurn.jetton_wallet_address")
+                                             primaryjoin="JettonWallet.address == JettonBurn.jetton_wallet_address",
+                                             viewonly=True)
     
     jetton_master: "JettonMaster" = relationship("JettonMaster",
                                                  foreign_keys=[jetton],
@@ -400,7 +418,6 @@ Index("transactions_index_2", Transaction.account, postgresql_using='btree', pos
 # Index("transactions_index_3", Transaction.hash, postgresql_using='btree', postgresql_concurrently=False)
 Index("transactions_index_3", Transaction.now, postgresql_using='btree', postgresql_concurrently=False)
 Index("transactions_index_4", Transaction.lt, postgresql_using='btree', postgresql_concurrently=False)
-# Index("transactions_index_5", Transaction.event_id, postgresql_using='btree', postgresql_concurrently=False)
 # Index("transactions_index_6", Transaction.account_state_hash_after, postgresql_using='btree', postgresql_concurrently=False)
 
 # Index('account_states_index_1', AccountState.hash, postgresql_using='btree', postgresql_concurrently=False)
@@ -450,3 +467,8 @@ Index("nft_items_index_3", NFTItem.owner_address, postgresql_using='btree', post
 Index("nft_transfers_index_2", NFTTransfer.nft_item_address, postgresql_using='btree', postgresql_concurrently=False)
 Index("nft_transfers_index_3", NFTTransfer.old_owner, postgresql_using='btree', postgresql_concurrently=False)
 Index("nft_transfers_index_4", NFTTransfer.new_owner, postgresql_using='btree', postgresql_concurrently=False)
+
+
+# # event indexes
+# Index("event_transaction_index_1", EventTransaction.tx_hash, postgresql_using='btree', postgresql_concurrently=False)
+Index("transaction_index_5", Transaction.event_id, postgresql_using='btree', postgresql_concurrently=False)
