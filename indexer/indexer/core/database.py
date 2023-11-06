@@ -471,4 +471,4 @@ Index("nft_transfers_index_4", NFTTransfer.new_owner, postgresql_using='btree', 
 
 # # event indexes
 # Index("event_transaction_index_1", EventTransaction.tx_hash, postgresql_using='btree', postgresql_concurrently=False)
-Index("transaction_index_5", Transaction.event_id, postgresql_using='btree', postgresql_concurrently=False)
+Index("even_detector__transaction_index_1", Transaction.lt.asc(), postgresql_where=(Transaction.event_id.is_(None)), postgresql_using='btree', postgresql_concurrently=False)

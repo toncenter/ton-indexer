@@ -244,8 +244,6 @@ if __name__ == '__main__':
             query = query.order_by(D.Transaction.lt.asc())
             # query = query.filter(and_(D.Transaction.lt >= 1229773000001, D.Transaction.lt <= 1231067000010))  # DEBUG: big event
             print('Counting new transactions')
-            print(query)
-            raise RuntimeError(1)
             total = query.count()
             
         print('Detecting events')
