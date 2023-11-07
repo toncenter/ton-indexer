@@ -3,6 +3,7 @@ import random
 import argparse
 import traceback
 import time
+import pickle
 import multiprocessing as mp
 
 from datetime import datetime
@@ -72,7 +73,7 @@ class OtherProcess(mp.Process):
             print('Gracefully stopped in the Thread')
         except:
             print(traceback.format_exc())
-        print('Thead finished')
+        print('Thread finished')
         return
 
 
@@ -101,6 +102,16 @@ class EventGraph:
         for edge in edges:
             self.add_edge(edge)
 
+        # forkbombs and big events
+        self._event_id = None
+
+    def mark_partial_event(self, event_id):
+        self._event_id = event_id
+
+    @property
+    def event_id(self):
+        return self._event_id
+
     def add_tx(self, tx: D.Transaction):
         if tx.hash in self.txs:
             return self
@@ -115,14 +126,25 @@ class EventGraph:
 
     def add_edge(self, edge: Tuple[D.Transaction, D.Transaction]):
         self.add_tx(edge[0]).add_tx(edge[1])
-        self.txs[edge[0].hash][1] -= 1
-        self.txs[edge[1].hash][1] -= 1
+        
+        for tt in edge:
+            self.txs[tt.hash][1] -= 1
+            if self.txs[tt.hash][1] == 0:
+                # compress finished nodes
+                self.txs[tt.hash][0] = None
         self.edges.append((edge[0].hash, edge[1].hash))
         self.edges_left -= 2
         return self
+    
+    def _set_event_id(self) -> "EventGraph":
+        self._event_id = hash(tuple(sorted(self.get_tx_hashes())))
+        return self
 
     def check_finished(self):
-        return self.edges_left == 0
+        if self.edges_left == 0:
+            self._set_event_id()
+            return True
+        return False
     
     def _check_finished_debug(self):
         total = 0
@@ -131,6 +153,12 @@ class EventGraph:
         if total != self.edges_left:
             print(f"WTF: {total} != {self.edges_left}")
         return total == 0
+    
+    def merge_with(self, right: "EventGraph") -> "EventGraph":
+        for k, v in right.txs.items():
+            self.txs[k] = v
+        self.edges.extend(right.edges)
+        return self
 
     def get_tx_hashes(self):
         return list(self.txs.keys())
@@ -151,6 +179,7 @@ class EventGraph:
 # event processor class
 class EdgeDetector:
     OTHER_BATCH_SIZE = 10000
+    FORK_BOMB_SIZE = 10240
 
     def __init__(self, other_queue: mp.Queue, insert_tick_tocks=False):
         self.other_queue = other_queue
@@ -159,6 +188,7 @@ class EdgeDetector:
         self.edges: Dict[Tuple[str, bool], D.Transaction] = {}
         self.events: Dict[str, EventGraph] = {}
 
+        self._active_events = 0
         self._finished_events = 0
         self._merge_count = 0
         self._found_edges = 0
@@ -179,43 +209,40 @@ class EdgeDetector:
 
     def print_stats(self) -> "EdgeDetector":
         new_timestamp = datetime.now().timestamp()
+        # if len(self.events) > 1000:
+        #     with open('private/events.pickle', 'wb') as f:
+        #         print('Debug pickle')
+        #         pickle.dump(self.events, f)
+        #         raise RuntimeError('STOP')
         if new_timestamp - self._last_stats_timestamp > 5:
-            msg = (f'events: {self._finished_events}, '
+            # active_events = len(set(self.events.values()))
+            active_events = self._active_events
+            msg = (f'events found: {self._finished_events} (active: {active_events}), '
                    f'txs: {len(self.events)} (ignored: {self._ignored_txs}), '
                    f'merges: {self._merge_count}, '
                    f'edges found: {self._found_edges} (active: {len(self.edges)})')
             if self._pbar is not None:
                 self._pbar.set_description(msg)
-            # if SHOW_TXS and self.edges:
-            #     tx = list(self.edges.values())[random.choice(range(len(self.edges)))]
-            #     print('=' * 90)
-            #     print(tx.__dict__)
-            #     print('-' * 90)
-            #     for msg in tx.messages:
-            #         print(msg.message.__dict__)
-            #     print('=' * 90)
             self._last_stats_timestamp = new_timestamp
         return self
 
     def insert_event(self, event: EventGraph) -> "EdgeDetector":
         with self._session_maker() as session:
             with session.begin():
-                event_id = hash(tuple(sorted(event.get_tx_hashes())))
-                
                 # event
-                data = [{'id': event_id, 'meta': {}}]
+                data = [{'id': event.event_id, 'meta': {}}]
                 session.execute(insert(D.Event).on_conflict_do_nothing(), data)
 
                 # # event_transaction
-                # data = [{'event_id': event_id, 'tx_hash': tx_hash} for tx_hash in event.txs]
+                # data = [{'event_id': event.event_id, 'tx_hash': tx_hash} for tx_hash in event.txs]
                 # session.execute(insert(D.EventTransaction).on_conflict_do_nothing(), data)
                 for tx_hash in event.txs:
                     session.execute(update(D.Transaction)
                                     .where(D.Transaction.hash == tx_hash)
-                                    .values(event_id=event_id))
+                                    .values(event_id=event.event_id))
 
                 # event_edges
-                data = [{'event_id': event_id,
+                data = [{'event_id': event.event_id,
                         'left_tx_hash': edge[0],
                         'right_tx_hash': edge[1]} for edge in event.edges]
                 session.execute(insert(D.EventEdge).on_conflict_do_nothing(), data)
@@ -247,6 +274,7 @@ class EdgeDetector:
 
                 # new item
                 if edge[0].hash not in self.events and edge[1].hash not in self.events:
+                    self._active_events += 1
                     # print(f'New event: {edge[0].hash} -> {edge[1].hash}')
                     event = EventGraph([edge])
                     self.events[edge[0].hash] = event
@@ -265,12 +293,15 @@ class EdgeDetector:
                     self.events[edge[0].hash] = event
                 # merge events
                 elif edge[0].hash in self.events and edge[1].hash in self.events:
+                    self._active_events -= 1
                     event = self.events[edge[0].hash]
                     right = self.events[edge[1].hash]
                     # print(f'Merge events: {event} <- {right}')
                     self._merge_count += 1
-                    for edge in right.get_edges():
-                        event.add_edge(edge)
+                    
+                    event.merge_with(right)
+                    event.add_edge(edge)
+
                     for tx_hash in right.get_tx_hashes():
                         self.events[tx_hash] = event
 
@@ -279,6 +310,10 @@ class EdgeDetector:
                 #     if tx_hash in self.events and not self.events[tx_hash] == event:
                 #         print(f'WARNING! {self.events[tx_hash]}')
                     
+                # test big event
+                if len(event.edges) > EdgeDetector.FORK_BOMB_SIZE:
+                    pass
+
                 # test if finished
                 if event.check_finished():
                     if len(event.edges) > 100:
@@ -287,6 +322,7 @@ class EdgeDetector:
                         self.events.pop(tx_hash)
                     # TODO: insert event
                     self._finished_events += 1
+                    self._active_events -= 1
                     self.insert_event(event)
             elif message_type == 'ord':
                 count += 1
@@ -341,9 +377,17 @@ if __name__ == '__main__':
                     pbar.update(1)
     except KeyboardInterrupt:
         print('Gracefully stopped')
+        print(traceback.format_exc())
+
+        # print('Dumping events')
+        # data = list(set(edge_detector.events.values()))
+        # with open('private/events.pickle', 'wb') as f:
+        #     print('Num events:', len(data))
+        #     pickle.dump(data, f)
     except:
         print(traceback.format_exc())
     other_thread.terminate()
+    other_thread.join()
     print('Whole program finished')
     exit(0)
 # end script
