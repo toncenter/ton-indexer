@@ -1,5 +1,9 @@
+#!/usr/bin/env python3
 import random
+import argparse
 import traceback
+import time
+import multiprocessing as mp
 
 from datetime import datetime
 from typing import Optional, List, Tuple, Dict
@@ -16,7 +20,6 @@ from sqlalchemy.dialects.postgresql import insert
 from collections import defaultdict
 
 
-display = print
 DISABLE = False
 SHOW_TXS = False
 
@@ -32,6 +35,45 @@ def query_new_transactions(session: Session) -> Query:
                    .options(joinedload(D.Transaction.messages).joinedload(D.TransactionMessage.message)) \
                    .filter(D.Transaction.event_id.is_(None))
     return query
+
+
+# insert others
+class OtherProcess(mp.Process):
+    def __init__(self, queue: mp.Queue, session_maker: sessionmaker, batch_size=4096):
+        super().__init__()
+        self.queue = queue
+        self.session_maker = session_maker
+        self.batch_size = batch_size
+        
+        self._txs = []
+
+    def insert_batch(self):
+        if len(self._txs) > EdgeDetector.OTHER_BATCH_SIZE:
+            with self.session_maker() as session:
+                with session.begin():
+                    for tx_hash, is_tick_tock in self._txs:
+                        session.execute(update(D.Transaction)
+                                        .where(D.Transaction.hash == tx_hash)
+                                        .values(event_id=0 if is_tick_tock else hash(tx_hash)))
+                self._txs.clear()
+
+    def run(self):
+        try:
+            while True:
+                if not self.queue.empty():
+                    item = self.queue.get(False)
+                    if item is not None:
+                        self._txs.append(item)
+                    if len(self._txs) > self.batch_size:
+                        self.insert_batch()
+                else:
+                    time.sleep(0.5)
+        except KeyboardInterrupt:
+            print('Gracefully stopped in the Thread')
+        except:
+            print(traceback.format_exc())
+        print('Thead finished')
+        return
 
 
 # utils
@@ -108,35 +150,50 @@ class EventGraph:
 
 # event processor class
 class EdgeDetector:
-    def __init__(self):
+    OTHER_BATCH_SIZE = 10000
+
+    def __init__(self, other_queue: mp.Queue, insert_tick_tocks=False):
+        self.other_queue = other_queue
+        self.insert_tick_tocks = insert_tick_tocks
+
         self.edges: Dict[Tuple[str, bool], D.Transaction] = {}
         self.events: Dict[str, EventGraph] = {}
 
         self._finished_events = 0
         self._merge_count = 0
         self._found_edges = 0
+        self._ignored_txs = 0
         self._last_stats_timestamp = datetime.now().timestamp()
 
+        self._other_txs = []
+        self._pbar = None
         self._session_maker: Session = None
 
     def set_session_maker(self, session_maker: sessionmaker) -> "EdgeDetector":
         self._session_maker = session_maker
+        return self
+
+    def set_pbar(self, pbar: tqdm) -> "EdgeDetector":
+        self._pbar = pbar
+        return self
 
     def print_stats(self) -> "EdgeDetector":
         new_timestamp = datetime.now().timestamp()
         if new_timestamp - self._last_stats_timestamp > 5:
-            print(f'events: {self._finished_events}, '
-                  f'txs: {len(self.events)}, '
-                  f'merges: {self._merge_count}, '
-                  f'edges found: {self._found_edges} (active: {len(self.edges)})')
-            if SHOW_TXS and self.edges:
-                tx = list(self.edges.values())[random.choice(range(len(self.edges)))]
-                print('=' * 90)
-                print(tx.__dict__)
-                print('-' * 90)
-                for msg in tx.messages:
-                    print(msg.message.__dict__)
-                print('=' * 90)
+            msg = (f'events: {self._finished_events}, '
+                   f'txs: {len(self.events)} (ignored: {self._ignored_txs}), '
+                   f'merges: {self._merge_count}, '
+                   f'edges found: {self._found_edges} (active: {len(self.edges)})')
+            if self._pbar is not None:
+                self._pbar.set_description(msg)
+            # if SHOW_TXS and self.edges:
+            #     tx = list(self.edges.values())[random.choice(range(len(self.edges)))]
+            #     print('=' * 90)
+            #     print(tx.__dict__)
+            #     print('-' * 90)
+            #     for msg in tx.messages:
+            #         print(msg.message.__dict__)
+            #     print('=' * 90)
             self._last_stats_timestamp = new_timestamp
         return self
 
@@ -163,19 +220,26 @@ class EdgeDetector:
                         'right_tx_hash': edge[1]} for edge in event.edges]
                 session.execute(insert(D.EventEdge).on_conflict_do_nothing(), data)
         return self
-            
+
+    def insert_other(self, tx_hash, is_tick_tock=False) -> "EdgeDetector":
+        self.other_queue.put((tx_hash, is_tick_tock))
+        return self
 
     def process_tx(self, tx: D.Transaction) -> "EdgeDetector":
         if tx.description['type'] == 'tick_tock':
+            if self.insert_tick_tocks:
+                self.insert_other(tx.hash, is_tick_tock=True)
             return self
-        
+
         # process transaction
+        count = 0
         for msg in tx.messages:
             is_input = msg.direction == 'in'
             msg_hash = msg.message_hash
             
             message_type = get_message_type(msg)
             if (msg_hash, not is_input) in self.edges:
+                count += 1
                 # saving for the future
                 tx2 = self.edges.pop((msg_hash, not is_input))
                 edge = (tx2, tx) if is_input else (tx, tx2)
@@ -217,7 +281,7 @@ class EdgeDetector:
                     
                 # test if finished
                 if event.check_finished():
-                    if len(event.edges) > 10:
+                    if len(event.edges) > 100:
                         print(f'Big event found: {event}')
                     for tx_hash in event.get_tx_hashes():
                         self.events.pop(tx_hash)
@@ -225,34 +289,53 @@ class EdgeDetector:
                     self._finished_events += 1
                     self.insert_event(event)
             elif message_type == 'ord':
+                count += 1
                 # edge found
                 self.edges[(msg_hash, is_input)] = tx
+        if count == 0:
+            # mark system transaction
+            self.insert_other(tx.hash)
+            self._ignored_txs += 1
         self.print_stats()
         return self
 
 
 # instance
 if __name__ == '__main__':
-    edge_detector = EdgeDetector()
-    edge_detector.set_session_maker(SyncSessionMaker)
+    parser = argparse.ArgumentParser('Event Detector')
+    parser.add_argument('--batch-size', type=int, default=8192, help='Select transactions batch size')
+    parser.add_argument('--other-batch-size', type=int, default=4096, help='Insert other transactions batch size')
+    parser.add_argument('--start-lt', type=int, default=None, help='Start from lt')
+    parser.add_argument('--inverse', action='store_true', help='Scan in inverse order (DANGER: may cause undetected events)')
+    parser.add_argument('--verbose', action='store_true', help='Show progress bar')
+    args = parser.parse_args()
 
-    batch_size = 2048
+    other_queue = mp.Queue()
+    other_thread = OtherProcess(other_queue, SyncSessionMaker, batch_size=args.other_batch_size)
+    other_thread.start()
+
+    edge_detector = EdgeDetector(other_queue, insert_tick_tocks=True)
+    edge_detector.set_session_maker(SyncSessionMaker)
 
     try:
         with SyncSessionMaker() as session:
             query = query_new_transactions(session)
-            query = query.order_by(D.Transaction.lt.asc())
-            # query = query.filter(and_(D.Transaction.lt >= 1229773000001, D.Transaction.lt <= 1231067000010))  # DEBUG: big event
+            query = query.order_by(D.Transaction.lt.asc() if not args.inverse else D.Transaction.lt.desc())
+            if args.start_lt is not None:
+                query = query.filter(D.Transaction.lt >= args.start_lt)
             print('Counting new transactions')
             total = query.count()
             
         print('Detecting events')
-        pbar = tqdm(total=total, smoothing=0.001, disable=DISABLE)
+        pbar = tqdm(total=total, smoothing=0.001, disable=not args.verbose)
+        edge_detector.set_pbar(pbar)
         while True:
             with SyncSessionMaker() as session:
                 query = query_new_transactions(session)
-                query = query.order_by(D.Transaction.lt.asc())
-                total = query.limit(batch_size)
+                query = query.order_by(D.Transaction.lt.asc() if not args.inverse else D.Transaction.lt.desc())
+                if args.start_lt is not None:
+                    query = query.filter(D.Transaction.lt >= args.start_lt)
+                query = query.yield_per(args.batch_size).enable_eagerloads(False)
                 for tx in query:
                     edge_detector.process_tx(tx)
                     pbar.update(1)
@@ -260,5 +343,7 @@ if __name__ == '__main__':
         print('Gracefully stopped')
     except:
         print(traceback.format_exc())
+    other_thread.terminate()
+    print('Whole program finished')
     exit(0)
 # end script

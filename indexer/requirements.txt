@@ -22,3 +22,4 @@ requests
 asgiref
 pytonlib>=0.0.48
 uvloop
+tqdm
