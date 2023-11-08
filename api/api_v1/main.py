@@ -57,13 +57,14 @@ async def get_transactions_by_masterchain_seqno(
     seqno: int = Query(..., description="Masterchain seqno", ge=0, le=UINT32_MAX),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     include_block: bool = Query(False, description="If true response contains corresponding block for each transaction"),
+    include_raw_msg_body: bool = Query(False, description="Whether return raw message body or not"),
     db: Session = Depends(get_db)
     ):
     """
     Get transactions by masterchain seqno across all workchains and shardchains.
     """
-    db_transactions = await db.run_sync(crud.get_transactions_by_masterchain_seqno, seqno, include_msg_body, include_block)
-    return [schemas.Transaction.transaction_from_orm(t, include_msg_body, include_block) for t in db_transactions]
+    db_transactions = await db.run_sync(crud.get_transactions_by_masterchain_seqno, seqno, include_msg_body or include_raw_msg_body, include_block)
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body, include_block, include_raw_msg_body) for t in db_transactions]
 
 @router.get('/getTransactionsByAddress', response_model=List[schemas.Transaction])
 async def get_transactions_by_address(
