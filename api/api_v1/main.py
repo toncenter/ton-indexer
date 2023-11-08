@@ -75,6 +75,7 @@ async def get_transactions_by_address(
     sort: str = Query("desc", description="Use `asc` to get oldest transactions first and `desc` to get newest first."),
     include_msg_body: bool = Query(False, description="Whether return full message body or not"),
     include_block: bool = Query(False, description="If true response contains corresponding block for each transaction"),
+    include_raw_msg_body: bool = Query(False, description="Whether return raw message body or not"),
     db: Session = Depends(get_db)
     ):
     """
@@ -84,8 +85,8 @@ async def get_transactions_by_address(
         raw_address = detect_address(address)["raw_form"]
     except Exception:
         raise HTTPException(status_code=416, detail="Invalid address")
-    db_transactions = await db.run_sync(crud.get_transactions_by_address, raw_address, start_utime, end_utime, limit, offset, sort, include_msg_body, include_block)
-    return [schemas.Transaction.transaction_from_orm(t, include_msg_body, include_block) for t in db_transactions]
+    db_transactions = await db.run_sync(crud.get_transactions_by_address, raw_address, start_utime, end_utime, limit, offset, sort, include_msg_body or include_raw_msg_body, include_block)
+    return [schemas.Transaction.transaction_from_orm(t, include_msg_body, include_block, include_raw_msg_body) for t in db_transactions]
 
 @router.get('/getTransactionsInBlock', response_model=List[schemas.Transaction])
 async def get_transactions_in_block(
