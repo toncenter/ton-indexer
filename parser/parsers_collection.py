@@ -888,7 +888,6 @@ class NFTItemSaleParser(ContractsExecutorParser):
             from parser.nft_contracts import SALE_CONTRACTS
         except Exception as e:
             logger.error("Unable to init sale contracts", e)
-            raise e
             SALE_CONTRACTS = {}
         """
         Supported sale contract should be listed in file nft_contracts, format as follows:
