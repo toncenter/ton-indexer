@@ -497,12 +497,26 @@ class JettonWalletParser(ContractsExecutorParser):
         except:
             # we invoke get method on all contracts so ignore errors
             return
+
+        jetton_master = await get_jetton_master(session, jetton)
+        if not jetton_master:
+            raise Exception(f"Jetton master not inited yet {jetton}")
+
+        jetton_context = await get_account_context(session, jetton_master.state_id)
+
+        try:
+            wallet_address_from_jetton, = await self._execute(jetton_context.code.code, jetton_context.account.data, 
+                                                        'get_wallet_address', ["address"], jetton, [owner])
+        except Exception as e:
+            raise Exception(f"Get method from jetton master {jetton} was executed with an error: {e}")
+
         wallet = JettonWallet(
             state_id = context.account.state_id,
             address = context.account.address,
             owner = owner,
             jetton_master = jetton,
-            balance = balance
+            balance = balance,
+            is_scam = context.account.address != wallet_address_from_jetton,
         )
         logger.info(f"Adding jetton wallet {wallet}")
 
