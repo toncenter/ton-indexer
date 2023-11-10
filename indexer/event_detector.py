@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import random
+import sys
 import argparse
 import traceback
 import time
@@ -344,6 +345,7 @@ if __name__ == '__main__':
     parser.add_argument('--start-lt', type=int, default=None, help='Start from lt')
     parser.add_argument('--inverse', action='store_true', help='Scan in inverse order (DANGER: may cause undetected events)')
     parser.add_argument('--verbose', action='store_true', help='Show progress bar')
+    parser.add_argument('--count-txs', action='store_true', help='Do not count transactions')
     args = parser.parse_args()
 
     other_queue = mp.Queue()
@@ -354,13 +356,16 @@ if __name__ == '__main__':
     edge_detector.set_session_maker(SyncSessionMaker)
 
     try:
-        with SyncSessionMaker() as session:
-            query = query_new_transactions(session)
-            query = query.order_by(D.Transaction.lt.asc() if not args.inverse else D.Transaction.lt.desc())
-            if args.start_lt is not None:
-                query = query.filter(D.Transaction.lt >= args.start_lt)
-            print('Counting new transactions')
-            total = query.count()
+        if args.count_txs:
+            with SyncSessionMaker() as session:
+                query = query_new_transactions(session)
+                query = query.order_by(D.Transaction.lt.asc() if not args.inverse else D.Transaction.lt.desc())
+                if args.start_lt is not None:
+                    query = query.filter(D.Transaction.lt >= args.start_lt)
+                print('Counting new transactions')
+                total = query.count()
+        else: 
+            total = 0
             
         print('Detecting events')
         pbar = tqdm(total=total, smoothing=0.001, disable=not args.verbose)
@@ -389,5 +394,5 @@ if __name__ == '__main__':
     other_thread.terminate()
     other_thread.join()
     print('Whole program finished')
-    exit(0)
+    sys.exit(0)
 # end script
