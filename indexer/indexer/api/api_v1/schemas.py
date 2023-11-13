@@ -230,7 +230,7 @@ class Transaction(BaseModel):
                            out_msgs=out_msgs,
                            account_state_before=AccountState.from_orm(obj.account_state_before) if obj.account_state_before else None,
                            account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,
-                           trace_id=str(obj.event_id),)
+                           trace_id=str(obj.event_id) if obj.event_id is not None else None,)
 
 
 class TransactionTrace(BaseModel):
