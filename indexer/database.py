@@ -546,6 +546,7 @@ class JettonWallet(Base):
     owner: str = Column(String)
     jetton_master: str = Column(String)
     balance: decimal.Decimal = Column(Numeric(scale=0)) # NOTE: it is not actual balance, just balance associated with state_id
+    is_scam: bool = Column(Boolean)
 
 
     __table_args__ = (Index('jetton_wallet_index_1', 'owner'),
