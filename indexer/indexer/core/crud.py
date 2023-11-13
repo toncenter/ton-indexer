@@ -1,6 +1,6 @@
 import logging
 
-from typing import Optional
+from typing import Optional, List
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import joinedload, Session, Query, contains_eager, aliased
@@ -17,7 +17,6 @@ from indexer.core.database import (
     JettonTransfer,
     JettonBurn,
     Event,
-    EventEdge,
     MASTERCHAIN_INDEX,
     MASTERCHAIN_SHARD
 )
@@ -314,6 +313,41 @@ def get_adjacent_transactions(session: Session,
     query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
     query = limit_query(query, limit, offset)
     return query.all()
+
+
+def get_traces(session: Session,
+               event_ids: List[int]):
+    query = session.query(Event)
+    query = query.filter(Event.id.in_(event_ids))
+    query = query.options(joinedload(Event.edges))
+    
+    tx_join = joinedload(Event.transactions)
+    
+    msg_join = tx_join.joinedload(Transaction.messages).joinedload(TransactionMessage.message)
+    msg_join_1 = msg_join.joinedload(Message.message_content)
+    msg_join_2 = msg_join.joinedload(Message.init_state)
+    query = query.options(msg_join_1).options(msg_join_2)
+
+    query = query.options(tx_join.joinedload(Transaction.account_state_after)) \
+                 .options(tx_join.joinedload(Transaction.account_state_before))
+    raw_traces = query.all()
+    result = []
+    # build trees
+    for raw in raw_traces:
+        head_hash = None
+        nodes = {}
+        txs = {tx.hash: tx for tx in raw.transactions}
+        for edge in raw.edges:
+            left = {'id': raw.id, 'transaction': txs[edge.left_tx_hash], 'children': []} if edge.left_tx_hash not in nodes else nodes[edge.left_tx_hash]
+            right = {'id': raw.id, 'transaction': txs[edge.right_tx_hash], 'children': []} if edge.right_tx_hash not in nodes else nodes[edge.right_tx_hash]
+            left['children'].append(right)
+            nodes[edge.left_tx_hash] = left
+            nodes[edge.right_tx_hash] = right
+
+            if head_hash is None or head_hash == edge.right_tx_hash:
+                head_hash = edge.left_tx_hash
+        result.append(nodes[head_hash])
+    return result
 
 
 def get_transaction_trace(session: Session, 

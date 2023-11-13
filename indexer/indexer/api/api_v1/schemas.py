@@ -199,6 +199,8 @@ class Transaction(BaseModel):
     account_state_before: Optional[AccountState]
     account_state_after: Optional[AccountState]
 
+    trace_id: Optional[str]
+
     @classmethod
     def from_orm(cls, obj):
         in_msg = None
@@ -227,18 +229,21 @@ class Transaction(BaseModel):
                            in_msg=in_msg,
                            out_msgs=out_msgs,
                            account_state_before=AccountState.from_orm(obj.account_state_before) if obj.account_state_before else None,
-                           account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,)
+                           account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,
+                           trace_id=str(obj.event_id),)
 
 
 class TransactionTrace(BaseModel):
+    id: str
     transaction: Transaction
     children: List["TransactionTrace"]
 
     @classmethod
     def from_orm(cls, obj):
+        id = str(obj.get('id', 0))
         transaction = Transaction.from_orm(obj['transaction'])
         children = [TransactionTrace.from_orm(x) for x in obj['children']]
-        return TransactionTrace(transaction=transaction, children=children)            
+        return TransactionTrace(id=id, transaction=transaction, children=children)
 
 
 class NFTCollection(BaseModel):

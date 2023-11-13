@@ -258,6 +258,18 @@ async def get_adjacent_transactions(
     return [schemas.Transaction.from_orm(tx) for tx in res]
 
 
+@router.get('/traces', response_model=List[schemas.TransactionTrace])
+async def get_traces(
+    trace_id: List[str] = Query(..., description='List of trace ids'),
+    db: AsyncSession = Depends(get_db)):
+    """
+    Get batch of trace graph by ids
+    """
+    trace_id_int = [int(x) for x in trace_id]
+    result = await db.run_sync(crud.get_traces, event_ids=trace_id_int)
+    return [schemas.TransactionTrace.from_orm(trace) for trace in result]
+
+
 @router.get('/transactionTrace', response_model=schemas.TransactionTrace)
 async def get_transaction_trace(
     hash: str = Query(..., description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
