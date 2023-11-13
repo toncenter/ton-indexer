@@ -141,6 +141,7 @@ class Event(Base):
     transactions: List["Transaction"] = relationship("Transaction", 
                                                      foreign_keys=[id],
                                                      primaryjoin='Event.id == Transaction.event_id',
+                                                     uselist=True,
                                                      viewonly=True)
     edges: List["EventEdge"] = relationship("EventEdge", back_populates="event")
 
@@ -418,7 +419,7 @@ Index("transactions_index_2", Transaction.account, postgresql_using='btree', pos
 # Index("transactions_index_3", Transaction.hash, postgresql_using='btree', postgresql_concurrently=False)
 Index("transactions_index_3", Transaction.now, postgresql_using='btree', postgresql_concurrently=False)
 Index("transactions_index_4", Transaction.lt, postgresql_using='btree', postgresql_concurrently=False)
-# Index("transactions_index_6", Transaction.account_state_hash_after, postgresql_using='btree', postgresql_concurrently=False)
+Index("transactions_index_6", Transaction.event_id, postgresql_using='btree', postgresql_concurrently=False)
 
 # Index('account_states_index_1', AccountState.hash, postgresql_using='btree', postgresql_concurrently=False)
 # Index('account_states_index_2', AccountState.code_hash, postgresql_using='btree', postgresql_concurrently=False)

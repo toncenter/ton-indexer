@@ -16,6 +16,8 @@ from indexer.core.database import (
     JettonWallet,
     JettonTransfer,
     JettonBurn,
+    Event,
+    EventEdge,
     MASTERCHAIN_INDEX,
     MASTERCHAIN_SHARD
 )
@@ -145,9 +147,15 @@ def get_blocks(session: Session,
 def augment_transaction_query(query: Query, 
                               include_msg_body: bool, 
                               include_block: bool,
-                              include_account_state: bool):
+                              include_account_state: bool,
+                              include_trace: bool=False):
     if include_block:
         query = query.options(joinedload(Transaction.block))
+
+    if include_trace:
+        event_query = joinedload(Transaction.event)
+        query = query.options(event_query.joinedload(Event.edges))
+        query = query.options(event_query.joinedload(Event.transactions).joinedload(Transaction.messages))
     
     msg_join = joinedload(Transaction.messages).joinedload(TransactionMessage.message)
     if include_msg_body:
@@ -199,6 +207,7 @@ def get_transactions_by_masterchain_seqno(session: Session,
                                           include_msg_body: bool=True, 
                                           include_block: bool=False,
                                           include_account_state: bool=True,
+                                          include_trace: int=0,
                                           limit: Optional[int]=None,
                                           offset: Optional[int]=None,
                                           sort: Optional[str]=None):
@@ -217,7 +226,7 @@ def get_transactions_by_masterchain_seqno(session: Session,
                  for b in blocks])
     
     query = session.query(Transaction).filter(fltr)
-    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
+    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state, include_trace)
     query = sort_transaction_query_by_lt(query, sort)
     query = limit_query(query, limit, offset)
     
@@ -239,6 +248,7 @@ def get_transactions(session: Session,
                      include_msg_body: bool=True, 
                      include_block: bool=False,
                      include_account_state: bool=True,
+                     include_trace: bool=False,
                      limit: Optional[int]=None,
                      offset: Optional[int]=None,
                      sort: Optional[str]=None):
@@ -263,7 +273,7 @@ def get_transactions(session: Session,
     query = query_transactions_by_lt(query, start_lt, end_lt)
     query = query_transactions_by_utime(query, start_utime, end_utime)
     query = sort_transaction_query_by_lt(query, sort)
-    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
+    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state, include_trace)
     query = limit_query(query, limit, offset)
     return query.all()
 

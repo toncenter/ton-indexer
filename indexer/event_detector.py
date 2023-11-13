@@ -27,11 +27,6 @@ SHOW_TXS = False
 
 # queries
 def query_new_transactions(session: Session) -> Query:
-    # query = session.query(D.Transaction) \
-    #                .options(joinedload(D.Transaction.messages)) \
-    #                .options(joinedload(D.Transaction.messages).joinedload(D.TransactionMessage.message)) \
-    #                .outerjoin(D.Transaction.event) \
-    #                .filter(D.EventTransaction.event_id.is_(None))
     query = session.query(D.Transaction) \
                    .options(joinedload(D.Transaction.messages)) \
                    .options(joinedload(D.Transaction.messages).joinedload(D.TransactionMessage.message)) \
