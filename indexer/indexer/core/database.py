@@ -408,6 +408,10 @@ class NFTTransfer(Base):
                                      foreign_keys=[nft_item_address],
                                      primaryjoin="NFTItem.address == NFTTransfer.nft_item_address",)
 
+class LatestAccountBalance(Base):
+    __tablename__ = 'latest_account_balances'
+    account = Column(String, primary_key=True)
+    balance: int = Column(Numeric)
 
 # Indexes
 # Index("blocks_index_1", Block.workchain, Block.shard, Block.seqno, postgresql_using='btree', postgresql_concurrently=False)

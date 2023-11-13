@@ -509,3 +509,16 @@ async def get_jetton_burns(
                             offset=offset,
                             sort=sort)
     return [schemas.JettonBurn.from_orm(x) for x in res]
+
+@router.get('/topAccountsByBalance', response_model=List[schemas.AccountBalance])
+async def get_top_accounts_by_balance(
+    limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
+    offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
+    db: AsyncSession = Depends(get_db)):
+    """
+    Get top accounts by balance. The data may be outdated by up to 3 minutes.
+    """
+    res = await db.run_sync(crud.get_top_accounts_by_balance,
+                            limit=limit,
+                            offset=offset)
+    return [schemas.AccountBalance.from_orm(x) for x in res]

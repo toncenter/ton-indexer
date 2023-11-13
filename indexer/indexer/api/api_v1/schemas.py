@@ -421,3 +421,12 @@ class JettonBurn(BaseModel):
 class MasterchainInfo(BaseModel):
     first: Block
     last: Block
+
+class AccountBalance(BaseModel):
+    account: str
+    balance: str
+
+    @classmethod
+    def from_orm(cls, obj):
+        return AccountBalance(account=address_type(obj.account),
+                              balance=obj.balance)

@@ -6,6 +6,7 @@ x-indexer-environment: &index-common
   POSTGRES_USER:
   POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
   POSTGRES_DBNAME:
+  POSTGRES_DBROOT:
   POSTGRES_PUBLISH_PORT:
 
 x-index-api: &index-api
@@ -35,6 +36,20 @@ services:
       internal:
     depends_on:
       - alembic
+
+  materialized_views_refresher:
+    build:
+      context: indexer
+      dockerfile: Dockerfile
+    secrets:
+      - postgres_password
+    command: python3 refresh_materialized_view.py
+    environment: *index-common
+    networks:
+      internal:
+    depends_on:
+      alembic:
+        condition: service_completed_successfully
 
   alembic:
     build:

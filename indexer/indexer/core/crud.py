@@ -17,6 +17,7 @@ from indexer.core.database import (
     JettonTransfer,
     JettonBurn,
     Event,
+    LatestAccountBalance,
     MASTERCHAIN_INDEX,
     MASTERCHAIN_SHARD
 )
@@ -681,3 +682,13 @@ def get_transactions_by_message(session: Session,
     query = sort_transaction_query_by_lt(query, sort)
     query = limit_query(query, limit, offset)
     return query.all()
+
+
+def get_top_accounts_by_balance(session: Session,
+                                limit: Optional[int] = None,
+                                offset: Optional[int] = None):
+    query = session.query(LatestAccountBalance)
+    query = query.order_by(LatestAccountBalance.balance.desc())
+    query = limit_query(query, limit, offset)
+    return query.all()
+    
