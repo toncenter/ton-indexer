@@ -316,9 +316,20 @@ def get_adjacent_transactions(session: Session,
 
 
 def get_traces(session: Session,
-               event_ids: List[int]):
+               event_ids: Optional[List[int]]=None,
+               tx_hashes: Optional[List[str]]=None):
+    if not event_ids and not tx_hashes:
+        raise RuntimeError('event_ids or tx_hashes are required')
+    if tx_hashes:
+        if event_ids is not None:
+            raise RuntimeError('event_ids should be None when using tx_hashes')
+        subquery = session.query(Transaction.hash, Transaction.event_id) \
+                          .filter(Transaction.hash.in_(tx_hashes))
+        event_ids = dict(subquery.all())
+        event_ids = [event_ids.get(x) for x in tx_hashes]        
+    
     query = session.query(Event)
-    query = query.filter(Event.id.in_(event_ids))
+    query = query.filter(Event.id.in_([x for x in event_ids if x is not None]))
     query = query.options(joinedload(Event.edges))
     
     tx_join = joinedload(Event.transactions)
@@ -331,7 +342,8 @@ def get_traces(session: Session,
     query = query.options(tx_join.joinedload(Transaction.account_state_after)) \
                  .options(tx_join.joinedload(Transaction.account_state_before))
     raw_traces = query.all()
-    result = []
+    
+    result = {}
     # build trees
     for raw in raw_traces:
         head_hash = None
@@ -346,8 +358,8 @@ def get_traces(session: Session,
 
             if head_hash is None or head_hash == edge.right_tx_hash:
                 head_hash = edge.left_tx_hash
-        result.append(nodes[head_hash])
-    return result
+        result[raw.id] = nodes[head_hash]
+    return [result.get(x) for x in event_ids]
 
 
 def get_transaction_trace(session: Session, 

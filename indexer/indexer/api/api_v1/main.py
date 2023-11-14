@@ -258,16 +258,21 @@ async def get_adjacent_transactions(
     return [schemas.Transaction.from_orm(tx) for tx in res]
 
 
-@router.get('/traces', response_model=List[schemas.TransactionTrace])
+@router.get('/traces', response_model=List[Optional[schemas.TransactionTrace]])
 async def get_traces(
-    trace_id: List[str] = Query(..., description='List of trace ids'),
+    tx_hash: List[str] = Query(None, description='List of transaction hashes'),
+    trace_id: List[str] = Query(None, description='List of trace ids', include_in_schema=True),
     db: AsyncSession = Depends(get_db)):
     """
     Get batch of trace graph by ids
     """
-    trace_id_int = [int(x) for x in trace_id]
-    result = await db.run_sync(crud.get_traces, event_ids=trace_id_int)
-    return [schemas.TransactionTrace.from_orm(trace) for trace in result]
+    if tx_hash is not None and trace_id is not None or tx_hash is None and trace_id is None:
+        raise ValueError('Exact one parameter should be used')
+    
+    if trace_id is not None:
+        trace_id = [int(x) for x in trace_id]
+    result = await db.run_sync(crud.get_traces, event_ids=trace_id, tx_hashes=tx_hash)
+    return [schemas.TransactionTrace.from_orm(trace) if trace is not None else None for trace in result]
 
 
 @router.get('/transactionTrace', response_model=schemas.TransactionTrace)
