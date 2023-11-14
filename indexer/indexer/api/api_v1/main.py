@@ -271,6 +271,8 @@ async def get_traces(
     
     if trace_id is not None:
         trace_id = [int(x) for x in trace_id]
+    if tx_hash is not None:
+        tx_hash = [hash_to_b64(h) for h in tx_hash]
     result = await db.run_sync(crud.get_traces, event_ids=trace_id, tx_hashes=tx_hash)
     return [schemas.TransactionTrace.from_orm(trace) if trace is not None else None for trace in result]
 
