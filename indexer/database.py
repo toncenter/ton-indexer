@@ -16,7 +16,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import create_database, database_exists, drop_database
 
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric, LargeBinary
+from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric, LargeBinary, SmallInteger
 from sqlalchemy import ForeignKey, UniqueConstraint, Table
 from sqlalchemy import and_, or_, ColumnDefault
 from sqlalchemy.orm import relationship, backref
@@ -772,5 +772,152 @@ class EvaaLiquidation(Base):
     __table_args__ = (Index('evaa_liquidation_1', 'owner_address'),
                       UniqueConstraint('msg_id')
                       )
+
+
+"""
+Storm Trade entities
+"""
+
+@dataclass(init=False)
+class StormExecuteOrder(Base):
+    __tablename__ = 'storm_execute_order'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
+    successful: bool = Column(Boolean)
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+
+    direction: int = Column(SmallInteger)
+    order_index: int = Column(SmallInteger)
+    trader_addr: str = Column(String)
+    prev_addr: str = Column(String)
+    ref_addr: str = Column(String)
+    executor_index: int = Column(BigInteger)
+    order_type: int = Column(SmallInteger)
+    expiration: int = Column(BigInteger)
+    direction_order: int = Column(SmallInteger)
+    amount: decimal.Decimal = Column(Numeric(scale=0))
+    triger_price: decimal.Decimal = Column(Numeric(scale=0))
+    leverage: decimal.Decimal = Column(Numeric(scale=0))
+    limit_price: decimal.Decimal = Column(Numeric(scale=0))
+    stop_price: decimal.Decimal = Column(Numeric(scale=0))
+    stop_triger_price: decimal.Decimal = Column(Numeric(scale=0))
+    take_triger_price: decimal.Decimal = Column(Numeric(scale=0))
+    position_size: decimal.Decimal = Column(Numeric(scale=0))
+    direction_position: int = Column(SmallInteger)
+    margin: decimal.Decimal = Column(Numeric(scale=0))
+    open_notional: decimal.Decimal = Column(Numeric(scale=0))
+    last_updated_cumulative_premium: decimal.Decimal = Column(Numeric(scale=0))
+    fee: int = Column(BigInteger)
+    discount: int = Column(BigInteger)
+    rebate: int = Column(BigInteger)
+    last_updated_timestamp: int = Column(BigInteger)
+    oracle_price: decimal.Decimal = Column(Numeric(scale=0))
+    spread: decimal.Decimal = Column(Numeric(scale=0))
+    oracle_timestamp: int = Column(BigInteger)
+    asset_id: int = Column(BigInteger)
+
+
+    __table_args__ = (Index('storm_execute_order_1', 'trader_addr'),
+                      UniqueConstraint('msg_id')
+                      )
+
+@dataclass(init=False)
+class StormCompleteOrder(Base):
+    __tablename__ = 'storm_complete_order'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
+    successful: bool = Column(Boolean)
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+
+    order_type: int = Column(SmallInteger)
+    order_index: int = Column(SmallInteger)
+    direction: int = Column(SmallInteger)
+    origin_op: int = Column(BigInteger)
+    oracle_price: decimal.Decimal = Column(Numeric(scale=0))
+    position_size: decimal.Decimal = Column(Numeric(scale=0))
+    direction_position: int = Column(SmallInteger)
+    margin: decimal.Decimal = Column(Numeric(scale=0))
+    open_notional: decimal.Decimal = Column(Numeric(scale=0))
+    last_updated_cumulative_premium: decimal.Decimal = Column(Numeric(scale=0))
+    fee: int = Column(BigInteger)
+    discount: int = Column(BigInteger)
+    rebate: int = Column(BigInteger)
+    last_updated_timestamp: int = Column(BigInteger)
+    quote_asset_reserve: decimal.Decimal = Column(Numeric(scale=0))
+    quote_asset_weight: decimal.Decimal = Column(Numeric(scale=0))
+    base_asset_reserve: decimal.Decimal = Column(Numeric(scale=0))
+
+
+    __table_args__ = (Index('storm_complete_order_1', 'originated_msg_id'),
+                      UniqueConstraint('msg_id')
+                      )
+
+@dataclass(init=False)
+class StormUpdatePosition(Base):
+    __tablename__ = 'storm_update_position'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
+    successful: bool = Column(Boolean)
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+
+    direction: int = Column(SmallInteger)
+    origin_op: int = Column(BigInteger)
+    oracle_price: decimal.Decimal = Column(Numeric(scale=0))
+    stop_trigger_price: decimal.Decimal = Column(Numeric(scale=0))
+    take_trigger_price: decimal.Decimal = Column(Numeric(scale=0))
+    position_size: decimal.Decimal = Column(Numeric(scale=0))
+    direction_position: int = Column(SmallInteger)
+    margin: decimal.Decimal = Column(Numeric(scale=0))
+    open_notional: decimal.Decimal = Column(Numeric(scale=0))
+    last_updated_cumulative_premium: decimal.Decimal = Column(Numeric(scale=0))
+    fee: int = Column(BigInteger)
+    discount: int = Column(BigInteger)
+    rebate: int = Column(BigInteger)
+    last_updated_timestamp: int = Column(BigInteger)
+    quote_asset_reserve: decimal.Decimal = Column(Numeric(scale=0))
+    quote_asset_weight: decimal.Decimal = Column(Numeric(scale=0))
+    base_asset_reserve: decimal.Decimal = Column(Numeric(scale=0))
+
+    __table_args__ = (Index('storm_update_position_1', 'originated_msg_id'),
+                      UniqueConstraint('msg_id')
+                      )
+
+
+@dataclass(init=False)
+class StormTradeNotification(Base):
+    __tablename__ = 'storm_trade_notification'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
+    successful: bool = Column(Boolean)
+    originated_msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+
+    asset_id: int = Column(BigInteger)
+    free_amount: decimal.Decimal = Column(Numeric(scale=0))
+    locked_amount: decimal.Decimal = Column(Numeric(scale=0))
+    exchange_amount: decimal.Decimal = Column(Numeric(scale=0))
+    withdraw_locked_amount: decimal.Decimal = Column(Numeric(scale=0))
+    fee_to_stakers: decimal.Decimal = Column(Numeric(scale=0))
+    withdraw_amount: decimal.Decimal = Column(Numeric(scale=0))
+    trader_addr: str = Column(String)
+    origin_addr: str = Column(String)
+    referral_amount: decimal.Decimal = Column(Numeric(scale=0))
+    referral_addr: str = Column(String)
+
+    __table_args__ = (Index('storm_trade_notification_1', 'originated_msg_id'),
+                      UniqueConstraint('msg_id')
+                      )
+
 
 
