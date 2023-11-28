@@ -2,7 +2,7 @@ from enum import Enum
 from typing import List, Optional, Literal, Union, Any, Dict
 from pydantic import BaseModel, Field
 
-from indexer.core.utils import b64_to_hex, address_to_raw, int_to_hex
+from indexer.core.utils import b64_to_hex, address_to_raw, address_to_friendly, int_to_hex
 
 import logging
 logger = logging.getLogger(__name__)
@@ -15,9 +15,38 @@ def hash_type(value):
 def address_type(value):
     return address_to_raw(value).upper() if value and value != 'addr_none' else None
 
+def is_wallet(code_hash):
+    wallets_code_hashes = {
+        'oM/CxIruFqJx8s/AtzgtgXVs7LEBfQd/qqs7tgL2how=',    # wallet_v1_r1 
+        '1JAvzJ+tdGmPqONTIgpo2g3PcuMryy657gQhfBfTBiw=',    # wallet_v1_r2
+        'WHzHie/xyE9G7DeX5F/ICaFP9a4k8eDHpqmcydyQYf8=',    # wallet_v1_r3
+        'XJpeaMEI4YchoHxC+ZVr+zmtd+xtYktgxXbsiO7mUyk=',    # wallet_v2_r1
+        '/pUw0yQ4Uwg+8u8LTCkIwKv2+hwx6iQ6rKpb+MfXU/E=',    # wallet_v2_r2
+        'thBBpYp5gLlG6PueGY48kE0keZ/6NldOpCUcQaVm9YE=',    # wallet_v3_r1
+        'hNr6RJ+Ypph3ibojI1gHK8D3bcRSQAKl0JGLmnXS1Zk=',    # wallet_v3_r2
+        'ZN1UgFUixb6KnbWc6gEFzPDQh4bKeb64y3nogKjXMi0=',    # wallet_v4_r1
+        '/rX/aCDi/w2Ug+fg1iyBfYRniftK5YDIeIZtlZ2r1cA='     # wallet_v4_r2
+    }
+    return code_hash in wallets_code_hashes
+
+def address_type_friendly(address_raw, latest_account_state):
+    """
+    As per address update proposal https://github.com/ton-blockchain/TEPs/pull/123 
+    we use non-bounceable user-friendly format for nonexist/uninit account and wallets
+    and bounceable for others.
+    """
+    bounceable = True
+    if latest_account_state is None:
+        # We consider this as destroyed account (nonexist)
+        bounceable = False
+    elif latest_account_state.account_status == 'uninit':
+        bounceable = False
+    elif is_wallet(latest_account_state.code_hash):
+        bounceable = False
+    return address_to_friendly(address_raw, bounceable) if address_raw and address_raw != 'addr_none' else None
+
 def shard_type(value):
     return int_to_hex(value, length=64, signed=True).upper() if value else None
-
 
 class BlockReference(BaseModel):
     workchain: int
@@ -114,7 +143,9 @@ class MessageContent(BaseModel):
 class Message(BaseModel):
     hash: str
     source: Optional[str]
+    source_friendly: Optional[str]
     destination: Optional[str]
+    destination_friendly: Optional[str]
     value: Optional[str]
     fwd_fee: Optional[str]
     ihr_fee: Optional[str]
@@ -135,7 +166,9 @@ class Message(BaseModel):
     def from_orm(cls, obj):
         return Message(hash=hash_type(obj.hash),
                        source=address_type(obj.source),
+                       source_friendly=address_type_friendly(obj.source, obj.source_account_state),
                        destination=address_type(obj.destination),
+                       destination_friendly=address_type_friendly(obj.destination, obj.destination_account_state),
                        value=obj.value,
                        fwd_fee=obj.fwd_fee,
                        ihr_fee=obj.ihr_fee,
@@ -174,6 +207,7 @@ class AccountState(BaseModel):
 
 class Transaction(BaseModel):
     account: str
+    account_friendly: str
     hash: str
     lt: str
 
@@ -212,6 +246,7 @@ class Transaction(BaseModel):
             else:
                 out_msgs.append(msg)
         return Transaction(account=address_type(obj.account),
+                           account_friendly=address_type_friendly(obj.account, obj.account_state_latest),
                            hash=hash_type(obj.hash),
                            lt=obj.lt,
                            now=obj.now,
@@ -428,5 +463,5 @@ class AccountBalance(BaseModel):
 
     @classmethod
     def from_orm(cls, obj):
-        return AccountBalance(account=address_type(obj.account),
+        return AccountBalance(account=address_type_friendly(obj.account, obj),
                               balance=obj.balance)

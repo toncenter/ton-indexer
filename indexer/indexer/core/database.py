@@ -203,6 +203,11 @@ class Transaction(Base):
                                        foreign_keys=[account_state_hash_after],
                                        primaryjoin="AccountState.hash == Transaction.account_state_hash_after", 
                                        viewonly=True)
+    account_state_latest = relationship("LatestAccountState", 
+                                       foreign_keys=[account],
+                                       primaryjoin="LatestAccountState.account == Transaction.account",
+                                       lazy='selectin',
+                                       viewonly=True)
     description = Column(JSONB)
     
     messages: List["TransactionMessage"] = relationship("TransactionMessage", back_populates="transaction")
@@ -254,6 +259,18 @@ class Message(Base):
     init_state = relationship("MessageContent", 
                               foreign_keys=[init_state_hash],
                               primaryjoin="Message.init_state_hash == MessageContent.hash", 
+                              viewonly=True)
+    
+    source_account_state = relationship("LatestAccountState", 
+                              foreign_keys=[source],
+                              primaryjoin="Message.source == LatestAccountState.account", 
+                              lazy='selectin',
+                              viewonly=True)
+
+    destination_account_state = relationship("LatestAccountState", 
+                              foreign_keys=[destination],
+                              primaryjoin="Message.destination == LatestAccountState.account", 
+                              lazy='selectin',
                               viewonly=True)
 
 
@@ -408,9 +425,16 @@ class NFTTransfer(Base):
                                      foreign_keys=[nft_item_address],
                                      primaryjoin="NFTItem.address == NFTTransfer.nft_item_address",)
 
-class LatestAccountBalance(Base):
-    __tablename__ = 'latest_account_balances'
+class LatestAccountState(Base):
+    __tablename__ = 'latest_account_states'
     account = Column(String, primary_key=True)
+    hash = Column(String)
+    code_hash = Column(String)
+    data_hash = Column(String)
+    frozen_hash = Column(String)
+    account_status = Column(String)
+    timestamp = Column(Integer)
+    last_trans_lt = Column(BigInteger)
     balance: int = Column(Numeric)
 
 # Indexes

@@ -91,6 +91,15 @@ def address_to_raw(address):
         raise ValueError(f"Invalid address: '{address}'")
     return raw_address
 
+def address_to_friendly(address: str, bounceable: bool):
+    try:
+        if bounceable:
+            return detect_address(address)["bounceable"]["b64url"]
+        else:
+            return detect_address(address)["non_bounceable"]["b64url"]
+    except Exception:
+        raise ValueError(f"Invalid address: '{address}'")    
+
 hex_prefix = '0x'
 # int64 <-> hex
 @optional_value

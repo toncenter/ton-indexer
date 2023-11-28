@@ -23,6 +23,7 @@ from indexer.core.database import (
 )
 from indexer.core import crud, exceptions
 
+# logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 settings = Settings()
 router = APIRouter()
@@ -419,7 +420,7 @@ async def get_jetton_masters(
 
 
 @router.get('/jetton/wallets', response_model=List[schemas.JettonWallet])
-async def get_jetton_masters(
+async def get_jetton_wallets(
     address: str = Query(None, description="Jetton wallet address. Must be sent in hex, base64 and base64url forms."),
     owner_address: str = Query(None, description="Address of Jetton wallet's owner. Must be sent in hex, base64 and base64url forms."),
     jetton_address: str = Query(None, description="Jetton Master. Must be sent in hex, base64 and base64url forms."),
@@ -427,7 +428,7 @@ async def get_jetton_masters(
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
     db: AsyncSession = Depends(get_db)):
     """
-    Get Jetton masters by specified filters.
+    Get Jetton wallets by specified filters.
     """
     address = address_to_raw(address)
     owner_address = address_to_raw(owner_address)
@@ -516,7 +517,7 @@ async def get_top_accounts_by_balance(
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
     db: AsyncSession = Depends(get_db)):
     """
-    Get top accounts by balance. The data may be outdated by up to 3 minutes.
+    Get list of accounts sorted descending by balance.
     """
     res = await db.run_sync(crud.get_top_accounts_by_balance,
                             limit=limit,

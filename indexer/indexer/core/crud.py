@@ -3,7 +3,7 @@ import logging
 from typing import Optional, List
 
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import joinedload, Session, Query, contains_eager, aliased
+from sqlalchemy.orm import joinedload, selectinload, Session, Query, contains_eager, aliased
 from indexer.core.database import (
     Block,
     Transaction,
@@ -17,7 +17,7 @@ from indexer.core.database import (
     JettonTransfer,
     JettonBurn,
     Event,
-    LatestAccountBalance,
+    LatestAccountState,
     MASTERCHAIN_INDEX,
     MASTERCHAIN_SHARD
 )
@@ -157,15 +157,15 @@ def augment_transaction_query(query: Query,
         query = query.options(event_query.joinedload(Event.edges))
         query = query.options(event_query.joinedload(Event.transactions).joinedload(Transaction.messages))
     
-    msg_join = joinedload(Transaction.messages).joinedload(TransactionMessage.message)
+    msg_join = selectinload(Transaction.messages).selectinload(TransactionMessage.message)
     if include_msg_body:
-        msg_join_1 = msg_join.joinedload(Message.message_content)
-        msg_join_2 = msg_join.joinedload(Message.init_state)
+        msg_join_1 = msg_join.selectinload(Message.message_content)
+        msg_join_2 = msg_join.selectinload(Message.init_state)
         query = query.options(msg_join_1).options(msg_join_2)
 
     if include_account_state:
-        query = query.options(joinedload(Transaction.account_state_after)) \
-                     .options(joinedload(Transaction.account_state_before))
+        query = query.options(selectinload(Transaction.account_state_after)) \
+                     .options(selectinload(Transaction.account_state_before))
     return query
 
 
@@ -416,8 +416,8 @@ def get_transaction_trace(session: Session,
 def augment_message_query(query: Query,
                           include_msg_body: bool):
     if include_msg_body:
-        query = query.options(joinedload(Message.message_content)) \
-                     .options(joinedload(Message.init_state))
+        query = query.options(selectinload(Message.message_content)) \
+                     .options(selectinload(Message.init_state))
     return query
 
 
@@ -687,8 +687,8 @@ def get_transactions_by_message(session: Session,
 def get_top_accounts_by_balance(session: Session,
                                 limit: Optional[int] = None,
                                 offset: Optional[int] = None):
-    query = session.query(LatestAccountBalance)
-    query = query.order_by(LatestAccountBalance.balance.desc())
+    query = session.query(LatestAccountState)
+    query = query.order_by(LatestAccountState.balance.desc())
     query = limit_query(query, limit, offset)
     return query.all()
     
