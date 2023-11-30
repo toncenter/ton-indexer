@@ -1409,6 +1409,407 @@ class MessagesToKafka(Parser):
         await self.producer.send_and_wait(self.topic, json.dumps(msg).encode("utf-8"))
 
 
+### Storm Trade
+
+class StormExecuteOrderParser(Parser):
+    def __init__(self):
+        super(StormExecuteOrderParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0xde1ddbcc)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "StormExecuteOrder"
+
+    async def parse(self, session: Session, context: MessageContext):
+        logger.info(f"Parsing storm execute_order message {context.message.msg_id}")
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        reader.read_uint(32) # 0xde1ddbcc
+
+        direction = reader.read_uint(1)
+        order_index = reader.read_uint(3)
+        trader_addr = reader.read_address()
+        prev_addr = reader.read_address()
+        ref_addr = reader.read_address()
+        executor_index = reader.read_uint(32)
+
+        order = cell.refs.pop(0)
+        position = cell.refs.pop(0)
+        oracle_payload = cell.refs.pop(0)
+
+        reader = BitReader(order.data.data)
+        order_type = reader.read_uint(4)
+
+        if order_type == 0 or order_type == 1:
+            ## stop_loss_order$0000 / take_profit_order$0001 expiration:uint32 direction:Direction amount:Coins triger_price:Coins = SLTPOrder
+            expiration = reader.read_uint(32)
+            direction_order = reader.read_uint(1)
+            amount = reader.read_coins()
+            triger_price = reader.read_coins()
+
+            leverage, limit_price, stop_price, stop_triger_price, take_triger_price = None, None, None, None, None
+        elif order_type == 2 or order_type == 3:
+            """
+            stop_limit_order$0010 / market_order$0011 expiration:uint32 direction:Direction
+            amount:Coins leverage:uint64
+            limit_price:Coins stop_price:Coins
+            stop_triger_price:Coins take_triger_price:Coins = LimitMarketOrder
+            """
+            expiration = reader.read_uint(32)
+            direction_order = reader.read_uint(1)
+            amount = reader.read_coins()
+            leverage = reader.read_uint(64)
+            limit_price = reader.read_coins()
+            stop_price = reader.read_coins()
+            stop_triger_price = reader.read_coins()
+            take_triger_price = reader.read_coins()
+
+            triger_price = None
+        else:
+            raise Exception("order_type %s is not supported" % order_type)
+
+        reader = BitReader(position.data.data)
+        """
+          position#_ size:int128 direction:Direction 
+          margin:Coins open_notional:Coins 
+          last_updated_cumulative_premium:int64
+          fee:uint32 discount:uint32 rebate:uint32 
+          last_updated_timestamp:uint32 = PositionData
+        """
+        position_size = reader.read_int(128)
+        direction_position = reader.read_uint(1)
+        margin = reader.read_coins()
+        open_notional = reader.read_coins()
+        last_updated_cumulative_premium = reader.read_int(64)
+        fee = reader.read_uint(32)
+        discount = reader.read_uint(32)
+        rebate = reader.read_uint(32)
+        last_updated_timestamp = reader.read_uint(32)
+
+        reader = BitReader(oracle_payload.refs.pop(0).data.data)
+        """
+        price_data#_ price:Coins spread:Coins timestamp:uint32 asset_id:uint16 = OraclePriceData
+        """
+        oracle_price = reader.read_coins()
+        spread = reader.read_coins()
+        oracle_timestamp = reader.read_uint(32)
+        asset_id = reader.read_uint(16)
+
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
+
+        execute_order = StormExecuteOrder(
+            msg_id=context.message.msg_id,
+            created_lt=context.message.created_lt,
+            utime=context.destination_tx.utime,
+            successful=successful,
+            originated_msg_id=await get_originated_msg_id(session, context.message),
+            direction=direction,
+            order_index=order_index,
+            trader_addr=trader_addr,
+            prev_addr=prev_addr,
+            ref_addr=ref_addr,
+            executor_index=executor_index,
+            order_type=order_type,
+            expiration=expiration,
+            direction_order=direction_order,
+            amount=amount,
+            triger_price=triger_price,
+            leverage=leverage,
+            limit_price=limit_price,
+            stop_price=stop_price,
+            stop_triger_price=stop_triger_price,
+            take_triger_price=take_triger_price,
+            position_size=position_size,
+            direction_position=direction_position,
+            margin=margin,
+            open_notional=open_notional,
+            last_updated_cumulative_premium=last_updated_cumulative_premium,
+            fee=fee,
+            discount=discount,
+            rebate=rebate,
+            last_updated_timestamp=last_updated_timestamp,
+            oracle_price=oracle_price,
+            spread=spread,
+            oracle_timestamp=oracle_timestamp,
+            asset_id=asset_id
+        )
+        logger.info(f"Adding Storm execute_order {execute_order}")
+        await upsert_entity(session, execute_order)
+
+class StormCompleteOrderParser(Parser):
+    def __init__(self):
+        super(StormCompleteOrderParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0xcf90d618)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "StormCompleteOrder"
+
+    async def parse(self, session: Session, context: MessageContext):
+        logger.info(f"Parsing storm complete_order message {context.message.msg_id}")
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        reader.read_uint(32) # 0xcf90d618
+
+        order_type = reader.read_uint(4)
+        order_index = reader.read_uint(3)
+        direction = reader.read_uint(1)
+        origin_op = reader.read_uint(32)
+        oracle_price = reader.read_coins()
+
+        position = cell.refs.pop(0)
+        reader = BitReader(position.data.data)
+        """
+          position#_ size:int128 direction:Direction 
+          margin:Coins open_notional:Coins 
+          last_updated_cumulative_premium:int64
+          fee:uint32 discount:uint32 rebate:uint32 
+          last_updated_timestamp:uint32 = PositionData
+        """
+        position_size = reader.read_int(128)
+        direction_position = reader.read_uint(1)
+        margin = reader.read_coins()
+        open_notional = reader.read_coins()
+        last_updated_cumulative_premium = reader.read_int(64)
+        fee = reader.read_uint(32)
+        discount = reader.read_uint(32)
+        rebate = reader.read_uint(32)
+        last_updated_timestamp = reader.read_uint(32)
+
+        amm_state = cell.refs.pop(0)
+        reader = BitReader(amm_state.data.data)
+        quote_asset_reserve = reader.read_coins()
+        quote_asset_weight = reader.read_coins()
+        base_asset_reserve = reader.read_coins()
+
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
+
+        complete_order = StormCompleteOrder(
+            msg_id=context.message.msg_id,
+            created_lt=context.message.created_lt,
+            utime=context.destination_tx.utime,
+            successful=successful,
+            originated_msg_id=await get_originated_msg_id(session, context.message),
+            order_type=order_type,
+            order_index=order_index,
+            direction=direction,
+            origin_op=origin_op,
+            oracle_price=oracle_price,
+            position_size=position_size,
+            direction_position=direction_position,
+            margin=margin,
+            open_notional=open_notional,
+            last_updated_cumulative_premium=last_updated_cumulative_premium,
+            fee=fee,
+            discount=discount,
+            rebate=rebate,
+            last_updated_timestamp=last_updated_timestamp,
+            quote_asset_reserve=quote_asset_reserve,
+            quote_asset_weight=quote_asset_weight,
+            base_asset_reserve=base_asset_reserve
+        )
+        logger.info(f"Adding Storm complete_order {complete_order}")
+        await upsert_entity(session, complete_order)
+
+class StormUpdatePositionParser(Parser):
+    def __init__(self):
+        super(StormUpdatePositionParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x60dfc677)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "StormUpdatePosition"
+
+    async def parse(self, session: Session, context: MessageContext):
+        logger.info(f"Parsing storm update_position message {context.message.msg_id}")
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        reader.read_uint(32) # 0x60dfc677
+
+        direction = reader.read_uint(1)
+        origin_op = reader.read_uint(32)
+        oracle_price = reader.read_coins()
+
+        position = cell.refs.pop(0)
+        reader = BitReader(position.data.data)
+        """
+          position#_ size:int128 direction:Direction 
+          margin:Coins open_notional:Coins 
+          last_updated_cumulative_premium:int64
+          fee:uint32 discount:uint32 rebate:uint32 
+          last_updated_timestamp:uint32 = PositionData
+        """
+        position_size = reader.read_int(128)
+        direction_position = reader.read_uint(1)
+        margin = reader.read_coins()
+        open_notional = reader.read_coins()
+        last_updated_cumulative_premium = reader.read_int(64)
+        fee = reader.read_uint(32)
+        discount = reader.read_uint(32)
+        rebate = reader.read_uint(32)
+        last_updated_timestamp = reader.read_uint(32)
+
+        amm_state = cell.refs.pop(0)
+        reader = BitReader(amm_state.data.data)
+        quote_asset_reserve = reader.read_coins()
+        quote_asset_weight = reader.read_coins()
+        base_asset_reserve = reader.read_coins()
+
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
+
+        update_position = StormUpdatePosition(
+            msg_id=context.message.msg_id,
+            created_lt=context.message.created_lt,
+            utime=context.destination_tx.utime,
+            successful=successful,
+            originated_msg_id=await get_originated_msg_id(session, context.message),
+            direction=direction,
+            origin_op=origin_op,
+            oracle_price=oracle_price,
+            stop_trigger_price=None,
+            take_trigger_price=None,
+            position_size=position_size,
+            direction_position=direction_position,
+            margin=margin,
+            open_notional=open_notional,
+            last_updated_cumulative_premium=last_updated_cumulative_premium,
+            fee=fee,
+            discount=discount,
+            rebate=rebate,
+            last_updated_timestamp=last_updated_timestamp,
+            quote_asset_reserve=quote_asset_reserve,
+            quote_asset_weight=quote_asset_weight,
+            base_asset_reserve=base_asset_reserve
+        )
+        logger.info(f"Adding Storm update_position {update_position}")
+        await upsert_entity(session, update_position)
+
+class StormUpdateStopLossPositionParser(Parser):
+    def __init__(self):
+        super(StormUpdateStopLossPositionParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x5d1b17b8)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "StormUpdatePositionStopLoss"
+
+    async def parse(self, session: Session, context: MessageContext):
+        logger.info(f"Parsing storm update_position_stop_loss message {context.message.msg_id}")
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        reader.read_uint(32) # 0x5d1b17b8
+
+        direction = reader.read_uint(1)
+        stop_trigger_price = reader.read_coins()
+        take_trigger_price = reader.read_coins()
+        origin_op = reader.read_uint(32)
+        oracle_price = reader.read_coins()
+
+        position = cell.refs.pop(0)
+        reader = BitReader(position.data.data)
+        """
+          position#_ size:int128 direction:Direction 
+          margin:Coins open_notional:Coins 
+          last_updated_cumulative_premium:int64
+          fee:uint32 discount:uint32 rebate:uint32 
+          last_updated_timestamp:uint32 = PositionData
+        """
+        position_size = reader.read_int(128)
+        direction_position = reader.read_uint(1)
+        margin = reader.read_coins()
+        open_notional = reader.read_coins()
+        last_updated_cumulative_premium = reader.read_int(64)
+        fee = reader.read_uint(32)
+        discount = reader.read_uint(32)
+        rebate = reader.read_uint(32)
+        last_updated_timestamp = reader.read_uint(32)
+
+        amm_state = cell.refs.pop(0)
+        reader = BitReader(amm_state.data.data)
+        quote_asset_reserve = reader.read_coins()
+        quote_asset_weight = reader.read_coins()
+        base_asset_reserve = reader.read_coins()
+
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
+
+        update_position = StormUpdatePosition(
+            msg_id=context.message.msg_id,
+            created_lt=context.message.created_lt,
+            utime=context.destination_tx.utime,
+            successful=successful,
+            originated_msg_id=await get_originated_msg_id(session, context.message),
+            direction=direction,
+            origin_op=origin_op,
+            oracle_price=oracle_price,
+            stop_trigger_price=stop_trigger_price,
+            take_trigger_price=take_trigger_price,
+            position_size=position_size,
+            direction_position=direction_position,
+            margin=margin,
+            open_notional=open_notional,
+            last_updated_cumulative_premium=last_updated_cumulative_premium,
+            fee=fee,
+            discount=discount,
+            rebate=rebate,
+            last_updated_timestamp=last_updated_timestamp,
+            quote_asset_reserve=quote_asset_reserve,
+            quote_asset_weight=quote_asset_weight,
+            base_asset_reserve=base_asset_reserve
+        )
+        logger.info(f"Adding Storm update_position {update_position}")
+        await upsert_entity(session, update_position)
+
+class StormTradeNotificationParser(Parser):
+    def __init__(self):
+        super(StormTradeNotificationParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x3475fdd2)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "StormTradeNotification"
+
+    async def parse(self, session: Session, context: MessageContext):
+        logger.info(f"Parsing storm trade_notification message {context.message.msg_id}")
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        reader.read_uint(32) # 0x3475fdd2
+
+        asset_id = reader.read_uint(16)
+        free_amount = reader.read_int(64)
+        locked_amount = reader.read_int(64)
+        exchange_amount = reader.read_int(64)
+        withdraw_locked_amount = reader.read_uint(64)
+        fee_to_stakers = reader.read_uint(64)
+        withdraw_amount = reader.read_uint(64)
+        trader_addr = reader.read_address()
+        origin_addr = reader.read_address()
+
+        referral_amount, referral_addr = None, None
+        if reader.read_uint(1):
+            referral = cell.refs.pop(0)
+            reader = BitReader(referral.data.data)
+            referral_amount = reader.read_coins()
+            referral_addr = reader.read_address()
+
+        successful = context.destination_tx.action_result_code == 0 and context.destination_tx.compute_exit_code == 0
+
+        trade_notification = StormTradeNotification(
+            msg_id=context.message.msg_id,
+            created_lt=context.message.created_lt,
+            utime=context.destination_tx.utime,
+            successful=successful,
+            originated_msg_id=await get_originated_msg_id(session, context.message),
+            asset_id=asset_id,
+            free_amount=free_amount,
+            locked_amount=locked_amount,
+            exchange_amount=exchange_amount,
+            withdraw_locked_amount=withdraw_locked_amount,
+            fee_to_stakers=fee_to_stakers,
+            withdraw_amount=withdraw_amount,
+            trader_addr=trader_addr,
+            origin_addr=origin_addr,
+            referral_amount=referral_amount,
+            referral_addr=referral_addr
+        )
+        logger.info(f"Adding Storm trade_notification {trade_notification}")
+        await upsert_entity(session, trade_notification)
+
+
 # Collect all declared parsers
 
 def children_iterator(klass):
