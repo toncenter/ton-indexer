@@ -2,7 +2,7 @@ from enum import Enum
 from typing import List, Optional, Literal, Union, Any, Dict
 from pydantic import BaseModel, Field
 
-from indexer.core.utils import b64_to_hex, address_to_raw, int_to_hex
+from indexer.core.utils import b64_to_hex, address_to_raw, address_to_friendly, int_to_hex
 
 import logging
 logger = logging.getLogger(__name__)
@@ -15,9 +15,38 @@ def hash_type(value):
 def address_type(value):
     return address_to_raw(value).upper() if value and value != 'addr_none' else None
 
+def is_wallet(code_hash):
+    wallets_code_hashes = {
+        'oM/CxIruFqJx8s/AtzgtgXVs7LEBfQd/qqs7tgL2how=',    # wallet_v1_r1 
+        '1JAvzJ+tdGmPqONTIgpo2g3PcuMryy657gQhfBfTBiw=',    # wallet_v1_r2
+        'WHzHie/xyE9G7DeX5F/ICaFP9a4k8eDHpqmcydyQYf8=',    # wallet_v1_r3
+        'XJpeaMEI4YchoHxC+ZVr+zmtd+xtYktgxXbsiO7mUyk=',    # wallet_v2_r1
+        '/pUw0yQ4Uwg+8u8LTCkIwKv2+hwx6iQ6rKpb+MfXU/E=',    # wallet_v2_r2
+        'thBBpYp5gLlG6PueGY48kE0keZ/6NldOpCUcQaVm9YE=',    # wallet_v3_r1
+        'hNr6RJ+Ypph3ibojI1gHK8D3bcRSQAKl0JGLmnXS1Zk=',    # wallet_v3_r2
+        'ZN1UgFUixb6KnbWc6gEFzPDQh4bKeb64y3nogKjXMi0=',    # wallet_v4_r1
+        '/rX/aCDi/w2Ug+fg1iyBfYRniftK5YDIeIZtlZ2r1cA='     # wallet_v4_r2
+    }
+    return code_hash in wallets_code_hashes
+
+def address_type_friendly(address_raw, latest_account_state):
+    """
+    As per address update proposal https://github.com/ton-blockchain/TEPs/pull/123 
+    we use non-bounceable user-friendly format for nonexist/uninit account and wallets
+    and bounceable for others.
+    """
+    bounceable = True
+    if latest_account_state is None:
+        # We consider this as destroyed account (nonexist)
+        bounceable = False
+    elif latest_account_state.account_status == 'uninit':
+        bounceable = False
+    elif is_wallet(latest_account_state.code_hash):
+        bounceable = False
+    return address_to_friendly(address_raw, bounceable) if address_raw and address_raw != 'addr_none' else None
+
 def shard_type(value):
     return int_to_hex(value, length=64, signed=True).upper() if value else None
-
 
 class BlockReference(BaseModel):
     workchain: int
@@ -100,6 +129,17 @@ class AccountStatus(str, Enum):
     active = 'active'
     nonexist = 'nonexist'
 
+    @classmethod
+    def from_ton_http_api(cls, value):
+        if value == 'uninitialized':
+            return cls.uninit
+        if value == 'active':
+            return cls.active
+        if value == 'frozen':
+            return cls.frozen
+        # ton-http-api returns 'uninitialized' for both uninit and nonexist accounts
+        raise ValueError(f'Unexpected account status: {value}')
+
 
 class MessageContent(BaseModel):
     hash: str
@@ -114,7 +154,9 @@ class MessageContent(BaseModel):
 class Message(BaseModel):
     hash: str
     source: Optional[str]
+    source_friendly: Optional[str]
     destination: Optional[str]
+    destination_friendly: Optional[str]
     value: Optional[str]
     fwd_fee: Optional[str]
     ihr_fee: Optional[str]
@@ -135,7 +177,9 @@ class Message(BaseModel):
     def from_orm(cls, obj):
         return Message(hash=hash_type(obj.hash),
                        source=address_type(obj.source),
+                       source_friendly=address_type_friendly(obj.source, obj.source_account_state),
                        destination=address_type(obj.destination),
+                       destination_friendly=address_type_friendly(obj.destination, obj.destination_account_state),
                        value=obj.value,
                        fwd_fee=obj.fwd_fee,
                        ihr_fee=obj.ihr_fee,
@@ -174,6 +218,7 @@ class AccountState(BaseModel):
 
 class Transaction(BaseModel):
     account: str
+    account_friendly: str
     hash: str
     lt: str
 
@@ -199,6 +244,8 @@ class Transaction(BaseModel):
     account_state_before: Optional[AccountState]
     account_state_after: Optional[AccountState]
 
+    trace_id: Optional[str]
+
     @classmethod
     def from_orm(cls, obj):
         in_msg = None
@@ -210,6 +257,7 @@ class Transaction(BaseModel):
             else:
                 out_msgs.append(msg)
         return Transaction(account=address_type(obj.account),
+                           account_friendly=address_type_friendly(obj.account, obj.account_state_latest),
                            hash=hash_type(obj.hash),
                            lt=obj.lt,
                            now=obj.now,
@@ -227,18 +275,21 @@ class Transaction(BaseModel):
                            in_msg=in_msg,
                            out_msgs=out_msgs,
                            account_state_before=AccountState.from_orm(obj.account_state_before) if obj.account_state_before else None,
-                           account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,)
+                           account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,
+                           trace_id=str(obj.event_id) if obj.event_id is not None else None,)
 
 
 class TransactionTrace(BaseModel):
+    id: str
     transaction: Transaction
     children: List["TransactionTrace"]
 
     @classmethod
     def from_orm(cls, obj):
+        id = str(obj.get('id', 0))
         transaction = Transaction.from_orm(obj['transaction'])
         children = [TransactionTrace.from_orm(x) for x in obj['children']]
-        return TransactionTrace(transaction=transaction, children=children)            
+        return TransactionTrace(id=id, transaction=transaction, children=children)
 
 
 class NFTCollection(BaseModel):
@@ -416,3 +467,182 @@ class JettonBurn(BaseModel):
 class MasterchainInfo(BaseModel):
     first: Block
     last: Block
+
+class AccountBalance(BaseModel):
+    account: str
+    balance: str
+
+    @classmethod
+    def from_orm(cls, obj):
+        return AccountBalance(account=address_type_friendly(obj.account, obj),
+                              balance=obj.balance)
+
+class LatestAccountState(BaseModel):
+    account_state_hash: str
+    last_trans_lt: str
+    last_trans_timestamp: int
+    balance: str
+    account_status: AccountStatus
+    frozen_hash: Optional[str]
+    code_hash: Optional[str]
+    data_hash: Optional[str]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return LatestAccountState(account_state_hash=hash_type(obj.hash), 
+                                  last_trans_lt=obj.last_trans_lt,
+                                  last_trans_timestamp=obj.timestamp,
+                                  balance=obj.balance,
+                                  account_status=AccountStatus(obj.account_status),
+                                  frozen_hash=hash_type(obj.frozen_hash),
+                                  code_hash=hash_type(obj.code_hash),
+                                  data_hash=hash_type(obj.data_hash))
+
+class ExternalMessage(BaseModel):
+    """
+    Message in base64 boc serialized format.
+    """
+    boc: str = Field(examples=["te6ccgECBQEAARUAAkWIAWTtae+KgtbrX26Bep8JSq8lFLfGOoyGR/xwdjfvpvEaHg"])
+
+class SentMessage(BaseModel):
+    message_hash: str = Field(description="Hash of sent message in hex format", examples=["383E348617141E35BC25ED9CD0EDEC2A4EAF6413948BF1FB7F865CEFE8C2CD44"])
+
+    @classmethod
+    def from_ton_http_api(cls, obj):
+        return SentMessage(message_hash=hash_type(obj['hash']))
+
+class GetMethodParameterType(Enum):
+    cell = "cell"
+    slice = "slice"
+    num = "num"
+    list = "list"
+    tuple = "tuple"
+    unsupported_type = "unsupported_type"
+
+class GetMethodParameter(BaseModel):
+    type: GetMethodParameterType
+    value: Union[List['GetMethodParameter'], str, None]
+
+    @classmethod
+    def from_ton_http_api(cls, obj):
+        if obj[0] == 'cell':
+            return GetMethodParameter(type=GetMethodParameterType.cell, value=obj[1]['bytes'])
+        elif obj[0] == 'slice':
+            return GetMethodParameter(type=GetMethodParameterType.slice, value=obj[1]['bytes'])
+        elif obj[0] == 'num':
+            return GetMethodParameter(type=GetMethodParameterType.num, value=obj[1])
+        elif obj[0] == 'list':
+            return GetMethodParameter(type=GetMethodParameterType.list, value=[GetMethodParameter.from_ton_http_api(x) for x in obj[1]['elements']])
+        elif obj[0] == 'tuple':
+            return GetMethodParameter(type=GetMethodParameterType.tuple, value=[GetMethodParameter.from_ton_http_api(x) for x in obj[1]['elements']])
+        
+        return GetMethodParameter(type=GetMethodParameterType.unsupported_type, value=None)
+
+class RunGetMethodRequest(BaseModel):
+    address: str
+    method: str
+    stack: List[GetMethodParameter]
+
+    def to_ton_http_api(self) -> dict:
+        ton_http_api_stack = []
+        for p in self.stack:
+            if p.type == GetMethodParameterType.num:
+                ton_http_api_stack.append(['num', p.value])
+            elif p.type == GetMethodParameterType.cell:
+                ton_http_api_stack.append(['tvm.Cell', p.value])
+            elif p.type == GetMethodParameterType.slice:
+                ton_http_api_stack.append(['tvm.Slice', p.value])
+            else:
+                raise Exception(f"Unsupported stack parameter type: {p.type}")
+        return {
+            'address': self.address,
+            'method': self.method,
+            'stack': ton_http_api_stack
+        }
+
+class RunGetMethodResponse(BaseModel):
+    gas_used: int
+    exit_code: int
+    stack: List[GetMethodParameter]
+
+    @classmethod
+    def from_ton_http_api(cls, obj):
+        return RunGetMethodResponse(gas_used=obj['gas_used'],
+                                    exit_code=obj['exit_code'],
+                                    stack=[GetMethodParameter.from_ton_http_api(x) for x in obj['stack']])
+
+class EstimateFeeRequest(BaseModel):
+    address: str
+    body: str
+    init_code: Optional[str] = None
+    init_data: Optional[str] = None
+    ignore_chksig: bool = True
+
+    def to_ton_http_api(self) -> dict:
+        return {
+            'address': self.address,
+            'body': self.body,
+            'init_code': self.init_code if self.init_code else '',
+            'init_data': self.init_data if self.init_data else '',
+            'ignore_chksig': self.ignore_chksig
+        }
+
+class Fee(BaseModel):
+    in_fwd_fee: int
+    storage_fee: int
+    gas_fee: int
+    fwd_fee: int
+
+    @classmethod
+    def from_ton_http_api(cls, obj):
+        return Fee(in_fwd_fee=obj['in_fwd_fee'],
+                   storage_fee=obj['storage_fee'],
+                   gas_fee=obj['gas_fee'],
+                   fwd_fee=obj['fwd_fee'])
+
+class EstimateFeeResponse(BaseModel):
+    source_fees: Fee
+    destination_fees: List[Fee]
+
+    @classmethod
+    def from_ton_http_api(cls, obj):
+        return EstimateFeeResponse(source_fees=Fee.from_ton_http_api(obj['source_fees']),
+                                   destination_fees=[Fee.from_ton_http_api(x) for x in obj['destination_fees']])
+
+class Account(BaseModel):
+    balance: str
+    code: Optional[str]
+    data: Optional[str]
+    last_transaction_lt: Optional[str]
+    last_transaction_hash: Optional[str]
+    frozen_hash: Optional[str]
+    status: AccountStatus
+
+    @classmethod
+    def from_ton_http_api(cls, obj):
+        null_hash = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+        return Account(balance=obj['balance'],
+                       code=obj['code'] if len(obj['code']) > 0 else None,
+                       data=obj['data'] if len(obj['data']) > 0 else None,
+                       last_transaction_lt=obj['last_transaction_id']['lt'] if obj['last_transaction_id']['lt'] != '0' else None,
+                       last_transaction_hash=obj['last_transaction_id']['hash'] if obj['last_transaction_id']['hash'] != null_hash else None,
+                       frozen_hash=obj['frozen_hash'] if len(obj['frozen_hash']) > 0 else None,
+                       status=AccountStatus.from_ton_http_api(obj['state']))
+
+class WalletInfo(BaseModel):
+    balance: str
+    wallet_type: str
+    seqno: int
+    wallet_id: Optional[int]
+    last_transaction_lt: Optional[str]
+    last_transaction_hash: Optional[str]
+    
+    @classmethod
+    def from_ton_http_api(cls, obj):
+        null_hash = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+        return WalletInfo(balance=obj['balance'],
+                          wallet_type=obj['wallet_type'],
+                          seqno=obj['seqno'],
+                          wallet_id=obj.get('wallet_id'),
+                          last_transaction_lt=obj['last_transaction_id']['lt'] if obj['last_transaction_id']['lt'] != '0' else None,
+                          last_transaction_hash=obj['last_transaction_id']['hash'] if obj['last_transaction_id']['hash'] != null_hash else None)

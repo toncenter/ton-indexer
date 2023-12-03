@@ -121,6 +121,7 @@ venv.bak/
 
 .vscode/
 /private
+/indexer/private
 .DS_Store
 
 /sandbox

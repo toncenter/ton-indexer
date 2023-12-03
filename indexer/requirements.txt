@@ -11,7 +11,7 @@ pydantic
 pyyaml
 redis
 ring
-git+https://github.com/dungeon-master-666/tvm_valuetypes.git@special_cells
+tvm_valuetypes
 celery[redis]
 psycopg2-binary
 sqlalchemy[asyncio]==1.4.46
@@ -22,3 +22,5 @@ requests
 asgiref
 pytonlib>=0.0.48
 uvloop
+tqdm
+httpx
