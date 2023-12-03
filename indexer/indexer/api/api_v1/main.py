@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional
 from datetime import datetime
 
-from fastapi import FastAPI, APIRouter, Depends, Query, Path, status
+from fastapi import FastAPI, APIRouter, Depends, Query, Path, Body, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -25,6 +25,10 @@ from indexer.core import crud, exceptions
 
 # logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
+# logging.basicConfig(format='%(asctime)s %(module)-15s %(message)s',
+#                     level=logging.INFO)
+# logger = logging.getLogger(__name__)
+
 settings = Settings()
 router = APIRouter()
 
@@ -41,8 +45,6 @@ INT32_MIN = -2**31
 INT32_MAX = 2**31 - 1
 UINT32_MAX = 2**32 - 1
 
-
-# masterchain
 
 @router.get("/masterchainInfo", response_model=schemas.MasterchainInfo, response_model_exclude_none=True)
 async def get_masterchain_info(db: AsyncSession = Depends(get_db)):
@@ -62,41 +64,6 @@ async def get_masterchain_info(db: AsyncSession = Depends(get_db)):
                                        seqno='latest')
     return schemas.MasterchainInfo(first=schemas.Block.from_orm(first[0]), last=schemas.Block.from_orm(last[0]))
 
-
-# @router.get("/masterchain/block/latest", response_model=schemas.Block, response_model_exclude_none=True)
-# async def get_masterchain_last_block(db: AsyncSession = Depends(get_db)):
-#     """
-#     Returns last known masterchain block.
-#     """
-#     result = await db.run_sync(crud.get_blocks,
-#                                workchain=MASTERCHAIN_INDEX,
-#                                shard=MASTERCHAIN_SHARD,
-#                                sort_seqno='desc',
-#                                limit=1)
-#     if len(result) < 1:
-#         raise exceptions.BlockNotFound(workchain=MASTERCHAIN_INDEX,
-#                                        shard=MASTERCHAIN_SHARD,
-#                                        seqno='latest')
-#     return schemas.Block.from_orm(result[0])
-
-# @router.get("/masterchain/block/first_indexed", response_model=schemas.Block, response_model_exclude_none=True)
-# async def get_masterchain_first_indexed_block(db: AsyncSession = Depends(get_db)):
-#     """
-#     Returns first indexed masterchain block.
-#     """
-#     result = await db.run_sync(crud.get_blocks,
-#                                workchain=MASTERCHAIN_INDEX,
-#                                shard=MASTERCHAIN_SHARD,
-#                                sort_seqno='asc',
-#                                limit=1)
-#     if len(result) < 1:
-#         raise exceptions.BlockNotFound(workchain=MASTERCHAIN_INDEX,
-#                                        shard=MASTERCHAIN_SHARD,
-#                                        seqno='first_indexed')
-#     return schemas.Block.from_orm(result[0])
-
-
-# JsonRPC
 def validate_block_idx(workchain, shard, seqno):
     if workchain is None:
         if shard is not None or seqno is not None:
@@ -105,7 +72,6 @@ def validate_block_idx(workchain, shard, seqno):
         if seqno is not None:
             raise ValueError('shard id required')
     return True
-
 
 @router.get("/blocks", response_model=List[schemas.Block])
 async def get_blocks(
@@ -139,6 +105,21 @@ async def get_blocks(
                             sort_gen_utime=sort,)
     return [schemas.Block.from_orm(x) for x in res]
 
+
+# NOTE: This method is not reliable in case account was destroyed, it will return it's state before destruction. So for now we comment it out.
+# @router.get("/account", response_model=schemas.LatestAccountState)
+# async def get_account(
+#     address: str = Query(..., description='Account address. Can be sent in raw or user-friendly format.'),
+#     db: AsyncSession = Depends(get_db)):
+#     """
+#     Returns latest account state by specified address. 
+#     """
+#     address = address_to_raw(address)
+#     res = await db.run_sync(crud.get_latest_account_state_by_address,
+#                             address=address)
+#     if res is None:
+#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Account {address} not found')
+#     return schemas.LatestAccountState.from_orm(res)
 
 @router.get("/masterchainBlockShards", response_model=List[schemas.Block])
 async def get_masterchain_block_shards(
@@ -213,6 +194,7 @@ async def get_transactions_by_masterchain_block(
                             sort=sort)
     return [schemas.Transaction.from_orm(tx) for tx in txs]
 
+
 @router.get('/transactionsByMessage', response_model=List[schemas.Transaction])
 async def get_transactions_by_message(
     direction: Optional[str] = Query(..., description='Message direction.', enum=['in', 'out']),
@@ -233,6 +215,7 @@ async def get_transactions_by_message(
                                         offset=offset,
                                         sort='desc')
     return [schemas.Transaction.from_orm(tx) for tx in db_transactions]
+
 
 @router.get('/adjacentTransactions', response_model=List[schemas.Transaction])
 async def get_adjacent_transactions(
@@ -523,3 +506,7 @@ async def get_top_accounts_by_balance(
                             limit=limit,
                             offset=offset)
     return [schemas.AccountBalance.from_orm(x) for x in res]
+
+if settings.ton_http_api_endpoint:
+    from indexer.api.api_v1.ton_http_api_proxy import router as proxy_router
+    router.include_router(proxy_router)

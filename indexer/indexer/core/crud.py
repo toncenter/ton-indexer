@@ -692,3 +692,7 @@ def get_top_accounts_by_balance(session: Session,
     query = limit_query(query, limit, offset)
     return query.all()
     
+def get_latest_account_state_by_address(session: Session,
+                                        address: str):
+    query = session.query(LatestAccountState).filter(LatestAccountState.account == address)
+    return query.first()
