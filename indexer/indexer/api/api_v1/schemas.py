@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import List, Optional, Literal, Union, Any, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from indexer.core.utils import b64_to_hex, address_to_raw, address_to_friendly, int_to_hex
 
@@ -49,12 +49,16 @@ def shard_type(value):
     return int_to_hex(value, length=64, signed=True).upper() if value else None
 
 class BlockReference(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     workchain: int
     shard: str
     seqno: int
 
 
 class Block(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     workchain: int
     shard: str
     seqno: int
@@ -152,6 +156,8 @@ class MessageContent(BaseModel):
 
 
 class Message(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     hash: str
     source: Optional[str]
     source_friendly: Optional[str]
@@ -197,6 +203,8 @@ class Message(BaseModel):
 
 
 class AccountState(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     hash: str
     account: str
     balance: str
@@ -217,6 +225,8 @@ class AccountState(BaseModel):
 
 
 class Transaction(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     account: str
     account_friendly: str
     hash: str
@@ -280,6 +290,8 @@ class Transaction(BaseModel):
 
 
 class TransactionTrace(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     id: str
     transaction: Transaction
     children: List["TransactionTrace"]
@@ -306,14 +318,16 @@ class NFTCollection(BaseModel):
     def from_orm(cls, obj):
         return NFTCollection(address=address_type(obj.address),
                              owner_address=address_type(obj.owner_address),
-                             last_transaction_lt=obj.last_transaction_lt,
-                             next_item_index=int(obj.next_item_index),
+                             last_transaction_lt=str(obj.last_transaction_lt),
+                             next_item_index=str(int(obj.next_item_index)),
                              collection_content=obj.collection_content,
                              code_hash=hash_type(obj.code_hash),
                              data_hash=hash_type(obj.data_hash),)
 
 
 class NFTItem(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     address: str
     collection_address: Optional[str]
     owner_address: Optional[str]
@@ -341,6 +355,8 @@ class NFTItem(BaseModel):
 
 
 class NFTTransfer(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     query_id: str
     nft_address: str
     transaction_hash: str
@@ -372,10 +388,12 @@ class NFTTransfer(BaseModel):
 
 
 class JettonMaster(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     address: str
     total_supply: str
     mintable: bool
-    admin_address: str
+    admin_address: Optional[str]
     last_transaction_lt: str
     jetton_wallet_code_hash: str
     jetton_content: Any
@@ -396,6 +414,8 @@ class JettonMaster(BaseModel):
 
 
 class JettonWallet(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     address: str
     balance: str
     owner: str
@@ -416,6 +436,8 @@ class JettonWallet(BaseModel):
 
 
 class JettonTransfer(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     query_id: str
     source: str
     destination: str
@@ -444,6 +466,8 @@ class JettonTransfer(BaseModel):
 
 
 class JettonBurn(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     query_id: str
     owner: str
     jetton_master: str
@@ -469,6 +493,8 @@ class MasterchainInfo(BaseModel):
     last: Block
 
 class AccountBalance(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     account: str
     balance: str
 
@@ -478,6 +504,8 @@ class AccountBalance(BaseModel):
                               balance=obj.balance)
 
 class LatestAccountState(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     account_state_hash: str
     last_trans_lt: str
     last_trans_timestamp: int
@@ -610,6 +638,8 @@ class EstimateFeeResponse(BaseModel):
                                    destination_fees=[Fee.from_ton_http_api(x) for x in obj['destination_fees']])
 
 class Account(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     balance: str
     code: Optional[str]
     data: Optional[str]
@@ -625,11 +655,13 @@ class Account(BaseModel):
                        code=obj['code'] if len(obj['code']) > 0 else None,
                        data=obj['data'] if len(obj['data']) > 0 else None,
                        last_transaction_lt=obj['last_transaction_id']['lt'] if obj['last_transaction_id']['lt'] != '0' else None,
-                       last_transaction_hash=obj['last_transaction_id']['hash'] if obj['last_transaction_id']['hash'] != null_hash else None,
+                       last_transaction_hash=hash_type(obj['last_transaction_id']['hash']) if obj['last_transaction_id']['hash'] != null_hash else None,
                        frozen_hash=obj['frozen_hash'] if len(obj['frozen_hash']) > 0 else None,
                        status=AccountStatus.from_ton_http_api(obj['state']))
 
 class WalletInfo(BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     balance: str
     wallet_type: str
     seqno: int
@@ -645,4 +677,4 @@ class WalletInfo(BaseModel):
                           seqno=obj['seqno'],
                           wallet_id=obj.get('wallet_id'),
                           last_transaction_lt=obj['last_transaction_id']['lt'] if obj['last_transaction_id']['lt'] != '0' else None,
-                          last_transaction_hash=obj['last_transaction_id']['hash'] if obj['last_transaction_id']['hash'] != null_hash else None)
+                          last_transaction_hash=hash_type(obj['last_transaction_id']['hash']) if obj['last_transaction_id']['hash'] != null_hash else None)

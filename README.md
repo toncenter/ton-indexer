@@ -8,7 +8,7 @@ TON Indexer stack consists of:
 1. `postgres`: PostgreSQL server to store indexed data and perform queries.
 2. `index-api`: FastAPI server with convenient endpoints to access the database.
 3. `alembic`: alembic service to run database migrations.
-4. `index-worker`: TON Index worker to read and parse data from TON node database.
+4. `index-worker`: TON Index worker to read and parse data from TON node database. This service must be run on the machine with a working TON Node.
 
 ## How to run
 
@@ -18,9 +18,6 @@ Requirements:
 * Recommended hardware: 
   * Database and API: 4 CPU, 32 GB RAM, 200GB disk, SSD recommended (more than 1TB required for archival indexing).
   * Worker: 4 CPU, 32 GB RAM, SSD recommended (for archival: 8 CPUs, 64 GB RAM, SSD recommended).
-* To increase history indexing performance: 
-  * Remove PostgreSQL indexes: `docker compose run --rm alembic alembic downgrade -1`.
-  * Create indexes after the indexer catches up with the TON network: `docker compose up alembic`.
 
 Do the following steps to setup TON Indexer:
 * Clone repository: `git clone --recursive --branch cpp-indexer https://github.com/kdimentionaltree/ton-indexer`.
@@ -45,6 +42,7 @@ Do the following steps to setup TON Indexer:
 * API parameters:
   * `TON_INDEXER_API_ROOT_PATH`: root path for reverse proxy setups. Keep it blank if you don't use reverse proxies. Default: `<blank>`.
   * `TON_INDEXER_API_PORT`: a port to expose. You need check if this port is busy. Use different ports in case of multiple indexer instances on the same host. Default: `8081`.
+  * `TON_INDEXER_TON_HTTP_API_ENDPOINT`: an endpoint to [ton-http-api](https://github.com/toncenter/ton-http-api). Indexer API contains several proxy methods to ton-http-api service: `/message`, `/runGetMethod`, `/estimateFee`, `/account`, `/wallet`. If the variable is not set these methods will not be included. Default: `<blank>`
   * `TON_INDEXER_WORKERS`: number of API workers. Default: `4`.
 * TON worker parameters:
   * `TON_WORKER_DBROOT`: path to TON full node database. Use default value if you've installed node with `mytonctrl`. Default: `/var/ton-work/db`.
