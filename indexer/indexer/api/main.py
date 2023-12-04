@@ -24,8 +24,9 @@ description = 'TON Index collects data from a full node to PostgreSQL database a
 app = FastAPI(title="TON Index" if not settings.api_title else settings.api_title,
               description=description,
               version='1.0.0',
-              root_path=settings.api_root_path,
-              docs_url='/',
+              # root_path=settings.api_root_path,
+              docs_url=settings.api_root_path + '/',
+              openapi_url=settings.api_root_path + '/openapi.json',
               dependencies=[Depends(api_key_dep)])
 
 
@@ -59,6 +60,6 @@ def startup():
     logger.info('Service started successfully')
 
 
-app.include_router(router_v1, prefix='/v1', include_in_schema=True, deprecated=False)
+app.include_router(router_v1, prefix=settings.api_root_path, include_in_schema=True, deprecated=False)
 app.include_router(router_old, prefix='/old', include_in_schema=False, deprecated=False, tags=['old'])
 app.include_router(router_wordy, prefix='/wordy', include_in_schema=False, deprecated=False, tags=['wordy'])

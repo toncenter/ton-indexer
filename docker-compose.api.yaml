@@ -8,6 +8,7 @@ x-indexer-environment: &indexer-environment
   POSTGRES_DBNAME:
   TON_INDEXER_API_ROOT_PATH:
   TON_INDEXER_API_TITLE:
+  TON_INDEXER_TON_HTTP_API_ENDPOINT:
 
 services:
   index-api:
@@ -17,7 +18,7 @@ services:
       dockerfile: Dockerfile
     secrets:
       - postgres_password
-    command: gunicorn indexer.api.main:app -k uvicorn.workers.UvicornWorker --bind=0.0.0.0:8081 -w 1
+    command: gunicorn indexer.api.main:app -k uvicorn.workers.UvicornWorker --bind=0.0.0.0:8081 -w ${TON_INDEXER_WORKERS:-1}
     ports:
       - target: 8081
         published: ${TON_INDEXER_API_PORT:-8081}
