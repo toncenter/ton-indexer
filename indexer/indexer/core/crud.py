@@ -1,9 +1,9 @@
 import logging
 
-from typing import Optional
+from typing import Optional, List
 
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import joinedload, Session, Query, contains_eager
+from sqlalchemy.orm import joinedload, selectinload, Session, Query, contains_eager, aliased
 from indexer.core.database import (
     Block,
     Transaction,
@@ -16,6 +16,8 @@ from indexer.core.database import (
     JettonWallet,
     JettonTransfer,
     JettonBurn,
+    Event,
+    LatestAccountState,
     MASTERCHAIN_INDEX,
     MASTERCHAIN_SHARD
 )
@@ -145,19 +147,25 @@ def get_blocks(session: Session,
 def augment_transaction_query(query: Query, 
                               include_msg_body: bool, 
                               include_block: bool,
-                              include_account_state: bool):
+                              include_account_state: bool,
+                              include_trace: bool=False):
     if include_block:
         query = query.options(joinedload(Transaction.block))
+
+    if include_trace:
+        event_query = joinedload(Transaction.event)
+        query = query.options(event_query.joinedload(Event.edges))
+        query = query.options(event_query.joinedload(Event.transactions).joinedload(Transaction.messages))
     
-    msg_join = joinedload(Transaction.messages).joinedload(TransactionMessage.message)
+    msg_join = selectinload(Transaction.messages).selectinload(TransactionMessage.message)
     if include_msg_body:
-        msg_join_1 = msg_join.joinedload(Message.message_content)
-        msg_join_2 = msg_join.joinedload(Message.init_state)
-    query = query.options(msg_join_1).options(msg_join_2)
+        msg_join_1 = msg_join.selectinload(Message.message_content)
+        msg_join_2 = msg_join.selectinload(Message.init_state)
+        query = query.options(msg_join_1).options(msg_join_2)
 
     if include_account_state:
-        query = query.options(joinedload(Transaction.account_state_after)) \
-                     .options(joinedload(Transaction.account_state_before))
+        query = query.options(selectinload(Transaction.account_state_after)) \
+                     .options(selectinload(Transaction.account_state_before))
     return query
 
 
@@ -199,6 +207,7 @@ def get_transactions_by_masterchain_seqno(session: Session,
                                           include_msg_body: bool=True, 
                                           include_block: bool=False,
                                           include_account_state: bool=True,
+                                          include_trace: int=0,
                                           limit: Optional[int]=None,
                                           offset: Optional[int]=None,
                                           sort: Optional[str]=None):
@@ -217,7 +226,7 @@ def get_transactions_by_masterchain_seqno(session: Session,
                  for b in blocks])
     
     query = session.query(Transaction).filter(fltr)
-    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
+    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state, include_trace)
     query = sort_transaction_query_by_lt(query, sort)
     query = limit_query(query, limit, offset)
     
@@ -239,6 +248,7 @@ def get_transactions(session: Session,
                      include_msg_body: bool=True, 
                      include_block: bool=False,
                      include_account_state: bool=True,
+                     include_trace: bool=False,
                      limit: Optional[int]=None,
                      offset: Optional[int]=None,
                      sort: Optional[str]=None):
@@ -263,7 +273,7 @@ def get_transactions(session: Session,
     query = query_transactions_by_lt(query, start_lt, end_lt)
     query = query_transactions_by_utime(query, start_utime, end_utime)
     query = sort_transaction_query_by_lt(query, sort)
-    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
+    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state, include_trace)
     query = limit_query(query, limit, offset)
     return query.all()
 
@@ -272,9 +282,9 @@ def get_adjacent_transactions(session: Session,
                               hash: str,
                               lt: Optional[str]=None,
                               direction: Optional[str]=None,
-                              include_msg_body: bool=False, 
+                              include_msg_body: bool=True, 
                               include_block: bool=False,
-                              include_account_state: bool=False,
+                              include_account_state: bool=True,
                               limit: Optional[int]=None,
                               offset: Optional[int]=None,
                               sort: Optional[str]=None):
@@ -306,12 +316,108 @@ def get_adjacent_transactions(session: Session,
     return query.all()
 
 
+def get_traces(session: Session,
+               event_ids: Optional[List[int]]=None,
+               tx_hashes: Optional[List[str]]=None):
+    if not event_ids and not tx_hashes:
+        raise RuntimeError('event_ids or tx_hashes are required')
+    if tx_hashes:
+        if event_ids is not None:
+            raise RuntimeError('event_ids should be None when using tx_hashes')
+        subquery = session.query(Transaction.hash, Transaction.event_id) \
+                          .filter(Transaction.hash.in_(tx_hashes))
+        event_ids = dict(subquery.all())
+        event_ids = [event_ids.get(x) for x in tx_hashes]        
+    
+    query = session.query(Event)
+    query = query.filter(Event.id.in_([x for x in event_ids if x is not None]))
+    query = query.options(joinedload(Event.edges))
+    
+    tx_join = joinedload(Event.transactions)
+    
+    msg_join = tx_join.joinedload(Transaction.messages).joinedload(TransactionMessage.message)
+    msg_join_1 = msg_join.joinedload(Message.message_content)
+    msg_join_2 = msg_join.joinedload(Message.init_state)
+    query = query.options(msg_join_1).options(msg_join_2)
+
+    query = query.options(tx_join.joinedload(Transaction.account_state_after)) \
+                 .options(tx_join.joinedload(Transaction.account_state_before))
+    raw_traces = query.all()
+    
+    result = {}
+    # build trees
+    for raw in raw_traces:
+        head_hash = None
+        nodes = {}
+        txs = {tx.hash: tx for tx in raw.transactions}
+        for edge in raw.edges:
+            left = {'id': raw.id, 'transaction': txs[edge.left_tx_hash], 'children': []} if edge.left_tx_hash not in nodes else nodes[edge.left_tx_hash]
+            right = {'id': raw.id, 'transaction': txs[edge.right_tx_hash], 'children': []} if edge.right_tx_hash not in nodes else nodes[edge.right_tx_hash]
+            left['children'].append(right)
+            nodes[edge.left_tx_hash] = left
+            nodes[edge.right_tx_hash] = right
+
+            if head_hash is None or head_hash == edge.right_tx_hash:
+                head_hash = edge.left_tx_hash
+        result[raw.id] = nodes[head_hash]
+    return [result.get(x) for x in event_ids]
+
+
+def get_transaction_trace(session: Session, 
+                          hash: str,
+                          include_msg_body: bool=True, 
+                          include_block: bool=False,
+                          include_account_state: bool=True,
+                          sort: Optional[str]=None):
+    TM1 = aliased(TransactionMessage)
+    TM2 = aliased(TransactionMessage)
+
+    # find transaction trace
+    tx_hashes = {hash}
+    new_tx_hashes = {hash}
+    edges = set()
+    while new_tx_hashes:
+        query = session.query(TM1.transaction_hash.label('tx1'), TM2.transaction_hash.label('tx2'), TM1.direction.label('dir')) \
+                        .join(TM2, TM1.message_hash == TM2.message_hash) \
+                        .filter(TM1.transaction_hash.in_(new_tx_hashes)) \
+                        .filter(TM1.transaction_hash != TM2.transaction_hash)
+        res = query.all()
+        for a, b, dir in res:
+            edge = (a, b) if dir == 'out' else (b, a)
+            edges.add(edge)
+        new_tx_hashes = {x[1] for x in res} - tx_hashes
+        tx_hashes = tx_hashes | new_tx_hashes
+    
+    # query transactions
+    query = session.query(Transaction)
+    query = query.filter(Transaction.hash.in_(tx_hashes))
+
+    query = sort_transaction_query_by_lt(query, sort)
+    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state)
+    transactions = query.all()
+    transactions = {x.hash: x for x in transactions}
+
+    # build tree
+    nodes = {}
+    for a, b in edges:
+        left = {'transaction': transactions[a], 'children': []} if a not in nodes else nodes[a]
+        right = {'transaction': transactions[b], 'children': []} if b not in nodes else nodes[b]
+        left['children'].append(right)
+        nodes[a] = left
+        nodes[b] = right
+
+    root_hash = list(tx_hashes - {x[1] for x in edges})
+    assert len(root_hash) == 1, 'multiple roots!?'
+    root_hash = root_hash[0]
+    return nodes[root_hash]
+
+
 # Message utils
 def augment_message_query(query: Query,
                           include_msg_body: bool):
     if include_msg_body:
-        query = query.options(joinedload(Message.message_content)) \
-                     .options(joinedload(Message.init_state))
+        query = query.options(selectinload(Message.message_content)) \
+                     .options(selectinload(Message.init_state))
     return query
 
 
@@ -576,3 +682,17 @@ def get_transactions_by_message(session: Session,
     query = sort_transaction_query_by_lt(query, sort)
     query = limit_query(query, limit, offset)
     return query.all()
+
+
+def get_top_accounts_by_balance(session: Session,
+                                limit: Optional[int] = None,
+                                offset: Optional[int] = None):
+    query = session.query(LatestAccountState)
+    query = query.order_by(LatestAccountState.balance.desc())
+    query = limit_query(query, limit, offset)
+    return query.all()
+    
+def get_latest_account_state_by_address(session: Session,
+                                        address: str):
+    query = session.query(LatestAccountState).filter(LatestAccountState.account == address)
+    return query.first()

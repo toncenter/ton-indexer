@@ -6,11 +6,13 @@ x-indexer-environment: &index-common
   POSTGRES_USER:
   POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
   POSTGRES_DBNAME:
+  POSTGRES_DBROOT:
   POSTGRES_PUBLISH_PORT:
 
 x-index-api: &index-api
   TON_INDEXER_API_ROOT_PATH:
   TON_INDEXER_API_PORT:
+  TON_INDEXER_TON_HTTP_API_ENDPOINT:
   <<: *index-common
 
 x-index-worker: &index-worker
@@ -28,8 +30,6 @@ services:
     ports:
       - target: 8081
         published: ${TON_INDEXER_API_PORT:-8081}
-        protocol: tcp
-        mode: host
     environment: *index-api
     networks:
       internal:
