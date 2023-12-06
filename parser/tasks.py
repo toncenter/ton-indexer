@@ -38,6 +38,10 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
     try:
         if task.entity_type == ParseOutbox.PARSE_TYPE_MESSAGE:
             ctx = await get_messages_context(session, task.entity_id)
+            if ctx.message.value == 0 and ctx.message.destination == 'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c':
+                logger.info("Skipping inscription message")
+                await remove_outbox_item(session, task.outbox_id)
+                return []
         elif task.entity_type == ParseOutbox.PARSE_TYPE_ACCOUNT:
             ctx = await get_account_context(session, task.entity_id)
         else:
