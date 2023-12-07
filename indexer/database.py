@@ -958,6 +958,7 @@ class TonanoDeploy(Base):
                       UniqueConstraint('msg_id')
                       )
 
+@dataclass(init=False)
 class TonanoTransfer(Base):
     __tablename__ = 'tonano_transfer'
 
