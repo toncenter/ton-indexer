@@ -67,7 +67,7 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
                                 amount=int(obj.get('amt', '-1'))
                             ))
                         elif op == 'transfer':
-                            await upsert_entity(session, TonanoMint(
+                            await upsert_entity(session, TonanoTransfer(
                                 msg_id=ctx.message.msg_id,
                                 created_lt=ctx.message.created_lt,
                                 utime=ctx.source_tx.utime if ctx.source_tx else None,
