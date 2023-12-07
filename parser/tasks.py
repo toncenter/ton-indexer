@@ -2,6 +2,7 @@ from celery.signals import worker_process_init
 from parser.celery import app
 import asyncio
 import traceback
+import json
 from config import settings
 from parser.eventbus import EventBus, KafkaEventBus, NullEventBus
 from indexer.database import *
@@ -40,6 +41,43 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
             ctx = await get_messages_context(session, task.entity_id)
             if ctx.message.value == 0 and ctx.message.destination == 'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c':
                 logger.info("Skipping inscription message")
+                payload = ctx.message.comment
+                prefix = "data:application/json,"
+                if payload and payload.startswith(prefix):
+                    try:
+                        obj = json.loads(payload[len(prefix):])
+                        op = obj.get('op', None)
+                        if op == 'deploy':
+                            await upsert_entity(session, TonanoDeploy(
+                                msg_id=ctx.message.msg_id,
+                                created_lt=ctx.message.created_lt,
+                                utime=ctx.source_tx.utime if ctx.source_tx else None,
+                                owner=ctx.message.source,
+                                tick=obj.get('tick', None),
+                                max_supply=int(obj.get('max', '-1')),
+                                mint_limit=int(obj.get('lim', '-1')),
+                            ))
+                        elif op == 'mint':
+                            await upsert_entity(session, TonanoMint(
+                                msg_id=ctx.message.msg_id,
+                                created_lt=ctx.message.created_lt,
+                                utime=ctx.source_tx.utime if ctx.source_tx else None,
+                                owner=ctx.message.source,
+                                tick=obj.get('tick', None),
+                                amount=int(obj.get('amt', '-1'))
+                            ))
+                        elif op == 'transfer':
+                            await upsert_entity(session, TonanoTransfer(
+                                msg_id=ctx.message.msg_id,
+                                created_lt=ctx.message.created_lt,
+                                utime=ctx.source_tx.utime if ctx.source_tx else None,
+                                owner=ctx.message.source,
+                                tick=obj.get('tick', None),
+                                destination=obj.get('to', None),
+                                amount=int(obj.get('amt', '-1'))
+                            ))
+                    except:
+                        logger.error(f'Failed to parse ton-20 payload for {task.outbox_id} ({payload}): {traceback.format_exc()}')
                 await remove_outbox_item(session, task.outbox_id)
                 return []
         elif task.entity_type == ParseOutbox.PARSE_TYPE_ACCOUNT:

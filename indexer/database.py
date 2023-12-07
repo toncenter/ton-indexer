@@ -919,5 +919,63 @@ class StormTradeNotification(Base):
                       UniqueConstraint('msg_id')
                       )
 
+# tonano stuff
+
+@dataclass(init=False)
+class TonanoMint(Base):
+    __tablename__ = 'tonano_mint'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
+
+    owner: str = Column(String)
+    tick: str = Column(String)
+    amount: int = Column(Numeric(scale=0))
+
+    __table_args__ = (Index('tonano_mint_1', 'owner', 'tick'),
+                      Index('tonano_mint_2', 'tick'),
+                      UniqueConstraint('msg_id')
+                      )
+
+@dataclass(init=False)
+class TonanoDeploy(Base):
+    __tablename__ = 'tonano_deploy'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
+
+    owner: str = Column(String)
+    tick: str = Column(String)
+    max_supply: int = Column(Numeric(scale=0))
+    mint_limit: int = Column(Numeric(scale=0))
+
+    __table_args__ = (Index('tonano_deploy_1', 'owner', 'tick'),
+                      Index('tonano_deploy_2', 'tick'),
+                      UniqueConstraint('msg_id')
+                      )
+
+@dataclass(init=False)
+class TonanoTransfer(Base):
+    __tablename__ = 'tonano_transfer'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    created_lt: int = Column(BigInteger)
+    utime: int = Column(BigInteger)
+
+    owner: str = Column(String)
+    tick: str = Column(String)
+    destination: str = Column(String)
+    amount: int = Column(Numeric(scale=0))
+
+    __table_args__ = (Index('tonano_transfer_1', 'owner', 'tick'),
+                      Index('tonano_transfer_2', 'tick'),
+                      UniqueConstraint('msg_id')
+                      )
+
 
 
