@@ -1,5 +1,8 @@
 # TON Indexer
 
+> [!NOTE]  
+> The legacy branch hosts the TON Indexer that operates through `tonlib + liteserver`, please refer to [master](https://github.com/toncenter/ton-indexer/tree/master) branch if you're looking for the indexer that reads data directly from TON Node DB.
+
 TON Indexer stores blocks, transactions, messages in Postgres database and provides convenient API.
 
 ## Building and running
