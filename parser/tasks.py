@@ -43,6 +43,11 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
                 logger.info("Skipping inscription message")
                 payload = ctx.message.comment
                 prefix = "data:application/json,"
+                def make_lower(x):
+                    if x and type(x) == str:
+                        return x.lower()
+                    return x
+
                 if payload and payload.startswith(prefix):
                     try:
                         obj = json.loads(payload[len(prefix):])
@@ -53,26 +58,27 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
                                 created_lt=ctx.message.created_lt,
                                 utime=ctx.source_tx.utime if ctx.source_tx else None,
                                 owner=ctx.message.source,
-                                tick=obj.get('tick', None),
+                                tick=make_lower(obj.get('tick', None)),
                                 max_supply=int(obj.get('max', '-1')),
                                 mint_limit=int(obj.get('lim', '-1')),
                             ))
                         elif op == 'mint':
-                            await upsert_entity(session, TonanoMint(
-                                msg_id=ctx.message.msg_id,
-                                created_lt=ctx.message.created_lt,
-                                utime=ctx.source_tx.utime if ctx.source_tx else None,
-                                owner=ctx.message.source,
-                                tick=obj.get('tick', None),
-                                amount=int(obj.get('amt', '-1'))
-                            ))
+                            if int(obj.get('amt', '-1')) >= 0:
+                                await upsert_entity(session, TonanoMint(
+                                    msg_id=ctx.message.msg_id,
+                                    created_lt=ctx.message.created_lt,
+                                    utime=ctx.source_tx.utime if ctx.source_tx else None,
+                                    owner=ctx.message.source,
+                                    tick=make_lower(obj.get('tick', None)),
+                                    amount=int(obj.get('amt', '-1'))
+                                ))
                         elif op == 'transfer':
                             await upsert_entity(session, TonanoTransfer(
                                 msg_id=ctx.message.msg_id,
                                 created_lt=ctx.message.created_lt,
                                 utime=ctx.source_tx.utime if ctx.source_tx else None,
                                 owner=ctx.message.source,
-                                tick=obj.get('tick', None),
+                                tick=make_lower(obj.get('tick', None)),
                                 destination=obj.get('to', None),
                                 amount=int(obj.get('amt', '-1'))
                             ))
