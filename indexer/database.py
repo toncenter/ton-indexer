@@ -933,6 +933,7 @@ class TonanoMint(Base):
     owner: str = Column(String)
     tick: str = Column(String)
     amount: int = Column(Numeric(scale=0))
+    target: int = Column(BigInteger)
 
     __table_args__ = (Index('tonano_mint_1', 'owner', 'tick'),
                       Index('tonano_mint_2', 'tick'),
