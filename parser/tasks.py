@@ -52,6 +52,8 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
                     try:
                         obj = json.loads(payload[len(prefix):])
                         op = obj.get('op', None)
+                        if op:
+                            op = op.lower()
                         if op == 'deploy':
                             await upsert_entity(session, TonanoDeploy(
                                 msg_id=ctx.message.msg_id,
