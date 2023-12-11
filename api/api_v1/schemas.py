@@ -276,6 +276,9 @@ def get_msg_body_annotation(body, op, source_interfaces, dest_interfaces):
 
     return result
 
+def get_msg_body_raw_annotation(body):
+    return RawBody(boc=body)
+
 class Message(BaseModel):
     source: str
     destination: str
@@ -338,10 +341,13 @@ class Transaction(BaseModel):
     block: Optional[Block] = None
 
     @classmethod
-    def transaction_from_orm(cls, obj, include_msg_bodies, include_block):
+    def transaction_from_orm(cls, obj, include_msg_bodies, include_block, include_raw_msg_bodies=False):
         if obj.in_msg is not None:
             body_model = None
-            if include_msg_bodies:
+            if include_raw_msg_bodies:
+                body = obj.in_msg.content.body
+                body_model = get_msg_body_raw_annotation(body)
+            elif include_msg_bodies:
                 body = obj.in_msg.content.body
                 op = obj.in_msg.op
                 source_interfaces = obj.in_msg.out_tx.account_code_hash_rel.interfaces if obj.in_msg.out_tx else []
@@ -354,7 +360,10 @@ class Transaction(BaseModel):
         out_msgs = []
         for out_msg in obj.out_msgs:
             body_model = None
-            if include_msg_bodies:
+            if include_raw_msg_bodies:
+                body = obj.in_msg.content.body
+                body_model = get_msg_body_raw_annotation(body)
+            elif include_msg_bodies:
                 body = out_msg.content.body
                 op = out_msg.op
                 source_interfaces = obj.account_code_hash_rel.interfaces
