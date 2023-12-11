@@ -14,6 +14,9 @@ from indexer.database import *
 from dataclasses import asdict
 from config import settings
 from loguru import logger
+import json
+import sys
+import traceback
 
 class DataNotFound(Exception):
     pass
@@ -87,6 +90,7 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
         in_msgs_by_hash = defaultdict(list)
         out_msgs_by_hash = defaultdict(list)
         msg_contents_by_hash = {}
+        msg2utime = {}
         for block_raw, header_raw, txs_raw in zip(blocks_raw, headers_raw, transactions_raw):
             s_block = Block.raw_block_to_dict(block_raw)
             s_block['masterchain_block_id'] = mc_block_id
@@ -99,6 +103,7 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
             s_header = BlockHeader.raw_header_to_dict(header_raw)
             s_header['block_id'] = block_id
             shard_headers.append(s_header)
+
 
             for tx_raw, tx_details_raw in txs_raw:
                 tx = Transaction.raw_transaction_to_dict(tx_raw, tx_details_raw)
@@ -113,12 +118,16 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
                     in_msg['in_tx_id'] = res.inserted_primary_key[0]
                     in_msg['out_tx_id'] = None
                     in_msgs_by_hash[in_msg['hash']].append(in_msg)
+                    assert tx_details_raw['utime'] is not None
+                    msg2utime[in_msg['hash']] = tx_details_raw['utime']
                     msg_contents_by_hash[in_msg['hash']] = MessageContent.raw_msg_to_content_dict(in_msg_raw)
                 for out_msg_raw in tx_details_raw['out_msgs']:
                     out_msg = Message.raw_msg_to_dict(out_msg_raw)
                     out_msg['out_tx_id'] = res.inserted_primary_key[0]
                     out_msg['in_tx_id'] = None
                     out_msgs_by_hash[out_msg['hash']].append(out_msg)
+                    assert tx_details_raw['utime'] is not None
+                    msg2utime[out_msg['hash']] = tx_details_raw['utime']
                     msg_contents_by_hash[out_msg['hash']] = MessageContent.raw_msg_to_content_dict(out_msg_raw)
 
         await conn.execute(block_headers_t.insert(), shard_headers)
@@ -167,11 +176,65 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
                 msg_ids += (await conn.execute(message_t.insert().returning(message_t.c.msg_id).values(chunk))).all()
 
             contents = []
+            msg_ids_to_parse = []
+
+            insciptions = 0
             for i, msg_id_tuple in enumerate(msg_ids):
                 content = msg_contents_by_hash[msgs_to_insert[i]['hash']].copy() # copy is necessary because there might be duplicates, but msg_id differ
                 content['msg_id'] = msg_id_tuple[0]
                 contents.append(content)
+                current_msg = msgs_to_insert[i]
+                if current_msg['source'] == current_msg['destination']:
+                    insciptions += 1
+                    payload = current_msg['comment']
+                    prefix = "data:application/json,"
+                    def make_lower(x):
+                        if x and type(x) == str:
+                            return x.lower()
+                        return x
 
+                    if payload and payload.startswith(prefix):
+                        try:
+                            obj = json.loads(payload[len(prefix):])
+                            op = obj.get('op', None)
+                            if op:
+                                op = op.lower()
+                            if op == 'deploy':
+                                await upsert_entity(conn, TonanoDeploy(
+                                    msg_id=msg_id_tuple[0],
+                                    created_lt=current_msg['created_lt'],
+                                    utime=msg2utime[current_msg['hash']],
+                                    owner=current_msg['source'],
+                                    tick=make_lower(obj.get('tick', None)),
+                                    max_supply=int(obj.get('max', '-1')),
+                                    mint_limit=int(obj.get('lim', '-1')),
+                                ))
+                            elif op == 'mint':
+                                if int(obj.get('amt', '-1')) >= 0:
+                                    await upsert_entity(conn, TonanoMint(
+                                        msg_id=msg_id_tuple[0],
+                                        created_lt=current_msg['created_lt'],
+                                        utime=msg2utime[current_msg['hash']],
+                                        owner=current_msg['source'],
+                                        tick=make_lower(obj.get('tick', None)),
+                                        amount=int(obj.get('amt', '-1')),
+                                        target=0
+                                    ))
+                            elif op == 'transfer':
+                                await upsert_entity(conn, TonanoTransfer(
+                                    msg_id=msg_id_tuple[0],
+                                    created_lt=current_msg['created_lt'],
+                                    utime=msg2utime[current_msg['hash']],
+                                    owner=current_msg['source'],
+                                    tick=make_lower(obj.get('tick', None)),
+                                    destination=obj.get('to', None),
+                                    amount=int(obj.get('amt', '-1'))
+                                ))
+                        except:
+                            logger.error(f'Failed to parse ton-20 payload for {payload}: {traceback.format_exc()}')
+                else: # tonano case
+                    msg_ids_to_parse.append(msg_id_tuple)
+            logger.info(f"Processed {insciptions} inscriptions messages")
             for chunk in chunks(contents, 3000):
                 await conn.execute(message_content_t.insert(), chunk)
 
@@ -180,7 +243,7 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
             insert_res = await conn.execute(insert_pg(outbox_t)
                                             .values([ParseOutbox.generate(ParseOutbox.PARSE_TYPE_MESSAGE,
                                                                           msg_id_tuple[0],
-                                                                          min_block_time) for msg_id_tuple in msg_ids])
+                                                                          min_block_time) for msg_id_tuple in msg_ids_to_parse])
                                             .on_conflict_do_nothing())
             if insert_res.rowcount > 0:
                 logger.info(f"{insert_res.rowcount} outbox items added")
