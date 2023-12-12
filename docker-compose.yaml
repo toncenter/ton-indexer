@@ -24,12 +24,18 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       USE_GET_BLOCK_TRANSACTIONS_EXT: ${TON_INDEXER_USE_GET_BLOCK_TRANSACTIONS_EXT:-0}
+      LITESERVER_INDEX: ${LITESERVER_INDEX_BACKWARD:-0}
     secrets:
       - postgres_password
       - tonlib_config
     depends_on:
-      - rabbitmq
-      - postgres
+      &common-depends-on
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
   backward_scheduler:
     build:
       context: .
@@ -46,12 +52,10 @@ services:
       WORKERS_COUNT: ${TON_INDEXER_BACKWARD_WORKERS_COUNT:-5}
     secrets:
       - postgres_password
-      - tonlib_config
     depends_on:
+      <<: *common-depends-on
       backward_indexer:
         condition: service_started
-      postgres:
-        condition: service_healthy
   forward_indexer:
     build:
       context: .
@@ -64,12 +68,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       USE_GET_BLOCK_TRANSACTIONS_EXT: ${TON_INDEXER_USE_GET_BLOCK_TRANSACTIONS_EXT:-0}
+      LITESERVER_INDEX: ${LITESERVER_INDEX_FORWARD:-0}
     secrets:
       - postgres_password
       - tonlib_config
-    depends_on:
-      - rabbitmq
-      - postgres
+    depends_on: *common-depends-on
   forward_scheduler:
     build:
       context: .
@@ -86,12 +89,10 @@ services:
       WORKERS_COUNT: ${TON_INDEXER_FORWARD_WORKERS_COUNT:-2}
     secrets:
       - postgres_password
-      - tonlib_config
     depends_on:
+      <<: *common-depends-on
       forward_indexer:
         condition: service_started
-      postgres:
-        condition: service_healthy
   rabbitmq:
     image: rabbitmq
     restart: unless-stopped

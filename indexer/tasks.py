@@ -28,8 +28,8 @@ def configure_worker(signal=None, sender=None, **kwargs):
     global index_worker
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     loop = asyncio.get_event_loop()
-    index_worker = IndexWorker(loop, 
-                               0, 
+    index_worker = IndexWorker(loop,
+                               ls_index=settings.indexer.ls_index,
                                use_ext_method=settings.indexer.use_ext_method, 
                                cdll_path=settings.indexer.cdll_path)
 
