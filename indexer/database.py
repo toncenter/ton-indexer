@@ -929,6 +929,7 @@ class TonanoMint(Base):
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
     created_lt: int = Column(BigInteger)
     utime: int = Column(BigInteger)
+    hash: str = Column(String)
 
     owner: str = Column(String)
     tick: str = Column(String)
@@ -948,6 +949,7 @@ class TonanoDeploy(Base):
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
     created_lt: int = Column(BigInteger)
     utime: int = Column(BigInteger)
+    hash: str = Column(String)
 
     owner: str = Column(String)
     tick: str = Column(String)
@@ -967,6 +969,7 @@ class TonanoTransfer(Base):
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
     created_lt: int = Column(BigInteger)
     utime: int = Column(BigInteger)
+    hash: str = Column(String)
 
     owner: str = Column(String)
     tick: str = Column(String)
