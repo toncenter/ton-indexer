@@ -251,6 +251,7 @@ class Message(Base):
     transactions = relationship("TransactionMessage", 
                                 foreign_keys=[hash],
                                 primaryjoin="TransactionMessage.message_hash == Message.hash", 
+                                uselist=True,
                                 viewonly=True)
     message_content = relationship("MessageContent", 
                                    foreign_keys=[body_hash],

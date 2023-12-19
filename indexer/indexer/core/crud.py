@@ -3,7 +3,7 @@ import logging
 from typing import Optional, List
 
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import joinedload, selectinload, Session, Query, contains_eager, aliased
+from sqlalchemy.orm import selectinload, Session, Query, contains_eager, aliased
 from indexer.core.database import (
     Block,
     Transaction,
@@ -137,7 +137,7 @@ def get_blocks(session: Session,
 
 
     if include_mc_block:
-        query = query.options(joinedload(Block.masterchain_block))
+        query = query.options(selectinload(Block.masterchain_block))
 
     query = limit_query(query, limit, offset)
     return query.all()
@@ -150,12 +150,12 @@ def augment_transaction_query(query: Query,
                               include_account_state: bool,
                               include_trace: bool=False):
     if include_block:
-        query = query.options(joinedload(Transaction.block))
+        query = query.options(selectinload(Transaction.block))
 
     if include_trace:
-        event_query = joinedload(Transaction.event)
-        query = query.options(event_query.joinedload(Event.edges))
-        query = query.options(event_query.joinedload(Event.transactions).joinedload(Transaction.messages))
+        event_query = selectinload(Transaction.event)
+        query = query.options(event_query.selectinload(Event.edges))
+        query = query.options(event_query.selectinload(Event.transactions).selectinload(Transaction.messages))
     
     msg_join = selectinload(Transaction.messages).selectinload(TransactionMessage.message)
     if include_msg_body:
@@ -239,6 +239,7 @@ def get_transactions(session: Session,
                      shard: Optional[int]=None,
                      seqno: Optional[int]=None,
                      account: Optional[str]=None,
+                     exclude_account_list: Optional[List[str]]=None,
                      hash: Optional[str]=None,
                      lt: Optional[str]=None,
                      start_lt: Optional[str]=None,
@@ -263,6 +264,8 @@ def get_transactions(session: Session,
 
     if account is not None:
         query = query.filter(Transaction.account == account)  # TODO: index
+    if exclude_account_list:
+        query = query.filter(Transaction.account.notin_(exclude_account_list))
 
     if hash is not None:
         query = query.filter(Transaction.hash == hash)  # TODO: index
@@ -331,17 +334,17 @@ def get_traces(session: Session,
     
     query = session.query(Event)
     query = query.filter(Event.id.in_([x for x in event_ids if x is not None]))
-    query = query.options(joinedload(Event.edges))
+    query = query.options(selectinload(Event.edges))
     
-    tx_join = joinedload(Event.transactions)
+    tx_join = selectinload(Event.transactions)
     
-    msg_join = tx_join.joinedload(Transaction.messages).joinedload(TransactionMessage.message)
-    msg_join_1 = msg_join.joinedload(Message.message_content)
-    msg_join_2 = msg_join.joinedload(Message.init_state)
+    msg_join = tx_join.selectinload(Transaction.messages).selectinload(TransactionMessage.message)
+    msg_join_1 = msg_join.selectinload(Message.message_content)
+    msg_join_2 = msg_join.selectinload(Message.init_state)
     query = query.options(msg_join_1).options(msg_join_2)
 
-    query = query.options(tx_join.joinedload(Transaction.account_state_after)) \
-                 .options(tx_join.joinedload(Transaction.account_state_before))
+    query = query.options(tx_join.selectinload(Transaction.account_state_after)) \
+                 .options(tx_join.selectinload(Transaction.account_state_before))
     raw_traces = query.all()
     
     result = {}
@@ -478,7 +481,7 @@ def get_nft_items(session: Session,
     if owner_address is not None:
         query = query.filter(NFTItem.owner_address == owner_address)  # TODO: index
     query = limit_query(query, limit, offset)
-    query = query.options(joinedload(NFTItem.collection))
+    query = query.options(selectinload(NFTItem.collection))
     return query.all()
 
 
@@ -514,8 +517,8 @@ def get_nft_transfers(session: Session,
     query = query_transactions_by_utime(query, start_utime, end_utime)
     query = sort_transaction_query_by_lt(query, sort)
     query = limit_query(query, limit, offset)
-    query = query.options(joinedload(NFTTransfer.nft_item))
-    query = query.options(joinedload(NFTTransfer.transaction))
+    query = query.options(selectinload(NFTTransfer.nft_item))
+    query = query.options(selectinload(NFTTransfer.transaction))
     return query.all()
 
 
@@ -597,8 +600,8 @@ def get_jetton_transfers(session: Session,
     query = query_transactions_by_utime(query, start_utime, end_utime)
     query = sort_transaction_query_by_lt(query, sort)
     query = limit_query(query, limit, offset)
-    query = query.options(joinedload(JettonTransfer.jetton_wallet))
-    query = query.options(joinedload(JettonTransfer.transaction))
+    query = query.options(selectinload(JettonTransfer.jetton_wallet))
+    query = query.options(selectinload(JettonTransfer.transaction))
     return query.all()
 
 
@@ -627,8 +630,8 @@ def get_jetton_burns(session: Session,
     query = query_transactions_by_utime(query, start_utime, end_utime)
     query = sort_transaction_query_by_lt(query, sort)
     query = limit_query(query, limit, offset)
-    query = query.options(joinedload(JettonBurn.jetton_wallet))
-    query = query.options(joinedload(JettonBurn.transaction))
+    query = query.options(selectinload(JettonBurn.jetton_wallet))
+    query = query.options(selectinload(JettonBurn.transaction))
     return query.all()
 
 
