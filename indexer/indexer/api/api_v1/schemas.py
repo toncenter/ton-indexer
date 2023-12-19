@@ -4,6 +4,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from indexer.core.utils import b64_to_hex, address_to_raw, address_to_friendly, int_to_hex
 
+from pytonlib.utils import tlb
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -144,16 +146,62 @@ class AccountStatus(str, Enum):
         # ton-http-api returns 'uninitialized' for both uninit and nonexist accounts
         raise ValueError(f'Unexpected account status: {value}')
 
+class InternalMsgBody(BaseModel):
+    pass
+
+class TextComment(InternalMsgBody):
+    type: Literal["text_comment"] = "text_comment"
+    comment: str
+
+    @classmethod
+    def from_tlb(cls, tlb_obj: tlb.TextCommentMessage):
+        return TextComment(comment=tlb_obj.text_comment)
+
+class BinaryComment(InternalMsgBody):
+    type: Literal["binary_comment"] = "binary_comment"
+    hex_comment: str
+
+    @classmethod
+    def from_tlb(cls, tlb_obj: tlb.BinaryCommentMessage): 
+        return BinaryComment(hex_comment=tlb_obj.hex_comment)
+
+class Comment:
+    @classmethod
+    def from_tlb(cls, tlb_obj: Union[tlb.TextCommentMessage, tlb.BinaryCommentMessage]) -> Union[TextComment, BinaryComment]:
+        if type(tlb_obj) is tlb.TextCommentMessage:
+            return TextComment.from_tlb(tlb_obj)
+        if type(tlb_obj) is tlb.BinaryCommentMessage:
+            return BinaryComment.from_tlb(tlb_obj)
+        raise RuntimeError(f"Unexpected object of type {type(tlb_obj)}")
+    
+def decode_msg_body(body, op):
+    try:
+        if op == '0x00000000':
+            obj = tlb.boc_to_object(body, tlb.CommentMessage)
+            return Comment.from_tlb(obj)
+    except BaseException as e:
+        logger.error(f"Error parsing msg with op {op}: {e}")
+    return None
 
 class MessageContent(BaseModel):
+    hash: str
+    body: str
+    decoded: Union[TextComment, BinaryComment, None]  = Field(..., discriminator='type')
+
+    @classmethod
+    def from_orm(cls, obj, op):
+        return MessageContent(hash=hash_type(obj.hash),
+                              body=obj.body,
+                              decoded=decode_msg_body(obj.body, op))
+    
+class MessageInitState(BaseModel):
     hash: str
     body: str
 
     @classmethod
     def from_orm(cls, obj):
-        return MessageContent(hash=hash_type(obj.hash),
-                              body=obj.body)
-
+        return MessageInitState(hash=hash_type(obj.hash),
+                                body=obj.body)
 
 class Message(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -177,10 +225,11 @@ class Message(BaseModel):
     # init_state_hash: Optional[str]
 
     message_content: Optional[MessageContent]
-    init_state: Optional[MessageContent]
+    init_state: Optional[MessageInitState]
 
     @classmethod
     def from_orm(cls, obj):
+        op = f'0x{(obj.opcode & 0xffffffff):08x}' if obj.opcode is not None else None
         return Message(hash=hash_type(obj.hash),
                        source=address_type(obj.source),
                        source_friendly=address_type_friendly(obj.source, obj.source_account_state),
@@ -191,15 +240,15 @@ class Message(BaseModel):
                        ihr_fee=obj.ihr_fee,
                        created_lt=obj.created_lt,
                        created_at=obj.created_at,
-                       opcode=f'0x{(obj.opcode & 0xffffffff):08x}' if obj.opcode is not None else None,
+                       opcode=op,
                        ihr_disabled=obj.ihr_disabled,
                        bounce=obj.bounce,
                        bounced=obj.bounced,
                        import_fee=obj.import_fee,
                     #    body_hash=hash_type(obj.body_hash),
                     #    init_state_hash=hash_type(obj.init_state_hash),
-                       message_content=MessageContent.from_orm(obj.message_content) if obj.message_content else None,
-                       init_state=MessageContent.from_orm(obj.init_state) if obj.init_state else None)
+                       message_content=MessageContent.from_orm(obj.message_content, op) if obj.message_content else None,
+                       init_state=MessageInitState.from_orm(obj.init_state) if obj.init_state else None)
 
 
 class AccountState(BaseModel):
