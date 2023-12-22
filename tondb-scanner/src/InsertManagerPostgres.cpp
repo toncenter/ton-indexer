@@ -103,6 +103,7 @@ void InsertBatchMcSeqnos::start_up() {
     insert_transactions(txn, mc_blocks_);
     insert_messsages(txn, messages, msg_bodies, tx_msgs);
     insert_account_states(txn, mc_blocks_);
+    insert_latest_account_states(txn, mc_blocks_);
     insert_jetton_transfers(txn, mc_blocks_);
     insert_jetton_burns(txn, mc_blocks_);
     insert_nft_transfers(txn, mc_blocks_);
@@ -633,6 +634,59 @@ void InsertBatchMcSeqnos::insert_account_states(pqxx::work &transaction, const s
     return;
   }
   query << " ON CONFLICT DO NOTHING";
+  // LOG(DEBUG) << "Running SQL query: " << query.str();
+  transaction.exec0(query.str());
+}
+
+void InsertBatchMcSeqnos::insert_latest_account_states(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks) {
+  std::unordered_map<std::string, schema::AccountState> latest_account_states;
+  for (const auto& mc_block : mc_blocks) {
+    for (const auto& account_state : mc_block->account_states_) {
+      auto account_addr = convert::to_raw_address(account_state.account);
+      if (latest_account_states.find(account_addr) == latest_account_states.end()) {
+        latest_account_states[account_addr] = account_state;
+      } else {
+        if (latest_account_states[account_addr].last_trans_lt < account_state.last_trans_lt) {
+          latest_account_states[account_addr] = account_state;
+        }
+      }
+    }
+  }
+
+  std::ostringstream query;
+  query << "INSERT INTO latest_account_states (account, hash, balance, last_trans_lt, timestamp, account_status, frozen_hash, code_hash, data_hash) VALUES ";
+  bool is_first = true;
+  for (auto i = latest_account_states.begin(); i != latest_account_states.end(); ++i) {
+    auto& account_state = i->second;
+    if (is_first) {
+      is_first = false;
+    } else {
+      query << ", ";
+    }
+    query << "("
+          << TO_SQL_STRING(convert::to_raw_address(account_state.account)) << ","
+          << TO_SQL_STRING(td::base64_encode(account_state.hash.as_slice())) << ","
+          << account_state.balance << ","
+          << account_state.last_trans_lt << ","
+          << account_state.timestamp << ","
+          << TO_SQL_STRING(account_state.account_status) << ","
+          << TO_SQL_OPTIONAL_STRING(account_state.frozen_hash) << ","
+          << TO_SQL_OPTIONAL_STRING(account_state.code_hash) << ","
+          << TO_SQL_OPTIONAL_STRING(account_state.data_hash)
+          << ")";
+  }
+  if (is_first) {
+    return;
+  }
+  query << " ON CONFLICT (account) DO UPDATE SET "
+        << "hash = EXCLUDED.hash,"
+        << "balance = EXCLUDED.balance, "
+        << "last_trans_lt = EXCLUDED.last_trans_lt, "
+        << "timestamp = EXCLUDED.timestamp, "
+        << "account_status = EXCLUDED.account_status, "
+        << "frozen_hash = EXCLUDED.frozen_hash, "
+        << "code_hash = EXCLUDED.code_hash, "
+        << "data_hash = EXCLUDED.data_hash WHERE latest_account_states.last_trans_lt < EXCLUDED.last_trans_lt";
   // LOG(DEBUG) << "Running SQL query: " << query.str();
   transaction.exec0(query.str());
 }

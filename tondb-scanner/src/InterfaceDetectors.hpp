@@ -60,7 +60,7 @@ public:
           stop();
           return;
         case block::gen::Account::account: {
-          auto account_r = ParseQuery::parse_account(account_root);
+          auto account_r = ParseQuery::parse_account(account_root, sstate.gen_utime);
           if (account_r.is_error()) {
             promise_.set_error(account_r.move_as_error());
             stop();
@@ -209,6 +209,10 @@ public:
   }
 
   void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<JettonMasterData> promise) {
+    if (code_cell.is_null() || data_cell.is_null()) {
+      promise.set_error(td::Status::Error(ErrorCode::DATA_PARSING_ERROR, "Code or data null"));
+      return;
+    }
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
     args.set_now(td::Time::now());
@@ -383,6 +387,10 @@ public:
   }
 
   void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonWalletData> promise) {
+    if (code_cell.is_null() || data_cell.is_null()) {
+      promise.set_error(td::Status::Error(ErrorCode::DATA_PARSING_ERROR, "Code or data null"));
+      return;
+    }
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
     args.set_now(td::Time::now());
@@ -663,6 +671,10 @@ private:
   }
 
   void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<NFTCollectionData> promise) {
+    if (code_cell.is_null() || data_cell.is_null()) {
+      promise.set_error(td::Status::Error(ErrorCode::DATA_PARSING_ERROR, "Code or data null"));
+      return;
+    }
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
     args.set_now(td::Time::now());
@@ -833,6 +845,10 @@ private:
   }
 
   void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTItemData> promise) {
+    if (code_cell.is_null() || data_cell.is_null()) {
+      promise.set_error(td::Status::Error(ErrorCode::DATA_PARSING_ERROR, "Code or data null"));
+      return;
+    }
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
     args.set_now(td::Time::now());

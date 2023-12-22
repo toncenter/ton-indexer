@@ -45,7 +45,7 @@ private:
   td::Status parse_account_states(const td::Ref<ton::validator::ShardState>& block_state, std::set<td::Bits256> &addresses);
 
 public: //TODO: refactor
-  static td::Result<schema::AccountState> parse_account(td::Ref<vm::Cell> account_root);
+  static td::Result<schema::AccountState> parse_account(td::Ref<vm::Cell> account_root, uint32_t gen_utime);
 };
 
 

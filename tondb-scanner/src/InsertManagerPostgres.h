@@ -97,6 +97,7 @@ private:
   void insert_messages_impl(const std::vector<schema::Message>& messages, pqxx::work& transaction);
   void insert_messages_txs(const std::vector<TxMsg>& messages, pqxx::work& transaction);
   void insert_account_states(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);
+  void insert_latest_account_states(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);
   void insert_jetton_transfers(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);
   void insert_jetton_burns(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);
   void insert_nft_transfers(pqxx::work &transaction, const std::vector<ParsedBlockPtr>& mc_blocks);

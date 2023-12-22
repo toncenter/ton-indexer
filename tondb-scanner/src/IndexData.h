@@ -259,6 +259,7 @@ struct Block {
 struct AccountState {
   td::Bits256 hash;
   block::StdAddress account;
+  uint32_t timestamp;
   uint64_t balance;
   std::string account_status; // "uninit", "frozen", "active"
   td::optional<std::string> frozen_hash;
