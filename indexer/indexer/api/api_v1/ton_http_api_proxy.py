@@ -39,7 +39,7 @@ async def send_message(
     Send external message to TON network.
     """
     async with httpx.AsyncClient() as client:
-        response = await client.post(f'{settings.ton_http_api_endpoint}/sendBocReturnHash', json={'boc': message})
+        response = await client.post(f'{settings.ton_http_api_endpoint}/sendBocReturnHash', json={'boc': message.boc})
     
     result = from_ton_http_api_response(response)
 
