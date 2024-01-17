@@ -39,7 +39,7 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
     try:
         if task.entity_type == ParseOutbox.PARSE_TYPE_MESSAGE:
             ctx = await get_messages_context(session, task.entity_id)
-            if ctx.message.value == 0 and ctx.message.destination == 'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c':
+            if ctx.message.destination == 'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c' or ctx.message.destination == ctx.message.source:
                 logger.info("Skipping inscription message")
                 payload = ctx.message.comment
                 prefix = "data:application/json,"
@@ -52,6 +52,8 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
                     try:
                         obj = json.loads(payload[len(prefix):])
                         op = obj.get('op', None)
+                        if op:
+                            op = op.lower()
                         if op == 'deploy':
                             await upsert_entity(session, TonanoDeploy(
                                 msg_id=ctx.message.msg_id,
@@ -70,7 +72,8 @@ async def process_item(session: SessionMaker, eventbus: EventBus, task: ParseOut
                                     utime=ctx.source_tx.utime if ctx.source_tx else None,
                                     owner=ctx.message.source,
                                     tick=make_lower(obj.get('tick', None)),
-                                    amount=int(obj.get('amt', '-1'))
+                                    amount=int(obj.get('amt', '-1')),
+                                    target=1 if ctx.message.destination == 'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c' else 0
                                 ))
                         elif op == 'transfer':
                             await upsert_entity(session, TonanoTransfer(
