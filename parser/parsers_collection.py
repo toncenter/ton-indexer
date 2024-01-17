@@ -682,6 +682,11 @@ class NFTTransferParser(Parser):
             )))
 
             prev_owner_sale = await get_nft_sale(session, context.message.source)
+
+            # Force auction sale account to update state
+            if prev_owner_sale and prev_owner_sale.is_auction and prev_owner_sale.owner != new_owner:
+                await reset_account_check_time(session, prev_owner_sale.address)
+
             # TODO ensure we have already parsed it
             if prev_owner_sale is not None:
                 # Exclude sales cancellation
@@ -894,6 +899,7 @@ class SaleContract:
     nft_pos: int
     price_pos: int
     owner_pos: int
+    is_auction: bool
 
 class NFTItemSaleParser(ContractsExecutorParser):
 
@@ -942,7 +948,8 @@ class NFTItemSaleParser(ContractsExecutorParser):
             nft_item=sale_data[contract.nft_pos],
             marketplace=sale_data[contract.marketplace_pos],
             price=sale_data[contract.price_pos],
-            owner=sale_data[contract.owner_pos]
+            owner=sale_data[contract.owner_pos],
+            is_auction=contract.is_auction
         )
         logger.info(f"Adding NFT item sale {item}")
 

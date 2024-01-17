@@ -667,6 +667,7 @@ class NFTItemSale(Base):
     marketplace: str = Column(String)  # address
     owner: str = Column(String)  # owner of NFT on sale
     price: decimal.Decimal = Column(Numeric(scale=0))
+    is_auction: bool = Column(Boolean)
     # TODO royalty, fees
 
 
