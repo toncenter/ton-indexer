@@ -490,13 +490,15 @@ class JettonTransfer(BaseModel):
     query_id: str
     source: str
     destination: str
+    amount: str
+    source_wallet: str
     jetton_master: str
     transaction_hash: str
     transaction_lt: str
     transaction_now: int
     response_destination: Optional[str]
     custom_payload: Optional[str]
-    forward_ton_amount: str
+    forward_ton_amount: Optional[str]
     forward_payload: Optional[str]
 
     @classmethod
@@ -504,13 +506,15 @@ class JettonTransfer(BaseModel):
         return JettonTransfer(query_id=int(obj.query_id),
                               source=address_type(obj.source),
                               destination=address_type(obj.destination),
+                              amount=int(obj.amount),
+                              source_wallet=address_type(obj.jetton_wallet_address),
                               jetton_master=address_type(obj.jetton_wallet.jetton),
                               transaction_hash=hash_type(obj.transaction_hash),
                               transaction_lt=obj.transaction.lt,  # TODO: maybe fix
                               transaction_now=obj.transaction.now,  # TODO: maybe fix
                               response_destination=address_type(obj.response_destination),
                               custom_payload=obj.custom_payload,
-                              forward_ton_amount=int(obj.forward_ton_amount),
+                              forward_ton_amount=int(obj.forward_ton_amount) if obj.forward_ton_amount else None,
                               forward_payload=obj.forward_payload,)
 
 
@@ -712,18 +716,20 @@ class WalletInfo(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
 
     balance: str
-    wallet_type: str
-    seqno: int
+    wallet_type: Optional[str]
+    seqno: Optional[int]
     wallet_id: Optional[int]
     last_transaction_lt: Optional[str]
     last_transaction_hash: Optional[str]
+    status: AccountStatus
     
     @classmethod
     def from_ton_http_api(cls, obj):
         null_hash = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
         return WalletInfo(balance=obj['balance'],
-                          wallet_type=obj['wallet_type'],
-                          seqno=obj['seqno'],
+                          wallet_type=obj.get('wallet_type'),
+                          seqno=obj.get('seqno'),
                           wallet_id=obj.get('wallet_id'),
                           last_transaction_lt=obj['last_transaction_id']['lt'] if obj['last_transaction_id']['lt'] != '0' else None,
-                          last_transaction_hash=hash_type(obj['last_transaction_id']['hash']) if obj['last_transaction_id']['hash'] != null_hash else None)
+                          last_transaction_hash=hash_type(obj['last_transaction_id']['hash']) if obj['last_transaction_id']['hash'] != null_hash else None,
+                          status=AccountStatus.from_ton_http_api(obj['account_state']))

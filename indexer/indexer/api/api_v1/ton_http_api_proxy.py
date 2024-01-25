@@ -103,7 +103,7 @@ async def get_account_information(
 
     return schemas.Account.from_ton_http_api(result)
 
-@router.get('/wallet', response_model=schemas.WalletInfo)
+@router.get('/wallet', response_model=schemas.WalletInfo, response_model_exclude_none=True)
 async def get_wallet_information(
     address: str = Query(..., description='Smart contract address. Can be sent in raw or user-friendly form.')
     ):
@@ -116,7 +116,7 @@ async def get_wallet_information(
     
     result = from_ton_http_api_response(response)
 
-    if not result.get('wallet_type', '').startswith('wallet'):
+    if not result.get('wallet_type', '').startswith('wallet') and result.get('account_state') != 'uninitialized':
         raise HTTPException(status_code=409, detail=f'Account {address} is not a wallet')
 
     return schemas.WalletInfo.from_ton_http_api(result)
