@@ -106,6 +106,17 @@ async def get_blocks(
     return [schemas.Block.from_orm(x) for x in res]
 
 
+@router.get("/masterchainBlockShardState", response_model=List[schemas.Block])
+async def get_shards_by_masterchain_block(seqno: int = Query(..., description='Masterchain block seqno'),
+                                          db: AsyncSession = Depends(get_db)):
+    result = await db.run_sync(crud.get_shard_state, mc_seqno=seqno)
+    if len(result) == 0:
+        raise exceptions.BlockNotFound(workchain=MASTERCHAIN_INDEX,
+                                       shard=MASTERCHAIN_SHARD,
+                                       seqno=seqno)
+    return [schemas.Block.from_orm(x) for x in result]
+
+
 # NOTE: This method is not reliable in case account was destroyed, it will return it's state before destruction. So for now we comment it out.
 # @router.get("/account", response_model=schemas.LatestAccountState)
 # async def get_account(

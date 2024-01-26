@@ -5,6 +5,7 @@ from typing import Optional, List
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import selectinload, Session, Query, contains_eager, aliased
 from indexer.core.database import (
+    ShardBlock,
     Block,
     Transaction,
     TransactionMessage,
@@ -141,6 +142,15 @@ def get_blocks(session: Session,
 
     query = limit_query(query, limit, offset)
     return query.all()
+
+# shards
+def get_shard_state(session: Session,
+               mc_seqno: int):
+    query = session.query(ShardBlock).filter(ShardBlock.mc_seqno == mc_seqno)
+    query = query.options(selectinload(ShardBlock.block))
+    query = query.order_by(ShardBlock.mc_seqno, ShardBlock.workchain, ShardBlock.shard)
+    res = query.all()
+    return [x.block for x in res]
 
 
 # Transaction utils

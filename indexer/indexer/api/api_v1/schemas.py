@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 def hash_type(value):
-    return b64_to_hex(value).upper() if value else None
+    # return b64_to_hex(value).upper() if value else None
+    return value
 
 def address_type(value):
     return address_to_raw(value).upper() if value and value != 'addr_none' else None
@@ -72,6 +73,7 @@ class Block(BaseModel):
     after_merge: bool
     before_split: bool
     after_split: bool
+    want_merge: bool
     want_split: bool
     key_block: bool
     vert_seqno_incr: bool
@@ -107,6 +109,7 @@ class Block(BaseModel):
                      after_merge=obj.after_merge,
                      before_split=obj.before_split,
                      after_split=obj.after_split,
+                     want_merge=obj.want_merge,
                      want_split=obj.want_split,
                      key_block=obj.key_block,
                      vert_seqno_incr=obj.vert_seqno_incr,
@@ -304,6 +307,7 @@ class Transaction(BaseModel):
     account_state_after: Optional[AccountState]
 
     trace_id: Optional[str]
+    mc_block_seqno: Optional[int]
 
     @classmethod
     def from_orm(cls, obj):
@@ -315,6 +319,7 @@ class Transaction(BaseModel):
                 in_msg = msg
             else:
                 out_msgs.append(msg)
+        out_msgs = sorted(out_msgs, key=lambda x: x.created_lt)
         return Transaction(account=address_type(obj.account),
                            account_friendly=address_type_friendly(obj.account, obj.account_state_latest),
                            hash=hash_type(obj.hash),
@@ -335,7 +340,8 @@ class Transaction(BaseModel):
                            out_msgs=out_msgs,
                            account_state_before=AccountState.from_orm(obj.account_state_before) if obj.account_state_before else None,
                            account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,
-                           trace_id=str(obj.event_id) if obj.event_id is not None else None,)
+                           trace_id=str(obj.event_id) if obj.event_id is not None else None,
+                           mc_block_seqno=obj.mc_block_seqno)
 
 
 class TransactionTrace(BaseModel):
@@ -542,8 +548,8 @@ class JettonBurn(BaseModel):
                           custom_payload=obj.custom_payload,)
 
 class MasterchainInfo(BaseModel):
-    first: Block
     last: Block
+    first: Block
 
 class AccountBalance(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
