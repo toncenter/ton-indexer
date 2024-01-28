@@ -1,8 +1,8 @@
 """base
 
-Revision ID: 3d09ecea0c42
+Revision ID: eb1ff8a72e07
 Revises: 
-Create Date: 2024-01-26 20:00:23.441270
+Create Date: 2024-01-28 15:34:34.609114
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '3d09ecea0c42'
+revision = 'eb1ff8a72e07'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -59,6 +59,7 @@ def upgrade():
     sa.Column('rand_seed', sa.String(length=44), nullable=True),
     sa.Column('created_by', sa.String(), nullable=True),
     sa.Column('tx_count', sa.Integer(), nullable=True),
+    sa.Column('prev_blocks', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.ForeignKeyConstraint(['mc_block_workchain', 'mc_block_shard', 'mc_block_seqno'], ['blocks.workchain', 'blocks.shard', 'blocks.seqno'], ),
     sa.PrimaryKeyConstraint('workchain', 'shard', 'seqno')
     )
@@ -307,5 +308,4 @@ def downgrade():
 
     sa.Enum('in', 'out', name='direction').drop(op.get_bind())
     sa.Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status').drop(op.get_bind())
-
     # ### end Alembic commands ###
