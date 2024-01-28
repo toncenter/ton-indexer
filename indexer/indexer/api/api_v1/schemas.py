@@ -95,6 +95,7 @@ class Block(BaseModel):
     tx_count: Optional[int]
 
     masterchain_block_ref: Optional[BlockReference]
+    prev_blocks: List[BlockReference]
 
 
     @classmethod
@@ -129,7 +130,11 @@ class Block(BaseModel):
                      masterchain_block_ref=BlockReference(workchain=obj.mc_block_workchain, 
                                                           shard=shard_type(obj.mc_block_shard), 
                                                           seqno=obj.mc_block_seqno) 
-                                           if obj.mc_block_seqno is not None else None)
+                                           if obj.mc_block_seqno is not None else None,
+                     prev_blocks=[BlockReference(workchain=p['workchain'], 
+                                                 shard=shard_type(p['shard']),
+                                                 seqno=p['seqno']) for p in obj.prev_blocks] 
+                                  if obj.prev_blocks else [])
 
 
 class AccountStatus(str, Enum):

@@ -143,6 +143,7 @@ class Block(Base):
     created_by: str = Column(String)
 
     tx_count: int = Column(Integer)
+    prev_blocks: List[Any] = Column(JSONB)
 
     transactions = relationship("Transaction", back_populates="block")
 
