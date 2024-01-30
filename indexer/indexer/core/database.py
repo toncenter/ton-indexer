@@ -155,6 +155,7 @@ class Event(Base):
     __tablename__ = 'events'
     id: int = Column(BigInteger, primary_key=True)
     meta: Dict[str, Any] = Column(JSONB)
+    processed: bool = Column(Boolean, default=False)
     
     # transactions: List["EventTransaction"] = relationship("EventTransaction", back_populates="event")
     transactions: List["Transaction"] = relationship("Transaction", 

@@ -1,0 +1,253 @@
+from __future__ import annotations
+
+from typing import Callable, Iterable
+
+from indexer.events.blocks.utils import AccountId
+from indexer.events.blocks.utils.tree_utils import EventNode
+
+
+def _get_direction_for_block(block: Block) -> int:
+    if len(block.event_nodes) == 1:
+        return 1 if block.event_nodes[0].message.direction == "out" else 0
+    return 2
+
+
+def _ensure_earliest_common_block(blocks: list[Block]) -> Block | None:
+    """Ensures that all blocks have a common block in their previous blocks, and returns it."""
+    # find block with min min_lt
+    blocks = sorted(blocks, key=lambda b: (b.min_lt, _get_direction_for_block(b)))
+    earliest_node_in_block = blocks[0]
+    connected = [earliest_node_in_block]
+    for block in blocks:
+        if block in connected:
+            continue
+        else:
+            if block.previous_block is not None:
+                if block.previous_block in connected:
+                    connected.append(block)
+                    continue
+                else:
+                    return None
+    return earliest_node_in_block
+
+
+class AccountFlow:
+    ton: int
+    fees: int
+    jettons: dict[AccountId, int]
+
+    def __init__(self):
+        self.ton = 0
+        self.fees = 0
+        self.jettons = {}
+
+    def merge(self, other: AccountFlow):
+        self.ton += other.ton
+        self.fees += other.fees
+        for jetton, amount in other.jettons.items():
+            if jetton not in self.jettons:
+                self.jettons[jetton] = 0
+            self.jettons[jetton] += amount
+
+    def to_dict(self):
+        return {
+            'ton': str(self.ton),
+            'fees': str(self.fees),
+            'jettons': {str(jetton): str(amount) for jetton, amount in self.jettons.items()}
+        }
+
+
+class AccountValueFlow:
+    flow: dict[AccountId, AccountFlow]
+
+    def __init__(self):
+        self.flow = {}
+
+    def to_dict(self):
+        return {
+            'flow': {str(account): flow.to_dict() for account, flow in self.flow.items()}
+        }
+
+    def add_ton(self, account: AccountId, amount: int):
+        if account not in self.flow:
+            self.flow[account] = AccountFlow()
+        self.flow[account].ton += amount
+
+    def add_jetton(self, account: AccountId, jetton: AccountId, amount: int):
+        if account not in self.flow:
+            self.flow[account] = AccountFlow()
+        if jetton not in self.flow[account].jettons:
+            self.flow[account].jettons[jetton] = 0
+        self.flow[account].jettons[jetton] += amount
+
+    def add_fees(self, account: AccountId, amount: int):
+        if account not in self.flow:
+            self.flow[account] = AccountFlow()
+        self.flow[account].fees += amount
+
+    def merge(self, other: AccountValueFlow):
+        for account, flow in other.flow.items():
+            if account not in self.flow:
+                self.flow[account] = AccountFlow()
+            self.flow[account].merge(flow)
+
+
+class Block:
+    event_nodes: list[EventNode]
+    children_blocks: list[Block]
+    next_blocks: list[Block]
+    previous_block: Block
+    parent: Block
+    data: any
+    min_lt: int
+    max_lt: int
+    type: str
+    value_flow: AccountValueFlow
+
+    def __init__(self, type: str, nodes: list[EventNode], v=None):
+        self.event_nodes = nodes
+        self.children_blocks = []
+        self.next_blocks = []
+        self.previous_block = None
+        self.parent = None
+        self.btype = type
+        self.data = v
+        self.value_flow = AccountValueFlow()
+        if len(nodes) != 0:
+            self.min_lt = nodes[0].message.transaction.lt
+            self.max_lt = nodes[0].message.transaction.lt
+        else:
+            self.min_lt = 0
+            self.max_lt = 0
+
+    def calculate_min_max_lt(self):
+        self.min_lt = min(n.message.transaction.lt for n in self.event_nodes)
+        self.max_lt = max(n.message.transaction.lt for n in self.event_nodes)
+
+    def iter_prev(self, predicate: Callable[[Block], bool]) -> Iterable[Block]:
+        """Iterates over all previous blocks that match predicate, starting from the closest one."""
+        r = self.previous_block
+        while r is not None:
+            if predicate(r):
+                yield r
+                r = r.previous_block
+            else:
+                return
+        return
+
+    def any_parent(self, predicate: Callable[[Block], bool]) -> bool:
+        """Checks if any of the previous blocks matches predicate."""
+        r = self.previous_block
+        while r is not None:
+            if filter(r):
+                return True
+            else:
+                r = r.previous_block
+        return False
+
+    def merge_blocks(self, blocks: list[Block]):
+        # blocks_to_merge = []
+        # for block in blocks:
+        #     if isinstance(block, SingleLevelWrapper):
+        #         blocks_to_merge.extend(block.children_blocks)
+        #     else:
+        #         blocks_to_merge.append(block)
+        """Merges all blocks into one. Preserves structure"""
+        blocks_to_merge = list(set(blocks))
+        earliest_block = _ensure_earliest_common_block(blocks_to_merge)
+        if earliest_block is None:
+            raise "Earliest common block not found"
+        for block in blocks_to_merge:
+            block.parent = self
+            self.event_nodes.extend(block.event_nodes)
+            self.children_blocks.append(block)
+            self.value_flow.merge(block.value_flow)
+        for block in earliest_block.find_next(lambda b, d: b in blocks_to_merge, stop_on_filter_unmatch=True,
+                                              yield_on_unmatch=True):
+            self.next_blocks.append(block)
+            block.previous_block = self
+        self.previous_block = earliest_block.previous_block
+        if earliest_block.previous_block is not None:
+            earliest_block.previous_block.compact_connections()
+        self.calculate_min_max_lt()
+
+    def find_next(self,
+                  node_filter: Callable[['Block', int], bool] = None,
+                  max_depth=-1,
+                  stop_on_filter_unmatch: bool = False,
+                  yield_on_unmatch: bool = False) -> Iterable['Block']:
+        """Iterates over all next blocks that match predicate, starting from the closest one."""
+        queue = list([(c, 0) for c in self.next_blocks])
+        while len(queue) > 0:
+            node, depth = queue.pop(0)
+            filter_matched = node_filter is None or node_filter(node, depth)
+            if filter_matched and not yield_on_unmatch:
+                yield node
+            elif not filter_matched and yield_on_unmatch:
+                yield node
+            should_extend_queue = (depth + 1 <= max_depth or max_depth < 0)
+            if stop_on_filter_unmatch:
+                should_extend_queue = should_extend_queue and filter_matched
+            if should_extend_queue:
+                queue.extend([(c, depth + 1) for c in node.next_blocks])
+
+    def connect(self, other: 'Block'):
+        self.next_blocks.append(other)
+        other.previous_block = self
+
+    def topmost_parent(self):
+        if self.parent is None:
+            return self
+        else:
+            return self.parent.topmost_parent()
+
+    def compact_connections(self):
+        self.next_blocks = list(
+            set(n.topmost_parent() for n in self.next_blocks if n not in self.children_blocks and n != self))
+
+    def set_prev(self, prev: 'Block'):
+        self.previous_block = prev
+
+    def __repr__(self):
+        return f"!{self.btype}:={self.data}"
+
+    def bfs_iter(self):
+        queue = [self]
+        while len(queue) > 0:
+            cur = queue.pop(0)
+            yield cur
+            queue.extend(cur.next_blocks)
+
+    def dict(self):
+        return {
+            "btype": self.btype,
+            "nodes": [n.data for n in self.event_nodes],
+            "children": [c.dict() for c in self.children_blocks],
+            "next": [n.dict() for n in self.next_blocks],
+            "value": self.data
+        }
+
+
+class SingleLevelWrapper(Block):
+    def __init__(self):
+        super().__init__('single_wrapper', [], None)
+
+    def wrap(self, blocks: list[Block]):
+        block_queue = blocks.copy()
+        nodes = []
+        while len(block_queue) > 0:
+            block = block_queue.pop(0)
+            if isinstance(block, SingleLevelWrapper):
+                block_queue.extend(block.children_blocks)
+                continue
+            self.children_blocks.append(block)
+            for next_block in block.next_blocks:
+                if next_block not in blocks:
+                    self.next_blocks.append(next_block)
+            nodes.extend(block.event_nodes)
+            if block.previous_block not in blocks:
+                self.previous_block = block.previous_block
+        self.event_nodes = list(set(nodes))
+
+        self.compact_connections()
+        self.calculate_min_max_lt()
