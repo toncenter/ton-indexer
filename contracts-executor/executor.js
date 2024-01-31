@@ -163,6 +163,8 @@ async function execute(req) {
             } else { // otherwise treat as base64-encoded boc
               argsFormatted.push(stackCell(Cell.fromBoc(Buffer.from(arg, 'base64'))[0]))
             }
+          } else if (arg == undefined) { // treat null as empty address
+            argsFormatted.push(stackSlice(beginCell().storeUint(0, 2).endCell()))
           } else {
             throw new Error("Argument type is not supported: " + typeof arg)
           }
