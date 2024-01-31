@@ -643,7 +643,11 @@ class NFTTransferParser(Parser):
         response_destination = reader.read_address()
         custom_payload = None
         if reader.read_uint(1):
-            custom_payload = cell.refs.pop(0)
+            try:
+                custom_payload = cell.refs.pop(0)
+            except:
+                logger.warning(f"Unable to get custom_payload for {context.message.msg_id}")
+                pass
         forward_ton_amount = reader.read_coins()
         forward_payload = None
         try:
