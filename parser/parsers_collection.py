@@ -11,6 +11,7 @@ from tvm_valuetypes import deserialize_boc
 from tvm_valuetypes.cell import CellData
 from sqlalchemy.orm import Session
 from sqlalchemy.future import select
+from sqlalchemy import update
 from parser.bitreader import BitReader
 from dataclasses import dataclass
 from aiokafka import AIOKafkaProducer
@@ -130,6 +131,23 @@ class Parser:
         raw = codecs.decode(codecs.encode(b64data, "utf-8"), "base64")
         return deserialize_boc(raw)
 
+# in some cases wallet was not parsed due to empty data/code. in this case we will force it to update its state
+async def check_empty_wallets(session: Session, address):
+    state = (await session.execute(select(AccountState)
+                                                .filter(AccountState.address == address)
+                                                .order_by(AccountState.last_tx_lt.desc())
+                                                )).first()
+    if not state:
+        # this is possible if someone sends transfer without state_init. rare, but possible
+        logger.warning(f"State for {address} not found")
+        return
+    state = state[0]
+    if state.code_hash is None and state.last_tx_hash == 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=':
+        logger.warning(f"Empty state found for {address}: {state}")
+        await session.execute(update(KnownAccounts).where(KnownAccounts.address == address) \
+                           .values(last_check_time=None))
+
+
 """
 TEP-74 jetton standard
 transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress
@@ -210,6 +228,7 @@ class JettonTransferParser(Parser):
         if successful:
             wallet = await get_wallet(session, context.message.destination)
             if not wallet:
+                await check_empty_wallets(session, context.message.destination)
                 raise Exception(f"Wallet not inited yet {context.message.destination}")
             return GeneratedEvent(event=Event(
                 event_scope="Jetton",
@@ -329,6 +348,7 @@ class JettonMintParser(Parser):
         if successful:
             wallet = await get_wallet(session, context.message.destination)
             if not wallet:
+                await check_empty_wallets(session, context.message.destination)
                 raise Exception(f"Wallet not inited yet {context.message.destination}")
             return GeneratedEvent(event=Event(
                 event_scope="Jetton",
