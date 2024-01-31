@@ -893,6 +893,9 @@ class NFTItemParser(ContractsExecutorParser):
             image_data=metadata.get('image_data', None),
             attributes=json.dumps(metadata.get('attributes')) if 'attributes' in metadata else None
         )
+        # cast from list to string
+        if item.description and type(item.description) == list:
+            item.description = " ".join(item.description)
         logger.info(f"Adding NFT item {item}")
 
         res = await upsert_entity(session, item, constraint="address")
