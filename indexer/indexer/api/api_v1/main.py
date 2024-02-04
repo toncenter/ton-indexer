@@ -255,7 +255,7 @@ async def get_adjacent_transactions(
     return [schemas.Transaction.from_orm(tx) for tx in res]
 
 
-@router.get('/traces', response_model=List[Optional[schemas.TransactionTrace]])
+@router.get('/traces', response_model=List[Optional[schemas.TransactionTrace]], include_in_schema=False)
 async def get_traces(
     tx_hash: List[str] = Query(None, description='List of transaction hashes'),
     trace_id: List[str] = Query(None, description='List of trace ids', include_in_schema=True),
@@ -507,7 +507,7 @@ async def get_jetton_burns(
                             sort=sort)
     return [schemas.JettonBurn.from_orm(x) for x in res]
 
-@router.get('/topAccountsByBalance', response_model=List[schemas.AccountBalance])
+@router.get('/topAccountsByBalance', response_model=List[schemas.AccountBalance], include_in_schema=False)
 async def get_top_accounts_by_balance(
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),

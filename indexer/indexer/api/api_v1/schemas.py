@@ -263,9 +263,8 @@ class AccountState(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
 
     hash: str
-    account: str
-    balance: str
-    account_status: AccountStatus
+    balance: Optional[str]
+    account_status: Optional[AccountStatus]
     frozen_hash: Optional[str]
     code_hash: Optional[str]
     data_hash: Optional[str]
@@ -273,12 +272,21 @@ class AccountState(BaseModel):
     @classmethod
     def from_orm(cls, obj):
         return AccountState(hash=hash_type(obj.hash),
-                            account=address_type(obj.account),
                             balance=obj.balance,
                             account_status=AccountStatus(obj.account_status),
                             frozen_hash=hash_type(obj.frozen_hash),
                             code_hash=hash_type(obj.code_hash),
                             data_hash=hash_type(obj.data_hash))
+    
+    @classmethod
+    def from_hash_only(cls, hash):
+        return AccountState(hash=hash_type(hash),
+                            account=None,
+                            balance=None,
+                            account_status=None,
+                            frozen_hash=None,
+                            code_hash=None,
+                            data_hash=None)
 
 
 class Transaction(BaseModel):
@@ -296,9 +304,6 @@ class Transaction(BaseModel):
 
     total_fees: str
 
-    account_state_hash_before: str
-    account_state_hash_after: str
-
     prev_trans_hash: str
     prev_trans_lt: str
 
@@ -311,7 +316,7 @@ class Transaction(BaseModel):
     account_state_before: Optional[AccountState]
     account_state_after: Optional[AccountState]
 
-    trace_id: Optional[str]
+    # trace_id: Optional[str]
     mc_block_seqno: Optional[int]
 
     @classmethod
@@ -333,8 +338,6 @@ class Transaction(BaseModel):
                            orig_status=AccountStatus(obj.orig_status),
                            end_status=AccountStatus(obj.end_status),
                            total_fees=obj.total_fees,
-                           account_state_hash_after=hash_type(obj.account_state_hash_after),
-                           account_state_hash_before=hash_type(obj.account_state_hash_before),
                            prev_trans_hash=hash_type(obj.prev_trans_hash),
                            prev_trans_lt=obj.prev_trans_lt,
                            description=obj.description,
@@ -343,9 +346,9 @@ class Transaction(BaseModel):
                                                     seqno=obj.block_seqno),
                            in_msg=in_msg,
                            out_msgs=out_msgs,
-                           account_state_before=AccountState.from_orm(obj.account_state_before) if obj.account_state_before else None,
-                           account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,
-                           trace_id=str(obj.event_id) if obj.event_id is not None else None,
+                           account_state_before=AccountState.from_orm(obj.account_state_before) if obj.account_state_before else AccountState.from_hash_only(obj.account_state_hash_before),
+                           account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else AccountState.from_hash_only(obj.account_state_hash_after),
+                        #    trace_id=str(obj.event_id) if obj.event_id is not None else None,
                            mc_block_seqno=obj.mc_block_seqno)
 
 
