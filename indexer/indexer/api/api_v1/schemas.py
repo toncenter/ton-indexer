@@ -136,6 +136,12 @@ class Block(BaseModel):
                                                  seqno=p['seqno']) for p in obj.prev_blocks] 
                                   if obj.prev_blocks else [])
 
+class BlockList(BaseModel):
+    blocks: List[Block]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return BlockList(blocks=[Block.from_orm(x) for x in obj])
 
 class AccountStatus(str, Enum):
     uninit = 'uninit'
@@ -258,6 +264,12 @@ class Message(BaseModel):
                        message_content=MessageContent.from_orm(obj.message_content, op) if obj.message_content else None,
                        init_state=MessageInitState.from_orm(obj.init_state) if obj.init_state else None)
 
+class MessageList(BaseModel):
+    messages: List[Message]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return MessageList(messages=[Message.from_orm(x) for x in obj])
 
 class AccountState(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -293,7 +305,6 @@ class Transaction(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
 
     account: str
-    account_friendly: str
     hash: str
     lt: str
 
@@ -331,7 +342,6 @@ class Transaction(BaseModel):
                 out_msgs.append(msg)
         out_msgs = sorted(out_msgs, key=lambda x: x.created_lt)
         return Transaction(account=address_type(obj.account),
-                           account_friendly=address_type_friendly(obj.account, obj.account_state_latest),
                            hash=hash_type(obj.hash),
                            lt=obj.lt,
                            now=obj.now,
@@ -351,6 +361,18 @@ class Transaction(BaseModel):
                         #    trace_id=str(obj.event_id) if obj.event_id is not None else None,
                            mc_block_seqno=obj.mc_block_seqno)
 
+class AddressBookEntry(BaseModel):
+    user_friendly: str
+
+class TransactionList(BaseModel):
+    transactions: List[Transaction]
+
+    address_book: Dict[str, AddressBookEntry]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return TransactionList(transactions=[Transaction.from_orm(x) for x in obj],
+                               address_book={x.account: AddressBookEntry(user_friendly=address_type_friendly(x.account, x.account_state_latest)) for x in obj})
 
 class TransactionTrace(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -386,6 +408,13 @@ class NFTCollection(BaseModel):
                              collection_content=obj.collection_content,
                              code_hash=hash_type(obj.code_hash),
                              data_hash=hash_type(obj.data_hash),)
+    
+class NFTCollectionList(BaseModel):
+    nft_collections: List[NFTCollection]
+    
+    @classmethod
+    def from_orm(cls, obj):
+        return NFTCollectionList(nft_collections=[NFTCollection.from_orm(x) for x in obj])
 
 
 class NFTItem(BaseModel):
@@ -416,6 +445,12 @@ class NFTItem(BaseModel):
                        content=obj.content,
                        collection=NFTCollection.from_orm(obj.collection) if obj.collection else None)
 
+class NFTItemList(BaseModel):
+    nft_items: List[NFTItem]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return NFTItemList(nft_items=[NFTItem.from_orm(x) for x in obj])
 
 class NFTTransfer(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -449,6 +484,12 @@ class NFTTransfer(BaseModel):
                            forward_amount=int(obj.forward_amount),
                            forward_payload=obj.forward_payload,)
 
+class NFTTransferList(BaseModel):
+    nft_transfers: List[NFTTransfer]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return NFTTransferList(nft_transfers=[NFTTransfer.from_orm(x) for x in obj])
 
 class JettonMaster(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -475,6 +516,12 @@ class JettonMaster(BaseModel):
                             code_hash=hash_type(obj.code_hash),
                             data_hash=hash_type(obj.data_hash),)
 
+class JettonMasterList(BaseModel):
+    jetton_masters: List[JettonMaster]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonMasterList(jetton_masters=[JettonMaster.from_orm(x) for x in obj])
 
 class JettonWallet(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -497,6 +544,12 @@ class JettonWallet(BaseModel):
                             code_hash=hash_type(obj.code_hash),
                             data_hash=hash_type(obj.data_hash),)
 
+class JettonWalletList(BaseModel):
+    jetton_wallets: List[JettonWallet]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonWalletList(jetton_wallets=[JettonWallet.from_orm(x) for x in obj])
 
 class JettonTransfer(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -531,6 +584,12 @@ class JettonTransfer(BaseModel):
                               forward_ton_amount=int(obj.forward_ton_amount) if obj.forward_ton_amount else None,
                               forward_payload=obj.forward_payload,)
 
+class JettonTransferList(BaseModel):
+    jetton_transfers: List[JettonTransfer]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonTransferList(jetton_transfers=[JettonTransfer.from_orm(x) for x in obj])
 
 class JettonBurn(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -554,6 +613,13 @@ class JettonBurn(BaseModel):
                           transaction_now=obj.transaction.now,  # TODO: maybe fix
                           response_destination=address_type(obj.response_destination),
                           custom_payload=obj.custom_payload,)
+
+class JettonBurnList(BaseModel):
+    jetton_burns: List[JettonBurn]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonBurnList(jetton_burns=[JettonBurn.from_orm(x) for x in obj])
 
 class MasterchainInfo(BaseModel):
     last: Block

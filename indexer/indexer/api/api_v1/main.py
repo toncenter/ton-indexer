@@ -73,7 +73,7 @@ def validate_block_idx(workchain, shard, seqno):
             raise ValueError('shard id required')
     return True
 
-@router.get("/blocks", response_model=List[schemas.Block])
+@router.get("/blocks", response_model=schemas.BlockList)
 async def get_blocks(
     workchain: Optional[int] = Query(None, description='Block workchain.'),
     shard: Optional[str] = Query(None, description='Block shard id. Must be sent with *workchain*.'),
@@ -103,10 +103,10 @@ async def get_blocks(
                             limit=limit,
                             offset=offset,
                             sort_gen_utime=sort,)
-    return [schemas.Block.from_orm(x) for x in res]
+    return schemas.BlockList.from_orm(res)
 
 
-@router.get("/masterchainBlockShardState", response_model=List[schemas.Block])
+@router.get("/masterchainBlockShardState", response_model=schemas.BlockList)
 async def get_shards_by_masterchain_block(seqno: int = Query(..., description='Masterchain block seqno'),
                                           db: AsyncSession = Depends(get_db)):
     result = await db.run_sync(crud.get_shard_state, mc_seqno=seqno)
@@ -114,7 +114,7 @@ async def get_shards_by_masterchain_block(seqno: int = Query(..., description='M
         raise exceptions.BlockNotFound(workchain=MASTERCHAIN_INDEX,
                                        shard=MASTERCHAIN_SHARD,
                                        seqno=seqno)
-    return [schemas.Block.from_orm(x) for x in result]
+    return schemas.BlockList.from_orm(result)
 
 
 # NOTE: This method is not reliable in case account was destroyed, it will return it's state before destruction. So for now we comment it out.
@@ -132,7 +132,7 @@ async def get_shards_by_masterchain_block(seqno: int = Query(..., description='M
 #         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Account {address} not found')
 #     return schemas.LatestAccountState.from_orm(res)
 
-@router.get("/masterchainBlockShards", response_model=List[schemas.Block])
+@router.get("/masterchainBlockShards", response_model=schemas.BlockList)
 async def get_masterchain_block_shards(
     seqno: int = Query(..., description='Masterchain block seqno'),
     include_mc_block: bool = Query(False, description='Include masterchain block'),
@@ -145,10 +145,10 @@ async def get_masterchain_block_shards(
     result = await db.run_sync(crud.get_masterchain_block_shards,
                                seqno=seqno,
                                include_mc_block=include_mc_block)
-    return [schemas.Block.from_orm(r) for r in result]
+    return schemas.BlockList.from_orm(result)
 
 
-@router.get("/transactions", response_model=List[schemas.Transaction])
+@router.get("/transactions", response_model=schemas.TransactionList)
 async def get_transactions(
     workchain: Optional[int] = Query(None, description='Block workchain.'),
     shard: Optional[str] = Query(None, description='Block shard id. Must be sent with *workchain*.'),
@@ -187,10 +187,10 @@ async def get_transactions(
                             limit=limit,
                             offset=offset,
                             sort=sort)
-    return [schemas.Transaction.from_orm(r) for r in res]
+    return schemas.TransactionList.from_orm(res)
 
 
-@router.get("/transactionsByMasterchainBlock", response_model=List[schemas.Transaction])
+@router.get("/transactionsByMasterchainBlock", response_model=schemas.TransactionList)
 async def get_transactions_by_masterchain_block(
     seqno: int = Query(..., description='Masterchain block seqno'),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
@@ -205,10 +205,10 @@ async def get_transactions_by_masterchain_block(
                             limit=limit,
                             offset=offset,
                             sort=sort)
-    return [schemas.Transaction.from_orm(tx) for tx in txs]
+    return schemas.TransactionList.from_orm(txs)
 
 
-@router.get('/transactionsByMessage', response_model=List[schemas.Transaction])
+@router.get('/transactionsByMessage', response_model=schemas.TransactionList)
 async def get_transactions_by_message(
     direction: Optional[str] = Query(..., description='Message direction.', enum=['in', 'out']),
     msg_hash: Optional[str] = Query(..., description='Message hash. Acceptable in hex, base64 and base64url forms.'),
@@ -227,10 +227,10 @@ async def get_transactions_by_message(
                                         limit=limit,
                                         offset=offset,
                                         sort='desc')
-    return [schemas.Transaction.from_orm(tx) for tx in db_transactions]
+    return schemas.TransactionList.from_orm(db_transactions)
 
 
-@router.get('/adjacentTransactions', response_model=List[schemas.Transaction])
+@router.get('/adjacentTransactions', response_model=schemas.TransactionList)
 async def get_adjacent_transactions(
     hash: str = Query(..., description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
     direction: Optional[str] = Query('both', description='Direction transactions by lt.', enum=['in', 'out', 'both']),
@@ -252,7 +252,7 @@ async def get_adjacent_transactions(
                             sort=sort,
                             include_msg_body=True,
                             include_account_state=True)
-    return [schemas.Transaction.from_orm(tx) for tx in res]
+    return schemas.TransactionList.from_orm(res)
 
 
 @router.get('/traces', response_model=List[Optional[schemas.TransactionTrace]], include_in_schema=False)
@@ -274,7 +274,7 @@ async def get_traces(
     return [schemas.TransactionTrace.from_orm(trace) if trace is not None else None for trace in result]
 
 
-@router.get('/transactionTrace', response_model=schemas.TransactionTrace)
+@router.get('/transactionTrace', response_model=schemas.TransactionTrace, include_in_schema=False)
 async def get_transaction_trace(
     hash: str = Query(..., description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
     sort: str = Query('asc', description='Sort transactions by lt.', enum=['none', 'asc', 'desc']),
@@ -289,7 +289,7 @@ async def get_transaction_trace(
     return schemas.TransactionTrace.from_orm(res)
 
 
-@router.get('/messages', response_model=List[schemas.Message])
+@router.get('/messages', response_model=schemas.MessageList)
 async def get_messages(
     hash: str = Query(None, description='Message hash. Acceptable in hex, base64 and base64url forms.'),    
     source: Optional[str] = Query(None, description='The source account address. Can be sent in hex, base64 or base64url form.'),
@@ -312,10 +312,10 @@ async def get_messages(
                             body_hash=body_hash,
                             limit=limit,
                             offset=offset)
-    return [schemas.Message.from_orm(x) for x in res]
+    return schemas.MessageList.from_orm(res)
 
 
-@router.get('/nft/collections', response_model=List[schemas.NFTCollection])
+@router.get('/nft/collections', response_model=schemas.NFTCollectionList)
 async def get_nft_collections(
     collection_address: Optional[str] = Query(None, description='NFT collection address. Must be sent in hex, base64 and base64url forms.'),
     owner_address: Optional[str] = Query(None, description='Address of NFT collection owner. Must be sent in hex, base64 and base64url forms.'),
@@ -332,10 +332,10 @@ async def get_nft_collections(
                             owner_address=owner_address,
                             limit=limit,
                             offset=offset)
-    return [schemas.NFTCollection.from_orm(x) for x in res]
+    return schemas.NFTCollectionList.from_orm(res)
 
 
-@router.get('/nft/items', response_model=List[schemas.NFTItem])
+@router.get('/nft/items', response_model=schemas.NFTItemList)
 async def get_nft_items(
     address: Optional[str] = Query(None, description='NFT address. Must be sent in hex, base64 and base64url forms.'),
     owner_address: Optional[str] = Query(None, description='Address of NFT owner. Must be sent in hex, base64 and base64url forms.'),
@@ -355,10 +355,10 @@ async def get_nft_items(
                             collection_address=collection_address,
                             limit=limit,
                             offset=offset)
-    return [schemas.NFTItem.from_orm(x) for x in res]
+    return schemas.NFTItemList.from_orm(res)
 
 
-@router.get('/nft/transfers', response_model=List[schemas.NFTTransfer])
+@router.get('/nft/transfers', response_model=schemas.NFTTransferList)
 async def get_nft_transfers(
     address: Optional[str] = Query(None, description='Address of NFT owner. Must be sent in hex, base64 and base64url forms.'),
     item_address: Optional[str] = Query(None, description='NFT item address. Must be sent in hex, base64 and base64url forms.'),
@@ -392,10 +392,10 @@ async def get_nft_transfers(
                             limit=limit,
                             offset=offset,
                             sort=sort)
-    return [schemas.NFTTransfer.from_orm(x) for x in res]
+    return schemas.NFTTransferList.from_orm(res)
 
 
-@router.get('/jetton/masters', response_model=List[schemas.JettonMaster])
+@router.get('/jetton/masters', response_model=schemas.JettonMasterList)
 async def get_jetton_masters(
     address: str = Query(None, description="Jetton Master address. Must be sent in hex, base64 and base64url forms."),
     admin_address: str = Query(None, description="Address of Jetton Master's admin. Must be sent in hex, base64 and base64url forms."),
@@ -412,10 +412,10 @@ async def get_jetton_masters(
                             admin_address=admin_address,
                             limit=limit,
                             offset=offset)
-    return [schemas.JettonMaster.from_orm(x) for x in res]
+    return schemas.JettonMasterList.from_orm(res)
 
 
-@router.get('/jetton/wallets', response_model=List[schemas.JettonWallet])
+@router.get('/jetton/wallets', response_model=schemas.JettonWalletList)
 async def get_jetton_wallets(
     address: str = Query(None, description="Jetton wallet address. Must be sent in hex, base64 and base64url forms."),
     owner_address: str = Query(None, description="Address of Jetton wallet's owner. Must be sent in hex, base64 and base64url forms."),
@@ -435,10 +435,10 @@ async def get_jetton_wallets(
                             jetton_address=jetton_address,
                             limit=limit,
                             offset=offset)
-    return [schemas.JettonWallet.from_orm(x) for x in res]
+    return schemas.JettonWalletList.from_orm(res)
 
 
-@router.get('/jetton/transfers', response_model=List[schemas.JettonTransfer])
+@router.get('/jetton/transfers', response_model=schemas.JettonTransferList)
 async def get_jetton_transfers(
     address: Optional[str] = Query(None, description='Account address. Must be sent in hex, base64 and base64url forms.'),
     jetton_wallet: Optional[str] = Query(None, description='Jetton wallet address. Must be sent in hex, base64 and base64url forms.'),
@@ -472,10 +472,10 @@ async def get_jetton_transfers(
                             limit=limit,
                             offset=offset,
                             sort=sort)
-    return [schemas.JettonTransfer.from_orm(x) for x in res]
+    return schemas.JettonTransferList.from_orm(res)
 
 
-@router.get('/jetton/burns', response_model=List[schemas.JettonBurn])
+@router.get('/jetton/burns', response_model=schemas.JettonBurnList)
 async def get_jetton_burns(
     address: Optional[str] = Query(None, description='Account address. Must be sent in hex, base64 and base64url forms.'),
     jetton_wallet: Optional[str] = Query(None, description='Jetton wallet address. Must be sent in hex, base64 and base64url forms.'),
@@ -505,7 +505,7 @@ async def get_jetton_burns(
                             limit=limit,
                             offset=offset,
                             sort=sort)
-    return [schemas.JettonBurn.from_orm(x) for x in res]
+    return schemas.JettonBurnList.from_orm(res)
 
 @router.get('/topAccountsByBalance', response_model=List[schemas.AccountBalance], include_in_schema=False)
 async def get_top_accounts_by_balance(
