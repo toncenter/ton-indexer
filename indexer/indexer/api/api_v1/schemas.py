@@ -222,9 +222,7 @@ class Message(BaseModel):
 
     hash: str
     source: Optional[str]
-    source_friendly: Optional[str]
     destination: Optional[str]
-    destination_friendly: Optional[str]
     value: Optional[str]
     fwd_fee: Optional[str]
     ihr_fee: Optional[str]
@@ -246,9 +244,7 @@ class Message(BaseModel):
         op = f'0x{(obj.opcode & 0xffffffff):08x}' if obj.opcode is not None else None
         return Message(hash=hash_type(obj.hash),
                        source=address_type(obj.source),
-                       source_friendly=address_type_friendly(obj.source, obj.source_account_state),
                        destination=address_type(obj.destination),
-                       destination_friendly=address_type_friendly(obj.destination, obj.destination_account_state),
                        value=obj.value,
                        fwd_fee=obj.fwd_fee,
                        ihr_fee=obj.ihr_fee,
@@ -371,8 +367,27 @@ class TransactionList(BaseModel):
 
     @classmethod
     def from_orm(cls, obj):
+        address_book = {}
+        for tx in obj:
+            if tx.account not in address_book:
+                address_book[tx.account] = AddressBookEntry(user_friendly=address_type_friendly(tx.account, tx.account_state_latest))
+
+            in_msg = None
+            out_msgs = []
+            for tx_msg in tx.messages:
+                if tx_msg.direction == 'in':
+                    in_msg = tx_msg.message
+                else:
+                    out_msgs.append(tx_msg.message)
+            if in_msg:
+                if in_msg.source and in_msg.source not in address_book:
+                    address_book[in_msg.source] = AddressBookEntry(user_friendly=address_type_friendly(in_msg.source, in_msg.source_account_state))
+            for msg in out_msgs:
+                if msg.destination and msg.destination not in address_book:
+                    address_book[msg.destination] = AddressBookEntry(user_friendly=address_type_friendly(msg.destination, msg.destination_account_state))
+
         return TransactionList(transactions=[Transaction.from_orm(x) for x in obj],
-                               address_book={x.account: AddressBookEntry(user_friendly=address_type_friendly(x.account, x.account_state_latest)) for x in obj})
+                               address_book=address_book)
 
 class TransactionTrace(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
