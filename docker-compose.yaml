@@ -61,10 +61,7 @@ services:
     environment: *index-worker
     networks:
       internal:
-    command: --from ${TON_WORKER_FROM:-1} \ 
-             --max-parallel-tasks ${TON_WORKER_MAX_PARALLEL_TASKS:-1024} \
-             --insert-batch-size ${TON_WORKER_INSERT_BATCH_SIZE:-512} \
-             --insert-parallel-actors ${TON_WORKER_INSERT_PARALLEL_ACTORS:-3}
+    command: --from ${TON_WORKER_FROM:-1}
     restart: unless-stopped
     depends_on:
       alembic:
