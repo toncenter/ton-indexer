@@ -203,6 +203,7 @@ def upgrade():
     op.create_index('transactions_index_3', 'transactions', ['now'], unique=False)
     op.create_index('transactions_index_4', 'transactions', ['lt'], unique=False)
     op.create_index('transactions_index_6', 'transactions', ['event_id'], unique=False)
+    op.create_index('transactions_index_7', 'transactions', ['account', 'lt'], unique=False)
     op.create_table('jetton_burns',
     sa.Column('transaction_hash', sa.String(), nullable=False),
     sa.Column('query_id', sa.Numeric(), nullable=True),
@@ -275,6 +276,7 @@ def downgrade():
     op.drop_index('jetton_burns_index_3', table_name='jetton_burns')
     op.drop_index('jetton_burns_index_2', table_name='jetton_burns')
     op.drop_table('jetton_burns')
+    op.drop_index('transactions_index_7', table_name='transactions')
     op.drop_index('transactions_index_6', table_name='transactions')
     op.drop_index('transactions_index_4', table_name='transactions')
     op.drop_index('transactions_index_3', table_name='transactions')
