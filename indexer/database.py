@@ -982,5 +982,66 @@ class TonanoTransfer(Base):
                       UniqueConstraint('msg_id')
                       )
 
+"""
+Telemint events
+"""
 
+@dataclass(init=False)
+class TelemintStartAuction(Base):
+    __tablename__ = 'telemint_start_auction'
 
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    utime: int = Column(BigInteger)
+    created_lt: int = Column(BigInteger)
+    originated_msg_hash: str = Column(String)
+    query_id: str = Column(String)
+    source: str = Column(String)
+    destination: str = Column(String)
+    beneficiary_address: str = Column(String)
+    initial_min_bid: decimal.Decimal = Column(Numeric(scale=0))
+    max_bid: decimal.Decimal = Column(Numeric(scale=0))
+    min_bid_step: int = Column(Integer)
+    min_extend_time: int = Column(BigInteger)
+    duration: int = Column(BigInteger)
+
+    __table_args__ = (
+        UniqueConstraint('msg_id'),
+    )
+
+@dataclass(init=False)
+class TelemintCancelAuction(Base):
+    __tablename__ = 'telemint_cancel_auction'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    utime: int = Column(BigInteger)
+    created_lt: int = Column(BigInteger)
+    originated_msg_hash: str = Column(String)
+    query_id: str = Column(String)
+    source: str = Column(String)
+    destination: str = Column(String)
+
+    __table_args__ = (
+        UniqueConstraint('msg_id'),
+    )
+
+@dataclass(init=False)
+class TelemintOwnershipAssigned(Base):
+    __tablename__ = 'telemint_ownership_assigned'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    utime: int = Column(BigInteger)
+    created_lt: int = Column(BigInteger)
+    originated_msg_hash: str = Column(String)
+    query_id: str = Column(String)
+    source: str = Column(String)
+    destination: str = Column(String)
+    prev_owner: str = Column(String)
+    bid: decimal.Decimal = Column(Numeric(scale=0))
+    bid_ts: int = Column(BigInteger)
+
+    __table_args__ = (
+        UniqueConstraint('msg_id'),
+    )
