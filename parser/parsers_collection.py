@@ -979,6 +979,116 @@ class NFTItemSaleParser(ContractsExecutorParser):
 
         await upsert_entity(session, item, constraint="address")
 
+class TelemintStartAuctionParser(Parser):
+    def __init__(self):
+        super(TelemintStartAuctionParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x487a8e81)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "TelemintStartAuction"
+
+    async def parse(self, session: Session, context: MessageContext):
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        op = reader.read_uint(32)
+        query_id = reader.read_uint(64)
+
+        try:
+            auction_config = cell.refs.pop(0)
+            ac_reader = BitReader(auction_config.data.data)
+            beneficiary_address = ac_reader.read_address()
+            initial_min_bid = ac_reader.read_coins()
+            max_bid = ac_reader.read_coins()
+            min_bid_step = ac_reader.read_uint(8)
+            min_extend_time = ac_reader.read_uint(32)
+            duration = ac_reader.read_uint(32)
+
+            event = TelemintStartAuction(
+                msg_id = context.message.msg_id,
+                utime = context.destination_tx.utime,
+                created_lt=context.message.created_lt,
+                originated_msg_hash = await get_originated_msg_hash(session, context.message),
+                query_id = str(query_id),
+                source = context.message.source,
+                destination = context.message.destination,
+                beneficiary_address = beneficiary_address,
+                initial_min_bid = initial_min_bid,
+                max_bid = max_bid,
+                min_bid_step = min_bid_step,
+                min_extend_time = min_extend_time,
+                duration = duration
+            )   
+            logger.info(f"Adding telemint start auction event {event}")
+            await upsert_entity(session, event)
+
+        except Exception as e:
+            logger.error(f"Unable to parse auction config {e}")
+
+class TelemintCancelAuctionParser(Parser):
+    def __init__(self):
+        super(TelemintCancelAuctionParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x371638ae)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "TelemintCancelAuction"
+
+    async def parse(self, session: Session, context: MessageContext):
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        op = reader.read_uint(32)
+        query_id = reader.read_uint(64)
+
+        event = TelemintCancelAuction(
+            msg_id = context.message.msg_id,
+            utime = context.destination_tx.utime,
+            created_lt=context.message.created_lt,
+            originated_msg_hash = await get_originated_msg_hash(session, context.message),
+            query_id = str(query_id),
+            source = context.message.source,
+            destination = context.message.destination
+        )
+        logger.info(f"Adding telemint cancel auction event {event}")
+        await upsert_entity(session, event)
+
+class TelemintOwnershipAssignedParser(Parser):
+    def __init__(self):
+        super(TelemintOwnershipAssignedParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x05138d91)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "TelemintOwnershipAssigned"
+
+    async def parse(self, session: Session, context: MessageContext):
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        op = reader.read_uint(32)
+
+        try:
+            query_id = reader.read_uint(64)
+            prev_owner = reader.read_address()
+            is_right = reader.read_uint(1)
+            sub_op = reader.read_uint(32)
+            bid = reader.read_coins()
+            bid_ts = reader.read_uint(32)
+
+            event = TelemintOwnershipAssigned(
+                msg_id = context.message.msg_id,
+                utime = context.destination_tx.utime,
+                created_lt=context.message.created_lt,
+                originated_msg_hash = await get_originated_msg_hash(session, context.message),
+                query_id = str(query_id),
+                source = context.message.source,
+                destination = context.message.destination,
+                prev_owner = prev_owner,
+                bid = bid,
+                bid_ts = bid_ts
+            )
+            logger.info(f"Adding telemint ownership assigned event {event}")
+            await upsert_entity(session, event)
+
+        except Exception as e:
+            logger.warning(f"Unable to parse forward payload for telemint ownership assigned event (msg_id = {context.message.msg_id}), skipped")
+
 class DedustV2SwapExtOutParser(Parser):
     def __init__(self):
         super(DedustV2SwapExtOutParser, self).__init__(SourceTxRequiredPredicate(OpCodePredicate(0x9c610de3)))
