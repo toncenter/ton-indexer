@@ -553,6 +553,10 @@ async def get_originated_msg_id(session: Session, msg: Message) -> int:
     assert len(messages) == 1, f"Unable to get source message for tx {tx.tx_id}"
     return await get_originated_msg_id(session, messages[0][0])
 
+async def get_originated_msg_hash(session: Session, msg: Message) -> str:
+    originated_msg_id = await get_originated_msg_id(session, msg)
+    return (await session.execute(select(Message.hash).filter(Message.msg_id == originated_msg_id))).first()[0]
+
 """
 Upserts data, primary key must be equals "id" 
 """
