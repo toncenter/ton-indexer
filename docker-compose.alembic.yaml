@@ -18,7 +18,7 @@ services:
     environment: *indexer-environment 
     secrets:
       - postgres_password
-    command: alembic upgrade head
+    command: alembic upgrade head-1
     deploy:
       mode: replicated
       replicas: 1
