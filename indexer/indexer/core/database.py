@@ -41,23 +41,12 @@ def get_engine(settings: Settings):
                                  pool_size=128, 
                                  max_overflow=24, 
                                  pool_timeout=128,
-                                 echo=False)
+                                 echo=False,
+                                 connect_args={'server_settings': {'statement_timeout': '10000'}}
+                                 )
     return engine
 engine = get_engine(settings)
 SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
-
-# sync engine
-def get_sync_engine(settings: Settings):
-    dsn = settings.pg_dsn.replace('+asyncpg', '+psycopg2')
-    logger.critical(dsn)
-    engine = create_engine(dsn, 
-                           pool_size=128, 
-                           max_overflow=24, 
-                           pool_timeout=128,
-                           echo=False)
-    return engine
-sync_engine = get_sync_engine(settings)
-SyncSessionMaker = sessionmaker(bind=sync_engine)
 
 # database
 Base = declarative_base()
