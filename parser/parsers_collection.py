@@ -1068,26 +1068,31 @@ class TelemintOwnershipAssignedParser(Parser):
             prev_owner = reader.read_address()
             is_right = reader.read_uint(1)
             sub_op = reader.read_uint(32)
-            bid = reader.read_coins()
-            bid_ts = reader.read_uint(32)
 
-            event = TelemintOwnershipAssigned(
-                msg_id = context.message.msg_id,
-                utime = context.destination_tx.utime,
-                created_lt=context.message.created_lt,
-                originated_msg_hash = await get_originated_msg_hash(session, context.message),
-                query_id = str(query_id),
-                source = context.message.source,
-                destination = context.message.destination,
-                prev_owner = prev_owner,
-                bid = bid,
-                bid_ts = bid_ts
-            )
-            logger.info(f"Adding telemint ownership assigned event {event}")
-            await upsert_entity(session, event)
+            if sub_op == 0x38127de1:  # op::teleitem_bid_info
+                bid = reader.read_coins()
+                bid_ts = reader.read_uint(32)
 
-        except Exception as e:
-            logger.warning(f"Unable to parse forward payload for telemint ownership assigned event (msg_id = {context.message.msg_id}), skipped")
+                event = TelemintOwnershipAssigned(
+                    msg_id = context.message.msg_id,
+                    utime = context.destination_tx.utime,
+                    created_lt=context.message.created_lt,
+                    originated_msg_hash = await get_originated_msg_hash(session, context.message),
+                    query_id = str(query_id),
+                    source = context.message.source,
+                    destination = context.message.destination,
+                    prev_owner = prev_owner,
+                    bid = bid,
+                    bid_ts = bid_ts
+                )
+                logger.info(f"Adding telemint ownership assigned event {event}")
+                await upsert_entity(session, event)
+                return
+
+        except Exception:
+            pass
+
+        logger.warning(f"Unable to parse forward payload for telemint ownership assigned event (msg_id = {context.message.msg_id}), skipped")
 
 class DedustV2SwapExtOutParser(Parser):
     def __init__(self):
