@@ -43,7 +43,7 @@ services:
     environment: *index-api 
     secrets:
       - postgres_password
-    command: alembic upgrade head
+    command: alembic upgrade head-1
     networks:
       internal:
     depends_on:
