@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.16)
 
-add_executable(tondb-scanner 
-    src/main.cpp
+add_library(tondb-scanner STATIC
+    # src/main.cpp
     src/InsertManager.cpp
     src/InsertManagerBase.cpp
-    src/InsertManagerPostgres.cpp
+    # src/InsertManagerPostgres.cpp
     src/DbScanner.cpp
     src/DataParser.cpp
     src/parse_token_data.cpp

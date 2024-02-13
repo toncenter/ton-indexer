@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include <queue>
-#include "InsertManager.h"
+#include "InsertManagerBase.h"
 #include <clickhouse/client.h>
 
 

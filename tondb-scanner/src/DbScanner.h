@@ -4,7 +4,6 @@
 #include "validator/db/rootdb.hpp"
 
 #include "IndexData.h"
-#include "InsertManagerPostgres.h"
 #include "DataParser.h"
 #include "EventProcessor.h"
 
