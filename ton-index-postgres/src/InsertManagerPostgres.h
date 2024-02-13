@@ -30,13 +30,9 @@ public:
   void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise) override;
 
   void upsert_jetton_wallet(JettonWalletData jetton_wallet, td::Promise<td::Unit> promise) override;
-  void get_jetton_wallet(std::string address, td::Promise<JettonWalletData> promise) override;
   void upsert_jetton_master(JettonMasterData jetton_wallet, td::Promise<td::Unit> promise) override;
-  void get_jetton_master(std::string address, td::Promise<JettonMasterData> promise) override;
   void upsert_nft_collection(NFTCollectionData nft_collection, td::Promise<td::Unit> promise) override;
-  void get_nft_collection(std::string address, td::Promise<NFTCollectionData> promise) override;
   void upsert_nft_item(NFTItemData nft_item, td::Promise<td::Unit> promise) override;
-  void get_nft_item(std::string address, td::Promise<NFTItemData> promise) override;
 };
 
 

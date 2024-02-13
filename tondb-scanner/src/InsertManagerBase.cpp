@@ -7,7 +7,7 @@ QueueStatus InsertTaskStruct::get_queue_status() {
     for(const auto& blk : parsed_block_->blocks_) {
         status.txs_ += blk.transactions.size();
         for(const auto& tx : blk.transactions) {
-            status.msgs_ += tx.out_msgs.size() + (tx.in_msg? 1 : 0);
+            status.msgs_ += tx.out_msgs.size() + (tx.in_msg ? 1 : 0);
         }
     }
     return status;
