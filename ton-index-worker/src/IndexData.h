@@ -8,6 +8,8 @@
 #include "crypto/block/block-auto.h"
 #include "crypto/block/block-parse.h"
 
+const td::uint64 CITUS_SHARDS = 1024;
+
 namespace schema {
 
 struct Message;
@@ -178,6 +180,7 @@ using TransactionDescr = std::variant<TransactionDescr_ord,
                                        TransactionDescr_merge_install>;
 
 struct Message {
+  td::uint64 tenant_id;
   td::Bits256 hash;
   td::optional<std::string> source;
   td::optional<std::string> destination;
@@ -200,6 +203,7 @@ struct Message {
 };
 
 struct Transaction {
+  td::uint64 tenant_id;
   td::Bits256 hash;
   block::StdAddress account;
   uint64_t lt;
@@ -221,29 +225,22 @@ struct Transaction {
   TransactionDescr description;
 };
 
-struct BlockReference {
-  int32_t workchain;
-  int64_t shard;
-  uint32_t seqno;
-};
-
 struct Block {
   int32_t workchain;
   int64_t shard;
-  uint32_t seqno;
+  int32_t seqno;
   std::string root_hash;
   std::string file_hash;
 
   td::optional<int32_t> mc_block_workchain;
   td::optional<int64_t> mc_block_shard;
-  td::optional<uint32_t> mc_block_seqno;
+  td::optional<int32_t> mc_block_seqno;
   
   int32_t global_id;
   int32_t version;
   bool after_merge;
   bool before_split;
   bool after_split;
-  bool want_merge;
   bool want_split;
   bool key_block;
   bool vert_seqno_incr;
@@ -261,18 +258,10 @@ struct Block {
   std::string created_by;
 
   std::vector<Transaction> transactions;
-  std::vector<BlockReference> prev_blocks;
-};
-
-struct MasterchainBlockShard {
-  uint32_t mc_seqno;
-  
-  int32_t workchain;
-  int64_t shard;
-  uint32_t seqno;
 };
 
 struct AccountState {
+  td::uint64 tenant_id;
   td::Bits256 hash;
   block::StdAddress account;
   uint32_t timestamp;
@@ -313,6 +302,7 @@ struct JettonWalletData {
 };
 
 struct JettonTransfer {
+  td::uint64 tenant_id;
   td::Bits256 transaction_hash;
   uint64_t query_id;
   td::RefInt256 amount;
@@ -326,6 +316,7 @@ struct JettonTransfer {
 };
 
 struct JettonBurn {
+  td::uint64 tenant_id;
   td::Bits256 transaction_hash;
   uint64_t query_id;
   std::string owner;
@@ -360,6 +351,7 @@ struct NFTItemData {
 };
 
 struct NFTTransfer {
+  td::uint64 tenant_id;
   td::Bits256 transaction_hash;
   uint64_t query_id;
   block::StdAddress nft_item;
@@ -376,12 +368,7 @@ struct BlockDataState {
   td::Ref<ton::validator::ShardState> block_state;
 };
 
-// using MasterchainBlockDataState = std::vector<BlockDataState>;
-struct MasterchainBlockDataState {
-  std::vector<BlockDataState> shard_blocks_;  // shard state like /shards method
-  std::vector<BlockDataState> shard_blocks_diff_;  // blocks corresponding to mc_block.
-};
-
+using MasterchainBlockDataState = std::vector<BlockDataState>;
 using BlockchainEvent = std::variant<JettonTransfer, 
                                      JettonBurn,
                                      NFTTransfer>;
@@ -391,7 +378,6 @@ struct ParsedBlock {
 
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;
-  std::vector<schema::MasterchainBlockShard> shard_state_;
 
   std::vector<BlockchainEvent> events_;
   

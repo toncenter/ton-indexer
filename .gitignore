@@ -229,3 +229,6 @@ sandbox/
 
 tondb-scanner/src/tokens.cpp
 tondb-scanner/src/tokens.h
+
+ton-index-worker/src/tokens.cpp
+ton-index-worker/src/tokens.h

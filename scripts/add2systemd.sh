@@ -17,42 +17,13 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             usage
             ;;
-        --host)
-            TASK_ARGS="${TASK_ARGS} --host $2"
-            shift; shift;;
-        --port)
-            TASK_ARGS="${TASK_ARGS} --port $2"
-            shift; shift;;
-        --user)
-            TASK_ARGS="${TASK_ARGS} --user $2"
-            shift; shift;;
-        --password)
-            TASK_ARGS="${TASK_ARGS} --password $2"
-            shift; shift;;
-        --db)
-            TASK_ARGS="${TASK_ARGS} --db $2"
-            shift; shift;;
-        --dbname)
-            TASK_ARGS="${TASK_ARGS} --dbname $2"
-            shift; shift;;
-        --from)
-            TASK_ARGS="${TASK_ARGS} --from $2"
-            shift; shift;;
-        --max-parallel-tasks)
-            TASK_ARGS="${TASK_ARGS} --max-parallel-tasks $2"
-            shift; shift;;
-        --insert-batch-size)
-            TASK_ARGS="${TASK_ARGS} --insert-batch-size $2"
-            shift; shift;;
-        --insert-parallel-actors)
-            TASK_ARGS="${TASK_ARGS} --insert-parallel-actors $2"
-            shift; shift;;
         -f|--force)
             FORCE_BUILD=1
             shift;;
         -*|--*)
-            echo "Unknown argument $1"
-            exit 1;;
+            echo "Adding argument '$1 $2' to daemon"
+            TASK_ARGS="${TASK_ARGS} $1 $2"
+            shift; shift;;
         *)
             POSITIONAL_ARGS+=($1)
             shift;;
@@ -77,7 +48,7 @@ else
     mkdir -p build
     cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=off -GNinja -S . -B ./build
     ninja -C ./build -j$(nproc) tondb-scanner
-    sudo cp ./build/tondb-scanner/tondb-scanner /usr/local/bin
+    sudo cmake --install build/
 fi
 
 # setup daemon
@@ -91,7 +62,7 @@ After = network.target
 Type = simple
 Restart = always
 RestartSec = 20
-ExecStart=/bin/sh -c '/usr/local/bin/tondb-scanner $TASK_ARGS 2>&1 | /usr/bin/cronolog /var/log/ton-index-cpp/%%Y-%%m-%%d.log'
+ExecStart=/bin/sh -c '/usr/bin/tondb-scanner $TASK_ARGS 2>&1 | /usr/bin/cronolog /var/log/ton-index-cpp.log'
 ExecStopPost = /bin/echo "ton-index-worker service down"
 User = root
 Group = root
@@ -106,4 +77,4 @@ EOF
 # enable service
 sudo systemctl daemon-reload
 sudo systemctl enable ton-index-worker.service
-sudo systemctl start ton-index-worker.service
+sudo systemctl restart ton-index-worker.service

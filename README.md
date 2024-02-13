@@ -10,7 +10,10 @@ Before installing the worker, ensure the TON Index database is set up using the 
 ### 1.1. Setup as systemd daemon
 To install as a daemon use the script below: 
 
-    ./scripts/add2systemd.sh <args> [--force]
+    ./scripts/add2systemd.sh --db /var/ton-work/db --host <ip> --port <port> \
+                             --user <postgres user> --password <postgres password> --dbname <database name> \
+                             --from 1 --max-active-tasks $(nproc) --threads $(nproc) \
+                             --max-insert-actors <number of insert actors> [--force]
 
 You may find the list of arguments in section [available arguments](#13-available-arguments). Use flag `--force` to force rebuild binary. 
 
@@ -28,12 +31,12 @@ Do the following steps to build and run index worker from source.
 
         mkdir -p build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=off -GNinja .
+        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=off -GNinja ..
         ninja -j$(nproc) tondb-scanner
 
 3. Install binary to your system:
 
-        sudo cp ./tondb-scanner/tondb-scanner /usr/local/bin
+        sudo cmake --install 
 
 4. Increase maximum opened files limit: 
 
@@ -51,7 +54,14 @@ Do the following steps to build and run index worker from source.
 * `--password <password>` - PostgreSQL password. Default: empty password.
 * `--dbname <dbname>` - PostgreSQL database name. Default: `ton_index`.
 * `--from <seqno>` - Masterchain seqno to start indexing from. Use value `1` to index the whole blockchain.
-* `--max-parallel-tasks <count>` - maximum parallel disk reading tasks. Default: `2048`.
-* `--insert-batch-size <size>` - maximum masterchain seqnos in one INSERT query. Default: `512`.
-* `--insert-parallel-actors <actors>` - maximum concurrent INSERT queries. Default: `3`.
+* `--max-active-tasks <count>` - maximum parallel disk reading tasks. Recommended value is number of CPU cores.
+* `--max-queue-blocks <size>` - maximum blocks in queue (prefetched blocks from disk).
+* `--max-queue-txs <size>` - maximum transactions in queue.
+* `--max-queue-msgs <size>` - maximum messages in queue.
+* `--max-insert-actors <actors>` - maximum concurrent INSERT queries.
+* `--max-batch-blocks <size>` - maximum blocks in batch (size of insert batch).
+* `--max-batch-txs <size>` - maximum transactions in batch.
+* `--max-batch-msgs <size>` - maximum messages in batch.
+* `--threads <threads>` - number of CPU threads.
+* `--stats-freq <seconds>` - frequency of printing a statistics.
 

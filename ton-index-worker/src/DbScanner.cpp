@@ -292,8 +292,7 @@ public:
       return;
     }
 
-    result_.shard_blocks_.push_back({mc_block_data_, mc_block_state_});
-    result_.shard_blocks_diff_.push_back({mc_block_data_, mc_block_state_});
+    result_.push_back({mc_block_data_, mc_block_state_});
 
     fetch_all_shard_blocks_between_current_and_prev_mc_blocks();
   }
@@ -305,17 +304,12 @@ public:
     for (auto& s : current_shards) {
       blocks_queue_.push(s->top_block_id());
     }
-    // LOG(INFO) << "seqno: " << mc_block_state_->get_block_id().seqno()
-    //           << " queue: " << blocks_queue_.size();
 
-    process_blocks_queue(true);
+    process_blocks_queue();
   }
 
-  void process_blocks_queue(bool to_shards) {
+  void process_blocks_queue() {
     if (blocks_queue_.empty()) {
-      // LOG(INFO) << "mc_seqno: " << result_.shard_blocks_[0].block_state->get_seqno() 
-      //           << " shards: " << result_.shard_blocks_.size() 
-      //           << " diff: " << result_.shard_blocks_diff_.size();
       promise_.set_value(std::move(result_));
       stop();
       return;
@@ -325,7 +319,7 @@ public:
       if (R.is_error()) {
         td::actor::send_closure(SelfId, &IndexQuery::error, R.move_as_error());
       } else {
-        td::actor::send_closure(SelfId, &IndexQuery::process_blocks_queue, false);
+        td::actor::send_closure(SelfId, &IndexQuery::process_blocks_queue);
       }
     });
 
@@ -334,35 +328,32 @@ public:
     ig.add_promise(std::move(P));
 
     bool no_shard_blocks = true;
-    // LOG(INFO) << "mc_seqno: " <<  mc_block_state_->get_seqno()
-    //           << " queue size: " << blocks_queue_.size() 
-    //           << " result size: " << result_.shard_blocks_diff_.size() 
-    //           << " (" << result_.shard_blocks_.size() << ")";
     while (!blocks_queue_.empty()) {
       auto blk = blocks_queue_.front();
       blocks_queue_.pop();
       
-      bool to_diff = true;
+      bool skip = false;
       for (auto& prev_shard : mc_prev_block_state_->get_shards()) {
         if (prev_shard->top_block_id() == blk) {
-          to_diff = false;
+          skip = true;
           break;
         }
       }
       if (std::find(shard_block_ids_.begin(), shard_block_ids_.end(), blk) != shard_block_ids_.end()) {
-        to_diff = false;
+        skip = true;
       }
-      if (!(to_shards || to_diff)) {
+      if (skip) {
         continue;
       }
       shard_block_ids_.push_back(blk);
 
       no_shard_blocks = false;
-      auto Q = td::PromiseCreator::lambda([SelfId = actor_id(this), blk, to_diff, to_shards, promise = ig.get_promise()](td::Result<BlockDataState> R) mutable {
+      
+      auto Q = td::PromiseCreator::lambda([SelfId = actor_id(this), blk, promise = ig.get_promise()](td::Result<BlockDataState> R) mutable {
         if (R.is_error()) {
           promise.set_error(R.move_as_error_prefix(PSTRING() << blk.to_str() << ": "));
         } else {
-          td::actor::send_closure(SelfId, &IndexQuery::got_shard_block, R.move_as_ok(), to_diff, to_shards);
+          td::actor::send_closure(SelfId, &IndexQuery::got_shard_block, R.move_as_ok());
           promise.set_value(td::Unit());
         }
       });
@@ -370,29 +361,21 @@ public:
     }
 
     if (no_shard_blocks) {
-      // LOG(INFO) << "mc_seqno: " << result_.shard_blocks_[0].block_state->get_seqno() 
-      //           << " shards: " << result_.shard_blocks_.size() 
-      //           << " diff: " << result_.shard_blocks_diff_.size();
       promise_.set_value(std::move(result_));
       stop();
     }
   }
 
-  void got_shard_block(BlockDataState block_data_state, bool to_diff, bool to_shards) {
+  void got_shard_block(BlockDataState block_data_state) {
     std::vector<ton::BlockIdExt> prev;
     ton::BlockIdExt mc_blkid;
     bool after_split;
     auto res = block::unpack_block_prev_blk_ext(block_data_state.block_data->root_cell(), block_data_state.block_data->block_id(), prev, mc_blkid, after_split);
-
-    if (to_diff) {
-      for (auto& p: prev) {
-        blocks_queue_.push(p);
-      }
-      result_.shard_blocks_diff_.push_back(block_data_state);  // std::move was removed here
+    for (auto& p: prev) {
+      blocks_queue_.push(p);
     }
-      
-    if (to_shards)
-      result_.shard_blocks_.push_back(block_data_state);
+
+    result_.push_back(std::move(block_data_state));
   }
 
   void error(td::Status error) {
@@ -407,13 +390,6 @@ public:
 void DbScanner::start_up() {
   alarm_timestamp() = td::Timestamp::in(1.0);
 
-  // // create opts
-  // auto opts_ = ton::validator::ValidatorManagerOptions::create(
-  //   ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()},
-  //   ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()}
-  // );
-
-  // db_ = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_, std::move(opts_));
   db_ = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_);
   db_caching_ = td::actor::create_actor<DbCacheWrapper>("cache_db", db_.get(), max_db_cache_size_);
 }
@@ -447,78 +423,6 @@ void DbScanner::catch_up_with_primary() {
 void DbScanner::fetch_seqno(std::uint32_t mc_seqno, td::Promise<MasterchainBlockDataState> promise) {
   td::actor::create_actor<IndexQuery>("indexquery", mc_seqno, db_.get(), db_caching_.get(), std::move(promise)).release();
 }
-
-// void DbScanner::schedule_for_processing() {
-//   while (!seqnos_to_process_.empty() && seqnos_in_progress_.size() < max_parallel_fetch_actors_) {
-//     auto mc_seqno = seqnos_to_process_.front();
-//     seqnos_to_process_.pop();
-
-//     auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<MasterchainBlockDataState> res) {
-//       td::actor::send_closure(SelfId, &DbScanner::seqno_fetched, mc_seqno, std::move(res));
-//     });
-
-//     LOG(DEBUG) << "Creating IndexQuery for mc seqno " << mc_seqno;
-//     td::actor::create_actor<IndexQuery>("indexquery", mc_seqno, db_.get(), db_caching_.get(), std::move(R)).release();
-//     seqnos_in_progress_.insert(mc_seqno);
-//   }
-// }
-
-// void DbScanner::seqno_fetched(int mc_seqno, td::Result<MasterchainBlockDataState> blocks_data_state) {
-//   if (blocks_data_state.is_error()) {
-//     LOG(ERROR) << "mc_seqno " << mc_seqno << " failed to fetch BlockDataState: " << blocks_data_state.move_as_error();
-//     reschedule_seqno(mc_seqno);
-//     return;
-//   }
-
-//   auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> res) {
-//     td::actor::send_closure(SelfId, &DbScanner::seqno_parsed, mc_seqno, std::move(res));
-//   });
-
-//   td::actor::send_closure(parse_manager_, &ParseManager::parse, mc_seqno, blocks_data_state.move_as_ok(), std::move(R));
-// }
-
-// void DbScanner::seqno_parsed(int mc_seqno, td::Result<ParsedBlockPtr> parsed_block) {
-//   if (parsed_block.is_error()) {
-//     LOG(ERROR) << "mc_seqno " << mc_seqno << " failed to parse BlockDataState: " << parsed_block.move_as_error();
-//     reschedule_seqno(mc_seqno);
-//     return;
-//   }
-
-//   auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, parsed_block = parsed_block.ok()](td::Result<td::Unit> res) {
-//     td::actor::send_closure(SelfId, &DbScanner::interfaces_processed, mc_seqno, std::move(parsed_block), std::move(res));
-//   });
-
-//   td::actor::send_closure(event_processor_, &EventProcessor::process, parsed_block.move_as_ok(), std::move(R));
-// }
-
-// void DbScanner::interfaces_processed(int mc_seqno, ParsedBlockPtr parsed_block, td::Result<td::Unit> result) {
-//   if (result.is_error()) {
-//     LOG(ERROR) << "mc_seqno " << mc_seqno << " failed to process interfaces: " << result.move_as_error();
-//     reschedule_seqno(mc_seqno);
-//     return;
-//   }
-//   auto R = td::PromiseCreator::lambda([this, SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> res) {
-//     if (res.is_ok()) {
-//       LOG(DEBUG) << "MC seqno " << mc_seqno << " insert success";
-//       td::actor::send_closure(SelfId, &DbScanner::seqno_completed, mc_seqno);
-//     } else {
-//       LOG(DEBUG) << "MC seqno " << mc_seqno << " insert failed: " << res.move_as_error();
-//       td::actor::send_closure(SelfId, &DbScanner::reschedule_seqno, mc_seqno);
-//     }
-//   });
-
-//   td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, std::move(parsed_block), std::move(R));
-// }
-
-// void DbScanner::seqno_completed(int mc_seqno) {
-//   seqnos_in_progress_.erase(mc_seqno);
-// }
-
-// void DbScanner::reschedule_seqno(int mc_seqno) {
-//   LOG(WARNING) << "MC Seqno " << mc_seqno << " rescheduled";
-//   seqnos_in_progress_.erase(mc_seqno);
-//   seqnos_to_process_.push(mc_seqno);
-// }
 
 void DbScanner::alarm() {
   alarm_timestamp() = td::Timestamp::in(1.0);

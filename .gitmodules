@@ -5,3 +5,6 @@
 [submodule "external/libpqxx"]
 	path = external/libpqxx
 	url = https://github.com/jtv/libpqxx.git
+[submodule "external/clickhouse-cpp"]
+	path = external/clickhouse-cpp
+	url = https://github.com/kdimentionaltree/clickhouse-cpp.git

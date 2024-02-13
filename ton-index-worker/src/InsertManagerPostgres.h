@@ -17,12 +17,8 @@ public:
 
     std::string get_connection_string();
   };
-  struct Options {
-    
-  };
 private:
   InsertManagerPostgres::Credential credential_;
-  InsertManagerPostgres::Options options_;
 public:
   InsertManagerPostgres(InsertManagerPostgres::Credential credential) : credential_(credential) {}
   
@@ -74,11 +70,8 @@ private:
   std::string jsonify(const schema::TrBouncePhase& bounce);
   std::string jsonify(const schema::TrComputePhase& compute);
   std::string jsonify(schema::TransactionDescr descr);
-  std::string jsonify(const schema::BlockReference& block_ref);
-  std::string jsonify(const std::vector<schema::BlockReference>& prev_blocks);
 
   void insert_blocks(pqxx::work &transaction, const std::vector<InsertTaskStruct>& insert_tasks_);
-  void insert_shard_state(pqxx::work &transaction, const std::vector<InsertTaskStruct>& insert_tasks_);
   void insert_transactions(pqxx::work &transaction, const std::vector<InsertTaskStruct>& insert_tasks_);
   void insert_messsages(pqxx::work &transaction, const std::vector<schema::Message> &messages, const std::vector<MsgBody>& msg_bodies, const std::vector<TxMsg> &tx_msgs);
   void insert_messages_contents(const std::vector<MsgBody>& msg_bodies, pqxx::work& transaction);

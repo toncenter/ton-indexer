@@ -17,21 +17,31 @@ public:
 private:
   td::Status parse_impl();
 
-  schema::Block parse_block(const td::Ref<vm::Cell>& root_cell, const ton::BlockIdExt& blk_id, block::gen::Block::Record& blk, const block::gen::BlockInfo::Record& info, 
+  schema::Block parse_block(const ton::BlockIdExt& blk_id, block::gen::Block::Record& blk, const block::gen::BlockInfo::Record& info, 
                             const block::gen::BlockExtra::Record& extra, td::optional<schema::Block> &mc_block);
-  schema::MasterchainBlockShard parse_shard_state(td::uint32 mc_seqno, const ton::BlockIdExt& shard_blk_id);
+
   td::Result<schema::Message> parse_message(td::Ref<vm::Cell> msg_cell);
+
   td::Result<schema::TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs);
+
   td::Result<schema::TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs);
+
   td::Result<schema::TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs);
+
   td::Result<schema::StorageUsedShort> parse_storage_used_short(vm::CellSlice& cs);
+  
   td::Result<schema::TrActionPhase> parse_tr_action_phase(vm::CellSlice& cs);
+
   td::Result<schema::TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs);
+
   td::Result<schema::SplitMergeInfo> parse_split_merge_info(td::Ref<vm::CellSlice>& cs);
+
   td::Result<schema::TransactionDescr> process_transaction_descr(vm::CellSlice& td_cs);
+
   td::Result<std::vector<schema::Transaction>> parse_transactions(const ton::BlockIdExt& blk_id, const block::gen::Block::Record &block, 
                                 const block::gen::BlockInfo::Record &info, const block::gen::BlockExtra::Record &extra,
                                 std::set<td::Bits256> &addresses);
+
   td::Status parse_account_states(const td::Ref<ton::validator::ShardState>& block_state, std::set<td::Bits256> &addresses);
 
 public: //TODO: refactor
