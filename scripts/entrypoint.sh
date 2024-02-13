@@ -23,9 +23,9 @@ fi
 echo "Postgres host: $POSTGRES_HOST (ip: $POSTGRES_HOST_IP)"
 
 ulimit -n 1000000
-tondb-scanner --host $POSTGRES_HOST_IP \
-              --port $POSTGRES_PORT \
-              --user $POSTGRES_USER \
-              --password $POSTGRES_PASSWORD \
-              --dbname $POSTGRES_DBNAME \
-              --db /tondb $@
+ton-index-postgres --host $POSTGRES_HOST_IP \
+                   --port $POSTGRES_PORT \
+                   --user $POSTGRES_USER \
+                   --password $POSTGRES_PASSWORD \
+                   --dbname $POSTGRES_DBNAME \
+                   --db /tondb $@

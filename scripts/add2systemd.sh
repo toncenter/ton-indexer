@@ -47,7 +47,7 @@ if [[ -f "./build" ]]; then
 else
     mkdir -p build
     cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=off -GNinja -S . -B ./build
-    ninja -C ./build -j$(nproc) tondb-scanner
+    ninja -C ./build -j$(nproc) ton-index-postgres
     sudo cmake --install build/
 fi
 
@@ -62,7 +62,7 @@ After = network.target
 Type = simple
 Restart = always
 RestartSec = 20
-ExecStart=/bin/sh -c '/usr/bin/tondb-scanner $TASK_ARGS 2>&1 | /usr/bin/cronolog /var/log/ton-index-cpp.log'
+ExecStart=/bin/sh -c '/usr/bin/ton-index-postgres $TASK_ARGS 2>&1 | /usr/bin/cronolog /var/log/ton-index-cpp.log'
 ExecStopPost = /bin/echo "ton-index-worker service down"
 User = root
 Group = root
