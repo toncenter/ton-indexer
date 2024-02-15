@@ -200,7 +200,7 @@ async def get_transactions_by_masterchain_block(
     """
     Returns transactions from masterchain block and from all shards.
     """
-    txs = await db.run_sync(crud.get_transactions_by_masterchain_seqno,
+    txs = await db.run_sync(crud.get_transactions_by_masterchain_seqno_v2,
                             masterchain_seqno=seqno,
                             limit=limit,
                             offset=offset,

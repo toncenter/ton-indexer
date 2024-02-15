@@ -246,6 +246,24 @@ def get_transactions_by_masterchain_seqno(session: Session,
     return txs
 
 
+def get_transactions_by_masterchain_seqno_v2(session :Session,
+                                             masterchain_seqno: int, 
+                                             include_msg_body: bool=True, 
+                                             include_block: bool=False,
+                                             include_account_state: bool=True,
+                                             include_trace: int=0,
+                                             limit: Optional[int]=None,
+                                             offset: Optional[int]=None,
+                                             sort: Optional[str]=None):
+    query = session.query(Transaction).filter(Transaction.mc_block_seqno == masterchain_seqno)
+    query = augment_transaction_query(query, include_msg_body, include_block, include_account_state, include_trace)
+    query = sort_transaction_query_by_lt(query, sort)
+    query = limit_query(query, limit, offset)
+    
+    txs = query.all()
+    return txs
+
+
 def get_transactions(session: Session,
                      workchain: Optional[int]=None,
                      shard: Optional[int]=None,
