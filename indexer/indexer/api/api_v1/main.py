@@ -139,11 +139,13 @@ async def get_shards_by_masterchain_block(seqno: int = Query(..., description='M
 
 @router.get("/addressBook", response_model=Dict[str, schemas.AddressBookEntry])
 async def get_address_book(
-    address: List[str] = Query(..., description="List of addresses in any form"),
+    address: List[str] = Query(..., description="List of addresses in any form. Max: 1024"),
     db: AsyncSession = Depends(get_db)):
     """
     Returns an address book for given address list.
     """
+    if len(address) > 1024:
+        raise ValueError(f'Maximum number of addresses is 1024. Got {len(address)}')
     address_list = [address_to_raw(addr) for addr in address]
     result = await db.run_sync(crud.get_latest_account_state,
                                address_list=address_list)
@@ -219,6 +221,15 @@ async def get_transactions_by_masterchain_block(
     """
     Returns transactions from masterchain block and from all shards.
     """
+    mc_block = await db.run_sync(crud.get_blocks,
+                                 workchain=MASTERCHAIN_INDEX,
+                                 shard=MASTERCHAIN_SHARD,
+                                 seqno=seqno,
+                                 limit=1)
+    if not len(mc_block):
+        raise exceptions.BlockNotFound(workchain=MASTERCHAIN_INDEX,
+                                       shard=MASTERCHAIN_SHARD,
+                                       seqno=seqno)
     txs = await db.run_sync(crud.get_transactions_by_masterchain_seqno_v2,
                             masterchain_seqno=seqno,
                             limit=limit,
