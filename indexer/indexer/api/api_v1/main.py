@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import List, Dict, Optional
 from datetime import datetime
 
 from fastapi import FastAPI, APIRouter, Depends, Query, Path, Body, status
@@ -29,8 +29,10 @@ from indexer.core import crud, exceptions
 #                     level=logging.INFO)
 # logger = logging.getLogger(__name__)
 
+
 settings = Settings()
 router = APIRouter()
+
 
 # Dependency
 async def get_db():
@@ -64,6 +66,7 @@ async def get_masterchain_info(db: AsyncSession = Depends(get_db)):
                                        seqno='latest')
     return schemas.MasterchainInfo(first=schemas.Block.from_orm(first[0]), last=schemas.Block.from_orm(last[0]))
 
+
 def validate_block_idx(workchain, shard, seqno):
     if workchain is None:
         if shard is not None or seqno is not None:
@@ -72,6 +75,7 @@ def validate_block_idx(workchain, shard, seqno):
         if seqno is not None:
             raise ValueError('shard id required')
     return True
+
 
 @router.get("/blocks", response_model=schemas.BlockList)
 async def get_blocks(
@@ -117,7 +121,7 @@ async def get_shards_by_masterchain_block(seqno: int = Query(..., description='M
     return schemas.BlockList.from_orm(result)
 
 
-# NOTE: This method is not reliable in case account was destroyed, it will return it's state before destruction. So for now we comment it out.
+# # NOTE: This method is not reliable in case account was destroyed, it will return it's state before destruction. So for now we comment it out.
 # @router.get("/account", response_model=schemas.LatestAccountState)
 # async def get_account(
 #     address: str = Query(..., description='Account address. Can be sent in raw or user-friendly format.'),
@@ -131,6 +135,21 @@ async def get_shards_by_masterchain_block(seqno: int = Query(..., description='M
 #     if res is None:
 #         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Account {address} not found')
 #     return schemas.LatestAccountState.from_orm(res)
+
+
+@router.get("/addressBook", response_model=Dict[str, schemas.AddressBookEntry])
+async def get_address_book(
+    address: List[str] = Query(..., description="List of addresses in any form"),
+    db: AsyncSession = Depends(get_db)):
+    """
+    Returns an address book for given address list.
+    """
+    address_list = [address_to_raw(addr) for addr in address]
+    result = await db.run_sync(crud.get_latest_account_state,
+                               address_list=address_list)
+    return {addr: schemas.AddressBookEntry(user_friendly=schemas.address_type_friendly(item.account, item))
+            for addr, item in zip(address, result)}
+
 
 @router.get("/masterchainBlockShards", response_model=schemas.BlockList)
 async def get_masterchain_block_shards(
@@ -280,7 +299,7 @@ async def get_transaction_trace(
     sort: str = Query('asc', description='Sort transactions by lt.', enum=['none', 'asc', 'desc']),
     db: AsyncSession = Depends(get_db)):
     """
-    Get trace graph for specified transaction.
+    Get trace graph for specified transaction. NOTE: This method will be deprecated. Please, avoid using this method in production.
     """
     hash = hash_to_b64(hash)
     res = await db.run_sync(crud.get_transaction_trace,
@@ -507,6 +526,7 @@ async def get_jetton_burns(
                             sort=sort)
     return schemas.JettonBurnList.from_orm(res)
 
+
 @router.get('/topAccountsByBalance', response_model=List[schemas.AccountBalance], include_in_schema=False)
 async def get_top_accounts_by_balance(
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
@@ -519,6 +539,7 @@ async def get_top_accounts_by_balance(
                             limit=limit,
                             offset=offset)
     return [schemas.AccountBalance.from_orm(x) for x in res]
+
 
 if settings.ton_http_api_endpoint:
     from indexer.api.api_v1.ton_http_api_proxy import router as proxy_router

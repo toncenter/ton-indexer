@@ -143,6 +143,7 @@ def get_blocks(session: Session,
     query = limit_query(query, limit, offset)
     return query.all()
 
+
 # shards
 def get_shard_state(session: Session,
                mc_seqno: int):
@@ -725,7 +726,16 @@ def get_top_accounts_by_balance(session: Session,
     query = limit_query(query, limit, offset)
     return query.all()
     
+
 def get_latest_account_state_by_address(session: Session,
                                         address: str):
     query = session.query(LatestAccountState).filter(LatestAccountState.account == address)
     return query.first()
+
+
+def get_latest_account_state(session: Session,
+                             address_list: List[str]):
+    query = session.query(LatestAccountState).filter(LatestAccountState.account.in_(address_list))
+    result = query.all()
+    result = {item.account: item for item in result}
+    return [result.get(x, None) for x in address_list]
