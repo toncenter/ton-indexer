@@ -341,7 +341,9 @@ std::string InsertBatchPostgres::jsonify(schema::TransactionDescr descr) {
       obj("action", td::JsonRaw(jsonify(ord.action.value())));
     }
     obj("aborted", td::JsonBool(ord.aborted));
-    obj("bounce", td::JsonRaw(jsonify(ord.bounce)));
+    if (ord.bounce.has_value()) {
+      obj("bounce", td::JsonRaw(jsonify(ord.bounce.value())));
+    }
     obj("destroyed", td::JsonBool(ord.destroyed));
     obj.leave();
   }

@@ -120,7 +120,7 @@ struct TransactionDescr_ord {
   TrComputePhase compute_ph;
   std::optional<TrActionPhase> action;
   bool aborted;
-  TrBouncePhase bounce;
+  std::optional<TrBouncePhase> bounce;
   bool destroyed;
 };
 
