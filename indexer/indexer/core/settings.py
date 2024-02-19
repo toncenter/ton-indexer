@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     api_root_path: str = ''
     api_title: str = ''
     ton_http_api_endpoint: str = ''
+    is_testnet: bool = False
 
     class Config:
         env_prefix = 'ton_indexer_'

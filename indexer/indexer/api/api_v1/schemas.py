@@ -3,6 +3,7 @@ from typing import List, Optional, Literal, Union, Any, Dict
 from pydantic import BaseModel, ConfigDict, Field
 
 from indexer.core.utils import b64_to_hex, address_to_raw, address_to_friendly, int_to_hex
+from indexer.core.settings import Settings
 
 from pytonlib.utils import tlb
 
@@ -46,7 +47,7 @@ def address_type_friendly(address_raw, latest_account_state):
         bounceable = False
     elif is_wallet(latest_account_state.code_hash):
         bounceable = False
-    return address_to_friendly(address_raw, bounceable) if address_raw and address_raw != 'addr_none' else None
+    return address_to_friendly(address_raw, bounceable, Settings().is_testnet) if address_raw and address_raw != 'addr_none' else None
 
 def shard_type(value):
     return int_to_hex(value, length=64, signed=True).upper() if value else None

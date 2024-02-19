@@ -13,6 +13,7 @@ x-index-api: &index-api
   TON_INDEXER_API_ROOT_PATH:
   TON_INDEXER_API_PORT:
   TON_INDEXER_TON_HTTP_API_ENDPOINT:
+  TON_INDEXER_IS_TESTNET:
   <<: *index-common
 
 x-index-worker: &index-worker

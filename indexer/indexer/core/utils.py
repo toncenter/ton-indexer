@@ -1,4 +1,4 @@
-from pytonlib.utils.address import detect_address
+from pytonlib.utils.address import detect_address, account_forms
 from functools import wraps
 from base64 import (
     b64decode,
@@ -91,12 +91,12 @@ def address_to_raw(address):
         raise ValueError(f"Invalid address: '{address}'")
     return raw_address
 
-def address_to_friendly(address: str, bounceable: bool):
+def address_to_friendly(address: str, bounceable: bool, is_testnet: bool):
     try:
         if bounceable:
-            return detect_address(address)["bounceable"]["b64url"]
+            return account_forms(address, is_testnet)["bounceable"]["b64url"]
         else:
-            return detect_address(address)["non_bounceable"]["b64url"]
+            return account_forms(address, is_testnet)["non_bounceable"]["b64url"]
     except Exception:
         raise ValueError(f"Invalid address: '{address}'")    
 

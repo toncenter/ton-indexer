@@ -9,6 +9,7 @@ x-indexer-environment: &indexer-environment
   TON_INDEXER_API_ROOT_PATH:
   TON_INDEXER_API_TITLE:
   TON_INDEXER_TON_HTTP_API_ENDPOINT:
+  TON_INDEXER_IS_TESTNET:
 
 services:
   index-api:
