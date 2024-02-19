@@ -702,16 +702,28 @@ class GetMethodParameter(BaseModel):
 
     @classmethod
     def from_ton_http_api(cls, obj):
-        if obj[0] == 'cell':
-            return GetMethodParameter(type=GetMethodParameterType.cell, value=obj[1]['bytes'])
-        elif obj[0] == 'slice':
-            return GetMethodParameter(type=GetMethodParameterType.slice, value=obj[1]['bytes'])
-        elif obj[0] == 'num':
-            return GetMethodParameter(type=GetMethodParameterType.num, value=obj[1])
-        elif obj[0] == 'list':
-            return GetMethodParameter(type=GetMethodParameterType.list, value=[GetMethodParameter.from_ton_http_api(x) for x in obj[1]['elements']])
-        elif obj[0] == 'tuple':
-            return GetMethodParameter(type=GetMethodParameterType.tuple, value=[GetMethodParameter.from_ton_http_api(x) for x in obj[1]['elements']])
+        if type(obj) is list:
+            if obj[0] == 'cell':
+                return GetMethodParameter(type=GetMethodParameterType.cell, value=obj[1]['bytes'])
+            elif obj[0] == 'slice':
+                return GetMethodParameter(type=GetMethodParameterType.slice, value=obj[1]['bytes'])
+            elif obj[0] == 'num':
+                return GetMethodParameter(type=GetMethodParameterType.num, value=obj[1])
+            elif obj[0] == 'list':
+                return GetMethodParameter(type=GetMethodParameterType.list, value=[GetMethodParameter.from_ton_http_api(x) for x in obj[1]['elements']])
+            elif obj[0] == 'tuple':
+                return GetMethodParameter(type=GetMethodParameterType.tuple, value=[GetMethodParameter.from_ton_http_api(x) for x in obj[1]['elements']])
+        elif type(obj) is dict:
+            if obj['@type'] == 'tvm.stackEntryCell':
+                return GetMethodParameter(type=GetMethodParameterType.cell, value=obj['cell']['bytes'])
+            elif obj['@type'] == 'tvm.stackEntrySlice':
+                return GetMethodParameter(type=GetMethodParameterType.slice, value=obj['slice']['bytes'])
+            elif obj['@type'] == 'tvm.stackEntryNumber':
+                return GetMethodParameter(type=GetMethodParameterType.num, value=hex(int(obj['number']['number'])))
+            elif obj['@type'] == 'tvm.stackEntryList':
+                return GetMethodParameter(type=GetMethodParameterType.list, value=[GetMethodParameter.from_ton_http_api(x) for x in obj['list']['elements']])
+            elif obj['@type'] == 'tvm.stackEntryTuple':
+                return GetMethodParameter(type=GetMethodParameterType.tuple, value=[GetMethodParameter.from_ton_http_api(x) for x in obj['tuple']['elements']])
         
         return GetMethodParameter(type=GetMethodParameterType.unsupported_type, value=None)
 

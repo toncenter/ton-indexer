@@ -180,10 +180,11 @@ def augment_transaction_query(query: Query,
 
 
 def sort_transaction_query_by_lt(query: Query, sort: str):
+    # second order by hash is needed for consistent pagination
     if sort == 'asc':
-        query = query.order_by(Transaction.lt.asc())
+        query = query.order_by(Transaction.lt.asc(), Transaction.hash.desc())
     elif sort == 'desc':
-        query = query.order_by(Transaction.lt.desc())
+        query = query.order_by(Transaction.lt.desc(), Transaction.hash.desc())
     elif sort is None or sort == 'none':
         pass
     else:
@@ -229,7 +230,8 @@ def get_transactions_by_masterchain_seqno(session: Session,
         raise BlockNotFound(workchain=MASTERCHAIN_INDEX, 
                             shard=MASTERCHAIN_SHARD, 
                             seqno=masterchain_seqno)
-    shards = session.query(Block).filter(Block.mc_block_seqno == masterchain_seqno).all()
+    # order_by is needed for consistent pagination
+    shards = session.query(Block).filter(Block.mc_block_seqno == masterchain_seqno).order_by(Block.root_hash.desc()).all()
     blocks = [mc_block] + shards
 
     fltr = or_(*[and_(Transaction.block_workchain == b.workchain, Transaction.block_shard == b.shard, Transaction.block_seqno == b.seqno)
