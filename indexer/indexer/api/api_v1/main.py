@@ -304,7 +304,7 @@ async def get_traces(
     return [schemas.TransactionTrace.from_orm(trace) if trace is not None else None for trace in result]
 
 
-@router.get('/transactionTrace', response_model=schemas.TransactionTrace)
+@router.get('/transactionTrace', response_model=schemas.TransactionTrace, include_in_schema=False)
 async def get_transaction_trace(
     hash: str = Query(..., description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
     sort: str = Query('asc', description='Sort transactions by lt.', enum=['none', 'asc', 'desc']),
