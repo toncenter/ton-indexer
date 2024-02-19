@@ -48,6 +48,19 @@ def get_engine(settings: Settings):
 engine = get_engine(settings)
 SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
 
+# async engine
+def get_sync_engine(settings: Settings):
+    pg_dsn = settings.pg_dsn.replace('+asyncpg', '')
+    logger.critical(pg_dsn)
+    engine = create_engine(pg_dsn, 
+                           pool_size=128, 
+                           max_overflow=24, 
+                           pool_timeout=128,
+                           echo=False)
+    return engine
+engine = get_sync_engine(settings)
+SyncSessionMaker = sessionmaker(bind=engine)
+
 # database
 Base = declarative_base()
 utils_url = str(engine.url).replace('+asyncpg', '')
@@ -456,6 +469,8 @@ Index("transactions_index_2", Transaction.account)
 Index("transactions_index_3", Transaction.now)
 Index("transactions_index_4", Transaction.lt)
 Index("transactions_index_6", Transaction.event_id)
+Index("transactions_index_7", Transaction.account, Transaction.lt)
+Index("transactions_index_8", Transaction.mc_block_seqno)
 
 # Index('account_states_index_1', AccountState.hash)
 # Index('account_states_index_2', AccountState.code_hash)
