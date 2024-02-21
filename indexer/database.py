@@ -1058,3 +1058,24 @@ class TonRafflesLock(Base):
     __table_args__ = (Index('raffles_lock_1', 'address'),
                       UniqueConstraint('address')
                       )
+
+@dataclass(init=False)
+class NftHistory(Base):
+    __tablename__ = 'nft_history'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    utime: int = Column(BigInteger)
+    created_lt: int = Column(BigInteger)
+    hash: str = Column(String)
+    event_type: str = Column(String)
+    nft_item_address: str = Column(String)
+    sale_address: str = Column(String)
+    current_owner: str = Column(String)
+    new_owner: str = Column(String)
+    price: int = Column(Numeric(scale=0))
+    is_auction: bool = Column(Boolean)
+
+    __table_args__ = (
+        UniqueConstraint('msg_id'),
+    )
