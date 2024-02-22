@@ -773,23 +773,23 @@ class NFTTransferParser(Parser):
             event_type = "init_sale"
             sale_address = new_owner_sale.address
             new_owner = None
-            price = 0 if SALE_CONTRACTS[new_owner_account_state.code_hash]["is_auction"] else new_owner_sale.price
-            is_auction = SALE_CONTRACTS[new_owner_account_state.code_hash]["is_auction"]
+            price = 0 if SALE_CONTRACTS[new_owner_account_state.code_hash].is_auction else new_owner_sale.price
+            is_auction = SALE_CONTRACTS[new_owner_account_state.code_hash].is_auction
 
         elif current_owner_account_state.code_hash in SALE_CONTRACTS.keys() and current_owner_sale.owner == transfer.new_owner:
             event_type = "cancel_sale"
             sale_address = current_owner_sale.address
             current_owner = current_owner_sale.owner
             new_owner = None
-            price = 0 if SALE_CONTRACTS[current_owner_account_state.code_hash]["is_auction"] else current_owner_sale.price
-            is_auction = SALE_CONTRACTS[current_owner_account_state.code_hash]["is_auction"]
+            price = 0 if SALE_CONTRACTS[current_owner_account_state.code_hash].is_auction else current_owner_sale.price
+            is_auction = SALE_CONTRACTS[current_owner_account_state.code_hash].is_auction
 
         elif current_owner_account_state.code_hash in SALE_CONTRACTS.keys() and current_owner_sale.owner != transfer.new_owner:
             event_type = "sale"
             sale_address = current_owner_sale.address
             current_owner = current_owner_sale.owner
             price = current_owner_sale.price
-            is_auction = SALE_CONTRACTS[current_owner_account_state.code_hash]["is_auction"]
+            is_auction = SALE_CONTRACTS[current_owner_account_state.code_hash].is_auction
 
         elif transfer.new_owner == "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c":
             event_type = "burn"
