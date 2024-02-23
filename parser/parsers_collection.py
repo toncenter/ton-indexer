@@ -702,6 +702,7 @@ class NFTTransferParser(Parser):
                     "nft_item": context.message.destination,
                     "new_owner": new_owner,
                     "previous_owner": context.message.source,
+                    "msg_hash": context.message.hash
                 }
             )))
 
@@ -728,7 +729,8 @@ class NFTTransferParser(Parser):
                             "new_owner": new_owner,
                             "previous_owner": prev_owner_sale.owner,
                             "price": int(prev_owner_sale.price) / 1000000000,
-                            "marketplace": prev_owner_sale.marketplace
+                            "marketplace": prev_owner_sale.marketplace,
+                            "msg_hash": context.message.hash
                         }
                     )))
             return events
