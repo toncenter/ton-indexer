@@ -1961,6 +1961,33 @@ class StormTradeNotificationParser(Parser):
         await upsert_entity(session, trade_notification)
 
 
+class TonRafflesLockParser(ContractsExecutorParser):
+    def __init__(self):
+        super(TonRafflesLockParser, self).__init__()
+
+    @staticmethod
+    def parser_name() -> str:
+        return "TonRafflesLockParser"
+
+    async def parse(self, session: Session, context: AccountContext):
+        if context.account.code_hash != 'EteT+cRJvvRce7Q2hd4h1OA8cRi1048L88e5vrSXkA0=':
+            return
+        stats = await self._execute(context.code.code, context.account.data, 'get_contract_data',
+                                          ["address", "address", "int", "int", "int", "int", "int", "int", "int"])
+
+        owner_address = stats[0]
+        jetton_wallet = stats[1]
+
+        lock = TonRafflesLock(
+            state_id=context.account.state_id,
+            address=context.account.address,
+            owner=owner_address,
+            jetton_wallet=jetton_wallet
+        )
+        logger.info(f"Adding TonRaffles lock {lock}")
+
+        await upsert_entity(session, lock, constraint="address")
+
 # Collect all declared parsers
 
 def children_iterator(klass):
