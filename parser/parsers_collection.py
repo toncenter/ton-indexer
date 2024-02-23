@@ -691,7 +691,7 @@ class NFTTransferParser(Parser):
             if not nft:
                 raise Exception(f"NFT not inited yet {context.message.destination}")
             
-            await self._parse_nft_history(session, context, transfer)
+            await self._parse_nft_history(session, context, transfer, nft)
 
             events.append(GeneratedEvent(event=Event(
                 event_scope="NFT",
@@ -738,7 +738,7 @@ class NFTTransferParser(Parser):
                     )))
             return events
 
-    async def _parse_nft_history(self, session: Session, context: MessageContext, transfer: NFTTransfer):
+    async def _parse_nft_history(self, session: Session, context: MessageContext, transfer: NFTTransfer, nft: NFTItem):
         try:
             from parser.nft_contracts import SALE_CONTRACTS
         except Exception as e:
@@ -803,7 +803,9 @@ class NFTTransferParser(Parser):
             utime=context.destination_tx.utime,
             hash=await get_originated_msg_hash(session, context.message),
             event_type=event_type,
+            nft_item_id=nft.id,
             nft_item_address=transfer.nft_item,
+            collection_address=nft.collection,
             sale_address=sale_address,
             current_owner=current_owner,
             new_owner=new_owner,
@@ -983,6 +985,7 @@ class NFTItemParser(ContractsExecutorParser):
 
         history_mint = await get_nft_history_mint(session, item.address)
         if not history_mint:
+            nft = await get_nft(session, context.account.address)
             message = await get_nft_mint_message(session, item.address, item.collection)
             message_context = await get_messages_context(session, message.msg_id)
 
@@ -992,7 +995,9 @@ class NFTItemParser(ContractsExecutorParser):
                 utime=message_context.destination_tx.utime,
                 hash=await get_originated_msg_hash(session, message),
                 event_type=NftHistory.EVENT_TYPE_MINT,
-                nft_item_address=item.address
+                nft_item_id=nft.id,
+                nft_item_address=nft.address,
+                collection_address=nft.collection
             )
             logger.info(f"Adding NFT history event {nft_history}")
             await upsert_entity(session, nft_history)
@@ -1112,42 +1117,50 @@ class TelemintStartAuctionParser(Parser):
             min_extend_time = ac_reader.read_uint(32)
             duration = ac_reader.read_uint(32)
 
-            event = TelemintStartAuction(
-                msg_id = context.message.msg_id,
-                utime = context.destination_tx.utime,
-                created_lt=context.message.created_lt,
-                originated_msg_hash = await get_originated_msg_hash(session, context.message),
-                query_id = str(query_id),
-                source = context.message.source,
-                destination = context.message.destination,
-                beneficiary_address = beneficiary_address,
-                initial_min_bid = initial_min_bid,
-                max_bid = max_bid,
-                min_bid_step = min_bid_step,
-                min_extend_time = min_extend_time,
-                duration = duration
-            )   
-            logger.info(f"Adding telemint start auction event {event}")
-            await upsert_entity(session, event)
-
-            nft_history = NftHistory(
-                msg_id=event.msg_id,
-                created_lt=event.created_lt,
-                utime=event.utime,
-                hash=event.originated_msg_hash,
-                event_type=NftHistory.EVENT_TYPE_INIT_SALE,
-                nft_item_address=event.destination,
-                sale_address=None,
-                current_owner=event.source,
-                new_owner=None,
-                price=0,
-                is_auction=True
-            )
-            logger.info(f"Adding NFT history event {nft_history}")
-            await upsert_entity(session, nft_history)
-
         except Exception as e:
-            logger.error(f"Unable to parse auction config {e}")
+            logger.error(f"Unable to parse auction config {e}, skipped")
+            return
+
+        event = TelemintStartAuction(
+            msg_id = context.message.msg_id,
+            utime = context.destination_tx.utime,
+            created_lt=context.message.created_lt,
+            originated_msg_hash = await get_originated_msg_hash(session, context.message),
+            query_id = str(query_id),
+            source = context.message.source,
+            destination = context.message.destination,
+            beneficiary_address = beneficiary_address,
+            initial_min_bid = initial_min_bid,
+            max_bid = max_bid,
+            min_bid_step = min_bid_step,
+            min_extend_time = min_extend_time,
+            duration = duration
+        )   
+        logger.info(f"Adding telemint start auction event {event}")
+        await upsert_entity(session, event)
+
+        nft = await get_nft(session, event.destination)
+        if not nft:
+            raise Exception(f"NFT not inited yet {event.destination}")
+
+        nft_history = NftHistory(
+            msg_id=event.msg_id,
+            created_lt=event.created_lt,
+            utime=event.utime,
+            hash=event.originated_msg_hash,
+            event_type=NftHistory.EVENT_TYPE_INIT_SALE,
+            nft_item_id=nft.id,
+            nft_item_address=event.destination,
+            collection_address=nft.collection,
+            sale_address=None,
+            current_owner=event.source,
+            new_owner=None,
+            price=0,
+            is_auction=True
+        )
+        logger.info(f"Adding NFT history event {nft_history}")
+        await upsert_entity(session, nft_history)
+
 
 class TelemintCancelAuctionParser(Parser):
     def __init__(self):
@@ -1175,13 +1188,19 @@ class TelemintCancelAuctionParser(Parser):
         logger.info(f"Adding telemint cancel auction event {event}")
         await upsert_entity(session, event)
 
+        nft = await get_nft(session, event.destination)
+        if not nft:
+            raise Exception(f"NFT not inited yet {event.destination}")
+
         nft_history = NftHistory(
             msg_id=event.msg_id,
             created_lt=event.created_lt,
             utime=event.utime,
             hash=event.originated_msg_hash,
             event_type=NftHistory.EVENT_TYPE_CANCEL_SALE,
+            nft_item_id=nft.id,
             nft_item_address=event.destination,
+            collection_address=nft.collection,
             sale_address=None,
             current_owner=event.source,
             new_owner=None,
@@ -1230,13 +1249,19 @@ class TelemintOwnershipAssignedParser(Parser):
                 await upsert_entity(session, event)
 
                 if prev_owner:
+                    nft = await get_nft(session, event.source)
+                    if not nft:
+                        raise Exception(f"NFT not inited yet {event.source}")
+
                     nft_history = NftHistory(
                         msg_id=event.msg_id,
                         created_lt=event.created_lt,
                         utime=event.utime,
                         hash=event.originated_msg_hash,
                         event_type=NftHistory.EVENT_TYPE_SALE,
+                        nft_item_id=nft.id,
                         nft_item_address=event.source,
+                        collection_address=nft.collection,
                         sale_address=None,
                         current_owner=event.prev_owner,
                         new_owner=event.destination,
