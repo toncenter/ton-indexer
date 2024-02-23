@@ -985,7 +985,6 @@ class TonanoTransfer(Base):
 """
 Telemint events
 """
-
 @dataclass(init=False)
 class TelemintStartAuction(Base):
     __tablename__ = 'telemint_start_auction'
@@ -1045,3 +1044,17 @@ class TelemintOwnershipAssigned(Base):
     __table_args__ = (
         UniqueConstraint('msg_id'),
     )
+
+@dataclass(init=False)
+class TonRafflesLock(Base):
+    __tablename__ = 'raffles_lock'
+
+    id: int = Column(BigInteger, primary_key=True)
+    state_id: int = Column(BigInteger, ForeignKey('account_state.state_id'))
+    address: str = Column(String)
+    owner: str = Column(String)
+    jetton_wallet: str = Column(String)
+
+    __table_args__ = (Index('raffles_lock_1', 'address'),
+                      UniqueConstraint('address')
+                      )
