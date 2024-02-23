@@ -668,8 +668,12 @@ async def update_evaa_liquidation_approved(session: Session, liquidation: EvaaLi
     await session.execute(update(EvaaLiquidation).where(EvaaLiquidation.id == liquidation.id) \
                       .values(approved=approved))
 
-async def get_account_state_by_address(session: Session, address: str) -> AccountState:
-    res = (await session.execute(select(AccountState).filter(AccountState.address == address))).first()
+async def get_account_code_hash(session: Session, address: str) -> str:
+    res = (
+        await session.execute(
+            select(AccountState.code_hash).filter(AccountState.address == address).order_by(AccountState.last_tx_lt.desc())
+        )
+    ).first()
     if not res:
         return None
     return res[0]

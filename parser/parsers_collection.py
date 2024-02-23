@@ -745,20 +745,20 @@ class NFTTransferParser(Parser):
             logger.error("Unable to init sale contracts", e)
             SALE_CONTRACTS = {}
 
-        current_owner_account_state = await get_account_state_by_address(session, transfer.current_owner)
-        if not current_owner_account_state:
+        current_owner_code_hash = await get_account_code_hash(session, transfer.current_owner)
+        if not current_owner_code_hash:
             raise Exception(f"Current owner account not inited yet {transfer.current_owner}")
 
-        new_owner_account_state = await get_account_state_by_address(session, transfer.new_owner)
-        if not new_owner_account_state:
+        new_owner_code_hash = await get_account_code_hash(session, transfer.new_owner)
+        if not new_owner_code_hash:
             raise Exception(f"New owner account not inited yet {transfer.new_owner}")
 
-        if current_owner_account_state.code_hash in SALE_CONTRACTS.keys():
+        if current_owner_code_hash in SALE_CONTRACTS.keys():
             current_owner_sale = await get_nft_sale(session, transfer.current_owner)
             if not current_owner_sale:
                 raise Exception(f"NFT sale not parsed yet {transfer.current_owner}")
 
-        if new_owner_account_state.code_hash in SALE_CONTRACTS.keys():
+        if new_owner_code_hash in SALE_CONTRACTS.keys():
             new_owner_sale = await get_nft_sale(session, transfer.new_owner)
             if not new_owner_sale:
                 raise Exception(f"NFT sale not parsed yet {transfer.new_owner}")
@@ -769,27 +769,27 @@ class NFTTransferParser(Parser):
         price = None
         is_auction = None
 
-        if new_owner_account_state.code_hash in SALE_CONTRACTS.keys():
+        if new_owner_code_hash in SALE_CONTRACTS.keys():
             event_type = NftHistory.EVENT_TYPE_INIT_SALE
             sale_address = new_owner_sale.address
             new_owner = None
-            price = 0 if SALE_CONTRACTS[new_owner_account_state.code_hash].is_auction else new_owner_sale.price
-            is_auction = SALE_CONTRACTS[new_owner_account_state.code_hash].is_auction
+            price = 0 if SALE_CONTRACTS[new_owner_code_hash].is_auction else new_owner_sale.price
+            is_auction = SALE_CONTRACTS[new_owner_code_hash].is_auction
 
-        elif current_owner_account_state.code_hash in SALE_CONTRACTS.keys() and current_owner_sale.owner == transfer.new_owner:
+        elif current_owner_code_hash in SALE_CONTRACTS.keys() and current_owner_sale.owner == transfer.new_owner:
             event_type = NftHistory.EVENT_TYPE_CANCEL_SALE
             sale_address = current_owner_sale.address
             current_owner = current_owner_sale.owner
             new_owner = None
-            price = 0 if SALE_CONTRACTS[current_owner_account_state.code_hash].is_auction else current_owner_sale.price
-            is_auction = SALE_CONTRACTS[current_owner_account_state.code_hash].is_auction
+            price = 0 if SALE_CONTRACTS[current_owner_code_hash].is_auction else current_owner_sale.price
+            is_auction = SALE_CONTRACTS[current_owner_code_hash].is_auction
 
-        elif current_owner_account_state.code_hash in SALE_CONTRACTS.keys() and current_owner_sale.owner != transfer.new_owner:
+        elif current_owner_code_hash in SALE_CONTRACTS.keys() and current_owner_sale.owner != transfer.new_owner:
             event_type = NftHistory.EVENT_TYPE_SALE
             sale_address = current_owner_sale.address
             current_owner = current_owner_sale.owner
             price = current_owner_sale.price
-            is_auction = SALE_CONTRACTS[current_owner_account_state.code_hash].is_auction
+            is_auction = SALE_CONTRACTS[current_owner_code_hash].is_auction
 
         elif transfer.new_owner == "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c":
             event_type = NftHistory.EVENT_TYPE_BURN
