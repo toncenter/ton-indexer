@@ -677,7 +677,7 @@ async def get_account_state_by_address(session: Session, address: str) -> Accoun
 async def get_nft_history_sale(session: Session, sale_address: str) -> NftHistory:
     res = (
         await session.execute(
-            select(NftHistory).filter(NftHistory.sale_address == sale_address, NftHistory.event_type == "sale")
+            select(NftHistory).filter(NftHistory.sale_address == sale_address, NftHistory.event_type == NftHistory.EVENT_TYPE_SALE)
         )
     ).first()
     if not res:
@@ -687,7 +687,7 @@ async def get_nft_history_sale(session: Session, sale_address: str) -> NftHistor
 async def get_nft_history_mint(session: Session, item_address: str) -> NftHistory:
     res = (
         await session.execute(
-            select(NftHistory).filter(NftHistory.nft_item_address == item_address, NftHistory.event_type == "mint")
+            select(NftHistory).filter(NftHistory.nft_item_address == item_address, NftHistory.event_type == NftHistory.EVENT_TYPE_MINT)
         )
     ).first()
     if not res:

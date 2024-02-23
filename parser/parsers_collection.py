@@ -770,14 +770,14 @@ class NFTTransferParser(Parser):
         is_auction = None
 
         if new_owner_account_state.code_hash in SALE_CONTRACTS.keys():
-            event_type = "init_sale"
+            event_type = NftHistory.EVENT_TYPE_INIT_SALE
             sale_address = new_owner_sale.address
             new_owner = None
             price = 0 if SALE_CONTRACTS[new_owner_account_state.code_hash].is_auction else new_owner_sale.price
             is_auction = SALE_CONTRACTS[new_owner_account_state.code_hash].is_auction
 
         elif current_owner_account_state.code_hash in SALE_CONTRACTS.keys() and current_owner_sale.owner == transfer.new_owner:
-            event_type = "cancel_sale"
+            event_type = NftHistory.EVENT_TYPE_CANCEL_SALE
             sale_address = current_owner_sale.address
             current_owner = current_owner_sale.owner
             new_owner = None
@@ -785,17 +785,17 @@ class NFTTransferParser(Parser):
             is_auction = SALE_CONTRACTS[current_owner_account_state.code_hash].is_auction
 
         elif current_owner_account_state.code_hash in SALE_CONTRACTS.keys() and current_owner_sale.owner != transfer.new_owner:
-            event_type = "sale"
+            event_type = NftHistory.EVENT_TYPE_SALE
             sale_address = current_owner_sale.address
             current_owner = current_owner_sale.owner
             price = current_owner_sale.price
             is_auction = SALE_CONTRACTS[current_owner_account_state.code_hash].is_auction
 
         elif transfer.new_owner == "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c":
-            event_type = "burn"
+            event_type = NftHistory.EVENT_TYPE_BURN
 
         else:
-            event_type = "transfer"
+            event_type = NftHistory.EVENT_TYPE_TRANSFER
 
         nft_history = NftHistory(
             msg_id=context.message.msg_id,
@@ -991,7 +991,7 @@ class NFTItemParser(ContractsExecutorParser):
                 created_lt=message.created_lt,
                 utime=message_context.destination_tx.utime,
                 hash=await get_originated_msg_hash(session, message),
-                event_type="mint",
+                event_type=NftHistory.EVENT_TYPE_MINT,
                 nft_item_address=item.address
             )
             logger.info(f"Adding NFT history event {nft_history}")
@@ -1135,7 +1135,7 @@ class TelemintStartAuctionParser(Parser):
                 created_lt=event.created_lt,
                 utime=event.utime,
                 hash=event.originated_msg_hash,
-                event_type="init_sale",
+                event_type=NftHistory.EVENT_TYPE_INIT_SALE,
                 nft_item_address=event.destination,
                 sale_address=None,
                 current_owner=event.source,
@@ -1180,7 +1180,7 @@ class TelemintCancelAuctionParser(Parser):
             created_lt=event.created_lt,
             utime=event.utime,
             hash=event.originated_msg_hash,
-            event_type="cancel_sale",
+            event_type=NftHistory.EVENT_TYPE_CANCEL_SALE,
             nft_item_address=event.destination,
             sale_address=None,
             current_owner=event.source,
@@ -1235,7 +1235,7 @@ class TelemintOwnershipAssignedParser(Parser):
                         created_lt=event.created_lt,
                         utime=event.utime,
                         hash=event.originated_msg_hash,
-                        event_type="sale",
+                        event_type=NftHistory.EVENT_TYPE_SALE,
                         nft_item_address=event.source,
                         sale_address=None,
                         current_owner=event.prev_owner,

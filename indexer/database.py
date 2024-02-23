@@ -1063,6 +1063,13 @@ class TonRafflesLock(Base):
 class NftHistory(Base):
     __tablename__ = 'nft_history'
 
+    EVENT_TYPE_MINT = "mint"
+    EVENT_TYPE_INIT_SALE = "init_sale"
+    EVENT_TYPE_CANCEL_SALE = "cancel_sale"
+    EVENT_TYPE_SALE = "sale"
+    EVENT_TYPE_TRANSFER = "transfer"
+    EVENT_TYPE_BURN = "burn"
+
     id: int = Column(BigInteger, primary_key=True)
     msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
     utime: int = Column(BigInteger)
