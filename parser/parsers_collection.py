@@ -985,22 +985,26 @@ class NFTItemParser(ContractsExecutorParser):
 
         history_mint = await get_nft_history_mint(session, item.address)
         if not history_mint:
-            nft = await get_nft(session, context.account.address)
-            message = await get_nft_mint_message(session, item.address, item.collection)
-            message_context = await get_messages_context(session, message.msg_id)
+            try:
+                nft = await get_nft(session, context.account.address)
+                message = await get_nft_mint_message(session, item.address, item.collection)
+                message_context = await get_messages_context(session, message.msg_id)
 
-            nft_history = NftHistory(
-                msg_id=message.msg_id,
-                created_lt=message.created_lt,
-                utime=message_context.destination_tx.utime,
-                hash=await get_originated_msg_hash(session, message),
-                event_type=NftHistory.EVENT_TYPE_MINT,
-                nft_item_id=nft.id,
-                nft_item_address=nft.address,
-                collection_address=nft.collection
-            )
-            logger.info(f"Adding NFT history event {nft_history}")
-            await upsert_entity(session, nft_history)
+                nft_history = NftHistory(
+                    msg_id=message.msg_id,
+                    created_lt=message.created_lt,
+                    utime=message_context.destination_tx.utime,
+                    hash=await get_originated_msg_hash(session, message),
+                    event_type=NftHistory.EVENT_TYPE_MINT,
+                    nft_item_id=nft.id,
+                    nft_item_address=nft.address,
+                    collection_address=nft.collection
+                )
+                logger.info(f"Adding NFT history event {nft_history}")
+                await upsert_entity(session, nft_history)
+
+            except Exception:
+                logger.warning(f"No NFT mint message found for item {context.account.address}")
 
         if res.rowcount > 0:
             logger.info(f"Discovered new NFT item {context.account.address}")
