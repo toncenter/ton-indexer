@@ -8,6 +8,7 @@ pydantic-settings==2.1.0
 tvm-valuetypes==0.0.10
 psycopg2-binary==2.9.9
 SQLAlchemy==1.4.46
+sqlalchemy-cockroachdb==1.4.4
 asyncpg==0.29.0
 SQLAlchemy-Utils==0.41.1
 requests==2.31.0

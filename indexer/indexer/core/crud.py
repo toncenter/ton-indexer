@@ -180,12 +180,22 @@ def augment_transaction_query(query: Query,
     return query
 
 
-def sort_transaction_query_by_lt(query: Query, sort: str):
+def sort_transaction_query_by_lt(query: Query, sort: str, column: str = 'lt'):
     # second order by hash is needed for consistent pagination
     if sort == 'asc':
-        query = query.order_by(Transaction.lt.asc(), Transaction.hash.desc())
+        if column == 'lt':
+            query = query.order_by(Transaction.lt.asc(), Transaction.hash.desc())
+        elif column == 'now':
+            query = query.order_by(Transaction.now.asc(), Transaction.hash.desc())
+        else:
+            raise ValueError(f'Unknown column "{column}"')
     elif sort == 'desc':
-        query = query.order_by(Transaction.lt.desc(), Transaction.hash.desc())
+        if column == 'lt':
+            query = query.order_by(Transaction.lt.desc(), Transaction.hash.desc())
+        elif column == 'now':
+            query = query.order_by(Transaction.now.desc(), Transaction.hash.desc())
+        else:
+            raise ValueError(f'Unknown column "{column}"')
     elif sort is None or sort == 'none':
         pass
     else:
@@ -304,9 +314,14 @@ def get_transactions(session: Session,
     if lt is not None:
         query = query.filter(Transaction.lt == lt)  # TODO: index
 
+    sort_column = 'lt'
+    if (start_lt or end_lt) and (start_utime or end_utime):
+        raise RuntimeError('Cannot query with both lt and utime')
+    elif (start_utime or end_utime):
+        sort_column = 'now'
     query = query_transactions_by_lt(query, start_lt, end_lt)
     query = query_transactions_by_utime(query, start_utime, end_utime)
-    query = sort_transaction_query_by_lt(query, sort)
+    query = sort_transaction_query_by_lt(query, sort, column=sort_column)
     query = augment_transaction_query(query, include_msg_body, include_block, include_account_state, include_trace)
     query = limit_query(query, limit, offset)
     return query.all()

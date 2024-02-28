@@ -146,12 +146,11 @@ async def get_address_book(
     """
     if len(address) > 1024:
         raise ValueError(f'Maximum number of addresses is 1024. Got {len(address)}')
-    address_list = [address_to_raw(addr) for addr in address]
+    address_list_raw = [address_to_raw(addr) for addr in address]
     result = await db.run_sync(crud.get_latest_account_state,
-                               address_list=address_list)
-    return {addr: schemas.AddressBookEntry(user_friendly=schemas.address_type_friendly(item.account, item))
-            for addr, item in zip(address, result)}
-
+                               address_list=address_list_raw)
+    return {addr: schemas.AddressBookEntry(user_friendly=schemas.address_type_friendly(addr_raw, item))
+            for addr, addr_raw, item in zip(address, address_list_raw, result)}
 
 @router.get("/masterchainBlockShards", response_model=schemas.BlockList)
 async def get_masterchain_block_shards(
