@@ -85,6 +85,8 @@ def hash_to_b64(b64_or_hex_hash):
 def address_to_raw(address):
     if address is None or address == 'addr_none':
         return None
+    if address.lower() == 'null' or address.lower() == 'none':
+        return 'null'
     try:
         raw_address = detect_address(address)["raw_form"].upper()
     except Exception:

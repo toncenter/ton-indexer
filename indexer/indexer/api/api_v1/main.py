@@ -321,8 +321,8 @@ async def get_transaction_trace(
 @router.get('/messages', response_model=schemas.MessageList)
 async def get_messages(
     hash: str = Query(None, description='Message hash. Acceptable in hex, base64 and base64url forms.'),    
-    source: Optional[str] = Query(None, description='The source account address. Can be sent in hex, base64 or base64url form.'),
-    destination: Optional[str] = Query(None, description='The destination account address. Can be sent in hex, base64 or base64url form.'),
+    source: Optional[str] = Query(None, description='The source account address. Can be sent in hex, base64 or base64url form. Use value `null` to get external messages.'),
+    destination: Optional[str] = Query(None, description='The destination account address. Can be sent in hex, base64 or base64url form. Use value `null` to get log messages.'),
     body_hash: Optional[str] = Query(None, description='Message body hash. Acceptable in hex, base64 and base64url forms.'),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),

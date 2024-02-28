@@ -484,9 +484,15 @@ def get_messages(session: Session,
     if hash is not None:
         query = query.filter(Message.hash == hash)  # TODO: index
     if source is not None:
-        query = query.filter(Message.source == source)  # TODO: index
+        if source == 'null':
+            query = query.filter(Message.source == None)
+        else:
+            query = query.filter(Message.source == source)  # TODO: index
     if destination is not None:
-        query = query.filter(Message.destination == destination)  # TODO: index
+        if destination == 'null':
+            query = query.filter(Message.destination == None)
+        else:
+            query = query.filter(Message.destination == destination)  # TODO: index
     if body_hash is not None:
         query = query.filter(Message.body_hash == body_hash)  # TODO: index
 
