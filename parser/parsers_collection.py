@@ -1092,9 +1092,8 @@ class NFTItemSaleParser(ContractsExecutorParser):
         if item.is_auction:
             nft_history = await get_nft_history_sale(session, item.address)
             if nft_history:
-                nft_history.price = item.price
+                nft_history.price = int(item.price)
                 logger.info(f"Updating sale price in NFT history {nft_history}")
-                await upsert_entity(session, nft_history)
 
 
 class TelemintStartAuctionParser(Parser):
