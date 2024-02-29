@@ -2172,6 +2172,35 @@ class TonRafflesLockParser(ContractsExecutorParser):
 
 # TONRaffles fairlaunch
 
+class TonRafflesFairlaunchParser(ContractsExecutorParser):
+    def __init__(self):
+        super(TonRafflesFairlaunchParser, self).__init__()
+
+    @staticmethod
+    def parser_name() -> str:
+        return "TonRafflesFairlaunchParser"
+
+    async def parse(self, session: Session, context: AccountContext):
+        if context.account.code_hash != 'mbztWDlndXJ7XLvQ1vWA549zTei73DDmPHyZl9IeYkk=':
+            return
+
+        cell = self._parse_boc(context.account.data)
+        reader = BitReader(cell.data.data)
+        jetton_wallet = reader.read_address()
+        liquidity_pool = reader.read_address()
+        affilate_percentage = reader.read_uint(16)
+
+        fairlaunch = TonRafflesFairlaunch(
+            state_id=context.account.state_id,
+            address=context.account.address,
+            jetton_wallet=jetton_wallet,
+            liquidity_pool=liquidity_pool,
+            affilate_percentage=affilate_percentage
+        )
+        logger.info(f"Adding TonRaffles fairlaunch {fairlaunch}")
+
+        await upsert_entity(session, fairlaunch, constraint="address")
+
 class TonRafflesFairlaunchWalletParser(ContractsExecutorParser):
     def __init__(self):
         super(TonRafflesFairlaunchWalletParser, self).__init__()

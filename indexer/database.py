@@ -1104,6 +1104,21 @@ class TonRafflesFairlaunchWallet(Base):
                       )
 
 @dataclass(init=False)
+class TonRafflesFairlaunch(Base):
+    __tablename__ = 'raffles_fairlaunch'
+
+    id: int = Column(BigInteger, primary_key=True)
+    state_id: int = Column(BigInteger, ForeignKey('account_state.state_id'))
+    address: str = Column(String)
+    jetton_wallet: str = Column(String)
+    liquidity_pool: str = Column(String)
+    affilate_percentage: int = Column(BigInteger)
+
+    __table_args__ = (
+        UniqueConstraint('address')
+                      )
+
+@dataclass(init=False)
 class TonRafflesFairlaunchPurchase(Base):
     __tablename__ = 'raffles_fairlaunch_purchase'
 
