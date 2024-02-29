@@ -1115,7 +1115,7 @@ class TonRafflesFairlaunch(Base):
     affilate_percentage: int = Column(BigInteger)
 
     __table_args__ = (
-        UniqueConstraint('address')
+        UniqueConstraint('address'),
                       )
 
 @dataclass(init=False)
