@@ -668,4 +668,42 @@ async def update_evaa_liquidation_approved(session: Session, liquidation: EvaaLi
     await session.execute(update(EvaaLiquidation).where(EvaaLiquidation.id == liquidation.id) \
                       .values(approved=approved))
 
+async def get_account_code_hash(session: Session, address: str) -> str:
+    res = (
+        await session.execute(
+            select(AccountState.code_hash).filter(AccountState.address == address).order_by(AccountState.last_tx_lt.desc())
+        )
+    ).first()
+    if not res:
+        return None
+    return res[0]
 
+async def get_nft_history_sale(session: Session, sale_address: str) -> NftHistory:
+    res = (
+        await session.execute(
+            select(NftHistory).filter(NftHistory.sale_address == sale_address, NftHistory.event_type == NftHistory.EVENT_TYPE_SALE)
+        )
+    ).first()
+    if not res:
+        return None
+    return res[0]
+
+async def get_nft_history_mint(session: Session, item_address: str) -> NftHistory:
+    res = (
+        await session.execute(
+            select(NftHistory).filter(NftHistory.nft_item_address == item_address, NftHistory.event_type == NftHistory.EVENT_TYPE_MINT)
+        )
+    ).first()
+    if not res:
+        return None
+    return res[0]
+
+async def get_nft_mint_message(session: Session, item_address: str, collection_address: str) -> Message:
+    res = (
+        await session.execute(
+            select(Message).filter(Message.source == collection_address, Message.destination == item_address)
+        )
+    ).first()
+    if not res:
+        return None
+    return res[0]
