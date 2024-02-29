@@ -2184,7 +2184,7 @@ class TonRafflesFairlaunchWalletParser(ContractsExecutorParser):
         if context.account.code_hash != 'BUNmybQWXuQjH7fJ0tN/6Y6FHtucnRBGw/qEMv5/jTA=':
             return
         stats = await self._execute(context.code.code, context.account.data, 'get_contract_data',
-                                    ["address", "address", "int", "int", "int", "int", "int", "address", "boc", "int", "int", "cell_hash"])
+                                    ["address", "address", "int", "int", "int", "int", "int", "boc", "boc", "int", "int", "cell_hash"])
 
         sale = stats[0]
         owner = stats[1]
