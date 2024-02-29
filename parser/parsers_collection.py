@@ -2213,6 +2213,7 @@ class TonRafflesFairlaunchPurchaseParser(Parser):
             return
         cell = self._parse_boc(context.content.body)
         reader = BitReader(cell.data.data)
+        reader.read_bits(32) # opcode
         query_id = reader.read_uint(64)
         amount = reader.read_coins()
 
@@ -2243,6 +2244,7 @@ class TonRafflesFairlaunchRewardParser(Parser):
             return
         cell = self._parse_boc(context.content.body)
         reader = BitReader(cell.data.data)
+        reader.read_bits(32) # opcode
         query_id = reader.read_uint(64)
         amount = reader.read_coins()
         user = reader.read_address()
