@@ -1080,6 +1080,8 @@ class NftHistory(Base):
     nft_item_address: str = Column(String)
     collection_address: str = Column(String)
     sale_address: str = Column(String)
+    code_hash: str = Column(String)
+    marketplace: str = Column(String)
     current_owner: str = Column(String)
     new_owner: str = Column(String)
     price: int = Column(Numeric(scale=0))
