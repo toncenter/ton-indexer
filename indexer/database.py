@@ -1088,3 +1088,52 @@ class NftHistory(Base):
     __table_args__ = (
         UniqueConstraint('msg_id'),
     )
+
+@dataclass(init=False)
+class TonRafflesFairlaunchWallet(Base):
+    __tablename__ = 'raffles_fairlaunch_wallet'
+
+    id: int = Column(BigInteger, primary_key=True)
+    state_id: int = Column(BigInteger, ForeignKey('account_state.state_id'))
+    address: str = Column(String)
+    owner: str = Column(String)
+    sale: str = Column(String)
+
+    __table_args__ = (Index('raffles_fairlaunch_wallet_1', 'address'),
+                      UniqueConstraint('address')
+                      )
+
+@dataclass(init=False)
+class TonRafflesFairlaunchPurchase(Base):
+    __tablename__ = 'raffles_fairlaunch_purchase'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    utime: int = Column(BigInteger)
+    created_lt: int = Column(BigInteger)
+    originated_msg_hash: str = Column(String)
+    wallet: str = Column(String) # TonRafflesFairlaunchWallet
+    query_id: str = Column(String)
+    amount: decimal.Decimal = Column(Numeric(scale=0))
+
+    __table_args__ = (
+        UniqueConstraint('msg_id'),
+    )
+
+@dataclass(init=False)
+class TonRafflesFairlaunchReward(Base):
+    __tablename__ = 'raffles_fairlaunch_reward'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    utime: int = Column(BigInteger)
+    created_lt: int = Column(BigInteger)
+    originated_msg_hash: str = Column(String)
+    query_id: str = Column(String)
+    wallet: str = Column(String) # TonRafflesFairlaunchWallet
+    amount: decimal.Decimal = Column(Numeric(scale=0))
+    user: str = Column(String)
+
+    __table_args__ = (
+        UniqueConstraint('msg_id'),
+    )

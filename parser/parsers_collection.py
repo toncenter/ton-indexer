@@ -2170,6 +2170,97 @@ class TonRafflesLockParser(ContractsExecutorParser):
 
         await upsert_entity(session, lock, constraint="address")
 
+# TONRaffles fairlaunch
+
+class TonRafflesFairlaunchWalletParser(ContractsExecutorParser):
+    def __init__(self):
+        super(TonRafflesFairlaunchWalletParser, self).__init__()
+
+    @staticmethod
+    def parser_name() -> str:
+        return "TonRafflesFairlaunchWalletParser"
+
+    async def parse(self, session: Session, context: AccountContext):
+        if context.account.code_hash != 'BUNmybQWXuQjH7fJ0tN/6Y6FHtucnRBGw/qEMv5/jTA=':
+            return
+        stats = await self._execute(context.code.code, context.account.data, 'get_contract_data',
+                                    ["address", "address", "int", "int", "int", "int", "int", "address", "boc", "int", "int", "cell_hash"])
+
+        sale = stats[0]
+        owner = stats[1]
+
+        wallet = TonRafflesFairlaunchWallet(
+            state_id=context.account.state_id,
+            address=context.account.address,
+            owner=owner,
+            sale=sale
+        )
+        logger.info(f"Adding TonRaffles fairlaunch wallet {wallet}")
+
+        await upsert_entity(session, wallet, constraint="address")
+
+class TonRafflesFairlaunchPurchaseParser(Parser):
+    def __init__(self):
+        super(TonRafflesFairlaunchPurchaseParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x6691fda5)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "TonRafflesFairlaunchPurchaseParser"
+
+    async def parse(self, session: Session, context: MessageContext):
+        if context.destination_tx.action_result_code != 0 or context.destination_tx.compute_exit_code != 0:
+            logger.warning("Failed tx for TONRaffles fairlaunch purchase")
+            return
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        query_id = reader.read_uint(64)
+        amount = reader.read_coins()
+
+        purchase = TonRafflesFairlaunchPurchase(
+            msg_id=context.message.msg_id,
+            utime=context.destination_tx.utime,
+            created_lt=context.message.created_lt,
+            originated_msg_hash=await get_originated_msg_hash(session, context.message),
+            wallet=context.message.destination,
+            query_id=str(query_id),
+            amount=amount
+        )
+        logger.info(f"Adding TONRaffles fairlaunch purchase {purchase}")
+        await upsert_entity(session, purchase)
+
+
+class TonRafflesFairlaunchRewardParser(Parser):
+    def __init__(self):
+        super(TonRafflesFairlaunchRewardParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x256c5472)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "TonRafflesFairlaunchRewardParser"
+
+    async def parse(self, session: Session, context: MessageContext):
+        if context.destination_tx.action_result_code != 0 or context.destination_tx.compute_exit_code != 0:
+            logger.warning("Failed tx for TONRaffles fairlaunch reward")
+            return
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        query_id = reader.read_uint(64)
+        amount = reader.read_coins()
+        user = reader.read_address()
+
+        purchase = TonRafflesFairlaunchReward(
+            msg_id=context.message.msg_id,
+            utime=context.destination_tx.utime,
+            created_lt=context.message.created_lt,
+            originated_msg_hash=await get_originated_msg_hash(session, context.message),
+            wallet=context.message.destination,
+            query_id=str(query_id),
+            amount=amount,
+            user=user
+        )
+        logger.info(f"Adding TONRaffles fairlaunch purchase {purchase}")
+        await upsert_entity(session, purchase)
+
+
 # Collect all declared parsers
 
 def children_iterator(klass):
