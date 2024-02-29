@@ -2183,12 +2183,12 @@ class TonRafflesFairlaunchWalletParser(ContractsExecutorParser):
     async def parse(self, session: Session, context: AccountContext):
         if context.account.code_hash != 'BUNmybQWXuQjH7fJ0tN/6Y6FHtucnRBGw/qEMv5/jTA=':
             return
-        stats = await self._execute(context.code.code, context.account.data, 'get_contract_data',
-                                    ["address", "address", "int", "int", "int", "int", "int", "boc", "boc", "int", "int", "cell_hash"])
 
-        sale = stats[0]
-        owner = stats[1]
-
+        cell = self._parse_boc(context.account.data)
+        reader = BitReader(cell.data.data)
+        sale = reader.read_address()
+        owner = reader.read_address()
+        
         wallet = TonRafflesFairlaunchWallet(
             state_id=context.account.state_id,
             address=context.account.address,
