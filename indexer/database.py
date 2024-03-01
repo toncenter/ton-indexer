@@ -629,6 +629,7 @@ class NFTItem(Base):
     image: str = Column(String)
     image_data: str = Column(String)
     attributes: str = Column(String)
+    telemint_royalty_address: str = Column(String)
 
 
     __table_args__ = (

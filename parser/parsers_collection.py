@@ -899,6 +899,15 @@ class NFTItemParser(ContractsExecutorParser):
             # we invoke get method on all contracts so ignore errors
             return
 
+        try:
+            royalty_params = await self._execute(context.code.code, context.account.data, 'royalty_params',
+                                 ["int", "int", "address"],
+                                 address=context.account.address)
+            _, _, royalty_destination = royalty_params
+            logger.debug(f"Royalty params have been found: {royalty_params}")
+        except:
+            royalty_destination = None
+
         if collection_address:
             """
             TON DNS is a special case of NFT. It metadata doesn't store initial domain (it rather stores subdomains)
@@ -927,7 +936,8 @@ class NFTItemParser(ContractsExecutorParser):
                     description=None,
                     image=None,
                     image_data=None,
-                    attributes=None
+                    attributes=None,
+                    telemint_royalty_address=royalty_destination
                 )
                 logger.info(f"Adding TON DNS item {item}")
 
@@ -984,7 +994,8 @@ class NFTItemParser(ContractsExecutorParser):
             description=metadata.get('description', None),
             image=metadata.get('image', None),
             image_data=metadata.get('image_data', None),
-            attributes=json.dumps(metadata.get('attributes')) if 'attributes' in metadata else None
+            attributes=json.dumps(metadata.get('attributes')) if 'attributes' in metadata else None,
+            telemint_royalty_address=royalty_destination
         )
         # cast from list to string
         if item.description and type(item.description) == list:
@@ -1165,6 +1176,7 @@ class TelemintStartAuctionParser(Parser):
             nft_item_id=nft.id,
             nft_item_address=event.destination,
             collection_address=nft.collection,
+            marketplace=nft.telemint_royalty_address,
             current_owner=event.source,
             price=0,
             is_auction=True
@@ -1212,6 +1224,7 @@ class TelemintCancelAuctionParser(Parser):
             nft_item_id=nft.id,
             nft_item_address=event.destination,
             collection_address=nft.collection,
+            marketplace=nft.telemint_royalty_address,
             current_owner=event.source,
             price=0,
             is_auction=True
@@ -1271,6 +1284,7 @@ class TelemintOwnershipAssignedParser(Parser):
                         nft_item_id=nft.id,
                         nft_item_address=event.source,
                         collection_address=nft.collection,
+                        marketplace=nft.telemint_royalty_address,
                         current_owner=event.prev_owner,
                         new_owner=event.destination,
                         price=event.bid,
