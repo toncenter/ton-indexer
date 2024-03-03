@@ -468,7 +468,7 @@ public:
 
   void parse_transfer_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonTransfer> promise) {
     tokens::gen::InternalMsgBody::Record_transfer_jetton transfer_record;
-    if (!tlb::csr_unpack(cs, transfer_record)) {
+    if (!tlb::csr_unpack_inexact(cs, transfer_record)) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to unpack transfer"));
       return;
     }
@@ -529,7 +529,7 @@ public:
 
   void parse_burn_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonBurn> promise) {
     tokens::gen::InternalMsgBody::Record_burn burn_record;
-    if (!tlb::csr_unpack(cs, burn_record)) {
+    if (!tlb::csr_unpack_inexact(cs, burn_record)) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to unpack burn"));
       return;
     }
@@ -795,7 +795,7 @@ public:
 
   void parse_transfer_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<NFTTransfer> promise) {
     tokens::gen::InternalMsgBody::Record_transfer_nft transfer_record;
-    if (!tlb::csr_unpack(cs, transfer_record)) {
+    if (!tlb::csr_unpack_inexact(cs, transfer_record)) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to unpack transfer"));
       return;
     }
