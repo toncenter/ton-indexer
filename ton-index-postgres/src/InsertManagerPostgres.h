@@ -55,7 +55,7 @@ private:
   };
 
   struct MsgBody {
-    std::string hash;
+    td::Bits256 hash;
     std::string body;
   };
 
