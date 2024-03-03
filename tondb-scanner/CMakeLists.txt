@@ -44,5 +44,3 @@ add_custom_command(
 
 add_custom_target(tlb_generate_tokens DEPENDS ${TLB_TOKENS})
 add_dependencies(tondb-scanner tlb_generate_tokens)
-
-install(TARGETS tondb-scanner RUNTIME DESTINATION bin)

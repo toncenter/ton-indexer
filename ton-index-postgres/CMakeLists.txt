@@ -20,3 +20,5 @@ target_link_directories(ton-index-postgres
 target_compile_features(ton-index-postgres PRIVATE cxx_std_17)
 target_link_libraries(ton-index-postgres tondb-scanner overlay tdutils tdactor adnl tl_api dht ton_crypto
         catchain validatorsession validator-disk ton_validator validator-disk smc-envelope pqxx)
+
+install(TARGETS ton-index-postgres RUNTIME DESTINATION bin)
