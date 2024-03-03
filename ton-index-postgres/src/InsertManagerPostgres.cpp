@@ -79,13 +79,13 @@ void InsertBatchPostgres::start_up() {
             }
             td::Bits256 body_hash = msg.body->get_hash().bits();
             if (msg_bodies_in_progress.find(body_hash) == msg_bodies_in_progress.end()) {
-              msg_bodies.push_back({td::base64_encode(body_hash.as_slice()), msg.body_boc});
+              msg_bodies.push_back({body_hash, msg.body_boc});
               msg_bodies_in_progress.insert(body_hash);
             }
             if (msg.init_state_boc) {
               td::Bits256 init_state_hash = msg.init_state->get_hash().bits();
               if (msg_bodies_in_progress.find(init_state_hash) == msg_bodies_in_progress.end()) {
-                msg_bodies.push_back({td::base64_encode(init_state_hash.as_slice()), msg.init_state_boc.value()});
+                msg_bodies.push_back({init_state_hash, msg.init_state_boc.value()});
                 msg_bodies_in_progress.insert(init_state_hash);
               }
             }
@@ -98,13 +98,13 @@ void InsertBatchPostgres::start_up() {
             }
             td::Bits256 body_hash = msg.body->get_hash().bits();
             if (msg_bodies_in_progress.find(body_hash) == msg_bodies_in_progress.end()) {
-              msg_bodies.push_back({td::base64_encode(body_hash.as_slice()), msg.body_boc});
+              msg_bodies.push_back({body_hash, msg.body_boc});
               msg_bodies_in_progress.insert(body_hash);
             }
             if (msg.init_state_boc) {
               td::Bits256 init_state_hash = msg.init_state->get_hash().bits();
               if (msg_bodies_in_progress.find(init_state_hash) == msg_bodies_in_progress.end()) {
-                msg_bodies.push_back({td::base64_encode(init_state_hash.as_slice()), msg.init_state_boc.value()});
+                msg_bodies.push_back({init_state_hash, msg.init_state_boc.value()});
                 msg_bodies_in_progress.insert(init_state_hash);
               }
             }
@@ -156,6 +156,9 @@ void InsertBatchPostgres::start_up() {
     std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
     for (const auto& msg : messages) {
       messages_in_progress.erase(msg.hash);
+    }
+    for (const auto& msg_body : msg_bodies) {
+      msg_bodies_in_progress.erase(msg_body.hash);
     }
   }
 
@@ -613,7 +616,7 @@ void InsertBatchPostgres::insert_messages_contents(const std::vector<MsgBody>& m
     }
 
     query << "("
-          << "'" << msg_body.hash << "',"
+          << TO_SQL_STRING(td::base64_encode(msg_body.hash.as_slice())) << ","
           << TO_SQL_STRING(msg_body.body)
           << ")";
 
