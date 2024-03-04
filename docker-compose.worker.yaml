@@ -1,6 +1,7 @@
 version: '3.9'
 
 x-indexer-environment: &indexer-environment
+  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
   POSTGRES_HOST: postgres
   POSTGRES_PORT: 5432
   POSTGRES_USER: postgres
@@ -40,4 +41,4 @@ networks:
 
 secrets:
   postgres_password:
-    file: private/postgres_password
+    file: ${POSTGRES_PASSWORD_FILE:-private/postgres_password}

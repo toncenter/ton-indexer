@@ -42,11 +42,24 @@ def get_engine(settings: Settings):
                                  max_overflow=24, 
                                  pool_timeout=128,
                                  echo=False,
-                                 connect_args={'server_settings': {'statement_timeout': '10000'}}
+                                 connect_args={'server_settings': {'statement_timeout': '3000'}}
                                  )
     return engine
 engine = get_engine(settings)
 SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
+
+# async engine
+def get_sync_engine(settings: Settings):
+    pg_dsn = settings.pg_dsn.replace('+asyncpg', '')
+    logger.critical(pg_dsn)
+    engine = create_engine(pg_dsn, 
+                           pool_size=128, 
+                           max_overflow=24, 
+                           pool_timeout=128,
+                           echo=False)
+    return engine
+engine = get_sync_engine(settings)
+SyncSessionMaker = sessionmaker(bind=engine)
 
 # database
 Base = declarative_base()
@@ -451,11 +464,12 @@ Index("blocks_index_2", Block.gen_utime)
 Index("blocks_index_3", Block.mc_block_workchain, Block.mc_block_shard, Block.mc_block_seqno)
 
 Index("transactions_index_1", Transaction.block_workchain, Transaction.block_shard, Transaction.block_seqno)
-Index("transactions_index_2", Transaction.account)
-# Index("transactions_index_3", Transaction.hash)
-Index("transactions_index_3", Transaction.now)
-Index("transactions_index_4", Transaction.lt)
+Index("transactions_index_2", Transaction.account, Transaction.lt)
+Index("transactions_index_2a", Transaction.account, Transaction.now)
+Index("transactions_index_3", Transaction.now, Transaction.hash)
+Index("transactions_index_4", Transaction.lt, Transaction.hash)
 Index("transactions_index_6", Transaction.event_id)
+Index("transactions_index_8", Transaction.mc_block_seqno)
 
 # Index('account_states_index_1', AccountState.hash)
 # Index('account_states_index_2', AccountState.code_hash)

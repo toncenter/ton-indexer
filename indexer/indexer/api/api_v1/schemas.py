@@ -11,13 +11,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-
 def hash_type(value):
     # return b64_to_hex(value).upper() if value else None
     return value
 
+
 def address_type(value):
     return address_to_raw(value).upper() if value and value != 'addr_none' else None
+
 
 def is_wallet(code_hash):
     wallets_code_hashes = {
@@ -32,6 +33,7 @@ def is_wallet(code_hash):
         '/rX/aCDi/w2Ug+fg1iyBfYRniftK5YDIeIZtlZ2r1cA='     # wallet_v4_r2
     }
     return code_hash in wallets_code_hashes
+
 
 def address_type_friendly(address_raw, latest_account_state):
     """
@@ -49,8 +51,10 @@ def address_type_friendly(address_raw, latest_account_state):
         bounceable = False
     return address_to_friendly(address_raw, bounceable, Settings().is_testnet) if address_raw and address_raw != 'addr_none' else None
 
+
 def shard_type(value):
     return int_to_hex(value, length=64, signed=True).upper() if value else None
+
 
 class BlockReference(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -137,12 +141,14 @@ class Block(BaseModel):
                                                  seqno=p['seqno']) for p in obj.prev_blocks] 
                                   if obj.prev_blocks else [])
 
+
 class BlockList(BaseModel):
     blocks: List[Block]
 
     @classmethod
     def from_orm(cls, obj):
         return BlockList(blocks=[Block.from_orm(x) for x in obj])
+
 
 class AccountStatus(str, Enum):
     uninit = 'uninit'
@@ -161,8 +167,10 @@ class AccountStatus(str, Enum):
         # ton-http-api returns 'uninitialized' for both uninit and nonexist accounts
         raise ValueError(f'Unexpected account status: {value}')
 
+
 class InternalMsgBody(BaseModel):
     pass
+
 
 class TextComment(InternalMsgBody):
     type: Literal["text_comment"] = "text_comment"
@@ -172,6 +180,7 @@ class TextComment(InternalMsgBody):
     def from_tlb(cls, tlb_obj: tlb.TextCommentMessage):
         return TextComment(comment=tlb_obj.text_comment)
 
+
 class BinaryComment(InternalMsgBody):
     type: Literal["binary_comment"] = "binary_comment"
     hex_comment: str
@@ -179,6 +188,7 @@ class BinaryComment(InternalMsgBody):
     @classmethod
     def from_tlb(cls, tlb_obj: tlb.BinaryCommentMessage): 
         return BinaryComment(hex_comment=tlb_obj.hex_comment)
+
 
 class Comment:
     @classmethod
@@ -188,7 +198,8 @@ class Comment:
         if type(tlb_obj) is tlb.BinaryCommentMessage:
             return BinaryComment.from_tlb(tlb_obj)
         raise RuntimeError(f"Unexpected object of type {type(tlb_obj)}")
-    
+
+
 def decode_msg_body(body, op):
     try:
         if op == '0x00000000':
@@ -197,6 +208,7 @@ def decode_msg_body(body, op):
     except BaseException as e:
         logger.error(f"Error parsing msg with op {op}: {e}")
     return None
+
 
 class MessageContent(BaseModel):
     hash: str
@@ -208,7 +220,8 @@ class MessageContent(BaseModel):
         return MessageContent(hash=hash_type(obj.hash),
                               body=obj.body,
                               decoded=decode_msg_body(obj.body, op))
-    
+
+
 class MessageInitState(BaseModel):
     hash: str
     body: str
@@ -217,6 +230,7 @@ class MessageInitState(BaseModel):
     def from_orm(cls, obj):
         return MessageInitState(hash=hash_type(obj.hash),
                                 body=obj.body)
+
 
 class Message(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -261,12 +275,14 @@ class Message(BaseModel):
                        message_content=MessageContent.from_orm(obj.message_content, op) if obj.message_content else None,
                        init_state=MessageInitState.from_orm(obj.init_state) if obj.init_state else None)
 
+
 class MessageList(BaseModel):
     messages: List[Message]
 
     @classmethod
     def from_orm(cls, obj):
         return MessageList(messages=[Message.from_orm(x) for x in obj])
+
 
 class AccountState(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -358,8 +374,10 @@ class Transaction(BaseModel):
                         #    trace_id=str(obj.event_id) if obj.event_id is not None else None,
                            mc_block_seqno=obj.mc_block_seqno)
 
+
 class AddressBookEntry(BaseModel):
     user_friendly: str
+
 
 class TransactionList(BaseModel):
     transactions: List[Transaction]
