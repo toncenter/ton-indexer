@@ -721,6 +721,10 @@ void InsertBatchPostgres::insert_account_states(pqxx::work &transaction, const s
   bool is_first = true;
   for (const auto& task : insert_tasks) {
     for (const auto& account_state : task.parsed_block_->account_states_) {
+      if (account_state.account_status == "nonexist") {
+        // nonexist account state is inserted on DB initialization
+        continue;
+      }
       if (is_first) {
         is_first = false;
       } else {

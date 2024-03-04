@@ -273,20 +273,20 @@ struct MasterchainBlockShard {
 };
 
 struct AccountState {
-  td::Bits256 hash;
+  td::Bits256 hash;           // Note: hash is not unique in case account_status is "nonexist"
   block::StdAddress account;
   uint32_t timestamp;
   uint64_t balance;
-  std::string account_status; // "uninit", "frozen", "active"
+  std::string account_status; // "uninit", "frozen", "active", "nonexist"
   td::optional<std::string> frozen_hash;
   td::Ref<vm::Cell> code;
   td::optional<std::string> code_hash;
   td::Ref<vm::Cell> data;
   td::optional<std::string> data_hash;
-  uint64_t last_trans_lt;
+  uint64_t last_trans_lt;     // in "nonexist" case it is lt of block, not tx. TODO: fix it
 };
 
-}
+}  // namespace schema
 
 struct JettonMasterData {
   std::string address;

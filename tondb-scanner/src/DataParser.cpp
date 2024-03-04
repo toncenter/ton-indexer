@@ -614,8 +614,12 @@ td::Status ParseQuery::parse_account_states(const td::Ref<ShardState>& block_sta
 
     int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account_root));
     switch (account_tag) {
-    case block::gen::Account::account_none:
-      continue;
+    case block::gen::Account::account_none: {
+      auto address = block::StdAddress(block_state->get_shard().workchain, addr);
+      TRY_RESULT(account, parse_none_account(std::move(account_root), address, sstate.gen_utime, block_state->get_logical_time()));
+      result->account_states_.push_back(account);
+      break;
+    }
     case block::gen::Account::account: {
       TRY_RESULT(account, parse_account(std::move(account_root), sstate.gen_utime));
       result->account_states_.push_back(account);
@@ -627,6 +631,21 @@ td::Status ParseQuery::parse_account_states(const td::Ref<ShardState>& block_sta
   }
   LOG(DEBUG) << "Parsed " << result->account_states_.size() << " account states";
   return td::Status::OK();
+}
+
+td::Result<schema::AccountState> ParseQuery::parse_none_account(td::Ref<vm::Cell> account_root, block::StdAddress address, uint32_t gen_utime, uint64_t lt) {
+  block::gen::Account::Record_account_none account_none;
+  if (!tlb::unpack_cell(account_root, account_none)) {
+    return td::Status::Error("Failed to unpack Account none");
+  }
+  schema::AccountState schema_account;
+  schema_account.account = address;
+  schema_account.hash = account_root->get_hash().bits();
+  schema_account.timestamp = gen_utime;
+  schema_account.account_status = "nonexist";
+  schema_account.balance = 0;
+  schema_account.last_trans_lt = lt;
+  return schema_account;
 }
 
 td::Result<schema::AccountState> ParseQuery::parse_account(td::Ref<vm::Cell> account_root, uint32_t gen_utime) {
