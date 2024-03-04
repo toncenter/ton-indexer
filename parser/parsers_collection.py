@@ -750,7 +750,7 @@ class NFTTransferParser(Parser):
             raise Exception(f"Current owner account not inited yet {transfer.current_owner}")
 
         new_owner_code_hash = await get_account_code_hash(session, transfer.new_owner)
-        if not new_owner_code_hash:
+        if not new_owner_code_hash and transfer.new_owner != 'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c':
             raise Exception(f"New owner account not inited yet {transfer.new_owner}")
 
         if current_owner_code_hash in SALE_CONTRACTS.keys():
@@ -764,6 +764,8 @@ class NFTTransferParser(Parser):
                 raise Exception(f"NFT sale not parsed yet {transfer.new_owner}")
 
         sale_address = None
+        code_hash = None
+        marketplace = None
         current_owner = transfer.current_owner
         new_owner = transfer.new_owner
         price = None
@@ -772,6 +774,8 @@ class NFTTransferParser(Parser):
         if new_owner_code_hash in SALE_CONTRACTS.keys():
             event_type = NftHistory.EVENT_TYPE_INIT_SALE
             sale_address = new_owner_sale.address
+            code_hash = new_owner_code_hash
+            marketplace = new_owner_sale.marketplace
             new_owner = None
             price = 0 if SALE_CONTRACTS[new_owner_code_hash].is_auction else new_owner_sale.price
             is_auction = SALE_CONTRACTS[new_owner_code_hash].is_auction
@@ -779,6 +783,8 @@ class NFTTransferParser(Parser):
         elif current_owner_code_hash in SALE_CONTRACTS.keys() and current_owner_sale.owner == transfer.new_owner:
             event_type = NftHistory.EVENT_TYPE_CANCEL_SALE
             sale_address = current_owner_sale.address
+            code_hash = current_owner_code_hash
+            marketplace = current_owner_sale.marketplace
             current_owner = current_owner_sale.owner
             new_owner = None
             price = 0 if SALE_CONTRACTS[current_owner_code_hash].is_auction else current_owner_sale.price
@@ -787,6 +793,8 @@ class NFTTransferParser(Parser):
         elif current_owner_code_hash in SALE_CONTRACTS.keys() and current_owner_sale.owner != transfer.new_owner:
             event_type = NftHistory.EVENT_TYPE_SALE
             sale_address = current_owner_sale.address
+            code_hash = current_owner_code_hash
+            marketplace = current_owner_sale.marketplace
             current_owner = current_owner_sale.owner
             price = current_owner_sale.price
             is_auction = SALE_CONTRACTS[current_owner_code_hash].is_auction
@@ -807,6 +815,8 @@ class NFTTransferParser(Parser):
             nft_item_address=transfer.nft_item,
             collection_address=nft.collection,
             sale_address=sale_address,
+            code_hash=code_hash,
+            marketplace=marketplace,
             current_owner=current_owner,
             new_owner=new_owner,
             price=price,
@@ -889,6 +899,15 @@ class NFTItemParser(ContractsExecutorParser):
             # we invoke get method on all contracts so ignore errors
             return
 
+        try:
+            royalty_params = await self._execute(context.code.code, context.account.data, 'royalty_params',
+                                 ["int", "int", "address"],
+                                 address=context.account.address)
+            _, _, royalty_destination = royalty_params
+            logger.debug(f"Royalty params have been found: {royalty_params}")
+        except:
+            royalty_destination = None
+
         if collection_address:
             """
             TON DNS is a special case of NFT. It metadata doesn't store initial domain (it rather stores subdomains)
@@ -917,7 +936,8 @@ class NFTItemParser(ContractsExecutorParser):
                     description=None,
                     image=None,
                     image_data=None,
-                    attributes=None
+                    attributes=None,
+                    telemint_royalty_address=royalty_destination
                 )
                 logger.info(f"Adding TON DNS item {item}")
 
@@ -974,7 +994,8 @@ class NFTItemParser(ContractsExecutorParser):
             description=metadata.get('description', None),
             image=metadata.get('image', None),
             image_data=metadata.get('image_data', None),
-            attributes=json.dumps(metadata.get('attributes')) if 'attributes' in metadata else None
+            attributes=json.dumps(metadata.get('attributes')) if 'attributes' in metadata else None,
+            telemint_royalty_address=royalty_destination
         )
         # cast from list to string
         if item.description and type(item.description) == list:
@@ -1155,9 +1176,8 @@ class TelemintStartAuctionParser(Parser):
             nft_item_id=nft.id,
             nft_item_address=event.destination,
             collection_address=nft.collection,
-            sale_address=None,
+            marketplace=nft.telemint_royalty_address,
             current_owner=event.source,
-            new_owner=None,
             price=0,
             is_auction=True
         )
@@ -1204,9 +1224,8 @@ class TelemintCancelAuctionParser(Parser):
             nft_item_id=nft.id,
             nft_item_address=event.destination,
             collection_address=nft.collection,
-            sale_address=None,
+            marketplace=nft.telemint_royalty_address,
             current_owner=event.source,
-            new_owner=None,
             price=0,
             is_auction=True
         )
@@ -1265,7 +1284,7 @@ class TelemintOwnershipAssignedParser(Parser):
                         nft_item_id=nft.id,
                         nft_item_address=event.source,
                         collection_address=nft.collection,
-                        sale_address=None,
+                        marketplace=nft.telemint_royalty_address,
                         current_owner=event.prev_owner,
                         new_owner=event.destination,
                         price=event.bid,

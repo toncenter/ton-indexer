@@ -629,6 +629,7 @@ class NFTItem(Base):
     image: str = Column(String)
     image_data: str = Column(String)
     attributes: str = Column(String)
+    telemint_royalty_address: str = Column(String)
 
 
     __table_args__ = (
@@ -1080,6 +1081,8 @@ class NftHistory(Base):
     nft_item_address: str = Column(String)
     collection_address: str = Column(String)
     sale_address: str = Column(String)
+    code_hash: str = Column(String)
+    marketplace: str = Column(String)
     current_owner: str = Column(String)
     new_owner: str = Column(String)
     price: int = Column(Numeric(scale=0))
