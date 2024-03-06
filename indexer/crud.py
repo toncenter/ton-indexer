@@ -2,7 +2,7 @@ from typing import Optional
 from collections import defaultdict
 
 from sqlalchemy import and_
-from sqlalchemy.orm import joinedload, Session, contains_eager
+from sqlalchemy.orm import joinedload, Session, contains_eager, aliased
 from sqlalchemy.future import select
 from sqlalchemy.dialects.postgresql import insert as insert_pg
 from sqlalchemy import update, delete
@@ -699,9 +699,14 @@ async def get_nft_history_mint(session: Session, item_address: str) -> NftHistor
     return res[0]
 
 async def get_nft_mint_message(session: Session, item_address: str, collection_address: str) -> Message:
+    message_0 = aliased(Message)
+    message_1 = aliased(Message)
     res = (
         await session.execute(
-            select(Message).filter(Message.source == collection_address, Message.destination == item_address)
+            select(message_0)
+            .join(Transaction, Transaction.tx_id == message_0.in_tx_id)
+            .outerjoin(message_1, Transaction.tx_id == message_1.out_tx_id)
+            .filter(message_0.source == collection_address, message_0.destination == item_address, message_1.bounced != True)
         )
     ).first()
     if not res:
