@@ -12,7 +12,7 @@ class DbCacheWrapper;
 class DbScanner: public td::actor::Actor {
 private:
   std::string db_root_;
-  td::uint32 last_known_seqno_{0};
+  ton::BlockSeqno last_known_seqno_{0};
   td::int32 max_db_cache_size_{256};
   std::atomic<td::uint32> active_fetches;
 
@@ -23,7 +23,7 @@ public:
   DbScanner(std::string db_root, td::uint32 last_known_seqno, td::int32 max_db_cache_size = 256) 
     : db_root_(db_root), last_known_seqno_(last_known_seqno), max_db_cache_size_(max_db_cache_size) {}
 
-  td::uint32 get_last_known_seqno() {
+  ton::BlockSeqno get_last_known_seqno() {
     return last_known_seqno_;
   }
 
@@ -33,7 +33,7 @@ public:
   void fetch_seqno(std::uint32_t mc_seqno, td::Promise<MasterchainBlockDataState> promise);
   void get_last_mc_seqno(td::Promise<std::int32_t> promise);
 private:
-  void set_last_mc_seqno(int mc_seqno);
+  void set_last_mc_seqno(ton::BlockSeqno mc_seqno);
   void catch_up_with_primary();
   void update_last_mc_seqno();
 };
