@@ -1101,6 +1101,9 @@ class TonRafflesFairlaunchWallet(Base):
     address: str = Column(String)
     owner: str = Column(String)
     sale: str = Column(String)
+    purchased: int = Column(BigInteger)
+    referrals_purchased: int = Column(BigInteger)
+
 
     __table_args__ = (Index('raffles_fairlaunch_wallet_1', 'address'),
                       UniqueConstraint('address')
