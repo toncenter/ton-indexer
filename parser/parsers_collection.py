@@ -2217,12 +2217,19 @@ class TonRafflesFairlaunchWalletParser(ContractsExecutorParser):
         reader = BitReader(cell.data.data)
         sale = reader.read_address()
         owner = reader.read_address()
+        reader.read_coins()
+        purchased = reader.read_coins()
+        reader = BitReader(cell.refs.pop(0).data.data)
+        reader.read_bits(128)
+        referrals_purchased = reader.read_coins()
         
         wallet = TonRafflesFairlaunchWallet(
             state_id=context.account.state_id,
             address=context.account.address,
             owner=owner,
-            sale=sale
+            sale=sale,
+            purchased=purchased,
+            referrals_purchased=referrals_purchased
         )
         logger.info(f"Adding TonRaffles fairlaunch wallet {wallet}")
 
