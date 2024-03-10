@@ -2220,7 +2220,7 @@ class TonRafflesFairlaunchWalletParser(ContractsExecutorParser):
         reader.read_coins()
         purchased = reader.read_coins()
         reader = BitReader(cell.refs.pop(0).data.data)
-        reader.read_bits(128)
+        reader.read_bits(128 + 64)
         referrals_purchased = reader.read_coins()
         
         wallet = TonRafflesFairlaunchWallet(
