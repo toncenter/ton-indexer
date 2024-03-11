@@ -776,6 +776,7 @@ class NFTTransferParser(Parser):
             sale_address = new_owner_sale.address
             code_hash = new_owner_code_hash
             marketplace = new_owner_sale.marketplace
+            current_owner = new_owner_sale.owner
             new_owner = None
             price = 0 if SALE_CONTRACTS[new_owner_code_hash].is_auction else new_owner_sale.price
             is_auction = SALE_CONTRACTS[new_owner_code_hash].is_auction
