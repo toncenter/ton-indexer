@@ -52,6 +52,8 @@ class JettonTransferBlockMatcher(BlockMatcher):
 
         data = {
             'sender': AccountId(sender.owner) if sender is not None else None,
+            'sender_wallet': AccountId(block.event_nodes[0].message.message.destination),
+            'receiver_wallet': AccountId(next_block.event_nodes[0].message.message.destination),
             'receiver': receiver,
             'amount': Amount(jetton_transfer_message.amount),
             'asset': Asset(is_ton=False, jetton_address=sender.jetton if sender is not None else None)

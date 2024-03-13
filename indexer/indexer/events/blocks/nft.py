@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import random
-
 from pytoniq_core import Slice
 
+from events.blocks.utils.block_utils import find_messages
+from indexer.core.database import SyncSessionMaker, NFTItem
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher
-
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.messages import NftOwnershipAssigned, ExcessMessage
 from indexer.events.blocks.messages.nft import NftTransfer, TeleitemBidInfo
 from indexer.events.blocks.utils import AccountId, Amount, block_utils
 from indexer.events.blocks.utils.block_utils import find_call_contracts
-from indexer.core.database import SyncSessionMaker, NFTItem
 
 
 class NftTransferBlock(Block):
@@ -25,13 +23,18 @@ def _get_nft_data(nft_address: AccountId):
         "address": nft_address
     }
     with SyncSessionMaker() as session:
-        nft = session.query(NFTItem).filter(NFTItem.address == nft_address.as_str()).first()
+        nft = session.query(NFTItem).filter(NFTItem.address == nft_address.as_str()).join(NFTItem.collection).first()
         if nft is not None:
             if "uri" in nft.content and "https://nft.fragment.com" in nft.content["uri"]:
                 tokens = nft.content["uri"].split("/")
                 data["name"] = tokens[-1][:-5]
                 data["type"] = tokens[-2]
-
+            else:
+                data['meta'] = nft.content
+        data['collection'] = {
+            'address': AccountId(nft.collection.address),
+            'meta': nft.collection.collection_content
+        }
     return data
 
 
@@ -72,6 +75,12 @@ class NftTransferBlockMatcher(BlockMatcher):
         data['is_purchase'] = False
         nft_transfer_message = NftTransfer(
             Slice.one_from_boc(block.event_nodes[0].message.message.message_content.body))
+        ownership_assigned_message = find_messages(other_blocks, NftOwnershipAssigned)
+        if len(ownership_assigned_message) > 0:
+            nft_ownership_message = ownership_assigned_message[0][1]
+            data['prev_owner'] = AccountId(nft_ownership_message.prev_owner)
+        else:
+            data['prev_owner'] = AccountId(block.event_nodes[0].message.message.source)
         data['query_id'] = nft_transfer_message.query_id
         data['new_owner'] = AccountId(nft_transfer_message.new_owner)
         data['nft'] = _get_nft_data(AccountId(block.event_nodes[0].message.transaction.account))
@@ -81,7 +90,8 @@ class NftTransferBlockMatcher(BlockMatcher):
                 block_to_include, price = nft_purchase_data
                 data['is_purchase'] = True
                 data['price'] = Amount(price)
-                include.extend(block_to_include)
+                if isinstance(block.previous_block, TonTransferBlock):
+                    include.append(block.previous_block)
 
         include.extend(other_blocks)
         new_block.merge_blocks(include)

@@ -34,7 +34,7 @@ async def _get_block_data(other_blocks):
         out_addr = target_payment_request.token1_out
 
     out_wallet = await context.session.get().get(JettonWallet, out_addr.to_str(False).upper())
-    in_wallet = await context.session.get().get(JettonWallet, swap_call_block.get_message().message.source)
+    in_wallet = await context.session.get().get(JettonWallet, swap_message.token_wallet.to_str(False).upper())
     # out_wallet = await context.session.get().query(JettonWallet).filter(
     #     JettonWallet.address == out_addr.to_str(False).upper()).first()
     # in_wallet = await context.session.get().query(JettonWallet).filter(
@@ -47,11 +47,11 @@ async def _get_block_data(other_blocks):
         'sender': AccountId(swap_message.from_user_address),
         'in': {
             'amount': Amount(swap_message.amount),
-            'asset': Asset(is_ton=in_jetton is not None, jetton_address=in_jetton),
+            'asset': Asset(is_ton=in_jetton is None, jetton_address=in_jetton),
         },
         'out': {
             'amount': out_amt,
-            'asset': Asset(is_ton=out_jetton is not None, jetton_address=out_jetton),
+            'asset': Asset(is_ton=out_jetton is None, jetton_address=out_jetton),
         }
     }
 

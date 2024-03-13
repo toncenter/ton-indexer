@@ -44,6 +44,7 @@ class MongoRepository:
         return {
             "_id": bson.ObjectId(event.id.to_bytes(12, byteorder="big", signed=True)),
             "hashes": transaction_hashes,
+            "timestamp": min([m.now for m in event.transactions]),
             "lt": lt,
             "actions": [self.preprocess_action_dict(a) for a in actions],
             "accounts": [a.as_bytes() for a in total_flow.flow.keys()],
