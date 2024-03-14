@@ -701,7 +701,15 @@ async def get_nft_history_mint(session: Session, item_address: str) -> NftHistor
 async def get_nft_mint_message(session: Session, item_address: str, collection_address: str) -> Message:
     res = (
         await session.execute(
-            select(Message).filter(Message.source == collection_address, Message.destination == item_address)
+            select(Message)
+            .join(Transaction, Transaction.tx_id == Message.in_tx_id)
+            .filter(
+                Message.source == collection_address,
+                Message.destination == item_address,
+                Transaction.compute_exit_code == 0,
+                Transaction.action_result_code == 0
+            )
+            .order_by(Transaction.utime)
         )
     ).first()
     if not res:
