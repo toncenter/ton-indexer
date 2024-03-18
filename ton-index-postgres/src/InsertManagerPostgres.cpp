@@ -238,7 +238,9 @@ std::string InsertBatchPostgres::jsonify(const schema::TrStoragePhase& s) {
 std::string InsertBatchPostgres::jsonify(const schema::TrCreditPhase& c) {
   auto jb = td::JsonBuilder();
   auto cc = jb.enter_object();
-  cc("due_fees_collected", std::to_string(c.due_fees_collected));
+  if (c.due_fees_collected) {
+    cc("due_fees_collected", std::to_string(*(c.due_fees_collected)));
+  }
   cc("credit", std::to_string(c.credit));
   cc.leave();
   return jb.string_builder().as_cslice().str();

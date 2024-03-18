@@ -32,7 +32,7 @@ struct TrStoragePhase {
 };
 
 struct TrCreditPhase {
-  uint64_t due_fees_collected;
+  std::optional<uint64_t> due_fees_collected;
   uint64_t credit;
 };
 
