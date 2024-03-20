@@ -74,7 +74,7 @@ def chunks(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
-async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_raw):
+async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_raw, mc_seqno):
     meta = Base.metadata
     block_t = meta.tables[Block.__tablename__]
     block_headers_t = meta.tables[BlockHeader.__tablename__]
@@ -244,9 +244,10 @@ async def insert_by_seqno_core(session, blocks_raw, headers_raw, transactions_ra
             # using min_block_time as outbox time to avoid mess with single message utime
             min_block_time = min(map(lambda x: x['gen_utime'], shard_headers))
             insert_res = await conn.execute(insert_pg(outbox_t)
-                                            .values([ParseOutbox.generate(ParseOutbox.PARSE_TYPE_MESSAGE,
-                                                                          msg_id_tuple[0],
-                                                                          min_block_time) for msg_id_tuple in msg_ids_to_parse])
+                                            .values([ParseOutbox.generate(entity_type=ParseOutbox.PARSE_TYPE_MESSAGE,
+                                                                          entity_id=msg_id_tuple[0],
+                                                                          added_time=min_block_time,
+                                                                          mc_seqno=mc_seqno) for msg_id_tuple in msg_ids_to_parse])
                                             .on_conflict_do_nothing())
             if insert_res.rowcount > 0:
                 logger.info(f"{insert_res.rowcount} outbox items added")
