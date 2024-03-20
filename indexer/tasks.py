@@ -189,7 +189,7 @@ class IndexWorker():
     async def process_mc_seqno(self, seqno: int):
         blocks, headers, transactions = await self.get_raw_info(seqno)
         try:
-            await insert_by_seqno_core(engine, blocks, headers, transactions)
+            await insert_by_seqno_core(engine, blocks, headers, transactions, seqno)
             logger.info(f'Block(seqno={seqno}) inserted')
         except Exception as ee:
             logger.warning(f'Failed to insert block(seqno={seqno}): {traceback.format_exc()}')
