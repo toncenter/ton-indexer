@@ -75,6 +75,8 @@ def upgrade():
     )
     op.create_index('blocks_index_2', 'blocks', ['gen_utime'], unique=False)
     op.create_index('blocks_index_3', 'blocks', ['mc_block_workchain', 'mc_block_shard', 'mc_block_seqno'], unique=False)
+    op.create_index('blocks_index_4', 'blocks', ['seqno'], unique=False, postgresql_where=sa.text('workchain = -1'))
+    op.create_index('blocks_index_5', 'blocks', ['start_lt'], unique=False)
     op.create_table('events',
     sa.Column('id', sa.BigInteger(), nullable=False),
     sa.Column('meta', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
@@ -315,6 +317,8 @@ def downgrade():
     op.drop_index('jetton_masters_index_2', table_name='jetton_masters')
     op.drop_table('jetton_masters')
     op.drop_table('events')
+    op.drop_index('blocks_index_5', table_name='blocks')
+    op.drop_index('blocks_index_4', table_name='blocks')
     op.drop_index('blocks_index_3', table_name='blocks')
     op.drop_index('blocks_index_2', table_name='blocks')
     op.drop_table('blocks')

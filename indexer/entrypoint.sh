@@ -14,7 +14,7 @@ else
     exit 1
 fi
 
-if [ "$POSTGRES_PASSWORD" -eq "0" ]; then
+if [ "$POSTGRES_PASSWORD" -eq 0 ]; then
     echo "Using postgres connection without password"
     export TON_INDEXER_PG_DSN="${POSTGRES_DIALECT}://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DBNAME}"
 else

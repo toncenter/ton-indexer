@@ -462,6 +462,8 @@ class LatestAccountState(Base):
 # Index("blocks_index_1", Block.workchain, Block.shard, Block.seqno)
 Index("blocks_index_2", Block.gen_utime)
 Index("blocks_index_3", Block.mc_block_workchain, Block.mc_block_shard, Block.mc_block_seqno)
+Index("blocks_index_4", Block.seqno, postgresql_where=(Block.workchain == -1))
+Index("blocks_index_5", Block.start_lt)
 
 Index("transactions_index_1", Transaction.block_workchain, Transaction.block_shard, Transaction.block_seqno)
 Index("transactions_index_2", Transaction.account, Transaction.lt)
