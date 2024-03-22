@@ -2358,7 +2358,7 @@ class DaoLamaExtendLoanParser(Parser):
 
     async def parse(self, session: Session, context: MessageContext):
         if context.destination_tx.action_result_code != 0 or context.destination_tx.compute_exit_code != 0:
-            logger.warning("Failed tx for DAOLama extend")
+            logger.warning(f"Failed tx for DAOLama extend {context.message.msg_id}")
             return
         cell = self._parse_boc(context.content.body)
         reader = BitReader(cell.data.data)
