@@ -2365,7 +2365,7 @@ class DaoLamaExtendLoanParser(Parser):
         reader.read_bits(32) # opcode
         query_id = reader.read_uint(64)
         signed_msg = cell.refs.pop(0).refs.pop(0)
-        reader = BitReader(signed_msg)
+        reader = BitReader(signed_msg.data.data)
 
         to_addr = reader.read_address()
         from_addr = reader.read_address()
@@ -2374,7 +2374,7 @@ class DaoLamaExtendLoanParser(Parser):
         new_start_time = reader.read_uint(32)
         new_repay_time = reader.read_uint(32)
 
-        reader = BitReader(signed_msg.refs.pop(0))
+        reader = BitReader(signed_msg.refs.pop(0).data.data)
         new_loan_amount = reader.read_coins()
         new_repay_amount = reader.read_coins()
 
