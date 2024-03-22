@@ -2338,11 +2338,11 @@ class DaoLamaBorrowWalletParser(ContractsExecutorParser):
             pool_address=pool_address,
             owner=owner,
             nft_item=nft_item,
-            borrowed_amount=borrowed_amount,
-            amount_to_repay=amount_to_repay,
-            time_to_repay=time_to_repay,
-            status=status,
-            start_time=start_time
+            borrowed_amount=int(borrowed_amount),
+            amount_to_repay=int(amount_to_repay),
+            time_to_repay=int(time_to_repay),
+            status=int(status),
+            start_time=int(start_time)
         )
         logger.info(f"Adding DaoLama borrow {borrow}")
 
