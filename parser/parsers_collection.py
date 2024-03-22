@@ -2318,6 +2318,83 @@ class TonRafflesFairlaunchRewardParser(Parser):
         logger.info(f"Adding TONRaffles fairlaunch purchase {purchase}")
         await upsert_entity(session, purchase)
 
+class DaoLamaBorrowWalletParser(ContractsExecutorParser):
+    def __init__(self):
+        super(DaoLamaBorrowWalletParser, self).__init__()
+
+    @staticmethod
+    def parser_name() -> str:
+        return "DaoLamaBorrowWalletParser"
+
+    async def parse(self, session: Session, context: AccountContext):
+        if context.account.code_hash != '0MkU/bYx8WDSPC0dx5g6/EwGBG2T9p/Gn/ZaHW86qF4=':
+            return
+        pool_address, owner, nft_item, borrowed_amount, amount_to_repay, time_to_repay, status, start_time = await self._execute(context.code.code, context.account.data, 'get_loan_data',
+                                    ["address", "address", "address", "int", "int", "int", "int", "int"])
+
+        borrow = DaoLamaBorrowWallet(
+            state_id=context.account.state_id,
+            address=context.account.address,
+            pool_address=pool_address,
+            owner=owner,
+            nft_item=nft_item,
+            borrowed_amount=borrowed_amount,
+            amount_to_repay=amount_to_repay,
+            time_to_repay=time_to_repay,
+            status=status,
+            start_time=start_time
+        )
+        logger.info(f"Adding DaoLama borrow {borrow}")
+
+        await upsert_entity(session, borrow, constraint="address")
+
+class DaoLamaExtendLoanParser(Parser):
+    def __init__(self):
+        super(DaoLamaExtendLoanParser, self).__init__(DestinationTxRequiredPredicate(OpCodePredicate(0x9)))
+
+    @staticmethod
+    def parser_name() -> str:
+        return "DaoLamaExtendLoanParser"
+
+    async def parse(self, session: Session, context: MessageContext):
+        if context.destination_tx.action_result_code != 0 or context.destination_tx.compute_exit_code != 0:
+            logger.warning("Failed tx for DAOLama extend")
+            return
+        cell = self._parse_boc(context.content.body)
+        reader = BitReader(cell.data.data)
+        reader.read_bits(32) # opcode
+        query_id = reader.read_uint(64)
+        signed_msg = cell.refs.pop(0).refs.pop(0)
+        reader = BitReader(signed_msg)
+
+        to_addr = reader.read_address()
+        from_addr = reader.read_address()
+        valid_until = reader.read_uint(32)
+        op_code = reader.read_uint(32)
+        new_start_time = reader.read_uint(32)
+        new_repay_time = reader.read_uint(32)
+
+        reader = BitReader(signed_msg.refs.pop(0))
+        new_loan_amount = reader.read_coins()
+        new_repay_amount = reader.read_coins()
+
+        extend = DaoLamaExtendLoan(
+            msg_id=context.message.msg_id,
+            utime=context.destination_tx.utime,
+            created_lt=context.message.created_lt,
+            originated_msg_hash=await get_originated_msg_hash(session, context.message),
+            query_id=str(query_id),
+            to_addr=to_addr,
+            from_addr=from_addr,
+            valid_until=valid_until,
+            op_code=op_code,
+            new_start_time=new_start_time,
+            new_repay_time=new_repay_time,
+            new_loan_amount=new_loan_amount,
+            new_repay_amount=new_repay_amount
+        )
+        logger.info(f"Adding DAOLama extend loan {extend}")
+        await upsert_entity(session, extend)
 
 # Collect all declared parsers
 

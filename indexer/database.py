@@ -1160,3 +1160,47 @@ class TonRafflesFairlaunchReward(Base):
     __table_args__ = (
         UniqueConstraint('msg_id'),
     )
+
+@dataclass(init=False)
+class DaoLamaBorrowWallet(Base):
+    __tablename__ = 'daolama_borrow_wallet'
+
+    id: int = Column(BigInteger, primary_key=True)
+    state_id: int = Column(BigInteger, ForeignKey('account_state.state_id'))
+    address: str = Column(String)
+    pool_address: str = Column(String)
+    owner: str = Column(String)
+    nft_item: str = Column(String)
+    borrowed_amount: int = Column(Numeric(scale=0))
+    amount_to_repay: int = Column(Numeric(scale=0))
+    time_to_repay: int = Column(BigInteger)
+    status: int = Column(BigInteger)
+    start_time: int = Column(BigInteger)
+
+    __table_args__ = (Index('daolama_borrow_wallet_q', 'address'),
+                      UniqueConstraint('address')
+                      )
+
+@dataclass(init=False)
+class DaoLamaExtendLoan(Base):
+    __tablename__ = 'daolama_extend_loan'
+
+    id: int = Column(BigInteger, primary_key=True)
+    msg_id: int = Column(BigInteger, ForeignKey('messages.msg_id'))
+    utime: int = Column(BigInteger)
+    created_lt: int = Column(BigInteger)
+    originated_msg_hash: str = Column(String)
+    query_id: str = Column(String)
+    to_addr: str = Column(String)
+    from_addr: str = Column(String)
+    valid_until: int = Column(BigInteger)
+    op_code: int = Column(BigInteger)
+    new_start_time: int = Column(BigInteger)
+    new_repay_time: int = Column(BigInteger)
+    new_loan_amount: int = Column(Numeric(scale=0))
+    new_repay_amount: int = Column(Numeric(scale=0))
+
+
+    __table_args__ = (
+        UniqueConstraint('msg_id'),
+    )
