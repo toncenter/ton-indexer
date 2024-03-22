@@ -1,7 +1,7 @@
 from typing import Optional
 from collections import defaultdict
 
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from sqlalchemy.orm import joinedload, Session, contains_eager
 from sqlalchemy.future import select
 from sqlalchemy.dialects.postgresql import insert as insert_pg
@@ -523,10 +523,15 @@ async def reset_account_check_time(session: Session, sale_address: str):
 
 async def get_outbox_items(session: Session, limit: int) -> ParseOutbox:
     res = await session.execute(select(ParseOutbox)\
-                    .filter(ParseOutbox.added_time < int(datetime.today().timestamp()))
+                    .filter(ParseOutbox.added_time < int(datetime.today().timestamp()), ParseOutbox.mc_seqno == None)
                     .order_by(ParseOutbox.added_time.asc()).limit(limit))
     return res.all()
 
+async def get_outbox_items_by_min_seqno(session: Session):
+    min_mc_seqno = select(func.min(ParseOutbox.mc_seqno)).as_scalar()
+    res = await session.execute(select(ParseOutbox)\
+                    .filter(ParseOutbox.mc_seqno == min_mc_seqno))
+    return res.all()
 
 async def remove_outbox_item(session: Session, outbox_id: int):
     return await session.execute(delete(ParseOutbox).where(ParseOutbox.outbox_id == outbox_id))
@@ -534,7 +539,8 @@ async def remove_outbox_item(session: Session, outbox_id: int):
 async def postpone_outbox_item(session: Session, outbox: ParseOutbox, seconds: int):
     await session.execute(update(ParseOutbox).where(ParseOutbox.outbox_id == outbox.outbox_id)\
                           .values(added_time=int(datetime.today().timestamp()) + seconds,
-                                  attempts=(outbox.attempts + 1) if outbox.attempts else 1))
+                                  attempts=(outbox.attempts + 1) if outbox.attempts else 1,
+                                  mc_seqno=None))
 
 async def get_prev_msg_id(session: Session, msg: Message) -> int:
     if msg.out_tx_id is None:

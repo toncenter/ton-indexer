@@ -121,7 +121,9 @@ async def parse_outbox():
     while True:
         async with SessionMaker() as session:
             # batch mode is supported but not recommended due to batch processing occurs in one transaction
-            tasks = await get_outbox_items(session, settings.parser.batch_size)
+            tasks = await get_outbox_items_by_min_seqno(session)
+            if len(tasks) == 0:
+                tasks = await get_outbox_items(session, settings.parser.batch_size)
             if len(tasks) == 0:
                 logger.info("Parser outbox is empty, exiting")
                 break
