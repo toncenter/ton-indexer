@@ -122,19 +122,18 @@ void InsertBatchPostgres::start_up() {
       return;
     }
 
-    pqxx::work txn(c);
-    insert_blocks(txn, insert_tasks_);
-    insert_shard_state(txn, insert_tasks_);
-    insert_transactions(txn, insert_tasks_);
-    insert_messsages(txn, messages, msg_bodies, tx_msgs);
-    insert_account_states(txn, insert_tasks_);
-    insert_jetton_transfers(txn, insert_tasks_);
-    insert_jetton_burns(txn, insert_tasks_);
-    insert_nft_transfers(txn, insert_tasks_);
-
     // update account states
     {
       std::lock_guard<std::mutex> guard(latest_account_states_update_mutex);
+      pqxx::work txn(c);
+      insert_blocks(txn, insert_tasks_);
+      insert_shard_state(txn, insert_tasks_);
+      insert_transactions(txn, insert_tasks_);
+      insert_messsages(txn, messages, msg_bodies, tx_msgs);
+      insert_account_states(txn, insert_tasks_);
+      insert_jetton_transfers(txn, insert_tasks_);
+      insert_jetton_burns(txn, insert_tasks_);
+      insert_nft_transfers(txn, insert_tasks_);
       insert_latest_account_states(txn, insert_tasks_);
       txn.commit();
     }

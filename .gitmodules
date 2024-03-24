@@ -1,7 +1,7 @@
 [submodule "external/ton"]
 	path = external/ton
-	url = https://github.com/kdimentionaltree/ton
-	branch = db-scanner
+	url = https://github.com/dungeon-master-666/ton
+	branch = db_secondary
 [submodule "external/libpqxx"]
 	path = external/libpqxx
 	url = https://github.com/jtv/libpqxx.git

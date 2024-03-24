@@ -1,14 +1,16 @@
 cmake_minimum_required(VERSION 3.16)
+
 add_executable(ton-index-clickhouse 
     src/main.cpp
     src/InsertManagerClickhouse.cpp
+    src/IndexScheduler.cpp
 )
 
 target_include_directories(ton-index-clickhouse 
     PUBLIC external/ton
     PUBLIC external/clickhouse-cpp
-    PUBLIC src/
     PUBLIC tondb-scanner/src
+    PUBLIC src/
 )
 
 target_link_directories(ton-index-clickhouse

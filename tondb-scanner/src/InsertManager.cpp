@@ -1,29 +1,6 @@
 #include "InsertManager.h"
 
 
-QueueStatus operator+(QueueStatus l, const QueueStatus &r) {
-  return QueueStatus{l.mc_blocks_ + r.mc_blocks_, l.blocks_ + r.blocks_, l.txs_ + r.txs_, l.msgs_ + r.msgs_};
-}
-
-QueueStatus operator-(QueueStatus l, const QueueStatus &r) {
-  return QueueStatus{l.mc_blocks_ - r.mc_blocks_, l.blocks_ - r.blocks_, l.txs_ - r.txs_, l.msgs_ - r.msgs_};
-}
-
-QueueStatus& QueueStatus::operator+=(const QueueStatus& r) {
-  mc_blocks_ += r.mc_blocks_;
-  blocks_ += r.blocks_;
-  txs_ += r.txs_;
-  msgs_ += r.msgs_;
-  return *this;
-}
-
-QueueStatus& QueueStatus::operator-=(const QueueStatus& r) {
-  mc_blocks_ -= r.mc_blocks_;
-  blocks_ -= r.blocks_;
-  txs_ -= r.txs_;
-  msgs_ -= r.msgs_;
-  return *this;
-}
 
 template<>
 void InsertManagerInterface::upsert_entity(JettonWalletData entity, td::Promise<td::Unit> promise) {

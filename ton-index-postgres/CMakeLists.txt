@@ -3,13 +3,14 @@ cmake_minimum_required(VERSION 3.16)
 add_executable(ton-index-postgres
     src/main.cpp
     src/InsertManagerPostgres.cpp
+    src/IndexScheduler.cpp
 )
 
 target_include_directories(ton-index-postgres
     PUBLIC external/ton
     PUBLIC external/libpqxx
-    PUBLIC src/
     PUBLIC tondb-scanner/src
+    PUBLIC src/
 )
 
 target_link_directories(ton-index-postgres

@@ -1,21 +1,26 @@
 #pragma once
-#include "td/actor/actor.h"
+#include <map>
 #include "vm/cells/Cell.h"
 #include "vm/stack.hpp"
 #include "common/refcnt.hpp"
+#include "common/checksum.h"
 #include "smc-envelope/SmartContract.h"
 #include "crypto/block/block-auto.h"
-#include "td/utils/base64.h"
-#include "IndexData.h"
-#include "td/actor/MultiPromise.h"
-#include "ton/ton-shard.h"
-#include "convert-utils.h"
-#include "InsertManager.h"
-#include "tokens.h"
 #include "crypto/block/block-parse.h"
+#include "td/actor/actor.h"
+#include "td/actor/MultiPromise.h"
+#include "td/utils/base64.h"
+#include "td/utils/Status.h"
+#include "ton/ton-shard.h"
+
 #include "parse_token_data.h"
+#include "convert-utils.h"
+#include "tokens.h"
+#include "InsertManager.h"
+#include "IndexData.h"
 #include "DataParser.h"
 
+// classes
 enum SmcInterface {
   IT_JETTON_MASTER,
   IT_JETTON_WALLET,

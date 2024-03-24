@@ -17,15 +17,11 @@ public:
 
     std::string get_connection_string();
   };
-  struct Options {
-    
-  };
 private:
   InsertManagerPostgres::Credential credential_;
-  InsertManagerPostgres::Options options_;
 public:
   InsertManagerPostgres(InsertManagerPostgres::Credential credential) : credential_(credential) {}
-  
+
   void create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) override;
   void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise) override;
 
@@ -38,10 +34,10 @@ public:
 
 class InsertBatchPostgres: public td::actor::Actor {
 public:
-  InsertBatchPostgres(InsertManagerPostgres::Credential credential, std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit>&& promise) :
+  InsertBatchPostgres(InsertManagerPostgres::Credential credential, std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) :
     credential_(std::move(credential)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)) {}
-  
-  void start_up();
+
+  void start_up() override;
 private:
   InsertManagerPostgres::Credential credential_;
   std::string connection_string_;

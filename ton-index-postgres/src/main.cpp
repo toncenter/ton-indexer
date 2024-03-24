@@ -35,14 +35,10 @@ int main(int argc, char *argv[]) {
   InsertManagerPostgres::Credential credential;
 
   std::uint32_t max_active_tasks = 7;
-  std::uint32_t max_queue_blocks = 20000;
-  std::uint32_t max_queue_txs = 10000000;
-  std::uint32_t max_queue_msgs = 10000000;
-  
   std::uint32_t max_insert_actors = 12;
-  std::uint32_t max_batch_blocks = 10000;
-  std::uint32_t max_batch_txs = 50000;
-  std::uint32_t max_batch_msgs = 50000;
+  
+  QueueState max_queue{200000, 200000, 1000000, 1000000};
+  QueueState batch_size{2000, 2000, 10000, 10000};
   
   td::OptionParser p;
   p.set_description("Parse TON DB and insert data into Postgres");
@@ -109,7 +105,8 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --max-queue-blocks: not a number");
     }
-    max_queue_blocks = v;
+    max_queue.mc_blocks_ = v;
+    max_queue.blocks_ = v;
     return td::Status::OK();
   });
   p.add_checked_option('\0', "max-queue-txs", "Max transactions in insert queue", [&](td::Slice fname) { 
@@ -119,7 +116,7 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --max-queue-txs: not a number");
     }
-    max_queue_txs = v;
+    max_queue.txs_ = v;
     return td::Status::OK();
   });
   p.add_checked_option('\0', "max-queue-msgs", "Max messages in insert queue", [&](td::Slice fname) { 
@@ -129,7 +126,7 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --max-queue-msgs: not a number");
     }
-    max_queue_msgs = v;
+    max_queue.msgs_ = v;
     return td::Status::OK();
   });
 
@@ -151,7 +148,8 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --max-batch-blocks: not a number");
     }
-    max_batch_blocks = v;
+    batch_size.mc_blocks_ = v;
+    batch_size.blocks_ = v;
     return td::Status::OK();
   });
   p.add_checked_option('\0', "max-batch-txs", "Max transactions in batch", [&](td::Slice fname) { 
@@ -161,7 +159,7 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --max-batch-txs: not a number");
     }
-    max_batch_txs = v;
+    batch_size.txs_ = v;
     return td::Status::OK();
   });
   p.add_checked_option('\0', "max-batch-msgs", "Max messages in batch", [&](td::Slice fname) { 
@@ -171,7 +169,7 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --max-batch-msgs: not a number");
     }
-    max_batch_msgs = v;
+    batch_size.msgs_ = v;
     return td::Status::OK();
   });
   
@@ -208,14 +206,11 @@ int main(int argc, char *argv[]) {
   scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, max_db_cache_size); });
 
   scheduler.run_in_context([&] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(), 
-    insert_manager_.get(), parse_manager_.get(), last_known_seqno, max_active_tasks, max_queue_blocks, max_queue_blocks, max_queue_txs, max_queue_msgs, stats_timeout); 
+    insert_manager_.get(), parse_manager_.get(), last_known_seqno, max_active_tasks, max_queue, stats_timeout); 
   });
   scheduler.run_in_context([&] { 
     td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_parallel_inserts_actors, max_insert_actors);
-    td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_insert_mc_blocks, max_batch_blocks);
-    td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_insert_blocks, max_batch_blocks);
-    td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_insert_txs, max_batch_txs);
-    td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_insert_msgs, max_batch_msgs);
+    td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_insert_batch_size, batch_size);
     td::actor::send_closure(insert_manager_, &InsertManagerPostgres::print_info);
   });
   scheduler.run_in_context([&] { td::actor::send_closure(index_scheduler_, &IndexScheduler::run); });
