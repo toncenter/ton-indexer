@@ -9,19 +9,22 @@
 
 class DbCacheWrapper;
 
+enum ScannerMode { dbs_readonly, dbs_secondary };
+
 class DbScanner: public td::actor::Actor {
 private:
   std::string db_root_;
-  ton::BlockSeqno last_known_seqno_{0};
+  ScannerMode mode_;
   td::int32 max_db_cache_size_{256};
   std::atomic<td::uint32> active_fetches;
+  ton::BlockSeqno last_known_seqno_;
 
   td::actor::ActorOwn<ton::validator::ValidatorManagerInterface> validator_manager_;
   td::actor::ActorOwn<ton::validator::RootDb> db_;
   td::actor::ActorOwn<DbCacheWrapper> db_caching_;
 public:
-  DbScanner(std::string db_root, td::uint32 last_known_seqno, td::int32 max_db_cache_size = 256) 
-    : db_root_(db_root), last_known_seqno_(last_known_seqno), max_db_cache_size_(max_db_cache_size) {}
+  DbScanner(std::string db_root, ScannerMode mode, td::int32 max_db_cache_size = 256) 
+    : db_root_(db_root), mode_(mode), max_db_cache_size_(max_db_cache_size) {}
 
   ton::BlockSeqno get_last_known_seqno() {
     return last_known_seqno_;
@@ -31,7 +34,9 @@ public:
   void alarm() override;
 
   void fetch_seqno(std::uint32_t mc_seqno, td::Promise<MasterchainBlockDataState> promise);
-  void get_last_mc_seqno(td::Promise<std::int32_t> promise);
+  void get_last_mc_seqno(td::Promise<ton::BlockSeqno> promise);
+  void get_oldest_mc_seqno(td::Promise<ton::BlockSeqno> promise);
+  void get_mc_block_handle(ton::BlockSeqno seqno, td::Promise<ton::validator::ConstBlockHandle> promise);
 private:
   void set_last_mc_seqno(ton::BlockSeqno mc_seqno);
   void catch_up_with_primary();

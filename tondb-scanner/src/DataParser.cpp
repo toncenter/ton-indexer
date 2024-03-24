@@ -629,7 +629,7 @@ td::Status ParseQuery::parse_account_states(const td::Ref<ShardState>& block_sta
       return td::Status::Error("Unknown account tag");
     }
   }
-  LOG(DEBUG) << "Parsed " << result->account_states_.size() << " account states";
+  // LOG(DEBUG) << "Parsed " << result->account_states_.size() << " account states";
   return td::Status::OK();
 }
 

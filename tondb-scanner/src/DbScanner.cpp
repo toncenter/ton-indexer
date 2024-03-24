@@ -405,12 +405,15 @@ public:
 // DbScanner
 //
 void DbScanner::start_up() {
-  alarm_timestamp() = td::Timestamp::in(1.0);
   auto opts = ton::validator::ValidatorManagerOptions::create(
         ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()},
         ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()});
-  db_ = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_, std::move(opts), true);
+  auto mode = mode_ == dbs_readonly ? td::DbOpenMode::db_readonly : td::DbOpenMode::db_secondary;
+  db_ = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_, std::move(opts), mode);
   db_caching_ = td::actor::create_actor<DbCacheWrapper>("cache_db", db_.get(), max_db_cache_size_);
+
+  td::actor::send_closure(actor_id(this), &DbScanner::update_last_mc_seqno);
+  alarm_timestamp() = td::Timestamp::in(1.0);
 }
 
 void DbScanner::update_last_mc_seqno() {
@@ -428,8 +431,16 @@ void DbScanner::set_last_mc_seqno(ton::BlockSeqno mc_seqno) {
   last_known_seqno_ = mc_seqno;
 }
 
-void DbScanner::get_last_mc_seqno(td::Promise<std::int32_t> promise) {
-  promise.set_result(last_known_seqno_);
+void DbScanner::get_last_mc_seqno(td::Promise<ton::BlockSeqno> promise) {
+  td::actor::send_closure(db_, &RootDb::get_max_masterchain_seqno, std::move(promise));
+}
+
+void DbScanner::get_oldest_mc_seqno(td::Promise<ton::BlockSeqno> promise) {
+  td::actor::send_closure(db_, &RootDb::get_min_masterchain_seqno, std::move(promise));
+}
+
+void DbScanner::get_mc_block_handle(ton::BlockSeqno seqno, td::Promise<ton::validator::ConstBlockHandle> promise) {
+  td::actor::send_closure(db_, &RootDb::get_block_by_seqno, ton::AccountIdPrefixFull(ton::masterchainId, ton::shardIdAll), seqno, std::move(promise));
 }
 
 void DbScanner::catch_up_with_primary() {
@@ -516,6 +527,9 @@ void DbScanner::fetch_seqno(std::uint32_t mc_seqno, td::Promise<MasterchainBlock
 // }
 
 void DbScanner::alarm() {
+  if (mode_ == dbs_readonly) {
+    return;
+  }
   alarm_timestamp() = td::Timestamp::in(1.0);
   if (db_.empty()) {
     return;
