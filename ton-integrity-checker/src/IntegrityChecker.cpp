@@ -116,6 +116,9 @@ void IntegrityChecker::find_oldest_seqno_with_state(uint32_t min_seqno, uint32_t
 
 void IntegrityChecker::got_oldest_mc_seqno_with_state(ton::BlockSeqno oldest_seqno_with_state) {
     from_seqno_ = oldest_seqno_with_state + 1;
+    if (from_seqno_ < 3) {
+        from_seqno_ = 3; // for seqnos 0, 1, 2 we get error "not in db" when reading shard blocks.
+    }
     checkpoint_seqno_ = from_seqno_;
     LOG(INFO) << "Starting DB verifying in range [" << from_seqno_ << ", " << to_seqno_ <<"]";
     if (from_seqno_ && to_seqno_) {
