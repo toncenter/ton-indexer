@@ -1,12 +1,14 @@
 import logging
 from typing import List, Dict, Optional
 from datetime import datetime
+from functools import wraps
 
 from fastapi import FastAPI, APIRouter, Depends, Query, Path, Body, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import DBAPIError
 
 from indexer.core.utils import (
     address_to_raw, 
@@ -23,11 +25,7 @@ from indexer.core.database import (
 )
 from indexer.core import crud, exceptions
 
-# logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
-
-# logging.basicConfig(format='%(asctime)s %(module)-15s %(message)s',
-#                     level=logging.INFO)
-# logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 settings = Settings()
@@ -48,7 +46,24 @@ INT32_MAX = 2**31 - 1
 UINT32_MAX = 2**32 - 1
 
 
+def catch_cancelled(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except DBAPIError as ee:
+            logger.warning(f'Timeout for request {func.__name__} args: {args}, kwargs: {kwargs} exception: {ee}')
+            raise exceptions.TimeoutError()
+        except exceptions.DataNotFound as ee:
+            raise ee
+        except Exception as ee:
+            logger.warning(f'Error for request {func.__name__} args: {args}, kwargs: {kwargs} exception: {ee}')
+            raise ee
+    return wrapper
+
+
 @router.get("/masterchainInfo", response_model=schemas.MasterchainInfo, response_model_exclude_none=True)
+@catch_cancelled
 async def get_masterchain_info(db: AsyncSession = Depends(get_db)):
     last = await db.run_sync(crud.get_blocks,
                              workchain=MASTERCHAIN_INDEX,
@@ -78,9 +93,10 @@ def validate_block_idx(workchain, shard, seqno):
 
 
 @router.get("/blocks", response_model=schemas.BlockList)
+@catch_cancelled
 async def get_blocks(
     workchain: Optional[int] = Query(None, description='Block workchain.'),
-    shard: Optional[str] = Query(None, description='Block shard id. Must be sent with *workchain*.'),
+    shard: Optional[str] = Query(None, description='Block shard id. Must be sent with *workchain*. Example: `8000000000000000`'),
     seqno: Optional[int] = Query(None, description='Block block seqno. Must be sent with *workchain* and *shard*.'),
     start_utime: Optional[int] = Query(None, description='Query blocks with generation UTC timestamp **after** given timestamp.'),
     end_utime: Optional[int] = Query(None, description='Query blocks with generation UTC timestamp **before** given timestamp'),
@@ -111,6 +127,7 @@ async def get_blocks(
 
 
 @router.get("/masterchainBlockShardState", response_model=schemas.BlockList)
+@catch_cancelled
 async def get_shards_by_masterchain_block(seqno: int = Query(..., description='Masterchain block seqno'),
                                           db: AsyncSession = Depends(get_db)):
     result = await db.run_sync(crud.get_shard_state, mc_seqno=seqno)
@@ -123,6 +140,7 @@ async def get_shards_by_masterchain_block(seqno: int = Query(..., description='M
 
 # # NOTE: This method is not reliable in case account was destroyed, it will return it's state before destruction. So for now we comment it out.
 # @router.get("/account", response_model=schemas.LatestAccountState)
+# @catch_cancelled
 # async def get_account(
 #     address: str = Query(..., description='Account address. Can be sent in raw or user-friendly format.'),
 #     db: AsyncSession = Depends(get_db)):
@@ -138,6 +156,7 @@ async def get_shards_by_masterchain_block(seqno: int = Query(..., description='M
 
 
 @router.get("/addressBook", response_model=Dict[str, schemas.AddressBookEntry])
+@catch_cancelled
 async def get_address_book(
     address: List[str] = Query(..., description="List of addresses in any form. Max: 1024"),
     db: AsyncSession = Depends(get_db)):
@@ -153,6 +172,7 @@ async def get_address_book(
             for addr, addr_raw, item in zip(address, address_list_raw, result)}
 
 @router.get("/masterchainBlockShards", response_model=schemas.BlockList)
+@catch_cancelled
 async def get_masterchain_block_shards(
     seqno: int = Query(..., description='Masterchain block seqno'),
     include_mc_block: bool = Query(False, description='Include masterchain block'),
@@ -169,9 +189,10 @@ async def get_masterchain_block_shards(
 
 
 @router.get("/transactions", response_model=schemas.TransactionList)
+@catch_cancelled
 async def get_transactions(
     workchain: Optional[int] = Query(None, description='Block workchain.'),
-    shard: Optional[str] = Query(None, description='Block shard id. Must be sent with *workchain*.'),
+    shard: Optional[str] = Query(None, description='Block shard id. Must be sent with *workchain*. Example: `8000000000000000`'),
     seqno: Optional[int] = Query(None, description='Block block seqno. Must be sent with *workchain* and *shard*. Must be sent in hex form.'),
     account: Optional[str] = Query(None, description='The account address to get transactions. Can be sent in hex, base64 or base64url form.'),
     exclude_account: Optional[List[str]] = Query(None, description='Exclude transactions on specified account addresses'),
@@ -211,6 +232,7 @@ async def get_transactions(
 
 
 @router.get("/transactionsByMasterchainBlock", response_model=schemas.TransactionList)
+@catch_cancelled
 async def get_transactions_by_masterchain_block(
     seqno: int = Query(..., description='Masterchain block seqno'),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
@@ -238,6 +260,7 @@ async def get_transactions_by_masterchain_block(
 
 
 @router.get('/transactionsByMessage', response_model=schemas.TransactionList)
+@catch_cancelled
 async def get_transactions_by_message(
     direction: Optional[str] = Query(..., description='Message direction.', enum=['in', 'out']),
     msg_hash: Optional[str] = Query(..., description='Message hash. Acceptable in hex, base64 and base64url forms.'),
@@ -260,6 +283,7 @@ async def get_transactions_by_message(
 
 
 @router.get('/adjacentTransactions', response_model=schemas.TransactionList)
+@catch_cancelled
 async def get_adjacent_transactions(
     hash: str = Query(..., description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
     direction: Optional[str] = Query('both', description='Direction transactions by lt.', enum=['in', 'out', 'both']),
@@ -285,6 +309,7 @@ async def get_adjacent_transactions(
 
 
 @router.get('/traces', response_model=List[Optional[schemas.TransactionTrace]], include_in_schema=False)
+@catch_cancelled
 async def get_traces(
     tx_hash: List[str] = Query(None, description='List of transaction hashes'),
     trace_id: List[str] = Query(None, description='List of trace ids', include_in_schema=True),
@@ -304,6 +329,7 @@ async def get_traces(
 
 
 @router.get('/transactionTrace', response_model=schemas.TransactionTrace, include_in_schema=False)
+@catch_cancelled
 async def get_transaction_trace(
     hash: str = Query(..., description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
     sort: str = Query('asc', description='Sort transactions by lt.', enum=['none', 'asc', 'desc']),
@@ -319,6 +345,7 @@ async def get_transaction_trace(
 
 
 @router.get('/messages', response_model=schemas.MessageList)
+@catch_cancelled
 async def get_messages(
     hash: str = Query(None, description='Message hash. Acceptable in hex, base64 and base64url forms.'),    
     source: Optional[str] = Query(None, description='The source account address. Can be sent in hex, base64 or base64url form. Use value `null` to get external messages.'),
@@ -345,6 +372,7 @@ async def get_messages(
 
 
 @router.get('/nft/collections', response_model=schemas.NFTCollectionList)
+@catch_cancelled
 async def get_nft_collections(
     collection_address: Optional[str] = Query(None, description='NFT collection address. Must be sent in hex, base64 and base64url forms.'),
     owner_address: Optional[str] = Query(None, description='Address of NFT collection owner. Must be sent in hex, base64 and base64url forms.'),
@@ -365,6 +393,7 @@ async def get_nft_collections(
 
 
 @router.get('/nft/items', response_model=schemas.NFTItemList)
+@catch_cancelled
 async def get_nft_items(
     address: Optional[str] = Query(None, description='NFT address. Must be sent in hex, base64 and base64url forms.'),
     owner_address: Optional[str] = Query(None, description='Address of NFT owner. Must be sent in hex, base64 and base64url forms.'),
@@ -388,6 +417,7 @@ async def get_nft_items(
 
 
 @router.get('/nft/transfers', response_model=schemas.NFTTransferList)
+@catch_cancelled
 async def get_nft_transfers(
     address: Optional[str] = Query(None, description='Address of NFT owner. Must be sent in hex, base64 and base64url forms.'),
     item_address: Optional[str] = Query(None, description='NFT item address. Must be sent in hex, base64 and base64url forms.'),
@@ -425,6 +455,7 @@ async def get_nft_transfers(
 
 
 @router.get('/jetton/masters', response_model=schemas.JettonMasterList)
+@catch_cancelled
 async def get_jetton_masters(
     address: str = Query(None, description="Jetton Master address. Must be sent in hex, base64 and base64url forms."),
     admin_address: str = Query(None, description="Address of Jetton Master's admin. Must be sent in hex, base64 and base64url forms."),
@@ -445,6 +476,7 @@ async def get_jetton_masters(
 
 
 @router.get('/jetton/wallets', response_model=schemas.JettonWalletList)
+@catch_cancelled
 async def get_jetton_wallets(
     address: str = Query(None, description="Jetton wallet address. Must be sent in hex, base64 and base64url forms."),
     owner_address: str = Query(None, description="Address of Jetton wallet's owner. Must be sent in hex, base64 and base64url forms."),
@@ -468,6 +500,7 @@ async def get_jetton_wallets(
 
 
 @router.get('/jetton/transfers', response_model=schemas.JettonTransferList)
+@catch_cancelled
 async def get_jetton_transfers(
     address: Optional[str] = Query(None, description='Account address. Must be sent in hex, base64 and base64url forms.'),
     jetton_wallet: Optional[str] = Query(None, description='Jetton wallet address. Must be sent in hex, base64 and base64url forms.'),
@@ -505,6 +538,7 @@ async def get_jetton_transfers(
 
 
 @router.get('/jetton/burns', response_model=schemas.JettonBurnList)
+@catch_cancelled
 async def get_jetton_burns(
     address: Optional[str] = Query(None, description='Account address. Must be sent in hex, base64 and base64url forms.'),
     jetton_wallet: Optional[str] = Query(None, description='Jetton wallet address. Must be sent in hex, base64 and base64url forms.'),
@@ -538,6 +572,7 @@ async def get_jetton_burns(
 
 
 @router.get('/topAccountsByBalance', response_model=List[schemas.AccountBalance], include_in_schema=False)
+@catch_cancelled
 async def get_top_accounts_by_balance(
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),

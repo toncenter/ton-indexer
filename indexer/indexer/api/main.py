@@ -17,7 +17,7 @@ from indexer.api.deps.apikey import api_key_dep
 
 
 logging.basicConfig(format='%(asctime)s %(module)-15s %(message)s',
-                    level=logging.INFO)
+                    level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -45,6 +45,11 @@ async def tonlib_wront_result_exception_handler(request, exc):
 @app.exception_handler(exceptions.MultipleDataFound)
 async def tonlib_multiple_result_exception_handler(request, exc):
     return JSONResponse({'error' : str(exc)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@app.exception_handler(exceptions.TimeoutError)
+async def timeout_error_handler(request, exc):
+    return JSONResponse({'error': 'Timeout error'}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @app.exception_handler(RequestValidationError)
