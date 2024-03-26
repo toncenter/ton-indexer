@@ -1,3 +1,8 @@
+class TimeoutError(Exception):
+    def __str__(self):
+        return f"Query timeout"
+
+
 class DataNotFound(Exception):
     pass
 

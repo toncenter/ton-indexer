@@ -3,6 +3,7 @@ from typing import List, Optional, Literal, Union, Any, Dict
 from pydantic import BaseModel, ConfigDict, Field
 
 from indexer.core.utils import b64_to_hex, address_to_raw, address_to_friendly, int_to_hex
+from indexer.core.settings import Settings
 
 from pytonlib.utils import tlb
 
@@ -10,12 +11,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-
 def hash_type(value):
-    return b64_to_hex(value).upper() if value else None
+    # return b64_to_hex(value).upper() if value else None
+    return value
+
 
 def address_type(value):
     return address_to_raw(value).upper() if value and value != 'addr_none' else None
+
 
 def is_wallet(code_hash):
     wallets_code_hashes = {
@@ -31,6 +34,7 @@ def is_wallet(code_hash):
     }
     return code_hash in wallets_code_hashes
 
+
 def address_type_friendly(address_raw, latest_account_state):
     """
     As per address update proposal https://github.com/ton-blockchain/TEPs/pull/123 
@@ -45,10 +49,12 @@ def address_type_friendly(address_raw, latest_account_state):
         bounceable = False
     elif is_wallet(latest_account_state.code_hash):
         bounceable = False
-    return address_to_friendly(address_raw, bounceable) if address_raw and address_raw != 'addr_none' else None
+    return address_to_friendly(address_raw, bounceable, Settings().is_testnet) if address_raw and address_raw != 'addr_none' else None
+
 
 def shard_type(value):
     return int_to_hex(value, length=64, signed=True).upper() if value else None
+
 
 class BlockReference(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -72,6 +78,7 @@ class Block(BaseModel):
     after_merge: bool
     before_split: bool
     after_split: bool
+    want_merge: bool
     want_split: bool
     key_block: bool
     vert_seqno_incr: bool
@@ -93,6 +100,7 @@ class Block(BaseModel):
     tx_count: Optional[int]
 
     masterchain_block_ref: Optional[BlockReference]
+    prev_blocks: List[BlockReference]
 
 
     @classmethod
@@ -107,6 +115,7 @@ class Block(BaseModel):
                      after_merge=obj.after_merge,
                      before_split=obj.before_split,
                      after_split=obj.after_split,
+                     want_merge=obj.want_merge,
                      want_split=obj.want_split,
                      key_block=obj.key_block,
                      vert_seqno_incr=obj.vert_seqno_incr,
@@ -126,7 +135,19 @@ class Block(BaseModel):
                      masterchain_block_ref=BlockReference(workchain=obj.mc_block_workchain, 
                                                           shard=shard_type(obj.mc_block_shard), 
                                                           seqno=obj.mc_block_seqno) 
-                                           if obj.mc_block_seqno is not None else None)
+                                           if obj.mc_block_seqno is not None else None,
+                     prev_blocks=[BlockReference(workchain=p['workchain'], 
+                                                 shard=shard_type(p['shard']),
+                                                 seqno=p['seqno']) for p in obj.prev_blocks] 
+                                  if obj.prev_blocks else [])
+
+
+class BlockList(BaseModel):
+    blocks: List[Block]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return BlockList(blocks=[Block.from_orm(x) for x in obj])
 
 
 class AccountStatus(str, Enum):
@@ -146,8 +167,10 @@ class AccountStatus(str, Enum):
         # ton-http-api returns 'uninitialized' for both uninit and nonexist accounts
         raise ValueError(f'Unexpected account status: {value}')
 
+
 class InternalMsgBody(BaseModel):
     pass
+
 
 class TextComment(InternalMsgBody):
     type: Literal["text_comment"] = "text_comment"
@@ -157,6 +180,7 @@ class TextComment(InternalMsgBody):
     def from_tlb(cls, tlb_obj: tlb.TextCommentMessage):
         return TextComment(comment=tlb_obj.text_comment)
 
+
 class BinaryComment(InternalMsgBody):
     type: Literal["binary_comment"] = "binary_comment"
     hex_comment: str
@@ -164,6 +188,7 @@ class BinaryComment(InternalMsgBody):
     @classmethod
     def from_tlb(cls, tlb_obj: tlb.BinaryCommentMessage): 
         return BinaryComment(hex_comment=tlb_obj.hex_comment)
+
 
 class Comment:
     @classmethod
@@ -173,7 +198,8 @@ class Comment:
         if type(tlb_obj) is tlb.BinaryCommentMessage:
             return BinaryComment.from_tlb(tlb_obj)
         raise RuntimeError(f"Unexpected object of type {type(tlb_obj)}")
-    
+
+
 def decode_msg_body(body, op):
     try:
         if op == '0x00000000':
@@ -182,6 +208,7 @@ def decode_msg_body(body, op):
     except BaseException as e:
         logger.error(f"Error parsing msg with op {op}: {e}")
     return None
+
 
 class MessageContent(BaseModel):
     hash: str
@@ -193,7 +220,8 @@ class MessageContent(BaseModel):
         return MessageContent(hash=hash_type(obj.hash),
                               body=obj.body,
                               decoded=decode_msg_body(obj.body, op))
-    
+
+
 class MessageInitState(BaseModel):
     hash: str
     body: str
@@ -203,14 +231,13 @@ class MessageInitState(BaseModel):
         return MessageInitState(hash=hash_type(obj.hash),
                                 body=obj.body)
 
+
 class Message(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
 
     hash: str
     source: Optional[str]
-    source_friendly: Optional[str]
     destination: Optional[str]
-    destination_friendly: Optional[str]
     value: Optional[str]
     fwd_fee: Optional[str]
     ihr_fee: Optional[str]
@@ -232,9 +259,7 @@ class Message(BaseModel):
         op = f'0x{(obj.opcode & 0xffffffff):08x}' if obj.opcode is not None else None
         return Message(hash=hash_type(obj.hash),
                        source=address_type(obj.source),
-                       source_friendly=address_type_friendly(obj.source, obj.source_account_state),
                        destination=address_type(obj.destination),
-                       destination_friendly=address_type_friendly(obj.destination, obj.destination_account_state),
                        value=obj.value,
                        fwd_fee=obj.fwd_fee,
                        ihr_fee=obj.ihr_fee,
@@ -251,13 +276,20 @@ class Message(BaseModel):
                        init_state=MessageInitState.from_orm(obj.init_state) if obj.init_state else None)
 
 
+class MessageList(BaseModel):
+    messages: List[Message]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return MessageList(messages=[Message.from_orm(x) for x in obj])
+
+
 class AccountState(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
 
     hash: str
-    account: str
-    balance: str
-    account_status: AccountStatus
+    balance: Optional[str]
+    account_status: Optional[AccountStatus]
     frozen_hash: Optional[str]
     code_hash: Optional[str]
     data_hash: Optional[str]
@@ -265,19 +297,27 @@ class AccountState(BaseModel):
     @classmethod
     def from_orm(cls, obj):
         return AccountState(hash=hash_type(obj.hash),
-                            account=address_type(obj.account),
                             balance=obj.balance,
                             account_status=AccountStatus(obj.account_status),
                             frozen_hash=hash_type(obj.frozen_hash),
                             code_hash=hash_type(obj.code_hash),
                             data_hash=hash_type(obj.data_hash))
+    
+    @classmethod
+    def from_hash_only(cls, hash):
+        return AccountState(hash=hash_type(hash),
+                            account=None,
+                            balance=None,
+                            account_status=None,
+                            frozen_hash=None,
+                            code_hash=None,
+                            data_hash=None)
 
 
 class Transaction(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
 
     account: str
-    account_friendly: str
     hash: str
     lt: str
 
@@ -287,9 +327,6 @@ class Transaction(BaseModel):
     end_status: AccountStatus
 
     total_fees: str
-
-    account_state_hash_before: str
-    account_state_hash_after: str
 
     prev_trans_hash: str
     prev_trans_lt: str
@@ -303,7 +340,8 @@ class Transaction(BaseModel):
     account_state_before: Optional[AccountState]
     account_state_after: Optional[AccountState]
 
-    trace_id: Optional[str]
+    # trace_id: Optional[str]
+    mc_block_seqno: Optional[int]
 
     @classmethod
     def from_orm(cls, obj):
@@ -315,16 +353,14 @@ class Transaction(BaseModel):
                 in_msg = msg
             else:
                 out_msgs.append(msg)
+        out_msgs = sorted(out_msgs, key=lambda x: x.created_lt)
         return Transaction(account=address_type(obj.account),
-                           account_friendly=address_type_friendly(obj.account, obj.account_state_latest),
                            hash=hash_type(obj.hash),
                            lt=obj.lt,
                            now=obj.now,
                            orig_status=AccountStatus(obj.orig_status),
                            end_status=AccountStatus(obj.end_status),
                            total_fees=obj.total_fees,
-                           account_state_hash_after=hash_type(obj.account_state_hash_after),
-                           account_state_hash_before=hash_type(obj.account_state_hash_before),
                            prev_trans_hash=hash_type(obj.prev_trans_hash),
                            prev_trans_lt=obj.prev_trans_lt,
                            description=obj.description,
@@ -333,10 +369,44 @@ class Transaction(BaseModel):
                                                     seqno=obj.block_seqno),
                            in_msg=in_msg,
                            out_msgs=out_msgs,
-                           account_state_before=AccountState.from_orm(obj.account_state_before) if obj.account_state_before else None,
-                           account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else None,
-                           trace_id=str(obj.event_id) if obj.event_id is not None else None,)
+                           account_state_before=AccountState.from_orm(obj.account_state_before) if obj.account_state_before else AccountState.from_hash_only(obj.account_state_hash_before),
+                           account_state_after=AccountState.from_orm(obj.account_state_after) if obj.account_state_after else AccountState.from_hash_only(obj.account_state_hash_after),
+                        #    trace_id=str(obj.event_id) if obj.event_id is not None else None,
+                           mc_block_seqno=obj.mc_block_seqno)
 
+
+class AddressBookEntry(BaseModel):
+    user_friendly: str
+
+
+class TransactionList(BaseModel):
+    transactions: List[Transaction]
+
+    address_book: Dict[str, AddressBookEntry]
+
+    @classmethod
+    def from_orm(cls, obj):
+        address_book = {}
+        for tx in obj:
+            if tx.account not in address_book:
+                address_book[tx.account] = AddressBookEntry(user_friendly=address_type_friendly(tx.account, tx.account_state_latest))
+
+            in_msg = None
+            out_msgs = []
+            for tx_msg in tx.messages:
+                if tx_msg.direction == 'in':
+                    in_msg = tx_msg.message
+                else:
+                    out_msgs.append(tx_msg.message)
+            if in_msg:
+                if in_msg.source and in_msg.source not in address_book:
+                    address_book[in_msg.source] = AddressBookEntry(user_friendly=address_type_friendly(in_msg.source, in_msg.source_account_state))
+            for msg in out_msgs:
+                if msg.destination and msg.destination not in address_book:
+                    address_book[msg.destination] = AddressBookEntry(user_friendly=address_type_friendly(msg.destination, msg.destination_account_state))
+
+        return TransactionList(transactions=[Transaction.from_orm(x) for x in obj],
+                               address_book=address_book)
 
 class TransactionTrace(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -372,6 +442,13 @@ class NFTCollection(BaseModel):
                              collection_content=obj.collection_content,
                              code_hash=hash_type(obj.code_hash),
                              data_hash=hash_type(obj.data_hash),)
+    
+class NFTCollectionList(BaseModel):
+    nft_collections: List[NFTCollection]
+    
+    @classmethod
+    def from_orm(cls, obj):
+        return NFTCollectionList(nft_collections=[NFTCollection.from_orm(x) for x in obj])
 
 
 class NFTItem(BaseModel):
@@ -402,6 +479,12 @@ class NFTItem(BaseModel):
                        content=obj.content,
                        collection=NFTCollection.from_orm(obj.collection) if obj.collection else None)
 
+class NFTItemList(BaseModel):
+    nft_items: List[NFTItem]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return NFTItemList(nft_items=[NFTItem.from_orm(x) for x in obj])
 
 class NFTTransfer(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -435,6 +518,12 @@ class NFTTransfer(BaseModel):
                            forward_amount=int(obj.forward_amount),
                            forward_payload=obj.forward_payload,)
 
+class NFTTransferList(BaseModel):
+    nft_transfers: List[NFTTransfer]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return NFTTransferList(nft_transfers=[NFTTransfer.from_orm(x) for x in obj])
 
 class JettonMaster(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -461,6 +550,12 @@ class JettonMaster(BaseModel):
                             code_hash=hash_type(obj.code_hash),
                             data_hash=hash_type(obj.data_hash),)
 
+class JettonMasterList(BaseModel):
+    jetton_masters: List[JettonMaster]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonMasterList(jetton_masters=[JettonMaster.from_orm(x) for x in obj])
 
 class JettonWallet(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -483,6 +578,12 @@ class JettonWallet(BaseModel):
                             code_hash=hash_type(obj.code_hash),
                             data_hash=hash_type(obj.data_hash),)
 
+class JettonWalletList(BaseModel):
+    jetton_wallets: List[JettonWallet]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonWalletList(jetton_wallets=[JettonWallet.from_orm(x) for x in obj])
 
 class JettonTransfer(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -517,6 +618,12 @@ class JettonTransfer(BaseModel):
                               forward_ton_amount=int(obj.forward_ton_amount) if obj.forward_ton_amount else None,
                               forward_payload=obj.forward_payload,)
 
+class JettonTransferList(BaseModel):
+    jetton_transfers: List[JettonTransfer]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonTransferList(jetton_transfers=[JettonTransfer.from_orm(x) for x in obj])
 
 class JettonBurn(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
@@ -541,9 +648,16 @@ class JettonBurn(BaseModel):
                           response_destination=address_type(obj.response_destination),
                           custom_payload=obj.custom_payload,)
 
+class JettonBurnList(BaseModel):
+    jetton_burns: List[JettonBurn]
+
+    @classmethod
+    def from_orm(cls, obj):
+        return JettonBurnList(jetton_burns=[JettonBurn.from_orm(x) for x in obj])
+
 class MasterchainInfo(BaseModel):
-    first: Block
     last: Block
+    first: Block
 
 class AccountBalance(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)

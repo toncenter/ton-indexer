@@ -2,6 +2,7 @@ version: '3.9'
 
 
 x-indexer-environment: &indexer-environment
+  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
   POSTGRES_HOST:
   POSTGRES_PORT:
   POSTGRES_USER:
@@ -18,7 +19,7 @@ services:
     environment: *indexer-environment 
     secrets:
       - postgres_password
-    command: alembic upgrade head
+    command: alembic upgrade head-1
     deploy:
       mode: replicated
       replicas: 1

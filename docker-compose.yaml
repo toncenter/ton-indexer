@@ -1,6 +1,7 @@
 version: '3.9'
 
 x-indexer-environment: &index-common
+  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
   POSTGRES_HOST:
   POSTGRES_PORT:
   POSTGRES_USER:
@@ -13,6 +14,7 @@ x-index-api: &index-api
   TON_INDEXER_API_ROOT_PATH:
   TON_INDEXER_API_PORT:
   TON_INDEXER_TON_HTTP_API_ENDPOINT:
+  TON_INDEXER_IS_TESTNET:
   <<: *index-common
 
 x-index-worker: &index-worker
@@ -43,7 +45,7 @@ services:
     environment: *index-api 
     secrets:
       - postgres_password
-    command: alembic upgrade head
+    command: alembic upgrade head-1
     networks:
       internal:
     depends_on:
@@ -61,10 +63,7 @@ services:
     environment: *index-worker
     networks:
       internal:
-    command: --from ${TON_WORKER_FROM:-1} \ 
-             --max-parallel-tasks ${TON_WORKER_MAX_PARALLEL_TASKS:-1024} \
-             --insert-batch-size ${TON_WORKER_INSERT_BATCH_SIZE:-512} \
-             --insert-parallel-actors ${TON_WORKER_INSERT_PARALLEL_ACTORS:-3}
+    command: --from ${TON_WORKER_FROM:-1}
     restart: unless-stopped
     depends_on:
       alembic:
@@ -104,4 +103,4 @@ networks:
 
 secrets:
   postgres_password:
-    file: private/postgres_password
+    file: ${POSTGRES_PASSWORD_FILE:-private/postgres_password}
