@@ -195,7 +195,8 @@ async def get_transactions(
     shard: Optional[str] = Query(None, description='Block shard id. Must be sent with *workchain*. Example: `8000000000000000`'),
     seqno: Optional[int] = Query(None, description='Block block seqno. Must be sent with *workchain* and *shard*. Must be sent in hex form.'),
     account: Optional[str] = Query(None, description='The account address to get transactions. Can be sent in hex, base64 or base64url form.'),
-    exclude_account: Optional[List[str]] = Query(None, description='Exclude transactions on specified account addresses'),
+    include_account: List[str] = Query(None, description='Include transactions on specified account addresses'),
+    exclude_account: List[str] = Query(None, description='Exclude transactions on specified account addresses'),
     hash: Optional[str] = Query(None, description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
     lt: Optional[int] = Query(None, description='Transaction lt.'),
     start_utime: Optional[int] = Query(None, description='Query transactions with generation UTC timestamp **after** given timestamp.'),
@@ -209,6 +210,10 @@ async def get_transactions(
     """
     Get transactions by specified filters.
     """
+
+    if (account is not None) + (include_account is not None) + (exclude_account is not None) > 1:
+        raise Exception("Only one of account, include_account and exclude account should be specified.")
+
     validate_block_idx(workchain, shard, seqno)
     shard = hex_to_int(shard)
     account = address_to_raw(account)
@@ -218,6 +223,7 @@ async def get_transactions(
                             shard=shard,
                             seqno=seqno,
                             account=account,
+                            include_account_list=[address_to_raw(incl_acc) for incl_acc in include_account] if include_account else None,
                             exclude_account_list=[address_to_raw(excl_acc) for excl_acc in exclude_account] if exclude_account else None,
                             hash=hash,
                             lt=lt,
@@ -398,17 +404,21 @@ async def get_nft_items(
     address: Optional[str] = Query(None, description='NFT address. Must be sent in hex, base64 and base64url forms.'),
     owner_address: Optional[str] = Query(None, description='Address of NFT owner. Must be sent in hex, base64 and base64url forms.'),
     collection_address: Optional[str] = Query(None, description='NFT collection address. Must be sent in hex, base64 and base64url forms.'),
+    index: Optional[str] = Query(None, description='NFT Item index. Use it together with collection address.'),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
     db: AsyncSession = Depends(get_db)):
     """
     Get NFT items.
     """
+    if index is not None and collection_address is None:
+        raise RuntimeError('Use index together with collection_address')
     address = address_to_raw(address)
     owner_address = address_to_raw(owner_address)
     collection_address = address_to_raw(collection_address)
     res = await db.run_sync(crud.get_nft_items,
                             address=address,
+                            index=index,
                             owner_address=owner_address,
                             collection_address=collection_address,
                             limit=limit,

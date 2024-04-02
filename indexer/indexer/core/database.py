@@ -39,8 +39,8 @@ def get_engine(settings: Settings):
     logger.critical(settings.pg_dsn)
     engine = create_async_engine(settings.pg_dsn, 
                                  pool_size=128, 
-                                 max_overflow=24, 
-                                 pool_timeout=128,
+                                 max_overflow=0, 
+                                 pool_timeout=5,
                                  echo=False,
                                  connect_args={'server_settings': {'statement_timeout': '3000'}}
                                  )
@@ -48,18 +48,18 @@ def get_engine(settings: Settings):
 engine = get_engine(settings)
 SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
 
-# async engine
-def get_sync_engine(settings: Settings):
-    pg_dsn = settings.pg_dsn.replace('+asyncpg', '')
-    logger.critical(pg_dsn)
-    engine = create_engine(pg_dsn, 
-                           pool_size=128, 
-                           max_overflow=24, 
-                           pool_timeout=128,
-                           echo=False)
-    return engine
-engine = get_sync_engine(settings)
-SyncSessionMaker = sessionmaker(bind=engine)
+# # async engine
+# def get_sync_engine(settings: Settings):
+#     pg_dsn = settings.pg_dsn.replace('+asyncpg', '')
+#     logger.critical(pg_dsn)
+#     engine = create_engine(pg_dsn, 
+#                            pool_size=128, 
+#                            max_overflow=0, 
+#                            pool_timeout=5,
+#                            echo=False)
+#     return engine
+# sync_engine = get_sync_engine(settings)
+# SyncSessionMaker = sessionmaker(bind=sync_engine)
 
 # database
 Base = declarative_base()
@@ -492,6 +492,7 @@ Index("transaction_messages_index_2", TransactionMessage.message_hash)
 # Index("jetton_wallets_index_1", JettonWallet.address)
 Index("jetton_wallets_index_2", JettonWallet.owner)
 Index("jetton_wallets_index_3", JettonWallet.jetton)
+Index("jetton_wallets_index_4", JettonWallet.jetton_master, JettonWallet.balance)
 # Index("jetton_wallets_index_4", JettonWallet.code_hash)
 
 # Index("jetton_masters_index_1", JettonMaster.address)
@@ -515,6 +516,7 @@ Index("nft_collections_index_2", NFTCollection.owner_address)
 # Index("nft_items_index_1", NFTItem.address)
 Index("nft_items_index_2", NFTItem.collection_address)
 Index("nft_items_index_3", NFTItem.owner_address)
+Index("nft_items_index_4", NFTItem.collection_address, NFTItem.index)
 
 # Index("nft_transfers_index_1", NFTTransfer.transaction_hash)
 Index("nft_transfers_index_2", NFTTransfer.nft_item_address)
