@@ -194,8 +194,8 @@ async def get_transactions(
     workchain: Optional[int] = Query(None, description='Block workchain.'),
     shard: Optional[str] = Query(None, description='Block shard id. Must be sent with *workchain*. Example: `8000000000000000`'),
     seqno: Optional[int] = Query(None, description='Block block seqno. Must be sent with *workchain* and *shard*. Must be sent in hex form.'),
-    account: Optional[str] = Query(None, description='The account address to get transactions. Can be sent in hex, base64 or base64url form.'),
-    include_account: List[str] = Query(None, description='Include transactions on specified account addresses'),
+    # account: Optional[str] = Query(None, description='The account address to get transactions. Can be sent in hex, base64 or base64url form.'),
+    account: List[str] = Query(None, description='List of account addresses to get transactions. Can be sent in hex, base64 or base64url form.'),
     exclude_account: List[str] = Query(None, description='Exclude transactions on specified account addresses'),
     hash: Optional[str] = Query(None, description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
     lt: Optional[int] = Query(None, description='Transaction lt.'),
@@ -211,20 +211,31 @@ async def get_transactions(
     Get transactions by specified filters.
     """
 
-    if (account is not None) + (include_account is not None) + (exclude_account is not None) > 1:
-        raise Exception("Only one of account, include_account and exclude account should be specified.")
+    if (account is not None) + (exclude_account is not None) > 1:
+        raise Exception("Only one of account and exclude_account should be specified.")
+    
+    include_account = None
+    if account is not None and len(account) == 1:
+        account = address_to_raw(account[0])
+    elif account is not None and len(account) > 1:
+        include_account = [address_to_raw(incl_acc) for incl_acc in account]
+        account = None
+    else:
+        account = None
+
+    exclude_account = [address_to_raw(excl_acc) for excl_acc in exclude_account] if exclude_account else None
 
     validate_block_idx(workchain, shard, seqno)
     shard = hex_to_int(shard)
-    account = address_to_raw(account)
     hash = hash_to_b64(hash)
+
     res = await db.run_sync(crud.get_transactions,
                             workchain=workchain,
                             shard=shard,
                             seqno=seqno,
                             account=account,
-                            include_account_list=[address_to_raw(incl_acc) for incl_acc in include_account] if include_account else None,
-                            exclude_account_list=[address_to_raw(excl_acc) for excl_acc in exclude_account] if exclude_account else None,
+                            include_account_list=include_account,
+                            exclude_account_list=exclude_account,
                             hash=hash,
                             lt=lt,
                             start_lt=start_lt,
