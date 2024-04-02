@@ -1,6 +1,7 @@
 import logging
 
-from typing import Optional, List
+from typing import Optional, List, Union
+from decimal import Decimal
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import selectinload, Session, Query, contains_eager, aliased
@@ -280,6 +281,7 @@ def get_transactions(session: Session,
                      shard: Optional[int]=None,
                      seqno: Optional[int]=None,
                      account: Optional[str]=None,
+                     include_account_list: Optional[List[str]]=None,
                      exclude_account_list: Optional[List[str]]=None,
                      hash: Optional[str]=None,
                      lt: Optional[str]=None,
@@ -305,6 +307,8 @@ def get_transactions(session: Session,
 
     if account is not None:
         query = query.filter(Transaction.account == account)  # TODO: index
+    if include_account_list:
+        query = query.filter(Transaction.account.in_(include_account_list))
     if exclude_account_list:
         query = query.filter(Transaction.account.notin_(exclude_account_list))
 
@@ -527,11 +531,13 @@ def get_nft_items(session: Session,
     if address is not None:
         query = query.filter(NFTItem.address == address)  # TODO: index
     if index is not None:
-        query = query.filter(NFTItem.index == index)  # TODO: index
+        query = query.filter(NFTItem.index == Decimal(index))  # TODO: index
     if collection_address is not None:
         query = query.filter(NFTItem.collection_address == collection_address)  # TODO: index
     if owner_address is not None:
         query = query.filter(NFTItem.owner_address == owner_address)  # TODO: index
+    if collection_address is not None:
+        query = query.order_by(NFTItem.index.asc())
     query = limit_query(query, limit, offset)
     query = query.options(selectinload(NFTItem.collection))
     return query.all()
@@ -612,7 +618,8 @@ def get_jetton_wallets(session: Session,
     if owner_address is not None:
         query = query.filter(JettonWallet.owner == owner_address)
     if jetton_address is not None:
-        query = query.filter(JettonWallet.jetton == jetton_address)    
+        query = query.filter(JettonWallet.jetton == jetton_address)
+        query = query.order_by(JettonWallet.balance.desc())
     query = limit_query(query, limit, offset)
     return query.all()
 

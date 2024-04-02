@@ -109,6 +109,7 @@ def upgrade():
     )
     op.create_index('jetton_wallets_index_2', 'jetton_wallets', ['owner'], unique=False)
     op.create_index('jetton_wallets_index_3', 'jetton_wallets', ['jetton'], unique=False)
+    op.create_index('jetton_wallets_index_4', 'jetton_wallets', ['jetton_master', 'balance'], unique=False)
     op.create_table('latest_account_states',
     sa.Column('account', sa.String(), nullable=False),
     sa.Column('hash', sa.String(), nullable=True),
@@ -174,6 +175,7 @@ def upgrade():
     )
     op.create_index('nft_items_index_2', 'nft_items', ['collection_address'], unique=False)
     op.create_index('nft_items_index_3', 'nft_items', ['owner_address'], unique=False)
+    op.create_index('nft_items_index_4', 'nft_items', ['collection_address', 'index'], unique=False)
     op.create_table('shard_state',
     sa.Column('mc_seqno', sa.Integer(), nullable=False),
     sa.Column('workchain', sa.Integer(), nullable=False),
@@ -300,6 +302,7 @@ def downgrade():
     op.drop_table('transactions')
     op.drop_table('event_graph')
     op.drop_table('shard_state')
+    op.drop_index('nft_items_index_4', table_name='nft_items')
     op.drop_index('nft_items_index_3', table_name='nft_items')
     op.drop_index('nft_items_index_2', table_name='nft_items')
     op.drop_table('nft_items')
@@ -311,6 +314,7 @@ def downgrade():
     op.drop_table('messages')
     op.drop_table('message_contents')
     op.drop_table('latest_account_states')
+    op.drop_index('jetton_wallets_index_4', table_name='jetton_wallets')
     op.drop_index('jetton_wallets_index_3', table_name='jetton_wallets')
     op.drop_index('jetton_wallets_index_2', table_name='jetton_wallets')
     op.drop_table('jetton_wallets')

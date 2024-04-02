@@ -1,4 +1,4 @@
-version: '3.9'
+version: "3.9"
 
 x-indexer-environment: &index-common
   POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
@@ -33,6 +33,7 @@ services:
       - target: 8081
         published: ${TON_INDEXER_API_PORT:-8081}
     environment: *index-api
+    restart: always
     networks:
       internal:
     depends_on:
@@ -76,13 +77,14 @@ services:
       - ${POSTGRES_PUBLISH_PORT:-5432}:5432
     secrets:
       - postgres_password
-    command: postgres -c max_connections=1024 -c shared_buffers=4GB -c work_mem=64MB -c max_wal_size=1GB
+    command: postgres -c max_connections=1024 -c shared_buffers=4GB -c work_mem=64MB -c max_wal_size=1GB -c tcp_keepalives_idle=60 -c tcp_keepalives_interval=60 -c tcp_keepalives_count=60
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
     shm_size: 2G
+    restart: always
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
