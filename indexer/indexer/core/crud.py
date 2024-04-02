@@ -536,6 +536,8 @@ def get_nft_items(session: Session,
         query = query.filter(NFTItem.collection_address == collection_address)  # TODO: index
     if owner_address is not None:
         query = query.filter(NFTItem.owner_address == owner_address)  # TODO: index
+    if collection_address is not None:
+        query = query.order_by(NFTItem.index.asc())
     query = limit_query(query, limit, offset)
     query = query.options(selectinload(NFTItem.collection))
     return query.all()
@@ -616,7 +618,8 @@ def get_jetton_wallets(session: Session,
     if owner_address is not None:
         query = query.filter(JettonWallet.owner == owner_address)
     if jetton_address is not None:
-        query = query.filter(JettonWallet.jetton == jetton_address)    
+        query = query.filter(JettonWallet.jetton == jetton_address)
+        query = query.order_by(JettonWallet.balance.desc())
     query = limit_query(query, limit, offset)
     return query.all()
 
