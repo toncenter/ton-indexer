@@ -71,7 +71,7 @@ services:
         condition: service_completed_successfully
 
   postgres:
-    image: postgres:15
+    image: postgres:16
     environment: *index-common
     ports:
       - ${POSTGRES_PUBLISH_PORT:-5432}:5432
