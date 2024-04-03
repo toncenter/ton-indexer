@@ -492,7 +492,7 @@ Index("transaction_messages_index_2", TransactionMessage.message_hash)
 # Index("jetton_wallets_index_1", JettonWallet.address)
 Index("jetton_wallets_index_2", JettonWallet.owner)
 Index("jetton_wallets_index_3", JettonWallet.jetton)
-Index("jetton_wallets_index_4", JettonWallet.jetton_master, JettonWallet.balance)
+Index("jetton_wallets_index_4", JettonWallet.jetton, JettonWallet.balance)
 # Index("jetton_wallets_index_4", JettonWallet.code_hash)
 
 # Index("jetton_masters_index_1", JettonMaster.address)

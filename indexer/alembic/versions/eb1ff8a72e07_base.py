@@ -109,7 +109,7 @@ def upgrade():
     )
     op.create_index('jetton_wallets_index_2', 'jetton_wallets', ['owner'], unique=False)
     op.create_index('jetton_wallets_index_3', 'jetton_wallets', ['jetton'], unique=False)
-    op.create_index('jetton_wallets_index_4', 'jetton_wallets', ['jetton_master', 'balance'], unique=False)
+    op.create_index('jetton_wallets_index_4', 'jetton_wallets', ['jetton', 'balance'], unique=False)
     op.create_table('latest_account_states',
     sa.Column('account', sa.String(), nullable=False),
     sa.Column('hash', sa.String(), nullable=True),

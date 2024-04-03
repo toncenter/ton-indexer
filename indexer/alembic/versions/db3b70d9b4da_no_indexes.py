@@ -74,7 +74,7 @@ def downgrade():
     op.create_index('messages_index_4', 'messages', ['created_lt'], unique=False)
     op.create_index('messages_index_3', 'messages', ['destination'], unique=False)
     op.create_index('messages_index_2', 'messages', ['source'], unique=False)
-    op.create_index('jetton_wallets_index_4', 'jetton_wallets', ['jetton_master', 'balance'], unique=False)
+    op.create_index('jetton_wallets_index_4', 'jetton_wallets', ['jetton', 'balance'], unique=False)
     op.create_index('jetton_wallets_index_3', 'jetton_wallets', ['jetton'], unique=False)
     op.create_index('jetton_wallets_index_2', 'jetton_wallets', ['owner'], unique=False)
     op.create_index('jetton_transfers_index_4', 'jetton_transfers', ['jetton_wallet_address'], unique=False)
