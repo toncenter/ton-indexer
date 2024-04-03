@@ -46,6 +46,11 @@ td::Status ParseQuery::parse_impl() {
     // account states
     TRY_STATUS(parse_account_states(block_ds.block_state, addresses));
 
+    // config
+    if (block_ds.block_state->get_block_id().is_masterchain()) {
+      TRY_RESULT_ASSIGN(mc_block_.config_, block::ConfigInfo::extract_config(block_ds.block_state->root_cell(), block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries));
+    }
+
     result->blocks_.push_back(schema_block);
   }
 

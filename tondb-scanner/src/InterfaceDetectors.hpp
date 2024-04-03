@@ -173,9 +173,9 @@ public:
   }
 
   void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonMasterData> promise) override {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<bool> code_hash_is_master) mutable {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), address, code_cell, data_cell, last_tx_lt, blocks_ds, promise = std::move(promise)](td::Result<bool> code_hash_is_master) mutable {
       if (code_hash_is_master.is_error()) {
-        td::actor::send_closure(SelfId, &JettonMasterDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+        td::actor::send_closure(SelfId, &JettonMasterDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
         return;
       }
       if (!code_hash_is_master.move_as_ok()) {
@@ -183,14 +183,14 @@ public:
         return;
       }
 
-      td::actor::send_closure(SelfId, &JettonMasterDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+      td::actor::send_closure(SelfId, &JettonMasterDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
 
     td::actor::send_closure(interface_manager_, &InterfaceManager::check_interface, code_cell->get_hash(), IT_JETTON_MASTER, std::move(P));
   }
 
   void detect_from_shard(const MasterchainBlockDataState& blocks_ds, block::StdAddress address, td::Promise<JettonMasterData> promise) {
-    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = std::move(promise)](td::Result<schema::AccountState> account_state_r) mutable {
+    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), address, blocks_ds, promise = std::move(promise)](td::Result<schema::AccountState> account_state_r) mutable {
       if (account_state_r.is_error()) {
         promise.set_error(account_state_r.move_as_error());
         return;
@@ -200,13 +200,13 @@ public:
         promise.set_error(td::Status::Error("Account is not active"));
         return;
       }
-      td::actor::send_closure(SelfId, &JettonMasterDetector::detect_impl, address, account_state.code, account_state.data, account_state.last_trans_lt, std::move(promise));
+      td::actor::send_closure(SelfId, &JettonMasterDetector::detect_impl, address, account_state.code, account_state.data, account_state.last_trans_lt, blocks_ds, std::move(promise));
     });
     td::actor::create_actor<FetchAccountFromShard>("fetchaccountfromshard", blocks_ds, address, std::move(R)).release();
   }
 
-  void detect_continue(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<JettonMasterData> promise) {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), this, address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<JettonMasterData> cached_res) mutable {
+  void detect_continue(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonMasterData> promise) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), this, address, code_cell, data_cell, last_tx_lt, blocks_ds, promise = std::move(promise)](td::Result<JettonMasterData> cached_res) mutable {
       if (cached_res.is_ok()) {
         auto cached_data = cached_res.move_as_ok();
         if ((data_cell->get_hash() == cached_data.data_hash && code_cell->get_hash() == cached_data.code_hash) 
@@ -215,18 +215,20 @@ public:
           return;
         }
       }
-      td::actor::send_closure(SelfId, &JettonMasterDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+      td::actor::send_closure(SelfId, &JettonMasterDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
     storage_.check(address, std::move(P));
   }
 
-  void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<JettonMasterData> promise) {
+  void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonMasterData> promise) {
     if (code_cell.is_null() || data_cell.is_null()) {
       promise.set_error(td::Status::Error(ErrorCode::DATA_PARSING_ERROR, "Code or data null"));
       return;
     }
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
+    args.set_libraries(vm::Dictionary(blocks_ds.config_->get_libraries_root(), 256));
+    args.set_config(blocks_ds.config_);
     args.set_now(td::Time::now());
     args.set_address(std::move(address));
 
@@ -293,18 +295,18 @@ public:
           if (r.is_error()) {
             promise.set_error(r.move_as_error());
           } else {
-            td::actor::send_closure(SelfId, &JettonMasterDetector::get_wallet_address_impl, r.move_as_ok(), master_address, owner_address, std::move(promise));
+            td::actor::send_closure(SelfId, &JettonMasterDetector::get_wallet_address_impl, r.move_as_ok(), master_address, owner_address, blocks_ds, std::move(promise));
           }
         });
         td::actor::send_closure(SelfId, &JettonMasterDetector::detect_from_shard, blocks_ds, master_address, std::move(R));
         return;
       }
-      td::actor::send_closure(SelfId, &JettonMasterDetector::get_wallet_address_impl, r.move_as_ok(), master_address, owner_address, std::move(promise));
+      td::actor::send_closure(SelfId, &JettonMasterDetector::get_wallet_address_impl, r.move_as_ok(), master_address, owner_address, blocks_ds, std::move(promise));
     });
     storage_.check(master_address, std::move(P));
   }
 
-  void get_wallet_address_impl(JettonMasterData data, block::StdAddress master_address, block::StdAddress owner_address, td::Promise<block::StdAddress> P) {
+  void get_wallet_address_impl(JettonMasterData data, block::StdAddress master_address, block::StdAddress owner_address, const MasterchainBlockDataState& blocks_ds, td::Promise<block::StdAddress> P) {
     auto code_cell = vm::std_boc_deserialize(td::base64_decode(data.code_boc).move_as_ok()).move_as_ok();
     auto data_cell = vm::std_boc_deserialize(td::base64_decode(data.data_boc).move_as_ok()).move_as_ok();
     ton::SmartContract smc({code_cell, data_cell});
@@ -319,6 +321,8 @@ public:
     block::gen::t_MsgAddressInt.pack_addr_std(cb, anycast_cs, owner_address.workchain, owner_address.addr);
     auto owner_address_cell = cb.finalize();
 
+    args.set_libraries(vm::Dictionary(blocks_ds.config_->get_libraries_root(), 256));
+    args.set_config(blocks_ds.config_);
     args.set_now(td::Time::now());
     args.set_address(master_address);
     args.set_stack({vm::StackEntry(vm::load_cell_slice_ref(owner_address_cell))});
@@ -405,6 +409,8 @@ public:
     }
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
+    args.set_libraries(vm::Dictionary(blocks_ds.config_->get_libraries_root(), 256));
+    args.set_config(blocks_ds.config_);
     args.set_now(td::Time::now());
     args.set_address(std::move(address));
 
@@ -638,9 +644,9 @@ public:
   }
 
   void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTCollectionData> promise) override {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<bool> code_hash_is_collection) mutable {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), address, code_cell, data_cell, last_tx_lt, blocks_ds, promise = std::move(promise)](td::Result<bool> code_hash_is_collection) mutable {
       if (code_hash_is_collection.is_error()) {
-        td::actor::send_closure(SelfId, &NFTCollectionDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+        td::actor::send_closure(SelfId, &NFTCollectionDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
         return;
       }
       if (!code_hash_is_collection.move_as_ok()) {
@@ -648,26 +654,26 @@ public:
         return;
       }
 
-      td::actor::send_closure(SelfId, &NFTCollectionDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+      td::actor::send_closure(SelfId, &NFTCollectionDetector::detect_continue, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
 
     td::actor::send_closure(interface_manager_, &InterfaceManager::check_interface, code_cell->get_hash(), IT_NFT_COLLECTION, std::move(P));
   }
 private:
   void detect_from_shard(const MasterchainBlockDataState& blocks_ds, block::StdAddress address, td::Promise<NFTCollectionData> promise) {
-    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), address, promise = std::move(promise)](td::Result<schema::AccountState> account_state_r) mutable {
+    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), address, blocks_ds, promise = std::move(promise)](td::Result<schema::AccountState> account_state_r) mutable {
       if (account_state_r.is_error()) {
         promise.set_error(account_state_r.move_as_error());
         return;
       }
       auto account_state = account_state_r.move_as_ok();
-      td::actor::send_closure(SelfId, &NFTCollectionDetector::detect_impl, address, account_state.code, account_state.data, account_state.last_trans_lt, std::move(promise));
+      td::actor::send_closure(SelfId, &NFTCollectionDetector::detect_impl, address, account_state.code, account_state.data, account_state.last_trans_lt, blocks_ds, std::move(promise));
     });
     td::actor::create_actor<FetchAccountFromShard>("fetchaccountfromshard", blocks_ds, address, std::move(R)).release();
   }
 
-  void detect_continue(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<NFTCollectionData> promise) {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), this, address, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<NFTCollectionData> cached_res) mutable {
+  void detect_continue(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTCollectionData> promise) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), this, address, code_cell, data_cell, last_tx_lt, blocks_ds, promise = std::move(promise)](td::Result<NFTCollectionData> cached_res) mutable {
       if (cached_res.is_ok()) {
         auto cached_data = cached_res.move_as_ok();
         if ((data_cell->get_hash() == cached_data.data_hash && code_cell->get_hash() == cached_data.code_hash) 
@@ -676,19 +682,21 @@ private:
           return;
         }
       }
-      td::actor::send_closure(SelfId, &NFTCollectionDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, std::move(promise));
+      td::actor::send_closure(SelfId, &NFTCollectionDetector::detect_impl, address, code_cell, data_cell, last_tx_lt, blocks_ds, std::move(promise));
     });
 
     storage_.check(address, std::move(P));
   }
 
-  void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt,  td::Promise<NFTCollectionData> promise) {
+  void detect_impl(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTCollectionData> promise) {
     if (code_cell.is_null() || data_cell.is_null()) {
       promise.set_error(td::Status::Error(ErrorCode::DATA_PARSING_ERROR, "Code or data null"));
       return;
     }
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
+    args.set_libraries(vm::Dictionary(blocks_ds.config_->get_libraries_root(), 256));
+    args.set_config(blocks_ds.config_);
     args.set_now(td::Time::now());
     args.set_address(std::move(address));
 
@@ -863,6 +871,8 @@ private:
     }
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
+    args.set_libraries(vm::Dictionary(blocks_ds.config_->get_libraries_root(), 256));
+    args.set_config(blocks_ds.config_);
     args.set_now(td::Time::now());
     args.set_address(std::move(address));
 
@@ -935,7 +945,7 @@ private:
         return;
       }
       td::actor::send_closure(collection_detector_, &NFTCollectionDetector::get_from_cache_or_shard, collection_address.move_as_ok(), blocks_ds,
-                              td::PromiseCreator::lambda([this, SelfId = actor_id(this), ind_content, address, data, code_cell, data_cell, last_tx_lt, promise = std::move(promise)](td::Result<NFTCollectionData> collection_res) mutable {
+                              td::PromiseCreator::lambda([this, SelfId = actor_id(this), ind_content, address, data, code_cell, data_cell, last_tx_lt, blocks_ds, promise = std::move(promise)](td::Result<NFTCollectionData> collection_res) mutable {
         if (collection_res.is_error()) {
           LOG(ERROR) << "Failed to get collection for " << convert::to_raw_address(address) << ": " << collection_res.error();
           promise.set_error(collection_res.move_as_error_prefix("Failed to get collection for " + convert::to_raw_address(address) + ": "));
@@ -943,7 +953,7 @@ private:
         }
 
         auto collection_data = collection_res.move_as_ok();
-        auto content = get_content(data.index, ind_content, collection_data, code_cell, data_cell);
+        auto content = get_content(data.index, ind_content, collection_data, code_cell, data_cell, blocks_ds);
         if (content.is_error()) {
           LOG(ERROR) << "Failed to parse content for " << convert::to_raw_address(address) << ": " << content.error();
           LOG(ERROR) << convert::to_bytes(ind_content).move_as_ok().value();
@@ -951,7 +961,7 @@ private:
           data.content = content.move_as_ok();
         }
 
-        auto verify_r = verify_belonging_to_collection(data, collection_data);
+        auto verify_r = verify_belonging_to_collection(data, collection_data, blocks_ds);
         if (verify_r.is_error()) {
           LOG(ERROR) << "Failed to verify belonging to collection for " << convert::to_raw_address(address) << ": " << verify_r.error();
           promise.set_error(verify_r.move_as_error_prefix(PSLICE() << "Failed to verify belonging to collection for " << convert::to_raw_address(address) << ": " << verify_r.error()));
@@ -975,11 +985,13 @@ private:
     storage_.add(address, data, std::move(promise));
   }
 
-  td::Status verify_belonging_to_collection(const NFTItemData& item_data, const NFTCollectionData& collection_data) {
+  td::Status verify_belonging_to_collection(const NFTItemData& item_data, const NFTCollectionData& collection_data, const MasterchainBlockDataState& blocks_ds) {
     auto code_cell = vm::std_boc_deserialize(td::base64_decode(collection_data.code_boc).move_as_ok()).move_as_ok();
     auto data_cell = vm::std_boc_deserialize(td::base64_decode(collection_data.data_boc).move_as_ok()).move_as_ok();
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
+    args.set_libraries(vm::Dictionary(blocks_ds.config_->get_libraries_root(), 256));
+    args.set_config(blocks_ds.config_);
     args.set_now(td::Time::now());
     args.set_address(block::StdAddress::parse(collection_data.address).move_as_ok());
     args.set_stack({vm::StackEntry(item_data.index)});
@@ -1003,11 +1015,13 @@ private:
   }
 
   td::Result<std::map<std::string, std::string>> get_content(const td::RefInt256 index, td::Ref<vm::Cell> ind_content, const NFTCollectionData& collection_data, 
-                                        td::Ref<vm::Cell> item_code, td::Ref<vm::Cell> item_data) {
+                                        td::Ref<vm::Cell> item_code, td::Ref<vm::Cell> item_data, const MasterchainBlockDataState& blocks_ds) {
     auto code_cell = vm::std_boc_deserialize(td::base64_decode(collection_data.code_boc).move_as_ok()).move_as_ok();
     auto data_cell = vm::std_boc_deserialize(td::base64_decode(collection_data.data_boc).move_as_ok()).move_as_ok();
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
+    args.set_libraries(vm::Dictionary(blocks_ds.config_->get_libraries_root(), 256));
+    args.set_config(blocks_ds.config_);
     args.set_now(td::Time::now());
     args.set_address(block::StdAddress::parse(collection_data.address).move_as_ok());
     args.set_stack({vm::StackEntry(index), vm::StackEntry(ind_content)});
@@ -1027,16 +1041,18 @@ private:
 
     if (collection_data.address == ton_dns_root_addr) {
       std::map<std::string, std::string> result;
-      TRY_RESULT_ASSIGN(result["domain"], get_domain(item_code, item_data));
+      TRY_RESULT_ASSIGN(result["domain"], get_domain(item_code, item_data, blocks_ds));
       return result;
     } else {
       return parse_token_data(stack[0].as_cell());
     }
   }
 
-  td::Result<std::string> get_domain(td::Ref<vm::Cell> code, td::Ref<vm::Cell> data) {
+  td::Result<std::string> get_domain(td::Ref<vm::Cell> code, td::Ref<vm::Cell> data, const MasterchainBlockDataState& blocks_ds) {
     ton::SmartContract smc({code, data});
     ton::SmartContract::Args args;
+    args.set_libraries(vm::Dictionary(blocks_ds.config_->get_libraries_root(), 256));
+    args.set_config(blocks_ds.config_);
     args.set_method_id("get_domain");
     auto res = smc.run_get_method(args);
     if (!res.success) {

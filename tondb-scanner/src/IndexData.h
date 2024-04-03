@@ -380,6 +380,8 @@ struct BlockDataState {
 struct MasterchainBlockDataState {
   std::vector<BlockDataState> shard_blocks_;  // shard state like /shards method
   std::vector<BlockDataState> shard_blocks_diff_;  // blocks corresponding to mc_block.
+
+  std::shared_ptr<block::ConfigInfo> config_;
 };
 
 using BlockchainEvent = std::variant<JettonTransfer, 
