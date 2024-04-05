@@ -362,8 +362,7 @@ public:
         if (R.is_error()) {
           promise.set_error(R.move_as_error_prefix(PSTRING() << blk.to_str() << ": "));
         } else {
-          td::actor::send_closure(SelfId, &IndexQuery::got_shard_block, R.move_as_ok(), to_diff, to_shards);
-          promise.set_value(td::Unit());
+          td::actor::send_closure(SelfId, &IndexQuery::got_shard_block, R.move_as_ok(), to_diff, to_shards, std::move(promise));
         }
       });
       td::actor::create_actor<GetBlockDataState>("getblockdatastate", db_, cache_db_, blk, std::move(Q)).release();
@@ -378,7 +377,7 @@ public:
     }
   }
 
-  void got_shard_block(BlockDataState block_data_state, bool to_diff, bool to_shards) {
+  void got_shard_block(BlockDataState block_data_state, bool to_diff, bool to_shards, td::Promise<td::Unit> promise) {
     std::vector<ton::BlockIdExt> prev;
     ton::BlockIdExt mc_blkid;
     bool after_split;
@@ -393,6 +392,8 @@ public:
       
     if (to_shards)
       result_.shard_blocks_.push_back(block_data_state);
+
+    promise.set_value(td::Unit());
   }
 
   void error(td::Status error) {
