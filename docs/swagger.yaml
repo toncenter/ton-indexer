@@ -1,0 +1,699 @@
+definitions:
+  index.ActionPhase:
+    properties:
+      action_list_hash:
+        type: string
+      msgs_created:
+        type: integer
+      no_funds:
+        type: boolean
+      result_arg:
+        type: integer
+      result_code:
+        type: integer
+      skipped_actions:
+        type: integer
+      spec_actions:
+        type: integer
+      status_change:
+        type: string
+      success:
+        type: boolean
+      tot_actions:
+        type: integer
+      tot_msg_size:
+        $ref: '#/definitions/index.MsgSize'
+      total_action_fees:
+        type: integer
+      total_fwd_fees:
+        type: integer
+      valid:
+        type: boolean
+    type: object
+  index.Block:
+    properties:
+      after_merge:
+        type: boolean
+      after_split:
+        type: boolean
+      before_split:
+        type: boolean
+      created_by:
+        type: string
+      end_lt:
+        example: "0"
+        type: string
+      file_hash:
+        type: string
+      flags:
+        type: integer
+      gen_catchain_seqno:
+        type: integer
+      gen_utime:
+        example: "0"
+        type: string
+      global_id:
+        type: integer
+      key_block:
+        type: boolean
+      master_ref_seqno:
+        type: integer
+      masterchain_block_ref:
+        $ref: '#/definitions/index.BlockId'
+      min_ref_mc_seqno:
+        type: integer
+      prev_blocks:
+        items:
+          $ref: '#/definitions/index.BlockId'
+        type: array
+      prev_key_block_seqno:
+        type: integer
+      rand_seed:
+        type: string
+      root_hash:
+        type: string
+      seqno:
+        type: integer
+      shard:
+        example: "0"
+        type: string
+      start_lt:
+        example: "0"
+        type: string
+      tx_count:
+        type: integer
+      validator_list_hash_short:
+        type: integer
+      version:
+        type: integer
+      vert_seqno:
+        type: integer
+      vert_seqno_incr:
+        type: boolean
+      want_merge:
+        type: boolean
+      want_split:
+        type: boolean
+      workchain:
+        type: integer
+    type: object
+  index.BlockId:
+    properties:
+      seqno:
+        type: integer
+      shard:
+        example: "0"
+        type: string
+      workchain:
+        type: integer
+    type: object
+  index.BlocksResponse:
+    properties:
+      blocks:
+        items:
+          $ref: '#/definitions/index.Block'
+        type: array
+    type: object
+  index.BouncePhase:
+    properties:
+      fwd_fees:
+        type: integer
+      msg_fees:
+        type: integer
+      msg_size:
+        $ref: '#/definitions/index.MsgSize'
+      req_fwd_fees:
+        type: integer
+      type:
+        type: string
+    type: object
+  index.ComputePhase:
+    properties:
+      account_activated:
+        type: boolean
+      exit_arg:
+        type: integer
+      exit_code:
+        type: integer
+      gas_credit:
+        type: integer
+      gas_fees:
+        type: integer
+      gas_limit:
+        type: integer
+      gas_used:
+        type: integer
+      mode:
+        type: integer
+      msg_state_used:
+        type: boolean
+      reason:
+        type: string
+      skipped:
+        type: boolean
+      success:
+        type: boolean
+      vm_final_state_hash:
+        type: string
+      vm_init_state_hash:
+        type: string
+      vm_steps:
+        type: integer
+    type: object
+  index.CreditPhase:
+    properties:
+      credit:
+        type: integer
+      due_fees_collected:
+        type: integer
+    type: object
+  index.DecodedContent:
+    properties:
+      comment:
+        type: string
+      type:
+        type: string
+    type: object
+  index.MasterchainInfo:
+    properties:
+      first:
+        $ref: '#/definitions/index.Block'
+      last:
+        $ref: '#/definitions/index.Block'
+    type: object
+  index.Message:
+    properties:
+      bounce:
+        type: boolean
+      bounced:
+        type: boolean
+      created_at:
+        type: integer
+      created_lt:
+        type: integer
+      destination:
+        type: string
+      fwd_fee:
+        type: integer
+      hash:
+        type: string
+      ihr_disabled:
+        type: boolean
+      ihr_fee:
+        type: integer
+      import_fee:
+        type: integer
+      init_state:
+        $ref: '#/definitions/index.MessageContent'
+      message_content:
+        $ref: '#/definitions/index.MessageContent'
+      opcode:
+        type: integer
+      source:
+        type: string
+      value:
+        type: integer
+    type: object
+  index.MessageContent:
+    properties:
+      body:
+        type: string
+      decoded:
+        $ref: '#/definitions/index.DecodedContent'
+      hash:
+        type: string
+    type: object
+  index.MsgSize:
+    properties:
+      bits:
+        type: integer
+      cells:
+        type: integer
+    type: object
+  index.RequestError:
+    properties:
+      code:
+        type: integer
+      error:
+        type: string
+    type: object
+  index.SplitInfo:
+    properties:
+      acc_split_depth:
+        type: integer
+      cur_shard_pfx_len:
+        type: integer
+      sibling_addr:
+        type: string
+      this_addr:
+        type: string
+    type: object
+  index.StoragePhase:
+    properties:
+      status_change:
+        type: string
+      storage_fees_collected:
+        type: integer
+      storage_fees_due:
+        type: integer
+    type: object
+  index.Transaction:
+    properties:
+      account:
+        type: string
+      account_state_hash_after:
+        type: string
+      account_state_hash_before:
+        type: string
+      block_seqno:
+        type: integer
+      block_shard:
+        type: integer
+      block_workchain:
+        type: integer
+      description:
+        $ref: '#/definitions/index.TransactionDescr'
+      end_status:
+        type: string
+      hash:
+        type: string
+      in_msg:
+        $ref: '#/definitions/index.Message'
+      lt:
+        type: integer
+      mc_block_seqno:
+        type: integer
+      now:
+        type: integer
+      orig_status:
+        type: string
+      out_msgs:
+        items:
+          $ref: '#/definitions/index.Message'
+        type: array
+      prev_trans_hash:
+        type: string
+      prev_trans_lt:
+        type: integer
+      total_fees:
+        type: integer
+      trace_id:
+        type: string
+    type: object
+  index.TransactionDescr:
+    properties:
+      aborted:
+        type: boolean
+      action:
+        $ref: '#/definitions/index.ActionPhase'
+      bounce:
+        $ref: '#/definitions/index.BouncePhase'
+      compute_ph:
+        $ref: '#/definitions/index.ComputePhase'
+      credit_first:
+        type: boolean
+      credit_ph:
+        $ref: '#/definitions/index.CreditPhase'
+      destroyed:
+        type: boolean
+      installed:
+        type: boolean
+      is_tock:
+        type: boolean
+      split_info:
+        $ref: '#/definitions/index.SplitInfo'
+      storage_ph:
+        $ref: '#/definitions/index.StoragePhase'
+      type:
+        type: string
+    type: object
+  index.TransactionsResponse:
+    properties:
+      address_book:
+        additionalProperties:
+          type: string
+        type: object
+      transactions:
+        items:
+          $ref: '#/definitions/index.Transaction'
+        type: array
+    type: object
+info:
+  contact: {}
+  description: TON Index collects data from a full node to PostgreSQL database and
+    provides convenient API to an indexed blockchain.
+  title: TON Index (Go)
+  version: 1.1.0
+paths:
+  /api/v3/blocks:
+    get:
+      consumes:
+      - application/json
+      description: Returns blocks by specified filters.
+      operationId: api_v3_get_blocks
+      parameters:
+      - description: Block workchain.
+        in: query
+        name: workchain
+        type: integer
+      - description: 'Block shard id. Must be sent with *workchain*. Example: `8000000000000000`.'
+        in: query
+        name: shard
+        type: integer
+      - description: Block block seqno. Must be sent with *workchain* and *shard*.
+        in: query
+        name: seqno
+        type: integer
+      - description: Masterchain block seqno
+        in: query
+        name: mc_seqno
+        type: integer
+      - description: Query blocks with generation UTC timestamp **after** given timestamp.
+        in: query
+        minimum: 0
+        name: start_utime
+        type: integer
+      - description: Query blocks with generation UTC timestamp **before** given timestamp.
+        in: query
+        minimum: 0
+        name: end_utime
+        type: integer
+      - description: Query blocks with `lt >= start_lt`.
+        in: query
+        minimum: 0
+        name: start_lt
+        type: integer
+      - description: Query blocks with `lt <= end_lt`.
+        in: query
+        minimum: 0
+        name: end_lt
+        type: integer
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 500
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort results by UTC timestamp.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.BlocksResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/index.RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get blocks
+      tags:
+      - default
+  /api/v3/masterchainBlockShardState:
+    get:
+      consumes:
+      - application/json
+      description: Get masterchain block shard state. Same as /api/v2/shards.
+      operationId: api_v3_get_masterchainBlockShardState
+      parameters:
+      - description: Masterchain block seqno.
+        in: query
+        name: seqno
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.TransactionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/index.RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get masterchain block shard state
+      tags:
+      - default
+  /api/v3/masterchainInfo:
+    get:
+      consumes:
+      - application/json
+      description: Get first and last indexed block
+      operationId: api_v3_get_masterchain_info
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.MasterchainInfo'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/index.RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Masterchain Info
+      tags:
+      - default
+  /api/v3/transactions:
+    get:
+      consumes:
+      - application/json
+      description: Get transactions by specified filter.
+      operationId: api_v3_get_transactions
+      parameters:
+      - description: Block workchain.
+        in: query
+        name: workchain
+        type: integer
+      - description: 'Block shard id. Must be sent with *workchain*. Example: `8000000000000000`.'
+        in: query
+        name: shard
+        type: integer
+      - description: Block block seqno. Must be sent with *workchain* and *shard*.
+        in: query
+        name: seqno
+        type: integer
+      - description: Masterchain block seqno.
+        in: query
+        name: mc_seqno
+        type: integer
+      - collectionFormat: multi
+        description: List of account addresses to get transactions. Can be sent in
+          hex, base64 or base64url form.
+        in: query
+        items:
+          type: string
+        name: account
+        type: array
+      - collectionFormat: multi
+        description: Exclude transactions on specified account addresses.
+        in: query
+        items:
+          type: string
+        name: exclude_account
+        type: array
+      - description: Transaction hash.
+        in: query
+        name: hash
+        type: string
+      - description: Transaction lt.
+        in: query
+        name: lt
+        type: integer
+      - description: Query transactions with generation UTC timestamp **after** given
+          timestamp.
+        in: query
+        minimum: 0
+        name: start_utime
+        type: integer
+      - description: Query transactions with generation UTC timestamp **before** given
+          timestamp.
+        in: query
+        minimum: 0
+        name: end_utime
+        type: integer
+      - description: Query transactions with `lt >= start_lt`.
+        in: query
+        minimum: 0
+        name: start_lt
+        type: integer
+      - description: Query transactions with `lt <= end_lt`.
+        in: query
+        minimum: 0
+        name: end_lt
+        type: integer
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 500
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort transactions by lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.TransactionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/index.RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get transactions
+      tags:
+      - default
+  /api/v3/transactionsByMasterchainBlock:
+    get:
+      consumes:
+      - application/json
+      description: Returns transactions from masterchain block and from all shards.
+      operationId: api_v3_get_transactions_by_masterchain_block
+      parameters:
+      - description: Masterchain block seqno.
+        in: query
+        name: seqno
+        required: true
+        type: integer
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 500
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort transactions by lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.TransactionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/index.RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get transactions by Masterchain block
+      tags:
+      - default
+  /api/v3/transactionsByMessage:
+    get:
+      consumes:
+      - application/json
+      description: Get transactions whose inbound/outbound message has the specified
+        hash. \
+      operationId: api_v3_get_transactions_by_message
+      parameters:
+      - description: Message hash. Acceptable in hex, base64 and base64url forms.
+        in: query
+        name: msg_hash
+        type: string
+      - description: Hash of message body.
+        in: query
+        name: body_hash
+        type: string
+      - description: Direction of message.
+        enum:
+        - in
+        - out
+        in: query
+        name: direction
+        type: string
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 500
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.TransactionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/index.RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get transactions by message
+      tags:
+      - default
+securityDefinitions:
+  APIKeyHeader:
+    in: header
+    name: X-Api-Key
+    type: apiKey
+  APIKeyQuery:
+    in: query
+    name: api_key
+    type: apiKey
+swagger: "2.0"
