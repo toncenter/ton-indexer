@@ -7,24 +7,20 @@
 #include "DataParser.h"
 #include "EventProcessor.h"
 
-class DbCacheWrapper;
-
 enum ScannerMode { dbs_readonly, dbs_secondary };
 
 class DbScanner: public td::actor::Actor {
 private:
   std::string db_root_;
   ScannerMode mode_;
-  td::int32 max_db_cache_size_{256};
   bool out_of_sync_ = true;
   ton::BlockSeqno last_known_seqno_;
 
   td::actor::ActorOwn<ton::validator::ValidatorManagerInterface> validator_manager_;
   td::actor::ActorOwn<ton::validator::RootDb> db_;
-  td::actor::ActorOwn<DbCacheWrapper> db_caching_;
 public:
-  DbScanner(std::string db_root, ScannerMode mode, td::int32 max_db_cache_size = 256) 
-    : db_root_(db_root), mode_(mode), max_db_cache_size_(max_db_cache_size) {}
+  DbScanner(std::string db_root, ScannerMode mode) 
+    : db_root_(db_root), mode_(mode) {}
 
   ton::BlockSeqno get_last_known_seqno() { return last_known_seqno_; }
 
@@ -48,28 +44,4 @@ struct BlockIdExtHasher {
     std::size_t operator()(const ton::BlockIdExt& k) const {
         return std::hash<std::string>()(k.to_str());
     }
-};
-
-class DbCacheWrapper: public td::actor::Actor {
-private:
-  td::actor::ActorId<ton::validator::RootDb> db_;
-  std::list<ton::BlockIdExt> block_data_cache_order_;
-  std::unordered_map<ton::BlockIdExt, td::Ref<ton::validator::BlockData>, BlockIdExtHasher> block_data_cache_;
-  std::unordered_map<ton::BlockIdExt, std::vector<td::Promise<td::Ref<ton::validator::BlockData>>>, BlockIdExtHasher> block_data_pending_requests_;
-
-  std::list<ton::BlockIdExt> block_state_cache_order_;
-  std::unordered_map<ton::BlockIdExt, td::Ref<ton::validator::ShardState>, BlockIdExtHasher> block_state_cache_;
-  std::unordered_map<ton::BlockIdExt, std::vector<td::Promise<td::Ref<ton::validator::ShardState>>>, BlockIdExtHasher> block_state_pending_requests_;
-
-  size_t max_cache_size_;
-
-public:
-  DbCacheWrapper(td::actor::ActorId<ton::validator::RootDb> db, size_t max_cache_size)
-    : db_(db), max_cache_size_(max_cache_size) {
-  }
-  
-  void get_block_data(ton::validator::ConstBlockHandle handle, td::Promise<td::Ref<ton::validator::BlockData>> promise);
-  void got_block_data(ton::validator::ConstBlockHandle handle, td::Result<td::Ref<ton::validator::BlockData>> res);
-  void get_block_state(ton::validator::ConstBlockHandle handle, td::Promise<td::Ref<ton::validator::ShardState>> promise);
-  void got_block_state(ton::validator::ConstBlockHandle handle, td::Result<td::Ref<ton::validator::ShardState>> res);
 };

@@ -30,7 +30,6 @@ int main(int argc, char *argv[]) {
   td::int32 stats_timeout = 10;
   std::string db_root;
   td::uint32 last_known_seqno = 0;
-  td::int32 max_db_cache_size = 1024;
 
   InsertManagerPostgres::Credential credential;
 
@@ -203,7 +202,7 @@ int main(int argc, char *argv[]) {
   td::actor::Scheduler scheduler({threads});
   scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
-  scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, max_db_cache_size); });
+  scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary); });
 
   scheduler.run_in_context([&] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(), 
     insert_manager_.get(), parse_manager_.get(), last_known_seqno, max_active_tasks, max_queue, stats_timeout); 
