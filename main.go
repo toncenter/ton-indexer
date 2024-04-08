@@ -131,6 +131,39 @@ func GetShards(c *fiber.Ctx) error {
 	return c.JSON(blk_resp)
 }
 
+// @summary Get masterchain block shard state
+//
+//	@description Returns all worchain blocks, that appeared after previous masterchain block. \
+//		\
+//		 **Note:** this method is not equivalent with [/api/v2/shards](https://toncenter.com/api/v2/#/blocks/get_shards_shards_get).
+//
+// @id api_v3_get_masterchainBlockShards
+// @tags default
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	index.TransactionsResponse
+// @failure		400	{object}	index.RequestError
+// @param	seqno query int32 true "Masterchain block seqno."
+// @router			/api/v3/masterchainBlockShards [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetShardsDiff(c *fiber.Ctx) error {
+	seqno := c.QueryInt("seqno")
+	blk_req := index.BlockRequest{}
+	blk_req.McSeqno = new(int32)
+	*blk_req.McSeqno = int32(seqno)
+	blks, err := pool.QueryBlocks(blk_req, index.UtimeRequest{}, index.LtRequest{}, index.LimitRequest{}, settings.Request)
+	if err != nil {
+		return err
+	}
+	if len(blks) == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Blocks not found", Code: fiber.StatusNotFound})
+	}
+
+	blk_resp := index.BlocksResponse{Blocks: blks}
+	return c.JSON(blk_resp)
+}
+
 // @summary Get transactions
 // @description Get transactions by specified filter.
 // @id api_v3_get_transactions
@@ -280,6 +313,62 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 	return c.JSON(txs_resp)
 }
 
+// @summary Get messages
+//
+//	@description Get messages by specified filters.
+//
+// @id api_v3_get_messages
+// @tags default
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	index.MessagesResponse
+// @failure		400	{object}	index.RequestError
+// @param msg_hash query string false "Message hash. Acceptable in hex, base64 and base64url forms."
+// @param body_hash query string false "Hash of message body."
+// @param source query string false "The source account address. Can be sent in hex, base64 or base64url form. Use value `null` to get external messages."
+// @param destination query string false "The destination account address. Can be sent in hex, base64 or base64url form. Use value `null` to get log messages."
+// @param direction query string false "Direction of message." Enums(in, out)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
+// @router			/api/v3/messages [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetMessages(c *fiber.Ctx) error {
+	msg_req := index.MessageRequest{}
+	utime_req := index.UtimeRequest{}
+	lt_req := index.LtRequest{}
+	lim_req := index.LimitRequest{}
+
+	hash := c.Query("hash")
+	if err := c.QueryParser(&msg_req); err != nil {
+		return err
+	}
+	if len(hash) > 0 && msg_req.MessageHash == nil {
+		msg_req.MessageHash = []string{hash}
+	}
+	if err := c.QueryParser(&utime_req); err != nil {
+		return err
+	}
+	if err := c.QueryParser(&lt_req); err != nil {
+		return err
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return err
+	}
+
+	msgs, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, settings.Request)
+	if err != nil {
+		return err
+	}
+	if len(msgs) == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Messages not found", Code: fiber.StatusNotFound})
+	}
+
+	msgs_resp := index.MessagesResponse{Messages: msgs}
+	return c.JSON(msgs_resp)
+}
+
 func test() {
 	log.Println("Test OK")
 }
@@ -330,6 +419,7 @@ func main() {
 	app.Get("/api/v3/transactionsByMessage", GetTransactionsByMessage)
 
 	// messages
+	app.Get("/api/v3/messages", GetMessages)
 
 	// swagger
 	app.Get("/api/v3/*", swagger.New(swagger.Config{}))

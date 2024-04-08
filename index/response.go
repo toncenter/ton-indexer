@@ -3,6 +3,8 @@ package index
 import "fmt"
 
 // responses
+type AddressBook map[string]string
+
 type MasterchainInfo struct {
 	Last  *Block `json:"last"`
 	First *Block `json:"first"`
@@ -13,13 +15,13 @@ type BlocksResponse struct {
 }
 
 type TransactionsResponse struct {
-	Transactions []Transaction     `json:"transactions"`
-	AddressBook  map[string]string `json:"address_book"`
+	Transactions []Transaction `json:"transactions"`
+	AddressBook  AddressBook   `json:"address_book"`
 }
 
 type MessagesResponse struct {
-	Messages    []*Message        `json:"messages"`
-	AddressBook map[string]string `json:"address_book"`
+	Messages    []Message   `json:"messages"`
+	AddressBook AddressBook `json:"address_book"`
 }
 
 // errors

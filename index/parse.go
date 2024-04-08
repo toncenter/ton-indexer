@@ -1,11 +1,26 @@
 package index
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
+
+// json marshaling and unmarshaling
+func (s *ShardId) MarshalJSON() ([]byte, error) {
+	res := fmt.Sprintf("\"%X\"", uint64(*s))
+	return []byte(res), nil
+}
+
+func (a *AccountAddress) MarshalJSON() ([]byte, error) {
+	return []byte("\"" + strings.Trim(string(*a), " ") + "\""), nil
+}
+
+func (h *HexInt) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"0x%X\"", *h)), nil
+}
 
 // Parsing
 func ParseBlockId(str string) (*BlockId, error) {

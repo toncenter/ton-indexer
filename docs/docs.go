@@ -182,6 +182,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v3/masterchainBlockShards": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Returns all worchain blocks, that appeared after previous masterchain block. \\",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "default"
+                ],
+                "summary": "Get masterchain block shard state",
+                "operationId": "api_v3_get_masterchainBlockShards",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Masterchain block seqno.",
+                        "name": "seqno",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/index.TransactionsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/index.RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/masterchainInfo": {
             "get": {
                 "security": [
@@ -209,6 +256,97 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/index.MasterchainInfo"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/index.RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/messages": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get messages by specified filters.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "default"
+                ],
+                "summary": "Get messages",
+                "operationId": "api_v3_get_messages",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Message hash. Acceptable in hex, base64 and base64url forms.",
+                        "name": "msg_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Hash of message body.",
+                        "name": "body_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "The source account address. Can be sent in hex, base64 or base64url form. Use value ` + "`" + `null` + "`" + ` to get external messages.",
+                        "name": "source",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "The destination account address. Can be sent in hex, base64 or base64url form. Use value ` + "`" + `null` + "`" + ` to get log messages.",
+                        "name": "destination",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "in",
+                            "out"
+                        ],
+                        "type": "string",
+                        "description": "Direction of message.",
+                        "name": "direction",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 500,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/index.MessagesResponse"
                         }
                     },
                     "400": {
@@ -575,6 +713,12 @@ const docTemplate = `{
                 }
             }
         },
+        "index.AddressBook": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "string"
+            }
+        },
         "index.Block": {
             "type": "object",
             "properties": {
@@ -867,6 +1011,20 @@ const docTemplate = `{
                 }
             }
         },
+        "index.MessagesResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/index.AddressBook"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/index.Message"
+                    }
+                }
+            }
+        },
         "index.MsgSize": {
             "type": "object",
             "properties": {
@@ -1030,10 +1188,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "address_book": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
+                    "$ref": "#/definitions/index.AddressBook"
                 },
                 "transactions": {
                     "type": "array",

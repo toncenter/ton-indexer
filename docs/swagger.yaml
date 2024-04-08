@@ -30,6 +30,10 @@ definitions:
       valid:
         type: boolean
     type: object
+  index.AddressBook:
+    additionalProperties:
+      type: string
+    type: object
   index.Block:
     properties:
       after_merge:
@@ -223,6 +227,15 @@ definitions:
       hash:
         type: string
     type: object
+  index.MessagesResponse:
+    properties:
+      address_book:
+        $ref: '#/definitions/index.AddressBook'
+      messages:
+        items:
+          $ref: '#/definitions/index.Message'
+        type: array
+    type: object
   index.MsgSize:
     properties:
       bits:
@@ -330,9 +343,7 @@ definitions:
   index.TransactionsResponse:
     properties:
       address_book:
-        additionalProperties:
-          type: string
-        type: object
+        $ref: '#/definitions/index.AddressBook'
       transactions:
         items:
           $ref: '#/definitions/index.Transaction'
@@ -455,6 +466,36 @@ paths:
       summary: Get masterchain block shard state
       tags:
       - default
+  /api/v3/masterchainBlockShards:
+    get:
+      consumes:
+      - application/json
+      description: Returns all worchain blocks, that appeared after previous masterchain
+        block. \
+      operationId: api_v3_get_masterchainBlockShards
+      parameters:
+      - description: Masterchain block seqno.
+        in: query
+        name: seqno
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.TransactionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/index.RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get masterchain block shard state
+      tags:
+      - default
   /api/v3/masterchainInfo:
     get:
       consumes:
@@ -476,6 +517,68 @@ paths:
       - APIKeyHeader: []
       - APIKeyQuery: []
       summary: Get Masterchain Info
+      tags:
+      - default
+  /api/v3/messages:
+    get:
+      consumes:
+      - application/json
+      description: Get messages by specified filters.
+      operationId: api_v3_get_messages
+      parameters:
+      - description: Message hash. Acceptable in hex, base64 and base64url forms.
+        in: query
+        name: msg_hash
+        type: string
+      - description: Hash of message body.
+        in: query
+        name: body_hash
+        type: string
+      - description: The source account address. Can be sent in hex, base64 or base64url
+          form. Use value `null` to get external messages.
+        in: query
+        name: source
+        type: string
+      - description: The destination account address. Can be sent in hex, base64 or
+          base64url form. Use value `null` to get log messages.
+        in: query
+        name: destination
+        type: string
+      - description: Direction of message.
+        enum:
+        - in
+        - out
+        in: query
+        name: direction
+        type: string
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 500
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.MessagesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/index.RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get messages
       tags:
       - default
   /api/v3/transactions:

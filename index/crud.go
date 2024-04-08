@@ -153,7 +153,7 @@ func buildTransactionsQuery(
 	if v := msg_req.MessageHash; v != nil {
 		by_msg = true
 		if len(v) == 1 {
-			filter_list = append(filter_list, fmt.Sprintf("M.hash = '%s'", v[0]))
+			filter_list = append(filter_list, fmt.Sprintf("M.msg_hash = '%s'", v[0]))
 		} else if len(v) > 1 {
 			vv := []string{}
 			for _, x := range v {
@@ -162,7 +162,7 @@ func buildTransactionsQuery(
 				}
 			}
 			vv_str := strings.Join(vv, ",")
-			filter_list = append(filter_list, fmt.Sprintf("M.hash in (%s)", vv_str))
+			filter_list = append(filter_list, fmt.Sprintf("M.msg_hash in (%s)", vv_str))
 		}
 	}
 	if v := msg_req.Source; v != nil {
@@ -189,6 +189,79 @@ func buildTransactionsQuery(
 	query += filter_query
 	query += orderby_query
 	query += limit_query
+	return query, nil
+}
+
+func buildMessagesQuery(
+	msg_req MessageRequest,
+	utime_req UtimeRequest,
+	lt_req LtRequest,
+	lim_req LimitRequest,
+) (string, error) {
+	clmn_query := ` distinct on (M.msg_hash) M.*`
+	from_query := ` messages as M`
+	filter_list := []string{}
+	filter_query := ``
+	orderby_query := ``
+	limit_query := limitQuery(lim_req)
+
+	if v := msg_req.Direction; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("M.direction = '%s'", *v))
+		clmn_query = ` M.*`
+	}
+	if v := msg_req.Source; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", *v))
+	}
+	if v := msg_req.Destination; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", *v))
+	}
+	if v := msg_req.MessageHash; v != nil {
+		if len(v) == 1 {
+			filter_list = append(filter_list, fmt.Sprintf("M.msg_hash = '%s'", v[0]))
+		} else if len(v) > 1 {
+			vv := []string{}
+			for _, x := range v {
+				if len(x) > 0 {
+					vv = append(vv, fmt.Sprintf("'%s'", x))
+				}
+			}
+			vv_str := strings.Join(vv, ",")
+			filter_list = append(filter_list, fmt.Sprintf("M.msg_hash in (%s)", vv_str))
+		}
+	}
+	if v := msg_req.BodyHash; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", *v))
+	}
+
+	order_col := "M.created_lt"
+	if v := utime_req.StartUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("M.created_at >= %d", *v))
+		order_col = "M.created_at"
+	}
+	if v := utime_req.EndUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("M.created_at <= %d", *v))
+		order_col = "M.created_at"
+	}
+	if v := lt_req.StartLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("M.created_lt >= %d", *v))
+	}
+	if v := lt_req.EndLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("M.created_lt <= %d", *v))
+	}
+	if lim_req.Sort != nil {
+		orderby_query = fmt.Sprintf(" order by %s %s", order_col, *lim_req.Sort)
+	}
+
+	// build query
+	if len(filter_list) > 0 {
+		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	}
+	query := `select` + clmn_query
+	query += ` from ` + from_query
+	query += filter_query
+	query += orderby_query
+	query += limit_query
+	log.Println(query)
 	return query, nil
 }
 
@@ -415,4 +488,26 @@ func (db *DbClient) QueryTransactions(
 	defer conn.Release()
 
 	return queryTransactionsImpl(query, conn, settings)
+}
+
+func (db *DbClient) QueryMessages(
+	msg_req MessageRequest,
+	utime_req UtimeRequest,
+	lt_req LtRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]Message, error) {
+	query, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req)
+	if err != nil {
+		return nil, err
+	}
+
+	// read data
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
+
+	return queryMessagesImpl(query, conn, settings)
 }
