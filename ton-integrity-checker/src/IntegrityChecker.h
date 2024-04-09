@@ -30,8 +30,8 @@ class IntegrityChecker : public td::actor::Actor {
     std::uint32_t to_seqno_{0};
     std::queue<std::uint32_t> queued_seqnos_;
     td::Timestamp next_print_stats_;
-    std::set<std::uint32_t> seqnos_fetching_;
-    std::set<std::uint32_t> seqnos_parsing_;
+    std::unordered_set<std::uint32_t> seqnos_fetching_;
+    std::unordered_set<std::uint32_t> seqnos_parsing_;
     std::set<std::uint32_t> seqnos_processed_;
     std::queue<std::pair<std::uint32_t, MasterchainBlockDataState>> blocks_to_parse_;
     std::uint32_t blocks_to_parse_queue_max_size_{1000};
@@ -62,7 +62,6 @@ class IntegrityChecker : public td::actor::Actor {
     void parse_next_seqnos();
     void parse_error(std::uint32_t seqno, td::Status error);
     void seqno_parsed(std::uint32_t seqno);
-
     
     void print_stats();
     void fail_if_low_memory();

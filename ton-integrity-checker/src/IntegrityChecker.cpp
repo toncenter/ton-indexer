@@ -192,7 +192,7 @@ void IntegrityChecker::seqno_parsed(std::uint32_t seqno) {
     seqnos_parsing_.erase(seqno);
     seqnos_processed_.insert(seqno);
 
-    if (blocks_to_parse_.size() == 0 && queued_seqnos_.size() == 0) {
+    if (blocks_to_parse_.size() == 0 && queued_seqnos_.size() == 0 && seqnos_fetching_.size() == 0) {
         stop();
         return;
     }
