@@ -14,7 +14,7 @@ x-indexer-environment: &indexer-environment
 
 services:
   index-api:
-    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer-cpp:${IMAGE_TAG:?}
+    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer-cpp:${IMAGE_TAG:-latest}
     build:
       context: indexer
       dockerfile: Dockerfile
@@ -32,12 +32,12 @@ services:
       replicas: ${SWARM_REPLICAS:-1}
       placement:
         constraints:
-          - "node.labels.${TONCENTER_ENV:?}.indexer-cpp.api==true"
+          - "node.labels.${TONCENTER_ENV:-mainnet}.indexer-cpp.api==true"
     networks:
       internal:
       toncenter-global:
         aliases:
-          - ${TONCENTER_ENV:?}-indexer-cpp-api
+          - ${TONCENTER_ENV:-mainnet}-indexer-cpp-api
 
 networks:
   internal:
