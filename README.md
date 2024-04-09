@@ -24,7 +24,7 @@ Requirements:
   * Worker: 4 CPU, 32 GB RAM, SSD recommended (for archival: 8 CPUs, 64 GB RAM, SSD recommended).
 
 Do the following steps to setup TON Indexer:
-* Clone repository: `git clone --recursive --branch cpp-indexer https://github.com/kdimentionaltree/ton-indexer`.
+* Clone repository: `git clone --recursive https://github.com/toncenter/ton-indexer`.
 * Create *.env* file with command `./configure.sh`.
   * Run `./configure.sh --worker` to configure TON Index worker.
 * Adjust parameters in *.env* file (see [list of available parameters](#available-parameters)).
@@ -32,7 +32,7 @@ Do the following steps to setup TON Indexer:
 * Run stack: `docker compose up -d postgres alembic index-api`.
   * To start worker use command `docker compose up -d index-worker` after creating all services.
 
-**NOTE:** we recommend to setup indexer stack and index worker on separate servers. To install index worker to **Systemd** check this [instruction](https://github.com/kdimentionaltree/ton-index-cpp).
+**NOTE:** we recommend to setup indexer stack and index worker on separate servers. To install index worker to **Systemd** check this [instruction](https://github.com/toncenter/ton-indexer).
 
 ### Available parameters
 
@@ -48,6 +48,7 @@ Do the following steps to setup TON Indexer:
   * `TON_INDEXER_API_PORT`: a port to expose. You need check if this port is busy. Use different ports in case of multiple indexer instances on the same host. Default: `8081`.
   * `TON_INDEXER_TON_HTTP_API_ENDPOINT`: an endpoint to [ton-http-api](https://github.com/toncenter/ton-http-api). Indexer API contains several proxy methods to ton-http-api service: `/message`, `/runGetMethod`, `/estimateFee`, `/account`, `/wallet`. If the variable is not set these methods will not be included. Default: `<blank>`
   * `TON_INDEXER_WORKERS`: number of API workers. Default: `4`.
+  * `TONCENTER_ENV`: mainnet or testnet. Default: `mainnet`.
 * TON worker parameters:
   * `TON_WORKER_DBROOT`: path to TON full node database. Use default value if you've installed node with `mytonctrl`. Default: `/var/ton-work/db`.
   * `TON_WORKER_FROM`: masterchain seqno to start indexing. Set 1 to full index, set last masterchain seqno to collect only new blocks (use [/api/v2/getMasterchainInfo](https://toncenter.com/api/v2/getMasterchainInfo) to get last masterchain block seqno).
