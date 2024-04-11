@@ -12,7 +12,7 @@ private:
   ConstBlockHandle handle_;
 
   td::Ref<BlockData> block_data_;
-  td::Ref<ShardState> block_state_;
+  td::Ref<vm::Cell> block_state_root_;
 public:
   GetBlockDataState(td::actor::ActorId<ton::validator::RootDb> db, ConstBlockHandle handle, td::Promise<BlockDataState> promise) :
     db_(db),
@@ -26,10 +26,10 @@ public:
     });
     td::actor::send_closure(db_, &RootDb::get_block_data, handle_, std::move(P));
 
-    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<ShardState>> res) {
+    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<vm::Cell>> res) {
       td::actor::send_closure(SelfId, &GetBlockDataState::got_block_state, std::move(res));
     });
-    td::actor::send_closure(db_, &RootDb::get_block_state, handle_, std::move(R));
+    td::actor::send_closure(db_, &RootDb::get_block_state_root, handle_, std::move(R));
   }
 
   void got_block_data(td::Result<td::Ref<BlockData>> block_data) {
@@ -43,20 +43,20 @@ public:
     check_return();
   }
 
-  void got_block_state(td::Result<td::Ref<ShardState>> block_state) {
+  void got_block_state(td::Result<td::Ref<vm::Cell>> block_state) {
     if (block_state.is_error()) {
       promise_.set_error(block_state.move_as_error());
       stop();
       return;
     }
 
-    block_state_ = block_state.move_as_ok();
+    block_state_root_ = block_state.move_as_ok();
     check_return();
   }
 
   void check_return() {
-    if (block_data_.not_null() && block_state_.not_null()) {
-      promise_.set_value({std::move(block_data_), std::move(block_state_)});
+    if (block_data_.not_null() && block_state_root_.not_null()) {
+      promise_.set_value({std::move(block_data_), std::move(block_state_root_)});
       stop();
     }
   }
@@ -73,14 +73,14 @@ private:
   td::Promise<MasterchainBlockDataState> promise_;
 
   td::Ref<BlockData> mc_block_data_;
-  td::Ref<MasterchainState> mc_block_state_;
+  td::Ref<vm::Cell> mc_block_state_;
 
   td::Ref<MasterchainState> mc_prev_block_state_;
   int pending_{0};
 
-  std::queue<ton::BlockIdExt> blocks_queue_;
+  std::queue<ton::BlockId> blocks_queue_;
 
-  std::set<ton::BlockIdExt> current_shard_blk_ids_;
+  std::set<ton::BlockId> current_shard_blk_ids_;
   std::unordered_set<ConstBlockHandle> shard_block_handles_;
 
   MasterchainBlockDataState result_;
@@ -111,10 +111,10 @@ public:
     });
     td::actor::send_closure(db_, &RootDb::get_block_data, handle.ok(), std::move(P));
 
-    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<ShardState>> res) {
+    auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<vm::Cell>> res) {
       td::actor::send_closure(SelfId, &IndexQuery::got_mc_block_state, std::move(res));
     });
-    td::actor::send_closure(db_, &RootDb::get_block_state, handle.ok(), std::move(R));
+    td::actor::send_closure(db_, &RootDb::get_block_state_root, handle.ok(), std::move(R));
   }
 
   void got_mc_block_data(td::Result<td::Ref<BlockData>> block_data) {
@@ -129,14 +129,14 @@ public:
     check_pending();
   }
 
-  void got_mc_block_state(td::Result<td::Ref<ShardState>> state) {
+  void got_mc_block_state(td::Result<td::Ref<vm::Cell>> state) {
     if (state.is_error()) {
       promise_.set_error(state.move_as_error());
       stop();
       return;
     }
 
-    mc_block_state_ = td::Ref<MasterchainState>(state.move_as_ok());
+    mc_block_state_ = state.move_as_ok();
     pending_++;
     check_pending();
   }
@@ -153,11 +153,19 @@ public:
   }
 
   void fetch_shard_blocks() {
-    auto current_shards = mc_block_state_->get_shards();
+    block::gen::McStateExtra::Record mc_extra;
+    block::gen::ShardStateUnsplit::Record state;
+    block::gen::McStateExtra::Record extra;
+    block::ShardConfig shards_config;
+    if (!(tlb::unpack_cell(mc_block_state_, state) &&
+          tlb::unpack_cell(state.custom->prefetch_ref(), extra) && 
+          shards_config.unpack(extra.shard_hashes))) {
+      return error(td::Status::Error("cannot extract shard configuration from masterchain state extra information"));
+    }
 
-    for (auto& s : current_shards) {
-      blocks_queue_.push(s->top_block_id());
-      current_shard_blk_ids_.insert(s->top_block_id());
+    for (auto& s : shards_config.get_shard_hash_ids(true)) {
+      blocks_queue_.push(s);
+      current_shard_blk_ids_.insert(s);
     }
     fetch_block_handles();
   }
@@ -184,19 +192,19 @@ public:
       auto blk_id = blocks_queue_.front();
       blocks_queue_.pop();
 
-      auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno = mc_seqno_, blk_id, promise = ig.get_promise()](td::Result<BlockHandle> R) mutable {
+      auto P = td::PromiseCreator::lambda([&, SelfId = actor_id(this), mc_seqno = mc_seqno_, blk_id, promise = ig.get_promise()](td::Result<ConstBlockHandle> R) mutable {
         if (R.is_error()) {
           promise.set_error(R.move_as_error_prefix(PSTRING() << blk_id.to_str() << ": "));
         } else {
           auto handle = R.move_as_ok();
-          if (handle->masterchain_ref_block() == mc_seqno) {
+          if (handle->masterchain_ref_block() == mc_seqno || current_shard_blk_ids_.count(handle->id().id) > 0) {
             td::actor::send_closure(SelfId, &IndexQuery::add_block_handle, std::move(handle), std::move(promise));
           } else {
             promise.set_result(td::Unit());
           }
         }
       });
-      td::actor::send_closure(db_, &RootDb::get_block_handle, blk_id, std::move(P));
+      td::actor::send_closure(db_, &RootDb::get_block_by_seqno, ton::AccountIdPrefixFull{blk_id.workchain, blk_id.shard}, blk_id.seqno, std::move(P));
     }
   }
 
@@ -208,7 +216,7 @@ public:
 
     shard_block_handles_.insert(handle);
     for (const auto& prev: handle->prev()) {
-      blocks_queue_.push(prev);
+      blocks_queue_.push(prev.id);
     }
     promise.set_result(td::Unit());
   }
@@ -231,18 +239,20 @@ public:
         if (R.is_error()) {
           promise.set_error(R.move_as_error_prefix(PSTRING() << handle->id().to_str() << ": "));
         } else {
-          td::actor::send_closure(SelfId, &IndexQuery::got_shard_block, R.move_as_ok(), std::move(promise));
+          td::actor::send_closure(SelfId, &IndexQuery::got_shard_block, R.move_as_ok(), handle, std::move(promise));
         }
       });
       td::actor::create_actor<GetBlockDataState>("getblockdatastate", db_, handle, std::move(P)).release();
     }
   }
 
-  void got_shard_block(BlockDataState block_data_state, td::Promise<td::Unit> promise) {
-    if (current_shard_blk_ids_.count(block_data_state.block_data->block_id()) > 0) {
+  void got_shard_block(BlockDataState block_data_state, ConstBlockHandle handle, td::Promise<td::Unit> promise) {
+    if (current_shard_blk_ids_.count(block_data_state.block_data->block_id().id) > 0) {
       result_.shard_blocks_.push_back(block_data_state);
     }
-    result_.shard_blocks_diff_.push_back(block_data_state);
+    if (handle->masterchain_ref_block() == mc_seqno_) {
+      result_.shard_blocks_diff_.push_back(block_data_state);
+    }
     promise.set_result(td::Unit());
   }
 

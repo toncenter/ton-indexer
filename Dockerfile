@@ -11,6 +11,7 @@ COPY external/ /app/external/
 COPY tondb-scanner/ /app/tondb-scanner/
 COPY ton-index-postgres/ /app/ton-index-postgres/
 COPY ton-index-clickhouse/ /app/ton-index-clickhouse/
+COPY ton-integrity-checker/ /app/ton-integrity-checker/
 COPY CMakeLists.txt /app/
 
 

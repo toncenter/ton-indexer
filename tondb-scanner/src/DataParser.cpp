@@ -47,8 +47,8 @@ td::Status ParseQuery::parse_impl() {
     TRY_STATUS(parse_account_states(block_ds.block_state, addresses));
 
     // config
-    if (block_ds.block_state->get_block_id().is_masterchain()) {
-      TRY_RESULT_ASSIGN(mc_block_.config_, block::ConfigInfo::extract_config(block_ds.block_state->root_cell(), block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries));
+    if (block_ds.block_data->block_id().is_masterchain()) {
+      TRY_RESULT_ASSIGN(mc_block_.config_, block::ConfigInfo::extract_config(block_ds.block_state, block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries));
     }
 
     result->blocks_.push_back(schema_block);
@@ -602,11 +602,15 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
   return res;
 }
 
-td::Status ParseQuery::parse_account_states(const td::Ref<ShardState>& block_state, std::set<td::Bits256> &addresses) {
-  auto root = block_state->root_cell();
+td::Status ParseQuery::parse_account_states(const td::Ref<vm::Cell>& block_state_root, std::set<td::Bits256> &addresses) {
+  auto root = block_state_root;
   block::gen::ShardStateUnsplit::Record sstate;
-  if (!tlb::unpack_cell(root, sstate)) {
+  if (!tlb::unpack_cell(block_state_root, sstate)) {
     return td::Status::Error("Failed to unpack ShardStateUnsplit");
+  }
+  block::gen::ShardIdent::Record shard_id;
+  if (!tlb::csr_unpack(sstate.shard_id, shard_id)) {
+    return td::Status::Error("Failed to unpack ShardIdent");
   }
   vm::AugmentedDictionary accounts_dict{vm::load_cell_slice_ref(sstate.accounts), 256, block::tlb::aug_ShardAccounts};
   for (auto &addr : addresses) {
@@ -620,8 +624,8 @@ td::Status ParseQuery::parse_account_states(const td::Ref<ShardState>& block_sta
     int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account_root));
     switch (account_tag) {
     case block::gen::Account::account_none: {
-      auto address = block::StdAddress(block_state->get_shard().workchain, addr);
-      TRY_RESULT(account, parse_none_account(std::move(account_root), address, sstate.gen_utime, block_state->get_logical_time()));
+      auto address = block::StdAddress(shard_id.workchain_id, addr);
+      TRY_RESULT(account, parse_none_account(std::move(account_root), address, sstate.gen_utime, sstate.gen_lt));
       result->account_states_.push_back(account);
       break;
     }

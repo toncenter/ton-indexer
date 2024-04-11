@@ -39,58 +39,51 @@ public:
   }
 
   void start_up() override {
-    for (auto& block_ds : blocks_ds_.shard_blocks_diff_) {
-      check_block(block_ds);
-    }
     for (auto& block_ds : blocks_ds_.shard_blocks_) {
-      check_block(block_ds);
-    }
-    promise_.set_error(td::Status::Error("Account not found in shards"));
-    stop();
-  }
-private:
-  void check_block(const BlockDataState& block_ds) {
-    if (ton::shard_contains(block_ds.block_state->get_shard(), ton::extract_addr_prefix(address_.workchain, address_.addr))) {
-      auto root = block_ds.block_state->root_cell();
-      block::gen::ShardStateUnsplit::Record sstate;
-      if (!tlb::unpack_cell(root, sstate)) {
-        promise_.set_error(td::Status::Error("Failed to unpack ShardStateUnsplit"));
-        stop();
-        return;
-      }
-      vm::AugmentedDictionary accounts_dict{vm::load_cell_slice_ref(sstate.accounts), 256, block::tlb::aug_ShardAccounts};
-      
-      auto shard_account_csr = accounts_dict.lookup(address_.addr);
-      if (shard_account_csr.is_null()) {
-        promise_.set_error(td::Status::Error("Account not found in accounts_dict"));
-        stop();
-        return;
-      } 
-      td::Ref<vm::Cell> account_root = shard_account_csr->prefetch_ref();
-
-      int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account_root));
-      switch (account_tag) {
-      case block::gen::Account::account_none:
-        promise_.set_error(td::Status::Error("Account is empty"));
-        stop();
-        return;
-      case block::gen::Account::account: {
-        auto account_r = ParseQuery::parse_account(account_root, sstate.gen_utime);
-        if (account_r.is_error()) {
-          promise_.set_error(account_r.move_as_error());
+      if (ton::shard_contains(block_ds.block_data->block_id().shard_full(), ton::extract_addr_prefix(address_.workchain, address_.addr))) {
+        auto root = block_ds.block_state;
+        block::gen::ShardStateUnsplit::Record sstate;
+        if (!tlb::unpack_cell(root, sstate)) {
+          promise_.set_error(td::Status::Error("Failed to unpack ShardStateUnsplit"));
           stop();
           return;
         }
-        promise_.set_value(account_r.move_as_ok());
-        stop();
-        return;
-      }
-      default:
-        promise_.set_error(td::Status::Error("Unknown account tag"));
-        stop();
-        return;
+        vm::AugmentedDictionary accounts_dict{vm::load_cell_slice_ref(sstate.accounts), 256, block::tlb::aug_ShardAccounts};
+        
+        auto shard_account_csr = accounts_dict.lookup(address_.addr);
+        if (shard_account_csr.is_null()) {
+          promise_.set_error(td::Status::Error("Account not found in accounts_dict"));
+          stop();
+          return;
+        } 
+        td::Ref<vm::Cell> account_root = shard_account_csr->prefetch_ref();
+
+        int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account_root));
+        switch (account_tag) {
+        case block::gen::Account::account_none:
+          promise_.set_error(td::Status::Error("Account is empty"));
+          stop();
+          return;
+        case block::gen::Account::account: {
+          auto account_r = ParseQuery::parse_account(account_root, sstate.gen_utime);
+          if (account_r.is_error()) {
+            promise_.set_error(account_r.move_as_error());
+            stop();
+            return;
+          }
+          promise_.set_value(account_r.move_as_ok());
+          stop();
+          return;
+        }
+        default:
+          promise_.set_error(td::Status::Error("Unknown account tag"));
+          stop();
+          return;
+        }
       }
     }
+    promise_.set_error(td::Status::Error("Account not found in shards"));
+    stop();
   }
 };
 

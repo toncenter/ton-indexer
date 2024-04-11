@@ -373,7 +373,7 @@ struct NFTTransfer {
 
 struct BlockDataState {
   td::Ref<ton::validator::BlockData> block_data;
-  td::Ref<ton::validator::ShardState> block_state;
+  td::Ref<vm::Cell> block_state;
 };
 
 // using MasterchainBlockDataState = std::vector<BlockDataState>;

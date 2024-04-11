@@ -32,7 +32,7 @@ private:
   td::Result<std::vector<schema::Transaction>> parse_transactions(const ton::BlockIdExt& blk_id, const block::gen::Block::Record &block, 
                                 const block::gen::BlockInfo::Record &info, const block::gen::BlockExtra::Record &extra,
                                 std::set<td::Bits256> &addresses);
-  td::Status parse_account_states(const td::Ref<ton::validator::ShardState>& block_state, std::set<td::Bits256> &addresses);
+  td::Status parse_account_states(const td::Ref<vm::Cell>& block_state_root, std::set<td::Bits256> &addresses);
   td::Result<schema::AccountState> parse_none_account(td::Ref<vm::Cell> account_root, block::StdAddress address, uint32_t gen_utime, uint64_t lt);
 
 public: //TODO: refactor
