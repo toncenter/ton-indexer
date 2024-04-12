@@ -1,6 +1,7 @@
 version: '3.9'
 
 x-indexer-environment: &indexer-environment
+  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
   POSTGRES_HOST: postgres
   POSTGRES_PORT: 5432
   POSTGRES_USER: postgres
@@ -28,7 +29,7 @@ services:
           - "node.labels.${TONCENTER_ENV:?}.indexer-cpp.worker==true"
     networks:
       internal:
-    command: -F 1 -M 2048 --insert-batch-size 512
+    command: --from ${TON_WORKER_FROM:-1}
     restart: unless-stopped
 
 networks:
@@ -40,4 +41,4 @@ networks:
 
 secrets:
   postgres_password:
-    file: private/postgres_password
+    file: ${POSTGRES_PASSWORD_FILE:-private/postgres_password}
