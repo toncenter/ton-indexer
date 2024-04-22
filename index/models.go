@@ -4,10 +4,25 @@ type ShardId int64
 type AccountAddress string
 type HexInt int64
 
+type AddressBookRow struct {
+	UserFriendly *string `json:"user_friendly"`
+}
+type AddressBook map[string]AddressBookRow
+
 type BlockId struct {
 	Workchain int32   `json:"workchain"`
 	Shard     ShardId `json:"shard,string"`
 	Seqno     int32   `json:"seqno"`
+}
+
+type AccountState struct {
+	Hash          string          `json:"hash"`
+	Account       *AccountAddress `json:"-"`
+	Balance       *int64          `json:"balance"`
+	AccountStatus *string         `json:"account_status"`
+	FrozenHash    *string         `json:"frozen_hash"`
+	DataHash      *string         `json:"data_hash"`
+	CodeHash      *string         `json:"code_hash"`
 }
 
 type Block struct {
@@ -177,4 +192,6 @@ type Transaction struct {
 	Descr                  TransactionDescr `json:"description"`
 	InMsg                  *Message         `json:"in_msg"`
 	OutMsgs                []*Message       `json:"out_msgs"`
+	AccountStateBefore     *AccountState    `json:"account_state_before"`
+	AccountStateAfter      *AccountState    `json:"account_state_after"`
 }

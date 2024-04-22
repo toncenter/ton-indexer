@@ -1,0 +1,47 @@
+version: '3.9'
+
+x-indexer-environment: &indexer-environment
+  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
+  POSTGRES_HOST:
+  POSTGRES_PORT:
+  POSTGRES_USER:
+  POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+  POSTGRES_DBNAME:
+  TON_INDEXER_API_ROOT_PATH:
+  TON_INDEXER_API_TITLE:
+  TON_INDEXER_TON_HTTP_API_ENDPOINT:
+  TON_INDEXER_IS_TESTNET:
+
+services:
+  index-api:
+    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-index-go:${IMAGE_TAG:?}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: -bind :8081 -pg ${TON_INDEX_PG_DSN:?} -prefork
+    init: true
+    ports:
+      - target: 8081
+        published: ${TON_INDEX_API_PORT:-8081}
+        protocol: tcp
+        mode: host
+    deploy:
+      mode: replicated
+      replicas: ${SWARM_REPLICAS:-1}
+      placement:
+        constraints:
+          - "node.labels.${TONCENTER_ENV:?}.ton-index-go.api==true"
+    networks:
+      internal:
+      toncenter-global:
+        aliases:
+          - ${TONCENTER_ENV:?}-ton-index-go-api
+
+networks:
+  internal:
+    attachable: true
+    external: false
+    driver_opts:
+      com.docker.network.driver.mtu: 1350
+  toncenter-global:
+    external: true

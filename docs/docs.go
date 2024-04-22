@@ -666,6 +666,29 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "index.AccountState": {
+            "type": "object",
+            "properties": {
+                "account_status": {
+                    "type": "string"
+                },
+                "balance": {
+                    "type": "integer"
+                },
+                "code_hash": {
+                    "type": "string"
+                },
+                "data_hash": {
+                    "type": "string"
+                },
+                "frozen_hash": {
+                    "type": "string"
+                },
+                "hash": {
+                    "type": "string"
+                }
+            }
+        },
         "index.ActionPhase": {
             "type": "object",
             "properties": {
@@ -716,7 +739,15 @@ const docTemplate = `{
         "index.AddressBook": {
             "type": "object",
             "additionalProperties": {
-                "type": "string"
+                "$ref": "#/definitions/index.AddressBookRow"
+            }
+        },
+        "index.AddressBookRow": {
+            "type": "object",
+            "properties": {
+                "user_friendly": {
+                    "type": "string"
+                }
             }
         },
         "index.Block": {
@@ -1083,6 +1114,12 @@ const docTemplate = `{
             "properties": {
                 "account": {
                     "type": "string"
+                },
+                "account_state_after": {
+                    "$ref": "#/definitions/index.AccountState"
+                },
+                "account_state_before": {
+                    "$ref": "#/definitions/index.AccountState"
                 },
                 "account_state_hash_after": {
                     "type": "string"

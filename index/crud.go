@@ -261,7 +261,6 @@ func buildMessagesQuery(
 	query += filter_query
 	query += orderby_query
 	query += limit_query
-	log.Println(query)
 	return query, nil
 }
 
@@ -319,35 +318,36 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSetting
 			content_list = append(content_list, fmt.Sprintf("'%s'", *m.InitStateHash))
 		}
 	}
-	content_list_str := strings.Join(content_list, ",")
+	if len(content_list) > 0 {
+		content_list_str := strings.Join(content_list, ",")
+		query = fmt.Sprintf("select * from message_contents where hash in (%s)", content_list_str)
 
-	query = fmt.Sprintf("select * from message_contents where hash in (%s)", content_list_str)
+		contents := map[string]*MessageContent{}
+		{
+			ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+			defer cancel_ctx()
+			rows, err := conn.Query(ctx, query)
+			if err != nil {
+				return nil, err
+			}
+			defer rows.Close()
 
-	contents := map[string]*MessageContent{}
-	{
-		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-		defer cancel_ctx()
-		rows, err := conn.Query(ctx, query)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			if cc, err := ScanMessageContent(rows); err == nil {
-				contents[cc.Hash] = cc
-			} else {
-				log.Printf("Failed reading content: %v\n", err)
+			for rows.Next() {
+				if cc, err := ScanMessageContent(rows); err == nil {
+					contents[cc.Hash] = cc
+				} else {
+					log.Printf("Failed reading content: %v\n", err)
+				}
 			}
 		}
-	}
-	for idx := range msgs {
-		m := &msgs[idx]
-		if m.BodyHash != nil {
-			m.MessageContent = contents[*m.BodyHash]
-		}
-		if m.InitStateHash != nil {
-			m.InitState = contents[*m.InitStateHash]
+		for idx := range msgs {
+			m := &msgs[idx]
+			if m.BodyHash != nil {
+				m.MessageContent = contents[*m.BodyHash]
+			}
+			if m.InitStateHash != nil {
+				m.InitState = contents[*m.InitStateHash]
+			}
 		}
 	}
 	return msgs, nil
@@ -376,30 +376,100 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 		}
 	}
 
-	// messages
+	acst_list := []string{}
 	hash_list := []string{}
 	for _, t := range txs {
 		hash_list = append(hash_list, fmt.Sprintf("'%s'", t.Hash))
+		acst_list = append(acst_list, fmt.Sprintf("'%s'", t.AccountStateHashBefore))
+		acst_list = append(acst_list, fmt.Sprintf("'%s'", t.AccountStateHashAfter))
 	}
-	if len(hash_list) == 0 {
+	// account states
+	if len(txs) == 0 {
 		return txs, nil
 	}
-	hash_list_str := strings.Join(hash_list, ",")
-	query = fmt.Sprintf("select * from messages where tx_hash in (%s)", hash_list_str)
+	if len(acst_list) > 0 {
+		acst_list_str := strings.Join(acst_list, ",")
+		query = fmt.Sprintf("select * from account_states where hash in (%s)", acst_list_str)
 
-	msgs, err := queryMessagesImpl(query, conn, settings)
-	if err != nil {
-		return nil, err
+		acsts, err := queryAccountStatesImpl(query, conn, settings)
+		if err != nil {
+			return nil, err
+		}
+		acsts_map := make(map[string]*AccountState)
+		for _, a := range acsts {
+			acsts_map[a.Hash] = &a
+		}
+		for idx := range txs {
+			txs[idx].AccountStateBefore = acsts_map[txs[idx].AccountStateHashBefore]
+			txs[idx].AccountStateAfter = acsts_map[txs[idx].AccountStateHashAfter]
+		}
 	}
 
-	for _, msg := range msgs {
-		if msg.Direction == "in" {
-			txs[txs_map[msg.TxHash]].InMsg = &msg
-		} else {
-			txs[txs_map[msg.TxHash]].OutMsgs = append(txs[txs_map[msg.TxHash]].OutMsgs, &msg)
+	// messages
+	if len(hash_list) > 0 {
+		hash_list_str := strings.Join(hash_list, ",")
+		query = fmt.Sprintf("select * from messages where tx_hash in (%s)", hash_list_str)
+
+		msgs, err := queryMessagesImpl(query, conn, settings)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, msg := range msgs {
+			if msg.Direction == "in" {
+				txs[txs_map[msg.TxHash]].InMsg = &msg
+			} else {
+				txs[txs_map[msg.TxHash]].OutMsgs = append(txs[txs_map[msg.TxHash]].OutMsgs, &msg)
+			}
 		}
 	}
 	return txs, nil
+}
+
+func queryAddressBookImpl(query string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
+	book := AddressBook{}
+	{
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		rows, err := conn.Query(ctx, query)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var account string
+			var account_friendly *string
+			if err := rows.Scan(&account, &account_friendly); err == nil {
+				book[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: account_friendly}
+			} else {
+				return nil, err
+			}
+		}
+	}
+	return book, nil
+}
+
+func queryAccountStatesImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]AccountState, error) {
+	acsts := []AccountState{}
+	{
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		rows, err := conn.Query(ctx, query)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			if acst, err := ScanAccountState(rows); err == nil {
+				acsts = append(acsts, *acst)
+			} else {
+				return nil, err
+			}
+		}
+	}
+	return acsts, nil
 }
 
 // Methods
@@ -474,20 +544,48 @@ func (db *DbClient) QueryTransactions(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Transaction, error) {
+) ([]Transaction, AddressBook, error) {
 	query, err := buildTransactionsQuery(blk_req, tx_req, msg_req, utime_req, lt_req, lim_req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer conn.Release()
 
-	return queryTransactionsImpl(query, conn, settings)
+	txs, err := queryTransactionsImpl(query, conn, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var book AddressBook = nil
+	addr_list := []string{}
+	for _, t := range txs {
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Account))
+		if t.InMsg != nil {
+			if t.InMsg.Source != nil {
+				addr_list = append(addr_list, fmt.Sprintf("'%s'", *t.InMsg.Source))
+			}
+		}
+		for _, m := range t.OutMsgs {
+			if m.Destination != nil {
+				addr_list = append(addr_list, fmt.Sprintf("'%s'", *m.Destination))
+			}
+		}
+	}
+	if len(addr_list) > 0 {
+		addr_list_str := strings.Join(addr_list, ",")
+		query := fmt.Sprintf("select account, account_friendly from latest_account_states where account in (%s)", addr_list_str)
+		book, err = queryAddressBookImpl(query, conn, settings)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return txs, book, nil
 }
 
 func (db *DbClient) QueryMessages(
@@ -496,18 +594,41 @@ func (db *DbClient) QueryMessages(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Message, error) {
+) ([]Message, AddressBook, error) {
 	query, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer conn.Release()
 
-	return queryMessagesImpl(query, conn, settings)
+	msgs, err := queryMessagesImpl(query, conn, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var book AddressBook = nil
+	addr_list := []string{}
+	for _, m := range msgs {
+		if m.Source != nil {
+			addr_list = append(addr_list, fmt.Sprintf("'%s'", *m.Source))
+		}
+		if m.Destination != nil {
+			addr_list = append(addr_list, fmt.Sprintf("'%s'", *m.Destination))
+		}
+	}
+	if len(addr_list) > 0 {
+		addr_list_str := strings.Join(addr_list, ",")
+		query := fmt.Sprintf("select account, account_friendly from latest_account_states where account in (%s)", addr_list_str)
+		book, err = queryAddressBookImpl(query, conn, settings)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return msgs, book, nil
 }

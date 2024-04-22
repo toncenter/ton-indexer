@@ -49,3 +49,6 @@ Vagrantfile
 # custom
 /sandbox
 /private
+
+.env.*
+.env

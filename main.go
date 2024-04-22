@@ -97,9 +97,9 @@ func GetBlocks(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if len(blks) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Blocks not found", Code: fiber.StatusNotFound})
-	}
+	// if len(blks) == 0 {
+	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Blocks not found", Code: fiber.StatusNotFound})
+	// }
 
 	blk_resp := index.BlocksResponse{Blocks: blks}
 	return c.JSON(blk_resp)
@@ -123,9 +123,9 @@ func GetShards(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if len(blks) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Blocks not found", Code: fiber.StatusNotFound})
-	}
+	// if len(blks) == 0 {
+	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Blocks not found", Code: fiber.StatusNotFound})
+	// }
 
 	blk_resp := index.BlocksResponse{Blocks: blks}
 	return c.JSON(blk_resp)
@@ -156,9 +156,9 @@ func GetShardsDiff(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if len(blks) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Blocks not found", Code: fiber.StatusNotFound})
-	}
+	// if len(blks) == 0 {
+	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Blocks not found", Code: fiber.StatusNotFound})
+	// }
 
 	blk_resp := index.BlocksResponse{Blocks: blks}
 	return c.JSON(blk_resp)
@@ -213,17 +213,17 @@ func GetTransactions(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs, err := pool.QueryTransactions(
+	txs, book, err := pool.QueryTransactions(
 		blk_req, tx_req, index.MessageRequest{},
 		utime_req, lt_req, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
-	if len(txs) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Transactions not found", Code: fiber.StatusNotFound})
-	}
+	// if len(txs) == 0 {
+	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Transactions not found", Code: fiber.StatusNotFound})
+	// }
 
-	txs_resp := index.TransactionsResponse{Transactions: txs}
+	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
 	return c.JSON(txs_resp)
 }
 
@@ -251,17 +251,17 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs, err := pool.QueryTransactions(
+	txs, book, err := pool.QueryTransactions(
 		blk_req, index.TransactionRequest{}, index.MessageRequest{}, index.UtimeRequest{},
 		index.LtRequest{}, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
-	if len(txs) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Transactions not found", Code: fiber.StatusNotFound})
-	}
+	// if len(txs) == 0 {
+	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Transactions not found", Code: fiber.StatusNotFound})
+	// }
 
-	txs_resp := index.TransactionsResponse{Transactions: txs}
+	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
 	return c.JSON(txs_resp)
 }
 
@@ -299,17 +299,17 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(index.RequestError{Message: "Either msg_hash or body_hash should be specified", Code: fiber.StatusBadRequest})
 	}
 
-	txs, err := pool.QueryTransactions(
+	txs, book, err := pool.QueryTransactions(
 		index.BlockRequest{}, index.TransactionRequest{}, msg_req,
 		index.UtimeRequest{}, index.LtRequest{}, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
-	if len(txs) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Transactions not found", Code: fiber.StatusNotFound})
-	}
+	// if len(txs) == 0 {
+	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Transactions not found", Code: fiber.StatusNotFound})
+	// }
 
-	txs_resp := index.TransactionsResponse{Transactions: txs}
+	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
 	return c.JSON(txs_resp)
 }
 
@@ -357,15 +357,15 @@ func GetMessages(c *fiber.Ctx) error {
 		return err
 	}
 
-	msgs, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, settings.Request)
+	msgs, book, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
-	if len(msgs) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Messages not found", Code: fiber.StatusNotFound})
-	}
+	// if len(msgs) == 0 {
+	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Messages not found", Code: fiber.StatusNotFound})
+	// }
 
-	msgs_resp := index.MessagesResponse{Messages: msgs}
+	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book}
 	return c.JSON(msgs_resp)
 }
 
@@ -386,7 +386,7 @@ func main() {
 	pool, err = index.NewDbClient(settings.PgDsn)
 	if err != nil {
 		log.Fatal(err)
-		os.Exit(1)
+		os.Exit(63)
 	}
 	// web server
 	config := fiber.Config{
@@ -400,7 +400,7 @@ func main() {
 		c.Accepts("application/json")
 		err := c.Next()
 		if err != nil {
-			log.Println("Error:", err)
+			log.Printf("Error: %+v\n", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
 		}
 		return nil
@@ -409,6 +409,7 @@ func main() {
 	// masterchain info
 	app.Get("/api/v3/masterchainInfo", GetMasterchainInfo)
 	app.Get("/api/v3/masterchainBlockShardState", GetShards)
+	app.Get("/api/v3/masterchainBlockShards", GetShardsDiff)
 
 	// blocks
 	app.Get("/api/v3/blocks", GetBlocks)

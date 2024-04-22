@@ -1,4 +1,19 @@
 definitions:
+  index.AccountState:
+    properties:
+      account_status:
+        type: string
+      balance:
+        type: integer
+      code_hash:
+        type: string
+      data_hash:
+        type: string
+      frozen_hash:
+        type: string
+      hash:
+        type: string
+    type: object
   index.ActionPhase:
     properties:
       action_list_hash:
@@ -32,7 +47,12 @@ definitions:
     type: object
   index.AddressBook:
     additionalProperties:
-      type: string
+      $ref: '#/definitions/index.AddressBookRow'
+    type: object
+  index.AddressBookRow:
+    properties:
+      user_friendly:
+        type: string
     type: object
   index.Block:
     properties:
@@ -274,6 +294,10 @@ definitions:
     properties:
       account:
         type: string
+      account_state_after:
+        $ref: '#/definitions/index.AccountState'
+      account_state_before:
+        $ref: '#/definitions/index.AccountState'
       account_state_hash_after:
         type: string
       account_state_hash_before:

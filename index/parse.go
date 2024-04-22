@@ -14,8 +14,12 @@ func (s *ShardId) MarshalJSON() ([]byte, error) {
 	return []byte(res), nil
 }
 
+func (a *AccountAddress) String() string {
+	return strings.Trim(string(*a), " ")
+}
+
 func (a *AccountAddress) MarshalJSON() ([]byte, error) {
-	return []byte("\"" + strings.Trim(string(*a), " ") + "\""), nil
+	return []byte(fmt.Sprintf("\"%s\"", a.String())), nil
 }
 
 func (h *HexInt) MarshalJSON() ([]byte, error) {
@@ -175,4 +179,14 @@ func ScanMessageContent(row pgx.Row) (*MessageContent, error) {
 		mc.Decoded = &DecodedContent{Type: "text_comment", Comment: *mcd}
 	}
 	return &mc, nil
+}
+
+func ScanAccountState(row pgx.Row) (*AccountState, error) {
+	var acst AccountState
+	err := row.Scan(&acst.Hash, &acst.Account, &acst.Balance, &acst.AccountStatus,
+		&acst.FrozenHash, &acst.DataHash, &acst.CodeHash)
+	if err != nil {
+		return nil, err
+	}
+	return &acst, nil
 }

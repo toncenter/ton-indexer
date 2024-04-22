@@ -3,8 +3,6 @@ package index
 import "fmt"
 
 // responses
-type AddressBook map[string]string
-
 type MasterchainInfo struct {
 	Last  *Block `json:"last"`
 	First *Block `json:"first"`
