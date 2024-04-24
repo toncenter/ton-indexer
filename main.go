@@ -417,6 +417,7 @@ func main() {
 	flag.StringVar(&settings.PgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
 	flag.StringVar(&settings.Bind, "bind", ":8000", "Bind address")
 	flag.BoolVar(&settings.Prefork, "prefork", false, "Prefork workers")
+	flag.BoolVar(&settings.Request.IsTestnet, "testnet", false, "Use testnet address book")
 	flag.Parse()
 
 	var err error

@@ -6,7 +6,8 @@ import (
 
 // settings
 type RequestSettings struct {
-	Timeout time.Duration
+	Timeout   time.Duration
+	IsTestnet bool
 }
 
 // requests

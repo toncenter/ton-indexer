@@ -7,7 +7,29 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/xssnick/tonutils-go/address"
 )
+
+// address utils
+func getAccountAddressFriendly(account string, code_hash *string, account_status *string, is_testnet bool) string {
+	addr, err := address.ParseRawAddr(strings.Trim(account, " "))
+	if err != nil {
+		return "addr_none"
+	}
+	bouncable := true
+	if code_hash == nil {
+		bouncable = false
+	}
+	if account_status != nil && *account_status == "uninit" {
+		bouncable = false
+	}
+	if code_hash != nil && WalletsHashMap[*code_hash] {
+		bouncable = false
+	}
+	addr.SetBounce(bouncable)
+	addr.SetTestnetOnly(is_testnet)
+	return addr.String()
+}
 
 // query builders
 func limitQuery(lim LimitRequest) string {
@@ -444,8 +466,11 @@ func queryAddressBookImpl(query string, conn *pgxpool.Conn, settings RequestSett
 		for rows.Next() {
 			var account string
 			var account_friendly *string
-			if err := rows.Scan(&account, &account_friendly); err == nil {
-				book[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: account_friendly}
+			var code_hash *string
+			var account_status *string
+			if err := rows.Scan(&account, &account_friendly, &code_hash, &account_status); err == nil {
+				addr_str := getAccountAddressFriendly(account, code_hash, account_status, settings.IsTestnet)
+				book[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: &addr_str}
 			} else {
 				return nil, err
 			}
@@ -583,7 +608,7 @@ func (db *DbClient) QueryTransactions(
 	}
 	if len(addr_list) > 0 {
 		addr_list_str := strings.Join(addr_list, ",")
-		query := fmt.Sprintf("select account, account_friendly from latest_account_states where account in (%s)", addr_list_str)
+		query := fmt.Sprintf("select account, account_friendly, code_hash, account_status from latest_account_states where account in (%s)", addr_list_str)
 		book, err = queryAddressBookImpl(query, conn, settings)
 		if err != nil {
 			return nil, nil, err
