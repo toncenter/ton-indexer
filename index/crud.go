@@ -452,9 +452,12 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 	return txs, nil
 }
 
-func queryAddressBookImpl(query string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
+func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
 	book := AddressBook{}
 	{
+		addr_list_str := strings.Join(addr_list, ",")
+		query := fmt.Sprintf("select account, account_friendly, code_hash, account_status from latest_account_states where account in (%s)", addr_list_str)
+
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
@@ -565,6 +568,45 @@ func (db *DbClient) QueryShards(
 	return queryBlocksImpl(query, conn, settings)
 }
 
+func (db *DbClient) QueryAddressBook(
+	addr_list []string,
+	settings RequestSettings,
+) (AddressBook, error) {
+	raw_addr_list := []string{}
+	raw_addr_map := map[string]string{}
+	for _, addr := range addr_list {
+		addr_loc := AccountAddressConverter(addr)
+		if addr_loc.IsValid() {
+			if v, ok := addr_loc.Interface().(string); ok {
+				raw_addr_list = append(raw_addr_list, fmt.Sprintf("'%s'", v))
+				raw_addr_map[addr] = v
+			}
+		} else {
+			raw_addr_map[addr] = ""
+		}
+	}
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
+	book, err := queryAddressBookImpl(raw_addr_list, conn, settings)
+	if err != nil {
+		return nil, err
+	}
+
+	new_addr_book := AddressBook{}
+	for k, v := range raw_addr_map {
+		if vv, ok := book[v]; ok {
+			new_addr_book[k] = vv
+		} else {
+			new_addr_book[k] = AddressBookRow{nil}
+		}
+
+	}
+	return new_addr_book, nil
+}
+
 func (db *DbClient) QueryTransactions(
 	blk_req BlockRequest,
 	tx_req TransactionRequest,
@@ -607,9 +649,7 @@ func (db *DbClient) QueryTransactions(
 		}
 	}
 	if len(addr_list) > 0 {
-		addr_list_str := strings.Join(addr_list, ",")
-		query := fmt.Sprintf("select account, account_friendly, code_hash, account_status from latest_account_states where account in (%s)", addr_list_str)
-		book, err = queryAddressBookImpl(query, conn, settings)
+		book, err = queryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -652,9 +692,7 @@ func (db *DbClient) QueryMessages(
 		}
 	}
 	if len(addr_list) > 0 {
-		addr_list_str := strings.Join(addr_list, ",")
-		query := fmt.Sprintf("select account, account_friendly from latest_account_states where account in (%s)", addr_list_str)
-		book, err = queryAddressBookImpl(query, conn, settings)
+		book, err = queryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
 			return nil, nil, err
 		}

@@ -346,8 +346,11 @@ func GetMessages(c *fiber.Ctx) error {
 		return err
 	}
 	if len(hash_str) > 0 && msg_req.MessageHash == nil {
-		if hash, ok := index.HashConverter(hash_str).Interface().(index.HashType); ok {
-			msg_req.MessageHash = []index.HashType{hash}
+		hash_val := index.HashConverter(hash_str)
+		if hash_val.IsValid() {
+			if hash, ok := hash_val.Interface().(index.HashType); ok {
+				msg_req.MessageHash = []index.HashType{hash}
+			}
 		}
 	}
 	if err := c.QueryParser(&utime_req); err != nil {
@@ -370,6 +373,32 @@ func GetMessages(c *fiber.Ctx) error {
 
 	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book}
 	return c.JSON(msgs_resp)
+}
+
+// @summary Address Book
+//
+// @description Query address book
+//
+// @id api_v3_get_address_book
+// @tags default
+// @Accept json
+// @Produce json
+// @success 200 {object} index.AddressBook
+// @failure 400 {object} index.RequestError
+// @param address query []string false "List of addresses in any form to get address book. Max: 1024."
+// @router /api/v3/addressBook [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetAddressBook(c *fiber.Ctx) error {
+	var addr_book_req index.AddressBookRequest
+	if err := c.QueryParser(&addr_book_req); err != nil {
+		return err
+	}
+	book, err := pool.QueryAddressBook(addr_book_req.Address, settings.Request)
+	if err != nil {
+		return err
+	}
+	return c.JSON(book)
 }
 
 // @summary Test method
@@ -471,6 +500,9 @@ func main() {
 
 	// messages
 	app.Get("/api/v3/messages", GetMessages)
+
+	// address book
+	app.Get("/api/v3/addressBook", GetAddressBook)
 
 	// test
 	app.Get("/api/v3/__testMethod", GetTestMethod)

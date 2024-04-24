@@ -442,6 +442,37 @@ paths:
       summary: Test method
       tags:
       - default
+  /api/v3/addressBook:
+    get:
+      consumes:
+      - application/json
+      description: Query address book
+      operationId: api_v3_get_address_book
+      parameters:
+      - collectionFormat: multi
+        description: 'List of addresses in any form to get address book. Max: 1024.'
+        in: query
+        items:
+          type: string
+        name: address
+        type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.AddressBook'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/index.RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Address Book
+      tags:
+      - default
   /api/v3/blocks:
     get:
       consumes:

@@ -85,6 +85,56 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v3/addressBook": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Query address book",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "default"
+                ],
+                "summary": "Address Book",
+                "operationId": "api_v3_get_address_book",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "List of addresses in any form to get address book. Max: 1024.",
+                        "name": "address",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/index.AddressBook"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/index.RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/blocks": {
             "get": {
                 "security": [

@@ -18,6 +18,10 @@ type BlockRequest struct {
 	McSeqno   *int32   `query:"mc_seqno"`
 }
 
+type AddressBookRequest struct {
+	Address []string `query:"address"`
+}
+
 type TransactionRequest struct {
 	Account        []AccountAddress `query:"account"`
 	ExcludeAccount []AccountAddress `query:"exclude_account"`
