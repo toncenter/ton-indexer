@@ -1,29 +1,84 @@
 package index
 
 import (
+	b64 "encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/xssnick/tonutils-go/address"
+	"github.com/xssnick/tonutils-go/tvm/cell"
 )
 
 // json marshaling and unmarshaling
-func (s *ShardId) MarshalJSON() ([]byte, error) {
-	res := fmt.Sprintf("\"%X\"", uint64(*s))
-	return []byte(res), nil
+func (v *ShardId) String() string {
+	return fmt.Sprintf("%X", uint64(*v))
 }
 
-func (a *AccountAddress) String() string {
-	return strings.Trim(string(*a), " ")
+func (v *ShardId) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
 }
 
-func (a *AccountAddress) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", a.String())), nil
+func (v *AccountAddress) String() string {
+	return strings.Trim(string(*v), " ")
 }
 
-func (h *HexInt) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"0x%X\"", *h)), nil
+func (v *AccountAddress) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
+}
+
+func (v *HexInt) String() string {
+	return fmt.Sprintf("0x%x", uint32(*v))
+}
+
+func (v *HexInt) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
+}
+
+// converters
+func HashConverter(value string) reflect.Value {
+	if len(value) == 64 {
+		if res, err := hex.DecodeString(value); err == nil {
+			return reflect.ValueOf(HashType(b64.StdEncoding.EncodeToString(res)))
+		} else {
+			return reflect.Value{}
+		}
+	}
+	if len(value) == 44 {
+		if res, err := b64.StdEncoding.DecodeString(value); err == nil {
+			return reflect.ValueOf(HashType(b64.StdEncoding.EncodeToString(res)))
+		} else if res, err := b64.URLEncoding.DecodeString(value); err == nil {
+			return reflect.ValueOf(HashType(b64.StdEncoding.EncodeToString(res)))
+		} else {
+			return reflect.Value{}
+		}
+	}
+	return reflect.Value{}
+}
+
+func AccountAddressConverter(value string) reflect.Value {
+	addr, err := address.ParseAddr(value)
+	if err != nil {
+		addr, err = address.ParseRawAddr(value)
+	}
+	if err != nil {
+		return reflect.Value{}
+	}
+	addr_str := fmt.Sprintf("%d:%s", addr.Workchain(), strings.ToUpper(hex.EncodeToString(addr.Data())))
+	return reflect.ValueOf(addr_str)
+}
+
+func ShardIdConverter(value string) reflect.Value {
+	if shard, err := strconv.ParseUint(value, 16, 64); err == nil {
+		return reflect.ValueOf(ShardId(shard))
+	}
+	if shard, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return reflect.ValueOf(ShardId(shard))
+	}
+	return reflect.Value{}
 }
 
 // Parsing
@@ -123,6 +178,9 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 		&bo.Type, &ms2.Cells, &ms2.Bits,
 		&bo.ReqFwdFees, &bo.MsgFees, &bo.FwdFees,
 		&sp.CurShardPfxLen, &sp.AccSplitDepth, &sp.ThisAddr, &sp.SiblingAddr)
+	t.BlockRef = BlockId{t.Workchain, t.Shard, t.Seqno}
+	t.AccountStateAfter = &AccountState{Hash: t.AccountStateHashAfter}
+	t.AccountStateBefore = &AccountState{Hash: t.AccountStateHashBefore}
 
 	if ms1.Cells != nil {
 		ac.TotMsgSize = &ms1
@@ -177,6 +235,16 @@ func ScanMessageContent(row pgx.Row) (*MessageContent, error) {
 	}
 	if mcd != nil {
 		mc.Decoded = &DecodedContent{Type: "text_comment", Comment: *mcd}
+	} else {
+		if boc, err := b64.StdEncoding.DecodeString(mc.Body); err == nil {
+			if c, err := cell.FromBOC(boc); err == nil {
+				l := c.BeginParse()
+				if val, err := l.LoadUInt(32); err == nil && val == 0 {
+					str, _ := l.LoadStringSnake()
+					mc.Decoded = &DecodedContent{Type: "text_comment", Comment: str}
+				}
+			}
+		}
 	}
 	return &mc, nil
 }

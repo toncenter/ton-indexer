@@ -1,6 +1,8 @@
 package index
 
-import "time"
+import (
+	"time"
+)
 
 // settings
 type RequestSettings struct {
@@ -9,25 +11,25 @@ type RequestSettings struct {
 
 // requests
 type BlockRequest struct {
-	Workchain *int32 `query:"workchain"`
-	Shard     *int64 `query:"shard"`
-	Seqno     *int32 `query:"seqno"`
-	McSeqno   *int32 `query:"mc_seqno"`
+	Workchain *int32   `query:"workchain"`
+	Shard     *ShardId `query:"shard"`
+	Seqno     *int32   `query:"seqno"`
+	McSeqno   *int32   `query:"mc_seqno"`
 }
 
 type TransactionRequest struct {
-	Account        []string `query:"account"`
-	ExcludeAccount []string `query:"exclude_account"`
-	Hash           *string  `query:"hash"`
-	Lt             *uint64  `query:"lt"`
+	Account        []AccountAddress `query:"account"`
+	ExcludeAccount []AccountAddress `query:"exclude_account"`
+	Hash           *HashType        `query:"hash"`
+	Lt             *uint64          `query:"lt"`
 }
 
 type MessageRequest struct {
-	Direction   *string  `query:"direction"`
-	MessageHash []string `query:"msg_hash"`
-	Source      *string  `query:"source"`
-	Destination *string  `query:"destination"`
-	BodyHash    *string  `query:"body_hash"`
+	Direction   *string         `query:"direction"`
+	MessageHash []HashType      `query:"msg_hash"`
+	Source      *AccountAddress `query:"source"`
+	Destination *AccountAddress `query:"destination"`
+	BodyHash    *HashType       `query:"body_hash"`
 }
 
 type UtimeRequest struct {
@@ -50,4 +52,10 @@ type LimitRequest struct {
 	Limit  *int32    `query:"limit"`
 	Offset *int32    `query:"offset"`
 	Sort   *SortType `query:"sort"`
+}
+
+type TestRequest struct {
+	Hash  []HashType       `query:"my_hash"`
+	Addr  []AccountAddress `query:"my_addr"`
+	Shard []ShardId        `query:"my_shard"`
 }

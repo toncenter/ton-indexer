@@ -400,8 +400,12 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 			acsts_map[a.Hash] = &a
 		}
 		for idx := range txs {
-			txs[idx].AccountStateBefore = acsts_map[txs[idx].AccountStateHashBefore]
-			txs[idx].AccountStateAfter = acsts_map[txs[idx].AccountStateHashAfter]
+			if v, ok := acsts_map[txs[idx].AccountStateHashBefore]; ok {
+				txs[idx].AccountStateBefore = v
+			}
+			if v, ok := acsts_map[txs[idx].AccountStateHashAfter]; ok {
+				txs[idx].AccountStateAfter = v
+			}
 		}
 	}
 

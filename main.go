@@ -25,6 +25,7 @@ var settings Settings
 //	@title			TON Index (Go)
 //	@version		1.1.0
 //	@description	TON Index collects data from a full node to PostgreSQL database and provides convenient API to an indexed blockchain.
+//  @query.collection.format multi
 
 //	@securitydefinitions.apikey APIKeyHeader
 //	@in		header
@@ -340,12 +341,14 @@ func GetMessages(c *fiber.Ctx) error {
 	lt_req := index.LtRequest{}
 	lim_req := index.LimitRequest{}
 
-	hash := c.Query("hash")
+	hash_str := c.Query("hash")
 	if err := c.QueryParser(&msg_req); err != nil {
 		return err
 	}
-	if len(hash) > 0 && msg_req.MessageHash == nil {
-		msg_req.MessageHash = []string{hash}
+	if len(hash_str) > 0 && msg_req.MessageHash == nil {
+		if hash, ok := index.HashConverter(hash_str).Interface().(index.HashType); ok {
+			msg_req.MessageHash = []index.HashType{hash}
+		}
 	}
 	if err := c.QueryParser(&utime_req); err != nil {
 		return err
@@ -369,8 +372,42 @@ func GetMessages(c *fiber.Ctx) error {
 	return c.JSON(msgs_resp)
 }
 
+// @summary Test method
+//
+//	@description Test method
+//
+// @id api_v3_get_test_method
+// @tags default
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	index.MessagesResponse
+// @failure		400	{object}	index.RequestError
+// @param my_hash query []string false "Hash"
+// @param my_addr query []string false "Address"
+// @param my_shard query []string false "ShardId"
+// @router			/api/v3/__testMethod [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetTestMethod(c *fiber.Ctx) error {
+	var test_req index.TestRequest
+	if err := c.QueryParser(&test_req); err != nil {
+		return err
+	}
+	c.Status(200).JSON(test_req)
+	return nil
+}
+
 func test() {
 	log.Println("Test OK")
+	// 0:8A4A3B4B3652B51F361BA6660F991944F27F744EA7021252B9D58E89D950B661
+	// EQCKSjtLNlK1HzYbpmYPmRlE8n90TqcCElK51Y6J2VC2YQ0y
+	// UQCKSjtLNlK1HzYbpmYPmRlE8n90TqcCElK51Y6J2VC2YVD3
+	// kQCKSjtLNlK1HzYbpmYPmRlE8n90TqcCElK51Y6J2VC2Yba4
+	// 0QCKSjtLNlK1HzYbpmYPmRlE8n90TqcCElK51Y6J2VC2Yet9
+	// xgwu5kxEGiapot+84Qo1hxsC+EuTtGhlzHi4Wi9S5Tw=
+	// xgwu5kxEGiapot-84Qo1hxsC-EuTtGhlzHi4Wi9S5Tw=
+	// c60c2ee64c441a26a9a2dfbce10a35871b02f84b93b46865cc78b85a2f52e53c
+	// C60C2EE64C441A26A9A2DFBCE10A35871B02F84B93B46865CC78B85A2F52E53C
 }
 
 func main() {
@@ -396,6 +433,18 @@ func main() {
 	}
 	app := fiber.New(config)
 
+	// converters
+	fiber.SetParserDecoder(fiber.ParserConfig{
+		IgnoreUnknownKeys: true,
+		ParserType: []fiber.ParserType{
+			{Customtype: index.HashType(""), Converter: index.HashConverter},
+			{Customtype: index.AccountAddress(""), Converter: index.AccountAddressConverter},
+			{Customtype: index.ShardId(0), Converter: index.ShardIdConverter},
+		},
+		ZeroEmpty: true,
+	})
+
+	// endpoints
 	app.Use("/api/v3/", func(c *fiber.Ctx) error {
 		c.Accepts("application/json")
 		err := c.Next()
@@ -421,6 +470,9 @@ func main() {
 
 	// messages
 	app.Get("/api/v3/messages", GetMessages)
+
+	// test
+	app.Get("/api/v3/__testMethod", GetTestMethod)
 
 	// swagger
 	app.Get("/api/v3/*", swagger.New(swagger.Config{}))

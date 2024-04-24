@@ -2,6 +2,7 @@ package index
 
 type ShardId int64
 type AccountAddress string
+type HashType string
 type HexInt int64
 
 type AddressBookRow struct {
@@ -18,7 +19,7 @@ type BlockId struct {
 type AccountState struct {
 	Hash          string          `json:"hash"`
 	Account       *AccountAddress `json:"-"`
-	Balance       *int64          `json:"balance"`
+	Balance       *int64          `json:"balance,string"`
 	AccountStatus *string         `json:"account_status"`
 	FrozenHash    *string         `json:"frozen_hash"`
 	DataHash      *string         `json:"data_hash"`
@@ -75,16 +76,16 @@ type Message struct {
 	Direction      string          `json:"-"`
 	Source         *AccountAddress `json:"source"`
 	Destination    *AccountAddress `json:"destination"`
-	Value          *int64          `json:"value"`
-	FwdFee         *uint64         `json:"fwd_fee"`
-	IhrFee         *uint64         `json:"ihr_fee"`
-	CreatedLt      *uint64         `json:"created_lt"`
-	CreatedAt      *uint32         `json:"created_at"`
+	Value          *int64          `json:"value,string"`
+	FwdFee         *uint64         `json:"fwd_fee,string"`
+	IhrFee         *uint64         `json:"ihr_fee,string"`
+	CreatedLt      *uint64         `json:"created_lt,string"`
+	CreatedAt      *uint32         `json:"created_at,string"`
 	Opcode         *HexInt         `json:"opcode"`
 	IhrDisabled    *bool           `json:"ihr_disabled"`
 	Bounce         *bool           `json:"bounce"`
 	Bounced        *bool           `json:"bounced"`
-	ImportFee      *uint64         `json:"import_fee"`
+	ImportFee      *uint64         `json:"import_fee,string"`
 	BodyHash       *string         `json:"-"`
 	InitStateHash  *string         `json:"-"`
 	MessageContent *MessageContent `json:"message_content"`
@@ -92,19 +93,19 @@ type Message struct {
 }
 
 type MsgSize struct {
-	Cells *int64 `json:"cells"`
-	Bits  *int64 `json:"bits"`
+	Cells *int64 `json:"cells,string"`
+	Bits  *int64 `json:"bits,string"`
 }
 
 type StoragePhase struct {
-	StorageFeesCollected *int64  `json:"storage_fees_collected,omitempty"`
-	StorageFeesDue       *int64  `json:"storage_fees_due,omitempty"`
+	StorageFeesCollected *int64  `json:"storage_fees_collected,string,omitempty"`
+	StorageFeesDue       *int64  `json:"storage_fees_due,string,omitempty"`
 	StatusChange         *string `json:"status_change,omitempty"`
 }
 
 type CreditPhase struct {
-	DueFeesCollected *int64 `json:"due_fees_collected,omitempty"`
-	Credit           *int64 `json:"credit,omitempty"`
+	DueFeesCollected *int64 `json:"due_fees_collected,string,omitempty"`
+	Credit           *int64 `json:"credit,string,omitempty"`
 }
 
 type ComputePhase struct {
@@ -113,10 +114,10 @@ type ComputePhase struct {
 	Success          *bool   `json:"success,omitempty"`
 	MsgStateUsed     *bool   `json:"msg_state_used,omitempty"`
 	AccountActivated *bool   `json:"account_activated,omitempty"`
-	GasFees          *int64  `json:"gas_fees,omitempty"`
-	GasUsed          *int64  `json:"gas_used,omitempty"`
-	GasLimit         *int64  `json:"gas_limit,omitempty"`
-	GasCredit        *int64  `json:"gas_credit,omitempty"`
+	GasFees          *int64  `json:"gas_fees,string,omitempty"`
+	GasUsed          *int64  `json:"gas_used,string,omitempty"`
+	GasLimit         *int64  `json:"gas_limit,string,omitempty"`
+	GasCredit        *int64  `json:"gas_credit,string,omitempty"`
 	Mode             *int32  `json:"mode,omitempty"`
 	ExitCode         *int32  `json:"exit_code,omitempty"`
 	ExitArg          *int32  `json:"exit_arg,omitempty"`
@@ -130,8 +131,8 @@ type ActionPhase struct {
 	Valid           *bool    `json:"valid,omitempty"`
 	NoFunds         *bool    `json:"no_funds,omitempty"`
 	StatusChange    *string  `json:"status_change,omitempty"`
-	TotalFwdFees    *int64   `json:"total_fwd_fees,omitempty"`
-	TotalActionFees *int64   `json:"total_action_fees,omitempty"`
+	TotalFwdFees    *int64   `json:"total_fwd_fees,string,omitempty"`
+	TotalActionFees *int64   `json:"total_action_fees,string,omitempty"`
 	ResultCode      *int32   `json:"result_code,omitempty"`
 	ResultArg       *int32   `json:"result_arg,omitempty"`
 	TotActions      *int32   `json:"tot_actions,omitempty"`
@@ -145,9 +146,9 @@ type ActionPhase struct {
 type BouncePhase struct {
 	Type       *string  `json:"type"`
 	MsgSize    *MsgSize `json:"msg_size,omitempty"`
-	ReqFwdFees *int64   `json:"req_fwd_fees,omitempty"`
-	MsgFees    *int64   `json:"msg_fees,omitempty"`
-	FwdFees    *int64   `json:"fwd_fees,omitempty"`
+	ReqFwdFees *int64   `json:"req_fwd_fees,string,omitempty"`
+	MsgFees    *int64   `json:"msg_fees,string,omitempty"`
+	FwdFees    *int64   `json:"fwd_fees,string,omitempty"`
 }
 
 type SplitInfo struct {
@@ -175,21 +176,22 @@ type TransactionDescr struct {
 type Transaction struct {
 	Account                AccountAddress   `json:"account"`
 	Hash                   string           `json:"hash"`
-	Lt                     int64            `json:"lt"`
-	Workchain              int32            `json:"block_workchain"`
-	Shard                  ShardId          `json:"block_shard"`
-	Seqno                  int32            `json:"block_seqno"`
+	Lt                     int64            `json:"lt,string"`
+	Now                    int32            `json:"now"`
+	Workchain              int32            `json:"-"`
+	Shard                  ShardId          `json:"-"`
+	Seqno                  int32            `json:"-"`
 	McSeqno                int32            `json:"mc_block_seqno"`
 	TraceId                *string          `json:"trace_id,omitempty"`
 	PrevTransHash          string           `json:"prev_trans_hash"`
-	PrevTransLt            int64            `json:"prev_trans_lt"`
-	Now                    int32            `json:"now"`
+	PrevTransLt            int64            `json:"prev_trans_lt,string"`
 	OrigStatus             string           `json:"orig_status"`
 	EndStatus              string           `json:"end_status"`
-	TotalFees              int64            `json:"total_fees"`
-	AccountStateHashBefore string           `json:"account_state_hash_before"`
-	AccountStateHashAfter  string           `json:"account_state_hash_after"`
+	TotalFees              int64            `json:"total_fees,string"`
+	AccountStateHashBefore string           `json:"-"`
+	AccountStateHashAfter  string           `json:"-"`
 	Descr                  TransactionDescr `json:"description"`
+	BlockRef               BlockId          `json:"block_ref"`
 	InMsg                  *Message         `json:"in_msg"`
 	OutMsgs                []*Message       `json:"out_msgs"`
 	AccountStateBefore     *AccountState    `json:"account_state_before"`

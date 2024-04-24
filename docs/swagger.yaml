@@ -4,7 +4,8 @@ definitions:
       account_status:
         type: string
       balance:
-        type: integer
+        example: "0"
+        type: string
       code_hash:
         type: string
       data_hash:
@@ -39,9 +40,11 @@ definitions:
       tot_msg_size:
         $ref: '#/definitions/index.MsgSize'
       total_action_fees:
-        type: integer
+        example: "0"
+        type: string
       total_fwd_fees:
-        type: integer
+        example: "0"
+        type: string
       valid:
         type: boolean
     type: object
@@ -141,13 +144,16 @@ definitions:
   index.BouncePhase:
     properties:
       fwd_fees:
-        type: integer
+        example: "0"
+        type: string
       msg_fees:
-        type: integer
+        example: "0"
+        type: string
       msg_size:
         $ref: '#/definitions/index.MsgSize'
       req_fwd_fees:
-        type: integer
+        example: "0"
+        type: string
       type:
         type: string
     type: object
@@ -160,13 +166,17 @@ definitions:
       exit_code:
         type: integer
       gas_credit:
-        type: integer
+        example: "0"
+        type: string
       gas_fees:
-        type: integer
+        example: "0"
+        type: string
       gas_limit:
-        type: integer
+        example: "0"
+        type: string
       gas_used:
-        type: integer
+        example: "0"
+        type: string
       mode:
         type: integer
       msg_state_used:
@@ -187,9 +197,11 @@ definitions:
   index.CreditPhase:
     properties:
       credit:
-        type: integer
+        example: "0"
+        type: string
       due_fees_collected:
-        type: integer
+        example: "0"
+        type: string
     type: object
   index.DecodedContent:
     properties:
@@ -212,21 +224,26 @@ definitions:
       bounced:
         type: boolean
       created_at:
-        type: integer
+        example: "0"
+        type: string
       created_lt:
-        type: integer
+        example: "0"
+        type: string
       destination:
         type: string
       fwd_fee:
-        type: integer
+        example: "0"
+        type: string
       hash:
         type: string
       ihr_disabled:
         type: boolean
       ihr_fee:
-        type: integer
+        example: "0"
+        type: string
       import_fee:
-        type: integer
+        example: "0"
+        type: string
       init_state:
         $ref: '#/definitions/index.MessageContent'
       message_content:
@@ -236,7 +253,8 @@ definitions:
       source:
         type: string
       value:
-        type: integer
+        example: "0"
+        type: string
     type: object
   index.MessageContent:
     properties:
@@ -259,9 +277,11 @@ definitions:
   index.MsgSize:
     properties:
       bits:
-        type: integer
+        example: "0"
+        type: string
       cells:
-        type: integer
+        example: "0"
+        type: string
     type: object
   index.RequestError:
     properties:
@@ -286,9 +306,11 @@ definitions:
       status_change:
         type: string
       storage_fees_collected:
-        type: integer
+        example: "0"
+        type: string
       storage_fees_due:
-        type: integer
+        example: "0"
+        type: string
     type: object
   index.Transaction:
     properties:
@@ -298,16 +320,8 @@ definitions:
         $ref: '#/definitions/index.AccountState'
       account_state_before:
         $ref: '#/definitions/index.AccountState'
-      account_state_hash_after:
-        type: string
-      account_state_hash_before:
-        type: string
-      block_seqno:
-        type: integer
-      block_shard:
-        type: integer
-      block_workchain:
-        type: integer
+      block_ref:
+        $ref: '#/definitions/index.BlockId'
       description:
         $ref: '#/definitions/index.TransactionDescr'
       end_status:
@@ -317,7 +331,8 @@ definitions:
       in_msg:
         $ref: '#/definitions/index.Message'
       lt:
-        type: integer
+        example: "0"
+        type: string
       mc_block_seqno:
         type: integer
       now:
@@ -331,9 +346,11 @@ definitions:
       prev_trans_hash:
         type: string
       prev_trans_lt:
-        type: integer
+        example: "0"
+        type: string
       total_fees:
-        type: integer
+        example: "0"
+        type: string
       trace_id:
         type: string
     type: object
@@ -380,6 +397,51 @@ info:
   title: TON Index (Go)
   version: 1.1.0
 paths:
+  /api/v3/__testMethod:
+    get:
+      consumes:
+      - application/json
+      description: Test method
+      operationId: api_v3_get_test_method
+      parameters:
+      - collectionFormat: multi
+        description: Hash
+        in: query
+        items:
+          type: string
+        name: my_hash
+        type: array
+      - collectionFormat: multi
+        description: Address
+        in: query
+        items:
+          type: string
+        name: my_addr
+        type: array
+      - collectionFormat: multi
+        description: ShardId
+        in: query
+        items:
+          type: string
+        name: my_shard
+        type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.MessagesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/index.RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Test method
+      tags:
+      - default
   /api/v3/blocks:
     get:
       consumes:

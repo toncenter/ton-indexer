@@ -15,6 +15,76 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v3/__testMethod": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Test method",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "default"
+                ],
+                "summary": "Test method",
+                "operationId": "api_v3_get_test_method",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Hash",
+                        "name": "my_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address",
+                        "name": "my_addr",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "ShardId",
+                        "name": "my_shard",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/index.MessagesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/index.RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/blocks": {
             "get": {
                 "security": [
@@ -673,7 +743,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "balance": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "code_hash": {
                     "type": "string"
@@ -726,10 +797,12 @@ const docTemplate = `{
                     "$ref": "#/definitions/index.MsgSize"
                 },
                 "total_action_fees": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "total_fwd_fees": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "valid": {
                     "type": "boolean"
@@ -879,16 +952,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "fwd_fees": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "msg_fees": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "msg_size": {
                     "$ref": "#/definitions/index.MsgSize"
                 },
                 "req_fwd_fees": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "type": {
                     "type": "string"
@@ -908,16 +984,20 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "gas_credit": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "gas_fees": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "gas_limit": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "gas_used": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "mode": {
                     "type": "integer"
@@ -949,10 +1029,12 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "credit": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "due_fees_collected": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 }
             }
         },
@@ -988,16 +1070,19 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "created_at": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "created_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "destination": {
                     "type": "string"
                 },
                 "fwd_fee": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "hash": {
                     "type": "string"
@@ -1006,10 +1091,12 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "ihr_fee": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "import_fee": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "init_state": {
                     "$ref": "#/definitions/index.MessageContent"
@@ -1024,7 +1111,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "value": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 }
             }
         },
@@ -1060,10 +1148,12 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "bits": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "cells": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 }
             }
         },
@@ -1102,10 +1192,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "storage_fees_collected": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "storage_fees_due": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 }
             }
         },
@@ -1121,20 +1213,8 @@ const docTemplate = `{
                 "account_state_before": {
                     "$ref": "#/definitions/index.AccountState"
                 },
-                "account_state_hash_after": {
-                    "type": "string"
-                },
-                "account_state_hash_before": {
-                    "type": "string"
-                },
-                "block_seqno": {
-                    "type": "integer"
-                },
-                "block_shard": {
-                    "type": "integer"
-                },
-                "block_workchain": {
-                    "type": "integer"
+                "block_ref": {
+                    "$ref": "#/definitions/index.BlockId"
                 },
                 "description": {
                     "$ref": "#/definitions/index.TransactionDescr"
@@ -1149,7 +1229,8 @@ const docTemplate = `{
                     "$ref": "#/definitions/index.Message"
                 },
                 "lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "mc_block_seqno": {
                     "type": "integer"
@@ -1170,10 +1251,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "prev_trans_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "total_fees": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "trace_id": {
                     "type": "string"
