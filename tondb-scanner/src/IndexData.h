@@ -388,6 +388,11 @@ using BlockchainEvent = std::variant<JettonTransfer,
                                      JettonBurn,
                                      NFTTransfer>;
 
+using BlockchainInterface = std::variant<JettonMasterData, 
+                                         JettonWalletData, 
+                                         NFTCollectionData, 
+                                         NFTItemData>;
+
 struct ParsedBlock {
   MasterchainBlockDataState mc_block_;
 
@@ -396,6 +401,7 @@ struct ParsedBlock {
   std::vector<schema::MasterchainBlockShard> shard_state_;
 
   std::vector<BlockchainEvent> events_;
+  std::vector<BlockchainInterface> interfaces_;
   
   template <class T>
   std::vector<T> get_events() {
@@ -403,6 +409,17 @@ struct ParsedBlock {
     for (auto& event: events_) {
       if (std::holds_alternative<T>(event)) {
         result.push_back(std::get<T>(event));
+      }
+    }
+    return result;
+  }
+
+  template <class T>
+  std::vector<T> get_accounts() {
+    std::vector<T> result;
+    for (auto& interface: interfaces_) {
+      if (std::holds_alternative<T>(interface)) {
+        result.push_back(std::get<T>(interface));
       }
     }
     return result;

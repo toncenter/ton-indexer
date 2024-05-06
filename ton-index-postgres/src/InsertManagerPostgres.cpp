@@ -4,9 +4,9 @@
 #include "convert-utils.h"
 
 #define TO_SQL_BOOL(x) ((x) ? "TRUE" : "FALSE")
-#define TO_SQL_STRING(x) ("'" + (x) + "'")
+#define TO_SQL_STRING(x) (transaction.quote(x))
 #define TO_SQL_OPTIONAL(x) ((x) ? std::to_string(x.value()) : "NULL")
-#define TO_SQL_OPTIONAL_STRING(x) ((x) ? ("'" + x.value() + "'") : "NULL")
+#define TO_SQL_OPTIONAL_STRING(x) ((x) ? transaction.quote(x.value()) : "NULL")
 
 std::string content_to_json_string(const std::map<std::string, std::string> &content) {
   td::JsonBuilder jetton_content_json;
@@ -135,6 +135,10 @@ void InsertBatchPostgres::start_up() {
       insert_jetton_burns(txn, insert_tasks_);
       insert_nft_transfers(txn, insert_tasks_);
       insert_latest_account_states(txn, insert_tasks_);
+      insert_jetton_masters(txn, insert_tasks_);
+      insert_jetton_wallets(txn, insert_tasks_);
+      insert_nft_collections(txn, insert_tasks_);
+      insert_nft_items(txn, insert_tasks_);
       txn.commit();
     }
     
@@ -469,7 +473,7 @@ void InsertBatchPostgres::insert_blocks(pqxx::work &transaction, const std::vect
             << block.workchain << ","
             << block.shard << ","
             << block.seqno << ","
-            << TO_SQL_STRING(block.root_hash) << ","
+            << transaction.quote(block.root_hash) << ","
             << TO_SQL_STRING(block.file_hash) << ","
             << TO_SQL_OPTIONAL(block.mc_block_workchain) << ","
             << TO_SQL_OPTIONAL(block.mc_block_shard) << ","
@@ -547,7 +551,7 @@ void InsertBatchPostgres::insert_transactions(pqxx::work &transaction, const std
   bool is_first = true;
   for (const auto& task : insert_tasks) {
     for (const auto &blk : task.parsed_block_->blocks_) {
-      for (const auto& transaction : blk.transactions) {
+      for (const auto& tx : blk.transactions) {
         if (is_first) {
           is_first = false;
         } else {
@@ -558,18 +562,18 @@ void InsertBatchPostgres::insert_transactions(pqxx::work &transaction, const std
               << blk.shard << ","
               << blk.seqno << ","
               << TO_SQL_OPTIONAL(blk.mc_block_seqno) << ","
-              << TO_SQL_STRING(convert::to_raw_address(transaction.account)) << ","
-              << TO_SQL_STRING(td::base64_encode(transaction.hash.as_slice())) << ","
-              << transaction.lt << ","
-              << TO_SQL_STRING(td::base64_encode(transaction.prev_trans_hash.as_slice())) << ","
-              << transaction.prev_trans_lt << ","
-              << transaction.now << ","
-              << TO_SQL_STRING(stringify(transaction.orig_status)) << ","
-              << TO_SQL_STRING(stringify(transaction.end_status)) << ","
-              << transaction.total_fees << ","
-              << TO_SQL_STRING(td::base64_encode(transaction.account_state_hash_before.as_slice())) << ","
-              << TO_SQL_STRING(td::base64_encode(transaction.account_state_hash_after.as_slice())) << ","
-              << "'" << jsonify(transaction.description) << "'"  // FIXME: remove for production
+              << TO_SQL_STRING(convert::to_raw_address(tx.account)) << ","
+              << TO_SQL_STRING(td::base64_encode(tx.hash.as_slice())) << ","
+              << tx.lt << ","
+              << TO_SQL_STRING(td::base64_encode(tx.prev_trans_hash.as_slice())) << ","
+              << tx.prev_trans_lt << ","
+              << tx.now << ","
+              << TO_SQL_STRING(stringify(tx.orig_status)) << ","
+              << TO_SQL_STRING(stringify(tx.end_status)) << ","
+              << tx.total_fees << ","
+              << TO_SQL_STRING(td::base64_encode(tx.account_state_hash_before.as_slice())) << ","
+              << TO_SQL_STRING(td::base64_encode(tx.account_state_hash_after.as_slice())) << ","
+              << "'" << jsonify(tx.description) << "'"  // FIXME: remove for production
               << ")";
       }
     }
@@ -803,6 +807,215 @@ void InsertBatchPostgres::insert_latest_account_states(pqxx::work &transaction, 
   transaction.exec0(query.str());
 }
 
+void InsertBatchPostgres::insert_jetton_masters(pqxx::work &transaction, const std::vector<InsertTaskStruct>& insert_tasks) {
+  std::map<std::string, JettonMasterData> jetton_masters;
+  for (const auto& task : insert_tasks) {
+    for (const auto& jetton_master : task.parsed_block_->get_accounts<JettonMasterData>()) {
+      auto existing = jetton_masters.find(jetton_master.address);
+      if (existing == jetton_masters.end()) {
+        jetton_masters[jetton_master.address] = jetton_master;
+      } else {
+        if (existing->second.last_transaction_lt < jetton_master.last_transaction_lt) {
+          jetton_masters[jetton_master.address] = jetton_master;
+        }
+      }
+    }
+  }
+
+  std::ostringstream query;
+  query << "INSERT INTO jetton_masters (address, total_supply, mintable, admin_address, jetton_content, jetton_wallet_code_hash, data_hash, code_hash, last_transaction_lt, code_boc, data_boc) VALUES ";
+  bool is_first = true;
+  for (const auto& [addr, jetton_master] : jetton_masters) {
+    if (is_first) {
+      is_first = false;
+    } else {
+      query << ", ";
+    }
+    query << "("
+          << TO_SQL_STRING(jetton_master.address) << ","
+          << jetton_master.total_supply << ","
+          << TO_SQL_BOOL(jetton_master.mintable) << ","
+          << TO_SQL_OPTIONAL_STRING(jetton_master.admin_address) << ","
+          << (jetton_master.jetton_content ? TO_SQL_STRING(content_to_json_string(jetton_master.jetton_content.value())) : "NULL") << ","
+          << TO_SQL_STRING(td::base64_encode(jetton_master.jetton_wallet_code_hash.as_slice())) << ","
+          << TO_SQL_STRING(td::base64_encode(jetton_master.data_hash.as_slice())) << ","
+          << TO_SQL_STRING(td::base64_encode(jetton_master.code_hash.as_slice())) << ","
+          << jetton_master.last_transaction_lt << ","
+          << TO_SQL_STRING(jetton_master.code_boc) << ","
+          << TO_SQL_STRING(jetton_master.data_boc)
+          << ")";
+  }
+  if (is_first) {
+    return;
+  }
+  query << " ON CONFLICT (address) DO UPDATE SET "
+        << "total_supply = EXCLUDED.total_supply, "
+        << "mintable = EXCLUDED.mintable, "
+        << "admin_address = EXCLUDED.admin_address, "
+        << "jetton_content = EXCLUDED.jetton_content, "
+        << "jetton_wallet_code_hash = EXCLUDED.jetton_wallet_code_hash, "
+        << "data_hash = EXCLUDED.data_hash, "
+        << "code_hash = EXCLUDED.code_hash, "
+        << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
+        << "code_boc = EXCLUDED.code_boc, "
+        << "data_boc = EXCLUDED.data_boc WHERE jetton_masters.last_transaction_lt < EXCLUDED.last_transaction_lt";
+
+  // LOG(DEBUG) << "Running SQL query: " << query.str();
+  transaction.exec0(query.str());
+}
+
+void InsertBatchPostgres::insert_jetton_wallets(pqxx::work &transaction, const std::vector<InsertTaskStruct>& insert_tasks) {
+  std::map<std::string, JettonWalletData> jetton_wallets;
+  for (const auto& task : insert_tasks) {
+    for (const auto& jetton_wallet : task.parsed_block_->get_accounts<JettonWalletData>()) {
+      auto existing = jetton_wallets.find(jetton_wallet.address);
+      if (existing == jetton_wallets.end()) {
+        jetton_wallets[jetton_wallet.address] = jetton_wallet;
+      } else {
+        if (existing->second.last_transaction_lt < jetton_wallet.last_transaction_lt) {
+          jetton_wallets[jetton_wallet.address] = jetton_wallet;
+        }
+      }
+    }
+  }
+
+  std::ostringstream query;
+  query << "INSERT INTO jetton_wallets (balance, address, owner, jetton, last_transaction_lt, code_hash, data_hash) VALUES ";
+  bool is_first = true;
+  for (const auto& [addr, jetton_wallet] : jetton_wallets) {
+    if (is_first) {
+      is_first = false;
+    } else {
+      query << ", ";
+    }
+    query << "("
+          << jetton_wallet.balance << ","
+          << TO_SQL_STRING(jetton_wallet.address) << ","
+          << TO_SQL_STRING(jetton_wallet.owner) << ","
+          << TO_SQL_STRING(jetton_wallet.jetton) << ","
+          << jetton_wallet.last_transaction_lt << ","
+          << TO_SQL_STRING(td::base64_encode(jetton_wallet.code_hash.as_slice())) << ","
+          << TO_SQL_STRING(td::base64_encode(jetton_wallet.data_hash.as_slice()))
+          << ")";
+  }
+  if (is_first) {
+    return;
+  }
+  query << " ON CONFLICT (address) DO UPDATE SET "
+        << "balance = EXCLUDED.balance, "
+        << "owner = EXCLUDED.owner, "
+        << "jetton = EXCLUDED.jetton, "
+        << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
+        << "code_hash = EXCLUDED.code_hash, "
+        << "data_hash = EXCLUDED.data_hash WHERE jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt";
+
+  // LOG(DEBUG) << "Running SQL query: " << query.str();
+  transaction.exec0(query.str());
+}
+
+void InsertBatchPostgres::insert_nft_collections(pqxx::work &transaction, const std::vector<InsertTaskStruct>& insert_tasks) {
+  std::map<std::string, NFTCollectionData> nft_collections;
+  for (const auto& task : insert_tasks) {
+    for (const auto& nft_collection : task.parsed_block_->get_accounts<NFTCollectionData>()) {
+      auto existing = nft_collections.find(nft_collection.address);
+      if (existing == nft_collections.end()) {
+        nft_collections[nft_collection.address] = nft_collection;
+      } else {
+        if (existing->second.last_transaction_lt < nft_collection.last_transaction_lt) {
+          nft_collections[nft_collection.address] = nft_collection;
+        }
+      }
+    }
+  }
+  std::ostringstream query;
+  query << "INSERT INTO  nft_collections (address, next_item_index, owner_address, collection_content, data_hash, code_hash, last_transaction_lt, code_boc, data_boc) VALUES ";
+  bool is_first = true;
+  for (const auto& [addr, nft_collection] : nft_collections) {
+    if (is_first) {
+      is_first = false;
+    } else {
+      query << ", ";
+    }
+    query << "("
+          << TO_SQL_STRING(nft_collection.address) << ","
+          << nft_collection.next_item_index << ","
+          << TO_SQL_OPTIONAL_STRING(nft_collection.owner_address) << ","
+          << (nft_collection.collection_content ? TO_SQL_STRING(content_to_json_string(nft_collection.collection_content.value())) : "NULL") << ","
+          << TO_SQL_STRING(td::base64_encode(nft_collection.data_hash.as_slice())) << ","
+          << TO_SQL_STRING(td::base64_encode(nft_collection.code_hash.as_slice())) << ","
+          << nft_collection.last_transaction_lt << ","
+          << TO_SQL_STRING(nft_collection.code_boc) << ","
+          << TO_SQL_STRING(nft_collection.data_boc)
+          << ")";
+  }
+  if (is_first) {
+    return;
+  }
+  query << " ON CONFLICT (address) DO UPDATE SET "
+        << "next_item_index = EXCLUDED.next_item_index, "
+        << "owner_address = EXCLUDED.owner_address, "
+        << "collection_content = EXCLUDED.collection_content, "
+        << "data_hash = EXCLUDED.data_hash, "
+        << "code_hash = EXCLUDED.code_hash, "
+        << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
+        << "code_boc = EXCLUDED.code_boc, "
+        << "data_boc = EXCLUDED.data_boc WHERE nft_collections.last_transaction_lt < EXCLUDED.last_transaction_lt";
+  
+  // LOG(DEBUG) << "Running SQL query: " << query.str();
+  transaction.exec0(query.str());
+}
+
+void InsertBatchPostgres::insert_nft_items(pqxx::work &transaction, const std::vector<InsertTaskStruct>& insert_tasks) {
+  std::map<std::string, NFTItemData> nft_items;
+  for (const auto& task : insert_tasks) {
+    for (const auto& nft_item : task.parsed_block_->get_accounts<NFTItemData>()) {
+      auto existing = nft_items.find(nft_item.address);
+      if (existing == nft_items.end()) {
+        nft_items[nft_item.address] = nft_item;
+      } else {
+        if (existing->second.last_transaction_lt < nft_item.last_transaction_lt) {
+          nft_items[nft_item.address] = nft_item;
+        }
+      }
+    }
+  }
+  std::ostringstream query;
+  query << "INSERT INTO nft_items (address, init, index, collection_address, owner_address, content, last_transaction_lt, code_hash, data_hash) VALUES ";
+  bool is_first = true;
+  for (const auto& [addr, nft_item] : nft_items) {
+    if (is_first) {
+      is_first = false;
+    } else {
+      query << ", ";
+    }
+    query << "("
+          << TO_SQL_STRING(nft_item.address) << ","
+          << TO_SQL_BOOL(nft_item.init) << ","
+          << nft_item.index << ","
+          << TO_SQL_STRING(nft_item.collection_address) << ","
+          << TO_SQL_STRING(nft_item.owner_address) << ","
+          << (nft_item.content ? TO_SQL_STRING(content_to_json_string(nft_item.content.value())) : "NULL") << ","
+          << nft_item.last_transaction_lt << ","
+          << TO_SQL_STRING(td::base64_encode(nft_item.code_hash.as_slice())) << ","
+          << TO_SQL_STRING(td::base64_encode(nft_item.data_hash.as_slice()))
+          << ")";
+  }
+  if (is_first) {
+    return;
+  }
+  query << " ON CONFLICT (address) DO UPDATE SET "
+        << "init = EXCLUDED.init, "
+        << "index = EXCLUDED.index, "
+        << "collection_address = EXCLUDED.collection_address, "
+        << "owner_address = EXCLUDED.owner_address, "
+        << "content = EXCLUDED.content, "
+        << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
+        << "code_hash = EXCLUDED.code_hash, "
+        << "data_hash = EXCLUDED.data_hash WHERE nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt";
+  
+  // LOG(DEBUG) << "Running SQL query: " << query.str();
+  transaction.exec0(query.str());
+}
 
 void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &transaction, const std::vector<InsertTaskStruct>& insert_tasks) {
   std::ostringstream query;
@@ -916,249 +1129,6 @@ void InsertBatchPostgres::insert_nft_transfers(pqxx::work &transaction, const st
 
   // LOG(DEBUG) << "Running SQL query: " << query.str();
   transaction.exec0(query.str());
-}
-
-class UpsertJettonWalletPostgres: public td::actor::Actor {
-private:
-  std::string connection_string_;
-  JettonWalletData wallet_;
-  td::Promise<td::Unit> promise_;
-public:
-  UpsertJettonWalletPostgres(std::string connection_string, JettonWalletData wallet, td::Promise<td::Unit> promise): 
-    connection_string_(std::move(connection_string)), 
-    wallet_(std::move(wallet)), 
-    promise_(std::move(promise))
-  {
-    LOG(DEBUG) << "Created UpsertJettonWalletPostgres";
-  }
-
-  void start_up() {
-    try {
-      pqxx::connection c(connection_string_);
-      if (!c.is_open()) {
-        promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, "Failed to open database"));
-        stop();
-        return;
-      }
-      pqxx::work txn(c);
-      
-      std::string query = "INSERT INTO jetton_wallets (balance, address, owner, jetton, last_transaction_lt, code_hash, data_hash) "
-                            "VALUES ($1, $2, $3, $4, $5, $6, $7) "
-                            "ON CONFLICT (address) "
-                            "DO UPDATE SET "
-                            "balance = EXCLUDED.balance, "
-                            "owner = EXCLUDED.owner, "
-                            "jetton = EXCLUDED.jetton, "
-                            "last_transaction_lt = EXCLUDED.last_transaction_lt, "
-                            "code_hash = EXCLUDED.code_hash, "
-                            "data_hash = EXCLUDED.data_hash "
-                            "WHERE jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt;";
-
-      txn.exec_params(query,
-                      wallet_.balance,
-                      wallet_.address,
-                      wallet_.owner,
-                      wallet_.jetton,
-                      wallet_.last_transaction_lt,
-                      td::base64_encode(wallet_.code_hash.as_slice()),
-                      td::base64_encode(wallet_.data_hash.as_slice()));
-
-
-      txn.commit();
-      promise_.set_value(td::Unit());
-    } catch (const std::exception &e) {
-      promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
-    }
-    stop();
-  }
-};
-
-class UpsertJettonMasterPostgres : public td::actor::Actor {
-private:
-  std::string connection_string_;
-  JettonMasterData master_data_;
-  td::Promise<td::Unit> promise_;
-public:
-  UpsertJettonMasterPostgres(std::string connection_string, JettonMasterData master_data, td::Promise<td::Unit> promise)
-    : connection_string_(std::move(connection_string))
-    , master_data_(std::move(master_data))
-    , promise_(std::move(promise))
-  {
-    LOG(DEBUG) << "Created UpsertJettonMasterPostgres";
-  }
-
-  void start_up() override {
-    try {
-      pqxx::connection c(connection_string_);
-      if (!c.is_open()) {
-        promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, "Failed to open database"));
-        stop();
-        return;
-      }
-      pqxx::work txn(c);
-
-      std::string query = "INSERT INTO jetton_masters "
-                          "(address, total_supply, mintable, admin_address, jetton_content, jetton_wallet_code_hash, data_hash, code_hash, last_transaction_lt, code_boc, data_boc) "
-                          "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) "
-                          "ON CONFLICT (address) "
-                          "DO UPDATE SET "
-                          "total_supply = EXCLUDED.total_supply, "
-                          "mintable = EXCLUDED.mintable, "
-                          "admin_address = EXCLUDED.admin_address, "
-                          "jetton_content = EXCLUDED.jetton_content,"
-                          "jetton_wallet_code_hash = EXCLUDED.jetton_wallet_code_hash, "
-                          "data_hash = EXCLUDED.data_hash, "
-                          "code_hash = EXCLUDED.code_hash, "
-                          "last_transaction_lt = EXCLUDED.last_transaction_lt, "
-                          "code_boc = EXCLUDED.code_boc, "
-                          "data_boc = EXCLUDED.data_boc "
-                          "WHERE jetton_masters.last_transaction_lt < EXCLUDED.last_transaction_lt;";
-
-      txn.exec_params(query,
-                      master_data_.address,
-                      master_data_.total_supply,
-                      master_data_.mintable,
-                      master_data_.admin_address ? master_data_.admin_address.value().c_str() : nullptr,
-                      master_data_.jetton_content ? content_to_json_string(master_data_.jetton_content.value()).c_str() : nullptr,
-                      td::base64_encode(master_data_.jetton_wallet_code_hash.as_slice()),
-                      td::base64_encode(master_data_.data_hash.as_slice()),
-                      td::base64_encode(master_data_.code_hash.as_slice()),
-                      master_data_.last_transaction_lt,
-                      master_data_.code_boc,
-                      master_data_.data_boc);
-
-      txn.commit();
-      promise_.set_value(td::Unit());
-    } catch (const std::exception &e) {
-      promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
-    }
-    stop();
-  }
-};
-
-class UpsertNFTCollectionPostgres: public td::actor::Actor {
-private:
-  std::string connection_string_;
-  NFTCollectionData collection_;
-  td::Promise<td::Unit> promise_;
-
-public:
-  UpsertNFTCollectionPostgres(std::string connection_string, NFTCollectionData collection, td::Promise<td::Unit> promise)
-    : connection_string_(std::move(connection_string))
-    , collection_(std::move(collection))
-    , promise_(std::move(promise))
-  {
-    LOG(DEBUG) << "Created UpsertNFTCollectionPostgres";
-  }
-
-  void start_up() override {
-    try {
-      pqxx::connection c(connection_string_);
-      if (!c.is_open()) {
-        promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, "Failed to open database"));
-        stop();
-        return;
-      }
-      pqxx::work txn(c);
-
-      std::string query = "INSERT INTO nft_collections "
-                          "(address, next_item_index, owner_address, collection_content, data_hash, code_hash, last_transaction_lt, code_boc, data_boc) "
-                          "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) "
-                          "ON CONFLICT (address) "
-                          "DO UPDATE SET "
-                          "next_item_index = EXCLUDED.next_item_index, "
-                          "owner_address = EXCLUDED.owner_address, "
-                          "collection_content = EXCLUDED.collection_content, "
-                          "data_hash = EXCLUDED.data_hash, "
-                          "code_hash = EXCLUDED.code_hash, "
-                          "last_transaction_lt = EXCLUDED.last_transaction_lt, "
-                          "code_boc = EXCLUDED.code_boc, "
-                          "data_boc = EXCLUDED.data_boc "
-                          "WHERE nft_collections.last_transaction_lt < EXCLUDED.last_transaction_lt;";
-      
-      txn.exec_params(query,
-                      collection_.address,
-                      collection_.next_item_index->to_dec_string(),
-                      collection_.owner_address ? collection_.owner_address.value().c_str() : nullptr,
-                      collection_.collection_content ? content_to_json_string(collection_.collection_content.value()).c_str() : nullptr,
-                      td::base64_encode(collection_.data_hash.as_slice()),
-                      td::base64_encode(collection_.code_hash.as_slice()),
-                      collection_.last_transaction_lt,
-                      collection_.code_boc,
-                      collection_.data_boc);
-
-      txn.commit();
-      promise_.set_value(td::Unit());
-    } catch (const std::exception &e) {
-      promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
-    }
-    stop();
-  }
-};
-
-class UpsertNFTItemPostgres : public td::actor::Actor {
-private:
-  std::string connection_string_;
-  NFTItemData item_data_;
-  td::Promise<td::Unit> promise_;
-
-public:
-  UpsertNFTItemPostgres(std::string connection_string, NFTItemData item_data, td::Promise<td::Unit> promise)
-    : connection_string_(std::move(connection_string))
-    , item_data_(std::move(item_data))
-    , promise_(std::move(promise))
-  {
-    LOG(DEBUG) << "Created UpsertNFTItemPostgres";
-  }
-
-  void start_up() override {
-    try {
-      pqxx::connection c(connection_string_);
-      if (!c.is_open()) {
-        promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, "Failed to open database"));
-        stop();
-        return;
-      }
-      pqxx::work txn(c);
-
-      std::string query = "INSERT INTO nft_items (address, init, index, collection_address, owner_address, content, last_transaction_lt, code_hash, data_hash) "
-                          "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) "
-                          "ON CONFLICT (address) DO UPDATE "
-                          "SET init = $2, index = $3, collection_address = $4, owner_address = $5, content = $6, last_transaction_lt = $7, code_hash = $8, data_hash = $9;";
-
-      txn.exec_params(query,
-                      item_data_.address,
-                      item_data_.init,
-                      item_data_.index->to_dec_string(),
-                      item_data_.collection_address,
-                      item_data_.owner_address,
-                      item_data_.content ? content_to_json_string(item_data_.content.value()).c_str() : nullptr,
-                      item_data_.last_transaction_lt,
-                      td::base64_encode(item_data_.code_hash.as_slice().str()),
-                      td::base64_encode(item_data_.data_hash.as_slice().str()));
-      txn.commit();
-      promise_.set_value(td::Unit());
-    } catch (const std::exception &e) {
-      promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting/updating NFT item in PG: " << e.what()));
-    }
-    stop();
-  }
-};
-
-void InsertManagerPostgres::upsert_jetton_wallet(JettonWalletData jetton_wallet, td::Promise<td::Unit> promise) {
-  td::actor::create_actor<UpsertJettonWalletPostgres>("upsertjettonwallet", credential_.get_connection_string(), std::move(jetton_wallet), std::move(promise)).release();
-}
-
-void InsertManagerPostgres::upsert_jetton_master(JettonMasterData jetton_wallet, td::Promise<td::Unit> promise) {
-  td::actor::create_actor<UpsertJettonMasterPostgres>("upsertjettonmaster", credential_.get_connection_string(), std::move(jetton_wallet), std::move(promise)).release();
-}
-
-void InsertManagerPostgres::upsert_nft_collection(NFTCollectionData nft_collection, td::Promise<td::Unit> promise) {
-  td::actor::create_actor<UpsertNFTCollectionPostgres>("upsertnftcollection", credential_.get_connection_string(), std::move(nft_collection), std::move(promise)).release();
-}
-
-void InsertManagerPostgres::upsert_nft_item(NFTItemData nft_item, td::Promise<td::Unit> promise) {
-  td::actor::create_actor<UpsertNFTItemPostgres>("upsertnftitem", credential_.get_connection_string(), std::move(nft_item), std::move(promise)).release();
 }
 
 void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) {

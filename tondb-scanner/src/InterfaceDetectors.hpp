@@ -119,12 +119,7 @@ public:
 template <class T>
 class InterfaceStorage {
 public:
-  std::map<std::string, T> cache_{};
-  td::actor::ActorId<InsertManagerInterface> insert_manager_;
-
-  InterfaceStorage(td::actor::ActorId<InsertManagerInterface> insert_manager) 
-    : insert_manager_(insert_manager) {
-  }
+  std::unordered_map<std::string, T> cache_{};
 
   void check(block::StdAddress address, td::Promise<T> promise) {
     auto it = cache_.find(convert::to_raw_address(address));
@@ -138,15 +133,7 @@ public:
 
   void add(block::StdAddress address, T data, td::Promise<td::Unit> promise) {
     cache_.emplace(convert::to_raw_address(address), data);
-    
-    auto P = td::PromiseCreator::lambda([this, address, promise = std::move(promise)](td::Result<td::Unit> r_unit) mutable {
-      if (r_unit.is_error()) {
-        promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Failed to add to entity to db: " << r_unit.error().message()));
-      } else {
-        promise.set_result(td::Unit());
-      }
-    });
-    td::actor::send_closure(insert_manager_, &InsertManagerInterface::upsert_entity<T>, data, std::move(P));
+    promise.set_result(td::Unit());
   }
 };
 
@@ -160,8 +147,7 @@ private:
   InterfaceStorage<JettonMasterData> storage_;
 public:
   JettonMasterDetector(td::actor::ActorId<InterfaceManager> interface_manager, td::actor::ActorId<InsertManagerInterface> insert_manager) 
-    : storage_(insert_manager_)
-    , interface_manager_(interface_manager)
+    : interface_manager_(interface_manager)
     , insert_manager_(insert_manager) {
   }
 
@@ -350,16 +336,13 @@ class JettonWalletDetector: public InterfaceDetector<JettonWalletData> {
 private:
   td::actor::ActorId<JettonMasterDetector> jetton_master_detector_;
   td::actor::ActorId<InterfaceManager> interface_manager_;
-  td::actor::ActorId<InsertManagerInterface> insert_manager_;
   InterfaceStorage<JettonWalletData> storage_;
 public:
   JettonWalletDetector(td::actor::ActorId<JettonMasterDetector> jetton_master_detector,
                        td::actor::ActorId<InterfaceManager> interface_manager,
                        td::actor::ActorId<InsertManagerInterface> insert_manager) 
-    : storage_(insert_manager)
-    , jetton_master_detector_(jetton_master_detector)
-    , interface_manager_(interface_manager)
-    , insert_manager_(insert_manager) {
+    : jetton_master_detector_(jetton_master_detector)
+    , interface_manager_(interface_manager) {
   }
 
   void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonWalletData> promise) override {
@@ -616,13 +599,10 @@ private:
 class NFTCollectionDetector: public InterfaceDetector<NFTCollectionData> {
 private:
   td::actor::ActorId<InterfaceManager> interface_manager_;
-  td::actor::ActorId<InsertManagerInterface> insert_manager_;
   InterfaceStorage<NFTCollectionData> storage_;
 public:
   NFTCollectionDetector(td::actor::ActorId<InterfaceManager> interface_manager, td::actor::ActorId<InsertManagerInterface> insert_manager) 
-    : storage_(insert_manager)
-    , interface_manager_(interface_manager)
-    , insert_manager_(insert_manager) {
+    : interface_manager_(interface_manager) {
   }
 
   void get_from_cache_or_shard(block::StdAddress address, const MasterchainBlockDataState& blocks_ds, td::Promise<NFTCollectionData> promise) {
@@ -755,14 +735,11 @@ private:
 class NFTItemDetector: public InterfaceDetector<NFTItemData> {
 private:
   td::actor::ActorId<InterfaceManager> interface_manager_;
-  td::actor::ActorId<InsertManagerInterface> insert_manager_;
   td::actor::ActorId<NFTCollectionDetector> collection_detector_;
   InterfaceStorage<NFTItemData> storage_;
 public:
   NFTItemDetector(td::actor::ActorId<InterfaceManager> interface_manager, td::actor::ActorId<InsertManagerInterface> insert_manager, td::actor::ActorId<NFTCollectionDetector> collection_detector) 
-    : storage_(insert_manager)
-    , interface_manager_(interface_manager)
-    , insert_manager_(insert_manager)
+    : interface_manager_(interface_manager)
     , collection_detector_(collection_detector) {
   }
 

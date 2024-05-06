@@ -255,26 +255,6 @@ void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::u
     return;
 }
 
-void InsertManagerClickhouse::upsert_jetton_wallet(JettonWalletData jetton_wallet, td::Promise<td::Unit> promise) {
-    LOG(ERROR) << "Unreachable code";
-    promise.set_result(td::Unit());
-}
-
-void InsertManagerClickhouse::upsert_jetton_master(JettonMasterData jetton_wallet, td::Promise<td::Unit> promise) {
-    LOG(ERROR) << "Unreachable code";
-    promise.set_result(td::Unit());
-}
-
-void InsertManagerClickhouse::upsert_nft_collection(NFTCollectionData nft_collection, td::Promise<td::Unit> promise) {
-    LOG(ERROR) << "Unreachable code";
-    promise.set_result(td::Unit());
-}
-
-void InsertManagerClickhouse::upsert_nft_item(NFTItemData nft_item, td::Promise<td::Unit> promise) {
-    LOG(ERROR) << "Unreachable code";
-    promise.set_result(td::Unit());
-}
-
 clickhouse::ClientOptions InsertManagerClickhouse::Credential::get_clickhouse_options()
 {
     clickhouse::ClientOptions options;
