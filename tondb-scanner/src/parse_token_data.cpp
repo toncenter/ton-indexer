@@ -85,30 +85,30 @@ td::Result<std::string> parse_content_data(td::Ref<vm::Cell> data) {
 td::Result<std::map<std::string, std::string>> parse_token_data(td::Ref<vm::Cell> cell) {
   static std::string attributes[] = {"uri", "name", "description", "image", "image_data", "symbol", "decimals", "amount_style", "render_type"};
   
-  auto cs = vm::load_cell_slice_ref(cell);
-  switch (tokens::gen::t_FullContent.check_tag(*cs)) {
-    case tokens::gen::FullContent::offchain: {
-      tokens::gen::FullContent::Record_offchain offchain_record;
-      if (!tlb::csr_unpack(cs, offchain_record)) {
-        return td::Status::Error("Failed to unpack offchain token data");
+  try {
+    auto cs = vm::load_cell_slice_ref(cell);
+    switch (tokens::gen::t_FullContent.check_tag(*cs)) {
+      case tokens::gen::FullContent::offchain: {
+        tokens::gen::FullContent::Record_offchain offchain_record;
+        if (!tlb::csr_unpack(cs, offchain_record)) {
+          return td::Status::Error("Failed to unpack offchain token data");
+        }
+        auto uri_r = parse_snake_data(offchain_record.uri);
+        if (uri_r.is_error()) {
+          return uri_r.move_as_error();
+        }
+        auto uri = uri_r.move_as_ok();
+        if (!td::check_utf8(uri)) {
+          return td::Status::Error("Invalid uri");
+        }
+        return std::map<std::string, std::string>{{"uri", std::move(uri)}};
       }
-      auto uri_r = parse_snake_data(offchain_record.uri);
-      if (uri_r.is_error()) {
-        return uri_r.move_as_error();
-      }
-      auto uri = uri_r.move_as_ok();
-      if (!td::check_utf8(uri)) {
-        return td::Status::Error("Invalid uri");
-      }
-      return std::map<std::string, std::string>{{"uri", std::move(uri)}};
-    }
-    case tokens::gen::FullContent::onchain: {
-      tokens::gen::FullContent::Record_onchain onchain_record;
-      if (!tlb::csr_unpack(cs, onchain_record)) {
-        return td::Status::Error("Failed to unpack onchain token data");
-      }
+      case tokens::gen::FullContent::onchain: {
+        tokens::gen::FullContent::Record_onchain onchain_record;
+        if (!tlb::csr_unpack(cs, onchain_record)) {
+          return td::Status::Error("Failed to unpack onchain token data");
+        }
 
-      try {
         vm::Dictionary dict(onchain_record.data, 256);
         std::map<std::string, std::string> res;
         
@@ -133,11 +133,11 @@ td::Result<std::map<std::string, std::string>> parse_token_data(td::Ref<vm::Cell
           }
         }
         return res;
-      } catch (vm::VmError& err) {
-        return td::Status::Error(PSLICE() << "Failed to parse onchain dictionary: " << err.get_msg());
       }
+      default:
+        return td::Status::Error("Unknown token data type");
     }
-    default:
-      return td::Status::Error("Unknown token data type");
+  } catch (vm::VmError& err) {
+    return td::Status::Error(PSLICE() << "Failed to parse token data: " << err.get_msg());
   }
 }
