@@ -212,9 +212,6 @@ void IndexScheduler::schedule_next_seqnos() {
         out_of_sync_ = false;
         td::actor::send_closure(db_scanner_, &DbScanner::set_out_of_sync, out_of_sync_);
     }
-    if(!queued_seqnos_.empty()) { 
-        td::actor::send_closure(actor_id(this), &IndexScheduler::schedule_next_seqnos);
-    }
 }
 
 void IndexScheduler::print_stats() {
