@@ -1135,15 +1135,24 @@ void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> in
   td::actor::create_actor<InsertBatchPostgres>("insert_batch_postgres", credential_, std::move(insert_tasks), std::move(promise)).release();
 }
 
-void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise) {
+void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno) {
   LOG(INFO) << "Reading existing seqnos";
   std::vector<std::uint32_t> existing_mc_seqnos;
   try {
     pqxx::connection c(credential_.get_connection_string());
     pqxx::work txn(c);
-    for (auto [seqno]: txn.query<std::uint32_t>("select seqno from blocks where workchain = -1")) {
+    td::StringBuilder sb;
+    sb << "select seqno from blocks where workchain = -1";
+    if (from_seqno > 0) {
+      sb << " and seqno >= " << from_seqno;
+    }
+    if (to_seqno > 0) {
+      sb << " and seqno <= " << to_seqno;
+    }
+    for (auto [seqno]: txn.query<std::uint32_t>(sb.as_cslice().str())) {
       existing_mc_seqnos.push_back(seqno);
     }
+
     promise.set_result(std::move(existing_mc_seqnos));
   } catch (const std::exception &e) {
     promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error selecting from PG: " << e.what()));

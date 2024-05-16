@@ -235,7 +235,7 @@ void InsertManagerClickhouse::create_insert_actor(std::vector<InsertTaskStruct> 
     td::actor::create_actor<InsertBatchClickhouse>("insert_batch_clickhouse", credential_.get_clickhouse_options(), std::move(insert_tasks), std::move(promise)).release();
 }
 
-void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise)
+void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno)
 {
     LOG(INFO) << "Clickhouse get_existing_seqnos";
     try {
@@ -243,7 +243,15 @@ void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::u
         clickhouse::Client client(options);
         
         std::vector<std::uint32_t> result;
-        client.Select("SELECT seqno from blocks WHERE workchain = -1", [&result](const clickhouse::Block& block) {
+        td::StringBuilder sb;
+        sb << "select seqno from blocks where workchain = -1";
+        if (from_seqno > 0) {
+        sb << " and seqno >= " << from_seqno;
+        }
+        if (to_seqno > 0) {
+        sb << " and seqno <= " << to_seqno;
+        }
+        client.Select(sb.as_cslice().str(), [&result](const clickhouse::Block& block) {
             for (size_t i = 0; i < block.GetRowCount(); ++i) {
                 result.push_back(block[0]->As<clickhouse::ColumnInt32>()->At(i));
             }
