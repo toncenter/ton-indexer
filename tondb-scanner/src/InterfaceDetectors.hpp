@@ -235,8 +235,8 @@ public:
 
     JettonMasterData data;
     data.address = convert::to_raw_address(address);
-    data.total_supply = stack[0].as_int()->to_long();
-    data.mintable = stack[1].as_int()->to_long() != 0;
+    data.total_supply = stack[0].as_int();
+    data.mintable = stack[1].as_int() != 0;
     auto admin_address = convert::to_raw_address(stack[2].as_slice());
     if (admin_address.is_error()) {
       promise.set_error(td::Status::Error(ErrorCode::GET_METHOD_WRONG_RESULT, "get_jetton_data address parsing failed"));
@@ -413,7 +413,7 @@ public:
 
     JettonWalletData data;
     data.address = convert::to_raw_address(address);
-    data.balance = stack[0].as_int()->to_long();
+    data.balance = stack[0].as_int();
     auto owner = convert::to_raw_address(stack[1].as_slice());
     if (owner.is_error()) {
       promise.set_error(owner.move_as_error());

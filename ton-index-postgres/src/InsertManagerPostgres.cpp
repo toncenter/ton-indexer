@@ -833,7 +833,7 @@ void InsertBatchPostgres::insert_jetton_masters(pqxx::work &transaction, const s
     }
     query << "("
           << TO_SQL_STRING(jetton_master.address) << ","
-          << jetton_master.total_supply << ","
+          << (jetton_master.total_supply.not_null() ? jetton_master.total_supply->to_dec_string() : "NULL") << ","
           << TO_SQL_BOOL(jetton_master.mintable) << ","
           << TO_SQL_OPTIONAL_STRING(jetton_master.admin_address) << ","
           << (jetton_master.jetton_content ? TO_SQL_STRING(content_to_json_string(jetton_master.jetton_content.value())) : "NULL") << ","
@@ -889,7 +889,7 @@ void InsertBatchPostgres::insert_jetton_wallets(pqxx::work &transaction, const s
       query << ", ";
     }
     query << "("
-          << jetton_wallet.balance << ","
+          << (jetton_wallet.balance.not_null() ? jetton_wallet.balance->to_dec_string() : "NULL") << ","
           << TO_SQL_STRING(jetton_wallet.address) << ","
           << TO_SQL_STRING(jetton_wallet.owner) << ","
           << TO_SQL_STRING(jetton_wallet.jetton) << ","

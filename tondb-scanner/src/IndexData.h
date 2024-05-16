@@ -290,7 +290,7 @@ struct AccountState {
 
 struct JettonMasterData {
   std::string address;
-  uint64_t total_supply;
+  td::RefInt256 total_supply;
   bool mintable;
   td::optional<std::string> admin_address;
   td::optional<std::map<std::string, std::string>> jetton_content;
@@ -303,7 +303,7 @@ struct JettonMasterData {
 };
 
 struct JettonWalletData {
-  uint64_t balance;
+  td::RefInt256 balance;
   std::string address;
   std::string owner;
   std::string jetton;
