@@ -67,6 +67,17 @@ void InsertManagerClickhouse::start_up() {
             LOG(INFO) << "Table blocks created";
         }
         {
+            td::StringBuilder builder;
+            builder << "CREATE TABLE IF NOT EXISTS shard_state ("
+                    << "mc_seqno Int32, "
+                    << "workchain Int32, "
+                    << "shard Int64, "
+                    << "seqno Int32"
+                    << ") ENGINE ReplacingMergeTree PRIMARY KEY(mc_seqno, workchain, shard, seqno) ORDER BY (mc_seqno, workchain, shard, seqno);\n";
+            client.Execute(builder.as_cslice().str());
+            LOG(INFO) << "Table blocks created";
+        }
+        {
             td::StringBuilder builder;    
             builder << "CREATE TABLE IF NOT EXISTS transactions ("
                     << "hash FixedString(44), "
@@ -281,6 +292,7 @@ void InsertBatchClickhouse::start_up() {
         insert_transactions(client);
         insert_messages(client);
         insert_account_states(client);
+        insert_shard_state(client);
         insert_blocks(client);
         
         // all done
@@ -296,6 +308,32 @@ void InsertBatchClickhouse::start_up() {
         promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting batch to Clickhouse: " << e.what()));
     }
     stop();
+}
+
+void InsertBatchClickhouse::insert_shard_state(clickhouse::Client &client) {
+    using namespace clickhouse;
+    
+    clickhouse::Block block;
+    auto mc_seqno_col = std::make_shared<ColumnInt32>();
+    auto workchain_col = std::make_shared<ColumnInt32>();
+    auto shard_col = std::make_shared<ColumnInt64>();
+    auto seqno_col = std::make_shared<ColumnInt32>();
+    
+    for (const auto& task : insert_tasks_) {
+      for (const auto& shard : task.parsed_block_->shard_state_) {
+        mc_seqno_col->Append(shard.mc_seqno);
+        workchain_col->Append(shard.workchain);
+        shard_col->Append(shard.shard);
+        seqno_col->Append(shard.seqno);
+      }
+    }
+
+    block.AppendColumn("mc_seqno", mc_seqno_col);
+    block.AppendColumn("workchain", workchain_col);
+    block.AppendColumn("shard", shard_col);
+    block.AppendColumn("seqno", seqno_col);
+
+    client.Insert("shard_state", block);
 }
 
 

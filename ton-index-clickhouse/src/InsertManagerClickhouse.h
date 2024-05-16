@@ -51,6 +51,7 @@ private:
   void insert_transactions(clickhouse::Client& client);
   void insert_messages(clickhouse::Client& client);
   void insert_account_states(clickhouse::Client& client);
+  void insert_shard_state(clickhouse::Client& client);
   void insert_blocks(clickhouse::Client& client);
   // void insert_shard_state(clickhouse::Client& client, const std::vector<InsertTaskStruct>& insert_tasks_);
   // void insert_transactions(clickhouse::Client& client, const std::vector<InsertTaskStruct>& insert_tasks_);
