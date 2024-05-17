@@ -589,8 +589,8 @@ class JettonTransfer(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
 
     query_id: str
-    source: str
-    destination: str
+    source: Optional[str]
+    destination: Optional[str]
     amount: str
     source_wallet: str
     jetton_master: str
