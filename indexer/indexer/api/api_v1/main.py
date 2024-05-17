@@ -469,10 +469,18 @@ async def get_nft_transfers(
                             end_utime=end_utime,
                             start_lt=start_lt,
                             end_lt=end_lt,
-                            limit=limit,
+                            limit=limit * 2,
                             offset=offset,
                             sort=sort)
-    return schemas.NFTTransferList.from_orm(res)
+    result = []
+    count = 0
+    for row in res:
+        if not row.transaction.description['aborted']:
+            result.append(row)
+            count += 1
+        if count == limit:
+            break
+    return schemas.NFTTransferList.from_orm(result)
 
 
 @router.get('/jetton/masters', response_model=schemas.JettonMasterList)
@@ -552,10 +560,18 @@ async def get_jetton_transfers(
                             end_utime=end_utime,
                             start_lt=start_lt,
                             end_lt=end_lt,
-                            limit=limit,
+                            limit=limit * 2,
                             offset=offset,
                             sort=sort)
-    return schemas.JettonTransferList.from_orm(res)
+    result = []
+    count = 0
+    for row in res:
+        if not row.transaction.description['aborted']:
+            result.append(row)
+            count += 1
+        if count == limit:
+            break
+    return schemas.JettonTransferList.from_orm(result)
 
 
 @router.get('/jetton/burns', response_model=schemas.JettonBurnList)
@@ -586,10 +602,18 @@ async def get_jetton_burns(
                             end_utime=end_utime,
                             start_lt=start_lt,
                             end_lt=end_lt,
-                            limit=limit,
+                            limit=limit * 2,
                             offset=offset,
                             sort=sort)
-    return schemas.JettonBurnList.from_orm(res)
+    result = []
+    count = 0
+    for row in res:
+        if not row.transaction.description['aborted']:
+            result.append(row)
+            count += 1
+        if count == limit:
+            break
+    return schemas.JettonBurnList.from_orm(result)
 
 
 @router.get('/topAccountsByBalance', response_model=List[schemas.AccountBalance], include_in_schema=False)
