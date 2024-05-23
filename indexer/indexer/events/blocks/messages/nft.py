@@ -60,3 +60,7 @@ class NftOwnershipAssigned:
                 self.nft_payload = NftPayload(slice)
         except:
             self.nft_payload = None
+
+
+class AuctionFillUp:
+    opcode = 0x370fec51

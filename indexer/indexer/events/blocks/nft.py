@@ -8,14 +8,14 @@ from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlo
 from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.messages import NftOwnershipAssigned, ExcessMessage
-from indexer.events.blocks.messages.nft import NftTransfer, TeleitemBidInfo
+from indexer.events.blocks.messages.nft import NftTransfer, TeleitemBidInfo, AuctionFillUp
 from indexer.events.blocks.utils import AccountId, Amount, block_utils
 from indexer.events.blocks.utils.block_utils import find_call_contracts
 
 
 class NftTransferBlock(Block):
     def __init__(self):
-        super().__init__('nft_transfer', [], "NFT")
+        super().__init__('nft_transfer', [],  None)
 
 
 def _get_nft_data(nft_address: AccountId):
@@ -105,7 +105,7 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
                          parent_matcher=None)
 
     def test_self(self, block: Block):
-        if isinstance(block, CallContractBlock) and block.opcode == 0x05138d91:
+        if isinstance(block, CallContractBlock) and block.opcode == NftOwnershipAssigned.opcode:
             return True
 
     async def build_block(self, block: Block, other_blocks: list['Block']):
@@ -126,7 +126,7 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
             prev_block = block.previous_block
             if (isinstance(prev_block, TonTransferBlock) or
                     (isinstance(prev_block, CallContractBlock) and prev_block.get_message().message.source is None)):
-                include.extend(find_call_contracts(prev_block.next_blocks, 0x370fec51))  # TODO: remove magic number
+                include.extend(find_call_contracts(prev_block.next_blocks, AuctionFillUp.opcode))
                 include.append(prev_block)
 
         include.extend(other_blocks)

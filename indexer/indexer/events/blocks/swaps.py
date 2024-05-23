@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from events.blocks.messages import DedustPayout, DedustPayoutFromPool, DedustSwapPeer, DedustSwapExternal, DedustSwap
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, child_sequence_matcher, ContractMatcher, BlockTypeMatcher, OrMatcher
@@ -24,7 +25,7 @@ async def _get_block_data(other_blocks):
                            x.opcode == StonfiSwapMessage.opcode)
     swap_message = StonfiSwapMessage(swap_call_block.get_body())
     payment_requests_messages = [StonfiPaymentRequest(x.get_body()) for x in
-                                 find_call_contracts(other_blocks, 0xf93bb43f)]
+                                 find_call_contracts(other_blocks, StonfiPaymentRequest.opcode)]
     target_payment_request = next(x for x in payment_requests_messages if x.owner == swap_message.from_user_address)
     if target_payment_request.amount0_out > 0:
         out_amt = Amount(target_payment_request.amount0_out)
@@ -82,15 +83,15 @@ class DedustPeerBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(parent_matcher=None, optional=False, child_matcher=None,
                          children_matchers=[ContractMatcher(opcode=DedustSwapNotification.opcode),
-                                            ContractMatcher(opcode=0xad4eb6f5,
+                                            ContractMatcher(opcode=DedustPayoutFromPool.opcode,
                                                             child_matcher=OrMatcher([
-                                                                ContractMatcher(opcode=0x474f86cf),
+                                                                ContractMatcher(opcode=DedustPayout.opcode),
                                                                 BlockTypeMatcher(block_type='jetton_transfer')
                                                             ]),
                                                             optional=True)])
 
     def test_self(self, block: Block):
-        return isinstance(block, CallContractBlock) and block.opcode == 0x72aca8aa
+        return isinstance(block, CallContractBlock) and block.opcode == DedustSwapPeer.opcode
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         wrapper = SingleLevelWrapper()
@@ -100,18 +101,18 @@ class DedustPeerBlockMatcher(BlockMatcher):
 
 class DedustSwapBlockMatcher(BlockMatcher):
     def __init__(self):
-        ton_swap_parent_matchers = ContractMatcher(opcode=0x61ee542d,
-                                                   parent_matcher=ContractMatcher(opcode=0xea06185d, optional=True))
+        ton_swap_parent_matchers = ContractMatcher(opcode=DedustSwapExternal.opcode,
+                                                   parent_matcher=ContractMatcher(opcode=DedustSwap.opcode, optional=True))
 
         super().__init__(optional=False, child_matcher=None,
-                         parent_matcher=ContractMatcher(opcode=0x61ee542d,
+                         parent_matcher=ContractMatcher(opcode=DedustSwapExternal.opcode,
                                                         child_matcher=OrMatcher([
                                                             DedustPeerBlockMatcher(),
                                                             child_sequence_matcher([
-                                                                ContractMatcher(opcode=0xad4eb6f5),  # TODO: remove magic number
+                                                                ContractMatcher(opcode=DedustPayoutFromPool.opcode),
                                                                 OrMatcher([
                                                                     BlockTypeMatcher(block_type='jetton_transfer'),
-                                                                    ContractMatcher(opcode=0x474f86cf)  # TODO: remove magic number
+                                                                    ContractMatcher(opcode=DedustPayout.opcode)
                                                                 ])])]),
                                                         parent_matcher=OrMatcher([ton_swap_parent_matchers,
                                                                                   BlockTypeMatcher(

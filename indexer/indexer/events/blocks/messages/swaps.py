@@ -22,7 +22,6 @@ class StonfiSwapMessage:
 
 
 class StonfiPaymentRequest:
-
     opcode = 0xf93bb43f
 
     def __init__(self, body: Slice):
@@ -38,7 +37,6 @@ class StonfiPaymentRequest:
 
 
 class DedustSwapNotification:
-
     opcode = 0x9c610de3
 
     def __init__(self, body: Slice):
@@ -61,3 +59,23 @@ class DedustSwapNotification:
             wc = slice.load_uint(8)
             account_id = slice.load_bytes(32)
             return Asset(False, Address((wc, account_id)))
+
+
+class DedustPayout:
+    opcode = 0x474f86cf
+
+
+class DedustPayoutFromPool:
+    opcode = 0xad4eb6f5
+
+
+class DedustSwapPeer:
+    opcode = 0x72aca8aa
+
+
+class DedustSwapExternal:
+    opcode = 0x61ee542d
+
+
+class DedustSwap:
+    opcode = 0xea06185d

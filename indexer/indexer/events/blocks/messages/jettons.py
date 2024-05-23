@@ -27,3 +27,15 @@ class JettonBurn:
         self.query_id = slice.load_uint(64)
         self.amount = slice.load_coins()
         self.response_destination = slice.load_address()
+
+
+class JettonBurnNotification:
+    opcode = 0x7bdd97de
+
+
+class JettonInternalTransfer:
+    opcode = 0x178d4519
+
+
+class JettonNotify:
+    opcode = 0x7362d09c

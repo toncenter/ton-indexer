@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from events.blocks.messages import JettonNotify, JettonInternalTransfer, ExcessMessage, JettonBurnNotification
+from indexer.events.blocks.utils.block_utils import find_call_contracts
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher, child_sequence_matcher
@@ -29,13 +31,13 @@ class JettonBurnBlock(Block):
 class JettonTransferBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(child_matcher=OrMatcher([
-            ContractMatcher(opcode=0x7362d09c, optional=True),
-            ContractMatcher(opcode=0x178d4519, optional=True,
-                            child_matcher=ContractMatcher(opcode=0x7362d09c, optional=True))
+            ContractMatcher(opcode=JettonNotify.opcode, optional=True),
+            ContractMatcher(opcode=JettonInternalTransfer.opcode, optional=True,
+                            child_matcher=ContractMatcher(opcode=JettonNotify.opcode, optional=True))
         ]), parent_matcher=None, optional=True)
 
     def test_self(self, block: Block):
-        return isinstance(block, CallContractBlock) and block.opcode == 0x0f8a7ea5
+        return isinstance(block, CallContractBlock) and block.opcode == JettonTransfer.opcode
 
     async def build_block(self, block: Block | CallContractBlock, other_blocks: list[Block]) -> list[Block]:
         new_block = JettonTransferBlock({})
@@ -81,12 +83,12 @@ async def _get_jetton_burn_data(new_block: Block, block: Block | CallContractBlo
 class JettonBurnBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(child_matcher=child_sequence_matcher([
-            ContractMatcher(opcode=0x7bdd97de),
-            ContractMatcher(opcode=0xd53276db)
+            ContractMatcher(opcode=JettonBurnNotification.opcode),
+            ContractMatcher(opcode=ExcessMessage.opcode)
         ]))
 
     def test_self(self, block: Block):
-        return isinstance(block, CallContractBlock) and block.opcode == 0x595f07bc
+        return isinstance(block, CallContractBlock) and block.opcode == JettonBurn.opcode
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         new_block = JettonBurnBlock()
