@@ -96,6 +96,7 @@ class Block:
     event_nodes: list[EventNode]
     children_blocks: list[Block]
     next_blocks: list[Block]
+    failed: bool
     previous_block: Block
     parent: Block
     data: any
@@ -105,6 +106,7 @@ class Block:
     value_flow: AccountValueFlow
 
     def __init__(self, type: str, nodes: list[EventNode], v=None):
+        self.failed = False
         self.event_nodes = nodes
         self.children_blocks = []
         self.next_blocks = []

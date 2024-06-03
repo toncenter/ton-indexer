@@ -34,7 +34,7 @@ class JettonTransferBlockMatcher(BlockMatcher):
             ContractMatcher(opcode=JettonNotify.opcode, optional=True),
             ContractMatcher(opcode=JettonInternalTransfer.opcode, optional=True,
                             child_matcher=ContractMatcher(opcode=JettonNotify.opcode, optional=True))
-        ]), parent_matcher=None, optional=True)
+        ], optional=True), parent_matcher=None)
 
     def test_self(self, block: Block):
         return isinstance(block, CallContractBlock) and block.opcode == JettonTransfer.opcode
@@ -43,27 +43,32 @@ class JettonTransferBlockMatcher(BlockMatcher):
         new_block = JettonTransferBlock({})
         include = [block]
         include.extend(other_blocks)
-        sender: JettonWallet = await context.session.get().get(JettonWallet, block.event_nodes[0].message.message.destination)
         jetton_transfer_message = JettonTransfer(block.get_body())
         receiver: AccountId = AccountId(jetton_transfer_message.destination)
 
-        new_block.value_flow.add_jetton(AccountId(sender.owner), AccountId(sender.jetton),
-                                        -jetton_transfer_message.amount)
-        new_block.value_flow.add_jetton(receiver, AccountId(sender.jetton),
-                                        jetton_transfer_message.amount)
-
         data = {
-            'sender': AccountId(sender.owner) if sender is not None else None,
+            'sender': None,
             'sender_wallet': AccountId(block.event_nodes[0].message.message.destination),
-            'receiver_wallet': AccountId(next_block.event_nodes[0].message.message.destination),
             'receiver': receiver,
+            'asset': None,
             'amount': Amount(jetton_transfer_message.amount),
-            'asset': Asset(is_ton=False, jetton_address=sender.jetton if sender is not None else None)
         }
+        if len(block.next_blocks) > 0:
+            data['receiver_wallet'] = AccountId(block.next_blocks[0].event_nodes[0].message.message.destination)
+
+        sender: JettonWallet = await context.session.get().get(JettonWallet,
+                                                               block.event_nodes[0].message.message.destination)
+        if sender is not None:
+            data['sender'] = AccountId(sender.owner) if sender is not None else None
+            data['asset'] = Asset(is_ton=False, jetton_address=sender.jetton if sender is not None else None)
+            new_block.value_flow.add_jetton(AccountId(sender.owner), AccountId(sender.jetton),
+                                            -jetton_transfer_message.amount)
+            new_block.value_flow.add_jetton(receiver, AccountId(sender.jetton),
+                                            jetton_transfer_message.amount)
 
         new_block.data = data
         new_block.merge_blocks(include)
-
+        new_block.failed = block.failed
         return [new_block]
 
 
@@ -75,7 +80,7 @@ async def _get_jetton_burn_data(new_block: Block, block: Block | CallContractBlo
         'owner': wallet.owner if wallet is not None else None,
         'jetton_wallet': block.get_message().message.destination,
         'amount': Amount(jetton_burn_message.amount),
-        'asset':  Asset(is_ton=False, jetton_address=wallet.jetton if wallet is not None else None)
+        'asset': Asset(is_ton=False, jetton_address=wallet.jetton if wallet is not None else None)
     }
     return data
 

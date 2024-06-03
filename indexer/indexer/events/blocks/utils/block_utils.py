@@ -15,6 +15,12 @@ def find_call_contracts(blocks: list[Block], opcode: int | set) -> list[CallCont
         return [b for b in blocks if isinstance(b, CallContractBlock) and b.opcode in opcode]
 
 
+def find_call_contract(blocks: list[Block], opcode: int) -> CallContractBlock | None:
+    for b in blocks:
+        if isinstance(b, CallContractBlock) and b.opcode == opcode:
+            return b
+    return None
+
 def find_messages(blocks: list[Block], message_class: Type[T]) -> list[tuple[Block, T]]:
     return [(b, message_class(b.get_body())) for b in find_call_contracts(blocks, message_class.opcode)]
 
@@ -24,4 +30,3 @@ def merge_flows(blocks: list[Block]) -> AccountValueFlow:
     for block in blocks:
         flow.merge(block.value_flow)
     return flow
-

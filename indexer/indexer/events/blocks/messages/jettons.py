@@ -36,6 +36,20 @@ class JettonBurnNotification:
 class JettonInternalTransfer:
     opcode = 0x178d4519
 
+    query_id: int
+    amount: int
+    from_address: Address
+    response_address: Address
+    forward_ton_amount: int
+
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        self.query_id = slice.load_uint(64)
+        self.amount = slice.load_uint(16)
+        self.from_address = slice.load_address()
+        self.response_address = slice.load_address()
+        self.forward_ton_amount = slice.load_uint(16)
+
 
 class JettonNotify:
     opcode = 0x7362d09c

@@ -58,7 +58,7 @@ class BlockMatcher:
                     blocks.extend(r)
             child_matched = self.child_matcher.optional or len(blocks) > 0
         if self.children_matchers is not None:
-            r = self.process_children_matchers(block, blocks, child_matched)
+            r = await self.process_children_matchers(block, blocks, child_matched)
             if r is not None:
                 blocks.extend(r)
             else:
@@ -87,6 +87,8 @@ class BlockMatcher:
             if not matched:
                 return None
         if len(remaining_matchers) == 0:
+            return blocks
+        if all(m.optional for m in remaining_matchers):
             return blocks
         else:
             return None

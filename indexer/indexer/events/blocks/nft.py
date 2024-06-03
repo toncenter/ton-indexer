@@ -31,10 +31,10 @@ def _get_nft_data(nft_address: AccountId):
                 data["type"] = tokens[-2]
             else:
                 data['meta'] = nft.content
-        data['collection'] = {
-            'address': AccountId(nft.collection.address),
-            'meta': nft.collection.collection_content
-        }
+            data['collection'] = {
+                'address': AccountId(nft.collection.address),
+                'meta': nft.collection.collection_content
+            }
     return data
 
 
@@ -118,7 +118,7 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         nft_ownership_message = NftOwnershipAssigned(Slice.one_from_boc(message.message.message_content.body))
         data['new_owner'] = AccountId(message.message.destination)
         data['query_id'] = nft_ownership_message.query_id
-        data['nft'] = _get_nft_data(AccountId(block.previous_block.event_nodes[0].message.transaction.account))
+        data['nft'] = _get_nft_data(AccountId(block.get_message().message.destination))
         payload = nft_ownership_message.nft_payload
         if payload is not None and isinstance(payload.value, TeleitemBidInfo):
             data['is_purchase'] = True

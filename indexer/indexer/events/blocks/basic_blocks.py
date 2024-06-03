@@ -32,6 +32,7 @@ class TonTransferBlock(Block):
                 node.message.message.destination) if node.message.message.destination is not None else None,
             'value': Amount(node.message.message.value),
         })
+        self.failed = node.failed
         self.value = node.message.message.value
         _fill_flow_from_node(self.value_flow, node)
 
@@ -39,6 +40,7 @@ class TonTransferBlock(Block):
 class ContractDeploy(Block):
     def __init__(self, node: EventNode):
         super().__init__('contract_deploy', [], node.message.transaction.account)
+        self.failed = node.failed
 
 
 class CallContractBlock(Block):
@@ -52,6 +54,7 @@ class CallContractBlock(Block):
                 node.message.message.destination) if node.message.message.destination is not None else None,
             'value': Amount(node.message.message.value),
         })
+        self.failed = node.failed
         self.is_external = node.message.message.source is None
         self.opcode = node.get_opcode()
         _fill_flow_from_node(self.value_flow, node)
