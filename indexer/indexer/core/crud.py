@@ -99,8 +99,7 @@ def get_blocks(session: Session,
                from_start_lt: Optional[int]=None,
                to_start_lt: Optional[int]=None,
                include_mc_block: bool=False,
-               sort_gen_utime: Optional[str]=None,
-               sort_seqno: Optional[str]=None,
+               sort: Optional[str]=None,
                limit: Optional[int]=None,
                offset: Optional[int]=None):
     query = session.query(Block)
@@ -112,30 +111,41 @@ def get_blocks(session: Session,
     if seqno is not None:
         query = query.filter(Block.seqno == seqno)
 
+    column = 'gen_utime'
+
     if root_hash is not None:
         query = query.filter(Block.root_hash == root_hash)
     if file_hash is not None:
         query = query.filter(Block.file_hash == file_hash)
 
     if from_gen_utime is not None:
+        column = 'gen_utime'
         query = query.filter(Block.gen_utime >= from_gen_utime)
     if to_gen_utime is not None:
+        column = 'gen_utime'
         query = query.filter(Block.gen_utime <= to_gen_utime)
 
     if from_start_lt is not None:
+        column = 'lt'
         query = query.filter(Block.start_lt >= from_start_lt)
     if to_start_lt is not None:
+        column = 'lt'
         query = query.filter(Block.start_lt <= to_start_lt)
 
-    if sort_gen_utime == 'asc':
-        query = query.order_by(Block.gen_utime.asc())
-    elif sort_gen_utime == 'desc':
-        query = query.order_by(Block.gen_utime.desc())
-
-    if sort_seqno == 'asc':
-        query = query.order_by(Block.seqno.asc())
-    elif sort_seqno == 'desc':
-        query = query.order_by(Block.seqno.desc())
+    if sort == 'asc':
+        if column == 'seqno':
+            query = query.order_by(Block.workchain.asc(), Block.shard.asc(), Block.seqno.asc())
+        if column == 'gen_utime':
+            query = query.order_by(Block.gen_utime.asc())
+        if column == 'lt':
+            query = query.order_by(Block.start_lt.asc())
+    elif sort == 'desc':
+        if column == 'seqno':
+            query = query.order_by(Block.workchain.desc(), Block.shard.asc(), Block.seqno.asc())
+        if column == 'gen_utime':
+            query = query.order_by(Block.gen_utime.desc())
+        if column == 'lt':
+            query = query.order_by(Block.start_lt.desc())
 
 
     if include_mc_block:
