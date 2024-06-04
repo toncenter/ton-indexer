@@ -50,7 +50,7 @@ async def get_masterchain_last_block(db: AsyncSession = Depends(get_db)):
     result = await db.run_sync(crud.get_blocks,
                                workchain=MASTERCHAIN_INDEX,
                                shard=MASTERCHAIN_SHARD,
-                               sort_seqno='desc',
+                               sort='desc',
                                limit=1)
     if len(result) < 1:
         raise exceptions.BlockNotFound(workchain=MASTERCHAIN_INDEX,
@@ -66,7 +66,7 @@ async def get_masterchain_first_indexed_block(db: AsyncSession = Depends(get_db)
     result = await db.run_sync(crud.get_blocks,
                                workchain=MASTERCHAIN_INDEX,
                                shard=MASTERCHAIN_SHARD,
-                               sort_seqno='asc',
+                               sort='asc',
                                limit=1)
     if len(result) < 1:
         raise exceptions.BlockNotFound(workchain=MASTERCHAIN_INDEX,
