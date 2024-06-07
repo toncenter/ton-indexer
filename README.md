@@ -24,7 +24,7 @@ Requirements:
   * Worker: 4 CPU, 32 GB RAM, SSD recommended (for archival: 8 CPUs, 64 GB RAM, SSD recommended).
 
 Do the following steps to setup TON Indexer:
-* Clone repository: `git clone --recursive --branch cpp-indexer https://github.com/kdimentionaltree/ton-indexer`.
+* Clone repository: `git clone --recursive --branch v0.4.2 https://github.com/toncenter/ton-indexer/`.
 * Create *.env* file with command `./configure.sh`.
   * Run `./configure.sh --worker` to configure TON Index worker.
 * Adjust parameters in *.env* file (see [list of available parameters](#available-parameters)).
