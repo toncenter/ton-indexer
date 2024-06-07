@@ -26,7 +26,7 @@ Requirements:
 Do the following steps to setup TON Indexer:
 * Clone repository: `git clone --recursive --branch v0.4.2 https://github.com/toncenter/ton-indexer/`.
 * Create *.env* file with command `./configure.sh`.
-  * Run `./configure.sh --worker` to configure TON Index worker.
+  * `./configure.sh` will create `.env` file only with indexer and PostgreSQL configuration data. Use `--worker` flag to add TON Index worker configuration data too.
 * Adjust parameters in *.env* file (see [list of available parameters](#available-parameters)).
 * Build docker images: `docker compose build postgres alembic index-api`.
 * Run stack: `docker compose up -d postgres alembic index-api`.
