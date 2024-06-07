@@ -28,6 +28,7 @@ Do the following steps to setup TON Indexer:
 * Create *.env* file with command `./configure.sh`.
   * `./configure.sh` will create `.env` file only with indexer and PostgreSQL configuration data. Use `--worker` flag to add TON Index worker configuration data too.
 * Adjust parameters in *.env* file (see [list of available parameters](#available-parameters)).
+* Set postgreSQL password by running `echo -n 'YOUR_PASSWORD' >> private/postgres_password`
 * Build docker images: `docker compose build postgres alembic index-api`.
 * Run stack: `docker compose up -d postgres alembic index-api`.
   * To start worker use command `docker compose up -d index-worker` after creating all services.
