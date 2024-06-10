@@ -33,7 +33,7 @@ Do the following steps to setup TON Indexer:
 * Run stack: `docker compose up -d postgres alembic index-api`.
   * To start worker use command `docker compose up -d index-worker` after creating all services.
 
-**NOTE:** we recommend to setup indexer stack and index worker on separate servers. To install index worker to **Systemd** check this [instruction](https://github.com/kdimentionaltree/ton-index-cpp).
+**NOTE:** we recommend to setup indexer stack and index worker on separate servers. To install index worker to **Systemd** check this [instruction](https://github.com/toncenter/ton-index-worker).
 
 ### Available parameters
 
