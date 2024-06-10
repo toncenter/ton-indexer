@@ -19,6 +19,7 @@ public:
   }
 
   void process(ParsedBlockPtr block, td::Promise<> &&promise);
+  // void process(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise);
 
 private:
   void process_states(const std::vector<schema::AccountState>& account_states, const MasterchainBlockDataState& blocks_ds, td::Promise<std::vector<BlockchainInterface>> &&promise);

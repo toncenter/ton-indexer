@@ -8,3 +8,4 @@
 [submodule "external/clickhouse-cpp"]
 	path = external/clickhouse-cpp
 	url = https://github.com/kdimentionaltree/clickhouse-cpp.git
+	branch = absl-fix

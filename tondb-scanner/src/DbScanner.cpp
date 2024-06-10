@@ -275,6 +275,7 @@ void DbScanner::start_up() {
   auto opts = ton::validator::ValidatorManagerOptions::create(
         ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()},
         ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()});
+  //opts.write().set_max_open_archive_files(100);
   auto mode = mode_ == dbs_readonly ? td::DbOpenMode::db_readonly : td::DbOpenMode::db_secondary;
   db_ = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_, std::move(opts), mode);
 
@@ -310,8 +311,9 @@ void DbScanner::get_mc_block_handle(ton::BlockSeqno seqno, td::Promise<ton::vali
 }
 
 void DbScanner::catch_up_with_primary() {
-  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Unit> R) {
+  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), this](td::Result<td::Unit> R) {
     R.ensure();
+    this->is_ready_ = true;
   });
   td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, std::move(R));
 }
@@ -329,8 +331,5 @@ void DbScanner::alarm() {
     return;
   }
   td::actor::send_closure(actor_id(this), &DbScanner::update_last_mc_seqno);
-
-  if (!out_of_sync_) {
-    td::actor::send_closure(actor_id(this), &DbScanner::catch_up_with_primary);
-  }
+  td::actor::send_closure(actor_id(this), &DbScanner::catch_up_with_primary);
 }

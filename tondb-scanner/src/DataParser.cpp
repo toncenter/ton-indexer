@@ -56,7 +56,7 @@ td::Status ParseQuery::parse_impl() {
 
   // shard details
   for (auto &block_ds : mc_block_.shard_blocks_) {
-    auto shard_block = parse_shard_state(mc_block.value().seqno, block_ds.block_data->block_id());
+    auto shard_block = parse_shard_state(mc_block.value(), block_ds.block_data->block_id());
     result->shard_state_.push_back(shard_block);
   }
 
@@ -64,8 +64,8 @@ td::Status ParseQuery::parse_impl() {
   return td::Status::OK();
 }
 
-schema::MasterchainBlockShard ParseQuery::parse_shard_state(td::uint32 mc_seqno, const ton::BlockIdExt& shard_blk_id) {
-  return {mc_seqno, shard_blk_id.id.workchain, static_cast<int64_t>(shard_blk_id.id.shard), shard_blk_id.id.seqno};
+schema::MasterchainBlockShard ParseQuery::parse_shard_state(schema::Block mc_block, const ton::BlockIdExt& shard_blk_id) {
+  return {mc_block.seqno, mc_block.start_lt, mc_block.gen_utime, shard_blk_id.id.workchain, static_cast<int64_t>(shard_blk_id.id.shard), shard_blk_id.id.seqno};
 }
 
 schema::Block ParseQuery::parse_block(const td::Ref<vm::Cell>& root_cell, const ton::BlockIdExt& blk_id, block::gen::Block::Record& blk, const block::gen::BlockInfo::Record& info, 
@@ -151,6 +151,8 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
   if (body->prefetch_long(32) != vm::CellSlice::fetch_long_eof) {
     msg.opcode = body->prefetch_long(32);
   }
+
+  // TODO: add message decoding
 
   td::Ref<vm::Cell> init_state_cell;
   auto& init_state_cs = message.init.write();

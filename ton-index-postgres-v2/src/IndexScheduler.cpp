@@ -6,6 +6,7 @@
 
 void IndexScheduler::start_up() {
     event_processor_ = td::actor::create_actor<EventProcessor>("event_processor", insert_manager_);
+    trace_assembler_ = td::actor::create_actor<TraceAssembler>("trace_assembler");
 }
 
 std::string get_time_string(double seconds) {
@@ -137,6 +138,20 @@ void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, MasterchainBlockDataS
 
 void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Parsed seqno " << mc_seqno;
+
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
+        if (R.is_error()) {
+            LOG(ERROR) << "Failed to asseble traces for seqno " << mc_seqno << ": " << R.move_as_error();
+            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
+            return;
+        }
+        td::actor::send_closure(SelfId, &IndexScheduler::seqno_traces_assembled, mc_seqno, R.move_as_ok());
+    });
+    td::actor::send_closure(trace_assembler_, &TraceAssembler::assemble, mc_seqno, std::move(parsed_block), std::move(P));
+}
+
+void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
+    LOG(DEBUG) << "Assebled traces for seqno " << mc_seqno;
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, parsed_block](td::Result<td::Unit> R) {
         if (R.is_error()) {

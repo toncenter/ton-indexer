@@ -4,6 +4,7 @@
 #include "clickhouse/client.h"
 #include "clickhouse/columns/nullable.h"
 #include "clickhouse/columns/numeric.h"
+#include "clickhouse/types/types.h"
 
 #include "convert-utils.h"
 
@@ -70,6 +71,8 @@ void InsertManagerClickhouse::start_up() {
             td::StringBuilder builder;
             builder << "CREATE TABLE IF NOT EXISTS shard_state ("
                     << "mc_seqno Int32, "
+                    << "mc_block_start_lt UInt64,"
+                    << "mc_block_gen_utime Int32,"
                     << "workchain Int32, "
                     << "shard Int64, "
                     << "seqno Int32"
@@ -82,7 +85,7 @@ void InsertManagerClickhouse::start_up() {
             builder << "CREATE TABLE IF NOT EXISTS transactions ("
                     << "hash FixedString(44), "
                     << "lt UInt64, "
-                    << "account FixedString(68), "
+                    << "account String, "
                     << "prev_hash FixedString(44), "
                     << "prev_lt UInt64, "
                     << "now UInt32, "
@@ -152,9 +155,8 @@ void InsertManagerClickhouse::start_up() {
 
                     << "split_info__cur_shard_pfx_len Nullable(UInt8), "
                     << "split_info__acc_split_depth Nullable(UInt8), "
-                    << "split_info__this_addr Nullable(FixedString(68)), "
-                    << "split_info__sibling_addr Nullable(FixedString(68))"
-
+                    << "split_info__this_addr Nullable(String), "
+                    << "split_info__sibling_addr Nullable(String)"
                     << ") ENGINE ReplacingMergeTree PRIMARY KEY (lt, account, hash) ORDER BY (lt, account, hash);\n";
             client.Execute(builder.as_cslice().str());
             LOG(INFO) << "Table transactions created";
@@ -164,16 +166,16 @@ void InsertManagerClickhouse::start_up() {
             builder << "CREATE TABLE IF NOT EXISTS messages ("
                     << "tx_hash FixedString(44), "
                     << "tx_lt UInt64, "
-                    << "tx_account FixedString(68), "
+                    << "tx_account String, "
                     << "tx_now UInt32, "
                     << "block_workchain Int32, "
                     << "block_shard Int64, "
                     << "block_seqno Int32, "
                     << "mc_block_seqno Int32, "
                     << "direction Enum('in' = 0, 'out' = 1), "
-                    << "hash FixedString(68), "
-                    << "source Nullable(FixedString(68)), "
-                    << "destination Nullable(FixedString(68)), "
+                    << "hash FixedString(44), "
+                    << "source Nullable(String), "
+                    << "destination Nullable(String), "
                     << "value Nullable(UInt64), "
                     << "fwd_fee Nullable(UInt64), "
                     << "ihr_fee Nullable(UInt64), "
@@ -203,14 +205,14 @@ void InsertManagerClickhouse::start_up() {
             td::StringBuilder builder;
             builder << "CREATE TABLE IF NOT EXISTS account_states ("
                     << "hash FixedString(44), "
-                    << "account FixedString(68), "
+                    << "account String, "
                     << "timestamp UInt32, "
                     << "balance UInt64, "
                     << "account_status Enum('uninit' = 0, 'frozen' = 1, 'active' = 2, 'nonexist' = 3),"
                     << "frozen_hash Nullable(FixedString(44)), "
                     << "code_hash Nullable(FixedString(44)), "
                     << "data_hash Nullable(FixedString(44)), "
-                    << "last_trans_lt UInt64, "
+                    << "last_trans_lt UInt64"
                     << ") ENGINE ReplacingMergeTree PRIMARY KEY(timestamp, account, hash) ORDER BY (timestamp, account, hash);\n";
             client.Execute(builder.as_cslice().str());
             LOG(INFO) << "Table account_states created";
@@ -218,7 +220,7 @@ void InsertManagerClickhouse::start_up() {
         {
             td::StringBuilder builder;
             builder << "CREATE TABLE IF NOT EXISTS latest_account_states ("
-                    << "account FixedString(68), "
+                    << "account String, "
                     << "hash FixedString(44), "
                     << "timestamp UInt32, "
                     << "balance UInt64, "
@@ -228,11 +230,136 @@ void InsertManagerClickhouse::start_up() {
                     << "code_boc Nullable(String), "
                     << "data_hash Nullable(FixedString(44)), "
                     << "data_boc Nullable(String), "
-                    << "last_trans_lt UInt64, "
+                    << "last_trans_lt UInt64"
                     << ") ENGINE ReplacingMergeTree(timestamp) PRIMARY KEY(account) ORDER BY (account);\n";
             client.Execute(builder.as_cslice().str());
             LOG(INFO) << "Table latest_account_states created";
         }
+        {
+            td::StringBuilder builder;
+            builder << "CREATE TABLE IF NOT EXISTS nft_collections ("
+                    << "address String,"
+                    << "next_item_index Int128,"
+                    << "owner_address Nullable(String),"
+                    << "collection_content Map(String, String),"
+                    << "code_hash FixedString(44),"
+                    << "data_hash FixedString(44),"
+                    << "last_transaction_lt UInt64,"
+                    << "last_transaction_now UInt32"
+                    << ") ENGINE ReplacingMergeTree(last_transaction_lt) PRIMARY KEY(address) ORDER BY (address);\n";
+            client.Execute(builder.as_cslice().str());
+            LOG(INFO) << "Table nft_collections created";
+        }
+        {
+            td::StringBuilder builder;
+            builder << "CREATE TABLE IF NOT EXISTS nft_items ("
+                    << "address String,"
+                    << "init UInt8,"
+                    << "nft_index Int128,"
+                    << "collection_address String,"
+                    << "owner_address String,"
+                    << "content Map(String, String),"
+                    << "last_transaction_lt UInt64,"
+                    << "last_transaction_now UInt32,"
+                    << "code_hash FixedString(44),"
+                    << "data_hash FixedString(44)"
+                    << ") ENGINE ReplacingMergeTree(last_transaction_lt) PRIMARY KEY(collection_address, nft_index) ORDER BY (collection_address, nft_index);\n";
+            client.Execute(builder.as_cslice().str());
+            LOG(INFO) << "Table nft_items created";
+        }
+        {
+            td::StringBuilder builder;
+            builder << "CREATE TABLE IF NOT EXISTS nft_transfers ("
+                    << "transaction_hash FixedString(44),"
+                    << "transaction_lt UInt64,"
+                    << "transaction_now UInt32,"
+                    << "transaction_aborted UInt8,"
+                    << "query_id UInt64,"
+                    << "nft_item String,"
+                    << "nft_item_index Int128,"
+                    << "nft_collection String,"
+                    << "old_owner String,"
+                    << "new_owner String,"
+                    << "response_destination String,"
+                    << "custom_payload Nullable(String),"
+                    << "forward_amount Int128,"
+                    << "forward_payload Nullable(String)"
+                    << ") ENGINE ReplacingMergeTree(transaction_lt) PRIMARY KEY(nft_collection, transaction_lt, nft_item_index) ORDER BY (nft_collection, transaction_lt, nft_item_index);\n";
+            client.Execute(builder.as_cslice().str());
+            LOG(INFO) << "Table nft_transfers created";
+        }
+        {
+            td::StringBuilder builder;
+            builder << "CREATE TABLE IF NOT EXISTS jetton_masters ("
+                    << "address String,"
+                    << "total_supply Int128,"
+                    << "mintable UInt8,"
+                    << "admin_address Nullable(String),"
+                    << "jetton_content Map(String, String),"
+                    << "jetton_wallet_code_hash FixedString(44),"
+                    << "code_hash FixedString(44),"
+                    << "data_hash FixedString(44),"
+                    << "last_transaction_lt UInt64,"
+                    << "last_transaction_now UInt32"
+                    << ") ENGINE ReplacingMergeTree(last_transaction_lt) PRIMARY KEY(address) ORDER BY (address);\n";
+            client.Execute(builder.as_cslice().str());
+            LOG(INFO) << "Table jetton_masters created";
+        }
+        {
+            td::StringBuilder builder;
+            builder << "CREATE TABLE IF NOT EXISTS jetton_wallets ("
+                    << "address String,"
+                    << "balance Int128,"
+                    << "owner String,"
+                    << "jetton String,"
+                    << "last_transaction_lt UInt64,"
+                    << "last_transaction_now UInt32,"
+                    << "code_hash FixedString(44),"
+                    << "data_hash FixedString(44)"
+                    << ") ENGINE ReplacingMergeTree(last_transaction_lt) PRIMARY KEY(jetton, address) ORDER BY (jetton, address);\n";
+            client.Execute(builder.as_cslice().str());
+            LOG(INFO) << "Table jetton_wallets created";
+        }
+        {
+            td::StringBuilder builder;
+            builder << "CREATE TABLE IF NOT EXISTS jetton_transfers ("
+                    << "transaction_hash FixedString(44),"
+                    << "transaction_lt UInt64,"
+                    << "transaction_now UInt32,"
+                    << "transaction_aborted UInt8,"
+                    << "query_id UInt64,"
+                    << "amount Int128,"
+                    << "source String,"
+                    << "destination String,"
+                    << "jetton_wallet String,"
+                    << "jetton_master String,"
+                    << "response_destination String,"
+                    << "custom_payload Nullable(String),"
+                    << "forward_ton_amount Int128,"
+                    << "forward_payload Nullable(String)"
+                    << ") ENGINE ReplacingMergeTree(transaction_lt) PRIMARY KEY(jetton_wallet, transaction_lt, transaction_hash) ORDER BY (jetton_wallet, transaction_lt, transaction_hash);\n";
+            client.Execute(builder.as_cslice().str());
+            LOG(INFO) << "Table jetton_transfers created";
+        }
+        {
+            td::StringBuilder builder;
+            builder << "CREATE TABLE IF NOT EXISTS jetton_burns ("
+                    << "transaction_hash FixedString(44),"
+                    << "transaction_lt UInt64,"
+                    << "transaction_now UInt32,"
+                    << "transaction_aborted UInt8,"
+                    << "query_id UInt64,"
+                    << "owner String,"
+                    << "jetton_wallet String,"
+                    << "jetton_master String,"
+                    << "amount Int128,"
+                    << "response_destination String,"
+                    << "custom_payload Nullable(String)"
+                    << ") ENGINE ReplacingMergeTree(transaction_lt) PRIMARY KEY(jetton_wallet, transaction_lt, transaction_hash) ORDER BY (jetton_wallet, transaction_lt, transaction_hash);\n";
+            client.Execute(builder.as_cslice().str());
+            LOG(INFO) << "Table jetton_burns created";
+        }
+        
         LOG(INFO) << "Clickhouse start_up finished";
     } catch (const std::exception& e) {
         LOG(FATAL) << "Clickhouse start_up error: " << e.what();
@@ -293,6 +420,8 @@ void InsertBatchClickhouse::start_up() {
         insert_messages(client);
         insert_account_states(client);
         insert_shard_state(client);
+        insert_nfts(client);
+        insert_jettons(client);
         insert_blocks(client);
         
         // all done
@@ -315,6 +444,8 @@ void InsertBatchClickhouse::insert_shard_state(clickhouse::Client &client) {
     
     clickhouse::Block block;
     auto mc_seqno_col = std::make_shared<ColumnInt32>();
+    auto mc_block_start_lt_col = std::make_shared<ColumnUInt64>();
+    auto mc_block_gen_utime_col = std::make_shared<ColumnInt32>();
     auto workchain_col = std::make_shared<ColumnInt32>();
     auto shard_col = std::make_shared<ColumnInt64>();
     auto seqno_col = std::make_shared<ColumnInt32>();
@@ -322,6 +453,8 @@ void InsertBatchClickhouse::insert_shard_state(clickhouse::Client &client) {
     for (const auto& task : insert_tasks_) {
       for (const auto& shard : task.parsed_block_->shard_state_) {
         mc_seqno_col->Append(shard.mc_seqno);
+        mc_block_start_lt_col->Append(shard.mc_block_start_lt);
+        mc_block_gen_utime_col->Append(shard.mc_block_gen_utime);
         workchain_col->Append(shard.workchain);
         shard_col->Append(shard.shard);
         seqno_col->Append(shard.seqno);
@@ -329,6 +462,8 @@ void InsertBatchClickhouse::insert_shard_state(clickhouse::Client &client) {
     }
 
     block.AppendColumn("mc_seqno", mc_seqno_col);
+    block.AppendColumn("mc_block_start_lt", mc_block_start_lt_col);
+    block.AppendColumn("mc_block_gen_utime", mc_block_gen_utime_col);
     block.AppendColumn("workchain", workchain_col);
     block.AppendColumn("shard", shard_col);
     block.AppendColumn("seqno", seqno_col);
@@ -486,7 +621,7 @@ void InsertBatchClickhouse::insert_transactions(clickhouse::Client& client) {
     
     auto hash_col = std::make_shared<ColumnFixedString>(44);
     auto lt_col = std::make_shared<ColumnUInt64>();
-    auto account_col = std::make_shared<ColumnFixedString>(68);
+    auto account_col = std::make_shared<ColumnString>();
     auto prev_hash_col = std::make_shared<ColumnFixedString>(44);
     auto prev_lt_col = std::make_shared<ColumnUInt64>();
     auto now_col = std::make_shared<ColumnUInt32>();
@@ -548,8 +683,8 @@ void InsertBatchClickhouse::insert_transactions(clickhouse::Client& client) {
     auto bounce__ok__fwd_fees_col = std::make_shared<ColumnNullableT<ColumnUInt64>>();
     auto split_info__cur_shard_pfx_len_col = std::make_shared<ColumnNullableT<ColumnUInt8>>();
     auto split_info__acc_split_depth_col = std::make_shared<ColumnNullableT<ColumnUInt8>>();
-    auto split_info__this_addr_col = std::make_shared<ColumnNullableT<ColumnFixedString>>(68);
-    auto split_info__sibling_addr_col = std::make_shared<ColumnNullableT<ColumnFixedString>>(68);
+    auto split_info__this_addr_col = std::make_shared<ColumnNullableT<ColumnString>>();
+    auto split_info__sibling_addr_col = std::make_shared<ColumnNullableT<ColumnString>>();
 
     auto store_storage_ph = [&](const schema::TrStoragePhase& storage_ph) {
         storage_ph__storage_fees_collected_col->Append(storage_ph.storage_fees_collected);
@@ -939,16 +1074,16 @@ void InsertBatchClickhouse::insert_messages(clickhouse::Client &client) {
 
     auto tx_hash_col = std::make_shared<ColumnFixedString>(44);
     auto tx_lt_col = std::make_shared<ColumnUInt64>();
-    auto tx_account_col = std::make_shared<ColumnFixedString>(68);
+    auto tx_account_col = std::make_shared<ColumnString>();
     auto tx_now_col = std::make_shared<ColumnUInt32>();
     auto block_workchain_col = std::make_shared<ColumnInt32>();
     auto block_shard_col = std::make_shared<ColumnInt64>();
     auto block_seqno_col = std::make_shared<ColumnInt32>();
     auto mc_block_seqno_col = std::make_shared<ColumnInt32>();
     auto direction_col = std::make_shared<ColumnEnum8>(Type::CreateEnum8({{"in", 0}, {"out", 1}}));
-    auto hash_col = std::make_shared<ColumnFixedString>(68);
-    auto source_col = std::make_shared<ColumnNullableT<ColumnFixedString>>(68);
-    auto destination_col = std::make_shared<ColumnNullableT<ColumnFixedString>>(68);
+    auto hash_col = std::make_shared<ColumnFixedString>(44);
+    auto source_col = std::make_shared<ColumnNullableT<ColumnString>>();
+    auto destination_col = std::make_shared<ColumnNullableT<ColumnString>>();
     auto value_col = std::make_shared<ColumnNullableT<ColumnUInt64>>();
     auto fwd_fee_col = std::make_shared<ColumnNullableT<ColumnUInt64>>();
     auto ihr_fee_col = std::make_shared<ColumnNullableT<ColumnUInt64>>();
@@ -1070,7 +1205,7 @@ void InsertBatchClickhouse::insert_account_states(clickhouse::Client &client) {
     clickhouse::Block block, block_latest;
 
     auto hash_col = std::make_shared<ColumnFixedString>(44);
-    auto account_col = std::make_shared<ColumnFixedString>(68);
+    auto account_col = std::make_shared<ColumnString>();
     auto timestamp_col = std::make_shared<ColumnUInt32>();
     auto balance_col = std::make_shared<ColumnUInt64>();
     auto account_status_col = std::make_shared<ColumnEnum8>(Type::CreateEnum8({{"uninit", 0}, {"frozen", 1}, {"active", 2}, {"nonexist", 3}}));
@@ -1078,8 +1213,8 @@ void InsertBatchClickhouse::insert_account_states(clickhouse::Client &client) {
     auto code_hash_col = std::make_shared<ColumnNullableT<ColumnFixedString>>(44);
     auto data_hash_col = std::make_shared<ColumnNullableT<ColumnFixedString>>(44);
     auto last_trans_lt_col = std::make_shared<ColumnUInt64>();
-    auto code_boc_col = std::make_shared<ColumnNullableT<ColumnString>>();
-    auto data_boc_col = std::make_shared<ColumnNullableT<ColumnString>>();
+    // auto code_boc_col = std::make_shared<ColumnNullableT<ColumnString>>();
+    // auto data_boc_col = std::make_shared<ColumnNullableT<ColumnString>>();
 
     for(const auto& task_ : insert_tasks_) {
         for (const auto& state_: task_.parsed_block_->account_states_) {
@@ -1093,28 +1228,28 @@ void InsertBatchClickhouse::insert_account_states(clickhouse::Client &client) {
             data_hash_col->Append(TO_STD_OPTIONAL(state_.data_hash));
             last_trans_lt_col->Append(state_.last_trans_lt);
 
-            if (state_.code.not_null()) {
-                auto code_res = vm::std_boc_serialize(state_.code);
-                if(code_res.is_error()) {
-                    LOG(ERROR) << "Failed to convert code boc";
-                    code_boc_col->Append(std::nullopt);
-                } else {
-                    code_boc_col->Append(td::base64_encode(code_res.move_as_ok().as_slice().str()));
-                }
-            } else {
-                code_boc_col->Append(std::nullopt);
-            }
-            if (state_.data.not_null()) {
-                auto data_res = vm::std_boc_serialize(state_.data);
-                if(data_res.is_error()) {
-                    LOG(ERROR) << "Failed to convert data boc";
-                    data_boc_col->Append(std::nullopt);
-                } else {
-                    data_boc_col->Append(td::base64_encode(data_res.move_as_ok().as_slice().str()));
-                }
-            } else {
-                data_boc_col->Append(std::nullopt);
-            }
+            // if (state_.code.not_null()) {
+            //     auto code_res = vm::std_boc_serialize(state_.code);
+            //     if(code_res.is_error()) {
+            //         LOG(ERROR) << "Failed to convert code boc";
+            //         code_boc_col->Append(std::nullopt);
+            //     } else {
+            //         code_boc_col->Append(td::base64_encode(code_res.move_as_ok().as_slice().str()));
+            //     }
+            // } else {
+            //     code_boc_col->Append(std::nullopt);
+            // }
+            // if (state_.data.not_null()) {
+            //     auto data_res = vm::std_boc_serialize(state_.data);
+            //     if(data_res.is_error()) {
+            //         LOG(ERROR) << "Failed to convert data boc";
+            //         data_boc_col->Append(std::nullopt);
+            //     } else {
+            //         data_boc_col->Append(td::base64_encode(data_res.move_as_ok().as_slice().str()));
+            //     }
+            // } else {
+            //     data_boc_col->Append(std::nullopt);
+            // }
         }
     }
 
@@ -1137,9 +1272,483 @@ void InsertBatchClickhouse::insert_account_states(clickhouse::Client &client) {
     block_latest.AppendColumn("code_hash", code_hash_col);
     block_latest.AppendColumn("data_hash", data_hash_col);
     block_latest.AppendColumn("last_trans_lt", last_trans_lt_col);
-    block_latest.AppendColumn("code_boc", code_boc_col);
-    block_latest.AppendColumn("data_boc", data_boc_col);
+    // block_latest.AppendColumn("code_boc", code_boc_col);
+    // block_latest.AppendColumn("data_boc", data_boc_col);
 
     client.Insert("account_states", block);
     client.Insert("latest_account_states", block_latest);
+}
+
+clickhouse::Int128 str2int128(const std::string value, const int base = 10) {
+    clickhouse::Int128 result{0};
+    bool negative = false;
+    for(const auto c : value) {
+        if (c == '-') {
+            negative = true;
+        } else {
+            result = (result * base + int(c - '0'));
+        }
+    }
+    return (negative ? -result : result);
+}
+
+void InsertBatchClickhouse::insert_nfts(clickhouse::Client &client) {
+    std::map<std::string, NFTCollectionData> collections;
+    std::map<std::string, NFTItemData> items;
+
+    for (const auto& task : insert_tasks_) {
+        for(const auto& item : task.parsed_block_->get_accounts<NFTCollectionData>()) {
+            auto existing = collections.find(item.address);
+            if (existing == collections.end()) {
+                collections[item.address] = item;
+            } else {
+                if (existing->second.last_transaction_lt < item.last_transaction_lt) {
+                    collections[item.address] = item;
+                }
+            }
+        }
+        for(const auto& item : task.parsed_block_->get_accounts<NFTItemData>()) {
+            auto existing = items.find(item.address);
+            if (existing == items.end()) {
+                items[item.address] = item;
+            } else {
+                if (existing->second.last_transaction_lt < item.last_transaction_lt) {
+                    items[item.address] = item;
+                }
+            }
+        }
+    }
+
+
+    using namespace clickhouse;
+
+    {
+        clickhouse::Block block;
+        auto address = std::make_shared<ColumnString>();
+        auto next_item_index = std::make_shared<ColumnInt128>();
+        auto owner_address = std::make_shared<ColumnNullableT<ColumnString>>();
+        auto collection_content = std::make_shared<ColumnMapT<ColumnString, ColumnString>>(
+            std::make_shared<ColumnString>(),
+            std::make_shared<ColumnString>()
+        );
+        auto data_hash = std::make_shared<ColumnFixedString>(44);
+        auto code_hash = std::make_shared<ColumnFixedString>(44);
+        auto last_transaction_lt = std::make_shared<ColumnUInt64>();
+        auto last_transaction_now = std::make_shared<ColumnUInt32>();
+
+        for (const auto& [addr, collection] : collections) {
+            address->Append(collection.address);
+            if (collection.next_item_index.not_null()) {
+                auto val = str2int128(collection.next_item_index->to_dec_string());
+                next_item_index->Append(val);
+            } else {
+                LOG(ERROR) << "Collection " << collection.address << " has null in next_item_index!";
+                next_item_index->Append(Int128());
+            }
+            owner_address->Append(TO_STD_OPTIONAL(collection.owner_address));
+            if (collection.collection_content) {
+                collection_content->Append(collection.collection_content.value());
+            } else {
+                collection_content->Append(std::map<std::string, std::string>());
+            }
+            data_hash->Append(td::base64_encode(collection.data_hash.as_slice()));
+            code_hash->Append(td::base64_encode(collection.code_hash.as_slice()));
+            last_transaction_lt->Append(collection.last_transaction_lt);
+            last_transaction_now->Append(collection.last_transaction_now);
+        }
+
+        block.AppendColumn("address", address);
+        block.AppendColumn("next_item_index", next_item_index);
+        block.AppendColumn("owner_address", owner_address);
+        block.AppendColumn("collection_content", collection_content);
+        block.AppendColumn("data_hash", data_hash);
+        block.AppendColumn("code_hash", code_hash);
+        block.AppendColumn("last_transaction_lt", last_transaction_lt);
+        block.AppendColumn("last_transaction_now", last_transaction_now);
+
+        client.Insert("nft_collections", block);
+    }
+    {
+        clickhouse::Block block;
+        auto address = std::make_shared<ColumnString>();
+        auto init = std::make_shared<ColumnUInt8>();
+        auto nft_index = std::make_shared<ColumnInt128>();
+        auto collection_address = std::make_shared<ColumnString>();
+        auto owner_address = std::make_shared<ColumnString>();
+        auto content = std::make_shared<ColumnMapT<ColumnString, ColumnString>>(
+            std::make_shared<ColumnString>(),
+            std::make_shared<ColumnString>()
+        );
+        auto last_transaction_lt = std::make_shared<ColumnUInt64>();
+        auto last_transaction_now = std::make_shared<ColumnUInt32>();
+        auto code_hash = std::make_shared<ColumnFixedString>(44);
+        auto data_hash = std::make_shared<ColumnFixedString>(44);
+
+        for (const auto& [addr, item] : items) {
+            address->Append(item.address);
+            init->Append(item.init);
+            if (item.index.not_null()) {
+                auto val = str2int128(item.index->to_dec_string());
+                nft_index->Append(val);
+            } else {
+                nft_index->Append(Int128());
+            }
+            collection_address->Append(item.collection_address);
+            owner_address->Append(item.owner_address);
+            if (item.content) {
+                content->Append(item.content.value());
+            } else {
+                content->Append(std::map<std::string, std::string>());
+            }
+            last_transaction_lt->Append(item.last_transaction_lt);
+            last_transaction_now->Append(item.last_transaction_now);
+            code_hash->Append(td::base64_encode(item.code_hash.as_slice()));
+            data_hash->Append(td::base64_encode(item.data_hash.as_slice()));
+        }
+
+        block.AppendColumn("address", address);
+        block.AppendColumn("init", init);
+        block.AppendColumn("nft_index", nft_index);
+        block.AppendColumn("collection_address", collection_address);
+        block.AppendColumn("owner_address", owner_address);
+        block.AppendColumn("content", content);
+        block.AppendColumn("last_transaction_lt", last_transaction_lt);
+        block.AppendColumn("last_transaction_now", last_transaction_now);
+        block.AppendColumn("code_hash", code_hash);
+        block.AppendColumn("data_hash", data_hash);
+
+        client.Insert("nft_items", block);
+    }
+    {
+        clickhouse::Block block;
+        auto transaction_hash = std::make_shared<ColumnFixedString>(44);
+        auto transaction_lt = std::make_shared<ColumnUInt64>();
+        auto transaction_now = std::make_shared<ColumnUInt32>();
+        auto transaction_aborted = std::make_shared<ColumnUInt8>();
+        auto query_id = std::make_shared<ColumnUInt64>();
+        auto nft_item = std::make_shared<ColumnString>();
+        auto nft_item_index = std::make_shared<ColumnInt128>();
+        auto nft_collection = std::make_shared<ColumnString>();
+        auto old_owner = std::make_shared<ColumnString>();
+        auto new_owner = std::make_shared<ColumnString>();
+        auto response_destination = std::make_shared<ColumnString>();
+        auto custom_payload = std::make_shared<ColumnNullableT<ColumnString>>();
+        auto forward_amount = std::make_shared<ColumnInt128>();
+        auto forward_payload = std::make_shared<ColumnNullableT<ColumnString>>();
+
+        for (const auto& task : insert_tasks_) {
+            for (const auto& transfer : task.parsed_block_->get_events<NFTTransfer>()) {
+                auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
+                auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+
+                auto forward_payload_boc_r = convert::to_bytes(transfer.forward_payload);
+                auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+
+                auto nft_item_address = convert::to_raw_address(transfer.nft_item);
+                Int128 nft_item_index_value{-2};
+                std::string nft_collection_value;
+                {
+                    auto item = items.find(nft_item_address);
+                    if (item != items.end()) {
+                        if (item->second.index.not_null()) {
+                            nft_item_index_value = str2int128(item->second.index->to_dec_string());    
+                        }
+                        nft_collection_value = item->second.collection_address;
+                    }
+                }
+
+                transaction_hash->Append(td::base64_encode(transfer.transaction_hash.as_slice()));
+                transaction_lt->Append(transfer.transaction_lt);
+                transaction_now->Append(transfer.transaction_now);
+                transaction_aborted->Append(transfer.transaction_aborted);
+                query_id->Append(transfer.query_id);
+                nft_item->Append(nft_item_address);
+                nft_item_index->Append(nft_item_index_value);
+                nft_collection->Append(nft_collection_value);
+                // if (transfer.nft_item_index.not_null()) {
+                //     nft_item_index->Append(str2int128(transfer.nft_item_index->to_dec_string()));
+                // } else {
+                //     nft_item_index->Append(Int128(-2));
+                // }
+                // nft_collection->Append(transfer.nft_collection);
+                old_owner->Append(transfer.old_owner);
+                new_owner->Append(transfer.new_owner);
+                response_destination->Append(transfer.response_destination);
+                custom_payload->Append(TO_STD_OPTIONAL(custom_payload_boc));
+                if (transfer.forward_amount.not_null()) {
+                    forward_amount->Append(str2int128(transfer.forward_amount->to_dec_string()));
+                } else {
+                    forward_amount->Append(Int128(-1));
+                }
+                forward_payload->Append(TO_STD_OPTIONAL(forward_payload_boc));
+            }
+        }
+        block.AppendColumn("transaction_hash", transaction_hash);
+        block.AppendColumn("transaction_lt", transaction_lt);
+        block.AppendColumn("transaction_now", transaction_now);
+        block.AppendColumn("transaction_aborted", transaction_aborted);
+        block.AppendColumn("query_id", query_id);
+        block.AppendColumn("nft_item", nft_item);
+        block.AppendColumn("nft_item_index", nft_item_index);
+        block.AppendColumn("nft_collection", nft_collection);
+        block.AppendColumn("old_owner", old_owner);
+        block.AppendColumn("new_owner", new_owner);
+        block.AppendColumn("response_destination", response_destination);
+        block.AppendColumn("custom_payload", custom_payload);
+        block.AppendColumn("forward_amount", forward_amount);
+        block.AppendColumn("forward_payload", forward_payload);
+
+        client.Insert("nft_transfers", block);
+    }
+}
+
+void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
+    std::map<std::string, JettonMasterData> masters;
+    std::map<std::string, JettonWalletData> wallets;
+
+    for (const auto& task : insert_tasks_) {
+        for(const auto& item : task.parsed_block_->get_accounts<JettonMasterData>()) {
+            auto existing = masters.find(item.address);
+            if (existing == masters.end()) {
+                masters[item.address] = item;
+            } else {
+                if (existing->second.last_transaction_lt < item.last_transaction_lt) {
+                    masters[item.address] = item;
+                }
+            }
+        }
+        for(const auto& item : task.parsed_block_->get_accounts<JettonWalletData>()) {
+            auto existing = wallets.find(item.address);
+            if (existing == wallets.end()) {
+                wallets[item.address] = item;
+            } else {
+                if (existing->second.last_transaction_lt < item.last_transaction_lt) {
+                    wallets[item.address] = item;
+                }
+            }
+        }
+    }
+
+    using namespace clickhouse;
+    {
+        clickhouse::Block block;
+        auto address = std::make_shared<ColumnString>();
+        auto total_supply = std::make_shared<ColumnInt128>();
+        auto mintable = std::make_shared<ColumnUInt8>();
+        auto admin_address = std::make_shared<ColumnNullableT<ColumnString>>();
+        auto jetton_content = std::make_shared<ColumnMapT<ColumnString, ColumnString>>(
+            std::make_shared<ColumnString>(),
+            std::make_shared<ColumnString>()
+        );
+        auto jetton_wallet_code_hash = std::make_shared<ColumnFixedString>(44);
+        auto data_hash = std::make_shared<ColumnFixedString>(44);
+        auto code_hash = std::make_shared<ColumnFixedString>(44);
+        auto last_transaction_lt = std::make_shared<ColumnUInt64>();
+        auto last_transaction_now = std::make_shared<ColumnUInt32>();
+
+        for (const auto& [addr, master] : masters) {
+            address->Append(master.address);
+            if (master.total_supply.not_null()) {
+                auto val = str2int128(master.total_supply->to_dec_string());
+                total_supply->Append(val);
+            } else {
+                LOG(ERROR) << "Jetton master " << master.address << " has null in total_supply!";
+                total_supply->Append(Int128());
+            }
+            mintable->Append(master.mintable);
+            admin_address->Append(TO_STD_OPTIONAL(master.admin_address));
+            if (master.jetton_content) {
+                jetton_content->Append(master.jetton_content.value());
+            } else {
+                jetton_content->Append(std::map<std::string, std::string>());
+            }
+            jetton_wallet_code_hash->Append(td::base64_encode(master.jetton_wallet_code_hash.as_slice()));
+            data_hash->Append(td::base64_encode(master.data_hash.as_slice()));
+            code_hash->Append(td::base64_encode(master.code_hash.as_slice()));
+            last_transaction_lt->Append(master.last_transaction_lt);
+            last_transaction_now->Append(master.last_transaction_now);
+        }
+
+        block.AppendColumn("address", address);
+        block.AppendColumn("total_supply", total_supply);
+        block.AppendColumn("mintable", mintable);
+        block.AppendColumn("admin_address", admin_address);
+        block.AppendColumn("jetton_content", jetton_content);
+        block.AppendColumn("data_hash", data_hash);
+        block.AppendColumn("code_hash", code_hash);
+        block.AppendColumn("last_transaction_lt", last_transaction_lt);
+        block.AppendColumn("last_transaction_now", last_transaction_now);
+
+        client.Insert("jetton_masters", block);
+    }
+    {
+        clickhouse::Block block;
+        auto address = std::make_shared<ColumnString>();
+        auto balance = std::make_shared<ColumnInt128>();
+        auto owner = std::make_shared<ColumnString>();
+        auto jetton = std::make_shared<ColumnString>();
+        auto last_transaction_lt = std::make_shared<ColumnUInt64>();
+        auto last_transaction_now = std::make_shared<ColumnUInt32>();
+        auto code_hash = std::make_shared<ColumnFixedString>(44);
+        auto data_hash = std::make_shared<ColumnFixedString>(44);
+
+        for (const auto& [addr, wallet] : wallets) {
+            address->Append(wallet.address);
+            if (wallet.balance.not_null()) {
+                auto val = str2int128(wallet.balance->to_dec_string());
+                balance->Append(val);
+            } else {
+                balance->Append(Int128());
+            }
+            owner->Append(wallet.owner);
+            jetton->Append(wallet.jetton);
+            last_transaction_lt->Append(wallet.last_transaction_lt);
+            last_transaction_now->Append(wallet.last_transaction_now);
+            code_hash->Append(td::base64_encode(wallet.code_hash.as_slice()));
+            data_hash->Append(td::base64_encode(wallet.data_hash.as_slice()));
+        }
+
+        block.AppendColumn("address", address);
+        block.AppendColumn("balance", balance);
+        block.AppendColumn("owner", owner);
+        block.AppendColumn("jetton", jetton);
+        block.AppendColumn("last_transaction_lt", last_transaction_lt);
+        block.AppendColumn("last_transaction_now", last_transaction_now);
+        block.AppendColumn("code_hash", code_hash);
+        block.AppendColumn("data_hash", data_hash);
+
+        client.Insert("jetton_wallets", block);
+    }
+    {
+        clickhouse::Block block;
+        auto transaction_hash = std::make_shared<ColumnFixedString>(44);
+        auto transaction_lt = std::make_shared<ColumnUInt64>();
+        auto transaction_now = std::make_shared<ColumnUInt32>();
+        auto transaction_aborted = std::make_shared<ColumnUInt8>();
+        auto query_id = std::make_shared<ColumnUInt64>();
+        auto amount = std::make_shared<ColumnInt128>();
+        auto source = std::make_shared<ColumnString>();
+        auto destination = std::make_shared<ColumnString>();
+        auto jetton_wallet = std::make_shared<ColumnString>();
+        auto jetton_master = std::make_shared<ColumnString>();
+        auto response_destination = std::make_shared<ColumnString>();
+        auto custom_payload = std::make_shared<ColumnNullableT<ColumnString>>();
+        auto forward_ton_amount = std::make_shared<ColumnInt128>();
+        auto forward_payload = std::make_shared<ColumnNullableT<ColumnString>>();
+
+        for (const auto& task : insert_tasks_) {
+            for (const auto& transfer : task.parsed_block_->get_events<JettonTransfer>()) {
+                auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
+                auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+
+                auto forward_payload_boc_r = convert::to_bytes(transfer.forward_payload);
+                auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+
+                std::string jetton_master_address;
+                {
+                    auto item = wallets.find(transfer.jetton_wallet);
+                    if (item != wallets.end()) {
+                        jetton_master_address = item->second.jetton;
+                    }
+                }
+
+                transaction_hash->Append(td::base64_encode(transfer.transaction_hash.as_slice()));
+                transaction_lt->Append(transfer.transaction_lt);
+                transaction_now->Append(transfer.transaction_now);
+                transaction_aborted->Append(transfer.transaction_aborted);
+                query_id->Append(transfer.query_id);
+                if (transfer.amount.not_null()) {
+                    amount->Append(str2int128(transfer.amount->to_dec_string()));
+                } else {
+                    amount->Append(Int128(-1));
+                }
+                source->Append(transfer.source);
+                destination->Append(transfer.destination);
+                jetton_wallet->Append(transfer.jetton_wallet);
+                jetton_master->Append(jetton_master_address);
+                response_destination->Append(transfer.response_destination);
+                custom_payload->Append(TO_STD_OPTIONAL(custom_payload_boc));
+                if (transfer.forward_ton_amount.not_null()) {
+                    forward_ton_amount->Append(str2int128(transfer.forward_ton_amount->to_dec_string()));
+                } else {
+                    forward_ton_amount->Append(Int128(-1));
+                }
+                forward_payload->Append(TO_STD_OPTIONAL(forward_payload_boc));
+            }
+        }
+        block.AppendColumn("transaction_hash", transaction_hash);
+        block.AppendColumn("transaction_lt", transaction_lt);
+        block.AppendColumn("transaction_now", transaction_now);
+        block.AppendColumn("transaction_aborted", transaction_aborted);
+        block.AppendColumn("query_id", query_id);
+        block.AppendColumn("amount", amount);
+        block.AppendColumn("source", source);
+        block.AppendColumn("destination", destination);
+        block.AppendColumn("jetton_wallet", jetton_wallet);
+        block.AppendColumn("jetton_master", jetton_master);
+        block.AppendColumn("response_destination", response_destination);
+        block.AppendColumn("custom_payload", custom_payload);
+        block.AppendColumn("forward_ton_amount", forward_ton_amount);
+        block.AppendColumn("forward_payload", forward_payload);        
+
+        client.Insert("jetton_transfers", block);
+    }
+    {
+        clickhouse::Block block;
+        auto transaction_hash = std::make_shared<ColumnFixedString>(44);
+        auto transaction_lt = std::make_shared<ColumnUInt64>();
+        auto transaction_now = std::make_shared<ColumnUInt32>();
+        auto transaction_aborted = std::make_shared<ColumnUInt8>();
+        auto query_id = std::make_shared<ColumnUInt64>();
+        auto owner = std::make_shared<ColumnString>();
+        auto jetton_wallet = std::make_shared<ColumnString>();
+        auto jetton_master = std::make_shared<ColumnString>();
+        auto amount = std::make_shared<ColumnInt128>();
+        auto response_destination = std::make_shared<ColumnString>();
+        auto custom_payload = std::make_shared<ColumnNullableT<ColumnString>>();
+        
+        for (const auto& task : insert_tasks_) {
+            for (const auto& burn : task.parsed_block_->get_events<JettonBurn>()) {
+                auto custom_payload_boc_r = convert::to_bytes(burn.custom_payload);
+                auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+
+                std::string jetton_master_address;
+                {
+                    auto item = wallets.find(burn.jetton_wallet);
+                    if (item != wallets.end()) {
+                        jetton_master_address = item->second.jetton;
+                    }
+                }
+
+                transaction_hash->Append(td::base64_encode(burn.transaction_hash.as_slice()));
+                transaction_lt->Append(burn.transaction_lt);
+                transaction_now->Append(burn.transaction_now);
+                transaction_aborted->Append(burn.transaction_aborted);
+                query_id->Append(burn.query_id);
+                owner->Append(burn.owner);
+                jetton_wallet->Append(burn.jetton_wallet);
+                jetton_master->Append(jetton_master_address);
+                if (burn.amount.not_null()) {
+                    amount->Append(str2int128(burn.amount->to_dec_string()));
+                } else {
+                    amount->Append(Int128(-1));
+                }
+                response_destination->Append(burn.response_destination);
+                custom_payload->Append(TO_STD_OPTIONAL(custom_payload_boc));
+            }
+        }
+        block.AppendColumn("transaction_hash", transaction_hash);
+        block.AppendColumn("transaction_lt", transaction_lt);
+        block.AppendColumn("transaction_now", transaction_now);
+        block.AppendColumn("transaction_aborted", transaction_aborted);
+        block.AppendColumn("query_id", query_id);
+        block.AppendColumn("owner", owner);
+        block.AppendColumn("jetton_wallet", jetton_wallet);
+        block.AppendColumn("jetton_master", jetton_master);
+        block.AppendColumn("amount", amount);
+        block.AppendColumn("response_destination", response_destination);
+        block.AppendColumn("custom_payload", custom_payload);
+        
+        client.Insert("jetton_burns", block);
+    }
 }

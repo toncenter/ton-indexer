@@ -14,7 +14,8 @@ private:
   std::string db_root_;
   ScannerMode mode_;
   bool out_of_sync_ = true;
-  ton::BlockSeqno last_known_seqno_;
+  bool is_ready_ = false;
+  ton::BlockSeqno last_known_seqno_{0};
 
   td::actor::ActorOwn<ton::validator::ValidatorManagerInterface> validator_manager_;
   td::actor::ActorOwn<ton::validator::RootDb> db_;

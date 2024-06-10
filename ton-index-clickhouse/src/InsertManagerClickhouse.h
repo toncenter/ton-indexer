@@ -48,17 +48,11 @@ private:
     std::string body;
   };
 
+  void insert_jettons(clickhouse::Client& client);
+  void insert_nfts(clickhouse::Client& client);
   void insert_transactions(clickhouse::Client& client);
   void insert_messages(clickhouse::Client& client);
   void insert_account_states(clickhouse::Client& client);
   void insert_shard_state(clickhouse::Client& client);
   void insert_blocks(clickhouse::Client& client);
-  // void insert_shard_state(clickhouse::Client& client, const std::vector<InsertTaskStruct>& insert_tasks_);
-  // void insert_transactions(clickhouse::Client& client, const std::vector<InsertTaskStruct>& insert_tasks_);
-  // void insert_messsages(clickhouse::Client& client, const std::vector<schema::Message> &messages, const std::vector<MsgBody>& msg_bodies, const std::vector<TxMsg> &tx_msgs);
-  // void insert_messages_contents(clickhouse::Client& client, const std::vector<MsgBody>& msg_bodies);
-  // void insert_messages_impl(clickhouse::Client& client, const std::vector<schema::Message>& messages);
-  // void insert_messages_txs(clickhouse::Client& client, const std::vector<TxMsg>& messages);
-  // void insert_account_states(clickhouse::Client& client, const std::vector<InsertTaskStruct>& insert_tasks_);
-  // void insert_latest_account_states(clickhouse::Client& client, const std::vector<InsertTaskStruct>& insert_tasks_);
 };

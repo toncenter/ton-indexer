@@ -6,9 +6,10 @@
 
 #include "crypto/vm/cp0.h"
 
-#include "InsertManagerClickhouse.h"
+#include "InsertManagerPostgres.h"
 #include "DataParser.h"
 #include "DbScanner.h"
+#include "TraceAssembler.h"
 #include "EventProcessor.h"
 #include "IndexScheduler.h"
 
@@ -21,7 +22,7 @@ int main(int argc, char *argv[]) {
 
   td::actor::ActorOwn<DbScanner> db_scanner_;
   td::actor::ActorOwn<ParseManager> parse_manager_;
-  td::actor::ActorOwn<InsertManagerClickhouse> insert_manager_;
+  td::actor::ActorOwn<InsertManagerPostgres> insert_manager_;
   td::actor::ActorOwn<IndexScheduler> index_scheduler_;
 
   // options
@@ -32,16 +33,17 @@ int main(int argc, char *argv[]) {
   td::uint32 from_seqno = 0;
   td::uint32 to_seqno = 0;
   bool force_index = false;
-  InsertManagerClickhouse::Credential credential;
+  InsertManagerPostgres::Credential credential;
 
   std::uint32_t max_active_tasks = 7;
   std::uint32_t max_insert_actors = 12;
+  std::int32_t max_data_depth = 12;
   
   QueueState max_queue{200000, 200000, 1000000, 1000000};
   QueueState batch_size{2000, 2000, 10000, 10000};
   
   td::OptionParser p;
-  p.set_description("Parse TON DB and insert data into Clickhouse");
+  p.set_description("Parse TON DB and insert data into Postgres");
   p.add_option('\0', "help", "prints_help", [&]() {
     char b[10240];
     td::StringBuilder sb(td::MutableSlice{b, 10000});
@@ -52,10 +54,10 @@ int main(int argc, char *argv[]) {
   p.add_option('D', "db", "Path to TON DB folder", [&](td::Slice fname) { 
     db_root = fname.str();
   });
-  p.add_option('h', "host", "Clickhouse host address",  [&](td::Slice value) { 
+  p.add_option('h', "host", "PostgreSQL host address",  [&](td::Slice value) { 
     credential.host = value.str();
   });
-  p.add_checked_option('p', "port", "Clickhouse port", [&](td::Slice value) {
+  p.add_checked_option('p', "port", "PostgreSQL port", [&](td::Slice value) {
     int port;
     try{
       port = std::stoi(value.str());
@@ -67,19 +69,19 @@ int main(int argc, char *argv[]) {
     credential.port = port;
     return td::Status::OK();
   });
-  p.add_option('u', "user", "Clickhouse username", [&](td::Slice value) { 
+  p.add_option('u', "user", "PostgreSQL username", [&](td::Slice value) { 
     credential.user = value.str();
   });
-  p.add_option('P', "password", "Clickhouse password", [&](td::Slice value) { 
+  p.add_option('P', "password", "PostgreSQL password", [&](td::Slice value) { 
     credential.password = value.str();
   });
-  p.add_option('d', "dbname", "Clickhouse database name", [&](td::Slice value) { 
+  p.add_option('d', "dbname", "PostgreSQL database name", [&](td::Slice value) { 
     credential.dbname = value.str();
   });
-  p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice fname) { 
+  p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice value) { 
     int v;
     try {
-      v = std::stoi(fname.str());
+      v = std::stoi(value.str());
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --from: not a number");
     }
@@ -99,6 +101,17 @@ int main(int argc, char *argv[]) {
   p.add_option('\0', "force", "Ignore existing seqnos and force reindex", [&]() {
     force_index = true;
     LOG(WARNING) << "Force reindexing enabled";
+  });
+
+  p.add_checked_option('\0', "max-data-depth", "Max data cell depth to store in latest account states", [&](td::Slice value) { 
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --max-data-depth: not a number");
+    }
+    max_data_depth = v;
+    return td::Status::OK();
   });
   p.add_checked_option('\0', "max-active-tasks", "Max active reading tasks", [&](td::Slice fname) { 
     int v;
@@ -203,7 +216,7 @@ int main(int argc, char *argv[]) {
     try {
       v = std::stoi(fname.str());
     } catch (...) {
-      return td::Status::Error(ton::ErrorCode::error, "bad value for --stats-freq: not a number");
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --threads: not a number");
     }
     stats_timeout = v;
     return td::Status::OK();
@@ -219,7 +232,7 @@ int main(int argc, char *argv[]) {
   });
 
   td::actor::Scheduler scheduler({threads});
-  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerClickhouse>("insertmanager", credential); });
+  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary); });
 
@@ -227,9 +240,10 @@ int main(int argc, char *argv[]) {
     insert_manager_.get(), parse_manager_.get(), from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher); 
   });
   scheduler.run_in_context([&] { 
-    td::actor::send_closure(insert_manager_, &InsertManagerClickhouse::set_parallel_inserts_actors, max_insert_actors);
-    td::actor::send_closure(insert_manager_, &InsertManagerClickhouse::set_insert_batch_size, batch_size);
-    td::actor::send_closure(insert_manager_, &InsertManagerClickhouse::print_info);
+    td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_parallel_inserts_actors, max_insert_actors);
+    td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_insert_batch_size, batch_size);
+    td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_max_data_depth, max_data_depth);
+    td::actor::send_closure(insert_manager_, &InsertManagerPostgres::print_info);
   });
   scheduler.run_in_context([&] { td::actor::send_closure(index_scheduler_, &IndexScheduler::run); });
   
