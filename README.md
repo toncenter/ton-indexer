@@ -56,6 +56,100 @@ Do the following steps to setup TON Indexer:
   * `TON_WORKER_INSERT_BATCH_SIZE`: max masterchain seqnos per INSERT query. Small value will decrease indexing performance. Great value will increase RAM usage. Default: `512`.
   * `TON_WORKER_INSERT_PARALLEL_ACTORS`: number of parallel INSERT transactions. Increasing this number will increase PostgreSQL server RAM usage. Default: `3`.
 
+## How to use http API
+
+As mentioned before, there is `index-API` coming with indexer. It provides several functions that API user can use to fetch data from postgresql db. Some of them:
+
+* /masterchainInfo
+* /blocks
+* /masterchainBlockShardState
+* /addressBook
+* /masterchainBlockShards
+* /transactions
+* /transactionsByMasterchainBlock
+* /transactionsByMessage
+* /adjacentTransactions
+* /traces
+* /transactionTrace
+* /messages
+* /nft/collections
+* /nft/items
+* /nft/transfers
+* /jetton/masters
+* /jetton/wallets
+* /jetton/transfers
+* /jetton/burns
+* /topAccountByBalance
+
+All of that endpoints are `GET`. 
+
+Example of http API usage:
+
+```json
+root@MyServerWithRunningIndexerAndApi:~# curl --request GET --url 0.0.0.0:8081/masterchainInfo
+{
+  "last": {
+    "workchain": -1,
+    "shard": "8000000000000000",
+    "seqno": 3247951,
+    "root_hash": "ysDp4rUqj17B24VkUKX/kLPmagp7GsySWNI30LlM6BQ=",
+    "file_hash": "13NC8TTUG814CX3a60Oqzg0CDiC2cXCy/7jDvRFD9YI=",
+    "global_id": -239,
+    "version": 0,
+    "after_merge": false,
+    "before_split": false,
+    "after_split": false,
+    "want_merge": true,
+    "want_split": false,
+    "key_block": false,
+    "vert_seqno_incr": false,
+    "flags": 1,
+    ... <- some other data
+    "masterchain_block_ref": {
+      "workchain": -1,
+      "shard": "8000000000000000",
+      "seqno": 3247951
+    },
+    "prev_blocks": [
+      {
+        "workchain": -1,
+        "shard": "8000000000000000",
+        "seqno": 3247950
+      }
+    ]
+  },
+  "first": {
+    "workchain": -1,
+    "shard": "8000000000000000",
+    "seqno": 4,
+    ... <- some other data
+    "tx_count": 11,
+    "masterchain_block_ref": {
+      "workchain": -1,
+      "shard": "8000000000000000",
+      "seqno": 4
+    },
+    "prev_blocks": [
+      {
+        "workchain": -1,
+        "shard": "8000000000000000",
+        "seqno": 3
+      }
+    ]
+  }
+}
+```
+
+Indexer API also contains several proxy methods to ton-http-api service (url must be provided by `TON_INDEXER_TON_HTTP_API_ENDPOINT`):
+
+1. POST `/message` - Send an external message to the TON network.
+2. POST `/runGetMethod` - Execute a smart contract's get method.
+3. POST `/estimateFee` - Estimate the fee for an external message.
+4. GET `/account` - Get information about a smart contract.
+5. GET `/wallet` - Get information about a smart contract wallet.
+
+Mostly that API is very close to [ton center v3 API](https://toncenter.com/api/v3/), but not equal.
+
 # FAQ
 
 ## How to point TON Index worker to existing PostgreSQL instance
