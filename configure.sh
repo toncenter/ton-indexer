@@ -6,7 +6,7 @@ mkdir -p private
 
 # help
 function usage() {
-    echo 'Supported argumets:'
+    echo 'Supported arguments:'
     echo ' -h --help                Show this message'
     echo '    --worker              Do configure TON Index worker'
     exit
