@@ -17,22 +17,24 @@ TON Indexer stack consists of:
 ## How to run
 
 Requirements:
-* Docker and Docker compose (see [instruction](https://docs.docker.com/engine/install/)).
-* Running TON full node (archival for full indexing).
+* Docker and Docker compose v2 (see [instruction](https://docs.docker.com/engine/install/)).
+* Running [TON full node](https://docs.ton.org/participate/run-nodes/full-node) ([archival](https://docs.ton.org/participate/run-nodes/archive-node) for full indexing).
+  * **NOTE:** Archive Node requires capacity of more than 4 TB, SSD OR Provided 32+k IOPS storage. Please, pay attention that node is constantly growing and resource consumption my increase within time.
 * Recommended hardware: 
   * Database and API: 4 CPU, 32 GB RAM, 200GB disk, SSD recommended (more than 1TB required for archival indexing).
   * Worker: 4 CPU, 32 GB RAM, SSD recommended (for archival: 8 CPUs, 64 GB RAM, SSD recommended).
 
 Do the following steps to setup TON Indexer:
-* Clone repository: `git clone --recursive --branch cpp-indexer https://github.com/kdimentionaltree/ton-indexer`.
+* Clone repository: `git clone --recursive --branch master https://github.com/toncenter/ton-indexer.git && cd ./ton-indexer`.
 * Create *.env* file with command `./configure.sh`.
   * Run `./configure.sh --worker` to configure TON Index worker.
 * Adjust parameters in *.env* file (see [list of available parameters](#available-parameters)).
+* Set PostgreSQL password `echo -n "MY_PASSWORD" > private/postgres_password`
 * Build docker images: `docker compose build postgres alembic index-api`.
 * Run stack: `docker compose up -d postgres alembic index-api`.
   * To start worker use command `docker compose up -d index-worker` after creating all services.
 
-**NOTE:** we recommend to setup indexer stack and index worker on separate servers. To install index worker to **Systemd** check this [instruction](https://github.com/kdimentionaltree/ton-index-cpp).
+**NOTE:** we recommend to setup indexer stack and index worker on separate servers. To install index worker to **Systemd** check this [instruction](https://github.com/toncenter/ton-index-worker).
 
 ### Available parameters
 
@@ -66,3 +68,7 @@ Do the following steps to setup TON Indexer:
 ## How to update code
 * Pull new commits: `git pull`.
 * Update submodules: `git submodule update --recursive --init`.
+* Build new image: `docker compose build postgres alembic index-api`.
+  * Build new image of worker: `docker compose build index-worker`
+* Run new version: `docker compose up -d postgres alembic index-api`
+  * Run new version of worker: `docker compose up -d index-worker`
