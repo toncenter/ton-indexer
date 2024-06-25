@@ -229,6 +229,16 @@ class Block:
             "value": self.data
         }
 
+    def calculate_progress(self):
+        total = 0
+        total_emulated = 0
+        for node in self.event_nodes:
+            if node.message.message.destination is not None and node.message.message.source is not None:
+                total += 1
+                if node.message.transaction.emulated:
+                    total_emulated += 1
+        return (1.0 - total_emulated / total) if total != 0 else 0
+
 
 class SingleLevelWrapper(Block):
     def __init__(self):

@@ -7,9 +7,18 @@ class ExcessMessage:
 
 class TonTransferMessage:
     opcode = 0
+    encrypted_opcode = 0x2167da4b
 
     def __init__(self, boc: Slice):
-        boc.load_uint(32)  # opcode
-        self.message = None
+        if boc.remaining_bits == 0:
+            self.encrypted = False
+            self.comment = None
+            return
+        op = boc.load_uint(32)  # opcode
+        if op & 0xFFFFFFFF == TonTransferMessage.encrypted_opcode:
+            self.encrypted = True
+        else:
+            self.encrypted = False
+        self.comment = None
         if boc.remaining_bits >= 8:
-            self.message = boc.load_snake_bytes()
+            self.comment = boc.load_snake_bytes()

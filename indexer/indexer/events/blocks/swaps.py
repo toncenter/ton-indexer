@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from events.blocks.messages import DedustPayout, DedustPayoutFromPool, DedustSwapPeer, DedustSwapExternal, DedustSwap
+from indexer.events.blocks.messages import DedustPayout, DedustPayoutFromPool, DedustSwapPeer, DedustSwapExternal, DedustSwap
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, child_sequence_matcher, ContractMatcher, BlockTypeMatcher, OrMatcher
@@ -33,13 +33,9 @@ async def _get_block_data(other_blocks):
     else:
         out_amt = Amount(target_payment_request.amount1_out)
         out_addr = target_payment_request.token1_out
-
-    out_wallet = await context.session.get().get(JettonWallet, out_addr.to_str(False).upper())
-    in_wallet = await context.session.get().get(JettonWallet, swap_message.token_wallet.to_str(False).upper())
-    # out_wallet = await context.session.get().query(JettonWallet).filter(
-    #     JettonWallet.address == out_addr.to_str(False).upper()).first()
-    # in_wallet = await context.session.get().query(JettonWallet).filter(
-    #     JettonWallet.address == swap_call_block.get_message().message.source).first()
+    out_wallet = await context.extra_data_repository.get().get_jetton_wallet(out_addr.to_str(False).upper())
+    in_wallet = await context.extra_data_repository.get().get_jetton_wallet(
+        swap_message.token_wallet.to_str(False).upper())
     out_jetton = AccountId(out_wallet.jetton) if out_wallet is not None else None
     in_jetton = AccountId(in_wallet.jetton) if in_wallet is not None else None
 

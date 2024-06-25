@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+
 from pytoniq_core import Slice
 
+from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.core import Block, AccountValueFlow
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.tree_utils import EventNode
@@ -24,16 +27,31 @@ def _fill_flow_from_node(flow: AccountValueFlow, node: EventNode):
 
 class TonTransferBlock(Block):
     value: int
+    comment: str | None
+    encrypted: bool
 
     def __init__(self, node: EventNode):
+        msg = TonTransferMessage(Slice.one_from_boc(node.message.message.message_content.body))
+        self.encrypted = msg.encrypted
+        if msg.comment is not None:
+            if self.encrypted:
+                self.comment = str(base64.b64encode(msg.comment), encoding='utf-8')
+            else:
+                self.comment = str(msg.comment, encoding='utf-8')
+        else:
+            self.comment = None
+
         super().__init__('ton_transfer', [node], {
             'source': AccountId(node.message.message.source) if node.message.message.source is not None else None,
             'destination': AccountId(
                 node.message.message.destination) if node.message.message.destination is not None else None,
             'value': Amount(node.message.message.value),
+            'comment': self.comment,
+            'encrypted': self.encrypted,
         })
         self.failed = node.failed
         self.value = node.message.message.value
+
         _fill_flow_from_node(self.value_flow, node)
 
 
@@ -49,6 +67,7 @@ class CallContractBlock(Block):
     def __init__(self, node: EventNode):
         super().__init__('call_contract', [node], {
             'opcode': node.get_opcode(),
+            'opcode_str': hex(node.get_opcode()),
             'source': AccountId(node.message.message.source) if node.message.message.source is not None else None,
             'destination': AccountId(
                 node.message.message.destination) if node.message.message.destination is not None else None,

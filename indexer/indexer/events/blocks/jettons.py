@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 from events.blocks.messages import JettonNotify, JettonInternalTransfer, ExcessMessage, JettonBurnNotification
-from indexer.events.blocks.utils.block_utils import find_call_contracts
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher, child_sequence_matcher
-
 from indexer.events.blocks.core import Block
-from indexer.events.blocks.utils import AccountId, Asset, Amount
 from indexer.events.blocks.messages import JettonTransfer, JettonBurn
-from indexer.core.database import JettonWallet
+from indexer.events.blocks.utils import AccountId, Asset, Amount
 
 
 class JettonTransferBlock(Block):
@@ -55,9 +52,8 @@ class JettonTransferBlockMatcher(BlockMatcher):
         }
         if len(block.next_blocks) > 0:
             data['receiver_wallet'] = AccountId(block.next_blocks[0].event_nodes[0].message.message.destination)
-
-        sender: JettonWallet = await context.session.get().get(JettonWallet,
-                                                               block.event_nodes[0].message.message.destination)
+        sender = await context.extra_data_repository.get().get_jetton_wallet(
+            block.event_nodes[0].message.message.destination)
         if sender is not None:
             data['sender'] = AccountId(sender.owner) if sender is not None else None
             data['asset'] = Asset(is_ton=False, jetton_address=sender.jetton if sender is not None else None)
@@ -74,7 +70,7 @@ class JettonTransferBlockMatcher(BlockMatcher):
 
 async def _get_jetton_burn_data(new_block: Block, block: Block | CallContractBlock) -> dict:
     jetton_burn_message = JettonBurn(block.get_body())
-    wallet: JettonWallet = await context.session.get().get(JettonWallet, block.get_message().message.destination)
+    wallet = await context.extra_data_repository.get().get_jetton_wallet(block.get_message().message.destination)
     new_block.value_flow.add_jetton(AccountId(wallet.owner), AccountId(wallet.jetton), -jetton_burn_message.amount)
     data = {
         'owner': wallet.owner if wallet is not None else None,

@@ -1,16 +1,17 @@
-from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from indexer.events import context
+from events.blocks.dns import ChangeDnsRecordMatcher
+from events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
+from events.blocks.megaton import WtonMintBlockMatcher
+from events.blocks.messages import TonTransferMessage
+from indexer.core.database import Event, engine
 from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher
 from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher
 from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher
 from indexer.events.blocks.utils import to_tree, EventNode
-from indexer.core.database import Event, engine
-from indexer.events.integration.repository import MongoRepository
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
@@ -20,7 +21,7 @@ async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession
 
 def init_block(node: EventNode) -> Block:
     block = None
-    if node.get_opcode() == 0 or node.get_opcode() is None:
+    if node.get_opcode() == 0 or node.get_opcode() is None or node.get_opcode() == TonTransferMessage.encrypted_opcode:
         block = TonTransferBlock(node)
     else:
         block = CallContractBlock(node)
@@ -48,42 +49,25 @@ def is_event_finished(event: Event):
 
 
 matchers = [
+    WtonMintBlockMatcher(),
     JettonTransferBlockMatcher(),
     JettonBurnBlockMatcher(),
     DedustSwapBlockMatcher(),
     StonfiSwapBlockMatcher(),
     NftTransferBlockMatcher(),
     TelegramNftPurchaseBlockMatcher(),
+    ChangeDnsRecordMatcher(),
+    ElectionDepositStakeBlockMatcher(),
+    ElectionRecoverStakeBlockMatcher()
 ]
 
 
-async def process_event_async(event: Event, repository: MongoRepository):
-    finished = is_event_finished(event)
-    async with async_session() as session:
-        context.session.set(session)
-        if not finished or repository.has_event(event.id):
-            stmt = update(Event).where(Event.id == event.id).values(processed=True)
-            await session.execute(stmt)
-            await session.commit()
-            return
-        print(f"Processing event {event.id}")
-        try:
-            tree = to_tree(event.transactions, event)
-        except Exception as e:
-            print(f"Failed to process event {event.id}")
-            print(e)
-            stmt = update(Event).where(Event.id == event.id).values(processed=True)
-            await session.execute(stmt)
-            await session.commit()
-            return
-        root = Block('root', [])
-        root.connect(init_block(tree.children[0]))
+async def process_event_async(event: Event) -> Block:
+    tree = to_tree(event.transactions, event)
+    root = Block('root', [])
+    root.connect(init_block(tree.children[0]))
 
-        for m in matchers:
-            for b in root.bfs_iter():
-                await m.try_build(b)
-        stmt = update(Event).where(Event.id == event.id).values(processed=True)
-        await session.execute(stmt)
-        await session.commit()
-    repository.save_actions(event, root)
-    print(f"Finished processing event {event.id}")
+    for m in matchers:
+        for b in root.bfs_iter():
+            await m.try_build(b)
+    return root

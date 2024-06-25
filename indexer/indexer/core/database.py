@@ -238,7 +238,7 @@ class Transaction(Base):
                                   primaryjoin="Transaction.event_id == Event.id",
                                   viewonly=True)
     # event: Event = relationship("EventTransaction", back_populates="transactions")
-
+    emulated: bool = False
 
 class AccountState(Base):
     __tablename__ = 'account_states'

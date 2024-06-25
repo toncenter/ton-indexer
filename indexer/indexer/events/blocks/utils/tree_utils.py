@@ -5,15 +5,18 @@ from typing import Callable
 
 from indexer.core.database import TransactionMessage, Transaction, Event
 
+
 class EventNode:
     def __init__(self, message: TransactionMessage, children: list['EventNode']):
         self.message = message
         self.parent = None
         self.children = children
         self.handled = False
+        self.emulated = message.transaction.emulated
         self.failed = message.transaction.description["aborted"]
         if message.message.message_content is None:
-            raise Exception("Message content is None for " + message.message_hash + " - tx: " + message.transaction_hash)
+            raise Exception(
+                "Message content is None for " + message.message_hash + " - tx: " + message.transaction_hash)
 
     def get_opcode(self):
         if self.message.message.opcode is not None:
@@ -47,7 +50,7 @@ class EventNode:
     def find_children(self,
                       node_filter: Callable[['EventNode', int], bool] = None,
                       max_depth=-1,
-                      stop_on_filter_unmatch: bool=False) -> Iterable['EventNode']:
+                      stop_on_filter_unmatch: bool = False) -> Iterable['EventNode']:
         queue = list([(c, 0) for c in self.children])
         while len(queue) > 0:
             node, depth = queue.pop(0)
@@ -100,6 +103,8 @@ def to_tree(txs: list[Transaction], event: Event):
 
     node_map = {}
     root = None  # Initialize root node
+    if len(conn_map.keys()) == 0:
+        root = create_node(txs[0].hash)
 
     for left_tx_hash in conn_map:
         if left_tx_hash not in node_map:
@@ -129,6 +134,7 @@ def to_tree(txs: list[Transaction], event: Event):
     while root.parent is not None:
         root = root.parent
     return root
+
 
 def not_handled_nodes() -> Callable[[EventNode, int], bool]:
     return lambda node, depth: not node.handled
