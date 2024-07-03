@@ -225,23 +225,12 @@ void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, td::Unit result) {
     }
 }
 
-#define OUT_OF_SYNC 1000
 void IndexScheduler::schedule_next_seqnos() {
     LOG(DEBUG) << "Scheduling next seqnos. Current tasks: " << processing_seqnos_.size();
     while (!queued_seqnos_.empty() && (processing_seqnos_.size() < max_active_tasks_)) {
         std::uint32_t seqno = queued_seqnos_.front();
         queued_seqnos_.pop();
         schedule_seqno(seqno);
-    }
-    if(!out_of_sync_ && last_known_seqno_ - last_indexed_seqno_ > OUT_OF_SYNC) {
-        LOG(INFO) << "Syncronization lost!";
-        out_of_sync_ = true;
-        td::actor::send_closure(db_scanner_, &DbScanner::set_out_of_sync, out_of_sync_);
-    }
-    if(out_of_sync_ && last_known_seqno_ - last_indexed_seqno_ < OUT_OF_SYNC) {
-        LOG(INFO) << "Syncronization complete!";
-        out_of_sync_ = false;
-        td::actor::send_closure(db_scanner_, &DbScanner::set_out_of_sync, out_of_sync_);
     }
 
     if(to_seqno_ > 0 && last_known_seqno_ > to_seqno_ && queued_seqnos_.empty()) {

@@ -207,9 +207,4 @@ void IndexScheduler::schedule_next_seqnos() {
         queued_seqnos_.pop();
         schedule_seqno(seqno);
     }
-    if(out_of_sync_ && queued_seqnos_.size() < 100) {
-        LOG(INFO) << "Syncronization complete!";
-        out_of_sync_ = false;
-        td::actor::send_closure(db_scanner_, &DbScanner::set_out_of_sync, false);
-    }
 }

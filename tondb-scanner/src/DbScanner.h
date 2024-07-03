@@ -13,7 +13,6 @@ class DbScanner: public td::actor::Actor {
 private:
   std::string db_root_;
   ScannerMode mode_;
-  bool out_of_sync_ = true;
   bool is_ready_ = false;
   ton::BlockSeqno last_known_seqno_{0};
 
@@ -32,9 +31,6 @@ public:
   void get_last_mc_seqno(td::Promise<ton::BlockSeqno> promise);
   void get_oldest_mc_seqno(td::Promise<ton::BlockSeqno> promise);
   void get_mc_block_handle(ton::BlockSeqno seqno, td::Promise<ton::validator::ConstBlockHandle> promise);
-  void set_out_of_sync(bool value) {
-    out_of_sync_ = value;
-  }
 private:
   void set_last_mc_seqno(ton::BlockSeqno mc_seqno);
   void catch_up_with_primary();

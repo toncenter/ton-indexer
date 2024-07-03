@@ -23,7 +23,6 @@ private:
   std::uint32_t max_active_tasks_{32};
   std::int32_t last_known_seqno_{0};
   std::int32_t last_indexed_seqno_{0};
-  bool out_of_sync_{true};
 
   std::double_t avg_tps_{0};
   std::int64_t last_existing_seqno_count_{0};

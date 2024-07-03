@@ -29,7 +29,6 @@ private:
   std::int32_t from_seqno_{0};
   std::int32_t to_seqno_{0};
   bool force_index_{false};
-  bool out_of_sync_{true};
 
   std::double_t avg_tps_{0};
   std::int64_t last_existing_seqno_count_{0};
