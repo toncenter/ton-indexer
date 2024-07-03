@@ -40,6 +40,30 @@ td::Result<std::string> convert::to_raw_address(td::Ref<vm::CellSlice> cs) {
   }
 }
 
+td::Result<block::StdAddress> convert::to_std_address(td::Ref<vm::CellSlice> cs) {
+  auto tag = block::gen::MsgAddress().get_tag(*cs);
+  switch (tag) {
+    case block::gen::MsgAddress::cons1:
+      switch (block::gen::MsgAddressInt().get_tag(*cs)) {
+        case block::gen::MsgAddressInt::addr_var:
+          return td::Status::Error("addr_var is not std address");
+        case block::gen::MsgAddressInt::addr_std: {
+          block::gen::MsgAddressInt::Record_addr_std addr;
+          if (!tlb::csr_unpack(cs, addr)) {
+            return td::Status::Error("Failed to unpack addr_std");
+          }
+          return block::StdAddress(addr.workchain_id, addr.address);
+        }
+        default:
+          return td::Status::Error("Failed to unpack MsgAddressInt");
+      }
+    case block::gen::MsgAddress::cons2:
+      return td::Status::Error("MsgAddressExt is not std address");
+    default:
+      return td::Status::Error("Failed to unpack MsgAddress");
+  }
+}
+
 std::string convert::to_raw_address(block::StdAddress address) {
   return std::to_string(address.workchain) + ":" + address.addr.to_hex();
 }

@@ -12,6 +12,8 @@ add_library(tondb-scanner STATIC
     src/parse_token_data.cpp
     src/convert-utils.cpp
     src/tokens.cpp
+    src/smc-interfaces/Tokens.cpp
+    src/smc-interfaces/NftSale.cpp
 )
 
 target_include_directories(tondb-scanner 

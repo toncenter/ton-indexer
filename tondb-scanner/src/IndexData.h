@@ -399,7 +399,6 @@ struct BlockDataState {
   td::Ref<vm::Cell> block_state;
 };
 
-// using MasterchainBlockDataState = std::vector<BlockDataState>;
 struct MasterchainBlockDataState {
   std::vector<BlockDataState> shard_blocks_;  // shard state like /shards method
   std::vector<BlockDataState> shard_blocks_diff_;  // blocks corresponding to mc_block.
