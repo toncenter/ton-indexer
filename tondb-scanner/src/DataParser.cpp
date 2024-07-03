@@ -200,7 +200,13 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
       
       // msg.source = null, because it is external
       TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest))
-      TRY_RESULT_ASSIGN(msg.import_fee, convert::to_balance(msg_info.import_fee));
+      auto import_fee = convert::to_balance(msg_info.import_fee);
+      if (import_fee.is_error()) {
+        LOG(ERROR) << "Failed to convert import fee to int64";
+      } else {
+        msg.import_fee = import_fee.move_as_ok();
+      }
+
       return msg;
     }
     case block::gen::CommonMsgInfo::ext_out_msg_info: {
