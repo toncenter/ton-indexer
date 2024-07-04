@@ -6,6 +6,7 @@ from functools import wraps
 from fastapi import FastAPI, APIRouter, Depends, Query, Path, Body, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
+from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import DBAPIError
@@ -61,10 +62,14 @@ def catch_cancelled(func):
             raise ee
     return wrapper
 
-
-@router.get("/masterchainInfo", response_model=schemas.MasterchainInfo, response_model_exclude_none=True)
+@router.get("/masterchainInfo", response_model=schemas.MasterchainInfo,
+            responses=schemas.ResponseNotFoundMasterchainInfo.get_response_json(), tags=['blocks'])
 @catch_cancelled
 async def get_masterchain_info(db: AsyncSession = Depends(get_db)):
+    """
+    Returns first and last blocks information, can be used as a start point for blockchain search process\n
+    No authorization required
+    """
     last = await db.run_sync(crud.get_blocks,
                              workchain=MASTERCHAIN_INDEX,
                              shard=MASTERCHAIN_SHARD,
@@ -92,7 +97,7 @@ def validate_block_idx(workchain, shard, seqno):
     return True
 
 
-@router.get("/blocks", response_model=schemas.BlockList)
+@router.get("/blocks", response_model=schemas.BlockList, tags=['blocks'])
 @catch_cancelled
 async def get_blocks(
     workchain: Optional[int] = Query(None, description='Block workchain.'),
@@ -126,10 +131,13 @@ async def get_blocks(
     return schemas.BlockList.from_orm(res)
 
 
-@router.get("/masterchainBlockShardState", response_model=schemas.BlockList)
+@router.get("/masterchainBlockShardState", response_model=schemas.BlockList, tags=['blocks'])
 @catch_cancelled
 async def get_shards_by_masterchain_block(seqno: int = Query(..., description='Masterchain block seqno'),
                                           db: AsyncSession = Depends(get_db)):
+    """
+    Returns one masterchain block (with seqno equal to argument) and some number of workchain blocks (with masterchain_block_ref.seqno equal to argument)
+    """
     result = await db.run_sync(crud.get_shard_state, mc_seqno=seqno)
     if len(result) == 0:
         raise exceptions.BlockNotFound(workchain=MASTERCHAIN_INDEX,
@@ -155,13 +163,13 @@ async def get_shards_by_masterchain_block(seqno: int = Query(..., description='M
 #     return schemas.LatestAccountState.from_orm(res)
 
 
-@router.get("/addressBook", response_model=Dict[str, schemas.AddressBookEntry])
+@router.get("/addressBook", response_model=Dict[str, schemas.AddressBookEntry], tags=['blocks'])
 @catch_cancelled
 async def get_address_book(
     address: List[str] = Query(..., description="List of addresses in any form. Max: 1024"),
     db: AsyncSession = Depends(get_db)):
     """
-    Returns an address book for given address list.
+    Generates a user-friendly address book for a given contract address list.
     """
     if len(address) > 1024:
         raise ValueError(f'Maximum number of addresses is 1024. Got {len(address)}')
@@ -171,20 +179,18 @@ async def get_address_book(
     return {addr: schemas.AddressBookEntry(user_friendly=schemas.address_type_friendly(addr_raw, item))
             for addr, addr_raw, item in zip(address, address_list_raw, result)}
 
-@router.get("/masterchainBlockShards", response_model=schemas.BlockList)
+@router.get("/masterchainBlockShards", response_model=schemas.BlockList, tags=['blocks'])
 @catch_cancelled
 async def get_masterchain_block_shards(
     seqno: int = Query(..., description='Masterchain block seqno'),
-    include_mc_block: bool = Query(False, description='Include masterchain block'),
     db: AsyncSession = Depends(get_db)):
     """
-    Returns all worchain blocks, that appeared after previous masterchain block.
+    Returns all workchain blocks, that appeared after previous masterchain block.
 
     **Note:** this method is not equivalent with [/api/v2/shards](https://toncenter.com/api/v2/#/blocks/get_shards_shards_get).
     """
     result = await db.run_sync(crud.get_masterchain_block_shards,
-                               seqno=seqno,
-                               include_mc_block=include_mc_block)
+                               seqno=seqno)
     return schemas.BlockList.from_orm(result)
 
 

@@ -74,15 +74,14 @@ def get_blocks_by_unix_time(session: Session,
 
 
 def get_masterchain_block_shards(session: Session,
-                                 seqno: int,
-                                 include_mc_block: bool=False):
+                                 seqno: int):
     mc_block_fltr = and_(Block.workchain == MASTERCHAIN_INDEX, 
                          Block.shard == MASTERCHAIN_SHARD, 
                          Block.seqno == seqno)
     shards_fltr = and_(Block.mc_block_workchain == MASTERCHAIN_INDEX, 
                        Block.mc_block_shard == MASTERCHAIN_SHARD,
                        Block.mc_block_seqno == seqno)
-    fltr = or_(mc_block_fltr, shards_fltr) if include_mc_block else shards_fltr
+    fltr = or_(mc_block_fltr, shards_fltr)
     query = session.query(Block).filter(fltr)
     query = query.order_by(Block.workchain, Block.shard, Block.seqno)
     return query.all()

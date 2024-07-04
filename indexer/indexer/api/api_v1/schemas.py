@@ -56,6 +56,13 @@ def shard_type(value):
     return int_to_hex(value, length=64, signed=True).upper() if value else None
 
 
+class ResponseNotFoundMasterchainInfo(BaseModel):
+    error: str = Field('Block not found in DB: workchain: -1, shard: -9223372036854775808, seqno: latest')
+
+    def get_response_json():
+        return {404: {"model": ResponseNotFoundMasterchainInfo, "description": 'Not Found'}}
+
+
 class BlockReference(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
 
