@@ -63,6 +63,13 @@ class ResponseNotFoundMasterchainInfo(BaseModel):
         return {404: {"model": ResponseNotFoundMasterchainInfo, "description": 'Not Found'}}
 
 
+class ResponseNotFoundMasterchainBlockShardState(BaseModel):
+    error: str = Field('Block not found in DB: workchain: -1, shard: -9223372036854775808, seqno: latest')
+
+    def get_response_json():
+        return {404: {"model": ResponseNotFoundMasterchainInfo, "description": 'Not Found'}}
+
+
 class BlockReference(BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True)
 

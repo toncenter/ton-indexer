@@ -68,7 +68,6 @@ def catch_cancelled(func):
 async def get_masterchain_info(db: AsyncSession = Depends(get_db)):
     """
     Returns first and last blocks information, can be used as a start point for blockchain search process\n
-    No authorization required
     """
     last = await db.run_sync(crud.get_blocks,
                              workchain=MASTERCHAIN_INDEX,
@@ -102,7 +101,7 @@ def validate_block_idx(workchain, shard, seqno):
 async def get_blocks(
     workchain: Optional[int] = Query(None, description='Block workchain.'),
     shard: Optional[str] = Query(None, description='Block shard id. Must be sent with *workchain*. Example: `8000000000000000`'),
-    seqno: Optional[int] = Query(None, description='Block block seqno. Must be sent with *workchain* and *shard*.'),
+    seqno: Optional[int] = Query(None, description='Block seqno. Must be sent with *workchain* and *shard*.'),
     start_utime: Optional[int] = Query(None, description='Query blocks with generation UTC timestamp **after** given timestamp.'),
     end_utime: Optional[int] = Query(None, description='Query blocks with generation UTC timestamp **before** given timestamp'),
     start_lt: Optional[int] = Query(None, description='Query blocks with `lt >= start_lt`'),
@@ -110,8 +109,7 @@ async def get_blocks(
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
     sort: str = Query('desc', description='Sort results by UTC timestamp.', enum=['asc', 'desc']),
-    db: AsyncSession = Depends(get_db)
-):
+    db: AsyncSession = Depends(get_db)):
     """
     Returns blocks by specified filters.
     """
@@ -131,12 +129,15 @@ async def get_blocks(
     return schemas.BlockList.from_orm(res)
 
 
-@router.get("/masterchainBlockShardState", response_model=schemas.BlockList, tags=['blocks'])
+@router.get("/masterchainBlockShardState",
+    response_model=schemas.BlockList,
+    responses=schemas.ResponseNotFoundMasterchainBlockShardState.get_response_json(),
+    tags=['blocks'])
 @catch_cancelled
 async def get_shards_by_masterchain_block(seqno: int = Query(..., description='Masterchain block seqno'),
-                                          db: AsyncSession = Depends(get_db)):
+    db: AsyncSession = Depends(get_db)):
     """
-    Returns one masterchain block (with seqno equal to argument) and some number of workchain blocks (with masterchain_block_ref.seqno equal to argument)
+    Returns one masterchain block (with seqno equal to argument) and some number of shard blocks (with masterchain_block_ref.seqno equal to argument)
     """
     result = await db.run_sync(crud.get_shard_state, mc_seqno=seqno)
     if len(result) == 0:
@@ -166,10 +167,10 @@ async def get_shards_by_masterchain_block(seqno: int = Query(..., description='M
 @router.get("/addressBook", response_model=Dict[str, schemas.AddressBookEntry], tags=['blocks'])
 @catch_cancelled
 async def get_address_book(
-    address: List[str] = Query(..., description="List of addresses in any form. Max: 1024"),
+    address: List[str] = Query(..., description="List of addresses in any form. Max list size: 1024"),
     db: AsyncSession = Depends(get_db)):
     """
-    Generates a user-friendly address book for a given contract address list.
+    Generates and returns a user-friendly address book for a given contract address list.
     """
     if len(address) > 1024:
         raise ValueError(f'Maximum number of addresses is 1024. Got {len(address)}')
@@ -194,12 +195,12 @@ async def get_masterchain_block_shards(
     return schemas.BlockList.from_orm(result)
 
 
-@router.get("/transactions", response_model=schemas.TransactionList)
+@router.get("/transactions", response_model=schemas.TransactionList, tags=['transactions'])
 @catch_cancelled
 async def get_transactions(
     workchain: Optional[int] = Query(None, description='Block workchain.'),
     shard: Optional[str] = Query(None, description='Block shard id. Must be sent with *workchain*. Example: `8000000000000000`'),
-    seqno: Optional[int] = Query(None, description='Block block seqno. Must be sent with *workchain* and *shard*. Must be sent in hex form.'),
+    seqno: Optional[int] = Query(None, description='Block seqno. Must be sent with *workchain* and *shard*. Must be sent in hex form.'),
     # account: Optional[str] = Query(None, description='The account address to get transactions. Can be sent in hex, base64 or base64url form.'),
     account: List[str] = Query(None, description='List of account addresses to get transactions. Can be sent in hex, base64 or base64url form.'),
     exclude_account: List[str] = Query(None, description='Exclude transactions on specified account addresses'),
@@ -214,7 +215,7 @@ async def get_transactions(
     sort: str = Query('desc', description='Sort transactions by lt.', enum=['asc', 'desc']),
     db: AsyncSession = Depends(get_db)):
     """
-    Get transactions by specified filters.
+    Returns transactions by specified filters.
     """
 
     if (account is not None) + (exclude_account is not None) > 1:
@@ -254,7 +255,7 @@ async def get_transactions(
     return schemas.TransactionList.from_orm(res)
 
 
-@router.get("/transactionsByMasterchainBlock", response_model=schemas.TransactionList)
+@router.get("/transactionsByMasterchainBlock", response_model=schemas.TransactionList, tags=['transactions'])
 @catch_cancelled
 async def get_transactions_by_masterchain_block(
     seqno: int = Query(..., description='Masterchain block seqno'),
@@ -282,7 +283,7 @@ async def get_transactions_by_masterchain_block(
     return schemas.TransactionList.from_orm(txs)
 
 
-@router.get('/transactionsByMessage', response_model=schemas.TransactionList)
+@router.get('/transactionsByMessage', response_model=schemas.TransactionList, tags=['transactions'])
 @catch_cancelled
 async def get_transactions_by_message(
     direction: Optional[str] = Query(..., description='Message direction.', enum=['in', 'out']),
@@ -291,7 +292,7 @@ async def get_transactions_by_message(
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
     db: AsyncSession = Depends(get_db)):
     """
-    Get transactions whose inbound/outbound message has the specified hash. This endpoint returns list of Transaction objects
+    Returns transactions whose inbound/outbound message has the specified hash. This endpoint returns list of Transaction objects
     since collisions of message hashes can occur.
     """
     msg_hash = hash_to_b64(msg_hash)
@@ -305,7 +306,7 @@ async def get_transactions_by_message(
     return schemas.TransactionList.from_orm(db_transactions)
 
 
-@router.get('/adjacentTransactions', response_model=schemas.TransactionList)
+@router.get('/adjacentTransactions', response_model=schemas.TransactionList, tags=['transactions'])
 @catch_cancelled
 async def get_adjacent_transactions(
     hash: str = Query(..., description='Transaction hash. Acceptable in hex, base64 and base64url forms.'),
@@ -315,7 +316,7 @@ async def get_adjacent_transactions(
     sort: str = Query('desc', description='Sort transactions by lt.', enum=['none', 'asc', 'desc']),
     db: AsyncSession = Depends(get_db)):
     """
-    Get parent and/or children for specified transaction.
+    Returns parent and/or children for specified transaction.
     """
     hash = hash_to_b64(hash)
     if direction == 'both':
@@ -367,7 +368,7 @@ async def get_transaction_trace(
     return schemas.TransactionTrace.from_orm(res)
 
 
-@router.get('/messages', response_model=schemas.MessageList)
+@router.get('/messages', response_model=schemas.MessageList, tags=['transactions'])
 @catch_cancelled
 async def get_messages(
     hash: str = Query(None, description='Message hash. Acceptable in hex, base64 and base64url forms.'),    
@@ -378,7 +379,7 @@ async def get_messages(
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
     db: AsyncSession = Depends(get_db)):
     """
-    Get messages by specified filters.
+    Returns messages by specified filters.
     """
     hash = hash_to_b64(hash)
     source = address_to_raw(source)
@@ -394,16 +395,16 @@ async def get_messages(
     return schemas.MessageList.from_orm(res)
 
 
-@router.get('/nft/collections', response_model=schemas.NFTCollectionList)
+@router.get('/nft/collections', response_model=schemas.NFTCollectionList, tags=['nft'])
 @catch_cancelled
 async def get_nft_collections(
-    collection_address: Optional[str] = Query(None, description='NFT collection address. Must be sent in hex, base64 and base64url forms.'),
-    owner_address: Optional[str] = Query(None, description='Address of NFT collection owner. Must be sent in hex, base64 and base64url forms.'),
+    collection_address: Optional[str] = Query(None, description='NFT collection address. Must be sent in hex, base64 or base64url forms.'),
+    owner_address: Optional[str] = Query(None, description='Address of NFT collection owner. Must be sent in hex, base64 or base64url forms.'),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
     db: AsyncSession = Depends(get_db)):
     """
-    Get NFT collections.
+    Returns NFT collections.
     """
     collection_address = address_to_raw(collection_address)
     owner_address = address_to_raw(owner_address)
@@ -415,18 +416,18 @@ async def get_nft_collections(
     return schemas.NFTCollectionList.from_orm(res)
 
 
-@router.get('/nft/items', response_model=schemas.NFTItemList)
+@router.get('/nft/items', response_model=schemas.NFTItemList, tags=['nft'])
 @catch_cancelled
 async def get_nft_items(
-    address: Optional[str] = Query(None, description='NFT address. Must be sent in hex, base64 and base64url forms.'),
-    owner_address: Optional[str] = Query(None, description='Address of NFT owner. Must be sent in hex, base64 and base64url forms.'),
-    collection_address: Optional[str] = Query(None, description='NFT collection address. Must be sent in hex, base64 and base64url forms.'),
+    address: Optional[str] = Query(None, description='NFT address. Must be sent in hex, base64 or base64url forms.'),
+    owner_address: Optional[str] = Query(None, description='Address of NFT owner. Must be sent in hex, base64 or base64url forms.'),
+    collection_address: Optional[str] = Query(None, description='NFT collection address. Must be sent in hex, base64 or base64url forms.'),
     index: Optional[str] = Query(None, description='NFT Item index. Use it together with collection address.'),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
     db: AsyncSession = Depends(get_db)):
     """
-    Get NFT items.
+    Returns NFT items.
     """
     if index is not None and collection_address is None:
         raise RuntimeError('Use index together with collection_address')
@@ -443,12 +444,12 @@ async def get_nft_items(
     return schemas.NFTItemList.from_orm(res)
 
 
-@router.get('/nft/transfers', response_model=schemas.NFTTransferList)
+@router.get('/nft/transfers', response_model=schemas.NFTTransferList, tags=['nft'])
 @catch_cancelled
 async def get_nft_transfers(
-    address: Optional[str] = Query(None, description='Address of NFT owner. Must be sent in hex, base64 and base64url forms.'),
-    item_address: Optional[str] = Query(None, description='NFT item address. Must be sent in hex, base64 and base64url forms.'),
-    collection_address: Optional[str] = Query(None, description='NFT collection address. Must be sent in hex, base64 and base64url forms.'),
+    address: Optional[str] = Query(None, description='Address of NFT owner. Must be sent in hex, base64 or base64url forms.'),
+    item_address: Optional[str] = Query(None, description='NFT item address. Must be sent in hex, base64 or base64url forms.'),
+    collection_address: Optional[str] = Query(None, description='NFT collection address. Must be sent in hex, base64 or base64url forms.'),
     direction: Optional[str] = Query('both', description='Direction transactions by lt.', enum=['in', 'out', 'both']),
     start_utime: Optional[int] = Query(None, description='Query transactions with generation UTC timestamp **after** given timestamp.'),
     end_utime: Optional[int] = Query(None, description='Query transactions with generation UTC timestamp **before** given timestamp'),
@@ -459,7 +460,7 @@ async def get_nft_transfers(
     sort: str = Query('desc', description='Sort transactions by lt.', enum=['asc', 'desc']),
     db: AsyncSession = Depends(get_db)):
     """
-    Get NFT transfers by specified filters.
+    Returns NFT transfers by specified filters.
     """
     address = address_to_raw(address)
     item_address = address_to_raw(item_address)
@@ -489,16 +490,16 @@ async def get_nft_transfers(
     return schemas.NFTTransferList.from_orm(result)
 
 
-@router.get('/jetton/masters', response_model=schemas.JettonMasterList)
+@router.get('/jetton/masters', response_model=schemas.JettonMasterList, tags=['jettons'])
 @catch_cancelled
 async def get_jetton_masters(
-    address: str = Query(None, description="Jetton Master address. Must be sent in hex, base64 and base64url forms."),
-    admin_address: str = Query(None, description="Address of Jetton Master's admin. Must be sent in hex, base64 and base64url forms."),
+    address: str = Query(None, description="Jetton Master address. Must be sent in hex, base64 or base64url forms."),
+    admin_address: str = Query(None, description="Address of Jetton Master's admin. Must be sent in hex, base64 or base64url forms."),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
     db: AsyncSession = Depends(get_db)):
     """
-    Get Jetton masters by specified filters.
+    Returns Jetton masters by specified filters.
     """
     address = address_to_raw(address)
     admin_address = address_to_raw(admin_address)
@@ -510,17 +511,17 @@ async def get_jetton_masters(
     return schemas.JettonMasterList.from_orm(res)
 
 
-@router.get('/jetton/wallets', response_model=schemas.JettonWalletList)
+@router.get('/jetton/wallets', response_model=schemas.JettonWalletList, tags=['jettons'])
 @catch_cancelled
 async def get_jetton_wallets(
-    address: str = Query(None, description="Jetton wallet address. Must be sent in hex, base64 and base64url forms."),
-    owner_address: str = Query(None, description="Address of Jetton wallet's owner. Must be sent in hex, base64 and base64url forms."),
-    jetton_address: str = Query(None, description="Jetton Master. Must be sent in hex, base64 and base64url forms."),
+    address: str = Query(None, description="Jetton wallet address. Must be sent in hex, base64 or base64url forms."),
+    owner_address: str = Query(None, description="Address of Jetton wallet's owner. Must be sent in hex, base64 or base64url forms."),
+    jetton_address: str = Query(None, description="Jetton Master. Must be sent in hex, base64 or base64url forms."),
     limit: int = Query(128, description='Limit number of queried rows. Use with *offset* to batch read.', ge=1, le=256),
     offset: int = Query(0, description='Skip first N rows. Use with *limit* to batch read.', ge=0),
     db: AsyncSession = Depends(get_db)):
     """
-    Get Jetton wallets by specified filters.
+    Returns Jetton wallets by specified filters.
     """
     address = address_to_raw(address)
     owner_address = address_to_raw(owner_address)
@@ -534,12 +535,12 @@ async def get_jetton_wallets(
     return schemas.JettonWalletList.from_orm(res)
 
 
-@router.get('/jetton/transfers', response_model=schemas.JettonTransferList)
+@router.get('/jetton/transfers', response_model=schemas.JettonTransferList, tags=['jettons'])
 @catch_cancelled
 async def get_jetton_transfers(
-    address: Optional[str] = Query(None, description='Account address. Must be sent in hex, base64 and base64url forms.'),
-    jetton_wallet: Optional[str] = Query(None, description='Jetton wallet address. Must be sent in hex, base64 and base64url forms.'),
-    jetton_master: Optional[str] = Query(None, description='Jetton master address. Must be sent in hex, base64 and base64url forms.'),
+    address: Optional[str] = Query(None, description='Account address. Must be sent in hex, base64 or base64url forms.'),
+    jetton_wallet: Optional[str] = Query(None, description='Jetton wallet address. Must be sent in hex, base64 or base64url forms.'),
+    jetton_master: Optional[str] = Query(None, description='Jetton master address. Must be sent in hex, base64 or base64url forms.'),
     direction: Optional[str] = Query('both', description='Direction transactions by lt.', enum=['in', 'out', 'both']),
     start_utime: Optional[int] = Query(None, description='Query transactions with generation UTC timestamp **after** given timestamp.'),
     end_utime: Optional[int] = Query(None, description='Query transactions with generation UTC timestamp **before** given timestamp'),
@@ -550,7 +551,7 @@ async def get_jetton_transfers(
     sort: str = Query('desc', description='Sort transactions by lt.', enum=['none', 'asc', 'desc']),
     db: AsyncSession = Depends(get_db)):
     """
-    Get Jetton transfers by specified filters.
+    Returns Jetton transfers by specified filters.
     """
     address = address_to_raw(address)
     jetton_wallet = address_to_raw(jetton_wallet)
@@ -580,12 +581,12 @@ async def get_jetton_transfers(
     return schemas.JettonTransferList.from_orm(result)
 
 
-@router.get('/jetton/burns', response_model=schemas.JettonBurnList)
+@router.get('/jetton/burns', response_model=schemas.JettonBurnList, tags=['jettons'])
 @catch_cancelled
 async def get_jetton_burns(
-    address: Optional[str] = Query(None, description='Account address. Must be sent in hex, base64 and base64url forms.'),
-    jetton_wallet: Optional[str] = Query(None, description='Jetton wallet address. Must be sent in hex, base64 and base64url forms.'),
-    jetton_master: Optional[str] = Query(None, description='Jetton master address. Must be sent in hex, base64 and base64url forms.'),
+    address: Optional[str] = Query(None, description='Account address. Must be sent in hex, base64 or base64url forms.'),
+    jetton_wallet: Optional[str] = Query(None, description='Jetton wallet address. Must be sent in hex, base64 or base64url forms.'),
+    jetton_master: Optional[str] = Query(None, description='Jetton master address. Must be sent in hex, base64 or base64url forms.'),
     start_utime: Optional[int] = Query(None, description='Query transactions with generation UTC timestamp **after** given timestamp.'),
     end_utime: Optional[int] = Query(None, description='Query transactions with generation UTC timestamp **before** given timestamp'),
     start_lt: Optional[int] = Query(None, description='Query transactions with `lt >= start_lt`'),
@@ -595,7 +596,7 @@ async def get_jetton_burns(
     sort: str = Query('desc', description='Sort transactions by lt.', enum=['asc', 'desc']),
     db: AsyncSession = Depends(get_db)):
     """
-    Get Jetton burns by specified filters.
+    Returns Jetton burns by specified filters.
     """
     address = address_to_raw(address)
     jetton_wallet = address_to_raw(jetton_wallet)
