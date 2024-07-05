@@ -39,4 +39,5 @@ target_link_directories(ton-trace-emulator
 )
 target_compile_features(ton-trace-emulator PRIVATE cxx_std_17)
 target_link_libraries(ton-trace-emulator ton_validator ton-trace-emulator-core hiredis redis++ msgpack-cxx)
+target_link_options(ton-trace-emulator PUBLIC -rdynamic)
 install(TARGETS ton-trace-emulator RUNTIME DESTINATION bin)
