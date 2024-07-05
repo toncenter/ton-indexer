@@ -51,7 +51,7 @@ void IndexScheduler::alarm() {
     });
     td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_insert_queue_state, std::move(Q));
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<int> R){
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ton::BlockSeqno> R){
         if (R.is_error()) {
             LOG(ERROR) << "Failed to update last seqno: " << R.move_as_error();
             return;
