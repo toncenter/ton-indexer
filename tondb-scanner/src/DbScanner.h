@@ -22,8 +22,6 @@ public:
   DbScanner(std::string db_root, ScannerMode mode) 
     : db_root_(db_root), mode_(mode) {}
 
-  ton::BlockSeqno get_last_known_seqno() { return last_known_seqno_; }
-
   void start_up() override;
   void alarm() override;
 
@@ -32,9 +30,7 @@ public:
   void get_oldest_mc_seqno(td::Promise<ton::BlockSeqno> promise);
   void get_mc_block_handle(ton::BlockSeqno seqno, td::Promise<ton::validator::ConstBlockHandle> promise);
 private:
-  void set_last_mc_seqno(ton::BlockSeqno mc_seqno);
   void catch_up_with_primary();
-  void update_last_mc_seqno();
 };
 
 struct BlockIdExtHasher {

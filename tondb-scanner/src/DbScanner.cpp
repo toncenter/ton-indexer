@@ -279,23 +279,7 @@ void DbScanner::start_up() {
   auto mode = mode_ == dbs_readonly ? td::DbOpenMode::db_readonly : td::DbOpenMode::db_secondary;
   db_ = td::actor::create_actor<ton::validator::RootDb>("db", td::actor::ActorId<ton::validator::ValidatorManager>(), db_root_, std::move(opts), mode);
 
-  td::actor::send_closure(actor_id(this), &DbScanner::update_last_mc_seqno);
   alarm_timestamp() = td::Timestamp::in(1.0);
-}
-
-void DbScanner::update_last_mc_seqno() {
-  auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ton::BlockSeqno> R) {
-    R.ensure();
-    td::actor::send_closure(SelfId, &DbScanner::set_last_mc_seqno, R.move_as_ok());
-  });
-  td::actor::send_closure(db_, &RootDb::get_max_masterchain_seqno, std::move(P));
-}
-
-void DbScanner::set_last_mc_seqno(ton::BlockSeqno mc_seqno) {
-  if (mc_seqno > last_known_seqno_) {
-    LOG(DEBUG) << "New masterchain seqno: " << mc_seqno;
-  }
-  last_known_seqno_ = mc_seqno;
 }
 
 void DbScanner::get_last_mc_seqno(td::Promise<ton::BlockSeqno> promise) {
@@ -330,6 +314,6 @@ void DbScanner::alarm() {
   if (db_.empty()) {
     return;
   }
-  td::actor::send_closure(actor_id(this), &DbScanner::update_last_mc_seqno);
+
   td::actor::send_closure(actor_id(this), &DbScanner::catch_up_with_primary);
 }

@@ -47,14 +47,14 @@ void IndexScheduler::alarm() {
     });
     td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_insert_queue_state, std::move(Q));
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<int> R){
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ton::BlockSeqno> R){
         if (R.is_error()) {
             LOG(ERROR) << "Failed to update last seqno: " << R.move_as_error();
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::got_last_known_seqno, R.move_as_ok());
     });
-    td::actor::send_closure(db_scanner_, &DbScanner::get_last_known_seqno, std::move(P));
+    td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
 }
 
 void IndexScheduler::run() {
