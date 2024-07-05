@@ -4,10 +4,6 @@
 #include <iostream>
 
 
-void IndexScheduler::start_up() {
-    event_processor_ = td::actor::create_actor<EventProcessor>("event_processor", insert_manager_);
-}
-
 std::string get_time_string(double seconds) {
     int days = int(seconds / (60 * 60 * 24));
     int hours = int(seconds / (60 * 60)) % 24;
@@ -34,7 +30,7 @@ std::string get_time_string(double seconds) {
 
 void IndexScheduler::alarm() {
     alarm_timestamp() = td::Timestamp::in(1.0);
-    std::double_t alpha = 0.9;
+    double alpha = 0.9;
     if (last_existing_seqno_count_ == 0) 
         last_existing_seqno_count_ = existing_seqnos_.size();
     avg_tps_ = alpha * avg_tps_ + (1 - alpha) * (existing_seqnos_.size() - last_existing_seqno_count_);
@@ -62,13 +58,13 @@ void IndexScheduler::alarm() {
 }
 
 void IndexScheduler::run() {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<std::vector<std::uint32_t>> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<std::vector<uint32_t>> R) {
         td::actor::send_closure(SelfId, &IndexScheduler::got_existing_seqnos, std::move(R));
     });
-    td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_existing_seqnos, std::move(P), last_known_seqno_, 0);
+    td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_existing_seqnos, std::move(P), from_seqno_, 0);
 }
 
-void IndexScheduler::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R) {
+void IndexScheduler::got_existing_seqnos(td::Result<std::vector<uint32_t>> R) {
     if (R.is_error()) {
         LOG(ERROR) << "Error reading existing seqnos: " << R.move_as_error();
         return;
@@ -78,10 +74,12 @@ void IndexScheduler::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> 
         existing_seqnos_.insert(value);
     }
     LOG(INFO) << "Found " << existing_seqnos_.size() << " existing seqnos";
+
     alarm_timestamp() = td::Timestamp::in(1.0);
+    next_print_stats_ = td::Timestamp::in(stats_timeout_);
 }
 
-void IndexScheduler::got_last_known_seqno(std::uint32_t last_known_seqno) {
+void IndexScheduler::got_last_known_seqno(uint32_t last_known_seqno) {
     int skipped_count_ = 0;
     for(auto seqno = last_known_seqno_ + 1; seqno <= last_known_seqno; ++seqno) {
         if (existing_seqnos_.find(seqno) != existing_seqnos_.end()) {
@@ -97,7 +95,7 @@ void IndexScheduler::got_last_known_seqno(std::uint32_t last_known_seqno) {
     last_known_seqno_ = last_known_seqno;
 }
 
-void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
+void IndexScheduler::schedule_seqno(uint32_t mc_seqno) {
     LOG(DEBUG) << "Scheduled seqno " << mc_seqno;
 
     processing_seqnos_.insert(mc_seqno);
@@ -113,7 +111,7 @@ void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
     td::actor::send_closure(db_scanner_, &DbScanner::fetch_seqno, mc_seqno, std::move(P));
 }
 
-void IndexScheduler::reschedule_seqno(std::uint32_t mc_seqno) {
+void IndexScheduler::reschedule_seqno(uint32_t mc_seqno) {
     LOG(WARNING) << "Rescheduling seqno " << mc_seqno;
     processing_seqnos_.erase(mc_seqno);
     queued_seqnos_.push(mc_seqno);
@@ -121,7 +119,7 @@ void IndexScheduler::reschedule_seqno(std::uint32_t mc_seqno) {
     // td::actor::send_closure(actor_id(this), &IndexScheduler::schedule_next_seqnos);
 }
 
-void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, MasterchainBlockDataState block_data_state) {
+void IndexScheduler::seqno_fetched(uint32_t mc_seqno, MasterchainBlockDataState block_data_state) {
     LOG(DEBUG) << "Fetched seqno " << mc_seqno << ": blocks=" << block_data_state.shard_blocks_diff_.size() << " shards=" << block_data_state.shard_blocks_.size();
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
@@ -135,7 +133,7 @@ void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, MasterchainBlockDataS
     td::actor::send_closure(parse_manager_, &ParseManager::parse, mc_seqno, std::move(block_data_state), std::move(P));
 }
 
-void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
+void IndexScheduler::seqno_parsed(uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Parsed seqno " << mc_seqno;
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, parsed_block](td::Result<td::Unit> R) {
@@ -149,7 +147,7 @@ void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_
     td::actor::send_closure(event_processor_, &EventProcessor::process, std::move(parsed_block), std::move(P));
 }
 
-void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
+void IndexScheduler::seqno_interfaces_processed(uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Interfaces processed for seqno " << mc_seqno;
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> R) {
@@ -168,6 +166,10 @@ void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBl
 }
 
 void IndexScheduler::print_stats() {
+    if (last_indexed_seqno_ == 0) {
+        LOG(WARNING) << "No seqnos indexed yet...";
+        return;
+    }
     double eta = (last_known_seqno_ - last_indexed_seqno_) / avg_tps_;
     LOG(INFO) << "Last: " << last_indexed_seqno_ << " / " << last_known_seqno_ 
               << "\tBlk/s: " << avg_tps_
@@ -178,7 +180,7 @@ void IndexScheduler::print_stats() {
               << cur_queue_state_.msgs_ << "m]";
 }
 
-void IndexScheduler::seqno_queued_to_insert(std::uint32_t mc_seqno, QueueState status) {
+void IndexScheduler::seqno_queued_to_insert(uint32_t mc_seqno, QueueState status) {
     LOG(DEBUG) << "Seqno queued to insert " << mc_seqno;
 
     processing_seqnos_.erase(mc_seqno);
@@ -193,7 +195,7 @@ void IndexScheduler::got_insert_queue_state(QueueState status) {
     }
 }
 
-void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, td::Unit result) {
+void IndexScheduler::seqno_inserted(uint32_t mc_seqno, td::Unit result) {
     existing_seqnos_.insert(mc_seqno);
     if (mc_seqno > last_indexed_seqno_) {
         last_indexed_seqno_ = mc_seqno;
@@ -203,7 +205,7 @@ void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, td::Unit result) {
 void IndexScheduler::schedule_next_seqnos() {
     LOG(DEBUG) << "Scheduling next seqnos. Current tasks: " << processing_seqnos_.size();
     while (!queued_seqnos_.empty() && (processing_seqnos_.size() < max_active_tasks_)) {
-        std::uint32_t seqno = queued_seqnos_.front();
+        uint32_t seqno = queued_seqnos_.front();
         queued_seqnos_.pop();
         schedule_seqno(seqno);
     }

@@ -26,15 +26,15 @@ int main(int argc, char *argv[]) {
   td::actor::ActorOwn<IndexScheduler> index_scheduler_;
 
   // options
-  td::uint32 threads = 7;
-  td::int32 stats_timeout = 10;
+  uint32_t threads = 7;
+  uint32_t stats_timeout = 10;
   std::string db_root;
-  td::uint32 last_known_seqno = 0;
+  uint32_t last_known_seqno = 0;
 
   InsertManagerPostgres::Credential credential;
 
-  std::uint32_t max_active_tasks = 7;
-  std::uint32_t max_insert_actors = 12;
+  int max_active_tasks = 7;
+  int max_insert_actors = 12;
   
   QueueState max_queue{200000, 200000, 1000000, 1000000};
   QueueState batch_size{2000, 2000, 10000, 10000};
@@ -217,6 +217,6 @@ int main(int argc, char *argv[]) {
   while(scheduler.run(1)) {
     // do something
   }
-  LOG(INFO) << "Done!";
+
   return 0;
 }
