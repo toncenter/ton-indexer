@@ -745,19 +745,33 @@ class GetMethodParameter(BaseModel):
         
         return GetMethodParameter(type=GetMethodParameterType.unsupported_type, value=None)
 
+
+class RunGetMethodRequestStackValueType(Enum):
+    cell = "cell"
+    slice = "slice"
+    num = "num"
+
+class RunGetMethodRequestStackValue(BaseModel):
+    type: RunGetMethodRequestStackValueType
+    value: str
+
 class RunGetMethodRequest(BaseModel):
-    address: str
-    method: str
-    stack: List[GetMethodParameter]
+    address: str = Field(description="Contract address in any format",
+                         examples=["EQBSzBN6cnxDwDjn_IQXqgU8OJXUMcol9pxyL-yLkpKzYs9U"])
+
+    method: str = Field(description="Method name to run", examples=["seqno"])
+
+    stack: List[RunGetMethodRequestStackValue] = Field(description="stack arguments",
+                                                       examples=[[{"type": "num", "value": "0x12a"}]])
 
     def to_ton_http_api(self) -> dict:
         ton_http_api_stack = []
         for p in self.stack:
-            if p.type == GetMethodParameterType.num:
+            if p.type == RunGetMethodRequestStackValueType.num:
                 ton_http_api_stack.append(['num', p.value])
-            elif p.type == GetMethodParameterType.cell:
+            elif p.type == RunGetMethodRequestStackValueType.cell:
                 ton_http_api_stack.append(['tvm.Cell', p.value])
-            elif p.type == GetMethodParameterType.slice:
+            elif p.type == RunGetMethodRequestStackValueType.slice:
                 ton_http_api_stack.append(['tvm.Slice', p.value])
             else:
                 raise Exception(f"Unsupported stack parameter type: {p.type}")

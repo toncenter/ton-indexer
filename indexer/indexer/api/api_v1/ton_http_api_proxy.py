@@ -36,7 +36,10 @@ def from_ton_http_api_response(response: httpx.Response) -> dict:
 async def send_message(
     message: schemas.ExternalMessage = Body(..., description='Message in boc base64 format.')):
     """
-    Send external message to TON network.
+    Send external message in boc base64 format to TON network. Returns message hash in hex format.
+
+    External messages are sent from the outside to the smart contracts to make them perform certain actions.
+    For instance, a wallet smart contract expects to receive external messages signed by the wallet's owner.
     """
     async with httpx.AsyncClient() as client:
         response = await client.post(f'{settings.ton_http_api_endpoint}/sendBocReturnHash', json={'boc': message.boc})
@@ -80,7 +83,10 @@ async def estimate_fee(
     run_get_method_request: schemas.EstimateFeeRequest = Body(..., description='EstimateFee request body')
     ):
     """
-    Estimate fee for external message.
+    Estimate fees required for query processing.
+
+    Body, init_code and init_data accepted in base64 encoded format.
+
     """
     async with httpx.AsyncClient() as client:
         response = await client.post(f'{settings.ton_http_api_endpoint}/estimateFee', json=run_get_method_request.to_ton_http_api())
