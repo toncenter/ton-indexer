@@ -27,7 +27,7 @@ Requirements:
 Do the following steps to setup TON Indexer:
 * Clone repository: `git clone --recursive --branch master https://github.com/toncenter/ton-indexer.git && cd ./ton-indexer`.
 * Create *.env* file with command `./configure.sh`.
-  * Run `./configure.sh --worker` to configure TON Index worker.
+  * ./configure.sh will create .env file only with indexer and PostgreSQL configuration data. Use --worker flag to add TON Index worker configuration data too.
 * Adjust parameters in *.env* file (see [list of available parameters](#available-parameters)).
 * Set PostgreSQL password `echo -n "MY_PASSWORD" > private/postgres_password`
 * Build docker images: `docker compose build postgres alembic index-api`.
@@ -56,6 +56,10 @@ Do the following steps to setup TON Indexer:
   * `TON_WORKER_MAX_PARALLEL_TASKS`: max parallel reading actors. Adjust this parameter to decrease RAM usage. Default: `1024`.
   * `TON_WORKER_INSERT_BATCH_SIZE`: max masterchain seqnos per INSERT query. Small value will decrease indexing performance. Great value will increase RAM usage. Default: `512`.
   * `TON_WORKER_INSERT_PARALLEL_ACTORS`: number of parallel INSERT transactions. Increasing this number will increase PostgreSQL server RAM usage. Default: `3`.
+
+### Swagger
+
+To test API, built-in swagger can be used. It is available after running `docker compose` at `URL::PORT`
 
 # FAQ
 
