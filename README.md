@@ -57,7 +57,7 @@ Do the following steps to setup TON Indexer:
   * `TON_WORKER_INSERT_BATCH_SIZE`: max masterchain seqnos per INSERT query. Small value will decrease indexing performance. Great value will increase RAM usage. Default: `512`.
   * `TON_WORKER_INSERT_PARALLEL_ACTORS`: number of parallel INSERT transactions. Increasing this number will increase PostgreSQL server RAM usage. Default: `3`.
 
-### Swagger
+## Swagger
 
 To test API, built-in swagger can be used. It is available after running `docker compose` at `URL::PORT`
 
