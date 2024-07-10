@@ -23,7 +23,6 @@ void TraceEmulatorScheduler::got_last_mc_seqno(ton::BlockSeqno last_known_seqno)
     if (last_known_seqno > last_known_seqno_ + 1) {
         LOG(WARNING) << "More than one new masterchain block appeared. Skipping to the newest one, from " << last_known_seqno_ << " to " << last_known_seqno;
     }
-    last_known_seqno_ = last_known_seqno;
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), last_known_seqno](td::Result<MasterchainBlockDataState> R) {
         if (R.is_error()) {
@@ -44,6 +43,7 @@ void TraceEmulatorScheduler::got_last_mc_seqno(ton::BlockSeqno last_known_seqno)
 
 void TraceEmulatorScheduler::fetch_error(std::uint32_t seqno, td::Status error) {
     LOG(ERROR) << "Failed to fetch seqno " << seqno << ": " << std::move(error);
+    alarm_timestamp() = td::Timestamp::in(0.1);
 }
 
 void TraceEmulatorScheduler::seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState mc_data_state) {
@@ -66,7 +66,7 @@ void TraceEmulatorScheduler::seqno_fetched(std::uint32_t seqno, MasterchainBlock
     td::actor::create_actor<McBlockEmulator>("McBlockEmulator", mc_data_state, insert_trace_, std::move(P)).release();
 }
 
-int seqno = 37786481;
+// int seqno = 37786481;
 
 void TraceEmulatorScheduler::alarm() {
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ton::BlockSeqno> R){
@@ -75,8 +75,8 @@ void TraceEmulatorScheduler::alarm() {
             std::_Exit(2);
             return;
         }
-        // td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, R.move_as_ok());
-        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, seqno++); // for debugging
+        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, R.move_as_ok());
+        // td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, seqno++); // for debugging
     });
     td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
 

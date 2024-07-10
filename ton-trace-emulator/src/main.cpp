@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
   td::actor::ActorOwn<DbScanner> db_scanner;
 
   scheduler.run_in_context([&] { 
-    db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_readonly);
+    db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary);
     td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), global_config_path, inet_addr).release();
   });
   

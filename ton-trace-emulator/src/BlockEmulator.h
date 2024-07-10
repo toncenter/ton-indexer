@@ -38,7 +38,7 @@ private:
 
     std::unordered_set<TraceId, BitArrayHasher> trace_ids_in_progress_;
 
-    int traces_cnt_;
+    int traces_cnt_{0};
 
     td::Timestamp start_time_;
 
