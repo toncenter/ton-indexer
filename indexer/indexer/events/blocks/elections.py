@@ -1,5 +1,5 @@
 from indexer.events.blocks.basic_blocks import CallContractBlock
-from indexer.events.blocks.basic_matchers import BlockMatcher, ContractMatcher
+from indexer.events.blocks.basic_matchers import BlockMatcher, ContractMatcher, OrMatcher
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.utils import Amount, AccountId
 from indexer.events.blocks.utils.block_utils import find_call_contract
@@ -23,10 +23,10 @@ class ElectionRecoverStakeBlock(Block):
 
 class ElectionDepositStakeBlockMatcher(BlockMatcher):
     def __init__(self):
-        super().__init__(child_matcher=ContractMatcher(opcode=0xf374484c,
-                                                       optional=True,
-                                                       include_excess=False),
-                         include_excess=False)
+        confirmation_matcher = ContractMatcher(opcode=0xf374484c, optional=True, include_excess=False)
+        super().__init__(child_matcher=OrMatcher([
+            ContractMatcher(opcode=0x4e73744b, optional=True, include_excess=False, child_matcher=confirmation_matcher),
+            confirmation_matcher]), include_excess=False)
 
     def test_self(self, block: Block):
         return isinstance(block, CallContractBlock) and block.opcode == 0x4e73744b

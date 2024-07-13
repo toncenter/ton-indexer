@@ -3,6 +3,7 @@ from __future__ import annotations
 from pytoniq_core import Slice
 
 from events.blocks.messages.dns import ChangeDnsRecordMessage
+from events.blocks.utils import AccountId
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, ContractMatcher
 from indexer.events.blocks.core import Block
@@ -10,7 +11,7 @@ from indexer.events.blocks.core import Block
 
 class DeleteDnsRecordBlock(Block):
     def __init__(self, data):
-        super().__init__('delete_dns ', [], data)
+        super().__init__('delete_dns', [], data)
 
     def __repr__(self):
         return f"DELETE_DNS {self.event_nodes[0].message.transaction.hash}"
@@ -18,7 +19,7 @@ class DeleteDnsRecordBlock(Block):
 
 class ChangeDnsRecordBlock(Block):
     def __init__(self, data):
-        super().__init__('change_dns ', [], data)
+        super().__init__('change_dns', [], data)
 
     def __repr__(self):
         return f"CHANGE_DNS {self.event_nodes[0].message.transaction.hash}"
@@ -37,7 +38,10 @@ class ChangeDnsRecordMatcher(BlockMatcher):
         change_dns_message = ChangeDnsRecordMessage(Slice.one_from_boc(block.event_nodes[0].message.message.message_content.body))
         new_block = None
         if change_dns_message.has_value:
+            sender = block.event_nodes[0].message.message.source
             new_block = ChangeDnsRecordBlock({
+                'source': AccountId(sender) if sender is not None else None,
+                'destination': AccountId(block.event_nodes[0].message.message.destination),
                 'key': change_dns_message.key,
                 'value': change_dns_message.value,
             })

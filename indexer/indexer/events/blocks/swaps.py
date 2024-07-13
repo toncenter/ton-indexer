@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from indexer.events.blocks.messages import DedustPayout, DedustPayoutFromPool, DedustSwapPeer, DedustSwapExternal, DedustSwap
+from indexer.events.blocks.messages import DedustPayout, DedustPayoutFromPool, DedustSwapPeer, DedustSwapExternal, \
+    DedustSwap
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
-from indexer.events.blocks.basic_matchers import BlockMatcher, child_sequence_matcher, ContractMatcher, BlockTypeMatcher, OrMatcher
+from indexer.events.blocks.basic_matchers import BlockMatcher, child_sequence_matcher, ContractMatcher, \
+    BlockTypeMatcher, OrMatcher
 from indexer.events.blocks.core import Block, SingleLevelWrapper
 from indexer.events.blocks.jettons import JettonTransferBlock
 from indexer.events.blocks.messages import StonfiSwapMessage, StonfiPaymentRequest, DedustSwapNotification
@@ -98,7 +100,8 @@ class DedustPeerBlockMatcher(BlockMatcher):
 class DedustSwapBlockMatcher(BlockMatcher):
     def __init__(self):
         ton_swap_parent_matchers = ContractMatcher(opcode=DedustSwapExternal.opcode,
-                                                   parent_matcher=ContractMatcher(opcode=DedustSwap.opcode, optional=True))
+                                                   parent_matcher=ContractMatcher(opcode=DedustSwap.opcode,
+                                                                                  optional=True))
 
         super().__init__(optional=False, child_matcher=None,
                          parent_matcher=ContractMatcher(opcode=DedustSwapExternal.opcode,
@@ -110,9 +113,9 @@ class DedustSwapBlockMatcher(BlockMatcher):
                                                                     BlockTypeMatcher(block_type='jetton_transfer'),
                                                                     ContractMatcher(opcode=DedustPayout.opcode)
                                                                 ])])]),
-                                                        parent_matcher=OrMatcher([ton_swap_parent_matchers,
-                                                                                  BlockTypeMatcher(
-                                                                                      block_type='jetton_transfer')])))
+                                                        parent_matcher=OrMatcher([BlockTypeMatcher(
+                                                            block_type='jetton_transfer'),
+                                                            ContractMatcher(opcode=DedustSwap.opcode)])))
 
     def test_self(self, block: Block):
         return isinstance(block, CallContractBlock) and block.opcode == DedustSwapNotification.opcode
@@ -139,16 +142,29 @@ class DedustSwapBlockMatcher(BlockMatcher):
                                    jetton_address=message.asset_in.jetton_address),
                 },
                 'out': {
-                    'amount': Amount(message.amount_in),
+                    'amount': Amount(message.amount_out),
                     'asset': Asset(is_ton=message.asset_out.is_ton,
                                    jetton_address=message.asset_out.jetton_address),
                 }
             }
             peer_swaps.append(data)
+        sender = AccountId(messages[0][1].sender_address)
+        sender_jetton_transfer_blocks = [x for x in new_block.children_blocks if isinstance(x, JettonTransferBlock)
+                                     and x.min_lt <= block.min_lt and x.data['sender'] == sender]
+        sender_wallet = None
+        if len(sender_jetton_transfer_blocks) > 0:
+            sender_wallet = sender_jetton_transfer_blocks[0].data['sender_wallet']
 
+        receiver_jetton_transfer_blocks = [x for x in new_block.children_blocks if isinstance(x, JettonTransferBlock)
+                                        and x.min_lt >= block.min_lt and x.data['receiver'] == sender]
+        receiver_wallet = None
+        if len(receiver_jetton_transfer_blocks) > 0:
+            receiver_wallet = receiver_jetton_transfer_blocks[0].data['receiver_wallet']
         new_block.data = {
             'dex': 'dedust',
-            'sender': AccountId(messages[0][1].sender_address),
+            'sender_wallet': sender_wallet,
+            'receiver_wallet': receiver_wallet,
+            'sender': sender,
             'in': peer_swaps[0]['in'],
             'out': peer_swaps[-1]['out'],
             'peer_swaps': peer_swaps if len(peer_swaps) > 1 else []

@@ -1,18 +1,58 @@
-from pytoniq_core import Slice, Address
+from __future__ import annotations
+
+from pytoniq_core import Slice, Address, Cell
 
 
 class JettonTransfer:
     opcode = 0x0f8a7ea5
+    query_id: int
+    amount: int
+    destination: Address
+    response: Address
+    custom_payload: Cell | None
+    forward_amount: int
+    comment: str | None
+    encrypted_comment: bool
+    forward_payload: bytes | None
 
     def __init__(self, boc: Slice):
         boc.load_uint(32)  # opcode
-        self.queryId = boc.load_uint(64)
+        self.query_id = boc.load_uint(64)
         self.amount = boc.load_coins()
         self.destination = boc.load_address()
         self.response = boc.load_address()
         self.custom_payload = boc.load_maybe_ref()
         self.forward_amount = boc.load_coins()
-        self.forward_payload = boc.load_maybe_ref()
+        self.comment = None
+        self.encrypted_comment = False
+        self.payload_sum_type = None
+        payload_slice = boc.load_ref().to_slice() if boc.load_bool() else boc.copy()
+        self._load_forward_payload(payload_slice)
+
+    def _load_forward_payload(self, payload_slice: Slice):
+        if payload_slice.remaining_bits == 0:
+            self.forward_payload = None
+            return
+        else:
+            self.forward_payload = payload_slice.to_cell().to_boc(hash_crc32=True)
+        if payload_slice.remaining_bits < 32:
+            self.sum_type = "Unknown"
+            return
+        sum_type = payload_slice.load_uint(32)
+        self.payload_sum_type = hex(sum_type)
+        # noinspection PyBroadException
+        try:
+            if sum_type == 0:
+                self.sum_type = "TextComment"
+                self.comment = payload_slice.load_str()
+            elif sum_type == 0x2167da4b:
+                self.sum_type = "EncryptedTextComment"
+                self.comment = payload_slice.load_str()
+                self.encrypted_comment = True
+            else:
+                self.sum_type = "Unknown"
+        except Exception:
+            self.sum_type = "Unknown"
 
 
 class JettonBurn:

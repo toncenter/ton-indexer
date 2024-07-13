@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+
 from events.blocks.messages import JettonNotify, JettonInternalTransfer, ExcessMessage, JettonBurnNotification
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
@@ -47,8 +49,16 @@ class JettonTransferBlockMatcher(BlockMatcher):
             'sender': None,
             'sender_wallet': AccountId(block.event_nodes[0].message.message.destination),
             'receiver': receiver,
+            'response_address': AccountId(jetton_transfer_message.response),
+            'forward_amount': Amount(jetton_transfer_message.forward_amount),
+            'query_id': jetton_transfer_message.query_id,
             'asset': None,
             'amount': Amount(jetton_transfer_message.amount),
+            'forward_payload': base64.b64encode(jetton_transfer_message.forward_payload).decode(
+                'utf-8') if jetton_transfer_message.forward_payload is not None else None,
+            'comment': jetton_transfer_message.comment,
+            'encrypted_comment': jetton_transfer_message.encrypted_comment,
+            'payload_opcode': jetton_transfer_message.payload_sum_type
         }
         if len(block.next_blocks) > 0:
             data['receiver_wallet'] = AccountId(block.next_blocks[0].event_nodes[0].message.message.destination)
@@ -73,8 +83,8 @@ async def _get_jetton_burn_data(new_block: Block, block: Block | CallContractBlo
     wallet = await context.extra_data_repository.get().get_jetton_wallet(block.get_message().message.destination)
     new_block.value_flow.add_jetton(AccountId(wallet.owner), AccountId(wallet.jetton), -jetton_burn_message.amount)
     data = {
-        'owner': wallet.owner if wallet is not None else None,
-        'jetton_wallet': block.get_message().message.destination,
+        'owner': AccountId(wallet.owner) if wallet is not None else None,
+        'jetton_wallet': AccountId(block.get_message().message.destination),
         'amount': Amount(jetton_burn_message.amount),
         'asset': Asset(is_ton=False, jetton_address=wallet.jetton if wallet is not None else None)
     }
@@ -83,10 +93,8 @@ async def _get_jetton_burn_data(new_block: Block, block: Block | CallContractBlo
 
 class JettonBurnBlockMatcher(BlockMatcher):
     def __init__(self):
-        super().__init__(child_matcher=child_sequence_matcher([
-            ContractMatcher(opcode=JettonBurnNotification.opcode),
-            ContractMatcher(opcode=ExcessMessage.opcode)
-        ]))
+        super().__init__(child_matcher=ContractMatcher(opcode=JettonBurnNotification.opcode, optional=True,
+                                                       include_excess=True))
 
     def test_self(self, block: Block):
         return isinstance(block, CallContractBlock) and block.opcode == JettonBurn.opcode
@@ -95,6 +103,6 @@ class JettonBurnBlockMatcher(BlockMatcher):
         new_block = JettonBurnBlock()
         include = [block]
         include.extend(other_blocks)
-        new_block.merge_blocks(include)
         new_block.data = await _get_jetton_burn_data(new_block, block)
+        new_block.merge_blocks(include)
         return [new_block]

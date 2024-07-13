@@ -69,5 +69,6 @@ async def process_event_async(event: Event) -> Block:
 
     for m in matchers:
         for b in root.bfs_iter():
-            await m.try_build(b)
+            if b.parent is None:
+                await m.try_build(b)
     return root

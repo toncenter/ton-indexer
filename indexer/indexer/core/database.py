@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from time import sleep
@@ -6,7 +8,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy_utils import create_database, database_exists
+from sqlalchemy_utils import create_database, database_exists, CompositeType
 
 from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric
 from sqlalchemy.schema import ForeignKeyConstraint
@@ -39,7 +41,7 @@ def get_engine(settings: Settings):
     logger.critical(settings.pg_dsn)
     engine = create_async_engine(settings.pg_dsn, 
                                  pool_size=128, 
-                                 max_overflow=0, 
+                                 max_overflow=0,
                                  pool_timeout=5,
                                  pool_pre_ping=True, # using pessimistic approach about closed connections problem: https://docs.sqlalchemy.org/en/14/core/pooling.html#disconnect-handling-pessimistic
                                  echo=False,
@@ -53,9 +55,9 @@ SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
 # def get_sync_engine(settings: Settings):
 #     pg_dsn = settings.pg_dsn.replace('+asyncpg', '')
 #     logger.critical(pg_dsn)
-#     engine = create_engine(pg_dsn, 
-#                            pool_size=128, 
-#                            max_overflow=0, 
+#     engine = create_engine(pg_dsn,
+#                            pool_size=128,
+#                            max_overflow=0,
 #                            pool_timeout=5,
 #                            echo=False)
 #     return engine
@@ -163,6 +165,7 @@ class Event(Base):
                                                      primaryjoin='Event.id == Transaction.event_id',
                                                      uselist=True,
                                                      viewonly=True)
+    actions: List["Action"] = relationship("Action", back_populates="event")
     edges: List["EventEdge"] = relationship("EventEdge", back_populates="event")
 
 
@@ -182,6 +185,61 @@ class EventEdge(Base):
     right_tx_hash: str = Column(String, primary_key=True)
 
     event: "Event" = relationship("Event", back_populates="edges")
+
+
+class Action(Base):
+    __tablename__ = 'actions'
+
+    action_id: str = Column(String(64), primary_key=True)
+    type: str = Column(String())
+    trace_id: int = Column(BigInteger, ForeignKey('events.id'), nullable=False)
+    tx_hashes: list[str] = Column(ARRAY(String()))
+    value: int = Column(Numeric)
+    start_lt: int | None = Column(BigInteger)
+    end_lt: int | None = Column(BigInteger)
+    start_utime: int | None = Column(BigInteger)
+    end_utime: int | None = Column(BigInteger)
+    source: str | None = Column(String(70))
+    source_secondary: str | None = Column(String(70))
+    destination: str | None = Column(String(70))
+    destination_secondary: str | None = Column(String(70))
+    asset: str | None = Column(String(70))
+    asset_secondary: str | None = Column(String(70))
+    asset2: str | None = Column(String(70))
+    asset2_secondary: str | None = Column(String(70))
+    opcode: int | None = Column(BigInteger)
+    success: bool = Column(Boolean)
+    ton_transfer_data = Column(CompositeType("ton_transfer_details", [
+        Column("content", String),
+        Column("encrypted", Boolean)
+    ]))
+    jetton_transfer_data = Column(CompositeType("jetton_transfer_details", [
+        Column("response_address", String),
+        Column("forward_amount", BigInteger),
+        Column("query_id", Numeric)
+    ]))
+    nft_transfer_data = Column(CompositeType("nft_transfer_details", [
+        Column("is_purchase", Boolean),
+        Column("price", BigInteger),
+        Column("query_id", Numeric)
+    ]))
+    jetton_swap_data = Column(CompositeType("jetton_swap_details", [
+        Column("dex", String),
+        Column("amount_in", Numeric),
+        Column("amount_out", Numeric),
+        Column("peer_swaps", ARRAY(CompositeType("peer_swap_details", [
+            Column("amount_in", Numeric),
+            Column("asset_in", String),
+            Column("amount_out", Numeric),
+            Column("asset_out", String)
+        ])))]))
+    change_dns_record_data = Column(CompositeType("change_dns_record_details", [
+        Column("key", String),
+        Column("value_schema", String),
+        Column("value", String),
+        Column("flags", Integer)
+    ]))
+    event: Event = relationship("Event", back_populates="actions")
 
 
 class Transaction(Base):
@@ -231,9 +289,9 @@ class Transaction(Base):
                                        lazy='selectin',
                                        viewonly=True)
     description = Column(JSONB)
-    
+
     messages: List["TransactionMessage"] = relationship("TransactionMessage", back_populates="transaction")
-    event: Optional["Event"] = relationship("Event", 
+    event: Optional["Event"] = relationship("Event",
                                   foreign_keys=[event_id],
                                   primaryjoin="Transaction.event_id == Event.id",
                                   viewonly=True)

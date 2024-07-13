@@ -96,11 +96,14 @@ class Block:
     event_nodes: list[EventNode]
     children_blocks: list[Block]
     next_blocks: list[Block]
+    contract_deployments: set[AccountId]
     failed: bool
     previous_block: Block
     parent: Block
     data: any
     min_lt: int
+    min_utime: int
+    max_utime: int
     max_lt: int
     type: str
     value_flow: AccountValueFlow
@@ -114,17 +117,26 @@ class Block:
         self.parent = None
         self.btype = type
         self.data = v
+        self.contract_deployments = set()
         self.value_flow = AccountValueFlow()
         if len(nodes) != 0:
             self.min_lt = nodes[0].message.transaction.lt
             self.max_lt = nodes[0].message.transaction.lt
+            self.min_utime = nodes[0].message.transaction.now
+            self.max_utime = nodes[0].message.transaction.now
+            self._find_contract_deployments()
+
         else:
             self.min_lt = 0
             self.max_lt = 0
+            self.min_utime = 0
+            self.max_utime = 0
 
     def calculate_min_max_lt(self):
         self.min_lt = min(n.message.transaction.lt for n in self.event_nodes)
+        self.min_utime = min(n.message.transaction.now for n in self.event_nodes)
         self.max_lt = max(n.message.transaction.lt for n in self.event_nodes)
+        self.max_utime = max(n.message.transaction.now for n in self.event_nodes)
 
     def iter_prev(self, predicate: Callable[[Block], bool]) -> Iterable[Block]:
         """Iterates over all previous blocks that match predicate, starting from the closest one."""
@@ -167,6 +179,7 @@ class Block:
         for block in earliest_block.find_next(lambda b, d: b in blocks_to_merge, stop_on_filter_unmatch=True,
                                               yield_on_unmatch=True):
             self.next_blocks.append(block)
+            self.contract_deployments = self.contract_deployments.union(block.contract_deployments)
             block.previous_block = self
         self.previous_block = earliest_block.previous_block
         if earliest_block.previous_block is not None:
@@ -239,6 +252,10 @@ class Block:
                     total_emulated += 1
         return (1.0 - total_emulated / total) if total != 0 else 0
 
+    def _find_contract_deployments(self):
+        for node in self.event_nodes:
+            if node.message.transaction.orig_status != 'active' and node.message.transaction.end_status == 'active':
+                self.contract_deployments.add(AccountId(node.message.transaction.account))
 
 class SingleLevelWrapper(Block):
     def __init__(self):

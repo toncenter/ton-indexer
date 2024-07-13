@@ -10,7 +10,7 @@ class TonTransferMessage:
     encrypted_opcode = 0x2167da4b
 
     def __init__(self, boc: Slice):
-        if boc.remaining_bits == 0:
+        if boc.remaining_bits == 0 or boc.remaining_bits == 1:
             self.encrypted = False
             self.comment = None
             return
@@ -20,5 +20,5 @@ class TonTransferMessage:
         else:
             self.encrypted = False
         self.comment = None
-        if boc.remaining_bits >= 8:
+        if boc.remaining_bits >= 8 and not boc.remaining_bits % 8 and boc.remaining_refs in (0, 1):
             self.comment = boc.load_snake_bytes()

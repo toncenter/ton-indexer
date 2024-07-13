@@ -16,30 +16,30 @@ class ChangeDnsRecordMessage:
             self.value = None
 
     def _parse_value(self, value: Slice):
-        sum_type = value.load_uint(16)
-        if sum_type == 0xba93:
+        schema = value.load_uint(16)
+        if schema == 0xba93:
             self.value = {
-                'sum_type': 'DNSNextResolver',
-                'dns_next_resolver': AccountId(value.load_address())
+                'schema': 'DNSNextResolver',
+                'address': AccountId(value.load_address())
             }
-        elif sum_type == 0xad01:
+        elif schema == 0xad01:
             self.value = {
-                'sum_type': 'DNSAdnlAddress',
-                'dns_adnl_address': value.load_bytes(32),
+                'schema': 'DNSAdnlAddress',
+                'address': value.load_bytes(32),
                 'flags': value.load_uint(8)
             }
-        elif sum_type == 0x9fd3:
+        elif schema == 0x9fd3:
             self.value = {
-                'sum_type': 'DNSSmcAddress',
-                'dns_smc_address': AccountId(value.load_address()),
+                'schema': 'DNSSmcAddress',
+                'address': AccountId(value.load_address()),
                 'flags': value.load_uint(8)
             }
-        elif sum_type == 0x7473:
+        elif schema == 0x7473:
             self.value = {
-                'sum_type': 'DNSStorageAddress',
-                'dns_storage_address': value.load_bytes(32)
+                'schema': 'DNSStorageAddress',
+                'address': value.load_bytes(32)
             }
-        elif sum_type == 0x1eda:
+        elif schema == 0x1eda:
             dns_text = ""
             chunks_count = value.load_uint(8)
             value_slice = value
@@ -50,10 +50,10 @@ class ChangeDnsRecordMessage:
                 if chunks_count > 0:
                     value_slice = value_slice.load_ref()
             self.value = {
-                'sum_type': 'DNSText',
+                'schema': 'DNSText',
                 'dns_text': dns_text
             }
         else:
             self.value = {
-                'sum_type': 'Unknown'
+                'schema': 'Unknown'
             }

@@ -16,7 +16,7 @@ from indexer.core.database import JettonWallet
 
 class SubscriptionBlock(Block):
     def __init__(self, data):
-        super().__init__('subscription', [], data)
+        super().__init__('subscribe', [], data)
 
     def __repr__(self):
         return f"SUBSCRIPTION {self.event_nodes[0].message.transaction.hash}"
