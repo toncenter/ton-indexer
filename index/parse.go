@@ -3,6 +3,7 @@ package index
 import (
 	b64 "encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -35,6 +36,14 @@ func (v *HexInt) String() string {
 }
 
 func (v *HexInt) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
+}
+
+func (v *OpcodeType) String() string {
+	return fmt.Sprintf("0x%08x", uint32(*v))
+}
+
+func (v *OpcodeType) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
 }
 
@@ -77,6 +86,17 @@ func ShardIdConverter(value string) reflect.Value {
 	}
 	if shard, err := strconv.ParseInt(value, 10, 64); err == nil {
 		return reflect.ValueOf(ShardId(shard))
+	}
+	return reflect.Value{}
+}
+
+func OpcodeTypeConverter(value string) reflect.Value {
+	value = strings.TrimPrefix(value, "0x")
+	if res, err := strconv.ParseUint(value, 16, 32); err == nil {
+		return reflect.ValueOf(OpcodeType(res))
+	}
+	if res, err := strconv.ParseInt(value, 10, 32); err == nil {
+		return reflect.ValueOf(OpcodeType(res))
 	}
 	return reflect.Value{}
 }
@@ -217,7 +237,7 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 
 func ScanMessage(row pgx.Row) (*Message, error) {
 	var m Message
-	err := row.Scan(&m.TxHash, &m.TxLt, &m.Hash, &m.Direction, &m.Source, &m.Destination,
+	err := row.Scan(&m.TxHash, &m.TxLt, &m.MsgHash, &m.Direction, &m.TraceId, &m.Source, &m.Destination,
 		&m.Value, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
 		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash)
 	if err != nil {
@@ -226,25 +246,50 @@ func ScanMessage(row pgx.Row) (*Message, error) {
 	return &m, nil
 }
 
-func ScanMessageContent(row pgx.Row) (*MessageContent, error) {
-	var mc MessageContent
-	var mcd *string
-	err := row.Scan(&mc.Hash, &mc.Body, &mcd)
+func (mc *MessageContent) TryDecodeBody() error {
+	if mc.Body == nil {
+		return errors.New("empty MessageContent")
+	}
+	if boc, err := b64.StdEncoding.DecodeString(*mc.Body); err == nil {
+		if c, err := cell.FromBOC(boc); err == nil {
+			l := c.BeginParse()
+			if val, err := l.LoadUInt(32); err == nil && val == 0 {
+				str, _ := l.LoadStringSnake()
+				mc.Decoded = &DecodedContent{Type: "text_comment", Comment: str}
+			}
+		}
+	}
+	return nil
+}
+
+func ScanMessageWithContent(row pgx.Row) (*Message, error) {
+	var m Message
+	var body MessageContent
+	var init_state MessageContent
+
+	err := row.Scan(&m.TxHash, &m.TxLt, &m.MsgHash, &m.Direction, &m.TraceId, &m.Source, &m.Destination,
+		&m.Value, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
+		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash,
+		&body.Hash, &body.Body, &init_state.Hash, &init_state.Body)
+	if body.Hash != nil {
+		body.TryDecodeBody()
+		m.MessageContent = &body
+	}
+	if init_state.Hash != nil {
+		m.InitState = &init_state
+	}
 	if err != nil {
 		return nil, err
 	}
-	if mcd != nil {
-		mc.Decoded = &DecodedContent{Type: "text_comment", Comment: *mcd}
-	} else {
-		if boc, err := b64.StdEncoding.DecodeString(mc.Body); err == nil {
-			if c, err := cell.FromBOC(boc); err == nil {
-				l := c.BeginParse()
-				if val, err := l.LoadUInt(32); err == nil && val == 0 {
-					str, _ := l.LoadStringSnake()
-					mc.Decoded = &DecodedContent{Type: "text_comment", Comment: str}
-				}
-			}
-		}
+	return &m, nil
+}
+
+func ScanMessageContent(row pgx.Row) (*MessageContent, error) {
+	var mc MessageContent
+	err := row.Scan(&mc.Hash, &mc.Body)
+	mc.TryDecodeBody()
+	if err != nil {
+		return nil, err
 	}
 	return &mc, nil
 }
@@ -257,4 +302,94 @@ func ScanAccountState(row pgx.Row) (*AccountState, error) {
 		return nil, err
 	}
 	return &acst, nil
+}
+
+func ScanNFTCollection(row pgx.Row) (*NFTCollection, error) {
+	var res NFTCollection
+	err := row.Scan(&res.Address, &res.NextItemIndex, &res.OwnerAddress, &res.CollectionContent,
+		&res.DataHash, &res.CodeHash, &res.LastTransactionLt)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func ScanNFTItem(row pgx.Row) (*NFTItem, error) {
+	var res NFTItem
+	err := row.Scan(&res.Address, &res.Init, &res.Index, &res.CollectionAddress,
+		&res.OwnerAddress, &res.Content, &res.LastTransactionLt, &res.CodeHash, &res.DataHash)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
+	var res NFTItem
+	var col NFTCollection
+
+	err := row.Scan(&res.Address, &res.Init, &res.Index, &res.CollectionAddress,
+		&res.OwnerAddress, &res.Content, &res.LastTransactionLt, &res.CodeHash, &res.DataHash,
+		&col.Address, &col.NextItemIndex, &col.OwnerAddress, &col.CollectionContent,
+		&col.DataHash, &col.CodeHash, &col.LastTransactionLt)
+	res.Collection = &col
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func ScanNFTTransfer(row pgx.Row) (*NFTTransfer, error) {
+	var res NFTTransfer
+	err := row.Scan(&res.TransactionHash, &res.TransactionLt, &res.TransactionNow, &res.TransactionAborted,
+		&res.QueryId, &res.NftItemAddress, &res.NftItemIndex, &res.NftCollectionAddress,
+		&res.OldOwner, &res.NewOwner, &res.ResponseDestination, &res.CustomPayload,
+		&res.ForwardAmount, &res.ForwardPayload, &res.TraceId)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func ScanJettonMaster(row pgx.Row) (*JettonMaster, error) {
+	var res JettonMaster
+	err := row.Scan(&res.Address, &res.TotalSupply, &res.Mintable, &res.AdminAddress,
+		&res.JettonContent, &res.JettonWalletCodeHash, &res.CodeHash, &res.DataHash,
+		&res.LastTransactionLt, &res.CodeBoc, &res.DataBoc)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func ScanJettonWallet(row pgx.Row) (*JettonWallet, error) {
+	var res JettonWallet
+	err := row.Scan(&res.Address, &res.Balance, &res.Owner, &res.Jetton, &res.LastTransactionLt,
+		&res.CodeHash, &res.DataHash)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func ScanJettonTransfer(row pgx.Row) (*JettonTransfer, error) {
+	var res JettonTransfer
+	err := row.Scan(&res.TransactionHash, &res.TransactionLt, &res.TransactionNow, &res.TransactionAborted,
+		&res.QueryId, &res.Amount, &res.Source, &res.Destination, &res.SourceWallet, &res.JettonMaster,
+		&res.ResponseDestination, &res.CustomPayload, &res.ForwardTonAmount, &res.ForwardPayload, &res.TraceId)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func ScanJettonBurn(row pgx.Row) (*JettonBurn, error) {
+	var res JettonBurn
+	err := row.Scan(&res.TransactionHash, &res.TransactionLt, &res.TransactionNow, &res.TransactionAborted,
+		&res.QueryId, &res.Owner, &res.JettonWallet, &res.JettonMaster, &res.Amount,
+		&res.ResponseDestination, &res.CustomPayload, &res.TraceId)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
 }

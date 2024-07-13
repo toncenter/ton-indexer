@@ -49,6 +49,8 @@ Vagrantfile
 # custom
 /sandbox
 /private
+/build
 
 .env.*
 .env
+ton-index-go

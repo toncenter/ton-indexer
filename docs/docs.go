@@ -73,13 +73,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.MessagesResponse"
+                            "$ref": "#/definitions/MessagesResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/index.RequestError"
+                            "$ref": "#/definitions/RequestError"
                         }
                     }
                 }
@@ -123,13 +123,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.AddressBook"
+                            "$ref": "#/definitions/AddressBook"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/index.RequestError"
+                            "$ref": "#/definitions/RequestError"
                         }
                     }
                 }
@@ -243,13 +243,427 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.BlocksResponse"
+                            "$ref": "#/definitions/BlocksResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/index.RequestError"
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/jetton/burns": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get Jetton burns by specified filters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "jettons"
+                ],
+                "summary": "Get Jetton Burns",
+                "operationId": "api_v3_get_jetton_burns",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of jetton wallet owner in any form. Max 1000",
+                        "name": "address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Jetton wallet address in any form. Max: 1000.",
+                        "name": "jetton_wallet",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Jetton master address in any form.",
+                        "name": "jetton_master",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with generation UTC timestamp **after** given timestamp.",
+                        "name": "start_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with generation UTC timestamp **before** given timestamp.",
+                        "name": "end_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with ` + "`" + `lt \u003e= start_lt` + "`" + `.",
+                        "name": "start_lt",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with ` + "`" + `lt \u003c= end_lt` + "`" + `.",
+                        "name": "end_lt",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 500,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort transactions by lt.",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/JettonBurnsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/jetton/masters": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get Jetton masters by specified filters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "jettons"
+                ],
+                "summary": "Get Jetton Masters",
+                "operationId": "api_v3_get_jetton_masters",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Jetton Master address in any form. Max: 1024.",
+                        "name": "address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of Jetton Master's admin in any form. Max: 1024.",
+                        "name": "admin_address",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 500,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/JettonMastersResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/jetton/transfers": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get Jetton transfers by specified filters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "jettons"
+                ],
+                "summary": "Get Jetton Transfers",
+                "operationId": "api_v3_get_jetton_transfers",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of jetton wallet owner in any form. Max 1000",
+                        "name": "address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Jetton wallet address in any form. Max: 1000.",
+                        "name": "jetton_wallet",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Jetton master address in any form.",
+                        "name": "jetton_master",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "in",
+                            "out"
+                        ],
+                        "type": "string",
+                        "description": "Direction of transfer.",
+                        "name": "direction",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with generation UTC timestamp **after** given timestamp.",
+                        "name": "start_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with generation UTC timestamp **before** given timestamp.",
+                        "name": "end_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with ` + "`" + `lt \u003e= start_lt` + "`" + `.",
+                        "name": "start_lt",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with ` + "`" + `lt \u003c= end_lt` + "`" + `.",
+                        "name": "end_lt",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 500,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort transactions by lt.",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/JettonTransfersResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/jetton/wallets": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get Jetton wallets by specified filters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "jettons"
+                ],
+                "summary": "Get Jetton Wallets",
+                "operationId": "api_v3_get_jetton_wallets",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Jetton wallet address in any form. Max: 1000.",
+                        "name": "address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of Jetton wallet's owner in any form. Max: 1000.",
+                        "name": "owner_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Jetton Master in any form.",
+                        "name": "jetton_address",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/JettonWalletsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
                         }
                     }
                 }
@@ -290,13 +704,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.TransactionsResponse"
+                            "$ref": "#/definitions/TransactionsResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/index.RequestError"
+                            "$ref": "#/definitions/RequestError"
                         }
                     }
                 }
@@ -312,7 +726,7 @@ const docTemplate = `{
                         "APIKeyQuery": []
                     }
                 ],
-                "description": "Returns all worchain blocks, that appeared after previous masterchain block. \\",
+                "description": "Returns all worchain blocks, that appeared after previous masterchain block.",
                 "consumes": [
                     "application/json"
                 ],
@@ -337,13 +751,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.TransactionsResponse"
+                            "$ref": "#/definitions/TransactionsResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/index.RequestError"
+                            "$ref": "#/definitions/RequestError"
                         }
                     }
                 }
@@ -375,13 +789,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.MasterchainInfo"
+                            "$ref": "#/definitions/MasterchainInfo"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/index.RequestError"
+                            "$ref": "#/definitions/RequestError"
                         }
                     }
                 }
@@ -435,6 +849,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "Opcode of message in hex or signed 32-bit decimal form.",
+                        "name": "opcode",
+                        "in": "query"
+                    },
+                    {
                         "enum": [
                             "in",
                             "out"
@@ -466,13 +886,315 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.MessagesResponse"
+                            "$ref": "#/definitions/MessagesResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/index.RequestError"
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/nft/collections": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get NFT collections by specified filters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nfts"
+                ],
+                "summary": "Get NFT collections",
+                "operationId": "api_v3_get_nft_collections",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Collection address in any form. Max: 1024.",
+                        "name": "collection_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of collection owner in any form. Max: 1024.",
+                        "name": "owner_address",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 500,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/NFTCollectionsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/nft/items": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get NFT items by specified filters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nfts"
+                ],
+                "summary": "Get NFT items",
+                "operationId": "api_v3_get_nft_items",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "NFT item address in any form. Max: 1000.",
+                        "name": "address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of NFT item owner in any form. Max: 1000.",
+                        "name": "owner_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Collection address in any form.",
+                        "name": "collection_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Index of item for given collection. Max: 1000.",
+                        "name": "index",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/NFTItemsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/nft/transfers": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get transfers of NFT items by specified filters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nfts"
+                ],
+                "summary": "Get NFT Transfers",
+                "operationId": "api_v3_get_nft_transfers",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of NFT owner in any form. Max 1000",
+                        "name": "owner_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of NFT item in any form. Max: 1000.",
+                        "name": "item_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Collection address in any form.",
+                        "name": "collection_address",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "in",
+                            "out"
+                        ],
+                        "type": "string",
+                        "description": "Direction of transfer.",
+                        "name": "direction",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with generation UTC timestamp **after** given timestamp.",
+                        "name": "start_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with generation UTC timestamp **before** given timestamp.",
+                        "name": "end_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with ` + "`" + `lt \u003e= start_lt` + "`" + `.",
+                        "name": "start_lt",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query transactions with ` + "`" + `lt \u003c= end_lt` + "`" + `.",
+                        "name": "end_lt",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 500,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort transactions by lt.",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/NFTTransfersResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
                         }
                     }
                 }
@@ -618,13 +1340,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.TransactionsResponse"
+                            "$ref": "#/definitions/TransactionsResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/index.RequestError"
+                            "$ref": "#/definitions/RequestError"
                         }
                     }
                 }
@@ -693,13 +1415,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.TransactionsResponse"
+                            "$ref": "#/definitions/TransactionsResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/index.RequestError"
+                            "$ref": "#/definitions/RequestError"
                         }
                     }
                 }
@@ -741,6 +1463,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "Opcode of message in hex or signed 32-bit decimal form.",
+                        "name": "opcode",
+                        "in": "query"
+                    },
+                    {
                         "enum": [
                             "in",
                             "out"
@@ -772,13 +1500,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.TransactionsResponse"
+                            "$ref": "#/definitions/TransactionsResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/index.RequestError"
+                            "$ref": "#/definitions/RequestError"
                         }
                     }
                 }
@@ -786,7 +1514,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "index.AccountState": {
+        "AccountState": {
             "type": "object",
             "properties": {
                 "account_status": {
@@ -796,7 +1524,13 @@ const docTemplate = `{
                     "type": "string",
                     "example": "0"
                 },
+                "code_boc": {
+                    "type": "string"
+                },
                 "code_hash": {
+                    "type": "string"
+                },
+                "data_boc": {
                     "type": "string"
                 },
                 "data_hash": {
@@ -810,7 +1544,7 @@ const docTemplate = `{
                 }
             }
         },
-        "index.ActionPhase": {
+        "ActionPhase": {
             "type": "object",
             "properties": {
                 "action_list_hash": {
@@ -844,7 +1578,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "tot_msg_size": {
-                    "$ref": "#/definitions/index.MsgSize"
+                    "$ref": "#/definitions/MsgSize"
                 },
                 "total_action_fees": {
                     "type": "string",
@@ -859,13 +1593,13 @@ const docTemplate = `{
                 }
             }
         },
-        "index.AddressBook": {
+        "AddressBook": {
             "type": "object",
             "additionalProperties": {
-                "$ref": "#/definitions/index.AddressBookRow"
+                "$ref": "#/definitions/AddressBookRow"
             }
         },
-        "index.AddressBookRow": {
+        "AddressBookRow": {
             "type": "object",
             "properties": {
                 "user_friendly": {
@@ -873,7 +1607,7 @@ const docTemplate = `{
                 }
             }
         },
-        "index.Block": {
+        "Block": {
             "type": "object",
             "properties": {
                 "after_merge": {
@@ -915,7 +1649,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "masterchain_block_ref": {
-                    "$ref": "#/definitions/index.BlockId"
+                    "$ref": "#/definitions/BlockId"
                 },
                 "min_ref_mc_seqno": {
                     "type": "integer"
@@ -923,7 +1657,7 @@ const docTemplate = `{
                 "prev_blocks": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/index.BlockId"
+                        "$ref": "#/definitions/BlockId"
                     }
                 },
                 "prev_key_block_seqno": {
@@ -972,7 +1706,7 @@ const docTemplate = `{
                 }
             }
         },
-        "index.BlockId": {
+        "BlockId": {
             "type": "object",
             "properties": {
                 "seqno": {
@@ -987,18 +1721,18 @@ const docTemplate = `{
                 }
             }
         },
-        "index.BlocksResponse": {
+        "BlocksResponse": {
             "type": "object",
             "properties": {
                 "blocks": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/index.Block"
+                        "$ref": "#/definitions/Block"
                     }
                 }
             }
         },
-        "index.BouncePhase": {
+        "BouncePhase": {
             "type": "object",
             "properties": {
                 "fwd_fees": {
@@ -1010,7 +1744,7 @@ const docTemplate = `{
                     "example": "0"
                 },
                 "msg_size": {
-                    "$ref": "#/definitions/index.MsgSize"
+                    "$ref": "#/definitions/MsgSize"
                 },
                 "req_fwd_fees": {
                     "type": "string",
@@ -1021,7 +1755,7 @@ const docTemplate = `{
                 }
             }
         },
-        "index.ComputePhase": {
+        "ComputePhase": {
             "type": "object",
             "properties": {
                 "account_activated": {
@@ -1075,7 +1809,7 @@ const docTemplate = `{
                 }
             }
         },
-        "index.CreditPhase": {
+        "CreditPhase": {
             "type": "object",
             "properties": {
                 "credit": {
@@ -1088,7 +1822,7 @@ const docTemplate = `{
                 }
             }
         },
-        "index.DecodedContent": {
+        "DecodedContent": {
             "type": "object",
             "properties": {
                 "comment": {
@@ -1099,18 +1833,225 @@ const docTemplate = `{
                 }
             }
         },
-        "index.MasterchainInfo": {
+        "JettonBurn": {
             "type": "object",
             "properties": {
-                "first": {
-                    "$ref": "#/definitions/index.Block"
+                "amount": {
+                    "type": "string"
                 },
-                "last": {
-                    "$ref": "#/definitions/index.Block"
+                "custom_payload": {
+                    "type": "string"
+                },
+                "jetton_master": {
+                    "type": "string"
+                },
+                "jetton_wallet": {
+                    "type": "string"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "query_id": {
+                    "type": "string"
+                },
+                "response_destination": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "transaction_aborted": {
+                    "type": "boolean"
+                },
+                "transaction_hash": {
+                    "type": "string"
+                },
+                "transaction_lt": {
+                    "type": "integer"
+                },
+                "transaction_now": {
+                    "type": "integer"
                 }
             }
         },
-        "index.Message": {
+        "JettonBurnsResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "jetton_burns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/JettonBurn"
+                    }
+                }
+            }
+        },
+        "JettonMaster": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "admin_address": {
+                    "type": "string"
+                },
+                "code_hash": {
+                    "type": "string"
+                },
+                "data_hash": {
+                    "type": "string"
+                },
+                "jetton_content": {
+                    "type": "string"
+                },
+                "jetton_wallet_code_hash": {
+                    "type": "string"
+                },
+                "last_transaction_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "mintable": {
+                    "type": "boolean"
+                },
+                "total_supply": {
+                    "type": "string"
+                }
+            }
+        },
+        "JettonMastersResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "jetton_masters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/JettonMaster"
+                    }
+                }
+            }
+        },
+        "JettonTransfer": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "custom_payload": {
+                    "type": "string"
+                },
+                "destination": {
+                    "type": "string"
+                },
+                "forward_payload": {
+                    "type": "string"
+                },
+                "forward_ton_amount": {
+                    "type": "string"
+                },
+                "jetton_master": {
+                    "type": "string"
+                },
+                "query_id": {
+                    "type": "string"
+                },
+                "response_destination": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "source_wallet": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "transaction_aborted": {
+                    "type": "boolean"
+                },
+                "transaction_hash": {
+                    "type": "string"
+                },
+                "transaction_lt": {
+                    "type": "integer"
+                },
+                "transaction_now": {
+                    "type": "integer"
+                }
+            }
+        },
+        "JettonTransfersResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "jetton_transfers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/JettonTransfer"
+                    }
+                }
+            }
+        },
+        "JettonWallet": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "balance": {
+                    "type": "string"
+                },
+                "code_hash": {
+                    "type": "string"
+                },
+                "data_hash": {
+                    "type": "string"
+                },
+                "jetton": {
+                    "type": "string"
+                },
+                "last_transaction_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "owner": {
+                    "type": "string"
+                }
+            }
+        },
+        "JettonWalletsResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "jetton_wallets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/JettonWallet"
+                    }
+                }
+            }
+        },
+        "MasterchainInfo": {
+            "type": "object",
+            "properties": {
+                "first": {
+                    "$ref": "#/definitions/Block"
+                },
+                "last": {
+                    "$ref": "#/definitions/Block"
+                }
+            }
+        },
+        "Message": {
             "type": "object",
             "properties": {
                 "bounce": {
@@ -1149,10 +2090,10 @@ const docTemplate = `{
                     "example": "0"
                 },
                 "init_state": {
-                    "$ref": "#/definitions/index.MessageContent"
+                    "$ref": "#/definitions/MessageContent"
                 },
                 "message_content": {
-                    "$ref": "#/definitions/index.MessageContent"
+                    "$ref": "#/definitions/MessageContent"
                 },
                 "opcode": {
                     "type": "integer"
@@ -1166,35 +2107,35 @@ const docTemplate = `{
                 }
             }
         },
-        "index.MessageContent": {
+        "MessageContent": {
             "type": "object",
             "properties": {
                 "body": {
                     "type": "string"
                 },
                 "decoded": {
-                    "$ref": "#/definitions/index.DecodedContent"
+                    "$ref": "#/definitions/DecodedContent"
                 },
                 "hash": {
                     "type": "string"
                 }
             }
         },
-        "index.MessagesResponse": {
+        "MessagesResponse": {
             "type": "object",
             "properties": {
                 "address_book": {
-                    "$ref": "#/definitions/index.AddressBook"
+                    "$ref": "#/definitions/AddressBook"
                 },
                 "messages": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/index.Message"
+                        "$ref": "#/definitions/Message"
                     }
                 }
             }
         },
-        "index.MsgSize": {
+        "MsgSize": {
             "type": "object",
             "properties": {
                 "bits": {
@@ -1207,7 +2148,161 @@ const docTemplate = `{
                 }
             }
         },
-        "index.RequestError": {
+        "NFTCollection": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "code_hash": {
+                    "type": "string"
+                },
+                "collection_content": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "data_hash": {
+                    "type": "string"
+                },
+                "last_transaction_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "next_item_index": {
+                    "type": "string"
+                },
+                "owner_address": {
+                    "type": "string"
+                }
+            }
+        },
+        "NFTCollectionsResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "nft_collections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/NFTCollection"
+                    }
+                }
+            }
+        },
+        "NFTItem": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "code_hash": {
+                    "type": "string"
+                },
+                "collection": {
+                    "$ref": "#/definitions/NFTCollection"
+                },
+                "collection_address": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "data_hash": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "string"
+                },
+                "init": {
+                    "type": "boolean"
+                },
+                "last_transaction_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "owner_address": {
+                    "type": "string"
+                }
+            }
+        },
+        "NFTItemsResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "nft_items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/NFTItem"
+                    }
+                }
+            }
+        },
+        "NFTTransfer": {
+            "type": "object",
+            "properties": {
+                "custom_payload": {
+                    "type": "string"
+                },
+                "forward_amount": {
+                    "type": "string"
+                },
+                "forward_payload": {
+                    "type": "string"
+                },
+                "new_owner": {
+                    "type": "string"
+                },
+                "nft_address": {
+                    "type": "string"
+                },
+                "nft_collection": {
+                    "type": "string"
+                },
+                "old_owner": {
+                    "type": "string"
+                },
+                "query_id": {
+                    "type": "string"
+                },
+                "response_destination": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "transaction_aborted": {
+                    "type": "boolean"
+                },
+                "transaction_hash": {
+                    "type": "string"
+                },
+                "transaction_lt": {
+                    "type": "integer"
+                },
+                "transaction_now": {
+                    "type": "integer"
+                }
+            }
+        },
+        "NFTTransfersResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "nft_transfers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/NFTTransfer"
+                    }
+                }
+            }
+        },
+        "RequestError": {
             "type": "object",
             "properties": {
                 "code": {
@@ -1218,7 +2313,7 @@ const docTemplate = `{
                 }
             }
         },
-        "index.SplitInfo": {
+        "SplitInfo": {
             "type": "object",
             "properties": {
                 "acc_split_depth": {
@@ -1235,7 +2330,7 @@ const docTemplate = `{
                 }
             }
         },
-        "index.StoragePhase": {
+        "StoragePhase": {
             "type": "object",
             "properties": {
                 "status_change": {
@@ -1251,23 +2346,23 @@ const docTemplate = `{
                 }
             }
         },
-        "index.Transaction": {
+        "Transaction": {
             "type": "object",
             "properties": {
                 "account": {
                     "type": "string"
                 },
                 "account_state_after": {
-                    "$ref": "#/definitions/index.AccountState"
+                    "$ref": "#/definitions/AccountState"
                 },
                 "account_state_before": {
-                    "$ref": "#/definitions/index.AccountState"
+                    "$ref": "#/definitions/AccountState"
                 },
                 "block_ref": {
-                    "$ref": "#/definitions/index.BlockId"
+                    "$ref": "#/definitions/BlockId"
                 },
                 "description": {
-                    "$ref": "#/definitions/index.TransactionDescr"
+                    "$ref": "#/definitions/TransactionDescr"
                 },
                 "end_status": {
                     "type": "string"
@@ -1276,7 +2371,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "in_msg": {
-                    "$ref": "#/definitions/index.Message"
+                    "$ref": "#/definitions/Message"
                 },
                 "lt": {
                     "type": "string",
@@ -1294,7 +2389,7 @@ const docTemplate = `{
                 "out_msgs": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/index.Message"
+                        "$ref": "#/definitions/Message"
                     }
                 },
                 "prev_trans_hash": {
@@ -1313,26 +2408,26 @@ const docTemplate = `{
                 }
             }
         },
-        "index.TransactionDescr": {
+        "TransactionDescr": {
             "type": "object",
             "properties": {
                 "aborted": {
                     "type": "boolean"
                 },
                 "action": {
-                    "$ref": "#/definitions/index.ActionPhase"
+                    "$ref": "#/definitions/ActionPhase"
                 },
                 "bounce": {
-                    "$ref": "#/definitions/index.BouncePhase"
+                    "$ref": "#/definitions/BouncePhase"
                 },
                 "compute_ph": {
-                    "$ref": "#/definitions/index.ComputePhase"
+                    "$ref": "#/definitions/ComputePhase"
                 },
                 "credit_first": {
                     "type": "boolean"
                 },
                 "credit_ph": {
-                    "$ref": "#/definitions/index.CreditPhase"
+                    "$ref": "#/definitions/CreditPhase"
                 },
                 "destroyed": {
                     "type": "boolean"
@@ -1344,26 +2439,26 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "split_info": {
-                    "$ref": "#/definitions/index.SplitInfo"
+                    "$ref": "#/definitions/SplitInfo"
                 },
                 "storage_ph": {
-                    "$ref": "#/definitions/index.StoragePhase"
+                    "$ref": "#/definitions/StoragePhase"
                 },
                 "type": {
                     "type": "string"
                 }
             }
         },
-        "index.TransactionsResponse": {
+        "TransactionsResponse": {
             "type": "object",
             "properties": {
                 "address_book": {
-                    "$ref": "#/definitions/index.AddressBook"
+                    "$ref": "#/definitions/AddressBook"
                 },
                 "transactions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/index.Transaction"
+                        "$ref": "#/definitions/Transaction"
                     }
                 }
             }

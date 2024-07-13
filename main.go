@@ -1,9 +1,12 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -134,8 +137,8 @@ func GetShards(c *fiber.Ctx) error {
 
 // @summary Get masterchain block shard state
 //
-//	@description Returns all worchain blocks, that appeared after previous masterchain block. \
-//		\
+//	@description Returns all worchain blocks, that appeared after previous masterchain block.
+//
 //		 **Note:** this method is not equivalent with [/api/v2/shards](https://toncenter.com/api/v2/#/blocks/get_shards_shards_get).
 //
 // @id api_v3_get_masterchainBlockShards
@@ -279,6 +282,7 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 // @failure		400	{object}	index.RequestError
 // @param msg_hash query string false "Message hash. Acceptable in hex, base64 and base64url forms."
 // @param body_hash query string false "Hash of message body."
+// @param opcode query string false "Opcode of message in hex or signed 32-bit decimal form."
 // @param direction query string false "Direction of message." Enums(in, out)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -296,8 +300,8 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 	if err := c.QueryParser(&lim_req); err != nil {
 		return err
 	}
-	if msg_req.BodyHash == nil && msg_req.MessageHash == nil {
-		return c.Status(fiber.StatusBadRequest).JSON(index.RequestError{Message: "Either msg_hash or body_hash should be specified", Code: fiber.StatusBadRequest})
+	if msg_req.BodyHash == nil && msg_req.MessageHash == nil && msg_req.Opcode == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(index.RequestError{Message: "at least one of msg_hash, body_hash, opcode should be specified", Code: fiber.StatusBadRequest})
 	}
 
 	txs, book, err := pool.QueryTransactions(
@@ -328,6 +332,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @param body_hash query string false "Hash of message body."
 // @param source query string false "The source account address. Can be sent in hex, base64 or base64url form. Use value `null` to get external messages."
 // @param destination query string false "The destination account address. Can be sent in hex, base64 or base64url form. Use value `null` to get log messages."
+// @param opcode query string false "Opcode of message in hex or signed 32-bit decimal form."
 // @param direction query string false "Direction of message." Enums(in, out)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -401,6 +406,230 @@ func GetAddressBook(c *fiber.Ctx) error {
 	return c.JSON(book)
 }
 
+// @summary Get NFT collections
+//
+// @description Get NFT collections by specified filters
+//
+// @id api_v3_get_nft_collections
+// @tags nfts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.NFTCollectionsResponse
+// @failure 400 {object} index.RequestError
+// @param collection_address query []string false "Collection address in any form. Max: 1024."
+// @param owner_address query []string false "Address of collection owner in any form. Max: 1024."
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @router /api/v3/nft/collections [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetNFTCollections(c *fiber.Ctx) error {
+	var nft_req index.NFTCollectionRequest
+	var lim_req index.LimitRequest
+
+	if err := c.QueryParser(&nft_req); err != nil {
+		return err
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return err
+	}
+
+	res, book, err := pool.QueryNFTCollections(nft_req, lim_req, settings.Request)
+	if err != nil {
+		return err
+	}
+	resp := index.NFTCollectionsResponse{Collections: res, AddressBook: book}
+	return c.JSON(resp)
+}
+
+// @summary Get NFT items
+//
+// @description Get NFT items by specified filters
+//
+// @id api_v3_get_nft_items
+// @tags nfts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.NFTItemsResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string false "NFT item address in any form. Max: 1000."
+// @param owner_address query []string false "Address of NFT item owner in any form. Max: 1000."
+// @param collection_address query string false "Collection address in any form."
+// @param index query []string false "Index of item for given collection. Max: 1000."
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @router /api/v3/nft/items [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetNFTItems(c *fiber.Ctx) error {
+	var nft_req index.NFTItemRequest
+	var lim_req index.LimitRequest
+
+	if err := c.QueryParser(&nft_req); err != nil {
+		return err
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return err
+	}
+
+	res, book, err := pool.QueryNFTItems(nft_req, lim_req, settings.Request)
+	if err != nil {
+		return err
+	}
+	resp := index.NFTItemsResponse{Items: res, AddressBook: book}
+	return c.JSON(resp)
+}
+
+// @summary Get NFT Transfers
+//
+// @description Get transfers of NFT items by specified filters
+//
+// @id api_v3_get_nft_transfers
+// @tags nfts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.NFTTransfersResponse
+// @failure 400 {object} index.RequestError
+// @param owner_address query []string false "Address of NFT owner in any form. Max 1000"
+// @param item_address query []string false "Address of NFT item in any form. Max: 1000."
+// @param collection_address query string false "Collection address in any form."
+// @param direction query string false "Direction of transfer." Enums(in, out)
+// @param start_utime query int32 false "Query transactions with generation UTC timestamp **after** given timestamp." minimum(0)
+// @param end_utime query int32 false "Query transactions with generation UTC timestamp **before** given timestamp." minimum(0)
+// @param start_lt query int64 false "Query transactions with `lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query transactions with `lt <= end_lt`." minimum(0)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
+// @router /api/v3/nft/transfers [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetNFTTransfers(c *fiber.Ctx) error {
+	transfer_req := index.NFTTransferRequest{}
+	utime_req := index.UtimeRequest{}
+	lt_req := index.LtRequest{}
+	lim_req := index.LimitRequest{}
+
+	if err := c.QueryParser(&transfer_req); err != nil {
+		return err
+	}
+	if err := c.QueryParser(&utime_req); err != nil {
+		return err
+	}
+	if err := c.QueryParser(&lt_req); err != nil {
+		return err
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return err
+	}
+
+	res, book, err := pool.QueryNFTTransfers(transfer_req, utime_req, lt_req, lim_req, settings.Request)
+	if err != nil {
+		return err
+	}
+
+	resp := index.NFTTransfersResponse{Transfers: res, AddressBook: book}
+	return c.JSON(resp)
+}
+
+// @summary Get Jetton Masters
+//
+// @description Get Jetton masters by specified filters
+//
+// @id api_v3_get_jetton_masters
+// @tags jettons
+// @Accept json
+// @Produce json
+// @success 200 {object} index.JettonMastersResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string false "Jetton Master address in any form. Max: 1024."
+// @param admin_address query []string false "Address of Jetton Master's admin in any form. Max: 1024."
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @router /api/v3/jetton/masters [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetJettonMasters(c *fiber.Ctx) error {
+	return errors.New("not implemented")
+}
+
+// @summary Get Jetton Wallets
+//
+// @description Get Jetton wallets by specified filters
+//
+// @id api_v3_get_jetton_wallets
+// @tags jettons
+// @Accept json
+// @Produce json
+// @success 200 {object} index.JettonWalletsResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string false "Jetton wallet address in any form. Max: 1000."
+// @param owner_address query []string false "Address of Jetton wallet's owner in any form. Max: 1000."
+// @param jetton_address query string false "Jetton Master in any form."
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @router /api/v3/jetton/wallets [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetJettonWallets(c *fiber.Ctx) error {
+	return errors.New("not implemented")
+}
+
+// @summary Get Jetton Transfers
+//
+// @description Get Jetton transfers by specified filters
+//
+// @id api_v3_get_jetton_transfers
+// @tags jettons
+// @Accept json
+// @Produce json
+// @success 200 {object} index.JettonTransfersResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string false "Address of jetton wallet owner in any form. Max 1000"
+// @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000."
+// @param jetton_master query string false "Jetton master address in any form."
+// @param direction query string false "Direction of transfer." Enums(in, out)
+// @param start_utime query int32 false "Query transactions with generation UTC timestamp **after** given timestamp." minimum(0)
+// @param end_utime query int32 false "Query transactions with generation UTC timestamp **before** given timestamp." minimum(0)
+// @param start_lt query int64 false "Query transactions with `lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query transactions with `lt <= end_lt`." minimum(0)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
+// @router /api/v3/jetton/transfers [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetJettonTransfers(c *fiber.Ctx) error {
+	return errors.New("not implemented")
+}
+
+// @summary Get Jetton Burns
+//
+// @description Get Jetton burns by specified filters
+//
+// @id api_v3_get_jetton_burns
+// @tags jettons
+// @Accept json
+// @Produce json
+// @success 200 {object} index.JettonBurnsResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string false "Address of jetton wallet owner in any form. Max 1000"
+// @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000."
+// @param jetton_master query string false "Jetton master address in any form."
+// @param start_utime query int32 false "Query transactions with generation UTC timestamp **after** given timestamp." minimum(0)
+// @param end_utime query int32 false "Query transactions with generation UTC timestamp **before** given timestamp." minimum(0)
+// @param start_lt query int64 false "Query transactions with `lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query transactions with `lt <= end_lt`." minimum(0)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
+// @router /api/v3/jetton/burns [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetJettonBurns(c *fiber.Ctx) error {
+	return errors.New("not implemented")
+}
+
 // @summary Test method
 //
 //	@description Test method
@@ -427,6 +656,10 @@ func GetTestMethod(c *fiber.Ctx) error {
 }
 
 func test() {
+	addr := index.AccountAddress("0:8A4A3B4B3652B51F361BA6660F991944F27F744EA7021252B9D58E89D950B661")
+	v := reflect.ValueOf(addr)
+	log.Println(v, v.Kind())
+
 	log.Println("Test OK")
 	// 0:8A4A3B4B3652B51F361BA6660F991944F27F744EA7021252B9D58E89D950B661
 	// EQCKSjtLNlK1HzYbpmYPmRlE8n90TqcCElK51Y6J2VC2YQ0y
@@ -441,12 +674,14 @@ func test() {
 
 func main() {
 	test()
-	settings.Request.Timeout = 3000 * time.Millisecond
+	var timeout_ms int
 
 	flag.StringVar(&settings.PgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
 	flag.StringVar(&settings.Bind, "bind", ":8000", "Bind address")
 	flag.BoolVar(&settings.Prefork, "prefork", false, "Prefork workers")
 	flag.BoolVar(&settings.Request.IsTestnet, "testnet", false, "Use testnet address book")
+	flag.IntVar(&timeout_ms, "query-timeout", 3000, "Query timeout in milliseconds")
+	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
 	flag.Parse()
 
 	var err error
@@ -470,6 +705,7 @@ func main() {
 			{Customtype: index.HashType(""), Converter: index.HashConverter},
 			{Customtype: index.AccountAddress(""), Converter: index.AccountAddressConverter},
 			{Customtype: index.ShardId(0), Converter: index.ShardIdConverter},
+			{Customtype: index.OpcodeType(0), Converter: index.OpcodeTypeConverter},
 		},
 		ZeroEmpty: true,
 	})
@@ -477,7 +713,10 @@ func main() {
 	// endpoints
 	app.Use("/api/v3/", func(c *fiber.Ctx) error {
 		c.Accepts("application/json")
+		start := time.Now()
 		err := c.Next()
+		stop := time.Now()
+		c.Append("Server-timing", fmt.Sprintf("app;dur=%v", stop.Sub(start).String()))
 		if err != nil {
 			log.Printf("Error: %+v\n", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
@@ -504,11 +743,27 @@ func main() {
 	// address book
 	app.Get("/api/v3/addressBook", GetAddressBook)
 
+	// nfts
+	app.Get("/api/v3/nft/collections", GetNFTCollections)
+	app.Get("/api/v3/nft/items", GetNFTItems)
+	app.Get("/api/v3/nft/transfers", GetNFTTransfers)
+
+	// jettons
+	app.Get("/api/v3/jetton/masters", GetJettonMasters)
+	app.Get("/api/v3/jetton/wallets", GetJettonWallets)
+	app.Get("/api/v3/jetton/transfers", GetJettonTransfers)
+	app.Get("/api/v3/jetton/burns", GetJettonBurns)
+
 	// test
 	app.Get("/api/v3/__testMethod", GetTestMethod)
 
 	// swagger
-	app.Get("/api/v3/*", swagger.New(swagger.Config{}))
+	var swagger_config = swagger.Config{
+		Title:  "TON Index (Go) - Swagger UI",
+		Layout: "BaseLayout",
+	}
+	app.Get("/api/v3/*", swagger.New(swagger_config))
+	app.Static("/", "./static")
 	err = app.Listen(settings.Bind)
 	log.Fatal(err)
 }

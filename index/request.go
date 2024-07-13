@@ -35,12 +35,33 @@ type MessageRequest struct {
 	Source      *AccountAddress `query:"source"`
 	Destination *AccountAddress `query:"destination"`
 	BodyHash    *HashType       `query:"body_hash"`
+	Opcode      *OpcodeType     `query:"opcode"`
+}
+
+type NFTCollectionRequest struct {
+	CollectionAddress []AccountAddress `query:"collection_address"`
+	OwnerAddress      []AccountAddress `query:"owner_address"`
+}
+
+type NFTItemRequest struct {
+	Address           []AccountAddress `query:"address"`
+	OwnerAddress      []AccountAddress `query:"owner_address"`
+	CollectionAddress *AccountAddress  `query:"collection_address"`
+	Index             []string         `query:"index"`
+}
+
+type NFTTransferRequest struct {
+	OwnerAddress      []AccountAddress `query:"owner_address"`
+	ItemAddress       []AccountAddress `query:"item_address"`
+	CollectionAddress *AccountAddress  `query:"collection_address"`
+	Direction         *string          `query:"direction"`
 }
 
 type UtimeRequest struct {
 	StartUtime *uint32 `query:"start_utime"`
 	EndUtime   *uint32 `query:"end_utime"`
 }
+
 type LtRequest struct {
 	StartLt *uint64 `query:"start_lt"`
 	EndLt   *uint64 `query:"end_lt"`
