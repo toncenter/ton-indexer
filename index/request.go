@@ -57,6 +57,30 @@ type NFTTransferRequest struct {
 	Direction         *string          `query:"direction"`
 }
 
+type JettonMasterRequest struct {
+	MasterAddress []AccountAddress `query:"address"`
+	AdminAddress  []AccountAddress `query:"admin_address"`
+}
+
+type JettonWalletRequest struct {
+	Address       []AccountAddress `query:"address"`
+	OwnerAddress  []AccountAddress `query:"owner_address"`
+	JettonAddress *AccountAddress  `query:"jetton_address"`
+}
+
+type JettonTransferRequest struct {
+	OwnerAddress []AccountAddress `query:"owner_address"`
+	JettonWallet []AccountAddress `query:"jetton_wallet"`
+	JettonMaster *AccountAddress  `query:"jetton_master"`
+	Direction    *string          `query:"direction"`
+}
+
+type JettonBurnRequest struct {
+	OwnerAddress []AccountAddress `query:"owner_address"`
+	JettonWallet []AccountAddress `query:"jetton_wallet"`
+	JettonMaster *AccountAddress  `query:"jetton_master"`
+}
+
 type UtimeRequest struct {
 	StartUtime *uint32 `query:"start_utime"`
 	EndUtime   *uint32 `query:"end_utime"`

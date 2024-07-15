@@ -13,13 +13,17 @@ type DbClient struct {
 	Pool *pgxpool.Pool
 }
 
-func NewDbClient(dsn string) (*DbClient, error) {
+func NewDbClient(dsn string, maxconns int, minconns int) (*DbClient, error) {
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
 	}
-	config.MaxConns = 128
-	config.MinConns = 64
+	if maxconns > 0 {
+		config.MaxConns = int32(maxconns)
+	}
+	if minconns > 0 {
+		config.MinConns = int32(minconns)
+	}
 	config.HealthCheckPeriod = 60 * time.Second
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)

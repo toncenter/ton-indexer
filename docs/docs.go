@@ -33,7 +33,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "_debug"
                 ],
                 "summary": "Test method",
                 "operationId": "api_v3_get_test_method",
@@ -103,7 +103,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Address Book",
                 "operationId": "api_v3_get_address_book",
@@ -153,7 +153,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get blocks",
                 "operationId": "api_v3_get_blocks",
@@ -687,7 +687,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get masterchain block shard state",
                 "operationId": "api_v3_get_masterchainBlockShardState",
@@ -734,7 +734,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get masterchain block shard state",
                 "operationId": "api_v3_get_masterchainBlockShards",
@@ -781,7 +781,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get Masterchain Info",
                 "operationId": "api_v3_get_masterchain_info",
@@ -819,7 +819,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get messages",
                 "operationId": "api_v3_get_messages",
@@ -1218,7 +1218,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get transactions",
                 "operationId": "api_v3_get_transactions",
@@ -1370,7 +1370,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get transactions by Masterchain block",
                 "operationId": "api_v3_get_transactions_by_masterchain_block",
@@ -1445,7 +1445,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get transactions by message",
                 "operationId": "api_v3_get_transactions_by_message",

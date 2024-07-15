@@ -39,6 +39,7 @@ func limitQuery(lim LimitRequest) string {
 	query := ``
 	if lim.Limit == nil {
 		// set default value
+		lim.Limit = new(int32)
 		*lim.Limit = 1000
 	}
 	if lim.Limit != nil {
@@ -473,6 +474,210 @@ func buildNFTTransfersQuery(transfer_req NFTTransferRequest, utime_req UtimeRequ
 		filter_query = ` where ` + strings.Join(filter_list, " and ")
 	}
 	query := `select` + clmn_query
+	query += ` from ` + from_query
+	query += filter_query
+	query += orderby_query
+	query += limit_query
+	log.Println(query)
+	return query, nil
+}
+
+func buildJettonMastersQuery(jetton_req JettonMasterRequest, lim_req LimitRequest) (string, error) {
+	clmn_query := ` J.address, J.total_supply, J.mintable, J.admin_address, J.jetton_content, 
+		J.jetton_wallet_code_hash, J.code_hash, J.data_hash, J.last_transaction_lt`
+	from_query := ` jetton_masters as J`
+	filter_list := []string{}
+	filter_query := ``
+	orderby_query := ``
+	limit_query := limitQuery(lim_req)
+
+	if v := jetton_req.MasterAddress; v != nil {
+		filter_str := filterByArray("J.address", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+	}
+	if v := jetton_req.AdminAddress; v != nil {
+		filter_str := filterByArray("J.admin_address", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+	}
+
+	// build query
+	if len(filter_list) > 0 {
+		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	}
+	query := `select` + clmn_query
+	query += ` from ` + from_query
+	query += filter_query
+	query += orderby_query
+	query += limit_query
+	return query, nil
+}
+
+func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitRequest) (string, error) {
+	clmn_query := `J.address, J.balance, J.owner, J.jetton, J.last_transaction_lt, J.code_hash, J.data_hash`
+	from_query := `jetton_wallets as J`
+	filter_list := []string{}
+	filter_query := ``
+	orderby_query := ``
+	limit_query := limitQuery(lim_req)
+
+	if v := jetton_req.Address; v != nil {
+		filter_str := filterByArray("J.address", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+	}
+	if v := jetton_req.OwnerAddress; v != nil {
+		filter_str := filterByArray("J.owner", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+	}
+	if v := jetton_req.JettonAddress; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("J.jetton = '%s'", *v))
+	}
+
+	// build query
+	if len(filter_list) > 0 {
+		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	}
+	query := `select ` + clmn_query
+	query += ` from ` + from_query
+	query += filter_query
+	query += orderby_query
+	query += limit_query
+	return query, nil
+}
+
+func buildJettonTransfersQuery(transfer_req JettonTransferRequest, utime_req UtimeRequest,
+	lt_req LtRequest, lim_req LimitRequest) (string, error) {
+	clmn_query := `T.*`
+	from_query := `jetton_transfers as T`
+	filter_list := []string{}
+	filter_query := ``
+	orderby_query := ``
+	limit_query := limitQuery(lim_req)
+
+	if v := transfer_req.OwnerAddress; v != nil {
+		if v1 := transfer_req.Direction; v1 != nil {
+			f_str := ``
+			if *v1 == "in" {
+				f_str = filterByArray("T.destination", v)
+			} else {
+				f_str = filterByArray("T.source", v)
+			}
+			if len(f_str) > 0 {
+				filter_list = append(filter_list, f_str)
+			}
+		} else {
+			f1_str := filterByArray("T.source", v)
+			f2_str := filterByArray("T.destination", v)
+			if len(f1_str) > 0 {
+				filter_list = append(filter_list, fmt.Sprintf("(%s or %s)", f1_str, f2_str))
+			}
+		}
+	}
+	if v := transfer_req.JettonWallet; v != nil {
+		filter_str := filterByArray("T.jetton_wallet_address", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+	}
+	if v := transfer_req.JettonMaster; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.jetton_master_address = '%s'", *v))
+	}
+
+	order_col := "T.tx_lt"
+	if v := utime_req.StartUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.tx_now >= %d", *v))
+		order_col = "T.tx_now"
+	}
+	if v := utime_req.EndUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.tx_now <= %d", *v))
+		order_col = "T.tx_now"
+	}
+	if v := lt_req.StartLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.tx_lt >= %d", *v))
+	}
+	if v := lt_req.EndLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.tx_lt <= %d", *v))
+	}
+	if lim_req.Sort == nil {
+		*lim_req.Sort = "desc"
+	}
+	if lim_req.Sort != nil {
+		orderby_query = fmt.Sprintf(" order by %s %s", order_col, *lim_req.Sort)
+	}
+
+	// build query
+	if len(filter_list) > 0 {
+		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	}
+	query := `select ` + clmn_query
+	query += ` from ` + from_query
+	query += filter_query
+	query += orderby_query
+	query += limit_query
+	log.Println(query)
+	return query, nil
+}
+
+func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
+	lt_req LtRequest, lim_req LimitRequest) (string, error) {
+	clmn_query := `T.*`
+	from_query := `jetton_burns as T`
+	filter_list := []string{}
+	filter_query := ``
+	orderby_query := ``
+	limit_query := limitQuery(lim_req)
+
+	if v := burn_req.OwnerAddress; v != nil {
+		f_str := ``
+		f_str = filterByArray("T.owner", v)
+		if len(f_str) > 0 {
+			filter_list = append(filter_list, f_str)
+		}
+	}
+	if v := burn_req.JettonWallet; v != nil {
+		filter_str := filterByArray("T.jetton_wallet_address", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+	}
+	if v := burn_req.JettonMaster; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.jetton_master_address = '%s'", *v))
+	}
+
+	order_col := "T.tx_lt"
+	if v := utime_req.StartUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.tx_now >= %d", *v))
+		order_col = "T.tx_now"
+	}
+	if v := utime_req.EndUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.tx_now <= %d", *v))
+		order_col = "T.tx_now"
+	}
+	if v := lt_req.StartLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.tx_lt >= %d", *v))
+	}
+	if v := lt_req.EndLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.tx_lt <= %d", *v))
+	}
+	if lim_req.Sort == nil {
+		*lim_req.Sort = "desc"
+	}
+	if lim_req.Sort != nil {
+		orderby_query = fmt.Sprintf(" order by %s %s", order_col, *lim_req.Sort)
+	}
+
+	// build query
+	if len(filter_list) > 0 {
+		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	}
+	query := `select ` + clmn_query
 	query += ` from ` + from_query
 	query += filter_query
 	query += orderby_query
@@ -1115,6 +1320,168 @@ func (db *DbClient) QueryNFTTransfers(
 		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.NftCollectionAddress))
 		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.OldOwner))
 		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.NewOwner))
+		if t.ResponseDestination != nil {
+			addr_list = append(addr_list, fmt.Sprintf("'%s'", *t.ResponseDestination))
+		}
+	}
+	if len(addr_list) > 0 {
+		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return res, book, nil
+}
+
+func (db *DbClient) QueryJettonMasters(
+	jetton_req JettonMasterRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]JettonMaster, AddressBook, error) {
+	query, err := buildJettonMastersQuery(jetton_req, lim_req)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// read data
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, err
+	}
+	defer conn.Release()
+
+	res, err := queryJettonMastersImpl(query, conn, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var book AddressBook = nil
+	addr_list := []string{}
+	for _, t := range res {
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Address))
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.AdminAddress))
+	}
+	if len(addr_list) > 0 {
+		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return res, book, nil
+}
+
+func (db *DbClient) QueryJettonWallets(
+	jetton_req JettonWalletRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]JettonWallet, AddressBook, error) {
+	query, err := buildJettonWalletsQuery(jetton_req, lim_req)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// read data
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, err
+	}
+	defer conn.Release()
+
+	res, err := queryJettonWalletsImpl(query, conn, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var book AddressBook = nil
+	addr_list := []string{}
+	for _, t := range res {
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Address))
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Owner))
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Jetton))
+	}
+	if len(addr_list) > 0 {
+		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return res, book, nil
+}
+
+func (db *DbClient) QueryJettonTransfers(
+	transfer_req JettonTransferRequest,
+	utime_req UtimeRequest,
+	lt_req LtRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]JettonTransfer, AddressBook, error) {
+	query, err := buildJettonTransfersQuery(transfer_req, utime_req, lt_req, lim_req)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// read data
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, err
+	}
+	defer conn.Release()
+
+	res, err := queryJettonTransfersImpl(query, conn, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var book AddressBook = nil
+	addr_list := []string{}
+	for _, t := range res {
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Source))
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Destination))
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.SourceWallet))
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.JettonMaster))
+		if t.ResponseDestination != nil {
+			addr_list = append(addr_list, fmt.Sprintf("'%s'", *t.ResponseDestination))
+		}
+	}
+	if len(addr_list) > 0 {
+		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return res, book, nil
+}
+
+func (db *DbClient) QueryJettonBurns(
+	transfer_req JettonBurnRequest,
+	utime_req UtimeRequest,
+	lt_req LtRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]JettonBurn, AddressBook, error) {
+	query, err := buildJettonBurnsQuery(transfer_req, utime_req, lt_req, lim_req)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// read data
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, err
+	}
+	defer conn.Release()
+
+	res, err := queryJettonBurnsImpl(query, conn, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var book AddressBook = nil
+	addr_list := []string{}
+	for _, t := range res {
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Owner))
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.JettonWallet))
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.JettonMaster))
 		if t.ResponseDestination != nil {
 			addr_list = append(addr_list, fmt.Sprintf("'%s'", *t.ResponseDestination))
 		}

@@ -25,7 +25,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "_debug"
                 ],
                 "summary": "Test method",
                 "operationId": "api_v3_get_test_method",
@@ -95,7 +95,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Address Book",
                 "operationId": "api_v3_get_address_book",
@@ -145,7 +145,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get blocks",
                 "operationId": "api_v3_get_blocks",
@@ -679,7 +679,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get masterchain block shard state",
                 "operationId": "api_v3_get_masterchainBlockShardState",
@@ -726,7 +726,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get masterchain block shard state",
                 "operationId": "api_v3_get_masterchainBlockShards",
@@ -773,7 +773,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get Masterchain Info",
                 "operationId": "api_v3_get_masterchain_info",
@@ -811,7 +811,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get messages",
                 "operationId": "api_v3_get_messages",
@@ -1210,7 +1210,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get transactions",
                 "operationId": "api_v3_get_transactions",
@@ -1362,7 +1362,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get transactions by Masterchain block",
                 "operationId": "api_v3_get_transactions_by_masterchain_block",
@@ -1437,7 +1437,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "default"
+                    "blockchain"
                 ],
                 "summary": "Get transactions by message",
                 "operationId": "api_v3_get_transactions_by_message",

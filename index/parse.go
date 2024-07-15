@@ -355,7 +355,7 @@ func ScanJettonMaster(row pgx.Row) (*JettonMaster, error) {
 	var res JettonMaster
 	err := row.Scan(&res.Address, &res.TotalSupply, &res.Mintable, &res.AdminAddress,
 		&res.JettonContent, &res.JettonWalletCodeHash, &res.CodeHash, &res.DataHash,
-		&res.LastTransactionLt, &res.CodeBoc, &res.DataBoc)
+		&res.LastTransactionLt)
 	if err != nil {
 		return nil, err
 	}
