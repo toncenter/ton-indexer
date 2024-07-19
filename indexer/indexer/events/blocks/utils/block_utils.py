@@ -21,6 +21,7 @@ def find_call_contract(blocks: list[Block], opcode: int) -> CallContractBlock | 
             return b
     return None
 
+
 def find_messages(blocks: list[Block], message_class: Type[T]) -> list[tuple[Block, T]]:
     return [(b, message_class(b.get_body())) for b in find_call_contracts(blocks, message_class.opcode)]
 

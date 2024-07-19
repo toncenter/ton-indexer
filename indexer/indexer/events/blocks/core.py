@@ -246,7 +246,7 @@ class Block:
         total = 0
         total_emulated = 0
         for node in self.event_nodes:
-            if node.message.message.destination is not None and node.message.message.source is not None:
+            if node.message.destination is not None and node.message.source is not None:
                 total += 1
                 if node.message.transaction.emulated:
                     total_emulated += 1

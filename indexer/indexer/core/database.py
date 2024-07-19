@@ -39,8 +39,8 @@ settings = Settings()
 # async engine
 def get_engine(settings: Settings):
     logger.critical(settings.pg_dsn)
-    engine = create_async_engine(settings.pg_dsn, 
-                                 pool_size=128, 
+    engine = create_async_engine(settings.pg_dsn,
+                                 pool_size=128,
                                  max_overflow=0,
                                  pool_timeout=5,
                                  pool_pre_ping=True, # using pessimistic approach about closed connections problem: https://docs.sqlalchemy.org/en/14/core/pooling.html#disconnect-handling-pessimistic
@@ -121,8 +121,8 @@ class Block(Base):
     mc_block_shard: str = Column(BigInteger, nullable=True)
     mc_block_seqno: int = Column(Integer, nullable=True)
 
-    masterchain_block = relationship("Block", 
-                                     remote_side=[workchain, shard, seqno], 
+    masterchain_block = relationship("Block",
+                                     remote_side=[workchain, shard, seqno],
                                      backref='shard_blocks')
 
     global_id: int = Column(Integer)
@@ -153,46 +153,47 @@ class Block(Base):
     transactions = relationship("Transaction", back_populates="block")
 
 
-class Event(Base):
-    __tablename__ = 'events'
-    id: int = Column(BigInteger, primary_key=True)
-    meta: Dict[str, Any] = Column(JSONB)
-    processed: bool = Column(Boolean, default=False)
-    
-    # transactions: List["EventTransaction"] = relationship("EventTransaction", back_populates="event")
-    transactions: List["Transaction"] = relationship("Transaction", 
-                                                     foreign_keys=[id],
-                                                     primaryjoin='Event.id == Transaction.event_id',
+class Trace(Base):
+    __tablename__ = 'traces'
+    trace_id = Column(String(44), primary_key=True)
+    external_hash: str = Column(String)
+    mc_seqno_start: int = Column(Integer)
+    mc_seqno_end: int = Column(Integer)
+    start_lt: int = Column(BigInteger)
+    start_utime: int = Column(Integer)
+    end_lt: int = Column(BigInteger)
+    end_utime: int = Column(Integer)
+    state = Column(Enum('complete', 'pending', 'broken', name='trace_state'))
+    pending_edges_: int = Column(BigInteger)
+    edges_: int = Column(BigInteger)
+    nodes_: int = Column(BigInteger)
+    classification_state = Column(Enum('unclassified', 'failed', 'ok', name='trace_classification_state'))
+
+    edges: List[TraceEdge] = relationship("TraceEdge", back_populates="trace", uselist=True, viewonly=True)
+    transactions: List["Transaction"] = relationship("Transaction",
+                                                     foreign_keys=[trace_id],
+                                                     primaryjoin='Trace.trace_id == Transaction.trace_id',
                                                      uselist=True,
                                                      viewonly=True)
-    actions: List["Action"] = relationship("Action", back_populates="event")
-    edges: List["EventEdge"] = relationship("EventEdge", back_populates="event")
 
 
-# class EventTransaction(Base):
-#     __tablename__ = 'event_transactions'
-#     event_id: int = Column(BigInteger, ForeignKey("events.id"), primary_key=True)
-#     tx_hash: str = Column(String, ForeignKey("transactions.hash"), primary_key=True)
+class TraceEdge(Base):
+    __tablename__ = 'trace_edges'
+    trace_id: str = Column(String(44), ForeignKey("traces.trace_id"), primary_key=True)
+    left_tx: str = Column(String, primary_key=True)
+    right_tx: str = Column(String, primary_key=True)
+    incomplete: bool = Column(Boolean)
+    broken: bool = Column(Boolean)
 
-#     event: Event = relationship("Event", back_populates="transactions")
-#     transactions: List["Transaction"] = relationship("Transaction", back_populates="event")
-
-
-class EventEdge(Base):
-    __tablename__ = 'event_graph'
-    event_id: int = Column(BigInteger, ForeignKey("events.id"), primary_key=True)
-    left_tx_hash: str = Column(String, primary_key=True)
-    right_tx_hash: str = Column(String, primary_key=True)
-
-    event: "Event" = relationship("Event", back_populates="edges")
+    trace: "Trace" = relationship("Trace", back_populates="edges", viewonly=True)
 
 
 class Action(Base):
     __tablename__ = 'actions'
 
-    action_id: str = Column(String(64), primary_key=True)
+    action_id: str = Column(String, primary_key=True)
     type: str = Column(String())
-    trace_id: int = Column(BigInteger, ForeignKey('events.id'), nullable=False)
+    trace_id: str = Column(String(44), ForeignKey('traces.trace_id'), nullable=False)
     tx_hashes: list[str] = Column(ARRAY(String()))
     value: int = Column(Numeric)
     start_lt: int | None = Column(BigInteger)
@@ -215,12 +216,12 @@ class Action(Base):
     ]))
     jetton_transfer_data = Column(CompositeType("jetton_transfer_details", [
         Column("response_address", String),
-        Column("forward_amount", BigInteger),
+        Column("forward_amount", Numeric),
         Column("query_id", Numeric)
     ]))
     nft_transfer_data = Column(CompositeType("nft_transfer_details", [
         Column("is_purchase", Boolean),
-        Column("price", BigInteger),
+        Column("price", Numeric),
         Column("query_id", Numeric)
     ]))
     jetton_swap_data = Column(CompositeType("jetton_swap_details", [
@@ -239,7 +240,6 @@ class Action(Base):
         Column("value", String),
         Column("flags", Integer)
     ]))
-    event: Event = relationship("Event", back_populates="actions")
 
 
 class Transaction(Base):
@@ -254,8 +254,8 @@ class Transaction(Base):
     block_workchain = Column(Integer)
     block_shard = Column(BigInteger)
     block_seqno = Column(Integer)
-
-    mc_block_seqno: int = Column(Integer, nullable=True)
+    mc_block_seqno = Column(Integer)
+    trace_id = Column(String(44))
 
     block = relationship("Block", back_populates="transactions")
 
@@ -274,28 +274,74 @@ class Transaction(Base):
     account_state_hash_before = Column(String)
     account_state_hash_after = Column(String)
 
-    event_id: Optional[int] = Column(BigInteger)
-    account_state_before = relationship("AccountState", 
+    descr = Column(Enum('ord', 'storage', 'tick_tock', 'split_prepare',
+                        'split_install', 'merge_prepare', 'merge_install', name='descr_type'))
+    aborted: bool = Column(Boolean)
+    destroyed: bool = Column(Boolean)
+    credit_first: bool = Column(Boolean)
+    is_tock: bool = Column(Boolean)
+    installed: bool = Column(Boolean)
+    storage_fees_collected: int = Column(BigInteger)
+    storage_fees_due: int = Column(BigInteger)
+    storage_status_change = Column(Enum('unchanged', 'frozen', 'deleted', name='status_change_type'))
+    credit_due_fees_collected: int = Column(BigInteger)
+    credit: int = Column(BigInteger)
+    compute_skipped: bool = Column(Boolean)
+    skipped_reason = Column(Enum('no_state', 'bad_state', 'no_gas', 'suspended', name='skipped_reason_type'))
+    compute_success: bool = Column(Boolean)
+    compute_msg_state_used: bool = Column(Boolean)
+    compute_account_activated: bool = Column(Boolean)
+    compute_gas_fees: int = Column(BigInteger)
+    compute_gas_used: int = Column(BigInteger)
+    compute_gas_limit: int = Column(BigInteger)
+    compute_gas_credit: int = Column(BigInteger)
+    compute_mode: int = Column(Integer)
+    compute_exit_code: int = Column(Integer)
+    compute_exit_arg: int = Column(Integer)
+    compute_vm_steps: int = Column(BigInteger)
+    compute_vm_init_state_hash: str = Column(String)
+    compute_vm_final_state_hash: str = Column(String)
+    action_success: bool = Column(Boolean)
+    action_valid: bool = Column(Boolean)
+    action_no_funds: bool = Column(Boolean)
+    action_status_change = Column(Enum('unchanged', 'frozen', 'deleted', name='status_change_type'))
+    action_total_fwd_fees: int = Column(BigInteger)
+    action_total_action_fees: int = Column(BigInteger)
+    action_result_code: int = Column(Integer)
+    action_result_arg: int = Column(Integer)
+    action_tot_actions: int = Column(Integer)
+    action_spec_actions: int = Column(Integer)
+    action_skipped_actions: int = Column(Integer)
+    action_msgs_created: int = Column(Integer)
+    action_action_list_hash: str = Column(String)
+    action_tot_msg_size_cells: int = Column(BigInteger)
+    action_tot_msg_size_bits: int = Column(BigInteger)
+    bounce = Column(Enum('negfunds', 'nofunds', 'ok', name='bounce_type'))
+    bounce_msg_size_cells: int = Column(BigInteger)
+    bounce_msg_size_bits: int = Column(BigInteger)
+    bounce_req_fwd_fees: int = Column(BigInteger)
+    bounce_msg_fees: int = Column(BigInteger)
+    bounce_fwd_fees: int = Column(BigInteger)
+    split_info_cur_shard_pfx_len: int = Column(Integer)
+    split_info_acc_split_depth: int = Column(Integer)
+    split_info_this_addr: str = Column(String)
+    split_info_sibling_addr: str = Column(String)
+
+    account_state_before = relationship("AccountState",
                                         foreign_keys=[account_state_hash_before],
-                                        primaryjoin="AccountState.hash == Transaction.account_state_hash_before", 
+                                        primaryjoin="AccountState.hash == Transaction.account_state_hash_before",
                                         viewonly=True)
-    account_state_after = relationship("AccountState", 
+    account_state_after = relationship("AccountState",
                                        foreign_keys=[account_state_hash_after],
-                                       primaryjoin="AccountState.hash == Transaction.account_state_hash_after", 
+                                       primaryjoin="AccountState.hash == Transaction.account_state_hash_after",
                                        viewonly=True)
-    account_state_latest = relationship("LatestAccountState", 
+    account_state_latest = relationship("LatestAccountState",
                                        foreign_keys=[account],
                                        primaryjoin="LatestAccountState.account == Transaction.account",
                                        lazy='selectin',
                                        viewonly=True)
-    description = Column(JSONB)
-
-    messages: List["TransactionMessage"] = relationship("TransactionMessage", back_populates="transaction")
-    event: Optional["Event"] = relationship("Event",
-                                  foreign_keys=[event_id],
-                                  primaryjoin="Transaction.event_id == Event.id",
-                                  viewonly=True)
-    # event: Event = relationship("EventTransaction", back_populates="transactions")
+    messages: List[Message] = relationship("Message", back_populates="transaction", viewonly=True)
+    trace: Optional[Trace] = relationship("Trace", foreign_keys=[trace_id], primaryjoin="Transaction.trace_id == Trace.trace_id", viewonly=True)
     emulated: bool = False
 
 class AccountState(Base):
@@ -312,7 +358,11 @@ class AccountState(Base):
 
 class Message(Base):
     __tablename__ = 'messages'
-    hash: str = Column(String(44), primary_key=True)
+    msg_hash: str = Column(String(44), primary_key=True)
+    tx_hash: str = Column(String(44), ForeignKey("transactions.hash"), primary_key=True)
+    tx_lt: int = Column(BigInteger, primary_key=True)
+    direction = Column(Enum('out', 'in', name='msg_direction'), primary_key=True)
+    trace_id: str = Column(String(44))
     source: str = Column(String)
     destination: str = Column(String)
     value: int = Column(BigInteger)
@@ -328,49 +378,37 @@ class Message(Base):
     body_hash: str = Column(String(44))
     init_state_hash: Optional[str] = Column(String(44), nullable=True)
 
-    transactions = relationship("TransactionMessage", 
-                                foreign_keys=[hash],
-                                primaryjoin="TransactionMessage.message_hash == Message.hash", 
-                                uselist=True,
-                                viewonly=True)
-    message_content = relationship("MessageContent", 
+    transaction = relationship("Transaction",
+                               viewonly=True,
+                               back_populates="messages",
+                               foreign_keys=[tx_hash],
+                               primaryjoin="Message.tx_hash == Transaction.hash")
+
+    message_content = relationship("MessageContent",
                                    foreign_keys=[body_hash],
                                    primaryjoin="Message.body_hash == MessageContent.hash",
                                    viewonly=True)
-    init_state = relationship("MessageContent", 
+    init_state = relationship("MessageContent",
                               foreign_keys=[init_state_hash],
-                              primaryjoin="Message.init_state_hash == MessageContent.hash", 
+                              primaryjoin="Message.init_state_hash == MessageContent.hash",
                               viewonly=True)
-    
-    source_account_state = relationship("LatestAccountState", 
+
+    source_account_state = relationship("LatestAccountState",
                               foreign_keys=[source],
-                              primaryjoin="Message.source == LatestAccountState.account", 
+                              primaryjoin="Message.source == LatestAccountState.account",
                               lazy='selectin',
                               viewonly=True)
 
-    destination_account_state = relationship("LatestAccountState", 
+    destination_account_state = relationship("LatestAccountState",
                               foreign_keys=[destination],
-                              primaryjoin="Message.destination == LatestAccountState.account", 
+                              primaryjoin="Message.destination == LatestAccountState.account",
                               lazy='selectin',
                               viewonly=True)
-
-
-class TransactionMessage(Base):
-    __tablename__ = 'transaction_messages'
-    transaction_hash: str = Column(String(44), ForeignKey('transactions.hash'), primary_key=True)
-    message_hash: str = Column(String(44), primary_key=True)
-    direction: str = Column(Enum('in', 'out', name="direction"), primary_key=True)
-
-    transaction: "Transaction" = relationship("Transaction", back_populates="messages")
-    # message = relationship("Message", back_populates="transactions")
-    message: "Message" = relationship("Message", foreign_keys=[message_hash],
-                                      primaryjoin="TransactionMessage.message_hash == Message.hash", 
-                                      viewonly=True)
 
 
 class MessageContent(Base):
     __tablename__ = 'message_contents'
-    
+
     hash: str = Column(String(44), primary_key=True)
     body: str = Column(String)
 
@@ -395,7 +433,7 @@ class JettonWallet(Base):
                                              foreign_keys=[address],
                                              primaryjoin="JettonWallet.address == JettonBurn.jetton_wallet_address",
                                              viewonly=True)
-    
+
     jetton_master: "JettonMaster" = relationship("JettonMaster",
                                                  foreign_keys=[jetton],
                                                  primaryjoin="JettonWallet.jetton == JettonMaster.address")
@@ -428,6 +466,7 @@ class JettonTransfer(Base):
     custom_payload = Column(String)
     forward_ton_amount: int = Column(Numeric)
     forward_payload = Column(String)
+    trace_id = Column(String(44))
 
     transaction: Transaction = relationship("Transaction")
     jetton_wallet: JettonWallet = relationship("JettonWallet",
@@ -480,10 +519,10 @@ class NFTItem(Base):
     code_hash = Column(String)
     data_hash = Column(String)
 
-    collection: Optional[NFTCollection] = relationship('NFTCollection', 
+    collection: Optional[NFTCollection] = relationship('NFTCollection',
                                                        foreign_keys=[collection_address],
                                                        primaryjoin="NFTCollection.address == NFTItem.collection_address",)
-    
+
     transfers: List["NFTTransfer"] = relationship('NFTTransfer',
                                                   foreign_keys=[address],
                                                   primaryjoin="NFTItem.address == NFTTransfer.nft_item_address",)
@@ -530,7 +569,6 @@ Index("transactions_index_2", Transaction.account, Transaction.lt)
 Index("transactions_index_2a", Transaction.account, Transaction.now)
 Index("transactions_index_3", Transaction.now, Transaction.hash)
 Index("transactions_index_4", Transaction.lt, Transaction.hash)
-Index("transactions_index_6", Transaction.event_id)
 Index("transactions_index_8", Transaction.mc_block_seqno)
 
 # Index('account_states_index_1', AccountState.hash)
@@ -544,10 +582,8 @@ Index("messages_index_4", Message.created_lt)
 # Index("messages_index_6", Message.body_hash)
 # Index("messages_index_7", Message.init_state_hash)
 
-# Index("transaction_messages_index_1", TransactionMessage.transaction_hash)
-Index("transaction_messages_index_2", TransactionMessage.message_hash)
-
-# Index("message_contents_index_1", MessageContent.hash)
+# Index("transaction_messages_index_1", TransactionMessage.transaction_hash, postgresql_using='btree', postgresql_concurrently=False)
+# Index("message_contents_index_1", MessageContent.hash, postgresql_using='btree', postgresql_concurrently=False)
 
 # Index("jetton_wallets_index_1", JettonWallet.address)
 Index("jetton_wallets_index_2", JettonWallet.owner)
@@ -582,8 +618,3 @@ Index("nft_items_index_4", NFTItem.collection_address, NFTItem.index)
 Index("nft_transfers_index_2", NFTTransfer.nft_item_address)
 Index("nft_transfers_index_3", NFTTransfer.old_owner)
 Index("nft_transfers_index_4", NFTTransfer.new_owner)
-
-
-# # event indexes
-# Index("event_transaction_index_1", EventTransaction.tx_hash)
-Index("event_detector__transaction_index_1", Transaction.lt.asc(), postgresql_where=(Transaction.event_id.is_(None)))

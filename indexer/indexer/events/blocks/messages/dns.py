@@ -1,6 +1,6 @@
 from pytoniq_core import Slice
 
-from events.blocks.utils import AccountId
+from indexer.events.blocks.utils import AccountId
 
 
 class ChangeDnsRecordMessage:

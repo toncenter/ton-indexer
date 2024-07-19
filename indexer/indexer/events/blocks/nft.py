@@ -41,7 +41,7 @@ async def _get_nft_data(nft_address: AccountId):
 def _try_get_nft_purchase_data(block: Block, owner: str) -> tuple[list[Block], int] | None:
     prev_block = block.previous_block
     event_node = block.previous_block.event_nodes[0]
-    if not isinstance(prev_block, TonTransferBlock) or event_node.message.message.source.upper() != owner.upper():
+    if not isinstance(prev_block, TonTransferBlock) or event_node.message.source.upper() != owner.upper():
         return None
     price = 0
     block_to_include = [block.previous_block]
@@ -74,13 +74,13 @@ class NftTransferBlockMatcher(BlockMatcher):
         data = dict()
         data['is_purchase'] = False
         nft_transfer_message = NftTransfer(
-            Slice.one_from_boc(block.event_nodes[0].message.message.message_content.body))
+            Slice.one_from_boc(block.event_nodes[0].message.message_content.body))
         ownership_assigned_message = find_messages(other_blocks, NftOwnershipAssigned)
         if len(ownership_assigned_message) > 0:
             nft_ownership_message = ownership_assigned_message[0][1]
             data['prev_owner'] = AccountId(nft_ownership_message.prev_owner)
         else:
-            data['prev_owner'] = AccountId(block.event_nodes[0].message.message.source)
+            data['prev_owner'] = AccountId(block.event_nodes[0].message.source)
         data['query_id'] = nft_transfer_message.query_id
         data['new_owner'] = AccountId(nft_transfer_message.new_owner)
         data['nft'] = await _get_nft_data(AccountId(block.event_nodes[0].message.transaction.account))
@@ -115,17 +115,17 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         data = dict()
         data['is_purchase'] = False
         message = block.get_message()
-        nft_ownership_message = NftOwnershipAssigned(Slice.one_from_boc(message.message.message_content.body))
-        data['new_owner'] = AccountId(message.message.destination)
+        nft_ownership_message = NftOwnershipAssigned(Slice.one_from_boc(message.message_content.body))
+        data['new_owner'] = AccountId(message.destination)
         data['query_id'] = nft_ownership_message.query_id
-        data['nft'] = await _get_nft_data(AccountId(block.get_message().message.destination))
+        data['nft'] = await _get_nft_data(AccountId(block.get_message().destination))
         payload = nft_ownership_message.nft_payload
         if payload is not None and isinstance(payload.value, TeleitemBidInfo):
             data['is_purchase'] = True
             data['price'] = Amount(payload.value.bid)
             prev_block = block.previous_block
             if (isinstance(prev_block, TonTransferBlock) or
-                    (isinstance(prev_block, CallContractBlock) and prev_block.get_message().message.source is None)):
+                    (isinstance(prev_block, CallContractBlock) and prev_block.get_message().source is None)):
                 include.extend(find_call_contracts(prev_block.next_blocks, AuctionFillUp.opcode))
                 include.append(prev_block)
 

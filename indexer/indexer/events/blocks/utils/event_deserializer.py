@@ -1,25 +1,23 @@
 from __future__ import annotations
 
+import base64
+
 import msgpack
 
-from indexer.core.database import MessageContent, Transaction, TransactionMessage, Message, Event, EventEdge
+from indexer.core.database import MessageContent, Transaction, Message, Trace, TraceEdge
 
 account_status_map = ['uninit', 'frozen', 'active', 'nonexist']
 
 
-def _message_from_tuple(tx: Transaction, data, direction: str) -> TransactionMessage:
+def _message_from_tuple(tx: Transaction, data, direction: str) -> Message:
     (msg_hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, opcode, ihr_disabled, bounce,
      bounced,
      import_fee, body_boc, init_state_boc) = data
     message_content = MessageContent(hash='', body=body_boc)
-    tx_message = TransactionMessage(
-        transaction_hash=tx.hash,
-        transaction=tx,
-        direction=direction,
-        message_hash=msg_hash
-    )
     message = Message(
-        hash=msg_hash,
+        msg_hash=msg_hash,
+        tx_hash=tx.hash,
+        tx_lt=tx.lt,
         source=source,
         destination=destination,
         value=value,
@@ -34,10 +32,9 @@ def _message_from_tuple(tx: Transaction, data, direction: str) -> TransactionMes
         import_fee=import_fee,
         message_content=message_content,
     )
-    tx_message.message = message
     if init_state_boc is not None:
         message.init_state = MessageContent(hash='', body=init_state_boc)
-    return tx_message
+    return message
 
 
 def _tx_description_from_tuple(data):
@@ -102,7 +99,6 @@ def unpack_messagepack_tx(data: bytes) -> Transaction:
         total_fees=total_fees,
         account_state_hash_before=account_state_hash_before,
         account_state_hash_after=account_state_hash_after,
-        description=_tx_description_from_tuple(description),
         emulated=emulated
     )
     tx.messages = [_message_from_tuple(tx, msg, 'out') for msg in out_msgs] + [
@@ -110,22 +106,21 @@ def unpack_messagepack_tx(data: bytes) -> Transaction:
     return tx
 
 
-def deserialize_event(trace_id, packed_transactions_map: dict[str, bytes]) -> Event:
+def deserialize_event(trace_id, packed_transactions_map: dict[str, bytes]) -> Trace:
     edges = []
     transactions = []
-    event_id = hash(trace_id)
     root = packed_transactions_map[trace_id]
 
     def load_leaf(tx):
         for msg in tx.messages:
             if msg.direction != 'out':
                 continue
-            child_tx = unpack_messagepack_tx(packed_transactions_map[msg.message_hash])
-            edges.append(EventEdge(left_tx_hash=tx.hash, right_tx_hash=child_tx.hash, event_id=trace_id))
+            child_tx = unpack_messagepack_tx(packed_transactions_map[msg.msg_hash])
+            edges.append(TraceEdge(left_tx_hash=tx.hash, right_tx_hash=child_tx.hash, trace_id=trace_id))
             transactions.append(child_tx)
             load_leaf(child_tx)
 
     root_tx = unpack_messagepack_tx(root)
     transactions.append(root_tx)
     load_leaf(root_tx)
-    return Event(transactions=transactions, edges=edges, id=event_id)
+    return Trace(transactions=transactions, edges=edges, id=trace_id, classification_state='unclassified', state='complete')

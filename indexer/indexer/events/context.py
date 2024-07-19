@@ -3,7 +3,7 @@ from contextvars import ContextVar
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from events.extra_data_repository import ExtraDataRepository
+from indexer.events.extra_data_repository import ExtraDataRepository
 
 # noinspection PyTypeChecker
 session: ContextVar[AsyncSession] = ContextVar('db_session', default=None)

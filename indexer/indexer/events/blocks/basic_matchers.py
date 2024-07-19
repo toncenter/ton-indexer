@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.messages import ExcessMessage
+
+logger = logging.getLogger(__name__)
 
 
 class BlockMatcher:
@@ -31,12 +35,17 @@ class BlockMatcher:
         child_matched = await self.process_child_matcher(block, blocks, child_matched)
         parent_matched = await self.process_parent_matcher(block, blocks, parent_matched)
         if self_matched and parent_matched and child_matched:
-            r = await self.build_block(block, blocks)
-            if self.include_excess:
-                for next_block in block.next_blocks:
-                    if isinstance(next_block, CallContractBlock) and next_block.opcode == ExcessMessage.opcode:
-                        r.append(next_block)
-            return r
+            try:
+                r = await self.build_block(block, blocks)
+                if self.include_excess:
+                    for next_block in block.next_blocks:
+                        if isinstance(next_block, CallContractBlock) and next_block.opcode == ExcessMessage.opcode:
+                            r.append(next_block)
+                return r
+            except Exception as e:
+                logger.error(f"Error while building block {block} with matcher {self.__class__.__name__}: {block.event_nodes[0].message.tx_hash}")
+                logger.error(e)
+                return None
         else:
             return None
 

@@ -3,26 +3,26 @@ import hashlib
 import random
 from typing import Tuple, List
 
-from core.database import Action
-from events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
-from events.blocks.core import Block
-from events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock
-from events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
-from events.blocks.nft import NftTransferBlock
-from events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
-from events.blocks.swaps import JettonSwapBlock
+from indexer.core.database import Action
+from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
+from indexer.events.blocks.core import Block
+from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock
+from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
+from indexer.events.blocks.nft import NftTransferBlock
+from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
+from indexer.events.blocks.swaps import JettonSwapBlock
 
 
 def _calc_action_id(block: Block) -> str:
-    msg_hashes = list(set(n.message.message_hash for n in block.event_nodes))
+    msg_hashes = list(set(n.message.msg_hash for n in block.event_nodes))
     msg_hashes.sort()
     h = hashlib.sha256(",".join(msg_hashes).encode())
     return base64.b64encode(h.digest()).decode()
 
 
-def _base_block_to_action(block: Block, trace_id: int) -> Action:
+def _base_block_to_action(block: Block, trace_id: str) -> Action:
     action_id = _calc_action_id(block)
-    tx_hashes = list(set(n.message.transaction_hash for n in block.event_nodes))
+    tx_hashes = list(set(n.message.tx_hash for n in block.event_nodes))
     return Action(
         trace_id=trace_id,
         type=block.btype,
@@ -173,7 +173,8 @@ def _fill_election_action(block: Block, action: Action):
     action.value = block.data['amount'].value if 'amount' in block.data else None
 
 
-def block_to_action(block: Block, trace_id: int) -> Action:
+# noinspection PyCompatibility,PyTypeChecker
+def block_to_action(block: Block, trace_id: str) -> Action:
     action = _base_block_to_action(block, trace_id)
     match block.btype:
         case 'call_contract':

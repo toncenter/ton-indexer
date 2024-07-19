@@ -1,27 +1,32 @@
+import base64
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from events.blocks.dns import ChangeDnsRecordMatcher
-from events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
-from events.blocks.megaton import WtonMintBlockMatcher
-from events.blocks.messages import TonTransferMessage
-from indexer.core.database import Event, engine
+from indexer.events.blocks.utils import AccountId
+from indexer.core.database import Trace, engine
 from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock
 from indexer.events.blocks.core import Block
+from indexer.events.blocks.dns import ChangeDnsRecordMatcher
+from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
 from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher
+from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher
+from indexer.events.blocks.subscriptions import SubscriptionBlockMatcher, UnsubscribeBlockMatcher
 from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher
+from indexer.events.blocks.utils import NoMessageBodyException
 from indexer.events.blocks.utils import to_tree, EventNode
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+logger = logging.getLogger(__name__)
 
-
-# logging.basicConfig()
-# logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 def init_block(node: EventNode) -> Block:
     block = None
-    if node.get_opcode() == 0 or node.get_opcode() is None or node.get_opcode() == TonTransferMessage.encrypted_opcode:
+    if node.is_tick_tock:
+        block = Block('tick_tock', [node], {'account': AccountId(node.tick_tock_tx.account)})
+    elif node.get_opcode() == 0 or node.get_opcode() is None or node.get_opcode() == TonTransferMessage.encrypted_opcode:
         block = TonTransferBlock(node)
     else:
         block = CallContractBlock(node)
@@ -30,26 +35,7 @@ def init_block(node: EventNode) -> Block:
     return block
 
 
-def is_event_finished(event: Event):
-    """
-    check if event is finished
-    Check if all transaction outgoing messages with filled destination are incoming messages for other transactions
-    """
-    outgoing_messages = set()
-    incoming_messages = set()
-
-    for tx in event.transactions:
-        for msg in tx.messages:
-            if msg.direction == 'out' and msg.message.destination is not None:
-                outgoing_messages.add(msg.message.hash)
-            elif msg.direction == 'in' and msg.message.source is not None:
-                incoming_messages.add(msg.message.hash)
-
-    return outgoing_messages.issubset(incoming_messages)
-
-
 matchers = [
-    WtonMintBlockMatcher(),
     JettonTransferBlockMatcher(),
     JettonBurnBlockMatcher(),
     DedustSwapBlockMatcher(),
@@ -58,17 +44,25 @@ matchers = [
     TelegramNftPurchaseBlockMatcher(),
     ChangeDnsRecordMatcher(),
     ElectionDepositStakeBlockMatcher(),
-    ElectionRecoverStakeBlockMatcher()
+    ElectionRecoverStakeBlockMatcher(),
+    SubscriptionBlockMatcher(),
+    UnsubscribeBlockMatcher()
 ]
 
 
-async def process_event_async(event: Event) -> Block:
-    tree = to_tree(event.transactions, event)
-    root = Block('root', [])
-    root.connect(init_block(tree.children[0]))
+async def process_event_async(trace: Trace) -> Block:
+    try:
+        node = to_tree(trace.transactions, trace)
+        root = Block('root', [])
+        root.connect(init_block(node))
 
-    for m in matchers:
-        for b in root.bfs_iter():
-            if b.parent is None:
-                await m.try_build(b)
-    return root
+        for m in matchers:
+            for b in root.bfs_iter():
+                if b.parent is None:
+                    await m.try_build(b)
+        return root
+    except NoMessageBodyException:
+        return None
+    except Exception as e:
+        logging.error("Failed to process ", trace.trace_id)
+        raise e

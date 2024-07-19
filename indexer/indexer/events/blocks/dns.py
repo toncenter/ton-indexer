@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pytoniq_core import Slice
 
-from events.blocks.messages.dns import ChangeDnsRecordMessage
-from events.blocks.utils import AccountId
+from indexer.events.blocks.messages.dns import ChangeDnsRecordMessage
+from indexer.events.blocks.utils import AccountId
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, ContractMatcher
 from indexer.events.blocks.core import Block
@@ -35,13 +35,13 @@ class ChangeDnsRecordMatcher(BlockMatcher):
         return isinstance(block, CallContractBlock) and block.opcode == ChangeDnsRecordMessage.opcode
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        change_dns_message = ChangeDnsRecordMessage(Slice.one_from_boc(block.event_nodes[0].message.message.message_content.body))
+        change_dns_message = ChangeDnsRecordMessage(Slice.one_from_boc(block.event_nodes[0].message.message_content.body))
         new_block = None
         if change_dns_message.has_value:
-            sender = block.event_nodes[0].message.message.source
+            sender = block.event_nodes[0].message.source
             new_block = ChangeDnsRecordBlock({
                 'source': AccountId(sender) if sender is not None else None,
-                'destination': AccountId(block.event_nodes[0].message.message.destination),
+                'destination': AccountId(block.event_nodes[0].message.destination),
                 'key': change_dns_message.key,
                 'value': change_dns_message.value,
             })

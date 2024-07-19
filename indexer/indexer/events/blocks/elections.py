@@ -33,8 +33,8 @@ class ElectionDepositStakeBlockMatcher(BlockMatcher):
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         data = {
-            'amount': Amount(block.event_nodes[0].message.message.value),
-            'stake_holder': AccountId(block.event_nodes[0].message.message.source),
+            'amount': Amount(block.event_nodes[0].message.value),
+            'stake_holder': AccountId(block.event_nodes[0].message.source),
         }
         new_block = ElectionDepositStakeBlock(data)
         new_block.failed = find_call_contract(other_blocks, 0xf374484c) is None
@@ -54,12 +54,12 @@ class ElectionRecoverStakeBlockMatcher(BlockMatcher):
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         data = {
-            'stake_holder': AccountId(block.event_nodes[0].message.message.source)
+            'stake_holder': AccountId(block.event_nodes[0].message.source)
         }
         response = find_call_contract(other_blocks, 0xf96f7324)
         failed = False
         if response is not None:
-            data['amount'] = Amount(response.event_nodes[0].message.message.value)
+            data['amount'] = Amount(response.event_nodes[0].message.value)
         else:
             failed = True
         new_block = ElectionRecoverStakeBlock(data)

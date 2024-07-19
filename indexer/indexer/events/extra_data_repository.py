@@ -6,7 +6,7 @@ from contextvars import ContextVar
 import msgpack
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import JettonWallet, NFTItem
+from indexer.core.database import JettonWallet, NFTItem
 
 
 class ExtraDataRepository(abc.ABC):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from events.blocks.messages import JettonNotify, JettonInternalTransfer, ExcessMessage, JettonBurnNotification
-from events.blocks.messages.subscriptions import SubscriptionPaymentRequestResponse, SubscriptionPayment, \
+from indexer.events.blocks.messages import JettonNotify, JettonInternalTransfer, ExcessMessage, JettonBurnNotification
+from indexer.events.blocks.messages.subscriptions import SubscriptionPaymentRequestResponse, SubscriptionPayment, \
     SubscriptionPaymentRequest, WalletPluginDestruct
 from indexer.events.blocks.utils.block_utils import find_call_contracts, find_messages, find_call_contract
 from indexer.events import context
@@ -40,12 +40,12 @@ class SubscriptionBlockMatcher(BlockMatcher):
 
     async def build_block(self, block: Block | CallContractBlock, other_blocks: list[Block]) -> list[Block]:
         new_block = SubscriptionBlock({})
-        subscriber = AccountId(block.get_message().message.source)
-        subscription = AccountId(block.get_message().message.destination)
-        amount = Amount(block.get_message().message.value)
+        subscriber = AccountId(block.get_message().source)
+        subscription = AccountId(block.get_message().destination)
+        amount = Amount(block.get_message().value)
         failed = False
         subscription_payment = find_call_contract(other_blocks, SubscriptionPayment.opcode)
-        beneficiary = AccountId(subscription_payment.get_message().message.destination)
+        beneficiary = AccountId(subscription_payment.get_message().destination)
 
         payment_request = find_call_contract(other_blocks, SubscriptionPaymentRequest.opcode)
         if payment_request is not None:
@@ -73,12 +73,12 @@ class UnsubscribeBlockMatcher(BlockMatcher):
     async def build_block(self, block: Block | CallContractBlock, other_blocks: list[Block]) -> list[Block]:
         new_block = UnsubscribeBlock({})
         data = dict()
-        data['subscriber'] = AccountId(block.get_message().message.source)
-        data['subscription'] = AccountId(block.get_message().message.destination)
+        data['subscriber'] = AccountId(block.get_message().source)
+        data['subscription'] = AccountId(block.get_message().destination)
 
         response = find_call_contract(other_blocks, WalletPluginDestruct.opcode)
         if response is not None:
-            data['beneficiary'] = AccountId(response.get_message().message.destination)
+            data['beneficiary'] = AccountId(response.get_message().destination)
         new_block.data = data
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
