@@ -1158,3 +1158,7 @@ void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uin
     promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error selecting from PG: " << e.what()));
   }
 }
+
+void InsertManagerPostgres::get_trace_assembler_state(td::Promise<schema::TraceAssemblerState> promise) {
+    UNREACHABLE();
+}

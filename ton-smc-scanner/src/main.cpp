@@ -16,12 +16,20 @@ int main(int argc, char *argv[]) {
 
   CHECK(vm::init_op_cp0());
 
-  td::uint32 seqno = 0;
   td::uint32 threads = 7;
   std::string db_root = "/var/lib/ton-work/db";
-
+  std::string pg_dsn = "postgresql://localhost:5432/ton_index";
+  Options options_;
+  
   td::OptionParser p;
   p.set_description("Scan all accounts at some seqno, detect interfaces and save them to postgres");
+  p.add_option('\0', "help", "prints_help", [&]() {
+    char b[10240];
+    td::StringBuilder sb(td::MutableSlice{b, 10000});
+    sb << p;
+    std::cout << sb.as_cslice().c_str();
+    std::exit(2);
+  });
   p.add_checked_option('S', "seqno", "Masterchain seqno to start indexing from", [&](td::Slice fname) { 
     int v;
     try {
@@ -29,7 +37,7 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error("bad value for --seqno: not a number");
     }
-    seqno = v;
+    options_.seqno_ = v;
     return td::Status::OK();
   });
   p.add_checked_option('t', "threads", "Scheduler threads (default: 7)", [&](td::Slice fname) { 
@@ -42,8 +50,27 @@ int main(int argc, char *argv[]) {
     threads = v;
     return td::Status::OK();
   });
+  p.add_checked_option('b', "batch-size", "Insert batch size", [&](td::Slice fname) { 
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --batch-size: not a number");
+    }
+    options_.batch_size_ = v;
+    return td::Status::OK();
+  });
   p.add_option('D', "db", "Path to TON DB folder", [&](td::Slice fname) { 
     db_root = fname.str();
+  });
+  p.add_option('d', "pg", "PostgreSQL connection string", [&](td::Slice value) {
+    pg_dsn = value.str();
+  });
+  p.add_option('i', "interfaces", "Detect interfaces", [&] {
+    options_.index_interfaces_ = true;
+  });
+  p.add_option('f', "force", "Reset checkpoints", [&]() {
+    options_.from_checkpoint = false;
   });
 
   auto S = p.run(argc, argv);
@@ -53,22 +80,21 @@ int main(int argc, char *argv[]) {
   }
 
   td::actor::Scheduler scheduler({threads});
+  td::actor::ActorOwn<DbScanner> db_scanner;
+  td::actor::ActorOwn<PostgreSQLInsertManager> insert_manager;
 
   // auto watcher = td::create_shared_destructor([] {
   //   td::actor::SchedulerContext::get()->stop();
   // });
-
-  td::actor::ActorOwn<DbScanner> db_scanner;
-
   scheduler.run_in_context([&] { 
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_readonly);
-    td::actor::create_actor<SmcScanner>("smcscanner", db_scanner.get(), seqno).release();
+    insert_manager = td::actor::create_actor<PostgreSQLInsertManager>("insert_manager", pg_dsn, options_.batch_size_);
+    options_.insert_manager_ = insert_manager.get();
+    td::actor::create_actor<SmcScanner>("smcscanner", db_scanner.get(), options_).release();
   });
   
   scheduler.run();
-
   LOG(INFO) << "TON DB integrity check finished successfully";
-  
   return 0;
 }
 

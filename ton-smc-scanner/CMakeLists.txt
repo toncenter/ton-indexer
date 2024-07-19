@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 add_executable(ton-smc-scanner
     src/main.cpp
     src/SmcScanner.cpp
-    src/PostgresInserter.cpp
+    src/PostgreSQLInserter.cpp
 )
 
 target_include_directories(ton-smc-scanner

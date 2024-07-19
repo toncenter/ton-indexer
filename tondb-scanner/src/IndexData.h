@@ -198,7 +198,7 @@ struct Message {
   td::Ref<vm::Cell> init_state;
   td::optional<std::string> init_state_boc;
 
-  td::optional<std::string> decoded_text;
+  td::Bits256 trace_id;
 };
 
 struct Transaction {
@@ -220,6 +220,7 @@ struct Transaction {
   td::Bits256 account_state_hash_before;
   td::Bits256 account_state_hash_after;
 
+  td::Bits256 trace_id;
   TransactionDescr description;
 };
 
@@ -288,8 +289,60 @@ struct AccountState {
   td::optional<std::string> code_hash;
   td::Ref<vm::Cell> data;
   td::optional<std::string> data_hash;
+  td::Bits256 last_trans_hash;
   uint64_t last_trans_lt;     // in "nonexist" case it is lt of block, not tx. TODO: fix it
-  uint32_t last_trans_now;
+};
+
+//
+// Traces
+//
+struct TraceEdge {
+  td::Bits256 trace_id;
+  td::Bits256 msg_hash;
+  std::uint64_t msg_lt;
+  std::optional<td::Bits256> left_tx;
+  std::optional<td::Bits256> right_tx;
+  enum Type { ord = 0, sys = 1, ext = 2, logs = 3 } type;
+  bool incomplete;
+  bool broken;
+
+  std::string str() const {
+    td::StringBuilder sb;
+    sb << "TraceEdge("
+       << trace_id << ", "
+       << msg_hash << ", " 
+       << (left_tx.has_value() ? td::base64_encode(left_tx.value().as_slice()) : "null") << ", "
+       << (right_tx.has_value() ? td::base64_encode(right_tx.value().as_slice()) : "null") << ", "
+       << (incomplete) << ", " << broken << ")";
+    return sb.as_cslice().str();
+  }
+};
+
+struct Trace {
+  td::Bits256 trace_id;
+  std::optional<td::Bits256> external_hash;
+  std::int32_t mc_seqno_start;
+  std::int32_t mc_seqno_end;
+  
+  // meta
+  std::uint64_t start_lt;
+  std::uint32_t start_utime;
+
+  std::uint64_t end_lt;
+  std::uint32_t end_utime;
+
+  enum State { complete = 0, pending = 1, broken = 2} state;
+
+  std::int64_t pending_edges_;
+  std::int64_t edges_;
+  std::int64_t nodes_;
+
+  std::vector<TraceEdge> edges;
+};
+
+struct TraceAssemblerState {
+  std::vector<TraceEdge> pending_edges_;
+  std::vector<Trace> pending_traces_;
 };
 
 }  // namespace schema
@@ -321,6 +374,7 @@ struct JettonWalletData {
 };
 
 struct JettonTransfer {
+  td::Bits256 trace_id;
   td::Bits256 transaction_hash;
   uint64_t transaction_lt;
   uint32_t transaction_now;
@@ -338,6 +392,7 @@ struct JettonTransfer {
 };
 
 struct JettonBurn {
+  td::Bits256 trace_id;
   td::Bits256 transaction_hash;
   uint64_t transaction_lt;
   uint32_t transaction_now;
@@ -378,6 +433,7 @@ struct NFTItemData {
 };
 
 struct NFTTransfer {
+  td::Bits256 trace_id;
   td::Bits256 transaction_hash;
   uint64_t transaction_lt;
   uint32_t transaction_now;
@@ -394,6 +450,10 @@ struct NFTTransfer {
   td::Ref<vm::Cell> forward_payload;
 };
 
+
+//
+// Containers
+//
 struct BlockDataState {
   td::Ref<ton::validator::BlockData> block_data;
   td::Ref<vm::Cell> block_state;
@@ -421,6 +481,8 @@ struct ParsedBlock {
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;
   std::vector<schema::MasterchainBlockShard> shard_state_;
+
+  std::vector<schema::Trace> traces_;
 
   std::vector<BlockchainEvent> events_;
   std::vector<BlockchainInterface> interfaces_;

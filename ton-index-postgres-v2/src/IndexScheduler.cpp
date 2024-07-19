@@ -6,7 +6,7 @@
 
 void IndexScheduler::start_up() {
     event_processor_ = td::actor::create_actor<EventProcessor>("event_processor", insert_manager_);
-    trace_assembler_ = td::actor::create_actor<TraceAssembler>("trace_assembler");
+    trace_assembler_ = td::actor::create_actor<TraceAssembler>("trace_assembler", from_seqno_);
 }
 
 std::string get_time_string(double seconds) {
@@ -35,7 +35,7 @@ std::string get_time_string(double seconds) {
 
 void IndexScheduler::alarm() {
     alarm_timestamp() = td::Timestamp::in(1.0);
-    std::double_t alpha = 0.9;
+    std::double_t alpha = 0.99;
     if (last_existing_seqno_count_ == 0) 
         last_existing_seqno_count_ = existing_seqnos_.size();
     avg_tps_ = alpha * avg_tps_ + (1 - alpha) * (existing_seqnos_.size() - last_existing_seqno_count_);
@@ -67,6 +67,16 @@ void IndexScheduler::run() {
         td::actor::send_closure(SelfId, &IndexScheduler::got_existing_seqnos, std::move(R));
     });
     td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_existing_seqnos, std::move(P), from_seqno_, to_seqno_);
+
+    // restore TraceAssembler state
+    auto Q = td::PromiseCreator::lambda([trace_assembler = trace_assembler_.get()](td::Result<schema::TraceAssemblerState> R) {
+        if (R.is_error()) {
+            LOG(ERROR) << "Failed to read TraceAssemblerState from database";
+            std::_Exit(2);
+        }
+        td::actor::send_closure(trace_assembler, &TraceAssembler::restore_trace_assembler_state, R.move_as_ok());
+    });
+    td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_trace_assembler_state, std::move(Q));
 }
 
 void IndexScheduler::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R) {
@@ -75,10 +85,22 @@ void IndexScheduler::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> 
         return;
     }
 
-    for (auto value : R.move_as_ok()) {
-        existing_seqnos_.insert(value);
+    std::vector<std::uint32_t> seqnos_{R.move_as_ok()};
+    if (seqnos_.size()) {
+        std::sort(seqnos_.begin(), seqnos_.end());
+        std::int32_t next_seqno = seqnos_[0];
+        for (auto value : seqnos_) {
+            if (value == next_seqno) {
+                ++next_seqno;
+                existing_seqnos_.insert(value);
+            } else {
+                break;
+            }
+        }
+        LOG(INFO) << "Accepted " << existing_seqnos_.size() << " of " << seqnos_.size() 
+                  << " existing seqnos. Next seqno: " << next_seqno;
+        td::actor::send_closure(trace_assembler_, &TraceAssembler::update_expected_seqno, next_seqno);
     }
-    LOG(INFO) << "Found " << existing_seqnos_.size() << " existing seqnos";
     alarm_timestamp() = td::Timestamp::in(1.0);
 }
 
@@ -192,14 +214,12 @@ void IndexScheduler::print_stats() {
     }
 
     sb << end_seqno;
-    // if (end_seqno - last_indexed_seqno_ > 100) {
-    //     sb << "(" << double(last_indexed_seqno_ - from_seqno_) / (end_seqno - from_seqno_) * 100 << "%";
-    // }
     sb << "\t" << avg_tps_ << "/s (" << get_time_string(eta) << ")"
        << "\tQ[" << cur_queue_state_.mc_blocks_ << "M, " 
        << cur_queue_state_.blocks_ << "b, " 
        << cur_queue_state_.txs_ << "t, " 
-       << cur_queue_state_.msgs_ << "m]";
+       << cur_queue_state_.msgs_ << "m, "
+       << cur_queue_state_.traces_ << "T]";
     LOG(INFO) << sb.as_cslice().str();
 }
 
@@ -233,8 +253,10 @@ void IndexScheduler::schedule_next_seqnos() {
         schedule_seqno(seqno);
     }
 
-    if(to_seqno_ > 0 && last_known_seqno_ > to_seqno_ && queued_seqnos_.empty()) {
-        stop();
+    if(to_seqno_ > 0 && last_known_seqno_ > to_seqno_ 
+       && queued_seqnos_.empty() && processing_seqnos_.empty()
+       && cur_queue_state_.blocks_ == 0) {
+        // stop();
         return;
     }
 }

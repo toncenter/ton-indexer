@@ -57,16 +57,21 @@ public:
           stop();
           return;
         } 
-        td::Ref<vm::Cell> account_root = shard_account_csr->prefetch_ref();
-
-        int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account_root));
+        
+        block::gen::ShardAccount::Record acc_info;
+        if(!tlb::csr_unpack(std::move(shard_account_csr), acc_info)) {
+          LOG(ERROR) << "Failed to unpack ShardAccount " << address_.addr;
+          stop();
+          return;
+        }
+        int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(acc_info.account));
         switch (account_tag) {
         case block::gen::Account::account_none:
           promise_.set_error(td::Status::Error("Account is empty"));
           stop();
           return;
         case block::gen::Account::account: {
-          auto account_r = ParseQuery::parse_account(account_root, sstate.gen_utime);
+          auto account_r = ParseQuery::parse_account(acc_info.account, sstate.gen_utime, acc_info.last_trans_hash, acc_info.last_trans_lt);
           if (account_r.is_error()) {
             promise_.set_error(account_r.move_as_error());
             stop();
@@ -450,13 +455,13 @@ public:
         promise.set_error(R.move_as_error());
         return;
       }
-      td::actor::send_closure(SelfId, &JettonWalletDetector::parse_transfer_impl, transaction, std::move(cs), std::move(promise));
+      td::actor::send_closure(SelfId, &JettonWalletDetector::parse_transfer_impl, R.move_as_ok(), transaction, std::move(cs), std::move(promise));
     });
 
     storage_.check(transaction.account, std::move(P));
   }
 
-  void parse_transfer_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonTransfer> promise) {
+  void parse_transfer_impl(JettonWalletData contract_data, schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonTransfer> promise) {
     tokens::gen::InternalMsgBody::Record_transfer_jetton transfer_record;
     if (!tlb::csr_unpack_inexact(cs, transfer_record)) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to unpack transfer"));
@@ -464,6 +469,7 @@ public:
     }
 
     JettonTransfer transfer;
+    transfer.trace_id = transaction.trace_id;
     transfer.transaction_hash = transaction.hash;
     transfer.transaction_lt = transaction.lt;
     transfer.transaction_now = transaction.now;
@@ -485,6 +491,7 @@ public:
     }
     transfer.source = transaction.in_msg->source.value();
     transfer.jetton_wallet = convert::to_raw_address(transaction.account);
+    transfer.jetton_master = contract_data.jetton;
     auto destination = convert::to_raw_address(transfer_record.destination);
     if (destination.is_error()) {
       promise.set_error(destination.move_as_error());
@@ -519,13 +526,13 @@ public:
         }
         promise.set_error(R.move_as_error());
       }
-      td::actor::send_closure(SelfId, &JettonWalletDetector::parse_burn_impl, transaction, std::move(cs), std::move(promise));
+      td::actor::send_closure(SelfId, &JettonWalletDetector::parse_burn_impl, R.move_as_ok(), transaction, std::move(cs), std::move(promise));
     });
 
     storage_.check(transaction.account, std::move(P));
   }
 
-  void parse_burn_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonBurn> promise) {
+  void parse_burn_impl(JettonWalletData contract_data, schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<JettonBurn> promise) {
     tokens::gen::InternalMsgBody::Record_burn burn_record;
     if (!tlb::csr_unpack_inexact(cs, burn_record)) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to unpack burn"));
@@ -533,6 +540,7 @@ public:
     }
 
     JettonBurn burn;
+    burn.trace_id = transaction.trace_id;
     burn.transaction_hash = transaction.hash;
     burn.transaction_lt = transaction.lt;
     burn.transaction_now = transaction.now;
@@ -549,6 +557,7 @@ public:
     }
     burn.owner = transaction.in_msg->source.value();
     burn.jetton_wallet = convert::to_raw_address(transaction.account);
+    burn.jetton_master = contract_data.jetton;
     burn.amount = block::tlb::t_VarUInteger_16.as_integer(burn_record.amount);
     if (burn.amount.is_null()) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to unpack burn amount"));
@@ -790,13 +799,13 @@ public:
         promise.set_error(R.move_as_error());
         return;
       }
-      td::actor::send_closure(SelfId, &NFTItemDetector::parse_transfer_impl, transaction, std::move(cs), std::move(promise));
+      td::actor::send_closure(SelfId, &NFTItemDetector::parse_transfer_impl, R.move_as_ok(), transaction, std::move(cs), std::move(promise));
     });
 
     storage_.check(transaction.account, std::move(P));
   }
 
-  void parse_transfer_impl(schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<NFTTransfer> promise) {
+  void parse_transfer_impl(NFTItemData contract_data, schema::Transaction transaction, td::Ref<vm::CellSlice> cs, td::Promise<NFTTransfer> promise) {
     tokens::gen::InternalMsgBody::Record_transfer_nft transfer_record;
     if (!tlb::csr_unpack_inexact(cs, transfer_record)) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to unpack transfer"));
@@ -804,6 +813,7 @@ public:
     }
 
     NFTTransfer transfer;
+    transfer.trace_id = transaction.trace_id;
     transfer.transaction_hash = transaction.hash;
     transfer.transaction_lt = transaction.lt;
     transfer.transaction_now = transaction.now;
@@ -815,6 +825,8 @@ public:
 
     transfer.query_id = transfer_record.query_id;
     transfer.nft_item = transaction.account;
+    transfer.nft_item_index = contract_data.index;
+    transfer.nft_collection = contract_data.collection_address;
     if (!transaction.in_msg.has_value() || !transaction.in_msg.value().source) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to fetch NFT old owner address"));
       return;

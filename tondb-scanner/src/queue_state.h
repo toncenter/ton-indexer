@@ -6,6 +6,7 @@ struct QueueState {
   std::int32_t blocks_{0};
   std::int32_t txs_{0};
   std::int32_t msgs_{0};
+  std::int32_t traces_{0};
 
   QueueState& operator+=(const QueueState& r);
   QueueState& operator-=(const QueueState& r);

@@ -29,6 +29,7 @@ public:
 
   void create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) override;
   void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0) override;
+  void get_trace_assembler_state(td::Promise<schema::TraceAssemblerState> promise) override;
 };
 
 
@@ -48,22 +49,20 @@ private:
   std::string stringify(schema::ComputeSkipReason compute_skip_reason);
   std::string stringify(schema::AccStatusChange acc_status_change);
   std::string stringify(schema::AccountStatus account_status);
+  std::string stringify(schema::Trace::State state);
 
-  void insert_blocks(pqxx::work &txn);
-  void insert_shard_state(pqxx::work &txn);
-  void insert_transactions(pqxx::work &txn);
-  void insert_messages(pqxx::work &txn);
-  // void insert_messsages(pqxx::work &txn, const std::vector<schema::Message> &messages, const std::vector<MsgBody>& msg_bodies, const std::vector<TxMsg> &tx_msgs);
-  // void insert_messages_contents(const std::vector<MsgBody>& msg_bodies, pqxx::work& txn);
-  // void insert_messages_impl(const std::vector<schema::Message>& messages, pqxx::work& txn);
-  // void insert_messages_txs(const std::vector<TxMsg>& messages, pqxx::work& txn);
-  void insert_account_states(pqxx::work &txn);
-  void insert_latest_account_states(pqxx::work &txn);
-  void insert_jetton_transfers(pqxx::work &txn);
-  void insert_jetton_burns(pqxx::work &txn);
-  void insert_nft_transfers(pqxx::work &txn);
-  void insert_jetton_masters(pqxx::work &txn);
-  void insert_jetton_wallets(pqxx::work &txn);
-  void insert_nft_collections(pqxx::work &txn);
-  void insert_nft_items(pqxx::work &txn);
+  std::string insert_blocks(pqxx::work &txn);
+  std::string insert_shard_state(pqxx::work &txn);
+  std::string insert_transactions(pqxx::work &txn);
+  std::string insert_messages(pqxx::work &txn);
+  std::string insert_account_states(pqxx::work &txn);
+  std::string insert_latest_account_states(pqxx::work &txn);
+  std::string insert_jetton_transfers(pqxx::work &txn);
+  std::string insert_jetton_burns(pqxx::work &txn);
+  std::string insert_nft_transfers(pqxx::work &txn);
+  std::string insert_jetton_masters(pqxx::work &txn);
+  std::string insert_jetton_wallets(pqxx::work &txn);
+  std::string insert_nft_collections(pqxx::work &txn);
+  std::string insert_nft_items(pqxx::work &txn);
+  std::string insert_traces(pqxx::work &txn);
 };

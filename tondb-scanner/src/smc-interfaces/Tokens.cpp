@@ -38,16 +38,21 @@ public:
         stop();
         return;
       } 
-      td::Ref<vm::Cell> account_root = shard_account_csr->prefetch_ref();
-
-      int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account_root));
+      
+      block::gen::ShardAccount::Record acc_info;
+      if(!tlb::csr_unpack(std::move(shard_account_csr), acc_info)) {
+        LOG(ERROR) << "Failed to unpack ShardAccount " << address_.addr;
+        stop();
+        return;
+      }
+      int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(acc_info.account));
       switch (account_tag) {
       case block::gen::Account::account_none:
         promise_.set_error(td::Status::Error("Account is empty"));
         stop();
         return;
       case block::gen::Account::account: {
-        auto account_r = ParseQuery::parse_account(account_root, sstate.gen_utime);
+        auto account_r = ParseQuery::parse_account(acc_info.account, sstate.gen_utime, acc_info.last_trans_hash, acc_info.last_trans_lt);
         if (account_r.is_error()) {
           promise_.set_error(account_r.move_as_error());
           stop();

@@ -27,6 +27,7 @@ int main(int argc, char *argv[]) {
 
   // options
   td::uint32 threads = 7;
+  td::uint32 io_workers = 1;
   td::int32 stats_timeout = 10;
   std::string db_root;
   td::uint32 last_known_seqno = 0;
@@ -211,6 +212,16 @@ int main(int argc, char *argv[]) {
     threads = v;
     return td::Status::OK();
   });
+  p.add_checked_option('\0', "io-workers", "Scheduler IO workers (default: 1)", [&](td::Slice fname) { 
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --io-workers: not a number");
+    }
+    io_workers = v;
+    return td::Status::OK();
+  });
   p.add_checked_option('\0', "stats-freq", "Pause between printing stats in seconds", [&](td::Slice fname) { 
     int v;
     try {
@@ -221,6 +232,7 @@ int main(int argc, char *argv[]) {
     stats_timeout = v;
     return td::Status::OK();
   });
+  
   auto S = p.run(argc, argv);
   if (S.is_error()) {
     LOG(ERROR) << "failed to parse options: " << S.move_as_error();
@@ -231,7 +243,7 @@ int main(int argc, char *argv[]) {
     td::actor::SchedulerContext::get()->stop();
   });
 
-  td::actor::Scheduler scheduler({threads});
+  td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
   scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary); });

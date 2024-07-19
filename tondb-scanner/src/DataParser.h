@@ -33,10 +33,10 @@ private:
                                 const block::gen::BlockInfo::Record &info, const block::gen::BlockExtra::Record &extra,
                                 std::set<td::Bits256> &addresses);
   td::Status parse_account_states(const td::Ref<vm::Cell>& block_state_root, std::set<td::Bits256> &addresses);
-  td::Result<schema::AccountState> parse_none_account(td::Ref<vm::Cell> account_root, block::StdAddress address, uint32_t gen_utime, uint64_t lt);
+  td::Result<schema::AccountState> parse_none_account(td::Ref<vm::Cell> account_root, block::StdAddress address, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt);
 
 public: //TODO: refactor
-  static td::Result<schema::AccountState> parse_account(td::Ref<vm::Cell> account_root, uint32_t gen_utime);
+  static td::Result<schema::AccountState> parse_account(td::Ref<vm::Cell> account_root, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt);
 };
 
 
