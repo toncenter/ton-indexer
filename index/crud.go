@@ -334,7 +334,7 @@ func buildNFTCollectionsQuery(nft_req NFTCollectionRequest, lim_req LimitRequest
 	from_query := ` nft_collections as N`
 	filter_list := []string{}
 	filter_query := ``
-	orderby_query := ``
+	orderby_query := ` order by id asc`
 	limit_query := limitQuery(lim_req)
 
 	if v := nft_req.CollectionAddress; v != nil {
@@ -342,12 +342,14 @@ func buildNFTCollectionsQuery(nft_req NFTCollectionRequest, lim_req LimitRequest
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
+		orderby_query = ``
 	}
 	if v := nft_req.OwnerAddress; v != nil {
 		filter_str := filterByArray("N.owner_address", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
+		orderby_query = ``
 	}
 
 	// build query
@@ -363,12 +365,14 @@ func buildNFTCollectionsQuery(nft_req NFTCollectionRequest, lim_req LimitRequest
 }
 
 func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest) (string, error) {
-	clmn_query := ` N.*, C.address, C.next_item_index, C.owner_address, C.collection_content, 
+	clmn_query := ` N.address, N.init, N.index, N.collection_address, N.owner_address, N.content, 
+					N.last_transaction_lt, N.code_hash, N.data_hash,
+					C.address, C.next_item_index, C.owner_address, C.collection_content, 
 				    C.data_hash, C.code_hash, C.last_transaction_lt`
 	from_query := ` nft_items as N left join nft_collections as C on N.collection_address = C.address`
 	filter_list := []string{}
 	filter_query := ``
-	orderby_query := ``
+	orderby_query := ` order by N.id asc`
 	limit_query := limitQuery(lim_req)
 
 	if v := nft_req.Address; v != nil {
@@ -376,12 +380,14 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest) (string, e
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
+		orderby_query = ``
 	}
 	if v := nft_req.OwnerAddress; v != nil {
 		filter_str := filterByArray("N.owner_address", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
+		orderby_query = ` order by N.owner_address, N.collection_address, N.index`
 	}
 	if v := nft_req.CollectionAddress; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("N.collection_address = '%s'", *v))
@@ -488,7 +494,7 @@ func buildJettonMastersQuery(jetton_req JettonMasterRequest, lim_req LimitReques
 	from_query := ` jetton_masters as J`
 	filter_list := []string{}
 	filter_query := ``
-	orderby_query := ``
+	orderby_query := ` order by id asc`
 	limit_query := limitQuery(lim_req)
 
 	if v := jetton_req.MasterAddress; v != nil {
@@ -496,6 +502,7 @@ func buildJettonMastersQuery(jetton_req JettonMasterRequest, lim_req LimitReques
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
+		orderby_query = ``
 	}
 	if v := jetton_req.AdminAddress; v != nil {
 		filter_str := filterByArray("J.admin_address", v)
@@ -521,7 +528,7 @@ func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitReques
 	from_query := `jetton_wallets as J`
 	filter_list := []string{}
 	filter_query := ``
-	orderby_query := ``
+	orderby_query := ` order by id asc`
 	limit_query := limitQuery(lim_req)
 
 	if v := jetton_req.Address; v != nil {
@@ -529,6 +536,7 @@ func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitReques
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
+		orderby_query = ``
 	}
 	if v := jetton_req.OwnerAddress; v != nil {
 		filter_str := filterByArray("J.owner", v)
@@ -538,6 +546,7 @@ func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitReques
 	}
 	if v := jetton_req.JettonAddress; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("J.jetton = '%s'", *v))
+		orderby_query = ``
 	}
 
 	// build query
@@ -686,6 +695,42 @@ func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
 	return query, nil
 }
 
+func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest) (string, error) {
+	clmn_query := `A.account, A.hash, A.balance, A.account_status, A.frozen_hash, A.last_trans_hash, A.last_trans_lt, A.data_hash, A.code_hash, A.data_boc, A.code_boc`
+	from_query := `latest_account_states as A`
+	filter_list := []string{}
+	filter_query := ``
+	orderby_query := ``
+	limit_query := limitQuery(lim_req)
+
+	// build query
+	if v := account_req.AccountAddress; v != nil {
+		f_str := ``
+		f_str = filterByArray("A.account", v)
+		if len(f_str) > 0 {
+			filter_list = append(filter_list, f_str)
+		}
+	}
+	if v := account_req.CodeHash; v != nil {
+		f_str := ``
+		f_str = filterByArray("A.code_hash", v)
+		if len(f_str) > 0 {
+			filter_list = append(filter_list, f_str)
+		}
+	}
+
+	if len(filter_list) > 0 {
+		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	}
+	query := `select ` + clmn_query
+	query += ` from ` + from_query
+	query += filter_query
+	query += orderby_query
+	query += limit_query
+	log.Println(query)
+	return query, nil
+}
+
 // query implementation functions
 func queryBlocksImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Block, error) {
 	// blocks
@@ -696,6 +741,11 @@ func queryBlocksImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
 			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+		default:
 		}
 		defer rows.Close()
 
@@ -718,6 +768,11 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSetting
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
 			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+		default:
 		}
 		defer rows.Close()
 
@@ -742,6 +797,11 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
 			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+		default:
 		}
 		defer rows.Close()
 
@@ -837,6 +897,11 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		if err != nil {
 			return nil, err
 		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+		default:
+		}
 		defer rows.Close()
 
 		for rows.Next() {
@@ -864,10 +929,42 @@ func queryAccountStatesImpl(query string, conn *pgxpool.Conn, settings RequestSe
 		if err != nil {
 			return nil, err
 		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+		default:
+		}
 		defer rows.Close()
 
 		for rows.Next() {
 			if acst, err := ScanAccountState(rows); err == nil {
+				acsts = append(acsts, *acst)
+			} else {
+				return nil, err
+			}
+		}
+	}
+	return acsts, nil
+}
+
+func queryAccountStateFullImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]AccountStateFull, error) {
+	acsts := []AccountStateFull{}
+	{
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		rows, err := conn.Query(ctx, query)
+		if err != nil {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+		default:
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			if acst, err := ScanAccountStateFull(rows); err == nil {
 				acsts = append(acsts, *acst)
 			} else {
 				return nil, err
@@ -883,6 +980,11 @@ func queryNFTCollectionsImpl(query string, conn *pgxpool.Conn, settings RequestS
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		return nil, err
+	}
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+	default:
 	}
 	defer rows.Close()
 
@@ -903,8 +1005,12 @@ func queryNFTItemsWithCollectionsImpl(query string, conn *pgxpool.Conn, settings
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
-		log.Println("Failed query:", query)
 		return nil, err
+	}
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+	default:
 	}
 	defer rows.Close()
 
@@ -926,6 +1032,11 @@ func queryNFTTransfersImpl(query string, conn *pgxpool.Conn, settings RequestSet
 	if err != nil {
 		return nil, err
 	}
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+	default:
+	}
 	defer rows.Close()
 
 	res := []NFTTransfer{}
@@ -945,6 +1056,11 @@ func queryJettonMastersImpl(query string, conn *pgxpool.Conn, settings RequestSe
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		return nil, err
+	}
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+	default:
 	}
 	defer rows.Close()
 
@@ -966,6 +1082,11 @@ func queryJettonWalletsImpl(query string, conn *pgxpool.Conn, settings RequestSe
 	if err != nil {
 		return nil, err
 	}
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+	default:
+	}
 	defer rows.Close()
 
 	res := []JettonWallet{}
@@ -986,6 +1107,11 @@ func queryJettonTransfersImpl(query string, conn *pgxpool.Conn, settings Request
 	if err != nil {
 		return nil, err
 	}
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+	default:
+	}
 	defer rows.Close()
 
 	res := []JettonTransfer{}
@@ -1005,6 +1131,11 @@ func queryJettonBurnsImpl(query string, conn *pgxpool.Conn, settings RequestSett
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		return nil, err
+	}
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("query timeout %v", settings.Timeout)
+	default:
 	}
 	defer rows.Close()
 
@@ -1485,6 +1616,43 @@ func (db *DbClient) QueryJettonBurns(
 		if t.ResponseDestination != nil {
 			addr_list = append(addr_list, fmt.Sprintf("'%s'", *t.ResponseDestination))
 		}
+	}
+	if len(addr_list) > 0 {
+		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return res, book, nil
+}
+
+func (db *DbClient) QueryAccountStates(
+	account_req AccountRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]AccountStateFull, AddressBook, error) {
+	query, err := buildAccountStatesQuery(account_req, lim_req)
+	log.Println(query)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// read data
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, err
+	}
+	defer conn.Release()
+
+	res, err := queryAccountStateFullImpl(query, conn, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var book AddressBook = nil
+	addr_list := []string{}
+	for _, t := range res {
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.AccountAddress))
 	}
 	if len(addr_list) > 0 {
 		book, err = queryAddressBookImpl(addr_list, conn, settings)

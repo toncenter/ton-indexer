@@ -91,6 +91,11 @@ type LtRequest struct {
 	EndLt   *uint64 `query:"end_lt"`
 }
 
+type AccountRequest struct {
+	AccountAddress []AccountAddress `query:"address"`
+	CodeHash       []HashType       `query:"code_hash"`
+}
+
 type SortType string
 
 const (

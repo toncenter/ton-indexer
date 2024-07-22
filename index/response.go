@@ -22,6 +22,11 @@ type MessagesResponse struct {
 	AddressBook AddressBook `json:"address_book"`
 } // @name MessagesResponse
 
+type AccountStatesResponse struct {
+	Accounts    []AccountStateFull `json:"accounts"`
+	AddressBook AddressBook        `json:"address_book"`
+} // @name AccountStatesResponse
+
 type NFTCollectionsResponse struct {
 	Collections []NFTCollection `json:"nft_collections"`
 	AddressBook AddressBook     `json:"address_book"`

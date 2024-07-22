@@ -15,7 +15,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/v3/__testMethod": {
+        "/api/v3/accountStates": {
             "get": {
                 "security": [
                     {
@@ -25,7 +25,7 @@ const docTemplate = `{
                         "APIKeyQuery": []
                     }
                 ],
-                "description": "Test method",
+                "description": "Query account states",
                 "consumes": [
                     "application/json"
                 ],
@@ -33,10 +33,10 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "_debug"
+                    "accounts"
                 ],
-                "summary": "Test method",
-                "operationId": "api_v3_get_test_method",
+                "summary": "Get Account States",
+                "operationId": "api_v3_get_account_states",
                 "parameters": [
                     {
                         "type": "array",
@@ -44,36 +44,17 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "Hash",
-                        "name": "my_hash",
-                        "in": "query"
-                    },
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Address",
-                        "name": "my_addr",
-                        "in": "query"
-                    },
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "ShardId",
-                        "name": "my_shard",
-                        "in": "query"
+                        "description": "List of addresses in any form to get address book. Max: 1024.",
+                        "name": "address",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/MessagesResponse"
+                            "$ref": "#/definitions/AccountStatesResponse"
                         }
                     },
                     "400": {
@@ -103,7 +84,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "blockchain"
+                    "accounts"
                 ],
                 "summary": "Address Book",
                 "operationId": "api_v3_get_address_book",
@@ -1521,8 +1502,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "balance": {
-                    "type": "string",
-                    "example": "0"
+                    "type": "string"
                 },
                 "code_boc": {
                     "type": "string"
@@ -1541,6 +1521,20 @@ const docTemplate = `{
                 },
                 "hash": {
                     "type": "string"
+                }
+            }
+        },
+        "AccountStatesResponse": {
+            "type": "object",
+            "properties": {
+                "accounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/index.AccountStateFull"
+                    }
+                },
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
                 }
             }
         },
@@ -1904,7 +1898,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "jetton_content": {
-                    "type": "string"
+                    "type": "object",
+                    "additionalProperties": true
                 },
                 "jetton_wallet_code_hash": {
                     "type": "string"
@@ -2460,6 +2455,45 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/Transaction"
                     }
+                }
+            }
+        },
+        "index.AccountStateFull": {
+            "type": "object",
+            "properties": {
+                "account_state_hash": {
+                    "type": "string"
+                },
+                "account_status": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "string"
+                },
+                "balance": {
+                    "type": "string"
+                },
+                "code_boc": {
+                    "type": "string"
+                },
+                "code_hash": {
+                    "type": "string"
+                },
+                "data_boc": {
+                    "type": "string"
+                },
+                "data_hash": {
+                    "type": "string"
+                },
+                "frozen_hash": {
+                    "type": "string"
+                },
+                "last_transaction_hash": {
+                    "type": "string"
+                },
+                "last_transaction_lt": {
+                    "type": "string",
+                    "example": "0"
                 }
             }
         }

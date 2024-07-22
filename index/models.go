@@ -16,6 +16,7 @@ var WalletsHashMap = map[string]bool{
 	"hNr6RJ+Ypph3ibojI1gHK8D3bcRSQAKl0JGLmnXS1Zk=": true,
 	"ZN1UgFUixb6KnbWc6gEFzPDQh4bKeb64y3nogKjXMi0=": true,
 	"/rX/aCDi/w2Ug+fg1iyBfYRniftK5YDIeIZtlZ2r1cA=": true,
+	"IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8=": true,
 }
 
 type AddressBookRow struct {
@@ -33,7 +34,7 @@ type BlockId struct {
 type AccountState struct {
 	Hash          HashType        `json:"hash"`
 	Account       *AccountAddress `json:"-"`
-	Balance       *int64          `json:"balance,string"`
+	Balance       *string         `json:"balance"`
 	AccountStatus *string         `json:"account_status"`
 	FrozenHash    *HashType       `json:"frozen_hash"`
 	DataHash      *HashType       `json:"data_hash"`
@@ -41,6 +42,20 @@ type AccountState struct {
 	DataBoc       *string         `json:"data_boc,omitempty"`
 	CodeBoc       *string         `json:"code_boc,omitempty"`
 } // @name AccountState
+
+type AccountStateFull struct {
+	AccountAddress      *AccountAddress `json:"address"`
+	Hash                HashType        `json:"account_state_hash"`
+	Balance             *string         `json:"balance"`
+	AccountStatus       *string         `json:"account_status"`
+	FrozenHash          *HashType       `json:"frozen_hash,omitempty"`
+	LastTransactionHash *HashType       `json:"last_transaction_hash"`
+	LastTransactionLt   *int64          `json:"last_transaction_lt,string"`
+	DataHash            *HashType       `json:"data_hash,omitempty"`
+	CodeHash            *HashType       `json:"code_hash,omitempty"`
+	DataBoc             *string         `json:"data_boc,omitempty"`
+	CodeBoc             *string         `json:"code_boc,omitempty"`
+}
 
 type Block struct {
 	Workchain              int32     `json:"workchain"`
@@ -263,17 +278,17 @@ type NFTTransfer struct {
 
 // jettons
 type JettonMaster struct {
-	Address              AccountAddress `json:"address"`
-	TotalSupply          string         `json:"total_supply"`
-	Mintable             bool           `json:"mintable"`
-	AdminAddress         AccountAddress `json:"admin_address"`
-	JettonContent        string         `json:"jetton_content"`
-	JettonWalletCodeHash HashType       `json:"jetton_wallet_code_hash"`
-	CodeHash             HashType       `json:"code_hash"`
-	DataHash             HashType       `json:"data_hash"`
-	LastTransactionLt    int64          `json:"last_transaction_lt,string"`
-	CodeBoc              string         `json:"-"`
-	DataBoc              string         `json:"-"`
+	Address              AccountAddress         `json:"address"`
+	TotalSupply          string                 `json:"total_supply"`
+	Mintable             bool                   `json:"mintable"`
+	AdminAddress         AccountAddress         `json:"admin_address"`
+	JettonContent        map[string]interface{} `json:"jetton_content"`
+	JettonWalletCodeHash HashType               `json:"jetton_wallet_code_hash"`
+	CodeHash             HashType               `json:"code_hash"`
+	DataHash             HashType               `json:"data_hash"`
+	LastTransactionLt    int64                  `json:"last_transaction_lt,string"`
+	CodeBoc              string                 `json:"-"`
+	DataBoc              string                 `json:"-"`
 } // @name JettonMaster
 
 type JettonWallet struct {

@@ -4,7 +4,6 @@ definitions:
       account_status:
         type: string
       balance:
-        example: "0"
         type: string
       code_boc:
         type: string
@@ -18,6 +17,15 @@ definitions:
         type: string
       hash:
         type: string
+    type: object
+  AccountStatesResponse:
+    properties:
+      accounts:
+        items:
+          $ref: '#/definitions/index.AccountStateFull'
+        type: array
+      address_book:
+        $ref: '#/definitions/AddressBook'
     type: object
   ActionPhase:
     properties:
@@ -261,7 +269,8 @@ definitions:
       data_hash:
         type: string
       jetton_content:
-        type: string
+        additionalProperties: true
+        type: object
       jetton_wallet_code_hash:
         type: string
       last_transaction_lt:
@@ -632,6 +641,32 @@ definitions:
           $ref: '#/definitions/Transaction'
         type: array
     type: object
+  index.AccountStateFull:
+    properties:
+      account_state_hash:
+        type: string
+      account_status:
+        type: string
+      address:
+        type: string
+      balance:
+        type: string
+      code_boc:
+        type: string
+      code_hash:
+        type: string
+      data_boc:
+        type: string
+      data_hash:
+        type: string
+      frozen_hash:
+        type: string
+      last_transaction_hash:
+        type: string
+      last_transaction_lt:
+        example: "0"
+        type: string
+    type: object
 info:
   contact: {}
   description: TON Index collects data from a full node to PostgreSQL database and
@@ -639,33 +674,20 @@ info:
   title: TON Index (Go)
   version: 1.1.0
 paths:
-  /api/v3/__testMethod:
+  /api/v3/accountStates:
     get:
       consumes:
       - application/json
-      description: Test method
-      operationId: api_v3_get_test_method
+      description: Query account states
+      operationId: api_v3_get_account_states
       parameters:
       - collectionFormat: multi
-        description: Hash
+        description: 'List of addresses in any form to get address book. Max: 1024.'
         in: query
         items:
           type: string
-        name: my_hash
-        type: array
-      - collectionFormat: multi
-        description: Address
-        in: query
-        items:
-          type: string
-        name: my_addr
-        type: array
-      - collectionFormat: multi
-        description: ShardId
-        in: query
-        items:
-          type: string
-        name: my_shard
+        name: address
+        required: true
         type: array
       produces:
       - application/json
@@ -673,7 +695,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/MessagesResponse'
+            $ref: '#/definitions/AccountStatesResponse'
         "400":
           description: Bad Request
           schema:
@@ -681,9 +703,9 @@ paths:
       security:
       - APIKeyHeader: []
       - APIKeyQuery: []
-      summary: Test method
+      summary: Get Account States
       tags:
-      - _debug
+      - accounts
   /api/v3/addressBook:
     get:
       consumes:
@@ -714,7 +736,7 @@ paths:
       - APIKeyQuery: []
       summary: Address Book
       tags:
-      - blockchain
+      - accounts
   /api/v3/blocks:
     get:
       consumes:

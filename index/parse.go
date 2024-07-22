@@ -304,6 +304,17 @@ func ScanAccountState(row pgx.Row) (*AccountState, error) {
 	return &acst, nil
 }
 
+func ScanAccountStateFull(row pgx.Row) (*AccountStateFull, error) {
+	var acst AccountStateFull
+	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.AccountStatus,
+		&acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt, &acst.DataHash,
+		&acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
+	if err != nil {
+		return nil, err
+	}
+	return &acst, nil
+}
+
 func ScanNFTCollection(row pgx.Row) (*NFTCollection, error) {
 	var res NFTCollection
 	err := row.Scan(&res.Address, &res.NextItemIndex, &res.OwnerAddress, &res.CollectionContent,

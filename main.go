@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -386,12 +387,12 @@ func GetMessages(c *fiber.Ctx) error {
 // @description Query address book
 //
 // @id api_v3_get_address_book
-// @tags blockchain
+// @tags accounts
 // @Accept json
 // @Produce json
 // @success 200 {object} index.AddressBook
 // @failure 400 {object} index.RequestError
-// @param address query []string false "List of addresses in any form to get address book. Max: 1024."
+// @param address query []string false "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
 // @router /api/v3/addressBook [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -407,6 +408,45 @@ func GetAddressBook(c *fiber.Ctx) error {
 	return c.JSON(book)
 }
 
+// @summary Get Account States
+//
+// @description Query account states
+//
+// @id api_v3_get_account_states
+// @tags accounts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.AccountStatesResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string true "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
+// // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @router /api/v3/accountStates [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetAccountStates(c *fiber.Ctx) error {
+	var account_req index.AccountRequest
+	var lim_req index.LimitRequest
+	if err := c.QueryParser(&account_req); err != nil {
+		return err
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return err
+	}
+
+	if len(account_req.AccountAddress) == 0 {
+		return errors.New("address of account is required")
+	}
+
+	res, book, err := pool.QueryAccountStates(account_req, lim_req, settings.Request)
+	if err != nil {
+		return err
+	}
+
+	resp := index.AccountStatesResponse{Accounts: res, AddressBook: book}
+	return c.JSON(resp)
+}
+
 // @summary Get NFT collections
 //
 // @description Get NFT collections by specified filters
@@ -417,8 +457,8 @@ func GetAddressBook(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.NFTCollectionsResponse
 // @failure 400 {object} index.RequestError
-// @param collection_address query []string false "Collection address in any form. Max: 1024."
-// @param owner_address query []string false "Address of collection owner in any form. Max: 1024."
+// @param collection_address query []string false "Collection address in any form. Max: 1024." collectionFormat(multi)
+// @param owner_address query []string false "Address of collection owner in any form. Max: 1024." collectionFormat(multi)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router /api/v3/nft/collections [get]
@@ -453,10 +493,10 @@ func GetNFTCollections(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.NFTItemsResponse
 // @failure 400 {object} index.RequestError
-// @param address query []string false "NFT item address in any form. Max: 1000."
-// @param owner_address query []string false "Address of NFT item owner in any form. Max: 1000."
+// @param address query []string false "NFT item address in any form. Max: 1000." collectionFormat(multi)
+// @param owner_address query []string false "Address of NFT item owner in any form. Max: 1000." collectionFormat(multi)
 // @param collection_address query string false "Collection address in any form."
-// @param index query []string false "Index of item for given collection. Max: 1000."
+// @param index query []string false "Index of item for given collection. Max: 1000." collectionFormat(multi)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router /api/v3/nft/items [get]
@@ -491,8 +531,8 @@ func GetNFTItems(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.NFTTransfersResponse
 // @failure 400 {object} index.RequestError
-// @param owner_address query []string false "Address of NFT owner in any form. Max 1000"
-// @param item_address query []string false "Address of NFT item in any form. Max: 1000."
+// @param owner_address query []string false "Address of NFT owner in any form. Max 1000" collectionFormat(multi)
+// @param item_address query []string false "Address of NFT item in any form. Max: 1000." collectionFormat(multi)
 // @param collection_address query string false "Collection address in any form."
 // @param direction query string false "Direction of transfer." Enums(in, out)
 // @param start_utime query int32 false "Query transactions with generation UTC timestamp **after** given timestamp." minimum(0)
@@ -554,8 +594,8 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.JettonMastersResponse
 // @failure 400 {object} index.RequestError
-// @param address query []string false "Jetton Master address in any form. Max: 1024."
-// @param admin_address query []string false "Address of Jetton Master's admin in any form. Max: 1024."
+// @param address query []string false "Jetton Master address in any form. Max: 1024." collectionFormat(multi)
+// @param admin_address query []string false "Address of Jetton Master's admin in any form. Max: 1024." collectionFormat(multi)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router /api/v3/jetton/masters [get]
@@ -590,8 +630,8 @@ func GetJettonMasters(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.JettonWalletsResponse
 // @failure 400 {object} index.RequestError
-// @param address query []string false "Jetton wallet address in any form. Max: 1000."
-// @param owner_address query []string false "Address of Jetton wallet's owner in any form. Max: 1000."
+// @param address query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
+// @param owner_address query []string false "Address of Jetton wallet's owner in any form. Max: 1000." collectionFormat(multi)
 // @param jetton_address query string false "Jetton Master in any form."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -627,8 +667,8 @@ func GetJettonWallets(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.JettonTransfersResponse
 // @failure 400 {object} index.RequestError
-// @param address query []string false "Address of jetton wallet owner in any form. Max 1000"
-// @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000."
+// @param address query []string false "Address of jetton wallet owner in any form. Max 1000" collectionFormat(multi)
+// @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param jetton_master query string false "Jetton master address in any form."
 // @param direction query string false "Direction of transfer." Enums(in, out)
 // @param start_utime query int32 false "Query transactions with generation UTC timestamp **after** given timestamp." minimum(0)
@@ -690,8 +730,8 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.JettonBurnsResponse
 // @failure 400 {object} index.RequestError
-// @param address query []string false "Address of jetton wallet owner in any form. Max 1000"
-// @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000."
+// @param address query []string false "Address of jetton wallet owner in any form. Max 1000" collectionFormat(multi)
+// @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param jetton_master query string false "Jetton master address in any form."
 // @param start_utime query int32 false "Query transactions with generation UTC timestamp **after** given timestamp." minimum(0)
 // @param end_utime query int32 false "Query transactions with generation UTC timestamp **before** given timestamp." minimum(0)
@@ -739,29 +779,68 @@ func GetJettonBurns(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
-// @summary Test method
-//
-//	@description Test method
-//
-// @id api_v3_get_test_method
-// @tags _debug
+// @summary Get Events
+// @description Get events by specified filter.
+// @id api_v3_get_events
+// @tags events
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.MessagesResponse
+// @success		200	{object}	index.EventsResponse
 // @failure		400	{object}	index.RequestError
-// @param my_hash query []string false "Hash"
-// @param my_addr query []string false "Address"
-// @param my_shard query []string false "ShardId"
-// @router			/api/v3/__testMethod [get]
+// @param account	query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
+// @param tx_hash	query []string false "Find event by transaction hash." collectionFormat(multi)
+// @param start_utime query int32 false "Query events, which was finished **after** given timestamp." minimum(0)
+// @param end_utime query int32 false "Query events, which was finished **before** given timestamp." minimum(0)
+// @param start_lt query int64 false "Query events with `end_lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query events with `end_lt <= end_lt`." minimum(0)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param sort query string false "Sort events by lt." Enums(asc, desc) default(desc)
+// @router			/api/v3/events [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
+func GetEvents(c *fiber.Ctx) error {
+	return c.Status(500).SendString("not implemented")
+}
+
+// @summary Get Actions
+// @description Get actions by specified filter.
+// @id api_v3_get_actions
+// @tags events
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	index.ActionsResponse
+// @failure		400	{object}	index.RequestError
+// @param action_id	query []string false "Find actions by the action_id." collectionFormat(multi)
+// @router			/api/v3/actions [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetActions(c *fiber.Ctx) error {
+	return c.Status(500).SendString("not implemented")
+}
+
+// // @summary Test method
+// //
+// //	@description Test method
+// //
+// // @id api_v3_get_test_method
+// // @tags _debug
+// // @Accept       json
+// // @Produce      json
+// // @success		200	{object}	index.MessagesResponse
+// // @failure		400	{object}	index.RequestError
+// // @param my_hash query []string false "Hash" collectionFormat(multi)
+// // @param my_addr query []string false "Address" collectionFormat(multi)
+// // @param my_shard query []string false "ShardId" collectionFormat(multi)
+// // @router			/api/v3/__testMethod [get]
+// // @security		APIKeyHeader
+// // @security		APIKeyQuery
 func GetTestMethod(c *fiber.Ctx) error {
 	var test_req index.TestRequest
 	if err := c.QueryParser(&test_req); err != nil {
 		return err
 	}
-	c.Status(200).JSON(test_req)
-	return nil
+	return c.Status(200).JSON(test_req)
 }
 
 func test() {
@@ -827,6 +906,7 @@ func main() {
 	})
 
 	// endpoints
+	// app.Use(logger.New(logger.Config{TimeZone: "UTC",}))
 	app.Use("/api/v3/", func(c *fiber.Ctx) error {
 		c.Accepts("application/json")
 		start := time.Now()
@@ -859,8 +939,9 @@ func main() {
 	// messages
 	app.Get("/api/v3/messages", GetMessages)
 
-	// address book
+	// account methods
 	app.Get("/api/v3/addressBook", GetAddressBook)
+	app.Get("/api/v3/accountStates", GetAccountStates)
 
 	// nfts
 	app.Get("/api/v3/nft/collections", GetNFTCollections)
