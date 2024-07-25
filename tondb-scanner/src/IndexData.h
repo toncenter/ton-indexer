@@ -7,6 +7,7 @@
 #include "validator/interfaces/shard.h"
 #include "crypto/block/block-auto.h"
 #include "crypto/block/block-parse.h"
+#include "smc-interfaces/InterfacesDetector.h"
 
 namespace schema {
 
@@ -291,6 +292,10 @@ struct AccountState {
   td::optional<std::string> data_hash;
   td::Bits256 last_trans_hash;
   uint64_t last_trans_lt;     // in "nonexist" case it is lt of block, not tx. TODO: fix it
+
+  bool operator==(const AccountState& other) const {
+    return hash == other.hash && account == other.account && timestamp == other.timestamp;
+  }
 };
 
 //
@@ -475,6 +480,30 @@ using BlockchainInterface = std::variant<JettonMasterData,
                                          NFTCollectionData, 
                                          NFTItemData>;
 
+
+using BlockchainInterfaceV2 = std::variant<JettonWalletDetectorR::Result, 
+                                           JettonMasterDetectorR::Result, 
+                                           NftItemDetectorR::Result, 
+                                           NftCollectionDetectorR::Result,
+                                           GetGemsNftFixPriceSale::Result,
+                                           GetGemsNftAuction::Result>;
+
+struct BitArrayHasher {
+    std::size_t operator()(const td::Bits256& k) const {
+        std::size_t seed = 0;
+        for(const auto& el : k.as_array()) {
+            seed ^= std::hash<td::uint8>{}(el) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        }
+        return seed;
+    }
+};
+
+struct AddressHasher {
+    std::size_t operator()(const block::StdAddress& addr) const {
+        return std::hash<td::uint32>{}(addr.workchain) ^ BitArrayHasher()(addr.addr);
+    }
+};
+
 struct ParsedBlock {
   MasterchainBlockDataState mc_block_;
 
@@ -485,7 +514,9 @@ struct ParsedBlock {
   std::vector<schema::Trace> traces_;
 
   std::vector<BlockchainEvent> events_;
-  std::vector<BlockchainInterface> interfaces_;
+  std::vector<BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
+
+  std::unordered_map<block::StdAddress, std::vector<BlockchainInterfaceV2>, AddressHasher> account_interfaces_;
   
   template <class T>
   std::vector<T> get_events() {
@@ -498,12 +529,26 @@ struct ParsedBlock {
     return result;
   }
 
+  // deprecated
   template <class T>
   std::vector<T> get_accounts() {
     std::vector<T> result;
     for (auto& interface: interfaces_) {
       if (std::holds_alternative<T>(interface)) {
         result.push_back(std::get<T>(interface));
+      }
+    }
+    return result;
+  }
+
+  template <class T>
+  std::vector<T> get_accounts_v2() {
+    std::vector<T> result;
+    for (const auto& [addr, interfaces]: account_interfaces_) {
+      for (const auto& interface: interfaces) {
+        if (std::holds_alternative<T>(interface)) {
+          result.push_back(std::get<T>(interface));
+        }
       }
     }
     return result;

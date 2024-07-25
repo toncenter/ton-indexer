@@ -8,7 +8,11 @@
 #include "TraceAssembler.h"
 #include "InsertManager.h"
 #include "DataParser.h"
+#include "smc-interfaces/InterfacesDetector.h"
 
+using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR, 
+                                      NftItemDetectorR, NftCollectionDetectorR,
+                                      GetGemsNftFixPriceSale, GetGemsNftAuction>;
 
 class IndexScheduler: public td::actor::Actor {
 private:
@@ -19,7 +23,6 @@ private:
   td::actor::ActorId<DbScanner> db_scanner_;
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
   td::actor::ActorId<ParseManager> parse_manager_;
-  td::actor::ActorOwn<EventProcessor> event_processor_;
   td::actor::ActorOwn<TraceAssembler> trace_assembler_;
   std::shared_ptr<td::Destructor> watcher_;
 
@@ -59,6 +62,7 @@ private:
   void seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
+  void seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_queued_to_insert(std::uint32_t mc_seqno, QueueState status);
   void seqno_inserted(std::uint32_t mc_seqno, td::Unit result);
 

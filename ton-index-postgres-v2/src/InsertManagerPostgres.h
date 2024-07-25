@@ -36,7 +36,12 @@ public:
 class InsertBatchPostgres: public td::actor::Actor {
 public:
   InsertBatchPostgres(InsertManagerPostgres::Credential credential, std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise, std::int32_t max_data_depth = 12) :
-    credential_(std::move(credential)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth) {}
+    credential_(std::move(credential)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth) {
+      // sorting in descending seqno order for easier processing of interfaces
+      std::sort(insert_tasks_.begin(), insert_tasks_.end(), [](const auto& a, const auto& b) {
+        return a.mc_seqno_ > b.mc_seqno_;
+      });
+  }
 
   void start_up() override;
 private:
@@ -64,5 +69,7 @@ private:
   std::string insert_jetton_wallets(pqxx::work &txn);
   std::string insert_nft_collections(pqxx::work &txn);
   std::string insert_nft_items(pqxx::work &txn);
+  std::string insert_getgems_nft_auctions(pqxx::work &txn);
+  std::string insert_getgems_nft_sales(pqxx::work &txn);
   std::string insert_traces(pqxx::work &txn);
 };

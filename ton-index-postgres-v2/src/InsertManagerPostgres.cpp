@@ -39,20 +39,6 @@ std::string InsertManagerPostgres::Credential::get_connection_string(std::string
 }
 
 
-
-//
-// BitHasher
-//
-struct BitArrayHasher {
-  std::size_t operator()(const td::Bits256& k) const {
-    std::size_t seed = 0;
-    for(const auto& el : k.as_array()) {
-        seed ^= std::hash<td::uint8>{}(el) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    }
-    return seed;
-  }
-};
-
 template <>
 struct std::hash<td::Bits256>
 {
@@ -117,6 +103,8 @@ void InsertBatchPostgres::start_up() {
     insert_under_mutex_query += insert_jetton_wallets(txn);
     insert_under_mutex_query += insert_nft_collections(txn);
     insert_under_mutex_query += insert_nft_items(txn);
+    insert_under_mutex_query += insert_getgems_nft_auctions(txn);
+    insert_under_mutex_query += insert_getgems_nft_sales(txn);
     insert_under_mutex_query += insert_latest_account_states(txn);
     insert_under_mutex_query += insert_traces(txn);
 
@@ -1109,22 +1097,19 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_jetton_masters(pqxx::work &txn) {
-  std::map<std::string, JettonMasterData> jetton_masters;
-  for (const auto& task : insert_tasks_) {
-    for (const auto& jetton_master : task.parsed_block_->get_accounts<JettonMasterData>()) {
-      auto existing = jetton_masters.find(jetton_master.address);
-      if (existing == jetton_masters.end()) {
+  std::unordered_map<block::StdAddress, JettonMasterDetectorR::Result, AddressHasher> jetton_masters;
+
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& jetton_master : task.parsed_block_->get_accounts_v2<JettonMasterDetectorR::Result>()) {
+      if (jetton_masters.find(jetton_master.address) == jetton_masters.end()) {
         jetton_masters[jetton_master.address] = jetton_master;
-      } else {
-        if (existing->second.last_transaction_lt < jetton_master.last_transaction_lt) {
-          jetton_masters[jetton_master.address] = jetton_master;
-        }
       }
     }
   }
 
   std::ostringstream query;
-  query << "INSERT INTO jetton_masters (address, total_supply, mintable, admin_address, jetton_content, jetton_wallet_code_hash, data_hash, code_hash, last_transaction_lt, code_boc, data_boc) VALUES ";
+  query << "INSERT INTO jetton_masters (address, total_supply, mintable, admin_address, jetton_content, jetton_wallet_code_hash) VALUES ";
   bool is_first = true;
   for (const auto& [addr, jetton_master] : jetton_masters) {
     if (is_first) {
@@ -1132,18 +1117,17 @@ std::string InsertBatchPostgres::insert_jetton_masters(pqxx::work &txn) {
     } else {
       query << ", ";
     }
+    std::optional<std::string> raw_admin_address;
+    if (jetton_master.admin_address) {
+      raw_admin_address = convert::to_raw_address(jetton_master.admin_address.value());
+    }
     query << "("
-          << txn.quote(jetton_master.address) << ","
+          << txn.quote(convert::to_raw_address(jetton_master.address)) << ","
           << jetton_master.total_supply << ","
           << TO_SQL_BOOL(jetton_master.mintable) << ","
-          << TO_SQL_OPTIONAL_STRING(jetton_master.admin_address, txn) << ","
+          << TO_SQL_OPTIONAL_STRING(raw_admin_address, txn) << ","
           << (jetton_master.jetton_content ? txn.quote(content_to_json_string(jetton_master.jetton_content.value())) : "NULL") << ","
-          << txn.quote(td::base64_encode(jetton_master.jetton_wallet_code_hash.as_slice())) << ","
-          << txn.quote(td::base64_encode(jetton_master.data_hash.as_slice())) << ","
-          << txn.quote(td::base64_encode(jetton_master.code_hash.as_slice())) << ","
-          << jetton_master.last_transaction_lt << ","
-          << txn.quote(jetton_master.code_boc) << ","
-          << txn.quote(jetton_master.data_boc)
+          << txn.quote(td::base64_encode(jetton_master.jetton_wallet_code_hash.as_slice()))
           << ")";
   }
   if (is_first) {
@@ -1154,34 +1138,23 @@ std::string InsertBatchPostgres::insert_jetton_masters(pqxx::work &txn) {
         << "mintable = EXCLUDED.mintable, "
         << "admin_address = EXCLUDED.admin_address, "
         << "jetton_content = EXCLUDED.jetton_content, "
-        << "jetton_wallet_code_hash = EXCLUDED.jetton_wallet_code_hash, "
-        << "data_hash = EXCLUDED.data_hash, "
-        << "code_hash = EXCLUDED.code_hash, "
-        << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
-        << "code_boc = EXCLUDED.code_boc, "
-        << "data_boc = EXCLUDED.data_boc WHERE jetton_masters.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
-
-  // LOG(DEBUG) << "Running SQL query: " << query.str();
+        << "jetton_wallet_code_hash = EXCLUDED.jetton_wallet_code_hash;\n";
   return query.str();
 }
 
 std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
-  std::map<std::string, JettonWalletData> jetton_wallets;
-  for (const auto& task : insert_tasks_) {
-    for (const auto& jetton_wallet : task.parsed_block_->get_accounts<JettonWalletData>()) {
-      auto existing = jetton_wallets.find(jetton_wallet.address);
-      if (existing == jetton_wallets.end()) {
+  std::unordered_map<block::StdAddress, JettonWalletDetectorR::Result, AddressHasher> jetton_wallets;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& jetton_wallet : task.parsed_block_->get_accounts_v2<JettonWalletDetectorR::Result>()) {
+      if (jetton_wallets.find(jetton_wallet.address) == jetton_wallets.end()) {
         jetton_wallets[jetton_wallet.address] = jetton_wallet;
-      } else {
-        if (existing->second.last_transaction_lt < jetton_wallet.last_transaction_lt) {
-          jetton_wallets[jetton_wallet.address] = jetton_wallet;
-        }
       }
     }
   }
 
   std::ostringstream query;
-  query << "INSERT INTO jetton_wallets (balance, address, owner, jetton, last_transaction_lt, code_hash, data_hash) VALUES ";
+  query << "INSERT INTO jetton_wallets (balance, address, owner, jetton) VALUES ";
   bool is_first = true;
   for (const auto& [addr, jetton_wallet] : jetton_wallets) {
     if (is_first) {
@@ -1191,12 +1164,9 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
     }
     query << "("
           << (jetton_wallet.balance.not_null() ? jetton_wallet.balance->to_dec_string() : "NULL") << ","
-          << txn.quote(jetton_wallet.address) << ","
-          << txn.quote(jetton_wallet.owner) << ","
-          << txn.quote(jetton_wallet.jetton) << ","
-          << jetton_wallet.last_transaction_lt << ","
-          << txn.quote(td::base64_encode(jetton_wallet.code_hash.as_slice())) << ","
-          << txn.quote(td::base64_encode(jetton_wallet.data_hash.as_slice()))
+          << txn.quote(convert::to_raw_address(jetton_wallet.address)) << ","
+          << txn.quote(convert::to_raw_address(jetton_wallet.owner)) << ","
+          << txn.quote(convert::to_raw_address(jetton_wallet.jetton))
           << ")";
   }
   if (is_first) {
@@ -1205,31 +1175,23 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
   query << " ON CONFLICT (address) DO UPDATE SET "
         << "balance = EXCLUDED.balance, "
         << "owner = EXCLUDED.owner, "
-        << "jetton = EXCLUDED.jetton, "
-        << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
-        << "code_hash = EXCLUDED.code_hash, "
-        << "data_hash = EXCLUDED.data_hash WHERE jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
-
-  // LOG(DEBUG) << "Running SQL query: " << query.str();
+        << "jetton = EXCLUDED.jetton;\n";
   return query.str();
 }
 
 std::string InsertBatchPostgres::insert_nft_collections(pqxx::work &txn) {
-  std::map<std::string, NFTCollectionData> nft_collections;
-  for (const auto& task : insert_tasks_) {
-    for (const auto& nft_collection : task.parsed_block_->get_accounts<NFTCollectionData>()) {
-      auto existing = nft_collections.find(nft_collection.address);
-      if (existing == nft_collections.end()) {
+  std::unordered_map<block::StdAddress, NftCollectionDetectorR::Result, AddressHasher> nft_collections;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& nft_collection : task.parsed_block_->get_accounts_v2<NftCollectionDetectorR::Result>()) {
+      if (nft_collections.find(nft_collection.address) == nft_collections.end()) {
         nft_collections[nft_collection.address] = nft_collection;
-      } else {
-        if (existing->second.last_transaction_lt < nft_collection.last_transaction_lt) {
-          nft_collections[nft_collection.address] = nft_collection;
-        }
       }
     }
   }
+
   std::ostringstream query;
-  query << "INSERT INTO  nft_collections (address, next_item_index, owner_address, collection_content, data_hash, code_hash, last_transaction_lt, code_boc, data_boc) VALUES ";
+  query << "INSERT INTO nft_collections (address, next_item_index, owner_address, collection_content) VALUES ";
   bool is_first = true;
   for (const auto& [addr, nft_collection] : nft_collections) {
     if (is_first) {
@@ -1237,16 +1199,15 @@ std::string InsertBatchPostgres::insert_nft_collections(pqxx::work &txn) {
     } else {
       query << ", ";
     }
+    std::optional<std::string> raw_owner_address;
+    if (nft_collection.owner_address) {
+      raw_owner_address = convert::to_raw_address(nft_collection.owner_address.value());
+    }
     query << "("
-          << txn.quote(nft_collection.address) << ","
+          << txn.quote(convert::to_raw_address(nft_collection.address)) << ","
           << nft_collection.next_item_index << ","
-          << TO_SQL_OPTIONAL_STRING(nft_collection.owner_address, txn) << ","
-          << (nft_collection.collection_content ? txn.quote(content_to_json_string(nft_collection.collection_content.value())) : "NULL") << ","
-          << txn.quote(td::base64_encode(nft_collection.data_hash.as_slice())) << ","
-          << txn.quote(td::base64_encode(nft_collection.code_hash.as_slice())) << ","
-          << nft_collection.last_transaction_lt << ","
-          << txn.quote(nft_collection.code_boc) << ","
-          << txn.quote(nft_collection.data_boc)
+          << TO_SQL_OPTIONAL_STRING(raw_owner_address, txn) << ","
+          << (nft_collection.collection_content ? txn.quote(content_to_json_string(nft_collection.collection_content.value())) : "NULL")
           << ")";
   }
   if (is_first) {
@@ -1255,33 +1216,23 @@ std::string InsertBatchPostgres::insert_nft_collections(pqxx::work &txn) {
   query << " ON CONFLICT (address) DO UPDATE SET "
         << "next_item_index = EXCLUDED.next_item_index, "
         << "owner_address = EXCLUDED.owner_address, "
-        << "collection_content = EXCLUDED.collection_content, "
-        << "data_hash = EXCLUDED.data_hash, "
-        << "code_hash = EXCLUDED.code_hash, "
-        << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
-        << "code_boc = EXCLUDED.code_boc, "
-        << "data_boc = EXCLUDED.data_boc WHERE nft_collections.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
-  
-  // LOG(DEBUG) << "Running SQL query: " << query.str();
+        << "collection_content = EXCLUDED.collection_content;\n";
   return query.str();
 }
 
 std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
-  std::map<std::string, NFTItemData> nft_items;
-  for (const auto& task : insert_tasks_) {
-    for (const auto& nft_item : task.parsed_block_->get_accounts<NFTItemData>()) {
-      auto existing = nft_items.find(nft_item.address);
-      if (existing == nft_items.end()) {
+  std::unordered_map<block::StdAddress, NftItemDetectorR::Result, AddressHasher> nft_items;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& nft_item : task.parsed_block_->get_accounts_v2<NftItemDetectorR::Result>()) {
+      if (nft_items.find(nft_item.address) == nft_items.end()) {
         nft_items[nft_item.address] = nft_item;
-      } else {
-        if (existing->second.last_transaction_lt < nft_item.last_transaction_lt) {
-          nft_items[nft_item.address] = nft_item;
-        }
       }
     }
   }
+
   std::ostringstream query;
-  query << "INSERT INTO nft_items (address, init, index, collection_address, owner_address, content, last_transaction_lt, code_hash, data_hash) VALUES ";
+  query << "INSERT INTO nft_items (address, init, index, collection_address, owner_address, content) VALUES ";
   bool is_first = true;
   for (const auto& [addr, nft_item] : nft_items) {
     if (is_first) {
@@ -1289,16 +1240,17 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
     } else {
       query << ", ";
     }
+    std::optional<std::string> raw_collection_address;
+    if (nft_item.collection_address) {
+      raw_collection_address = convert::to_raw_address(nft_item.collection_address.value());
+    }
     query << "("
-          << txn.quote(nft_item.address) << ","
+          << txn.quote(convert::to_raw_address(nft_item.address)) << ","
           << TO_SQL_BOOL(nft_item.init) << ","
           << nft_item.index << ","
-          << txn.quote(nft_item.collection_address) << ","
-          << txn.quote(nft_item.owner_address) << ","
-          << (nft_item.content ? txn.quote(content_to_json_string(nft_item.content.value())) : "NULL") << ","
-          << nft_item.last_transaction_lt << ","
-          << txn.quote(td::base64_encode(nft_item.code_hash.as_slice())) << ","
-          << txn.quote(td::base64_encode(nft_item.data_hash.as_slice()))
+          << TO_SQL_OPTIONAL_STRING(raw_collection_address, txn) << ","
+          << txn.quote(convert::to_raw_address(nft_item.owner_address)) << ","
+          << (nft_item.content ? txn.quote(content_to_json_string(nft_item.content.value())) : "NULL")
           << ")";
   }
   if (is_first) {
@@ -1309,12 +1261,152 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
         << "index = EXCLUDED.index, "
         << "collection_address = EXCLUDED.collection_address, "
         << "owner_address = EXCLUDED.owner_address, "
-        << "content = EXCLUDED.content, "
-        << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
-        << "code_hash = EXCLUDED.code_hash, "
-        << "data_hash = EXCLUDED.data_hash WHERE nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
-  
-  // LOG(DEBUG) << "Running SQL query: " << query.str();
+        << "content = EXCLUDED.content;\n";
+  return query.str();
+}
+
+std::string InsertBatchPostgres::insert_getgems_nft_sales(pqxx::work &txn) {
+  //     block::StdAddress address;
+  //   bool is_complete;
+  //   uint32_t created_at;
+  //   block::StdAddress marketplace_address;
+  //   block::StdAddress nft_address;
+  //   std::optional<block::StdAddress> nft_owner_address;
+  //   td::RefInt256 full_price;
+  //   block::StdAddress marketplace_fee_address;
+  //   td::RefInt256 marketplace_fee;
+  //   block::StdAddress royalty_address;
+  //   td::RefInt256 royalty_amount;
+  // };
+
+  std::unordered_map<block::StdAddress, GetGemsNftFixPriceSale::Result, AddressHasher> nft_sales;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& nft_sale : task.parsed_block_->get_accounts_v2<GetGemsNftFixPriceSale::Result>()) {
+      if (nft_sales.find(nft_sale.address) == nft_sales.end()) {
+        nft_sales[nft_sale.address] = nft_sale;
+      }
+    }
+  }
+
+  std::ostringstream query;
+  query << "INSERT INTO getgems_nft_sales (address, is_complete, created_at, marketplace_address, nft_address, nft_owner_address, full_price, marketplace_fee_address, marketplace_fee, royalty_address, royalty_amount) VALUES ";
+  bool is_first = true;
+  for (const auto& [addr, nft_sale] : nft_sales) {
+    if (is_first) {
+      is_first = false;
+    } else {
+      query << ", ";
+    }
+    std::optional<std::string> raw_nft_owner_address;
+    if (nft_sale.nft_owner_address) {
+      raw_nft_owner_address = convert::to_raw_address(nft_sale.nft_owner_address.value());
+    }
+    query << "("
+          << txn.quote(convert::to_raw_address(nft_sale.address)) << ","
+          << TO_SQL_BOOL(nft_sale.is_complete) << ","
+          << nft_sale.created_at << ","
+          << txn.quote(convert::to_raw_address(nft_sale.marketplace_address)) << ","
+          << txn.quote(convert::to_raw_address(nft_sale.nft_address)) << ","
+          << TO_SQL_OPTIONAL_STRING(raw_nft_owner_address, txn) << ","
+          << (nft_sale.full_price.not_null() ? nft_sale.full_price->to_dec_string() : "NULL") << ","
+          << txn.quote(convert::to_raw_address(nft_sale.marketplace_fee_address)) << ","
+          << (nft_sale.marketplace_fee.not_null() ? nft_sale.marketplace_fee->to_dec_string() : "NULL") << ","
+          << txn.quote(convert::to_raw_address(nft_sale.royalty_address)) << ","
+          << (nft_sale.royalty_amount.not_null() ? nft_sale.royalty_amount->to_dec_string() : "NULL")
+          << ")";
+  }
+  if (is_first) {
+    return "";
+  }
+  query << " ON CONFLICT (address) DO UPDATE SET "
+        << "is_complete = EXCLUDED.is_complete, "
+        << "created_at = EXCLUDED.created_at, "
+        << "marketplace_address = EXCLUDED.marketplace_address, "
+        << "nft_address = EXCLUDED.nft_address, "
+        << "nft_owner_address = EXCLUDED.nft_owner_address, "
+        << "full_price = EXCLUDED.full_price, "
+        << "marketplace_fee_address = EXCLUDED.marketplace_fee_address, "
+        << "marketplace_fee = EXCLUDED.marketplace_fee, "
+        << "royalty_address = EXCLUDED.royalty_address, "
+        << "royalty_amount = EXCLUDED.royalty_amount;\n";
+  return query.str();
+}
+
+std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
+  std::unordered_map<block::StdAddress, GetGemsNftAuction::Result, AddressHasher> nft_auctions;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& nft_auction : task.parsed_block_->get_accounts_v2<GetGemsNftAuction::Result>()) {
+      if (nft_auctions.find(nft_auction.address) == nft_auctions.end()) {
+        nft_auctions[nft_auction.address] = nft_auction;
+      }
+    }
+  }
+
+  std::ostringstream query;
+  query << "INSERT INTO getgems_nft_auctions (address, \"end\", end_time, mp_addr, nft_addr, nft_owner, last_bid, last_member, min_step, mp_fee_addr, mp_fee_factor, mp_fee_base, royalty_fee_addr, royalty_fee_factor, royalty_fee_base, max_bid, min_bid, created_at, last_bid_at, is_canceled) VALUES ";
+  bool is_first = true;
+  for (const auto& [addr, nft_auction] : nft_auctions) {
+    if (is_first) {
+      is_first = false;
+    } else {
+      query << ", ";
+    }
+    std::optional<std::string> raw_nft_owner;
+    if (nft_auction.nft_owner) {
+      raw_nft_owner = convert::to_raw_address(nft_auction.nft_owner.value());
+    }
+    std::optional<std::string> raw_last_member;
+    if (nft_auction.last_member) {
+      raw_last_member = convert::to_raw_address(nft_auction.last_member.value());
+    }
+    query << "("
+          << txn.quote(convert::to_raw_address(nft_auction.address)) << ","
+          << TO_SQL_BOOL(nft_auction.end) << ","
+          << nft_auction.end_time << ","
+          << txn.quote(convert::to_raw_address(nft_auction.mp_addr)) << ","
+          << txn.quote(convert::to_raw_address(nft_auction.nft_addr)) << ","
+          << TO_SQL_OPTIONAL_STRING(raw_nft_owner, txn) << ","
+          << (nft_auction.last_bid.not_null() ? nft_auction.last_bid->to_dec_string() : "NULL") << ","
+          << TO_SQL_OPTIONAL_STRING(raw_last_member, txn) << ","
+          << nft_auction.min_step << ","
+          << txn.quote(convert::to_raw_address(nft_auction.mp_fee_addr)) << ","
+          << nft_auction.mp_fee_factor << ","
+          << nft_auction.mp_fee_base << ","
+          << txn.quote(convert::to_raw_address(nft_auction.royalty_fee_addr)) << ","
+          << nft_auction.royalty_fee_factor << ","
+          << nft_auction.royalty_fee_base << ","
+          << (nft_auction.max_bid.not_null() ? nft_auction.max_bid->to_dec_string() : "NULL") << ","
+          << (nft_auction.min_bid.not_null() ? nft_auction.min_bid->to_dec_string() : "NULL") << ","
+          << nft_auction.created_at << ","
+          << nft_auction.last_bid_at << ","
+          << TO_SQL_BOOL(nft_auction.is_canceled)
+          << ")";
+  }
+  if (is_first) {
+    return "";
+  }
+  query << " ON CONFLICT (address) DO UPDATE SET "
+        << "\"end\" = EXCLUDED.end, "
+        << "end_time = EXCLUDED.end_time, "
+        << "mp_addr = EXCLUDED.mp_addr, "
+        << "nft_addr = EXCLUDED.nft_addr, "
+        << "nft_owner = EXCLUDED.nft_owner, "
+        << "last_bid = EXCLUDED.last_bid, "
+        << "last_member = EXCLUDED.last_member, "
+        << "min_step = EXCLUDED.min_step, "
+        << "mp_fee_addr = EXCLUDED.mp_fee_addr, "
+        << "mp_fee_factor = EXCLUDED.mp_fee_factor, "
+        << "mp_fee_base = EXCLUDED.mp_fee_base, "
+        << "royalty_fee_addr = EXCLUDED.royalty_fee_addr, "
+        << "royalty_fee_factor = EXCLUDED.royalty_fee_factor, "
+        << "royalty_fee_base = EXCLUDED.royalty_fee_base, "
+        << "max_bid = EXCLUDED.max_bid, "
+        << "min_bid = EXCLUDED.min_bid, "
+        << "created_at = EXCLUDED.created_at, "
+        << "last_bid_at = EXCLUDED.last_bid_at, "
+        << "is_canceled = EXCLUDED.is_canceled;\n";
   return query.str();
 }
 
@@ -1806,12 +1898,7 @@ void InsertManagerPostgres::start_up() {
       "address varchar not null primary key, "
       "next_item_index numeric, "
       "owner_address varchar, "
-      "collection_content jsonb, "
-      "data_hash char(44), "
-      "code_hash char(44), "
-      "last_transaction_lt bigint, "
-      "code_boc text, "
-      "data_boc text);\n"
+      "collection_content jsonb);\n"
     );
 
     query += (
@@ -1822,10 +1909,7 @@ void InsertManagerPostgres::start_up() {
       "index numeric, "
       "collection_address varchar, "
       "owner_address varchar, "
-      "content jsonb, "
-      "last_transaction_lt bigint, "
-      "code_hash char(44), "
-      "data_hash char(44));\n"
+      "content jsonb);\n"
     );
 
     query += (
@@ -1857,12 +1941,80 @@ void InsertManagerPostgres::start_up() {
       "mintable boolean, "
       "admin_address varchar, "
       "jetton_content jsonb, "
-      "jetton_wallet_code_hash char(44), "
-      "code_hash char(44), "
-      "data_hash char(44), "
-      "last_transaction_lt bigint, "
-      "code_boc text, "
-      "data_boc text);\n"
+      "jetton_wallet_code_hash char(44));\n"
+    );
+
+  //     struct Result {
+  //   block::StdAddress address;
+  //   bool is_complete;
+  //   uint32_t created_at;
+  //   block::StdAddress marketplace_address;
+  //   block::StdAddress nft_address;
+  //   std::optional<block::StdAddress> nft_owner_address;
+  //   td::RefInt256 full_price;
+  //   block::StdAddress marketplace_fee_address;
+  //   td::RefInt256 marketplace_fee;
+  //   block::StdAddress royalty_address;
+  //   td::RefInt256 royalty_amount;
+  // };
+    query += (
+      "create table if not exists getgems_nft_sales ("
+      "id serial not null, "
+      "address varchar not null primary key, "
+      "is_complete boolean, "
+      "created_at integer, "
+      "marketplace_address varchar, "
+      "nft_address varchar, "
+      "nft_owner_address varchar, "
+      "full_price numeric, "
+      "marketplace_fee_address varchar, "
+      "marketplace_fee numeric, "
+      "royalty_address varchar, "
+      "royalty_amount numeric);\n"
+    );
+
+    //     block::StdAddress address;
+    // bool end;
+    // uint32_t end_time;
+    // block::StdAddress mp_addr;
+    // block::StdAddress nft_addr;
+    // std::optional<block::StdAddress> nft_owner;
+    // td::RefInt256 last_bid;
+    // std::optional<block::StdAddress> last_member;
+    // uint32_t min_step;
+    // block::StdAddress mp_fee_addr;
+    // uint32_t mp_fee_factor, mp_fee_base;
+    // block::StdAddress royalty_fee_addr;
+    // uint32_t royalty_fee_factor, royalty_fee_base;
+    // td::RefInt256 max_bid;
+    // td::RefInt256 min_bid;
+    // uint32_t created_at;
+    // uint32_t last_bid_at;
+    // bool is_canceled;
+
+    query += (
+      "create table if not exists getgems_nft_auctions ("
+      "id serial not null, "
+      "address varchar not null primary key, "
+      "\"end\" boolean, "
+      "end_time integer, "
+      "mp_addr varchar, "
+      "nft_addr varchar, "
+      "nft_owner varchar, "
+      "last_bid numeric, "
+      "last_member varchar, "
+      "min_step integer, "
+      "mp_fee_addr varchar, "
+      "mp_fee_factor integer, "
+      "mp_fee_base integer, "
+      "royalty_fee_addr varchar, "
+      "royalty_fee_factor integer, "
+      "royalty_fee_base integer, "
+      "max_bid numeric, "
+      "min_bid numeric, "
+      "created_at integer, "
+      "last_bid_at integer, "
+      "is_canceled boolean);\n"
     );
 
     query += (
@@ -1871,10 +2023,7 @@ void InsertManagerPostgres::start_up() {
       "address varchar not null primary key, "
       "balance numeric, "
       "owner varchar, "
-      "jetton varchar, "
-      "last_transaction_lt bigint, "
-      "code_hash char(44), "
-      "data_hash char(44));\n"
+      "jetton varchar);\n"
     );
 
     query += (

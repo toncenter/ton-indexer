@@ -2,10 +2,10 @@
 #include "td/utils/Time.h"
 #include "td/utils/StringBuilder.h"
 #include <iostream>
+#include "BlockInterfacesDetector.h"
 
 
 void IndexScheduler::start_up() {
-    event_processor_ = td::actor::create_actor<EventProcessor>("event_processor", insert_manager_);
     trace_assembler_ = td::actor::create_actor<TraceAssembler>("trace_assembler", from_seqno_);
 }
 
@@ -175,19 +175,31 @@ void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_
 void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Assebled traces for seqno " << mc_seqno;
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, parsed_block](td::Result<td::Unit> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to process interfaces for  seqno " << mc_seqno << ": " << R.move_as_error();
+            LOG(ERROR) << "Failed to detect interfaces for seqno " << mc_seqno << ": " << R.move_as_error();
             td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
             return;
         }
-        td::actor::send_closure(SelfId, &IndexScheduler::seqno_interfaces_processed, mc_seqno, std::move(parsed_block));
+        td::actor::send_closure(SelfId, &IndexScheduler::seqno_interfaces_processed, mc_seqno, R.move_as_ok());
     });
-    td::actor::send_closure(event_processor_, &EventProcessor::process, std::move(parsed_block), std::move(P));
+    td::actor::create_actor<BlockInterfaceProcessor>("BlockInterfaceProcessor", std::move(parsed_block), std::move(P)).release();
 }
 
 void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
-    LOG(DEBUG) << "Interfaces processed for seqno " << mc_seqno;
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
+        if (R.is_error()) {
+            LOG(ERROR) << "Failed to detect actions for seqno " << mc_seqno << ": " << R.move_as_error();
+            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
+            return;
+        }
+        td::actor::send_closure(SelfId, &IndexScheduler::seqno_actions_processed, mc_seqno, R.move_as_ok());
+    });
+    td::actor::create_actor<ActionDetector>("ActionDetector", std::move(parsed_block), std::move(P)).release();
+}
+
+void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
+    LOG(DEBUG) << "Actions processed for seqno " << mc_seqno;
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> R) {
         if (R.is_error()) {

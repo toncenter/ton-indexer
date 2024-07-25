@@ -8,13 +8,13 @@
 #include "smc-interfaces/common-utils.h"
 
 
-class FetchAccountFromShard: public td::actor::Actor {
+class FetchAccountFromShardV2: public td::actor::Actor {
 private:
   AllShardStates shard_states_;
   block::StdAddress address_;
   td::Promise<schema::AccountState> promise_;
 public:
-  FetchAccountFromShard(AllShardStates shard_states, block::StdAddress address, td::Promise<schema::AccountState> promise) 
+  FetchAccountFromShardV2(AllShardStates shard_states, block::StdAddress address, td::Promise<schema::AccountState> promise) 
     : shard_states_(shard_states), address_(address), promise_(std::move(promise)) {
   }
 
@@ -124,7 +124,7 @@ void JettonWalletDetectorR::start_up() {
     auto account_state = account_state_r.move_as_ok();
     td::actor::send_closure(SelfId, &JettonWalletDetectorR::verify_with_master, account_state.code, account_state.data, data);
   });
-  td::actor::create_actor<FetchAccountFromShard>("fetchaccountfromshard", shard_states_, data.jetton, std::move(R)).release();
+  td::actor::create_actor<FetchAccountFromShardV2>("fetchaccountfromshard", shard_states_, data.jetton, std::move(R)).release();
 }
 
 void JettonWalletDetectorR::verify_with_master(td::Ref<vm::Cell> master_code, td::Ref<vm::Cell> master_data, Result jetton_wallet_data) {
@@ -288,7 +288,7 @@ void NftItemDetectorR::start_up() {
       auto account_state = account_state_r.move_as_ok();
       td::actor::send_closure(SelfId, &NftItemDetectorR::got_collection, data, ind_content, account_state.code, account_state.data);
     });
-    td::actor::create_actor<FetchAccountFromShard>("fetchaccountfromshard", shard_states_, data.collection_address.value(), std::move(R)).release();
+    td::actor::create_actor<FetchAccountFromShardV2>("fetchaccountfromshard", shard_states_, data.collection_address.value(), std::move(R)).release();
   }
 }
 
