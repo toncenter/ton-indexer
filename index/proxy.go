@@ -223,7 +223,9 @@ func PostRunGetMethod(req V2RunGetMethodRequest, settings RequestSettings) (*V2R
 			case "num":
 				vv = append(vv, "num")
 			case "cell":
+				vv = append(vv, "tvm.Cell")
 			case "slice":
+				vv = append(vv, "tvm.Slice")
 			default:
 				return nil, IndexError{Code: 500, Message: fmt.Sprintf("unsupported stack parameter type: %s", v.Type)}
 			}

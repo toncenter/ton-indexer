@@ -1065,14 +1065,20 @@ func HealthCheck(c *fiber.Ctx) error {
 }
 
 func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
+	var api_key string
+	api_key, ok := ctx.Queries()["api_key"]
+	if !ok {
+		api_key = ctx.GetReqHeaders()["X-Api-Key"][0]
+	}
 	switch e := err.(type) {
 	case index.IndexError:
-		if e.Code != 300 {
-			log.Printf("Code: %d Path: %s Queries: %v Body: %s Error: %s", e.Code, ctx.Path(), ctx.Queries(), string(ctx.Body()), err.Error())
+		if e.Code != 404 {
+			log.Printf("Code: %d Path: %s API Key: %s Queries: %v Body: %s Error: %s",
+				e.Code, ctx.Path(), api_key, ctx.Queries(), string(ctx.Body()), err.Error())
 		}
 		return ctx.Status(e.Code).JSON(e)
 	default:
-		log.Printf("Path: %s Queries: %v Body: %s Error: %s", ctx.Path(), ctx.Queries(), string(ctx.Body()), err.Error())
+		log.Printf("Path: %s API Key: %s Queries: %v Body: %s Error: %s", ctx.Path(), api_key, ctx.Queries(), string(ctx.Body()), err.Error())
 		resp := map[string]string{}
 		resp["error"] = fmt.Sprintf("internal server error: %s", err.Error())
 		return ctx.Status(fiber.StatusInternalServerError).JSON(resp)

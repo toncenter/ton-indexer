@@ -49,7 +49,8 @@ func (v *OpcodeType) MarshalJSON() ([]byte, error) {
 
 // converters
 func HashConverter(value string) reflect.Value {
-	if len(value) == 64 {
+	if len(value) == 64 || len(value) == 66 && strings.HasPrefix(value, "0x") {
+		value = strings.TrimPrefix(value, "0x")
 		if res, err := hex.DecodeString(value); err == nil {
 			return reflect.ValueOf(HashType(b64.StdEncoding.EncodeToString(res)))
 		} else {
