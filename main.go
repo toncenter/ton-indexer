@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/pprof"
 	"github.com/gofiber/swagger"
 	_ "github.com/kdimentionaltree/ton-index-go/docs"
 	"github.com/kdimentionaltree/ton-index-go/index"
@@ -21,6 +21,7 @@ type Settings struct {
 	Bind         string
 	InstanceName string
 	Prefork      bool
+	Debug        bool
 	Request      index.RequestSettings
 }
 
@@ -87,16 +88,16 @@ func GetBlocks(c *fiber.Ctx) error {
 	lim_req := index.LimitRequest{}
 
 	if err := c.QueryParser(&blk_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&utime_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lt_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	blks, err := pool.QueryBlocks(blk_req, utime_req, lt_req, lim_req, settings.Request)
@@ -104,7 +105,7 @@ func GetBlocks(c *fiber.Ctx) error {
 		return err
 	}
 	// if len(blks) == 0 {
-	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Blocks not found", Code: fiber.StatusNotFound})
+	// 	return index.IndexError{Code: 404, Message: "blocks not found"}
 	// }
 
 	blk_resp := index.BlocksResponse{Blocks: blks}
@@ -129,9 +130,9 @@ func GetShards(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	// if len(blks) == 0 {
-	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Blocks not found", Code: fiber.StatusNotFound})
-	// }
+	if len(blks) == 0 {
+		return index.IndexError{Code: 404, Message: "blocks not found"}
+	}
 
 	blk_resp := index.BlocksResponse{Blocks: blks}
 	return c.JSON(blk_resp)
@@ -162,9 +163,9 @@ func GetShardsDiff(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	// if len(blks) == 0 {
-	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Blocks not found", Code: fiber.StatusNotFound})
-	// }
+	if len(blks) == 0 {
+		return index.IndexError{Code: 404, Message: "blocks not found"}
+	}
 
 	blk_resp := index.BlocksResponse{Blocks: blks}
 	return c.JSON(blk_resp)
@@ -204,19 +205,19 @@ func GetTransactions(c *fiber.Ctx) error {
 	lim_req := index.LimitRequest{}
 
 	if err := c.QueryParser(&blk_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&tx_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&utime_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lt_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	txs, book, err := pool.QueryTransactions(
@@ -226,7 +227,38 @@ func GetTransactions(c *fiber.Ctx) error {
 		return err
 	}
 	// if len(txs) == 0 {
-	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Transactions not found", Code: fiber.StatusNotFound})
+	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
+	// }
+
+	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
+	return c.JSON(txs_resp)
+}
+
+// @summary Get Adjacent Transactions
+// @description Get parent and/or children for specified transaction.
+// @id api_v3_get_adjacent_transactions
+// @tags blockchain
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	index.TransactionsResponse
+// @failure		400	{object}	index.RequestError
+// @param hash query string false "Transaction hash."
+// @param direction query string false "Direction of message." Enums(in, out)
+// @router			/api/v3/adjacentTransactions [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetAdjacentTransactions(c *fiber.Ctx) error {
+	req := index.AdjacentTransactionRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	txs, book, err := pool.QueryAdjacentTransactions(req, settings.Request)
+	if err != nil {
+		return err
+	}
+	// if len(txs) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
 	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
@@ -254,7 +286,7 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 	blk_req := index.BlockRequest{McSeqno: &seqno}
 
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	txs, book, err := pool.QueryTransactions(
@@ -264,7 +296,7 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 		return err
 	}
 	// if len(txs) == 0 {
-	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Transactions not found", Code: fiber.StatusNotFound})
+	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
 	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
@@ -297,13 +329,13 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 	lim_req := index.LimitRequest{}
 
 	if err := c.QueryParser(&msg_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if msg_req.BodyHash == nil && msg_req.MessageHash == nil && msg_req.Opcode == nil {
-		return c.Status(fiber.StatusBadRequest).JSON(index.RequestError{Message: "at least one of msg_hash, body_hash, opcode should be specified", Code: fiber.StatusBadRequest})
+		return index.IndexError{Code: 422, Message: "at least one of msg_hash, body_hash, opcode should be specified"}
 	}
 
 	txs, book, err := pool.QueryTransactions(
@@ -313,7 +345,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 		return err
 	}
 	// if len(txs) == 0 {
-	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Transactions not found", Code: fiber.StatusNotFound})
+	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
 	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
@@ -349,7 +381,7 @@ func GetMessages(c *fiber.Ctx) error {
 	lim_req := index.LimitRequest{}
 
 	if err := c.QueryParser(&msg_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	hash_str := c.Query("hash")
 	if len(hash_str) > 0 && msg_req.MessageHash == nil {
@@ -361,13 +393,13 @@ func GetMessages(c *fiber.Ctx) error {
 		}
 	}
 	if err := c.QueryParser(&utime_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lt_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	msgs, book, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, settings.Request)
@@ -375,7 +407,7 @@ func GetMessages(c *fiber.Ctx) error {
 		return err
 	}
 	// if len(msgs) == 0 {
-	// 	return c.Status(fiber.StatusNotFound).JSON(index.RequestError{Message: "Messages not found", Code: fiber.StatusNotFound})
+	// 	return index.IndexError{Code: 404, Message: "messages not found"}
 	// }
 
 	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book}
@@ -392,14 +424,17 @@ func GetMessages(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.AddressBook
 // @failure 400 {object} index.RequestError
-// @param address query []string false "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
+// @param address query []string true "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
 // @router /api/v3/addressBook [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetAddressBook(c *fiber.Ctx) error {
 	var addr_book_req index.AddressBookRequest
 	if err := c.QueryParser(&addr_book_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if len(addr_book_req.Address) == 0 {
+		return index.IndexError{Code: 422, Message: "at least 1 address required"}
 	}
 	book, err := pool.QueryAddressBook(addr_book_req.Address, settings.Request)
 	if err != nil {
@@ -428,20 +463,23 @@ func GetAccountStates(c *fiber.Ctx) error {
 	var account_req index.AccountRequest
 	var lim_req index.LimitRequest
 	if err := c.QueryParser(&account_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	if len(account_req.AccountAddress) == 0 {
-		return errors.New("address of account is required")
+		return index.IndexError{Code: 422, Message: "address of account is required"}
 	}
 
 	res, book, err := pool.QueryAccountStates(account_req, lim_req, settings.Request)
 	if err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+	// if len(res) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "account states not found"}
+	// }
 
 	resp := index.AccountStatesResponse{Accounts: res, AddressBook: book}
 	return c.JSON(resp)
@@ -469,16 +507,19 @@ func GetNFTCollections(c *fiber.Ctx) error {
 	var lim_req index.LimitRequest
 
 	if err := c.QueryParser(&nft_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	res, book, err := pool.QueryNFTCollections(nft_req, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
+	// if len(res) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "nft collections not found"}
+	// }
 	resp := index.NFTCollectionsResponse{Collections: res, AddressBook: book}
 	return c.JSON(resp)
 }
@@ -507,16 +548,19 @@ func GetNFTItems(c *fiber.Ctx) error {
 	var lim_req index.LimitRequest
 
 	if err := c.QueryParser(&nft_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	res, book, err := pool.QueryNFTItems(nft_req, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
+	// if len(res) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "nft items not found"}
+	// }
 	resp := index.NFTItemsResponse{Items: res, AddressBook: book}
 	return c.JSON(resp)
 }
@@ -552,7 +596,7 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 	lim_req := index.LimitRequest{}
 
 	if err := c.QueryParser(&transfer_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if addr_str := c.Query("address"); len(addr_str) > 0 && transfer_req.OwnerAddress == nil {
 		addr_val := index.AccountAddressConverter(addr_str)
@@ -566,19 +610,22 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 		transfer_req.Direction = nil
 	}
 	if err := c.QueryParser(&utime_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lt_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	res, book, err := pool.QueryNFTTransfers(transfer_req, utime_req, lt_req, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
+	// if len(res) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "nft transfers not found"}
+	// }
 
 	resp := index.NFTTransfersResponse{Transfers: res, AddressBook: book}
 	return c.JSON(resp)
@@ -606,16 +653,19 @@ func GetJettonMasters(c *fiber.Ctx) error {
 	var lim_req index.LimitRequest
 
 	if err := c.QueryParser(&jetton_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	res, book, err := pool.QueryJettonMasters(jetton_req, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
+	// if len(res) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "jetton masters not found"}
+	// }
 	resp := index.JettonMastersResponse{Masters: res, AddressBook: book}
 	return c.JSON(resp)
 }
@@ -643,16 +693,19 @@ func GetJettonWallets(c *fiber.Ctx) error {
 	var lim_req index.LimitRequest
 
 	if err := c.QueryParser(&jetton_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	res, book, err := pool.QueryJettonWallets(jetton_req, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
+	// if len(res) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "jetton wallets not found"}
+	// }
 	resp := index.JettonWalletsResponse{Wallets: res, AddressBook: book}
 	return c.JSON(resp)
 }
@@ -688,7 +741,7 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 	lim_req := index.LimitRequest{}
 
 	if err := c.QueryParser(&transfer_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if addr_str := c.Query("address"); len(addr_str) > 0 && transfer_req.OwnerAddress == nil {
 		addr_val := index.AccountAddressConverter(addr_str)
@@ -702,19 +755,22 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 		transfer_req.Direction = nil
 	}
 	if err := c.QueryParser(&utime_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lt_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	res, book, err := pool.QueryJettonTransfers(transfer_req, utime_req, lt_req, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
+	// if len(res) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "jetton transfers not found"}
+	// }
 
 	resp := index.JettonTransfersResponse{Transfers: res, AddressBook: book}
 	return c.JSON(resp)
@@ -750,7 +806,7 @@ func GetJettonBurns(c *fiber.Ctx) error {
 	lim_req := index.LimitRequest{}
 
 	if err := c.QueryParser(&burn_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if addr_str := c.Query("address"); len(addr_str) > 0 && burn_req.OwnerAddress == nil {
 		addr_val := index.AccountAddressConverter(addr_str)
@@ -761,19 +817,22 @@ func GetJettonBurns(c *fiber.Ctx) error {
 		}
 	}
 	if err := c.QueryParser(&utime_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lt_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	res, book, err := pool.QueryJettonBurns(burn_req, utime_req, lt_req, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
+	// if len(res) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "jetton burns not found"}
+	// }
 
 	resp := index.JettonBurnsResponse{Burns: res, AddressBook: book}
 	return c.JSON(resp)
@@ -812,11 +871,169 @@ func GetEvents(c *fiber.Ctx) error {
 // @success		200	{object}	index.ActionsResponse
 // @failure		400	{object}	index.RequestError
 // @param action_id	query []string false "Find actions by the action_id." collectionFormat(multi)
+// @param trace_id	query []string false "Find actions by the trace_id." collectionFormat(multi)
 // @router			/api/v3/actions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetActions(c *fiber.Ctx) error {
-	return c.Status(500).SendString("not implemented")
+	var act_req index.ActionRequest
+
+	if err := c.QueryParser(&act_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	res, book, err := pool.QueryActions(act_req, settings.Request)
+	if err != nil {
+		return err
+	}
+	// if len(res) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "actions not found"}
+	// }
+
+	resp := index.ActionsResponse{Actions: res, AddressBook: book}
+	return c.Status(200).JSON(resp)
+}
+
+// @summary Get Wallet Information
+//
+// @description Get wallet smart contract information. The following wallets are supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`, `v4r2`. In case the account is not a wallet error code 409 is returned.
+//
+// @id api_v3_get_wallet_information
+// @tags api/v2
+// @Accept json
+// @Produce json
+// @success 200 {object} index.V2WalletInformation
+// @failure 400 {object} index.RequestError
+// @param address query string true "Account address in any form."
+// @router /api/v3/walletInformation [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetV2WalletInformation(c *fiber.Ctx) error {
+	var acc_req index.V2AccountRequest
+	if err := c.QueryParser(&acc_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if len(acc_req.AccountAddress) == 0 {
+		return index.IndexError{Code: 401, Message: "address of account is required"}
+	}
+	res, err := index.GetV2WalletInformation(acc_req, settings.Request)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(res)
+}
+
+// @summary Get Address Information
+//
+// @description Get smart contract information.
+//
+// @id api_v3_get_v2_addressInformation
+// @tags api/v2
+// @Accept json
+// @Produce json
+// @success 200 {object} index.V2AddressInformation
+// @failure 400 {object} index.RequestError
+// @param address query string true "Account address in any form."
+// @router /api/v3/addressInformation [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetV2AddressInformation(c *fiber.Ctx) error {
+	var acc_req index.V2AccountRequest
+	if err := c.QueryParser(&acc_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if len(acc_req.AccountAddress) == 0 {
+		return index.IndexError{Code: 401, Message: "address of account is required"}
+	}
+
+	res, err := index.GetV2AddressInformation(acc_req, settings.Request)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(res)
+}
+
+// @summary Send Message
+//
+// @description Send an external message to the TON network.
+//
+// @id api_v3_post_v2_message
+// @tags api/v2
+// @Accept json
+// @Produce json
+// @success 200 {object} index.V2SendMessageResult
+// @failure 400 {object} index.RequestError
+// @param boc body index.V2SendMessageRequest true "Message in boc base64 format."
+// @router /api/v3/message [post]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func PostV2SendMessage(c *fiber.Ctx) error {
+	var req index.V2SendMessageRequest
+	if err := c.BodyParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if len(req.BOC) == 0 {
+		return index.IndexError{Code: 401, Message: "boc is required"}
+	}
+
+	res, err := index.PostMessage(req, settings.Request)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(res)
+}
+
+// @summary Run Get-Method
+// @description Run get method of smart contract. Stack supports only `num`, `cell` and `slice` types:
+// @description ```
+// @description [
+// @description 	{
+// @description 		"type": "num",
+// @description 		"value": "0x12a"
+// @description 	},
+// @description 	{
+// @description 		"type": "cell",
+// @description 		"value": "te6..." // base64 encoded boc with cell
+// @description 	},
+// @description 	{
+// @description 		"type": "slice",
+// @description 		"value": "te6..." // base64 encoded boc with slice
+// @description 	}
+// @description ]
+// @description ```
+//
+// @id api_v3_post_v2_rungetmethod
+// @tags api/v2
+// @Accept json
+// @Produce json
+// @success 200 {object} index.V2RunGetMethodRequest
+// @failure 400 {object} index.RequestError
+// @param request body index.V2RunGetMethodRequest true "Run Get-method request"
+// @router /api/v3/runGetMethod [post]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func PostV2RunGetMethod(c *fiber.Ctx) error {
+	var req index.V2RunGetMethodRequest
+	if err := c.BodyParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if len(req.Address) == 0 {
+		return index.IndexError{Code: 401, Message: "address is required"}
+	}
+
+	if len(req.Method) == 0 {
+		return index.IndexError{Code: 401, Message: "method is required"}
+	}
+
+	res, err := index.PostRunGetMethod(req, settings.Request)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(res)
 }
 
 // // @summary Test method
@@ -838,43 +1055,43 @@ func GetActions(c *fiber.Ctx) error {
 func GetTestMethod(c *fiber.Ctx) error {
 	var test_req index.TestRequest
 	if err := c.QueryParser(&test_req); err != nil {
-		return err
+		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	return c.Status(200).JSON(test_req)
-}
-
-func test() {
-	// addr := index.AccountAddress("0:8A4A3B4B3652B51F361BA6660F991944F27F744EA7021252B9D58E89D950B661")
-	// v := reflect.ValueOf(addr)
-	// log.Println(v, v.Kind())
-
-	// log.Println("Test OK")
-	// 0:8A4A3B4B3652B51F361BA6660F991944F27F744EA7021252B9D58E89D950B661
-	// EQCKSjtLNlK1HzYbpmYPmRlE8n90TqcCElK51Y6J2VC2YQ0y
-	// UQCKSjtLNlK1HzYbpmYPmRlE8n90TqcCElK51Y6J2VC2YVD3
-	// kQCKSjtLNlK1HzYbpmYPmRlE8n90TqcCElK51Y6J2VC2Yba4
-	// 0QCKSjtLNlK1HzYbpmYPmRlE8n90TqcCElK51Y6J2VC2Yet9
-	// xgwu5kxEGiapot+84Qo1hxsC+EuTtGhlzHi4Wi9S5Tw=
-	// xgwu5kxEGiapot-84Qo1hxsC-EuTtGhlzHi4Wi9S5Tw=
-	// c60c2ee64c441a26a9a2dfbce10a35871b02f84b93b46865cc78b85a2f52e53c
-	// C60C2EE64C441A26A9A2DFBCE10A35871B02F84B93B46865CC78B85A2F52E53C
 }
 
 func HealthCheck(c *fiber.Ctx) error {
 	return c.Status(200).SendString("OK")
 }
 
+func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
+	switch e := err.(type) {
+	case index.IndexError:
+		if e.Code != 300 {
+			log.Printf("Code: %d Path: %s Queries: %v Body: %s Error: %s", e.Code, ctx.Path(), ctx.Queries(), string(ctx.Body()), err.Error())
+		}
+		return ctx.Status(e.Code).JSON(e)
+	default:
+		log.Printf("Path: %s Queries: %v Body: %s Error: %s", ctx.Path(), ctx.Queries(), string(ctx.Body()), err.Error())
+		resp := map[string]string{}
+		resp["error"] = fmt.Sprintf("internal server error: %s", err.Error())
+		return ctx.Status(fiber.StatusInternalServerError).JSON(resp)
+	}
+}
+
 func main() {
-	test()
 	var timeout_ms int
 
 	flag.StringVar(&settings.PgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
+	flag.StringVar(&settings.Request.V2Endpoint, "v2", "", "TON HTTP API endpoint for proxied methods")
+	flag.StringVar(&settings.Request.V2ApiKey, "v2-apikey", "", "API key for TON HTTP API endpoint")
 	flag.IntVar(&settings.MaxConns, "maxconns", 100, "PostgreSQL max connections")
 	flag.IntVar(&settings.MinConns, "minconns", 0, "PostgreSQL min connections")
 	flag.StringVar(&settings.Bind, "bind", ":8000", "Bind address")
 	flag.StringVar(&settings.InstanceName, "name", "Go", "Instance name to show in Swagger UI")
 	flag.BoolVar(&settings.Prefork, "prefork", false, "Prefork workers")
 	flag.BoolVar(&settings.Request.IsTestnet, "testnet", false, "Use testnet address book")
+	flag.BoolVar(&settings.Debug, "debug", false, "Run service in debug mode")
 	flag.IntVar(&timeout_ms, "query-timeout", 3000, "Query timeout in milliseconds")
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
 	flag.Parse()
@@ -887,9 +1104,10 @@ func main() {
 	}
 	// web server
 	config := fiber.Config{
-		AppName:     "TON Index API",
-		Concurrency: 256 * 1024,
-		Prefork:     settings.Prefork,
+		AppName:      "TON Index API",
+		Concurrency:  256 * 1024,
+		Prefork:      settings.Prefork,
+		ErrorHandler: ErrorHandlerFunc,
 	}
 	app := fiber.New(config)
 
@@ -899,6 +1117,7 @@ func main() {
 		ParserType: []fiber.ParserType{
 			{Customtype: index.HashType(""), Converter: index.HashConverter},
 			{Customtype: index.AccountAddress(""), Converter: index.AccountAddressConverter},
+			{Customtype: index.AccountAddressNullable(""), Converter: index.AccountAddressNullableConverter},
 			{Customtype: index.ShardId(0), Converter: index.ShardIdConverter},
 			{Customtype: index.OpcodeType(0), Converter: index.OpcodeTypeConverter},
 		},
@@ -906,22 +1125,22 @@ func main() {
 	})
 
 	// endpoints
-	// app.Use(logger.New(logger.Config{TimeZone: "UTC",}))
 	app.Use("/api/v3/", func(c *fiber.Ctx) error {
 		c.Accepts("application/json")
 		start := time.Now()
 		err := c.Next()
 		stop := time.Now()
 		c.Append("Server-timing", fmt.Sprintf("app;dur=%v", stop.Sub(start).String()))
-		if err != nil {
-			log.Printf("Error: %+v\n", err)
-			return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
-		}
-		return nil
+		return err
 	})
+	if settings.Debug {
+		app.Use(pprof.New())
+	}
+	// app.Use("/api/v3", logger.New(logger.Config{Format: "[${ip}]:${port} ${status} - ${method} ${path}\n"}))
 
 	// healthcheck
-	app.Get("/api/v3/healthcheck", HealthCheck)
+	app.Get("/healthcheck", HealthCheck)
+	// app.Get("/metrics", monitor.New(monitor.Config{Title: "TON Index API monitor"}))
 
 	// masterchain info
 	app.Get("/api/v3/masterchainInfo", GetMasterchainInfo)
@@ -935,6 +1154,7 @@ func main() {
 	app.Get("/api/v3/transactions", GetTransactions)
 	app.Get("/api/v3/transactionsByMasterchainBlock", GetTransactionsByMasterchainBlock)
 	app.Get("/api/v3/transactionsByMessage", GetTransactionsByMessage)
+	app.Get("/api/v3/adjacentTransactions", GetAdjacentTransactions)
 
 	// messages
 	app.Get("/api/v3/messages", GetMessages)
@@ -954,13 +1174,27 @@ func main() {
 	app.Get("/api/v3/jetton/transfers", GetJettonTransfers)
 	app.Get("/api/v3/jetton/burns", GetJettonBurns)
 
+	// events
+	app.Get("/api/v3/actions", GetActions)
+	app.Get("/api/v3/events", GetEvents)
+
+	// api/v2 proxied
+	app.Get("/api/v3/addressInformation", GetV2AddressInformation)
+	app.Get("/api/v3/account", GetV2AddressInformation)
+	app.Get("/api/v3/walletInformation", GetV2WalletInformation)
+	app.Get("/api/v3/wallet", GetV2WalletInformation)
+	app.Post("/api/v3/message", PostV2SendMessage)
+	app.Post("/api/v3/runGetMethod", PostV2RunGetMethod)
+
 	// test
 	app.Get("/api/v3/__testMethod", GetTestMethod)
 
 	// swagger
 	var swagger_config = swagger.Config{
-		Title:  "TON Index (" + settings.InstanceName + ") - Swagger UI",
-		Layout: "BaseLayout",
+		Title:           "TON Index (" + settings.InstanceName + ") - Swagger UI",
+		Layout:          "BaseLayout",
+		DeepLinking:     true,
+		TryItOutEnabled: true,
 	}
 	app.Get("/api/v3/*", swagger.New(swagger_config))
 	app.Static("/", "./static")

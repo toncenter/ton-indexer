@@ -1,10 +1,11 @@
 package index
 
-type ShardId int64         // @name ShardId
-type AccountAddress string // @name AccountAddress
-type HashType string       // @name HashType
-type HexInt int64          // @name HexInt
-type OpcodeType int32      // @name OpcodeType
+type ShardId int64                 // @name ShardId
+type AccountAddress string         // @name AccountAddress
+type AccountAddressNullable string // @name AccountAddressNullable
+type HashType string               // @name HashType
+type HexInt int64                  // @name HexInt
+type OpcodeType int64              // @name OpcodeType
 
 var WalletsHashMap = map[string]bool{
 	"oM/CxIruFqJx8s/AtzgtgXVs7LEBfQd/qqs7tgL2how=": true,
@@ -55,7 +56,7 @@ type AccountStateFull struct {
 	CodeHash            *HashType       `json:"code_hash,omitempty"`
 	DataBoc             *string         `json:"data_boc,omitempty"`
 	CodeBoc             *string         `json:"code_boc,omitempty"`
-}
+} // @name AccountStateFull
 
 type Block struct {
 	Workchain              int32     `json:"workchain"`
@@ -335,3 +336,89 @@ type JettonBurn struct {
 } // @name JettonBurn
 
 // traces
+type Action struct {
+	TraceId                       HashType
+	ActionId                      HashType
+	StartLt                       int64
+	EndLt                         int64
+	StartUtime                    int64
+	EndUtime                      int64
+	Source                        *AccountAddress
+	SourceSecondary               *AccountAddress
+	Destination                   *AccountAddress
+	DestinationSecondary          *AccountAddress
+	Asset                         *AccountAddress
+	AssetSecondary                *AccountAddress
+	Asset2                        *AccountAddress
+	Asset2Secondary               *AccountAddress
+	Opcode                        *OpcodeType
+	TxHashes                      []*HashType
+	Type                          string
+	Value                         *string
+	Success                       *bool
+	TonTransferContent            *string
+	TonTransferEncrypted          *bool
+	JettonTransferResponseAddress *AccountAddress
+	JettonTransferForwardAmount   *string
+	JettonTransferQueryId         *string
+	NFTTransferIsPurchase         *bool
+	NFTTransferPrice              *string
+	NFTTransferQueryId            *string
+	JettonSwapDex                 *string
+	JettonSwapAmountIn            *string
+	JettonSwapAmountOut           *string
+	JettonSwapPeerSwaps           []string
+	ChangeDNSRecordKey            *string
+	ChangeDNSRecordValueSchema    *string
+	ChangeDNSRecordValue          *string
+	ChangeDNSRecordFlags          *int64
+} // @name Action
+
+// proxied models
+type V2AddressInformation struct {
+	Balance             string  `json:"balance"`
+	Code                *string `json:"code"`
+	Data                *string `json:"data"`
+	LastTransactionLt   *string `json:"last_transaction_lt"`
+	LastTransactionHash *string `json:"last_transaction_hash"`
+	FrozenHash          *string `json:"frozen_hash"`
+	Status              string  `json:"status"`
+} // @name V2AddressInformation
+
+type V2WalletInformation struct {
+	Balance             string  `json:"balance"`
+	WalletType          *string `json:"wallet_type,omitempty"`
+	Seqno               *int64  `json:"seqno,omitempty"`
+	WalletId            *int64  `json:"wallet_id,omitempty"`
+	LastTransactionLt   string  `json:"last_transaction_lt"`
+	LastTransactionHash string  `json:"last_transaction_hash"`
+	Status              string  `json:"status"`
+} // @name V2WalletInformation
+
+type V2SendMessageResult struct {
+	MessageHash *HashType `json:"message_hash,omitempty"`
+} //@name V2SendMessageResult
+
+type V2StackEntity struct {
+	Type  string      `json:"type"`
+	Value interface{} `json:"value"`
+} // @name V2StackEntity
+
+type V2RunGetMethodResult struct {
+	GasUsed  int64       `json:"gas_used"`
+	ExitCode int64       `json:"exit_code"`
+	Stack    interface{} `json:"stack"`
+} // @name V2RunGetMethodResult
+
+type V2EstimateFeeResult struct {
+} // @name V2EstimateFeeResult
+
+// errors
+type IndexError struct {
+	Code    int    `json:"-"`
+	Message string `json:"error"`
+}
+
+func (e IndexError) Error() string {
+	return e.Message
+}

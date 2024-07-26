@@ -6,8 +6,10 @@ import (
 
 // settings
 type RequestSettings struct {
-	Timeout   time.Duration
-	IsTestnet bool
+	Timeout    time.Duration
+	IsTestnet  bool
+	V2Endpoint string
+	V2ApiKey   string
 }
 
 // requests
@@ -29,13 +31,18 @@ type TransactionRequest struct {
 	Lt             *uint64          `query:"lt"`
 }
 
+type AdjacentTransactionRequest struct {
+	Hash      HashType `query:"hash"`
+	Direction *string  `query:"direction"`
+}
+
 type MessageRequest struct {
-	Direction   *string         `query:"direction"`
-	MessageHash []HashType      `query:"msg_hash"`
-	Source      *AccountAddress `query:"source"`
-	Destination *AccountAddress `query:"destination"`
-	BodyHash    *HashType       `query:"body_hash"`
-	Opcode      *OpcodeType     `query:"opcode"`
+	Direction   *string                 `query:"direction"`
+	MessageHash []HashType              `query:"msg_hash"`
+	Source      *AccountAddressNullable `query:"source"`
+	Destination *AccountAddressNullable `query:"destination"`
+	BodyHash    *HashType               `query:"body_hash"`
+	Opcode      *OpcodeType             `query:"opcode"`
 }
 
 type NFTCollectionRequest struct {
@@ -96,6 +103,11 @@ type AccountRequest struct {
 	CodeHash       []HashType       `query:"code_hash"`
 }
 
+type ActionRequest struct {
+	ActionId []HashType `query:"action_id"`
+	TraceId  []HashType `query:"trace_id"`
+}
+
 type SortType string
 
 const (
@@ -113,4 +125,22 @@ type TestRequest struct {
 	Hash  []HashType       `query:"my_hash"`
 	Addr  []AccountAddress `query:"my_addr"`
 	Shard []ShardId        `query:"my_shard"`
+}
+
+// api/v2 requests
+type V2AccountRequest struct {
+	AccountAddress AccountAddress `query:"address"`
+}
+
+type V2SendMessageRequest struct {
+	BOC string `json:"boc"`
+}
+
+type V2RunGetMethodRequest struct {
+	Address AccountAddress  `json:"address"`
+	Method  string          `json:"method"`
+	Stack   []V2StackEntity `json:"stack"`
+}
+
+type V2EstimateFeeRequst struct {
 }

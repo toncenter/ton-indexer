@@ -66,6 +66,66 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v3/actions": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get actions by specified filter.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Get Actions",
+                "operationId": "api_v3_get_actions",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find actions by the action_id.",
+                        "name": "action_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find actions by the trace_id.",
+                        "name": "trace_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/ActionsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/addressBook": {
             "get": {
                 "security": [
@@ -97,7 +157,8 @@ const docTemplate = `{
                         "collectionFormat": "multi",
                         "description": "List of addresses in any form to get address book. Max: 1024.",
                         "name": "address",
-                        "in": "query"
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -105,6 +166,109 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/AddressBook"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/addressInformation": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get smart contract information.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "api/v2"
+                ],
+                "summary": "Get Address Information",
+                "operationId": "api_v3_get_v2_addressInformation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Account address in any form.",
+                        "name": "address",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/V2AddressInformation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/adjacentTransactions": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get parent and/or children for specified transaction.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blockchain"
+                ],
+                "summary": "Get Adjacent Transactions",
+                "operationId": "api_v3_get_adjacent_transactions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction hash.",
+                        "name": "hash",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "in",
+                            "out"
+                        ],
+                        "type": "string",
+                        "description": "Direction of message.",
+                        "name": "direction",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/TransactionsResponse"
                         }
                     },
                     "400": {
@@ -225,6 +389,118 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/BlocksResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/events": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get events by specified filter.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Get Events",
+                "operationId": "api_v3_get_events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form.",
+                        "name": "account",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find event by transaction hash.",
+                        "name": "tx_hash",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query events, which was finished **after** given timestamp.",
+                        "name": "start_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query events, which was finished **before** given timestamp.",
+                        "name": "end_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query events with ` + "`" + `end_lt \u003e= start_lt` + "`" + `.",
+                        "name": "start_lt",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query events with ` + "`" + `end_lt \u003c= end_lt` + "`" + `.",
+                        "name": "end_lt",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 500,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort events by lt.",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/EventsResponse"
                         }
                     },
                     "400": {
@@ -782,6 +1058,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v3/message": {
+            "post": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Send an external message to the TON network.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "api/v2"
+                ],
+                "summary": "Send Message",
+                "operationId": "api_v3_post_v2_message",
+                "parameters": [
+                    {
+                        "description": "Message in boc base64 format.",
+                        "name": "boc",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/index.V2SendMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/V2SendMessageResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/messages": {
             "get": {
                 "security": [
@@ -1181,6 +1506,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v3/runGetMethod": {
+            "post": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Run get method of smart contract. Stack supports only ` + "`" + `num` + "`" + `, ` + "`" + `cell` + "`" + ` and ` + "`" + `slice` + "`" + ` types:\n` + "`" + `` + "`" + `` + "`" + `\n[\n{\n\"type\": \"num\",\n\"value\": \"0x12a\"\n},\n{\n\"type\": \"cell\",\n\"value\": \"te6...\" // base64 encoded boc with cell\n},\n{\n\"type\": \"slice\",\n\"value\": \"te6...\" // base64 encoded boc with slice\n}\n]\n` + "`" + `` + "`" + `` + "`" + `",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "api/v2"
+                ],
+                "summary": "Run Get-Method",
+                "operationId": "api_v3_post_v2_rungetmethod",
+                "parameters": [
+                    {
+                        "description": "Run Get-method request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/index.V2RunGetMethodRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/index.V2RunGetMethodRequest"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/transactions": {
             "get": {
                 "security": [
@@ -1492,6 +1866,53 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/api/v3/walletInformation": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get wallet smart contract information. The following wallets are supported: ` + "`" + `v1r1` + "`" + `, ` + "`" + `v1r2` + "`" + `, ` + "`" + `v1r3` + "`" + `, ` + "`" + `v2r1` + "`" + `, ` + "`" + `v2r2` + "`" + `, ` + "`" + `v3r1` + "`" + `, ` + "`" + `v3r2` + "`" + `, ` + "`" + `v4r1` + "`" + `, ` + "`" + `v4r2` + "`" + `. In case the account is not a wallet error code 409 is returned.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "api/v2"
+                ],
+                "summary": "Get Wallet Information",
+                "operationId": "api_v3_get_wallet_information",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Account address in any form.",
+                        "name": "address",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/V2WalletInformation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1524,17 +1945,172 @@ const docTemplate = `{
                 }
             }
         },
+        "AccountStateFull": {
+            "type": "object",
+            "properties": {
+                "account_state_hash": {
+                    "type": "string"
+                },
+                "account_status": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "string"
+                },
+                "balance": {
+                    "type": "string"
+                },
+                "code_boc": {
+                    "type": "string"
+                },
+                "code_hash": {
+                    "type": "string"
+                },
+                "data_boc": {
+                    "type": "string"
+                },
+                "data_hash": {
+                    "type": "string"
+                },
+                "frozen_hash": {
+                    "type": "string"
+                },
+                "last_transaction_hash": {
+                    "type": "string"
+                },
+                "last_transaction_lt": {
+                    "type": "string",
+                    "example": "0"
+                }
+            }
+        },
         "AccountStatesResponse": {
             "type": "object",
             "properties": {
                 "accounts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/index.AccountStateFull"
+                        "$ref": "#/definitions/AccountStateFull"
                     }
                 },
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                }
+            }
+        },
+        "Action": {
+            "type": "object",
+            "properties": {
+                "actionId": {
+                    "type": "string"
+                },
+                "asset": {
+                    "type": "string"
+                },
+                "asset2": {
+                    "type": "string"
+                },
+                "asset2Secondary": {
+                    "type": "string"
+                },
+                "assetSecondary": {
+                    "type": "string"
+                },
+                "changeDNSRecordFlags": {
+                    "type": "integer"
+                },
+                "changeDNSRecordKey": {
+                    "type": "string"
+                },
+                "changeDNSRecordValue": {
+                    "type": "string"
+                },
+                "changeDNSRecordValueSchema": {
+                    "type": "string"
+                },
+                "destination": {
+                    "type": "string"
+                },
+                "destinationSecondary": {
+                    "type": "string"
+                },
+                "endLt": {
+                    "type": "integer"
+                },
+                "endUtime": {
+                    "type": "integer"
+                },
+                "jettonSwapAmountIn": {
+                    "type": "string"
+                },
+                "jettonSwapAmountOut": {
+                    "type": "string"
+                },
+                "jettonSwapDex": {
+                    "type": "string"
+                },
+                "jettonSwapPeerSwaps": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "jettonTransferForwardAmount": {
+                    "type": "string"
+                },
+                "jettonTransferQueryId": {
+                    "type": "string"
+                },
+                "jettonTransferResponseAddress": {
+                    "type": "string"
+                },
+                "nfttransferIsPurchase": {
+                    "type": "boolean"
+                },
+                "nfttransferPrice": {
+                    "type": "string"
+                },
+                "nfttransferQueryId": {
+                    "type": "string"
+                },
+                "opcode": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "sourceSecondary": {
+                    "type": "string"
+                },
+                "startLt": {
+                    "type": "integer"
+                },
+                "startUtime": {
+                    "type": "integer"
+                },
+                "success": {
+                    "type": "boolean"
+                },
+                "tonTransferContent": {
+                    "type": "string"
+                },
+                "tonTransferEncrypted": {
+                    "type": "boolean"
+                },
+                "traceId": {
+                    "type": "string"
+                },
+                "txHashes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "type": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
                 }
             }
         },
@@ -1584,6 +2160,20 @@ const docTemplate = `{
                 },
                 "valid": {
                     "type": "boolean"
+                }
+            }
+        },
+        "ActionsResponse": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Action"
+                    }
+                },
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
                 }
             }
         },
@@ -1824,6 +2414,14 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                }
+            }
+        },
+        "EventsResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
                 }
             }
         },
@@ -2458,31 +3056,16 @@ const docTemplate = `{
                 }
             }
         },
-        "index.AccountStateFull": {
+        "V2AddressInformation": {
             "type": "object",
             "properties": {
-                "account_state_hash": {
-                    "type": "string"
-                },
-                "account_status": {
-                    "type": "string"
-                },
-                "address": {
-                    "type": "string"
-                },
                 "balance": {
                     "type": "string"
                 },
-                "code_boc": {
+                "code": {
                     "type": "string"
                 },
-                "code_hash": {
-                    "type": "string"
-                },
-                "data_boc": {
-                    "type": "string"
-                },
-                "data_hash": {
+                "data": {
                     "type": "string"
                 },
                 "frozen_hash": {
@@ -2492,8 +3075,78 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "last_transaction_lt": {
-                    "type": "string",
-                    "example": "0"
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "V2SendMessageResult": {
+            "type": "object",
+            "properties": {
+                "message_hash": {
+                    "type": "string"
+                }
+            }
+        },
+        "V2StackEntity": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string"
+                },
+                "value": {}
+            }
+        },
+        "V2WalletInformation": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "string"
+                },
+                "last_transaction_hash": {
+                    "type": "string"
+                },
+                "last_transaction_lt": {
+                    "type": "string"
+                },
+                "seqno": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "wallet_id": {
+                    "type": "integer"
+                },
+                "wallet_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "index.V2RunGetMethodRequest": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "method": {
+                    "type": "string"
+                },
+                "stack": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/V2StackEntity"
+                    }
+                }
+            }
+        },
+        "index.V2SendMessageRequest": {
+            "type": "object",
+            "properties": {
+                "boc": {
+                    "type": "string"
                 }
             }
         }

@@ -18,14 +18,117 @@ definitions:
       hash:
         type: string
     type: object
+  AccountStateFull:
+    properties:
+      account_state_hash:
+        type: string
+      account_status:
+        type: string
+      address:
+        type: string
+      balance:
+        type: string
+      code_boc:
+        type: string
+      code_hash:
+        type: string
+      data_boc:
+        type: string
+      data_hash:
+        type: string
+      frozen_hash:
+        type: string
+      last_transaction_hash:
+        type: string
+      last_transaction_lt:
+        example: "0"
+        type: string
+    type: object
   AccountStatesResponse:
     properties:
       accounts:
         items:
-          $ref: '#/definitions/index.AccountStateFull'
+          $ref: '#/definitions/AccountStateFull'
         type: array
       address_book:
         $ref: '#/definitions/AddressBook'
+    type: object
+  Action:
+    properties:
+      actionId:
+        type: string
+      asset:
+        type: string
+      asset2:
+        type: string
+      asset2Secondary:
+        type: string
+      assetSecondary:
+        type: string
+      changeDNSRecordFlags:
+        type: integer
+      changeDNSRecordKey:
+        type: string
+      changeDNSRecordValue:
+        type: string
+      changeDNSRecordValueSchema:
+        type: string
+      destination:
+        type: string
+      destinationSecondary:
+        type: string
+      endLt:
+        type: integer
+      endUtime:
+        type: integer
+      jettonSwapAmountIn:
+        type: string
+      jettonSwapAmountOut:
+        type: string
+      jettonSwapDex:
+        type: string
+      jettonSwapPeerSwaps:
+        items:
+          type: string
+        type: array
+      jettonTransferForwardAmount:
+        type: string
+      jettonTransferQueryId:
+        type: string
+      jettonTransferResponseAddress:
+        type: string
+      nfttransferIsPurchase:
+        type: boolean
+      nfttransferPrice:
+        type: string
+      nfttransferQueryId:
+        type: string
+      opcode:
+        type: integer
+      source:
+        type: string
+      sourceSecondary:
+        type: string
+      startLt:
+        type: integer
+      startUtime:
+        type: integer
+      success:
+        type: boolean
+      tonTransferContent:
+        type: string
+      tonTransferEncrypted:
+        type: boolean
+      traceId:
+        type: string
+      txHashes:
+        items:
+          type: string
+        type: array
+      type:
+        type: string
+      value:
+        type: string
     type: object
   ActionPhase:
     properties:
@@ -59,6 +162,15 @@ definitions:
         type: string
       valid:
         type: boolean
+    type: object
+  ActionsResponse:
+    properties:
+      actions:
+        items:
+          $ref: '#/definitions/Action'
+        type: array
+      address_book:
+        $ref: '#/definitions/AddressBook'
     type: object
   AddressBook:
     additionalProperties:
@@ -221,6 +333,11 @@ definitions:
         type: string
       type:
         type: string
+    type: object
+  EventsResponse:
+    properties:
+      address_book:
+        $ref: '#/definitions/AddressBook'
     type: object
   JettonBurn:
     properties:
@@ -641,30 +758,65 @@ definitions:
           $ref: '#/definitions/Transaction'
         type: array
     type: object
-  index.AccountStateFull:
+  V2AddressInformation:
     properties:
-      account_state_hash:
-        type: string
-      account_status:
-        type: string
-      address:
-        type: string
       balance:
         type: string
-      code_boc:
+      code:
         type: string
-      code_hash:
-        type: string
-      data_boc:
-        type: string
-      data_hash:
+      data:
         type: string
       frozen_hash:
         type: string
       last_transaction_hash:
         type: string
       last_transaction_lt:
-        example: "0"
+        type: string
+      status:
+        type: string
+    type: object
+  V2SendMessageResult:
+    properties:
+      message_hash:
+        type: string
+    type: object
+  V2StackEntity:
+    properties:
+      type:
+        type: string
+      value: {}
+    type: object
+  V2WalletInformation:
+    properties:
+      balance:
+        type: string
+      last_transaction_hash:
+        type: string
+      last_transaction_lt:
+        type: string
+      seqno:
+        type: integer
+      status:
+        type: string
+      wallet_id:
+        type: integer
+      wallet_type:
+        type: string
+    type: object
+  index.V2RunGetMethodRequest:
+    properties:
+      address:
+        type: string
+      method:
+        type: string
+      stack:
+        items:
+          $ref: '#/definitions/V2StackEntity'
+        type: array
+    type: object
+  index.V2SendMessageRequest:
+    properties:
+      boc:
         type: string
     type: object
 info:
@@ -706,6 +858,44 @@ paths:
       summary: Get Account States
       tags:
       - accounts
+  /api/v3/actions:
+    get:
+      consumes:
+      - application/json
+      description: Get actions by specified filter.
+      operationId: api_v3_get_actions
+      parameters:
+      - collectionFormat: multi
+        description: Find actions by the action_id.
+        in: query
+        items:
+          type: string
+        name: action_id
+        type: array
+      - collectionFormat: multi
+        description: Find actions by the trace_id.
+        in: query
+        items:
+          type: string
+        name: trace_id
+        type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/ActionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Actions
+      tags:
+      - events
   /api/v3/addressBook:
     get:
       consumes:
@@ -719,6 +909,7 @@ paths:
         items:
           type: string
         name: address
+        required: true
         type: array
       produces:
       - application/json
@@ -737,6 +928,70 @@ paths:
       summary: Address Book
       tags:
       - accounts
+  /api/v3/addressInformation:
+    get:
+      consumes:
+      - application/json
+      description: Get smart contract information.
+      operationId: api_v3_get_v2_addressInformation
+      parameters:
+      - description: Account address in any form.
+        in: query
+        name: address
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/V2AddressInformation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Address Information
+      tags:
+      - api/v2
+  /api/v3/adjacentTransactions:
+    get:
+      consumes:
+      - application/json
+      description: Get parent and/or children for specified transaction.
+      operationId: api_v3_get_adjacent_transactions
+      parameters:
+      - description: Transaction hash.
+        in: query
+        name: hash
+        type: string
+      - description: Direction of message.
+        enum:
+        - in
+        - out
+        in: query
+        name: direction
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/TransactionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Adjacent Transactions
+      tags:
+      - blockchain
   /api/v3/blocks:
     get:
       consumes:
@@ -818,6 +1073,83 @@ paths:
       summary: Get blocks
       tags:
       - blockchain
+  /api/v3/events:
+    get:
+      consumes:
+      - application/json
+      description: Get events by specified filter.
+      operationId: api_v3_get_events
+      parameters:
+      - description: List of account addresses to get transactions. Can be sent in
+          hex, base64 or base64url form.
+        in: query
+        name: account
+        type: string
+      - collectionFormat: multi
+        description: Find event by transaction hash.
+        in: query
+        items:
+          type: string
+        name: tx_hash
+        type: array
+      - description: Query events, which was finished **after** given timestamp.
+        in: query
+        minimum: 0
+        name: start_utime
+        type: integer
+      - description: Query events, which was finished **before** given timestamp.
+        in: query
+        minimum: 0
+        name: end_utime
+        type: integer
+      - description: Query events with `end_lt >= start_lt`.
+        in: query
+        minimum: 0
+        name: start_lt
+        type: integer
+      - description: Query events with `end_lt <= end_lt`.
+        in: query
+        minimum: 0
+        name: end_lt
+        type: integer
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 500
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort events by lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/EventsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Events
+      tags:
+      - events
   /api/v3/jetton/burns:
     get:
       consumes:
@@ -1183,6 +1515,36 @@ paths:
       summary: Get Masterchain Info
       tags:
       - blockchain
+  /api/v3/message:
+    post:
+      consumes:
+      - application/json
+      description: Send an external message to the TON network.
+      operationId: api_v3_post_v2_message
+      parameters:
+      - description: Message in boc base64 format.
+        in: body
+        name: boc
+        required: true
+        schema:
+          $ref: '#/definitions/index.V2SendMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/V2SendMessageResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Send Message
+      tags:
+      - api/v2
   /api/v3/messages:
     get:
       consumes:
@@ -1454,6 +1816,53 @@ paths:
       summary: Get NFT Transfers
       tags:
       - nfts
+  /api/v3/runGetMethod:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Run get method of smart contract. Stack supports only `num`, `cell` and `slice` types:
+        ```
+        [
+        {
+        "type": "num",
+        "value": "0x12a"
+        },
+        {
+        "type": "cell",
+        "value": "te6..." // base64 encoded boc with cell
+        },
+        {
+        "type": "slice",
+        "value": "te6..." // base64 encoded boc with slice
+        }
+        ]
+        ```
+      operationId: api_v3_post_v2_rungetmethod
+      parameters:
+      - description: Run Get-method request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/index.V2RunGetMethodRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/index.V2RunGetMethodRequest'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Run Get-Method
+      tags:
+      - api/v2
   /api/v3/transactions:
     get:
       consumes:
@@ -1667,6 +2076,37 @@ paths:
       summary: Get transactions by message
       tags:
       - blockchain
+  /api/v3/walletInformation:
+    get:
+      consumes:
+      - application/json
+      description: 'Get wallet smart contract information. The following wallets are
+        supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`,
+        `v4r2`. In case the account is not a wallet error code 409 is returned.'
+      operationId: api_v3_get_wallet_information
+      parameters:
+      - description: Account address in any form.
+        in: query
+        name: address
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/V2WalletInformation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Wallet Information
+      tags:
+      - api/v2
 securityDefinitions:
   APIKeyHeader:
     in: header

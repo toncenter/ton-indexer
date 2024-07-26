@@ -80,6 +80,13 @@ func AccountAddressConverter(value string) reflect.Value {
 	return reflect.ValueOf(addr_str)
 }
 
+func AccountAddressNullableConverter(value string) reflect.Value {
+	if value == "null" {
+		return reflect.ValueOf(value)
+	}
+	return AccountAddressConverter(value)
+}
+
 func ShardIdConverter(value string) reflect.Value {
 	if shard, err := strconv.ParseUint(value, 16, 64); err == nil {
 		return reflect.ValueOf(ShardId(shard))
@@ -403,4 +410,22 @@ func ScanJettonBurn(row pgx.Row) (*JettonBurn, error) {
 		return nil, err
 	}
 	return &res, nil
+}
+
+func ScanAction(row pgx.Row) (*Action, error) {
+	var act Action
+	err := row.Scan(&act.TraceId, &act.ActionId, &act.StartLt, &act.EndLt, &act.StartUtime, &act.EndUtime,
+		&act.Source, &act.SourceSecondary, &act.Destination, &act.DestinationSecondary,
+		&act.Asset, &act.AssetSecondary, &act.Asset2, &act.Asset2Secondary,
+		&act.Opcode, &act.TxHashes, &act.Type, &act.Value, &act.Success,
+		&act.TonTransferContent, &act.TonTransferEncrypted,
+		&act.JettonTransferResponseAddress, &act.JettonTransferForwardAmount, &act.JettonTransferQueryId,
+		&act.NFTTransferIsPurchase, &act.NFTTransferPrice, &act.NFTTransferQueryId,
+		&act.JettonSwapDex, &act.JettonSwapAmountIn, &act.JettonSwapAmountOut, &act.JettonSwapPeerSwaps,
+		&act.ChangeDNSRecordKey, &act.ChangeDNSRecordValueSchema, &act.ChangeDNSRecordValue, &act.ChangeDNSRecordFlags)
+
+	if err != nil {
+		return nil, err
+	}
+	return &act, nil
 }

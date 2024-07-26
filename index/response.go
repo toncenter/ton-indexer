@@ -62,6 +62,15 @@ type JettonBurnsResponse struct {
 	AddressBook AddressBook  `json:"address_book"`
 } // @name JettonBurnsResponse
 
+type EventsResponse struct {
+	AddressBook AddressBook `json:"address_book"`
+} // @name EventsResponse
+
+type ActionsResponse struct {
+	Actions     []Action    `json:"actions"`
+	AddressBook AddressBook `json:"address_book"`
+} // @name ActionsResponse
+
 // errors
 type RequestError struct {
 	Message string `json:"error"`
