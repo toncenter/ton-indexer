@@ -25,14 +25,9 @@ void OverlayListener::start_up() {
             promise.set_error(td::Status::Error("not implemented"));
         }
         void receive_broadcast(ton::PublicKeyHash src, ton::overlay::OverlayIdShort overlay_id, td::BufferSlice data) override {
-        }
-        void check_broadcast(ton::PublicKeyHash src, ton::overlay::OverlayIdShort overlay_id, td::BufferSlice data,
-                            td::Promise<td::Unit> promise) override {
-            LOG(INFO) << "Check broadcast from " << src.bits256_value().to_hex();
             auto B = ton::fetch_tl_object<ton::ton_api::tonNode_externalMessageBroadcast>(std::move(data), true);
             if (B.is_error()) {
                 LOG(WARNING) << "Failed to fetch externalMessageBroadcast";
-                promise.set_error(td::Status::Error("Failed to fetch externalMessageBroadcast"));
                 return;
             }
             auto msg_data = std::move(B.move_as_ok()->message_->data_);
@@ -41,6 +36,16 @@ void OverlayListener::start_up() {
                 auto message = message_r.move_as_ok();
                 td::actor::send_closure(parent_, &OverlayListener::process_external_message, std::move(message));
             }
+        }
+        void check_broadcast(ton::PublicKeyHash src, ton::overlay::OverlayIdShort overlay_id, td::BufferSlice data,
+                            td::Promise<td::Unit> promise) override {
+            auto B = ton::fetch_tl_object<ton::ton_api::tonNode_externalMessageBroadcast>(std::move(data), true);
+            if (B.is_error()) {
+                LOG(WARNING) << "Failed to fetch externalMessageBroadcast";
+                promise.set_error(td::Status::Error("Failed to fetch externalMessageBroadcast"));
+                return;
+            }
+
             promise.set_value(td::Unit());
         }
     };
