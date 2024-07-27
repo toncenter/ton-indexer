@@ -1068,7 +1068,9 @@ func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
 	var api_key string
 	api_key, ok := ctx.Queries()["api_key"]
 	if !ok {
-		api_key = ctx.GetReqHeaders()["X-Api-Key"][0]
+		if arr := ctx.GetReqHeaders()["X-Api-Key"]; len(arr) > 0 {
+			api_key = arr[0]
+		}
 	}
 	switch e := err.(type) {
 	case index.IndexError:
