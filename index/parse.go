@@ -98,6 +98,16 @@ func ShardIdConverter(value string) reflect.Value {
 	return reflect.Value{}
 }
 
+func UtimeTypeConverter(value string) reflect.Value {
+	if utime, err := strconv.ParseUint(value, 10, 32); err == nil {
+		return reflect.ValueOf(UtimeType(utime))
+	}
+	if utime, err := strconv.ParseFloat(value, 64); err == nil {
+		return reflect.ValueOf(UtimeType(uint64(utime)))
+	}
+	return reflect.Value{}
+}
+
 func OpcodeTypeConverter(value string) reflect.Value {
 	value = strings.TrimPrefix(value, "0x")
 	if res, err := strconv.ParseUint(value, 16, 32); err == nil {

@@ -4,6 +4,8 @@ import (
 	"time"
 )
 
+type UtimeType uint64 // @name UtimeType
+
 // settings
 type RequestSettings struct {
 	Timeout    time.Duration
@@ -89,8 +91,8 @@ type JettonBurnRequest struct {
 }
 
 type UtimeRequest struct {
-	StartUtime *uint32 `query:"start_utime"`
-	EndUtime   *uint32 `query:"end_utime"`
+	StartUtime *UtimeType `query:"start_utime"`
+	EndUtime   *UtimeType `query:"end_utime"`
 }
 
 type LtRequest struct {

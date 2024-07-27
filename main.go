@@ -1128,6 +1128,7 @@ func main() {
 			{Customtype: index.AccountAddressNullable(""), Converter: index.AccountAddressNullableConverter},
 			{Customtype: index.ShardId(0), Converter: index.ShardIdConverter},
 			{Customtype: index.OpcodeType(0), Converter: index.OpcodeTypeConverter},
+			{Customtype: index.UtimeType(0), Converter: index.UtimeTypeConverter},
 		},
 		ZeroEmpty: true,
 	})
