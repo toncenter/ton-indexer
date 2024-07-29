@@ -1504,6 +1504,10 @@ func (db *DbClient) QueryAdjacentTransactions(
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
+	if len(tx_hash_list) == 0 {
+		return nil, nil, IndexError{Code: 404, Message: "adjacent transactions not found"}
+	}
+
 	for idx := range tx_hash_list {
 		tx_hash_list[idx] = fmt.Sprintf("'%s'", tx_hash_list[idx])
 	}
