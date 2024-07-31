@@ -265,12 +265,12 @@ void TraceAssembler::process_transaction(std::int32_t seqno, schema::Transaction
                     ++broken_count_;
                 }
                 if (edge.incomplete) {
-                    pending_edges_.insert({edge.msg_hash, edge});
+                    pending_edges_.insert_or_assign(edge.msg_hash, edge);
                     updated_edges_.insert(edge.msg_hash);
                 } else {
                     edges_found_.push_back(edge);
                 }
-                pending_traces_.insert({trace->trace_id, trace});
+                pending_traces_.insert_or_assign(trace->trace_id, trace);
             } else {
                 // edge exists
                 edge_it->second.right_tx = tx.hash;
@@ -291,7 +291,7 @@ void TraceAssembler::process_transaction(std::int32_t seqno, schema::Transaction
                         
                         ++broken_count_;
                         edge.trace_id = trace->trace_id;
-                        pending_traces_.insert({trace->trace_id, trace});
+                        pending_traces_.insert_or_assign(trace->trace_id, trace);
                     } else {
                         trace = trace_it->second;
                     }
@@ -314,8 +314,7 @@ void TraceAssembler::process_transaction(std::int32_t seqno, schema::Transaction
         msg.trace_id = trace->trace_id;
     } else {
         trace = std::make_shared<TraceImpl>(seqno, tx);
-        pending_traces_.insert({trace->trace_id, trace});
-
+        pending_traces_.insert_or_assign(trace->trace_id, trace);
         updated_traces_.insert(trace->trace_id);
 
         tx.trace_id = trace->trace_id;
@@ -337,7 +336,7 @@ void TraceAssembler::process_transaction(std::int32_t seqno, schema::Transaction
         trace->pending_edges_ += edge.incomplete;
         trace->edges_ += !edge.incomplete;
         if (edge.incomplete) {
-            pending_edges_.insert({edge.msg_hash, edge});
+            pending_edges_.insert_or_assign(edge.msg_hash, edge);
             updated_edges_.insert(edge.msg_hash);
         } else {
             edges_found_.push_back(edge);
