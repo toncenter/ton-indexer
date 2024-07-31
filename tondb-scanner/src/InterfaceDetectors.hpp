@@ -138,7 +138,7 @@ public:
   }
 
   void add(block::StdAddress address, T data, td::Promise<td::Unit> promise) {
-    cache_.emplace(convert::to_raw_address(address), data);
+    cache_.insert_or_assign(convert::to_raw_address(address), data);
     promise.set_result(td::Unit());
   }
 };
