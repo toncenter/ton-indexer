@@ -195,9 +195,9 @@ def sort_transaction_query_by_lt(query: Query, sort: str, column: str = 'lt'):
     # second order by hash is needed for consistent pagination
     if sort == 'asc':
         if column == 'lt':
-            query = query.order_by(Transaction.lt.asc(), Transaction.hash.desc())
+            query = query.order_by(Transaction.lt.asc(), Transaction.hash.asc())
         elif column == 'now':
-            query = query.order_by(Transaction.now.asc(), Transaction.hash.desc())
+            query = query.order_by(Transaction.now.asc(), Transaction.hash.asc())
         else:
             raise ValueError(f'Unknown column "{column}"')
     elif sort == 'desc':
