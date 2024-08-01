@@ -310,7 +310,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Block shard id. Must be sent with *workchain*. Example: ` + "`" + `8000000000000000` + "`" + `.",
                         "name": "shard",
                         "in": "query"
@@ -1555,6 +1555,66 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v3/topAccountsByBalance": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get list of accounts sorted descending by balance.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "stats"
+                ],
+                "summary": "Get Top Accounts By Balance",
+                "operationId": "api_v3_get_top_accounts_by_balance",
+                "parameters": [
+                    {
+                        "maximum": 500,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/AccountBalance"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/transactions": {
             "get": {
                 "security": [
@@ -1585,7 +1645,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Block shard id. Must be sent with *workchain*. Example: ` + "`" + `8000000000000000` + "`" + `.",
                         "name": "shard",
                         "in": "query"
@@ -1916,6 +1976,17 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "AccountBalance": {
+            "type": "object",
+            "properties": {
+                "account": {
+                    "type": "string"
+                },
+                "balance": {
+                    "type": "string"
+                }
+            }
+        },
         "AccountState": {
             "type": "object",
             "properties": {

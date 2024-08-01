@@ -1100,6 +1100,31 @@ func queryAccountStateFullImpl(query string, conn *pgxpool.Conn, settings Reques
 	return acsts, nil
 }
 
+func queryTopAccountBalancesImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]AccountBalance, error) {
+	acsts := []AccountBalance{}
+	{
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		rows, err := conn.Query(ctx, query)
+		if err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			if acst, err := ScanAccountBalance(rows); err == nil {
+				acsts = append(acsts, *acst)
+			} else {
+				return nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		if rows.Err() != nil {
+			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		}
+	}
+	return acsts, nil
+}
+
 func queryNFTCollectionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]NFTCollection, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
@@ -1899,6 +1924,24 @@ func (db *DbClient) QueryAccountStates(
 		}
 	}
 	return res, book, nil
+}
+
+func (db *DbClient) QueryTopAccountBalances(lim_req LimitRequest, settings RequestSettings) ([]AccountBalance, error) {
+	query := `select account, balance from latest_account_states order by balance desc`
+	query += limitQuery(lim_req)
+
+	// read data
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	res, err := queryTopAccountBalancesImpl(query, conn, settings)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	return res, nil
 }
 
 // events

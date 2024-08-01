@@ -68,7 +68,7 @@ func GetMasterchainInfo(c *fiber.Ctx) error {
 // @success		200	{object}	index.BlocksResponse
 // @failure		400	{object}	index.RequestError
 // @param	workchain query int32 false "Block workchain."
-// @param	shard query int64 false "Block shard id. Must be sent with *workchain*. Example: `8000000000000000`."
+// @param	shard query string false "Block shard id. Must be sent with *workchain*. Example: `8000000000000000`."
 // @param	seqno query int32 false "Block block seqno. Must be sent with *workchain* and *shard*."
 // @param	mc_seqno query int32 false "Masterchain block seqno"
 // @param start_utime query int32 false "Query blocks with generation UTC timestamp **after** given timestamp." minimum(0)
@@ -180,7 +180,7 @@ func GetShardsDiff(c *fiber.Ctx) error {
 // @success		200	{object}	index.TransactionsResponse
 // @failure		400	{object}	index.RequestError
 // @param	workchain query int32 false "Block workchain."
-// @param	shard query int64 false "Block shard id. Must be sent with *workchain*. Example: `8000000000000000`."
+// @param	shard query string false "Block shard id. Must be sent with *workchain*. Example: `8000000000000000`."
 // @param	seqno query int32 false "Block block seqno. Must be sent with *workchain* and *shard*."
 // @param	mc_seqno query int32 false "Masterchain block seqno."
 // @param 	account	query []string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form." collectionFormat(multi)
@@ -631,6 +631,33 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+// @summary Get Top Accounts By Balance
+// @description Get list of accounts sorted descending by balance.
+// @id api_v3_get_top_accounts_by_balance
+// @tags stats
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	[]index.AccountBalance
+// @failure		400	{object}	index.RequestError
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @router			/api/v3/topAccountsByBalance [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetTopAccountsByBalance(c *fiber.Ctx) error {
+	lim_req := index.LimitRequest{}
+
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	res, err := pool.QueryTopAccountBalances(lim_req, settings.Request)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
 // @summary Get Jetton Masters
 //
 // @description Get Jetton masters by specified filters
@@ -1064,30 +1091,50 @@ func HealthCheck(c *fiber.Ctx) error {
 	return c.Status(200).SendString("OK")
 }
 
-func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
-	var api_key string
-	api_key, ok := ctx.Queries()["api_key"]
-	if !ok {
-		if arr := ctx.GetReqHeaders()["X-Api-Key"]; len(arr) > 0 {
-			api_key = arr[0]
-		}
+func ExtractParam(ctx *fiber.Ctx, header string, query string) (string, bool) {
+	result := ``
+	found := false
+	if val := ctx.GetReqHeaders()[header]; len(val) > 0 {
+		result = val[0]
+		found = true
 	}
+	if val, ok := ctx.Queries()[query]; len(query) > 0 && ok {
+		result = val
+		found = true
+	}
+	return result, found
+}
+
+func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
+	api_key, _ := ExtractParam(ctx, "X-Api-Key", "api_key")
+	ip := ctx.IP()
+	if ips := ctx.IPs(); len(ips) > 0 {
+		ip = ips[0]
+	}
+
 	switch e := err.(type) {
 	case index.IndexError:
 		if e.Code != 404 {
-			log.Printf("Code: %d Path: %s API Key: %s Queries: %v Body: %s Error: %s",
-				e.Code, ctx.Path(), api_key, ctx.Queries(), string(ctx.Body()), err.Error())
+			log.Printf("Code: %d Path: %s IP: %s API Key: %s Queries: %v Body: %s Error: %s",
+				e.Code, ctx.Path(), ip, api_key, ctx.Queries(), string(ctx.Body()), err.Error())
 		}
 		return ctx.Status(e.Code).JSON(e)
 	default:
-		log.Printf("Path: %s API Key: %s Queries: %v Body: %s Error: %s", ctx.Path(), api_key, ctx.Queries(), string(ctx.Body()), err.Error())
+		log.Printf("Path: %s IP: %s API Key: %s Queries: %v Body: %s Error: %s", ctx.Path(), ip, api_key, ctx.Queries(), string(ctx.Body()), err.Error())
 		resp := map[string]string{}
 		resp["error"] = fmt.Sprintf("internal server error: %s", err.Error())
 		return ctx.Status(fiber.StatusInternalServerError).JSON(resp)
 	}
 }
 
+func test() {
+	// addr_str := "0QAvlUF6KtTT7R9/kmxOPULEMd+zbtVBZigkorOlGqWtzVky"
+	// addr, err := address.ParseAddr(addr_str)
+	// log.Println(addr, err)
+}
+
 func main() {
+	test()
 	var timeout_ms int
 
 	flag.StringVar(&settings.PgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
@@ -1167,6 +1214,9 @@ func main() {
 
 	// messages
 	app.Get("/api/v3/messages", GetMessages)
+
+	// stats
+	app.Get("/api/v3/topAccountsByBalance", GetTopAccountsByBalance)
 
 	// account methods
 	app.Get("/api/v3/addressBook", GetAddressBook)

@@ -89,6 +89,7 @@ func AccountAddressNullableConverter(value string) reflect.Value {
 }
 
 func ShardIdConverter(value string) reflect.Value {
+	value = strings.TrimPrefix(value, "0x")
 	if shard, err := strconv.ParseUint(value, 16, 64); err == nil {
 		return reflect.ValueOf(ShardId(shard))
 	}
@@ -327,6 +328,15 @@ func ScanAccountStateFull(row pgx.Row) (*AccountStateFull, error) {
 	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.AccountStatus,
 		&acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt, &acst.DataHash,
 		&acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
+	if err != nil {
+		return nil, err
+	}
+	return &acst, nil
+}
+
+func ScanAccountBalance(row pgx.Row) (*AccountBalance, error) {
+	var acst AccountBalance
+	err := row.Scan(&acst.Account, &acst.Balance)
 	if err != nil {
 		return nil, err
 	}

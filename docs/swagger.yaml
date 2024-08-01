@@ -1,4 +1,11 @@
 definitions:
+  AccountBalance:
+    properties:
+      account:
+        type: string
+      balance:
+        type: string
+    type: object
   AccountState:
     properties:
       account_status:
@@ -1006,7 +1013,7 @@ paths:
       - description: 'Block shard id. Must be sent with *workchain*. Example: `8000000000000000`.'
         in: query
         name: shard
-        type: integer
+        type: string
       - description: Block block seqno. Must be sent with *workchain* and *shard*.
         in: query
         name: seqno
@@ -1863,6 +1870,45 @@ paths:
       summary: Run Get-Method
       tags:
       - api/v2
+  /api/v3/topAccountsByBalance:
+    get:
+      consumes:
+      - application/json
+      description: Get list of accounts sorted descending by balance.
+      operationId: api_v3_get_top_accounts_by_balance
+      parameters:
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 500
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/AccountBalance'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Top Accounts By Balance
+      tags:
+      - stats
   /api/v3/transactions:
     get:
       consumes:
@@ -1877,7 +1923,7 @@ paths:
       - description: 'Block shard id. Must be sent with *workchain*. Example: `8000000000000000`.'
         in: query
         name: shard
-        type: integer
+        type: string
       - description: Block block seqno. Must be sent with *workchain* and *shard*.
         in: query
         name: seqno

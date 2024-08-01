@@ -44,6 +44,11 @@ type AccountState struct {
 	CodeBoc       *string         `json:"code_boc,omitempty"`
 } // @name AccountState
 
+type AccountBalance struct {
+	Account AccountAddress `json:"account"`
+	Balance string         `json:"balance"`
+} // @name AccountBalance
+
 type AccountStateFull struct {
 	AccountAddress      *AccountAddress `json:"address"`
 	Hash                HashType        `json:"account_state_hash"`
