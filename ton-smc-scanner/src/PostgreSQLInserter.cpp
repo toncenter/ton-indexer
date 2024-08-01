@@ -83,6 +83,18 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
     if (code_res.is_ok()){
       code_str = transaction.quote(td::base64_encode(code_res.move_as_ok().as_slice().str()));
     }
+    std::optional<std::string> frozen_hash;
+    if (account_state.frozen_hash) {
+      frozen_hash = td::base64_encode(account_state.frozen_hash.value().as_slice());
+    }
+    std::optional<std::string> code_hash;
+    if (account_state.code_hash) {
+      code_hash = td::base64_encode(account_state.code_hash.value().as_slice());
+    }
+    std::optional<std::string> data_hash;
+    if (account_state.data_hash) {
+      data_hash = td::base64_encode(account_state.data_hash.value().as_slice());
+    }
     query << "("
           << transaction.quote(convert::to_raw_address(account_state.account)) << ","
           << "NULL,"
@@ -92,9 +104,9 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
           << account_state.timestamp << ","
           << transaction.quote(td::base64_encode(account_state.last_trans_hash.as_slice())) << ","
           << std::to_string(static_cast<std::int64_t>(account_state.last_trans_lt)) << ","
-          << TO_SQL_OPTIONAL_STRING(account_state.frozen_hash, transaction) << ","
-          << TO_SQL_OPTIONAL_STRING(account_state.data_hash, transaction) << ","
-          << TO_SQL_OPTIONAL_STRING(account_state.code_hash, transaction) << ","
+          << (frozen_hash.has_value()? transaction.quote(frozen_hash.value()) : "NULL") << ","
+          << (data_hash.has_value()? transaction.quote(data_hash.value()) : "NULL") << ","
+          << (code_hash.has_value()? transaction.quote(code_hash.value()) : "NULL") << ","
           << data_str << ","
           << code_str << ")";
   }

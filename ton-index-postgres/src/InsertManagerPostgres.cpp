@@ -34,21 +34,6 @@ std::string InsertManagerPostgres::Credential::get_connection_string()  {
 }
 
 
-
-//
-// BitHasher
-//
-struct BitArrayHasher {
-  std::size_t operator()(const td::Bits256& k) const {
-    std::size_t seed = 0;
-    for(const auto& el : k.as_array()) {
-        seed ^= std::hash<td::uint8>{}(el) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    }
-    return seed;
-  }
-};
-
-
 // This set is used as a synchronization mechanism to prevent multiple queries for the same message
 // Otherwise Posgres will throw an error deadlock_detected
 std::unordered_set<td::Bits256, BitArrayHasher> messages_in_progress;

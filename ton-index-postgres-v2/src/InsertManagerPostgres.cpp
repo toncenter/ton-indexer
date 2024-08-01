@@ -1433,6 +1433,7 @@ std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
   }
   query << " ON CONFLICT (address) DO UPDATE SET "
         << "end_flag = EXCLUDED.end_flag, "
+        << "end_flag = EXCLUDED.end_flag, "
         << "end_time = EXCLUDED.end_time, "
         << "mp_addr = EXCLUDED.mp_addr, "
         << "nft_addr = EXCLUDED.nft_addr, "

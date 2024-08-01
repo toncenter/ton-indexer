@@ -1222,14 +1222,27 @@ void InsertBatchClickhouse::insert_account_states(clickhouse::Client &client) {
 
     for(const auto& task_ : insert_tasks_) {
         for (const auto& state_: task_.parsed_block_->account_states_) {
+            std::optional<std::string> frozen_hash;
+            if (state_.frozen_hash) {
+                frozen_hash = td::base64_encode(state_.frozen_hash.value().as_slice());
+            }
+            std::optional<std::string> code_hash;
+            if (state_.code_hash) {
+                code_hash = td::base64_encode(state_.code_hash.value().as_slice());
+            }
+            std::optional<std::string> data_hash;
+            if (state_.data_hash) {
+                data_hash = td::base64_encode(state_.data_hash.value().as_slice());
+            }
+
             hash_col->Append(td::base64_encode(state_.hash.as_slice()));
             account_col->Append(convert::to_raw_address(state_.account));
             timestamp_col->Append(state_.timestamp);
             balance_col->Append(state_.balance);
             account_status_col->Append(state_.account_status);
-            frozen_hash_col->Append(TO_STD_OPTIONAL(state_.frozen_hash));
-            code_hash_col->Append(TO_STD_OPTIONAL(state_.code_hash));
-            data_hash_col->Append(TO_STD_OPTIONAL(state_.data_hash));
+            frozen_hash_col->Append(frozen_hash);
+            code_hash_col->Append(code_hash);
+            data_hash_col->Append(data_hash);
             last_trans_lt_col->Append(state_.last_trans_lt);
 
             // if (state_.code.not_null()) {
