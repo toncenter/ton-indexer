@@ -1128,6 +1128,10 @@ std::string InsertBatchPostgres::insert_jetton_masters(pqxx::work &txn) {
     for (const auto& jetton_master : task.parsed_block_->get_accounts_v2<JettonMasterDataV2>()) {
       if (jetton_masters.find(jetton_master.address) == jetton_masters.end()) {
         jetton_masters[jetton_master.address] = jetton_master;
+      } else {
+        if (jetton_masters[jetton_master.address].last_transaction_lt < jetton_master.last_transaction_lt) {
+          jetton_masters[jetton_master.address] = jetton_master;
+        }
       }
     }
   }
@@ -1179,6 +1183,10 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
     for (const auto& jetton_wallet : task.parsed_block_->get_accounts_v2<JettonWalletDataV2>()) {
       if (jetton_wallets.find(jetton_wallet.address) == jetton_wallets.end()) {
         jetton_wallets[jetton_wallet.address] = jetton_wallet;
+      } else {
+        if (jetton_wallets[jetton_wallet.address].last_transaction_lt < jetton_wallet.last_transaction_lt) {
+          jetton_wallets[jetton_wallet.address] = jetton_wallet;
+        }
       }
     }
   }
@@ -1222,6 +1230,10 @@ std::string InsertBatchPostgres::insert_nft_collections(pqxx::work &txn) {
     for (const auto& nft_collection : task.parsed_block_->get_accounts_v2<NFTCollectionDataV2>()) {
       if (nft_collections.find(nft_collection.address) == nft_collections.end()) {
         nft_collections[nft_collection.address] = nft_collection;
+      } else {
+        if (nft_collections[nft_collection.address].last_transaction_lt < nft_collection.last_transaction_lt) {
+          nft_collections[nft_collection.address] = nft_collection;
+        }
       }
     }
   }
@@ -1269,6 +1281,10 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
     for (const auto& nft_item : task.parsed_block_->get_accounts_v2<NFTItemDataV2>()) {
       if (nft_items.find(nft_item.address) == nft_items.end()) {
         nft_items[nft_item.address] = nft_item;
+      } else {
+        if (nft_items[nft_item.address].last_transaction_lt < nft_item.last_transaction_lt) {
+          nft_items[nft_item.address] = nft_item;
+        }
       }
     }
   }
@@ -1320,6 +1336,10 @@ std::string InsertBatchPostgres::insert_getgems_nft_sales(pqxx::work &txn) {
     for (const auto& nft_sale : task.parsed_block_->get_accounts_v2<GetGemsNftFixPriceSaleData>()) {
       if (nft_sales.find(nft_sale.address) == nft_sales.end()) {
         nft_sales[nft_sale.address] = nft_sale;
+      } else {
+        if (nft_sales[nft_sale.address].last_transaction_lt < nft_sale.last_transaction_lt) {
+          nft_sales[nft_sale.address] = nft_sale;
+        }
       }
     }
   }
@@ -1381,6 +1401,10 @@ std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
     for (const auto& nft_auction : task.parsed_block_->get_accounts_v2<GetGemsNftAuctionData>()) {
       if (nft_auctions.find(nft_auction.address) == nft_auctions.end()) {
         nft_auctions[nft_auction.address] = nft_auction;
+      } else {
+        if (nft_auctions[nft_auction.address].last_transaction_lt < nft_auction.last_transaction_lt) {
+          nft_auctions[nft_auction.address] = nft_auction;
+        }
       }
     }
   }
