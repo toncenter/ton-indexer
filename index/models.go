@@ -251,6 +251,18 @@ type NFTCollection struct {
 	DataBoc           string                 `json:"-"`
 } // @name NFTCollection
 
+type NFTCollectionNullable struct {
+	Address           *AccountAddress
+	OwnerAddress      *AccountAddress
+	LastTransactionLt *int64
+	NextItemIndex     *string
+	CollectionContent map[string]interface{}
+	DataHash          *HashType
+	CodeHash          *HashType
+	CodeBoc           *string
+	DataBoc           *string
+}
+
 type NFTItem struct {
 	Address           AccountAddress         `json:"address"`
 	Init              bool                   `json:"init"`

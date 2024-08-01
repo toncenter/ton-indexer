@@ -370,13 +370,22 @@ func ScanNFTItem(row pgx.Row) (*NFTItem, error) {
 
 func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
 	var res NFTItem
-	var col NFTCollection
+	var col NFTCollectionNullable
 
 	err := row.Scan(&res.Address, &res.Init, &res.Index, &res.CollectionAddress,
 		&res.OwnerAddress, &res.Content, &res.LastTransactionLt, &res.CodeHash, &res.DataHash,
 		&col.Address, &col.NextItemIndex, &col.OwnerAddress, &col.CollectionContent,
 		&col.DataHash, &col.CodeHash, &col.LastTransactionLt)
-	res.Collection = &col
+	if col.Address != nil {
+		res.Collection = new(NFTCollection)
+		res.Collection.Address = *col.Address
+		res.Collection.NextItemIndex = *col.NextItemIndex
+		res.Collection.OwnerAddress = *col.OwnerAddress
+		res.Collection.CollectionContent = col.CollectionContent
+		res.Collection.DataHash = *col.DataHash
+		res.Collection.CodeHash = *col.CodeHash
+		res.Collection.LastTransactionLt = *col.LastTransactionLt
+	}
 	if err != nil {
 		return nil, err
 	}
