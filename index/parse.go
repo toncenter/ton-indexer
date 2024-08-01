@@ -72,6 +72,11 @@ func HashConverter(value string) reflect.Value {
 func AccountAddressConverter(value string) reflect.Value {
 	addr, err := address.ParseAddr(value)
 	if err != nil {
+		value_url := strings.Replace(value, "+", "-", -1)
+		value_url = strings.Replace(value_url, "/", "_", -1)
+		addr, err = address.ParseAddr(value_url)
+	}
+	if err != nil {
 		addr, err = address.ParseRawAddr(value)
 	}
 	if err != nil {
