@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"log"
 	"reflect"
 	"sort"
 	"strings"
@@ -118,7 +119,33 @@ func buildTransactionsQuery(
 	orderby_query := ``
 	limit_query := limitQuery(lim_req)
 
+	sort_order := `desc`
+	if lim_req.Sort != nil {
+		sort_order = string(*lim_req.Sort)
+	}
+
 	// filters
+	order_by_now := false
+	if v := utime_req.StartUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.now >= %d", *v))
+		order_by_now = true
+	}
+	if v := utime_req.EndUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.now <= %d", *v))
+		order_by_now = true
+	}
+	if v := lt_req.StartLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.lt >= %d", *v))
+	}
+	if v := lt_req.EndLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.lt <= %d", *v))
+	}
+	if order_by_now {
+		orderby_query = fmt.Sprintf(" order by T.now %s, T.lt %s, account asc", sort_order, sort_order)
+	} else {
+		orderby_query = fmt.Sprintf(" order by T.lt %s, account asc", sort_order)
+	}
+
 	if v := blk_req.Workchain; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.block_workchain = %d", *v))
 	}
@@ -135,6 +162,11 @@ func buildTransactionsQuery(
 	if v := tx_req.Account; v != nil {
 		if len(v) == 1 {
 			filter_list = append(filter_list, fmt.Sprintf("T.account = '%s'", v[0]))
+			if order_by_now {
+				orderby_query = fmt.Sprintf(" order by account asc, T.now %s, T.lt %s", sort_order, sort_order)
+			} else {
+				orderby_query = fmt.Sprintf(" order by account asc, T.lt %s", sort_order)
+			}
 		} else if len(v) > 1 {
 			vv := []string{}
 			for _, x := range v {
@@ -148,28 +180,11 @@ func buildTransactionsQuery(
 	}
 	if v := tx_req.Hash; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.hash = '%s'", *v))
+		orderby_query = ``
 	}
 	if v := tx_req.Lt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.lt = %d", *v))
-	}
-
-	order_col := "T.lt"
-	if v := utime_req.StartUtime; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("T.now >= %d", *v))
-		order_col = "T.now"
-	}
-	if v := utime_req.EndUtime; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("T.now <= %d", *v))
-		order_col = "T.now"
-	}
-	if v := lt_req.StartLt; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("T.lt >= %d", *v))
-	}
-	if v := lt_req.EndLt; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("T.lt <= %d", *v))
-	}
-	if lim_req.Sort != nil {
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, *lim_req.Sort)
+		orderby_query = fmt.Sprintf(" order by T.lt, account %s", sort_order)
 	}
 
 	// transaction by message
@@ -221,6 +236,7 @@ func buildTransactionsQuery(
 	query += filter_query
 	query += orderby_query
 	query += limit_query
+	log.Println(query) // TODO: remove debug
 	return query, nil
 }
 
@@ -307,7 +323,7 @@ func buildMessagesQuery(
 	query += filter_query
 	query += orderby_query
 	query += limit_query
-	// log.Println(query) // TODO: remove debug
+	log.Println(query) // TODO: remove debug
 	return query, nil
 }
 
