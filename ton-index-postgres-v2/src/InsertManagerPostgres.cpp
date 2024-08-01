@@ -1703,7 +1703,8 @@ std::string InsertBatchPostgres::insert_traces(pqxx::work &txn) {
                  << "state = EXCLUDED.state, "
                  << "pending_edges_ = EXCLUDED.pending_edges_, "
                  << "edges_ = EXCLUDED.edges_, "
-                 << "nodes_ = EXCLUDED.nodes_;\n";
+                 << "nodes_ = EXCLUDED.nodes_ "
+                 << "WHERE traces.end_lt < EXCLUDED.end_lt;\n";
     full_query = traces_query.str();
   }
   if (!is_first_edge) {
