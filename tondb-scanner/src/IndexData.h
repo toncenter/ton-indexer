@@ -285,11 +285,11 @@ struct AccountState {
   uint32_t timestamp;
   uint64_t balance;
   std::string account_status; // "uninit", "frozen", "active", "nonexist"
-  td::optional<std::string> frozen_hash;
+  std::optional<td::Bits256> frozen_hash;
   td::Ref<vm::Cell> code;
-  td::optional<std::string> code_hash;
+  std::optional<td::Bits256> code_hash;
   td::Ref<vm::Cell> data;
-  td::optional<std::string> data_hash;
+  std::optional<td::Bits256> data_hash;
   td::Bits256 last_trans_hash;
   uint64_t last_trans_lt;     // in "nonexist" case it is lt of block, not tx. TODO: fix it
 
@@ -367,6 +367,19 @@ struct JettonMasterData {
   std::string data_boc;
 };
 
+struct JettonMasterDataV2 {
+  block::StdAddress address;
+  td::RefInt256 total_supply;
+  bool mintable;
+  std::optional<block::StdAddress> admin_address;
+  std::optional<std::map<std::string, std::string>> jetton_content;
+  td::Bits256 jetton_wallet_code_hash;
+  td::Bits256 data_hash;
+  td::Bits256 code_hash;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+};
+
 struct JettonWalletData {
   td::RefInt256 balance;
   std::string address;
@@ -376,6 +389,17 @@ struct JettonWalletData {
   uint32_t last_transaction_now;
   vm::CellHash code_hash;
   vm::CellHash data_hash;
+};
+
+struct JettonWalletDataV2 {
+  td::RefInt256 balance;
+  block::StdAddress address;
+  block::StdAddress owner;
+  block::StdAddress jetton;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
 };
 
 struct JettonTransfer {
@@ -424,6 +448,17 @@ struct NFTCollectionData {
   std::string data_boc;
 };
 
+struct NFTCollectionDataV2 {
+  block::StdAddress address;
+  td::RefInt256 next_item_index;
+  std::optional<block::StdAddress> owner_address;
+  std::optional<std::map<std::string, std::string>> collection_content;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 data_hash;
+  td::Bits256 code_hash;
+};
+
 struct NFTItemData {
   std::string address;
   bool init;
@@ -435,6 +470,19 @@ struct NFTItemData {
   uint32_t last_transaction_now;
   vm::CellHash code_hash;
   vm::CellHash data_hash;
+};
+
+struct NFTItemDataV2 {
+  block::StdAddress address;
+  bool init;
+  td::RefInt256 index;
+  std::optional<block::StdAddress> collection_address;
+  block::StdAddress owner_address;
+  std::optional<std::map<std::string, std::string>> content;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
 };
 
 struct NFTTransfer {
@@ -453,6 +501,49 @@ struct NFTTransfer {
   td::Ref<vm::Cell> custom_payload;
   td::RefInt256 forward_amount;
   td::Ref<vm::Cell> forward_payload;
+};
+
+struct GetGemsNftAuctionData {
+  block::StdAddress address;
+  bool end;
+  uint32_t end_time;
+  block::StdAddress mp_addr;
+  block::StdAddress nft_addr;
+  std::optional<block::StdAddress> nft_owner;
+  td::RefInt256 last_bid;
+  std::optional<block::StdAddress> last_member;
+  uint32_t min_step;
+  block::StdAddress mp_fee_addr;
+  uint32_t mp_fee_factor, mp_fee_base;
+  block::StdAddress royalty_fee_addr;
+  uint32_t royalty_fee_factor, royalty_fee_base;
+  td::RefInt256 max_bid;
+  td::RefInt256 min_bid;
+  uint32_t created_at;
+  uint32_t last_bid_at;
+  bool is_canceled;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
+struct GetGemsNftFixPriceSaleData {
+  block::StdAddress address;
+  bool is_complete;
+  uint32_t created_at;
+  block::StdAddress marketplace_address;
+  block::StdAddress nft_address;
+  std::optional<block::StdAddress> nft_owner_address;
+  td::RefInt256 full_price;
+  block::StdAddress marketplace_fee_address;
+  td::RefInt256 marketplace_fee;
+  block::StdAddress royalty_address;
+  td::RefInt256 royalty_amount;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
 };
 
 
@@ -481,12 +572,12 @@ using BlockchainInterface = std::variant<JettonMasterData,
                                          NFTItemData>;
 
 
-using BlockchainInterfaceV2 = std::variant<JettonWalletDetectorR::Result, 
-                                           JettonMasterDetectorR::Result, 
-                                           NftItemDetectorR::Result, 
-                                           NftCollectionDetectorR::Result,
-                                           GetGemsNftFixPriceSale::Result,
-                                           GetGemsNftAuction::Result>;
+using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2, 
+                                           JettonMasterDataV2, 
+                                           NFTCollectionDataV2, 
+                                           NFTItemDataV2,
+                                           GetGemsNftFixPriceSaleData,
+                                           GetGemsNftAuctionData>;
 
 struct BitArrayHasher {
     std::size_t operator()(const td::Bits256& k) const {

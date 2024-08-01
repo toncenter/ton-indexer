@@ -735,14 +735,26 @@ void InsertBatchPostgres::insert_account_states(pqxx::work &transaction, const s
       } else {
         query << ", ";
       }
+      std::optional<std::string> frozen_hash;
+      if (account_state.frozen_hash) {
+        frozen_hash = td::base64_encode(account_state.frozen_hash.value().as_slice());
+      }
+      std::optional<std::string> code_hash;
+      if (account_state.code_hash) {
+        code_hash = td::base64_encode(account_state.code_hash.value().as_slice());
+      }
+      std::optional<std::string> data_hash;
+      if (account_state.data_hash) {
+        data_hash = td::base64_encode(account_state.data_hash.value().as_slice());
+      }
       query << "("
             << TO_SQL_STRING(td::base64_encode(account_state.hash.as_slice())) << ","
             << TO_SQL_STRING(convert::to_raw_address(account_state.account)) << ","
             << account_state.balance << ","
             << TO_SQL_STRING(account_state.account_status) << ","
-            << TO_SQL_OPTIONAL_STRING(account_state.frozen_hash) << ","
-            << TO_SQL_OPTIONAL_STRING(account_state.code_hash) << ","
-            << TO_SQL_OPTIONAL_STRING(account_state.data_hash)
+            << TO_SQL_OPTIONAL_STRING(frozen_hash) << ","
+            << TO_SQL_OPTIONAL_STRING(code_hash) << ","
+            << TO_SQL_OPTIONAL_STRING(data_hash)
             << ")";
     }
   }
@@ -779,6 +791,18 @@ void InsertBatchPostgres::insert_latest_account_states(pqxx::work &transaction, 
     } else {
       query << ", ";
     }
+    std::optional<std::string> frozen_hash;
+    if (account_state.frozen_hash) {
+      frozen_hash = td::base64_encode(account_state.frozen_hash.value().as_slice());
+    }
+    std::optional<std::string> code_hash;
+    if (account_state.code_hash) {
+      code_hash = td::base64_encode(account_state.code_hash.value().as_slice());
+    }
+    std::optional<std::string> data_hash;
+    if (account_state.data_hash) {
+      data_hash = td::base64_encode(account_state.data_hash.value().as_slice());
+    }
     query << "("
           << TO_SQL_STRING(convert::to_raw_address(account_state.account)) << ","
           << TO_SQL_STRING(td::base64_encode(account_state.hash.as_slice())) << ","
@@ -786,9 +810,9 @@ void InsertBatchPostgres::insert_latest_account_states(pqxx::work &transaction, 
           << account_state.last_trans_lt << ","
           << account_state.timestamp << ","
           << TO_SQL_STRING(account_state.account_status) << ","
-          << TO_SQL_OPTIONAL_STRING(account_state.frozen_hash) << ","
-          << TO_SQL_OPTIONAL_STRING(account_state.code_hash) << ","
-          << TO_SQL_OPTIONAL_STRING(account_state.data_hash)
+          << TO_SQL_OPTIONAL_STRING(frozen_hash) << ","
+          << TO_SQL_OPTIONAL_STRING(code_hash) << ","
+          << TO_SQL_OPTIONAL_STRING(data_hash)
           << ")";
   }
   if (is_first) {
