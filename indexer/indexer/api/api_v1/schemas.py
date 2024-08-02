@@ -30,7 +30,8 @@ def is_wallet(code_hash):
         'thBBpYp5gLlG6PueGY48kE0keZ/6NldOpCUcQaVm9YE=',    # wallet_v3_r1
         'hNr6RJ+Ypph3ibojI1gHK8D3bcRSQAKl0JGLmnXS1Zk=',    # wallet_v3_r2
         'ZN1UgFUixb6KnbWc6gEFzPDQh4bKeb64y3nogKjXMi0=',    # wallet_v4_r1
-        '/rX/aCDi/w2Ug+fg1iyBfYRniftK5YDIeIZtlZ2r1cA='     # wallet_v4_r2
+        '/rX/aCDi/w2Ug+fg1iyBfYRniftK5YDIeIZtlZ2r1cA=',    # wallet_v4_r2
+        'IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8=',    # wallet_v5_r1
     }
     return code_hash in wallets_code_hashes
 
@@ -630,10 +631,12 @@ class JettonBurn(BaseModel):
 
     query_id: str
     owner: str
+    jetton_wallet: str
     jetton_master: str
     transaction_hash: str
     transaction_lt: str
     transaction_now: int
+    amount: str
     response_destination: Optional[str]
     custom_payload: Optional[str]
     
@@ -641,10 +644,12 @@ class JettonBurn(BaseModel):
     def from_orm(cls, obj):
         return JettonBurn(query_id=int(obj.query_id),
                           owner=address_type(obj.owner),
+                          jetton_wallet=address_type(obj.jetton_wallet_address),
                           jetton_master=address_type(obj.jetton_wallet.jetton),
                           transaction_hash=hash_type(obj.transaction_hash),
                           transaction_lt=obj.transaction.lt,  # TODO: maybe fix
                           transaction_now=obj.transaction.now,  # TODO: maybe fix
+                          amount=int(obj.amount),
                           response_destination=address_type(obj.response_destination),
                           custom_payload=obj.custom_payload,)
 

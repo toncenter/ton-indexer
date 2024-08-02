@@ -43,7 +43,7 @@ def get_engine(settings: Settings):
                                  pool_timeout=5,
                                  pool_pre_ping=True, # using pessimistic approach about closed connections problem: https://docs.sqlalchemy.org/en/14/core/pooling.html#disconnect-handling-pessimistic
                                  echo=False,
-                                 connect_args={'server_settings': {'statement_timeout': '6000'}}
+                                 connect_args={'server_settings': {'statement_timeout': '3000'}}
                                  )
     return engine
 engine = get_engine(settings)
