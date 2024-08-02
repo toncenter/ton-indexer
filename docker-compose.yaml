@@ -60,7 +60,7 @@ services:
     secrets:
       - postgres_password
     volumes:
-      - ${TON_WORKER_DBROOT}:/tondb
+      - ${TON_WORKER_DBROOT:-./}:/tondb
     environment: *index-worker
     networks:
       internal:
