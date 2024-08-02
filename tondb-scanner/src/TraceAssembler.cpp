@@ -282,7 +282,7 @@ void TraceAssembler::process_transaction(std::int32_t seqno, schema::Transaction
                 {
                     auto trace_it = pending_traces_.find(edge.trace_id);
                     if (trace_it == pending_traces_.end()) {
-                        LOG(ERROR) << "Broken trace for in_msg of tx: " << tx.hash;
+                        // LOG(ERROR) << "Broken trace for in_msg of tx: " << tx.hash;
                         // create a broken trace
                         trace = std::make_shared<TraceImpl>(seqno, tx);
                         trace->edges_ += !edge.incomplete;

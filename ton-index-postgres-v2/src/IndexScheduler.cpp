@@ -246,7 +246,7 @@ void IndexScheduler::got_insert_queue_state(QueueState status) {
     cur_queue_state_ = status;
     bool accept_blocks = status < max_queue_;
     if (accept_blocks) {
-        td::actor::send_closure(actor_id(this), &IndexScheduler::schedule_next_seqnos);
+        schedule_next_seqnos();
     }
 }
 
