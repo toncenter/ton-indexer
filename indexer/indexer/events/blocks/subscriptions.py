@@ -72,10 +72,11 @@ class UnsubscribeBlockMatcher(BlockMatcher):
 
     async def build_block(self, block: Block | CallContractBlock, other_blocks: list[Block]) -> list[Block]:
         new_block = UnsubscribeBlock({})
-        data = dict()
-        data['subscriber'] = AccountId(block.get_message().source)
-        data['subscription'] = AccountId(block.get_message().destination)
-
+        data = {
+            'subscriber': AccountId(block.get_message().source),
+            'subscription': AccountId(block.get_message().destination),
+            'beneficiary': None
+        }
         response = find_call_contract(other_blocks, WalletPluginDestruct.opcode)
         if response is not None:
             data['beneficiary'] = AccountId(response.get_message().destination)

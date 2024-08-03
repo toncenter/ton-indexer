@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from indexer.events.blocks.messages import DedustPayout, DedustPayoutFromPool, DedustSwapPeer, DedustSwapExternal, \
-    DedustSwap
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, child_sequence_matcher, ContractMatcher, \
     BlockTypeMatcher, OrMatcher
 from indexer.events.blocks.core import Block, SingleLevelWrapper
 from indexer.events.blocks.jettons import JettonTransferBlock
+from indexer.events.blocks.messages import DedustPayout, DedustPayoutFromPool, DedustSwapPeer, DedustSwapExternal, \
+    DedustSwap
 from indexer.events.blocks.messages import StonfiSwapMessage, StonfiPaymentRequest, DedustSwapNotification
 from indexer.events.blocks.utils import AccountId, Asset, Amount
 from indexer.events.blocks.utils.block_utils import find_call_contracts, find_messages
-from indexer.core.database import JettonWallet
 
 
 class JettonSwapBlock(Block):
@@ -28,13 +27,33 @@ async def _get_block_data(other_blocks):
     swap_message = StonfiSwapMessage(swap_call_block.get_body())
     payment_requests_messages = [StonfiPaymentRequest(x.get_body()) for x in
                                  find_call_contracts(other_blocks, StonfiPaymentRequest.opcode)]
-    target_payment_request = next(x for x in payment_requests_messages if x.owner == swap_message.from_user_address)
-    if target_payment_request.amount0_out > 0:
-        out_amt = Amount(target_payment_request.amount0_out)
-        out_addr = target_payment_request.token0_out
-    else:
-        out_amt = Amount(target_payment_request.amount1_out)
-        out_addr = target_payment_request.token1_out
+    assert len(payment_requests_messages) > 0
+    if len(payment_requests_messages) > 2:
+        print("Multiple payment requests found ", swap_call_block.event_nodes[0].message.trace_id)
+
+    out_amt = None
+    out_addr = None
+    ref_amt = None
+    ref_addr = None
+    for payment_request in payment_requests_messages:
+        if payment_request.amount0_out > 0:
+            amount = payment_request.amount0_out
+            addr = payment_request.token0_out
+        else:
+            amount = payment_request.amount1_out
+            addr = payment_request.token1_out
+        if payment_request.owner == swap_message.from_user_address:
+            if out_amt is None:
+                out_amt = amount
+                out_addr = addr
+            elif out_amt < amount:
+                ref_amt = out_amt
+                ref_addr = out_addr
+                out_amt = amount
+                out_addr = addr
+        else:
+            ref_amt = amount
+            ref_addr = addr
     out_wallet = await context.extra_data_repository.get().get_jetton_wallet(out_addr.to_str(False).upper())
     in_wallet = await context.extra_data_repository.get().get_jetton_wallet(
         swap_message.token_wallet.to_str(False).upper())
@@ -44,14 +63,19 @@ async def _get_block_data(other_blocks):
     return {
         'dex': 'stonfi',
         'sender': AccountId(swap_message.from_user_address),
+        'sender_wallet': AccountId(swap_message.token_wallet),
+        'receiver_wallet': AccountId(out_addr),
         'in': {
             'amount': Amount(swap_message.amount),
             'asset': Asset(is_ton=in_jetton is None, jetton_address=in_jetton),
         },
         'out': {
-            'amount': out_amt,
+            'amount': Amount(out_amt),
             'asset': Asset(is_ton=out_jetton is None, jetton_address=out_jetton),
-        }
+        },
+        'referral_amount': Amount(ref_amt),
+        'referral_address': ref_addr,
+        'peer_swaps': [],
     }
 
 

@@ -8,7 +8,7 @@ from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlo
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock
 from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
-from indexer.events.blocks.nft import NftTransferBlock
+from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
 
@@ -45,6 +45,8 @@ def _fill_call_contract_action(block: CallContractBlock, action: Action):
 def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
     action.value = block.value
     action.source = block.data['source'].as_str()
+    if block.data['destination'] is None:
+        print("Something very wrong", block.event_nodes[0].message.trace_id)
     action.destination = block.data['destination'].as_str()
     content = block.data['comment'].replace("\u0000", "") if block.data['comment'] is not None else None
     action.ton_transfer_data = {'content': content, 'encrypted': block.data['encrypted']}
@@ -70,16 +72,26 @@ def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):
 
 
 def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
-    action.source = block.data['prev_owner'].as_str()
+    if 'prev_owner' in block.data and block.data['prev_owner'] is not None:
+        action.source = block.data['prev_owner'].as_str()
     action.destination = block.data['new_owner'].as_str()
     action.asset = block.data['nft']['address'].as_str()
-    if 'collection' in block.data['nft']:
+    if block.data['nft']['collection'] is not None:
         action.asset_secondary = block.data['nft']['collection']['address'].as_str()
     action.nft_transfer_data = {
         'query_id': block.data['query_id'],
         'is_purchase': block.data['is_purchase'],
         'price': block.data['price'].value if 'price' in block.data and block.data['is_purchase'] else None,
     }
+
+
+def _fill_nft_mint_action(block: NftMintBlock, action: Action):
+    if block.data["source"]:
+        action.source = block.data["source"].as_str()
+    action.destination = block.data["address"].as_str()
+    action.asset = action.destination
+    if block.data["collection"]:
+        action.asset_secondary = block.data["collection"].as_str()
 
 
 def _convert_peer_swap(peer_swap: dict) -> dict:
@@ -185,6 +197,8 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_jetton_transfer_action(block, action)
         case 'nft_transfer':
             _fill_nft_transfer_action(block, action)
+        case 'nft_mint':
+            _fill_nft_mint_action(block, action)
         case 'jetton_burn':
             _fill_jetton_burn_action(block, action)
         case 'jetton_swap':

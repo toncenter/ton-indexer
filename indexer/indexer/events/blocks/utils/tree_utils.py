@@ -65,6 +65,8 @@ def to_tree(txs: list[Transaction], trace: Trace):
     for edge in trace.edges:
         if edge.left_tx is None:
             continue
+        if edge.right_tx is None:
+            continue
         conn_map[edge.left_tx].append(edge.right_tx)
 
     def create_node(tx_hash: str) -> EventNode:

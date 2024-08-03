@@ -40,7 +40,10 @@ def is_failed(tx: Transaction):
 class AccountId:
     def __init__(self, address: str | Address):
         if isinstance(address, str):
-            self.address = Address(address)
+            if address == 'addr_none':
+                self.address = None
+            else:
+                self.address = Address(address)
         else:
             self.address = address
 
@@ -54,9 +57,13 @@ class AccountId:
         return hash(self.as_bytes())
 
     def as_bytes(self):
+        if self.address is None:
+            return None
         return self.address.wc.to_bytes(1, byteorder="big", signed=True) + self.address.hash_part
 
     def as_str(self):
+        if self.address is None:
+            return None
         return self.address.to_str(False).upper()
 
     def to_json(self):

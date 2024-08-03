@@ -37,8 +37,9 @@ class ChangeDnsRecordMatcher(BlockMatcher):
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         change_dns_message = ChangeDnsRecordMessage(Slice.one_from_boc(block.event_nodes[0].message.message_content.body))
         new_block = None
+        sender = block.event_nodes[0].message.source
+
         if change_dns_message.has_value:
-            sender = block.event_nodes[0].message.source
             new_block = ChangeDnsRecordBlock({
                 'source': AccountId(sender) if sender is not None else None,
                 'destination': AccountId(block.event_nodes[0].message.destination),
@@ -47,6 +48,8 @@ class ChangeDnsRecordMatcher(BlockMatcher):
             })
         else:
             new_block = DeleteDnsRecordBlock({
+                'source': AccountId(sender) if sender is not None else None,
+                'destination': AccountId(block.event_nodes[0].message.destination),
                 'key': change_dns_message.key,
             })
         new_block.failed = block.failed

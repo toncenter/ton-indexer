@@ -71,6 +71,8 @@ class JettonTransferBlockMatcher(BlockMatcher):
                                             -jetton_transfer_message.amount)
             new_block.value_flow.add_jetton(receiver, AccountId(sender.jetton),
                                             jetton_transfer_message.amount)
+        else:
+            return []
 
         new_block.data = data
         new_block.merge_blocks(include)
@@ -81,6 +83,7 @@ class JettonTransferBlockMatcher(BlockMatcher):
 async def _get_jetton_burn_data(new_block: Block, block: Block | CallContractBlock) -> dict:
     jetton_burn_message = JettonBurn(block.get_body())
     wallet = await context.extra_data_repository.get().get_jetton_wallet(block.get_message().destination)
+    assert wallet is not None
     new_block.value_flow.add_jetton(AccountId(wallet.owner), AccountId(wallet.jetton), -jetton_burn_message.amount)
     data = {
         'owner': AccountId(wallet.owner) if wallet is not None else None,

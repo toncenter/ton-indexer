@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker, contains_eager
 
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action
-from indexer.events.extra_data_repository import RedisExtraDataRepository, SqlAlchemyExtraDataRepository
+from indexer.events.extra_data_repository import RedisExtraDataRepository, SqlAlchemyExtraDataRepository, \
+    gather_interfaces, InMemoryExtraDataRepository
 from indexer.core import redis
 from indexer.core.database import engine, Trace, Transaction, Message
 from indexer.core.settings import Settings
@@ -47,6 +48,13 @@ async def start_processing_events_from_db():
                 .filter(Trace.trace_id.in_(ids))
             result = await session.execute(query)
             events = result.scalars().unique().all()
+            accounts = set()
+            for trace in events:
+                for tx in trace.transactions:
+                    accounts.add(tx.account)
+            interfaces = await gather_interfaces(accounts, session)
+            context.extra_data_repository.set(InMemoryExtraDataRepository(interfaces,
+                                                                          SqlAlchemyExtraDataRepository(context.session)))
             await asyncio.gather(*(process_event_from_db(event) for event in events))
 
 
@@ -102,20 +110,22 @@ async def process_event_from_db(trace: Trace):
                 await session.commit()
                 return None
             result = await process_event_async(trace)
+            actions = []
             for block in result.bfs_iter():
                 if block.btype != 'root':
                     if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
                         continue
                     action = block_to_action(block, trace.trace_id)
-                    session.add(action)
-
+                    actions.append(action)
+            for action in actions:
+                session.add(action)
             stmt = update(Trace).where(Trace.trace_id == trace.trace_id).values(classification_state='ok')
             await session.execute(stmt)
             await session.commit()
             return result
         except Exception as e:
             logger.exception(e, exc_info=True)
-            logger.info("Marking trace as failed " + trace.trace_id + " - " + str(e))
+            logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
             stmt = update(Trace).where(Trace.trace_id == trace.trace_id).values(classification_state='failed')
             await session.execute(stmt)
             await session.commit()

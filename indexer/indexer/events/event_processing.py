@@ -12,7 +12,7 @@ from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
 from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher
 from indexer.events.blocks.messages import TonTransferMessage
-from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher
+from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher
 from indexer.events.blocks.subscriptions import SubscriptionBlockMatcher, UnsubscribeBlockMatcher
 from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher
 from indexer.events.blocks.utils import NoMessageBodyException
@@ -24,9 +24,11 @@ logger = logging.getLogger(__name__)
 
 def init_block(node: EventNode) -> Block:
     block = None
+    is_ton_transfer = (node.get_opcode() == 0 or node.get_opcode() is None or
+                       node.get_opcode() == TonTransferMessage.encrypted_opcode)
     if node.is_tick_tock:
         block = Block('tick_tock', [node], {'account': AccountId(node.tick_tock_tx.account)})
-    elif node.get_opcode() == 0 or node.get_opcode() is None or node.get_opcode() == TonTransferMessage.encrypted_opcode:
+    elif is_ton_transfer and node.message.destination is not None and node.message.source is not None:
         block = TonTransferBlock(node)
     else:
         block = CallContractBlock(node)
@@ -36,6 +38,7 @@ def init_block(node: EventNode) -> Block:
 
 
 matchers = [
+    NftMintBlockMatcher(),
     JettonTransferBlockMatcher(),
     JettonBurnBlockMatcher(),
     DedustSwapBlockMatcher(),
@@ -61,8 +64,8 @@ async def process_event_async(trace: Trace) -> Block:
                 if b.parent is None:
                     await m.try_build(b)
         return root
-    except NoMessageBodyException:
-        return None
+    except NoMessageBodyException as e:
+        raise e
     except Exception as e:
-        logging.error("Failed to process ", trace.trace_id)
+        logging.error(f"Failed to process {trace.trace_id}")
         raise e

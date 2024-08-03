@@ -44,7 +44,7 @@ class BlockMatcher:
                 return r
             except Exception as e:
                 logger.error(f"Error while building block {block} with matcher {self.__class__.__name__}: {block.event_nodes[0].message.tx_hash}")
-                logger.error(e)
+                logger.exception(e, exc_info=True)
                 return None
         else:
             return None
@@ -84,17 +84,18 @@ class BlockMatcher:
 
             for next_block in next_blocks:
                 res = await matcher.try_build(next_block)
-                if res is None and matcher.optional:
-                    matched = True
-                    continue
-                elif res is not None:
+                if res is not None:
                     blocks.extend(res)
                     remaining_matchers.pop(0)
                     next_blocks.remove(next_block)
                     matched = True
                     break
             if not matched:
-                return None
+                if matcher.optional:
+                    remaining_matchers.pop(0)
+                else:
+                    return None
+
         if len(remaining_matchers) == 0:
             return blocks
         if all(m.optional for m in remaining_matchers):

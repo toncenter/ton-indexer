@@ -14,6 +14,11 @@ from indexer.events.blocks.utils import AccountId, Amount, block_utils
 from indexer.events.blocks.utils.block_utils import find_call_contracts
 
 
+class NftMintBlock(Block):
+    def __init__(self, data: dict):
+        super().__init__('nft_mint', [], data)
+
+
 class NftTransferBlock(Block):
     def __init__(self):
         super().__init__('nft_transfer', [],  None)
@@ -21,9 +26,10 @@ class NftTransferBlock(Block):
 
 async def _get_nft_data(nft_address: AccountId):
     data = {
-        "address": nft_address
+        "address": nft_address,
+        "collection": None
     }
-    nft = await context.extra_data_repository.get().get_jetton_wallet(nft_address.as_str())
+    nft = await context.extra_data_repository.get().get_nft_item(nft_address.as_str())
     if nft is not None:
         if "uri" in nft.content and "https://nft.fragment.com" in nft.content["uri"]:
             tokens = nft.content["uri"].split("/")
@@ -31,10 +37,11 @@ async def _get_nft_data(nft_address: AccountId):
             data["type"] = tokens[-2]
         else:
             data['meta'] = nft.content
-        data['collection'] = {
-            'address': AccountId(nft.collection.address),
-            'meta': nft.collection.collection_content
-        }
+        if nft.collection is not None:
+            data['collection'] = {
+                'address': AccountId(nft.collection.address),
+                'meta': nft.collection.collection_content
+            }
     return data
 
 
@@ -132,4 +139,29 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         include.extend(other_blocks)
         new_block.merge_blocks(include)
         new_block.data = data
+        return [new_block]
+
+
+class NftMintBlockMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(child_matcher=None,
+                         parent_matcher=None)
+
+    def test_self(self, block: Block):
+        return len(block.contract_deployments) == 1
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        address = next(iter(block.contract_deployments)).as_str()
+        nft_item = await context.extra_data_repository.get().get_nft_item(address)
+        if nft_item is None:
+            return []
+        source = block.event_nodes[0].message.source
+        data = {
+            "source": AccountId(source) if source else None,
+            "address": AccountId(address),
+            "index": nft_item.index,
+            "collection": AccountId(nft_item.collection_address) if nft_item.collection_address else None,
+        }
+        new_block = NftMintBlock(data)
+        new_block.merge_blocks([block])
         return [new_block]

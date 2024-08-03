@@ -33,11 +33,17 @@ class TonTransferBlock(Block):
     def __init__(self, node: EventNode):
         msg = TonTransferMessage(Slice.one_from_boc(node.message.message_content.body))
         self.encrypted = msg.encrypted
+        self.comment_encoded = False
         if msg.comment is not None:
             if self.encrypted:
+                self.comment_encoded = True
                 self.comment = str(base64.b64encode(msg.comment), encoding='utf-8')
             else:
-                self.comment = str(msg.comment, encoding='utf-8')
+                try:
+                    self.comment = str(msg.comment, encoding='utf-8')
+                except Exception:
+                    self.comment_encoded = True
+                    self.comment = str(base64.b64encode(msg.comment), encoding='utf-8')
         else:
             self.comment = None
 
@@ -67,7 +73,6 @@ class CallContractBlock(Block):
     def __init__(self, node: EventNode):
         super().__init__('call_contract', [node], {
             'opcode': node.get_opcode(),
-            'opcode_str': hex(node.get_opcode()),
             'source': AccountId(node.message.source) if node.message.source is not None else None,
             'destination': AccountId(
                 node.message.destination) if node.message.destination is not None else None,
