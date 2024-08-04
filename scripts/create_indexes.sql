@@ -8,8 +8,8 @@ create index if not exists blocks_index_4 on blocks (start_lt asc);
 
 -- transactions
 create index if not exists transactions_index_1 on transactions (block_workchain, block_shard, block_seqno);
-create index if not exists transactions_index_2 on transactions (lt asc, account asc);
-create index if not exists transactions_index_3 on transactions (now asc, lt asc, account asc);
+create index if not exists transactions_index_2 on transactions (lt asc);
+create index if not exists transactions_index_3 on transactions (now asc, lt asc);
 create index if not exists transactions_index_4 on transactions (account, lt asc);
 create index if not exists transactions_index_5 on transactions (account, now asc, lt asc);
 create index if not exists transactions_index_6 on transactions (hash);
@@ -45,8 +45,8 @@ create index if not exists jetton_transfers_index_5 on jetton_transfers (jetton_
 create index if not exists jetton_transfers_index_6 on jetton_transfers (jetton_wallet_address, tx_lt asc);
 create index if not exists jetton_transfers_index_7 on jetton_transfers (jetton_master_address, tx_now asc);
 create index if not exists jetton_transfers_index_8 on jetton_transfers (jetton_master_address, tx_lt asc);
-create index if not exists jetton_transfers_index_9 on jetton_transfers (tx_now asc, tx_lt asc, jetton_wallet_address asc);
-create index if not exists jetton_transfers_index_10 on jetton_transfers (tx_lt asc, jetton_wallet_address asc);
+create index if not exists jetton_transfers_index_9 on jetton_transfers (tx_now asc, tx_lt asc);
+create index if not exists jetton_transfers_index_10 on jetton_transfers (tx_lt asc);
 
 create index if not exists jetton_burns_index_1 on jetton_burns (owner, tx_now asc, tx_lt asc);
 create index if not exists jetton_burns_index_2 on jetton_burns (owner, tx_lt asc);
@@ -54,8 +54,8 @@ create index if not exists jetton_burns_index_3 on jetton_burns (jetton_wallet_a
 create index if not exists jetton_burns_index_4 on jetton_burns (jetton_wallet_address, tx_lt asc);
 create index if not exists jetton_burns_index_5 on jetton_burns (jetton_master_address, tx_now asc, tx_lt asc);
 create index if not exists jetton_burns_index_6 on jetton_burns (jetton_master_address, tx_lt asc);
-create index if not exists jetton_burns_index_7 on jetton_burns (tx_now asc, tx_lt asc, jetton_wallet_address asc);
-create index if not exists jetton_burns_index_8 on jetton_burns (tx_lt asc, jetton_wallet_address asc);
+create index if not exists jetton_burns_index_7 on jetton_burns (tx_now asc, tx_lt asc);
+create index if not exists jetton_burns_index_8 on jetton_burns (tx_lt asc);
 
 -- nfts
 create index if not exists nft_collections_index_1 on nft_collections (owner_address, id asc);
@@ -73,8 +73,8 @@ create index if not exists nft_transfers_index_5 on nft_transfers (old_owner, tx
 create index if not exists nft_transfers_index_6 on nft_transfers (old_owner, tx_now asc, tx_lt asc);
 create index if not exists nft_transfers_index_7 on nft_transfers (new_owner, tx_lt asc);
 create index if not exists nft_transfers_index_8 on nft_transfers (new_owner, tx_now asc, tx_lt asc);
-create index if not exists nft_transfers_index_9 on nft_transfers (tx_lt asc, nft_item_address);
-create index if not exists nft_transfers_index_10 on nft_transfers (tx_now asc, tx_lt asc, nft_item_address);
+create index if not exists nft_transfers_index_9 on nft_transfers (tx_lt asc);
+create index if not exists nft_transfers_index_10 on nft_transfers (tx_now asc, tx_lt asc);
 
 -- traces
 create index if not exists traces_index_1 on traces (state);
