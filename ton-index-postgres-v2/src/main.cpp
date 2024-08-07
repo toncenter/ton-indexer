@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
   std::uint32_t max_insert_actors = 12;
   std::int32_t max_data_depth = 12;
   
-  QueueState max_queue{200000, 200000, 1000000, 1000000};
+  QueueState max_queue{100000, 100000, 100000, 100000};
   QueueState batch_size{2000, 2000, 10000, 10000};
   
   td::OptionParser p;

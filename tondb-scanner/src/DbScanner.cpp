@@ -164,7 +164,11 @@ public:
     }
 
     for (auto& s : shards_config.get_shard_hash_ids(true)) {
-      blocks_queue_.push(s);
+      if (s.seqno > 0) {
+        blocks_queue_.push(s);
+      } else {
+        LOG(WARNING) << "Skipping block workchain: " << s.workchain << " shard: " << s.shard << " seqno: " << s.seqno;
+      }
       current_shard_blk_ids_.insert(s);
     }
     fetch_block_handles();
@@ -216,7 +220,11 @@ public:
 
     shard_block_handles_.insert(handle);
     for (const auto& prev: handle->prev()) {
-      blocks_queue_.push(prev.id);
+      if (prev.id.seqno > 0) {
+        blocks_queue_.push(prev.id);
+      } else {
+        LOG(WARNING) << "Skipping block workchain: " << prev.id.workchain << " shard: " << prev.id.shard << " seqno: " << prev.id.seqno;
+      }
     }
     promise.set_result(td::Unit());
   }

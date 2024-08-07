@@ -701,7 +701,7 @@ td::Result<schema::AccountState> ParseQuery::parse_account(td::Ref<vm::Cell> acc
       if (!tlb::csr_unpack(storage.state, frozen)) {
         return td::Status::Error("Failed to unpack AccountState frozen");
       }
-      schema_account.frozen_hash = td::base64_encode(frozen.state_hash.as_slice());
+      schema_account.frozen_hash = frozen.state_hash;
       break;
     }
     case block::gen::AccountState::account_active: {
@@ -717,12 +717,12 @@ td::Result<schema::AccountState> ParseQuery::parse_account(td::Ref<vm::Cell> acc
       auto& code_cs = state_init.code.write();
       if (code_cs.fetch_long(1) != 0) {
         schema_account.code = code_cs.prefetch_ref();
-        schema_account.code_hash = td::base64_encode(schema_account.code->get_hash().as_slice());
+        schema_account.code_hash = schema_account.code->get_hash().bits();
       }
       auto& data_cs = state_init.data.write();
       if (data_cs.fetch_long(1) != 0) {
         schema_account.data = data_cs.prefetch_ref();
-        schema_account.data_hash = td::base64_encode(schema_account.data->get_hash().as_slice());
+        schema_account.data_hash = schema_account.data->get_hash().bits();
       }
       break;
     }
