@@ -113,7 +113,7 @@ func GetV2WalletInformation(state_req V2AccountRequest, settings RequestSettings
 	res := jsn["result"].(map[string]interface{})
 
 	if res["wallet"] != true && res["account_state"].(string) != "uninitialized" {
-		return nil, IndexError{Code: 416, Message: "not a wallet"}
+		return nil, IndexError{Code: 409, Message: "not a wallet"}
 	}
 
 	var acc V2WalletInformation
@@ -183,7 +183,7 @@ func PostMessage(req V2SendMessageRequest, settings RequestSettings) (*V2SendMes
 	}
 
 	if jsn["ok"] != true {
-		return nil, IndexError{Code: 500, Message: fmt.Sprintf("%v", jsn["error"])}
+		return nil, IndexError{Code: jsn["error"].(int), Message: fmt.Sprintf("%v", jsn["error"])}
 	}
 	res := jsn["result"].(map[string]interface{})
 
@@ -192,6 +192,47 @@ func PostMessage(req V2SendMessageRequest, settings RequestSettings) (*V2SendMes
 	result.MessageHash = new(HashType)
 	*result.MessageHash = HashType(res["hash"].(string))
 	return &result, nil
+}
+
+func PostEstimateFee(req V2EstimateFeeRequest, settings RequestSettings) (*V2EstimateFeeResult, error) {
+	if len(settings.V2Endpoint) == 0 {
+		return nil, IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
+	}
+
+	baseUrl, err := url.Parse(settings.V2Endpoint)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	baseUrl.Path += "/estimateFee"
+	params := url.Values{}
+	if len(settings.V2ApiKey) > 0 {
+		params.Add("api_key", settings.V2ApiKey)
+	}
+	baseUrl.RawQuery = params.Encode()
+	agent := fiber.Post(baseUrl.String())
+	var req_body []byte
+	if req_body, err = json.Marshal(req); err != nil {
+		return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
+	}
+	agent.Add("Content-Type", "application/json")
+	agent.Body(req_body)
+	_, body, errs := agent.Bytes()
+	if len(errs) > 0 {
+		return nil, IndexError{Code: 500, Message: errs[0].Error()}
+	}
+	var resp_full struct {
+		Ok     bool                `json:"ok"`
+		Result V2EstimateFeeResult `json:"result"`
+		Error  string              `json:"error"`
+		Code   int                 `json:"code"`
+	}
+	if err = json.Unmarshal(body, &resp_full); err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	if !resp_full.Ok {
+		return nil, IndexError{Code: resp_full.Code, Message: resp_full.Error}
+	}
+	return &resp_full.Result, nil
 }
 
 func PostRunGetMethod(req V2RunGetMethodRequest, settings RequestSettings) (*V2RunGetMethodResult, error) {
@@ -371,8 +412,4 @@ func DecodeStack(stack interface{}) (interface{}, error) {
 	}
 
 	return result, nil
-}
-
-func PostEstimateFee(req V2EstimateFeeRequst, settings RequestSettings) (*V2EstimateFeeResult, error) {
-	return nil, IndexError{Code: 501, Message: "not implemented"}
 }

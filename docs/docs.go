@@ -206,6 +206,13 @@ const docTemplate = `{
                         "name": "address",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Use method from api/v2. Not recommended",
+                        "name": "use_v2",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -356,7 +363,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -389,6 +396,55 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/BlocksResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/estimateFee": {
+            "post": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Estimate fees required for query processing. Fields body, init-code and init-data accepted in serialized format (b64-encoded).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "api/v2"
+                ],
+                "summary": "Estimate Fee",
+                "operationId": "api_v3_post_v2_estimate_fee",
+                "parameters": [
+                    {
+                        "description": "Estimate fee request.",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/index.V2EstimateFeeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/V2EstimateFeeResult"
                         }
                     },
                     "400": {
@@ -440,6 +496,16 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find event by message hash.",
+                        "name": "msg_hash",
+                        "in": "query"
+                    },
+                    {
                         "minimum": 0,
                         "type": "integer",
                         "description": "Query events, which was finished **after** given timestamp.",
@@ -468,7 +534,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -590,7 +656,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -678,7 +744,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -799,7 +865,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -1131,7 +1197,11 @@ const docTemplate = `{
                 "operationId": "api_v3_get_messages",
                 "parameters": [
                     {
-                        "type": "string",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
                         "description": "Message hash. Acceptable in hex, base64 and base64url forms.",
                         "name": "msg_hash",
                         "in": "query"
@@ -1171,7 +1241,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -1248,7 +1318,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -1462,7 +1532,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -1579,7 +1649,7 @@ const docTemplate = `{
                 "operationId": "api_v3_get_top_accounts_by_balance",
                 "parameters": [
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -1723,7 +1793,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -1798,7 +1868,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -1894,7 +1964,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "maximum": 500,
+                        "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
                         "default": 10,
@@ -1937,7 +2007,7 @@ const docTemplate = `{
                         "APIKeyQuery": []
                     }
                 ],
-                "description": "Get wallet smart contract information. The following wallets are supported: ` + "`" + `v1r1` + "`" + `, ` + "`" + `v1r2` + "`" + `, ` + "`" + `v1r3` + "`" + `, ` + "`" + `v2r1` + "`" + `, ` + "`" + `v2r2` + "`" + `, ` + "`" + `v3r1` + "`" + `, ` + "`" + `v3r2` + "`" + `, ` + "`" + `v4r1` + "`" + `, ` + "`" + `v4r2` + "`" + `. In case the account is not a wallet error code 409 is returned.",
+                "description": "Get wallet smart contract information. The following wallets are supported: ` + "`" + `v1r1` + "`" + `, ` + "`" + `v1r2` + "`" + `, ` + "`" + `v1r3` + "`" + `, ` + "`" + `v2r1` + "`" + `, ` + "`" + `v2r2` + "`" + `, ` + "`" + `v3r1` + "`" + `, ` + "`" + `v3r2` + "`" + `, ` + "`" + `v4r1` + "`" + `, ` + "`" + `v4r2` + "`" + `, ` + "`" + `v5beta` + "`" + `, ` + "`" + `v5r1` + "`" + `. In case the account is not a wallet error code 409 is returned.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1956,6 +2026,13 @@ const docTemplate = `{
                         "name": "address",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Use method from api/v2. Not recommended",
+                        "name": "use_v2",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1963,6 +2040,57 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/V2WalletInformation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/walletStates": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Query wallet information",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Get Wallet States",
+                "operationId": "api_v3_get_wallet_states",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "List of addresses in any form to get address book. Max: 1024.",
+                        "name": "address",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/WalletStatesResponse"
                         }
                     },
                     "400": {
@@ -2022,9 +2150,6 @@ const docTemplate = `{
                 "account_state_hash": {
                     "type": "string"
                 },
-                "account_status": {
-                    "type": "string"
-                },
                 "address": {
                     "type": "string"
                 },
@@ -2052,6 +2177,9 @@ const docTemplate = `{
                 "last_transaction_lt": {
                     "type": "string",
                     "example": "0"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         },
@@ -2488,11 +2616,84 @@ const docTemplate = `{
                 }
             }
         },
+        "Event": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Action"
+                    }
+                },
+                "end_lt": {
+                    "type": "integer"
+                },
+                "end_utime": {
+                    "type": "integer"
+                },
+                "external_hash": {
+                    "type": "string"
+                },
+                "is_incomplete": {
+                    "type": "boolean"
+                },
+                "mc_seqno_end": {
+                    "type": "string"
+                },
+                "mc_seqno_start": {
+                    "type": "string"
+                },
+                "start_lt": {
+                    "type": "integer"
+                },
+                "start_utime": {
+                    "type": "integer"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "trace_info": {
+                    "$ref": "#/definitions/EventMeta"
+                },
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Transaction"
+                    }
+                }
+            }
+        },
+        "EventMeta": {
+            "type": "object",
+            "properties": {
+                "classification_state": {
+                    "type": "string"
+                },
+                "messages": {
+                    "type": "integer"
+                },
+                "pending_messages": {
+                    "type": "integer"
+                },
+                "trace_state": {
+                    "type": "string"
+                },
+                "transactions": {
+                    "type": "integer"
+                }
+            }
+        },
         "EventsResponse": {
             "type": "object",
             "properties": {
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Event"
+                    }
                 }
             }
         },
@@ -3153,6 +3354,37 @@ const docTemplate = `{
                 }
             }
         },
+        "V2EstimateFeeResult": {
+            "type": "object",
+            "properties": {
+                "destination_fees": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/V2EstimatedFee"
+                    }
+                },
+                "source_fees": {
+                    "$ref": "#/definitions/V2EstimatedFee"
+                }
+            }
+        },
+        "V2EstimatedFee": {
+            "type": "object",
+            "properties": {
+                "fwd_fee": {
+                    "type": "integer"
+                },
+                "gas_fee": {
+                    "type": "integer"
+                },
+                "in_fwd_fee": {
+                    "type": "integer"
+                },
+                "storage_fee": {
+                    "type": "integer"
+                }
+            }
+        },
         "V2SendMessageResult": {
             "type": "object",
             "properties": {
@@ -3192,6 +3424,79 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "wallet_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "WalletState": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "balance": {
+                    "type": "string"
+                },
+                "code_hash": {
+                    "type": "string"
+                },
+                "is_signature_allowed": {
+                    "type": "boolean"
+                },
+                "is_wallet": {
+                    "type": "boolean"
+                },
+                "last_transaction_hash": {
+                    "type": "string"
+                },
+                "last_transaction_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "seqno": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "wallet_id": {
+                    "type": "integer"
+                },
+                "wallet_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "WalletStatesResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "wallets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/WalletState"
+                    }
+                }
+            }
+        },
+        "index.V2EstimateFeeRequest": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "body": {
+                    "type": "string"
+                },
+                "ignore_chksig": {
+                    "type": "boolean"
+                },
+                "init_code": {
+                    "type": "string"
+                },
+                "init_data": {
                     "type": "string"
                 }
             }

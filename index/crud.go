@@ -34,20 +34,22 @@ func getAccountAddressFriendly(account string, code_hash *string, account_status
 }
 
 // query builders
-func limitQuery(lim LimitRequest) string {
+func limitQuery(lim LimitRequest, settings RequestSettings) (string, error) {
 	query := ``
 	if lim.Limit == nil {
 		// set default value
 		lim.Limit = new(int32)
-		*lim.Limit = 1000
-	}
-	if lim.Limit != nil {
+		*lim.Limit = int32(settings.DefaultLimit)
+	} else {
+		if *lim.Limit > int32(settings.MaxLimit) {
+			return "", IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", *lim.Limit, settings.MaxLimit)}
+		}
 		query += fmt.Sprintf(" limit %d", *lim.Limit)
 	}
 	if lim.Offset != nil {
 		query += fmt.Sprintf(" offset %d", *lim.Offset)
 	}
-	return query
+	return query, nil
 }
 
 func buildBlocksQuery(
@@ -55,12 +57,16 @@ func buildBlocksQuery(
 	utime_req UtimeRequest,
 	lt_req LtRequest,
 	lim_req LimitRequest,
+	settings RequestSettings,
 ) (string, error) {
 	query := `select blocks.* from blocks`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	// filters
 	if v := blk_req.Workchain; v != nil {
@@ -111,13 +117,17 @@ func buildTransactionsQuery(
 	utime_req UtimeRequest,
 	lt_req LtRequest,
 	lim_req LimitRequest,
+	settings RequestSettings,
 ) (string, error) {
 	query := `select T.* from`
 	from_query := ` transactions as T`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	sort_order := `desc`
 	if lim_req.Sort != nil {
@@ -236,7 +246,7 @@ func buildTransactionsQuery(
 	query += filter_query
 	query += orderby_query
 	query += limit_query
-	log.Println(query) // TODO: remove debug
+	// log.Println(query) // TODO: remove debug
 	return query, nil
 }
 
@@ -245,6 +255,7 @@ func buildMessagesQuery(
 	utime_req UtimeRequest,
 	lt_req LtRequest,
 	lim_req LimitRequest,
+	settings RequestSettings,
 ) (string, error) {
 	all_columns := ` M.*, B.*, I.*`
 	clmn_query := ` distinct on (M.msg_hash)` + all_columns
@@ -254,7 +265,10 @@ func buildMessagesQuery(
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	if v := msg_req.Direction; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.direction = '%s'", *v))
@@ -323,7 +337,7 @@ func buildMessagesQuery(
 	query += filter_query
 	query += orderby_query
 	query += limit_query
-	log.Println(query) // TODO: remove debug
+	// log.Println(query) // TODO: remove debug
 	return query, nil
 }
 
@@ -350,14 +364,17 @@ func filterByArray[T any](clmn string, v []T) string {
 	return ``
 }
 
-func buildNFTCollectionsQuery(nft_req NFTCollectionRequest, lim_req LimitRequest) (string, error) {
+func buildNFTCollectionsQuery(nft_req NFTCollectionRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := ` N.address, N.next_item_index, N.owner_address, N.collection_content, 
 				    N.data_hash, N.code_hash, N.last_transaction_lt`
 	from_query := ` nft_collections as N`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ` order by id asc`
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	if v := nft_req.CollectionAddress; v != nil {
 		filter_str := filterByArray("N.address", v)
@@ -386,7 +403,7 @@ func buildNFTCollectionsQuery(nft_req NFTCollectionRequest, lim_req LimitRequest
 	return query, nil
 }
 
-func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest) (string, error) {
+func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := ` N.address, N.init, N.index, N.collection_address, N.owner_address, N.content, 
 					N.last_transaction_lt, N.code_hash, N.data_hash,
 					C.address, C.next_item_index, C.owner_address, C.collection_content, 
@@ -395,7 +412,10 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest) (string, e
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ` order by N.id asc`
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	if v := nft_req.Address; v != nil {
 		filter_str := filterByArray("N.address", v)
@@ -438,13 +458,16 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest) (string, e
 }
 
 func buildNFTTransfersQuery(transfer_req NFTTransferRequest, utime_req UtimeRequest,
-	lt_req LtRequest, lim_req LimitRequest) (string, error) {
+	lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := ` T.*`
 	from_query := ` nft_transfers as T`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	if v := transfer_req.OwnerAddress; v != nil {
 		if v1 := transfer_req.Direction; v1 != nil {
@@ -511,14 +534,17 @@ func buildNFTTransfersQuery(transfer_req NFTTransferRequest, utime_req UtimeRequ
 	return query, nil
 }
 
-func buildJettonMastersQuery(jetton_req JettonMasterRequest, lim_req LimitRequest) (string, error) {
+func buildJettonMastersQuery(jetton_req JettonMasterRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := ` J.address, J.total_supply, J.mintable, J.admin_address, J.jetton_content, 
 		J.jetton_wallet_code_hash, J.code_hash, J.data_hash, J.last_transaction_lt`
 	from_query := ` jetton_masters as J`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ` order by id asc`
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	if v := jetton_req.MasterAddress; v != nil {
 		filter_str := filterByArray("J.address", v)
@@ -546,13 +572,16 @@ func buildJettonMastersQuery(jetton_req JettonMasterRequest, lim_req LimitReques
 	return query, nil
 }
 
-func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitRequest) (string, error) {
+func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := `J.address, J.balance, J.owner, J.jetton, J.last_transaction_lt, J.code_hash, J.data_hash`
 	from_query := `jetton_wallets as J`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ` order by id asc`
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	if v := jetton_req.Address; v != nil {
 		filter_str := filterByArray("J.address", v)
@@ -585,13 +614,16 @@ func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitReques
 }
 
 func buildJettonTransfersQuery(transfer_req JettonTransferRequest, utime_req UtimeRequest,
-	lt_req LtRequest, lim_req LimitRequest) (string, error) {
+	lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := `T.*`
 	from_query := `jetton_transfers as T`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	if v := transfer_req.OwnerAddress; v != nil {
 		if v1 := transfer_req.Direction; v1 != nil {
@@ -658,7 +690,7 @@ func buildJettonTransfersQuery(transfer_req JettonTransferRequest, utime_req Uti
 	return query, nil
 }
 
-func buildActionsQuery(act_req ActionRequest) (string, error) {
+func buildActionsQuery(act_req ActionRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := `A.trace_id, A.action_id, A.start_lt, A.end_lt, 
 				   A.start_utime, A.end_utime, 
 				   A.source, A.source_secondary, A.destination, A.destination_secondary, 
@@ -673,7 +705,10 @@ func buildActionsQuery(act_req ActionRequest) (string, error) {
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	limit_query := ``
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	if v := act_req.ActionId; v != nil {
 		filter_str := filterByArray("A.action_id", v)
@@ -701,14 +736,101 @@ func buildActionsQuery(act_req ActionRequest) (string, error) {
 	return query, nil
 }
 
+func buildEventsQuery(event_req EventRequest, utime_req UtimeRequest, lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+	clmn_query_default := `E.trace_id, E.external_hash, E.mc_seqno_start, E.mc_seqno_end, 
+						   E.start_lt, E.start_utime, E.end_lt, E.end_utime, 
+						   E.state, E.edges_, E.nodes_, E.pending_edges_, E.classification_state`
+	clmn_query := clmn_query_default
+	from_query := `traces as E`
+	filter_list := []string{}
+	filter_query := ``
+	orderby_query := ``
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
+
+	sort_order := "desc"
+	if v := lim_req.Sort; v != nil {
+		sort_order = string(*v)
+	}
+
+	if v := event_req.TraceId; v != nil {
+		filter_str := filterByArray("E.trace_id", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+	}
+	if v := event_req.AccountAddress; v != nil && len(*v) > 0 {
+		filter_str := fmt.Sprintf("T.account = '%s'", *v)
+		filter_list = append(filter_list, filter_str)
+
+		from_query = `traces as E join transactions as T on E.trace_id = T.trace_id`
+		clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
+	}
+	if v := event_req.TransactionHash; v != nil {
+		filter_str := filterByArray("T.hash", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+		from_query = `traces as E join transactions as T on E.trace_id = T.trace_id`
+		clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
+	}
+	if v := event_req.MessageHash; v != nil {
+		filter_str := filterByArray("M.msg_hash", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+		from_query = `traces as E join messages as M on E.trace_id = M.trace_id`
+		clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
+	}
+
+	// time
+	order_by_now := false
+	if v := utime_req.StartUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("E.end_utime >= %d", *v))
+		order_by_now = true
+	}
+	if v := utime_req.EndUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("E.end_utime <= %d", *v))
+		order_by_now = true
+	}
+	if v := lt_req.StartLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("E.end_lt >= %d", *v))
+	}
+	if v := lt_req.EndLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("E.end_lt <= %d", *v))
+	}
+
+	if order_by_now {
+		orderby_query = fmt.Sprintf(" order by E.end_utime %s, E.trace_id asc", sort_order)
+	} else {
+		orderby_query = fmt.Sprintf(" order by E.end_lt %s, E.trace_id asc", sort_order)
+	}
+
+	// build query
+	if len(filter_list) > 0 {
+		filter_query = ` where ` + strings.Join(filter_list, " and ")
+	}
+	query := `select ` + clmn_query
+	query += ` from ` + from_query
+	query += filter_query
+	query += orderby_query
+	query += limit_query
+	return query, nil
+}
+
 func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
-	lt_req LtRequest, lim_req LimitRequest) (string, error) {
+	lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := `T.*`
 	from_query := `jetton_burns as T`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	if v := burn_req.OwnerAddress; v != nil {
 		f_str := ``
@@ -763,13 +885,16 @@ func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
 	return query, nil
 }
 
-func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest) (string, error) {
+func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := `A.account, A.hash, A.balance, A.account_status, A.frozen_hash, A.last_trans_hash, A.last_trans_lt, A.data_hash, A.code_hash, A.data_boc, A.code_boc`
 	from_query := `latest_account_states as A`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	limit_query := limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
 
 	// build query
 	if v := account_req.AccountAddress; v != nil {
@@ -1366,6 +1491,29 @@ func queryActionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings
 	return res, nil
 }
 
+func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Event, error) {
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	res := []Event{}
+	for rows.Next() {
+		if loc, err := ScanEvent(rows); err == nil {
+			res = append(res, *loc)
+		} else {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+	}
+	if rows.Err() != nil {
+		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+	}
+	return res, nil
+}
+
 // Exported methods
 func (db *DbClient) QueryMasterchainInfo(settings RequestSettings) (*MasterchainInfo, error) {
 	conn, err := db.Pool.Acquire(context.Background())
@@ -1399,7 +1547,7 @@ func (db *DbClient) QueryBlocks(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]Block, error) {
-	query, err := buildBlocksQuery(blk_req, utime_req, lt_req, lim_req)
+	query, err := buildBlocksQuery(blk_req, utime_req, lt_req, lim_req, settings)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1478,7 +1626,7 @@ func (db *DbClient) QueryTransactions(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]Transaction, AddressBook, error) {
-	query, err := buildTransactionsQuery(blk_req, tx_req, msg_req, utime_req, lt_req, lim_req)
+	query, err := buildTransactionsQuery(blk_req, tx_req, msg_req, utime_req, lt_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1590,7 +1738,7 @@ func (db *DbClient) QueryMessages(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]Message, AddressBook, error) {
-	query, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req)
+	query, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1631,7 +1779,7 @@ func (db *DbClient) QueryNFTCollections(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]NFTCollection, AddressBook, error) {
-	query, err := buildNFTCollectionsQuery(nft_req, lim_req)
+	query, err := buildNFTCollectionsQuery(nft_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1668,7 +1816,7 @@ func (db *DbClient) QueryNFTItems(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]NFTItem, AddressBook, error) {
-	query, err := buildNFTItemsQuery(nft_req, lim_req)
+	query, err := buildNFTItemsQuery(nft_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1707,7 +1855,7 @@ func (db *DbClient) QueryNFTTransfers(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]NFTTransfer, AddressBook, error) {
-	query, err := buildNFTTransfersQuery(transfer_req, utime_req, lt_req, lim_req)
+	query, err := buildNFTTransfersQuery(transfer_req, utime_req, lt_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1749,7 +1897,7 @@ func (db *DbClient) QueryJettonMasters(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]JettonMaster, AddressBook, error) {
-	query, err := buildJettonMastersQuery(jetton_req, lim_req)
+	query, err := buildJettonMastersQuery(jetton_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1786,7 +1934,7 @@ func (db *DbClient) QueryJettonWallets(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]JettonWallet, AddressBook, error) {
-	query, err := buildJettonWalletsQuery(jetton_req, lim_req)
+	query, err := buildJettonWalletsQuery(jetton_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1826,7 +1974,7 @@ func (db *DbClient) QueryJettonTransfers(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]JettonTransfer, AddressBook, error) {
-	query, err := buildJettonTransfersQuery(transfer_req, utime_req, lt_req, lim_req)
+	query, err := buildJettonTransfersQuery(transfer_req, utime_req, lt_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1870,7 +2018,7 @@ func (db *DbClient) QueryJettonBurns(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]JettonBurn, AddressBook, error) {
-	query, err := buildJettonBurnsQuery(transfer_req, utime_req, lt_req, lim_req)
+	query, err := buildJettonBurnsQuery(transfer_req, utime_req, lt_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1911,7 +2059,7 @@ func (db *DbClient) QueryAccountStates(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]AccountStateFull, AddressBook, error) {
-	query, err := buildAccountStatesQuery(account_req, lim_req)
+	query, err := buildAccountStatesQuery(account_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1942,9 +2090,32 @@ func (db *DbClient) QueryAccountStates(
 	return res, book, nil
 }
 
+func (db *DbClient) QueryWalletStates(
+	account_req AccountRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]WalletState, AddressBook, error) {
+	states, book, err := db.QueryAccountStates(account_req, lim_req, settings)
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	res := []WalletState{}
+	for _, state := range states {
+		loc, err := ParseWalletState(state)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		res = append(res, *loc)
+	}
+	return res, book, nil
+}
+
 func (db *DbClient) QueryTopAccountBalances(lim_req LimitRequest, settings RequestSettings) ([]AccountBalance, error) {
-	query := `select account, balance from latest_account_states order by balance desc`
-	query += limitQuery(lim_req)
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return nil, err
+	}
+	query := `select account, balance from latest_account_states order by balance desc` + limit_query
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
@@ -1963,9 +2134,10 @@ func (db *DbClient) QueryTopAccountBalances(lim_req LimitRequest, settings Reque
 // events
 func (db *DbClient) QueryActions(
 	act_req ActionRequest,
+	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]Action, AddressBook, error) {
-	query, err := buildActionsQuery(act_req)
+	query, err := buildActionsQuery(act_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2019,5 +2191,35 @@ func (db *DbClient) QueryActions(
 			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
+	return res, book, nil
+}
+
+func (db *DbClient) QueryEvents(
+	event_req EventRequest,
+	utime_req UtimeRequest,
+	lt_req LtRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]Event, AddressBook, error) {
+	query, err := buildEventsQuery(event_req, utime_req, lt_req, lim_req, settings)
+	log.Println(query)
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	// read data
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	res, err := queryEventsImpl(query, conn, settings)
+	if err != nil {
+		log.Println(query)
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	book := AddressBook{}
 	return res, book, nil
 }

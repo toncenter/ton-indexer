@@ -27,6 +27,11 @@ type AccountStatesResponse struct {
 	AddressBook AddressBook        `json:"address_book"`
 } // @name AccountStatesResponse
 
+type WalletStatesResponse struct {
+	Wallets     []WalletState `json:"wallets"`
+	AddressBook AddressBook   `json:"address_book"`
+} // @name WalletStatesResponse
+
 type NFTCollectionsResponse struct {
 	Collections []NFTCollection `json:"nft_collections"`
 	AddressBook AddressBook     `json:"address_book"`
@@ -63,6 +68,7 @@ type JettonBurnsResponse struct {
 } // @name JettonBurnsResponse
 
 type EventsResponse struct {
+	Events      []Event     `json:"events"`
 	AddressBook AddressBook `json:"address_book"`
 } // @name EventsResponse
 

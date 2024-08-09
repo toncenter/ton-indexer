@@ -25,6 +25,16 @@ type Settings struct {
 	Request      index.RequestSettings
 }
 
+func onlyOneOf(flags ...bool) bool {
+	res := 0
+	for _, v := range flags {
+		if v {
+			res += 1
+		}
+	}
+	return res <= 1
+}
+
 var pool *index.DbClient
 var settings Settings
 
@@ -75,7 +85,7 @@ func GetMasterchainInfo(c *fiber.Ctx) error {
 // @param end_utime query int32 false "Query blocks with generation UTC timestamp **before** given timestamp." minimum(0)
 // @param start_lt query int64 false "Query blocks with `lt >= start_lt`." minimum(0)
 // @param end_lt query int64 false "Query blocks with `lt <= end_lt`." minimum(0)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort results by UTC timestamp." Enums(asc, desc) default(desc)
 // @router			/api/v3/blocks [get]
@@ -191,7 +201,7 @@ func GetShardsDiff(c *fiber.Ctx) error {
 // @param end_utime query int32 false "Query transactions with generation UTC timestamp **before** given timestamp." minimum(0)
 // @param start_lt query int64 false "Query transactions with `lt >= start_lt`." minimum(0)
 // @param end_lt query int64 false "Query transactions with `lt <= end_lt`." minimum(0)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/transactions [get]
@@ -274,7 +284,7 @@ func GetAdjacentTransactions(c *fiber.Ctx) error {
 // @success		200	{object}	index.TransactionsResponse
 // @failure		400	{object}	index.RequestError
 // @param	seqno query int32 true "Masterchain block seqno."
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/transactionsByMasterchainBlock [get]
@@ -318,7 +328,7 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 // @param body_hash query string false "Hash of message body."
 // @param opcode query string false "Opcode of message in hex or signed 32-bit decimal form."
 // @param direction query string false "Direction of message." Enums(in, out)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/transactionsByMessage [get]
@@ -362,13 +372,13 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @Produce      json
 // @success		200	{object}	index.MessagesResponse
 // @failure		400	{object}	index.RequestError
-// @param msg_hash query string false "Message hash. Acceptable in hex, base64 and base64url forms."
+// @param msg_hash query []string false "Message hash. Acceptable in hex, base64 and base64url forms." collectionFormat(multi)
 // @param body_hash query string false "Hash of message body."
 // @param source query string false "The source account address. Can be sent in hex, base64 or base64url form. Use value `null` to get external messages."
 // @param destination query string false "The destination account address. Can be sent in hex, base64 or base64url form. Use value `null` to get log messages."
 // @param opcode query string false "Opcode of message in hex or signed 32-bit decimal form."
 // @param direction query string false "Direction of message." Enums(in, out)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/messages [get]
@@ -454,7 +464,7 @@ func GetAddressBook(c *fiber.Ctx) error {
 // @success 200 {object} index.AccountStatesResponse
 // @failure 400 {object} index.RequestError
 // @param address query []string true "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
-// // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router /api/v3/accountStates [get]
 // @security		APIKeyHeader
@@ -462,6 +472,7 @@ func GetAddressBook(c *fiber.Ctx) error {
 func GetAccountStates(c *fiber.Ctx) error {
 	var account_req index.AccountRequest
 	var lim_req index.LimitRequest
+
 	if err := c.QueryParser(&account_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
@@ -485,6 +496,43 @@ func GetAccountStates(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+// @summary Get Wallet States
+//
+// @description Query wallet information
+//
+// @id api_v3_get_wallet_states
+// @tags accounts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.WalletStatesResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string true "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
+// @router /api/v3/walletStates [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetWalletStates(c *fiber.Ctx) error {
+	var account_req index.AccountRequest
+	var lim_req index.LimitRequest
+	if err := c.QueryParser(&account_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(account_req.AccountAddress) == 0 {
+		return index.IndexError{Code: 422, Message: "address of account is required"}
+	}
+
+	res, book, err := pool.QueryWalletStates(account_req, lim_req, settings.Request)
+	if err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	resp := index.WalletStatesResponse{Wallets: res, AddressBook: book}
+	return c.JSON(resp)
+}
+
 // @summary Get NFT collections
 //
 // @description Get NFT collections by specified filters
@@ -497,7 +545,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 // @failure 400 {object} index.RequestError
 // @param collection_address query []string false "Collection address in any form. Max: 1024." collectionFormat(multi)
 // @param owner_address query []string false "Address of collection owner in any form. Max: 1024." collectionFormat(multi)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router /api/v3/nft/collections [get]
 // @security		APIKeyHeader
@@ -583,7 +631,7 @@ func GetNFTItems(c *fiber.Ctx) error {
 // @param end_utime query int32 false "Query transactions with generation UTC timestamp **before** given timestamp." minimum(0)
 // @param start_lt query int64 false "Query transactions with `lt >= start_lt`." minimum(0)
 // @param end_lt query int64 false "Query transactions with `lt <= end_lt`." minimum(0)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
 // @router /api/v3/nft/transfers [get]
@@ -639,7 +687,7 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 // @Produce      json
 // @success		200	{object}	[]index.AccountBalance
 // @failure		400	{object}	index.RequestError
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router			/api/v3/topAccountsByBalance [get]
 // @security		APIKeyHeader
@@ -670,7 +718,7 @@ func GetTopAccountsByBalance(c *fiber.Ctx) error {
 // @failure 400 {object} index.RequestError
 // @param address query []string false "Jetton Master address in any form. Max: 1024." collectionFormat(multi)
 // @param admin_address query []string false "Address of Jetton Master's admin in any form. Max: 1024." collectionFormat(multi)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router /api/v3/jetton/masters [get]
 // @security		APIKeyHeader
@@ -755,7 +803,7 @@ func GetJettonWallets(c *fiber.Ctx) error {
 // @param end_utime query int32 false "Query transactions with generation UTC timestamp **before** given timestamp." minimum(0)
 // @param start_lt query int64 false "Query transactions with `lt >= start_lt`." minimum(0)
 // @param end_lt query int64 false "Query transactions with `lt <= end_lt`." minimum(0)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
 // @router /api/v3/jetton/transfers [get]
@@ -820,7 +868,7 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 // @param end_utime query int32 false "Query transactions with generation UTC timestamp **before** given timestamp." minimum(0)
 // @param start_lt query int64 false "Query transactions with `lt >= start_lt`." minimum(0)
 // @param end_lt query int64 false "Query transactions with `lt <= end_lt`." minimum(0)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
 // @router /api/v3/jetton/burns [get]
@@ -873,20 +921,52 @@ func GetJettonBurns(c *fiber.Ctx) error {
 // @Produce      json
 // @success		200	{object}	index.EventsResponse
 // @failure		400	{object}	index.RequestError
-// @param account	query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
-// @param tx_hash	query []string false "Find event by transaction hash." collectionFormat(multi)
+// @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
+// @param tx_hash query []string false "Find event by transaction hash."
+// @param msg_hash query []string false "Find event by message hash."
 // @param start_utime query int32 false "Query events, which was finished **after** given timestamp." minimum(0)
 // @param end_utime query int32 false "Query events, which was finished **before** given timestamp." minimum(0)
 // @param start_lt query int64 false "Query events with `end_lt >= start_lt`." minimum(0)
 // @param end_lt query int64 false "Query events with `end_lt <= end_lt`." minimum(0)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(500) default(10)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort events by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/events [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetEvents(c *fiber.Ctx) error {
-	return c.Status(500).SendString("not implemented")
+	event_req := index.EventRequest{}
+	utime_req := index.UtimeRequest{}
+	lt_req := index.LtRequest{}
+	lim_req := index.LimitRequest{}
+
+	if err := c.QueryParser(&event_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&utime_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lt_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if !onlyOneOf(event_req.AccountAddress != nil, event_req.TraceId != nil, len(event_req.TransactionHash) > 0, len(event_req.MessageHash) > 0) {
+		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
+	}
+
+	res, book, err := pool.QueryEvents(event_req, utime_req, lt_req, lim_req, settings.Request)
+	if err != nil {
+		return err
+	}
+	// if len(txs) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
+	// }
+
+	txs_resp := index.EventsResponse{Events: res, AddressBook: book}
+	return c.JSON(txs_resp)
 }
 
 // @summary Get Actions
@@ -904,12 +984,17 @@ func GetEvents(c *fiber.Ctx) error {
 // @security		APIKeyQuery
 func GetActions(c *fiber.Ctx) error {
 	var act_req index.ActionRequest
+	var lim_req index.LimitRequest
 
 	if err := c.QueryParser(&act_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryActions(act_req, settings.Request)
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	res, book, err := pool.QueryActions(act_req, lim_req, settings.Request)
 	if err != nil {
 		return err
 	}
@@ -923,7 +1008,7 @@ func GetActions(c *fiber.Ctx) error {
 
 // @summary Get Wallet Information
 //
-// @description Get wallet smart contract information. The following wallets are supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`, `v4r2`. In case the account is not a wallet error code 409 is returned.
+// @description Get wallet smart contract information. The following wallets are supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`, `v4r2`, `v5beta`, `v5r1`. In case the account is not a wallet error code 409 is returned.
 //
 // @id api_v3_get_wallet_information
 // @tags api/v2
@@ -932,6 +1017,7 @@ func GetActions(c *fiber.Ctx) error {
 // @success 200 {object} index.V2WalletInformation
 // @failure 400 {object} index.RequestError
 // @param address query string true "Account address in any form."
+// @param use_v2 query bool false "Use method from api/v2. Not recommended" default(true)
 // @router /api/v3/walletInformation [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -940,12 +1026,49 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 	if err := c.QueryParser(&acc_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+
 	if len(acc_req.AccountAddress) == 0 {
 		return index.IndexError{Code: 401, Message: "address of account is required"}
 	}
-	res, err := index.GetV2WalletInformation(acc_req, settings.Request)
-	if err != nil {
-		return err
+
+	use_v2 := false
+	use_fallback := false
+	if acc_req.UseV2 != nil {
+		use_v2 = *acc_req.UseV2
+	}
+	var res *index.V2WalletInformation
+	if !use_v2 {
+		account_req := index.AccountRequest{AccountAddress: []index.AccountAddress{acc_req.AccountAddress}}
+		loc, _, err := pool.QueryWalletStates(account_req, index.LimitRequest{}, settings.Request)
+		if err != nil {
+			return err
+		}
+		if len(loc) == 0 {
+			res = new(index.V2WalletInformation)
+			res.Balance = "0"
+			res.LastTransactionHash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+			res.LastTransactionLt = "0"
+			res.Status = "uninitialized"
+		} else {
+			info, err := index.WalletInformationFromV3(loc[0])
+			if err != nil {
+				use_fallback = true
+				// return err
+			} else if info == nil {
+				use_fallback = true
+				// return index.IndexError{Code: 409, Message: "not a wallet"}
+			} else {
+				res = info
+			}
+		}
+	}
+
+	if use_v2 || use_fallback {
+		loc, err := index.GetV2WalletInformation(acc_req, settings.Request)
+		if err != nil {
+			return err
+		}
+		res = loc
 	}
 
 	return c.Status(200).JSON(res)
@@ -962,6 +1085,7 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 // @success 200 {object} index.V2AddressInformation
 // @failure 400 {object} index.RequestError
 // @param address query string true "Account address in any form."
+// @param use_v2 query bool false "Use method from api/v2. Not recommended" default(true)
 // @router /api/v3/addressInformation [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -970,13 +1094,42 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 	if err := c.QueryParser(&acc_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+	if acc_req.UseV2 == nil {
+		acc_req.UseV2 = new(bool)
+		*acc_req.UseV2 = true
+	}
 	if len(acc_req.AccountAddress) == 0 {
 		return index.IndexError{Code: 401, Message: "address of account is required"}
 	}
 
-	res, err := index.GetV2AddressInformation(acc_req, settings.Request)
-	if err != nil {
-		return err
+	var res *index.V2AddressInformation
+	if acc_req.UseV2 == nil || *acc_req.UseV2 {
+		loc, err := index.GetV2AddressInformation(acc_req, settings.Request)
+		if err != nil {
+			return err
+		}
+		res = loc
+	} else {
+		account_req := index.AccountRequest{AccountAddress: []index.AccountAddress{acc_req.AccountAddress}}
+		loc, _, err := pool.QueryAccountStates(account_req, index.LimitRequest{}, settings.Request)
+		if err != nil {
+			return err
+		}
+		if len(loc) == 0 {
+			res = new(index.V2AddressInformation)
+			res.Balance = "0"
+			res.LastTransactionHash = new(string)
+			*res.LastTransactionHash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+			res.LastTransactionLt = new(string)
+			*res.LastTransactionLt = "0"
+			res.Status = "uninitialized"
+		} else {
+			info, err := index.AddressInformationFromV3(loc[0])
+			if err != nil {
+				return err
+			}
+			res = info
+		}
 	}
 
 	return c.Status(200).JSON(res)
@@ -1006,6 +1159,34 @@ func PostV2SendMessage(c *fiber.Ctx) error {
 	}
 
 	res, err := index.PostMessage(req, settings.Request)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(res)
+}
+
+// @summary Estimate Fee
+//
+// @description Estimate fees required for query processing. Fields body, init-code and init-data accepted in serialized format (b64-encoded).
+//
+// @id api_v3_post_v2_estimate_fee
+// @tags api/v2
+// @Accept json
+// @Produce json
+// @success 200 {object} index.V2EstimateFeeResult
+// @failure 400 {object} index.RequestError
+// @param request body index.V2EstimateFeeRequest true "Estimate fee request."
+// @router /api/v3/estimateFee [post]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func PostV2EstimateFee(c *fiber.Ctx) error {
+	var req index.V2EstimateFeeRequest
+	if err := c.BodyParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	res, err := index.PostEstimateFee(req, settings.Request)
 	if err != nil {
 		return err
 	}
@@ -1148,6 +1329,8 @@ func main() {
 	flag.BoolVar(&settings.Request.IsTestnet, "testnet", false, "Use testnet address book")
 	flag.BoolVar(&settings.Debug, "debug", false, "Run service in debug mode")
 	flag.IntVar(&timeout_ms, "query-timeout", 3000, "Query timeout in milliseconds")
+	flag.IntVar(&settings.Request.DefaultLimit, "default-limit", 100, "Default value for limit")
+	flag.IntVar(&settings.Request.MaxLimit, "max-limit", 1000, "Maximum value for limit")
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
 	flag.Parse()
 
@@ -1221,6 +1404,7 @@ func main() {
 	// account methods
 	app.Get("/api/v3/addressBook", GetAddressBook)
 	app.Get("/api/v3/accountStates", GetAccountStates)
+	app.Get("/api/v3/walletStates", GetWalletStates)
 
 	// nfts
 	app.Get("/api/v3/nft/collections", GetNFTCollections)
@@ -1244,6 +1428,7 @@ func main() {
 	app.Get("/api/v3/wallet", GetV2WalletInformation)
 	app.Post("/api/v3/message", PostV2SendMessage)
 	app.Post("/api/v3/runGetMethod", PostV2RunGetMethod)
+	app.Post("/api/v3/estimateFee", PostV2EstimateFee)
 
 	// test
 	app.Get("/api/v3/__testMethod", GetTestMethod)

@@ -8,10 +8,12 @@ type UtimeType uint64 // @name UtimeType
 
 // settings
 type RequestSettings struct {
-	Timeout    time.Duration
-	IsTestnet  bool
-	V2Endpoint string
-	V2ApiKey   string
+	Timeout      time.Duration
+	IsTestnet    bool
+	V2Endpoint   string
+	V2ApiKey     string
+	DefaultLimit int
+	MaxLimit     int
 }
 
 // requests
@@ -110,6 +112,13 @@ type ActionRequest struct {
 	TraceId  []HashType `query:"trace_id"`
 }
 
+type EventRequest struct {
+	AccountAddress  *AccountAddress `query:"account"`
+	TraceId         []HashType      `query:"trace_id"`
+	TransactionHash []HashType      `query:"tx_hash"`
+	MessageHash     []HashType      `query:"msg_hash"`
+}
+
 type SortType string
 
 const (
@@ -132,6 +141,7 @@ type TestRequest struct {
 // api/v2 requests
 type V2AccountRequest struct {
 	AccountAddress AccountAddress `query:"address"`
+	UseV2          *bool          `query:"use_v2"`
 }
 
 type V2SendMessageRequest struct {
@@ -144,5 +154,10 @@ type V2RunGetMethodRequest struct {
 	Stack   []V2StackEntity `json:"stack"`
 }
 
-type V2EstimateFeeRequst struct {
+type V2EstimateFeeRequest struct {
+	Address      AccountAddress `json:"address"`
+	Body         string         `json:"body"`
+	InitCode     string         `json:"init_code"`
+	InitData     string         `json:"init_data"`
+	IgnoreChksig bool           `json:"ignore_chksig"`
 }

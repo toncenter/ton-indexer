@@ -1,5 +1,7 @@
 package index
 
+import "fmt"
+
 type ShardId int64                 // @name ShardId
 type AccountAddress string         // @name AccountAddress
 type AccountAddressNullable string // @name AccountAddressNullable
@@ -17,9 +19,21 @@ var WalletsHashMap = map[string]bool{
 	"hNr6RJ+Ypph3ibojI1gHK8D3bcRSQAKl0JGLmnXS1Zk=": true,
 	"ZN1UgFUixb6KnbWc6gEFzPDQh4bKeb64y3nogKjXMi0=": true,
 	"/rX/aCDi/w2Ug+fg1iyBfYRniftK5YDIeIZtlZ2r1cA=": true,
+	"89fKU0k97trCizgZhqhJQDy6w9LFhHea8IEGWvCsS5M=": true,
 	"IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8=": true,
 }
 
+// errors
+type IndexError struct {
+	Code    int    `json:"-"`
+	Message string `json:"error"`
+}
+
+func (e IndexError) Error() string {
+	return e.Message
+}
+
+// models
 type AddressBookRow struct {
 	UserFriendly *string `json:"user_friendly"`
 } // @name AddressBookRow
@@ -53,7 +67,7 @@ type AccountStateFull struct {
 	AccountAddress      *AccountAddress `json:"address"`
 	Hash                HashType        `json:"account_state_hash"`
 	Balance             *string         `json:"balance"`
-	AccountStatus       *string         `json:"account_status"`
+	AccountStatus       *string         `json:"status"`
 	FrozenHash          *HashType       `json:"frozen_hash,omitempty"`
 	LastTransactionHash *HashType       `json:"last_transaction_hash"`
 	LastTransactionLt   *int64          `json:"last_transaction_lt,string"`
@@ -62,6 +76,20 @@ type AccountStateFull struct {
 	DataBoc             *string         `json:"data_boc,omitempty"`
 	CodeBoc             *string         `json:"code_boc,omitempty"`
 } // @name AccountStateFull
+
+type WalletState struct {
+	AccountAddress      AccountAddress `json:"address"`
+	IsWallet            bool           `json:"is_wallet"`
+	WalletType          *string        `json:"wallet_type,omitempty"`
+	Seqno               *int64         `json:"seqno,omitempty"`
+	WalletId            *int64         `json:"wallet_id,omitempty"`
+	Balance             *string        `json:"balance,omitempty"`
+	IsSignatureAllowed  *bool          `json:"is_signature_allowed,omitempty"`
+	AccountStatus       *string        `json:"status,omitempty"`
+	CodeHash            *HashType      `json:"code_hash,omitempty"`
+	LastTransactionHash *HashType      `json:"last_transaction_hash"`
+	LastTransactionLt   *int64         `json:"last_transaction_lt,string"`
+} // @name WalletState
 
 type Block struct {
 	Workchain              int32     `json:"workchain"`
@@ -391,6 +419,29 @@ type Action struct {
 	ChangeDNSRecordFlags          *int64
 } // @name Action
 
+type EventMeta struct {
+	TraceState          string `json:"trace_state"`
+	Messages            uint64 `json:"messages"`
+	Transactions        uint64 `json:"transactions"`
+	PendingMessages     uint64 `json:"pending_messages"`
+	ClassificationState string `json:"classification_state"`
+} // @name EventMeta
+
+type Event struct {
+	TraceId      HashType      `json:"trace_id"`
+	ExternalHash *HashType     `json:"external_hash"`
+	McSeqnoStart HashType      `json:"mc_seqno_start"`
+	McSeqnoEnd   HashType      `json:"mc_seqno_end"`
+	StartLt      uint64        `json:"start_lt"`
+	StartUtime   uint32        `json:"start_utime"`
+	EndLt        uint64        `json:"end_lt"`
+	EndUtime     uint32        `json:"end_utime"`
+	EventMeta    EventMeta     `json:"trace_info"`
+	IsIncomplete bool          `json:"is_incomplete"`
+	Actions      []Action      `json:"actions"`
+	Transactions []Transaction `json:"transactions"`
+} // @name Event
+
 // proxied models
 type V2AddressInformation struct {
 	Balance             string  `json:"balance"`
@@ -427,15 +478,69 @@ type V2RunGetMethodResult struct {
 	Stack    interface{} `json:"stack"`
 } // @name V2RunGetMethodResult
 
+type V2EstimatedFee struct {
+	InFwdFee   uint64 `json:"in_fwd_fee"`
+	StorageFee uint64 `json:"storage_fee"`
+	GasFee     uint64 `json:"gas_fee"`
+	FwdFee     uint64 `json:"fwd_fee"`
+} // @name V2EstimatedFee
+
 type V2EstimateFeeResult struct {
+	SourceFees      V2EstimatedFee   `json:"source_fees"`
+	DestinationFees []V2EstimatedFee `json:"destination_fees"`
 } // @name V2EstimateFeeResult
 
-// errors
-type IndexError struct {
-	Code    int    `json:"-"`
-	Message string `json:"error"`
+// converteds
+func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, error) {
+	var info V2AddressInformation
+	if state.Balance == nil {
+		return nil, IndexError{Code: 500, Message: "balance is none"}
+	}
+	info.Balance = *state.Balance
+	info.Code = state.CodeBoc
+	info.Data = state.DataBoc
+	info.LastTransactionHash = (*string)(state.LastTransactionHash)
+	if state.LastTransactionLt != nil {
+		info.LastTransactionLt = new(string)
+		*info.LastTransactionLt = fmt.Sprintf("%d", *state.LastTransactionLt)
+	}
+	if state.AccountStatus == nil {
+		return nil, IndexError{Code: 500, Message: "status is none"}
+	}
+	info.Status = *state.AccountStatus
+	return &info, nil
 }
 
-func (e IndexError) Error() string {
-	return e.Message
+func WalletInformationFromV3(state WalletState) (*V2WalletInformation, error) {
+	var info V2WalletInformation
+	if !state.IsWallet && !(state.AccountStatus != nil && *state.AccountStatus == "uninit") {
+		return nil, nil
+	}
+
+	if state.Balance == nil {
+		return nil, IndexError{Code: 500, Message: "balance is none"}
+	}
+	info.Balance = *state.Balance
+
+	info.WalletType = state.WalletType
+	info.Seqno = state.Seqno
+	info.WalletId = state.WalletId
+
+	if state.LastTransactionHash == nil {
+		return nil, IndexError{Code: 500, Message: "last_transaction_hash is none"}
+	}
+	info.LastTransactionHash = string(*state.LastTransactionHash)
+	if state.LastTransactionLt == nil {
+		return nil, IndexError{Code: 500, Message: "last_transaction_lt is none"}
+	}
+	info.LastTransactionLt = fmt.Sprintf("%d", *state.LastTransactionLt)
+
+	if state.AccountStatus == nil {
+		return nil, IndexError{Code: 500, Message: "status is none"}
+	}
+	info.Status = *state.AccountStatus
+	if info.Status == "uninit" {
+		info.Status = "uninitialized"
+	}
+	return &info, nil
 }

@@ -29,8 +29,6 @@ definitions:
     properties:
       account_state_hash:
         type: string
-      account_status:
-        type: string
       address:
         type: string
       balance:
@@ -49,6 +47,8 @@ definitions:
         type: string
       last_transaction_lt:
         example: "0"
+        type: string
+      status:
         type: string
     type: object
   AccountStatesResponse:
@@ -341,10 +341,58 @@ definitions:
       type:
         type: string
     type: object
+  Event:
+    properties:
+      actions:
+        items:
+          $ref: '#/definitions/Action'
+        type: array
+      end_lt:
+        type: integer
+      end_utime:
+        type: integer
+      external_hash:
+        type: string
+      is_incomplete:
+        type: boolean
+      mc_seqno_end:
+        type: string
+      mc_seqno_start:
+        type: string
+      start_lt:
+        type: integer
+      start_utime:
+        type: integer
+      trace_id:
+        type: string
+      trace_info:
+        $ref: '#/definitions/EventMeta'
+      transactions:
+        items:
+          $ref: '#/definitions/Transaction'
+        type: array
+    type: object
+  EventMeta:
+    properties:
+      classification_state:
+        type: string
+      messages:
+        type: integer
+      pending_messages:
+        type: integer
+      trace_state:
+        type: string
+      transactions:
+        type: integer
+    type: object
   EventsResponse:
     properties:
       address_book:
         $ref: '#/definitions/AddressBook'
+      events:
+        items:
+          $ref: '#/definitions/Event'
+        type: array
     type: object
   JettonBurn:
     properties:
@@ -782,6 +830,26 @@ definitions:
       status:
         type: string
     type: object
+  V2EstimateFeeResult:
+    properties:
+      destination_fees:
+        items:
+          $ref: '#/definitions/V2EstimatedFee'
+        type: array
+      source_fees:
+        $ref: '#/definitions/V2EstimatedFee'
+    type: object
+  V2EstimatedFee:
+    properties:
+      fwd_fee:
+        type: integer
+      gas_fee:
+        type: integer
+      in_fwd_fee:
+        type: integer
+      storage_fee:
+        type: integer
+    type: object
   V2SendMessageResult:
     properties:
       message_hash:
@@ -808,6 +876,54 @@ definitions:
       wallet_id:
         type: integer
       wallet_type:
+        type: string
+    type: object
+  WalletState:
+    properties:
+      address:
+        type: string
+      balance:
+        type: string
+      code_hash:
+        type: string
+      is_signature_allowed:
+        type: boolean
+      is_wallet:
+        type: boolean
+      last_transaction_hash:
+        type: string
+      last_transaction_lt:
+        example: "0"
+        type: string
+      seqno:
+        type: integer
+      status:
+        type: string
+      wallet_id:
+        type: integer
+      wallet_type:
+        type: string
+    type: object
+  WalletStatesResponse:
+    properties:
+      address_book:
+        $ref: '#/definitions/AddressBook'
+      wallets:
+        items:
+          $ref: '#/definitions/WalletState'
+        type: array
+    type: object
+  index.V2EstimateFeeRequest:
+    properties:
+      address:
+        type: string
+      body:
+        type: string
+      ignore_chksig:
+        type: boolean
+      init_code:
+        type: string
+      init_data:
         type: string
     type: object
   index.V2RunGetMethodRequest:
@@ -947,6 +1063,11 @@ paths:
         name: address
         required: true
         type: string
+      - default: true
+        description: Use method from api/v2. Not recommended
+        in: query
+        name: use_v2
+        type: boolean
       produces:
       - application/json
       responses:
@@ -1045,7 +1166,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -1080,6 +1201,37 @@ paths:
       summary: Get blocks
       tags:
       - blockchain
+  /api/v3/estimateFee:
+    post:
+      consumes:
+      - application/json
+      description: Estimate fees required for query processing. Fields body, init-code
+        and init-data accepted in serialized format (b64-encoded).
+      operationId: api_v3_post_v2_estimate_fee
+      parameters:
+      - description: Estimate fee request.
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/index.V2EstimateFeeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/V2EstimateFeeResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Estimate Fee
+      tags:
+      - api/v2
   /api/v3/events:
     get:
       consumes:
@@ -1098,6 +1250,13 @@ paths:
         items:
           type: string
         name: tx_hash
+        type: array
+      - collectionFormat: multi
+        description: Find event by message hash.
+        in: query
+        items:
+          type: string
+        name: msg_hash
         type: array
       - description: Query events, which was finished **after** given timestamp.
         in: query
@@ -1122,7 +1281,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -1207,7 +1366,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -1266,7 +1425,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -1350,7 +1509,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -1559,10 +1718,13 @@ paths:
       description: Get messages by specified filters.
       operationId: api_v3_get_messages
       parameters:
-      - description: Message hash. Acceptable in hex, base64 and base64url forms.
+      - collectionFormat: multi
+        description: Message hash. Acceptable in hex, base64 and base64url forms.
         in: query
+        items:
+          type: string
         name: msg_hash
-        type: string
+        type: array
       - description: Hash of message body.
         in: query
         name: body_hash
@@ -1591,7 +1753,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -1642,7 +1804,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -1788,7 +1950,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -1880,7 +2042,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -1980,7 +2142,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -2030,7 +2192,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -2095,7 +2257,7 @@ paths:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
-        maximum: 500
+        maximum: 1000
         minimum: 1
         name: limit
         type: integer
@@ -2128,7 +2290,8 @@ paths:
       - application/json
       description: 'Get wallet smart contract information. The following wallets are
         supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`,
-        `v4r2`. In case the account is not a wallet error code 409 is returned.'
+        `v4r2`, `v5beta`, `v5r1`. In case the account is not a wallet error code 409
+        is returned.'
       operationId: api_v3_get_wallet_information
       parameters:
       - description: Account address in any form.
@@ -2136,6 +2299,11 @@ paths:
         name: address
         required: true
         type: string
+      - default: true
+        description: Use method from api/v2. Not recommended
+        in: query
+        name: use_v2
+        type: boolean
       produces:
       - application/json
       responses:
@@ -2153,6 +2321,38 @@ paths:
       summary: Get Wallet Information
       tags:
       - api/v2
+  /api/v3/walletStates:
+    get:
+      consumes:
+      - application/json
+      description: Query wallet information
+      operationId: api_v3_get_wallet_states
+      parameters:
+      - collectionFormat: multi
+        description: 'List of addresses in any form to get address book. Max: 1024.'
+        in: query
+        items:
+          type: string
+        name: address
+        required: true
+        type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/WalletStatesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Wallet States
+      tags:
+      - accounts
 securityDefinitions:
   APIKeyHeader:
     in: header
