@@ -331,12 +331,12 @@ td::Status NftItemDetectorR::verify_with_collection(block::StdAddress collection
 
 td::Result<std::map<std::string, std::string>> NftItemDetectorR::get_content(td::RefInt256 index, td::Ref<vm::Cell> ind_content, block::StdAddress collection_address,
     td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data) {
-  TRY_RESULT(stack, execute_smc_method<1>(collection_address, code_cell_, data_cell_, config_, "get_nft_content", 
+  TRY_RESULT(stack, execute_smc_method<1>(collection_address, collection_code, collection_data, config_, "get_nft_content", 
     {vm::StackEntry(index), vm::StackEntry(ind_content)}, {vm::StackEntry::Type::t_cell}));
 
   const std::string ton_dns_root_addr = "0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF";
 
-  if (collection_address == block::StdAddress(ton_dns_root_addr)) {
+  if (convert::to_raw_address(collection_address) == ton_dns_root_addr) {
     std::map<std::string, std::string> result;
     TRY_RESULT_ASSIGN(result["domain"], get_domain());
     return result;
@@ -395,6 +395,7 @@ void NftCollectionDetectorR::start_up() {
       stop();
       return;
     }
+    data.owner_address = owner_address.move_as_ok();
   }
   auto collection_content = parse_token_data(stack[1].as_cell());
   if (collection_content.is_error()) {
