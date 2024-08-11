@@ -54,8 +54,8 @@ async def _get_block_data(other_blocks):
         else:
             ref_amt = amount
             ref_addr = addr
-    out_wallet = await context.extra_data_repository.get().get_jetton_wallet(out_addr.to_str(False).upper())
-    in_wallet = await context.extra_data_repository.get().get_jetton_wallet(
+    out_wallet = await context.interface_repository.get().get_jetton_wallet(out_addr.to_str(False).upper())
+    in_wallet = await context.interface_repository.get().get_jetton_wallet(
         swap_message.token_wallet.to_str(False).upper())
     out_jetton = AccountId(out_wallet.jetton) if out_wallet is not None else None
     in_jetton = AccountId(in_wallet.jetton) if in_wallet is not None else None

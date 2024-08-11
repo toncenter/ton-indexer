@@ -545,6 +545,19 @@ class NFTTransfer(Base):
                                      foreign_keys=[nft_item_address],
                                      primaryjoin="NFTItem.address == NFTTransfer.nft_item_address",)
 
+
+class NftSale(Base):
+    __tablename__  = 'getgems_nft_sales'
+
+    address = Column(String, primary_key=True)
+    is_complete = Column(Boolean)
+    created_at = Column(BigInteger)
+    marketplace_address = Column(String)
+    nft_address = Column(String)
+    nft_owner_address = Column(String)
+    full_price = Column(Numeric)
+
+
 class LatestAccountState(Base):
     __tablename__ = 'latest_account_states'
     account = Column(String, primary_key=True)

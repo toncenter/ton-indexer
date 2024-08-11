@@ -29,7 +29,7 @@ async def _get_nft_data(nft_address: AccountId):
         "address": nft_address,
         "collection": None
     }
-    nft = await context.extra_data_repository.get().get_nft_item(nft_address.as_str())
+    nft = await context.interface_repository.get().get_nft_item(nft_address.as_str())
     if nft is not None:
         if "uri" in nft.content and "https://nft.fragment.com" in nft.content["uri"]:
             tokens = nft.content["uri"].split("/")
@@ -45,23 +45,18 @@ async def _get_nft_data(nft_address: AccountId):
     return data
 
 
-def _try_get_nft_purchase_data(block: Block, owner: str) -> tuple[list[Block], int] | None:
+async def _try_get_nft_purchase_data(block: Block, owner: str) -> tuple[list[Block], float] | None:
     prev_block = block.previous_block
     event_node = block.previous_block.event_nodes[0]
     if not isinstance(prev_block, TonTransferBlock) or event_node.message.source.upper() != owner.upper():
         return None
+    nft_sale = await context.interface_repository.get().get_nft_sale(event_node.message.transaction.account)
+
     price = 0
     block_to_include = [block.previous_block]
-    for sibling in block.previous_block.next_blocks:
-        if isinstance(sibling, TonTransferBlock) and sibling != block:
-            price += sibling.value
-            block_to_include.append(sibling)
-    tx = event_node.message.transaction
-    flow = block_utils.merge_flows(block_to_include + [block])
-    nft_flow = flow.flow[AccountId(tx.account)]
-    price += nft_flow.ton - nft_flow.fees
-
-    return block_to_include, price
+    if nft_sale is not None:
+        return [block.previous_block], nft_sale.full_price
+    return None
 
 
 class NftTransferBlockMatcher(BlockMatcher):
@@ -92,7 +87,7 @@ class NftTransferBlockMatcher(BlockMatcher):
         data['new_owner'] = AccountId(nft_transfer_message.new_owner)
         data['nft'] = await _get_nft_data(AccountId(block.event_nodes[0].message.transaction.account))
         if block.previous_block is not None and isinstance(block.previous_block, TonTransferBlock):
-            nft_purchase_data = _try_get_nft_purchase_data(block, nft_transfer_message.new_owner.to_str(False))
+            nft_purchase_data = await _try_get_nft_purchase_data(block, nft_transfer_message.new_owner.to_str(False))
             if nft_purchase_data is not None:
                 block_to_include, price = nft_purchase_data
                 data['is_purchase'] = True
@@ -152,7 +147,7 @@ class NftMintBlockMatcher(BlockMatcher):
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         address = next(iter(block.contract_deployments)).as_str()
-        nft_item = await context.extra_data_repository.get().get_nft_item(address)
+        nft_item = await context.interface_repository.get().get_nft_item(address)
         if nft_item is None:
             return []
         source = block.event_nodes[0].message.source

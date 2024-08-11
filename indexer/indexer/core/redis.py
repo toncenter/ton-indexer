@@ -12,4 +12,4 @@ def create_redis_client():
     return aioredis.Redis.from_url(dsn)
 
 
-client = None
+client = create_redis_client()

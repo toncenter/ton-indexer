@@ -62,7 +62,7 @@ class JettonTransferBlockMatcher(BlockMatcher):
         }
         if len(block.next_blocks) > 0:
             data['receiver_wallet'] = AccountId(block.next_blocks[0].event_nodes[0].message.destination)
-        sender = await context.extra_data_repository.get().get_jetton_wallet(
+        sender = await context.interface_repository.get().get_jetton_wallet(
             block.event_nodes[0].message.destination)
         if sender is not None:
             data['sender'] = AccountId(sender.owner) if sender is not None else None
@@ -82,7 +82,7 @@ class JettonTransferBlockMatcher(BlockMatcher):
 
 async def _get_jetton_burn_data(new_block: Block, block: Block | CallContractBlock) -> dict:
     jetton_burn_message = JettonBurn(block.get_body())
-    wallet = await context.extra_data_repository.get().get_jetton_wallet(block.get_message().destination)
+    wallet = await context.interface_repository.get().get_jetton_wallet(block.get_message().destination)
     assert wallet is not None
     new_block.value_flow.add_jetton(AccountId(wallet.owner), AccountId(wallet.jetton), -jetton_burn_message.amount)
     data = {
