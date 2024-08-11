@@ -19,7 +19,8 @@ public:
   };
 private:
   InsertManagerPostgres::Credential credential_;
-  std::int32_t max_data_depth_ = 12;
+  std::int32_t max_data_depth_{0};
+  std::int32_t out_of_sync_seqno_{0};
 public:
   InsertManagerPostgres(InsertManagerPostgres::Credential credential) : credential_(credential) {}
 

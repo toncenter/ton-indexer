@@ -40,6 +40,8 @@ int main(int argc, char *argv[]) {
   std::uint32_t max_insert_actors = 12;
   std::int32_t max_data_depth = 12;
   
+  std::int32_t max_queue_size{-1};
+  std::int32_t max_batch_size{-1};
   QueueState max_queue{100000, 100000, 100000, 100000};
   QueueState batch_size{2000, 2000, 10000, 10000};
   
@@ -200,6 +202,27 @@ int main(int argc, char *argv[]) {
     batch_size.msgs_ = v;
     return td::Status::OK();
   });
+
+  p.add_checked_option('\0', "max-queue-size", "Max size of insert queue", [&](td::Slice fname) { 
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --max-queue-size: not a number");
+    }
+    max_queue_size = v;
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "max-batch-size", "Max size of batch", [&](td::Slice fname) { 
+    int v;
+    try {
+      v = std::stoi(fname.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --max-queue-size: not a number");
+    }
+    max_batch_size = v;
+    return td::Status::OK();
+  });
   
   // scheduler settings
   p.add_checked_option('t', "threads", "Scheduler threads (default: 7)", [&](td::Slice fname) { 
@@ -237,6 +260,22 @@ int main(int argc, char *argv[]) {
   if (S.is_error()) {
     LOG(ERROR) << "failed to parse options: " << S.move_as_error();
     std::_Exit(2);
+  }
+
+  if (max_queue_size) {
+    max_queue.mc_blocks_ = max_queue_size;
+    max_queue.blocks_ = max_queue_size;
+    max_queue.txs_ = max_queue_size;
+    max_queue.msgs_ = max_queue_size;
+    max_queue.traces_ = max_queue_size;
+  }
+
+  if (max_batch_size) {
+    batch_size.mc_blocks_ = max_queue_size;
+    batch_size.blocks_ = max_queue_size;
+    batch_size.txs_ = max_queue_size;
+    batch_size.msgs_ = max_queue_size;
+    batch_size.traces_ = max_queue_size;
   }
 
   auto watcher = td::create_shared_destructor([] {
