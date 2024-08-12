@@ -486,7 +486,7 @@ func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
 		res.Collection = new(NFTCollection)
 		res.Collection.Address = *col.Address
 		res.Collection.NextItemIndex = *col.NextItemIndex
-		res.Collection.OwnerAddress = *col.OwnerAddress
+		res.Collection.OwnerAddress = col.OwnerAddress
 		res.Collection.CollectionContent = col.CollectionContent
 		res.Collection.DataHash = *col.DataHash
 		res.Collection.CodeHash = *col.CodeHash

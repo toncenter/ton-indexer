@@ -269,7 +269,7 @@ type JsonType map[string]interface{}
 
 type NFTCollection struct {
 	Address           AccountAddress         `json:"address"`
-	OwnerAddress      AccountAddress         `json:"owner_address"`
+	OwnerAddress      *AccountAddress        `json:"owner_address"`
 	LastTransactionLt int64                  `json:"last_transaction_lt,string"`
 	NextItemIndex     string                 `json:"next_item_index"`
 	CollectionContent map[string]interface{} `json:"collection_content"`
@@ -295,7 +295,7 @@ type NFTItem struct {
 	Address           AccountAddress         `json:"address"`
 	Init              bool                   `json:"init"`
 	Index             string                 `json:"index"`
-	CollectionAddress AccountAddress         `json:"collection_address"`
+	CollectionAddress *AccountAddress        `json:"collection_address"`
 	OwnerAddress      AccountAddress         `json:"owner_address"`
 	Content           map[string]interface{} `json:"content"`
 	LastTransactionLt int64                  `json:"last_transaction_lt,string"`
