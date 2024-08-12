@@ -19,10 +19,11 @@ public:
   };
 private:
   InsertManagerPostgres::Credential credential_;
+  bool custom_types_{false};
   std::int32_t max_data_depth_{0};
   std::int32_t out_of_sync_seqno_{0};
 public:
-  InsertManagerPostgres(InsertManagerPostgres::Credential credential) : credential_(credential) {}
+  InsertManagerPostgres(InsertManagerPostgres::Credential credential, bool custom_types) : credential_(credential), custom_types_(custom_types) {}
 
   void start_up() override;
 

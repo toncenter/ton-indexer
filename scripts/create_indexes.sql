@@ -79,10 +79,10 @@ create index if not exists nft_transfers_index_10 on nft_transfers (tx_now asc, 
 -- traces
 create index if not exists traces_index_1 on traces (state);
 create index if not exists traces_index_2 on traces (mc_seqno_start asc);
-create index if not exists traces_index_3 on traces (start_lt asc);
-create index if not exists traces_index_4 on traces (start_utime asc);
-create index if not exists traces_index_5 on traces (external_hash, start_lt asc);
-create index if not exists traces_index_6 on traces (external_hash, start_utime asc);
+create index if not exists traces_index_3 on traces (end_lt asc);
+create index if not exists traces_index_4 on traces (end_utime asc);
+create index if not exists traces_index_5 on traces (external_hash, end_lt asc);
+create index if not exists traces_index_6 on traces (external_hash, end_utime asc);
 
 create index if not exists trace_edges_index_1 on trace_edges (msg_hash);
 create index if not exists trace_edges_index_2 on trace_edges (incomplete);

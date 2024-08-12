@@ -34,6 +34,7 @@ int main(int argc, char *argv[]) {
   td::uint32 from_seqno = 0;
   td::uint32 to_seqno = 0;
   bool force_index = false;
+  bool custom_types = false;
   InsertManagerPostgres::Credential credential;
 
   std::uint32_t max_active_tasks = 7;
@@ -81,6 +82,11 @@ int main(int argc, char *argv[]) {
   p.add_option('d', "dbname", "PostgreSQL database name", [&](td::Slice value) { 
     credential.dbname = value.str();
   });
+  p.add_option('\0', "custom-types", "Use pgton extension with custom types", [&]() {
+    custom_types= true;
+    LOG(WARNING) << "Using pgton extension!";
+  });
+
   p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice value) { 
     int v;
     try {
@@ -262,7 +268,7 @@ int main(int argc, char *argv[]) {
     std::_Exit(2);
   }
 
-  if (max_queue_size) {
+  if (max_queue_size > 0) {
     max_queue.mc_blocks_ = max_queue_size;
     max_queue.blocks_ = max_queue_size;
     max_queue.txs_ = max_queue_size;
@@ -270,12 +276,12 @@ int main(int argc, char *argv[]) {
     max_queue.traces_ = max_queue_size;
   }
 
-  if (max_batch_size) {
-    batch_size.mc_blocks_ = max_queue_size;
-    batch_size.blocks_ = max_queue_size;
-    batch_size.txs_ = max_queue_size;
-    batch_size.msgs_ = max_queue_size;
-    batch_size.traces_ = max_queue_size;
+  if (max_batch_size > 0) {
+    batch_size.mc_blocks_ = max_batch_size;
+    batch_size.blocks_ = max_batch_size;
+    batch_size.txs_ = max_batch_size;
+    batch_size.msgs_ = max_batch_size;
+    batch_size.traces_ = max_batch_size;
   }
 
   auto watcher = td::create_shared_destructor([] {
@@ -283,7 +289,7 @@ int main(int argc, char *argv[]) {
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
-  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential); });
+  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential, custom_types); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary); });
 
