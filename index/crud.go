@@ -42,13 +42,15 @@ func limitQuery(lim LimitRequest, settings RequestSettings) (string, error) {
 		*lim.Limit = int32(settings.DefaultLimit)
 	}
 	if lim.Limit != nil {
-		if *lim.Limit > int32(settings.MaxLimit) {
-			return "", IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", *lim.Limit, settings.MaxLimit)}
+		limit := max(1, *lim.Limit)
+		if limit > int32(settings.MaxLimit) {
+			return "", IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
 		}
-		query += fmt.Sprintf(" limit %d", *lim.Limit)
+		query += fmt.Sprintf(" limit %d", limit)
 	}
 	if lim.Offset != nil {
-		query += fmt.Sprintf(" offset %d", *lim.Offset)
+		offset := max(0, *lim.Offset)
+		query += fmt.Sprintf(" offset %d", offset)
 	}
 	return query, nil
 }
@@ -1581,18 +1583,7 @@ func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 
 func assembleEventTraceFromMap(tx_order *[]HashType, txs *map[HashType]*Transaction) (*TraceNode, error) {
 	nodes := map[HashType]*TraceNode{}
-	var root TraceNode
-	{
-		first_tx := (*txs)[(*tx_order)[0]]
-		root = TraceNode{TransactionHash: first_tx.Hash}
-		var in_msg_hash HashType
-		if in_msg := (*first_tx).InMsg; in_msg != nil {
-			in_msg_hash = in_msg.MsgHash
-		}
-		root.InMsgHash = in_msg_hash
-		nodes[in_msg_hash] = &root
-	}
-
+	var root *TraceNode = nil
 	for _, tx_hash := range *tx_order {
 		tx := (*txs)[tx_hash]
 		var in_msg_hash HashType
@@ -1609,9 +1600,13 @@ func assembleEventTraceFromMap(tx_order *[]HashType, txs *map[HashType]*Transact
 		if parent, ok := nodes[in_msg_hash]; ok {
 			delete(nodes, in_msg_hash)
 			parent.Children = append(parent.Children, &node)
+		} else if root == nil {
+			root = &node
+		} else {
+			return nil, fmt.Errorf("failed to build trace: unreachable branch of code")
 		}
 	}
-	return &root, nil
+	return root, nil
 }
 
 // Exported methods
