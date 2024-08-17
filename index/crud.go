@@ -40,7 +40,8 @@ func limitQuery(lim LimitRequest, settings RequestSettings) (string, error) {
 		// set default value
 		lim.Limit = new(int32)
 		*lim.Limit = int32(settings.DefaultLimit)
-	} else {
+	}
+	if lim.Limit != nil {
 		if *lim.Limit > int32(settings.MaxLimit) {
 			return "", IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", *lim.Limit, settings.MaxLimit)}
 		}
@@ -341,9 +342,9 @@ func buildMessagesQuery(
 	return query, nil
 }
 
-func filterByArray[T any](clmn string, v []T) string {
+func filterByArray[T any](clmn string, values []T) string {
 	filter_list := []string{}
-	for _, x := range v {
+	for _, x := range values {
 		t := reflect.ValueOf(x)
 		switch t.Kind() {
 		case reflect.String:
@@ -886,7 +887,8 @@ func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
 }
 
 func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
-	clmn_query := `A.account, A.hash, A.balance, A.account_status, A.frozen_hash, A.last_trans_hash, A.last_trans_lt, A.data_hash, A.code_hash, A.data_boc, A.code_boc`
+	clmn_query_default := `A.account, A.hash, A.balance, A.account_status, A.frozen_hash, A.last_trans_hash, A.last_trans_lt, A.data_hash, A.code_hash, `
+	clmn_query := clmn_query_default + `A.data_boc, A.code_boc`
 	from_query := `latest_account_states as A`
 	filter_list := []string{}
 	filter_query := ``
@@ -910,6 +912,9 @@ func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, s
 		if len(f_str) > 0 {
 			filter_list = append(filter_list, f_str)
 		}
+	}
+	if v := account_req.IncludeBOC; v != nil && !*v {
+		clmn_query = clmn_query_default + `NULL, NULL`
 	}
 
 	if len(filter_list) > 0 {
@@ -1463,7 +1468,7 @@ func queryJettonBurnsImpl(query string, conn *pgxpool.Conn, settings RequestSett
 	return res, nil
 }
 
-func queryActionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Action, error) {
+func queryRawActionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]RawAction, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query)
@@ -1477,9 +1482,9 @@ func queryActionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings
 	// }
 	defer rows.Close()
 
-	res := []Action{}
+	res := []RawAction{}
 	for rows.Next() {
-		if loc, err := ScanAction(rows); err == nil {
+		if loc, err := ScanRawAction(rows); err == nil {
 			res = append(res, *loc)
 		} else {
 			return nil, IndexError{Code: 500, Message: err.Error()}
@@ -1492,26 +1497,121 @@ func queryActionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings
 }
 
 func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Event, error) {
-	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-	defer cancel_ctx()
-	rows, err := conn.Query(ctx, query)
-	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
-	}
-	defer rows.Close()
-
-	res := []Event{}
-	for rows.Next() {
-		if loc, err := ScanEvent(rows); err == nil {
-			res = append(res, *loc)
-		} else {
+	events := []Event{}
+	{
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		rows, err := conn.Query(ctx, query)
+		if err != nil {
 			return nil, IndexError{Code: 500, Message: err.Error()}
 		}
+		defer rows.Close()
+
+		for rows.Next() {
+			if loc, err := ScanEvent(rows); err == nil {
+				loc.Transactions = make(map[HashType]*Transaction)
+				events = append(events, *loc)
+			} else {
+				return nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		if rows.Err() != nil {
+			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		}
 	}
-	if rows.Err() != nil {
-		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+	events_map := map[HashType]int{}
+	trace_id_list := []HashType{}
+	for idx, event := range events {
+		events_map[event.TraceId] = idx
+		trace_id_list = append(trace_id_list, event.TraceId)
 	}
-	return res, nil
+	if len(trace_id_list) > 0 {
+		{
+			query := `select A.trace_id, A.action_id, A.start_lt, A.end_lt, 
+				  A.start_utime, A.end_utime, 
+				  A.source, A.source_secondary, A.destination, A.destination_secondary, 
+				  A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, 
+				  A.opcode, A.tx_hashes, A.type, A.value, A.success, 
+				  (A.ton_transfer_data).content, (A.ton_transfer_data).encrypted, 
+				  (A.jetton_transfer_data).response_address, (A.jetton_transfer_data).forward_amount, (A.jetton_transfer_data).query_id,
+				  (A.nft_transfer_data).is_purchase, (A.nft_transfer_data).price, (A.nft_transfer_data).query_id, 
+				  (A.jetton_swap_data).dex, (A.jetton_swap_data).amount_in, (A.jetton_swap_data).amount_out, (A.jetton_swap_data).peer_swaps, 
+				  (A.change_dns_record_data).key, (A.change_dns_record_data).value_schema, (A.change_dns_record_data).value, (A.change_dns_record_data).flags
+				  from actions as A where ` + filterByArray("A.trace_id", trace_id_list) + ` order by trace_id, start_lt, end_lt`
+			actions, err := queryRawActionsImpl(query, conn, settings)
+			if err != nil {
+				return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query actions: %s", err.Error())}
+			}
+			for idx := range actions {
+				raw_action := &actions[idx]
+				action, err := ParseRawAction(raw_action)
+				if err != nil {
+					return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
+				}
+				events[events_map[action.TraceId]].Actions = append(events[events_map[action.TraceId]].Actions, action)
+			}
+		}
+		{
+			query := `select T.* from transactions as T where ` + filterByArray("T.trace_id", trace_id_list) + ` order by trace_id, lt`
+			txs, err := queryTransactionsImpl(query, conn, settings)
+			if err != nil {
+				return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
+			}
+			for idx := range txs {
+				tx := &txs[idx]
+				if v := tx.TraceId; v != nil {
+					event := &events[events_map[*v]]
+					event.TransactionsOrder = append(event.TransactionsOrder, tx.Hash)
+					event.Transactions[tx.Hash] = tx
+				}
+			}
+		}
+	}
+	for idx := range events {
+		if len(events[idx].TransactionsOrder) > 0 {
+			trace, err := assembleEventTraceFromMap(&events[idx].TransactionsOrder, &events[idx].Transactions)
+			if err != nil {
+				return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to assemble trace: %s", err.Error())}
+			}
+			events[idx].Trace = trace
+		}
+	}
+	return events, nil
+}
+
+func assembleEventTraceFromMap(tx_order *[]HashType, txs *map[HashType]*Transaction) (*TraceNode, error) {
+	nodes := map[HashType]*TraceNode{}
+	var root TraceNode
+	{
+		first_tx := (*txs)[(*tx_order)[0]]
+		root = TraceNode{TransactionHash: first_tx.Hash}
+		var in_msg_hash HashType
+		if in_msg := (*first_tx).InMsg; in_msg != nil {
+			in_msg_hash = in_msg.MsgHash
+		}
+		root.InMsgHash = in_msg_hash
+		nodes[in_msg_hash] = &root
+	}
+
+	for _, tx_hash := range *tx_order {
+		tx := (*txs)[tx_hash]
+		var in_msg_hash HashType
+		if in_msg := tx.InMsg; in_msg != nil {
+			in_msg_hash = in_msg.MsgHash
+		}
+		node := TraceNode{TransactionHash: tx_hash, InMsgHash: in_msg_hash}
+		if len(tx.OutMsgs) == 0 {
+			node.Children = make([]*TraceNode, 0)
+		}
+		for _, msg := range tx.OutMsgs {
+			nodes[msg.MsgHash] = &node
+		}
+		if parent, ok := nodes[in_msg_hash]; ok {
+			delete(nodes, in_msg_hash)
+			parent.Children = append(parent.Children, &node)
+		}
+	}
+	return &root, nil
 }
 
 // Exported methods
@@ -1948,6 +2048,7 @@ func (db *DbClient) QueryJettonWallets(
 
 	res, err := queryJettonWalletsImpl(query, conn, settings)
 	if err != nil {
+		log.Println(query)
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
@@ -2149,14 +2250,14 @@ func (db *DbClient) QueryActions(
 	}
 	defer conn.Release()
 
-	res, err := queryActionsImpl(query, conn, settings)
+	raw_actions, err := queryRawActionsImpl(query, conn, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
 	addr_list := []string{}
-	for _, t := range res {
+	for _, t := range raw_actions {
 		if v := t.Source; v != nil {
 			addr_list = append(addr_list, fmt.Sprintf("'%s'", *v))
 		}
@@ -2191,7 +2292,15 @@ func (db *DbClient) QueryActions(
 			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return res, book, nil
+	actions := []Action{}
+	for idx := range raw_actions {
+		action, err := ParseRawAction(&raw_actions[idx])
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		actions = append(actions, *action)
+	}
+	return actions, book, nil
 }
 
 func (db *DbClient) QueryEvents(
@@ -2202,7 +2311,7 @@ func (db *DbClient) QueryEvents(
 	settings RequestSettings,
 ) ([]Event, AddressBook, error) {
 	query, err := buildEventsQuery(event_req, utime_req, lt_req, lim_req, settings)
-	log.Println(query)
+	// log.Println(query)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}

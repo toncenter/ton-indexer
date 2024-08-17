@@ -381,7 +381,7 @@ type JettonBurn struct {
 } // @name JettonBurn
 
 // traces
-type Action struct {
+type RawAction struct {
 	TraceId                       HashType
 	ActionId                      HashType
 	StartLt                       int64
@@ -417,6 +417,134 @@ type Action struct {
 	ChangeDNSRecordValueSchema    *string
 	ChangeDNSRecordValue          *string
 	ChangeDNSRecordFlags          *int64
+} // @name RawAction
+
+type ActionDetailsCallContract struct {
+	OpCode      *OpcodeType     `json:"opcode"`
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+	Value       *string         `json:"value"`
+}
+
+type ActionDetailsTonTransfer struct {
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+	Value       *string         `json:"value"`
+	Comment     *string         `json:"comment"`
+	Encrypted   *bool           `json:"encrypted"`
+}
+
+type ActionDetailsChangeDnsValue struct {
+	SumType       *string `json:"sum_type"`
+	DnsSmcAddress *string `json:"dns_smc_address"`
+	Flags         *int64  `json:"flags"`
+}
+
+type ActionDetailsChangeDns struct {
+	Key   *string                     `json:"key"`
+	Value ActionDetailsChangeDnsValue `json:"value"`
+}
+
+type ActionDetailsDeleteDns struct {
+	Key *string `json:"hash"`
+}
+
+type ActionDetailsElectionDeposit struct {
+	StakeHolder *AccountAddress `json:"stake_holder"`
+	Amount      *string         `json:"amount,omitempty"`
+}
+
+type ActionDetailsElectionRecover struct {
+	StakeHolder *AccountAddress `json:"stake_holder"`
+	Amount      *string         `json:"amount,omitempty"`
+}
+
+type ActionDetailsJettonBurn struct {
+	Owner             *AccountAddress `json:"owner"`
+	OwnerJettonWallet *AccountAddress `json:"owner_jetton_wallet"`
+	Asset             *AccountAddress `json:"asset"`
+	Amount            *string         `json:"amount"`
+}
+
+type ActionDetailsJettonSwapTransfer struct {
+	Asset        *AccountAddress `json:"asset"`
+	JettonWallet *AccountAddress `json:"jetton_wallet,omitempty"`
+	Amount       *string         `json:"amount"`
+}
+
+type ActionDetailsJettonSwap struct {
+	Dex       *string                          `json:"dex"`
+	Sender    *AccountAddress                  `json:"sender"`
+	In        *ActionDetailsJettonSwapTransfer `json:"in"`
+	Out       *ActionDetailsJettonSwapTransfer `json:"out"`
+	PeerSwaps []string                         `json:"peer_swaps"`
+}
+
+type ActionDetailsJettonTransfer struct {
+	Sender               *AccountAddress `json:"sender"`
+	Receiver             *AccountAddress `json:"receiver"`
+	SenderJettonWallet   *AccountAddress `json:"sender_jetton_wallet"`
+	ReceiverJettonWallet *AccountAddress `json:"receiver_jetton_wallet"`
+	Asset                *AccountAddress `json:"asset"`
+	Amount               *string         `json:"amount"`
+	ResponseAddress      *AccountAddress `json:"response_address"`
+	ForwardAmount        *string         `json:"forward_amount"`
+	QueryId              *string         `json:"query_id"`
+	Comment              *string         `json:"comment"`
+}
+
+type ActionDetailsNftMint struct {
+	Owner         *AccountAddress `json:"owner,omitempty"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+}
+
+type ActionDetailsNftTransfer struct {
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	OldOwner      *AccountAddress `json:"old_owner,omitempty"`
+	NewOwner      *AccountAddress `json:"new_owner"`
+	QueryId       *string         `json:"query_id"`
+	IsPurchase    *bool           `json:"is_purchase"`
+	Price         *string         `json:"price,omitempty"`
+}
+
+type ActionDetailsTickTock struct {
+	Account *AccountAddress `json:"account,omitempty"`
+}
+
+type ActionDetailsSubscribe struct {
+	Subscriber   *AccountAddress `json:"subscriber"`
+	Subscription *AccountAddress `json:"subscription"`
+	Beneficiary  *AccountAddress `json:"beneficiary,omitempty"`
+	Amount       *string         `json:"amount"`
+}
+
+type ActionDetailsUnsubscribe struct {
+	Subscriber   *AccountAddress `json:"subscriber"`
+	Subscription *AccountAddress `json:"subscription"`
+	Beneficiary  *AccountAddress `json:"beneficiary,omitempty"`
+	Amount       *string         `json:"amount,omitempty"`
+}
+
+type ActionDetailsWtonMint struct {
+	Amount   *string         `json:"amount"`
+	Receiver *AccountAddress `json:"receiver"`
+}
+
+type Action struct {
+	TraceId    HashType    `json:"trace_id"`
+	ActionId   HashType    `json:"action_id"`
+	StartLt    int64       `json:"start_lt"`
+	EndLt      int64       `json:"end_lt"`
+	StartUtime int64       `json:"start_utime"`
+	EndUtime   int64       `json:"end_utime"`
+	TxHashes   []*HashType `json:"transactions"`
+	Success    *bool       `json:"success"`
+	Type       string      `json:"type"`
+	Details    interface{} `json:"details"`
+	RawAction  *RawAction  `json:"raw_action,omitempty"`
 } // @name Action
 
 type EventMeta struct {
@@ -427,19 +555,29 @@ type EventMeta struct {
 	ClassificationState string `json:"classification_state"`
 } // @name EventMeta
 
+type TraceNode struct {
+	TransactionHash HashType     `json:"tx_hash,omitempty"`
+	InMsgHash       HashType     `json:"in_msg_hash,omitempty"`
+	Transaction     *Transaction `json:"transaction,omitempty"`
+	InMsg           *Message     `json:"in_msg,omitempty"`
+	Children        []*TraceNode `json:"children"`
+} // @name TraceNode
+
 type Event struct {
-	TraceId      HashType      `json:"trace_id"`
-	ExternalHash *HashType     `json:"external_hash"`
-	McSeqnoStart HashType      `json:"mc_seqno_start"`
-	McSeqnoEnd   HashType      `json:"mc_seqno_end"`
-	StartLt      uint64        `json:"start_lt"`
-	StartUtime   uint32        `json:"start_utime"`
-	EndLt        uint64        `json:"end_lt"`
-	EndUtime     uint32        `json:"end_utime"`
-	EventMeta    EventMeta     `json:"trace_info"`
-	IsIncomplete bool          `json:"is_incomplete"`
-	Actions      []Action      `json:"actions"`
-	Transactions []Transaction `json:"transactions"`
+	TraceId           HashType                  `json:"trace_id"`
+	ExternalHash      *HashType                 `json:"external_hash"`
+	McSeqnoStart      HashType                  `json:"mc_seqno_start"`
+	McSeqnoEnd        HashType                  `json:"mc_seqno_end"`
+	StartLt           uint64                    `json:"start_lt"`
+	StartUtime        uint32                    `json:"start_utime"`
+	EndLt             uint64                    `json:"end_lt"`
+	EndUtime          uint32                    `json:"end_utime"`
+	EventMeta         EventMeta                 `json:"trace_info"`
+	IsIncomplete      bool                      `json:"is_incomplete"`
+	Actions           []*Action                 `json:"actions,omitempty"`
+	Trace             *TraceNode                `json:"trace,omitempty"`
+	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
+	Transactions      map[HashType]*Transaction `json:"transactions,omitempty"`
 } // @name Event
 
 // proxied models
@@ -508,6 +646,9 @@ func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, er
 		return nil, IndexError{Code: 500, Message: "status is none"}
 	}
 	info.Status = *state.AccountStatus
+	if info.Status == "uninit" {
+		info.Status = "uninitialized"
+	}
 	return &info, nil
 }
 

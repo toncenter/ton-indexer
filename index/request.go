@@ -105,6 +105,7 @@ type LtRequest struct {
 type AccountRequest struct {
 	AccountAddress []AccountAddress `query:"address"`
 	CodeHash       []HashType       `query:"code_hash"`
+	IncludeBOC     *bool            `query:"include_boc"`
 }
 
 type ActionRequest struct {

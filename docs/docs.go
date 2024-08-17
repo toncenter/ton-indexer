@@ -48,6 +48,13 @@ const docTemplate = `{
                         "name": "address",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include code and data BOCs. Default: true",
+                        "name": "include_boc",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2200,115 +2207,38 @@ const docTemplate = `{
         "Action": {
             "type": "object",
             "properties": {
-                "actionId": {
+                "action_id": {
                     "type": "string"
                 },
-                "asset": {
-                    "type": "string"
-                },
-                "asset2": {
-                    "type": "string"
-                },
-                "asset2Secondary": {
-                    "type": "string"
-                },
-                "assetSecondary": {
-                    "type": "string"
-                },
-                "changeDNSRecordFlags": {
+                "details": {},
+                "end_lt": {
                     "type": "integer"
                 },
-                "changeDNSRecordKey": {
-                    "type": "string"
-                },
-                "changeDNSRecordValue": {
-                    "type": "string"
-                },
-                "changeDNSRecordValueSchema": {
-                    "type": "string"
-                },
-                "destination": {
-                    "type": "string"
-                },
-                "destinationSecondary": {
-                    "type": "string"
-                },
-                "endLt": {
+                "end_utime": {
                     "type": "integer"
                 },
-                "endUtime": {
+                "raw_action": {
+                    "$ref": "#/definitions/RawAction"
+                },
+                "start_lt": {
                     "type": "integer"
                 },
-                "jettonSwapAmountIn": {
-                    "type": "string"
-                },
-                "jettonSwapAmountOut": {
-                    "type": "string"
-                },
-                "jettonSwapDex": {
-                    "type": "string"
-                },
-                "jettonSwapPeerSwaps": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "jettonTransferForwardAmount": {
-                    "type": "string"
-                },
-                "jettonTransferQueryId": {
-                    "type": "string"
-                },
-                "jettonTransferResponseAddress": {
-                    "type": "string"
-                },
-                "nfttransferIsPurchase": {
-                    "type": "boolean"
-                },
-                "nfttransferPrice": {
-                    "type": "string"
-                },
-                "nfttransferQueryId": {
-                    "type": "string"
-                },
-                "opcode": {
-                    "type": "integer"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "sourceSecondary": {
-                    "type": "string"
-                },
-                "startLt": {
-                    "type": "integer"
-                },
-                "startUtime": {
+                "start_utime": {
                     "type": "integer"
                 },
                 "success": {
                     "type": "boolean"
                 },
-                "tonTransferContent": {
+                "trace_id": {
                     "type": "string"
                 },
-                "tonTransferEncrypted": {
-                    "type": "boolean"
-                },
-                "traceId": {
-                    "type": "string"
-                },
-                "txHashes": {
+                "transactions": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "type": {
-                    "type": "string"
-                },
-                "value": {
                     "type": "string"
                 }
             }
@@ -2649,6 +2579,9 @@ const docTemplate = `{
                 "start_utime": {
                     "type": "integer"
                 },
+                "trace": {
+                    "$ref": "#/definitions/TraceNode"
+                },
                 "trace_id": {
                     "type": "string"
                 },
@@ -2656,9 +2589,15 @@ const docTemplate = `{
                     "$ref": "#/definitions/EventMeta"
                 },
                 "transactions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/Transaction"
+                    }
+                },
+                "transactions_order": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/Transaction"
+                        "type": "string"
                     }
                 }
             }
@@ -3167,6 +3106,122 @@ const docTemplate = `{
                 }
             }
         },
+        "RawAction": {
+            "type": "object",
+            "properties": {
+                "actionId": {
+                    "type": "string"
+                },
+                "asset": {
+                    "type": "string"
+                },
+                "asset2": {
+                    "type": "string"
+                },
+                "asset2Secondary": {
+                    "type": "string"
+                },
+                "assetSecondary": {
+                    "type": "string"
+                },
+                "changeDNSRecordFlags": {
+                    "type": "integer"
+                },
+                "changeDNSRecordKey": {
+                    "type": "string"
+                },
+                "changeDNSRecordValue": {
+                    "type": "string"
+                },
+                "changeDNSRecordValueSchema": {
+                    "type": "string"
+                },
+                "destination": {
+                    "type": "string"
+                },
+                "destinationSecondary": {
+                    "type": "string"
+                },
+                "endLt": {
+                    "type": "integer"
+                },
+                "endUtime": {
+                    "type": "integer"
+                },
+                "jettonSwapAmountIn": {
+                    "type": "string"
+                },
+                "jettonSwapAmountOut": {
+                    "type": "string"
+                },
+                "jettonSwapDex": {
+                    "type": "string"
+                },
+                "jettonSwapPeerSwaps": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "jettonTransferForwardAmount": {
+                    "type": "string"
+                },
+                "jettonTransferQueryId": {
+                    "type": "string"
+                },
+                "jettonTransferResponseAddress": {
+                    "type": "string"
+                },
+                "nfttransferIsPurchase": {
+                    "type": "boolean"
+                },
+                "nfttransferPrice": {
+                    "type": "string"
+                },
+                "nfttransferQueryId": {
+                    "type": "string"
+                },
+                "opcode": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "sourceSecondary": {
+                    "type": "string"
+                },
+                "startLt": {
+                    "type": "integer"
+                },
+                "startUtime": {
+                    "type": "integer"
+                },
+                "success": {
+                    "type": "boolean"
+                },
+                "tonTransferContent": {
+                    "type": "string"
+                },
+                "tonTransferEncrypted": {
+                    "type": "boolean"
+                },
+                "traceId": {
+                    "type": "string"
+                },
+                "txHashes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "type": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
         "RequestError": {
             "type": "object",
             "properties": {
@@ -3208,6 +3263,29 @@ const docTemplate = `{
                 "storage_fees_due": {
                     "type": "string",
                     "example": "0"
+                }
+            }
+        },
+        "TraceNode": {
+            "type": "object",
+            "properties": {
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/TraceNode"
+                    }
+                },
+                "in_msg": {
+                    "$ref": "#/definitions/Message"
+                },
+                "in_msg_hash": {
+                    "type": "string"
+                },
+                "transaction": {
+                    "$ref": "#/definitions/Transaction"
+                },
+                "tx_hash": {
+                    "type": "string"
                 }
             }
         },

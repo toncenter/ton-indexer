@@ -259,7 +259,7 @@ func ParseWalletState(state AccountStateFull) (*WalletState, error) {
 		} else {
 			log.Println("Parser not found for:", state)
 		}
-	} else {
+	} else if state.AccountStatus != nil && *state.AccountStatus == "active" {
 		log.Println("Failed to parse state:", state)
 	}
 	info.AccountAddress = *state.AccountAddress
@@ -269,6 +269,137 @@ func ParseWalletState(state AccountStateFull) (*WalletState, error) {
 	info.LastTransactionHash = state.LastTransactionHash
 	info.LastTransactionLt = state.LastTransactionLt
 	return &info, nil
+}
+
+func ParseRawAction(raw *RawAction) (*Action, error) {
+	var act Action
+
+	act.TraceId = raw.TraceId
+	act.ActionId = raw.ActionId
+	act.StartLt = raw.StartLt
+	act.EndLt = raw.EndLt
+	act.StartUtime = raw.StartUtime
+	act.EndUtime = raw.EndUtime
+	act.TxHashes = raw.TxHashes
+	act.Success = raw.Success
+	act.Type = raw.Type
+
+	switch act.Type {
+	case "call_contract":
+		var details ActionDetailsCallContract
+		details.OpCode = raw.Opcode
+		details.Source = raw.Source
+		details.Destination = raw.Destination
+		details.Value = raw.Value
+		act.Details = &details
+	case "ton_transfer":
+		var details ActionDetailsTonTransfer
+		details.Source = raw.Source
+		details.Destination = raw.Destination
+		details.Value = raw.Value
+		details.Comment = raw.TonTransferContent
+		details.Encrypted = raw.TonTransferEncrypted
+		act.Details = &details
+	case "change_dns":
+		var details ActionDetailsChangeDns
+		details.Key = raw.ChangeDNSRecordKey
+		details.Value.SumType = raw.ChangeDNSRecordValueSchema
+		details.Value.DnsSmcAddress = raw.ChangeDNSRecordValue
+		details.Value.Flags = raw.ChangeDNSRecordFlags
+		act.Details = &details
+	case "delete_dns":
+		var details ActionDetailsDeleteDns
+		details.Key = raw.ChangeDNSRecordKey
+		act.Details = &details
+	case "election_deposit":
+		var details ActionDetailsElectionDeposit
+		details.StakeHolder = raw.Source
+		details.Amount = raw.Value
+		act.Details = &details
+	case "election_recover":
+		var details ActionDetailsElectionRecover
+		details.StakeHolder = raw.Source
+		details.Amount = raw.Value
+		act.Details = &details
+	case "jetton_burn":
+		var details ActionDetailsJettonBurn
+		details.Owner = raw.Source
+		details.OwnerJettonWallet = raw.SourceSecondary
+		details.Asset = raw.Asset
+		details.Amount = raw.Value
+		act.Details = &details
+	case "jetton_swap":
+		// TODO: swap In and Out amounts
+		var details ActionDetailsJettonSwap
+		details.Dex = raw.JettonSwapDex
+		details.Sender = raw.Source
+		details.Out = &ActionDetailsJettonSwapTransfer{}
+		details.In = &ActionDetailsJettonSwapTransfer{}
+		details.Out.Asset = raw.Asset
+		details.Out.JettonWallet = raw.SourceSecondary
+		details.Out.Amount = raw.JettonSwapAmountOut
+		details.In.Asset = raw.Asset2
+		details.In.JettonWallet = raw.DestinationSecondary
+		details.In.Amount = raw.JettonSwapAmountIn
+		details.PeerSwaps = raw.JettonSwapPeerSwaps
+		act.Details = &details
+	case "jetton_transfer":
+		// TODO: Fix missing fields: payload, comment
+		var details ActionDetailsJettonTransfer
+		details.Sender = raw.Source
+		details.SenderJettonWallet = raw.SourceSecondary
+		details.Receiver = raw.Destination
+		details.ReceiverJettonWallet = raw.DestinationSecondary
+		details.Asset = raw.Asset
+		details.Amount = raw.Value
+		details.ResponseAddress = raw.JettonTransferResponseAddress
+		details.ForwardAmount = raw.JettonTransferForwardAmount
+		details.QueryId = raw.JettonTransferQueryId
+		act.Details = &details
+	case "nft_mint":
+		// TODO: Fix missing nft_item_index field
+		var details ActionDetailsNftMint
+		details.Owner = raw.Source
+		details.NftCollection = raw.Asset
+		details.NftItem = raw.AssetSecondary
+		act.Details = &details
+	case "nft_transfer":
+		// TODO: asset = collection, asset_secondary = item, payload, forward_amount, response_dest
+		var details ActionDetailsNftTransfer
+		details.NftItem = raw.Asset
+		details.NftCollection = nil // FIXME
+		details.OldOwner = raw.Source
+		details.NewOwner = raw.Destination
+		details.QueryId = raw.NFTTransferQueryId
+		details.IsPurchase = raw.NFTTransferIsPurchase
+		details.Price = raw.NFTTransferPrice
+		act.Details = &details
+	case "tick_tock":
+		// TODO: fill source = account
+		var details ActionDetailsTickTock
+		act.Details = &details
+	case "subscribe":
+		// TODO: source -- subscriber, destination -- beneficiary, destination_secondary -- subscription
+		var details ActionDetailsSubscribe
+		details.Subscriber = raw.Source
+		details.Subscription = raw.Destination
+		details.Beneficiary = raw.SourceSecondary
+		details.Amount = raw.Value
+		act.Details = &details
+	case "unsubscribe":
+		var details ActionDetailsUnsubscribe
+		details.Subscriber = raw.Source
+		details.Subscription = raw.Destination
+		details.Beneficiary = raw.SourceSecondary
+		details.Amount = raw.Value
+		act.Details = &details
+	default:
+		details := map[string]string{}
+		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
+		act.Details = &details
+		act.RawAction = raw
+	}
+	return &act, nil
 }
 
 // query to model
@@ -553,8 +684,8 @@ func ScanJettonBurn(row pgx.Row) (*JettonBurn, error) {
 	return &res, nil
 }
 
-func ScanAction(row pgx.Row) (*Action, error) {
-	var act Action
+func ScanRawAction(row pgx.Row) (*RawAction, error) {
+	var act RawAction
 	err := row.Scan(&act.TraceId, &act.ActionId, &act.StartLt, &act.EndLt, &act.StartUtime, &act.EndUtime,
 		&act.Source, &act.SourceSecondary, &act.Destination, &act.DestinationSecondary,
 		&act.Asset, &act.AssetSecondary, &act.Asset2, &act.Asset2Secondary,

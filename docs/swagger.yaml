@@ -62,79 +62,28 @@ definitions:
     type: object
   Action:
     properties:
-      actionId:
+      action_id:
         type: string
-      asset:
-        type: string
-      asset2:
-        type: string
-      asset2Secondary:
-        type: string
-      assetSecondary:
-        type: string
-      changeDNSRecordFlags:
+      details: {}
+      end_lt:
         type: integer
-      changeDNSRecordKey:
-        type: string
-      changeDNSRecordValue:
-        type: string
-      changeDNSRecordValueSchema:
-        type: string
-      destination:
-        type: string
-      destinationSecondary:
-        type: string
-      endLt:
+      end_utime:
         type: integer
-      endUtime:
+      raw_action:
+        $ref: '#/definitions/RawAction'
+      start_lt:
         type: integer
-      jettonSwapAmountIn:
-        type: string
-      jettonSwapAmountOut:
-        type: string
-      jettonSwapDex:
-        type: string
-      jettonSwapPeerSwaps:
-        items:
-          type: string
-        type: array
-      jettonTransferForwardAmount:
-        type: string
-      jettonTransferQueryId:
-        type: string
-      jettonTransferResponseAddress:
-        type: string
-      nfttransferIsPurchase:
-        type: boolean
-      nfttransferPrice:
-        type: string
-      nfttransferQueryId:
-        type: string
-      opcode:
-        type: integer
-      source:
-        type: string
-      sourceSecondary:
-        type: string
-      startLt:
-        type: integer
-      startUtime:
+      start_utime:
         type: integer
       success:
         type: boolean
-      tonTransferContent:
+      trace_id:
         type: string
-      tonTransferEncrypted:
-        type: boolean
-      traceId:
-        type: string
-      txHashes:
+      transactions:
         items:
           type: string
         type: array
       type:
-        type: string
-      value:
         type: string
     type: object
   ActionPhase:
@@ -363,13 +312,19 @@ definitions:
         type: integer
       start_utime:
         type: integer
+      trace:
+        $ref: '#/definitions/TraceNode'
       trace_id:
         type: string
       trace_info:
         $ref: '#/definitions/EventMeta'
       transactions:
-        items:
+        additionalProperties:
           $ref: '#/definitions/Transaction'
+        type: object
+      transactions_order:
+        items:
+          type: string
         type: array
     type: object
   EventMeta:
@@ -706,6 +661,83 @@ definitions:
           $ref: '#/definitions/NFTTransfer'
         type: array
     type: object
+  RawAction:
+    properties:
+      actionId:
+        type: string
+      asset:
+        type: string
+      asset2:
+        type: string
+      asset2Secondary:
+        type: string
+      assetSecondary:
+        type: string
+      changeDNSRecordFlags:
+        type: integer
+      changeDNSRecordKey:
+        type: string
+      changeDNSRecordValue:
+        type: string
+      changeDNSRecordValueSchema:
+        type: string
+      destination:
+        type: string
+      destinationSecondary:
+        type: string
+      endLt:
+        type: integer
+      endUtime:
+        type: integer
+      jettonSwapAmountIn:
+        type: string
+      jettonSwapAmountOut:
+        type: string
+      jettonSwapDex:
+        type: string
+      jettonSwapPeerSwaps:
+        items:
+          type: string
+        type: array
+      jettonTransferForwardAmount:
+        type: string
+      jettonTransferQueryId:
+        type: string
+      jettonTransferResponseAddress:
+        type: string
+      nfttransferIsPurchase:
+        type: boolean
+      nfttransferPrice:
+        type: string
+      nfttransferQueryId:
+        type: string
+      opcode:
+        type: integer
+      source:
+        type: string
+      sourceSecondary:
+        type: string
+      startLt:
+        type: integer
+      startUtime:
+        type: integer
+      success:
+        type: boolean
+      tonTransferContent:
+        type: string
+      tonTransferEncrypted:
+        type: boolean
+      traceId:
+        type: string
+      txHashes:
+        items:
+          type: string
+        type: array
+      type:
+        type: string
+      value:
+        type: string
+    type: object
   RequestError:
     properties:
       code:
@@ -733,6 +765,21 @@ definitions:
         type: string
       storage_fees_due:
         example: "0"
+        type: string
+    type: object
+  TraceNode:
+    properties:
+      children:
+        items:
+          $ref: '#/definitions/TraceNode'
+        type: array
+      in_msg:
+        $ref: '#/definitions/Message'
+      in_msg_hash:
+        type: string
+      transaction:
+        $ref: '#/definitions/Transaction'
+      tx_hash:
         type: string
     type: object
   Transaction:
@@ -964,6 +1011,11 @@ paths:
         name: address
         required: true
         type: array
+      - default: true
+        description: 'Include code and data BOCs. Default: true'
+        in: query
+        name: include_boc
+        type: boolean
       produces:
       - application/json
       responses:
