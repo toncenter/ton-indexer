@@ -3,6 +3,7 @@ package index
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"net/url"
 	"reflect"
@@ -183,7 +184,16 @@ func PostMessage(req V2SendMessageRequest, settings RequestSettings) (*V2SendMes
 	}
 
 	if jsn["ok"] != true {
-		return nil, IndexError{Code: jsn["error"].(int), Message: fmt.Sprintf("%v", jsn["error"])}
+		code := 500
+		switch val := jsn["code"].(type) {
+		case int:
+			code = val
+		case float64:
+			code = int(val)
+		default:
+			log.Printf("unexpected type: '%v' value: '%v'", reflect.TypeOf(jsn["code"]), jsn["code"])
+		}
+		return nil, IndexError{Code: code, Message: fmt.Sprintf("%v", jsn["error"])}
 	}
 	res := jsn["result"].(map[string]interface{})
 
