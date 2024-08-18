@@ -3,6 +3,19 @@ cmake_minimum_required(VERSION 3.16)
 project(ton-index-cpp)
 
 option(PGTON "Enable adding the pgton subdirectory" OFF)
+option(TON_USE_JEMALLOC "Use \"ON\" to enable JeMalloc." OFF)
+
+# Find jemalloc
+if (TON_USE_JEMALLOC)
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/ton/CMake")
+    find_package(jemalloc REQUIRED)
+
+    if (JEMALLOC_FOUND)
+        include_directories(${JEMALLOC_INCLUDE_DIR})
+        link_libraries(${JEMALLOC_LIBRARIES})
+        add_compile_definitions(TON_USE_JEMALLOC)
+    endif()
+endif()
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 add_subdirectory(external/ton EXCLUDE_FROM_ALL)
