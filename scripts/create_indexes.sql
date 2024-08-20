@@ -87,5 +87,8 @@ create index if not exists traces_index_6 on traces (external_hash, end_utime as
 create index if not exists trace_edges_index_1 on trace_edges (msg_hash);
 create index if not exists trace_edges_index_2 on trace_edges (incomplete);
 
+create index if not exists actions_index_1 on actions (trace_id, start_lt, end_lt);
+create index if not exists actions_index_2 on actions (action_id);
+
 create index if not exists trace_unclassified_index on traces (start_lt asc) include (trace_id, state) where (classification_state = 'unclassified');
 commit;
