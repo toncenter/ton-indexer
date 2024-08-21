@@ -2599,6 +2599,9 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "warning": {
+                    "type": "string"
                 }
             }
         },
@@ -3112,6 +3115,9 @@ const docTemplate = `{
                 "actionId": {
                     "type": "string"
                 },
+                "amount": {
+                    "type": "string"
+                },
                 "asset": {
                     "type": "string"
                 },
@@ -3148,13 +3154,43 @@ const docTemplate = `{
                 "endUtime": {
                     "type": "integer"
                 },
-                "jettonSwapAmountIn": {
-                    "type": "string"
-                },
-                "jettonSwapAmountOut": {
-                    "type": "string"
-                },
                 "jettonSwapDex": {
+                    "type": "string"
+                },
+                "jettonSwapDexIncomingTransferAmount": {
+                    "type": "string"
+                },
+                "jettonSwapDexIncomingTransferAsset": {
+                    "type": "string"
+                },
+                "jettonSwapDexIncomingTransferDestination": {
+                    "type": "string"
+                },
+                "jettonSwapDexIncomingTransferDestinationJettonWallet": {
+                    "type": "string"
+                },
+                "jettonSwapDexIncomingTransferSource": {
+                    "type": "string"
+                },
+                "jettonSwapDexIncomingTransferSourceJettonWallet": {
+                    "type": "string"
+                },
+                "jettonSwapDexOutgoingTransferAmount": {
+                    "type": "string"
+                },
+                "jettonSwapDexOutgoingTransferAsset": {
+                    "type": "string"
+                },
+                "jettonSwapDexOutgoingTransferDestination": {
+                    "type": "string"
+                },
+                "jettonSwapDexOutgoingTransferDestinationJettonWallet": {
+                    "type": "string"
+                },
+                "jettonSwapDexOutgoingTransferSource": {
+                    "type": "string"
+                },
+                "jettonSwapDexOutgoingTransferSourceJettonWallet": {
                     "type": "string"
                 },
                 "jettonSwapPeerSwaps": {
@@ -3163,22 +3199,55 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "jettonSwapSender": {
+                    "type": "string"
+                },
+                "jettonTransferComment": {
+                    "type": "string"
+                },
+                "jettonTransferCustomPayload": {
+                    "type": "string"
+                },
                 "jettonTransferForwardAmount": {
                     "type": "string"
+                },
+                "jettonTransferForwardPayload": {
+                    "type": "string"
+                },
+                "jettonTransferIsEncryptedComment": {
+                    "type": "boolean"
                 },
                 "jettonTransferQueryId": {
                     "type": "string"
                 },
-                "jettonTransferResponseAddress": {
+                "jettonTransferResponseDestination": {
+                    "type": "string"
+                },
+                "nftmintNFTItemIndex": {
+                    "type": "string"
+                },
+                "nfttransferCustomPayload": {
+                    "type": "string"
+                },
+                "nfttransferForwardAmount": {
+                    "type": "string"
+                },
+                "nfttransferForwardPayload": {
                     "type": "string"
                 },
                 "nfttransferIsPurchase": {
                     "type": "boolean"
                 },
+                "nfttransferNFTItemIndex": {
+                    "type": "string"
+                },
                 "nfttransferPrice": {
                     "type": "string"
                 },
                 "nfttransferQueryId": {
+                    "type": "string"
+                },
+                "nfttransferResponseDestination": {
                     "type": "string"
                 },
                 "opcode": {

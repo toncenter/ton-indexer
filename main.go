@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -62,7 +63,8 @@ var settings Settings
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetMasterchainInfo(c *fiber.Ctx) error {
-	info, err := pool.QueryMasterchainInfo(settings.Request)
+	request_settings := GetRequestSettings(c, &settings)
+	info, err := pool.QueryMasterchainInfo(request_settings)
 	if err != nil {
 		return err
 	}
@@ -92,6 +94,8 @@ func GetMasterchainInfo(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetBlocks(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+
 	blk_req := index.BlockRequest{}
 	utime_req := index.UtimeRequest{}
 	lt_req := index.LtRequest{}
@@ -110,7 +114,7 @@ func GetBlocks(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	blks, err := pool.QueryBlocks(blk_req, utime_req, lt_req, lim_req, settings.Request)
+	blks, err := pool.QueryBlocks(blk_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -135,8 +139,9 @@ func GetBlocks(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetShards(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	seqno := c.QueryInt("seqno")
-	blks, err := pool.QueryShards(seqno, settings.Request)
+	blks, err := pool.QueryShards(seqno, request_settings)
 	if err != nil {
 		return err
 	}
@@ -165,11 +170,12 @@ func GetShards(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetShardsDiff(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	seqno := c.QueryInt("seqno")
 	blk_req := index.BlockRequest{}
 	blk_req.McSeqno = new(int32)
 	*blk_req.McSeqno = int32(seqno)
-	blks, err := pool.QueryBlocks(blk_req, index.UtimeRequest{}, index.LtRequest{}, index.LimitRequest{}, settings.Request)
+	blks, err := pool.QueryBlocks(blk_req, index.UtimeRequest{}, index.LtRequest{}, index.LimitRequest{}, request_settings)
 	if err != nil {
 		return err
 	}
@@ -208,6 +214,7 @@ func GetShardsDiff(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetTransactions(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	blk_req := index.BlockRequest{}
 	tx_req := index.TransactionRequest{}
 	utime_req := index.UtimeRequest{}
@@ -232,7 +239,7 @@ func GetTransactions(c *fiber.Ctx) error {
 
 	txs, book, err := pool.QueryTransactions(
 		blk_req, tx_req, index.MessageRequest{},
-		utime_req, lt_req, lim_req, settings.Request)
+		utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -258,12 +265,13 @@ func GetTransactions(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetAdjacentTransactions(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	req := index.AdjacentTransactionRequest{}
 
 	if err := c.QueryParser(&req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
-	txs, book, err := pool.QueryAdjacentTransactions(req, settings.Request)
+	txs, book, err := pool.QueryAdjacentTransactions(req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -291,6 +299,7 @@ func GetAdjacentTransactions(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	seqno := int32(c.QueryInt("seqno"))
 	lim_req := index.LimitRequest{}
 	blk_req := index.BlockRequest{McSeqno: &seqno}
@@ -301,7 +310,7 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 
 	txs, book, err := pool.QueryTransactions(
 		blk_req, index.TransactionRequest{}, index.MessageRequest{}, index.UtimeRequest{},
-		index.LtRequest{}, lim_req, settings.Request)
+		index.LtRequest{}, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -335,6 +344,7 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetTransactionsByMessage(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	msg_req := index.MessageRequest{}
 	lim_req := index.LimitRequest{}
 
@@ -350,7 +360,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 
 	txs, book, err := pool.QueryTransactions(
 		index.BlockRequest{}, index.TransactionRequest{}, msg_req,
-		index.UtimeRequest{}, index.LtRequest{}, lim_req, settings.Request)
+		index.UtimeRequest{}, index.LtRequest{}, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -385,6 +395,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetMessages(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	msg_req := index.MessageRequest{}
 	utime_req := index.UtimeRequest{}
 	lt_req := index.LtRequest{}
@@ -412,7 +423,7 @@ func GetMessages(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	msgs, book, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, settings.Request)
+	msgs, book, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -439,6 +450,7 @@ func GetMessages(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetAddressBook(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var addr_book_req index.AddressBookRequest
 	if err := c.QueryParser(&addr_book_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
@@ -446,7 +458,7 @@ func GetAddressBook(c *fiber.Ctx) error {
 	if len(addr_book_req.Address) == 0 {
 		return index.IndexError{Code: 422, Message: "at least 1 address required"}
 	}
-	book, err := pool.QueryAddressBook(addr_book_req.Address, settings.Request)
+	book, err := pool.QueryAddressBook(addr_book_req.Address, request_settings)
 	if err != nil {
 		return err
 	}
@@ -471,6 +483,7 @@ func GetAddressBook(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetAccountStates(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var account_req index.AccountRequest
 	var lim_req index.LimitRequest
 
@@ -489,7 +502,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 		*account_req.IncludeBOC = true
 	}
 
-	res, book, err := pool.QueryAccountStates(account_req, lim_req, settings.Request)
+	res, book, err := pool.QueryAccountStates(account_req, lim_req, request_settings)
 	if err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
@@ -516,6 +529,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetWalletStates(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var account_req index.AccountRequest
 	var lim_req index.LimitRequest
 	if err := c.QueryParser(&account_req); err != nil {
@@ -529,7 +543,7 @@ func GetWalletStates(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "address of account is required"}
 	}
 
-	res, book, err := pool.QueryWalletStates(account_req, lim_req, settings.Request)
+	res, book, err := pool.QueryWalletStates(account_req, lim_req, request_settings)
 	if err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
@@ -556,6 +570,7 @@ func GetWalletStates(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetNFTCollections(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var nft_req index.NFTCollectionRequest
 	var lim_req index.LimitRequest
 
@@ -566,7 +581,7 @@ func GetNFTCollections(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryNFTCollections(nft_req, lim_req, settings.Request)
+	res, book, err := pool.QueryNFTCollections(nft_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -597,6 +612,7 @@ func GetNFTCollections(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetNFTItems(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var nft_req index.NFTItemRequest
 	var lim_req index.LimitRequest
 
@@ -607,7 +623,7 @@ func GetNFTItems(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryNFTItems(nft_req, lim_req, settings.Request)
+	res, book, err := pool.QueryNFTItems(nft_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -643,6 +659,7 @@ func GetNFTItems(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetNFTTransfers(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	transfer_req := index.NFTTransferRequest{}
 	utime_req := index.UtimeRequest{}
 	lt_req := index.LtRequest{}
@@ -672,7 +689,7 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryNFTTransfers(transfer_req, utime_req, lt_req, lim_req, settings.Request)
+	res, book, err := pool.QueryNFTTransfers(transfer_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -698,13 +715,14 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetTopAccountsByBalance(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	lim_req := index.LimitRequest{}
 
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, err := pool.QueryTopAccountBalances(lim_req, settings.Request)
+	res, err := pool.QueryTopAccountBalances(lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -729,6 +747,7 @@ func GetTopAccountsByBalance(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetJettonMasters(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var jetton_req index.JettonMasterRequest
 	var lim_req index.LimitRequest
 
@@ -739,7 +758,7 @@ func GetJettonMasters(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonMasters(jetton_req, lim_req, settings.Request)
+	res, book, err := pool.QueryJettonMasters(jetton_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -769,6 +788,7 @@ func GetJettonMasters(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetJettonWallets(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var jetton_req index.JettonWalletRequest
 	var lim_req index.LimitRequest
 
@@ -779,7 +799,7 @@ func GetJettonWallets(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonWallets(jetton_req, lim_req, settings.Request)
+	res, book, err := pool.QueryJettonWallets(jetton_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -815,6 +835,7 @@ func GetJettonWallets(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetJettonTransfers(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	transfer_req := index.JettonTransferRequest{}
 	utime_req := index.UtimeRequest{}
 	lt_req := index.LtRequest{}
@@ -844,7 +865,7 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonTransfers(transfer_req, utime_req, lt_req, lim_req, settings.Request)
+	res, book, err := pool.QueryJettonTransfers(transfer_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -880,6 +901,7 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetJettonBurns(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	burn_req := index.JettonBurnRequest{}
 	utime_req := index.UtimeRequest{}
 	lt_req := index.LtRequest{}
@@ -906,7 +928,7 @@ func GetJettonBurns(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonBurns(burn_req, utime_req, lt_req, lim_req, settings.Request)
+	res, book, err := pool.QueryJettonBurns(burn_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -940,6 +962,7 @@ func GetJettonBurns(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetEvents(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	event_req := index.EventRequest{}
 	utime_req := index.UtimeRequest{}
 	lt_req := index.LtRequest{}
@@ -962,7 +985,7 @@ func GetEvents(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
 	}
 
-	res, book, err := pool.QueryEvents(event_req, utime_req, lt_req, lim_req, settings.Request)
+	res, book, err := pool.QueryEvents(event_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -988,6 +1011,7 @@ func GetEvents(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetActions(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var act_req index.ActionRequest
 	var lim_req index.LimitRequest
 
@@ -999,7 +1023,7 @@ func GetActions(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryActions(act_req, lim_req, settings.Request)
+	res, book, err := pool.QueryActions(act_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -1027,6 +1051,7 @@ func GetActions(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetV2WalletInformation(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var acc_req index.V2AccountRequest
 	if err := c.QueryParser(&acc_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
@@ -1044,7 +1069,7 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 	var res *index.V2WalletInformation
 	if !use_v2 {
 		account_req := index.AccountRequest{AccountAddress: []index.AccountAddress{acc_req.AccountAddress}}
-		loc, _, err := pool.QueryWalletStates(account_req, index.LimitRequest{}, settings.Request)
+		loc, _, err := pool.QueryWalletStates(account_req, index.LimitRequest{}, request_settings)
 		if err != nil {
 			return err
 		}
@@ -1057,11 +1082,11 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 		} else {
 			info, err := index.WalletInformationFromV3(loc[0])
 			if err != nil {
-				use_fallback = true
-				// return err
+				// use_fallback = true
+				return err
 			} else if info == nil {
-				use_fallback = true
-				// return index.IndexError{Code: 409, Message: "not a wallet"}
+				// use_fallback = true
+				return index.IndexError{Code: 409, Message: "not a wallet"}
 			} else {
 				res = info
 			}
@@ -1069,7 +1094,7 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 	}
 
 	if use_v2 || use_fallback {
-		loc, err := index.GetV2WalletInformation(acc_req, settings.Request)
+		loc, err := index.GetV2WalletInformation(acc_req, request_settings)
 		if err != nil {
 			return err
 		}
@@ -1095,6 +1120,7 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetV2AddressInformation(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var acc_req index.V2AccountRequest
 	if err := c.QueryParser(&acc_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
@@ -1109,14 +1135,14 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 
 	var res *index.V2AddressInformation
 	if acc_req.UseV2 == nil || *acc_req.UseV2 {
-		loc, err := index.GetV2AddressInformation(acc_req, settings.Request)
+		loc, err := index.GetV2AddressInformation(acc_req, request_settings)
 		if err != nil {
 			return err
 		}
 		res = loc
 	} else {
 		account_req := index.AccountRequest{AccountAddress: []index.AccountAddress{acc_req.AccountAddress}}
-		loc, _, err := pool.QueryAccountStates(account_req, index.LimitRequest{}, settings.Request)
+		loc, _, err := pool.QueryAccountStates(account_req, index.LimitRequest{}, request_settings)
 		if err != nil {
 			return err
 		}
@@ -1155,6 +1181,7 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func PostV2SendMessage(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var req index.V2SendMessageRequest
 	if err := c.BodyParser(&req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
@@ -1163,7 +1190,7 @@ func PostV2SendMessage(c *fiber.Ctx) error {
 		return index.IndexError{Code: 401, Message: "boc is required"}
 	}
 
-	res, err := index.PostMessage(req, settings.Request)
+	res, err := index.PostMessage(req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -1186,12 +1213,13 @@ func PostV2SendMessage(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func PostV2EstimateFee(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var req index.V2EstimateFeeRequest
 	if err := c.BodyParser(&req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, err := index.PostEstimateFee(req, settings.Request)
+	res, err := index.PostEstimateFee(req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -1229,6 +1257,7 @@ func PostV2EstimateFee(c *fiber.Ctx) error {
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func PostV2RunGetMethod(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
 	var req index.V2RunGetMethodRequest
 	if err := c.BodyParser(&req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
@@ -1241,7 +1270,7 @@ func PostV2RunGetMethod(c *fiber.Ctx) error {
 		return index.IndexError{Code: 401, Message: "method is required"}
 	}
 
-	res, err := index.PostRunGetMethod(req, settings.Request)
+	res, err := index.PostRunGetMethod(req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -1278,17 +1307,28 @@ func HealthCheck(c *fiber.Ctx) error {
 }
 
 func ExtractParam(ctx *fiber.Ctx, header string, query string) (string, bool) {
-	result := ``
-	found := false
 	if val := ctx.GetReqHeaders()[header]; len(val) > 0 {
-		result = val[0]
-		found = true
+		return val[0], true
 	}
 	if val, ok := ctx.Queries()[query]; len(query) > 0 && ok {
-		result = val
-		found = true
+		return val, true
 	}
-	return result, found
+	return ``, false
+}
+
+func GetRequestSettings(c *fiber.Ctx, settings *Settings) index.RequestSettings {
+	request_settings := settings.Request
+	if value_str, ok := ExtractParam(c, "X-Debug-Request", "x_debug_request"); ok {
+		if value, err := strconv.ParseBool(value_str); err == nil {
+			request_settings.DebugRequest = value
+		}
+	}
+	if value_str, ok := ExtractParam(c, "X-Timeout", "x_timeout"); ok {
+		if value, err := strconv.ParseInt(value_str, 10, 32); err == nil {
+			request_settings.Timeout = time.Duration(value) * time.Millisecond
+		}
+	}
+	return request_settings
 }
 
 func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
@@ -1300,7 +1340,7 @@ func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
 
 	switch e := err.(type) {
 	case index.IndexError:
-		if e.Code != 404 {
+		if e.Code != 404 && e.Code != 409 {
 			log.Printf("Code: %d Path: %s IP: %s API Key: %s Queries: %v Body: %s Error: %s",
 				e.Code, ctx.Path(), ip, api_key, ctx.Queries(), string(ctx.Body()), err.Error())
 		}
@@ -1336,6 +1376,7 @@ func main() {
 	flag.IntVar(&timeout_ms, "query-timeout", 3000, "Query timeout in milliseconds")
 	flag.IntVar(&settings.Request.DefaultLimit, "default-limit", 100, "Default value for limit")
 	flag.IntVar(&settings.Request.MaxLimit, "max-limit", 1000, "Maximum value for limit")
+	flag.IntVar(&settings.Request.MaxEventTransactions, "max-event-txs", 4000, "Maximum number of transactions in event")
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
 	flag.Parse()
 
@@ -1380,11 +1421,9 @@ func main() {
 	if settings.Debug {
 		app.Use(pprof.New())
 	}
-	// app.Use("/api/v3", logger.New(logger.Config{Format: "[${ip}]:${port} ${status} - ${method} ${path}\n"}))
 
 	// healthcheck
 	app.Get("/healthcheck", HealthCheck)
-	// app.Get("/metrics", monitor.New(monitor.Config{Title: "TON Index API monitor"}))
 
 	// masterchain info
 	app.Get("/api/v3/masterchainInfo", GetMasterchainInfo)

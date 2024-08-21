@@ -694,16 +694,23 @@ func buildJettonTransfersQuery(transfer_req JettonTransferRequest, utime_req Uti
 }
 
 func buildActionsQuery(act_req ActionRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
-	clmn_query := `A.trace_id, A.action_id, A.start_lt, A.end_lt, 
-				   A.start_utime, A.end_utime, 
-				   A.source, A.source_secondary, A.destination, A.destination_secondary, 
-				   A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, 
-				   A.opcode, A.tx_hashes, A.type, A.value, A.success, 
-				   (A.ton_transfer_data).content, (A.ton_transfer_data).encrypted, 
-				   (A.jetton_transfer_data).response_address, (A.jetton_transfer_data).forward_amount, (A.jetton_transfer_data).query_id,
-				   (A.nft_transfer_data).is_purchase, (A.nft_transfer_data).price, (A.nft_transfer_data).query_id, 
-				   (A.jetton_swap_data).dex, (A.jetton_swap_data).amount_in, (A.jetton_swap_data).amount_out, (A.jetton_swap_data).peer_swaps, 
-				   (A.change_dns_record_data).key, (A.change_dns_record_data).value_schema, (A.change_dns_record_data).value, (A.change_dns_record_data).flags`
+	clmn_query := `A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start_utime, A.end_utime, A.source, A.source_secondary,
+		A.destination, A.destination_secondary, A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, A.opcode, A.tx_hashes,
+		A.type, (A.ton_transfer_data).content, (A.ton_transfer_data).encrypted, A.value, A.amount,
+		(A.jetton_transfer_data).response_destination, (A.jetton_transfer_data).forward_amount, (A.jetton_transfer_data).query_id,
+		(A.jetton_transfer_data).custom_payload, (A.jetton_transfer_data).forward_payload, (A.jetton_transfer_data).comment,
+		(A.jetton_transfer_data).is_encrypted_comment, (A.nft_transfer_data).is_purchase, (A.nft_transfer_data).price,
+		(A.nft_transfer_data).query_id, (A.nft_transfer_data).custom_payload, (A.nft_transfer_data).forward_payload,
+		(A.nft_transfer_data).forward_amount, (A.nft_transfer_data).response_destination, (A.nft_transfer_data).nft_item_index,
+		(A.jetton_swap_data).dex, (A.jetton_swap_data).sender, ((A.jetton_swap_data).dex_incoming_transfer).amount,
+		((A.jetton_swap_data).dex_incoming_transfer).asset, ((A.jetton_swap_data).dex_incoming_transfer).source,
+		((A.jetton_swap_data).dex_incoming_transfer).destination, ((A.jetton_swap_data).dex_incoming_transfer).source_jetton_wallet,
+		((A.jetton_swap_data).dex_incoming_transfer).destination_jetton_wallet, ((A.jetton_swap_data).dex_outgoing_transfer).amount,
+		((A.jetton_swap_data).dex_outgoing_transfer).asset, ((A.jetton_swap_data).dex_outgoing_transfer).source,
+		((A.jetton_swap_data).dex_outgoing_transfer).destination, ((A.jetton_swap_data).dex_outgoing_transfer).source_jetton_wallet,
+		((A.jetton_swap_data).dex_outgoing_transfer).destination_jetton_wallet, (A.jetton_swap_data).peer_swaps,
+		(A.change_dns_record_data).key, (A.change_dns_record_data).value_schema, (A.change_dns_record_data).value,
+		(A.change_dns_record_data).flags, (A.nft_mint_data).nft_item_index, A.success`
 	from_query := `actions as A`
 	filter_list := []string{}
 	filter_query := ``
@@ -1498,14 +1505,100 @@ func queryRawActionsImpl(query string, conn *pgxpool.Conn, settings RequestSetti
 	return res, nil
 }
 
-func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Event, error) {
+func collectAddressesFromAction(addr_list *map[string]bool, raw_action *RawAction) bool {
+	success := true
+
+	if v := raw_action.Source; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.SourceSecondary; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.Destination; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.DestinationSecondary; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.Asset; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.AssetSecondary; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.Asset2; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.Asset2Secondary; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonTransferResponseDestination; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.NFTTransferResponseDestination; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapSender; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapDexIncomingTransferAsset; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapDexIncomingTransferSource; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapDexIncomingTransferDestination; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapDexIncomingTransferSourceJettonWallet; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapDexIncomingTransferDestinationJettonWallet; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapDexOutgoingTransferAsset; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapDexOutgoingTransferSource; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapDexOutgoingTransferDestination; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapDexOutgoingTransferSourceJettonWallet; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.JettonSwapDexOutgoingTransferDestinationJettonWallet; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	return success
+}
+
+func collectAddressesFromTransactions(addr_list *map[string]bool, tx *Transaction) bool {
+	success := true
+
+	(*addr_list)[(string)(tx.Account)] = true
+	if tx.InMsg != nil {
+		if v := tx.InMsg.Source; v != nil {
+			(*addr_list)[(string)(*v)] = true
+		}
+	}
+	for idx, _ := range tx.OutMsgs {
+		if v := tx.OutMsgs[idx].Destination; v != nil {
+			(*addr_list)[(string)(*v)] = true
+		}
+	}
+	return success
+}
+
+func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Event, []string, error) {
 	events := []Event{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 		defer rows.Close()
 
@@ -1514,41 +1607,57 @@ func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 				loc.Transactions = make(map[HashType]*Transaction)
 				events = append(events, *loc)
 			} else {
-				return nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if rows.Err() != nil {
-			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+			return nil, nil, IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
 	events_map := map[HashType]int{}
 	trace_id_list := []HashType{}
-	for idx, event := range events {
-		events_map[event.TraceId] = idx
-		trace_id_list = append(trace_id_list, event.TraceId)
+	addr_map := map[string]bool{}
+	for idx := range events {
+		events_map[events[idx].TraceId] = idx
+		if settings.MaxEventTransactions > 0 && events[idx].EventMeta.Transactions > uint64(settings.MaxEventTransactions) {
+			events[idx].IsIncomplete = true
+			events[idx].Warning = "event is too large"
+		} else {
+			trace_id_list = append(trace_id_list, events[idx].TraceId)
+		}
 	}
 	if len(trace_id_list) > 0 {
 		{
-			query := `select A.trace_id, A.action_id, A.start_lt, A.end_lt, 
-				  A.start_utime, A.end_utime, 
-				  A.source, A.source_secondary, A.destination, A.destination_secondary, 
-				  A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, 
-				  A.opcode, A.tx_hashes, A.type, A.value, A.success, 
-				  (A.ton_transfer_data).content, (A.ton_transfer_data).encrypted, 
-				  (A.jetton_transfer_data).response_address, (A.jetton_transfer_data).forward_amount, (A.jetton_transfer_data).query_id,
-				  (A.nft_transfer_data).is_purchase, (A.nft_transfer_data).price, (A.nft_transfer_data).query_id, 
-				  (A.jetton_swap_data).dex, (A.jetton_swap_data).amount_in, (A.jetton_swap_data).amount_out, (A.jetton_swap_data).peer_swaps, 
-				  (A.change_dns_record_data).key, (A.change_dns_record_data).value_schema, (A.change_dns_record_data).value, (A.change_dns_record_data).flags
-				  from actions as A where ` + filterByArray("A.trace_id", trace_id_list) + ` order by trace_id, start_lt, end_lt`
+			query := `select A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start_utime, A.end_utime, A.source, A.source_secondary,
+				A.destination, A.destination_secondary, A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, A.opcode, A.tx_hashes,
+				A.type, (A.ton_transfer_data).content, (A.ton_transfer_data).encrypted, A.value, A.amount,
+				(A.jetton_transfer_data).response_destination, (A.jetton_transfer_data).forward_amount, (A.jetton_transfer_data).query_id,
+				(A.jetton_transfer_data).custom_payload, (A.jetton_transfer_data).forward_payload, (A.jetton_transfer_data).comment,
+				(A.jetton_transfer_data).is_encrypted_comment, (A.nft_transfer_data).is_purchase, (A.nft_transfer_data).price,
+				(A.nft_transfer_data).query_id, (A.nft_transfer_data).custom_payload, (A.nft_transfer_data).forward_payload,
+				(A.nft_transfer_data).forward_amount, (A.nft_transfer_data).response_destination, (A.nft_transfer_data).nft_item_index,
+				(A.jetton_swap_data).dex, (A.jetton_swap_data).sender, ((A.jetton_swap_data).dex_incoming_transfer).amount,
+				((A.jetton_swap_data).dex_incoming_transfer).asset, ((A.jetton_swap_data).dex_incoming_transfer).source,
+				((A.jetton_swap_data).dex_incoming_transfer).destination, ((A.jetton_swap_data).dex_incoming_transfer).source_jetton_wallet,
+				((A.jetton_swap_data).dex_incoming_transfer).destination_jetton_wallet, ((A.jetton_swap_data).dex_outgoing_transfer).amount,
+				((A.jetton_swap_data).dex_outgoing_transfer).asset, ((A.jetton_swap_data).dex_outgoing_transfer).source,
+				((A.jetton_swap_data).dex_outgoing_transfer).destination, ((A.jetton_swap_data).dex_outgoing_transfer).source_jetton_wallet,
+				((A.jetton_swap_data).dex_outgoing_transfer).destination_jetton_wallet, (A.jetton_swap_data).peer_swaps,
+				(A.change_dns_record_data).key, (A.change_dns_record_data).value_schema, (A.change_dns_record_data).value,
+				(A.change_dns_record_data).flags, (A.nft_mint_data).nft_item_index,
+				A.success from actions as A where ` + filterByArray("A.trace_id", trace_id_list) + ` order by trace_id, start_lt, end_lt`
 			actions, err := queryRawActionsImpl(query, conn, settings)
 			if err != nil {
-				return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query actions: %s", err.Error())}
+				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query actions: %s", err.Error())}
 			}
 			for idx := range actions {
 				raw_action := &actions[idx]
+
+				collectAddressesFromAction(&addr_map, raw_action)
+
 				action, err := ParseRawAction(raw_action)
 				if err != nil {
-					return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
+					return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
 				}
 				events[events_map[action.TraceId]].Actions = append(events[events_map[action.TraceId]].Actions, action)
 			}
@@ -1557,10 +1666,12 @@ func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 			query := `select T.* from transactions as T where ` + filterByArray("T.trace_id", trace_id_list) + ` order by trace_id, lt`
 			txs, err := queryTransactionsImpl(query, conn, settings)
 			if err != nil {
-				return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
+				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
 			}
 			for idx := range txs {
 				tx := &txs[idx]
+
+				collectAddressesFromTransactions(&addr_map, tx)
 				if v := tx.TraceId; v != nil {
 					event := &events[events_map[*v]]
 					event.TransactionsOrder = append(event.TransactionsOrder, tx.Hash)
@@ -1573,12 +1684,19 @@ func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 		if len(events[idx].TransactionsOrder) > 0 {
 			trace, err := assembleEventTraceFromMap(&events[idx].TransactionsOrder, &events[idx].Transactions)
 			if err != nil {
-				return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to assemble trace: %s", err.Error())}
+				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to assemble trace: %s", err.Error())}
 			}
 			events[idx].Trace = trace
 		}
 	}
-	return events, nil
+
+	// TODO: use .Keys method from 1.23 version
+	addr_list := []string{}
+	for k := range addr_map {
+		addr_list = append(addr_list, fmt.Sprintf("'%s'", k))
+	}
+
+	return events, addr_list, nil
 }
 
 func assembleEventTraceFromMap(tx_order *[]HashType, txs *map[HashType]*Transaction) (*TraceNode, error) {
@@ -2249,51 +2367,26 @@ func (db *DbClient) QueryActions(
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
-
-	book := AddressBook{}
-	addr_list := []string{}
-	for _, t := range raw_actions {
-		if v := t.Source; v != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *v))
-		}
-		if v := t.SourceSecondary; v != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *v))
-		}
-		if v := t.Destination; v != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *v))
-		}
-		if v := t.DestinationSecondary; v != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *v))
-		}
-		if v := t.Asset; v != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *v))
-		}
-		if v := t.AssetSecondary; v != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *v))
-		}
-		if v := t.Asset2; v != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *v))
-		}
-		if v := t.Asset2Secondary; v != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *v))
-		}
-		if v := t.JettonTransferResponseAddress; v != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *v))
-		}
-	}
-	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
-		}
-	}
 	actions := []Action{}
+	book := AddressBook{}
+	addr_map := map[string]bool{}
 	for idx := range raw_actions {
+		collectAddressesFromAction(&addr_map, &raw_actions[idx])
 		action, err := ParseRawAction(&raw_actions[idx])
 		if err != nil {
 			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 		actions = append(actions, *action)
+	}
+	if len(addr_map) > 0 {
+		addr_list := []string{}
+		for k := range addr_map {
+			addr_list = append(addr_list, fmt.Sprintf("'%s'", k))
+		}
+		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
 	}
 	return actions, book, nil
 }
@@ -2318,12 +2411,19 @@ func (db *DbClient) QueryEvents(
 	}
 	defer conn.Release()
 
-	res, err := queryEventsImpl(query, conn, settings)
+	res, addr_list, err := queryEventsImpl(query, conn, settings)
 	if err != nil {
 		log.Println(query)
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
+	if len(addr_list) > 0 {
+		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+	}
+
 	return res, book, nil
 }

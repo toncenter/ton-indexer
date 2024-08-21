@@ -8,12 +8,14 @@ type UtimeType uint64 // @name UtimeType
 
 // settings
 type RequestSettings struct {
-	Timeout      time.Duration
-	IsTestnet    bool
-	V2Endpoint   string
-	V2ApiKey     string
-	DefaultLimit int
-	MaxLimit     int
+	Timeout              time.Duration
+	IsTestnet            bool
+	V2Endpoint           string
+	V2ApiKey             string
+	DefaultLimit         int
+	MaxLimit             int
+	MaxEventTransactions int
+	DebugRequest         bool
 }
 
 // requests

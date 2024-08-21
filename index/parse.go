@@ -257,7 +257,7 @@ func ParseWalletState(state AccountStateFull) (*WalletState, error) {
 			}
 
 		} else {
-			log.Println("Parser not found for:", state)
+			// log.Println("Parser not found for:", state)
 		}
 	} else if state.AccountStatus != nil && *state.AccountStatus == "active" {
 		log.Println("Failed to parse state:", state)
@@ -314,84 +314,98 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 	case "election_deposit":
 		var details ActionDetailsElectionDeposit
 		details.StakeHolder = raw.Source
-		details.Amount = raw.Value
+		details.Amount = raw.Amount
 		act.Details = &details
 	case "election_recover":
 		var details ActionDetailsElectionRecover
 		details.StakeHolder = raw.Source
-		details.Amount = raw.Value
+		details.Amount = raw.Amount
 		act.Details = &details
 	case "jetton_burn":
 		var details ActionDetailsJettonBurn
 		details.Owner = raw.Source
 		details.OwnerJettonWallet = raw.SourceSecondary
 		details.Asset = raw.Asset
-		details.Amount = raw.Value
+		details.Amount = raw.Amount
 		act.Details = &details
 	case "jetton_swap":
-		// TODO: swap In and Out amounts
 		var details ActionDetailsJettonSwap
 		details.Dex = raw.JettonSwapDex
 		details.Sender = raw.Source
-		details.Out = &ActionDetailsJettonSwapTransfer{}
-		details.In = &ActionDetailsJettonSwapTransfer{}
-		details.Out.Asset = raw.Asset
-		details.Out.JettonWallet = raw.SourceSecondary
-		details.Out.Amount = raw.JettonSwapAmountOut
-		details.In.Asset = raw.Asset2
-		details.In.JettonWallet = raw.DestinationSecondary
-		details.In.Amount = raw.JettonSwapAmountIn
+		details.DexIncomingTransfer = &ActionDetailsJettonSwapTransfer{}
+		details.DexOutgoingTransfer = &ActionDetailsJettonSwapTransfer{}
+		details.DexIncomingTransfer.Asset = raw.JettonSwapDexIncomingTransferAsset
+		details.DexIncomingTransfer.Source = raw.JettonSwapDexIncomingTransferSource
+		details.DexIncomingTransfer.Destination = raw.JettonSwapDexIncomingTransferDestination
+		details.DexIncomingTransfer.SourceJettonWallet = raw.JettonSwapDexIncomingTransferSourceJettonWallet
+		details.DexIncomingTransfer.DestinationJettonWallet = raw.JettonSwapDexIncomingTransferDestinationJettonWallet
+		details.DexIncomingTransfer.Amount = raw.JettonSwapDexIncomingTransferAmount
+		details.DexOutgoingTransfer.Asset = raw.JettonSwapDexOutgoingTransferAsset
+		details.DexOutgoingTransfer.Source = raw.JettonSwapDexOutgoingTransferSource
+		details.DexOutgoingTransfer.Destination = raw.JettonSwapDexOutgoingTransferDestination
+		details.DexOutgoingTransfer.SourceJettonWallet = raw.JettonSwapDexOutgoingTransferSourceJettonWallet
+		details.DexOutgoingTransfer.DestinationJettonWallet = raw.JettonSwapDexOutgoingTransferDestinationJettonWallet
+		details.DexOutgoingTransfer.Amount = raw.JettonSwapDexOutgoingTransferAmount
 		details.PeerSwaps = raw.JettonSwapPeerSwaps
+		if details.PeerSwaps == nil {
+			details.PeerSwaps = []string{}
+		}
 		act.Details = &details
 	case "jetton_transfer":
-		// TODO: Fix missing fields: payload, comment
 		var details ActionDetailsJettonTransfer
+		details.Asset = raw.Asset
 		details.Sender = raw.Source
 		details.SenderJettonWallet = raw.SourceSecondary
 		details.Receiver = raw.Destination
 		details.ReceiverJettonWallet = raw.DestinationSecondary
-		details.Asset = raw.Asset
-		details.Amount = raw.Value
-		details.ResponseAddress = raw.JettonTransferResponseAddress
-		details.ForwardAmount = raw.JettonTransferForwardAmount
+		details.Amount = raw.Amount
+		details.Comment = raw.JettonTransferComment
+		details.IsEncryptedComment = raw.JettonTransferIsEncryptedComment
 		details.QueryId = raw.JettonTransferQueryId
+		details.ResponseDestination = raw.JettonTransferResponseDestination
+		details.CustomPayload = raw.JettonTransferCustomPayload
+		details.ForwardPayload = raw.JettonTransferForwardPayload
+		details.ForwardAmount = raw.JettonTransferForwardAmount
 		act.Details = &details
 	case "nft_mint":
-		// TODO: Fix missing nft_item_index field
 		var details ActionDetailsNftMint
 		details.Owner = raw.Source
 		details.NftCollection = raw.Asset
 		details.NftItem = raw.AssetSecondary
+		details.NftItemIndex = raw.NFTMintNFTItemIndex
 		act.Details = &details
 	case "nft_transfer":
 		// TODO: asset = collection, asset_secondary = item, payload, forward_amount, response_dest
 		var details ActionDetailsNftTransfer
-		details.NftItem = raw.Asset
-		details.NftCollection = nil // FIXME
+		details.NftCollection = raw.Asset
+		details.NftItem = raw.AssetSecondary
+		details.NftItemIndex = raw.NFTTransferNFTItemIndex
 		details.OldOwner = raw.Source
 		details.NewOwner = raw.Destination
-		details.QueryId = raw.NFTTransferQueryId
 		details.IsPurchase = raw.NFTTransferIsPurchase
 		details.Price = raw.NFTTransferPrice
+		details.QueryId = raw.NFTTransferQueryId
+		details.ResponseDestination = raw.NFTTransferResponseDestination
+		details.CustomPayload = raw.NFTTransferCustomPayload
+		details.ForwardPayload = raw.NFTTransferForwardPayload
+		details.ForwardAmount = raw.NFTTransferForwardAmount
 		act.Details = &details
 	case "tick_tock":
-		// TODO: fill source = account
 		var details ActionDetailsTickTock
 		act.Details = &details
 	case "subscribe":
-		// TODO: source -- subscriber, destination -- beneficiary, destination_secondary -- subscription
 		var details ActionDetailsSubscribe
 		details.Subscriber = raw.Source
-		details.Subscription = raw.Destination
-		details.Beneficiary = raw.SourceSecondary
-		details.Amount = raw.Value
+		details.Beneficiary = raw.Destination
+		details.Subscription = raw.DestinationSecondary
+		details.Amount = raw.Amount
 		act.Details = &details
 	case "unsubscribe":
 		var details ActionDetailsUnsubscribe
 		details.Subscriber = raw.Source
-		details.Subscription = raw.Destination
-		details.Beneficiary = raw.SourceSecondary
-		details.Amount = raw.Value
+		details.Beneficiary = raw.Destination
+		details.Subscription = raw.DestinationSecondary
+		details.Amount = raw.Amount
 		act.Details = &details
 	default:
 		details := map[string]string{}
@@ -687,14 +701,18 @@ func ScanJettonBurn(row pgx.Row) (*JettonBurn, error) {
 func ScanRawAction(row pgx.Row) (*RawAction, error) {
 	var act RawAction
 	err := row.Scan(&act.TraceId, &act.ActionId, &act.StartLt, &act.EndLt, &act.StartUtime, &act.EndUtime,
-		&act.Source, &act.SourceSecondary, &act.Destination, &act.DestinationSecondary,
-		&act.Asset, &act.AssetSecondary, &act.Asset2, &act.Asset2Secondary,
-		&act.Opcode, &act.TxHashes, &act.Type, &act.Value, &act.Success,
-		&act.TonTransferContent, &act.TonTransferEncrypted,
-		&act.JettonTransferResponseAddress, &act.JettonTransferForwardAmount, &act.JettonTransferQueryId,
-		&act.NFTTransferIsPurchase, &act.NFTTransferPrice, &act.NFTTransferQueryId,
-		&act.JettonSwapDex, &act.JettonSwapAmountIn, &act.JettonSwapAmountOut, &act.JettonSwapPeerSwaps,
-		&act.ChangeDNSRecordKey, &act.ChangeDNSRecordValueSchema, &act.ChangeDNSRecordValue, &act.ChangeDNSRecordFlags)
+		&act.Source, &act.SourceSecondary, &act.Destination, &act.DestinationSecondary, &act.Asset, &act.AssetSecondary,
+		&act.Asset2, &act.Asset2Secondary, &act.Opcode, &act.TxHashes, &act.Type, &act.TonTransferContent,
+		&act.TonTransferEncrypted, &act.Value, &act.Amount, &act.JettonTransferResponseDestination, &act.JettonTransferForwardAmount,
+		&act.JettonTransferQueryId, &act.JettonTransferCustomPayload, &act.JettonTransferForwardPayload,
+		&act.JettonTransferComment, &act.JettonTransferIsEncryptedComment, &act.NFTTransferIsPurchase, &act.NFTTransferPrice,
+		&act.NFTTransferQueryId, &act.NFTTransferCustomPayload, &act.NFTTransferForwardPayload, &act.NFTTransferForwardAmount, &act.NFTTransferResponseDestination,
+		&act.NFTTransferNFTItemIndex, &act.JettonSwapDex, &act.JettonSwapSender, &act.JettonSwapDexIncomingTransferAmount, &act.JettonSwapDexIncomingTransferAsset,
+		&act.JettonSwapDexIncomingTransferSource, &act.JettonSwapDexIncomingTransferDestination, &act.JettonSwapDexIncomingTransferSourceJettonWallet,
+		&act.JettonSwapDexIncomingTransferDestinationJettonWallet, &act.JettonSwapDexOutgoingTransferAmount, &act.JettonSwapDexOutgoingTransferAsset,
+		&act.JettonSwapDexOutgoingTransferSource, &act.JettonSwapDexOutgoingTransferDestination, &act.JettonSwapDexOutgoingTransferSourceJettonWallet,
+		&act.JettonSwapDexOutgoingTransferDestinationJettonWallet, &act.JettonSwapPeerSwaps, &act.ChangeDNSRecordKey, &act.ChangeDNSRecordValueSchema,
+		&act.ChangeDNSRecordValue, &act.ChangeDNSRecordFlags, &act.NFTMintNFTItemIndex, &act.Success)
 
 	if err != nil {
 		return nil, err

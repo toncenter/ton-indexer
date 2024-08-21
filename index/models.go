@@ -382,48 +382,70 @@ type JettonBurn struct {
 
 // traces
 type RawAction struct {
-	TraceId                       HashType
-	ActionId                      HashType
-	StartLt                       int64
-	EndLt                         int64
-	StartUtime                    int64
-	EndUtime                      int64
-	Source                        *AccountAddress
-	SourceSecondary               *AccountAddress
-	Destination                   *AccountAddress
-	DestinationSecondary          *AccountAddress
-	Asset                         *AccountAddress
-	AssetSecondary                *AccountAddress
-	Asset2                        *AccountAddress
-	Asset2Secondary               *AccountAddress
-	Opcode                        *OpcodeType
-	TxHashes                      []*HashType
-	Type                          string
-	Value                         *string
-	Success                       *bool
-	TonTransferContent            *string
-	TonTransferEncrypted          *bool
-	JettonTransferResponseAddress *AccountAddress
-	JettonTransferForwardAmount   *string
-	JettonTransferQueryId         *string
-	NFTTransferIsPurchase         *bool
-	NFTTransferPrice              *string
-	NFTTransferQueryId            *string
-	JettonSwapDex                 *string
-	JettonSwapAmountIn            *string
-	JettonSwapAmountOut           *string
-	JettonSwapPeerSwaps           []string
-	ChangeDNSRecordKey            *string
-	ChangeDNSRecordValueSchema    *string
-	ChangeDNSRecordValue          *string
-	ChangeDNSRecordFlags          *int64
+	TraceId                                              HashType
+	ActionId                                             HashType
+	StartLt                                              int64
+	EndLt                                                int64
+	StartUtime                                           int64
+	EndUtime                                             int64
+	Source                                               *AccountAddress
+	SourceSecondary                                      *AccountAddress
+	Destination                                          *AccountAddress
+	DestinationSecondary                                 *AccountAddress
+	Asset                                                *AccountAddress
+	AssetSecondary                                       *AccountAddress
+	Asset2                                               *AccountAddress
+	Asset2Secondary                                      *AccountAddress
+	Opcode                                               *OpcodeType
+	TxHashes                                             []*HashType
+	Type                                                 string
+	TonTransferContent                                   *string
+	TonTransferEncrypted                                 *bool
+	Value                                                *string
+	Amount                                               *string
+	JettonTransferResponseDestination                    *AccountAddress
+	JettonTransferForwardAmount                          *string
+	JettonTransferQueryId                                *string
+	JettonTransferCustomPayload                          *string
+	JettonTransferForwardPayload                         *string
+	JettonTransferComment                                *string
+	JettonTransferIsEncryptedComment                     *bool
+	NFTTransferIsPurchase                                *bool
+	NFTTransferPrice                                     *string
+	NFTTransferQueryId                                   *string
+	NFTTransferCustomPayload                             *string
+	NFTTransferForwardPayload                            *string
+	NFTTransferForwardAmount                             *string
+	NFTTransferResponseDestination                       *AccountAddress
+	NFTTransferNFTItemIndex                              *string
+	JettonSwapDex                                        *string
+	JettonSwapSender                                     *AccountAddress
+	JettonSwapDexIncomingTransferAmount                  *string
+	JettonSwapDexIncomingTransferAsset                   *AccountAddress
+	JettonSwapDexIncomingTransferSource                  *AccountAddress
+	JettonSwapDexIncomingTransferDestination             *AccountAddress
+	JettonSwapDexIncomingTransferSourceJettonWallet      *AccountAddress
+	JettonSwapDexIncomingTransferDestinationJettonWallet *AccountAddress
+	JettonSwapDexOutgoingTransferAmount                  *string
+	JettonSwapDexOutgoingTransferAsset                   *AccountAddress
+	JettonSwapDexOutgoingTransferSource                  *AccountAddress
+	JettonSwapDexOutgoingTransferDestination             *AccountAddress
+	JettonSwapDexOutgoingTransferSourceJettonWallet      *AccountAddress
+	JettonSwapDexOutgoingTransferDestinationJettonWallet *AccountAddress
+	JettonSwapPeerSwaps                                  []string
+	ChangeDNSRecordKey                                   *string
+	ChangeDNSRecordValueSchema                           *string
+	ChangeDNSRecordValue                                 *string
+	ChangeDNSRecordFlags                                 *int64
+	NFTMintNFTItemIndex                                  *string
+	Success                                              *bool
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
-	OpCode      *OpcodeType     `json:"opcode"`
-	Source      *AccountAddress `json:"source"`
-	Destination *AccountAddress `json:"destination"`
-	Value       *string         `json:"value"`
+	OpCode      *OpcodeType     `json:"opcode,omitempty"`
+	Source      *AccountAddress `json:"source,omitempty"`
+	Destination *AccountAddress `json:"destination,omitempty"`
+	Value       *string         `json:"value,omitempty"`
 }
 
 type ActionDetailsTonTransfer struct {
@@ -467,30 +489,36 @@ type ActionDetailsJettonBurn struct {
 }
 
 type ActionDetailsJettonSwapTransfer struct {
-	Asset        *AccountAddress `json:"asset"`
-	JettonWallet *AccountAddress `json:"jetton_wallet,omitempty"`
-	Amount       *string         `json:"amount"`
+	Asset                   *AccountAddress `json:"asset"`
+	Source                  *AccountAddress `json:"source"`
+	Destination             *AccountAddress `json:"destination"`
+	SourceJettonWallet      *AccountAddress `json:"source_jetton_wallet"`
+	DestinationJettonWallet *AccountAddress `json:"destination_jetton_wallet"`
+	Amount                  *string         `json:"amount"`
 }
 
 type ActionDetailsJettonSwap struct {
-	Dex       *string                          `json:"dex"`
-	Sender    *AccountAddress                  `json:"sender"`
-	In        *ActionDetailsJettonSwapTransfer `json:"in"`
-	Out       *ActionDetailsJettonSwapTransfer `json:"out"`
-	PeerSwaps []string                         `json:"peer_swaps"`
+	Dex                 *string                          `json:"dex"`
+	Sender              *AccountAddress                  `json:"sender"`
+	DexIncomingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_incoming_transfer"`
+	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_outgoing_transfer"`
+	PeerSwaps           []string                         `json:"peer_swaps"`
 }
 
 type ActionDetailsJettonTransfer struct {
+	Asset                *AccountAddress `json:"asset"`
 	Sender               *AccountAddress `json:"sender"`
 	Receiver             *AccountAddress `json:"receiver"`
 	SenderJettonWallet   *AccountAddress `json:"sender_jetton_wallet"`
 	ReceiverJettonWallet *AccountAddress `json:"receiver_jetton_wallet"`
-	Asset                *AccountAddress `json:"asset"`
 	Amount               *string         `json:"amount"`
-	ResponseAddress      *AccountAddress `json:"response_address"`
-	ForwardAmount        *string         `json:"forward_amount"`
-	QueryId              *string         `json:"query_id"`
 	Comment              *string         `json:"comment"`
+	IsEncryptedComment   *bool           `json:"is_encrypted_comment"`
+	QueryId              *string         `json:"query_id"`
+	ResponseDestination  *AccountAddress `json:"response_destination"`
+	CustomPayload        *string         `json:"custom_payload"`
+	ForwardPayload       *string         `json:"forward_payload"`
+	ForwardAmount        *string         `json:"forward_amount"`
 }
 
 type ActionDetailsNftMint struct {
@@ -501,13 +529,18 @@ type ActionDetailsNftMint struct {
 }
 
 type ActionDetailsNftTransfer struct {
-	NftItem       *AccountAddress `json:"nft_item"`
-	NftCollection *AccountAddress `json:"nft_collection"`
-	OldOwner      *AccountAddress `json:"old_owner,omitempty"`
-	NewOwner      *AccountAddress `json:"new_owner"`
-	QueryId       *string         `json:"query_id"`
-	IsPurchase    *bool           `json:"is_purchase"`
-	Price         *string         `json:"price,omitempty"`
+	NftCollection       *AccountAddress `json:"nft_collection"`
+	NftItem             *AccountAddress `json:"nft_item"`
+	NftItemIndex        *string         `json:"nft_item_index"`
+	OldOwner            *AccountAddress `json:"old_owner,omitempty"`
+	NewOwner            *AccountAddress `json:"new_owner"`
+	IsPurchase          *bool           `json:"is_purchase"`
+	Price               *string         `json:"price,omitempty"`
+	QueryId             *string         `json:"query_id"`
+	ResponseDestination *AccountAddress `json:"response_destination"`
+	CustomPayload       *string         `json:"custom_payload"`
+	ForwardPayload      *string         `json:"forward_payload"`
+	ForwardAmount       *string         `json:"forward_amount"`
 }
 
 type ActionDetailsTickTock struct {
@@ -516,15 +549,15 @@ type ActionDetailsTickTock struct {
 
 type ActionDetailsSubscribe struct {
 	Subscriber   *AccountAddress `json:"subscriber"`
-	Subscription *AccountAddress `json:"subscription"`
 	Beneficiary  *AccountAddress `json:"beneficiary,omitempty"`
+	Subscription *AccountAddress `json:"subscription"`
 	Amount       *string         `json:"amount"`
 }
 
 type ActionDetailsUnsubscribe struct {
 	Subscriber   *AccountAddress `json:"subscriber"`
-	Subscription *AccountAddress `json:"subscription"`
 	Beneficiary  *AccountAddress `json:"beneficiary,omitempty"`
+	Subscription *AccountAddress `json:"subscription"`
 	Amount       *string         `json:"amount,omitempty"`
 }
 
@@ -574,6 +607,7 @@ type Event struct {
 	EndUtime          uint32                    `json:"end_utime"`
 	EventMeta         EventMeta                 `json:"trace_info"`
 	IsIncomplete      bool                      `json:"is_incomplete"`
+	Warning           string                    `json:"warning,omitempty"`
 	Actions           []*Action                 `json:"actions,omitempty"`
 	Trace             *TraceNode                `json:"trace,omitempty"`
 	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
