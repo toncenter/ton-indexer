@@ -782,8 +782,10 @@ func GetJettonMasters(c *fiber.Ctx) error {
 // @param address query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param owner_address query []string false "Address of Jetton wallet's owner in any form. Max: 1000." collectionFormat(multi)
 // @param jetton_address query string false "Jetton Master in any form."
+// @param exclude_zero_balance query bool false "Exclude jetton wallets with 0 balance."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param sort query string false "Sort jetton wallets by balance. **Warning:** results may be inconsistent during the read with limit and offset." Enums(asc, desc)
 // @router /api/v3/jetton/wallets [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery

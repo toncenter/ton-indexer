@@ -1667,6 +1667,10 @@ paths:
         in: query
         name: jetton_address
         type: string
+      - description: Exclude jetton wallets with 0 balance.
+        in: query
+        name: exclude_zero_balance
+        type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
@@ -1680,6 +1684,14 @@ paths:
         minimum: 0
         name: offset
         type: integer
+      - description: Sort jetton wallets by balance. **Warning:** results may be inconsistent
+          during the read with limit and offset.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
       produces:
       - application/json
       responses:

@@ -580,28 +580,39 @@ func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitReques
 	from_query := `jetton_wallets as J`
 	filter_list := []string{}
 	filter_query := ``
-	orderby_query := ` order by id asc`
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return "", err
 	}
+
+	sort_column := "J.id"
+	sort_order := "asc"
+	if v := lim_req.Sort; v != nil {
+		sort_column = "J.balance"
+		sort_order = string(*v)
+	}
+	orderby_query := fmt.Sprintf(` order by %s %s`, sort_column, sort_order)
 
 	if v := jetton_req.Address; v != nil {
 		filter_str := filterByArray("J.address", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
-		orderby_query = ``
+		orderby_query = ` order by J.address asc`
 	}
 	if v := jetton_req.OwnerAddress; v != nil {
 		filter_str := filterByArray("J.owner", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
+		orderby_query = fmt.Sprintf(` order by J.owner, %s %s`, sort_column, sort_order)
 	}
 	if v := jetton_req.JettonAddress; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("J.jetton = '%s'", *v))
-		orderby_query = ``
+		orderby_query = fmt.Sprintf(` order by J.jetton, %s %s`, sort_column, sort_order)
+	}
+	if v := jetton_req.ExcludeZeroBalance; v != nil && *v {
+		filter_list = append(filter_list, "J.balance > 0")
 	}
 
 	// build query
@@ -1761,6 +1772,9 @@ func (db *DbClient) QueryBlocks(
 	settings RequestSettings,
 ) ([]Block, error) {
 	query, err := buildBlocksQuery(blk_req, utime_req, lt_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1840,6 +1854,9 @@ func (db *DbClient) QueryTransactions(
 	settings RequestSettings,
 ) ([]Transaction, AddressBook, error) {
 	query, err := buildTransactionsQuery(blk_req, tx_req, msg_req, utime_req, lt_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1952,6 +1969,9 @@ func (db *DbClient) QueryMessages(
 	settings RequestSettings,
 ) ([]Message, AddressBook, error) {
 	query, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -1993,6 +2013,9 @@ func (db *DbClient) QueryNFTCollections(
 	settings RequestSettings,
 ) ([]NFTCollection, AddressBook, error) {
 	query, err := buildNFTCollectionsQuery(nft_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2030,6 +2053,9 @@ func (db *DbClient) QueryNFTItems(
 	settings RequestSettings,
 ) ([]NFTItem, AddressBook, error) {
 	query, err := buildNFTItemsQuery(nft_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2069,6 +2095,9 @@ func (db *DbClient) QueryNFTTransfers(
 	settings RequestSettings,
 ) ([]NFTTransfer, AddressBook, error) {
 	query, err := buildNFTTransfersQuery(transfer_req, utime_req, lt_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2111,6 +2140,9 @@ func (db *DbClient) QueryJettonMasters(
 	settings RequestSettings,
 ) ([]JettonMaster, AddressBook, error) {
 	query, err := buildJettonMastersQuery(jetton_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2148,6 +2180,9 @@ func (db *DbClient) QueryJettonWallets(
 	settings RequestSettings,
 ) ([]JettonWallet, AddressBook, error) {
 	query, err := buildJettonWalletsQuery(jetton_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2189,6 +2224,9 @@ func (db *DbClient) QueryJettonTransfers(
 	settings RequestSettings,
 ) ([]JettonTransfer, AddressBook, error) {
 	query, err := buildJettonTransfersQuery(transfer_req, utime_req, lt_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2233,6 +2271,9 @@ func (db *DbClient) QueryJettonBurns(
 	settings RequestSettings,
 ) ([]JettonBurn, AddressBook, error) {
 	query, err := buildJettonBurnsQuery(transfer_req, utime_req, lt_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2274,6 +2315,9 @@ func (db *DbClient) QueryAccountStates(
 	settings RequestSettings,
 ) ([]AccountStateFull, AddressBook, error) {
 	query, err := buildAccountStatesQuery(account_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2352,6 +2396,9 @@ func (db *DbClient) QueryActions(
 	settings RequestSettings,
 ) ([]Action, AddressBook, error) {
 	query, err := buildActionsQuery(act_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2399,6 +2446,9 @@ func (db *DbClient) QueryEvents(
 	settings RequestSettings,
 ) ([]Event, AddressBook, error) {
 	query, err := buildEventsQuery(event_req, utime_req, lt_req, lim_req, settings)
+	if settings.DebugRequest {
+		log.Println("Debug query:", query)
+	}
 	// log.Println(query)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}

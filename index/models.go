@@ -662,7 +662,7 @@ type V2EstimateFeeResult struct {
 	DestinationFees []V2EstimatedFee `json:"destination_fees"`
 } // @name V2EstimateFeeResult
 
-// converteds
+// converters
 func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, error) {
 	var info V2AddressInformation
 	if state.Balance == nil {

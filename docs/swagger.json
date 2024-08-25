@@ -958,6 +958,12 @@
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "description": "Exclude jetton wallets with 0 balance.",
+                        "name": "exclude_zero_balance",
+                        "in": "query"
+                    },
+                    {
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
@@ -972,6 +978,16 @@
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "description": "Sort jetton wallets by balance. **Warning:** results may be inconsistent during the read with limit and offset.",
+                        "name": "sort",
                         "in": "query"
                     }
                 ],

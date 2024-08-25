@@ -76,9 +76,10 @@ type JettonMasterRequest struct {
 }
 
 type JettonWalletRequest struct {
-	Address       []AccountAddress `query:"address"`
-	OwnerAddress  []AccountAddress `query:"owner_address"`
-	JettonAddress *AccountAddress  `query:"jetton_address"`
+	Address            []AccountAddress `query:"address"`
+	OwnerAddress       []AccountAddress `query:"owner_address"`
+	JettonAddress      *AccountAddress  `query:"jetton_address"`
+	ExcludeZeroBalance *bool            `query:"exclude_zero_balance"`
 }
 
 type JettonTransferRequest struct {
