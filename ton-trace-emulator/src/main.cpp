@@ -19,6 +19,7 @@ int main(int argc, char *argv[]) {
 
   // options
   std::string db_root;
+  std::string working_dir;
   td::uint32 threads = 7;
   
   std::string global_config_path;
@@ -35,6 +36,9 @@ int main(int argc, char *argv[]) {
   });
   p.add_option('D', "db", "Path to TON DB folder", [&](td::Slice fname) { 
     db_root = fname.str();
+  });
+  p.add_option('W', "working-dir", "Path to index working dir for secondary rocksdb logs", [&](td::Slice fname) { 
+    working_dir = fname.str();
   });
 
   p.add_checked_option('t', "threads", "Scheduler threads (default: 7)", [&](td::Slice fname) { 
@@ -72,6 +76,11 @@ int main(int argc, char *argv[]) {
     std::_Exit(2);
   }
 
+  if (working_dir.size() == 0) {
+    working_dir = PSTRING() << "/tmp/index_worker_" << getpid();
+    LOG(WARNING) << "Working dir not specified, using " << working_dir;
+  }
+
   if (global_config_path.empty() ^ inet_addr.empty()) {
     std::cerr << "'--global-config' must be present with '--addr'" << std::endl;
     std::_Exit(2);
@@ -81,7 +90,7 @@ int main(int argc, char *argv[]) {
   td::actor::ActorOwn<DbScanner> db_scanner;
 
   scheduler.run_in_context([&] { 
-    db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary);
+    db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir);
     td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), global_config_path, inet_addr).release();
   });
   

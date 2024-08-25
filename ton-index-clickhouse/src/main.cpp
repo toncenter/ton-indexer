@@ -28,6 +28,7 @@ int main(int argc, char *argv[]) {
   td::uint32 threads = 7;
   td::int32 stats_timeout = 10;
   std::string db_root;
+  std::string working_dir;
   td::uint32 last_known_seqno = 0;
   td::uint32 from_seqno = 0;
   td::uint32 to_seqno = 0;
@@ -51,6 +52,9 @@ int main(int argc, char *argv[]) {
   });
   p.add_option('D', "db", "Path to TON DB folder", [&](td::Slice fname) { 
     db_root = fname.str();
+  });
+  p.add_option('W', "working-dir", "Path to index working dir for secondary rocksdb logs", [&](td::Slice fname) { 
+    working_dir = fname.str();
   });
   p.add_option('h', "host", "Clickhouse host address",  [&](td::Slice value) { 
     credential.host = value.str();
@@ -214,6 +218,11 @@ int main(int argc, char *argv[]) {
     std::_Exit(2);
   }
 
+  if (working_dir.size() == 0) {
+    working_dir = PSTRING() << "/tmp/index_worker_" << getpid();
+    LOG(WARNING) << "Working dir not specified, using " << working_dir;
+  }
+
   auto watcher = td::create_shared_destructor([] {
     td::actor::SchedulerContext::get()->stop();
   });
@@ -221,7 +230,7 @@ int main(int argc, char *argv[]) {
   td::actor::Scheduler scheduler({threads});
   scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerClickhouse>("insertmanager", credential); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
-  scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary); });
+  scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir); });
 
   scheduler.run_in_context([&, watcher = std::move(watcher)] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(), 
     insert_manager_.get(), parse_manager_.get(), from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher); 
