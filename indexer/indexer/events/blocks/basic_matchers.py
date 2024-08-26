@@ -43,7 +43,7 @@ class BlockMatcher:
                             r.append(next_block)
                 return r
             except Exception as e:
-                logger.error(f"Error while building block {block} with matcher {self.__class__.__name__}: {e}. Trace id: {block.event_nodes[0].message.tx_hash}")
+                logger.error(f"Error while building block {block} with matcher {self.__class__.__name__}: {e}. Trace id: {block.event_nodes[0].message.trace_id}")
                 return None
         else:
             return None

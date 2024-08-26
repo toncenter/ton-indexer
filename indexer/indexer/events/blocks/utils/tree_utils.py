@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import base64
 from collections import defaultdict
 from collections.abc import Iterable
 from typing import Callable
 
-from indexer.core.database import Transaction, Message, Trace
+from indexer.core.database import Transaction, Message, Trace, TraceEdge
 
 
 class NoMessageBodyException(Exception):
@@ -53,8 +55,16 @@ class EventNode:
         self.children.append(child)
         child.set_parent(self)
 
+    def get_tx_hash(self):
+        if self.is_tick_tock and self.tick_tock_tx is not None:
+            return self.tick_tock_tx.hash
+        elif self.message is not None:
+            return self.message.tx_hash
+        else:
+            return None
 
-def to_tree(txs: list[Transaction], trace: Trace):
+
+def to_tree(txs: list[Transaction], trace: Trace, trace_edges: list[TraceEdge] | None = None):
     """
     Constructs a tree representation of transactions (txs) related to an event, based on connections
     between transactions. Each node is message initiated transaction
@@ -62,7 +72,8 @@ def to_tree(txs: list[Transaction], trace: Trace):
 
     tx_map = {tx.hash: tx for tx in txs}  # Convert to dictionary for faster lookup
     conn_map = defaultdict(list)
-    for edge in trace.edges:
+    edges = trace_edges if trace_edges is not None else trace.edges
+    for edge in edges:
         if edge.left_tx is None:
             continue
         if edge.right_tx is None:

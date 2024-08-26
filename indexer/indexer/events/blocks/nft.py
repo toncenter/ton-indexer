@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+
 from pytoniq_core import Slice
 
 from indexer.events import context
@@ -27,20 +29,23 @@ class NftTransferBlock(Block):
 async def _get_nft_data(nft_address: AccountId):
     data = {
         "address": nft_address,
-        "collection": None
+        "index": None,
+        "collection": None,
+        "exists": False
     }
     nft = await context.interface_repository.get().get_nft_item(nft_address.as_str())
     if nft is not None:
+        data['index'] = nft.index
+        data['exists'] = True
         if "uri" in nft.content and "https://nft.fragment.com" in nft.content["uri"]:
             tokens = nft.content["uri"].split("/")
             data["name"] = tokens[-1][:-5]
             data["type"] = tokens[-2]
         else:
             data['meta'] = nft.content
-        if nft.collection is not None:
+        if nft.collection_address is not None:
             data['collection'] = {
-                'address': AccountId(nft.collection.address),
-                'meta': nft.collection.collection_content
+                'address': AccountId(nft.collection_address),
             }
     return data
 
@@ -84,6 +89,15 @@ class NftTransferBlockMatcher(BlockMatcher):
         else:
             data['prev_owner'] = AccountId(block.event_nodes[0].message.source)
         data['query_id'] = nft_transfer_message.query_id
+        data['forward_amount'] = Amount(nft_transfer_message.forward_amount)
+        if nft_transfer_message.response_destination:
+            data['response_destination'] = AccountId(nft_transfer_message.response_destination)
+        else:
+            data['response_destination'] = None
+        data['custom_payload'] = base64.b64encode(nft_transfer_message.custom_payload).decode('utf-8') if (
+                nft_transfer_message.custom_payload is not None) else None
+        data['forward_payload'] = base64.b64encode(nft_transfer_message.forward_payload).decode('utf-8') if (
+                nft_transfer_message.forward_payload is not None) else None
         data['new_owner'] = AccountId(nft_transfer_message.new_owner)
         data['nft'] = await _get_nft_data(AccountId(block.event_nodes[0].message.transaction.account))
         if block.previous_block is not None and isinstance(block.previous_block, TonTransferBlock):
@@ -98,6 +112,8 @@ class NftTransferBlockMatcher(BlockMatcher):
         include.extend(other_blocks)
         new_block.merge_blocks(include)
         new_block.data = data
+        if not data['nft']['exists']:
+            new_block.broken = True
         return [new_block]
 
 
@@ -120,8 +136,14 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         nft_ownership_message = NftOwnershipAssigned(Slice.one_from_boc(message.message_content.body))
         data['new_owner'] = AccountId(message.destination)
         data['query_id'] = nft_ownership_message.query_id
-        data['nft'] = await _get_nft_data(AccountId(block.get_message().destination))
+        data['forward_amount'] = None
+        data['response_destination'] = None
+        data['custom_payload'] = None
+        data['forward_payload'] = None
+        data['nft'] = await _get_nft_data(AccountId(block.get_message().source))
         payload = nft_ownership_message.nft_payload
+        if payload is not None:
+            data['forward_payload'] = base64.b64encode(payload.raw).decode('utf-8')
         if payload is not None and isinstance(payload.value, TeleitemBidInfo):
             data['is_purchase'] = True
             data['price'] = Amount(payload.value.bid)
@@ -134,6 +156,8 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         include.extend(other_blocks)
         new_block.merge_blocks(include)
         new_block.data = data
+        if not data['nft']['exists']:
+            new_block.broken = True
         return [new_block]
 
 

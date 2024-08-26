@@ -25,7 +25,7 @@ async def _get_block_data(other_blocks):
     swap_call_block = next(x for x in other_blocks if isinstance(x, CallContractBlock) and
                            x.opcode == StonfiSwapMessage.opcode)
     swap_message = StonfiSwapMessage(swap_call_block.get_body())
-    payment_requests_messages = [StonfiPaymentRequest(x.get_body()) for x in
+    payment_requests_messages = [(StonfiPaymentRequest(x.get_body()), x) for x in
                                  find_call_contracts(other_blocks, StonfiPaymentRequest.opcode)]
     assert len(payment_requests_messages) > 0
     if len(payment_requests_messages) > 2:
@@ -35,7 +35,11 @@ async def _get_block_data(other_blocks):
     out_addr = None
     ref_amt = None
     ref_addr = None
-    for payment_request in payment_requests_messages:
+    outgoing_jetton_transfer = None
+    in_jetton_transfer = swap_call_block.previous_block
+
+    # Find payment request and outgoing jetton transfer
+    for payment_request, payment_request_block in payment_requests_messages:
         if payment_request.amount0_out > 0:
             amount = payment_request.amount0_out
             addr = payment_request.token0_out
@@ -44,9 +48,13 @@ async def _get_block_data(other_blocks):
             addr = payment_request.token1_out
         if payment_request.owner == swap_message.from_user_address:
             if out_amt is None:
+                outgoing_jetton_transfer = next(b for b in payment_request_block.next_blocks
+                                                if isinstance(b, JettonTransferBlock))
                 out_amt = amount
                 out_addr = addr
             elif out_amt < amount:
+                outgoing_jetton_transfer = next(b for b in payment_request_block.next_blocks
+                                                if isinstance(b, JettonTransferBlock))
                 ref_amt = out_amt
                 ref_addr = out_addr
                 out_amt = amount
@@ -54,25 +62,50 @@ async def _get_block_data(other_blocks):
         else:
             ref_amt = amount
             ref_addr = addr
+
     out_wallet = await context.interface_repository.get().get_jetton_wallet(out_addr.to_str(False).upper())
-    in_wallet = await context.interface_repository.get().get_jetton_wallet(
+    dex_in_wallet = await context.interface_repository.get().get_jetton_wallet(
         swap_message.token_wallet.to_str(False).upper())
     out_jetton = AccountId(out_wallet.jetton) if out_wallet is not None else None
-    in_jetton = AccountId(in_wallet.jetton) if in_wallet is not None else None
+    in_jetton = AccountId(dex_in_wallet.jetton) if dex_in_wallet is not None else None
+
+    in_source_jetton_wallet = None
+    if in_jetton_transfer.data['has_internal_transfer']:
+        in_source_jetton_wallet = in_jetton_transfer.data['sender_wallet']
+
+    out_destination_jetton_wallet = None
+    if outgoing_jetton_transfer.data['has_internal_transfer']:
+        out_destination_jetton_wallet = outgoing_jetton_transfer.data['receiver_wallet']
+
+    incoming_transfer = {
+        'asset': Asset(is_ton=in_jetton is None, jetton_address=in_jetton),
+        'amount': Amount(swap_message.amount),
+        'source': AccountId(swap_message.from_user_address),
+        'source_jetton_wallet': in_source_jetton_wallet,
+        'destination': AccountId(dex_in_wallet.owner),
+        'destination_jetton_wallet': AccountId(swap_message.token_wallet),
+    }
+
+    outgoing_transfer = {
+        'asset': Asset(is_ton=out_jetton is None, jetton_address=out_jetton),
+        'amount': Amount(out_amt),
+        'source': outgoing_jetton_transfer.data['sender'],
+        'source_jetton_wallet': outgoing_jetton_transfer.data['sender_wallet']
+    }
+    if out_destination_jetton_wallet is not None:
+        outgoing_transfer['destination_jetton_wallet'] = out_destination_jetton_wallet
+        outgoing_transfer['destination'] = outgoing_jetton_transfer.data['receiver']
+    elif in_jetton_transfer.data['stonfi_swap_body'] is not None:
+        outgoing_transfer['destination'] = AccountId(in_jetton_transfer.data['stonfi_swap_body']['user_address'])
+        outgoing_transfer['destination_jetton_wallet'] = None
+    else:
+        outgoing_transfer['destination'] = AccountId(swap_message.from_user_address)
 
     return {
         'dex': 'stonfi',
         'sender': AccountId(swap_message.from_user_address),
-        'sender_wallet': AccountId(swap_message.token_wallet),
-        'receiver_wallet': AccountId(out_addr),
-        'in': {
-            'amount': Amount(swap_message.amount),
-            'asset': Asset(is_ton=in_jetton is None, jetton_address=in_jetton),
-        },
-        'out': {
-            'amount': Amount(out_amt),
-            'asset': Asset(is_ton=out_jetton is None, jetton_address=out_jetton),
-        },
+        'dex_incoming_transfer': incoming_transfer,
+        'dex_outgoing_transfer': outgoing_transfer,
         'referral_amount': Amount(ref_amt),
         'referral_address': ref_addr,
         'peer_swaps': [],
@@ -93,11 +126,11 @@ class StonfiSwapBlockMatcher(BlockMatcher):
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         data = await _get_block_data(other_blocks)
-        new_bubble = JettonSwapBlock(data)
+        new_block = JettonSwapBlock(data)
         include = [block]
         include.extend(other_blocks)
-        new_bubble.merge_blocks(include)
-        return [new_bubble]
+        new_block.merge_blocks(include)
+        return [new_block]
 
 
 class DedustPeerBlockMatcher(BlockMatcher):
@@ -176,19 +209,53 @@ class DedustSwapBlockMatcher(BlockMatcher):
         sender_jetton_transfer_blocks = [x for x in new_block.children_blocks if isinstance(x, JettonTransferBlock)
                                      and x.min_lt <= block.min_lt and x.data['sender'] == sender]
         sender_wallet = None
+        dex_incoming_jetton_wallet = None
+        dex_incoming_wallet = None
         if len(sender_jetton_transfer_blocks) > 0:
+            dex_incoming_jetton_wallet = sender_jetton_transfer_blocks[0].data['receiver_wallet']
+            dex_incoming_wallet = sender_jetton_transfer_blocks[0].data['receiver']
             sender_wallet = sender_jetton_transfer_blocks[0].data['sender_wallet']
+        else:
+            swap_requests = find_call_contracts(other_blocks, DedustSwap.opcode)
+            if len(swap_requests) > 0:
+                dex_incoming_wallet = AccountId(swap_requests[0].get_message().destination)
+
 
         receiver_jetton_transfer_blocks = [x for x in new_block.children_blocks if isinstance(x, JettonTransferBlock)
                                         and x.min_lt >= block.min_lt and x.data['receiver'] == sender]
+        receiver = sender
         receiver_wallet = None
+        dex_outgoing_jetton_wallet = None
+        dex_outgoing_wallet = None
         if len(receiver_jetton_transfer_blocks) > 0:
             receiver_wallet = receiver_jetton_transfer_blocks[0].data['receiver_wallet']
+            dex_outgoing_wallet = receiver_jetton_transfer_blocks[0].data['sender']
+            dex_outgoing_jetton_wallet = receiver_jetton_transfer_blocks[0].data['sender_wallet']
+        else:
+            payouts = find_call_contracts(other_blocks, DedustPayout.opcode)
+            if len(payouts) > 0:
+                dex_outgoing_wallet = AccountId(payouts[0].get_message().source)
+                receiver = AccountId(payouts[0].get_message().destination)
+
         new_block.data = {
             'dex': 'dedust',
-            'sender_wallet': sender_wallet,
-            'receiver_wallet': receiver_wallet,
             'sender': sender,
+            'dex_incoming_transfer': {
+                'asset': peer_swaps[0]['in']['asset'],
+                'amount': peer_swaps[0]['in']['amount'],
+                'source': sender,
+                'source_jetton_wallet': sender_wallet,
+                'destination': dex_incoming_wallet,
+                'destination_jetton_wallet': dex_incoming_jetton_wallet,
+            },
+            'dex_outgoing_transfer': {
+                'asset': peer_swaps[-1]['out']['asset'],
+                'amount': peer_swaps[-1]['out']['amount'],
+                'source': dex_outgoing_wallet,
+                'source_jetton_wallet': dex_outgoing_jetton_wallet,
+                'destination': receiver,
+                'destination_jetton_wallet': receiver_wallet,
+            },
             'in': peer_swaps[0]['in'],
             'out': peer_swaps[-1]['out'],
             'peer_swaps': peer_swaps if len(peer_swaps) > 1 else []

@@ -44,10 +44,12 @@ class ElectionDepositStakeBlockMatcher(BlockMatcher):
 
 class ElectionRecoverStakeBlockMatcher(BlockMatcher):
     def __init__(self):
-        super().__init__(child_matcher=ContractMatcher(opcode=0xf96f7324,
+        confirmation_matcher = ContractMatcher(opcode=0xf96f7324,
                                                        optional=True,
-                                                       include_excess=False),
-                         include_excess=False)
+                                                       include_excess=False)
+        super().__init__(child_matcher=OrMatcher([
+            ContractMatcher(opcode=0x47657424, optional=True, include_excess=False, child_matcher=confirmation_matcher),
+            confirmation_matcher]), include_excess=False)
 
     def test_self(self, block: Block):
         return isinstance(block, CallContractBlock) and block.opcode == 0x47657424

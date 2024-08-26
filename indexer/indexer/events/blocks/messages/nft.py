@@ -15,10 +15,12 @@ class TeleitemBidInfo:
 class NftPayload:
     op: int | None
     value: TeleitemBidInfo | None
+    raw: bytes
 
     def __init__(self, slice: Slice):
         self.value = None
         self.op = None
+        self.raw = slice.to_cell().to_boc(hash_crc32=True)
         if slice.remaining_bits == 0 and slice.remaining_refs == 0:
             return
         tmp_cell = slice.copy()
@@ -38,8 +40,17 @@ class NftTransfer:
         self.query_id = slice.load_uint(64)
         self.new_owner = slice.load_address()
         self.response_destination = slice.load_address()
-        self.custom_payload = slice.load_maybe_ref()
+        custom_payload = slice.load_maybe_ref()
+        if custom_payload:
+            self.custom_payload = custom_payload.to_boc(hash_crc32=True)
+        else:
+            self.custom_payload = None
         self.forward_amount = slice.load_coins()
+        self.forward_payload = None
+        if slice.remaining_bits > 0:
+            is_right = slice.load_bool()
+            forward_payload = slice.load_ref() if is_right else slice.copy().to_cell()
+            self.forward_payload = forward_payload.to_boc(hash_crc32=True)
 
 
 class NftOwnershipAssigned:

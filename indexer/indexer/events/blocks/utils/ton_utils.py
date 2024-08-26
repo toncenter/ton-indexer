@@ -26,6 +26,9 @@ class Asset:
         else:
             return self.jetton_address.to_json()
 
+    def __repr__(self):
+        return self.to_json()
+
 
 def is_failed(tx: Transaction):
     description = tx.description

@@ -110,6 +110,7 @@ class Block:
 
     def __init__(self, type: str, nodes: list[EventNode], v=None):
         self.failed = False
+        self.broken = False
         self.event_nodes = nodes
         self.children_blocks = []
         self.next_blocks = []

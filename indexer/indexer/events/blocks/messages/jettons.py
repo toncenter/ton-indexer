@@ -9,11 +9,12 @@ class JettonTransfer:
     amount: int
     destination: Address
     response: Address
-    custom_payload: Cell | None
+    custom_payload: bytes | None
     forward_amount: int
     comment: str | None
     encrypted_comment: bool
     forward_payload: bytes | None
+    stonfi_swap_body: dict | None
 
     def __init__(self, boc: Slice):
         boc.load_uint(32)  # opcode
@@ -21,11 +22,16 @@ class JettonTransfer:
         self.amount = boc.load_coins()
         self.destination = boc.load_address()
         self.response = boc.load_address()
-        self.custom_payload = boc.load_maybe_ref()
+        custom_payload = boc.load_maybe_ref()
+        if custom_payload:
+            self.custom_payload = custom_payload.to_boc(hash_crc32=True)
+        else:
+            self.custom_payload = None
         self.forward_amount = boc.load_coins()
         self.comment = None
         self.encrypted_comment = False
         self.payload_sum_type = None
+        self.stonfi_swap_body = None
         payload_slice = boc.load_ref().to_slice() if boc.load_bool() else boc.copy()
         self._load_forward_payload(payload_slice)
 
@@ -49,6 +55,12 @@ class JettonTransfer:
                 self.sum_type = "EncryptedTextComment"
                 self.comment = payload_slice.load_str()
                 self.encrypted_comment = True
+            elif sum_type == 0x25938561:
+                self.stonfi_swap_body = {
+                    'jetton_wallet': payload_slice.load_address(),
+                    'min_amount': payload_slice.load_coins(),
+                    'user_address': payload_slice.load_address()
+                }
             else:
                 self.sum_type = "Unknown"
         except Exception:

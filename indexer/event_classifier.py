@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker, contains_eager
 
 from indexer.core import redis
-from indexer.core.database import engine, Trace, Transaction, Message, Action
+from indexer.core.database import engine, Trace, Transaction, Message, Action, TraceEdge
 from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action
@@ -23,9 +23,11 @@ async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = Settings()
+lt = time.time()
 
-
+count = 0
 async def start_processing_events_from_db(args: argparse.Namespace):
+    global lt, count
     logger.info(f"Creating pool of {args.pool_size} workers")
     with mp.Pool(args.pool_size, initializer=init_pool) as pool:
         while True:
@@ -36,18 +38,27 @@ async def start_processing_events_from_db(args: argparse.Namespace):
                     continue
                 ids = []
                 has_traces_to_process = False
+                total_nodes = 0
                 for (trace_id, nodes) in batch:
-                    if nodes > 500 or nodes == 0:
+                    if nodes > 4000 or nodes == 0:
                         await session.execute(update(Trace)
                                               .where(Trace.trace_id == trace_id)
                                               .values(classification_state='ok'))
                         has_traces_to_process = True
                     else:
+                        total_nodes += nodes
                         has_traces_to_process = True
                         ids.append(trace_id)
                 await session.commit()
+                count += len(ids)
                 if has_traces_to_process:
                     pool.map(process_event_batch, split_into_batches(ids, args.batch_size))
+                    if count > 50000:
+                        logger.info(f"Processed {count} traces in {time.time() - lt} seconds")
+                        if (time.time() - lt) > 0:
+                            logger.info(f"Processed {count / (time.time() - lt)} traces per second")
+                        count = 0
+                        lt = time.time()
                 else:
                     await asyncio.sleep(2)
 
@@ -91,7 +102,7 @@ async def fetch_events_for_processing(size: int):
         query = select(Trace.trace_id, Trace.nodes_) \
             .filter(Trace.state == 'complete') \
             .filter(Trace.classification_state == 'unclassified') \
-            .order_by(Trace.start_lt.asc()) \
+            .order_by(Trace.start_lt.desc()) \
             .limit(size)
         traces = await session.execute(query)
         return traces.all()
@@ -106,17 +117,20 @@ async def process_trace_batch_async(ids: list[str]):
     async with async_session() as session:
         query = select(Trace) \
             .join(Trace.transactions) \
-            .join(Trace.edges, isouter=True) \
             .join(Transaction.messages, isouter=True) \
             .join(Message.message_content, isouter=True) \
-            .options(contains_eager(Trace.transactions, Transaction.messages, Message.message_content),
-                     contains_eager(Trace.edges)) \
+            .options(contains_eager(Trace.transactions, Transaction.messages, Message.message_content)) \
             .filter(Trace.trace_id.in_(ids))
         result = await session.execute(query)
-        events = result.scalars().unique().all()
+        traces = result.scalars().unique().all()
+
+        query = select(Trace).join(Trace.edges).options(contains_eager(Trace.edges)).filter(Trace.trace_id.in_(ids))
+        traces_with_edges = (await session.execute(query)).scalars().unique().all()
+        trace_edge_map = dict((trace.trace_id, trace.edges) for trace in traces_with_edges)
+
         # Gather interfaces for each account
         accounts = set()
-        for trace in events:
+        for trace in traces:
             for tx in trace.transactions:
                 accounts.add(tx.account)
         interfaces = await gather_interfaces(accounts, session)
@@ -124,38 +138,49 @@ async def process_trace_batch_async(ids: list[str]):
         await repository.put_interfaces(interfaces)
         context.interface_repository.set(repository)
         # Process traces and save actions
-        results = await asyncio.gather(*(process_trace(event) for event in events))
+        results = await asyncio.gather(*(process_trace(trace, trace_edge_map.get(trace.trace_id, []))
+                                         for trace in traces))
         ok_traces = []
         failed_traces = []
-        for trace_id, success, actions in results:
-            if success:
+        broken_traces = []
+        for trace_id, state, actions in results:
+            if state == 'ok' or state == 'broken':
                 session.add_all(actions)
-                ok_traces.append(trace_id)
+                if state == 'ok':
+                    ok_traces.append(trace_id)
+                else:
+                    broken_traces.append(trace_id)
             else:
                 failed_traces.append(trace_id)
         stmt = update(Trace).where(Trace.trace_id.in_(ok_traces)).values(classification_state='ok')
         await session.execute(stmt)
+        if len(broken_traces) > 0:
+            stmt = update(Trace).where(Trace.trace_id.in_(broken_traces)).values(classification_state='broken')
+            await session.execute(stmt)
         stmt = update(Trace).where(Trace.trace_id.in_(failed_traces)).values(classification_state='failed')
         await session.execute(stmt)
         await session.commit()
 
 
-async def process_trace(trace: Trace) -> tuple[str, bool, list[Action]]:
-    if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock' and len(trace.edges) == 0:
-        return trace.trace_id, True, []
+async def process_trace(trace: Trace, trace_edges: list[TraceEdge]) -> tuple[str, str, list[Action]]:
+    if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock' and len(trace_edges) == 0:
+        return trace.trace_id, 'ok', []
     try:
-        result = await process_event_async(trace)
+        result = await process_event_async(trace, trace_edges)
         actions = []
+        state = 'ok'
         for block in result.bfs_iter():
             if block.btype != 'root':
                 if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
                     continue
+                if block.broken:
+                    state = 'broken'
                 action = block_to_action(block, trace.trace_id)
                 actions.append(action)
-        return trace.trace_id, True, actions
+        return trace.trace_id, state, actions
     except Exception as e:
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
-        return trace.trace_id, False, []
+        return trace.trace_id, 'failed', []
 
 
 if __name__ == '__main__':

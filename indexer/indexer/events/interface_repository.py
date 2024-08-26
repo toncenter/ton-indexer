@@ -101,9 +101,14 @@ class RedisInterfaceRepository(InterfaceRepository):
         self.connection = connection
 
     async def put_interfaces(self, interfaces: dict[str, dict[str, dict]]):
-        await asyncio.gather(*[self.connection.set(RedisInterfaceRepository.prefix + address,
-                                                   msgpack.packb(data, use_bin_type=True),
-                                                   ex=60) for (address, data) in interfaces.items() if len(data.keys()) > 0])
+        batch_size = 500
+        serialized_interfaces = [(RedisInterfaceRepository.prefix + address, msgpack.packb(data, use_bin_type=True))
+                                 for (address, data) in interfaces.items() if len(data.keys()) > 0]
+        for i in range(0, len(serialized_interfaces), batch_size):
+            pipe = self.connection.pipeline()
+            for (key, value) in serialized_interfaces[i:i + batch_size]:
+                await pipe.set(key, value, ex=300)
+            await pipe.execute()
 
     async def get_jetton_wallet(self, address: str) -> JettonWallet | None:
         raw_data = await self.connection.get(RedisInterfaceRepository.prefix + address)
@@ -206,10 +211,20 @@ async def _gather_data_from_db(
         accounts: set[str],
         session: AsyncSession
 ) -> tuple[list[JettonWallet], list[NFTItem], list[NftSale]]:
-    jetton_wallets = await session.execute(select(JettonWallet).filter(JettonWallet.address.in_(accounts)))
-    nft_items = await session.execute(select(NFTItem).filter(NFTItem.address.in_(accounts)))
-    nft_sales = await session.execute(select(NftSale).filter(NftSale.address.in_(accounts)))
-    return jetton_wallets.scalars().all(), nft_items.scalars().all(), nft_sales.scalars().all()
+    jetton_wallets = []
+    nft_items = []
+    nft_sales = []
+    account_list = list(accounts)
+    for i in range(0, len(account_list), 5000):
+        batch = account_list[i:i + 5000]
+        wallets = await session.execute(select(JettonWallet).filter(JettonWallet.address.in_(batch)))
+        nft = await session.execute(select(NFTItem).filter(NFTItem.address.in_(batch)))
+        sales = await session.execute(select(NftSale).filter(NftSale.address.in_(batch)))
+        jetton_wallets += list(wallets.scalars().all())
+        nft_items += list(nft.scalars().all())
+        nft_sales += list(sales.scalars().all())
+
+    return jetton_wallets, nft_items, nft_sales
 
 
 async def gather_interfaces(accounts: set[str], session: AsyncSession) -> dict[str, dict[str, dict]]:

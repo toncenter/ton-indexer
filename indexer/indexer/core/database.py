@@ -167,7 +167,7 @@ class Trace(Base):
     pending_edges_: int = Column(BigInteger)
     edges_: int = Column(BigInteger)
     nodes_: int = Column(BigInteger)
-    classification_state = Column(Enum('unclassified', 'failed', 'ok', name='trace_classification_state'))
+    classification_state = Column(Enum('unclassified', 'failed', 'ok', 'broken', name='trace_classification_state'))
 
     edges: List[TraceEdge] = relationship("TraceEdge", back_populates="trace", uselist=True, viewonly=True)
     transactions: List["Transaction"] = relationship("Transaction",
@@ -180,8 +180,9 @@ class Trace(Base):
 class TraceEdge(Base):
     __tablename__ = 'trace_edges'
     trace_id: str = Column(String(44), ForeignKey("traces.trace_id"), primary_key=True)
-    left_tx: str = Column(String, primary_key=True)
-    right_tx: str = Column(String, primary_key=True)
+    msg_hash: str = Column(String(44), primary_key=True)
+    left_tx: str = Column(String)
+    right_tx: str = Column(String)
     incomplete: bool = Column(Boolean)
     broken: bool = Column(Boolean)
 
@@ -193,9 +194,10 @@ class Action(Base):
 
     action_id: str = Column(String, primary_key=True)
     type: str = Column(String())
-    trace_id: str = Column(String(44), ForeignKey('traces.trace_id'), nullable=False)
+    trace_id: str = Column(String(44), ForeignKey('traces.trace_id'), nullable=False, primary_key=True)
     tx_hashes: list[str] = Column(ARRAY(String()))
     value: int = Column(Numeric)
+    amount: int = Column(Numeric)
     start_lt: int | None = Column(BigInteger)
     end_lt: int | None = Column(BigInteger)
     start_utime: int | None = Column(BigInteger)
@@ -215,24 +217,48 @@ class Action(Base):
         Column("encrypted", Boolean)
     ]))
     jetton_transfer_data = Column(CompositeType("jetton_transfer_details", [
-        Column("response_address", String),
+        Column("response_destination", String),
         Column("forward_amount", Numeric),
-        Column("query_id", Numeric)
+        Column("query_id", Numeric),
+        Column("custom_payload", String),
+        Column("forward_payload", String),
+        Column("comment", String),
+        Column("is_encrypted_comment", Boolean)
     ]))
     nft_transfer_data = Column(CompositeType("nft_transfer_details", [
         Column("is_purchase", Boolean),
         Column("price", Numeric),
-        Column("query_id", Numeric)
+        Column("query_id", Numeric),
+        Column("custom_payload", String),
+        Column("forward_payload", String),
+        Column("forward_amount", Numeric),
+        Column("response_destination", String),
+        Column("nft_item_index", Numeric),
     ]))
     jetton_swap_data = Column(CompositeType("jetton_swap_details", [
         Column("dex", String),
-        Column("amount_in", Numeric),
-        Column("amount_out", Numeric),
+        Column("sender", String),
+        Column("dex_incoming_transfer", CompositeType("dex_transfer_details",[
+            Column("amount", Numeric),
+            Column("asset", String),
+            Column("source", String),
+            Column("destination", String),
+            Column("source_jetton_wallet", String),
+            Column("destination_jetton_wallet", String)
+        ])),
+        Column("dex_outgoing_transfer", CompositeType("dex_transfer_details", [
+            Column("amount", Numeric),
+            Column("asset", String),
+            Column("source", String),
+            Column("destination", String),
+            Column("source_jetton_wallet", String),
+            Column("destination_jetton_wallet", String)
+        ])),
         Column("peer_swaps", ARRAY(CompositeType("peer_swap_details", [
-            Column("amount_in", Numeric),
             Column("asset_in", String),
+            Column("amount_in", Numeric),
+            Column("asset_out", String),
             Column("amount_out", Numeric),
-            Column("asset_out", String)
         ])))]))
     change_dns_record_data = Column(CompositeType("change_dns_record_details", [
         Column("key", String),
@@ -240,6 +266,8 @@ class Action(Base):
         Column("value", String),
         Column("flags", Integer)
     ]))
+    nft_mint_data = Column(CompositeType("nft_mint_details", [
+        Column("nft_item_index", Numeric)]))
 
 
 class Transaction(Base):

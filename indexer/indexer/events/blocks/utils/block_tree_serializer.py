@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import base64
 import hashlib
 import random
 from typing import Tuple, List
 
+from indexer.events.blocks.utils import AccountId, Asset
 from indexer.core.database import Action
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
@@ -11,6 +14,15 @@ from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
 from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
+
+
+def _addr(addr: AccountId | Asset | None) -> str | None:
+    if addr is None:
+        return None
+    if isinstance(addr, Asset):
+        return addr.jetton_address.as_str() if addr.jetton_address is not None else None
+    else:
+        return addr.as_str()
 
 
 def _calc_action_id(block: Block) -> str:
@@ -22,7 +34,7 @@ def _calc_action_id(block: Block) -> str:
 
 def _base_block_to_action(block: Block, trace_id: str) -> Action:
     action_id = _calc_action_id(block)
-    tx_hashes = list(set(n.message.tx_hash for n in block.event_nodes))
+    tx_hashes = list(set(n.get_tx_hash() for n in block.event_nodes))
     return Action(
         trace_id=trace_id,
         type=block.btype,
@@ -57,17 +69,27 @@ def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):
     action.source_secondary = block.data['sender_wallet'].as_str()
     action.destination = block.data['receiver'].as_str()
     action.destination_secondary = block.data['receiver_wallet'].as_str() if 'receiver_wallet' in block.data else None
-    action.value = block.data['amount'].value
+    action.amount = block.data['amount'].value
     asset = block.data['asset']
     if asset is None or asset.is_ton:
         action.asset = None
     else:
         action.asset = asset.jetton_address.as_str()
+    comment = None
+    if block.data['comment'] is not None:
+        if block.data['encrypted_comment']:
+            comment = base64.b64encode(block.data['comment']).decode('utf-8')
+        else:
+            comment = block.data['comment'].replace("\u0000", "")
     action.jetton_transfer_data = {
         'query_id': block.data['query_id'],
-        'response_address': block.data['response_address'].as_str() if block.data[
+        'response_destination': block.data['response_address'].as_str() if block.data[
                                                                            'response_address'] is not None else None,
         'forward_amount': block.data['forward_amount'].value,
+        'custom_payload': block.data['custom_payload'],
+        'forward_payload': block.data['forward_payload'],
+        'comment': comment,
+        'is_encrypted_comment': block.data['encrypted_comment']
     }
 
 
@@ -75,13 +97,18 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
     if 'prev_owner' in block.data and block.data['prev_owner'] is not None:
         action.source = block.data['prev_owner'].as_str()
     action.destination = block.data['new_owner'].as_str()
-    action.asset = block.data['nft']['address'].as_str()
+    action.asset_secondary = block.data['nft']['address'].as_str()
     if block.data['nft']['collection'] is not None:
-        action.asset_secondary = block.data['nft']['collection']['address'].as_str()
+        action.asset = block.data['nft']['collection']['address'].as_str()
     action.nft_transfer_data = {
         'query_id': block.data['query_id'],
         'is_purchase': block.data['is_purchase'],
         'price': block.data['price'].value if 'price' in block.data and block.data['is_purchase'] else None,
+        'nft_item_index': block.data['nft']['index'],
+        'forward_amount': block.data['forward_amount'].value if block.data['forward_amount'] is not None else None,
+        'custom_payload': block.data['custom_payload'],
+        'forward_payload': block.data['forward_payload'],
+        'response_destination': block.data['response_destination'].as_str() if block.data['response_destination'] else None,
     }
 
 
@@ -89,9 +116,12 @@ def _fill_nft_mint_action(block: NftMintBlock, action: Action):
     if block.data["source"]:
         action.source = block.data["source"].as_str()
     action.destination = block.data["address"].as_str()
-    action.asset = action.destination
+    action.asset_secondary = action.destination
     if block.data["collection"]:
-        action.asset_secondary = block.data["collection"].as_str()
+        action.asset = block.data["collection"].as_str()
+    action.nft_mint_data = {
+        'nft_item_index': block.data["index"],
+    }
 
 
 def _convert_peer_swap(peer_swap: dict) -> dict:
@@ -106,23 +136,33 @@ def _convert_peer_swap(peer_swap: dict) -> dict:
 
 
 def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
-    action.source = block.data['sender'].as_str()
-    action.source_secondary = block.data['sender_wallet'].as_str() if block.data['sender_wallet'] is not None else None
-    action.destination = block.data['sender'].as_str()
-    action.destination_secondary = block.data['receiver_wallet'].as_str() if block.data['receiver_wallet'] is not None \
-        else None
-
-    if block.data['in']['asset'].jetton_address is not None:
-        action.asset = block.data['in']['asset'].jetton_address.as_str()
-
-    if block.data['out']['asset'].jetton_address is not None:
-        action.asset2 = block.data['out']['asset'].jetton_address.as_str()
-
+    dex_incoming_transfer = {
+        'amount': block.data['dex_incoming_transfer']['amount'].value,
+        'source': _addr(block.data['dex_incoming_transfer']['source']),
+        'source_jetton_wallet': _addr(block.data['dex_incoming_transfer']['source_jetton_wallet']),
+        'destination': _addr(block.data['dex_incoming_transfer']['destination']),
+        'destination_jetton_wallet': _addr(block.data['dex_incoming_transfer']['destination_jetton_wallet']),
+        'asset': _addr(block.data['dex_incoming_transfer']['asset'])
+    }
+    dex_outgoing_transfer = {
+        'amount': block.data['dex_outgoing_transfer']['amount'].value,
+        'source': _addr(block.data['dex_outgoing_transfer']['source']),
+        'source_jetton_wallet': _addr(block.data['dex_outgoing_transfer']['source_jetton_wallet']),
+        'destination': _addr(block.data['dex_outgoing_transfer']['destination']),
+        'destination_jetton_wallet': _addr(block.data['dex_outgoing_transfer']['destination_jetton_wallet']),
+        'asset': _addr(block.data['dex_outgoing_transfer']['asset'])
+    }
+    action.asset = dex_incoming_transfer['asset']
+    action.asset2 = dex_outgoing_transfer['asset']
+    action.source = dex_incoming_transfer['source']
+    action.source_secondary = dex_incoming_transfer['source_jetton_wallet']
+    action.destination = dex_outgoing_transfer['destination']
+    action.destination_secondary = dex_outgoing_transfer['destination_jetton_wallet']
     action.jetton_swap_data = {
         'dex': block.data['dex'],
-        'amount_in': block.data['in']['amount'].value,
-        'amount_out': block.data['out']['amount'].value,
-        'peer_swaps': [_convert_peer_swap(x) for x in block.data['peer_swaps']],
+        'sender': _addr(block.data['sender']),
+        'dex_incoming_transfer': dex_incoming_transfer,
+        'dex_outgoing_transfer': dex_outgoing_transfer,
     }
 
 
@@ -130,7 +170,7 @@ def _fill_jetton_burn_action(block: JettonBurnBlock, action: Action):
     action.source = block.data['owner'].as_str()
     action.source_secondary = block.data['jetton_wallet'].as_str()
     action.asset = block.data['asset'].jetton_address.as_str()
-    action.value = block.data['amount'].value
+    action.amount = block.data['amount'].value
 
 
 def _fill_change_dns_record_action(block: ChangeDnsRecordBlock, action: Action):
@@ -169,20 +209,20 @@ def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
 
 def _fill_subscribe_action(block: SubscriptionBlock, action: Action):
     action.source = block.data['subscriber'].as_str()
-    action.source_secondary = block.data['beneficiary'].as_str() if block.data['beneficiary'] is not None else None
-    action.destination = block.data['subscription'].as_str()
-    action.value = block.data['amount'].value
+    action.destination = block.data['beneficiary'].as_str() if block.data['beneficiary'] is not None else None
+    action.destination_secondary = block.data['subscription'].as_str()
+    action.amount = block.data['amount'].value
 
 
 def _fill_unsubscribe_action(block: UnsubscribeBlock, action: Action):
     action.source = block.data['subscriber'].as_str()
-    action.source_secondary = block.data['beneficiary'].as_str() if block.data['beneficiary'] is not None else None
-    action.destination = block.data['subscription'].as_str()
+    action.destination = block.data['beneficiary'].as_str() if block.data['beneficiary'] is not None else None
+    action.destination_secondary = block.data['subscription'].as_str()
 
 
 def _fill_election_action(block: Block, action: Action):
     action.source = block.data['stake_holder'].as_str()
-    action.value = block.data['amount'].value if 'amount' in block.data else None
+    action.amount = block.data['amount'].value if 'amount' in block.data else None
 
 
 # noinspection PyCompatibility,PyTypeChecker

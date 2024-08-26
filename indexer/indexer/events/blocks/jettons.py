@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 
+from indexer.events.blocks.utils.block_utils import find_call_contract
 from indexer.events.blocks.messages import JettonNotify, JettonInternalTransfer, ExcessMessage, JettonBurnNotification
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
@@ -44,8 +45,9 @@ class JettonTransferBlockMatcher(BlockMatcher):
         include.extend(other_blocks)
         jetton_transfer_message = JettonTransfer(block.get_body())
         receiver: AccountId = AccountId(jetton_transfer_message.destination)
-
+        has_internal_transfer = find_call_contract(other_blocks, JettonInternalTransfer.opcode) is not None
         data = {
+            'has_internal_transfer': has_internal_transfer,
             'sender': None,
             'sender_wallet': AccountId(block.event_nodes[0].message.destination),
             'receiver': receiver,
@@ -56,9 +58,12 @@ class JettonTransferBlockMatcher(BlockMatcher):
             'amount': Amount(jetton_transfer_message.amount),
             'forward_payload': base64.b64encode(jetton_transfer_message.forward_payload).decode(
                 'utf-8') if jetton_transfer_message.forward_payload is not None else None,
+            'custom_payload': base64.b64encode(jetton_transfer_message.custom_payload).decode(
+                'utf-8') if jetton_transfer_message.custom_payload is not None else None,
             'comment': jetton_transfer_message.comment,
             'encrypted_comment': jetton_transfer_message.encrypted_comment,
-            'payload_opcode': jetton_transfer_message.payload_sum_type
+            'payload_opcode': jetton_transfer_message.payload_sum_type,
+            'stonfi_swap_body': jetton_transfer_message.stonfi_swap_body
         }
         if len(block.next_blocks) > 0:
             data['receiver_wallet'] = AccountId(block.next_blocks[0].event_nodes[0].message.destination)

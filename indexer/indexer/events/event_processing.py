@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import logging
 
@@ -5,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from indexer.events.blocks.utils import AccountId
-from indexer.core.database import Trace, engine
+from indexer.core.database import Trace, engine, TraceEdge
 from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
@@ -53,9 +55,9 @@ matchers = [
 ]
 
 
-async def process_event_async(trace: Trace) -> Block:
+async def process_event_async(trace: Trace, trace_edges: list[TraceEdge] | None = None) -> Block:
     try:
-        node = to_tree(trace.transactions, trace)
+        node = to_tree(trace.transactions, trace, trace_edges)
         root = Block('root', [])
         root.connect(init_block(node))
 
