@@ -36,6 +36,8 @@ drop index if exists jetton_masters_index_2;
 drop index if exists jetton_wallets_index_1;
 drop index if exists jetton_wallets_index_2;
 drop index if exists jetton_wallets_index_3;
+drop index if exists jetton_wallets_index_4;
+drop index if exists jetton_wallets_index_5;
 
 drop index if exists jetton_transfers_index_1;
 drop index if exists jetton_transfers_index_2;

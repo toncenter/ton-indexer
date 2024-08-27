@@ -36,6 +36,8 @@ create index if not exists jetton_masters_index_2 on jetton_masters (id asc);
 create index if not exists jetton_wallets_index_1 on jetton_wallets (owner, id asc);
 create index if not exists jetton_wallets_index_2 on jetton_wallets (jetton, id asc);
 create index if not exists jetton_wallets_index_3 on jetton_wallets (id asc);
+create index if not exists jetton_wallets_index_4 on jetton_wallets (jetton, balance desc);
+create index if not exists jetton_wallets_index_5 on jetton_wallets (owner, balance desc);
 
 create index if not exists jetton_transfers_index_1 on jetton_transfers (source, tx_now asc);
 create index if not exists jetton_transfers_index_2 on jetton_transfers (source, tx_lt asc);
@@ -84,8 +86,8 @@ create index if not exists traces_index_4 on traces (end_utime asc);
 create index if not exists traces_index_5 on traces (external_hash, end_lt asc);
 create index if not exists traces_index_6 on traces (external_hash, end_utime asc);
 
-create index if not exists trace_edges_index_1 on trace_edges (msg_hash);
-create index if not exists trace_edges_index_2 on trace_edges (incomplete);
+create index if not exists trace_edges_index_1 on trace_edges (incomplete);
+-- create index if not exists trace_edges_index_2 on trace_edges (msg_hash);
 
 create index if not exists actions_index_1 on actions (trace_id, start_lt, end_lt);
 create index if not exists actions_index_2 on actions (action_id);

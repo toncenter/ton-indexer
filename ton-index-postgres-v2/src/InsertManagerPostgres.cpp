@@ -2203,9 +2203,8 @@ void InsertManagerPostgres::start_up() {
     // some necessary indexes
     query += (
       "create index if not exists traces_index_1 on traces (state);\n"
-      "create index if not exists trace_edges_index_1 on trace_edges (msg_hash);\n"
-      "create index if not exists trace_edges_index_2 on trace_edges (incomplete);\n"
-      "create index if not exists trace_unclassified_index on traces (start_lt) include (trace_id, state) where (classification_state = 'unclassified');\n"
+      "create index if not exists trace_edges_index_1 on trace_edges (incomplete);\n"
+      "create index trace_state_unclassified_index on traces (state, start_lt) include (trace_id, nodes_) where (classification_state = 'unclassified');\n"
     );
 
     LOG(DEBUG) << query;
