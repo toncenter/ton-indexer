@@ -50,6 +50,7 @@ Vagrantfile
 /sandbox
 /private
 /build
+/logs
 
 .env.*
 .env

@@ -822,7 +822,7 @@ func GetJettonWallets(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.JettonTransfersResponse
 // @failure 400 {object} index.RequestError
-// @param address query []string false "Address of jetton wallet owner in any form. Max 1000" collectionFormat(multi)
+// @param owner_address query []string false "Address of jetton wallet owner in any form. Max 1000" collectionFormat(multi)
 // @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param jetton_master query string false "Jetton master address in any form."
 // @param direction query string false "Direction of transfer." Enums(in, out)
@@ -1058,6 +1058,10 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 	if err := c.QueryParser(&acc_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+	if acc_req.UseV2 == nil {
+		acc_req.UseV2 = new(bool)
+		*acc_req.UseV2 = false // change it to true to use v2 proxied method as default
+	}
 
 	if len(acc_req.AccountAddress) == 0 {
 		return index.IndexError{Code: 401, Message: "address of account is required"}
@@ -1129,7 +1133,7 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 	}
 	if acc_req.UseV2 == nil {
 		acc_req.UseV2 = new(bool)
-		*acc_req.UseV2 = true
+		*acc_req.UseV2 = false // change it to true to use v2 proxied method as default
 	}
 	if len(acc_req.AccountAddress) == 0 {
 		return index.IndexError{Code: 401, Message: "address of account is required"}

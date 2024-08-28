@@ -84,7 +84,7 @@ func AccountAddressConverter(value string) reflect.Value {
 		return reflect.Value{}
 	}
 	addr_str := fmt.Sprintf("%d:%s", addr.Workchain(), strings.ToUpper(hex.EncodeToString(addr.Data())))
-	return reflect.ValueOf(addr_str)
+	return reflect.ValueOf(AccountAddress(addr_str))
 }
 
 func AccountAddressNullableConverter(value string) reflect.Value {

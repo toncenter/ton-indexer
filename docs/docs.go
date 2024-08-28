@@ -814,7 +814,7 @@ const docTemplate = `{
                         },
                         "collectionFormat": "multi",
                         "description": "Address of jetton wallet owner in any form. Max 1000",
-                        "name": "address",
+                        "name": "owner_address",
                         "in": "query"
                     },
                     {

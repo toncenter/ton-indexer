@@ -582,9 +582,9 @@ type Action struct {
 
 type EventMeta struct {
 	TraceState          string `json:"trace_state"`
-	Messages            uint64 `json:"messages"`
-	Transactions        uint64 `json:"transactions"`
-	PendingMessages     uint64 `json:"pending_messages"`
+	Messages            int64  `json:"messages"`
+	Transactions        int64  `json:"transactions"`
+	PendingMessages     int64  `json:"pending_messages"`
 	ClassificationState string `json:"classification_state"`
 } // @name EventMeta
 

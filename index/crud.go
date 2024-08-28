@@ -170,6 +170,7 @@ func buildTransactionsQuery(
 	}
 	if v := blk_req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.mc_block_seqno = %d", *v))
+		orderby_query = fmt.Sprintf(" order by T.lt %s", sort_order)
 	}
 
 	if v := tx_req.Account; v != nil {
@@ -1630,7 +1631,7 @@ func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 	addr_map := map[string]bool{}
 	for idx := range events {
 		events_map[events[idx].TraceId] = idx
-		if settings.MaxEventTransactions > 0 && events[idx].EventMeta.Transactions > uint64(settings.MaxEventTransactions) {
+		if settings.MaxEventTransactions > 0 && events[idx].EventMeta.Transactions > int64(settings.MaxEventTransactions) {
 			events[idx].IsIncomplete = true
 			events[idx].Warning = "event is too large"
 		} else {
@@ -1695,9 +1696,16 @@ func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 		if len(events[idx].TransactionsOrder) > 0 {
 			trace, err := assembleEventTraceFromMap(&events[idx].TransactionsOrder, &events[idx].Transactions)
 			if err != nil {
-				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to assemble trace: %s", err.Error())}
+				if len(events[idx].Warning) > 0 {
+					events[idx].Warning += ", " + err.Error()
+				} else {
+					events[idx].Warning = err.Error()
+				}
+				// return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to assemble trace: %s", err.Error())}
 			}
-			events[idx].Trace = trace
+			if trace != nil {
+				events[idx].Trace = trace
+			}
 		}
 	}
 
@@ -1712,6 +1720,7 @@ func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 
 func assembleEventTraceFromMap(tx_order *[]HashType, txs *map[HashType]*Transaction) (*TraceNode, error) {
 	nodes := map[HashType]*TraceNode{}
+	warning := ``
 	var root *TraceNode = nil
 	for _, tx_hash := range *tx_order {
 		tx := (*txs)[tx_hash]
@@ -1732,8 +1741,11 @@ func assembleEventTraceFromMap(tx_order *[]HashType, txs *map[HashType]*Transact
 		} else if root == nil {
 			root = &node
 		} else {
-			return nil, fmt.Errorf("failed to build trace: unreachable branch of code")
+			warning = "missing node in trace found"
 		}
+	}
+	if len(warning) > 0 {
+		return root, fmt.Errorf("%s", warning)
 	}
 	return root, nil
 }

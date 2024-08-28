@@ -1562,7 +1562,7 @@ paths:
         in: query
         items:
           type: string
-        name: address
+        name: owner_address
         type: array
       - collectionFormat: multi
         description: 'Jetton wallet address in any form. Max: 1000.'
