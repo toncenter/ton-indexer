@@ -66,13 +66,15 @@ definitions:
         type: string
       details: {}
       end_lt:
-        type: integer
+        example: "0"
+        type: string
       end_utime:
         type: integer
       raw_action:
         $ref: '#/definitions/RawAction'
       start_lt:
-        type: integer
+        example: "0"
+        type: string
       start_utime:
         type: integer
       success:
@@ -297,7 +299,8 @@ definitions:
           $ref: '#/definitions/Action'
         type: array
       end_lt:
-        type: integer
+        example: "0"
+        type: string
       end_utime:
         type: integer
       external_hash:
@@ -309,7 +312,8 @@ definitions:
       mc_seqno_start:
         type: string
       start_lt:
-        type: integer
+        example: "0"
+        type: string
       start_utime:
         type: integer
       trace:
@@ -374,7 +378,8 @@ definitions:
       transaction_hash:
         type: string
       transaction_lt:
-        type: integer
+        example: "0"
+        type: string
       transaction_now:
         type: integer
     type: object
@@ -448,7 +453,8 @@ definitions:
       transaction_hash:
         type: string
       transaction_lt:
-        type: integer
+        example: "0"
+        type: string
       transaction_now:
         type: integer
     type: object
@@ -650,7 +656,8 @@ definitions:
       transaction_hash:
         type: string
       transaction_lt:
-        type: integer
+        example: "0"
+        type: string
       transaction_now:
         type: integer
     type: object

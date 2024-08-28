@@ -640,6 +640,8 @@ func buildJettonTransfersQuery(transfer_req JettonTransferRequest, utime_req Uti
 		return "", err
 	}
 
+	filter_list = append(filter_list, "T.tx_aborted is false")
+
 	if v := transfer_req.OwnerAddress; v != nil {
 		if v1 := transfer_req.Direction; v1 != nil {
 			f_str := ``

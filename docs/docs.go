@@ -2228,7 +2228,8 @@ const docTemplate = `{
                 },
                 "details": {},
                 "end_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "end_utime": {
                     "type": "integer"
@@ -2237,7 +2238,8 @@ const docTemplate = `{
                     "$ref": "#/definitions/RawAction"
                 },
                 "start_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "start_utime": {
                     "type": "integer"
@@ -2572,7 +2574,8 @@ const docTemplate = `{
                     }
                 },
                 "end_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "end_utime": {
                     "type": "integer"
@@ -2590,7 +2593,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "start_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "start_utime": {
                     "type": "integer"
@@ -2689,7 +2693,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "transaction_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "transaction_now": {
                     "type": "integer"
@@ -2801,7 +2806,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "transaction_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "transaction_now": {
                     "type": "integer"
@@ -3104,7 +3110,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "transaction_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "transaction_now": {
                     "type": "integer"

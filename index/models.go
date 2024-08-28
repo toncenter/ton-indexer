@@ -310,7 +310,7 @@ type NFTTransfer struct {
 	NftItemIndex         string          `json:"-"`
 	NftCollectionAddress AccountAddress  `json:"nft_collection"`
 	TransactionHash      HashType        `json:"transaction_hash"`
-	TransactionLt        int64           `json:"transaction_lt"`
+	TransactionLt        int64           `json:"transaction_lt,string"`
 	TransactionNow       int64           `json:"transaction_now"`
 	TransactionAborted   bool            `json:"transaction_aborted"`
 	OldOwner             AccountAddress  `json:"old_owner"`
@@ -355,7 +355,7 @@ type JettonTransfer struct {
 	SourceWallet        AccountAddress  `json:"source_wallet"`
 	JettonMaster        AccountAddress  `json:"jetton_master"`
 	TransactionHash     HashType        `json:"transaction_hash"`
-	TransactionLt       int64           `json:"transaction_lt"`
+	TransactionLt       int64           `json:"transaction_lt,string"`
 	TransactionNow      int64           `json:"transaction_now"`
 	TransactionAborted  bool            `json:"transaction_aborted"`
 	ResponseDestination *AccountAddress `json:"response_destination"`
@@ -371,7 +371,7 @@ type JettonBurn struct {
 	JettonWallet        AccountAddress  `json:"jetton_wallet"`
 	JettonMaster        AccountAddress  `json:"jetton_master"`
 	TransactionHash     HashType        `json:"transaction_hash"`
-	TransactionLt       int64           `json:"transaction_lt"`
+	TransactionLt       int64           `json:"transaction_lt,string"`
 	TransactionNow      int64           `json:"transaction_now"`
 	TransactionAborted  bool            `json:"transaction_aborted"`
 	Amount              string          `json:"amount"`
@@ -569,8 +569,8 @@ type ActionDetailsWtonMint struct {
 type Action struct {
 	TraceId    HashType    `json:"trace_id"`
 	ActionId   HashType    `json:"action_id"`
-	StartLt    int64       `json:"start_lt"`
-	EndLt      int64       `json:"end_lt"`
+	StartLt    int64       `json:"start_lt,string"`
+	EndLt      int64       `json:"end_lt,string"`
 	StartUtime int64       `json:"start_utime"`
 	EndUtime   int64       `json:"end_utime"`
 	TxHashes   []*HashType `json:"transactions"`
@@ -601,9 +601,9 @@ type Event struct {
 	ExternalHash      *HashType                 `json:"external_hash"`
 	McSeqnoStart      HashType                  `json:"mc_seqno_start"`
 	McSeqnoEnd        HashType                  `json:"mc_seqno_end"`
-	StartLt           uint64                    `json:"start_lt"`
+	StartLt           uint64                    `json:"start_lt,string"`
 	StartUtime        uint32                    `json:"start_utime"`
-	EndLt             uint64                    `json:"end_lt"`
+	EndLt             uint64                    `json:"end_lt,string"`
 	EndUtime          uint32                    `json:"end_utime"`
 	EventMeta         EventMeta                 `json:"trace_info"`
 	IsIncomplete      bool                      `json:"is_incomplete"`

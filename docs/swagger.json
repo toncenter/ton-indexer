@@ -2220,7 +2220,8 @@
                 },
                 "details": {},
                 "end_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "end_utime": {
                     "type": "integer"
@@ -2229,7 +2230,8 @@
                     "$ref": "#/definitions/RawAction"
                 },
                 "start_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "start_utime": {
                     "type": "integer"
@@ -2564,7 +2566,8 @@
                     }
                 },
                 "end_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "end_utime": {
                     "type": "integer"
@@ -2582,7 +2585,8 @@
                     "type": "string"
                 },
                 "start_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "start_utime": {
                     "type": "integer"
@@ -2681,7 +2685,8 @@
                     "type": "string"
                 },
                 "transaction_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "transaction_now": {
                     "type": "integer"
@@ -2793,7 +2798,8 @@
                     "type": "string"
                 },
                 "transaction_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "transaction_now": {
                     "type": "integer"
@@ -3096,7 +3102,8 @@
                     "type": "string"
                 },
                 "transaction_lt": {
-                    "type": "integer"
+                    "type": "string",
+                    "example": "0"
                 },
                 "transaction_now": {
                     "type": "integer"
