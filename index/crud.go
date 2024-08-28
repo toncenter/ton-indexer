@@ -1826,9 +1826,9 @@ func (db *DbClient) QueryAddressBook(
 	for _, addr := range addr_list {
 		addr_loc := AccountAddressConverter(addr)
 		if addr_loc.IsValid() {
-			if v, ok := addr_loc.Interface().(string); ok {
+			if v, ok := addr_loc.Interface().(AccountAddress); ok {
 				raw_addr_list = append(raw_addr_list, fmt.Sprintf("'%s'", v))
-				raw_addr_map[addr] = v
+				raw_addr_map[addr] = string(v)
 			}
 		} else {
 			raw_addr_map[addr] = ""
