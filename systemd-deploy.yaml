@@ -1,0 +1,51 @@
+---
+- name: Build Go application and deploy to remote hosts
+  hosts: localhost
+  vars:
+    systemd_service_name: "{{application_name}}.service"
+  tasks:
+    - name: Build the Go application
+      ansible.builtin.shell: |
+          go get
+          mkdir -p build
+          swag init
+          go build -o build/{{ go_binary }}
+      changed_when: true
+      failed_when: false
+      register: go_build_result
+
+    - name: Check Go build result
+      ansible.builtin.fail:
+        msg: "Go build failed! {{ go_build_result }}"
+      when: go_build_result.rc != 0
+
+    - name: Copy the Go binary to remote hosts
+      ansible.builtin.copy:
+        src: "build/{{ go_binary }}"
+        dest: "{{ go_binary_path }}/{{ go_binary }}"
+        mode: "0777"
+        force: true
+      become: true
+      delegate_to: "{{ item }}"
+      with_items: "{{ remote_hosts }}"
+
+    - name: Create systemd service from template if it doesn't exist
+      ansible.builtin.template:
+        src: "ansible/service.yaml.j2"
+        dest: "{{ systemd_service_path }}/{{ systemd_service_name }}"
+        mode: "0644"
+        force: true
+      become: true
+      delegate_to: "{{ item }}"
+      with_items: "{{ remote_hosts }}"
+
+    - name: Restart and enable the Go application service
+      ansible.builtin.systemd:
+        name: "{{ systemd_service_name }}"
+        state: restarted
+        enabled: true
+        daemon_reload: true
+      become: true
+      throttle: 1
+      delegate_to: "{{ item }}"
+      with_items: "{{ remote_hosts }}"

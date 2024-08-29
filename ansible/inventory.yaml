@@ -1,0 +1,17 @@
+all:
+  vars:
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+  hosts:
+    ubuntu-01:
+      ansible_host: 192.168.66.1
+    ubuntu-02:
+      ansible_host: 192.168.66.2
+    ubuntu-03:
+      ansible_host: 192.168.66.3
+
+api-nodes:
+  hosts:
+    ubuntu-01:
+    ubuntu-02:
+    ubuntu-03:
