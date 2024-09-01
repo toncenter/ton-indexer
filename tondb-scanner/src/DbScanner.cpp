@@ -196,12 +196,12 @@ public:
       auto blk_id = blocks_queue_.front();
       blocks_queue_.pop();
 
-      auto P = td::PromiseCreator::lambda([&, SelfId = actor_id(this), mc_seqno = mc_seqno_, blk_id, promise = ig.get_promise()](td::Result<ConstBlockHandle> R) mutable {
+      auto P = td::PromiseCreator::lambda([&, SelfId = actor_id(this), mc_seqno = mc_seqno_, blk_id, current_shard_blk_ids = current_shard_blk_ids_, promise = ig.get_promise()](td::Result<ConstBlockHandle> R) mutable {
         if (R.is_error()) {
           promise.set_error(R.move_as_error_prefix(PSTRING() << blk_id.to_str() << ": "));
         } else {
           auto handle = R.move_as_ok();
-          if (handle->masterchain_ref_block() == mc_seqno || current_shard_blk_ids_.count(handle->id().id) > 0) {
+          if (handle->masterchain_ref_block() == mc_seqno || current_shard_blk_ids.count(handle->id().id) > 0) {
             td::actor::send_closure(SelfId, &IndexQuery::add_block_handle, std::move(handle), std::move(promise));
           } else {
             promise.set_result(td::Unit());
