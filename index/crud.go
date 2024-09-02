@@ -12,7 +12,7 @@ import (
 	"github.com/xssnick/tonutils-go/address"
 )
 
-// address utils
+// utils
 func getAccountAddressFriendly(account string, code_hash *string, account_status *string, is_testnet bool) string {
 	addr, err := address.ParseRawAddr(strings.Trim(account, " "))
 	if err != nil {
@@ -31,6 +31,16 @@ func getAccountAddressFriendly(account string, code_hash *string, account_status
 	addr.SetBounce(bouncable)
 	addr.SetTestnetOnly(is_testnet)
 	return addr.String()
+}
+
+func getSortOrder(order SortType) (string, error) {
+	switch strings.ToLower(string(order)) {
+	case "desc", "d":
+		return "desc", nil
+	case "asc", "a":
+		return "asc", nil
+	}
+	return "", IndexError{Code: 422, Message: "wrong value for sort parameter"}
 }
 
 // query builders
@@ -99,7 +109,11 @@ func buildBlocksQuery(
 		filter_list = append(filter_list, fmt.Sprintf("start_lt <= %d", *v))
 	}
 	if v := lim_req.Sort; v != nil {
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, *v)
+		sort_order, err := getSortOrder(*v)
+		if err != nil {
+			return "", err
+		}
+		orderby_query = fmt.Sprintf(" order by %s %s", order_col, sort_order)
 	}
 
 	// build query
@@ -134,7 +148,10 @@ func buildTransactionsQuery(
 
 	sort_order := `desc`
 	if lim_req.Sort != nil {
-		sort_order = string(*lim_req.Sort)
+		sort_order, err = getSortOrder(*lim_req.Sort)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	// filters
@@ -329,7 +346,11 @@ func buildMessagesQuery(
 		filter_list = append(filter_list, fmt.Sprintf("M.created_lt <= %d", *v))
 	}
 	if lim_req.Sort != nil {
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, *lim_req.Sort)
+		sort_order, err := getSortOrder(*lim_req.Sort)
+		if err != nil {
+			return "", err
+		}
+		orderby_query = fmt.Sprintf(" order by %s %s", order_col, sort_order)
 	}
 
 	// build query
@@ -522,7 +543,11 @@ func buildNFTTransfersQuery(transfer_req NFTTransferRequest, utime_req UtimeRequ
 		*lim_req.Sort = "desc"
 	}
 	if lim_req.Sort != nil {
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, *lim_req.Sort)
+		sort_order, err := getSortOrder(*lim_req.Sort)
+		if err != nil {
+			return "", err
+		}
+		orderby_query = fmt.Sprintf(" order by %s %s", order_col, sort_order)
 	}
 
 	// build query
@@ -590,7 +615,11 @@ func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitReques
 	sort_order := "asc"
 	if v := lim_req.Sort; v != nil {
 		sort_column = "J.balance"
-		sort_order = string(*v)
+		sort_order, err = getSortOrder(*v)
+		if err != nil {
+			return "", err
+		}
+
 	}
 	orderby_query := fmt.Sprintf(` order by %s %s`, sort_column, sort_order)
 
@@ -691,7 +720,11 @@ func buildJettonTransfersQuery(transfer_req JettonTransferRequest, utime_req Uti
 		*lim_req.Sort = "desc"
 	}
 	if lim_req.Sort != nil {
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, *lim_req.Sort)
+		sort_order, err := getSortOrder(*lim_req.Sort)
+		if err != nil {
+			return "", err
+		}
+		orderby_query = fmt.Sprintf(" order by %s %s", order_col, sort_order)
 	}
 
 	// build query
@@ -776,7 +809,10 @@ func buildEventsQuery(event_req EventRequest, utime_req UtimeRequest, lt_req LtR
 
 	sort_order := "desc"
 	if v := lim_req.Sort; v != nil {
-		sort_order = string(*v)
+		sort_order, err = getSortOrder(*v)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	if v := event_req.TraceId; v != nil {
@@ -893,7 +929,11 @@ func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
 		*lim_req.Sort = "desc"
 	}
 	if lim_req.Sort != nil {
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, *lim_req.Sort)
+		sort_order, err := getSortOrder(*lim_req.Sort)
+		if err != nil {
+			return "", err
+		}
+		orderby_query = fmt.Sprintf(" order by %s %s", order_col, sort_order)
 	}
 
 	// build query
@@ -1173,8 +1213,14 @@ func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool
 
 func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
 	book := AddressBook{}
+	quote_addr_list := []string{}
+	for _, item := range addr_list {
+		quote_addr_list = append(quote_addr_list, fmt.Sprintf("'%s'", item))
+	}
+
 	{
-		addr_list_str := strings.Join(addr_list, ",")
+		addr_list_str := strings.Join(quote_addr_list, ",")
+
 		query := fmt.Sprintf("select account, account_friendly, code_hash, account_status from latest_account_states where account in (%s)", addr_list_str)
 
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -1190,6 +1236,7 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		// }
 		defer rows.Close()
 
+		book_tmp := AddressBook{}
 		for rows.Next() {
 			var account string
 			var account_friendly *string
@@ -1197,13 +1244,27 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 			var account_status *string
 			if err := rows.Scan(&account, &account_friendly, &code_hash, &account_status); err == nil {
 				addr_str := getAccountAddressFriendly(account, code_hash, account_status, settings.IsTestnet)
-				book[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: &addr_str}
+				book_tmp[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: &addr_str}
 			} else {
 				return nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if rows.Err() != nil {
 			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		}
+		for _, addr := range addr_list {
+			account := ``
+			if addr_val := AccountAddressConverter(addr); addr_val.IsValid() {
+				if addr_str, ok := addr_val.Interface().(AccountAddress); ok {
+					account = string(addr_str)
+				}
+			}
+			if rec, ok := book_tmp[account]; ok {
+				book[addr] = rec
+			} else {
+				addr_str := getAccountAddressFriendly(account, nil, nil, settings.IsTestnet)
+				book[addr] = AddressBookRow{UserFriendly: &addr_str}
+			}
 		}
 	}
 	return book, nil
@@ -1714,7 +1775,7 @@ func queryEventsImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 	// TODO: use .Keys method from 1.23 version
 	addr_list := []string{}
 	for k := range addr_map {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", k))
+		addr_list = append(addr_list, k)
 	}
 
 	return events, addr_list, nil
@@ -1829,7 +1890,7 @@ func (db *DbClient) QueryAddressBook(
 		addr_loc := AccountAddressConverter(addr)
 		if addr_loc.IsValid() {
 			if v, ok := addr_loc.Interface().(AccountAddress); ok {
-				raw_addr_list = append(raw_addr_list, fmt.Sprintf("'%s'", v))
+				raw_addr_list = append(raw_addr_list, string(v))
 				raw_addr_map[addr] = string(v)
 			}
 		} else {
@@ -1901,15 +1962,15 @@ func (db *DbClient) QueryTransactions(
 	book := AddressBook{}
 	addr_list := []string{}
 	for _, t := range txs {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Account))
+		addr_list = append(addr_list, string(t.Account))
 		if t.InMsg != nil {
 			if t.InMsg.Source != nil {
-				addr_list = append(addr_list, fmt.Sprintf("'%s'", *t.InMsg.Source))
+				addr_list = append(addr_list, string(*t.InMsg.Source))
 			}
 		}
 		for _, m := range t.OutMsgs {
 			if m.Destination != nil {
-				addr_list = append(addr_list, fmt.Sprintf("'%s'", *m.Destination))
+				addr_list = append(addr_list, string(*m.Destination))
 			}
 		}
 	}
@@ -1954,15 +2015,15 @@ func (db *DbClient) QueryAdjacentTransactions(
 	book := AddressBook{}
 	addr_list := []string{}
 	for _, t := range txs {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Account))
+		addr_list = append(addr_list, string(t.Account))
 		if t.InMsg != nil {
 			if t.InMsg.Source != nil {
-				addr_list = append(addr_list, fmt.Sprintf("'%s'", *t.InMsg.Source))
+				addr_list = append(addr_list, string(*t.InMsg.Source))
 			}
 		}
 		for _, m := range t.OutMsgs {
 			if m.Destination != nil {
-				addr_list = append(addr_list, fmt.Sprintf("'%s'", *m.Destination))
+				addr_list = append(addr_list, string(*m.Destination))
 			}
 		}
 	}
@@ -2006,10 +2067,10 @@ func (db *DbClient) QueryMessages(
 	addr_list := []string{}
 	for _, m := range msgs {
 		if m.Source != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *m.Source))
+			addr_list = append(addr_list, string(*m.Source))
 		}
 		if m.Destination != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *m.Destination))
+			addr_list = append(addr_list, string(*m.Destination))
 		}
 	}
 	if len(addr_list) > 0 {
@@ -2049,8 +2110,10 @@ func (db *DbClient) QueryNFTCollections(
 	book := AddressBook{}
 	addr_list := []string{}
 	for _, t := range res {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Address))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.OwnerAddress))
+		addr_list = append(addr_list, string(t.Address))
+		if t.OwnerAddress != nil {
+			addr_list = append(addr_list, string(*t.OwnerAddress))
+		}
 	}
 	if len(addr_list) > 0 {
 		book, err = queryAddressBookImpl(addr_list, conn, settings)
@@ -2089,8 +2152,8 @@ func (db *DbClient) QueryNFTItems(
 	book := AddressBook{}
 	addr_list := []string{}
 	for _, t := range res {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Address))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.OwnerAddress))
+		addr_list = append(addr_list, string(t.Address))
+		addr_list = append(addr_list, string(t.OwnerAddress))
 	}
 	if len(addr_list) > 0 {
 		book, err = queryAddressBookImpl(addr_list, conn, settings)
@@ -2131,12 +2194,12 @@ func (db *DbClient) QueryNFTTransfers(
 	book := AddressBook{}
 	addr_list := []string{}
 	for _, t := range res {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.NftItemAddress))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.NftCollectionAddress))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.OldOwner))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.NewOwner))
+		addr_list = append(addr_list, string(t.NftItemAddress))
+		addr_list = append(addr_list, string(t.NftCollectionAddress))
+		addr_list = append(addr_list, string(t.OldOwner))
+		addr_list = append(addr_list, string(t.NewOwner))
 		if t.ResponseDestination != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *t.ResponseDestination))
+			addr_list = append(addr_list, string(*t.ResponseDestination))
 		}
 	}
 	if len(addr_list) > 0 {
@@ -2176,8 +2239,8 @@ func (db *DbClient) QueryJettonMasters(
 	book := AddressBook{}
 	addr_list := []string{}
 	for _, t := range res {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Address))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.AdminAddress))
+		addr_list = append(addr_list, string(t.Address))
+		addr_list = append(addr_list, string(t.AdminAddress))
 	}
 	if len(addr_list) > 0 {
 		book, err = queryAddressBookImpl(addr_list, conn, settings)
@@ -2217,9 +2280,9 @@ func (db *DbClient) QueryJettonWallets(
 	book := AddressBook{}
 	addr_list := []string{}
 	for _, t := range res {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Address))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Owner))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Jetton))
+		addr_list = append(addr_list, string(t.Address))
+		addr_list = append(addr_list, string(t.Owner))
+		addr_list = append(addr_list, string(t.Jetton))
 	}
 	if len(addr_list) > 0 {
 		book, err = queryAddressBookImpl(addr_list, conn, settings)
@@ -2260,12 +2323,12 @@ func (db *DbClient) QueryJettonTransfers(
 	book := AddressBook{}
 	addr_list := []string{}
 	for _, t := range res {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Source))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Destination))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.SourceWallet))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.JettonMaster))
+		addr_list = append(addr_list, string(t.Source))
+		addr_list = append(addr_list, string(t.Destination))
+		addr_list = append(addr_list, string(t.SourceWallet))
+		addr_list = append(addr_list, string(t.JettonMaster))
 		if t.ResponseDestination != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *t.ResponseDestination))
+			addr_list = append(addr_list, string(*t.ResponseDestination))
 		}
 	}
 	if len(addr_list) > 0 {
@@ -2307,11 +2370,11 @@ func (db *DbClient) QueryJettonBurns(
 	book := AddressBook{}
 	addr_list := []string{}
 	for _, t := range res {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.Owner))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.JettonWallet))
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.JettonMaster))
+		addr_list = append(addr_list, string(t.Owner))
+		addr_list = append(addr_list, string(t.JettonWallet))
+		addr_list = append(addr_list, string(t.JettonMaster))
 		if t.ResponseDestination != nil {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", *t.ResponseDestination))
+			addr_list = append(addr_list, string(*t.ResponseDestination))
 		}
 	}
 	if len(addr_list) > 0 {
@@ -2351,7 +2414,9 @@ func (db *DbClient) QueryAccountStates(
 	book := AddressBook{}
 	addr_list := []string{}
 	for _, t := range res {
-		addr_list = append(addr_list, fmt.Sprintf("'%s'", t.AccountAddress))
+		if t.AccountAddress != nil {
+			addr_list = append(addr_list, string(*t.AccountAddress))
+		}
 	}
 	if len(addr_list) > 0 {
 		book, err = queryAddressBookImpl(addr_list, conn, settings)
@@ -2442,7 +2507,7 @@ func (db *DbClient) QueryActions(
 	if len(addr_map) > 0 {
 		addr_list := []string{}
 		for k := range addr_map {
-			addr_list = append(addr_list, fmt.Sprintf("'%s'", k))
+			addr_list = append(addr_list, string(k))
 		}
 		book, err = queryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {

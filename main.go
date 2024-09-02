@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -22,6 +24,7 @@ type Settings struct {
 	Bind         string
 	InstanceName string
 	Prefork      bool
+	MaxThreads   int
 	Debug        bool
 	Request      index.RequestSettings
 }
@@ -1347,8 +1350,10 @@ func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
 	switch e := err.(type) {
 	case index.IndexError:
 		if e.Code != 404 && e.Code != 409 {
+			err_msg := err.Error()
+			err_msg = strings.ReplaceAll(err_msg, "\n", "\\n")
 			log.Printf("Code: %d Path: %s IP: %s API Key: %s Queries: %v Body: %s Error: %s",
-				e.Code, ctx.Path(), ip, api_key, ctx.Queries(), string(ctx.Body()), err.Error())
+				e.Code, ctx.Path(), ip, api_key, ctx.Queries(), string(ctx.Body()), err_msg)
 		}
 		return ctx.Status(e.Code).JSON(e)
 	default:
@@ -1383,8 +1388,13 @@ func main() {
 	flag.IntVar(&settings.Request.DefaultLimit, "default-limit", 100, "Default value for limit")
 	flag.IntVar(&settings.Request.MaxLimit, "max-limit", 1000, "Maximum value for limit")
 	flag.IntVar(&settings.Request.MaxEventTransactions, "max-event-txs", 4000, "Maximum number of transactions in event")
+	flag.IntVar(&settings.MaxThreads, "threads", 0, "Number of threads")
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
 	flag.Parse()
+
+	if settings.MaxThreads > 0 {
+		runtime.GOMAXPROCS(settings.MaxThreads)
+	}
 
 	var err error
 	pool, err = index.NewDbClient(settings.PgDsn, settings.MaxConns, settings.MinConns)
@@ -1394,10 +1404,11 @@ func main() {
 	}
 	// web server
 	config := fiber.Config{
-		AppName:      "TON Index API",
-		Concurrency:  256 * 1024,
-		Prefork:      settings.Prefork,
-		ErrorHandler: ErrorHandlerFunc,
+		AppName:        "TON Index API",
+		Concurrency:    256 * 1024,
+		Prefork:        settings.Prefork,
+		ErrorHandler:   ErrorHandlerFunc,
+		ReadBufferSize: 1048576,
 	}
 	app := fiber.New(config)
 

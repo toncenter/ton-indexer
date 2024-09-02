@@ -443,7 +443,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/index.V2EstimateFeeRequest"
+                            "$ref": "#/definitions/V2EstimateFeeRequest"
                         }
                     }
                 ],
@@ -1176,7 +1176,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/index.V2SendMessageRequest"
+                            "$ref": "#/definitions/V2SendMessageRequest"
                         }
                     }
                 ],
@@ -1628,7 +1628,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/index.V2RunGetMethodRequest"
+                            "$ref": "#/definitions/V2RunGetMethodRequest"
                         }
                     }
                 ],
@@ -1636,7 +1636,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/index.V2RunGetMethodRequest"
+                            "$ref": "#/definitions/V2RunGetMethodRequest"
                         }
                     },
                     "400": {
@@ -3524,6 +3524,26 @@ const docTemplate = `{
                 }
             }
         },
+        "V2EstimateFeeRequest": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "body": {
+                    "type": "string"
+                },
+                "ignore_chksig": {
+                    "type": "boolean"
+                },
+                "init_code": {
+                    "type": "string"
+                },
+                "init_data": {
+                    "type": "string"
+                }
+            }
+        },
         "V2EstimateFeeResult": {
             "type": "object",
             "properties": {
@@ -3552,6 +3572,31 @@ const docTemplate = `{
                 },
                 "storage_fee": {
                     "type": "integer"
+                }
+            }
+        },
+        "V2RunGetMethodRequest": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "method": {
+                    "type": "string"
+                },
+                "stack": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/V2StackEntity"
+                    }
+                }
+            }
+        },
+        "V2SendMessageRequest": {
+            "type": "object",
+            "properties": {
+                "boc": {
+                    "type": "string"
                 }
             }
         },
@@ -3648,51 +3693,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/WalletState"
                     }
-                }
-            }
-        },
-        "index.V2EstimateFeeRequest": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string"
-                },
-                "body": {
-                    "type": "string"
-                },
-                "ignore_chksig": {
-                    "type": "boolean"
-                },
-                "init_code": {
-                    "type": "string"
-                },
-                "init_data": {
-                    "type": "string"
-                }
-            }
-        },
-        "index.V2RunGetMethodRequest": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string"
-                },
-                "method": {
-                    "type": "string"
-                },
-                "stack": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/V2StackEntity"
-                    }
-                }
-            }
-        },
-        "index.V2SendMessageRequest": {
-            "type": "object",
-            "properties": {
-                "boc": {
-                    "type": "string"
                 }
             }
         }

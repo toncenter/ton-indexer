@@ -930,6 +930,19 @@ definitions:
       status:
         type: string
     type: object
+  V2EstimateFeeRequest:
+    properties:
+      address:
+        type: string
+      body:
+        type: string
+      ignore_chksig:
+        type: boolean
+      init_code:
+        type: string
+      init_data:
+        type: string
+    type: object
   V2EstimateFeeResult:
     properties:
       destination_fees:
@@ -949,6 +962,22 @@ definitions:
         type: integer
       storage_fee:
         type: integer
+    type: object
+  V2RunGetMethodRequest:
+    properties:
+      address:
+        type: string
+      method:
+        type: string
+      stack:
+        items:
+          $ref: '#/definitions/V2StackEntity'
+        type: array
+    type: object
+  V2SendMessageRequest:
+    properties:
+      boc:
+        type: string
     type: object
   V2SendMessageResult:
     properties:
@@ -1012,35 +1041,6 @@ definitions:
         items:
           $ref: '#/definitions/WalletState'
         type: array
-    type: object
-  index.V2EstimateFeeRequest:
-    properties:
-      address:
-        type: string
-      body:
-        type: string
-      ignore_chksig:
-        type: boolean
-      init_code:
-        type: string
-      init_data:
-        type: string
-    type: object
-  index.V2RunGetMethodRequest:
-    properties:
-      address:
-        type: string
-      method:
-        type: string
-      stack:
-        items:
-          $ref: '#/definitions/V2StackEntity'
-        type: array
-    type: object
-  index.V2SendMessageRequest:
-    properties:
-      boc:
-        type: string
     type: object
 info:
   contact: {}
@@ -1319,7 +1319,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/index.V2EstimateFeeRequest'
+          $ref: '#/definitions/V2EstimateFeeRequest'
       produces:
       - application/json
       responses:
@@ -1810,7 +1810,7 @@ paths:
         name: boc
         required: true
         schema:
-          $ref: '#/definitions/index.V2SendMessageRequest'
+          $ref: '#/definitions/V2SendMessageRequest'
       produces:
       - application/json
       responses:
@@ -2131,14 +2131,14 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/index.V2RunGetMethodRequest'
+          $ref: '#/definitions/V2RunGetMethodRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/index.V2RunGetMethodRequest'
+            $ref: '#/definitions/V2RunGetMethodRequest'
         "400":
           description: Bad Request
           schema:

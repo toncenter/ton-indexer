@@ -150,13 +150,13 @@ type V2AccountRequest struct {
 
 type V2SendMessageRequest struct {
 	BOC string `json:"boc"`
-}
+} // @name V2SendMessageRequest
 
 type V2RunGetMethodRequest struct {
 	Address AccountAddress  `json:"address"`
 	Method  string          `json:"method"`
 	Stack   []V2StackEntity `json:"stack"`
-}
+} // @name V2RunGetMethodRequest
 
 type V2EstimateFeeRequest struct {
 	Address      AccountAddress `json:"address"`
@@ -164,4 +164,4 @@ type V2EstimateFeeRequest struct {
 	InitCode     string         `json:"init_code"`
 	InitData     string         `json:"init_data"`
 	IgnoreChksig bool           `json:"ignore_chksig"`
-}
+} // @name V2EstimateFeeRequest
