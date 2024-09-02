@@ -100,6 +100,7 @@ async def _get_block_data(other_blocks):
         outgoing_transfer['destination_jetton_wallet'] = None
     else:
         outgoing_transfer['destination'] = AccountId(swap_message.from_user_address)
+        outgoing_transfer['destination_jetton_wallet'] = None
 
     return {
         'dex': 'stonfi',

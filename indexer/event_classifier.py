@@ -26,6 +26,8 @@ settings = Settings()
 lt = time.time()
 
 count = 0
+
+
 async def start_processing_events_from_db(args: argparse.Namespace):
     global lt, count
     logger.info(f"Creating pool of {args.pool_size} workers")
@@ -76,7 +78,6 @@ async def start_emulated_traces_processing():
     pubsub = redis.client.pubsub()
     await pubsub.subscribe(settings.emulated_traces_reddit_channel)
     while True:
-
         message = await pubsub.get_message()
         if message is not None and message['type'] == 'message':
             trace_id = message['data'].decode('utf-8')
@@ -124,10 +125,6 @@ async def process_trace_batch_async(ids: list[str]):
         result = await session.execute(query)
         traces = result.scalars().unique().all()
 
-        query = select(Trace).join(Trace.edges).options(contains_eager(Trace.edges)).filter(Trace.trace_id.in_(ids))
-        traces_with_edges = (await session.execute(query)).scalars().unique().all()
-        trace_edge_map = dict((trace.trace_id, trace.edges) for trace in traces_with_edges)
-
         # Gather interfaces for each account
         accounts = set()
         for trace in traces:
@@ -138,8 +135,7 @@ async def process_trace_batch_async(ids: list[str]):
         await repository.put_interfaces(interfaces)
         context.interface_repository.set(repository)
         # Process traces and save actions
-        results = await asyncio.gather(*(process_trace(trace, trace_edge_map.get(trace.trace_id, []))
-                                         for trace in traces))
+        results = await asyncio.gather(*(process_trace(trace) for trace in traces))
         ok_traces = []
         failed_traces = []
         broken_traces = []
@@ -162,11 +158,11 @@ async def process_trace_batch_async(ids: list[str]):
         await session.commit()
 
 
-async def process_trace(trace: Trace, trace_edges: list[TraceEdge]) -> tuple[str, str, list[Action]]:
-    if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock' and len(trace_edges) == 0:
+async def process_trace(trace: Trace) -> tuple[str, str, list[Action]]:
+    if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock':
         return trace.trace_id, 'ok', []
     try:
-        result = await process_event_async(trace, trace_edges)
+        result = await process_event_async(trace)
         actions = []
         state = 'ok'
         for block in result.bfs_iter():

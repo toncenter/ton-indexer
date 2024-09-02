@@ -225,6 +225,13 @@ def _fill_election_action(block: Block, action: Action):
     action.amount = block.data['amount'].value if 'amount' in block.data else None
 
 
+def _fill_auction_bid_action(block: Block, action: Action):
+    action.source = block.data['bidder'].as_str()
+    action.destination = block.data['auction'].as_str()
+    action.asset_secondary = block.data['nft_address'].as_str()
+    action.value = block.data['amount'].value
+
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -253,5 +260,7 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_unsubscribe_action(block, action)
         case 'election_deposit' | 'election_recover':
             _fill_election_action(block, action)
+        case 'auction_bid':
+            _fill_auction_bid_action(block, action)
 
     return action

@@ -10,6 +10,7 @@ from indexer.events.blocks.utils import AccountId
 from indexer.core.database import Trace, engine, TraceEdge
 from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock
 from indexer.events.blocks.core import Block
+from indexer.events.blocks.auction import AuctionBidMatcher
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
 from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher
@@ -51,13 +52,14 @@ matchers = [
     ElectionDepositStakeBlockMatcher(),
     ElectionRecoverStakeBlockMatcher(),
     SubscriptionBlockMatcher(),
-    UnsubscribeBlockMatcher()
+    UnsubscribeBlockMatcher(),
+    AuctionBidMatcher()
 ]
 
 
-async def process_event_async(trace: Trace, trace_edges: list[TraceEdge] | None = None) -> Block:
+async def process_event_async(trace: Trace) -> Block:
     try:
-        node = to_tree(trace.transactions, trace, trace_edges)
+        node = to_tree(trace.transactions)
         root = Block('root', [])
         root.connect(init_block(node))
 

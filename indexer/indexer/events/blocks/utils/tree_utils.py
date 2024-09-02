@@ -64,64 +64,34 @@ class EventNode:
             return None
 
 
-def to_tree(txs: list[Transaction], trace: Trace, trace_edges: list[TraceEdge] | None = None):
-    """
-    Constructs a tree representation of transactions (txs) related to an event, based on connections
-    between transactions. Each node is message initiated transaction
-    """
-
-    tx_map = {tx.hash: tx for tx in txs}  # Convert to dictionary for faster lookup
-    conn_map = defaultdict(list)
-    edges = trace_edges if trace_edges is not None else trace.edges
-    for edge in edges:
-        if edge.left_tx is None:
-            continue
-        if edge.right_tx is None:
-            continue
-        conn_map[edge.left_tx].append(edge.right_tx)
-
-    def create_node(tx_hash: str) -> EventNode:
+def to_tree(txs: list[Transaction]):
+    txs = sorted(txs, key=lambda tx: tx.lt, reverse=True)
+    msg_tx = {}
+    nodes = {}
+    def create_node(tx: Transaction) -> EventNode:
         """Helper function to create an EventNode from a transaction hash."""
-        tx = tx_map[tx_hash]
         message = next((m for m in tx.messages if m.direction == "in"), None)
 
         if message is None and tx.descr == "tick_tock":
             return EventNode(None, [], is_tick_tock=True, tick_tock_tx=tx)
+        msg_tx[message.msg_hash] = tx.hash
         return EventNode(message, [])
 
-    node_map = {}
-    root = None  # Initialize root node
-    if len(conn_map.keys()) == 0:
-        root = create_node(txs[0].hash)
-
-    for left_tx_hash in conn_map:
-        if left_tx_hash not in node_map:
-            node_map[left_tx_hash] = create_node(left_tx_hash)
-            if root is None:  # Set the first node as the potential root
-                root = node_map[left_tx_hash]
-
-        used_messages = set()
-        for right_tx_hash in conn_map[left_tx_hash]:
-            if right_tx_hash not in node_map:
-                node_map[right_tx_hash] = create_node(right_tx_hash)
-
-            node_map[left_tx_hash].add_child(node_map[right_tx_hash])
-            used_messages.add(node_map[right_tx_hash].message.msg_hash)
-
-            if right_tx_hash not in conn_map:
-                for m in tx_map[right_tx_hash].messages:
-                    if m.direction == "out":
-                        node_map[right_tx_hash].add_child(EventNode(m, []))
-
-        # Add outgoing messages that haven't been used yet
-        for m in tx_map[left_tx_hash].messages:
-            if m.direction == "out" and m.msg_hash not in used_messages:
-                node_map[left_tx_hash].add_child(EventNode(m, []))
-
-    # Find root of the tree
+    for tx in txs:
+        if tx.hash not in nodes:
+            nodes[tx.hash] = create_node(tx)
+            for m in tx.messages:
+                if m.direction == "out":
+                    if m.destination is None:
+                        nodes[tx.hash].add_child(EventNode(m, []))
+                    else:
+                        assert m.msg_hash in msg_tx
+                        nodes[tx.hash].add_child(nodes[msg_tx[m.msg_hash]])
+    root = nodes[txs[-1].hash]
     while root.parent is not None:
         root = root.parent
     return root
+
 
 
 def not_handled_nodes() -> Callable[[EventNode, int], bool]:
