@@ -513,6 +513,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "integer",
+                        "description": "Masterchain block seqno",
+                        "name": "mc_seqno",
+                        "in": "query"
+                    },
+                    {
                         "minimum": 0,
                         "type": "integer",
                         "description": "Query events, which was finished **after** given timestamp.",

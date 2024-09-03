@@ -121,6 +121,7 @@ type EventRequest struct {
 	TraceId         []HashType      `query:"trace_id"`
 	TransactionHash []HashType      `query:"tx_hash"`
 	MessageHash     []HashType      `query:"msg_hash"`
+	McSeqno         *int32          `query:"mc_seqno"`
 }
 
 type SortType string

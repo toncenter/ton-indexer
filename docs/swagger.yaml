@@ -1363,6 +1363,10 @@ paths:
           type: string
         name: msg_hash
         type: array
+      - description: Masterchain block seqno
+        in: query
+        name: mc_seqno
+        type: integer
       - description: Query events, which was finished **after** given timestamp.
         in: query
         minimum: 0

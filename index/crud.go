@@ -815,12 +815,6 @@ func buildEventsQuery(event_req EventRequest, utime_req UtimeRequest, lt_req LtR
 		}
 	}
 
-	if v := event_req.TraceId; v != nil {
-		filter_str := filterByArray("E.trace_id", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
-	}
 	if v := event_req.AccountAddress; v != nil && len(*v) > 0 {
 		filter_str := fmt.Sprintf("T.account = '%s'", *v)
 		filter_list = append(filter_list, filter_str)
@@ -843,6 +837,17 @@ func buildEventsQuery(event_req EventRequest, utime_req UtimeRequest, lt_req LtR
 		}
 		from_query = `traces as E join messages as M on E.trace_id = M.trace_id`
 		clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
+	}
+
+	if v := event_req.TraceId; v != nil {
+		filter_str := filterByArray("E.trace_id", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+	}
+	if v := event_req.McSeqno; v != nil {
+		filter_list = append(filter_list, `E.state = 'complete'`)
+		filter_list = append(filter_list, fmt.Sprintf("E.mc_seqno_end = %d", *v))
 	}
 
 	// time

@@ -956,6 +956,7 @@ func GetJettonBurns(c *fiber.Ctx) error {
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
 // @param tx_hash query []string false "Find event by transaction hash."
 // @param msg_hash query []string false "Find event by message hash."
+// @param mc_seqno query int32 false "Masterchain block seqno"
 // @param start_utime query int32 false "Query events, which was finished **after** given timestamp." minimum(0)
 // @param end_utime query int32 false "Query events, which was finished **before** given timestamp." minimum(0)
 // @param start_lt query int64 false "Query events with `end_lt >= start_lt`." minimum(0)
@@ -1087,7 +1088,7 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 			res.Balance = "0"
 			res.LastTransactionHash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 			res.LastTransactionLt = "0"
-			res.Status = "uninitialized"
+			res.Status = "uninit"
 		} else {
 			info, err := index.WalletInformationFromV3(loc[0])
 			if err != nil {
@@ -1162,7 +1163,7 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 			*res.LastTransactionHash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 			res.LastTransactionLt = new(string)
 			*res.LastTransactionLt = "0"
-			res.Status = "uninitialized"
+			res.Status = "uninit"
 		} else {
 			info, err := index.AddressInformationFromV3(loc[0])
 			if err != nil {

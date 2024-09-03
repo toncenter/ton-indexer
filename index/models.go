@@ -711,8 +711,5 @@ func WalletInformationFromV3(state WalletState) (*V2WalletInformation, error) {
 		return nil, IndexError{Code: 500, Message: "status is none"}
 	}
 	info.Status = *state.AccountStatus
-	if info.Status == "uninit" {
-		info.Status = "uninitialized"
-	}
 	return &info, nil
 }
