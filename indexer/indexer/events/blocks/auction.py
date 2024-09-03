@@ -1,3 +1,4 @@
+from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events import context
 from indexer.events.blocks.basic_matchers import BlockMatcher
 from indexer.events.blocks.basic_blocks import Block, TonTransferBlock
@@ -35,17 +36,17 @@ class AuctionBidMatcher(BlockMatcher):
 
         if 'NftAuction' in interfaces:
             bid_block.data = {
-                'amount': block.event_nodes[0].message.value,
-                'bidder': block.event_nodes[0].message.source,
-                'auction': block.event_nodes[0].message.destination,
-                'nft_address': interfaces['NftAuction']['nft_addr'],
+                'amount': Amount(block.event_nodes[0].message.value),
+                'bidder': AccountId(block.event_nodes[0].message.source),
+                'auction': AccountId(block.event_nodes[0].message.destination),
+                'nft_address': AccountId(interfaces['NftAuction']['nft_addr']),
             }
         elif 'NFTItem' in interfaces and _is_teleitem(interfaces['NFTItem']):
             bid_block.data = {
-                'amount': block.event_nodes[0].message.value,
-                'bidder': block.event_nodes[0].message.source,
-                'auction': block.event_nodes[0].message.destination,
-                'nft_address': block.event_nodes[0].message.destination,
+                'amount': Amount(block.event_nodes[0].message.value),
+                'bidder': AccountId(block.event_nodes[0].message.source),
+                'auction': AccountId(block.event_nodes[0].message.destination),
+                'nft_address': AccountId(block.event_nodes[0].message.destination),
             }
         else:
             return []
