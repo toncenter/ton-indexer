@@ -680,9 +680,6 @@ func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, er
 		return nil, IndexError{Code: 500, Message: "status is none"}
 	}
 	info.Status = *state.AccountStatus
-	if info.Status == "uninit" {
-		info.Status = "uninitialized"
-	}
 	return &info, nil
 }
 
