@@ -279,7 +279,7 @@ func buildMessagesQuery(
 	settings RequestSettings,
 ) (string, error) {
 	all_columns := ` M.*, B.*, I.*`
-	clmn_query := ` distinct on (M.msg_hash)` + all_columns
+	clmn_query := ` distinct on (M.created_lt, M.msg_hash)` + all_columns
 	from_query := ` messages as M 
 		left join message_contents as B on M.body_hash = B.hash 
 		left join message_contents as I on M.init_state_hash = I.hash`
@@ -291,9 +291,11 @@ func buildMessagesQuery(
 		return "", err
 	}
 
+	with_distinct := true
 	if v := msg_req.Direction; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.direction = '%s'", *v))
 		clmn_query = all_columns
+		with_distinct = false
 	}
 	if v := msg_req.Source; v != nil {
 		if *v == "null" {
@@ -345,13 +347,18 @@ func buildMessagesQuery(
 	if v := lt_req.EndLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.created_lt <= %d", *v))
 	}
+
+	sort_order := "desc"
 	if lim_req.Sort != nil {
-		sort_order, err := getSortOrder(*lim_req.Sort)
+		sort_order, err = getSortOrder(*lim_req.Sort)
 		if err != nil {
 			return "", err
 		}
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, sort_order)
 	}
+	if with_distinct {
+		clmn_query = ` distinct on (` + order_col + `, M.msg_hash)` + all_columns
+	}
+	orderby_query = fmt.Sprintf(" order by %s %s, M.msg_hash asc", order_col, sort_order)
 
 	// build query
 	if len(filter_list) > 0 {

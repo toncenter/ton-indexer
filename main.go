@@ -390,10 +390,14 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @param source query string false "The source account address. Can be sent in hex, base64 or base64url form. Use value `null` to get external messages."
 // @param destination query string false "The destination account address. Can be sent in hex, base64 or base64url form. Use value `null` to get log messages."
 // @param opcode query string false "Opcode of message in hex or signed 32-bit decimal form."
+// @param start_utime query int32 false "Query messages with `created_at >= start_utime`." minimum(0)
+// @param end_utime query int32 false "Query messages with `created_at >= start_utime`." minimum(0)
+// @param start_lt query int64 false "Query messages with `created_lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query messages with `created_lt <= end_lt`." minimum(0)
 // @param direction query string false "Direction of message." Enums(in, out)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
-// // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
+// @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/messages [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -1390,8 +1394,8 @@ func main() {
 	flag.IntVar(&settings.Request.MaxLimit, "max-limit", 1000, "Maximum value for limit")
 	flag.IntVar(&settings.Request.MaxEventTransactions, "max-event-txs", 4000, "Maximum number of transactions in event")
 	flag.IntVar(&settings.MaxThreads, "threads", 0, "Number of threads")
-	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
 	flag.Parse()
+	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
 
 	if settings.MaxThreads > 0 {
 		runtime.GOMAXPROCS(settings.MaxThreads)

@@ -1260,6 +1260,34 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query messages with ` + "`" + `created_at \u003e= start_utime` + "`" + `.",
+                        "name": "start_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query messages with ` + "`" + `created_at \u003e= start_utime` + "`" + `.",
+                        "name": "end_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query messages with ` + "`" + `created_lt \u003e= start_lt` + "`" + `.",
+                        "name": "start_lt",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query messages with ` + "`" + `created_lt \u003c= end_lt` + "`" + `.",
+                        "name": "end_lt",
+                        "in": "query"
+                    },
+                    {
                         "enum": [
                             "in",
                             "out"
@@ -1284,6 +1312,17 @@ const docTemplate = `{
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort transactions by lt.",
+                        "name": "sort",
                         "in": "query"
                     }
                 ],

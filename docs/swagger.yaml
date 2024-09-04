@@ -1864,6 +1864,26 @@ paths:
         in: query
         name: opcode
         type: string
+      - description: Query messages with `created_at >= start_utime`.
+        in: query
+        minimum: 0
+        name: start_utime
+        type: integer
+      - description: Query messages with `created_at >= start_utime`.
+        in: query
+        minimum: 0
+        name: end_utime
+        type: integer
+      - description: Query messages with `created_lt >= start_lt`.
+        in: query
+        minimum: 0
+        name: start_lt
+        type: integer
+      - description: Query messages with `created_lt <= end_lt`.
+        in: query
+        minimum: 0
+        name: end_lt
+        type: integer
       - description: Direction of message.
         enum:
         - in
@@ -1884,6 +1904,14 @@ paths:
         minimum: 0
         name: offset
         type: integer
+      - default: desc
+        description: Sort transactions by lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
       produces:
       - application/json
       responses:
