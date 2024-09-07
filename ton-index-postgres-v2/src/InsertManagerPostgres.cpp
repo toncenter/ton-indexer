@@ -1773,12 +1773,12 @@ void InsertManagerPostgres::start_up() {
           "create type trace_classification_state as enum('unclassified', 'failed', 'ok', 'broken');\n"
           "create type change_dns_record_details as (key varchar, value_schema varchar, value varchar, flags integer);\n"
           "create type peer_swap_details as (asset_in tonaddr, amount_in numeric, asset_out tonaddr, amount_out numeric);\n"
+          "create type dex_transfer_details as (amount numeric, asset tonaddr, source tonaddr, destination tonaddr, source_jetton_wallet tonaddr, destination_jetton_wallet tonaddr);\n"
           "create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[]);\n"
           "create type ton_transfer_details as (content text, encrypted boolean);\n"
           "create type nft_transfer_details as (is_purchase boolean, price numeric, query_id numeric, custom_payload text, forward_payload text, forward_amount numeric, response_destination tonaddr, nft_item_index numeric);\n"
           "create type jetton_transfer_details as (response_destination tonaddr, forward_amount numeric, query_id numeric, custom_payload text, forward_payload text, comment text, is_encrypted_comment bool);\n"
           "create type nft_mint_details as (nft_item_index numeric);\n"
-          "create type dex_transfer_details as (amount numeric, asset tonaddr, source tonaddr, destination tonaddr, source_jetton_wallet tonaddr, destination_jetton_wallet tonaddr);\n"
         );
         LOG(DEBUG) << query;
         txn.exec0(query);
