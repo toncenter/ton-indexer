@@ -269,6 +269,13 @@ class Action(Base):
     nft_mint_data = Column(CompositeType("nft_mint_details", [
         Column("nft_item_index", Numeric)]))
 
+    def __repr__(self):
+        full_repr = ""
+        for key, value in self.__dict__.items():
+            if key.startswith("_"):
+                continue
+            full_repr += f"{key}={value}, "
+        return full_repr
 
 class Transaction(Base):
     __tablename__ = 'transactions'
@@ -433,6 +440,16 @@ class Message(Base):
                               lazy='selectin',
                               viewonly=True)
 
+    def __repr__(self):
+        opcode = self.opcode
+        if opcode is not None:
+            if opcode > 0:
+                opcode = hex(opcode)
+            else:
+                opcode = hex(opcode & 0xffffffff)
+
+        return f"Message({self.direction}, {self.msg_hash}, {opcode})"
+
 
 class MessageContent(Base):
     __tablename__ = 'message_contents'
@@ -584,6 +601,15 @@ class NftSale(Base):
     nft_address = Column(String)
     nft_owner_address = Column(String)
     full_price = Column(Numeric)
+
+
+class NftAuction(Base):
+    __tablename__ = 'getgems_nft_auctions'
+
+    address = Column(String, primary_key=True)
+    nft_addr = Column(String)
+    nft_owner = Column(String)
+
 
 
 class LatestAccountState(Base):
