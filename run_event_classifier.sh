@@ -14,7 +14,7 @@ docker build -t ton-index-event-classifier:devel -f indexer/classifier.Dockerfil
 
 docker rm --force ${CONTAINER_NAME}
 docker run -e TON_INDEXER_PG_DSN="$PG_DSN" \
-           -e TON_REDIS_MONGO_DSN="REDIS_DSN" \
+           -e TON_INDEXER_REDIS_DSN="REDIS_DSN" \
            -e TQDM_NCOLS=0 \
            -e TQDM_POSITION=-1 \
            --restart unless-stopped \
