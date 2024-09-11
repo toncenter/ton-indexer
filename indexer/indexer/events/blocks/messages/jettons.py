@@ -11,7 +11,7 @@ class JettonTransfer:
     response: Address
     custom_payload: bytes | None
     forward_amount: int
-    comment: str | None
+    comment: bytes | None
     encrypted_comment: bool
     forward_payload: bytes | None
     stonfi_swap_body: dict | None
@@ -50,10 +50,10 @@ class JettonTransfer:
         try:
             if sum_type == 0:
                 self.sum_type = "TextComment"
-                self.comment = payload_slice.load_str()
+                self.comment = payload_slice.load_snake_bytes()
             elif sum_type == 0x2167da4b:
                 self.sum_type = "EncryptedTextComment"
-                self.comment = payload_slice.load_str()
+                self.comment = payload_slice.load_snake_bytes()
                 self.encrypted_comment = True
             elif sum_type == 0x25938561:
                 self.stonfi_swap_body = {

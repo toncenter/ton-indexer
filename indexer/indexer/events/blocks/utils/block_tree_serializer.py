@@ -80,7 +80,7 @@ def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):
         if block.data['encrypted_comment']:
             comment = base64.b64encode(block.data['comment']).decode('utf-8')
         else:
-            comment = block.data['comment'].replace("\u0000", "")
+            comment = block.data['comment'].decode('utf-8').replace("\u0000", "")
     action.jetton_transfer_data = {
         'query_id': block.data['query_id'],
         'response_destination': block.data['response_address'].as_str() if block.data[
