@@ -49,8 +49,8 @@ Vagrantfile
 # custom
 /sandbox
 /private
-/build
 /logs
+build/
 
 .env.*
 .env
