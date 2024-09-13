@@ -2248,19 +2248,37 @@ void InsertManagerPostgres::get_trace_assembler_state(td::Promise<schema::TraceA
         if (!row[1].is_null()) {
           trace.external_hash = to_bits256(row[1].as<std::string>());
         }
-        trace.mc_seqno_start = row[2].as<std::int32_t>();
-        trace.mc_seqno_end = row[3].as<std::int32_t>();
-        trace.start_lt = row[4].as<std::uint64_t>();
-        trace.start_utime = row[5].as<std::uint32_t>();
-        trace.end_lt = row[6].as<std::uint64_t>();
-        trace.end_utime = row[7].as<std::uint32_t>();
+        if (!row[2].is_null()) {
+          trace.mc_seqno_start = row[2].as<std::int32_t>();
+        }
+        if (!row[3].is_null()) {
+          trace.mc_seqno_end = row[3].as<std::int32_t>();
+        }
+        if (!row[4].is_null()) {
+          trace.start_lt = row[4].as<std::uint64_t>();
+        }
+        if (!row[5].is_null()) {
+          trace.start_utime = row[5].as<std::uint32_t>();
+        }
+        if (!row[6].is_null()) {
+          trace.end_lt = row[6].as<std::uint64_t>();
+        }
+        if (!row[7].is_null()) {
+          trace.end_utime = row[7].as<std::uint32_t>();
+        }
         if (row[8].as<std::string>() != "pending") {
           LOG(ERROR) << "Error in request. Got non-pending trace!";
         }
         trace.state = schema::Trace::State::pending;
-        trace.pending_edges_ = row[9].as<std::int64_t>();
-        trace.edges_ = row[10].as<std::int64_t>();
-        trace.nodes_ = row[11].as<std::int64_t>();
+        if (!row[9].is_null()) {
+          trace.pending_edges_ = row[9].as<std::int64_t>();
+        }
+        if (!row[10].is_null()) {
+          trace.edges_ = row[10].as<std::int64_t>();
+        }
+        if (!row[11].is_null()) {
+          trace.nodes_ = row[11].as<std::int64_t>();
+        }
 
         state.pending_traces_.push_back(std::move(trace));
       }
