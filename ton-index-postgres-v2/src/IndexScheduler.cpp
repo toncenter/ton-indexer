@@ -71,7 +71,7 @@ void IndexScheduler::run() {
     // restore TraceAssembler state
     auto Q = td::PromiseCreator::lambda([trace_assembler = trace_assembler_.get()](td::Result<schema::TraceAssemblerState> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to read TraceAssemblerState from database";
+            LOG(ERROR) << "Failed to read TraceAssemblerState from database: " << R.move_as_error();
             std::_Exit(2);
         }
         td::actor::send_closure(trace_assembler, &TraceAssembler::restore_trace_assembler_state, R.move_as_ok());

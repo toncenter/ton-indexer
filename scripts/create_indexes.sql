@@ -14,7 +14,7 @@ create index if not exists transactions_index_4 on transactions (account, lt asc
 create index if not exists transactions_index_5 on transactions (account, now asc, lt asc);
 create index if not exists transactions_index_6 on transactions (hash);
 create index if not exists transactions_index_7 on transactions (trace_id, lt asc);
-create index if not exists transactions_index_8 on transactions (mc_block_seqno asc);
+create index if not exists transactions_index_8 on transactions (mc_block_seqno asc, lt asc);
 
 -- messages
 create index if not exists messages_index_1 on messages (msg_hash);
@@ -22,7 +22,7 @@ create index if not exists messages_index_2 on messages (source, created_lt asc)
 create index if not exists messages_index_3 on messages (destination, created_lt asc);
 create index if not exists messages_index_4 on messages (body_hash);
 create index if not exists messages_index_5 on messages (trace_id, tx_lt asc);
-create index if not exists messages_index_6 on messages (opcode);
+create index if not exists messages_index_6 on messages (opcode, created_lt);
 
 -- account states
 create index if not exists latest_account_states_index_1 on latest_account_states (balance desc);
