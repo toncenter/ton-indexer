@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from indexer.core.database import JettonWallet, NFTItem, NftSale, NftAuction
-import redis.asyncio as redis
+import redis
 
 
 class InterfaceRepository(abc.ABC):
@@ -115,17 +115,17 @@ class RedisInterfaceRepository(InterfaceRepository):
         self.connection = connection
 
     async def put_interfaces(self, interfaces: dict[str, dict[str, dict]]):
-        batch_size = 500
+        batch_size = 5000
         serialized_interfaces = [(RedisInterfaceRepository.prefix + address, msgpack.packb(data, use_bin_type=True))
                                  for (address, data) in interfaces.items() if len(data.keys()) > 0]
         for i in range(0, len(serialized_interfaces), batch_size):
             pipe = self.connection.pipeline()
             for (key, value) in serialized_interfaces[i:i + batch_size]:
-                await pipe.set(key, value, ex=300)
-            await pipe.execute()
+                pipe.set(key, value, ex=300)
+            pipe.execute()
 
     async def get_jetton_wallet(self, address: str) -> JettonWallet | None:
-        raw_data = await self.connection.get(RedisInterfaceRepository.prefix + address)
+        raw_data = self.connection.get(RedisInterfaceRepository.prefix + address)
         if raw_data is None:
             return None
 
@@ -141,7 +141,7 @@ class RedisInterfaceRepository(InterfaceRepository):
         return None
 
     async def get_nft_item(self, address: str) -> NFTItem | None:
-        raw_data = await self.connection.get(RedisInterfaceRepository.prefix + address)
+        raw_data = self.connection.get(RedisInterfaceRepository.prefix + address)
         if raw_data is None:
             return None
 
@@ -159,7 +159,7 @@ class RedisInterfaceRepository(InterfaceRepository):
         return None
 
     async def get_nft_sale(self, address: str) -> NftSale | None:
-        raw_data = await self.connection.get(RedisInterfaceRepository.prefix + address)
+        raw_data = self.connection.get(RedisInterfaceRepository.prefix + address)
         if raw_data is None:
             return None
 
@@ -178,7 +178,7 @@ class RedisInterfaceRepository(InterfaceRepository):
 
     async def get_interfaces(self, address: str) -> dict[str, dict]:
         result = {}
-        raw_data = await self.connection.get(RedisInterfaceRepository.prefix + address)
+        raw_data = self.connection.get(RedisInterfaceRepository.prefix + address)
         if raw_data is None:
             return {}
 
@@ -186,7 +186,7 @@ class RedisInterfaceRepository(InterfaceRepository):
         return interfaces
 
     async def get_nft_auction(self, address: str) -> NftAuction | None:
-        raw_data = await self.connection.get(RedisInterfaceRepository.prefix + address)
+        raw_data = self.connection.get(RedisInterfaceRepository.prefix + address)
         if raw_data is None:
             return None
 

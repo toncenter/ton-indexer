@@ -4,13 +4,16 @@ import logging
 import multiprocessing as mp
 import sys
 import time
+import threading
+
+from queue import Queue
 
 from sqlalchemy import update, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker, contains_eager
 
 from indexer.core import redis
-from indexer.core.database import engine, Trace, Transaction, Message, Action, TraceEdge
+from indexer.core.database import engine, Trace, Transaction, Message, Action, TraceEdge, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action
@@ -23,47 +26,58 @@ async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = Settings()
-lt = time.time()
-
-count = 0
 
 
 async def start_processing_events_from_db(args: argparse.Namespace):
     global lt, count
     logger.info(f"Creating pool of {args.pool_size} workers")
+
+    queue = mp.Queue(2 * args.fetch_size)
+    thread = mp.Process(target=fetch_events_for_processing, args=(queue, 1000))
+    thread.start()
+    big_traces = 0
+    count = 0
+    lt = 0
     with mp.Pool(args.pool_size, initializer=init_pool) as pool:
         while True:
             async with async_session() as session:
-                batch = await fetch_events_for_processing(args.fetch_size)
-                if len(batch) == 0:
-                    await asyncio.sleep(2)
-                    continue
+                start_wait = time.time()
+                batch = []
+                while time.time() - start_wait < 1.0 or len(batch) < args.fetch_size:
+                    try:
+                        item = queue.get(False)
+                        batch.append(item)
+                    except:
+                        await asyncio.sleep(0.5)
+                if (time.time() - lt) > 5 and lt > 0:
+                    logger.info(f"Processed {count} traces in {time.time() - lt:02f} seconds. Traces/sec: {count / (time.time() - lt):02f}, queue size: {queue.qsize()}, big traces: {big_traces}")
+                else:
+                    logger.info(f'Processing first batch of {len(batch)} traces, queue size: {queue.qsize()}')
                 ids = []
                 has_traces_to_process = False
                 total_nodes = 0
                 for (trace_id, nodes) in batch:
                     if nodes > 4000 or nodes == 0:
+                        if nodes > 0:
+                            big_traces += 1
                         await session.execute(update(Trace)
                                               .where(Trace.trace_id == trace_id)
-                                              .values(classification_state='ok'))
+                                              .values(classification_state='broken'))
                         has_traces_to_process = True
                     else:
                         total_nodes += nodes
                         has_traces_to_process = True
                         ids.append(trace_id)
                 await session.commit()
+                if count == 0:
+                    lt = time.time()
                 count += len(ids)
                 if has_traces_to_process:
                     pool.map(process_event_batch, split_into_batches(ids, args.batch_size))
-                    if count > 50000:
-                        logger.info(f"Processed {count} traces in {time.time() - lt} seconds")
-                        if (time.time() - lt) > 0:
-                            logger.info(f"Processed {count / (time.time() - lt)} traces per second")
-                        count = 0
-                        lt = time.time()
                 else:
-                    await asyncio.sleep(2)
-
+                    await asyncio.sleep(0.5)
+    thread.join()
+# end def
 
 def init_pool():
     asyncio.set_event_loop(asyncio.new_event_loop())
@@ -98,15 +112,19 @@ async def process_emulated_trace(trace_id):
     return await process_event_async(trace)
 
 
-async def fetch_events_for_processing(size: int):
-    async with async_session() as session:
-        query = select(Trace.trace_id, Trace.nodes_) \
-            .filter(Trace.state == 'complete') \
-            .filter(Trace.classification_state == 'unclassified') \
-            .order_by(Trace.start_lt.desc()) \
-            .limit(size)
-        traces = await session.execute(query)
-        return traces.all()
+def fetch_events_for_processing(queue: mp.Queue, fetch_size: int):
+    logger.info(f'fetching unclassified traces...')
+    while True:
+        with SyncSessionMaker() as session:
+            query = session.query(Trace.trace_id, Trace.nodes_) \
+                .filter(Trace.state == 'complete') \
+                .filter(Trace.classification_state == 'unclassified') \
+                .order_by(Trace.start_lt.desc())
+            query = query.yield_per(fetch_size)
+            for item in query:
+                queue.put(item)
+        time.sleep(1)
+# end def
 
 
 def process_event_batch(ids: list[str]):
@@ -131,7 +149,7 @@ async def process_trace_batch_async(ids: list[str]):
             for tx in trace.transactions:
                 accounts.add(tx.account)
         interfaces = await gather_interfaces(accounts, session)
-        repository = RedisInterfaceRepository(redis.client)
+        repository = RedisInterfaceRepository(redis.sync_client)
         await repository.put_interfaces(interfaces)
         context.interface_repository.set(repository)
         # Process traces and save actions
