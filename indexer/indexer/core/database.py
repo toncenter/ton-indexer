@@ -41,28 +41,25 @@ def get_engine(settings: Settings):
     logger.critical(settings.pg_dsn)
     engine = create_async_engine(settings.pg_dsn,
                                  pool_size=128,
-                                 max_overflow=0,
-                                 pool_timeout=5,
-                                 pool_pre_ping=True, # using pessimistic approach about closed connections problem: https://docs.sqlalchemy.org/en/14/core/pooling.html#disconnect-handling-pessimistic
-                                 echo=False,
-                                 connect_args={'server_settings': {'statement_timeout': '3000'}}
-                                 )
+                                 max_overflow=24,
+                                 pool_timeout=128,
+                                 echo=False)
     return engine
 engine = get_engine(settings)
 SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
 
 # # async engine
-# def get_sync_engine(settings: Settings):
-#     pg_dsn = settings.pg_dsn.replace('+asyncpg', '')
-#     logger.critical(pg_dsn)
-#     engine = create_engine(pg_dsn,
-#                            pool_size=128,
-#                            max_overflow=0,
-#                            pool_timeout=5,
-#                            echo=False)
-#     return engine
-# sync_engine = get_sync_engine(settings)
-# SyncSessionMaker = sessionmaker(bind=sync_engine)
+def get_sync_engine(settings: Settings):
+    pg_dsn = settings.pg_dsn.replace('+asyncpg', '')
+    logger.critical(pg_dsn)
+    engine = create_engine(pg_dsn,
+                           pool_size=128,
+                           max_overflow=0,
+                           pool_timeout=5,
+                           echo=False)
+    return engine
+sync_engine = get_sync_engine(settings)
+SyncSessionMaker = sessionmaker(bind=sync_engine)
 
 # database
 Base = declarative_base()
