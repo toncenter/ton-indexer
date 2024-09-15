@@ -64,6 +64,13 @@ class EventNode:
             return None
 
 
+    def get_lt(self):
+        if self.is_tick_tock and self.tick_tock_tx is not None:
+            return self.tick_tock_tx.lt
+        else:
+            return self.message.created_lt
+
+
 def to_tree(txs: list[Transaction]):
     txs = sorted(txs, key=lambda tx: tx.lt, reverse=True)
     msg_tx = {}

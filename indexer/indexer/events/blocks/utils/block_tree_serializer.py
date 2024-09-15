@@ -26,9 +26,14 @@ def _addr(addr: AccountId | Asset | None) -> str | None:
 
 
 def _calc_action_id(block: Block) -> str:
-    msg_hashes = list(set(n.message.msg_hash for n in block.event_nodes))
-    msg_hashes.sort()
-    h = hashlib.sha256(",".join(msg_hashes).encode())
+    root_event_node = min(block.event_nodes, key=lambda n:n.get_lt())
+    key = ""
+    if root_event_node.message is not None:
+        key = root_event_node.message.msg_hash
+    else:
+        key = root_event_node.get_tx_hash()
+    key += block.btype
+    h = hashlib.sha256(key.encode())
     return base64.b64encode(h.digest()).decode()
 
 
