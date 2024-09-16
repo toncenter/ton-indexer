@@ -1192,7 +1192,7 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
   }
 
   std::ostringstream query;
-  query << "INSERT INTO jetton_wallets (balance, address, owner, jetton, last_transaction_lt, code_hash, data_hash) VALUES ";
+  query << "INSERT INTO jetton_wallets (balance, address, owner, jetton, last_transaction_lt, code_hash, data_hash, mintless_is_claimed) VALUES ";
   bool is_first = true;
   for (const auto& [addr, jetton_wallet] : jetton_wallets) {
     if (is_first) {
@@ -1207,7 +1207,8 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
           << txn.quote(convert::to_raw_address(jetton_wallet.jetton)) << ","
           << jetton_wallet.last_transaction_lt << ","
           << txn.quote(td::base64_encode(jetton_wallet.code_hash.as_slice())) << ","
-          << txn.quote(td::base64_encode(jetton_wallet.data_hash.as_slice()))
+          << txn.quote(td::base64_encode(jetton_wallet.data_hash.as_slice())) << ","
+          << TO_SQL_OPTIONAL_BOOL(jetton_wallet.mintless_is_claimed)
           << ")";
   }
   if (is_first) {
@@ -1219,7 +1220,8 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
         << "jetton = EXCLUDED.jetton, "
         << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
         << "code_hash = EXCLUDED.code_hash, " 
-        << "data_hash = EXCLUDED.data_hash WHERE jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
+        << "data_hash = EXCLUDED.data_hash, "
+        << "mintless_is_claimed = EXCLUDED.mintless_is_claimed WHERE jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
   return query.str();
 }
 
@@ -2045,7 +2047,8 @@ void InsertManagerPostgres::start_up() {
       "jetton tonaddr, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash);\n"
+      "data_hash tonhash, "
+      "mintless_is_claimed boolean);\n"
     );
 
     query += (

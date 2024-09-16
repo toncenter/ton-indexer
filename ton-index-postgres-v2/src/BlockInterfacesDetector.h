@@ -83,6 +83,7 @@ public:
                     jetton_wallet_data.address = address;
                     jetton_wallet_data.owner = arg.owner;
                     jetton_wallet_data.jetton = arg.jetton;
+                    jetton_wallet_data.mintless_is_claimed = arg.mintless_is_claimed;
                     jetton_wallet_data.last_transaction_lt = last_trans_lt;
                     jetton_wallet_data.last_transaction_now = last_trans_now;
                     jetton_wallet_data.code_hash = code_hash;
