@@ -1,4 +1,4 @@
-FROM python:3.12-bookworm
+FROM python:3.10
 
 # python requirements
 ADD requirements.txt /tmp/requirements.txt

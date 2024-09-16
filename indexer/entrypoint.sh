@@ -13,7 +13,8 @@ else
     echo "Postgres password file not specified!"
     exit 1
 fi
-
+export TQDM_NCOLS=0
+export TQDM_POSITION=-1
 if [ "$POSTGRES_PASSWORD" -eq 0 ]; then
     echo "Using postgres connection without password"
     export TON_INDEXER_PG_DSN="${POSTGRES_DIALECT}://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DBNAME}"
