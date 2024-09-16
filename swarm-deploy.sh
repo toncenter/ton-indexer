@@ -5,7 +5,8 @@ set -e
 DEPLOY_DATABASE=0
 MIGRATE=0
 BUILD=1
-DEPLOY_API=1
+DEPLOY_API=0
+DEPLOY_EVENTS=0
 
 BUILD_ARGS=
 POSITIONAL_ARGS=()
@@ -16,7 +17,8 @@ function usage() {
     echo ' -m --migrate             Run database migration'
     echo '    --no-build            Do not build docker images'
     echo '    --no-build-cache      No build cache'
-    echo '    --no-api              Do not deploy API'
+    echo '    --deploy-api          Deploy API'
+    echo '    --deploy-events       Deploy event classfier'
     echo ' -h --help                Show this message'
     exit
 }
@@ -28,7 +30,7 @@ while [[ $# -gt 0 ]]; do
             usage
             exit 1
             ;;
-        -d|--deploy-db)
+        -d|--db)
             DEPLOY_DATABASE=1
             shift
             ;;
@@ -44,8 +46,12 @@ while [[ $# -gt 0 ]]; do
             BUILD_ARGS=--no-cache
             shift
             ;;
-        --no-api)
-            DEPLOY_API=0
+        --api)
+            DEPLOY_API=1
+            shift
+            ;;
+        --events)
+            DEPLOY_EVENTS=1
             shift
             ;;
         -*|--*)
@@ -99,8 +105,8 @@ fi
 
 # build image
 if [[ $BUILD -eq "1" ]]; then
-    docker compose -f docker-compose.api.yaml build $BUILD_ARGS
-    docker compose -f docker-compose.api.yaml push
+    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml build $BUILD_ARGS
+    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml push
 fi
 
 if [[ $MIGRATE -eq "1" ]]; then
@@ -111,4 +117,9 @@ fi
 if [[ $DEPLOY_API -eq "1" ]]; then
     echo "Deploying API"
     docker stack deploy --with-registry-auth -c docker-compose.api.yaml ${STACK_NAME}
+fi
+
+if [[ $DEPLOY_EVENTS -eq "1" ]]; then
+    echo "Deploying event classifier"
+    docker stack deploy --with-registry-auth -c docker-compose.events.yaml ${STACK_NAME}
 fi
