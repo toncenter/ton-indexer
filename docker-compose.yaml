@@ -1,7 +1,7 @@
 version: '3.9'
 
 x-indexer-environment: &indexer-environment
-  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
+  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql}
   POSTGRES_HOST:
   POSTGRES_PORT:
   POSTGRES_USER:
@@ -18,13 +18,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: -bind :8081 -pg ${TON_INDEX_PG_DSN:?} -prefork
+    secrets:
+      - postgres_password
+    command: -prefork
     init: true
     ports:
       - target: 8081
-        published: ${TON_INDEX_API_PORT:-8081}
+        published: ${TON_INDEXER_API_PORT:-8081}
         protocol: tcp
         mode: host
+    environment: *indexer-environment
     deploy:
       mode: replicated
       replicas: ${SWARM_REPLICAS:-1}
@@ -45,3 +48,7 @@ networks:
       com.docker.network.driver.mtu: 1350
   toncenter-global:
     external: true
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_FILE:-private/postgres_password}

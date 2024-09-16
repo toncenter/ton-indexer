@@ -603,8 +603,8 @@ type Event struct {
 	McSeqnoEnd        HashType                  `json:"mc_seqno_end"`
 	StartLt           uint64                    `json:"start_lt,string"`
 	StartUtime        uint32                    `json:"start_utime"`
-	EndLt             uint64                    `json:"end_lt,string"`
-	EndUtime          uint32                    `json:"end_utime"`
+	EndLt             *uint64                   `json:"end_lt,string"`
+	EndUtime          *uint32                   `json:"end_utime"`
 	EventMeta         EventMeta                 `json:"trace_info"`
 	IsIncomplete      bool                      `json:"is_incomplete"`
 	Warning           string                    `json:"warning,omitempty"`

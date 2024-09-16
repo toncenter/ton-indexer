@@ -12,5 +12,6 @@ FROM ubuntu:jammy
 RUN apt-get update && apt install --yes bash curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /go/app/ton-index-go /usr/local/bin/ton-index-go
+COPY entrypoint.sh /app/entrypoint.sh
 
-ENTRYPOINT [ "/usr/local/bin/ton-index-go" ]
+ENTRYPOINT [ "/app/entrypoint.sh" ]

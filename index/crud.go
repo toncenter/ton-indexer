@@ -1670,7 +1670,7 @@ func collectAddressesFromTransactions(addr_list *map[string]bool, tx *Transactio
 			(*addr_list)[(string)(*v)] = true
 		}
 	}
-	for idx, _ := range tx.OutMsgs {
+	for idx := range tx.OutMsgs {
 		if v := tx.OutMsgs[idx].Destination; v != nil {
 			(*addr_list)[(string)(*v)] = true
 		}
