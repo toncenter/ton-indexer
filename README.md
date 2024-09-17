@@ -14,7 +14,7 @@ TON node stores data in a key-value database RocksDB.  While RocksDB excels in s
 TON Indexer stack consists of:
 1. `postgres`: PostgreSQL server to store indexed data and perform queries.
 2. `index-api`: FastAPI server with convenient endpoints to access the database.
-3. `alembic`: alembic service to run database migrations.
+3. `event-classifier`: trace classification service.
 4. `index-worker`: TON Index worker to read and parse data from TON node database. This service must be run on the machine with a working TON Node.
 
 ## How to run
@@ -33,8 +33,8 @@ Do the following steps to setup TON Indexer:
   * ./configure.sh will create .env file only with indexer and PostgreSQL configuration data. Use --worker flag to add TON Index worker configuration data too.
 * Adjust parameters in *.env* file (see [list of available parameters](#available-parameters)).
 * Set PostgreSQL password `echo -n "MY_PASSWORD" > private/postgres_password`
-* Build docker images: `docker compose build postgres alembic index-api`.
-* Run stack: `docker compose up -d postgres alembic index-api`.
+* Build docker images: `docker compose build postgres event-classifier index-api`.
+* Run stack: `docker compose up -d postgres event-classifier event-cache index-api`.
   * To start worker use command `docker compose up -d index-worker` after creating all services.
 
 **NOTE:** we recommend to setup indexer stack and index worker on separate servers. To install index worker to **Systemd** check this [instruction](https://github.com/toncenter/ton-index-worker).
@@ -56,9 +56,7 @@ Do the following steps to setup TON Indexer:
 * TON worker parameters:
   * `TON_WORKER_DBROOT`: path to TON full node database. Use default value if you've installed node with `mytonctrl`. Default: `/var/ton-work/db`.
   * `TON_WORKER_FROM`: masterchain seqno to start indexing. Set 1 to full index, set last masterchain seqno to collect only new blocks (use [/api/v2/getMasterchainInfo](https://toncenter.com/api/v2/getMasterchainInfo) to get last masterchain block seqno).
-  * `TON_WORKER_MAX_PARALLEL_TASKS`: max parallel reading actors. Adjust this parameter to decrease RAM usage. Default: `1024`.
-  * `TON_WORKER_INSERT_BATCH_SIZE`: max masterchain seqnos per INSERT query. Small value will decrease indexing performance. Great value will increase RAM usage. Default: `512`.
-  * `TON_WORKER_INSERT_PARALLEL_ACTORS`: number of parallel INSERT transactions. Increasing this number will increase PostgreSQL server RAM usage. Default: `3`.
+  * `TON_WORKER_ADDITIONAL_ARGS`: additional args to pass into index worker.
 
 ## Swagger
 
@@ -69,13 +67,12 @@ To test API, built-in swagger can be used. It is available after running `docker
 ## How to point TON Index worker to existing PostgreSQL instance
 * Remove PostgreSQL container: `docker compose rm postgres` (add flag `-v` to remove volumes).
 * Setup PostgreSQL credentials in *.env* file.
-* Run alembic migration: `docker compose up alembic`.
-* Run index worker: `docker compose up -d index-worker`.
+* Run index worker: `docker compose up -d index-worker index-api event-classifier event-cache`.
 
 ## How to update code
 * Pull new commits: `git pull`.
 * Update submodules: `git submodule update --recursive --init`.
-* Build new image: `docker compose build postgres alembic index-api`.
+* Build new image: `docker compose build postgres event-classifier event-cache index-api`.
   * Build new image of worker: `docker compose build index-worker`
-* Run new version: `docker compose up -d postgres alembic index-api`
+* Run new version: `docker compose up -d postgres event-classifier event-cache index-api`
   * Run new version of worker: `docker compose up -d index-worker`

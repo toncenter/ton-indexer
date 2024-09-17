@@ -22,6 +22,7 @@ x-index-worker: &index-worker
   TON_WORKER_FROM:
   TON_WORKER_DBROOT: /tondb
   TON_WORKER_BINARY: ton-index-postgres-v2
+  TON_WORKER_ADDITIONAL_ARGS:
   <<: *index-common
 
 services:
