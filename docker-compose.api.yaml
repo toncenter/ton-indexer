@@ -1,7 +1,7 @@
 version: '3.9'
 
 x-indexer-environment: &indexer-environment
-  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
+  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql}
   POSTGRES_HOST:
   POSTGRES_PORT:
   POSTGRES_USER:
@@ -13,31 +13,32 @@ x-indexer-environment: &indexer-environment
   TON_INDEXER_IS_TESTNET:
 
 services:
-  index-api:
-    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-indexer-cpp:${IMAGE_TAG:?}
+  index-api-go:
+    image: ${DOCKER_REGISTRY:-localhost:5000}/ton-index-go:${IMAGE_TAG:?}
     build:
-      context: indexer
+      context: ton-index-go
       dockerfile: Dockerfile
     secrets:
       - postgres_password
-    command: gunicorn indexer.api.main:app -k uvicorn.workers.UvicornWorker --bind=0.0.0.0:8081 -w ${TON_INDEXER_WORKERS:-1}
+    command: -prefork -threads ${TON_INDEXER_WORKERS:-1}
+    init: true
     ports:
       - target: 8081
         published: ${TON_INDEXER_API_PORT:-8081}
         protocol: tcp
         mode: host
-    environment: *indexer-environment 
+    environment: *indexer-environment
     deploy:
       mode: replicated
       replicas: ${SWARM_REPLICAS:-1}
       placement:
         constraints:
-          - "node.labels.${TONCENTER_ENV:?}.indexer-cpp.api==true"
+          - "node.labels.${TONCENTER_ENV:?}.indexer-cpp.api-go==true"
     networks:
       internal:
       toncenter-global:
         aliases:
-          - ${TONCENTER_ENV:?}-indexer-cpp-api
+          - ${TONCENTER_ENV:?}-indexer-cpp-api-go
 
 networks:
   internal:
@@ -51,4 +52,3 @@ networks:
 secrets:
   postgres_password:
     file: ${POSTGRES_PASSWORD_FILE:-private/postgres_password}
-  

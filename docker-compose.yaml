@@ -15,20 +15,40 @@ x-index-api: &index-api
   TON_INDEXER_API_PORT:
   TON_INDEXER_TON_HTTP_API_ENDPOINT:
   TON_INDEXER_IS_TESTNET:
+  TON_INDEXER_REDIS_DSN: redis://event-cache:6379
   <<: *index-common
 
 x-index-worker: &index-worker
   TON_WORKER_FROM:
+  TON_WORKER_DBROOT: /tondb
+  TON_WORKER_BINARY: ton-index-postgres-v2
+  TON_WORKER_ADDITIONAL_ARGS:
   <<: *index-common
 
 services:
-  index-api:
+  event-cache:
+    image: redis:latest
+    networks:
+      - internal
+    command: redis-server --maxclients 40000
+  event-classifier:
     build:
       context: indexer
       dockerfile: Dockerfile
     secrets:
       - postgres_password
-    command: gunicorn indexer.api.main:app -k uvicorn.workers.UvicornWorker --bind=0.0.0.0:8081 -w ${TON_INDEXER_WORKERS:-1}
+    command: python3 /app/event_classifier.py --pool-size ${TON_INDEXER_WORKERS:-8} --fetch-size 10000 --batch-size 500
+    environment: *index-api 
+    networks:
+      internal:
+
+  index-api:
+    build:
+      context: ton-index-go
+      dockerfile: Dockerfile
+    secrets:
+      - postgres_password
+    command: -prefork -threads ${TON_INDEXER_WORKERS:-1}
     ports:
       - target: 8081
         published: ${TON_INDEXER_API_PORT:-8081}
@@ -36,22 +56,6 @@ services:
     restart: always
     networks:
       internal:
-    depends_on:
-      - alembic
-
-  alembic:
-    build:
-      context: indexer
-      dockerfile: Dockerfile
-    environment: *index-api 
-    secrets:
-      - postgres_password
-    command: alembic upgrade head-1
-    networks:
-      internal:
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   index-worker:
     build:
@@ -66,9 +70,6 @@ services:
       internal:
     command: --from ${TON_WORKER_FROM:-1}
     restart: unless-stopped
-    depends_on:
-      alembic:
-        condition: service_completed_successfully
 
   postgres:
     image: postgres:16
