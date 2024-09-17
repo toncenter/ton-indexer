@@ -33,7 +33,7 @@ done
 # install libraries
 sudo apt update
 sudo apt install -y build-essential cmake clang openssl libssl-dev zlib1g-dev \
-                    gperf wget git curl libreadline-dev ccache libmicrohttpd-dev \
+                    gperf wget git curl libreadline-dev ccache libmicrohttpd-dev liblz4-dev \
                     pkg-config libsecp256k1-dev libsodium-dev python3-dev libpq-dev ninja-build
 
 # build
@@ -47,13 +47,13 @@ if [[ -f "./build" ]]; then
 else
     mkdir -p build
     cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=off -GNinja -S . -B ./build
-    ninja -C ./build -j$(nproc) ton-index-postgres
+    ninja -C ./build -j$(nproc) ton-index-postgres-v2
     sudo cmake --install build/
 fi
 
 # setup daemon
 echo "Task args: \'$TASK_ARGS\'"
-cat <<EOF | sudo tee /etc/systemd/system/ton-index-worker.service
+cat <<EOF | sudo tee /etc/systemd/system/index-worker.service
 [Unit]
 Description = ton index worker service
 After = network.target
@@ -62,8 +62,8 @@ After = network.target
 Type = simple
 Restart = always
 RestartSec = 20
-ExecStart=/bin/sh -c '/usr/bin/ton-index-postgres $TASK_ARGS 2>&1 | /usr/bin/cronolog /var/log/ton-index-cpp.log'
-ExecStopPost = /bin/echo "ton-index-worker service down"
+ExecStart=/bin/sh -c '/usr/bin/ton-index-postgres-v2 $TASK_ARGS 2>&1'
+ExecStopPost = /bin/echo "index-worker service down"
 User = root
 Group = root
 LimitNOFILE = infinity
@@ -76,5 +76,5 @@ EOF
 
 # enable service
 sudo systemctl daemon-reload
-sudo systemctl enable ton-index-worker.service
-sudo systemctl restart ton-index-worker.service
+sudo systemctl enable index-worker.service
+sudo systemctl restart index-worker.service
