@@ -1,6 +1,7 @@
 version: '3.9'
 
 x-indexer-environment: &indexer-environment
+  POSTGRES_DIALECT:
   POSTGRES_HOST:
   POSTGRES_PORT:
   POSTGRES_USER:
