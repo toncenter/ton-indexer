@@ -15,12 +15,12 @@ else
 fi
 export TQDM_NCOLS=0
 export TQDM_POSITION=-1
-if [ "$POSTGRES_PASSWORD" -eq 0 ]; then
+if [ ! -z "$POSTGRES_PASSWORD" ]; then
     echo "Using postgres connection without password"
-    export TON_INDEXER_PG_DSN="${POSTGRES_DIALECT}://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DBNAME}"
+    export TON_INDEXER_PG_DSN="${POSTGRES_DIALECT:-postgresql+asyncpg}://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DBNAME}"
 else
     echo "Using postgres connection with password"
-    export TON_INDEXER_PG_DSN="${POSTGRES_DIALECT}://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DBNAME}"
+    export TON_INDEXER_PG_DSN="${POSTGRES_DIALECT:-postgresql+asyncpg}://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DBNAME}"
 fi
 printenv
 

@@ -3,6 +3,9 @@
 > [!NOTE]  
 > This repository's master branch hosts the TON Indexer designed for direct reading from the TON Node database. If you are looking for an indexer that operates through `tonlib + liteserver`, please refer to the branch [legacy](https://github.com/toncenter/ton-indexer/tree/legacy).
 
+> [!NOTE]
+> Be careful upgrading the indexer. Versions with different major and minor have different schemas and they are incompatible with each other.
+
 
 TON Indexer stores blocks, transactions, messages, NFTs, Jettons and DNS domains in PostgreSQL database and provides convenient API.
 
