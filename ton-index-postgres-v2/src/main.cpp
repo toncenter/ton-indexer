@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
 
   std::uint32_t max_active_tasks = 7;
   std::uint32_t max_insert_actors = 12;
-  std::int32_t max_data_depth = 12;
+  std::int32_t max_data_depth = 0;
   
   std::int32_t max_queue_size{-1};
   std::int32_t max_batch_size{-1};

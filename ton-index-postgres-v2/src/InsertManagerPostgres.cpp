@@ -434,6 +434,8 @@ std::string InsertBatchPostgres::insert_blocks(pqxx::work &txn) {
                                 "prev_key_block_seqno, vert_seqno, master_ref_seqno, rand_seed, created_by, tx_count, prev_blocks) VALUES ";
 
   bool is_first = true;
+
+  int count = 0;
   for (const auto& task : insert_tasks_) {
     for (const auto& block : task.parsed_block_->blocks_) {
       td::StringBuilder prev_blocks_str;
@@ -454,6 +456,7 @@ std::string InsertBatchPostgres::insert_blocks(pqxx::work &txn) {
       } else {
         query << ", ";
       }
+      ++count;
       query << "("
             << block.workchain << ","
             << block.shard << ","
