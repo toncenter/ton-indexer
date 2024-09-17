@@ -15,6 +15,7 @@ x-index-api: &index-api
   TON_INDEXER_API_PORT:
   TON_INDEXER_TON_HTTP_API_ENDPOINT:
   TON_INDEXER_IS_TESTNET:
+  TON_INDEXER_REDIS_DSN: redis://event-cache:6379
   <<: *index-common
 
 x-index-worker: &index-worker
