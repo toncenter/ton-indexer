@@ -350,8 +350,8 @@ type JettonWallet struct {
 	Owner             AccountAddress            `json:"owner"`
 	Jetton            AccountAddress            `json:"jetton"`
 	LastTransactionLt int64                     `json:"last_transaction_lt,string"`
-	CodeHash          *HashType                 `json:"code_hash,omitempty"`
-	DataHash          *HashType                 `json:"data_hash,omitempty"`
+	CodeHash          *HashType                 `json:"code_hash"`
+	DataHash          *HashType                 `json:"data_hash"`
 	MintlessInfo      *JettonWalletMintlessInfo `json:"mintless_info,omitempty"`
 } // @name JettonWallet
 
