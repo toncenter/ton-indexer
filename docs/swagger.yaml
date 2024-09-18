@@ -482,6 +482,8 @@ definitions:
       last_transaction_lt:
         example: "0"
         type: string
+      mintless_info:
+        $ref: '#/definitions/index.JettonWalletMintlessInfo'
       owner:
         type: string
     type: object
@@ -1041,6 +1043,17 @@ definitions:
         items:
           $ref: '#/definitions/WalletState'
         type: array
+    type: object
+  index.JettonWalletMintlessInfo:
+    properties:
+      amount:
+        type: string
+      expire_at:
+        type: integer
+      is_claimed:
+        type: boolean
+      start_from:
+        type: integer
     type: object
 info:
   contact: {}

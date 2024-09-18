@@ -2895,6 +2895,9 @@ const docTemplate = `{
                     "type": "string",
                     "example": "0"
                 },
+                "mintless_info": {
+                    "$ref": "#/definitions/index.JettonWalletMintlessInfo"
+                },
                 "owner": {
                     "type": "string"
                 }
@@ -3738,6 +3741,23 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/WalletState"
                     }
+                }
+            }
+        },
+        "index.JettonWalletMintlessInfo": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "expire_at": {
+                    "type": "integer"
+                },
+                "is_claimed": {
+                    "type": "boolean"
+                },
+                "start_from": {
+                    "type": "integer"
                 }
             }
         }
