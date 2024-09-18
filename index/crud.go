@@ -609,7 +609,8 @@ func buildJettonMastersQuery(jetton_req JettonMasterRequest, lim_req LimitReques
 }
 
 func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
-	clmn_query := `J.address, J.balance, J.owner, J.jetton, J.last_transaction_lt, J.code_hash, J.data_hash`
+	clmn_query := `J.address, J.balance, J.owner, J.jetton, J.last_transaction_lt, J.code_hash, J.data_hash, 
+		J.mintless_is_claimed, J.mintless_amount, J.mintless_start_from, J.mintless_expire_at`
 	from_query := `jetton_wallets as J`
 	filter_list := []string{}
 	filter_query := ``
@@ -649,7 +650,7 @@ func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitReques
 		orderby_query = fmt.Sprintf(` order by J.jetton, %s %s`, sort_column, sort_order)
 	}
 	if v := jetton_req.ExcludeZeroBalance; v != nil && *v {
-		filter_list = append(filter_list, "J.balance > 0")
+		filter_list = append(filter_list, "J.balance + coalesce(mintless_amount, 0) > 0")
 	}
 
 	// build query

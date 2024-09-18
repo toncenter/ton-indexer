@@ -337,14 +337,22 @@ type JettonMaster struct {
 	DataBoc              string                 `json:"-"`
 } // @name JettonMaster
 
+type JettonWalletMintlessInfo struct {
+	IsClaimed *bool   `json:"is_claimed"`
+	Amount    *string `json:"amount"`
+	StartFrom *int64  `json:"start_from"`
+	ExpireAt  *int64  `json:"expire_at"`
+}
+
 type JettonWallet struct {
-	Address           AccountAddress `json:"address"`
-	Balance           string         `json:"balance"`
-	Owner             AccountAddress `json:"owner"`
-	Jetton            AccountAddress `json:"jetton"`
-	LastTransactionLt int64          `json:"last_transaction_lt,string"`
-	CodeHash          HashType       `json:"code_hash"`
-	DataHash          HashType       `json:"data_hash"`
+	Address           AccountAddress            `json:"address"`
+	Balance           string                    `json:"balance"`
+	Owner             AccountAddress            `json:"owner"`
+	Jetton            AccountAddress            `json:"jetton"`
+	LastTransactionLt int64                     `json:"last_transaction_lt,string"`
+	CodeHash          *HashType                 `json:"code_hash,omitempty"`
+	DataHash          *HashType                 `json:"data_hash,omitempty"`
+	MintlessInfo      *JettonWalletMintlessInfo `json:"mintless_info,omitempty"`
 } // @name JettonWallet
 
 type JettonTransfer struct {

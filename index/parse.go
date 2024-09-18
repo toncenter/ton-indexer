@@ -668,8 +668,13 @@ func ScanJettonMaster(row pgx.Row) (*JettonMaster, error) {
 
 func ScanJettonWallet(row pgx.Row) (*JettonWallet, error) {
 	var res JettonWallet
+	var mintless_into JettonWalletMintlessInfo
 	err := row.Scan(&res.Address, &res.Balance, &res.Owner, &res.Jetton, &res.LastTransactionLt,
-		&res.CodeHash, &res.DataHash)
+		&res.CodeHash, &res.DataHash, &mintless_into.IsClaimed, &mintless_into.Amount,
+		&mintless_into.StartFrom, &mintless_into.ExpireAt)
+	if mintless_into.IsClaimed != nil && !*mintless_into.IsClaimed {
+		res.MintlessInfo = &mintless_into
+	}
 	if err != nil {
 		return nil, err
 	}
