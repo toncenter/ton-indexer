@@ -1194,6 +1194,8 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
     }
   }
 
+  std::unordered_set<block::StdAddress, AddressHasher> known_mintless_masters;
+
   std::ostringstream query;
   query << "INSERT INTO jetton_wallets (balance, address, owner, jetton, last_transaction_lt, code_hash, data_hash, mintless_is_claimed) VALUES ";
   bool is_first = true;
@@ -1213,6 +1215,9 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
           << txn.quote(td::base64_encode(jetton_wallet.data_hash.as_slice())) << ","
           << TO_SQL_OPTIONAL_BOOL(jetton_wallet.mintless_is_claimed)
           << ")";
+    if (jetton_wallet.mintless_is_claimed.has_value()) {
+      known_mintless_masters.insert(jetton_wallet.address);
+    }
   }
   if (is_first) {
     return "";
@@ -1225,6 +1230,21 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
         << "code_hash = EXCLUDED.code_hash, " 
         << "data_hash = EXCLUDED.data_hash, "
         << "mintless_is_claimed = EXCLUDED.mintless_is_claimed WHERE jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
+
+  if (!known_mintless_masters.empty()) {
+    bool is_first = true;
+    query << "INSERT INTO mintless_jetton_masters(address, is_indexed) VALUES ";
+    for (const auto &addr : known_mintless_masters) {
+      if (is_first) {
+        is_first = false;
+      } else {
+        query << ", ";
+      }
+      LOG(INFO) << "Indexed mintless jetton: " << convert::to_raw_address(addr);
+      query << "(" << txn.quote(convert::to_raw_address(addr)) << ", FALSE)";
+    }
+    query << " ON CONFLICT (address) DO NOTHING;\n";
+  }
   return query.str();
 }
 
@@ -2052,7 +2072,10 @@ void InsertManagerPostgres::start_up() {
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
       "data_hash tonhash, "
-      "mintless_is_claimed boolean);\n"
+      "mintless_is_claimed boolean, "
+      "mintless_amount numeric, "
+      "mintless_start_from bigint, "
+      "mintless_expire_at bigint);\n"
     );
 
     query += (
@@ -2207,6 +2230,13 @@ void InsertManagerPostgres::start_up() {
       ");\n"
     );
 
+    query += (
+      "create table if not exists mintless_jetton_masters ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "is_indexed boolean);\n"
+    );
+
     LOG(DEBUG) << query;
     txn.exec0(query);
     txn.commit();
@@ -2330,6 +2360,29 @@ void InsertManagerPostgres::start_up() {
     }
   }
 
+  // some migrations
+  LOG(INFO) << "Running some migrations...";
+  try {
+    pqxx::connection c(credential_.get_connection_string());
+    pqxx::work txn(c);
+
+    std::string query = "";
+    
+    // some necessary indexes
+    query += (
+      "alter table jetton_wallets add column if not exists mintless_is_claimed boolean;\n"
+      "alter table jetton_wallets add column if not exists mintless_amount numeric;\n"
+      "alter table jetton_wallets add column if not exists mintless_start_from bigint;\n"
+      "alter table jetton_wallets add column if not exists mintless_expire_at bigint;\n"
+    );
+
+    LOG(DEBUG) << query;
+    txn.exec0(query);
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while running some migrations in database: " << e.what();
+    std::_Exit(1);
+  }
 
   // if success
   alarm_timestamp() = td::Timestamp::in(1.0);
