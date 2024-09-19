@@ -2235,7 +2235,7 @@ void InsertManagerPostgres::start_up() {
       "id bigserial not null, "
       "address tonaddr not null primary key, "
       "is_indexed boolean, "
-      "custom_payload_api_uri []varchar);\n"
+      "custom_payload_api_uri varchar[]);\n"
     );
 
     LOG(DEBUG) << query;
