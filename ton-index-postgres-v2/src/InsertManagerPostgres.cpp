@@ -1216,7 +1216,7 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
           << TO_SQL_OPTIONAL_BOOL(jetton_wallet.mintless_is_claimed)
           << ")";
     if (jetton_wallet.mintless_is_claimed.has_value()) {
-      known_mintless_masters.insert(jetton_wallet.address);
+      known_mintless_masters.insert(jetton_wallet.jetton);
     }
   }
   if (is_first) {
@@ -2234,7 +2234,8 @@ void InsertManagerPostgres::start_up() {
       "create table if not exists mintless_jetton_masters ("
       "id bigserial not null, "
       "address tonaddr not null primary key, "
-      "is_indexed boolean);\n"
+      "is_indexed boolean, "
+      "custom_payload_api_uri []varchar);\n"
     );
 
     LOG(DEBUG) << query;
@@ -2374,6 +2375,7 @@ void InsertManagerPostgres::start_up() {
       "alter table jetton_wallets add column if not exists mintless_amount numeric;\n"
       "alter table jetton_wallets add column if not exists mintless_start_from bigint;\n"
       "alter table jetton_wallets add column if not exists mintless_expire_at bigint;\n"
+      "alter table mintless_jetton_masters add column if not exists custom_payload_api_uri varchar[];\n"
     );
 
     LOG(DEBUG) << query;
