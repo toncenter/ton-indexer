@@ -1048,10 +1048,12 @@ definitions:
     properties:
       amount:
         type: string
+      custom_payload_api_uri:
+        items:
+          type: string
+        type: array
       expire_at:
         type: integer
-      is_claimed:
-        type: boolean
       start_from:
         type: integer
     type: object

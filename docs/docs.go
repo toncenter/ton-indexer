@@ -3750,11 +3750,14 @@ const docTemplate = `{
                 "amount": {
                     "type": "string"
                 },
+                "custom_payload_api_uri": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "expire_at": {
                     "type": "integer"
-                },
-                "is_claimed": {
-                    "type": "boolean"
                 },
                 "start_from": {
                     "type": "integer"

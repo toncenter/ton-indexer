@@ -610,8 +610,8 @@ func buildJettonMastersQuery(jetton_req JettonMasterRequest, lim_req LimitReques
 
 func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := `J.address, J.balance, J.owner, J.jetton, J.last_transaction_lt, J.code_hash, J.data_hash, 
-		J.mintless_is_claimed, J.mintless_amount, J.mintless_start_from, J.mintless_expire_at`
-	from_query := `jetton_wallets as J`
+		J.mintless_is_claimed, J.mintless_amount, J.mintless_start_from, J.mintless_expire_at, MJM.custom_payload_api_uri`
+	from_query := `jetton_wallets as J left join mintless_jetton_masters as MJM on J.jetton = MJM.address`
 	filter_list := []string{}
 	filter_query := ``
 	limit_query, err := limitQuery(lim_req, settings)

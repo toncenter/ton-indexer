@@ -139,7 +139,7 @@ type Message struct {
 	TxLt           int64           `json:"-"`
 	MsgHash        HashType        `json:"hash"`
 	Direction      string          `json:"-"`
-	TraceId        HashType        `json:"-"`
+	TraceId        *HashType       `json:"-"`
 	Source         *AccountAddress `json:"source"`
 	Destination    *AccountAddress `json:"destination"`
 	Value          *int64          `json:"value,string"`
@@ -319,7 +319,7 @@ type NFTTransfer struct {
 	CustomPayload        *string         `json:"custom_payload"`
 	ForwardAmount        *string         `json:"forward_amount"`
 	ForwardPayload       *string         `json:"forward_payload"`
-	TraceId              HashType        `json:"trace_id"`
+	TraceId              *HashType       `json:"trace_id"`
 } // @name NFTTransfer
 
 // jettons
@@ -338,10 +338,11 @@ type JettonMaster struct {
 } // @name JettonMaster
 
 type JettonWalletMintlessInfo struct {
-	IsClaimed *bool   `json:"is_claimed"`
-	Amount    *string `json:"amount"`
-	StartFrom *int64  `json:"start_from"`
-	ExpireAt  *int64  `json:"expire_at"`
+	IsClaimed           *bool    `json:"-"`
+	Amount              *string  `json:"amount"`
+	StartFrom           *int64   `json:"start_from"`
+	ExpireAt            *int64   `json:"expire_at"`
+	CustomPayloadApiUri []string `json:"custom_payload_api_uri"`
 }
 
 type JettonWallet struct {
@@ -370,7 +371,7 @@ type JettonTransfer struct {
 	CustomPayload       *string         `json:"custom_payload"`
 	ForwardTonAmount    *string         `json:"forward_ton_amount"`
 	ForwardPayload      *string         `json:"forward_payload"`
-	TraceId             HashType        `json:"trace_id"`
+	TraceId             *HashType       `json:"trace_id"`
 } // @name JettonTransfer
 
 type JettonBurn struct {
@@ -385,7 +386,7 @@ type JettonBurn struct {
 	Amount              string          `json:"amount"`
 	ResponseDestination *AccountAddress `json:"response_destination"`
 	CustomPayload       *string         `json:"custom_payload"`
-	TraceId             HashType        `json:"trace_id"`
+	TraceId             *HashType       `json:"trace_id"`
 } // @name JettonBurn
 
 // traces
