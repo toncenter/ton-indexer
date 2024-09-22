@@ -2,7 +2,7 @@ begin;
 
 -- blocks
 create index if not exists blocks_index_1 on blocks (gen_utime asc);
-create index if not exists blocks_index_2 on blocks(mc_block_seqno asc);
+create index if not exists blocks_index_2 on blocks (mc_block_seqno asc);
 create index if not exists blocks_index_3 on blocks (seqno asc) where (workchain = '-1'::integer);
 create index if not exists blocks_index_4 on blocks (start_lt asc);
 
@@ -43,7 +43,6 @@ create index if not exists jetton_transfers_index_1 on jetton_transfers (source,
 create index if not exists jetton_transfers_index_2 on jetton_transfers (source, tx_lt asc);
 create index if not exists jetton_transfers_index_3 on jetton_transfers (destination, tx_lt asc);
 create index if not exists jetton_transfers_index_4 on jetton_transfers (destination, tx_now asc);
-create index if not exists jetton_transfers_index_5 on jetton_transfers (jetton_wallet_address, tx_now asc);
 create index if not exists jetton_transfers_index_6 on jetton_transfers (jetton_wallet_address, tx_lt asc);
 create index if not exists jetton_transfers_index_7 on jetton_transfers (jetton_master_address, tx_now asc);
 create index if not exists jetton_transfers_index_8 on jetton_transfers (jetton_master_address, tx_lt asc);
@@ -67,30 +66,29 @@ create index if not exists nft_items_index_1 on nft_items (collection_address, i
 create index if not exists nft_items_index_2 on nft_items (owner_address, collection_address asc, index asc);
 create index if not exists nft_items_index_3 on nft_items (id asc);
 
-create index if not exists nft_transfers_index_1 on nft_transfers (nft_item_address, tx_now asc, tx_lt asc);
+-- create index if not exists nft_transfers_index_1 on nft_transfers (nft_item_address, tx_now asc, tx_lt asc);
 create index if not exists nft_transfers_index_2 on nft_transfers (nft_item_address, tx_lt asc);
 create index if not exists nft_transfers_index_3 on nft_transfers (nft_collection_address, tx_now asc);
 create index if not exists nft_transfers_index_4 on nft_transfers (nft_collection_address, tx_lt asc);
 create index if not exists nft_transfers_index_5 on nft_transfers (old_owner, tx_lt asc);
-create index if not exists nft_transfers_index_6 on nft_transfers (old_owner, tx_now asc, tx_lt asc);
+-- create index if not exists nft_transfers_index_6 on nft_transfers (old_owner, tx_now asc, tx_lt asc);
 create index if not exists nft_transfers_index_7 on nft_transfers (new_owner, tx_lt asc);
-create index if not exists nft_transfers_index_8 on nft_transfers (new_owner, tx_now asc, tx_lt asc);
+-- create index if not exists nft_transfers_index_8 on nft_transfers (new_owner, tx_now asc, tx_lt asc);
 create index if not exists nft_transfers_index_9 on nft_transfers (tx_lt asc);
 create index if not exists nft_transfers_index_10 on nft_transfers (tx_now asc, tx_lt asc);
 
 -- traces
 create index if not exists traces_index_1 on traces (state);
-create index if not exists traces_index_2 on traces (mc_seqno_start asc);
-create index if not exists traces_index_3 on traces (end_lt asc);
-create index if not exists traces_index_4 on traces (end_utime asc);
-create index if not exists traces_index_5 on traces (external_hash, end_lt asc);
-create index if not exists traces_index_6 on traces (external_hash, end_utime asc);
+create index if not exists trace_index_2a on traces (mc_seqno_end asc);
+-- create index if not exists traces_index_3 on traces (end_lt asc);
+-- create index if not exists traces_index_4 on traces (end_utime asc);
+-- create index if not exists traces_index_5 on traces (external_hash, end_lt asc);
+-- create index if not exists traces_index_6 on traces (external_hash, end_utime asc);
+create index if not exists traces_index_7 on traces (classification_state);
 
 create index if not exists trace_edges_index_1 on trace_edges (incomplete);
 -- create index if not exists trace_edges_index_2 on trace_edges (msg_hash);
 
-create index if not exists actions_index_1 on actions (trace_id, start_lt, end_lt);
+-- create index if not exists actions_index_1 on actions (trace_id, start_lt, end_lt);
 create index if not exists actions_index_2 on actions (action_id);
-
-create index if not exists trace_unclassified_index on traces (start_lt asc) include (trace_id, state) where (classification_state = 'unclassified');
 commit;

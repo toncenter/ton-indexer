@@ -396,6 +396,7 @@ struct JettonWalletDataV2 {
   block::StdAddress address;
   block::StdAddress owner;
   block::StdAddress jetton;
+  std::optional<bool> mintless_is_claimed;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
   td::Bits256 code_hash;

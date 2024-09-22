@@ -12,6 +12,7 @@ public:
     block::StdAddress address;
     block::StdAddress owner;
     block::StdAddress jetton;
+    std::optional<bool> mintless_is_claimed;
   };
 
   JettonWalletDetectorR(block::StdAddress address, 

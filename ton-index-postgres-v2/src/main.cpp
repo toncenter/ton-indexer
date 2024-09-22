@@ -36,11 +36,12 @@ int main(int argc, char *argv[]) {
   td::uint32 to_seqno = 0;
   bool force_index = false;
   bool custom_types = false;
+  bool create_indexes = false;
   InsertManagerPostgres::Credential credential;
 
   std::uint32_t max_active_tasks = 7;
   std::uint32_t max_insert_actors = 12;
-  std::int32_t max_data_depth = 12;
+  std::int32_t max_data_depth = 0;
   
   std::int32_t max_queue_size{-1};
   std::int32_t max_batch_size{-1};
@@ -87,8 +88,13 @@ int main(int argc, char *argv[]) {
     credential.dbname = value.str();
   });
   p.add_option('\0', "custom-types", "Use pgton extension with custom types", [&]() {
-    custom_types= true;
+    custom_types = true;
     LOG(WARNING) << "Using pgton extension!";
+  });
+  
+  p.add_option('\0', "create-indexes", "Create indexes in database", [&]() {
+    create_indexes = true;
+    LOG(WARNING) << "Indexes will be created on launch. It may take several hours!";
   });
 
   p.add_checked_option('f', "from", "Masterchain seqno to start indexing from", [&](td::Slice value) { 
@@ -297,7 +303,7 @@ int main(int argc, char *argv[]) {
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
-  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential, custom_types); });
+  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential, custom_types, create_indexes); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir); });
 

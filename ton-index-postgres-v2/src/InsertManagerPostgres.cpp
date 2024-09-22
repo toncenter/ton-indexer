@@ -434,6 +434,8 @@ std::string InsertBatchPostgres::insert_blocks(pqxx::work &txn) {
                                 "prev_key_block_seqno, vert_seqno, master_ref_seqno, rand_seed, created_by, tx_count, prev_blocks) VALUES ";
 
   bool is_first = true;
+
+  int count = 0;
   for (const auto& task : insert_tasks_) {
     for (const auto& block : task.parsed_block_->blocks_) {
       td::StringBuilder prev_blocks_str;
@@ -454,6 +456,7 @@ std::string InsertBatchPostgres::insert_blocks(pqxx::work &txn) {
       } else {
         query << ", ";
       }
+      ++count;
       query << "("
             << block.workchain << ","
             << block.shard << ","
@@ -1191,8 +1194,10 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
     }
   }
 
+  std::unordered_set<block::StdAddress, AddressHasher> known_mintless_masters;
+
   std::ostringstream query;
-  query << "INSERT INTO jetton_wallets (balance, address, owner, jetton, last_transaction_lt, code_hash, data_hash) VALUES ";
+  query << "INSERT INTO jetton_wallets (balance, address, owner, jetton, last_transaction_lt, code_hash, data_hash, mintless_is_claimed) VALUES ";
   bool is_first = true;
   for (const auto& [addr, jetton_wallet] : jetton_wallets) {
     if (is_first) {
@@ -1207,8 +1212,12 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
           << txn.quote(convert::to_raw_address(jetton_wallet.jetton)) << ","
           << jetton_wallet.last_transaction_lt << ","
           << txn.quote(td::base64_encode(jetton_wallet.code_hash.as_slice())) << ","
-          << txn.quote(td::base64_encode(jetton_wallet.data_hash.as_slice()))
+          << txn.quote(td::base64_encode(jetton_wallet.data_hash.as_slice())) << ","
+          << TO_SQL_OPTIONAL_BOOL(jetton_wallet.mintless_is_claimed)
           << ")";
+    if (jetton_wallet.mintless_is_claimed.has_value()) {
+      known_mintless_masters.insert(jetton_wallet.jetton);
+    }
   }
   if (is_first) {
     return "";
@@ -1219,7 +1228,23 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
         << "jetton = EXCLUDED.jetton, "
         << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
         << "code_hash = EXCLUDED.code_hash, " 
-        << "data_hash = EXCLUDED.data_hash WHERE jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
+        << "data_hash = EXCLUDED.data_hash, "
+        << "mintless_is_claimed = EXCLUDED.mintless_is_claimed WHERE jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
+
+  if (!known_mintless_masters.empty()) {
+    bool is_first = true;
+    query << "INSERT INTO mintless_jetton_masters(address, is_indexed) VALUES ";
+    for (const auto &addr : known_mintless_masters) {
+      if (is_first) {
+        is_first = false;
+      } else {
+        query << ", ";
+      }
+      LOG(INFO) << "Indexed mintless jetton: " << convert::to_raw_address(addr);
+      query << "(" << txn.quote(convert::to_raw_address(addr)) << ", FALSE)";
+    }
+    query << " ON CONFLICT (address) DO NOTHING;\n";
+  }
   return query.str();
 }
 
@@ -1739,7 +1764,7 @@ bool check_database_exists(const InsertManagerPostgres::Credential& credentials,
 
 
 void InsertManagerPostgres::start_up() {
-  LOG(INFO) << "Creating database if not exist";
+  LOG(INFO) << "Creating database...";
 
   if (!check_database_exists(credential_, credential_.dbname)) {
     try {
@@ -1790,6 +1815,7 @@ void InsertManagerPostgres::start_up() {
     }
   }
 
+  LOG(INFO) << "Creating tables...";
   try {
     pqxx::connection c(credential_.get_connection_string());
     pqxx::work txn(c);
@@ -2045,7 +2071,11 @@ void InsertManagerPostgres::start_up() {
       "jetton tonaddr, "
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
-      "data_hash tonhash);\n"
+      "data_hash tonhash, "
+      "mintless_is_claimed boolean, "
+      "mintless_amount numeric, "
+      "mintless_start_from bigint, "
+      "mintless_expire_at bigint);\n"
     );
 
     query += (
@@ -2200,6 +2230,29 @@ void InsertManagerPostgres::start_up() {
       ");\n"
     );
 
+    query += (
+      "create table if not exists mintless_jetton_masters ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "is_indexed boolean, "
+      "custom_payload_api_uri varchar[]);\n"
+    );
+
+    LOG(DEBUG) << query;
+    txn.exec0(query);
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while creating database: " << e.what();
+    std::_Exit(1);
+  }
+
+  LOG(INFO) << "Creating required indexes...";
+  try {
+    pqxx::connection c(credential_.get_connection_string());
+    pqxx::work txn(c);
+
+    std::string query = "";
+    
     // some necessary indexes
     query += (
       "create index if not exists traces_index_1 on traces (state);\n"
@@ -2211,7 +2264,125 @@ void InsertManagerPostgres::start_up() {
     txn.exec0(query);
     txn.commit();
   } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while creating database: " << e.what();
+    LOG(ERROR) << "Error while creating required indexes in database: " << e.what();
+    std::_Exit(1);
+  }
+
+  // create all indexes
+  if (create_indexes_) {
+    LOG(INFO) << "Creating all indexes...";
+    try {
+      pqxx::connection c(credential_.get_connection_string());
+      pqxx::work txn(c);
+
+      std::string query = "";
+      
+      // some necessary indexes
+      query += (
+        "create index if not exists blocks_index_1 on blocks (gen_utime asc);\n"
+        "create index if not exists blocks_index_2 on blocks (mc_block_seqno asc);\n"
+        "create index if not exists blocks_index_3 on blocks (seqno asc) where (workchain = '-1'::integer);\n"
+        "create index if not exists blocks_index_4 on blocks (start_lt asc);\n"
+        "create index if not exists transactions_index_1 on transactions (block_workchain, block_shard, block_seqno);\n"
+        "create index if not exists transactions_index_2 on transactions (lt asc);\n"
+        "create index if not exists transactions_index_3 on transactions (now asc, lt asc);\n"
+        "create index if not exists transactions_index_4 on transactions (account, lt asc);\n"
+        "create index if not exists transactions_index_5 on transactions (account, now asc, lt asc);\n"
+        "create index if not exists transactions_index_6 on transactions (hash);\n"
+        "create index if not exists transactions_index_7 on transactions (trace_id, lt asc);\n"
+        "create index if not exists transactions_index_8 on transactions (mc_block_seqno asc, lt asc);\n"
+        "create index if not exists messages_index_1 on messages (msg_hash);\n"
+        "create index if not exists messages_index_2 on messages (source, created_lt asc);\n"
+        "create index if not exists messages_index_3 on messages (destination, created_lt asc);\n"
+        "create index if not exists messages_index_4 on messages (body_hash);\n"
+        "create index if not exists messages_index_5 on messages (trace_id, tx_lt asc);\n"
+        "create index if not exists messages_index_6 on messages (opcode, created_lt);\n"
+        "create index if not exists latest_account_states_index_1 on latest_account_states (balance desc);\n"
+        "create index if not exists latest_account_states_index_2 on latest_account_states (id asc);\n"
+        "create index if not exists latest_account_states_address_book_index on latest_account_states (account) include (account_friendly, code_hash, account_status);\n"
+        "create index if not exists jetton_masters_index_1 on jetton_masters (admin_address, id asc);\n"
+        "create index if not exists jetton_masters_index_2 on jetton_masters (id asc);\n"
+        "create index if not exists jetton_wallets_index_1 on jetton_wallets (owner, id asc);\n"
+        "create index if not exists jetton_wallets_index_2 on jetton_wallets (jetton, id asc);\n"
+        "create index if not exists jetton_wallets_index_3 on jetton_wallets (id asc);\n"
+        "create index if not exists jetton_wallets_index_4 on jetton_wallets (jetton, balance desc);\n"
+        "create index if not exists jetton_wallets_index_5 on jetton_wallets (owner, balance desc);\n"
+        "create index if not exists jetton_transfers_index_1 on jetton_transfers (source, tx_now asc);\n"
+        "create index if not exists jetton_transfers_index_2 on jetton_transfers (source, tx_lt asc);\n"
+        "create index if not exists jetton_transfers_index_3 on jetton_transfers (destination, tx_lt asc);\n"
+        "create index if not exists jetton_transfers_index_4 on jetton_transfers (destination, tx_now asc);\n"
+        "create index if not exists jetton_transfers_index_6 on jetton_transfers (jetton_wallet_address, tx_lt asc);\n"
+        "create index if not exists jetton_transfers_index_7 on jetton_transfers (jetton_master_address, tx_now asc);\n"
+        "create index if not exists jetton_transfers_index_8 on jetton_transfers (jetton_master_address, tx_lt asc);\n"
+        "create index if not exists jetton_transfers_index_9 on jetton_transfers (tx_now asc, tx_lt asc);\n"
+        "create index if not exists jetton_transfers_index_10 on jetton_transfers (tx_lt asc);\n"
+        "create index if not exists jetton_burns_index_1 on jetton_burns (owner, tx_now asc, tx_lt asc);\n"
+        "create index if not exists jetton_burns_index_2 on jetton_burns (owner, tx_lt asc);\n"
+        "create index if not exists jetton_burns_index_3 on jetton_burns (jetton_wallet_address, tx_now asc, tx_lt asc);\n"
+        "create index if not exists jetton_burns_index_4 on jetton_burns (jetton_wallet_address, tx_lt asc);\n"
+        "create index if not exists jetton_burns_index_5 on jetton_burns (jetton_master_address, tx_now asc, tx_lt asc);\n"
+        "create index if not exists jetton_burns_index_6 on jetton_burns (jetton_master_address, tx_lt asc);\n"
+        "create index if not exists jetton_burns_index_7 on jetton_burns (tx_now asc, tx_lt asc);\n"
+        "create index if not exists jetton_burns_index_8 on jetton_burns (tx_lt asc);\n"
+        "create index if not exists nft_collections_index_1 on nft_collections (owner_address, id asc);\n"
+        "create index if not exists nft_collections_index_2 on nft_collections (id asc);\n"
+        "create index if not exists nft_items_index_1 on nft_items (collection_address, index asc);\n"
+        "create index if not exists nft_items_index_2 on nft_items (owner_address, collection_address asc, index asc);\n"
+        "create index if not exists nft_items_index_3 on nft_items (id asc);\n"
+        "-- create index if not exists nft_transfers_index_1 on nft_transfers (nft_item_address, tx_now asc, tx_lt asc);\n"
+        "create index if not exists nft_transfers_index_2 on nft_transfers (nft_item_address, tx_lt asc);\n"
+        "create index if not exists nft_transfers_index_3 on nft_transfers (nft_collection_address, tx_now asc);\n"
+        "create index if not exists nft_transfers_index_4 on nft_transfers (nft_collection_address, tx_lt asc);\n"
+        "create index if not exists nft_transfers_index_5 on nft_transfers (old_owner, tx_lt asc);\n"
+        "-- create index if not exists nft_transfers_index_6 on nft_transfers (old_owner, tx_now asc, tx_lt asc);\n"
+        "create index if not exists nft_transfers_index_7 on nft_transfers (new_owner, tx_lt asc);\n"
+        "-- create index if not exists nft_transfers_index_8 on nft_transfers (new_owner, tx_now asc, tx_lt asc);\n"
+        "create index if not exists nft_transfers_index_9 on nft_transfers (tx_lt asc);\n"
+        "create index if not exists nft_transfers_index_10 on nft_transfers (tx_now asc, tx_lt asc);\n"
+        "create index if not exists traces_index_1 on traces (state);\n"
+        "create index if not exists trace_index_2a on traces (mc_seqno_end asc);\n"
+        "-- create index if not exists traces_index_3 on traces (end_lt asc);\n"
+        "-- create index if not exists traces_index_4 on traces (end_utime asc);\n"
+        "-- create index if not exists traces_index_5 on traces (external_hash, end_lt asc);\n"
+        "-- create index if not exists traces_index_6 on traces (external_hash, end_utime asc);\n"
+        "create index if not exists traces_index_7 on traces (classification_state);\n"
+        "create index if not exists trace_edges_index_1 on trace_edges (incomplete);\n"
+        "-- create index if not exists trace_edges_index_2 on trace_edges (msg_hash);\n"
+        "-- create index if not exists actions_index_1 on actions (trace_id, start_lt, end_lt);\n"
+        "create index if not exists actions_index_2 on actions (action_id);"
+      );
+
+      LOG(DEBUG) << query;
+      txn.exec0(query);
+      txn.commit();
+    } catch (const std::exception &e) {
+      LOG(ERROR) << "Error while creating indexes in database: " << e.what();
+      std::_Exit(1);
+    }
+  }
+
+  // some migrations
+  LOG(INFO) << "Running some migrations...";
+  try {
+    pqxx::connection c(credential_.get_connection_string());
+    pqxx::work txn(c);
+
+    std::string query = "";
+    
+    // some necessary indexes
+    query += (
+      "alter table jetton_wallets add column if not exists mintless_is_claimed boolean;\n"
+      "alter table jetton_wallets add column if not exists mintless_amount numeric;\n"
+      "alter table jetton_wallets add column if not exists mintless_start_from bigint;\n"
+      "alter table jetton_wallets add column if not exists mintless_expire_at bigint;\n"
+      "alter table mintless_jetton_masters add column if not exists custom_payload_api_uri varchar[];\n"
+    );
+
+    LOG(DEBUG) << query;
+    txn.exec0(query);
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while running some migrations in database: " << e.what();
     std::_Exit(1);
   }
 

@@ -4,7 +4,7 @@ This is a C++ worker for [TON indexer](https://github.com/toncenter/ton-indexer/
 
 ## 1. How to install
 
-Before installing the worker, ensure the TON Index database is set up using the [instructions provided](https://github.com/kdimentionaltree/ton-indexer/tree/cpp-indexer).
+Before installing the worker, ensure the TON Index database is set up using the [instructions provided](https://github.com/toncenter/ton-indexer/tree/master).
 
 
 ### 1.1. Setup as systemd daemon
@@ -31,8 +31,8 @@ Do the following steps to build and run index worker from source.
 
         mkdir -p build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=off -GNinja ..
-        ninja -j$(nproc) ton-index-postgres
+        cmake -DCMAKE_BUILD_TYPE=Release -GNinja ..
+        ninja -j$(nproc) ton-index-postgres-v2
 
 3. Install binary to your system:
 
@@ -44,7 +44,7 @@ Do the following steps to build and run index worker from source.
 
 5. Run TON index worker:
 
-        ton-index-postgres <args>
+        ton-index-postgres-v2 <args>
 
 ### 1.3. Available arguments:
 * `--db <path>` - path to TON node directory. Pass `/var/ton-work/db`, if you have TON node installed by mytonctrl. **Required**.
@@ -62,6 +62,7 @@ Do the following steps to build and run index worker from source.
 * `--max-batch-blocks <size>` - maximum blocks in batch (size of insert batch).
 * `--max-batch-txs <size>` - maximum transactions in batch.
 * `--max-batch-msgs <size>` - maximum messages in batch.
+* `--max-data-depth <depth>` - maximum depth of data boc to index (use 0 to index all accounts).
 * `--threads <threads>` - number of CPU threads.
 * `--stats-freq <seconds>` - frequency of printing a statistics.
 

@@ -19,13 +19,16 @@ fi
 POSTGRES_HOST_IP=$(dig +short ${POSTGRES_HOST})
 if [[ -z "$POSTGRES_HOST_IP" ]]; then
     POSTGRES_HOST_IP=$POSTGRES_HOST
+    echo "PostgreSQL host IP: $POSTGRES_HOST_IP"
 fi
 echo "Postgres host: $POSTGRES_HOST (ip: $POSTGRES_HOST_IP)"
 
 ulimit -n 1000000
-ton-index-postgres --host $POSTGRES_HOST_IP \
-                   --port $POSTGRES_PORT \
-                   --user $POSTGRES_USER \
-                   --password $POSTGRES_PASSWORD \
-                   --dbname $POSTGRES_DBNAME \
-                   --db /tondb $@
+printenv
+echo "Running binary ${TON_WORKER_BINARY:-ton-index-postgres}"
+${TON_WORKER_BINARY:-ton-index-postgres} --host $POSTGRES_HOST_IP \
+    --port $POSTGRES_PORT \
+    --user $POSTGRES_USER \
+    --password $POSTGRES_PASSWORD \
+    --dbname $POSTGRES_DBNAME \
+    --db ${TON_WORKER_DBROOT:-/tondb} $@
