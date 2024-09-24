@@ -71,7 +71,7 @@ public:
     bool init;
     td::RefInt256 index;
     std::optional<block::StdAddress> collection_address;
-    block::StdAddress owner_address;
+    std::optional<block::StdAddress> owner_address;
     std::optional<std::map<std::string, std::string>> content;
   };
 

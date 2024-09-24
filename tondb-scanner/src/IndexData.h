@@ -478,7 +478,7 @@ struct NFTItemDataV2 {
   bool init;
   td::RefInt256 index;
   std::optional<block::StdAddress> collection_address;
-  block::StdAddress owner_address;
+  std::optional<block::StdAddress> owner_address;
   std::optional<std::map<std::string, std::string>> content;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;

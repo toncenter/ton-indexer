@@ -268,13 +268,19 @@ void NftItemDetectorR::start_up() {
     data.collection_address = collection_address.move_as_ok();
   }
 
-  auto owner_address = convert::to_std_address(stack[3].as_slice());
-  if (owner_address.is_error()) {
-    promise_.set_error(td::Status::Error("get_nft_data address parsing failed"));
-    stop();
-    return;
+  auto owner_addr_cs = stack[3].as_slice();
+  if (owner_addr_cs->size() == 2 && owner_addr_cs->prefetch_ulong(2) == 0) {
+    // addr_none case
+    data.owner_address = std::nullopt;
+  } else {
+    auto owner_address = convert::to_std_address(owner_addr_cs);
+    if (owner_address.is_error()) {
+      promise_.set_error(owner_address.move_as_error_prefix("nft owner address parsing failed: "));
+      stop();
+      return;
+    }
+    data.owner_address = owner_address.move_as_ok();
   }
-  data.owner_address = owner_address.move_as_ok();
 
   if (!data.collection_address) {
     auto content = parse_token_data(stack[4].as_cell());

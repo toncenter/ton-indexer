@@ -1327,12 +1327,16 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
     if (nft_item.collection_address) {
       raw_collection_address = convert::to_raw_address(nft_item.collection_address.value());
     }
+    std::optional<std::string> raw_owner_address;
+    if (nft_item.owner_address) {
+      raw_owner_address = convert::to_raw_address(nft_item.owner_address.value());
+    }
     query << "("
           << txn.quote(convert::to_raw_address(nft_item.address)) << ","
           << TO_SQL_BOOL(nft_item.init) << ","
           << nft_item.index << ","
           << TO_SQL_OPTIONAL_STRING(raw_collection_address, txn) << ","
-          << txn.quote(convert::to_raw_address(nft_item.owner_address)) << ","
+          << TO_SQL_OPTIONAL_STRING(raw_owner_address, txn) << ","
           << (nft_item.content ? txn.quote(content_to_json_string(nft_item.content.value())) : "NULL") << ","
           << nft_item.last_transaction_lt << ","
           << txn.quote(td::base64_encode(nft_item.code_hash.as_slice())) << ","
