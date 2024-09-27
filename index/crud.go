@@ -187,7 +187,7 @@ func buildTransactionsQuery(
 	}
 	if v := blk_req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.mc_block_seqno = %d", *v))
-		orderby_query = fmt.Sprintf(" order by T.lt %s", sort_order)
+		orderby_query = fmt.Sprintf(" order by T.lt %s, account asc", sort_order)
 	}
 
 	if v := tx_req.Account; v != nil {
@@ -2166,7 +2166,9 @@ func (db *DbClient) QueryNFTItems(
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
-		addr_list = append(addr_list, string(t.OwnerAddress))
+		if t.OwnerAddress != nil {
+			addr_list = append(addr_list, string(*t.OwnerAddress))
+		}
 	}
 	if len(addr_list) > 0 {
 		book, err = queryAddressBookImpl(addr_list, conn, settings)

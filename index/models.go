@@ -296,7 +296,7 @@ type NFTItem struct {
 	Init              bool                   `json:"init"`
 	Index             string                 `json:"index"`
 	CollectionAddress *AccountAddress        `json:"collection_address"`
-	OwnerAddress      AccountAddress         `json:"owner_address"`
+	OwnerAddress      *AccountAddress        `json:"owner_address"`
 	Content           map[string]interface{} `json:"content"`
 	LastTransactionLt int64                  `json:"last_transaction_lt,string"`
 	CodeHash          HashType               `json:"code_hash"`
