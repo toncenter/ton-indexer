@@ -22,7 +22,7 @@ class BlockMatcher:
         self.optional = optional
         self.include_excess = include_excess
 
-    def test_self(self, block: Block):
+    def test_self(self, block: Block) -> bool:
         return True
 
     async def try_build(self, block: Block) -> list[Block] | None:

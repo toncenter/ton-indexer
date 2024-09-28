@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Callable, Iterable
 
+from pytoniq_core import Slice
+
+from indexer.core.database import Message
 from indexer.events.blocks.utils import AccountId
 from indexer.events.blocks.utils.tree_utils import EventNode
 
@@ -206,6 +209,12 @@ class Block:
                 should_extend_queue = should_extend_queue and filter_matched
             if should_extend_queue:
                 queue.extend([(c, depth + 1) for c in node.next_blocks])
+
+    def get_body(self) -> Slice:
+        return Slice.one_from_boc(self.event_nodes[0].message.message_content.body)
+
+    def get_message(self) -> Message:
+        return self.event_nodes[0].message
 
     def connect(self, other: 'Block'):
         self.next_blocks.append(other)

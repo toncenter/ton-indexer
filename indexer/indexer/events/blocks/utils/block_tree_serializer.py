@@ -10,7 +10,7 @@ from indexer.core.database import Action
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock
-from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
+from indexer.events.blocks.jettons import JettonMintBlock, JettonTransferBlock, JettonBurnBlock
 from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
@@ -177,6 +177,12 @@ def _fill_jetton_burn_action(block: JettonBurnBlock, action: Action):
     action.asset = block.data['asset'].jetton_address.as_str()
     action.amount = block.data['amount'].value
 
+def _fill_jetton_mint_action(block: JettonMintBlock, action: Action):
+    action.destination = block.data['to'].as_str()
+    action.destination_secondary = block.data['to_jetton_wallet'].as_str()
+    action.asset = block.data['asset'].jetton_address.as_str()
+    action.amount = block.data['amount'].value
+
 
 def _fill_change_dns_record_action(block: ChangeDnsRecordBlock, action: Action):
     action.source = block.data['source'].as_str() if block.data['source'] is not None else None
@@ -253,6 +259,8 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_nft_mint_action(block, action)
         case 'jetton_burn':
             _fill_jetton_burn_action(block, action)
+        case 'jetton_mint':
+            _fill_jetton_mint_action(block, action)
         case 'jetton_swap':
             _fill_jetton_swap_action(block, action)
         case 'change_dns':

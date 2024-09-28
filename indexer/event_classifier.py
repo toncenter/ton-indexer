@@ -43,16 +43,16 @@ async def start_processing_events_from_db(args: argparse.Namespace):
             async with async_session() as session:
                 start_wait = time.time()
                 batch = []
-                while time.time() - start_wait < 1.0 or len(batch) < args.fetch_size:
+                while time.time() - start_wait < 1.0 and len(batch) < args.fetch_size:
                     try:
                         item = queue.get(False)
                         batch.append(item)
                     except:
                         await asyncio.sleep(0.5)
-                if (time.time() - lt) > 5 and lt > 0:
-                    logger.info(f"Processed {count} traces in {time.time() - lt:02f} seconds. Traces/sec: {count / (time.time() - lt):02f}, queue size: {queue.qsize()}, big traces: {big_traces}")
-                else:
-                    logger.info(f'Processing first batch of {len(batch)} traces, queue size: {queue.qsize()}')
+                # if (time.time() - lt) > 5 and lt > 0:
+                #     logger.info(f"Processed {count} traces in {time.time() - lt:02f} seconds. Traces/sec: {count / (time.time() - lt):02f}, queue size: {queue.qsize()}, big traces: {big_traces}")
+                # else:
+                #     logger.info(f'Processing first batch of {len(batch)} traces, queue size: {queue.qsize()}')
                 ids = []
                 has_traces_to_process = False
                 total_nodes = 0
@@ -72,7 +72,9 @@ async def start_processing_events_from_db(args: argparse.Namespace):
                 if count == 0:
                     lt = time.time()
                 count += len(ids)
+                print(has_traces_to_process)
                 if has_traces_to_process:
+                    print('here')
                     pool.map(process_event_batch, split_into_batches(ids, args.batch_size))
                 else:
                     await asyncio.sleep(0.5)
@@ -113,26 +115,31 @@ async def process_emulated_trace(trace_id):
 
 
 def fetch_events_for_processing(queue: mp.Queue, fetch_size: int):
-    logger.info(f'fetching unclassified traces...')
-    while True:
-        with SyncSessionMaker() as session:
-            query = session.query(Trace.trace_id, Trace.nodes_) \
-                .filter(Trace.state == 'complete') \
-                .filter(Trace.classification_state == 'unclassified') \
-                .order_by(Trace.start_lt.desc())
-            query = query.yield_per(fetch_size)
-            for item in query:
-                queue.put(item)
-        time.sleep(1)
-# end def
+    logger.info(f'Fetching unclassified traces...')
+    queue.put(("0xhIhQ3AJQmT2liFBgDN73ldRWPXT52U9hmyGw7eB90=", 5))
+    # while True:
+    #     with SyncSessionMaker() as session:
+    #         query = session.query(Trace.trace_id, Trace.nodes_) \
+    #             .filter(Trace.state == 'complete') \
+    #             .filter(Trace.classification_state == 'unclassified') \
+    #             .order_by(Trace.start_lt.desc())
+    #         query = query.yield_per(fetch_size)
+    #         for item in query:
+    #             queue.put(item)
+    #     time.sleep(1)
+# # end def
 
 
 def process_event_batch(ids: list[str]):
-    asyncio.get_event_loop().run_until_complete(process_trace_batch_async(ids))
+    try:
+        asyncio.get_event_loop().run_until_complete(process_trace_batch_async(ids))
+    except Exception as e:
+        logger.exception(e, exc_info=True)
     return None
 
 
 async def process_trace_batch_async(ids: list[str]):
+    print("in process_trace_batch_async")
     async with async_session() as session:
         query = select(Trace) \
             .join(Trace.transactions) \
@@ -142,6 +149,7 @@ async def process_trace_batch_async(ids: list[str]):
             .filter(Trace.trace_id.in_(ids))
         result = await session.execute(query)
         traces = result.scalars().unique().all()
+        print(traces)
 
         # Gather interfaces for each account
         accounts = set()
@@ -202,11 +210,11 @@ if __name__ == '__main__':
     parser.add_argument('--fetch-size',
                         help='Number of traces to fetch from db in one batch',
                         type=int,
-                        default=10000)
+                        default=100)
     parser.add_argument('--batch-size',
                         help='Number of traces to process in one batch',
                         type=int,
-                        default=1000)
+                        default=10)
     parser.add_argument('--pool-size',
                         help='Number of workers to process traces',
                         type=int,
