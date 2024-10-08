@@ -278,8 +278,8 @@ class StonfiV2SwapBlockMatcher(BlockMatcher):
             out_transfer_data = {
                 'asset': Asset(is_ton=True, jetton_address=None),
                 'amount': Amount(amount),
-                'source': AccountId(out_transfer.data['sender']),
-                'source_jetton_wallet': AccountId(out_transfer.data['sender_wallet']),
+                'source': out_transfer.data['sender'],
+                'source_jetton_wallet': out_transfer.data['sender_wallet'],
                 'destination': AccountId(pton_transfer.get_message().destination),
                 'destination_jetton_wallet': None,
             }
