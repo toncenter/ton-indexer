@@ -266,6 +266,17 @@ class Action(Base):
     nft_mint_data = Column(CompositeType("nft_mint_details", [
         Column("nft_item_index", Numeric)]))
 
+    withdraw_liquidity_data = Column(CompositeType("withdraw_liquidity_details", [
+        Column("amount1", Numeric),
+        Column("amount2", Numeric),
+        Column('asset1_out', String),
+        Column('asset2_out', String),
+        Column('user_jetton_wallet_1', String),
+        Column('user_jetton_wallet_2', String),
+        Column('dex_jetton_wallet_1', String),
+        Column('dex_jetton_wallet_2', String)
+    ]))
+
     def __repr__(self):
         full_repr = ""
         for key, value in self.__dict__.items():
