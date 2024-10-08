@@ -107,10 +107,12 @@ class Block:
     max_lt: int
     type: str
     value_flow: AccountValueFlow
+    transient: bool
 
     def __init__(self, type: str, nodes: list[EventNode], v=None):
         self.failed = False
         self.broken = False
+        self.transient = False
         self.event_nodes = nodes
         self.children_blocks = []
         self.next_blocks = []
@@ -168,7 +170,7 @@ class Block:
         #     else:
         #         blocks_to_merge.append(block)
         """Merges all blocks into one. Preserves structure"""
-        blocks_to_merge = list(set(blocks))
+        blocks_to_merge = [b for b in set(blocks) if b.transient is False]
         earliest_block = _ensure_earliest_common_block(blocks_to_merge)
         if earliest_block is None:
             raise "Earliest common block not found"
