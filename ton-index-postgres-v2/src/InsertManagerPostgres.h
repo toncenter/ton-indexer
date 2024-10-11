@@ -48,12 +48,14 @@ public:
   }
 
   void start_up() override;
+  void alarm() override;
 private:
   InsertManagerPostgres::Credential credential_;
   std::string connection_string_;
   std::vector<InsertTaskStruct> insert_tasks_;
   td::Promise<td::Unit> promise_;
   std::int32_t max_data_depth_;
+  std::int32_t retry_count_{0};
 
   std::string stringify(schema::ComputeSkipReason compute_skip_reason);
   std::string stringify(schema::AccStatusChange acc_status_change);

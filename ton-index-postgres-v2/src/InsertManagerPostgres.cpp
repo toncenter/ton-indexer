@@ -78,7 +78,11 @@ std::mutex latest_account_states_update_mutex;
 //
 void InsertBatchPostgres::start_up() {
   connection_string_ = credential_.get_connection_string();
+  alarm();
+}
 
+
+void InsertBatchPostgres::alarm() {
   try {
     pqxx::connection c(connection_string_);
     if (!c.is_open()) {
@@ -114,23 +118,19 @@ void InsertBatchPostgres::start_up() {
       txn.exec0(insert_under_mutex_query);
       txn.commit();
     }
-    
+
     for(auto& task : insert_tasks_) {
       task.promise_.set_value(td::Unit());
     }
-
     promise_.set_value(td::Unit());
+    stop();
+    return;
   } catch (const std::exception &e) {
-    for(auto& task : insert_tasks_) {
-      task.promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
-    }
-
-    promise_.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error inserting to PG: " << e.what()));
+    LOG(ERROR) << "Error inserting to PG: " << e.what();
+    ++retry_count_;
   }
-
-  stop();
+  alarm_timestamp() = td::Timestamp::in(10.0);
 }
-
 
 
 std::string InsertBatchPostgres::stringify(schema::ComputeSkipReason compute_skip_reason) {
@@ -1777,46 +1777,55 @@ void InsertManagerPostgres::start_up() {
         pqxx::nontransaction N(c);
         N.exec0("create database " + credential_.dbname + ";");
       }
-      {
-        pqxx::connection c(credential_.get_connection_string());
-        pqxx::work txn(c);
-
-        std::string query = "";
-        if (custom_types_) {
-          query += "create extension if not exists pgton;\n";
-        } else {
-          query += "create domain tonhash as char(44);\n";
-          query += "create domain tonaddr as varchar;\n";
-        }
-
-        query += (
-          "create type blockid as (workchain integer, shard bigint, seqno integer);\n"
-          "create type blockidext as (workchain integer, shard bigint, seqno integer, root_hash tonhash, file_hash tonhash);\n"
-          "create type account_status_type as enum('uninit', 'frozen', 'active', 'nonexist');\n"
-          "create type descr_type as enum('ord', 'storage', 'tick_tock', 'split_prepare', 'split_install', 'merge_prepare', 'merge_install');\n"
-          "create type status_change_type as enum('unchanged', 'frozen', 'deleted');\n"
-          "create type skipped_reason_type as enum('no_state', 'bad_state', 'no_gas', 'suspended');\n"
-          "create type bounce_type as enum('negfunds', 'nofunds', 'ok');\n"
-          "create type trace_state as enum('complete', 'pending', 'broken');\n"
-          "create type msg_direction as enum('out', 'in');\n"
-          "create type trace_classification_state as enum('unclassified', 'failed', 'ok', 'broken');\n"
-          "create type change_dns_record_details as (key varchar, value_schema varchar, value varchar, flags integer);\n"
-          "create type peer_swap_details as (asset_in tonaddr, amount_in numeric, asset_out tonaddr, amount_out numeric);\n"
-          "create type dex_transfer_details as (amount numeric, asset tonaddr, source tonaddr, destination tonaddr, source_jetton_wallet tonaddr, destination_jetton_wallet tonaddr);\n"
-          "create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[]);\n"
-          "create type ton_transfer_details as (content text, encrypted boolean);\n"
-          "create type nft_transfer_details as (is_purchase boolean, price numeric, query_id numeric, custom_payload text, forward_payload text, forward_amount numeric, response_destination tonaddr, nft_item_index numeric);\n"
-          "create type jetton_transfer_details as (response_destination tonaddr, forward_amount numeric, query_id numeric, custom_payload text, forward_payload text, comment text, is_encrypted_comment bool);\n"
-          "create type nft_mint_details as (nft_item_index numeric);\n"
-        );
-        LOG(DEBUG) << query;
-        txn.exec0(query);
-        txn.commit();
-      }
     } catch (const std::exception &e) {
       LOG(ERROR) << "Failed to create database: " << e.what();
       std::_Exit(1);
     }
+  }
+
+  LOG(INFO) << "Creating required types...";
+  try {
+    auto exec_query = [&] (const std::string& query) {
+      try {
+        pqxx::connection c(credential_.get_connection_string());
+        pqxx::work txn(c);
+
+        LOG(DEBUG) << "Executing query '" << query << "'";
+        txn.exec0(query);
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+    if (custom_types_) {
+      exec_query("create extension if not exists pgton;");
+    } else {
+      exec_query("create domain tonhash as char(44);");
+      exec_query("create domain tonaddr as varchar;");
+    }
+
+    exec_query("create type blockid as (workchain integer, shard bigint, seqno integer);");
+    exec_query("create type blockidext as (workchain integer, shard bigint, seqno integer, root_hash tonhash, file_hash tonhash);");
+    exec_query("create type account_status_type as enum('uninit', 'frozen', 'active', 'nonexist');");
+    exec_query("create type descr_type as enum('ord', 'storage', 'tick_tock', 'split_prepare', 'split_install', 'merge_prepare', 'merge_install');");
+    exec_query("create type status_change_type as enum('unchanged', 'frozen', 'deleted');");
+    exec_query("create type skipped_reason_type as enum('no_state', 'bad_state', 'no_gas', 'suspended');");
+    exec_query("create type bounce_type as enum('negfunds', 'nofunds', 'ok');");
+    exec_query("create type trace_state as enum('complete', 'pending', 'broken');");
+    exec_query("create type msg_direction as enum('out', 'in');");
+    exec_query("create type trace_classification_state as enum('unclassified', 'failed', 'ok', 'broken');");
+    exec_query("create type change_dns_record_details as (key varchar, value_schema varchar, value varchar, flags integer);");
+    exec_query("create type peer_swap_details as (asset_in tonaddr, amount_in numeric, asset_out tonaddr, amount_out numeric);");
+    exec_query("create type dex_transfer_details as (amount numeric, asset tonaddr, source tonaddr, destination tonaddr, source_jetton_wallet tonaddr, destination_jetton_wallet tonaddr);");
+    exec_query("create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[]);");
+    exec_query("create type ton_transfer_details as (content text, encrypted boolean);");
+    exec_query("create type nft_transfer_details as (is_purchase boolean, price numeric, query_id numeric, custom_payload text, forward_payload text, forward_amount numeric, response_destination tonaddr, nft_item_index numeric);");
+    exec_query("create type jetton_transfer_details as (response_destination tonaddr, forward_amount numeric, query_id numeric, custom_payload text, forward_payload text, comment text, is_encrypted_comment bool);");
+    exec_query("create type nft_mint_details as (nft_item_index numeric);");
+  }
+  catch (const std::exception &e) {
+    LOG(ERROR) << "Failed to run some of initial scripts: " << e.what();
+    std::_Exit(1);
   }
 
   LOG(INFO) << "Creating tables...";
