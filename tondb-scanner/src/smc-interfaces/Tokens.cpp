@@ -203,13 +203,19 @@ void JettonMasterDetectorR::start_up() {
   data.address = address_;
   data.total_supply = stack[0].as_int();
   data.mintable = stack[1].as_int()->to_long() != 0;
-  auto admin_address = convert::to_std_address(stack[2].as_slice());
-  if (admin_address.is_error()) {
-    promise_.set_error(admin_address.move_as_error_prefix("get_jetton_data address parsing failed: "));
-    stop();
-    return;
+  auto admin_addr_cs = stack[2].as_slice();
+  if (admin_addr_cs->size() == 2 && admin_addr_cs->prefetch_ulong(2) == 0) {
+    // addr_none case
+    data.admin_address = std::nullopt;
+  } else {
+    auto admin_address = convert::to_std_address(admin_addr_cs);
+    if (admin_address.is_error()) {
+      promise_.set_error(admin_address.move_as_error_prefix("jetton master admin address parsing failed: "));
+      stop();
+      return;
+    }
+    data.admin_address = admin_address.move_as_ok();
   }
-  data.admin_address = admin_address.move_as_ok();
   
   auto jetton_content = parse_token_data(stack[3].as_cell());
   if (jetton_content.is_error()) {
