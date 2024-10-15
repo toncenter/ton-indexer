@@ -28,6 +28,7 @@ func GetV2AddressInformation(state_req V2AccountRequest, settings RequestSetting
 	}
 	baseUrl.RawQuery = params.Encode()
 	agent := fiber.Get(baseUrl.String())
+	agent.Timeout(settings.Timeout)
 	_, body, errs := agent.Bytes()
 	if len(errs) > 0 {
 		return nil, IndexError{Code: 500, Message: errs[0].Error()}
@@ -97,6 +98,7 @@ func GetV2WalletInformation(state_req V2AccountRequest, settings RequestSettings
 	}
 	baseUrl.RawQuery = params.Encode()
 	agent := fiber.Get(baseUrl.String())
+	agent.Timeout(settings.Timeout)
 	_, body, errs := agent.Bytes()
 	if len(errs) > 0 {
 		return nil, IndexError{Code: 500, Message: errs[0].Error()}
@@ -168,6 +170,7 @@ func PostMessage(req V2SendMessageRequest, settings RequestSettings) (*V2SendMes
 	}
 	baseUrl.RawQuery = params.Encode()
 	agent := fiber.Post(baseUrl.String())
+	agent.Timeout(settings.Timeout)
 	var req_body []byte
 	if req_body, err = json.Marshal(req); err != nil {
 		return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
@@ -220,6 +223,7 @@ func PostEstimateFee(req V2EstimateFeeRequest, settings RequestSettings) (*V2Est
 	}
 	baseUrl.RawQuery = params.Encode()
 	agent := fiber.Post(baseUrl.String())
+	agent.Timeout(settings.Timeout)
 	var req_body []byte
 	if req_body, err = json.Marshal(req); err != nil {
 		return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
@@ -261,6 +265,7 @@ func PostRunGetMethod(req V2RunGetMethodRequest, settings RequestSettings) (*V2R
 	}
 	baseUrl.RawQuery = params.Encode()
 	agent := fiber.Post(baseUrl.String())
+	agent.Timeout(settings.Timeout)
 	agent.Add("Content-Type", "application/json")
 	{
 		body := make(map[string]interface{})
