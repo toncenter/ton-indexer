@@ -2255,7 +2255,9 @@ func (db *DbClient) QueryJettonMasters(
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
-		addr_list = append(addr_list, string(t.AdminAddress))
+		if t.AdminAddress != nil {
+			addr_list = append(addr_list, string(*t.AdminAddress))
+		}
 	}
 	if len(addr_list) > 0 {
 		book, err = queryAddressBookImpl(addr_list, conn, settings)

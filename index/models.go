@@ -327,7 +327,7 @@ type JettonMaster struct {
 	Address              AccountAddress         `json:"address"`
 	TotalSupply          string                 `json:"total_supply"`
 	Mintable             bool                   `json:"mintable"`
-	AdminAddress         AccountAddress         `json:"admin_address"`
+	AdminAddress         *AccountAddress        `json:"admin_address"`
 	JettonContent        map[string]interface{} `json:"jetton_content"`
 	JettonWalletCodeHash HashType               `json:"jetton_wallet_code_hash"`
 	CodeHash             HashType               `json:"code_hash"`
