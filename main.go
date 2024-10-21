@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -18,15 +19,18 @@ import (
 )
 
 type Settings struct {
-	PgDsn        string
-	MaxConns     int
-	MinConns     int
-	Bind         string
-	InstanceName string
-	Prefork      bool
-	MaxThreads   int
-	Debug        bool
-	Request      index.RequestSettings
+	PgDsn           string
+	PgMasterDsn     string
+	TaskChannelSize int
+	MaxConns        int
+	MinConns        int
+	MasterMaxConns  int
+	Bind            string
+	InstanceName    string
+	Prefork         bool
+	MaxThreads      int
+	Debug           bool
+	Request         index.RequestSettings
 }
 
 func onlyOneOf(flags ...bool) bool {
@@ -40,6 +44,7 @@ func onlyOneOf(flags ...bool) bool {
 }
 
 var pool *index.DbClient
+var masterPool *index.DbClient
 var settings Settings
 
 //	@title			TON Index (Go)
@@ -430,7 +435,7 @@ func GetMessages(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	msgs, book, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, request_settings)
+	msgs, book, metadata, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -438,7 +443,7 @@ func GetMessages(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "messages not found"}
 	// }
 
-	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book}
+	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book, Metadata: metadata}
 	return c.JSON(msgs_resp)
 }
 
@@ -470,6 +475,36 @@ func GetAddressBook(c *fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(book)
+}
+
+// @summary Metadata
+//
+// @description Query address metadata
+//
+// @id api_v3_get_metadata
+// @tags accounts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.Metadata
+// @failure 400 {object} index.RequestError
+// @param address query []string true "List of addresses in any form to get address metadata. Max: 1024." collectionFormat(multi)
+// @router /api/v3/metadata [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetMetadata(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	var addr_book_req index.AddressBookRequest
+	if err := c.QueryParser(&addr_book_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if len(addr_book_req.Address) == 0 {
+		return index.IndexError{Code: 422, Message: "at least 1 address required"}
+	}
+	metadata, err := pool.QueryMetadata(addr_book_req.Address, request_settings)
+	if err != nil {
+		return err
+	}
+	return c.JSON(metadata)
 }
 
 // @summary Get Account States
@@ -509,7 +544,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 		*account_req.IncludeBOC = true
 	}
 
-	res, book, err := pool.QueryAccountStates(account_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryAccountStates(account_req, lim_req, request_settings)
 	if err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
@@ -517,7 +552,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "account states not found"}
 	// }
 
-	resp := index.AccountStatesResponse{Accounts: res, AddressBook: book}
+	resp := index.AccountStatesResponse{Accounts: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -550,12 +585,12 @@ func GetWalletStates(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "address of account is required"}
 	}
 
-	res, book, err := pool.QueryWalletStates(account_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryWalletStates(account_req, lim_req, request_settings)
 	if err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	resp := index.WalletStatesResponse{Wallets: res, AddressBook: book}
+	resp := index.WalletStatesResponse{Wallets: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -588,14 +623,14 @@ func GetNFTCollections(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryNFTCollections(nft_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryNFTCollections(nft_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "nft collections not found"}
 	// }
-	resp := index.NFTCollectionsResponse{Collections: res, AddressBook: book}
+	resp := index.NFTCollectionsResponse{Collections: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -630,14 +665,14 @@ func GetNFTItems(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryNFTItems(nft_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryNFTItems(nft_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "nft items not found"}
 	// }
-	resp := index.NFTItemsResponse{Items: res, AddressBook: book}
+	resp := index.NFTItemsResponse{Items: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -696,7 +731,7 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryNFTTransfers(transfer_req, utime_req, lt_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryNFTTransfers(transfer_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -704,7 +739,7 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "nft transfers not found"}
 	// }
 
-	resp := index.NFTTransfersResponse{Transfers: res, AddressBook: book}
+	resp := index.NFTTransfersResponse{Transfers: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -765,14 +800,14 @@ func GetJettonMasters(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonMasters(jetton_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryJettonMasters(jetton_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "jetton masters not found"}
 	// }
-	resp := index.JettonMastersResponse{Masters: res, AddressBook: book}
+	resp := index.JettonMastersResponse{Masters: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -808,14 +843,14 @@ func GetJettonWallets(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonWallets(jetton_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryJettonWallets(jetton_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "jetton wallets not found"}
 	// }
-	resp := index.JettonWalletsResponse{Wallets: res, AddressBook: book}
+	resp := index.JettonWalletsResponse{Wallets: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -874,7 +909,7 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonTransfers(transfer_req, utime_req, lt_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryJettonTransfers(transfer_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -882,7 +917,7 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "jetton transfers not found"}
 	// }
 
-	resp := index.JettonTransfersResponse{Transfers: res, AddressBook: book}
+	resp := index.JettonTransfersResponse{Transfers: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -937,7 +972,7 @@ func GetJettonBurns(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonBurns(burn_req, utime_req, lt_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryJettonBurns(burn_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -945,7 +980,7 @@ func GetJettonBurns(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "jetton burns not found"}
 	// }
 
-	resp := index.JettonBurnsResponse{Burns: res, AddressBook: book}
+	resp := index.JettonBurnsResponse{Burns: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -995,7 +1030,7 @@ func GetEvents(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
 	}
 
-	res, book, err := pool.QueryEvents(event_req, utime_req, lt_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryEvents(event_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -1003,7 +1038,7 @@ func GetEvents(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := index.EventsResponse{Events: res, AddressBook: book}
+	txs_resp := index.EventsResponse{Events: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(txs_resp)
 }
 
@@ -1033,7 +1068,7 @@ func GetActions(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryActions(act_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryActions(act_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -1041,7 +1076,7 @@ func GetActions(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "actions not found"}
 	// }
 
-	resp := index.ActionsResponse{Actions: res, AddressBook: book}
+	resp := index.ActionsResponse{Actions: res, AddressBook: book, Metadata: metadata}
 	return c.Status(200).JSON(resp)
 }
 
@@ -1083,7 +1118,7 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 	var res *index.V2WalletInformation
 	if !use_v2 {
 		account_req := index.AccountRequest{AccountAddress: []index.AccountAddress{acc_req.AccountAddress}}
-		loc, _, err := pool.QueryWalletStates(account_req, index.LimitRequest{}, request_settings)
+		loc, _, _, err := pool.QueryWalletStates(account_req, index.LimitRequest{}, request_settings)
 		if err != nil {
 			return err
 		}
@@ -1156,7 +1191,7 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 		res = loc
 	} else {
 		account_req := index.AccountRequest{AccountAddress: []index.AccountAddress{acc_req.AccountAddress}}
-		loc, _, err := pool.QueryAccountStates(account_req, index.LimitRequest{}, request_settings)
+		loc, _, _, err := pool.QueryAccountStates(account_req, index.LimitRequest{}, request_settings)
 		if err != nil {
 			return err
 		}
@@ -1380,10 +1415,13 @@ func main() {
 	var timeout_ms int
 
 	flag.StringVar(&settings.PgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
+	flag.StringVar(&settings.PgMasterDsn, "pg-master", "", "PostgreSQL connection string with write access")
 	flag.StringVar(&settings.Request.V2Endpoint, "v2", "", "TON HTTP API endpoint for proxied methods")
 	flag.StringVar(&settings.Request.V2ApiKey, "v2-apikey", "", "API key for TON HTTP API endpoint")
 	flag.IntVar(&settings.MaxConns, "maxconns", 100, "PostgreSQL max connections")
 	flag.IntVar(&settings.MinConns, "minconns", 0, "PostgreSQL min connections")
+	flag.IntVar(&settings.MasterMaxConns, "master-maxconns", 16, "PostgreSQL master max connections")
+	flag.IntVar(&settings.TaskChannelSize, "task-channel-size", 5000, "Task channel size")
 	flag.StringVar(&settings.Bind, "bind", ":8000", "Bind address")
 	flag.StringVar(&settings.InstanceName, "name", "Go", "Instance name to show in Swagger UI")
 	flag.BoolVar(&settings.Prefork, "prefork", false, "Prefork workers")
@@ -1469,6 +1507,7 @@ func main() {
 
 	// account methods
 	app.Get("/api/v3/addressBook", GetAddressBook)
+	app.Get("/api/v3/metadata", GetMetadata)
 	app.Get("/api/v3/accountStates", GetAccountStates)
 	app.Get("/api/v3/walletStates", GetWalletStates)
 
@@ -1508,6 +1547,22 @@ func main() {
 	}
 	app.Get("/api/v3/*", swagger.New(swagger_config))
 	app.Static("/", "./static")
+	index.BackgroundTaskManager, err = index.NewBackgroundTaskManager(settings.PgDsn, settings.TaskChannelSize,
+		0, settings.MasterMaxConns)
+	if err != nil {
+		if len(settings.PgMasterDsn) == 0 {
+			log.Printf("Error creating background task manager: %s", err.Error())
+		} else {
+			index.BackgroundTaskManager, err = index.NewBackgroundTaskManager(settings.PgMasterDsn,
+				settings.TaskChannelSize, 0, settings.MasterMaxConns)
+			if err != nil {
+				log.Printf("Error creating background task manager: %s", err.Error())
+			}
+		}
+	}
+	if index.BackgroundTaskManager != nil {
+		index.BackgroundTaskManager.Start(context.Background())
+	}
 	err = app.Listen(settings.Bind)
 	log.Fatal(err)
 }

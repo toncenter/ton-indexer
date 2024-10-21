@@ -39,6 +39,30 @@ type AddressBookRow struct {
 } // @name AddressBookRow
 
 type AddressBook map[string]AddressBookRow // @name AddressBook
+type Metadata map[string]AddressMetadata   // @name Metadata
+
+type BackgroundTask struct {
+	Type  string
+	Retry int
+	Data  map[string]interface{}
+}
+
+type AddressMetadata struct {
+	IsIndexed bool        `json:"is_indexed"`
+	TokenInfo []TokenInfo `json:"token_info"`
+} // @name AddressMetadata
+
+type TokenInfo struct {
+	Address     string                 `json:"-"`
+	Valid       *bool                  `json:"-"`
+	Indexed     bool                   `json:"-"`
+	Type        string                 `json:"type"`
+	Name        *string                `json:"name"`
+	Symbol      *string                `json:"symbol,omitempty"`
+	Description *string                `json:"description"`
+	Image       *string                `json:"image"`
+	Extra       map[string]interface{} `json:"extra,omitempty"`
+} // @name TokenInfo
 
 type BlockId struct {
 	Workchain int32   `json:"workchain"`
