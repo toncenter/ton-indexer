@@ -1342,6 +1342,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v3/metadata": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Query address metadata",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Metadata",
+                "operationId": "api_v3_get_metadata",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "List of addresses in any form to get address metadata. Max: 1024.",
+                        "name": "address",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/Metadata"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/nft/collections": {
             "get": {
                 "security": [
@@ -2262,6 +2313,9 @@ const docTemplate = `{
                 },
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2366,6 +2420,9 @@ const docTemplate = `{
                 },
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2380,6 +2437,20 @@ const docTemplate = `{
             "properties": {
                 "user_friendly": {
                     "type": "string"
+                }
+            }
+        },
+        "AddressMetadata": {
+            "type": "object",
+            "properties": {
+                "is_indexed": {
+                    "type": "boolean"
+                },
+                "token_info": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/TokenInfo"
+                    }
                 }
             }
         },
@@ -2701,6 +2772,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/Event"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2757,6 +2831,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/JettonBurn"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2805,6 +2882,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/JettonMaster"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2870,6 +2950,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/JettonTransfer"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2911,6 +2994,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/JettonWallet"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -3006,7 +3092,16 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/Message"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
+            }
+        },
+        "Metadata": {
+            "type": "object",
+            "additionalProperties": {
+                "$ref": "#/definitions/AddressMetadata"
             }
         },
         "MsgSize": {
@@ -3055,6 +3150,9 @@ const docTemplate = `{
             "properties": {
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 },
                 "nft_collections": {
                     "type": "array",
@@ -3106,6 +3204,9 @@ const docTemplate = `{
             "properties": {
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 },
                 "nft_items": {
                     "type": "array",
@@ -3168,6 +3269,9 @@ const docTemplate = `{
             "properties": {
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 },
                 "nft_transfers": {
                     "type": "array",
@@ -3400,6 +3504,30 @@ const docTemplate = `{
                 "storage_fees_due": {
                     "type": "string",
                     "example": "0"
+                }
+            }
+        },
+        "TokenInfo": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "extra": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "image": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
                 }
             }
         },
@@ -3732,6 +3860,9 @@ const docTemplate = `{
             "properties": {
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 },
                 "wallets": {
                     "type": "array",
