@@ -1,0 +1,18 @@
+[Unit]
+Description = "{{ application_name }}-metadata-fetcher service"
+After = network.target
+
+[Service]
+Type = simple
+Restart = always
+RestartSec = 1
+ExecStart={{ go_binary_path }}/{{ metadata_fetcher_binary }} -pg {{ pg_master_dsn or pg_dsn }}?application_name={{ application_name }}-metadata-fetcher {{ metadata_fetcher_additional_args }}
+ExecStopPost = /bin/echo "{{ application_name }}-metadata-fetcher service down"
+User = {{ service_user }}
+Group = {{ service_group }}
+LimitNOFILE = infinity
+LimitNPROC = infinity
+LimitMEMLOCK = infinity
+
+[Install]
+WantedBy = multi-user.target
