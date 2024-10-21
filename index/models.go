@@ -56,11 +56,11 @@ type TokenInfo struct {
 	Address     string                 `json:"-"`
 	Valid       *bool                  `json:"-"`
 	Indexed     bool                   `json:"-"`
-	Type        string                 `json:"type"`
-	Name        *string                `json:"name"`
+	Type        *string                `json:"type,omitempty"`
+	Name        *string                `json:"name,omitempty"`
 	Symbol      *string                `json:"symbol,omitempty"`
-	Description *string                `json:"description"`
-	Image       *string                `json:"image"`
+	Description *string                `json:"description,omitempty"`
+	Image       *string                `json:"image,omitempty"`
 	Extra       map[string]interface{} `json:"extra,omitempty"`
 } // @name TokenInfo
 

@@ -1263,7 +1263,7 @@ func queryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 		} else if *row.Valid {
 			row.Indexed = true
 
-			if _, ok := token_info_map[row.Type]; !ok {
+			if _, ok := token_info_map[*row.Type]; !ok {
 				token_info_map[row.Address] = []TokenInfo{}
 			}
 			token_info_map[row.Address] = append(token_info_map[row.Address], row)
