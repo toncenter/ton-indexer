@@ -175,18 +175,24 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
 
 def _fill_provide_liquidity(block: Block, action: Action):
     action.source = _addr(block.data['sender'])
-    action.source_secondary = _addr(block.data['sender_wallet'])
     action.destination = _addr(block.data['pool'])
-    action.amount = block.data['amount'].value
-    action.asset = _addr(block.data['asset'])
+    action.dex_deposit_liquidity_data = {
+        "dex": block.data['dex'],
+        "amount1": block.data['amount_1'].value if block.data['amount_1'] is not None else None,
+        "amount2": block.data['amount_2'].value if block.data['amount_2'] is not None else None,
+        "asset1": _addr(block.data['asset_1']),
+        "asset2": _addr(block.data['asset_2']),
+        "user_jetton_wallet_1": _addr(block.data['sender_wallet_1']),
+        "user_jetton_wallet_2": _addr(block.data['sender_wallet_2']),
+        "lp_tokens_minted": block.data['lp_tokens_minted'].value if block.data['lp_tokens_minted'] is not None else None
+    }
 
 def _fill_stonfi_withdraw_liquidity(block: Block, action: Action):
     action.source = _addr(block.data['sender'])
     action.source_secondary = _addr(block.data['sender_wallet'])
     action.destination = _addr(block.data['pool'])
-    action.amount = block.data['burned_lp_tokens'].value if block.data['burned_lp_tokens'] is not None else None
     action.asset = _addr(block.data['asset'])
-    action.withdraw_liquidity_data = {
+    action.dex_withdraw_liquidity_data = {
         "amount_1" : block.data['amount1_out'].value if block.data['amount1_out'] is not None else None,
         "amount_2" : block.data['amount2_out'].value if block.data['amount2_out'] is not None else None,
         'asset_out_1' : _addr(block.data['asset1_out']),
@@ -197,7 +203,8 @@ def _fill_stonfi_withdraw_liquidity(block: Block, action: Action):
         'dex_wallet_1': _addr(block.data['dex_wallet_1']),
         'dex_wallet_2': _addr(block.data['dex_wallet_2']),
         'dex_jetton_wallet_2': _addr(block.data['dex_jetton_wallet_2']),
-        'is_refund' : block.data['is_refund']
+        'is_refund' : block.data['is_refund'],
+        'lp_tokens_burned': block.data['burned_lp_tokens'].value if block.data['burned_lp_tokens'] is not None else None
     }
 
 def _fill_jetton_burn_action(block: JettonBurnBlock, action: Action):
@@ -290,9 +297,9 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_delete_dns_record_action(block, action)
         case 'subscribe':
             _fill_subscribe_action(block, action)
-        case 'stonfi_provide_liquidity':
+        case 'dex_deposit_liquidity':
             _fill_provide_liquidity(block, action)
-        case 'stonfi_withdraw_liquidity':
+        case 'dex_withdraw_liquidity':
             _fill_stonfi_withdraw_liquidity(block, action)
         case 'unsubscribe':
             _fill_unsubscribe_action(block, action)

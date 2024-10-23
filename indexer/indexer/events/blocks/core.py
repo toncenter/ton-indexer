@@ -213,6 +213,22 @@ class Block:
         self.next_blocks.append(other)
         other.previous_block = self
 
+    def insert_between(self, next_blocks: ['Block'], new_block: 'Block'):
+        assert all(n in self.next_blocks for n in next_blocks)
+        for child in self.children_blocks:
+            for next_block in next_blocks:
+                if next_block in child.next_blocks:
+                    child.next_blocks.remove(next_block)
+                    child.next_blocks.append(new_block)
+        self.next_blocks = [n for n in self.next_blocks if n not in next_blocks]
+        for next_block in next_blocks:
+            for child in next_block.children_blocks:
+                if child.previous_block == next_block:
+                    child.previous_block = new_block
+        self.connect(new_block)
+        for next_block in next_blocks:
+            new_block.connect(next_block)
+
     def topmost_parent(self):
         if self.parent is None:
             return self
@@ -283,3 +299,7 @@ class SingleLevelWrapper(Block):
 
         self.compact_connections()
         self.calculate_min_max_lt()
+
+class EmptyBlock(Block):
+    def __init__(self):
+        super().__init__('empty', [], None)
