@@ -187,12 +187,13 @@ def _fill_provide_liquidity(block: Block, action: Action):
         "lp_tokens_minted": block.data['lp_tokens_minted'].value if block.data['lp_tokens_minted'] is not None else None
     }
 
-def _fill_stonfi_withdraw_liquidity(block: Block, action: Action):
+def _fill_dex_withdraw_liquidity(block: Block, action: Action):
     action.source = _addr(block.data['sender'])
     action.source_secondary = _addr(block.data['sender_wallet'])
     action.destination = _addr(block.data['pool'])
     action.asset = _addr(block.data['asset'])
     action.dex_withdraw_liquidity_data = {
+        "dex": block.data['dex'],
         "amount_1" : block.data['amount1_out'].value if block.data['amount1_out'] is not None else None,
         "amount_2" : block.data['amount2_out'].value if block.data['amount2_out'] is not None else None,
         'asset_out_1' : _addr(block.data['asset1_out']),
@@ -300,7 +301,7 @@ def block_to_action(block: Block, trace_id: str) -> Action:
         case 'dex_deposit_liquidity':
             _fill_provide_liquidity(block, action)
         case 'dex_withdraw_liquidity':
-            _fill_stonfi_withdraw_liquidity(block, action)
+            _fill_dex_withdraw_liquidity(block, action)
         case 'unsubscribe':
             _fill_unsubscribe_action(block, action)
         case 'election_deposit' | 'election_recover':
