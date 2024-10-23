@@ -17,7 +17,8 @@ from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurn
 from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher
 from indexer.events.blocks.subscriptions import SubscriptionBlockMatcher, UnsubscribeBlockMatcher
-from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher
+from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher, StonfiV2SwapBlockMatcher, \
+    StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher
 from indexer.events.blocks.utils import NoMessageBodyException
 from indexer.events.blocks.utils import to_tree, EventNode
 
@@ -39,13 +40,13 @@ def init_block(node: EventNode) -> Block:
         block.connect(init_block(child))
     return block
 
-
 matchers = [
     NftMintBlockMatcher(),
     JettonTransferBlockMatcher(),
     JettonBurnBlockMatcher(),
     DedustSwapBlockMatcher(),
     StonfiSwapBlockMatcher(),
+    StonfiV2SwapBlockMatcher(),
     NftTransferBlockMatcher(),
     TelegramNftPurchaseBlockMatcher(),
     ChangeDnsRecordMatcher(),
@@ -53,9 +54,10 @@ matchers = [
     ElectionRecoverStakeBlockMatcher(),
     SubscriptionBlockMatcher(),
     UnsubscribeBlockMatcher(),
-    AuctionBidMatcher()
+    AuctionBidMatcher(),
+    StonfiV2ProvideLiquidityMatcher(),
+    StonfiV2WithdrawLiquidityMatcher()
 ]
-
 
 async def process_event_async(trace: Trace) -> Block:
     try:

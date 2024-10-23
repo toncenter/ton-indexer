@@ -153,6 +153,13 @@ class BlockTypeMatcher(BlockMatcher):
     def test_self(self, block: Block):
         return block.btype == self.block_type
 
+class GenericMatcher(BlockMatcher):
+    def __init__(self, test_self_func, child_matcher=None, parent_matcher=None, optional=False):
+        super().__init__(child_matcher, parent_matcher, optional)
+        self.test_self_func = test_self_func
+
+    def test_self(self, block: Block):
+        return self.test_self_func(block)
 
 def child_sequence_matcher(matchers: list[BlockMatcher]) -> BlockMatcher | None:
     if len(matchers) == 0:
