@@ -40,42 +40,45 @@ async def start_processing_events_from_db(args: argparse.Namespace):
     lt = 0
     with mp.Pool(args.pool_size, initializer=init_pool) as pool:
         while True:
-            async with async_session() as session:
-                start_wait = time.time()
-                batch = []
-                while time.time() - start_wait < 1.0 or len(batch) < args.fetch_size:
-                    try:
-                        item = queue.get(False)
-                        batch.append(item)
-                    except:
-                        await asyncio.sleep(0.5)
-                if (time.time() - lt) > 5 and lt > 0:
-                    logger.info(f"Processed {count} traces in {time.time() - lt:02f} seconds. Traces/sec: {count / (time.time() - lt):02f}, queue size: {queue.qsize()}, big traces: {big_traces}")
-                else:
-                    logger.info(f'Processing first batch of {len(batch)} traces, queue size: {queue.qsize()}')
-                ids = []
-                has_traces_to_process = False
-                total_nodes = 0
-                for (trace_id, nodes) in batch:
-                    if nodes > 4000 or nodes == 0:
-                        if nodes > 0:
-                            big_traces += 1
-                        await session.execute(update(Trace)
-                                              .where(Trace.trace_id == trace_id)
-                                              .values(classification_state='broken'))
-                        has_traces_to_process = True
+            try:
+                async with async_session() as session:
+                    start_wait = time.time()
+                    batch = []
+                    while time.time() - start_wait < 1.0 or len(batch) < args.fetch_size:
+                        try:
+                            item = queue.get(False)
+                            batch.append(item)
+                        except:
+                            await asyncio.sleep(0.5)
+                    if (time.time() - lt) > 5 and lt > 0:
+                        logger.info(f"Processed {count} traces in {time.time() - lt:02f} seconds. Traces/sec: {count / (time.time() - lt):02f}, queue size: {queue.qsize()}, big traces: {big_traces}")
                     else:
-                        total_nodes += nodes
-                        has_traces_to_process = True
-                        ids.append(trace_id)
-                await session.commit()
-                if count == 0:
-                    lt = time.time()
-                count += len(ids)
-                if has_traces_to_process:
-                    pool.map(process_event_batch, split_into_batches(ids, args.batch_size))
-                else:
-                    await asyncio.sleep(0.5)
+                        logger.info(f'Processing first batch of {len(batch)} traces, queue size: {queue.qsize()}')
+                    ids = []
+                    has_traces_to_process = False
+                    total_nodes = 0
+                    for (trace_id, nodes) in batch:
+                        if nodes > 4000 or nodes == 0:
+                            if nodes > 0:
+                                big_traces += 1
+                            await session.execute(update(Trace)
+                                                .where(Trace.trace_id == trace_id)
+                                                .values(classification_state='broken'))
+                            has_traces_to_process = True
+                        else:
+                            total_nodes += nodes
+                            has_traces_to_process = True
+                            ids.append(trace_id)
+                    await session.commit()
+                    if count == 0:
+                        lt = time.time()
+                    count += len(ids)
+                    if has_traces_to_process:
+                        pool.map(process_event_batch, split_into_batches(ids, args.batch_size))
+                    else:
+                        await asyncio.sleep(0.5)
+            except Exception as ee:
+                logger.info(f'Exception during infinite loop: {ee}')
     thread.join()
 # end def
 

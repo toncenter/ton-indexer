@@ -17,8 +17,8 @@ function usage() {
     echo ' -m --migrate             Run database migration'
     echo '    --no-build            Do not build docker images'
     echo '    --no-build-cache      No build cache'
-    echo '    --deploy-api          Deploy API'
-    echo '    --deploy-events       Deploy event classfier'
+    echo '    --api                 Deploy API'
+    echo '    --events              Deploy event classfier'
     echo ' -h --help                Show this message'
     exit
 }
