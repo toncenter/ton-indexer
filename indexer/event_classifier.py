@@ -5,6 +5,7 @@ import multiprocessing as mp
 import sys
 import time
 import threading
+import traceback
 
 from queue import Queue
 
@@ -28,68 +29,140 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 
+
+# thread procedures
+class UnclassifiedEventsReader(mp.Process):
+    def __init__(self, task_queue: mp.Queue, batch_size=4096):
+        super().__init__()
+        self.queue = task_queue
+        self.batch_size = batch_size
+        self.last_lt = None
+        logger.info(f"Reading unclassified tasks with batch size {self.batch_size}")
+    
+    def read_batch(self):
+        with SyncSessionMaker() as session:
+            query = session.query(Trace.trace_id, Trace.nodes_, Trace.start_lt) \
+                .filter(Trace.state == 'complete') \
+                .filter(Trace.classification_state == 'unclassified')
+            if self.last_lt is not None:
+                query = query.filter(Trace.start_lt < self.last_lt)
+            query = query.order_by(Trace.start_lt.desc()) \
+                .limit(self.batch_size)
+            query = query.yield_per(self.batch_size)
+            items = query.all()
+            ids = []
+            for id, nodes, lt in items:
+                ids.append((id, nodes))
+                self.last_lt = min(self.last_lt, lt) if self.last_lt is not None else lt
+            if len(items) < self.batch_size:
+                logger.info(f"Incomplete batch of length {len(items)}")
+                self.last_lt = None
+                time.sleep(1)
+            self.queue.put(ids)
+        return
+    
+    def run(self):
+        try:
+            while True:
+                self.read_batch()
+        except KeyboardInterrupt:
+            logger.info(f'Gracefully stopped in the UnclassifiedEventsReader')
+        except:
+            logger.info(f'Error in UnclassifiedEventsReader: {traceback.format_exc()}')
+        logger.info(f'Thread UnclassifiedEventsReader finished')
+        return
+# end class
+
+class EventClassifierWorker(mp.Process):
+    def __init__(self, id: int, task_queue: mp.Queue, result_queue: mp.Queue, big_traces_threshold=4000):
+        super().__init__()
+        self.id = id
+        self.task_queue = task_queue
+        self.result_queue = result_queue
+        self.big_traces_threshold = big_traces_threshold
+
+    def mark_big_traces(self, tasks: list[tuple[str, int]]) -> list[str]:
+        batch = []
+        big_traces = 0
+        with SyncSessionMaker() as session:
+            for (trace_id, nodes) in tasks:
+                if nodes > self.big_traces_threshold or nodes == 0:
+                    if nodes > 0:
+                        big_traces += 1
+                    session.execute(update(Trace)
+                        .where(Trace.trace_id == trace_id)
+                        .values(classification_state='broken'))
+                else:
+                    batch.append(trace_id)
+            session.commit()
+        return batch
+
+    def process_one_batch(self):
+        tasks = self.task_queue.get(True)
+        # logger.info(f'Worker #{self.id} accepted batch of {len(tasks)} tasks')
+        batch = self.mark_big_traces(tasks)
+        asyncio.get_event_loop().run_until_complete(process_trace_batch_async(batch))
+        total = len(tasks)
+        big_traces = total - len(batch)
+        self.result_queue.put((total - big_traces, big_traces))
+        return
+        
+    def run(self):
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        try:
+            while True:
+                self.process_one_batch()
+        
+        except KeyboardInterrupt:
+            logger.info(f'Gracefully stopped in the EventClassifierWorker #{self.id}')
+        except:
+            logger.info(f'Error in EventClassifierWorker #{self.id}: {traceback.format_exc()}')
+        logger.info(f'Thread EventClassifierWorker #{self.id} finished')
+        return
+
+
 async def start_processing_events_from_db(args: argparse.Namespace):
-    global lt, count
     logger.info(f"Creating pool of {args.pool_size} workers")
 
-    queue = mp.Queue(2 * args.fetch_size)
-    thread = mp.Process(target=fetch_events_for_processing, args=(queue, 1000))
+    task_queue = mp.Queue(args.fetch_size)
+    result_queue = mp.Queue()
+    thread = UnclassifiedEventsReader(task_queue, args.batch_size)
     thread.start()
+    workers = []
+    for id in range(args.pool_size):
+        worker = EventClassifierWorker(id, task_queue, result_queue, big_traces_threshold=4000)
+        worker.start()
+        workers.append(worker)
+    
+    # stats
     big_traces = 0
     count = 0
-    lt = 0
-    with mp.Pool(args.pool_size, initializer=init_pool) as pool:
+    start_time = time.time()
+    last_time = start_time
+    try:
         while True:
             try:
-                async with async_session() as session:
-                    start_wait = time.time()
-                    batch = []
-                    while time.time() - start_wait < 1.0 or len(batch) < args.fetch_size:
-                        try:
-                            item = queue.get(False)
-                            batch.append(item)
-                        except:
-                            await asyncio.sleep(0.5)
-                    if (time.time() - lt) > 5 and lt > 0:
-                        logger.info(f"Processed {count} traces in {time.time() - lt:02f} seconds. Traces/sec: {count / (time.time() - lt):02f}, queue size: {queue.qsize()}, big traces: {big_traces}")
-                    else:
-                        logger.info(f'Processing first batch of {len(batch)} traces, queue size: {queue.qsize()}')
-                    ids = []
-                    has_traces_to_process = False
-                    total_nodes = 0
-                    for (trace_id, nodes) in batch:
-                        if nodes > 4000 or nodes == 0:
-                            if nodes > 0:
-                                big_traces += 1
-                            await session.execute(update(Trace)
-                                                .where(Trace.trace_id == trace_id)
-                                                .values(classification_state='broken'))
-                            has_traces_to_process = True
-                        else:
-                            total_nodes += nodes
-                            has_traces_to_process = True
-                            ids.append(trace_id)
-                    await session.commit()
-                    if count == 0:
-                        lt = time.time()
-                    count += len(ids)
-                    if has_traces_to_process:
-                        pool.map(process_event_batch, split_into_batches(ids, args.batch_size))
-                    else:
-                        await asyncio.sleep(0.5)
-            except Exception as ee:
-                logger.info(f'Exception during infinite loop: {ee}')
+                processed, big = result_queue.get(False)
+                count += processed
+                big_traces += big
+            except:
+                await asyncio.sleep(0.5)
+            cur_time = time.time()
+            if (cur_time - last_time) > 5:
+                elapsed = cur_time - start_time
+                logger.info(f"Processed {count} traces in {elapsed:02f} seconds. Traces/sec: {count / elapsed:02f}, queue size: {task_queue.qsize()}, big traces: {big_traces}")
+                last_time = cur_time
+    except KeyboardInterrupt:
+        logger.info(f'Gracefully stopped in the Main thread')
+    logger.info(f'Thread Main thread finished')
+    thread.terminate()
     thread.join()
+    for worker in workers:
+        worker.terminate()
+        worker.join()
+    return
+
 # end def
-
-def init_pool():
-    asyncio.set_event_loop(asyncio.new_event_loop())
-
-
-def split_into_batches(data, batch_size):
-    for i in range(0, len(data), batch_size):
-        yield data[i:i + batch_size]
-
 
 async def start_emulated_traces_processing():
     pubsub = redis.client.pubsub()
@@ -113,26 +186,6 @@ async def process_emulated_trace(trace_id):
     trace = deserialize_event(trace_id, trace_map)
     context.interface_repository.set(EmulatedTransactionsInterfaceRepository(trace_map))
     return await process_event_async(trace)
-
-
-def fetch_events_for_processing(queue: mp.Queue, fetch_size: int):
-    logger.info(f'fetching unclassified traces...')
-    while True:
-        with SyncSessionMaker() as session:
-            query = session.query(Trace.trace_id, Trace.nodes_) \
-                .filter(Trace.state == 'complete') \
-                .filter(Trace.classification_state == 'unclassified') \
-                .order_by(Trace.start_lt.desc())
-            query = query.yield_per(fetch_size)
-            for item in query:
-                queue.put(item)
-        time.sleep(1)
-# end def
-
-
-def process_event_batch(ids: list[str]):
-    asyncio.get_event_loop().run_until_complete(process_trace_batch_async(ids))
-    return None
 
 
 async def process_trace_batch_async(ids: list[str]):
@@ -203,9 +256,9 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action]]:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--fetch-size',
-                        help='Number of traces to fetch from db in one batch',
+                        help='Number of prefetched batches',
                         type=int,
-                        default=10000)
+                        default=300)
     parser.add_argument('--batch-size',
                         help='Number of traces to process in one batch',
                         type=int,
