@@ -13,7 +13,7 @@ TON node stores data in a key-value database RocksDB.  While RocksDB excels in s
 
 TON Indexer stack consists of:
 1. `postgres`: PostgreSQL server to store indexed data and perform queries.
-2. `index-api`: FastAPI server with convenient endpoints to access the database.
+2. `index-api`: [Fiber](https://github.com/gofiber/fiber) server with convenient endpoints to access the database.
 3. `event-classifier`: trace classification service.
 4. `index-worker`: TON Index worker to read and parse data from TON node database. This service must be run on the machine with a working TON Node.
 
