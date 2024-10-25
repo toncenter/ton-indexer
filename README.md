@@ -60,7 +60,7 @@ Do the following steps to setup TON Indexer:
 
 ## Swagger
 
-To test API, built-in swagger can be used. It is available after running `docker compose` at `localhost:8081`
+To test API, built-in swagger can be used. It is available after running `docker compose` at `localhost:8081/api/v3`
 
 # FAQ
 
