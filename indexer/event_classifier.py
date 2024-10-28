@@ -37,6 +37,8 @@ class UnclassifiedEventsReader(mp.Process):
         self.queue = task_queue
         self.batch_size = batch_size
         self.last_lt = None
+        self.first_lt = None
+        self.to_lt = None
         logger.info(f"Reading unclassified tasks with batch size {self.batch_size}")
     
     def read_batch(self):
@@ -46,19 +48,28 @@ class UnclassifiedEventsReader(mp.Process):
                 .filter(Trace.classification_state == 'unclassified')
             if self.last_lt is not None:
                 query = query.filter(Trace.start_lt < self.last_lt)
+            if self.to_lt is not None:
+                query = query.filter(Trace.start_lt > self.to_lt)
             query = query.order_by(Trace.start_lt.desc()) \
                 .limit(self.batch_size)
             query = query.yield_per(self.batch_size)
             items = query.all()
-            ids = []
-            for id, nodes, lt in items:
-                ids.append((id, nodes))
-                self.last_lt = min(self.last_lt, lt) if self.last_lt is not None else lt
-            if len(items) < self.batch_size:
-                logger.info(f"Incomplete batch of length {len(items)}")
-                self.last_lt = None
-                time.sleep(1)
-            self.queue.put(ids)
+        ids = []
+        for id, nodes, lt in items:
+            ids.append((id, nodes))
+            if self.last_lt is None:
+                logger.info(f'Reading unclassified traces from {lt} to {self.to_lt}')
+                self.last_lt = lt
+                self.first_lt = lt
+            self.last_lt = min(self.last_lt, lt)
+            self.first_lt = max(self.first_lt, lt)
+        if len(items) < self.batch_size:
+            logger.info(f"Incomplete batch of length {len(items)}")
+            self.to_lt = self.last_lt
+            self.last_lt = None
+            self.first_lt = None
+            time.sleep(1)
+        self.queue.put(ids)
         return
     
     def run(self):
