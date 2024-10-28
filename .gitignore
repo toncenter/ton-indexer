@@ -128,5 +128,6 @@ venv.bak/
 .env*
 env
 sandbox.ipynb
-indexer/indexer/events/blocks/liquidity.py
 Session.vim
+indexer/indexer/core/t_est.py
+some.txt

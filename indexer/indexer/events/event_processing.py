@@ -20,6 +20,10 @@ from indexer.events.blocks.jettons import (
     JettonMintBlockMatcher,
     JettonTransferBlockMatcher,
 )
+from indexer.events.blocks.liquidity import (
+    DedustDepositBlockMatcher,
+    DedustDepositFirstAssetBlockMatcher,
+)
 from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.nft import (
     NftMintBlockMatcher,
@@ -68,6 +72,8 @@ def init_block(node: EventNode) -> Block:
 
 matchers = [
     NftMintBlockMatcher(),
+    DedustDepositBlockMatcher(),
+    DedustDepositFirstAssetBlockMatcher(),
     JettonTransferBlockMatcher(),
     JettonBurnBlockMatcher(),
     JettonMintBlockMatcher(),
@@ -93,9 +99,9 @@ async def process_event_async(trace: Trace) -> Block:
         for m in matchers:
             for b in root.bfs_iter():
                 if b.parent is None:
-                    logging.info(
-                        f"Trying build {trace.trace_id} from {trace.start_utime}"
-                    )
+                    # logging.info(
+                    #     f"Trying build {trace.trace_id} from {trace.start_utime}"
+                    # )
                     await m.try_build(b)
         return root
     except NoMessageBodyException as e:

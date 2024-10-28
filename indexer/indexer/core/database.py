@@ -45,6 +45,7 @@ def get_engine(settings: Settings):
                                  pool_timeout=128,
                                  echo=False)
     return engine
+
 engine = get_engine(settings)
 SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
 
@@ -257,6 +258,16 @@ class Action(Base):
             Column("asset_out", String),
             Column("amount_out", Numeric),
         ])))]))
+    dex_deposit_liquidity_data = Column(CompositeType("dex_deposit_liquidity_details", [
+        Column("dex", String),
+        Column("deposit_contract", String),
+        Column("only_first", Boolean),
+        Column("asset0", String),
+        Column("amount0", Numeric),
+        Column("asset1", String),
+        Column("amount1", Numeric),
+        Column("lp_tokens_minted", Numeric),
+    ]))
     change_dns_record_data = Column(CompositeType("change_dns_record_details", [
         Column("key", String),
         Column("value_schema", String),

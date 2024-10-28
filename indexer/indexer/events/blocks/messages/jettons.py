@@ -97,10 +97,10 @@ class JettonInternalTransfer:
     def __init__(self, slice: Slice):
         slice.load_uint(32)
         self.query_id = slice.load_uint(64)
-        self.amount = slice.load_uint(16)
+        self.amount = slice.load_coins()
         self.from_address = slice.load_address()
         self.response_address = slice.load_address()
-        self.forward_ton_amount = slice.load_uint(16)
+        self.forward_ton_amount = slice.load_coins()
 
 
 class JettonNotify:

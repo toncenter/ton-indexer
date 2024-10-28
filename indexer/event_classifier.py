@@ -3,24 +3,35 @@ import asyncio
 import logging
 import multiprocessing as mp
 import sys
-import time
 import threading
-
+import time
 from queue import Queue
 
-from sqlalchemy import update, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker, contains_eager
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_session
+from sqlalchemy.orm import contains_eager, sessionmaker
 
 from indexer.core import redis
-from indexer.core.database import engine, Trace, Transaction, Message, Action, TraceEdge, SyncSessionMaker
+from indexer.core.database import (
+    Action,
+    Base,
+    Message,
+    SyncSessionMaker,
+    Trace,
+    TraceEdge,
+    Transaction,
+    engine,
+)
 from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async
-from indexer.events.interface_repository import EmulatedTransactionsInterfaceRepository, gather_interfaces, \
-    RedisInterfaceRepository
+from indexer.events.interface_repository import (
+    EmulatedTransactionsInterfaceRepository,
+    RedisInterfaceRepository,
+    gather_interfaces,
+)
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -56,13 +67,15 @@ async def start_processing_events_from_db(args: argparse.Namespace):
                 ids = []
                 has_traces_to_process = False
                 total_nodes = 0
-                for (trace_id, nodes) in batch:
+                for trace_id, nodes in batch:
                     if nodes > 4000 or nodes == 0:
                         if nodes > 0:
                             big_traces += 1
-                        await session.execute(update(Trace)
-                                              .where(Trace.trace_id == trace_id)
-                                              .values(classification_state='broken'))
+                        await session.execute(
+                            update(Trace)
+                            .where(Trace.trace_id == trace_id)
+                            .values(classification_state="broken")
+                        )
                         has_traces_to_process = True
                     else:
                         total_nodes += nodes
@@ -74,12 +87,17 @@ async def start_processing_events_from_db(args: argparse.Namespace):
                 count += len(ids)
                 print(has_traces_to_process)
                 if has_traces_to_process:
-                    print('here')
-                    pool.map(process_event_batch, split_into_batches(ids, args.batch_size))
+                    print("starting batch processing of trace ids")
+                    pool.map(
+                        process_event_batch, split_into_batches(ids, args.batch_size)
+                    )
                 else:
                     await asyncio.sleep(0.5)
     thread.join()
+
+
 # end def
+
 
 def init_pool():
     asyncio.set_event_loop(asyncio.new_event_loop())
@@ -87,7 +105,7 @@ def init_pool():
 
 def split_into_batches(data, batch_size):
     for i in range(0, len(data), batch_size):
-        yield data[i:i + batch_size]
+        yield data[i : i + batch_size]
 
 
 async def start_emulated_traces_processing():
@@ -95,8 +113,8 @@ async def start_emulated_traces_processing():
     await pubsub.subscribe(settings.emulated_traces_reddit_channel)
     while True:
         message = await pubsub.get_message()
-        if message is not None and message['type'] == 'message':
-            trace_id = message['data'].decode('utf-8')
+        if message is not None and message["type"] == "message":
+            trace_id = message["data"].decode("utf-8")
             try:
                 start = time.time()
                 res = await process_emulated_trace(trace_id)
@@ -108,25 +126,33 @@ async def start_emulated_traces_processing():
 
 async def process_emulated_trace(trace_id):
     trace_map = await redis.client.hgetall(trace_id)
-    trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
+    trace_map = dict(
+        (str(key, encoding="utf-8"), value) for key, value in trace_map.items()
+    )
     trace = deserialize_event(trace_id, trace_map)
     context.interface_repository.set(EmulatedTransactionsInterfaceRepository(trace_map))
     return await process_event_async(trace)
 
 
 def fetch_events_for_processing(queue: mp.Queue, fetch_size: int):
-    logger.info(f'Fetching unclassified traces...')
-    queue.put(("0xhIhQ3AJQmT2liFBgDN73ldRWPXT52U9hmyGw7eB90=", 5))
-    # while True:
-    #     with SyncSessionMaker() as session:
-    #         query = session.query(Trace.trace_id, Trace.nodes_) \
-    #             .filter(Trace.state == 'complete') \
-    #             .filter(Trace.classification_state == 'unclassified') \
-    #             .order_by(Trace.start_lt.desc())
-    #         query = query.yield_per(fetch_size)
-    #         for item in query:
-    #             queue.put(item)
-    #     time.sleep(1)
+    logger.info(f"Fetching unclassified traces...")
+
+    # queue.put(("", 27))  # debug
+
+    while True:
+        with SyncSessionMaker() as session:
+            query = (
+                session.query(Trace.trace_id, Trace.nodes_)
+                .filter(Trace.state == "complete")
+                .filter(Trace.classification_state == "unclassified")
+                .order_by(Trace.start_lt.desc())
+            )
+            query = query.yield_per(fetch_size)
+            for item in query:
+                queue.put(item)
+        time.sleep(1)
+
+
 # # end def
 
 
@@ -139,17 +165,23 @@ def process_event_batch(ids: list[str]):
 
 
 async def process_trace_batch_async(ids: list[str]):
-    print("in process_trace_batch_async")
     async with async_session() as session:
-        query = select(Trace) \
-            .join(Trace.transactions) \
-            .join(Transaction.messages, isouter=True) \
-            .join(Message.message_content, isouter=True) \
-            .options(contains_eager(Trace.transactions, Transaction.messages, Message.message_content)) \
+        # await create_init_tables()
+        query = (
+            select(Trace)
+            .join(Trace.transactions)
+            .join(Transaction.messages, isouter=True)
+            .join(Message.message_content, isouter=True)
+            .options(
+                contains_eager(
+                    Trace.transactions, Transaction.messages, Message.message_content
+                )
+            )
             .filter(Trace.trace_id.in_(ids))
+        )
         result = await session.execute(query)
         traces = result.scalars().unique().all()
-        print(traces)
+        print("Traces from db:", traces)
 
         # Gather interfaces for each account
         accounts = set()
@@ -166,59 +198,77 @@ async def process_trace_batch_async(ids: list[str]):
         failed_traces = []
         broken_traces = []
         for trace_id, state, actions in results:
-            if state == 'ok' or state == 'broken':
+            if state == "ok" or state == "broken":
                 session.add_all(actions)
-                if state == 'ok':
+                if state == "ok":
                     ok_traces.append(trace_id)
                 else:
                     broken_traces.append(trace_id)
             else:
                 failed_traces.append(trace_id)
-        stmt = update(Trace).where(Trace.trace_id.in_(ok_traces)).values(classification_state='ok')
+        stmt = (
+            update(Trace)
+            .where(Trace.trace_id.in_(ok_traces))
+            .values(classification_state="ok")
+        )
         await session.execute(stmt)
         if len(broken_traces) > 0:
-            stmt = update(Trace).where(Trace.trace_id.in_(broken_traces)).values(classification_state='broken')
+            stmt = (
+                update(Trace)
+                .where(Trace.trace_id.in_(broken_traces))
+                .values(classification_state="broken")
+            )
             await session.execute(stmt)
-        stmt = update(Trace).where(Trace.trace_id.in_(failed_traces)).values(classification_state='failed')
+        stmt = (
+            update(Trace)
+            .where(Trace.trace_id.in_(failed_traces))
+            .values(classification_state="failed")
+        )
         await session.execute(stmt)
         await session.commit()
 
 
 async def process_trace(trace: Trace) -> tuple[str, str, list[Action]]:
-    if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock':
-        return trace.trace_id, 'ok', []
+    if len(trace.transactions) == 1 and trace.transactions[0].descr == "tick_tock":
+        return trace.trace_id, "ok", []
     try:
         result = await process_event_async(trace)
         actions = []
-        state = 'ok'
+        state = "ok"
         for block in result.bfs_iter():
-            if block.btype != 'root':
-                if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
+            if block.btype != "root":
+                if (
+                    block.btype == "call_contract"
+                    and block.event_nodes[0].message.destination is None
+                ):
                     continue
                 if block.broken:
-                    state = 'broken'
+                    state = "broken"
                 action = block_to_action(block, trace.trace_id)
                 actions.append(action)
         return trace.trace_id, state, actions
     except Exception as e:
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
-        return trace.trace_id, 'failed', []
+        return trace.trace_id, "failed", []
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--fetch-size',
-                        help='Number of traces to fetch from db in one batch',
-                        type=int,
-                        default=100)
-    parser.add_argument('--batch-size',
-                        help='Number of traces to process in one batch',
-                        type=int,
-                        default=10)
-    parser.add_argument('--pool-size',
-                        help='Number of workers to process traces',
-                        type=int,
-                        default=4)
+    parser.add_argument(
+        "--fetch-size",
+        help="Number of traces to fetch from db in one batch",
+        type=int,
+        default=100,
+    )
+    parser.add_argument(
+        "--batch-size",
+        help="Number of traces to process in one batch",
+        type=int,
+        default=10,
+    )
+    parser.add_argument(
+        "--pool-size", help="Number of workers to process traces", type=int, default=1
+    )
     args = parser.parse_args()
     if settings.emulated_traces:
         logger.info("Starting processing emulated traces")
