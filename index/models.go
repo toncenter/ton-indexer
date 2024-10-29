@@ -586,7 +586,7 @@ type Action struct {
 	Success    *bool       `json:"success"`
 	Type       string      `json:"type"`
 	Details    interface{} `json:"details"`
-	RawAction  *RawAction  `json:"raw_action,omitempty"`
+	RawAction  *RawAction  `json:"raw_action,omitempty" swaggerignore:"true"`
 } // @name Action
 
 type EventMeta struct {

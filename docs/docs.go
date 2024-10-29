@@ -97,6 +97,32 @@ const docTemplate = `{
                 "operationId": "api_v3_get_actions",
                 "parameters": [
                     {
+                        "type": "string",
+                        "description": "List of account addresses to get actions. Can be sent in hex, base64 or base64url form.",
+                        "name": "account",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find actions by transaction hash.",
+                        "name": "tx_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find actions by message hash.",
+                        "name": "msg_hash",
+                        "in": "query"
+                    },
+                    {
                         "type": "array",
                         "items": {
                             "type": "string"
@@ -114,6 +140,68 @@ const docTemplate = `{
                         "collectionFormat": "multi",
                         "description": "Find actions by the trace_id.",
                         "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Query actions of events which was completed in masterchain block with given seqno",
+                        "name": "mc_seqno",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query actions for events, which was finished **after** given timestamp.",
+                        "name": "start_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query actions for events, which was finished **before** given timestamp.",
+                        "name": "end_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query actions for events with ` + "`" + `end_lt \u003e= start_lt` + "`" + `.",
+                        "name": "start_lt",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query actions for events with ` + "`" + `end_lt \u003c= end_lt` + "`" + `.",
+                        "name": "end_lt",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort actions by lt.",
+                        "name": "sort",
                         "in": "query"
                     }
                 ],
@@ -514,7 +602,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Masterchain block seqno",
+                        "description": "Query events that was completed in masterchain block with given seqno",
                         "name": "mc_seqno",
                         "in": "query"
                     },
@@ -2279,9 +2367,6 @@ const docTemplate = `{
                 "end_utime": {
                     "type": "integer"
                 },
-                "raw_action": {
-                    "$ref": "#/definitions/RawAction"
-                },
                 "start_lt": {
                     "type": "string",
                     "example": "0"
@@ -3177,188 +3262,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/NFTTransfer"
                     }
-                }
-            }
-        },
-        "RawAction": {
-            "type": "object",
-            "properties": {
-                "actionId": {
-                    "type": "string"
-                },
-                "amount": {
-                    "type": "string"
-                },
-                "asset": {
-                    "type": "string"
-                },
-                "asset2": {
-                    "type": "string"
-                },
-                "asset2Secondary": {
-                    "type": "string"
-                },
-                "assetSecondary": {
-                    "type": "string"
-                },
-                "changeDNSRecordFlags": {
-                    "type": "integer"
-                },
-                "changeDNSRecordKey": {
-                    "type": "string"
-                },
-                "changeDNSRecordValue": {
-                    "type": "string"
-                },
-                "changeDNSRecordValueSchema": {
-                    "type": "string"
-                },
-                "destination": {
-                    "type": "string"
-                },
-                "destinationSecondary": {
-                    "type": "string"
-                },
-                "endLt": {
-                    "type": "integer"
-                },
-                "endUtime": {
-                    "type": "integer"
-                },
-                "jettonSwapDex": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferAmount": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferAsset": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferDestination": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferDestinationJettonWallet": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferSource": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferSourceJettonWallet": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferAmount": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferAsset": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferDestination": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferDestinationJettonWallet": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferSource": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferSourceJettonWallet": {
-                    "type": "string"
-                },
-                "jettonSwapPeerSwaps": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "jettonSwapSender": {
-                    "type": "string"
-                },
-                "jettonTransferComment": {
-                    "type": "string"
-                },
-                "jettonTransferCustomPayload": {
-                    "type": "string"
-                },
-                "jettonTransferForwardAmount": {
-                    "type": "string"
-                },
-                "jettonTransferForwardPayload": {
-                    "type": "string"
-                },
-                "jettonTransferIsEncryptedComment": {
-                    "type": "boolean"
-                },
-                "jettonTransferQueryId": {
-                    "type": "string"
-                },
-                "jettonTransferResponseDestination": {
-                    "type": "string"
-                },
-                "nftmintNFTItemIndex": {
-                    "type": "string"
-                },
-                "nfttransferCustomPayload": {
-                    "type": "string"
-                },
-                "nfttransferForwardAmount": {
-                    "type": "string"
-                },
-                "nfttransferForwardPayload": {
-                    "type": "string"
-                },
-                "nfttransferIsPurchase": {
-                    "type": "boolean"
-                },
-                "nfttransferNFTItemIndex": {
-                    "type": "string"
-                },
-                "nfttransferPrice": {
-                    "type": "string"
-                },
-                "nfttransferQueryId": {
-                    "type": "string"
-                },
-                "nfttransferResponseDestination": {
-                    "type": "string"
-                },
-                "opcode": {
-                    "type": "integer"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "sourceSecondary": {
-                    "type": "string"
-                },
-                "startLt": {
-                    "type": "integer"
-                },
-                "startUtime": {
-                    "type": "integer"
-                },
-                "success": {
-                    "type": "boolean"
-                },
-                "tonTransferContent": {
-                    "type": "string"
-                },
-                "tonTransferEncrypted": {
-                    "type": "boolean"
-                },
-                "traceId": {
-                    "type": "string"
-                },
-                "txHashes": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "type": {
-                    "type": "string"
-                },
-                "value": {
-                    "type": "string"
                 }
             }
         },

@@ -112,8 +112,12 @@ type AccountRequest struct {
 }
 
 type ActionRequest struct {
-	ActionId []HashType `query:"action_id"`
-	TraceId  []HashType `query:"trace_id"`
+	AccountAddress  *AccountAddress `query:"account"`
+	TransactionHash []HashType      `query:"tx_hash"`
+	MessageHash     []HashType      `query:"msg_hash"`
+	TraceId         []HashType      `query:"trace_id"`
+	ActionId        []HashType      `query:"action_id"`
+	McSeqno         *int32          `query:"mc_seqno"`
 }
 
 type EventRequest struct {

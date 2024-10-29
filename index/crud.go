@@ -748,8 +748,8 @@ func buildJettonTransfersQuery(transfer_req JettonTransferRequest, utime_req Uti
 	return query, nil
 }
 
-func buildActionsQuery(act_req ActionRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
-	clmn_query := `A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start_utime, A.end_utime, A.source, A.source_secondary,
+func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+	clmn_query_default := `A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start_utime, A.end_utime, A.source, A.source_secondary,
 		A.destination, A.destination_secondary, A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, A.opcode, A.tx_hashes,
 		A.type, (A.ton_transfer_data).content, (A.ton_transfer_data).encrypted, A.value, A.amount,
 		(A.jetton_transfer_data).response_destination, (A.jetton_transfer_data).forward_amount, (A.jetton_transfer_data).query_id,
@@ -766,7 +766,8 @@ func buildActionsQuery(act_req ActionRequest, lim_req LimitRequest, settings Req
 		((A.jetton_swap_data).dex_outgoing_transfer).destination_jetton_wallet, (A.jetton_swap_data).peer_swaps,
 		(A.change_dns_record_data).key, (A.change_dns_record_data).value_schema, (A.change_dns_record_data).value,
 		(A.change_dns_record_data).flags, (A.nft_mint_data).nft_item_index, A.success`
-	from_query := `actions as A`
+	clmn_query := clmn_query_default
+	from_query := `actions as A join traces as E on A.trace_id = E.trace_id`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
@@ -775,17 +776,90 @@ func buildActionsQuery(act_req ActionRequest, lim_req LimitRequest, settings Req
 		return "", err
 	}
 
-	if v := act_req.ActionId; v != nil {
-		filter_str := filterByArray("A.action_id", v)
+	sort_order := "desc"
+	if v := lim_req.Sort; v != nil {
+		sort_order, err = getSortOrder(*v)
+		if err != nil {
+			return "", err
+		}
+	}
+	// time
+	order_by_now := false
+	if v := utime_req.StartUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("E.end_utime >= %d", *v))
+		order_by_now = true
+	}
+	if v := utime_req.EndUtime; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("E.end_utime <= %d", *v))
+		order_by_now = true
+	}
+	if v := lt_req.StartLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("E.end_lt >= %d", *v))
+	}
+	if v := lt_req.EndLt; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("E.end_lt <= %d", *v))
+	}
+	if v := act_req.AccountAddress; v != nil && len(*v) > 0 {
+		filter_str := fmt.Sprintf("T.account = '%s'", *v)
+		filter_list = append(filter_list, filter_str)
+
+		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join transactions as T on E.trace_id = T.trace_id and array[T.hash::tonhash] @> A.tx_hashes`
+		if order_by_now {
+			clmn_query = `distinct on (E.end_utime, E.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
+		} else {
+			clmn_query = `distinct on (E.end_lt, E.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
+		}
+	}
+	if v := act_req.TransactionHash; v != nil {
+		filter_str := filterByArray("T.hash", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
+		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join transactions as T on E.trace_id = T.trace_id and array[T.hash::tonhash] @> A.tx_hashes`
+		if order_by_now {
+			clmn_query = `distinct on (E.end_utime, E.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
+		} else {
+			clmn_query = `distinct on (E.end_lt, E.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
+		}
+	}
+	if v := act_req.MessageHash; v != nil {
+		filter_str := filterByArray("M.msg_hash", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.tx_hashes`
+		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join messages as M on E.trace_id = T.trace_id and array[M.hash::tonhash] @> A.tx_hashes`
+		if order_by_now {
+			clmn_query = `distinct on (E.end_utime, E.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
+		} else {
+			clmn_query = `distinct on (E.end_lt, E.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
+		}
+	}
+	if v := act_req.McSeqno; v != nil {
+		filter_list = append(filter_list, `E.state = 'complete'`)
+		filter_list = append(filter_list, fmt.Sprintf("E.mc_seqno_end = %d", *v))
+		from_query = `actions as A join traces as E on A.trace_id = E.trace_id`
+		clmn_query = clmn_query_default
+	}
+	if v := act_req.ActionId; v != nil {
+		filter_str := filterByArray("A.action_id", v)
+		if len(filter_str) > 0 {
+			filter_list = []string{filter_str}
+		}
+		from_query = `actions as A`
+		clmn_query = clmn_query_default
 	}
 	if v := act_req.TraceId; v != nil {
 		filter_str := filterByArray("A.trace_id", v)
 		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
+			filter_list = []string{filter_str}
 		}
+	}
+
+	if order_by_now {
+		orderby_query = fmt.Sprintf(" order by E.end_utime %s, E.trace_id %s, A.end_utime %s, A.action_id %s", sort_order, sort_order, sort_order, sort_order)
+	} else {
+		orderby_query = fmt.Sprintf(" order by E.end_lt %s, E.trace_id %s, A.end_lt %s, A.action_id %s", sort_order, sort_order, sort_order, sort_order)
 	}
 
 	// build query
@@ -823,41 +897,6 @@ func buildEventsQuery(event_req EventRequest, utime_req UtimeRequest, lt_req LtR
 		}
 	}
 
-	if v := event_req.AccountAddress; v != nil && len(*v) > 0 {
-		filter_str := fmt.Sprintf("T.account = '%s'", *v)
-		filter_list = append(filter_list, filter_str)
-
-		from_query = `traces as E join transactions as T on E.trace_id = T.trace_id`
-		clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
-	}
-	if v := event_req.TransactionHash; v != nil {
-		filter_str := filterByArray("T.hash", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
-		from_query = `traces as E join transactions as T on E.trace_id = T.trace_id`
-		clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
-	}
-	if v := event_req.MessageHash; v != nil {
-		filter_str := filterByArray("M.msg_hash", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
-		from_query = `traces as E join messages as M on E.trace_id = M.trace_id`
-		clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
-	}
-
-	if v := event_req.TraceId; v != nil {
-		filter_str := filterByArray("E.trace_id", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
-	}
-	if v := event_req.McSeqno; v != nil {
-		filter_list = append(filter_list, `E.state = 'complete'`)
-		filter_list = append(filter_list, fmt.Sprintf("E.mc_seqno_end = %d", *v))
-	}
-
 	// time
 	order_by_now := false
 	if v := utime_req.StartUtime; v != nil {
@@ -876,9 +915,58 @@ func buildEventsQuery(event_req EventRequest, utime_req UtimeRequest, lt_req LtR
 	}
 
 	if order_by_now {
-		orderby_query = fmt.Sprintf(" order by E.end_utime %s, E.trace_id asc", sort_order)
+		orderby_query = fmt.Sprintf(" order by E.end_utime %s, E.trace_id %s", sort_order, sort_order)
 	} else {
-		orderby_query = fmt.Sprintf(" order by E.end_lt %s, E.trace_id asc", sort_order)
+		orderby_query = fmt.Sprintf(" order by E.end_lt %s, E.trace_id %s", sort_order, sort_order)
+	}
+
+	if v := event_req.AccountAddress; v != nil && len(*v) > 0 {
+		filter_str := fmt.Sprintf("T.account = '%s'", *v)
+		filter_list = append(filter_list, filter_str)
+
+		from_query = `traces as E join transactions as T on E.trace_id = T.trace_id`
+		if order_by_now {
+			clmn_query = `distinct on (E.end_utime, E.trace_id) ` + clmn_query_default
+		} else {
+			clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
+		}
+	}
+	if v := event_req.TransactionHash; v != nil {
+		filter_str := filterByArray("T.hash", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+		from_query = `traces as E join transactions as T on E.trace_id = T.trace_id`
+
+		if order_by_now {
+			clmn_query = `distinct on (E.end_utime, E.trace_id) ` + clmn_query_default
+		} else {
+			clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
+		}
+	}
+	if v := event_req.MessageHash; v != nil {
+		filter_str := filterByArray("M.msg_hash", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+		from_query = `traces as E join messages as M on E.trace_id = M.trace_id`
+
+		if order_by_now {
+			clmn_query = `distinct on (E.end_utime, E.trace_id) ` + clmn_query_default
+		} else {
+			clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
+		}
+	}
+
+	if v := event_req.TraceId; v != nil {
+		filter_str := filterByArray("E.trace_id", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+	}
+	if v := event_req.McSeqno; v != nil {
+		filter_list = append(filter_list, `E.state = 'complete'`)
+		filter_list = append(filter_list, fmt.Sprintf("E.mc_seqno_end = %d", *v))
 	}
 
 	// build query
@@ -2488,10 +2576,12 @@ func (db *DbClient) QueryTopAccountBalances(lim_req LimitRequest, settings Reque
 // events
 func (db *DbClient) QueryActions(
 	act_req ActionRequest,
+	utime_req UtimeRequest,
+	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]Action, AddressBook, error) {
-	query, err := buildActionsQuery(act_req, lim_req, settings)
+	query, err := buildActionsQuery(act_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -2505,6 +2595,17 @@ func (db *DbClient) QueryActions(
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
+
+	// check block
+	if seqno := act_req.McSeqno; seqno != nil {
+		exists, err := queryBlockExists(*seqno, conn, settings)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !exists {
+			return nil, nil, IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+		}
+	}
 
 	raw_actions, err := queryRawActionsImpl(query, conn, settings)
 	if err != nil {
@@ -2556,6 +2657,17 @@ func (db *DbClient) QueryEvents(
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
+
+	// check block
+	if seqno := event_req.McSeqno; seqno != nil {
+		exists, err := queryBlockExists(*seqno, conn, settings)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !exists {
+			return nil, nil, IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+		}
+	}
 
 	res, addr_list, err := queryEventsImpl(query, conn, settings)
 	if err != nil {

@@ -960,7 +960,7 @@ func GetJettonBurns(c *fiber.Ctx) error {
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
 // @param tx_hash query []string false "Find event by transaction hash."
 // @param msg_hash query []string false "Find event by message hash."
-// @param mc_seqno query int32 false "Masterchain block seqno"
+// @param mc_seqno query int32 false "Query events that was completed in masterchain block with given seqno"
 // @param start_utime query int32 false "Query events, which was finished **after** given timestamp." minimum(0)
 // @param end_utime query int32 false "Query events, which was finished **before** given timestamp." minimum(0)
 // @param start_lt query int64 false "Query events with `end_lt >= start_lt`." minimum(0)
@@ -1015,25 +1015,46 @@ func GetEvents(c *fiber.Ctx) error {
 // @Produce      json
 // @success		200	{object}	index.ActionsResponse
 // @failure		400	{object}	index.RequestError
+// @param account query string false "List of account addresses to get actions. Can be sent in hex, base64 or base64url form."
+// @param tx_hash query []string false "Find actions by transaction hash."
+// @param msg_hash query []string false "Find actions by message hash."
 // @param action_id	query []string false "Find actions by the action_id." collectionFormat(multi)
 // @param trace_id	query []string false "Find actions by the trace_id." collectionFormat(multi)
+// @param mc_seqno query int32 false "Query actions of events which was completed in masterchain block with given seqno"
+// @param start_utime query int32 false "Query actions for events, which was finished **after** given timestamp." minimum(0)
+// @param end_utime query int32 false "Query actions for events, which was finished **before** given timestamp." minimum(0)
+// @param start_lt query int64 false "Query actions for events with `end_lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query actions for events with `end_lt <= end_lt`." minimum(0)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param sort query string false "Sort actions by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/actions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetActions(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
-	var act_req index.ActionRequest
-	var lim_req index.LimitRequest
+	act_req := index.ActionRequest{}
+	lim_req := index.LimitRequest{}
+	utime_req := index.UtimeRequest{}
+	lt_req := index.LtRequest{}
 
 	if err := c.QueryParser(&act_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
-
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&utime_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lt_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryActions(act_req, lim_req, request_settings)
+	res, book, err := pool.QueryActions(act_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}

@@ -70,8 +70,6 @@ definitions:
         type: string
       end_utime:
         type: integer
-      raw_action:
-        $ref: '#/definitions/RawAction'
       start_lt:
         example: "0"
         type: string
@@ -672,127 +670,6 @@ definitions:
           $ref: '#/definitions/NFTTransfer'
         type: array
     type: object
-  RawAction:
-    properties:
-      actionId:
-        type: string
-      amount:
-        type: string
-      asset:
-        type: string
-      asset2:
-        type: string
-      asset2Secondary:
-        type: string
-      assetSecondary:
-        type: string
-      changeDNSRecordFlags:
-        type: integer
-      changeDNSRecordKey:
-        type: string
-      changeDNSRecordValue:
-        type: string
-      changeDNSRecordValueSchema:
-        type: string
-      destination:
-        type: string
-      destinationSecondary:
-        type: string
-      endLt:
-        type: integer
-      endUtime:
-        type: integer
-      jettonSwapDex:
-        type: string
-      jettonSwapDexIncomingTransferAmount:
-        type: string
-      jettonSwapDexIncomingTransferAsset:
-        type: string
-      jettonSwapDexIncomingTransferDestination:
-        type: string
-      jettonSwapDexIncomingTransferDestinationJettonWallet:
-        type: string
-      jettonSwapDexIncomingTransferSource:
-        type: string
-      jettonSwapDexIncomingTransferSourceJettonWallet:
-        type: string
-      jettonSwapDexOutgoingTransferAmount:
-        type: string
-      jettonSwapDexOutgoingTransferAsset:
-        type: string
-      jettonSwapDexOutgoingTransferDestination:
-        type: string
-      jettonSwapDexOutgoingTransferDestinationJettonWallet:
-        type: string
-      jettonSwapDexOutgoingTransferSource:
-        type: string
-      jettonSwapDexOutgoingTransferSourceJettonWallet:
-        type: string
-      jettonSwapPeerSwaps:
-        items:
-          type: string
-        type: array
-      jettonSwapSender:
-        type: string
-      jettonTransferComment:
-        type: string
-      jettonTransferCustomPayload:
-        type: string
-      jettonTransferForwardAmount:
-        type: string
-      jettonTransferForwardPayload:
-        type: string
-      jettonTransferIsEncryptedComment:
-        type: boolean
-      jettonTransferQueryId:
-        type: string
-      jettonTransferResponseDestination:
-        type: string
-      nftmintNFTItemIndex:
-        type: string
-      nfttransferCustomPayload:
-        type: string
-      nfttransferForwardAmount:
-        type: string
-      nfttransferForwardPayload:
-        type: string
-      nfttransferIsPurchase:
-        type: boolean
-      nfttransferNFTItemIndex:
-        type: string
-      nfttransferPrice:
-        type: string
-      nfttransferQueryId:
-        type: string
-      nfttransferResponseDestination:
-        type: string
-      opcode:
-        type: integer
-      source:
-        type: string
-      sourceSecondary:
-        type: string
-      startLt:
-        type: integer
-      startUtime:
-        type: integer
-      success:
-        type: boolean
-      tonTransferContent:
-        type: string
-      tonTransferEncrypted:
-        type: boolean
-      traceId:
-        type: string
-      txHashes:
-        items:
-          type: string
-        type: array
-      type:
-        type: string
-      value:
-        type: string
-    type: object
   RequestError:
     properties:
       code:
@@ -1108,6 +985,25 @@ paths:
       description: Get actions by specified filter.
       operationId: api_v3_get_actions
       parameters:
+      - description: List of account addresses to get actions. Can be sent in hex,
+          base64 or base64url form.
+        in: query
+        name: account
+        type: string
+      - collectionFormat: multi
+        description: Find actions by transaction hash.
+        in: query
+        items:
+          type: string
+        name: tx_hash
+        type: array
+      - collectionFormat: multi
+        description: Find actions by message hash.
+        in: query
+        items:
+          type: string
+        name: msg_hash
+        type: array
       - collectionFormat: multi
         description: Find actions by the action_id.
         in: query
@@ -1122,6 +1018,54 @@ paths:
           type: string
         name: trace_id
         type: array
+      - description: Query actions of events which was completed in masterchain block
+          with given seqno
+        in: query
+        name: mc_seqno
+        type: integer
+      - description: Query actions for events, which was finished **after** given
+          timestamp.
+        in: query
+        minimum: 0
+        name: start_utime
+        type: integer
+      - description: Query actions for events, which was finished **before** given
+          timestamp.
+        in: query
+        minimum: 0
+        name: end_utime
+        type: integer
+      - description: Query actions for events with `end_lt >= start_lt`.
+        in: query
+        minimum: 0
+        name: start_lt
+        type: integer
+      - description: Query actions for events with `end_lt <= end_lt`.
+        in: query
+        minimum: 0
+        name: end_lt
+        type: integer
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 1000
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort actions by lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
       produces:
       - application/json
       responses:
@@ -1378,7 +1322,8 @@ paths:
           type: string
         name: msg_hash
         type: array
-      - description: Masterchain block seqno
+      - description: Query events that was completed in masterchain block with given
+          seqno
         in: query
         name: mc_seqno
         type: integer
