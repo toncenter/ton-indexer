@@ -2061,6 +2061,9 @@ func (db *DbClient) QueryTransactions(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return txs, book, nil
+	}
 	addr_list := []string{}
 	for _, t := range txs {
 		addr_list = append(addr_list, string(t.Account))
@@ -2114,6 +2117,9 @@ func (db *DbClient) QueryAdjacentTransactions(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return txs, book, nil
+	}
 	addr_list := []string{}
 	for _, t := range txs {
 		addr_list = append(addr_list, string(t.Account))
@@ -2165,6 +2171,9 @@ func (db *DbClient) QueryMessages(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return msgs, book, nil
+	}
 	addr_list := []string{}
 	for _, m := range msgs {
 		if m.Source != nil {
@@ -2209,6 +2218,9 @@ func (db *DbClient) QueryNFTCollections(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return res, book, nil
+	}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2251,6 +2263,9 @@ func (db *DbClient) QueryNFTItems(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return res, book, nil
+	}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2295,6 +2310,9 @@ func (db *DbClient) QueryNFTTransfers(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return res, book, nil
+	}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.NftItemAddress))
@@ -2340,6 +2358,9 @@ func (db *DbClient) QueryJettonMasters(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return res, book, nil
+	}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2383,6 +2404,9 @@ func (db *DbClient) QueryJettonWallets(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return res, book, nil
+	}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2426,6 +2450,9 @@ func (db *DbClient) QueryJettonTransfers(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return res, book, nil
+	}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Source))
@@ -2473,6 +2500,9 @@ func (db *DbClient) QueryJettonBurns(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return res, book, nil
+	}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Owner))
@@ -2517,6 +2547,9 @@ func (db *DbClient) QueryAccountStates(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return res, book, nil
+	}
 	addr_list := []string{}
 	for _, t := range res {
 		if t.AccountAddress != nil {
@@ -2622,7 +2655,7 @@ func (db *DbClient) QueryActions(
 		}
 		actions = append(actions, *action)
 	}
-	if len(addr_map) > 0 {
+	if len(addr_map) > 0 && !settings.NoAddressBook {
 		addr_list := []string{}
 		for k := range addr_map {
 			addr_list = append(addr_list, string(k))
@@ -2676,6 +2709,9 @@ func (db *DbClient) QueryEvents(
 	}
 
 	book := AddressBook{}
+	if settings.NoAddressBook {
+		return res, book, nil
+	}
 	if len(addr_list) > 0 {
 		book, err = queryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {

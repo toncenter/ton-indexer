@@ -1370,6 +1370,11 @@ func GetRequestSettings(c *fiber.Ctx, settings *Settings) index.RequestSettings 
 			request_settings.Timeout = time.Duration(value) * time.Millisecond
 		}
 	}
+	if value_str, ok := ExtractParam(c, "X-No-Address-Book", "x_no_address_book"); ok {
+		if value, err := strconv.ParseBool(value_str); err == nil {
+			request_settings.NoAddressBook = value
+		}
+	}
 	return request_settings
 }
 

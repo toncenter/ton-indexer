@@ -16,6 +16,7 @@ type RequestSettings struct {
 	MaxLimit             int
 	MaxEventTransactions int
 	DebugRequest         bool
+	NoAddressBook        bool
 }
 
 // requests
