@@ -17,6 +17,7 @@ from indexer.core import redis
 from indexer.core.database import engine, Trace, Transaction, Message, Action, TraceEdge, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
+from indexer.events.blocks.utils.address_selectors import extract_additional_addresses
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async
@@ -215,6 +216,8 @@ async def process_trace_batch_async(ids: list[str]):
         for trace in traces:
             for tx in trace.transactions:
                 accounts.add(tx.account)
+                accounts.update(extract_additional_addresses(tx))
+
         interfaces = await gather_interfaces(accounts, session)
         repository = RedisInterfaceRepository(redis.sync_client)
         await repository.put_interfaces(interfaces)

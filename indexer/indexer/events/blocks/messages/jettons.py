@@ -32,8 +32,11 @@ class JettonTransfer:
         self.encrypted_comment = False
         self.payload_sum_type = None
         self.stonfi_swap_body = None
-        payload_slice = boc.load_ref().to_slice() if boc.load_bool() else boc.copy()
-        self._load_forward_payload(payload_slice)
+        if boc.remaining_bits > 0:
+            payload_slice = boc.load_ref().to_slice() if boc.load_bool() else boc.copy()
+            self._load_forward_payload(payload_slice)
+        else:
+            self.forward_payload = None
 
     def _load_forward_payload(self, payload_slice: Slice):
         if payload_slice.remaining_bits == 0:
@@ -97,10 +100,10 @@ class JettonInternalTransfer:
     def __init__(self, slice: Slice):
         slice.load_uint(32)
         self.query_id = slice.load_uint(64)
-        self.amount = slice.load_uint(16)
+        self.amount = slice.load_coins()
         self.from_address = slice.load_address()
         self.response_address = slice.load_address()
-        self.forward_ton_amount = slice.load_uint(16)
+        self.forward_ton_amount = slice.load_coins()
 
 
 class JettonNotify:

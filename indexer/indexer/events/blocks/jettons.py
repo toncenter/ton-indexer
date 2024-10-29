@@ -13,8 +13,9 @@ from indexer.events.blocks.utils import AccountId, Asset, Amount
 
 
 class JettonTransferBlock(Block):
-    def __init__(self, data):
+    def __init__(self, data, jetton_transfer_message: JettonTransfer):
         super().__init__('jetton_transfer', [], data)
+        self.jetton_transfer_message = jetton_transfer_message
 
     def __repr__(self):
         return f"JETTON TRANSFER {self.event_nodes[0].message.transaction.hash}"
@@ -40,10 +41,11 @@ class JettonTransferBlockMatcher(BlockMatcher):
         return isinstance(block, CallContractBlock) and block.opcode == JettonTransfer.opcode
 
     async def build_block(self, block: Block | CallContractBlock, other_blocks: list[Block]) -> list[Block]:
-        new_block = JettonTransferBlock({})
         include = [block]
         include.extend(other_blocks)
         jetton_transfer_message = JettonTransfer(block.get_body())
+        new_block = JettonTransferBlock({}, jetton_transfer_message)
+
         receiver: AccountId = AccountId(jetton_transfer_message.destination)
         has_internal_transfer = find_call_contract(other_blocks, JettonInternalTransfer.opcode) is not None
         data = {

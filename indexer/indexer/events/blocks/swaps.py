@@ -12,6 +12,15 @@ from indexer.events.blocks.messages import StonfiSwapMessage, StonfiPaymentReque
 from indexer.events.blocks.utils import AccountId, Asset, Amount
 from indexer.events.blocks.utils.block_utils import find_call_contracts, find_messages
 
+stonfi_swap_ok_exit_code = 0xc64370e5
+stonfi_swap_ok_ref_exit_code = 0x45078540
+stonfi_swap_no_liq_exit_code = 0x5ffe1295
+stonfi_swap_reserve_err_exit_code = 0x38976e9b
+stonfi_sender_related_exit_codes = [
+    stonfi_swap_reserve_err_exit_code,
+    stonfi_swap_no_liq_exit_code,
+    stonfi_swap_ok_exit_code
+]
 
 class JettonSwapBlock(Block):
     def __init__(self, data):
@@ -21,7 +30,7 @@ class JettonSwapBlock(Block):
         return f"jetton_swap {self.data}"
 
 
-async def _get_block_data(other_blocks):
+async def _get_block_data(block, other_blocks):
     swap_call_block = next(x for x in other_blocks if isinstance(x, CallContractBlock) and
                            x.opcode == StonfiSwapMessage.opcode)
     swap_message = StonfiSwapMessage(swap_call_block.get_body())
@@ -37,7 +46,7 @@ async def _get_block_data(other_blocks):
     ref_addr = None
     outgoing_jetton_transfer = None
     in_jetton_transfer = swap_call_block.previous_block
-
+    success_swap = False
     # Find payment request and outgoing jetton transfer
     for payment_request, payment_request_block in payment_requests_messages:
         if payment_request.amount0_out > 0:
@@ -46,7 +55,8 @@ async def _get_block_data(other_blocks):
         else:
             amount = payment_request.amount1_out
             addr = payment_request.token1_out
-        if payment_request.owner == swap_message.from_user_address:
+        if payment_request.exit_code in stonfi_sender_related_exit_codes:
+            success_swap = (payment_request.exit_code == stonfi_swap_ok_exit_code)
             if out_amt is None:
                 outgoing_jetton_transfer = next(b for b in payment_request_block.next_blocks
                                                 if isinstance(b, JettonTransferBlock))
@@ -59,13 +69,17 @@ async def _get_block_data(other_blocks):
                 ref_addr = out_addr
                 out_amt = amount
                 out_addr = addr
-        else:
+        elif payment_request.exit_code == stonfi_swap_ok_ref_exit_code:
             ref_amt = amount
             ref_addr = addr
-
+    actual_out_addr = out_addr
+    if isinstance(block, JettonTransferBlock) and block.jetton_transfer_message.stonfi_swap_body is not None:
+        out_addr = block.jetton_transfer_message.stonfi_swap_body['jetton_wallet']
     out_wallet = await context.interface_repository.get().get_jetton_wallet(out_addr.to_str(False).upper())
+    actual_out_wallet = await context.interface_repository.get().get_jetton_wallet(actual_out_addr.to_str(False).upper())
     dex_in_wallet = await context.interface_repository.get().get_jetton_wallet(
         swap_message.token_wallet.to_str(False).upper())
+    actual_out_jetton = AccountId(actual_out_wallet.jetton) if actual_out_wallet is not None else None
     out_jetton = AccountId(out_wallet.jetton) if out_wallet is not None else None
     in_jetton = AccountId(dex_in_wallet.jetton) if dex_in_wallet is not None else None
 
@@ -87,7 +101,7 @@ async def _get_block_data(other_blocks):
     }
 
     outgoing_transfer = {
-        'asset': Asset(is_ton=out_jetton is None, jetton_address=out_jetton),
+        'asset': Asset(is_ton=actual_out_jetton is None, jetton_address=actual_out_jetton),
         'amount': Amount(out_amt),
         'source': outgoing_jetton_transfer.data['sender'],
         'source_jetton_wallet': outgoing_jetton_transfer.data['sender_wallet']
@@ -101,15 +115,22 @@ async def _get_block_data(other_blocks):
     else:
         outgoing_transfer['destination'] = AccountId(swap_message.from_user_address)
         outgoing_transfer['destination_jetton_wallet'] = None
-
+    if out_jetton:
+        target_asset = Asset(is_ton=out_jetton is None, jetton_address=out_jetton)
+    else:
+        target_asset = None
     return {
         'dex': 'stonfi',
         'sender': AccountId(swap_message.from_user_address),
+        'receiver': AccountId(swap_message.from_real_user),
         'dex_incoming_transfer': incoming_transfer,
         'dex_outgoing_transfer': outgoing_transfer,
+        'destination_asset': target_asset,
+        'destination_wallet': AccountId(out_addr) if out_addr is not None else None,
         'referral_amount': Amount(ref_amt),
-        'referral_address': ref_addr,
+        'referral_address': AccountId(ref_addr) if ref_addr is not None else None,
         'peer_swaps': [],
+        'success': success_swap
     }
 
 
@@ -126,8 +147,10 @@ class StonfiSwapBlockMatcher(BlockMatcher):
         return isinstance(block, JettonTransferBlock)
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        data = await _get_block_data(other_blocks)
+        data = await _get_block_data(block, other_blocks)
         new_block = JettonSwapBlock(data)
+        if not data['success']:
+            new_block.failed = True
         include = [block]
         include.extend(other_blocks)
         new_block.merge_blocks(include)

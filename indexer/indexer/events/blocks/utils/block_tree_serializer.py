@@ -163,6 +163,11 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
     action.source_secondary = dex_incoming_transfer['source_jetton_wallet']
     action.destination = dex_outgoing_transfer['destination']
     action.destination_secondary = dex_outgoing_transfer['destination_jetton_wallet']
+    if 'destination_wallet' in block.data and block.data['destination_wallet'] is not None:
+        action.destination_secondary = _addr(block.data['destination_wallet'])
+    if 'destination_asset' in block.data and block.data['destination_asset'] is not None:
+        action.asset2 = _addr(block.data['destination_asset'])
+
     action.jetton_swap_data = {
         'dex': block.data['dex'],
         'sender': _addr(block.data['sender']),
