@@ -169,6 +169,8 @@ func GetShards(c *fiber.Ctx) error {
 // @success		200	{object}	index.TransactionsResponse
 // @failure		400	{object}	index.RequestError
 // @param	seqno query int32 true "Masterchain block seqno."
+// @param   limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param   offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router			/api/v3/masterchainBlockShards [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -176,9 +178,14 @@ func GetShardsDiff(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
 	seqno := c.QueryInt("seqno")
 	blk_req := index.BlockRequest{}
+	lim_req := index.LimitRequest{}
 	blk_req.McSeqno = new(int32)
 	*blk_req.McSeqno = int32(seqno)
-	blks, err := pool.QueryBlocks(blk_req, index.UtimeRequest{}, index.LtRequest{}, index.LimitRequest{}, request_settings)
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	blks, err := pool.QueryBlocks(blk_req, index.UtimeRequest{}, index.LtRequest{}, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
