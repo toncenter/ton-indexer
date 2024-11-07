@@ -261,11 +261,13 @@ class Action(Base):
     dex_deposit_liquidity_data = Column(CompositeType("dex_deposit_liquidity_details", [
         Column("dex", String),
         Column("deposit_contract", String),
-        Column("only_first", Boolean),
-        Column("asset0", String),
-        Column("amount0", Numeric),
+        # Column("only_first", Boolean),
         Column("asset1", String),
         Column("amount1", Numeric),
+        Column("asset2", String),
+        Column("amount2", Numeric),
+        Column('user_jetton_wallet_1', String),
+        Column('user_jetton_wallet_2', String),
         Column("lp_tokens_minted", Numeric),
     ]))
     change_dns_record_data = Column(CompositeType("change_dns_record_details", [

@@ -234,11 +234,13 @@ def _fill_dex_deposit_action(block: DEXProvideLiquidityBlock, action: Action):
     action.dex_deposit_liquidity_data = {
         "dex": block.data["dex"],
         "deposit_contract": _addr(block.data["deposit_contract"]),
-        "only_first": False,
-        "asset0": _addr(block.data["asset_0"].jetton_address),
-        "amount0": block.data["amount_0"].value,
+        # "only_first": False,
         "asset1": _addr(block.data["asset_1"].jetton_address),
         "amount1": block.data["amount_1"].value,
+        "asset2": _addr(block.data["asset_2"].jetton_address),
+        "amount2": block.data["amount_2"].value,
+        "user_jetton_wallet_1": _addr(block.data["user_jetton_wallet_1"]),
+        "user_jetton_wallet_2": _addr(block.data["user_jetton_wallet_2"]),
         "lp_tokens_minted": block.data["lp_tokens_minted"].value,
     }
 
@@ -250,11 +252,13 @@ def _fill_dex_deposit_first_asset_action(
     action.dex_deposit_liquidity_data = {
         "dex": block.data["dex"],
         "deposit_contract": _addr(block.data["deposit_contract"]),
-        "only_first": True,
-        "asset0": _addr(block.data["asset_0"].jetton_address),
-        "amount0": block.data["amount_0"].value,
+        # "only_first": True,
         "asset1": _addr(block.data["asset_1"].jetton_address),
         "amount1": block.data["amount_1"].value,
+        "asset2": _addr(block.data["asset_2"].jetton_address),
+        "amount2": block.data["amount_2"].value,
+        "user_jetton_wallet_1": _addr(block.data["user_jetton_wallet_1"]),
+        "user_jetton_wallet_2": _addr(block.data["user_jetton_wallet_2"]),
         "lp_tokens_minted": None,
     }
 
