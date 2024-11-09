@@ -121,21 +121,6 @@ class OrMatcher(BlockMatcher):
                 return res
         return None
 
-class AndMatcher(BlockMatcher):
-    def __init__(self, matchers: list[BlockMatcher], optional=False):
-        super().__init__(child_matcher=None, parent_matcher=None, optional=optional)
-        self.matchers = matchers
-
-    def test_self(self, block: Block):
-        return all(m.test_self(block) for m in self.matchers)
-
-    async def try_build(self, block: Block) -> list[Block] | None:
-        for m in self.matchers:
-            res = await m.try_build(block)
-            if res is not None:
-                return res
-        return None
-
 
 class TonTransferMatcher(BlockMatcher):
 

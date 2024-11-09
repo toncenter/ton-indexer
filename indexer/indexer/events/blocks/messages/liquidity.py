@@ -89,7 +89,7 @@ class DedustDepositLiquidityToPool:
         self.reject_payload = slice.load_maybe_ref()
 
 
-class DestroyLiquidityDepositContract:
+class DedustDestroyLiquidityDepositContract:
     opcode = 0xAAE79256
 
 

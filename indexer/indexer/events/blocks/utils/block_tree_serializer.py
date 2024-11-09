@@ -231,10 +231,9 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
 def _fill_dex_deposit_action(block: DEXProvideLiquidityBlock, action: Action):
     action.source = _addr(block.data["sender"])
     action.destination = _addr(block.data["pool_address"])
+    action.destination_secondary = _addr(block.data["deposit_contract"])
     action.dex_deposit_liquidity_data = {
         "dex": block.data["dex"],
-        "deposit_contract": _addr(block.data["deposit_contract"]),
-        # "only_first": False,
         "asset1": _addr(block.data["asset_1"].jetton_address),
         "amount1": block.data["amount_1"].value,
         "asset2": _addr(block.data["asset_2"].jetton_address),
@@ -249,10 +248,9 @@ def _fill_dex_deposit_first_asset_action(
     block: DEXDepositFirstAssetBlock, action: Action
 ):
     action.source = _addr(block.data["sender"])
+    action.destination_secondary = _addr(block.data["deposit_contract"])
     action.dex_deposit_liquidity_data = {
         "dex": block.data["dex"],
-        "deposit_contract": _addr(block.data["deposit_contract"]),
-        # "only_first": True,
         "asset1": _addr(block.data["asset_1"].jetton_address),
         "amount1": block.data["amount_1"].value,
         "asset2": _addr(block.data["asset_2"].jetton_address),

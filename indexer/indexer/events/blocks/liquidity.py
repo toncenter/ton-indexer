@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from loguru import logger
-from pytoniq_core import Cell
 
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.basic_matchers import (
-    AndMatcher,
     BlockMatcher,
+    BlockTypeMatcher,
     ContractMatcher,
     OrMatcher,
 )
@@ -24,6 +23,7 @@ from indexer.events.blocks.messages.liquidity import (
     DedustDepositLiquidityJettonForwardPayload,
     DedustDepositLiquidityToPool,
     DedustDepositTONToVault,
+    DedustDestroyLiquidityDepositContract,
     DedustReturnExcessFromVault,
     DedustTopUpLiquidityDepositContract,
 )
@@ -65,6 +65,7 @@ async def _get_provision_data(
     lp_tokens = Amount(transfer_lp_call.amount)
 
     # there are 0-2 deposit jetton transfers (from user)
+    # (well, may be more in trace, but we gonna use them only to find jwallets)
     jetton_deposits: list[CallContractBlock] = []
     for b in other_blocks:
         if (
@@ -80,47 +81,81 @@ async def _get_provision_data(
     # we can't calculate the jetton wallet of another asset:
     user_jetton_wallet_1 = None
 
-    if len(jetton_deposits) == 2:
-        # we know both jwallets - just rearrange them as needed
-        user_jetton_wallet_0 = jetton_deposits[0].get_message().destination
-        user_jetton_wallet_1 = jetton_deposits[1].get_message().destination
-        jw0 = await context.interface_repository.get().get_jetton_wallet(
-            user_jetton_wallet_0.upper()
+    a0_jetton_master = None
+    a1_jetton_master = None
+    if not deposit_info.asset0.is_ton:
+        a0_jetton_master = str(deposit_info.asset0.jetton_address).upper()
+    if not deposit_info.asset1.is_ton:
+        a1_jetton_master = str(deposit_info.asset1.jetton_address).upper()
+
+    for jdep in jetton_deposits:
+        jwallet_str = jdep.get_message().destination
+
+        jw_info = await context.interface_repository.get().get_jetton_wallet(
+            jwallet_str.upper()
         )
-        jw1 = await context.interface_repository.get().get_jetton_wallet(
-            user_jetton_wallet_1.upper()
-        )
+        if not jw_info:
+            continue
 
-        if jw0 is None or jw1 is None:
-            raise Exception("Can't find jetton deposit wallets in context repository")
+        if jw_info.jetton == a0_jetton_master:
+            user_jetton_wallet_0 = jwallet_str
 
-        # trying to swap if first is wrong
-        if jw0.jetton != deposit_info.asset0.jetton_address:
-            user_jetton_wallet_0 = jw1.address
-            user_jetton_wallet_1 = jw0.address
+        if jw_info.jetton == a1_jetton_master:
+            user_jetton_wallet_1 = jwallet_str
 
-        # if were mismathed - now should pass the check
-        if (
-            jw0.jetton != deposit_info.asset0.jetton_address
-            or jw1.jetton != deposit_info.asset1.jetton_address
-        ):
-            raise Exception(
-                "Jetton deposit wallets do not correspond to ones in context repository"
-            )
 
-    if len(jetton_deposits) == 1:
-        # we know only last deposit jwallet - place it where needed
-        one_known_wallet = jetton_deposits[0].get_message().destination
-        w0 = await context.interface_repository.get().get_jetton_wallet(
-            one_known_wallet.upper()
-        )
-        if w0 is None:
-            raise Exception("Can't find jetton deposit wallets in context repository")
+    # if len(jetton_deposits) == 2:
+    #     # we know both jwallets - just rearrange them as needed
+    #     user_jetton_wallet_0 = jetton_deposits[0].get_message().destination
+    #     user_jetton_wallet_1 = jetton_deposits[1].get_message().destination
+    #     jw0 = await context.interface_repository.get().get_jetton_wallet(
+    #         user_jetton_wallet_0.upper()
+    #     )
+    #     jw1 = await context.interface_repository.get().get_jetton_wallet(
+    #         user_jetton_wallet_1.upper()
+    #     )
 
-        if w0.jetton != deposit_info.asset0.jetton_address:
-            user_jetton_wallet_0 = one_known_wallet
-        elif w0.jetton != deposit_info.asset1.jetton_address:
-            user_jetton_wallet_1 = one_known_wallet
+    #     if jw0 is None or jw1 is None:
+    #         raise Exception("Can't find jetton deposit wallets in context repository")
+
+    #     # trying to swap if first is wrong
+    #     if jw0.jetton != deposit_info.asset0.jetton_address:
+    #         user_jetton_wallet_0, user_jetton_wallet_1 = (
+    #             user_jetton_wallet_1,
+    #             user_jetton_wallet_0,
+    #         )
+
+    #     # if were mismathed - now should pass the check
+    #     if (
+    #         jw0.jetton != str(deposit_info.asset0.jetton_address).upper()
+    #         or jw1.jetton != str(deposit_info.asset1.jetton_address).upper()
+    #     ):
+    #         raise Exception(
+    #             "Jetton deposit wallets do not correspond to ones in context repository"
+    #         )
+
+    # if len(jetton_deposits) == 1:
+    #     # we know only last deposit jwallet - place it where needed
+    #     one_known_wallet = jetton_deposits[0].get_message().destination
+    #     w0 = await context.interface_repository.get().get_jetton_wallet(
+    #         one_known_wallet.upper()
+    #     )
+    #     if w0 is None:
+    #         raise Exception("Can't find jetton deposit wallets in context repository")
+
+    #     print(w0.jetton, deposit_info.asset0.jetton_address)
+    #     if (not deposit_info.asset0.is_ton) and w0.jetton != str(
+    #         deposit_info.asset0.jetton_address
+    #     ).upper():
+    #         user_jetton_wallet_0 = one_known_wallet
+    #     elif (not deposit_info.asset1.is_ton) and w0.jetton != str(
+    #         deposit_info.asset1.jetton_address
+    #     ).upper():
+    #         user_jetton_wallet_1 = one_known_wallet
+    #     else:
+    #         raise Exception(
+    #             "Jetton deposit wallet does not correspond to one in context repository"
+    #         )
 
     data = {
         "sender": sender,
@@ -129,7 +164,7 @@ async def _get_provision_data(
         "lp_tokens_minted": lp_tokens,
         "asset_1": deposit_info.asset0,
         "amount_1": Amount(deposit_info.asset0_amount or 0),
-        "asset_1": deposit_info.asset1,
+        "asset_2": deposit_info.asset1,
         "amount_2": Amount(deposit_info.asset1_amount or 0),
         "user_jetton_wallet_1": AccountId(user_jetton_wallet_0),
         "user_jetton_wallet_2": AccountId(user_jetton_wallet_1),
@@ -150,18 +185,17 @@ async def _get_deposit_one_data(
     # or
     # user -> wallet -> wallet -*> vault -> factory -> deposit
 
-    deposit_contract_address = vault_call.get_message().destination
+    deposit_contract_address = block.get_message().destination
     try:
         # if deposited TON first
         sender = vault_call.get_message().source
         body = vault_call.get_body()
         msg_data = DedustDepositTONToVault(body)
-        deposit_contract_address = block.get_message().destination
         asset0 = msg_data.asset0
         asset0_amount = msg_data.asset0_target_balance
         asset1 = msg_data.asset1
         asset1_amount = msg_data.asset1_target_balance
-        user_asset_wallet_0 = "addr_none"
+        user_asset_wallet_0 = None
         # the other is jetton, we don't know the wallet addr
         user_asset_wallet_1 = None
     except:
@@ -186,7 +220,7 @@ async def _get_deposit_one_data(
         user_asset_wallet_0 = vault_call.previous_block.get_message().source
         # second may be specified only when it's TON.
         # bc we can't calculate just by jetton master
-        user_asset_wallet_1 = "addr_none" if asset1.is_ton else None
+        user_asset_wallet_1 = None
 
     data = {
         "sender": AccountId(sender),
@@ -249,41 +283,34 @@ class DedustDepositBlockMatcher(BlockMatcher):
                 optional=False,
                 opcode=DedustTopUpLiquidityDepositContract.opcode,
             ),
-            child_matcher=AndMatcher(
-                # to the right, after deposit msg to liquidity pool
-                [
-                    ContractMatcher(
-                        # mint lp tokens
-                        optional=False,
-                        opcode=JettonInternalTransfer.opcode,
-                        child_matcher=ContractMatcher(
-                            opcode=JettonNotify.opcode, optional=True
-                        ),
+            # to the right, after deposit msg to liquidity pool
+            children_matchers=[
+                ContractMatcher(
+                    # mint lp tokens
+                    optional=False,
+                    opcode=JettonInternalTransfer.opcode,
+                    child_matcher=ContractMatcher(
+                        opcode=JettonNotify.opcode, optional=True
                     ),
-                    ContractMatcher(
-                        # calling excesses from deposit contract
-                        # and destroing it
-                        optional=True,
-                        opcode=DedustDeployDepositContract.opcode,
-                        child_matcher=OrMatcher(
-                            [
-                                ContractMatcher(
-                                    # it's probably a TON payout
-                                    # it doesn't use vault, just from deposit
-                                    optional=True,
-                                    opcode=None,
-                                ),
-                                ContractMatcher(
-                                    # it's a jetton payout from vault
-                                    optional=True,
-                                    opcode=DedustReturnExcessFromVault.opcode,
-                                    child_matcher=JettonTransferBlockMatcher(),
-                                ),
-                            ]
+                ),
+                ContractMatcher(
+                    # calling excesses from deposit contract
+                    # and destroing it
+                    optional=True,
+                    opcode=DedustDestroyLiquidityDepositContract.opcode,
+                    children_matchers=[
+                        # there's probably a TON payout (excess liq.)
+                        # it doesn't use vault, just from deposit:
+                        BlockTypeMatcher("ton_transfer", optional=True),
+                        # and excess liq. jetton payout from vault:
+                        ContractMatcher(
+                            optional=True,
+                            opcode=DedustReturnExcessFromVault.opcode,
+                            child_matcher=JettonTransferBlockMatcher(),
                         ),
-                    ),
-                ]
-            ),
+                    ],
+                ),
+            ],
         )
 
     def test_self(self, block: Block):

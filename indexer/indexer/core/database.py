@@ -260,8 +260,6 @@ class Action(Base):
         ])))]))
     dex_deposit_liquidity_data = Column(CompositeType("dex_deposit_liquidity_details", [
         Column("dex", String),
-        Column("deposit_contract", String),
-        # Column("only_first", Boolean),
         Column("asset1", String),
         Column("amount1", Numeric),
         Column("asset2", String),
