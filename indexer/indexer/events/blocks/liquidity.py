@@ -103,60 +103,6 @@ async def _get_provision_data(
         if jw_info.jetton == a1_jetton_master:
             user_jetton_wallet_1 = jwallet_str
 
-
-    # if len(jetton_deposits) == 2:
-    #     # we know both jwallets - just rearrange them as needed
-    #     user_jetton_wallet_0 = jetton_deposits[0].get_message().destination
-    #     user_jetton_wallet_1 = jetton_deposits[1].get_message().destination
-    #     jw0 = await context.interface_repository.get().get_jetton_wallet(
-    #         user_jetton_wallet_0.upper()
-    #     )
-    #     jw1 = await context.interface_repository.get().get_jetton_wallet(
-    #         user_jetton_wallet_1.upper()
-    #     )
-
-    #     if jw0 is None or jw1 is None:
-    #         raise Exception("Can't find jetton deposit wallets in context repository")
-
-    #     # trying to swap if first is wrong
-    #     if jw0.jetton != deposit_info.asset0.jetton_address:
-    #         user_jetton_wallet_0, user_jetton_wallet_1 = (
-    #             user_jetton_wallet_1,
-    #             user_jetton_wallet_0,
-    #         )
-
-    #     # if were mismathed - now should pass the check
-    #     if (
-    #         jw0.jetton != str(deposit_info.asset0.jetton_address).upper()
-    #         or jw1.jetton != str(deposit_info.asset1.jetton_address).upper()
-    #     ):
-    #         raise Exception(
-    #             "Jetton deposit wallets do not correspond to ones in context repository"
-    #         )
-
-    # if len(jetton_deposits) == 1:
-    #     # we know only last deposit jwallet - place it where needed
-    #     one_known_wallet = jetton_deposits[0].get_message().destination
-    #     w0 = await context.interface_repository.get().get_jetton_wallet(
-    #         one_known_wallet.upper()
-    #     )
-    #     if w0 is None:
-    #         raise Exception("Can't find jetton deposit wallets in context repository")
-
-    #     print(w0.jetton, deposit_info.asset0.jetton_address)
-    #     if (not deposit_info.asset0.is_ton) and w0.jetton != str(
-    #         deposit_info.asset0.jetton_address
-    #     ).upper():
-    #         user_jetton_wallet_0 = one_known_wallet
-    #     elif (not deposit_info.asset1.is_ton) and w0.jetton != str(
-    #         deposit_info.asset1.jetton_address
-    #     ).upper():
-    #         user_jetton_wallet_1 = one_known_wallet
-    #     else:
-    #         raise Exception(
-    #             "Jetton deposit wallet does not correspond to one in context repository"
-    #         )
-
     data = {
         "sender": sender,
         "pool_address": lpool,
@@ -169,6 +115,7 @@ async def _get_provision_data(
         "user_jetton_wallet_1": AccountId(user_jetton_wallet_0),
         "user_jetton_wallet_2": AccountId(user_jetton_wallet_1),
     }
+
     return data
 
 
