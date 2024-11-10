@@ -9,7 +9,7 @@ import traceback
 from typing import Optional
 from datetime import timedelta
 
-from sqlalchemy import update, select
+from sqlalchemy import update, select, and_, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker, contains_eager
@@ -52,9 +52,7 @@ class UnclassifiedEventsReader(mp.Process):
                 .filter(Trace.state == 'complete') \
                 .filter(Trace.classification_state == 'unclassified')
             if self.last_lt is not None:
-                query = query.filter(Trace.start_lt <= self.last_lt)
-            if self.last_trace_id is not None:
-                query = query.filter(Trace.trace_id < self.last_trace_id)
+                query = query.filter(or_(Trace.start_lt < self.last_lt, and_(Trace.start_lt == self.last_lt, Trace.trace_id < self.last_trace_id)))
             query = query.order_by(Trace.start_lt.desc(), Trace.trace_id.desc()) \
                 .limit(self.batch_size)
             query = query.yield_per(self.batch_size)
@@ -270,9 +268,7 @@ async def process_trace_batch_async(ids: list[str]):
                 if state == 'ok' or state == 'broken':
                     # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
                     # session.execute(insert(Action).values(actions).on_conflict_do_nothing()) 
-                    with session.no_autoflush:
-                        session.add_all(actions)
-                    session.flush()
+                    session.add_all(actions)
                     if state == 'ok':
                         ok_traces.append(trace_id)
                     else:
