@@ -803,7 +803,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		filter_str := fmt.Sprintf("T.account = '%s'", *v)
 		filter_list = append(filter_list, filter_str)
 
-		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join transactions as T on E.trace_id = T.trace_id and array[T.hash::tonhash] @> A.tx_hashes`
+		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join transactions as T on E.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
 		if order_by_now {
 			clmn_query = `distinct on (E.end_utime, E.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
@@ -815,7 +815,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
-		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join transactions as T on E.trace_id = T.trace_id and array[T.hash::tonhash] @> A.tx_hashes`
+		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join transactions as T on E.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
 		if order_by_now {
 			clmn_query = `distinct on (E.end_utime, E.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
@@ -828,7 +828,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 			filter_list = append(filter_list, filter_str)
 		}
 		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.tx_hashes`
-		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join messages as M on E.trace_id = T.trace_id and array[M.hash::tonhash] @> A.tx_hashes`
+		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join messages as M on E.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
 		if order_by_now {
 			clmn_query = `distinct on (E.end_utime, E.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
