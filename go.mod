@@ -6,6 +6,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.5
 	github.com/gofiber/swagger v1.1.0
 	github.com/jackc/pgx/v5 v5.6.0
+	github.com/lib/pq v1.10.9
 	github.com/swaggo/swag v1.16.3
 	github.com/xssnick/tonutils-go v1.9.9
 )

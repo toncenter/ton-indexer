@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"github.com/lib/pq"
 	"log"
 	"reflect"
 	"sort"
@@ -1312,6 +1313,71 @@ func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool
 	return txs, nil
 }
 
+func queryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
+	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1)" +
+		" union all " +
+		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra  from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1)" +
+		" union all " +
+		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra  from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters' where j.address = ANY($1)"
+
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	defer rows.Close()
+
+	tasks := []BackgroundTask{}
+	token_info_map := map[string][]TokenInfo{}
+
+	for rows.Next() {
+		var row TokenInfo
+		err := rows.Scan(&row.Address, &row.Valid, &row.Type, &row.Name, &row.Symbol, &row.Description, &row.Image, &row.Extra)
+		if err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		if row.Valid == nil {
+			data := map[string]interface{}{
+				"address": row.Address,
+				"type":    row.Type,
+			}
+			tasks = append(tasks, BackgroundTask{Type: "fetch_metadata", Data: data})
+			token_info_map[row.Address] = append(token_info_map[row.Address], TokenInfo{
+				Address: row.Address,
+				Type:    row.Type,
+				Indexed: false,
+			})
+		} else if *row.Valid {
+			row.Indexed = true
+
+			if _, ok := token_info_map[*row.Type]; !ok {
+				token_info_map[row.Address] = []TokenInfo{}
+			}
+			token_info_map[row.Address] = append(token_info_map[row.Address], row)
+		} else {
+			token_info_map[row.Address] = []TokenInfo{}
+		}
+	}
+	metadata := Metadata{}
+	for addr, infos := range token_info_map {
+		indexed := true
+		for _, info := range infos {
+			indexed = indexed && info.Indexed
+		}
+		metadata[addr] = AddressMetadata{
+			TokenInfo: infos,
+			IsIndexed: indexed,
+		}
+	}
+
+	if len(tasks) > 0 && BackgroundTaskManager != nil {
+		BackgroundTaskManager.EnqueueTasksIfPossible(tasks)
+	}
+	return metadata, nil
+}
+
 func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
 	book := AddressBook{}
 	quote_addr_list := []string{}
@@ -1981,6 +2047,17 @@ func (db *DbClient) QueryShards(
 	return queryBlocksImpl(query, conn, settings)
 }
 
+func (db *DbClient) QueryMetadata(
+	addr_list []string,
+	settings RequestSettings,
+) (Metadata, error) {
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	return queryMetadataImpl(addr_list, conn, settings)
+}
+
 func (db *DbClient) QueryAddressBook(
 	addr_list []string,
 	settings RequestSettings,
@@ -2149,31 +2226,29 @@ func (db *DbClient) QueryMessages(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Message, AddressBook, error) {
+) ([]Message, AddressBook, Metadata, error) {
 	query, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	msgs, err := queryMessagesImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return msgs, book, nil
-	}
+	metadata := Metadata{}
 	addr_list := []string{}
 	for _, m := range msgs {
 		if m.Source != nil {
@@ -2184,43 +2259,48 @@ func (db *DbClient) QueryMessages(
 		}
 	}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if !settings.NoAddressBook {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return msgs, book, nil
+	return msgs, book, metadata, nil
 }
 
 func (db *DbClient) QueryNFTCollections(
 	nft_req NFTCollectionRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]NFTCollection, AddressBook, error) {
+) ([]NFTCollection, AddressBook, Metadata, error) {
 	query, err := buildNFTCollectionsQuery(nft_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryNFTCollectionsImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return res, book, nil
-	}
+	metadata := Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2229,43 +2309,47 @@ func (db *DbClient) QueryNFTCollections(
 		}
 	}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if !settings.NoAddressBook {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return res, book, nil
+	return res, book, metadata, nil
 }
 
 func (db *DbClient) QueryNFTItems(
 	nft_req NFTItemRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]NFTItem, AddressBook, error) {
+) ([]NFTItem, AddressBook, Metadata, error) {
 	query, err := buildNFTItemsQuery(nft_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryNFTItemsWithCollectionsImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return res, book, nil
-	}
+	metadata := Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2274,12 +2358,18 @@ func (db *DbClient) QueryNFTItems(
 		}
 	}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if !settings.NoAddressBook {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return res, book, nil
+	return res, book, metadata, nil
 }
 
 func (db *DbClient) QueryNFTTransfers(
@@ -2288,31 +2378,29 @@ func (db *DbClient) QueryNFTTransfers(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]NFTTransfer, AddressBook, error) {
+) ([]NFTTransfer, AddressBook, Metadata, error) {
 	query, err := buildNFTTransfersQuery(transfer_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryNFTTransfersImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return res, book, nil
-	}
+	metadata := Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.NftItemAddress))
@@ -2324,43 +2412,47 @@ func (db *DbClient) QueryNFTTransfers(
 		}
 	}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if !settings.NoAddressBook {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return res, book, nil
+	return res, book, metadata, nil
 }
 
 func (db *DbClient) QueryJettonMasters(
 	jetton_req JettonMasterRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]JettonMaster, AddressBook, error) {
+) ([]JettonMaster, AddressBook, Metadata, error) {
 	query, err := buildJettonMastersQuery(jetton_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryJettonMastersImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return res, book, nil
-	}
+	metadata := Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2369,44 +2461,48 @@ func (db *DbClient) QueryJettonMasters(
 		}
 	}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if !settings.NoAddressBook {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return res, book, nil
+	return res, book, metadata, nil
 }
 
 func (db *DbClient) QueryJettonWallets(
 	jetton_req JettonWalletRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]JettonWallet, AddressBook, error) {
+) ([]JettonWallet, AddressBook, Metadata, error) {
 	query, err := buildJettonWalletsQuery(jetton_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryJettonWalletsImpl(query, conn, settings)
 	if err != nil {
 		log.Println(query)
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return res, book, nil
-	}
+	metadata := Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2414,12 +2510,18 @@ func (db *DbClient) QueryJettonWallets(
 		addr_list = append(addr_list, string(t.Jetton))
 	}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if !settings.NoAddressBook {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return res, book, nil
+	return res, book, metadata, nil
 }
 
 func (db *DbClient) QueryJettonTransfers(
@@ -2428,31 +2530,29 @@ func (db *DbClient) QueryJettonTransfers(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]JettonTransfer, AddressBook, error) {
+) ([]JettonTransfer, AddressBook, Metadata, error) {
 	query, err := buildJettonTransfersQuery(transfer_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryJettonTransfersImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return res, book, nil
-	}
+	metadata := Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Source))
@@ -2464,12 +2564,18 @@ func (db *DbClient) QueryJettonTransfers(
 		}
 	}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if !settings.NoAddressBook {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return res, book, nil
+	return res, book, metadata, nil
 }
 
 func (db *DbClient) QueryJettonBurns(
@@ -2478,31 +2584,29 @@ func (db *DbClient) QueryJettonBurns(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]JettonBurn, AddressBook, error) {
+) ([]JettonBurn, AddressBook, Metadata, error) {
 	query, err := buildJettonBurnsQuery(transfer_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryJettonBurnsImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return res, book, nil
-	}
+	metadata := Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Owner))
@@ -2513,43 +2617,47 @@ func (db *DbClient) QueryJettonBurns(
 		}
 	}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if !settings.NoAddressBook {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return res, book, nil
+	return res, book, metadata, nil
 }
 
 func (db *DbClient) QueryAccountStates(
 	account_req AccountRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]AccountStateFull, AddressBook, error) {
+) ([]AccountStateFull, AddressBook, Metadata, error) {
 	query, err := buildAccountStatesQuery(account_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryAccountStateFullImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return res, book, nil
-	}
+	metadata := Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		if t.AccountAddress != nil {
@@ -2557,32 +2665,39 @@ func (db *DbClient) QueryAccountStates(
 		}
 	}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if !settings.NoAddressBook {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return res, book, nil
+
+	return res, book, metadata, nil
 }
 
 func (db *DbClient) QueryWalletStates(
 	account_req AccountRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]WalletState, AddressBook, error) {
-	states, book, err := db.QueryAccountStates(account_req, lim_req, settings)
+) ([]WalletState, AddressBook, Metadata, error) {
+	states, book, metadata, err := db.QueryAccountStates(account_req, lim_req, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	res := []WalletState{}
 	for _, state := range states {
 		loc, err := ParseWalletState(state)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 		res = append(res, *loc)
 	}
-	return res, book, nil
+	return res, book, metadata, nil
 }
 
 func (db *DbClient) QueryTopAccountBalances(lim_req LimitRequest, settings RequestSettings) ([]AccountBalance, error) {
@@ -2613,19 +2728,19 @@ func (db *DbClient) QueryActions(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Action, AddressBook, error) {
+) ([]Action, AddressBook, Metadata, error) {
 	query, err := buildActionsQuery(act_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
@@ -2633,25 +2748,26 @@ func (db *DbClient) QueryActions(
 	if seqno := act_req.McSeqno; seqno != nil {
 		exists, err := queryBlockExists(*seqno, conn, settings)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if !exists {
-			return nil, nil, IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+			return nil, nil, nil, IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
 		}
 	}
 
 	raw_actions, err := queryRawActionsImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	actions := []Action{}
 	book := AddressBook{}
+	metadata := Metadata{}
 	addr_map := map[string]bool{}
 	for idx := range raw_actions {
 		collectAddressesFromAction(&addr_map, &raw_actions[idx])
 		action, err := ParseRawAction(&raw_actions[idx])
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 		actions = append(actions, *action)
 	}
@@ -2662,10 +2778,15 @@ func (db *DbClient) QueryActions(
 		}
 		book, err = queryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	return actions, book, nil
+	return actions, book, metadata, nil
 }
 
 func (db *DbClient) QueryEvents(
@@ -2674,20 +2795,20 @@ func (db *DbClient) QueryEvents(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Event, AddressBook, error) {
+) ([]Event, AddressBook, Metadata, error) {
 	query, err := buildEventsQuery(event_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	// log.Println(query)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
@@ -2695,29 +2816,33 @@ func (db *DbClient) QueryEvents(
 	if seqno := event_req.McSeqno; seqno != nil {
 		exists, err := queryBlockExists(*seqno, conn, settings)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if !exists {
-			return nil, nil, IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+			return nil, nil, nil, IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
 		}
 	}
 
 	res, addr_list, err := queryEventsImpl(query, conn, settings)
 	if err != nil {
 		log.Println(query)
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return res, book, nil
-	}
+	metadata := Metadata{}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if !settings.NoAddressBook {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 
-	return res, book, nil
+	return res, book, metadata, nil
 }

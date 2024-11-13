@@ -3,6 +3,7 @@
   hosts: localhost
   vars:
     systemd_service_name: "{{application_name}}.service"
+    metadata_fetcher_systemd_service_name: "{{application_name}}-metadata-fetcher.service"
   tasks:
     - name: Build the Go application
       ansible.builtin.shell: |
@@ -10,6 +11,7 @@
           mkdir -p build
           swag init
           go build -o build/{{ go_binary }}
+          go build -C utils/metadata-fetcher -o ../../build/{{ metadata_fetcher_binary }}
       changed_when: true
       failed_when: false
       register: go_build_result
@@ -29,15 +31,35 @@
       delegate_to: "{{ item }}"
       with_items: "{{ remote_hosts }}"
 
+    - name: Copy the Go binary to remote hosts
+      ansible.builtin.copy:
+        src: "build/{{ metadata_fetcher_binary }}"
+        dest: "{{ go_binary_path }}/{{ metadata_fetcher_binary }}"
+        mode: "0777"
+        force: true
+      become: true
+      delegate_to: "{{ item }}"
+      with_items: "{{ master_nodes }}"
+
     - name: Create systemd service from template if it doesn't exist
       ansible.builtin.template:
-        src: "ansible/service.yaml.j2"
+        src: "ansible/index_api.yaml.j2"
         dest: "{{ systemd_service_path }}/{{ systemd_service_name }}"
         mode: "0644"
         force: true
       become: true
       delegate_to: "{{ item }}"
       with_items: "{{ remote_hosts }}"
+    
+    - name: Create metadata fetcher systemd service from template if it doesn't exist
+      ansible.builtin.template:
+        src: "ansible/metadata_fetcher.yaml.j2"
+        dest: "{{ systemd_service_path }}/{{ metadata_fetcher_systemd_service_name }}"
+        mode: "0644"
+        force: true
+      become: true
+      delegate_to: "{{ item }}"
+      with_items: "{{ master_nodes }}"
 
     - name: Restart and enable the Go application service
       ansible.builtin.systemd:
@@ -49,3 +71,14 @@
       throttle: 1
       delegate_to: "{{ item }}"
       with_items: "{{ remote_hosts }}"
+
+    - name: Restart and enable the Go application service
+      ansible.builtin.systemd:
+        name: "{{ metadata_fetcher_systemd_service_name }}"
+        state: restarted
+        enabled: true
+        daemon_reload: true
+      become: true
+      throttle: 1
+      delegate_to: "{{ item }}"
+      with_items: "{{ master_nodes }}"

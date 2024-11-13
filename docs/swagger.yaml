@@ -59,6 +59,8 @@ definitions:
         type: array
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   Action:
     properties:
@@ -127,6 +129,8 @@ definitions:
         type: array
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   AddressBook:
     additionalProperties:
@@ -136,6 +140,15 @@ definitions:
     properties:
       user_friendly:
         type: string
+    type: object
+  AddressMetadata:
+    properties:
+      is_indexed:
+        type: boolean
+      token_info:
+        items:
+          $ref: '#/definitions/TokenInfo'
+        type: array
     type: object
   Block:
     properties:
@@ -352,6 +365,8 @@ definitions:
         items:
           $ref: '#/definitions/Event'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   JettonBurn:
     properties:
@@ -389,6 +404,8 @@ definitions:
         items:
           $ref: '#/definitions/JettonBurn'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   JettonMaster:
     properties:
@@ -421,6 +438,8 @@ definitions:
         items:
           $ref: '#/definitions/JettonMaster'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   JettonTransfer:
     properties:
@@ -464,6 +483,8 @@ definitions:
         items:
           $ref: '#/definitions/JettonTransfer'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   JettonWallet:
     properties:
@@ -493,6 +514,8 @@ definitions:
         items:
           $ref: '#/definitions/JettonWallet'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   MasterchainInfo:
     properties:
@@ -557,6 +580,12 @@ definitions:
         items:
           $ref: '#/definitions/Message'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
+    type: object
+  Metadata:
+    additionalProperties:
+      $ref: '#/definitions/AddressMetadata'
     type: object
   MsgSize:
     properties:
@@ -590,6 +619,8 @@ definitions:
     properties:
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
       nft_collections:
         items:
           $ref: '#/definitions/NFTCollection'
@@ -624,6 +655,8 @@ definitions:
     properties:
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
       nft_items:
         items:
           $ref: '#/definitions/NFTItem'
@@ -665,6 +698,8 @@ definitions:
     properties:
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
       nft_transfers:
         items:
           $ref: '#/definitions/NFTTransfer'
@@ -697,6 +732,22 @@ definitions:
         type: string
       storage_fees_due:
         example: "0"
+        type: string
+    type: object
+  TokenInfo:
+    properties:
+      description:
+        type: string
+      extra:
+        additionalProperties: true
+        type: object
+      image:
+        type: string
+      name:
+        type: string
+      symbol:
+        type: string
+      type:
         type: string
     type: object
   TraceNode:
@@ -916,6 +967,8 @@ definitions:
     properties:
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
       wallets:
         items:
           $ref: '#/definitions/WalletState'
@@ -1902,6 +1955,39 @@ paths:
       summary: Get messages
       tags:
       - blockchain
+  /api/v3/metadata:
+    get:
+      consumes:
+      - application/json
+      description: Query address metadata
+      operationId: api_v3_get_metadata
+      parameters:
+      - collectionFormat: multi
+        description: 'List of addresses in any form to get address metadata. Max:
+          1024.'
+        in: query
+        items:
+          type: string
+        name: address
+        required: true
+        type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/Metadata'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Metadata
+      tags:
+      - accounts
   /api/v3/nft/collections:
     get:
       consumes:
