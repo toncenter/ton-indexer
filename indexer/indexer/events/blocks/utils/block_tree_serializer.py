@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import random
 from typing import Tuple, List
 
@@ -15,6 +16,7 @@ from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
 
+logger = logging.getLogger(__name__)
 
 def _addr(addr: AccountId | Asset | None) -> str | None:
     if addr is None:
@@ -40,6 +42,13 @@ def _calc_action_id(block: Block) -> str:
 def _base_block_to_action(block: Block, trace_id: str) -> Action:
     action_id = _calc_action_id(block)
     tx_hashes = list(set(n.get_tx_hash() for n in block.event_nodes))
+    accounts = []
+    for n in block.event_nodes:
+        if n.is_tick_tock:
+            accounts.append(n.tick_tock_tx.account)
+        else:
+            accounts.append(n.message.transaction.account)
+
     return Action(
         trace_id=trace_id,
         type=block.btype,
@@ -49,7 +58,9 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
         end_lt=block.max_lt,
         start_utime=block.min_utime,
         end_utime=block.max_utime,
-        success=not block.failed)
+        success=not block.failed,
+        accounts=accounts,
+    )
 
 
 def _fill_call_contract_action(block: CallContractBlock, action: Action):
@@ -272,5 +283,22 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_election_action(block, action)
         case 'auction_bid':
             _fill_auction_bid_action(block, action)
+    # Fill accounts
+    action.accounts.append(action.source)
+    action.accounts.append(action.source_secondary)
+    action.accounts.append(action.destination)
+    action.accounts.append(action.destination_secondary)
 
+    # Fill extended tx hashes
+    extended_tx_hashes = set(action.tx_hashes)
+    if block.initiating_event_node is not None:
+        extended_tx_hashes.add(block.initiating_event_node.get_tx_hash())
+        if not block.initiating_event_node.is_tick_tock:
+            acc = block.initiating_event_node.message.transaction.account
+            if acc not in action.accounts:
+                logging.info(f"Initiating transaction ({block.initiating_event_node.get_tx_hash()}) account not in accounts. Trace id: {trace_id}")
+            action.accounts.append(acc)
+    action.extended_tx_hashes = list(extended_tx_hashes)
+
+    action.accounts = list(set(a for a in action.accounts if a is not None))
     return action

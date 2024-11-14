@@ -97,6 +97,7 @@ class Block:
     children_blocks: list[Block]
     next_blocks: list[Block]
     contract_deployments: set[AccountId]
+    initiating_event_node: EventNode | None
     failed: bool
     previous_block: Block
     parent: Block
@@ -119,6 +120,7 @@ class Block:
         self.btype = type
         self.data = v
         self.contract_deployments = set()
+        self.initiating_event_node = None
         self.value_flow = AccountValueFlow()
         if len(nodes) != 0:
             self.min_lt = nodes[0].message.transaction.lt
@@ -126,6 +128,9 @@ class Block:
             self.min_utime = nodes[0].message.transaction.now
             self.max_utime = nodes[0].message.transaction.now
             self._find_contract_deployments()
+        if len(nodes) == 1:
+            parent = nodes[0].parent
+            self.initiating_event_node = parent
 
         else:
             self.min_lt = 0
@@ -186,6 +191,7 @@ class Block:
         if earliest_block.previous_block is not None:
             earliest_block.previous_block.compact_connections()
         self.calculate_min_max_lt()
+        self.initiating_event_node = earliest_block.initiating_event_node
 
     def find_next(self,
                   node_filter: Callable[['Block', int], bool] = None,

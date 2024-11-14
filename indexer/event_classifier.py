@@ -300,6 +300,8 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action]]:
             if block.btype != 'root':
                 if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
                     continue
+                if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
+                    continue
                 if block.broken:
                     state = 'broken'
                 action = block_to_action(block, trace.trace_id)

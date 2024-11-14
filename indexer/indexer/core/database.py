@@ -266,6 +266,10 @@ class Action(Base):
     nft_mint_data = Column(CompositeType("nft_mint_details", [
         Column("nft_item_index", Numeric)]))
 
+    extended_tx_hashes: list[str] = Column(ARRAY(String()))
+    accounts: list[str] = Column(ARRAY(String(70)))
+
+
     def __repr__(self):
         full_repr = ""
         for key, value in self.__dict__.items():
