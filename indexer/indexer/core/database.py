@@ -185,6 +185,11 @@ class TraceEdge(Base):
 
     trace: "Trace" = relationship("Trace", back_populates="edges", viewonly=True)
 
+class ActionAccount(Base):
+    __tablename__ = 'action_accounts'
+    action_id: str = Column(String, primary_key=True)
+    trace_id: str = Column(String, primary_key=True)
+    account: str = Column(String(70), primary_key=True)
 
 class Action(Base):
     __tablename__ = 'actions'
@@ -267,7 +272,7 @@ class Action(Base):
         Column("nft_item_index", Numeric)]))
 
     extended_tx_hashes: list[str] = Column(ARRAY(String()))
-    accounts: list[str] = Column(ARRAY(String(70)))
+    accounts: list[str]
 
 
     def __repr__(self):
@@ -277,6 +282,11 @@ class Action(Base):
                 continue
             full_repr += f"{key}={value}, "
         return full_repr
+
+    def get_action_accounts(self):
+        accounts = []
+        for account in self.accounts:
+            accounts.append(ActionAccount(action_id=self.action_id, trace_id=self.trace_id, account=account))
 
 class Transaction(Base):
     __tablename__ = 'transactions'

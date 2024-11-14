@@ -49,7 +49,7 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
         else:
             accounts.append(n.message.transaction.account)
 
-    return Action(
+    action = Action(
         trace_id=trace_id,
         type=block.btype,
         action_id=action_id,
@@ -59,8 +59,9 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
         start_utime=block.min_utime,
         end_utime=block.max_utime,
         success=not block.failed,
-        accounts=accounts,
     )
+    action.accounts = accounts
+    return action
 
 
 def _fill_call_contract_action(block: CallContractBlock, action: Action):

@@ -269,6 +269,9 @@ async def process_trace_batch_async(ids: list[str]):
                     # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
                     # session.execute(insert(Action).values(actions).on_conflict_do_nothing()) 
                     session.add_all(actions)
+                    for action in actions:
+                        session.add_all(action.get_action_accounts())
+
                     if state == 'ok':
                         ok_traces.append(trace_id)
                     else:
