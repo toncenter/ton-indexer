@@ -296,7 +296,7 @@ def block_to_action(block: Block, trace_id: str) -> Action:
         if not block.initiating_event_node.is_tick_tock:
             acc = block.initiating_event_node.message.transaction.account
             if acc not in action.accounts:
-                logging.info(f"Initiating transaction ({block.initiating_event_node.get_tx_hash()}) account not in accounts. Trace id: {trace_id}")
+                logging.info(f"Initiating transaction ({block.initiating_event_node.get_tx_hash()}) account not in accounts. Trace id: {trace_id}. Action id: {action.action_id}")
             action.accounts.append(acc)
     action.extended_tx_hashes = list(extended_tx_hashes)
 
