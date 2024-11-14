@@ -287,6 +287,7 @@ class Action(Base):
         accounts = []
         for account in self.accounts:
             accounts.append(ActionAccount(action_id=self.action_id, trace_id=self.trace_id, account=account))
+        return accounts
 
 class Transaction(Base):
     __tablename__ = 'transactions'
