@@ -136,6 +136,7 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         message = block.get_message()
         nft_ownership_message = NftOwnershipAssigned(Slice.one_from_boc(message.message_content.body))
         data['new_owner'] = AccountId(message.destination)
+        data['prev_owner'] = AccountId(nft_ownership_message.prev_owner) if nft_ownership_message.prev_owner is not None else None
         data['query_id'] = nft_ownership_message.query_id
         data['forward_amount'] = None
         data['response_destination'] = None
