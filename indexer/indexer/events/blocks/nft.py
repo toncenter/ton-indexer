@@ -114,6 +114,7 @@ class NftTransferBlockMatcher(BlockMatcher):
         new_block.data = data
         if not data['nft']['exists']:
             new_block.broken = True
+        new_block.failed = block.failed
         return [new_block]
 
 
