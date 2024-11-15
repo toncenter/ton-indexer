@@ -332,6 +332,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		var details ActionDetailsJettonSwap
 		details.Dex = raw.JettonSwapDex
 		details.Sender = raw.Source
+		details.AssetIn = raw.Asset
+		details.AssetOut = raw.Asset2
 		details.DexIncomingTransfer = &ActionDetailsJettonSwapTransfer{}
 		details.DexOutgoingTransfer = &ActionDetailsJettonSwapTransfer{}
 		details.DexIncomingTransfer.Asset = raw.JettonSwapDexIncomingTransferAsset

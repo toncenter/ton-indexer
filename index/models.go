@@ -533,6 +533,8 @@ type ActionDetailsJettonSwapTransfer struct {
 type ActionDetailsJettonSwap struct {
 	Dex                 *string                          `json:"dex"`
 	Sender              *AccountAddress                  `json:"sender"`
+	AssetIn             *AccountAddress                  `json:"asset_in"`
+	AssetOut            *AccountAddress                  `json:"asset_out"`
 	DexIncomingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_incoming_transfer"`
 	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_outgoing_transfer"`
 	PeerSwaps           []string                         `json:"peer_swaps"`
