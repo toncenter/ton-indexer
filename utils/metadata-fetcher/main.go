@@ -49,7 +49,33 @@ type AddressMetadata struct {
 }
 
 func (receiver AddressMetadata) hasAnyData() bool {
+	if receiver.Type != nil && *receiver.Type == "jetton_masters" {
+		return receiver.Symbol != nil
+	}
 	return receiver.Name != nil || receiver.Description != nil || receiver.Image != nil
+}
+
+func (receiver AddressMetadata) merge(other AddressMetadata) {
+	if other.Name != nil {
+		receiver.Name = other.Name
+	}
+	if other.Description != nil {
+		receiver.Description = other.Description
+	}
+	if other.Image != nil {
+		receiver.Image = other.Image
+	}
+	if other.Symbol != nil {
+		receiver.Symbol = other.Symbol
+	}
+	if other.Extra != nil {
+		if receiver.Extra == nil {
+			receiver.Extra = make(map[string]interface{})
+		}
+		for key, value := range other.Extra {
+			receiver.Extra[key] = value
+		}
+	}
 }
 
 func fetchTasks(ctx context.Context, pool *pgxpool.Pool) ([]FetchTask, error) {
@@ -170,17 +196,7 @@ func getMetadataFromJson(metadata map[string]interface{}) AddressMetadata {
 	return result
 }
 
-func fetchContent(metadata map[string]interface{}) (AddressMetadata, error) {
-	url, err := extractURL(metadata)
-	if err != nil {
-		metadata_from_db := getMetadataFromJson(metadata)
-		if metadata_from_db.hasAnyData() {
-			return metadata_from_db, nil
-		} else {
-			return AddressMetadata{}, fmt.Errorf("failed to extract URL or required data: %v", err)
-		}
-	}
-
+func fetchOffchainMetadata(url string) (AddressMetadata, error) {
 	resp, err := client.Get(url)
 	if err != nil {
 		return AddressMetadata{}, fmt.Errorf("failed to fetch content from URL: %v", err)
@@ -201,6 +217,28 @@ func fetchContent(metadata map[string]interface{}) (AddressMetadata, error) {
 		return AddressMetadata{}, fmt.Errorf("failed to unmarshal response body: %v", err)
 	}
 	return getMetadataFromJson(content), nil
+}
+
+func fetchContent(metadata map[string]interface{}) (AddressMetadata, error) {
+	url, err := extractURL(metadata)
+	metadata_from_db := getMetadataFromJson(metadata)
+	if err != nil {
+		if metadata_from_db.hasAnyData() {
+			return metadata_from_db, nil
+		} else {
+			return AddressMetadata{}, fmt.Errorf("failed to extract URL or required data: %v", err)
+		}
+	}
+	offchain_metadata, err := fetchOffchainMetadata(url)
+	if err != nil {
+		if metadata_from_db.hasAnyData() {
+			return metadata_from_db, nil
+		} else {
+			return AddressMetadata{}, err
+		}
+	}
+	offchain_metadata.merge(metadata_from_db)
+	return offchain_metadata, nil
 }
 
 func processTask(ctx context.Context, pool *pgxpool.Pool, task FetchTask) (taskError error) {
