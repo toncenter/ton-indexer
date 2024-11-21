@@ -260,10 +260,10 @@ class Action(Base):
         ])))]))
     dex_deposit_liquidity_data = Column(CompositeType("dex_deposit_liquidity_details", [
         Column("dex", String),
-        Column("asset1", String),
         Column("amount1", Numeric),
-        Column("asset2", String),
         Column("amount2", Numeric),
+        Column("asset1", String),
+        Column("asset2", String),
         Column('user_jetton_wallet_1', String),
         Column('user_jetton_wallet_2', String),
         Column("lp_tokens_minted", Numeric),
