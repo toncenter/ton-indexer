@@ -30,6 +30,10 @@ from indexer.events.blocks.nft import (
     NftTransferBlockMatcher,
     TelegramNftPurchaseBlockMatcher,
 )
+from indexer.events.blocks.staking import (
+    TONStakersDepositRequestMatcher,
+    TONStakersWithdrawRequestMatcher,
+)
 from indexer.events.blocks.subscriptions import (
     SubscriptionBlockMatcher,
     UnsubscribeBlockMatcher,
@@ -74,6 +78,8 @@ matchers = [
     NftMintBlockMatcher(),
     DedustDepositBlockMatcher(),
     DedustDepositFirstAssetBlockMatcher(),
+    TONStakersDepositRequestMatcher(),
+    TONStakersWithdrawRequestMatcher(),
     JettonTransferBlockMatcher(),
     JettonBurnBlockMatcher(),
     JettonMintBlockMatcher(),

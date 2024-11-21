@@ -137,20 +137,21 @@ async def process_emulated_trace(trace_id):
 def fetch_events_for_processing(queue: mp.Queue, fetch_size: int):
     logger.info(f"Fetching unclassified traces...")
 
-    # queue.put(("", 27))  # debug
+    queue.put(("6d7dwnLoF99c/yEeuZuVHsYf9QkCP0n14OaXdvrlO0Y=", 6))  # deposit
+    queue.put(("cYmtAq1JkZOdmDnyv0GdrKSURYyLoSi3yn0gEEPtJeM=", 7))  # withdraw
 
-    while True:
-        with SyncSessionMaker() as session:
-            query = (
-                session.query(Trace.trace_id, Trace.nodes_)
-                .filter(Trace.state == "complete")
-                .filter(Trace.classification_state == "unclassified")
-                .order_by(Trace.start_lt.desc())
-            )
-            query = query.yield_per(fetch_size)
-            for item in query:
-                queue.put(item)
-        time.sleep(1)
+    # while True:
+    #     with SyncSessionMaker() as session:
+    #         query = (
+    #             session.query(Trace.trace_id, Trace.nodes_)
+    #             .filter(Trace.state == "complete")
+    #             .filter(Trace.classification_state == "unclassified")
+    #             .order_by(Trace.start_lt.desc())
+    #         )
+    #         query = query.yield_per(fetch_size)
+    #         for item in query:
+    #             queue.put(item)
+    #     time.sleep(1)
 
 
 # # end def

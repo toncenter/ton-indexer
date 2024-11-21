@@ -19,6 +19,7 @@ from indexer.events.blocks.liquidity import (
     DEXProvideLiquidityBlock,
 )
 from indexer.events.blocks.nft import NftMintBlock, NftTransferBlock
+from indexer.events.blocks.staking import TONStakersDepositRequestBlock, TONStakersWithdrawRequestBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
@@ -312,6 +313,16 @@ def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
     }
     action.change_dns_record_data = data
 
+def _fill_tonstakers_deposit_request_action(block: TONStakersDepositRequestBlock, action: Action):
+    action.source = block.data.source.as_str()
+    action.destination = block.data.pool.as_str()
+    action.value = block.data.value.value
+
+def _fill_tonstakers_withdraw_request_action(block: TONStakersWithdrawRequestBlock, action: Action):
+    action.source = block.data.source.as_str()
+    action.source_secondary = block.data.tsTON_wallet.as_str()
+    action.destination = block.data.pool.as_str()
+    action.value = block.data.value.value
 
 def _fill_subscribe_action(block: SubscriptionBlock, action: Action):
     action.source = block.data["subscriber"].as_str()
@@ -374,6 +385,10 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_change_dns_record_action(block, action)
         case "delete_dns":
             _fill_delete_dns_record_action(block, action)
+        case "tonstakers_deposit_request":
+            _fill_tonstakers_deposit_request_action(block, action)
+        case "tonstakers_withdraw_request":
+            _fill_tonstakers_withdraw_request_action(block, action)
         case "subscribe":
             _fill_subscribe_action(block, action)
         case "unsubscribe":
