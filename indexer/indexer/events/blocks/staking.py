@@ -2,27 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from loguru import logger
-
-from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.basic_matchers import (
     BlockMatcher,
-    BlockTypeMatcher,
     ContractMatcher,
-    OrMatcher,
 )
 from indexer.events.blocks.core import Block
-from indexer.events.blocks.jettons import (
-    JettonBurnBlockMatcher,
-    JettonTransferBlockMatcher,
-)
 from indexer.events.blocks.messages.jettons import (
     JettonBurn,
     JettonBurnNotification,
     JettonInternalTransfer,
     JettonNotify,
-    JettonTransfer,
 )
 from indexer.events.blocks.messages.nft import NftOwnershipAssigned
 from indexer.events.blocks.messages.staking import (
@@ -33,7 +23,6 @@ from indexer.events.blocks.messages.staking import (
     TONStakersWithdrawRequest,
 )
 from indexer.events.blocks.utils import AccountId, Amount
-from indexer.events.blocks.utils.block_utils import find_call_contract
 
 
 @dataclass

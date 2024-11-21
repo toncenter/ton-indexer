@@ -3,28 +3,21 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
-import random
-from typing import Tuple, List
 
-from indexer.events.blocks.utils import AccountId, Asset
 from indexer.core.database import Action
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
-from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock
+from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock, DnsRenewBlock
 from indexer.events.blocks.jettons import (
-    JettonBurnBlock,
     JettonMintBlock,
-    JettonTransferBlock,
 )
+from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
 from indexer.events.blocks.liquidity import (
     DEXDepositFirstAssetBlock,
     DEXProvideLiquidityBlock,
 )
-from indexer.events.blocks.nft import NftMintBlock, NftTransferBlock
-from indexer.events.blocks.staking import TONStakersDepositRequestBlock, TONStakersWithdrawRequestBlock
-from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock, DnsRenewBlock
-from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
 from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
+from indexer.events.blocks.staking import TONStakersDepositRequestBlock, TONStakersWithdrawRequestBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset

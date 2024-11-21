@@ -5,15 +5,14 @@ import base64
 from pytoniq_core import Slice
 
 from indexer.events import context
-from indexer.events.blocks.utils.block_utils import find_messages
-from indexer.core.database import SyncSessionMaker, NFTItem
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.messages import NftOwnershipAssigned, ExcessMessage
 from indexer.events.blocks.messages.nft import NftTransfer, TeleitemBidInfo, AuctionFillUp
-from indexer.events.blocks.utils import AccountId, Amount, block_utils
+from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import find_call_contracts
+from indexer.events.blocks.utils.block_utils import find_messages
 
 
 class NftMintBlock(Block):
