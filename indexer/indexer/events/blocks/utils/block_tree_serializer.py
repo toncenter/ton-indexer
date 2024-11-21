@@ -10,7 +10,7 @@ from indexer.events.blocks.utils import AccountId, Asset
 from indexer.core.database import Action
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
-from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock
+from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock, DnsRenewBlock
 from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
 from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
@@ -229,6 +229,11 @@ def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
     action.change_dns_record_data = data
 
 
+def _fill_dns_renew_action(block: DnsRenewBlock, action: Action):
+    action.source = _addr(block.data['source'])
+    action.destination = _addr(block.data['destination'])
+
+
 def _fill_subscribe_action(block: SubscriptionBlock, action: Action):
     action.source = block.data['subscriber'].as_str()
     action.destination = block.data['beneficiary'].as_str() if block.data['beneficiary'] is not None else None
@@ -276,6 +281,8 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_change_dns_record_action(block, action)
         case 'delete_dns':
             _fill_delete_dns_record_action(block, action)
+        case 'dns_renew':
+            _fill_dns_renew_action(block, action)
         case 'subscribe':
             _fill_subscribe_action(block, action)
         case 'unsubscribe':
