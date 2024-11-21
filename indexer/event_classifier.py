@@ -5,23 +5,21 @@ import multiprocessing as mp
 import sys
 import time
 import traceback
-
-from typing import Optional
 from datetime import timedelta
+from typing import Optional
 
 from sqlalchemy import update, select, and_, or_
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker, contains_eager
 
 from indexer.core import redis
-from indexer.core.database import engine, Trace, Transaction, Message, Action, TraceEdge, SyncSessionMaker
+from indexer.core.database import engine, Trace, Transaction, Message, Action, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_additional_addresses
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
-from indexer.events.event_processing import process_event_async
+from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing
 from indexer.events.interface_repository import EmulatedTransactionsInterfaceRepository, gather_interfaces, \
     RedisInterfaceRepository
 
@@ -296,10 +294,10 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action]]:
     if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock':
         return trace.trace_id, 'ok', []
     try:
-        result = await process_event_async(trace)
+        result = await process_event_async_with_postprocessing(trace)
         actions = []
         state = 'ok'
-        for block in result.bfs_iter():
+        for block in result:
             if block.btype != 'root':
                 if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
                     continue

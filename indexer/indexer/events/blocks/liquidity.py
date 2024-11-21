@@ -336,3 +336,37 @@ class DedustDepositFirstAssetBlockMatcher(BlockMatcher):
         new_block.data["dex"] = "dedust"
         new_block.merge_blocks(include)
         return [new_block]
+
+
+async def post_process_dedust_liquidity(blocks: list[Block]) -> list[Block]:
+    first_deposits = []
+    final_deposits = []
+    for b in blocks:
+        if isinstance(b, DEXDepositFirstAssetBlock):
+            first_deposits.append(b)
+        elif isinstance(b, DEXProvideLiquidityBlock):
+            final_deposits.append(b)
+
+    for first_deposit in first_deposits:
+        final_deposit = None
+        for b in final_deposits:
+            if b.data['deposit_contract'] == first_deposit.data['deposit_contract']:
+                final_deposit = b
+                break
+        if final_deposit:
+            final_data = final_deposit.data
+            final_data['asset_1'] = final_data['asset_1'] or first_deposit.data['asset_1']
+            final_data['amount_1'] = final_data['amount_1'] or first_deposit.data['amount_1']
+            final_data['asset_2'] = final_data['asset_2'] or first_deposit.data['asset_2']
+            final_data['amount_2'] = final_data['amount_2'] or first_deposit.data['amount_2']
+            final_data['user_jetton_wallet_1'] = final_data['user_jetton_wallet_1'] or first_deposit.data['user_jetton_wallet_1']
+            final_data['user_jetton_wallet_2'] = final_data['user_jetton_wallet_2'] or first_deposit.data['user_jetton_wallet_2']
+            blocks.remove(first_deposit)
+            final_deposit.event_nodes.extend(first_deposit.event_nodes)
+            if final_deposit.initiating_event_node != first_deposit.initiating_event_node:
+                final_deposit.event_nodes.append(first_deposit.initiating_event_node)
+            final_deposit.event_nodes = list(set(final_deposit.event_nodes))
+            final_deposit.children_blocks.extend(first_deposit.children_blocks)
+            final_deposit.children_blocks = list(set(final_deposit.children_blocks))
+            final_deposit.calculate_min_max_lt()
+    return blocks

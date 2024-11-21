@@ -12,7 +12,8 @@ from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
 from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher
-from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher
+from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, \
+    post_process_dedust_liquidity
 from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher
 from indexer.events.blocks.staking import TONStakersDepositRequestMatcher, TONStakersWithdrawRequestMatcher
@@ -61,6 +62,10 @@ matchers = [
     AuctionBidMatcher()
 ]
 
+trace_post_processors = [
+    post_process_dedust_liquidity
+]
+
 
 async def process_event_async(trace: Trace) -> Block:
     try:
@@ -78,3 +83,11 @@ async def process_event_async(trace: Trace) -> Block:
     except Exception as e:
         logging.error(f"Failed to process {trace.trace_id}")
         raise e
+
+async def process_event_async_with_postprocessing(trace: Trace) -> list[Block]:
+    block = await process_event_async(trace)
+    blocks = [block] + list(block.bfs_iter())
+
+    for post_processor in trace_post_processors:
+        blocks = await post_processor(blocks)
+    return blocks
