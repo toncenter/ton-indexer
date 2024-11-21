@@ -45,6 +45,7 @@ def get_engine(settings: Settings):
                                  pool_timeout=128,
                                  echo=False)
     return engine
+
 engine = get_engine(settings)
 SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
 
@@ -270,7 +271,16 @@ class Action(Base):
     ]))
     nft_mint_data = Column(CompositeType("nft_mint_details", [
         Column("nft_item_index", Numeric)]))
-
+    dex_deposit_liquidity_data = Column(CompositeType("dex_deposit_liquidity_details", [
+        Column("dex", String),
+        Column("amount1", Numeric),
+        Column("amount2", Numeric),
+        Column("asset1", String),
+        Column("asset2", String),
+        Column('user_jetton_wallet_1', String),
+        Column('user_jetton_wallet_2', String),
+        Column("lp_tokens_minted", Numeric),
+    ]))
     extended_tx_hashes: list[str] = Column(ARRAY(String()))
     accounts: list[str]
 

@@ -29,6 +29,14 @@ class JettonBurnBlock(Block):
         return f"JETTON BURN {self.data}"
 
 
+class JettonMintBlock(Block):
+    def __init__(self):
+        super().__init__("jetton_mint", [], {})
+
+    def __repr__(self):
+        return f"JETTON MINT {self.data}"
+
+
 class JettonTransferBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(child_matcher=OrMatcher([
@@ -100,6 +108,40 @@ async def _get_jetton_burn_data(new_block: Block, block: Block | CallContractBlo
     }
     return data
 
+async def _get_jetton_mint_data(
+    new_block: Block, block: Block | CallContractBlock
+) -> dict:
+    jetton_mint_info = JettonMint(block.get_body())
+    internal_transfer_info = JettonInternalTransfer(block.next_blocks[0].get_body())
+    # receiver_address = (
+    #     block.next_blocks[0].next_blocks[0].event_nodes[0].message.destination
+    # )
+
+    receiver_jwallet_addr = block.next_blocks[0].event_nodes[0].message.destination
+    receiver_jwallet = await context.interface_repository.get().get_jetton_wallet(
+        receiver_jwallet_addr
+    )
+    assert receiver_jwallet is not None
+
+    receiver_account = AccountId(receiver_jwallet.owner)
+
+    new_block.value_flow.add_jetton(
+        # owner, jetton master, amount to add
+        receiver_account,
+        AccountId(receiver_jwallet.jetton),
+        internal_transfer_info.amount,
+    )
+
+    data = {
+        "to": AccountId(receiver_jwallet.owner),
+        "to_jetton_wallet": AccountId(block.get_message().destination),
+        "amount": Amount(internal_transfer_info.amount),
+        "asset": Asset(
+            is_ton=False,
+            jetton_address=(receiver_jwallet.jetton),
+        ),
+    }
+    return data
 
 class JettonBurnBlockMatcher(BlockMatcher):
     def __init__(self):
@@ -113,6 +155,40 @@ class JettonBurnBlockMatcher(BlockMatcher):
         new_block = JettonBurnBlock()
         include = [block]
         include.extend(other_blocks)
+
         new_block.data = await _get_jetton_burn_data(new_block, block)
+        new_block.merge_blocks(include)
+        return [new_block]
+
+
+class JettonMintBlockMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(
+            child_matcher=OrMatcher(
+                [
+                    ContractMatcher(opcode=JettonNotify.opcode, optional=True),
+                    ContractMatcher(
+                        opcode=JettonInternalTransfer.opcode,
+                        optional=True,
+                        child_matcher=ContractMatcher(
+                            opcode=JettonNotify.opcode, optional=True
+                        ),
+                    ),
+                ],
+                optional=True,
+            ),
+            parent_matcher=None,
+        )
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock) and block.opcode == JettonMint.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        new_block = JettonMintBlock()
+        include = [block]
+        include.extend(other_blocks)
+        new_block.data = await _get_jetton_mint_data(new_block, block)
         new_block.merge_blocks(include)
         return [new_block]

@@ -36,13 +36,23 @@ class StonfiPaymentRequest:
         self.token1_out = ref.load_address()
 
 
+def load_asset(slice: Slice) -> Asset:
+    kind = slice.load_uint(4)
+    if kind == 0:
+        return Asset(True)
+    else:
+        wc = slice.load_uint(8)
+        account_id = slice.load_bytes(32)
+        return Asset(False, Address((wc, account_id)))
+
+
 class DedustSwapNotification:
     opcode = 0x9c610de3
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
-        self.asset_in = self.load_asset(body)
-        self.asset_out = self.load_asset(body)
+        self.asset_in = load_asset(body)
+        self.asset_out = load_asset(body)
         self.amount_in = body.load_coins()
         self.amount_out = body.load_coins()
         ref = body.load_ref().to_slice()
@@ -50,15 +60,6 @@ class DedustSwapNotification:
         self.ref_address = ref.load_address()
         self.reserve_0 = ref.load_coins()
         self.reserve_1 = ref.load_coins()
-
-    def load_asset(self, slice: Slice) -> Asset:
-        kind = slice.load_uint(4)
-        if kind == 0:
-            return Asset(True)
-        else:
-            wc = slice.load_uint(8)
-            account_id = slice.load_bytes(32)
-            return Asset(False, Address((wc, account_id)))
 
 
 class DedustPayout:

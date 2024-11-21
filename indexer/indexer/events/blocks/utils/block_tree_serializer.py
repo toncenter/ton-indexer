@@ -10,11 +10,24 @@ from indexer.events.blocks.utils import AccountId, Asset
 from indexer.core.database import Action
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
+from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock
+from indexer.events.blocks.jettons import (
+    JettonBurnBlock,
+    JettonMintBlock,
+    JettonTransferBlock,
+)
+from indexer.events.blocks.liquidity import (
+    DEXDepositFirstAssetBlock,
+    DEXProvideLiquidityBlock,
+)
+from indexer.events.blocks.nft import NftMintBlock, NftTransferBlock
+from indexer.events.blocks.staking import TONStakersDepositRequestBlock, TONStakersWithdrawRequestBlock
 from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock, DnsRenewBlock
 from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
 from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
+from indexer.events.blocks.utils import AccountId, Asset
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +41,7 @@ def _addr(addr: AccountId | Asset | None) -> str | None:
 
 
 def _calc_action_id(block: Block) -> str:
-    root_event_node = min(block.event_nodes, key=lambda n:n.get_lt())
+    root_event_node = min(block.event_nodes, key=lambda n: n.get_lt())
     key = ""
     if root_event_node.message is not None:
         key = root_event_node.message.msg_hash
@@ -228,11 +241,20 @@ def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
     }
     action.change_dns_record_data = data
 
+def _fill_tonstakers_deposit_request_action(block: TONStakersDepositRequestBlock, action: Action):
+    action.source = block.data.source.as_str()
+    action.destination = block.data.pool.as_str()
+    action.value = block.data.value.value
 
 def _fill_dns_renew_action(block: DnsRenewBlock, action: Action):
     action.source = _addr(block.data['source'])
     action.destination = _addr(block.data['destination'])
 
+def _fill_tonstakers_withdraw_request_action(block: TONStakersWithdrawRequestBlock, action: Action):
+    action.source = block.data.source.as_str()
+    action.source_secondary = block.data.tsTON_wallet.as_str()
+    action.destination = block.data.pool.as_str()
+    action.value = block.data.value.value
 
 def _fill_subscribe_action(block: SubscriptionBlock, action: Action):
     action.source = block.data['subscriber'].as_str()
@@ -258,6 +280,40 @@ def _fill_auction_bid_action(block: Block, action: Action):
     action.asset_secondary = block.data['nft_address'].as_str()
     action.value = block.data['amount'].value
 
+def _fill_dex_deposit_action(block: DEXProvideLiquidityBlock, action: Action):
+    action.source = _addr(block.data["sender"])
+    action.destination = _addr(block.data["pool_address"])
+    action.destination_secondary = _addr(block.data["deposit_contract"])
+    action.dex_deposit_liquidity_data = {
+        "dex": block.data["dex"],
+        "asset1": _addr(block.data["asset_1"].jetton_address),
+        "amount1": block.data["amount_1"].value,
+        "asset2": _addr(block.data["asset_2"].jetton_address),
+        "amount2": block.data["amount_2"].value,
+        "user_jetton_wallet_1": _addr(block.data["user_jetton_wallet_1"]),
+        "user_jetton_wallet_2": _addr(block.data["user_jetton_wallet_2"]),
+        "lp_tokens_minted": block.data["lp_tokens_minted"].value,
+    }
+
+def _fill_dex_deposit_first_asset_action(block: DEXDepositFirstAssetBlock, action: Action):
+    action.source = _addr(block.data["sender"])
+    action.destination_secondary = _addr(block.data["deposit_contract"])
+    action.dex_deposit_liquidity_data = {
+        "dex": block.data["dex"],
+        "asset1": _addr(block.data["asset_1"].jetton_address),
+        "amount1": block.data["amount_1"].value,
+        "asset2": _addr(block.data["asset_2"].jetton_address),
+        "amount2": block.data["amount_2"].value,
+        "user_jetton_wallet_1": _addr(block.data["user_jetton_wallet_1"]),
+        "user_jetton_wallet_2": _addr(block.data["user_jetton_wallet_2"]),
+        "lp_tokens_minted": None,
+    }
+
+def _fill_jetton_mint_action(block: JettonMintBlock, action: Action):
+    action.destination = block.data["to"].as_str()
+    action.destination_secondary = block.data["to_jetton_wallet"].as_str()
+    action.asset = block.data["asset"].jetton_address.as_str()
+    action.amount = block.data["amount"].value
 
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str) -> Action:
@@ -267,7 +323,11 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_call_contract_action(block, action)
         case 'ton_transfer':
             _fill_ton_transfer_action(block, action)
-        case 'jetton_transfer':
+        case "dex_deposit":
+            _fill_dex_deposit_action(block, action)
+        case "dex_deposit_first_asset":
+            _fill_dex_deposit_first_asset_action(block, action)
+        case "jetton_transfer":
             _fill_jetton_transfer_action(block, action)
         case 'nft_transfer':
             _fill_nft_transfer_action(block, action)
@@ -275,7 +335,9 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_nft_mint_action(block, action)
         case 'jetton_burn':
             _fill_jetton_burn_action(block, action)
-        case 'jetton_swap':
+        case "jetton_mint":
+            _fill_jetton_mint_action(block, action)
+        case "jetton_swap":
             _fill_jetton_swap_action(block, action)
         case 'change_dns':
             _fill_change_dns_record_action(block, action)
@@ -283,7 +345,11 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_delete_dns_record_action(block, action)
         case 'dns_renew':
             _fill_dns_renew_action(block, action)
-        case 'subscribe':
+        case "tonstakers_deposit_request":
+            _fill_tonstakers_deposit_request_action(block, action)
+        case "tonstakers_withdraw_request":
+            _fill_tonstakers_withdraw_request_action(block, action)
+        case "subscribe":
             _fill_subscribe_action(block, action)
         case 'unsubscribe':
             _fill_unsubscribe_action(block, action)

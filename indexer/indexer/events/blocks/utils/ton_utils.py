@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pytoniq_core import Address
+from pytoniq_core import Address, ExternalAddress
 
 from indexer.core.database import Transaction
 
@@ -41,9 +41,13 @@ def is_failed(tx: Transaction):
 
 
 class AccountId:
-    def __init__(self, address: str | Address):
-        if isinstance(address, str):
-            if address == 'addr_none':
+    def __init__(self, address: str | Address | ExternalAddress | None):
+        if address is None:
+            self.address = None
+        elif isinstance(address, ExternalAddress):
+            raise ValueError("ExternalAddress is not supported")
+        elif isinstance(address, str):
+            if address == "addr_none":
                 self.address = None
             else:
                 self.address = Address(address)
@@ -51,7 +55,7 @@ class AccountId:
             self.address = address
 
     def __repr__(self):
-        return self.address.to_str(False)
+        return self.address.to_str(False) if self.address else "addr_none"
 
     def __eq__(self, other):
         return self.address == other.address

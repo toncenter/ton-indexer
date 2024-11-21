@@ -108,3 +108,23 @@ class JettonInternalTransfer:
 
 class JettonNotify:
     opcode = 0x7362d09c
+
+
+# mint#642b7d07
+# query_id:uint64
+# to_address:MsgAddressInt
+# ton_amount:Coins
+# <!--        master_msg:^JettonInternalTransfer-->
+# = InternalMsgBody;
+class JettonMint:
+    opcode = 0x642b7d07
+
+    query_id: int
+    to_address: Address
+    ton_amount: int
+
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        self.query_id = slice.load_uint(64)
+        self.to_address = slice.load_address()
+        self.ton_amount = slice.load_coins()

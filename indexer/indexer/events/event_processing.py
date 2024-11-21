@@ -1,23 +1,24 @@
 from __future__ import annotations
 
-import base64
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from indexer.events.blocks.utils import AccountId
-from indexer.core.database import Trace, engine, TraceEdge
+from indexer.core.database import Trace, engine
+from indexer.events.blocks.auction import AuctionBidMatcher
 from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock
 from indexer.events.blocks.core import Block
-from indexer.events.blocks.auction import AuctionBidMatcher
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
 from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher
+from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher
 from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher
+from indexer.events.blocks.staking import TONStakersDepositRequestMatcher, TONStakersWithdrawRequestMatcher
 from indexer.events.blocks.subscriptions import SubscriptionBlockMatcher, UnsubscribeBlockMatcher
 from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher
+from indexer.events.blocks.utils import AccountId
 from indexer.events.blocks.utils import NoMessageBodyException
 from indexer.events.blocks.utils import to_tree, EventNode
 
@@ -42,6 +43,10 @@ def init_block(node: EventNode) -> Block:
 
 matchers = [
     NftMintBlockMatcher(),
+    DedustDepositBlockMatcher(),
+    DedustDepositFirstAssetBlockMatcher(),
+    TONStakersDepositRequestMatcher(),
+    TONStakersWithdrawRequestMatcher(),
     JettonTransferBlockMatcher(),
     JettonBurnBlockMatcher(),
     DedustSwapBlockMatcher(),
