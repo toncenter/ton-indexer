@@ -148,6 +148,10 @@ class Block:
         self.min_utime = min(n.message.transaction.now for n in self.event_nodes)
         self.max_lt = max(n.message.transaction.lt for n in self.event_nodes)
         self.max_utime = max(n.message.transaction.now for n in self.event_nodes)
+        if (self.initiating_event_node is not None and self.initiating_event_node.message is not None
+                and self.initiating_event_node.message.transaction is not None):
+            self.min_lt = min(self.min_lt, self.initiating_event_node.message.transaction.lt)
+            self.min_utime = min(self.min_utime, self.initiating_event_node.message.transaction.now)
 
     def iter_prev(self, predicate: Callable[[Block], bool]) -> Iterable[Block]:
         """Iterates over all previous blocks that match predicate, starting from the closest one."""
@@ -195,8 +199,8 @@ class Block:
         self.previous_block = earliest_block.previous_block
         if earliest_block.previous_block is not None:
             earliest_block.previous_block.compact_connections()
-        self.calculate_min_max_lt()
         self.initiating_event_node = earliest_block.initiating_event_node
+        self.calculate_min_max_lt()
 
     def find_next(self,
                   node_filter: Callable[['Block', int], bool] = None,
