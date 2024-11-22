@@ -123,7 +123,7 @@ class TONStakersDepositMatcher(BlockMatcher):
                 value=Amount(msg.value - 10**9),  # 1 TON deposit fee
             )
         )
-        new_block.failed = block.failed
+        new_block.failed = failed
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
 
