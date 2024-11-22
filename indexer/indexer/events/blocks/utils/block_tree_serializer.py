@@ -277,6 +277,9 @@ def _fill_tonstakers_deposit_action(block: TONStakersDepositBlock, action: Actio
     action.source = _addr(block.data.source)
     action.destination = _addr(block.data.pool)
     action.amount = block.data.value.value
+    action.staking_data = {
+        'provider': 'tonstakers',
+    }
 
 def _fill_dns_renew_action(block: DnsRenewBlock, action: Action):
     action.source = _addr(block.data['source'])
@@ -288,7 +291,7 @@ def _fill_tonstakers_withdraw_request_action(block: TONStakersWithdrawRequestBlo
     action.destination = _addr(block.data.pool)
     action.amount = block.data.tokens_burnt.value
     action.type = 'stake_withdrawal_request'
-    action.stake_withdrawal_data = {
+    action.staking_data = {
         'provider': 'tonstakers',
         'ts_nft': _addr(block.data.minted_nft)
     }
@@ -298,7 +301,7 @@ def _fill_tonstakers_withdraw_action(block: TONStakersWithdrawBlock, action: Act
     action.destination = _addr(block.data.pool)
     action.amount = block.data.amount.value
     action.type = 'stake_withdrawal'
-    action.stake_withdrawal_data = {
+    action.staking_data = {
         'provider': 'tonstakers',
         'ts_nft': _addr(block.data.burnt_nft),
     }
