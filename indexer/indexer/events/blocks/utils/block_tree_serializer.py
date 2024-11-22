@@ -141,6 +141,7 @@ def _fill_nft_mint_action(block: NftMintBlock, action: Action):
         action.source = block.data["source"].as_str()
     action.destination = block.data["address"].as_str()
     action.asset_secondary = action.destination
+    action.opcode = block.data['opcode']
     if block.data["collection"]:
         action.asset = block.data["collection"].as_str()
     action.nft_mint_data = {

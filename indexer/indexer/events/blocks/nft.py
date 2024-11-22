@@ -180,6 +180,7 @@ class NftMintBlockMatcher(BlockMatcher):
             "source": AccountId(source) if source else None,
             "address": AccountId(address),
             "index": nft_item.index,
+            "opcode": block.event_nodes[0].get_opcode(),
             "collection": AccountId(nft_item.collection_address) if nft_item.collection_address else None,
         }
         new_block = NftMintBlock(data)
