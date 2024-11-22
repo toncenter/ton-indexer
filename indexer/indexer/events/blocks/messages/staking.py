@@ -1,4 +1,4 @@
-from pytoniq_core import Slice
+from pytoniq_core import Slice, Address
 
 from indexer.events.blocks.utils import AccountId
 
@@ -21,3 +21,26 @@ class TONStakersMintNFT:
 
 class TONStakersInitNFT:
     opcode = 0x132F9A45
+
+class TONStakersNftBurn:
+    opcode = 0xF127FE4E
+
+class TONStakersNftBurnNotification:
+    opcode = 0xED58B0B2
+
+    query_id: int
+    amount: int
+    owner: Address
+
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        self.query_id = slice.load_uint(64)
+        self.amount = slice.load_coins()
+        self.owner = slice.load_address()
+
+# Payout after nft burnt
+class TONStakersDistributedAsset:
+    opcode = 0xDB3B8ABD
+
+class TONStakersPoolWithdrawal:
+    opcode = 0x0A77535C

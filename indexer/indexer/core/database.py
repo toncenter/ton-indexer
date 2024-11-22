@@ -293,6 +293,10 @@ class Action(Base):
         Column('dex_jetton_wallet_2', String),
         Column("lp_tokens_burned", Numeric),
     ]))
+    stake_withdrawal_data = Column(CompositeType("stake_withdrawal_details", [
+        Column("provider", String),
+        Column("ts_nft", String),
+    ]))
     extended_tx_hashes: list[str] = Column(ARRAY(String()))
     accounts: list[str]
 

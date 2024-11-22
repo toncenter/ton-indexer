@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 from typing import TypeVar, Type
 
-from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
-from indexer.events.blocks.core import Block, AccountFlow, AccountValueFlow
-from indexer.events.blocks.utils import EventNode
+from indexer.events.blocks.basic_blocks import CallContractBlock
+from indexer.events.blocks.core import Block, AccountValueFlow
+from indexer.events.blocks.labels import LabelBlock
 
 T = TypeVar('T')
 
@@ -31,3 +32,9 @@ def merge_flows(blocks: list[Block]) -> AccountValueFlow:
     for block in blocks:
         flow.merge(block.value_flow)
     return flow
+
+def get_labeled(label: str, blocks: list[Block], block_type: Type[T] = Block ) -> T | None:
+    for b in blocks:
+        if isinstance(b, LabelBlock) and isinstance(b.block, block_type):
+            if b.label == label:
+                return b.block
