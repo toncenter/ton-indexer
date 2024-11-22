@@ -27,9 +27,9 @@ def extract_target_wallet_stonfi_swap(message: Message) -> set[str]:
 def extract_additional_addresses(tx: Transaction) -> set[str]:
     accounts = set()
     for msg in tx.messages:
-        opcode = msg.opcode
-        if opcode < 0:
-            opcode = 0xFFFFFFFF
+        if msg.opcode is None:
+            continue
+        opcode = msg.opcode & 0xFFFFFFFF
         try:
             if opcode == JettonTransfer.opcode:
                 accounts.update(extract_target_wallet_stonfi_swap(msg))
