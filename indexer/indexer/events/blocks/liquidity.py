@@ -263,7 +263,6 @@ class DedustDepositBlockMatcher(BlockMatcher):
         )
 
     def test_self(self, block: Block):
-        print("in matcher for dedust deposit")
         return (
             isinstance(block, CallContractBlock)
             and block.opcode == DedustDepositLiquidityToPool.opcode
@@ -324,7 +323,6 @@ class DedustDepositFirstAssetBlockMatcher(BlockMatcher):
         )
 
     def test_self(self, block: Block):
-        print("in matcher for dedust deposit 1st asset")
         return (
             isinstance(block, CallContractBlock)
             and block.opcode == DedustTopUpLiquidityDepositContract.opcode
