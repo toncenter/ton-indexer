@@ -36,6 +36,7 @@ func (e IndexError) Error() string {
 // models
 type AddressBookRow struct {
 	UserFriendly *string `json:"user_friendly"`
+	Domain       *string `json:"domain"`
 } // @name AddressBookRow
 
 type AddressBook map[string]AddressBookRow // @name AddressBook

@@ -14,19 +14,13 @@ import (
 )
 
 // utils
-func getAccountAddressFriendly(account string, code_hash *string, account_status *string, is_testnet bool) string {
+func getAccountAddressFriendly(account string, code_hash *string, is_testnet bool) string {
 	addr, err := address.ParseRawAddr(strings.Trim(account, " "))
 	if err != nil {
 		return "addr_none"
 	}
 	bouncable := true
-	if code_hash == nil {
-		bouncable = false
-	}
-	if account_status != nil && *account_status == "uninit" {
-		bouncable = false
-	}
-	if code_hash != nil && WalletsHashMap[*code_hash] {
+	if code_hash == nil || WalletsHashMap[*code_hash] {
 		bouncable = false
 	}
 	addr.SetBounce(bouncable)
@@ -1386,7 +1380,14 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 	{
 		addr_list_str := strings.Join(quote_addr_list, ",")
 
-		query := fmt.Sprintf("select account, account_friendly, code_hash, account_status from latest_account_states where account in (%s)", addr_list_str)
+		query := fmt.Sprintf(`SELECT DISTINCT ON (las.account) las.account, las.code_hash, dns.domain FROM
+  								latest_account_states las
+							LEFT JOIN
+  								dns_entries de ON las.account = de.dns_wallet AND de.dns_wallet = de.nft_item_owner
+							WHERE
+								las.account IN (%s)
+							ORDER BY
+								las.account, LENGTH(de.domain) ASC`, addr_list_str)
 
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
@@ -1404,12 +1405,11 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		book_tmp := AddressBook{}
 		for rows.Next() {
 			var account string
-			var account_friendly *string
 			var code_hash *string
-			var account_status *string
-			if err := rows.Scan(&account, &account_friendly, &code_hash, &account_status); err == nil {
-				addr_str := getAccountAddressFriendly(account, code_hash, account_status, settings.IsTestnet)
-				book_tmp[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: &addr_str}
+			var domain *string
+			if err := rows.Scan(&account, &code_hash, &domain); err == nil {
+				addr_str := getAccountAddressFriendly(account, code_hash, settings.IsTestnet)
+				book_tmp[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: &addr_str, Domain: domain}
 			} else {
 				return nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -1427,8 +1427,8 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 			if rec, ok := book_tmp[account]; ok {
 				book[addr] = rec
 			} else {
-				addr_str := getAccountAddressFriendly(account, nil, nil, settings.IsTestnet)
-				book[addr] = AddressBookRow{UserFriendly: &addr_str}
+				addr_str := getAccountAddressFriendly(account, nil, settings.IsTestnet)
+				book[addr] = AddressBookRow{UserFriendly: &addr_str, Domain: nil}
 			}
 		}
 	}
@@ -2088,9 +2088,8 @@ func (db *DbClient) QueryAddressBook(
 		if vv, ok := book[v]; ok {
 			new_addr_book[k] = vv
 		} else {
-			new_addr_book[k] = AddressBookRow{nil}
+			new_addr_book[k] = AddressBookRow{UserFriendly: nil, Domain: nil}
 		}
-
 	}
 	return new_addr_book, nil
 }
