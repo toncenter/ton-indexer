@@ -274,6 +274,7 @@ def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
     action.change_dns_record_data = data
 
 def _fill_tonstakers_deposit_action(block: TONStakersDepositBlock, action: Action):
+    action.type = 'stake_deposit'
     action.source = _addr(block.data.source)
     action.destination = _addr(block.data.pool)
     action.amount = block.data.value.value
