@@ -45,6 +45,41 @@ def load_asset(slice: Slice) -> Asset:
         account_id = slice.load_bytes(32)
         return Asset(False, Address((wc, account_id)))
 
+class PTonTransfer:
+    opcode = 0x01f3835d
+    def __init__(self, body: Slice):
+        body.load_uint(32)
+        self.query_id = body.load_uint(64)
+        self.ton_amount = body.load_coins()
+        self.refund_address = body.load_address()
+
+
+class StonfiV2PayTo:
+    def __init__(self, body: Slice):
+        body.load_uint(32) # opcode
+        self.query_id = body.load_uint(64)
+        self.to_address = body.load_address()
+        self.excesses_address = body.load_address()
+        self.original_caller = body.load_address()
+        self.exit_code = body.load_uint(32)
+        self.custom_payload = body.load_maybe_ref()
+        additional_info = body.load_ref().to_slice()
+        self.fwd_ton_amount = additional_info.load_coins()
+        self.amount0_out = additional_info.load_coins()
+        self.token0_address = additional_info.load_address()
+        self.amount1_out = additional_info.load_coins()
+        self.token1_address = additional_info.load_address()
+
+
+class StonfiV2ProvideLiquidity:
+    opcode = 0x37c096df
+    def __init__(self, body: Slice):
+        body.load_uint(32)
+        self.query_id = body.load_uint(64)
+        self.from_user = body.load_address()
+        self.amount1 = body.load_coins()
+        self.amount2 = body.load_coins()
+
 
 class DedustSwapNotification:
     opcode = 0x9c610de3

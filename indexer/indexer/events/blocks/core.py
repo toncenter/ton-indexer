@@ -111,10 +111,12 @@ class Block:
     max_lt: int
     type: str
     value_flow: AccountValueFlow
+    transient: bool
 
     def __init__(self, type: str, nodes: list[EventNode], v=None):
         self.failed = False
         self.broken = False
+        self.transient = False
         self.event_nodes = nodes
         self.children_blocks = []
         self.next_blocks = []
@@ -176,7 +178,7 @@ class Block:
         #     else:
         #         blocks_to_merge.append(block)
         """Merges all blocks into one. Preserves structure"""
-        blocks_to_merge = list(set(blocks))
+        blocks_to_merge = [b for b in set(blocks) if b.transient is False]
         earliest_block = _ensure_earliest_common_block(blocks_to_merge)
         if earliest_block is None:
             raise "Earliest common block not found"
@@ -225,6 +227,22 @@ class Block:
     def connect(self, other: 'Block'):
         self.next_blocks.append(other)
         other.previous_block = self
+
+    def insert_between(self, next_blocks: ['Block'], new_block: 'Block'):
+        assert all(n in self.next_blocks for n in next_blocks)
+        for child in self.children_blocks:
+            for next_block in next_blocks:
+                if next_block in child.next_blocks:
+                    child.next_blocks.remove(next_block)
+                    child.next_blocks.append(new_block)
+        self.next_blocks = [n for n in self.next_blocks if n not in next_blocks]
+        for next_block in next_blocks:
+            for child in next_block.children_blocks:
+                if child.previous_block == next_block:
+                    child.previous_block = new_block
+        self.connect(new_block)
+        for next_block in next_blocks:
+            new_block.connect(next_block)
 
     def topmost_parent(self):
         if self.parent is None:
@@ -296,3 +314,7 @@ class SingleLevelWrapper(Block):
 
         self.compact_connections()
         self.calculate_min_max_lt()
+
+class EmptyBlock(Block):
+    def __init__(self):
+        super().__init__('empty', [], None)

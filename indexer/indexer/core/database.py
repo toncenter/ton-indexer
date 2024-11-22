@@ -281,6 +281,18 @@ class Action(Base):
         Column('user_jetton_wallet_2', String),
         Column("lp_tokens_minted", Numeric),
     ]))
+    dex_withdraw_liquidity_data = Column(CompositeType("dex_withdraw_liquidity_details", [
+        Column("dex", String),
+        Column("amount1", Numeric),
+        Column("amount2", Numeric),
+        Column('asset1_out', String),
+        Column('asset2_out', String),
+        Column('user_jetton_wallet_1', String),
+        Column('user_jetton_wallet_2', String),
+        Column('dex_jetton_wallet_1', String),
+        Column('dex_jetton_wallet_2', String),
+        Column("lp_tokens_burned", Numeric),
+    ]))
     extended_tx_hashes: list[str] = Column(ARRAY(String()))
     accounts: list[str]
 

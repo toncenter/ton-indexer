@@ -18,7 +18,8 @@ from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher
 from indexer.events.blocks.staking import TONStakersDepositRequestMatcher, TONStakersWithdrawRequestMatcher
 from indexer.events.blocks.subscriptions import SubscriptionBlockMatcher, UnsubscribeBlockMatcher
-from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher
+from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher, StonfiV2ProvideLiquidityMatcher, \
+    StonfiV2WithdrawLiquidityMatcher, StonfiV2SwapBlockMatcher
 from indexer.events.blocks.utils import AccountId
 from indexer.events.blocks.utils import NoMessageBodyException
 from indexer.events.blocks.utils import to_tree, EventNode
@@ -52,6 +53,7 @@ matchers = [
     JettonBurnBlockMatcher(),
     DedustSwapBlockMatcher(),
     StonfiSwapBlockMatcher(),
+    StonfiV2SwapBlockMatcher(),
     NftTransferBlockMatcher(),
     TelegramNftPurchaseBlockMatcher(),
     ChangeDnsRecordMatcher(),
@@ -59,7 +61,9 @@ matchers = [
     ElectionRecoverStakeBlockMatcher(),
     SubscriptionBlockMatcher(),
     UnsubscribeBlockMatcher(),
-    AuctionBidMatcher()
+    AuctionBidMatcher(),
+    StonfiV2ProvideLiquidityMatcher(),
+    StonfiV2WithdrawLiquidityMatcher()
 ]
 
 trace_post_processors = [
