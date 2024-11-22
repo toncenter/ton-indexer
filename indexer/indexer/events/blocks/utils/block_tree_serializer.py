@@ -13,8 +13,8 @@ from indexer.events.blocks.jettons import (
 )
 from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
 from indexer.events.blocks.liquidity import (
-    DEXDepositFirstAssetBlock,
-    DEXProvideLiquidityBlock,
+    DedustDepositLiquidityPartial,
+    DedustDepositLiquidity,
 )
 from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
 from indexer.events.blocks.staking import TONStakersDepositBlock, TONStakersWithdrawRequestBlock, \
@@ -197,7 +197,7 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
         'dex_outgoing_transfer': dex_outgoing_transfer,
     }
 
-def _fill_provide_liquidity(block: Block, action: Action):
+def _fill_dex_deposit_liquidity(block: Block, action: Action):
     action.source = _addr(block.data['sender'])
     action.destination = _addr(block.data['pool'])
     action.dex_deposit_liquidity_data = {
@@ -229,7 +229,7 @@ def _fill_dex_withdraw_liquidity(block: Block, action: Action):
         'dex_wallet_2': _addr(block.data['dex_wallet_2']),
         'dex_jetton_wallet_2': _addr(block.data['dex_jetton_wallet_2']),
         'is_refund' : block.data['is_refund'],
-        'lp_tokens_burned': block.data['burned_lp_tokens'].value if block.data['burned_lp_tokens'] is not None else None
+        'lp_tokens_burnt': block.data['lp_tokens_burnt'].value if block.data['lp_tokens_burnt'] is not None else None
     }
 
 def _fill_jetton_burn_action(block: JettonBurnBlock, action: Action):
@@ -326,7 +326,8 @@ def _fill_auction_bid_action(block: Block, action: Action):
     action.asset_secondary = block.data['nft_address'].as_str()
     action.value = block.data['amount'].value
 
-def _fill_dex_deposit_action(block: DEXProvideLiquidityBlock, action: Action):
+def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action: Action):
+    action.type='dex_deposit_liquidity'
     action.source = _addr(block.data["sender"])
     action.destination = _addr(block.data["pool_address"])
     action.destination_secondary = _addr(block.data["deposit_contract"])
@@ -341,7 +342,8 @@ def _fill_dex_deposit_action(block: DEXProvideLiquidityBlock, action: Action):
         "lp_tokens_minted": block.data["lp_tokens_minted"].value,
     }
 
-def _fill_dex_deposit_first_asset_action(block: DEXDepositFirstAssetBlock, action: Action):
+def _fill_dedust_deposit_liquidity_partial_action(block: DedustDepositLiquidityPartial, action: Action):
+    action.type='dex_deposit_liquidity'
     action.source = _addr(block.data["sender"])
     action.destination_secondary = _addr(block.data["deposit_contract"])
     action.dex_deposit_liquidity_data = {
@@ -369,10 +371,10 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_call_contract_action(block, action)
         case 'ton_transfer':
             _fill_ton_transfer_action(block, action)
-        case "dex_deposit":
-            _fill_dex_deposit_action(block, action)
-        case "dex_deposit_first_asset":
-            _fill_dex_deposit_first_asset_action(block, action)
+        case "dedust_provide_liquidity":
+            _fill_dedust_deposit_liquidity_action(block, action)
+        case "dedust_provide_liquidity_partial":
+            _fill_dedust_deposit_liquidity_partial_action(block, action)
         case "jetton_transfer":
             _fill_jetton_transfer_action(block, action)
         case 'nft_transfer':
@@ -400,7 +402,7 @@ def block_to_action(block: Block, trace_id: str) -> Action:
         case "subscribe":
             _fill_subscribe_action(block, action)
         case 'dex_deposit_liquidity':
-            _fill_provide_liquidity(block, action)
+            _fill_dex_deposit_liquidity(block, action)
         case 'dex_withdraw_liquidity':
             _fill_dex_withdraw_liquidity(block, action)
         case 'unsubscribe':

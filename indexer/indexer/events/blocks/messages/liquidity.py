@@ -95,3 +95,13 @@ class DedustDestroyLiquidityDepositContract:
 
 class DedustReturnExcessFromVault:
     opcode = 0x6B0B787F
+
+
+class StonfiV2ProvideLiquidity:
+    opcode = 0x37c096df
+    def __init__(self, body: Slice):
+        body.load_uint(32)
+        self.query_id = body.load_uint(64)
+        self.from_user = body.load_address()
+        self.amount1 = body.load_coins()
+        self.amount2 = body.load_coins()

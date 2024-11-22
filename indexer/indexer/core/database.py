@@ -291,7 +291,7 @@ class Action(Base):
         Column('user_jetton_wallet_2', String),
         Column('dex_jetton_wallet_1', String),
         Column('dex_jetton_wallet_2', String),
-        Column("lp_tokens_burned", Numeric),
+        Column("lp_tokens_burnt", Numeric),
     ]))
     stake_withdrawal_data = Column(CompositeType("stake_withdrawal_details", [
         Column("provider", String),
