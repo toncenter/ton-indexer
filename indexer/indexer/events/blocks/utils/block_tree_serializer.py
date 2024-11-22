@@ -415,6 +415,8 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_election_action(block, action)
         case 'auction_bid':
             _fill_auction_bid_action(block, action)
+        case _:
+            logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
     action.accounts.append(action.source)
     action.accounts.append(action.source_secondary)
