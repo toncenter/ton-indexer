@@ -3,11 +3,12 @@ package index
 import (
 	"context"
 	"fmt"
-	"github.com/lib/pq"
 	"log"
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/lib/pq"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xssnick/tonutils-go/address"
@@ -1383,11 +1384,11 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		query := fmt.Sprintf(`SELECT DISTINCT ON (las.account) las.account, las.code_hash, dns.domain FROM
   								latest_account_states las
 							LEFT JOIN
-  								dns_entries de ON las.account = de.dns_wallet AND de.dns_wallet = de.nft_item_owner
+  								dns_entries dns ON las.account = dns.dns_wallet AND dns.dns_wallet = dns.nft_item_owner
 							WHERE
 								las.account IN (%s)
 							ORDER BY
-								las.account, LENGTH(de.domain) ASC`, addr_list_str)
+								las.account, LENGTH(dns.domain) ASC`, addr_list_str)
 
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
