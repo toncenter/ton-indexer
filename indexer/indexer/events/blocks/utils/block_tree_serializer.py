@@ -19,7 +19,7 @@ from indexer.events.blocks.liquidity import (
     DEXProvideLiquidityBlock,
 )
 from indexer.events.blocks.nft import NftMintBlock, NftTransferBlock
-from indexer.events.blocks.staking import TONStakersDepositRequestBlock, TONStakersWithdrawRequestBlock
+from indexer.events.blocks.staking import NominatorPoolDepositBlock, NominatorPoolWithdrawRequestBlock, TONStakersDepositRequestBlock, TONStakersWithdrawRequestBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
@@ -324,6 +324,15 @@ def _fill_tonstakers_withdraw_request_action(block: TONStakersWithdrawRequestBlo
     action.destination = block.data.pool.as_str()
     action.value = block.data.value.value
 
+def _fill_nominator_pool_deposit_action(block: NominatorPoolDepositBlock, action: Action):
+    action.source = block.data.source.as_str()
+    action.destination = block.data.pool.as_str()
+    action.value = block.data.value.value
+
+def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawRequestBlock, action: Action):
+    action.source = block.data.source.as_str()
+    action.destination = block.data.pool.as_str()
+
 def _fill_subscribe_action(block: SubscriptionBlock, action: Action):
     action.source = block.data["subscriber"].as_str()
     action.destination = (
@@ -363,6 +372,10 @@ def block_to_action(block: Block, trace_id: str) -> Action:
     match block.btype:
         case "call_contract":
             _fill_call_contract_action(block, action)
+        case "nominator_pool_deposit":
+            _fill_nominator_pool_deposit_action(block, action)
+        case "nominator_pool_withdraw_request":
+            _fill_nominator_pool_withdraw_request_action(block, action)
         case "ton_transfer":
             _fill_ton_transfer_action(block, action)
         case "dex_deposit":

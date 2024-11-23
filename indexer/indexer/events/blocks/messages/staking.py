@@ -21,3 +21,4 @@ class TONStakersMintNFT:
 
 class TONStakersInitNFT:
     opcode = 0x132F9A45
+

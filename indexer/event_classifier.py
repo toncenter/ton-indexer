@@ -137,8 +137,13 @@ async def process_emulated_trace(trace_id):
 def fetch_events_for_processing(queue: mp.Queue, fetch_size: int):
     logger.info(f"Fetching unclassified traces...")
 
-    queue.put(("6d7dwnLoF99c/yEeuZuVHsYf9QkCP0n14OaXdvrlO0Y=", 6))  # deposit
-    queue.put(("cYmtAq1JkZOdmDnyv0GdrKSURYyLoSi3yn0gEEPtJeM=", 7))  # withdraw
+    # tonstakers
+    # queue.put(("6d7dwnLoF99c/yEeuZuVHsYf9QkCP0n14OaXdvrlO0Y=", 6))  # deposit
+    # queue.put(("cYmtAq1JkZOdmDnyv0GdrKSURYyLoSi3yn0gEEPtJeM=", 7))  # withdraw
+    # nominators:
+    queue.put(("nsZ6XmbzxX30BS2hFYkp7Q2dSl+MDlhP5XL36SP4nW4=", 2))  # deposit
+    queue.put(("bNfxJjl7pfQGduPLNphoiXQiwtJX6VlilCmtyYu6+0Q=", 3))  # withdraw
+    
 
     # while True:
     #     with SyncSessionMaker() as session:
