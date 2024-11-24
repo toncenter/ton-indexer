@@ -403,7 +403,7 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_tonstakers_deposit_action(block, action)
         case "tonstakers_withdraw_request":
             _fill_tonstakers_withdraw_request_action(block, action)
-        case "tonstaker_withdraw":
+        case "tonstakers_withdraw":
             _fill_tonstakers_withdraw_action(block, action)
         case "subscribe":
             _fill_subscribe_action(block, action)
