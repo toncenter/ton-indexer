@@ -19,7 +19,7 @@ class DeleteDnsRecordBlock(Block):
 
 class DnsRenewBlock(Block):
     def __init__(self, data):
-        super().__init__('dns_renew', [], data)
+        super().__init__('renew_dns', [], data)
 
     def __repr__(self):
         return f"DNS_RENEW {self.event_nodes[0].message.transaction.hash}"

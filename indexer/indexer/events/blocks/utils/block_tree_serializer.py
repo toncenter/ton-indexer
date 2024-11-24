@@ -396,7 +396,7 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_change_dns_record_action(block, action)
         case 'delete_dns':
             _fill_delete_dns_record_action(block, action)
-        case 'dns_renew':
+        case 'renew_dns':
             _fill_dns_renew_action(block, action)
         case "tonstakers_deposit":
             _fill_tonstakers_deposit_action(block, action)
