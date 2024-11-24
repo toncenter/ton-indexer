@@ -307,9 +307,40 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Value.DnsSmcAddress = raw.ChangeDNSRecordValue
 		details.Value.Flags = raw.ChangeDNSRecordFlags
 		act.Details = &details
+	case "dex_deposit_liquidity":
+		var details ActionDetailsDexDepositLiquidity
+		details.Source = raw.Source
+		details.Dex = raw.DexDepositLiquidityDataDex
+		details.Pool = raw.Destination
+		details.Asset1 = raw.DexDepositLiquidityDataAsset1
+		details.Asset2 = raw.DexDepositLiquidityDataAsset2
+		details.Amount1 = raw.DexDepositLiquidityDataAmount1
+		details.Amount2 = raw.DexDepositLiquidityDataAmount2
+		details.UserJettonWallet1 = raw.DexDepositLiquidityDataUserJettonWallet1
+		details.UserJettonWallet2 = raw.DexDepositLiquidityDataUserJettonWallet2
+		details.LpTokensMinted = raw.DexDepositLiquidityDataLpTokensMinted
+		act.Details = &details
+	case "dex_withdraw_liquidity":
+		var details ActionDetailsDexWithdrawLiquidity
+		details.Source = raw.Source
+		details.Dex = raw.DexWithdrawLiquidityDataDex
+		details.Pool = raw.Destination
+		details.Asset1 = raw.DexWithdrawLiquidityDataAsset1Out
+		details.Asset2 = raw.DexWithdrawLiquidityDataAsset2Out
+		details.Amount1 = raw.DexWithdrawLiquidityDataAmount1
+		details.Amount2 = raw.DexWithdrawLiquidityDataAmount2
+		details.UserJettonWallet1 = raw.DexWithdrawLiquidityDataUserJettonWallet1
+		details.UserJettonWallet2 = raw.DexWithdrawLiquidityDataUserJettonWallet2
+		details.LpTokensBurnt = raw.DexWithdrawLiquidityDataLpTokensBurnt
+		act.Details = &details
 	case "delete_dns":
 		var details ActionDetailsDeleteDns
 		details.Key = raw.ChangeDNSRecordKey
+		act.Details = &details
+	case "renew_dns":
+		var details ActionDetailsRenewDns
+		details.Asset = raw.Destination
+		details.Source = raw.Source
 		act.Details = &details
 	case "election_deposit":
 		var details ActionDetailsElectionDeposit
@@ -369,6 +400,15 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.ForwardPayload = raw.JettonTransferForwardPayload
 		details.ForwardAmount = raw.JettonTransferForwardAmount
 		act.Details = &details
+	case "jetton_mint":
+		var details ActionDetailsJettonMint
+		details.Asset = raw.Asset
+		details.Amount = raw.Amount
+		details.TonAmount = raw.Value
+		details.Receiver = raw.Destination
+		details.ReceiverJettonWallet = raw.DestinationSecondary
+		act.Details = &details
+
 	case "nft_mint":
 		var details ActionDetailsNftMint
 		details.Owner = raw.Source
@@ -394,6 +434,21 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		act.Details = &details
 	case "tick_tock":
 		var details ActionDetailsTickTock
+		act.Details = &details
+	case "stake_deposit":
+		var details ActionDetailsStakeDeposit
+		details.StakeHolder = raw.Source
+		details.Amount = raw.Amount
+		details.Pool = raw.Destination
+		details.Provider = raw.StakingDataProvider
+		act.Details = &details
+	case "stake_withdrawal", "stake_withdrawal_request":
+		var details ActionDetailsWithdrawStake
+		details.StakeHolder = raw.Source
+		details.Amount = raw.Amount
+		details.Pool = raw.Destination
+		details.Provider = raw.StakingDataProvider
+		details.PayoutNft = raw.StakingDataTsNft
 		act.Details = &details
 	case "subscribe":
 		var details ActionDetailsSubscribe
@@ -719,7 +774,28 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.JettonSwapDexIncomingTransferDestinationJettonWallet, &act.JettonSwapDexOutgoingTransferAmount, &act.JettonSwapDexOutgoingTransferAsset,
 		&act.JettonSwapDexOutgoingTransferSource, &act.JettonSwapDexOutgoingTransferDestination, &act.JettonSwapDexOutgoingTransferSourceJettonWallet,
 		&act.JettonSwapDexOutgoingTransferDestinationJettonWallet, &act.JettonSwapPeerSwaps, &act.ChangeDNSRecordKey, &act.ChangeDNSRecordValueSchema,
-		&act.ChangeDNSRecordValue, &act.ChangeDNSRecordFlags, &act.NFTMintNFTItemIndex, &act.Success)
+		&act.ChangeDNSRecordValue, &act.ChangeDNSRecordFlags, &act.NFTMintNFTItemIndex,
+		&act.DexWithdrawLiquidityDataDex,
+		&act.DexWithdrawLiquidityDataAmount1,
+		&act.DexWithdrawLiquidityDataAmount2,
+		&act.DexWithdrawLiquidityDataAsset1Out,
+		&act.DexWithdrawLiquidityDataAsset2Out,
+		&act.DexWithdrawLiquidityDataUserJettonWallet1,
+		&act.DexWithdrawLiquidityDataUserJettonWallet2,
+		&act.DexWithdrawLiquidityDataDexJettonWallet1,
+		&act.DexWithdrawLiquidityDataDexJettonWallet2,
+		&act.DexWithdrawLiquidityDataLpTokensBurnt,
+		&act.DexDepositLiquidityDataDex,
+		&act.DexDepositLiquidityDataAmount1,
+		&act.DexDepositLiquidityDataAmount2,
+		&act.DexDepositLiquidityDataAsset1,
+		&act.DexDepositLiquidityDataAsset2,
+		&act.DexDepositLiquidityDataUserJettonWallet1,
+		&act.DexDepositLiquidityDataUserJettonWallet2,
+		&act.DexDepositLiquidityDataLpTokensMinted,
+		&act.StakingDataProvider,
+		&act.StakingDataTsNft,
+		&act.Success)
 
 	if err != nil {
 		return nil, err

@@ -472,6 +472,26 @@ type RawAction struct {
 	ChangeDNSRecordValue                                 *string
 	ChangeDNSRecordFlags                                 *int64
 	NFTMintNFTItemIndex                                  *string
+	DexWithdrawLiquidityDataDex                          *string
+	DexWithdrawLiquidityDataAmount1                      *string
+	DexWithdrawLiquidityDataAmount2                      *string
+	DexWithdrawLiquidityDataAsset1Out                    *AccountAddress
+	DexWithdrawLiquidityDataAsset2Out                    *AccountAddress
+	DexWithdrawLiquidityDataUserJettonWallet1            *AccountAddress
+	DexWithdrawLiquidityDataUserJettonWallet2            *AccountAddress
+	DexWithdrawLiquidityDataDexJettonWallet1             *AccountAddress
+	DexWithdrawLiquidityDataDexJettonWallet2             *AccountAddress
+	DexWithdrawLiquidityDataLpTokensBurnt                *string
+	DexDepositLiquidityDataDex                           *string
+	DexDepositLiquidityDataAmount1                       *string
+	DexDepositLiquidityDataAmount2                       *string
+	DexDepositLiquidityDataAsset1                        *AccountAddress
+	DexDepositLiquidityDataAsset2                        *AccountAddress
+	DexDepositLiquidityDataUserJettonWallet1             *AccountAddress
+	DexDepositLiquidityDataUserJettonWallet2             *AccountAddress
+	DexDepositLiquidityDataLpTokensMinted                *string
+	StakingDataProvider                                  *string
+	StakingDataTsNft                                     *AccountAddress
 	Success                                              *bool
 } // @name RawAction
 
@@ -491,9 +511,11 @@ type ActionDetailsTonTransfer struct {
 }
 
 type ActionDetailsChangeDnsValue struct {
-	SumType       *string `json:"sum_type"`
-	DnsSmcAddress *string `json:"dns_smc_address"`
-	Flags         *int64  `json:"flags"`
+	SumType       *string         `json:"sum_type"`
+	DnsSmcAddress *string         `json:"dns_smc_address"`
+	Flags         *int64          `json:"flags"`
+	Source        *AccountAddress `json:"source"`
+	Asset         *AccountAddress `json:"asset"`
 }
 
 type ActionDetailsChangeDns struct {
@@ -502,7 +524,14 @@ type ActionDetailsChangeDns struct {
 }
 
 type ActionDetailsDeleteDns struct {
-	Key *string `json:"hash"`
+	Key    *string         `json:"hash"`
+	Source *AccountAddress `json:"source"`
+	Asset  *AccountAddress `json:"asset"`
+}
+
+type ActionDetailsRenewDns struct {
+	Source *AccountAddress `json:"source"`
+	Asset  *AccountAddress `json:"asset"`
 }
 
 type ActionDetailsElectionDeposit struct {
@@ -557,6 +586,14 @@ type ActionDetailsJettonTransfer struct {
 	ForwardAmount        *string         `json:"forward_amount"`
 }
 
+type ActionDetailsJettonMint struct {
+	Asset                *AccountAddress `json:"asset"`
+	Receiver             *AccountAddress `json:"receiver"`
+	ReceiverJettonWallet *AccountAddress `json:"receiver_jetton_wallet"`
+	Amount               *string         `json:"amount"`
+	TonAmount            *string         `json:"ton_amount"`
+}
+
 type ActionDetailsNftMint struct {
 	Owner         *AccountAddress `json:"owner,omitempty"`
 	NftItem       *AccountAddress `json:"nft_item"`
@@ -600,6 +637,48 @@ type ActionDetailsUnsubscribe struct {
 type ActionDetailsWtonMint struct {
 	Amount   *string         `json:"amount"`
 	Receiver *AccountAddress `json:"receiver"`
+}
+
+type ActionDetailsDexDepositLiquidity struct {
+	Dex               *string         `json:"dex"`
+	Amount1           *string         `json:"amount_1"`
+	Amount2           *string         `json:"amount_2"`
+	Asset1            *AccountAddress `json:"asset_1"`
+	Asset2            *AccountAddress `json:"asset_2"`
+	UserJettonWallet1 *AccountAddress `json:"user_jetton_wallet_1"`
+	UserJettonWallet2 *AccountAddress `json:"user_jetton_wallet_2"`
+	Source            *AccountAddress `json:"source"`
+	Pool              *AccountAddress `json:"pool"`
+	LpTokensMinted    *string         `json:"lp_tokens_minted"`
+}
+
+type ActionDetailsDexWithdrawLiquidity struct {
+	Dex               *string         `json:"dex"`
+	Amount1           *string         `json:"amount_1"`
+	Amount2           *string         `json:"amount_2"`
+	Asset1            *AccountAddress `json:"asset_1"`
+	Asset2            *AccountAddress `json:"asset_2"`
+	UserJettonWallet1 *AccountAddress `json:"user_jetton_wallet_1"`
+	UserJettonWallet2 *AccountAddress `json:"user_jetton_wallet_2"`
+	LpTokensBurnt     *string         `json:"lp_tokens_burnt"`
+	IsRefund          *bool           `json:"is_refund"`
+	Source            *AccountAddress `json:"source"`
+	Pool              *AccountAddress `json:"pool"`
+}
+
+type ActionDetailsStakeDeposit struct {
+	Provider    *string         `json:"provider"`
+	StakeHolder *AccountAddress `json:"stake_holder"`
+	Pool        *AccountAddress `json:"pool"`
+	Amount      *string         `json:"amount"`
+}
+
+type ActionDetailsWithdrawStake struct {
+	Provider    *string         `json:"provider"`
+	StakeHolder *AccountAddress `json:"stake_holder"`
+	Pool        *AccountAddress `json:"pool"`
+	Amount      *string         `json:"amount"`
+	PayoutNft   *AccountAddress `json:"payout_nft"`
 }
 
 type Action struct {
