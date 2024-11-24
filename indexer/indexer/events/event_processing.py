@@ -11,7 +11,7 @@ from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlo
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
-from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher
+from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher, JettonMintBlockMatcher
 from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, \
     post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher
 from indexer.events.blocks.messages import TonTransferMessage
@@ -63,6 +63,7 @@ matchers = [
     SubscriptionBlockMatcher(),
     UnsubscribeBlockMatcher(),
     AuctionBidMatcher(),
+    JettonMintBlockMatcher(),
     StonfiV2ProvideLiquidityMatcher(),
     StonfiV2WithdrawLiquidityMatcher()
 ]
