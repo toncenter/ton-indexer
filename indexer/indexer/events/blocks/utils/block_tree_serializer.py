@@ -363,10 +363,11 @@ def _fill_dedust_deposit_liquidity_partial_action(block: DedustDepositLiquidityP
     }
 
 def _fill_jetton_mint_action(block: JettonMintBlock, action: Action):
-    action.destination = block.data["to"].as_str()
-    action.destination_secondary = block.data["to_jetton_wallet"].as_str()
-    action.asset = block.data["asset"].jetton_address.as_str()
-    action.amount = block.data["amount"].value
+    action.destination = _addr(block.data["to"])
+    action.destination_secondary = _addr(block.data["to_jetton_wallet"])
+    action.asset = _addr(block.data["asset"].jetton_address)
+    action.amount = block.data["amount"].value if block.data["amount"] is not None else None
+    action.value = block.data["ton_amount"].value if block.data["ton_amount"] is not None else None
 
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str) -> Action:

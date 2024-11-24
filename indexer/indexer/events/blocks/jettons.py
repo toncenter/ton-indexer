@@ -112,35 +112,45 @@ async def _get_jetton_mint_data(
     new_block: Block, block: Block | CallContractBlock
 ) -> dict:
     jetton_mint_info = JettonMint(block.get_body())
-    internal_transfer_info = JettonInternalTransfer(block.next_blocks[0].get_body())
-    # receiver_address = (
-    #     block.next_blocks[0].next_blocks[0].event_nodes[0].message.destination
-    # )
+    if not block.failed:
+        internal_transfer_info = JettonInternalTransfer(block.next_blocks[0].get_body())
+        # receiver_address = (
+        #     block.next_blocks[0].next_blocks[0].event_nodes[0].message.destination
+        # )
 
-    receiver_jwallet_addr = block.next_blocks[0].event_nodes[0].message.destination
-    receiver_jwallet = await context.interface_repository.get().get_jetton_wallet(
-        receiver_jwallet_addr
-    )
-    assert receiver_jwallet is not None
+        receiver_jwallet_addr = block.next_blocks[0].event_nodes[0].message.destination
+        receiver_jwallet = await context.interface_repository.get().get_jetton_wallet(
+            receiver_jwallet_addr
+        )
+        assert receiver_jwallet is not None
 
-    receiver_account = AccountId(receiver_jwallet.owner)
+        receiver_account = AccountId(receiver_jwallet.owner)
 
-    new_block.value_flow.add_jetton(
-        # owner, jetton master, amount to add
-        receiver_account,
-        AccountId(receiver_jwallet.jetton),
-        internal_transfer_info.amount,
-    )
+        new_block.value_flow.add_jetton(
+            # owner, jetton master, amount to add
+            receiver_account,
+            AccountId(receiver_jwallet.jetton),
+            internal_transfer_info.amount,
+        )
 
-    data = {
-        "to": AccountId(receiver_jwallet.owner),
-        "to_jetton_wallet": AccountId(block.get_message().destination),
-        "amount": Amount(internal_transfer_info.amount),
-        "asset": Asset(
-            is_ton=False,
-            jetton_address=(receiver_jwallet.jetton),
-        ),
-    }
+        data = {
+            "to": AccountId(receiver_jwallet.owner),
+            "to_jetton_wallet": AccountId(block.get_message().destination),
+            "amount": Amount(internal_transfer_info.amount),
+            "ton_amount": Amount(jetton_mint_info.ton_amount),
+            "asset": Asset(
+                is_ton=False,
+                jetton_address=(receiver_jwallet.jetton),
+            ),
+        }
+    else:
+        data = {
+            "to": AccountId(jetton_mint_info.to_address),
+            "to_jetton_wallet": None,
+            "asset": Asset(is_ton=False, jetton_address=block.get_message().destination),
+            "amount": None,
+            "ton_amount": Amount(jetton_mint_info.ton_amount),
+        }
     return data
 
 class JettonBurnBlockMatcher(BlockMatcher):
