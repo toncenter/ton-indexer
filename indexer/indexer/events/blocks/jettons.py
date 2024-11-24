@@ -191,4 +191,5 @@ class JettonMintBlockMatcher(BlockMatcher):
         include.extend(other_blocks)
         new_block.data = await _get_jetton_mint_data(new_block, block)
         new_block.merge_blocks(include)
+        new_block.failed = block.failed
         return [new_block]
