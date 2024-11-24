@@ -2,6 +2,17 @@ from pytoniq_core import Slice, Address
 
 from indexer.events.blocks.utils import AccountId
 
+class ElectorRecoverStakeRequest:
+    opcode = 0x47657424
+
+class ElectorRecoverStakeConfirmation:
+    opcode = 0xf96f7324
+
+class ElectorDepositStakeConfirmation:
+    opcode = 0xf374484c
+
+class ElectorDepositStakeRequest:
+    opcode = 0x4e73744b
 
 class TONStakersDepositRequest:
     opcode = 0x47D54391
