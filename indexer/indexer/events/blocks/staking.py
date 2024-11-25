@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from indexer.events.blocks.basic_blocks import CallContractBlock
+from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import (
     BlockMatcher,
     ContractMatcher, OrMatcher,
@@ -81,6 +81,38 @@ class TONStakersWithdrawBlock(Block):
 
     def __repr__(self):
         return f"tonstakers_withdraw {self.data}"
+
+@dataclass
+class NominatorPoolDepositData:
+    source: AccountId
+    pool: AccountId
+    value: Amount
+
+
+class NominatorPoolDepositBlock(Block):
+    data: NominatorPoolDepositData
+
+    def __init__(self, data):
+        super().__init__("nominator_pool_deposit", [], data)
+
+    def __repr__(self):
+        return f"nominator_pool_deposit {self.data}"
+
+
+@dataclass
+class NominatorPoolWithdrawRequestData:
+    source: AccountId
+    pool: AccountId
+
+
+class NominatorPoolWithdrawRequestBlock(Block):
+    data: NominatorPoolWithdrawRequestData
+
+    def __init__(self, data):
+        super().__init__("nominator_pool_withdraw_request", [], data)
+
+    def __repr__(self):
+        return f"nominator_pool_withdraw_request {self.data}"
 
 
 class TONStakersDepositMatcher(BlockMatcher):
@@ -216,5 +248,62 @@ class TONStakersDelayedWithdrawalMatcher(BlockMatcher):
                 amount=Amount(notification_msg.amount)
             )
         )
+        new_block.merge_blocks([block] + other_blocks)
+        return [new_block]
+
+class NominatorPoolDepositMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block):
+        return isinstance(block, TonTransferBlock)
+        # return isinstance(block, CallContractBlock) and block.opcode == 0
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        msg = block.get_message()
+        pool_addr = msg.destination
+
+        body = block.get_body()
+        body.load_uint(32)  # skip op
+        letter = body.load_string()
+        if letter != "d":
+            return []
+
+        new_block = NominatorPoolDepositBlock(
+            data=NominatorPoolDepositData(
+                source=AccountId(msg.source),
+                pool=AccountId(msg.destination),
+                value=Amount(msg.value),
+            )
+        )
+        new_block.failed = block.failed
+        new_block.merge_blocks([block] + other_blocks)
+        return [new_block]
+
+
+class NominatorPoolWithdrawRequestMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(child_matcher=None)
+
+    def test_self(self, block: Block):
+        return isinstance(block, TonTransferBlock)
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        msg = block.get_message()
+        pool_addr = msg.destination
+
+        body = block.get_body()
+        body.load_uint(32)  # skip op
+        letter = body.load_string()
+        if letter != "d":
+            return []
+
+        new_block = NominatorPoolWithdrawRequestBlock(
+            data=NominatorPoolWithdrawRequestData(
+                source=AccountId(msg.source),
+                pool=AccountId(msg.destination),
+            )
+        )
+        new_block.failed = block.failed
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

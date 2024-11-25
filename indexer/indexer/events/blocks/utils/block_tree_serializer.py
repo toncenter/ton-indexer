@@ -18,7 +18,7 @@ from indexer.events.blocks.liquidity import (
 )
 from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
 from indexer.events.blocks.staking import TONStakersDepositBlock, TONStakersWithdrawRequestBlock, \
-    TONStakersWithdrawBlock
+    TONStakersWithdrawBlock, NominatorPoolWithdrawRequestBlock, NominatorPoolDepositBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
@@ -369,6 +369,15 @@ def _fill_jetton_mint_action(block: JettonMintBlock, action: Action):
     action.amount = block.data["amount"].value if block.data["amount"] is not None else None
     action.value = block.data["ton_amount"].value if block.data["ton_amount"] is not None else None
 
+def _fill_nominator_pool_deposit_action(block: NominatorPoolDepositBlock, action: Action):
+    action.source = block.data.source.as_str()
+    action.destination = block.data.pool.as_str()
+    action.value = block.data.value.value
+
+def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawRequestBlock, action: Action):
+    action.source = block.data.source.as_str()
+    action.destination = block.data.pool.as_str()
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -377,6 +386,10 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_call_contract_action(block, action)
         case 'ton_transfer':
             _fill_ton_transfer_action(block, action)
+        case "nominator_pool_deposit":
+            _fill_nominator_pool_deposit_action(block, action)
+        case "nominator_pool_withdraw_request":
+            _fill_nominator_pool_withdraw_request_action(block, action)
         case "dedust_deposit_liquidity":
             _fill_dedust_deposit_liquidity_action(block, action)
         case "dedust_deposit_liquidity_partial":
