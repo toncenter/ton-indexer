@@ -134,13 +134,13 @@ class TONStakersWithdrawMatcher(BlockMatcher):
         super().__init__(
             child_matcher=ContractMatcher(
                 opcode=JettonBurnNotification.opcode,
-                child_matcher=ContractMatcher(
+                child_matcher=labeled('request', ContractMatcher(
                     opcode=TONStakersWithdrawRequest.opcode,
                     child_matcher=OrMatcher([
                         labeled('immediate_withdrawal', ContractMatcher(opcode=TONStakersPoolWithdrawal.opcode)),
                         labeled('delayed_withdrawal', ContractMatcher(opcode=TONStakersMintNFT.opcode))
                     ])
-                )
+                ))
             )
         )
 
@@ -156,13 +156,15 @@ class TONStakersWithdrawMatcher(BlockMatcher):
 
         immediate_withdrawal = get_labeled('immediate_withdrawal', other_blocks, CallContractBlock)
         delayed_withdrawal = get_labeled('delayed_withdrawal', other_blocks, CallContractBlock)
+        request = get_labeled('request', other_blocks, CallContractBlock)
+        failed = block.failed
 
         if immediate_withdrawal is not None:
             new_block = TONStakersWithdrawBlock(
                 data=TONStakersWithdrawData(
                     stake_holder=AccountId(msg.source),
                     burnt_nft=None,
-                    pool=AccountId(burn_request_data.response_destination),
+                    pool=AccountId(request.get_message().destination),
                     amount=Amount(burn_request_data.amount),
                 )
             )
@@ -173,16 +175,18 @@ class TONStakersWithdrawMatcher(BlockMatcher):
             minted_nft = None
             if nft_mint_block is not None:
                 minted_nft = AccountId(nft_mint_block.event_nodes[0].message.destination)
+            else:
+                failed = True
             new_block = TONStakersWithdrawRequestBlock(
                 data=TONStakersWithdrawRequestData(
                     source=AccountId(msg.source),
                     tsTON_wallet=AccountId(msg.destination),
-                    pool=AccountId(burn_request_data.response_destination),
+                    pool=AccountId(request.get_message().destination),
                     tokens_burnt=Amount(burn_request_data.amount),
                     minted_nft=minted_nft
                 )
             )
-        new_block.failed = block.failed
+        new_block.failed = failed
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
 
