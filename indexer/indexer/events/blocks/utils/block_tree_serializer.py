@@ -377,9 +377,9 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_call_contract_action(block, action)
         case 'ton_transfer':
             _fill_ton_transfer_action(block, action)
-        case "dedust_provide_liquidity":
+        case "dedust_deposit_liquidity":
             _fill_dedust_deposit_liquidity_action(block, action)
-        case "dedust_provide_liquidity_partial":
+        case "dedust_deposit_liquidity_partial":
             _fill_dedust_deposit_liquidity_partial_action(block, action)
         case "jetton_transfer":
             _fill_jetton_transfer_action(block, action)
