@@ -59,13 +59,9 @@ class TonTransferBlock(Block):
         self.value = node.message.value
 
         _fill_flow_from_node(self.value_flow, node)
-
-
-class ContractDeploy(Block):
-    def __init__(self, node: EventNode):
-        super().__init__('contract_deploy', [], node.message.transaction.account)
-        self.failed = node.failed
-
+        tx = node.get_tx()
+        if tx is not None and tx.end_status == 'active' and tx.orig_status not in ('active', 'frozen'):
+            self.children_blocks.append(ContractDeploy(node))
 
 class CallContractBlock(Block):
     opcode: int
@@ -82,6 +78,9 @@ class CallContractBlock(Block):
         self.is_external = node.message.source is None
         self.opcode = node.get_opcode()
         _fill_flow_from_node(self.value_flow, node)
+        tx = node.get_tx()
+        if tx is not None and tx.end_status == 'active' and tx.orig_status not in ('active', 'frozen'):
+            self.children_blocks.append(ContractDeploy(node))
 
     def get_body(self) -> Slice:
         return Slice.one_from_boc(self.event_nodes[0].message.message_content.body)
@@ -91,3 +90,16 @@ class CallContractBlock(Block):
 
     def __repr__(self):
         return f"!{self.btype}:={hex(self.opcode)}"
+
+class ContractDeploy(Block):
+    def __init__(self, node: EventNode):
+        super().__init__('contract_deploy', [node], {
+            'opcode': node.get_opcode(),
+            'source': AccountId(node.message.source) if node.message.source is not None else None,
+            'destination': AccountId(
+                node.message.destination) if node.message.destination is not None else None,
+            'value': Amount(node.message.value),
+        })
+        self.failed = node.failed
+        self.is_external = node.message.source is None
+        self.opcode = node.get_opcode()

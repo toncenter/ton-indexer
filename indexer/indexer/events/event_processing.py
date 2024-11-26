@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from indexer.core.database import Trace, engine
 from indexer.events.blocks.auction import AuctionBidMatcher
-from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock
+from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock, ContractDeploy
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
@@ -43,6 +43,16 @@ def init_block(node: EventNode) -> Block:
         block.connect(init_block(child))
     return block
 
+async def unwind_deployments(blocks: list[Block]) -> list[Block]:
+    for block in blocks:
+        queue = block.children_blocks.copy()
+        while len(queue) > 0:
+            child = queue.pop(0)
+            if isinstance(child, ContractDeploy):
+                blocks.append(child)
+            else:
+                queue.extend(child.children_blocks)
+    return blocks
 
 matchers = [
     NftMintBlockMatcher(),
@@ -73,7 +83,8 @@ matchers = [
 ]
 
 trace_post_processors = [
-    post_process_dedust_liquidity
+    post_process_dedust_liquidity,
+    unwind_deployments
 ]
 
 

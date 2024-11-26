@@ -394,7 +394,7 @@ def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawReq
 def block_to_action(block: Block, trace_id: str) -> Action:
     action = _base_block_to_action(block, trace_id)
     match block.btype:
-        case 'call_contract':
+        case 'call_contract' | 'contract_deploy':
             _fill_call_contract_action(block, action)
         case 'ton_transfer':
             _fill_ton_transfer_action(block, action)
