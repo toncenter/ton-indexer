@@ -292,6 +292,13 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Destination = raw.Destination
 		details.Value = raw.Value
 		act.Details = &details
+	case "contract_deploy":
+		var details ActionDetailsContractDeploy
+		details.OpCode = raw.Opcode
+		details.Source = raw.Source
+		details.Destination = raw.Destination
+		details.Value = raw.Value
+		act.Details = &details
 	case "ton_transfer":
 		var details ActionDetailsTonTransfer
 		details.Source = raw.Source

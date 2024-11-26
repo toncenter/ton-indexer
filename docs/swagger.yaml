@@ -138,6 +138,8 @@ definitions:
     type: object
   AddressBookRow:
     properties:
+      domain:
+        type: string
       user_friendly:
         type: string
     type: object

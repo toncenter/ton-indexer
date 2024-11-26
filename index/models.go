@@ -502,6 +502,13 @@ type ActionDetailsCallContract struct {
 	Value       *string         `json:"value,omitempty"`
 }
 
+type ActionDetailsContractDeploy struct {
+	OpCode      *OpcodeType     `json:"opcode,omitempty"`
+	Source      *AccountAddress `json:"source,omitempty"`
+	Destination *AccountAddress `json:"destination,omitempty"`
+	Value       *string         `json:"value,omitempty"`
+}
+
 type ActionDetailsTonTransfer struct {
 	Source      *AccountAddress `json:"source"`
 	Destination *AccountAddress `json:"destination"`

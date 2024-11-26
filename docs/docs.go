@@ -2537,6 +2537,9 @@ const docTemplate = `{
         "AddressBookRow": {
             "type": "object",
             "properties": {
+                "domain": {
+                    "type": "string"
+                },
                 "user_friendly": {
                     "type": "string"
                 }
