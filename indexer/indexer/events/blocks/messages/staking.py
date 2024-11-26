@@ -55,3 +55,6 @@ class TONStakersDistributedAsset:
 
 class TONStakersPoolWithdrawal:
     opcode = 0x0A77535C
+
+class NominatorPoolProcessWithdrawRequests:
+    opcode = 0x00000002

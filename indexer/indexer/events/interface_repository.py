@@ -9,9 +9,10 @@ import msgpack
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from indexer.core.database import JettonWallet, NFTItem, NftSale, NftAuction
+from indexer.core.database import JettonWallet, NFTItem, NftSale, NftAuction, LatestAccountState
 import redis
 
+NOMINATOR_POOL_CODE_HASH = "mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8="
 
 class InterfaceRepository(abc.ABC):
     @abc.abstractmethod
@@ -31,7 +32,7 @@ class InterfaceRepository(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_interfaces(self, addresses: set[str]) -> dict[str, dict]:
+    async def get_interfaces(self, address: str) -> dict[str, dict]:
         pass
 
 
@@ -285,11 +286,12 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
 async def _gather_data_from_db(
         accounts: set[str],
         session: AsyncSession
-) -> tuple[list[JettonWallet], list[NFTItem], list[NftSale], list[NftAuction]]:
+) -> tuple[list[JettonWallet], list[NFTItem], list[NftSale], list[NftAuction], list[LatestAccountState]]:
     jetton_wallets = []
     nft_items = []
     nft_sales = []
     getgems_auctions = []
+    nominator_pools = []
     account_list = list(accounts)
     for i in range(0, len(account_list), 5000):
         batch = account_list[i:i + 5000]
@@ -297,17 +299,21 @@ async def _gather_data_from_db(
         nft = await session.execute(select(NFTItem).filter(NFTItem.address.in_(batch)))
         sales = await session.execute(select(NftSale).filter(NftSale.address.in_(batch)))
         auctions = await session.execute(select(NftAuction).filter(NftAuction.address.in_(batch)))
+        pools = await session.execute(select(LatestAccountState)
+                                                .filter(LatestAccountState.account.in_(batch))
+                                                .filter(LatestAccountState.code_hash == NOMINATOR_POOL_CODE_HASH))
         jetton_wallets += list(wallets.scalars().all())
         nft_items += list(nft.scalars().all())
         nft_sales += list(sales.scalars().all())
         getgems_auctions += list(auctions.scalars().all())
+        nominator_pools += list(pools.scalars().all())
 
-    return jetton_wallets, nft_items, nft_sales, getgems_auctions
+    return jetton_wallets, nft_items, nft_sales, getgems_auctions, nominator_pools
 
 
 async def gather_interfaces(accounts: set[str], session: AsyncSession) -> dict[str, dict[str, dict]]:
     result = defaultdict(dict)
-    (jetton_wallets, nft_items, nft_sales, nft_auctions) = await _gather_data_from_db(accounts, session)
+    (jetton_wallets, nft_items, nft_sales, nft_auctions, nominator_pools) = await _gather_data_from_db(accounts, session)
     for wallet in accounts:
         result[wallet] = {}
     for wallet in jetton_wallets:
@@ -340,5 +346,9 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession) -> dict[s
             "address": auction.address,
             "nft_addr": auction.nft_addr,
             "nft_owner": auction.nft_owner
+        }
+    for account_state in nominator_pools:
+        result[account_state.account]["NominatorPool"] = {
+            "address": account_state.account,
         }
     return result

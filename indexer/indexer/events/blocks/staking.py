@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import (
     BlockMatcher,
@@ -21,7 +22,7 @@ from indexer.events.blocks.messages.staking import (
     TONStakersMintJettons,
     TONStakersMintNFT,
     TONStakersWithdrawRequest, TONStakersPoolWithdrawal, TONStakersDistributedAsset, TONStakersNftBurnNotification,
-    TONStakersNftBurn,
+    TONStakersNftBurn, NominatorPoolProcessWithdrawRequests,
 )
 from indexer.events.blocks.nft import NftMintBlock
 from indexer.events.blocks.utils import AccountId, Amount
@@ -103,6 +104,7 @@ class NominatorPoolDepositBlock(Block):
 class NominatorPoolWithdrawRequestData:
     source: AccountId
     pool: AccountId
+    payout_amount: Amount | None
 
 
 class NominatorPoolWithdrawRequestBlock(Block):
@@ -113,7 +115,6 @@ class NominatorPoolWithdrawRequestBlock(Block):
 
     def __repr__(self):
         return f"nominator_pool_withdraw_request {self.data}"
-
 
 class TONStakersDepositMatcher(BlockMatcher):
     def __init__(self):
@@ -253,20 +254,16 @@ class TONStakersDelayedWithdrawalMatcher(BlockMatcher):
 
 class NominatorPoolDepositMatcher(BlockMatcher):
     def __init__(self):
-        super().__init__()
+        super().__init__(include_bounces=True, pre_build_auto_append=True)
 
     def test_self(self, block: Block):
-        return isinstance(block, TonTransferBlock)
-        # return isinstance(block, CallContractBlock) and block.opcode == 0
+        return isinstance(block, TonTransferBlock) and block.comment == 'd'
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         msg = block.get_message()
         pool_addr = msg.destination
-
-        body = block.get_body()
-        body.load_uint(32)  # skip op
-        letter = body.load_string()
-        if letter != "d":
+        interfaces = await context.interface_repository.get().get_interfaces(pool_addr)
+        if "NominatorPool" not in interfaces:
             return []
 
         new_block = NominatorPoolDepositBlock(
@@ -283,27 +280,83 @@ class NominatorPoolDepositMatcher(BlockMatcher):
 
 class NominatorPoolWithdrawRequestMatcher(BlockMatcher):
     def __init__(self):
-        super().__init__(child_matcher=None)
+        super().__init__(child_matcher=None, include_bounces=True, pre_build_auto_append=True)
 
     def test_self(self, block: Block):
-        return isinstance(block, TonTransferBlock)
+        return isinstance(block, TonTransferBlock) and block.comment == 'w'
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         msg = block.get_message()
         pool_addr = msg.destination
-
-        body = block.get_body()
-        body.load_uint(32)  # skip op
-        letter = body.load_string()
-        if letter != "d":
+        extra_blocks = []
+        interfaces = await context.interface_repository.get().get_interfaces(pool_addr)
+        if "NominatorPool" not in interfaces:
             return []
 
-        new_block = NominatorPoolWithdrawRequestBlock(
-            data=NominatorPoolWithdrawRequestData(
-                source=AccountId(msg.source),
-                pool=AccountId(msg.destination),
+        ton_transfers = [b for b in block.next_blocks if isinstance(b, TonTransferBlock)]
+        new_block = None
+        if len(ton_transfers) == 1:
+            transfer = ton_transfers[0]
+            extra_blocks.append(transfer)
+            # immediate withdrawal
+            if transfer.value > msg.value:
+                new_block = NominatorPoolWithdrawRequestBlock(
+                    data=NominatorPoolWithdrawRequestData(
+                        source=AccountId(msg.source),
+                        pool=AccountId(msg.destination),
+                        payout_amount=Amount(transfer.value)
+                    )
+                )
+        elif len(ton_transfers) == 2:
+            # immediate withdrawal
+            # payout always the first by lt
+            payout = min(ton_transfers, key=lambda x: x.event_nodes[0].message.created_lt)
+            extra_blocks += ton_transfers
+            new_block = NominatorPoolWithdrawRequestBlock(
+                data=NominatorPoolWithdrawRequestData(
+                    source=AccountId(msg.source),
+                    pool=AccountId(msg.destination),
+                    payout_amount=Amount(payout.value)
+
+                )
             )
-        )
+        if new_block is None:
+            new_block = NominatorPoolWithdrawRequestBlock(
+                data=NominatorPoolWithdrawRequestData(
+                    source=AccountId(msg.source),
+                    pool=AccountId(msg.destination),
+                    payout_amount=None
+                )
+            )
         new_block.failed = block.failed
-        new_block.merge_blocks([block] + other_blocks)
+        new_block.merge_blocks([block] + other_blocks + extra_blocks)
         return [new_block]
+
+# Withdrawal initiated by owner
+class NominatorPoolWithdrawMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(child_matcher=None, include_bounces=True, pre_build_auto_append=True)
+
+    def test_self(self, block: Block):
+        return isinstance(block, CallContractBlock) and block.opcode == NominatorPoolProcessWithdrawRequests.opcode
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        msg = block.get_message()
+        pool_addr = msg.destination
+        interfaces = await context.interface_repository.get().get_interfaces(pool_addr)
+        if "NominatorPool" not in interfaces:
+            return []
+
+        new_blocks = []
+        for transfer_block in block.next_blocks:
+            if isinstance(transfer_block, TonTransferBlock):
+                new_block = NominatorPoolWithdrawRequestBlock(
+                    data=NominatorPoolWithdrawRequestData(
+                        source=AccountId(transfer_block.event_nodes[0].message.destination),
+                        pool=AccountId(pool_addr),
+                        payout_amount=Amount(transfer_block.value)
+                    )
+                )
+                new_block.merge_blocks([transfer_block])
+                new_blocks.append(new_block)
+        return new_blocks

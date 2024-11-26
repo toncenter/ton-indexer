@@ -370,11 +370,23 @@ def _fill_jetton_mint_action(block: JettonMintBlock, action: Action):
     action.value = block.data["ton_amount"].value if block.data["ton_amount"] is not None else None
 
 def _fill_nominator_pool_deposit_action(block: NominatorPoolDepositBlock, action: Action):
+    action.type = 'stake_deposit'
     action.source = block.data.source.as_str()
     action.destination = block.data.pool.as_str()
     action.value = block.data.value.value
+    action.staking_data = {
+        'provider': 'nominator'
+    }
 
 def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawRequestBlock, action: Action):
+    if block.data.payout_amount is None:
+        action.type = 'stake_withdrawal_request'
+    else:
+        action.type = 'stake_withdrawal'
+        action.value = block.data.payout_amount.value
+    action.staking_data = {
+        'provider': 'nominator'
+    }
     action.source = block.data.source.as_str()
     action.destination = block.data.pool.as_str()
 
