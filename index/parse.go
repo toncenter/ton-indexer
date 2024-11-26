@@ -458,10 +458,17 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Pool = raw.Destination
 		details.Provider = raw.StakingDataProvider
 		act.Details = &details
-	case "stake_withdrawal", "stake_withdrawal_request":
+	case "stake_withdrawal":
 		var details ActionDetailsWithdrawStake
 		details.StakeHolder = raw.Source
 		details.Amount = raw.Amount
+		details.Pool = raw.Destination
+		details.Provider = raw.StakingDataProvider
+		details.PayoutNft = raw.StakingDataTsNft
+		act.Details = &details
+	case "stake_withdrawal_request":
+		var details ActionDetailsWithdrawStakeRequest
+		details.StakeHolder = raw.Source
 		details.Pool = raw.Destination
 		details.Provider = raw.StakingDataProvider
 		details.PayoutNft = raw.StakingDataTsNft

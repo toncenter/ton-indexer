@@ -697,6 +697,13 @@ type ActionDetailsWithdrawStake struct {
 	PayoutNft   *AccountAddress `json:"payout_nft"`
 }
 
+type ActionDetailsWithdrawStakeRequest struct {
+	Provider    *string         `json:"provider"`
+	StakeHolder *AccountAddress `json:"stake_holder"`
+	Pool        *AccountAddress `json:"pool"`
+	PayoutNft   *AccountAddress `json:"payout_nft"`
+}
+
 type Action struct {
 	TraceId    HashType    `json:"trace_id"`
 	ActionId   HashType    `json:"action_id"`
