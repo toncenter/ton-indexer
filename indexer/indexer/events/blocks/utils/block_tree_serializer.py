@@ -373,7 +373,7 @@ def _fill_nominator_pool_deposit_action(block: NominatorPoolDepositBlock, action
     action.type = 'stake_deposit'
     action.source = block.data.source.as_str()
     action.destination = block.data.pool.as_str()
-    action.value = block.data.value.value
+    action.amount = block.data.value.value
     action.staking_data = {
         'provider': 'nominator'
     }
@@ -383,7 +383,7 @@ def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawReq
         action.type = 'stake_withdrawal_request'
     else:
         action.type = 'stake_withdrawal'
-        action.value = block.data.payout_amount.value
+        action.amount = block.data.payout_amount.value
     action.staking_data = {
         'provider': 'nominator'
     }
