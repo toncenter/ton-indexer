@@ -329,6 +329,10 @@ def _fill_auction_bid_action(block: Block, action: Action):
     action.source = block.data['bidder'].as_str()
     action.destination = block.data['auction'].as_str()
     action.asset_secondary = block.data['nft_address'].as_str()
+    action.asset = _addr(block.data['nft_collection'])
+    action.nft_transfer_data = {
+        'nft_item_index': block.data['nft_item_index'],
+    }
     action.value = block.data['amount'].value
 
 def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action: Action):

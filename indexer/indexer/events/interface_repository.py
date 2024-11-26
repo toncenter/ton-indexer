@@ -295,17 +295,21 @@ async def _gather_data_from_db(
     account_list = list(accounts)
     for i in range(0, len(account_list), 5000):
         batch = account_list[i:i + 5000]
-        wallets = await session.execute(select(JettonWallet).filter(JettonWallet.address.in_(batch)))
-        nft = await session.execute(select(NFTItem).filter(NFTItem.address.in_(batch)))
-        sales = await session.execute(select(NftSale).filter(NftSale.address.in_(batch)))
         auctions = await session.execute(select(NftAuction).filter(NftAuction.address.in_(batch)))
+        auctions = list(auctions.scalars().all())
+        nft_batch = batch.copy()
+        for auction in auctions:
+            nft_batch.append(auction.nft_addr)
+        wallets = await session.execute(select(JettonWallet).filter(JettonWallet.address.in_(batch)))
+        nft = await session.execute(select(NFTItem).filter(NFTItem.address.in_(nft_batch)))
+        sales = await session.execute(select(NftSale).filter(NftSale.address.in_(batch)))
         pools = await session.execute(select(LatestAccountState)
                                                 .filter(LatestAccountState.account.in_(batch))
                                                 .filter(LatestAccountState.code_hash == NOMINATOR_POOL_CODE_HASH))
         jetton_wallets += list(wallets.scalars().all())
         nft_items += list(nft.scalars().all())
         nft_sales += list(sales.scalars().all())
-        getgems_auctions += list(auctions.scalars().all())
+        getgems_auctions += auctions
         nominator_pools += list(pools.scalars().all())
 
     return jetton_wallets, nft_items, nft_sales, getgems_auctions, nominator_pools
