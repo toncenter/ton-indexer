@@ -307,6 +307,15 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Comment = raw.TonTransferContent
 		details.Encrypted = raw.TonTransferEncrypted
 		act.Details = &details
+	case "auction_bid":
+		var details ActionDetailsAuctionBid
+		details.Bidder = raw.Source
+		details.Auction = raw.Destination
+		details.Amount = raw.Value
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.NftItemIndex = raw.NFTTransferNFTItemIndex
+		act.Details = &details
 	case "change_dns":
 		var details ActionDetailsChangeDns
 		details.Key = raw.ChangeDNSRecordKey

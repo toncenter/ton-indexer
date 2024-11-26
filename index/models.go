@@ -517,6 +517,15 @@ type ActionDetailsTonTransfer struct {
 	Encrypted   *bool           `json:"encrypted"`
 }
 
+type ActionDetailsAuctionBid struct {
+	Amount        *string         `json:"amount"`
+	Bidder        *AccountAddress `json:"bidder"`
+	Auction       *AccountAddress `json:"auction"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+}
+
 type ActionDetailsChangeDnsValue struct {
 	SumType       *string         `json:"sum_type"`
 	DnsSmcAddress *string         `json:"dns_smc_address"`
