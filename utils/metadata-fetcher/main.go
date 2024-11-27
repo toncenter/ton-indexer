@@ -52,6 +52,10 @@ func (receiver AddressMetadata) hasAnyData() bool {
 	if receiver.Type != nil && *receiver.Type == "jetton_masters" {
 		return receiver.Symbol != nil
 	}
+	if receiver.Type != nil && *receiver.Type == "nft_item" {
+		_, has_domain := receiver.Extra["domain"]
+		return receiver.Name != nil || has_domain
+	}
 	return receiver.Name != nil || receiver.Description != nil || receiver.Image != nil
 }
 
@@ -114,14 +118,12 @@ func fetchTasks(ctx context.Context, pool *pgxpool.Pool) ([]FetchTask, error) {
 	return tasks, nil
 }
 
-func getMetadata(ctx context.Context, tx pgx.Tx, task FetchTask) (map[string]interface{}, error) {
+func getCommonMetadataFromDb(ctx context.Context, tx pgx.Tx, task FetchTask) (map[string]interface{}, error) {
 	var metadata_bytes []byte
 	var field_name string
 	switch task.Type {
 	case "nft_collections":
 		field_name = "collection_content"
-	case "nft_items":
-		field_name = "content"
 	case "jetton_masters":
 		field_name = "jetton_content"
 	}
@@ -135,7 +137,39 @@ func getMetadata(ctx context.Context, tx pgx.Tx, task FetchTask) (map[string]int
 	if err := json.Unmarshal(metadata_bytes, &metadata); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %v", err)
 	}
+	metadata["_type"] = task.Type
 	return metadata, nil
+}
+
+func getNftMetadataFromDb(ctx context.Context, tx pgx.Tx, task FetchTask) (map[string]interface{}, error) {
+	query := `SELECT n.content, d.domain FROM nft_items n
+		LEFT JOIN dns_entries d ON d.nft_item_address = n.address
+		WHERE n.address = $1`
+	var content_bytes []byte
+	var domain *string
+	err := tx.QueryRow(ctx, query, task.Address).Scan(&content_bytes, &domain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch metadata: %v", err)
+	}
+	var metadata map[string]interface{}
+	if err := json.Unmarshal(content_bytes, &metadata); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata: %v", err)
+	}
+	if domain != nil {
+		metadata["domain"] = *domain
+	}
+	metadata["_type"] = "nft_item"
+	return metadata, nil
+}
+
+func getMetadata(ctx context.Context, tx pgx.Tx, task FetchTask) (map[string]interface{}, error) {
+	switch task.Type {
+	case "nft_collections", "jetton_masters":
+		return getCommonMetadataFromDb(ctx, tx, task)
+	case "nft_item":
+		return getNftMetadataFromDb(ctx, tx, task)
+	}
+	return nil, fmt.Errorf("unsupported task type: %s", task.Type)
 }
 
 // extractURL extracts the 'url' or 'uri' from the metadata.
@@ -164,6 +198,8 @@ func getMetadataFromJson(metadata map[string]interface{}) AddressMetadata {
 	for key := range metadata {
 		if value, ok := metadata[key].(string); ok {
 			switch key {
+			case "_type":
+				result.Type = &value
 			case "name":
 				if result.Name == nil {
 					result.Name = new(string)
