@@ -52,7 +52,7 @@ func (receiver AddressMetadata) hasAnyData() bool {
 	if receiver.Type != nil && *receiver.Type == "jetton_masters" {
 		return receiver.Symbol != nil
 	}
-	if receiver.Type != nil && *receiver.Type == "nft_item" {
+	if receiver.Type != nil && *receiver.Type == "nft_items" {
 		_, has_domain := receiver.Extra["domain"]
 		return receiver.Name != nil || has_domain
 	}
@@ -158,7 +158,7 @@ func getNftMetadataFromDb(ctx context.Context, tx pgx.Tx, task FetchTask) (map[s
 	if domain != nil {
 		metadata["domain"] = *domain
 	}
-	metadata["_type"] = "nft_item"
+	metadata["_type"] = "nft_items"
 	return metadata, nil
 }
 
@@ -166,7 +166,7 @@ func getMetadata(ctx context.Context, tx pgx.Tx, task FetchTask) (map[string]int
 	switch task.Type {
 	case "nft_collections", "jetton_masters":
 		return getCommonMetadataFromDb(ctx, tx, task)
-	case "nft_item":
+	case "nft_items":
 		return getNftMetadataFromDb(ctx, tx, task)
 	}
 	return nil, fmt.Errorf("unsupported task type: %s", task.Type)
