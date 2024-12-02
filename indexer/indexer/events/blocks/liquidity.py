@@ -4,31 +4,29 @@ from loguru import logger
 
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
-from indexer.events.blocks.basic_matchers import (
-    BlockMatcher,
-    BlockTypeMatcher,
-    ContractMatcher,
-    OrMatcher, GenericMatcher,
-)
+from indexer.events.blocks.basic_matchers import (BlockMatcher,
+                                                  BlockTypeMatcher,
+                                                  ContractMatcher,
+                                                  GenericMatcher, OrMatcher)
 from indexer.events.blocks.core import Block, EmptyBlock
-from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonTransferBlock, JettonBurnBlock
-from indexer.events.blocks.labels import labeled, LabelBlock
+from indexer.events.blocks.jettons import (JettonBurnBlock,
+                                           JettonTransferBlock,
+                                           JettonTransferBlockMatcher)
+from indexer.events.blocks.labels import LabelBlock, labeled
 from indexer.events.blocks.messages import PTonTransfer
-from indexer.events.blocks.messages.jettons import (
-    JettonInternalTransfer,
-    JettonNotify,
-    JettonTransfer,
-)
+from indexer.events.blocks.messages.jettons import (JettonBurn,
+                                                    JettonBurnNotification,
+                                                    JettonInternalTransfer,
+                                                    JettonNotify,
+                                                    JettonTransfer)
 from indexer.events.blocks.messages.liquidity import (
-    DedustAskLiquidityFactory,
-    DedustDeployDepositContract,
-    DedustDepositLiquidityJettonForwardPayload,
-    DedustDepositLiquidityToPool,
-    DedustDepositTONToVault,
-    DedustDestroyLiquidityDepositContract,
-    DedustReturnExcessFromVault,
-    DedustTopUpLiquidityDepositContract, StonfiV2ProvideLiquidity,
-)
+    DedustAskLiquidityFactory, DedustDeployDepositContract,
+    DedustDepositLiquidityJettonForwardPayload, DedustDepositLiquidityToPool,
+    DedustDepositTONToVault, DedustDestroyLiquidityDepositContract,
+    DedustReturnExcessFromVault, DedustTopUpLiquidityDepositContract,
+    StonfiV2ProvideLiquidity)
+from indexer.events.blocks.messages.swaps import (DedustPayout,
+                                                  DedustPayoutFromPool)
 from indexer.events.blocks.utils import AccountId, Amount, Asset
 from indexer.events.blocks.utils.block_utils import find_call_contract
 
@@ -370,6 +368,117 @@ async def post_process_dedust_liquidity(blocks: list[Block]) -> list[Block]:
             final_deposit.children_blocks = list(set(final_deposit.children_blocks))
             final_deposit.calculate_min_max_lt()
     return blocks
+
+
+class DedustWithdrawBlockMatcher(BlockMatcher):
+    def __init__(self):
+        # start at JettonBurn
+        super().__init__(
+            optional=False,
+            child_matcher=ContractMatcher(
+                optional=False,
+                opcode=JettonBurnNotification.opcode,
+                children_matchers=[
+                    # two payouts - each either ton or jetton
+                    ContractMatcher(
+                        opcode=DedustPayoutFromPool.opcode,
+                        child_matcher=OrMatcher(
+                            [
+                                ContractMatcher(opcode=DedustPayout.opcode),
+                                BlockTypeMatcher(block_type="jetton_transfer"),
+                            ]
+                        ),
+                        optional=False,
+                    ),
+                    ContractMatcher(
+                        opcode=DedustPayoutFromPool.opcode,
+                        child_matcher=OrMatcher(
+                            [
+                                ContractMatcher(opcode=DedustPayout.opcode),
+                                BlockTypeMatcher(block_type="jetton_transfer"),
+                            ]
+                        ),
+                        optional=False,
+                    ),
+                ],
+            ),
+        )
+
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == JettonBurn.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        sender = block.get_message().source
+        sender_wallet = block.get_message().destination
+        burn_data = JettonBurn(block.get_body())
+
+        burn_notify_call = block.next_blocks[0]
+        pool = burn_notify_call.get_message().destination
+
+        lp_wallet_info = await context.interface_repository.get().get_jetton_wallet(sender_wallet.upper())
+        if not lp_wallet_info: return []
+
+        lp_asset = Asset(is_ton=False, jetton_address=lp_wallet_info.jetton)
+
+        payouts = burn_notify_call.next_blocks
+        assets = []
+        amounts = []
+        dex_wallets = []
+        dex_vaults = []
+        user_wallets = []
+        for payout in payouts:
+            call_from_vault = payout.next_blocks[0]
+
+            if not isinstance(call_from_vault, CallContractBlock):
+                return []
+
+            if call_from_vault.opcode == DedustPayout.opcode:
+                asset = Asset(is_ton=True, jetton_address=None)
+                dex_wallets.append(None)
+                user_wallets.append(None)
+            elif call_from_vault.opcode == JettonTransfer.opcode:
+                dex_wallet = call_from_vault.get_message().destination
+                jw_info = await context.interface_repository.get().get_jetton_wallet(dex_wallet.upper())
+                if not jw_info: return []
+                dex_wallets.append(dex_wallet)
+                asset = Asset(is_ton=False, jetton_address=jw_info.jetton)
+                internal_transfer = call_from_vault.next_blocks[0].get_message()
+                user_wallets.append(internal_transfer.destination)
+            else:
+                # unexpected opcode
+                return []
+
+            payoutData = DedustPayoutFromPool(payout.get_body())
+            amounts.append(payoutData.amount)
+            assets.append(asset)
+            dex_vaults.append(call_from_vault.get_message().source)
+
+        new_block = Block('dex_withdraw_liquidity', [])
+        new_block.merge_blocks(other_blocks)
+        new_block.data = {
+            'dex': 'dedust',
+            'sender': AccountId(sender),
+            'sender_wallet': AccountId(sender_wallet),
+            'pool': AccountId(pool),
+            'asset': lp_asset,
+            'lp_tokens_burnt': burn_data.amount,
+            'is_refund': False,
+            'amount1_out': amounts[0],
+            'asset1_out': assets[0],
+            'dex_wallet_1': dex_vaults[0],
+            'dex_jetton_wallet_1': dex_wallets[0],
+            'wallet1': user_wallets[0],
+            'amount2_out': amounts[1],
+            'asset2_out': assets[1],
+            'dex_wallet_2': dex_vaults[1],
+            'dex_jetton_wallet_2': dex_wallets[1],
+            'wallet2': user_wallets[1]
+        }
+        return [new_block]
 
 
 class StonfiV2ProvideLiquidityMatcher(BlockMatcher):
