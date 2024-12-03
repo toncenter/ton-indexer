@@ -322,6 +322,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Value.SumType = raw.ChangeDNSRecordValueSchema
 		details.Value.DnsSmcAddress = raw.ChangeDNSRecordValue
 		details.Value.Flags = raw.ChangeDNSRecordFlags
+		details.Asset = raw.Destination
+		details.Source = raw.Source
 		act.Details = &details
 	case "dex_deposit_liquidity":
 		var details ActionDetailsDexDepositLiquidity
@@ -352,6 +354,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 	case "delete_dns":
 		var details ActionDetailsDeleteDns
 		details.Key = raw.ChangeDNSRecordKey
+		details.Asset = raw.Destination
+		details.Source = raw.Source
 		act.Details = &details
 	case "renew_dns":
 		var details ActionDetailsRenewDns

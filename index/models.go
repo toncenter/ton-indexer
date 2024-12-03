@@ -527,16 +527,16 @@ type ActionDetailsAuctionBid struct {
 }
 
 type ActionDetailsChangeDnsValue struct {
-	SumType       *string         `json:"sum_type"`
-	DnsSmcAddress *string         `json:"dns_smc_address"`
-	Flags         *int64          `json:"flags"`
-	Source        *AccountAddress `json:"source"`
-	Asset         *AccountAddress `json:"asset"`
+	SumType       *string `json:"sum_type"`
+	DnsSmcAddress *string `json:"dns_smc_address"`
+	Flags         *int64  `json:"flags"`
 }
 
 type ActionDetailsChangeDns struct {
-	Key   *string                     `json:"key"`
-	Value ActionDetailsChangeDnsValue `json:"value"`
+	Key    *string                     `json:"key"`
+	Value  ActionDetailsChangeDnsValue `json:"value"`
+	Source *AccountAddress             `json:"source"`
+	Asset  *AccountAddress             `json:"asset"`
 }
 
 type ActionDetailsDeleteDns struct {
