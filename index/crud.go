@@ -2392,6 +2392,9 @@ func (db *DbClient) QueryNFTItems(
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
+		if t.CollectionAddress != nil {
+			addr_list = append(addr_list, string(*t.CollectionAddress))
+		}
 		if t.OwnerAddress != nil {
 			addr_list = append(addr_list, string(*t.OwnerAddress))
 		}
