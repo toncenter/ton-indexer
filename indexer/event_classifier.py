@@ -97,7 +97,10 @@ class UnclassifiedEventsReader(mp.Process):
     def run(self):
         try:
             while True:
-                self.read_batch()
+                try:
+                    self.read_batch()
+                except Exception as e:
+                    logger.error(f'Error in UnclassifiedEventsReader: {e}')
         except KeyboardInterrupt:
             logger.info(f'Gracefully stopped in the UnclassifiedEventsReader')
         except:
@@ -131,13 +134,16 @@ class EventClassifierWorker(mp.Process):
         return batch
 
     def process_one_batch(self):
-        tasks = self.task_queue.get(True)
-        # logger.info(f'Worker #{self.id} accepted batch of {len(tasks)} tasks')
-        batch = self.mark_big_traces(tasks)
-        asyncio.get_event_loop().run_until_complete(process_trace_batch_async(batch))
-        total = len(tasks)
-        big_traces = total - len(batch)
-        self.result_queue.put((total - big_traces, big_traces, tasks))
+        try:
+            tasks = self.task_queue.get(True)
+            # logger.info(f'Worker #{self.id} accepted batch of {len(tasks)} tasks')
+            batch = self.mark_big_traces(tasks)
+            asyncio.get_event_loop().run_until_complete(process_trace_batch_async(batch))
+            total = len(tasks)
+            big_traces = total - len(batch)
+            self.result_queue.put((total - big_traces, big_traces, tasks))
+        except Exception as e:
+            logger.error(f'Error in EventClassifierWorker #{self.id}: {e}')
         return
         
     def run(self):
