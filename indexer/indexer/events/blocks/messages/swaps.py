@@ -94,6 +94,11 @@ class DedustPayout:
 class DedustPayoutFromPool:
     opcode = 0xad4eb6f5
 
+    def __init__(self, body: Slice):
+        body.load_uint(32)
+        self.query_id = body.load_uint(64)
+        self.proof = body.load_ref()
+        self.amount = body.load_coins()
 
 class DedustSwapPeer:
     opcode = 0x72aca8aa
@@ -101,7 +106,6 @@ class DedustSwapPeer:
 
 class DedustSwapExternal:
     opcode = 0x61ee542d
-
 
 class DedustSwap:
     opcode = 0xea06185d
