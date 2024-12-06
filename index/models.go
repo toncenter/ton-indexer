@@ -718,13 +718,13 @@ type Action struct {
 	RawAction  *RawAction  `json:"raw_action,omitempty" swaggerignore:"true"`
 } // @name Action
 
-type EventMeta struct {
+type TraceMeta struct {
 	TraceState          string `json:"trace_state"`
 	Messages            int64  `json:"messages"`
 	Transactions        int64  `json:"transactions"`
 	PendingMessages     int64  `json:"pending_messages"`
 	ClassificationState string `json:"classification_state"`
-} // @name EventMeta
+} // @name TraceMeta
 
 type TraceNode struct {
 	TransactionHash HashType     `json:"tx_hash,omitempty"`
@@ -734,7 +734,7 @@ type TraceNode struct {
 	Children        []*TraceNode `json:"children"`
 } // @name TraceNode
 
-type Event struct {
+type Trace struct {
 	TraceId           HashType                  `json:"trace_id"`
 	ExternalHash      *HashType                 `json:"external_hash"`
 	McSeqnoStart      HashType                  `json:"mc_seqno_start"`
@@ -743,14 +743,14 @@ type Event struct {
 	StartUtime        uint32                    `json:"start_utime"`
 	EndLt             *uint64                   `json:"end_lt,string"`
 	EndUtime          *uint32                   `json:"end_utime"`
-	EventMeta         EventMeta                 `json:"trace_info"`
+	TraceMeta         TraceMeta                 `json:"trace_info"`
 	IsIncomplete      bool                      `json:"is_incomplete"`
 	Warning           string                    `json:"warning,omitempty"`
 	Actions           []*Action                 `json:"actions,omitempty"`
 	Trace             *TraceNode                `json:"trace,omitempty"`
 	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
 	Transactions      map[HashType]*Transaction `json:"transactions,omitempty"`
-} // @name Event
+} // @name Trace
 
 // proxied models
 type V2AddressInformation struct {

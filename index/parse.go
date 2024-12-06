@@ -830,15 +830,15 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 	return &act, nil
 }
 
-func ScanEvent(row pgx.Row) (*Event, error) {
-	var event Event
-	err := row.Scan(&event.TraceId, &event.ExternalHash, &event.McSeqnoStart, &event.McSeqnoEnd,
-		&event.StartLt, &event.StartUtime, &event.EndLt, &event.EndUtime,
-		&event.EventMeta.TraceState, &event.EventMeta.Messages, &event.EventMeta.Transactions,
-		&event.EventMeta.PendingMessages, &event.EventMeta.ClassificationState)
+func ScanTrace(row pgx.Row) (*Trace, error) {
+	var trace Trace
+	err := row.Scan(&trace.TraceId, &trace.ExternalHash, &trace.McSeqnoStart, &trace.McSeqnoEnd,
+		&trace.StartLt, &trace.StartUtime, &trace.EndLt, &trace.EndUtime,
+		&trace.TraceMeta.TraceState, &trace.TraceMeta.Messages, &trace.TraceMeta.Transactions,
+		&trace.TraceMeta.PendingMessages, &trace.TraceMeta.ClassificationState)
 
 	if err != nil {
 		return nil, err
 	}
-	return &event, nil
+	return &trace, nil
 }

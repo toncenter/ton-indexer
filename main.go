@@ -991,36 +991,38 @@ func GetJettonBurns(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
-// @summary Get Events
-// @description Get events by specified filter.
-// @id api_v3_get_events
-// @tags events
+// @summary Get Traces
+// @description Get traces by specified filter.
+// @id api_v3_get_traces
+// @tags actions
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.EventsResponse
+// @success		200	{object}	index.TracesResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
-// @param tx_hash query []string false "Find event by transaction hash."
-// @param msg_hash query []string false "Find event by message hash."
-// @param mc_seqno query int32 false "Query events that was completed in masterchain block with given seqno"
-// @param start_utime query int32 false "Query events, which was finished **after** given timestamp." minimum(0)
-// @param end_utime query int32 false "Query events, which was finished **before** given timestamp." minimum(0)
-// @param start_lt query int64 false "Query events with `end_lt >= start_lt`." minimum(0)
-// @param end_lt query int64 false "Query events with `end_lt <= end_lt`." minimum(0)
+// @param trace_id query []string false "Find trace by trace id."
+// @param tx_hash query []string false "Find trace by transaction hash."
+// @param msg_hash query []string false "Find trace by message hash."
+// @param mc_seqno query int32 false "Query traces that was completed in masterchain block with given seqno"
+// @param start_utime query int32 false "Query traces, which was finished **after** given timestamp." minimum(0)
+// @param end_utime query int32 false "Query traces, which was finished **before** given timestamp." minimum(0)
+// @param start_lt query int64 false "Query traces with `end_lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query traces with `end_lt <= end_lt`." minimum(0)
+// @param include_actions query bool false "Include trace actions." default(false)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
-// @param sort query string false "Sort events by lt." Enums(asc, desc) default(desc)
-// @router			/api/v3/events [get]
+// @param sort query string false "Sort traces by lt." Enums(asc, desc) default(desc)
+// @router			/api/v3/traces [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
-func GetEvents(c *fiber.Ctx) error {
+func GetTraces(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
-	event_req := index.EventRequest{}
+	traces_req := index.TracesRequest{}
 	utime_req := index.UtimeRequest{}
 	lt_req := index.LtRequest{}
 	lim_req := index.LimitRequest{}
 
-	if err := c.QueryParser(&event_req); err != nil {
+	if err := c.QueryParser(&traces_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&utime_req); err != nil {
@@ -1033,11 +1035,11 @@ func GetEvents(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if !onlyOneOf(event_req.AccountAddress != nil, event_req.TraceId != nil, len(event_req.TransactionHash) > 0, len(event_req.MessageHash) > 0) {
+	if !onlyOneOf(traces_req.AccountAddress != nil, traces_req.TraceId != nil, len(traces_req.TransactionHash) > 0, len(traces_req.MessageHash) > 0) {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
 	}
 
-	res, book, metadata, err := pool.QueryEvents(event_req, utime_req, lt_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryTraces(traces_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -1045,14 +1047,14 @@ func GetEvents(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
 	// }
 
-	txs_resp := index.EventsResponse{Events: res, AddressBook: book, Metadata: metadata}
+	txs_resp := index.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(txs_resp)
 }
 
 // @summary Get Actions
 // @description Get actions by specified filter.
 // @id api_v3_get_actions
-// @tags events
+// @tags actions
 // @Accept       json
 // @Produce      json
 // @success		200	{object}	index.ActionsResponse
@@ -1062,11 +1064,11 @@ func GetEvents(c *fiber.Ctx) error {
 // @param msg_hash query []string false "Find actions by message hash."
 // @param action_id	query []string false "Find actions by the action_id." collectionFormat(multi)
 // @param trace_id	query []string false "Find actions by the trace_id." collectionFormat(multi)
-// @param mc_seqno query int32 false "Query actions of events which was completed in masterchain block with given seqno"
-// @param start_utime query int32 false "Query actions for events, which was finished **after** given timestamp." minimum(0)
-// @param end_utime query int32 false "Query actions for events, which was finished **before** given timestamp." minimum(0)
-// @param start_lt query int64 false "Query actions for events with `end_lt >= start_lt`." minimum(0)
-// @param end_lt query int64 false "Query actions for events with `end_lt <= end_lt`." minimum(0)
+// @param mc_seqno query int32 false "Query actions of traces which was completed in masterchain block with given seqno"
+// @param start_utime query int32 false "Query actions for traces, which was finished **after** given timestamp." minimum(0)
+// @param end_utime query int32 false "Query actions for traces, which was finished **before** given timestamp." minimum(0)
+// @param start_lt query int64 false "Query actions for traces with `end_lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query actions for traces with `end_lt <= end_lt`." minimum(0)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort actions by lt." Enums(asc, desc) default(desc)
@@ -1463,7 +1465,7 @@ func main() {
 	flag.IntVar(&timeout_ms, "query-timeout", 3000, "Query timeout in milliseconds")
 	flag.IntVar(&settings.Request.DefaultLimit, "default-limit", 100, "Default value for limit")
 	flag.IntVar(&settings.Request.MaxLimit, "max-limit", 1000, "Maximum value for limit")
-	flag.IntVar(&settings.Request.MaxEventTransactions, "max-event-txs", 4000, "Maximum number of transactions in event")
+	flag.IntVar(&settings.Request.MaxTraceTransactions, "max-trace-txs", 4000, "Maximum number of transactions in trace")
 	flag.IntVar(&settings.MaxThreads, "threads", 0, "Number of threads")
 	flag.Parse()
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
@@ -1555,9 +1557,9 @@ func main() {
 	app.Get("/api/v3/jetton/transfers", GetJettonTransfers)
 	app.Get("/api/v3/jetton/burns", GetJettonBurns)
 
-	// events
+	// actions
 	app.Get("/api/v3/actions", GetActions)
-	app.Get("/api/v3/events", GetEvents)
+	app.Get("/api/v3/traces", GetTraces)
 
 	// api/v2 proxied
 	app.Get("/api/v3/addressInformation", GetV2AddressInformation)

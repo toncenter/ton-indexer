@@ -14,7 +14,7 @@ type RequestSettings struct {
 	V2ApiKey             string
 	DefaultLimit         int
 	MaxLimit             int
-	MaxEventTransactions int
+	MaxTraceTransactions int
 	DebugRequest         bool
 	NoAddressBook        bool
 }
@@ -121,7 +121,8 @@ type ActionRequest struct {
 	McSeqno         *int32          `query:"mc_seqno"`
 }
 
-type EventRequest struct {
+type TracesRequest struct {
+	IncludeActions  bool            `query:"include_actions"`
 	AccountAddress  *AccountAddress `query:"account"`
 	TraceId         []HashType      `query:"trace_id"`
 	TransactionHash []HashType      `query:"tx_hash"`

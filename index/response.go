@@ -77,11 +77,11 @@ type JettonBurnsResponse struct {
 	Metadata    Metadata     `json:"metadata"`
 } // @name JettonBurnsResponse
 
-type EventsResponse struct {
-	Events      []Event     `json:"events"`
+type TracesResponse struct {
+	Traces      []Trace     `json:"traces"`
 	AddressBook AddressBook `json:"address_book"`
 	Metadata    Metadata    `json:"metadata"`
-} // @name EventsResponse
+} // @name TracesResponse
 
 type ActionsResponse struct {
 	Actions     []Action    `json:"actions"`

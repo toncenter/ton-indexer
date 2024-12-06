@@ -83,7 +83,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "events"
+                    "actions"
                 ],
                 "summary": "Get Actions",
                 "operationId": "api_v3_get_actions",
@@ -136,35 +136,35 @@
                     },
                     {
                         "type": "integer",
-                        "description": "Query actions of events which was completed in masterchain block with given seqno",
+                        "description": "Query actions of traces which was completed in masterchain block with given seqno",
                         "name": "mc_seqno",
                         "in": "query"
                     },
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "Query actions for events, which was finished **after** given timestamp.",
+                        "description": "Query actions for traces, which was finished **after** given timestamp.",
                         "name": "start_utime",
                         "in": "query"
                     },
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "Query actions for events, which was finished **before** given timestamp.",
+                        "description": "Query actions for traces, which was finished **before** given timestamp.",
                         "name": "end_utime",
                         "in": "query"
                     },
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "Query actions for events with `end_lt \u003e= start_lt`.",
+                        "description": "Query actions for traces with `end_lt \u003e= start_lt`.",
                         "name": "start_lt",
                         "in": "query"
                     },
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "Query actions for events with `end_lt \u003c= end_lt`.",
+                        "description": "Query actions for traces with `end_lt \u003c= end_lt`.",
                         "name": "end_lt",
                         "in": "query"
                     },
@@ -532,134 +532,6 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/V2EstimateFeeResult"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/RequestError"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v3/events": {
-            "get": {
-                "security": [
-                    {
-                        "APIKeyHeader": []
-                    },
-                    {
-                        "APIKeyQuery": []
-                    }
-                ],
-                "description": "Get events by specified filter.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "events"
-                ],
-                "summary": "Get Events",
-                "operationId": "api_v3_get_events",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form.",
-                        "name": "account",
-                        "in": "query"
-                    },
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Find event by transaction hash.",
-                        "name": "tx_hash",
-                        "in": "query"
-                    },
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Find event by message hash.",
-                        "name": "msg_hash",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Query events that was completed in masterchain block with given seqno",
-                        "name": "mc_seqno",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "description": "Query events, which was finished **after** given timestamp.",
-                        "name": "start_utime",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "description": "Query events, which was finished **before** given timestamp.",
-                        "name": "end_utime",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "description": "Query events with `end_lt \u003e= start_lt`.",
-                        "name": "start_lt",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "description": "Query events with `end_lt \u003c= end_lt`.",
-                        "name": "end_lt",
-                        "in": "query"
-                    },
-                    {
-                        "maximum": 1000,
-                        "minimum": 1,
-                        "type": "integer",
-                        "default": 10,
-                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "default": 0,
-                        "description": "Skip first N rows. Use with *limit* to batch read.",
-                        "name": "offset",
-                        "in": "query"
-                    },
-                    {
-                        "enum": [
-                            "asc",
-                            "desc"
-                        ],
-                        "type": "string",
-                        "default": "desc",
-                        "description": "Sort events by lt.",
-                        "name": "sort",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/EventsResponse"
                         }
                     },
                     "400": {
@@ -1901,6 +1773,151 @@
                 }
             }
         },
+        "/api/v3/traces": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get traces by specified filter.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Get Traces",
+                "operationId": "api_v3_get_traces",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form.",
+                        "name": "account",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find trace by trace id.",
+                        "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find trace by transaction hash.",
+                        "name": "tx_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find trace by message hash.",
+                        "name": "msg_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Query traces that was completed in masterchain block with given seqno",
+                        "name": "mc_seqno",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query traces, which was finished **after** given timestamp.",
+                        "name": "start_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query traces, which was finished **before** given timestamp.",
+                        "name": "end_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query traces with `end_lt \u003e= start_lt`.",
+                        "name": "start_lt",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query traces with `end_lt \u003c= end_lt`.",
+                        "name": "end_lt",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include trace actions.",
+                        "name": "include_actions",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort traces by lt.",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/TracesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/transactions": {
             "get": {
                 "security": [
@@ -2777,104 +2794,6 @@
                 }
             }
         },
-        "Event": {
-            "type": "object",
-            "properties": {
-                "actions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/Action"
-                    }
-                },
-                "end_lt": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "end_utime": {
-                    "type": "integer"
-                },
-                "external_hash": {
-                    "type": "string"
-                },
-                "is_incomplete": {
-                    "type": "boolean"
-                },
-                "mc_seqno_end": {
-                    "type": "string"
-                },
-                "mc_seqno_start": {
-                    "type": "string"
-                },
-                "start_lt": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "start_utime": {
-                    "type": "integer"
-                },
-                "trace": {
-                    "$ref": "#/definitions/TraceNode"
-                },
-                "trace_id": {
-                    "type": "string"
-                },
-                "trace_info": {
-                    "$ref": "#/definitions/EventMeta"
-                },
-                "transactions": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "$ref": "#/definitions/Transaction"
-                    }
-                },
-                "transactions_order": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "warning": {
-                    "type": "string"
-                }
-            }
-        },
-        "EventMeta": {
-            "type": "object",
-            "properties": {
-                "classification_state": {
-                    "type": "string"
-                },
-                "messages": {
-                    "type": "integer"
-                },
-                "pending_messages": {
-                    "type": "integer"
-                },
-                "trace_state": {
-                    "type": "string"
-                },
-                "transactions": {
-                    "type": "integer"
-                }
-            }
-        },
-        "EventsResponse": {
-            "type": "object",
-            "properties": {
-                "address_book": {
-                    "$ref": "#/definitions/AddressBook"
-                },
-                "events": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/Event"
-                    }
-                },
-                "metadata": {
-                    "$ref": "#/definitions/Metadata"
-                }
-            }
-        },
         "JettonBurn": {
             "type": "object",
             "properties": {
@@ -3449,6 +3368,87 @@
                 }
             }
         },
+        "Trace": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Action"
+                    }
+                },
+                "end_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "end_utime": {
+                    "type": "integer"
+                },
+                "external_hash": {
+                    "type": "string"
+                },
+                "is_incomplete": {
+                    "type": "boolean"
+                },
+                "mc_seqno_end": {
+                    "type": "string"
+                },
+                "mc_seqno_start": {
+                    "type": "string"
+                },
+                "start_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "start_utime": {
+                    "type": "integer"
+                },
+                "trace": {
+                    "$ref": "#/definitions/TraceNode"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "trace_info": {
+                    "$ref": "#/definitions/TraceMeta"
+                },
+                "transactions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/Transaction"
+                    }
+                },
+                "transactions_order": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "warning": {
+                    "type": "string"
+                }
+            }
+        },
+        "TraceMeta": {
+            "type": "object",
+            "properties": {
+                "classification_state": {
+                    "type": "string"
+                },
+                "messages": {
+                    "type": "integer"
+                },
+                "pending_messages": {
+                    "type": "integer"
+                },
+                "trace_state": {
+                    "type": "string"
+                },
+                "transactions": {
+                    "type": "integer"
+                }
+            }
+        },
         "TraceNode": {
             "type": "object",
             "properties": {
@@ -3469,6 +3469,23 @@
                 },
                 "tx_hash": {
                     "type": "string"
+                }
+            }
+        },
+        "TracesResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
+                },
+                "traces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Trace"
+                    }
                 }
             }
         },

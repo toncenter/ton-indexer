@@ -305,71 +305,6 @@ definitions:
       type:
         type: string
     type: object
-  Event:
-    properties:
-      actions:
-        items:
-          $ref: '#/definitions/Action'
-        type: array
-      end_lt:
-        example: "0"
-        type: string
-      end_utime:
-        type: integer
-      external_hash:
-        type: string
-      is_incomplete:
-        type: boolean
-      mc_seqno_end:
-        type: string
-      mc_seqno_start:
-        type: string
-      start_lt:
-        example: "0"
-        type: string
-      start_utime:
-        type: integer
-      trace:
-        $ref: '#/definitions/TraceNode'
-      trace_id:
-        type: string
-      trace_info:
-        $ref: '#/definitions/EventMeta'
-      transactions:
-        additionalProperties:
-          $ref: '#/definitions/Transaction'
-        type: object
-      transactions_order:
-        items:
-          type: string
-        type: array
-      warning:
-        type: string
-    type: object
-  EventMeta:
-    properties:
-      classification_state:
-        type: string
-      messages:
-        type: integer
-      pending_messages:
-        type: integer
-      trace_state:
-        type: string
-      transactions:
-        type: integer
-    type: object
-  EventsResponse:
-    properties:
-      address_book:
-        $ref: '#/definitions/AddressBook'
-      events:
-        items:
-          $ref: '#/definitions/Event'
-        type: array
-      metadata:
-        $ref: '#/definitions/Metadata'
-    type: object
   JettonBurn:
     properties:
       amount:
@@ -752,6 +687,60 @@ definitions:
       type:
         type: string
     type: object
+  Trace:
+    properties:
+      actions:
+        items:
+          $ref: '#/definitions/Action'
+        type: array
+      end_lt:
+        example: "0"
+        type: string
+      end_utime:
+        type: integer
+      external_hash:
+        type: string
+      is_incomplete:
+        type: boolean
+      mc_seqno_end:
+        type: string
+      mc_seqno_start:
+        type: string
+      start_lt:
+        example: "0"
+        type: string
+      start_utime:
+        type: integer
+      trace:
+        $ref: '#/definitions/TraceNode'
+      trace_id:
+        type: string
+      trace_info:
+        $ref: '#/definitions/TraceMeta'
+      transactions:
+        additionalProperties:
+          $ref: '#/definitions/Transaction'
+        type: object
+      transactions_order:
+        items:
+          type: string
+        type: array
+      warning:
+        type: string
+    type: object
+  TraceMeta:
+    properties:
+      classification_state:
+        type: string
+      messages:
+        type: integer
+      pending_messages:
+        type: integer
+      trace_state:
+        type: string
+      transactions:
+        type: integer
+    type: object
   TraceNode:
     properties:
       children:
@@ -766,6 +755,17 @@ definitions:
         $ref: '#/definitions/Transaction'
       tx_hash:
         type: string
+    type: object
+  TracesResponse:
+    properties:
+      address_book:
+        $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
+      traces:
+        items:
+          $ref: '#/definitions/Trace'
+        type: array
     type: object
   Transaction:
     properties:
@@ -1073,29 +1073,29 @@ paths:
           type: string
         name: trace_id
         type: array
-      - description: Query actions of events which was completed in masterchain block
+      - description: Query actions of traces which was completed in masterchain block
           with given seqno
         in: query
         name: mc_seqno
         type: integer
-      - description: Query actions for events, which was finished **after** given
+      - description: Query actions for traces, which was finished **after** given
           timestamp.
         in: query
         minimum: 0
         name: start_utime
         type: integer
-      - description: Query actions for events, which was finished **before** given
+      - description: Query actions for traces, which was finished **before** given
           timestamp.
         in: query
         minimum: 0
         name: end_utime
         type: integer
-      - description: Query actions for events with `end_lt >= start_lt`.
+      - description: Query actions for traces with `end_lt >= start_lt`.
         in: query
         minimum: 0
         name: start_lt
         type: integer
-      - description: Query actions for events with `end_lt <= end_lt`.
+      - description: Query actions for traces with `end_lt <= end_lt`.
         in: query
         minimum: 0
         name: end_lt
@@ -1137,7 +1137,7 @@ paths:
       - APIKeyQuery: []
       summary: Get Actions
       tags:
-      - events
+      - actions
   /api/v3/addressBook:
     get:
       consumes:
@@ -1351,95 +1351,6 @@ paths:
       summary: Estimate Fee
       tags:
       - api/v2
-  /api/v3/events:
-    get:
-      consumes:
-      - application/json
-      description: Get events by specified filter.
-      operationId: api_v3_get_events
-      parameters:
-      - description: List of account addresses to get transactions. Can be sent in
-          hex, base64 or base64url form.
-        in: query
-        name: account
-        type: string
-      - collectionFormat: multi
-        description: Find event by transaction hash.
-        in: query
-        items:
-          type: string
-        name: tx_hash
-        type: array
-      - collectionFormat: multi
-        description: Find event by message hash.
-        in: query
-        items:
-          type: string
-        name: msg_hash
-        type: array
-      - description: Query events that was completed in masterchain block with given
-          seqno
-        in: query
-        name: mc_seqno
-        type: integer
-      - description: Query events, which was finished **after** given timestamp.
-        in: query
-        minimum: 0
-        name: start_utime
-        type: integer
-      - description: Query events, which was finished **before** given timestamp.
-        in: query
-        minimum: 0
-        name: end_utime
-        type: integer
-      - description: Query events with `end_lt >= start_lt`.
-        in: query
-        minimum: 0
-        name: start_lt
-        type: integer
-      - description: Query events with `end_lt <= end_lt`.
-        in: query
-        minimum: 0
-        name: end_lt
-        type: integer
-      - default: 10
-        description: Limit number of queried rows. Use with *offset* to batch read.
-        in: query
-        maximum: 1000
-        minimum: 1
-        name: limit
-        type: integer
-      - default: 0
-        description: Skip first N rows. Use with *limit* to batch read.
-        in: query
-        minimum: 0
-        name: offset
-        type: integer
-      - default: desc
-        description: Sort events by lt.
-        enum:
-        - asc
-        - desc
-        in: query
-        name: sort
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/EventsResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/RequestError'
-      security:
-      - APIKeyHeader: []
-      - APIKeyQuery: []
-      summary: Get Events
-      tags:
-      - events
   /api/v3/jetton/burns:
     get:
       consumes:
@@ -2281,6 +2192,107 @@ paths:
       summary: Get Top Accounts By Balance
       tags:
       - stats
+  /api/v3/traces:
+    get:
+      consumes:
+      - application/json
+      description: Get traces by specified filter.
+      operationId: api_v3_get_traces
+      parameters:
+      - description: List of account addresses to get transactions. Can be sent in
+          hex, base64 or base64url form.
+        in: query
+        name: account
+        type: string
+      - collectionFormat: multi
+        description: Find trace by trace id.
+        in: query
+        items:
+          type: string
+        name: trace_id
+        type: array
+      - collectionFormat: multi
+        description: Find trace by transaction hash.
+        in: query
+        items:
+          type: string
+        name: tx_hash
+        type: array
+      - collectionFormat: multi
+        description: Find trace by message hash.
+        in: query
+        items:
+          type: string
+        name: msg_hash
+        type: array
+      - description: Query traces that was completed in masterchain block with given
+          seqno
+        in: query
+        name: mc_seqno
+        type: integer
+      - description: Query traces, which was finished **after** given timestamp.
+        in: query
+        minimum: 0
+        name: start_utime
+        type: integer
+      - description: Query traces, which was finished **before** given timestamp.
+        in: query
+        minimum: 0
+        name: end_utime
+        type: integer
+      - description: Query traces with `end_lt >= start_lt`.
+        in: query
+        minimum: 0
+        name: start_lt
+        type: integer
+      - description: Query traces with `end_lt <= end_lt`.
+        in: query
+        minimum: 0
+        name: end_lt
+        type: integer
+      - default: false
+        description: Include trace actions.
+        in: query
+        name: include_actions
+        type: boolean
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 1000
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort traces by lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/TracesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Traces
+      tags:
+      - actions
   /api/v3/transactions:
     get:
       consumes:
