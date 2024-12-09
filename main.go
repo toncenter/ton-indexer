@@ -1039,6 +1039,10 @@ func GetTraces(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
 	}
 
+	if c.Path() == "/api/v3/events" {
+		traces_req.IncludeActions = true
+	}
+
 	res, book, metadata, err := pool.QueryTraces(traces_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
@@ -1560,6 +1564,7 @@ func main() {
 	// actions
 	app.Get("/api/v3/actions", GetActions)
 	app.Get("/api/v3/traces", GetTraces)
+	app.Get("/api/v3/events", GetTraces)
 
 	// api/v2 proxied
 	app.Get("/api/v3/addressInformation", GetV2AddressInformation)
