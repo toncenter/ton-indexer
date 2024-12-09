@@ -805,7 +805,7 @@ const docTemplate = `{
                             "out"
                         ],
                         "type": "string",
-                        "description": "Direction of transfer.",
+                        "description": "Direction of transfer. *Note:* applied only with owner_address.",
                         "name": "direction",
                         "in": "query"
                     },

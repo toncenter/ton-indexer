@@ -1512,7 +1512,7 @@ paths:
         in: query
         name: jetton_master
         type: string
-      - description: Direction of transfer.
+      - description: Direction of transfer. *Note:* applied only with owner_address.
         enum:
         - in
         - out

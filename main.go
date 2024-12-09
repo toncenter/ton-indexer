@@ -874,7 +874,7 @@ func GetJettonWallets(c *fiber.Ctx) error {
 // @param owner_address query []string false "Address of jetton wallet owner in any form. Max 1000" collectionFormat(multi)
 // @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param jetton_master query string false "Jetton master address in any form."
-// @param direction query string false "Direction of transfer." Enums(in, out)
+// @param direction query string false "Direction of transfer. *Note:* applied only with owner_address." Enums(in, out)
 // @param start_utime query int32 false "Query transactions with generation UTC timestamp **after** given timestamp." minimum(0)
 // @param end_utime query int32 false "Query transactions with generation UTC timestamp **before** given timestamp." minimum(0)
 // @param start_lt query int64 false "Query transactions with `lt >= start_lt`." minimum(0)
