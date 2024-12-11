@@ -18,7 +18,7 @@ def _get_direction_for_block(block: Block) -> int:
 def _ensure_earliest_common_block(blocks: list[Block]) -> Block | None:
     """Ensures that all blocks have a common block in their previous blocks, and returns it."""
     # find block with min min_lt
-    blocks = sorted(blocks, key=lambda b: (b.min_lt, _get_direction_for_block(b)))
+    blocks = sorted(blocks, key=lambda b: (b.min_lt_without_initiating_tx, _get_direction_for_block(b)))
     earliest_node_in_block = blocks[0]
     connected = [earliest_node_in_block]
     for block in blocks:
@@ -109,6 +109,7 @@ class Block:
     min_utime: int
     max_utime: int
     max_lt: int
+    min_lt_without_initiating_tx: int
     type: str
     value_flow: AccountValueFlow
     transient: bool
@@ -132,6 +133,7 @@ class Block:
             self.max_lt = nodes[0].message.transaction.lt
             self.min_utime = nodes[0].message.transaction.now
             self.max_utime = nodes[0].message.transaction.now
+            self.min_lt_without_initiating_tx = nodes[0].message.transaction.lt
             self._find_contract_deployments()
         if len(nodes) == 1:
             parent = nodes[0].parent
@@ -142,9 +144,11 @@ class Block:
             self.max_lt = 0
             self.min_utime = 0
             self.max_utime = 0
+            self.min_lt_without_initiating_tx = 0
 
     def calculate_min_max_lt(self):
         self.min_lt = min(n.message.transaction.lt for n in self.event_nodes)
+        self.min_lt_without_initiating_tx = self.min_lt
         self.min_utime = min(n.message.transaction.now for n in self.event_nodes)
         self.max_lt = max(n.message.transaction.lt for n in self.event_nodes)
         self.max_utime = max(n.message.transaction.now for n in self.event_nodes)
