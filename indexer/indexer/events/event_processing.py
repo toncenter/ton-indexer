@@ -45,14 +45,16 @@ def init_block(node: EventNode) -> Block:
     return block
 
 async def unwind_deployments(blocks: list[Block]) -> list[Block]:
+    visited = set()
     for block in blocks:
         queue = block.children_blocks.copy()
         while len(queue) > 0:
             child = queue.pop(0)
-            if isinstance(child, ContractDeploy):
+            if isinstance(child, ContractDeploy) and child not in visited:
                 blocks.append(child)
             else:
                 queue.extend(child.children_blocks)
+            visited.add(child)
     return blocks
 
 matchers = [
