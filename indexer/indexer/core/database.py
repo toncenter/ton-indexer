@@ -297,7 +297,6 @@ class Action(Base):
         Column("provider", String),
         Column("ts_nft", String),
     ]))
-    extended_tx_hashes: list[str] = Column(ARRAY(String()))
     accounts: list[str]
 
 

@@ -463,7 +463,7 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             if acc not in action.accounts:
                 logging.info(f"Initiating transaction ({block.initiating_event_node.get_tx_hash()}) account not in accounts. Trace id: {trace_id}. Action id: {action.action_id}")
             action.accounts.append(acc)
-    action.extended_tx_hashes = list(extended_tx_hashes)
+    action.tx_hashes = list(extended_tx_hashes)
 
     action.accounts = list(set(a for a in action.accounts if a is not None))
     return action
