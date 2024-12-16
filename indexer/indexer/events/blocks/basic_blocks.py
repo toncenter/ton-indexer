@@ -55,9 +55,13 @@ class TonTransferBlock(Block):
             'comment': self.comment,
             'encrypted': self.encrypted,
         })
-        self.failed = node.failed
-        if node.get_tx() is not None and self.failed and node.get_tx().end_status == 'uninit':
-            self.failed = False
+        if node.failed:
+            if node.message is not None and node.message.bounce == True:
+                self.failed = True
+            elif node.get_tx() is not None and node.get_tx().end_status == 'uninit':
+                self.failed = False
+            else:
+                self.failed = True
         self.value = node.message.value
 
         _fill_flow_from_node(self.value_flow, node)
