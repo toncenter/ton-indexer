@@ -45,16 +45,22 @@ class UnclassifiedEventsReader(mp.Process):
     
     def read_batch(self):
         # get new batch
-        with SyncSessionMaker() as session:
-            query = session.query(Trace.trace_id, Trace.nodes_, Trace.start_lt) \
-                .filter(Trace.state == 'complete') \
-                .filter(Trace.classification_state == 'unclassified')
-            if self.last_lt is not None:
-                query = query.filter(or_(Trace.start_lt < self.last_lt, and_(Trace.start_lt == self.last_lt, Trace.trace_id < self.last_trace_id)))
-            query = query.order_by(Trace.start_lt.desc(), Trace.trace_id.desc()) \
-                .limit(self.batch_size)
-            query = query.yield_per(self.batch_size)
-            items = query.all()
+        db_read_finished = False
+        while not db_read_finished:
+            try:
+                with SyncSessionMaker() as session:
+                    query = session.query(Trace.trace_id, Trace.nodes_, Trace.start_lt) \
+                        .filter(Trace.state == 'complete') \
+                        .filter(Trace.classification_state == 'unclassified')
+                    if self.last_lt is not None:
+                        query = query.filter(or_(Trace.start_lt < self.last_lt, and_(Trace.start_lt == self.last_lt, Trace.trace_id < self.last_trace_id)))
+                    query = query.order_by(Trace.start_lt.desc(), Trace.trace_id.desc()) \
+                        .limit(self.batch_size)
+                    query = query.yield_per(self.batch_size)
+                    items = query.all()
+                db_read_finished = True
+            except:
+                logger.warning("Failed to read unclassified traces")
         # read complete tasks
         not_empty = True
         while not_empty:
@@ -133,10 +139,19 @@ class EventClassifierWorker(mp.Process):
     def process_one_batch(self):
         tasks = self.task_queue.get(True)
         # logger.info(f'Worker #{self.id} accepted batch of {len(tasks)} tasks')
-        batch = self.mark_big_traces(tasks)
-        asyncio.get_event_loop().run_until_complete(process_trace_batch_async(batch))
-        total = len(tasks)
-        big_traces = total - len(batch)
+        try:
+            batch = self.mark_big_traces(tasks)
+            asyncio.get_event_loop().run_until_complete(process_trace_batch_async(batch))
+            total = len(tasks)
+            big_traces = total - len(batch)
+        except asyncio.CancelledError:
+            logger.info("failed to process one batch: coroutine was cancelled")
+            total = len(tasks)
+            big_traces = 0
+        except Exception as ee:
+            logger.info(f"failed to process one batch: {ee}")
+            total = len(tasks)
+            big_traces = 0
         self.result_queue.put((total - big_traces, big_traces, tasks))
         return
         
