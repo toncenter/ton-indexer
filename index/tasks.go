@@ -25,14 +25,14 @@ func NewBackgroundTaskManager(pg_dsn string, channel_size int, min_conns int, ma
 	}
 	user := client.Pool.Config().ConnConfig.User
 
-	row := conn.QueryRow(context.Background(), "SELECT has_table_privilege($1, 'fetch_metadata_tasks', 'INSERT, UPDATE, DELETE')", user)
+	row := conn.QueryRow(context.Background(), "SELECT has_table_privilege($1, 'background_tasks', 'INSERT, UPDATE, DELETE')", user)
 	var has_privilege bool
 	err = row.Scan(&has_privilege)
 	if err != nil {
 		return nil, err
 	}
 	if !has_privilege {
-		return nil, errors.New("user does not have required privileges on fetch_metadata_tasks table")
+		return nil, errors.New("user does not have required privileges on background_tasks table")
 	}
 	return &TaskManager{
 		dbClient:    client,
