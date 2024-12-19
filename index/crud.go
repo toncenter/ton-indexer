@@ -746,7 +746,7 @@ func buildJettonTransfersQuery(transfer_req JettonTransferRequest, utime_req Uti
 
 func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query_default := `A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start_utime, A.end_utime, A.source, A.source_secondary,
-		A.destination, A.destination_secondary, A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, A.opcode, A.extended_tx_hashes,
+		A.destination, A.destination_secondary, A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, A.opcode, A.tx_hashes,
 		A.type, (A.ton_transfer_data).content, (A.ton_transfer_data).encrypted, A.value, A.amount,
 		(A.jetton_transfer_data).response_destination, (A.jetton_transfer_data).forward_amount, (A.jetton_transfer_data).query_id,
 		(A.jetton_transfer_data).custom_payload, (A.jetton_transfer_data).forward_payload, (A.jetton_transfer_data).comment,
@@ -829,7 +829,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
-		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join transactions as T on E.trace_id = T.trace_id and A.extended_tx_hashes @> array[T.hash::tonhash]`
+		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join transactions as T on E.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
 		if order_by_now {
 			clmn_query = `distinct on (E.end_utime, E.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
@@ -841,8 +841,8 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
-		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.extended_tx_hashes`
-		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join messages as M on E.trace_id = M.trace_id and A.extended_tx_hashes @> array[M.tx_hash::tonhash]`
+		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.tx_hashes`
+		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join messages as M on E.trace_id = M.trace_id and A.tx_hashes @> array[M.tx_hash::tonhash]`
 		if order_by_now {
 			clmn_query = `distinct on (E.end_utime, E.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
@@ -1891,7 +1891,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 	if len(trace_id_list) > 0 {
 		if includeActions {
 			query := `select A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start_utime, A.end_utime, A.source, A.source_secondary,
-				A.destination, A.destination_secondary, A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, A.opcode, A.extended_tx_hashes,
+				A.destination, A.destination_secondary, A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, A.opcode, A.tx_hashes,
 				A.type, (A.ton_transfer_data).content, (A.ton_transfer_data).encrypted, A.value, A.amount,
 				(A.jetton_transfer_data).response_destination, (A.jetton_transfer_data).forward_amount, (A.jetton_transfer_data).query_id,
 				(A.jetton_transfer_data).custom_payload, (A.jetton_transfer_data).forward_payload, (A.jetton_transfer_data).comment,
