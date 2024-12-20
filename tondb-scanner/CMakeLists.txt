@@ -14,22 +14,25 @@ add_library(tondb-scanner STATIC
     src/tokens.cpp
     src/smc-interfaces/Tokens.cpp
     src/smc-interfaces/NftSale.cpp
+    src/smc-interfaces/execute-smc.cpp
 )
 
 target_include_directories(tondb-scanner 
     PUBLIC external/ton
     PUBLIC external/libpqxx
+    PUBLIC external/msgpack-c
     PUBLIC src/
 )
 
 target_link_directories(tondb-scanner
     PUBLIC external/ton
     PUBLIC external/libpqxx
+    PUBLIC external/msgpack-c
 )
 target_compile_features(tondb-scanner PRIVATE cxx_std_17)
 target_link_libraries(tondb-scanner overlay tdutils tdactor adnl tl_api dht
         catchain validatorsession validator-disk ton_validator validator-disk smc-envelope
-        pqxx)
+        pqxx msgpack-cxx)
 
 set(TLB_TOKENS
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tokens.cpp

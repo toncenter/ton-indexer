@@ -80,3 +80,22 @@ snake#00 data:Cell = ContentData;                                    // snake#00
 chunks#01 data:ChunkedData = ContentData;
 onchain#00 data:(HashmapE 256 ^ContentData) = FullContent;
 offchain#01 uri:Text = FullContent;
+
+proto_http#4854 = Protocol;
+proto_list_nil$0 = ProtoList;
+
+proto_list_next$1 head:Protocol tail:ProtoList = ProtoList;
+
+cap_is_wallet#2177 = SmcCapability;
+
+cap_list_nil$0 = SmcCapList;
+cap_list_next$1 head:SmcCapability tail:SmcCapList = SmcCapList;
+
+dns_smc_address#9fd3 smc_addr:MsgAddressInt flags:(## 8) { flags <= 1 }
+  cap_list:flags . 0?SmcCapList = DNSRecord;
+dns_next_resolver#ba93 resolver:MsgAddressInt = DNSRecord;
+dns_adnl_address#ad01 adnl_addr:bits256 flags:(## 8) { flags <= 1 }
+  proto_list:flags . 0?ProtoList = DNSRecord;
+dns_storage_address#7473 bag_id:bits256 = DNSRecord;
+
+_ (HashmapE 256 ^DNSRecord) = DNS_RecordSet;

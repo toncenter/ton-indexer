@@ -26,6 +26,8 @@ private:
   td::actor::ActorOwn<TraceAssembler> trace_assembler_;
   std::shared_ptr<td::Destructor> watcher_;
 
+  std::string working_dir_;
+
   std::uint32_t max_active_tasks_{32};
   std::int32_t last_known_seqno_{0};
   std::int32_t last_indexed_seqno_{0};
@@ -43,10 +45,10 @@ private:
   td::Timestamp next_print_stats_;
 public:
   IndexScheduler(td::actor::ActorId<DbScanner> db_scanner, td::actor::ActorId<InsertManagerInterface> insert_manager,
-      td::actor::ActorId<ParseManager> parse_manager, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0, bool force_index = false,
+      td::actor::ActorId<ParseManager> parse_manager, std::string working_dir, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0, bool force_index = false,
       std::uint32_t max_active_tasks = 32, QueueState max_queue = QueueState{30000, 30000, 500000, 500000}, std::int32_t stats_timeout = 10,
       std::shared_ptr<td::Destructor> watcher = nullptr)
-    : db_scanner_(db_scanner), insert_manager_(insert_manager), parse_manager_(parse_manager), 
+    : db_scanner_(db_scanner), insert_manager_(insert_manager), parse_manager_(parse_manager), working_dir_(std::move(working_dir)),
       from_seqno_(from_seqno), to_seqno_(to_seqno), force_index_(force_index), max_active_tasks_(max_active_tasks),
       max_queue_(std::move(max_queue)), stats_timeout_(stats_timeout), watcher_(watcher) {};
 
@@ -67,6 +69,7 @@ private:
   void seqno_inserted(std::uint32_t mc_seqno, td::Unit result);
 
   void got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R);
+  void got_trace_assembler_last_state_seqno(ton::BlockSeqno last_state_seqno);
   void got_last_known_seqno(std::uint32_t last_known_seqno);
 
   void got_insert_queue_state(QueueState status);

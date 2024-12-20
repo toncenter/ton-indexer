@@ -1040,14 +1040,14 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
   }
 
   std::ostringstream query;
-  query << "INSERT INTO latest_account_states (account, account_friendly, hash, balance, "
-                                              "account_status, timestamp, last_trans_hash, last_trans_lt, "
-                                              "frozen_hash, data_hash, code_hash, "
-                                              "data_boc, code_boc) VALUES ";
   bool is_first = true;
   for (auto i = latest_account_states.begin(); i != latest_account_states.end(); ++i) {
     auto& account_state = i->second;
     if (is_first) {
+      query << "INSERT INTO latest_account_states (account, account_friendly, hash, balance, "
+                                              "account_status, timestamp, last_trans_hash, last_trans_lt, "
+                                              "frozen_hash, data_hash, code_hash, "
+                                              "data_boc, code_boc) VALUES ";
       is_first = false;
     } else {
       query << ", ";
@@ -1102,24 +1102,46 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
           << data_str << ","
           << code_str << ")";
   }
-  if (is_first) {
-    return "";
+  if (!is_first) {
+    query << " ON CONFLICT (account) DO UPDATE SET "
+          << "account_friendly = EXCLUDED.account_friendly, "
+          << "hash = EXCLUDED.hash, "
+          << "balance = EXCLUDED.balance, "
+          << "account_status = EXCLUDED.account_status, "
+          << "timestamp = EXCLUDED.timestamp, "
+          << "last_trans_hash = EXCLUDED.last_trans_hash, "
+          << "last_trans_lt = EXCLUDED.last_trans_lt, "
+          << "frozen_hash = EXCLUDED.frozen_hash, "
+          << "data_hash = EXCLUDED.data_hash, "
+          << "code_hash = EXCLUDED.code_hash, "
+          << "data_boc = EXCLUDED.data_boc, "
+          << "code_boc = EXCLUDED.code_boc "
+          << "WHERE latest_account_states.last_trans_lt < EXCLUDED.last_trans_lt;\n";
   }
-  query << " ON CONFLICT (account) DO UPDATE SET "
-        << "account_friendly = EXCLUDED.account_friendly, "
-        << "hash = EXCLUDED.hash, "
-        << "balance = EXCLUDED.balance, "
-        << "account_status = EXCLUDED.account_status, "
-        << "timestamp = EXCLUDED.timestamp, "
-        << "last_trans_hash = EXCLUDED.last_trans_hash, "
-        << "last_trans_lt = EXCLUDED.last_trans_lt, "
-        << "frozen_hash = EXCLUDED.frozen_hash, "
-        << "data_hash = EXCLUDED.data_hash, "
-        << "code_hash = EXCLUDED.code_hash, "
-        << "data_boc = EXCLUDED.data_boc, "
-        << "code_boc = EXCLUDED.code_boc "
-        << "WHERE latest_account_states.last_trans_lt < EXCLUDED.last_trans_lt;\n";
-  // LOG(INFO) << "Latest account states query size: " << double(query.str().length()) / 1024 / 1024;
+
+  is_first = true;
+  for (auto i = latest_account_states.begin(); i != latest_account_states.end(); ++i) {
+    auto& account_state = i->second;
+    if (is_first) {
+      query << "INSERT INTO address_book (address, code_hash) VALUES ";
+      is_first = false;
+    } else {
+      query << ", ";
+    }
+
+    std::optional<std::string> code_hash_str;
+    if (account_state.code_hash) {
+      code_hash_str = td::base64_encode(account_state.code_hash.value().as_slice());
+    }
+    query << "("
+          << txn.quote(convert::to_raw_address(account_state.account)) << ","
+          << TO_SQL_OPTIONAL_STRING(code_hash_str, txn) << ")";
+  }
+  if (!is_first) {
+    query << " ON CONFLICT (address) DO UPDATE SET "
+          << "code_hash = EXCLUDED.code_hash;\n";
+  }
+ 
   return query.str();
 }
 
@@ -1240,7 +1262,6 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
       } else {
         query << ", ";
       }
-      LOG(INFO) << "Indexed mintless jetton: " << convert::to_raw_address(addr);
       query << "(" << txn.quote(convert::to_raw_address(addr)) << ", FALSE)";
     }
     query << " ON CONFLICT (address) DO NOTHING;\n";
@@ -1315,10 +1336,10 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
   }
 
   std::ostringstream query;
-  query << "INSERT INTO nft_items (address, init, index, collection_address, owner_address, content, last_transaction_lt, code_hash, data_hash) VALUES ";
   bool is_first = true;
   for (const auto& [addr, nft_item] : nft_items) {
     if (is_first) {
+      query << "INSERT INTO nft_items (address, init, index, collection_address, owner_address, content, last_transaction_lt, code_hash, data_hash) VALUES ";
       is_first = false;
     } else {
       query << ", ";
@@ -1343,18 +1364,73 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
           << txn.quote(td::base64_encode(nft_item.data_hash.as_slice()))
           << ")";
   }
-  if (is_first) {
-    return "";
+  if (!is_first) {
+    query << " ON CONFLICT (address) DO UPDATE SET "
+          << "init = EXCLUDED.init, "
+          << "index = EXCLUDED.index, "
+          << "collection_address = EXCLUDED.collection_address, "
+          << "owner_address = EXCLUDED.owner_address, "
+          << "content = EXCLUDED.content, "
+          << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
+          << "code_hash = EXCLUDED.code_hash, "
+          << "data_hash = EXCLUDED.data_hash WHERE nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
   }
-  query << " ON CONFLICT (address) DO UPDATE SET "
-        << "init = EXCLUDED.init, "
-        << "index = EXCLUDED.index, "
-        << "collection_address = EXCLUDED.collection_address, "
-        << "owner_address = EXCLUDED.owner_address, "
-        << "content = EXCLUDED.content, "
-        << "last_transaction_lt = EXCLUDED.last_transaction_lt, "
-        << "code_hash = EXCLUDED.code_hash, "
-        << "data_hash = EXCLUDED.data_hash WHERE nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
+
+  is_first = true;
+  for (const auto& [addr, nft_item] : nft_items) {
+    if (!nft_item.dns_entry) {
+      continue;
+    }
+    if (is_first) {
+      query << "INSERT INTO dns_entries (nft_item_address, nft_item_owner, domain, dns_next_resolver, dns_wallet, dns_site_adnl, dns_storage_bag_id, last_transaction_lt) VALUES ";
+      is_first = false;
+    } else {
+      query << ", ";
+    }
+
+    std::optional<std::string> raw_owner_address;
+    if (nft_item.owner_address) {
+      raw_owner_address = convert::to_raw_address(nft_item.owner_address.value());
+    }
+    std::optional<std::string> raw_dns_next_resolver;
+    if (nft_item.dns_entry->next_resolver) {
+      raw_dns_next_resolver = convert::to_raw_address(nft_item.dns_entry->next_resolver.value());
+    }
+    std::optional<std::string> raw_dns_wallet;
+    if (nft_item.dns_entry->wallet) {
+      raw_dns_wallet = convert::to_raw_address(nft_item.dns_entry->wallet.value());
+    }
+    std::optional<std::string> raw_dns_site;
+    if (nft_item.dns_entry->site_adnl) {
+      raw_dns_site = nft_item.dns_entry->site_adnl->to_hex();
+    }
+    std::optional<std::string> raw_dns_storage_bag_id;
+    if (nft_item.dns_entry->storage_bag_id) {
+      raw_dns_storage_bag_id = nft_item.dns_entry->storage_bag_id->to_hex();
+    }
+    query << "("
+          << txn.quote(convert::to_raw_address(nft_item.address)) << ","
+          << TO_SQL_OPTIONAL_STRING(raw_owner_address, txn) << ","
+          << txn.quote(nft_item.dns_entry->domain) << ","
+          << TO_SQL_OPTIONAL_STRING(raw_dns_next_resolver, txn) << ","
+          << TO_SQL_OPTIONAL_STRING(raw_dns_wallet, txn) << ","
+          << TO_SQL_OPTIONAL_STRING(raw_dns_site, txn) << ","
+          << TO_SQL_OPTIONAL_STRING(raw_dns_storage_bag_id, txn) << ","
+          << nft_item.last_transaction_lt
+          << ")";
+  }
+  if (!is_first) {
+    query << " ON CONFLICT (nft_item_address) DO UPDATE SET "
+          << "nft_item_owner = EXCLUDED.nft_item_owner, "
+          << "domain = EXCLUDED.domain, "
+          << "dns_next_resolver = EXCLUDED.dns_next_resolver, "
+          << "dns_wallet = EXCLUDED.dns_wallet, "
+          << "dns_site_adnl = EXCLUDED.dns_site_adnl, "
+          << "dns_storage_bag_id = EXCLUDED.dns_storage_bag_id, "
+          << "last_transaction_lt = EXCLUDED.last_transaction_lt "
+          << "WHERE dns_entries.last_transaction_lt < EXCLUDED.last_transaction_lt;\n";
+  }
+
   return query.str();
 }
 
@@ -2249,6 +2325,25 @@ void InsertManagerPostgres::start_up() {
       "address tonaddr not null primary key, "
       "is_indexed boolean, "
       "custom_payload_api_uri varchar[]);\n"
+    );
+
+    query += (
+      "create table if not exists dns_entries ("
+      "nft_item_address tonaddr not null primary key, "
+      "nft_item_owner tonaddr, "
+      "domain varchar, "
+      "dns_next_resolver tonaddr, "
+      "dns_wallet tonaddr, "
+      "dns_site_adnl varchar(64), "
+      "dns_storage_bag_id varchar(64), "
+      "last_transaction_lt bigint);\n"
+    );
+
+    query += (
+      "create table if not exists address_book ("
+      "address tonaddr not null primary key, "
+      "code_hash tonhash, "
+      "domain varchar);\n"
     );
 
     LOG(DEBUG) << query;

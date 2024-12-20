@@ -20,6 +20,7 @@ int main(int argc, char *argv[]) {
   std::string db_root = "/var/lib/ton-work/db";
   std::string pg_dsn = "postgresql://localhost:5432/ton_index";
   Options options_;
+  bool is_testnet = false;
   
   td::OptionParser p;
   p.set_description("Scan all accounts at some seqno, detect interfaces and save them to postgres");
@@ -72,12 +73,17 @@ int main(int argc, char *argv[]) {
   p.add_option('f', "force", "Reset checkpoints", [&]() {
     options_.from_checkpoint = false;
   });
+  p.add_option('\0', "testnet", "Use for testnet. It is used for correct indexing of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
+    is_testnet = true;
+  });
 
   auto S = p.run(argc, argv);
   if (S.is_error()) {
     LOG(ERROR) << "failed to parse options: " << S.move_as_error();
     std::_Exit(2);
   }
+
+  NftItemDetectorR::is_testnet = is_testnet;
 
   td::actor::Scheduler scheduler({threads});
   td::actor::ActorOwn<DbScanner> db_scanner;

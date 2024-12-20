@@ -67,13 +67,23 @@ private:
 class NftItemDetectorR: public td::actor::Actor {
 public:
   struct Result {
+    struct DNSEntry {
+      std::string domain;
+      std::optional<block::StdAddress> wallet;
+      std::optional<block::StdAddress> next_resolver;
+      std::optional<td::Bits256> site_adnl;
+      std::optional<td::Bits256> storage_bag_id;
+    };
     block::StdAddress address;
     bool init;
     td::RefInt256 index;
     std::optional<block::StdAddress> collection_address;
     std::optional<block::StdAddress> owner_address;
     std::optional<std::map<std::string, std::string>> content;
+    std::optional<DNSEntry> dns_entry;
   };
+
+  static bool is_testnet;
 
   NftItemDetectorR(block::StdAddress address, 
                        td::Ref<vm::Cell> code_cell,
@@ -89,7 +99,12 @@ private:
   td::Status verify_with_collection(block::StdAddress collection_address, td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data, td::RefInt256 index);
   td::Result<std::map<std::string, std::string>> get_content(td::RefInt256 index, td::Ref<vm::Cell> ind_content, block::StdAddress collection_address,
                                                             td::Ref<vm::Cell> collection_code, td::Ref<vm::Cell> collection_data);
-  td::Result<std::string> get_domain();
+  void process_domain_and_dns_data(const block::StdAddress& root_address, const std::function<td::Result<std::string>()>& get_domain_function, Result& item_data);
+  td::Result<NftItemDetectorR::Result::DNSEntry> get_dns_entry_data();
+  td::Result<std::string> get_ton_domain();
+  td::Result<std::string> get_t_me_domain();
+  static block::StdAddress get_dot_ton_dns_root_addr();
+  static std::optional<block::StdAddress> dot_t_dot_me_dns_root_addr();
 
   block::StdAddress address_;
   td::Ref<vm::Cell> code_cell_;

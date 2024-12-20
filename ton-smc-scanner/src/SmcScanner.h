@@ -33,6 +33,7 @@ private:
   td::actor::ActorId<ShardStateScanner> shard_state_scanner_;
   Options options_;
   
+  std::unordered_map<block::StdAddress, std::vector<InsertData>, AddressHasher> interfaces_;
   std::vector<InsertData> result_;
 public:
   StateBatchParser(std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> data, ShardStateDataPtr shard_state_data, td::actor::ActorId<ShardStateScanner> shard_state_scanner, Options options)
@@ -40,7 +41,8 @@ public:
   void start_up() override;
   void processing_finished();
 private:
-  void interfaces_detected(std::vector<Detector::DetectedInterface> ifaces);
+  void interfaces_detected(block::StdAddress address, std::vector<typename Detector::DetectedInterface> interfaces, 
+                                    td::Bits256 code_hash, td::Bits256 data_hash, uint64_t last_trans_lt, uint32_t last_trans_now, td::Promise<td::Unit> promise);
   void process_account_states(std::vector<schema::AccountState> account_states);
 };
 

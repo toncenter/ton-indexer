@@ -11,8 +11,6 @@
 
 namespace schema {
 
-struct Message;
-
 enum AccountStatus {
   uninit = block::gen::AccountStatus::acc_state_uninit,
   frozen = block::gen::AccountStatus::acc_state_frozen,
@@ -474,6 +472,14 @@ struct NFTItemData {
 };
 
 struct NFTItemDataV2 {
+  struct DNSEntry {
+    std::string domain;
+    std::optional<block::StdAddress> wallet;
+    std::optional<block::StdAddress> next_resolver;
+    std::optional<td::Bits256> site_adnl;
+    std::optional<td::Bits256> storage_bag_id;
+  };
+
   block::StdAddress address;
   bool init;
   td::RefInt256 index;
@@ -484,6 +490,7 @@ struct NFTItemDataV2 {
   uint32_t last_transaction_now;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  std::optional<DNSEntry> dns_entry;
 };
 
 struct NFTTransfer {
