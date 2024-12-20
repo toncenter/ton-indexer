@@ -60,8 +60,7 @@ td::Result<std::string> parse_chunks_data(td::Ref<vm::CellSlice> data) {
   }
 }
 
-td::Result<std::string> parse_content_data(td::Ref<vm::Cell> data) {
-  auto cs = vm::load_cell_slice_ref(data);
+td::Result<std::string> parse_content_data(td::Ref<vm::CellSlice> cs) {
   switch (tokens::gen::t_ContentData.check_tag(*cs)) {
     case tokens::gen::ContentData::snake: {
       tokens::gen::ContentData::Record_snake snake_record;
@@ -113,9 +112,18 @@ td::Result<std::map<std::string, std::string>> parse_token_data(td::Ref<vm::Cell
         std::map<std::string, std::string> res;
         
         for (auto attr : attributes) {
-          auto value = dict.lookup_ref(td::sha256_bits256(attr));
-          if (value.not_null()) {
-            auto attr_data_r = parse_content_data(value);
+          auto value_cs = dict.lookup(td::sha256_bits256(attr));
+          if (value_cs.not_null()) {
+            // TEP-64 standard requires that all attributes are stored in a dictionary with a single reference as a value:
+            //    onchain#00 data:(HashmapE 256 ^ContentData) = FullContent;
+            // however, some contracts store attributes as a direct value:
+            //    onchain#00 data:(HashmapE 256 ContentData) = FullContent;
+            // so we need to handle both cases.
+            if (value_cs->size() == 0 && value_cs->size_refs() == 1) {
+              value_cs = vm::load_cell_slice_ref(value_cs->prefetch_ref());
+            }
+          
+            auto attr_data_r = parse_content_data(value_cs);
             if (attr_data_r.is_error()) {
               LOG(ERROR) << "Failed to parse attribute " << attr << ": " << attr_data_r.move_as_error().message();
               continue;
