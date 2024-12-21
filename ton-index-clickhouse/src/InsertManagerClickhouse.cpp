@@ -399,10 +399,6 @@ void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::u
     return;
 }
 
-void InsertManagerClickhouse::get_trace_assembler_state(td::Promise<schema::TraceAssemblerState> promise) {
-    UNREACHABLE();
-}
-
 clickhouse::ClientOptions InsertManagerClickhouse::Credential::get_clickhouse_options()
 {
     clickhouse::ClientOptions options;

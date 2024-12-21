@@ -880,29 +880,6 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
           << "code_boc = EXCLUDED.code_boc "
           << "WHERE latest_account_states.last_trans_lt < EXCLUDED.last_trans_lt;\n";
   }
-
-  is_first = true;
-  for (auto i = latest_account_states.begin(); i != latest_account_states.end(); ++i) {
-    auto& account_state = i->second;
-    if (is_first) {
-      query << "INSERT INTO address_book (address, code_hash) VALUES ";
-      is_first = false;
-    } else {
-      query << ", ";
-    }
-
-    std::optional<std::string> code_hash_str;
-    if (account_state.code_hash) {
-      code_hash_str = td::base64_encode(account_state.code_hash.value().as_slice());
-    }
-    query << "("
-          << txn.quote(convert::to_raw_address(account_state.account)) << ","
-          << TO_SQL_OPTIONAL_STRING(code_hash_str, txn) << ")";
-  }
-  if (!is_first) {
-    query << " ON CONFLICT (address) DO UPDATE SET "
-          << "code_hash = EXCLUDED.code_hash;\n";
-  }
  
   return query.str();
 }
@@ -1490,36 +1467,22 @@ std::string InsertBatchPostgres::insert_nft_transfers(pqxx::work &txn) {
 #define B64HASH(x) (td::base64_encode((x).as_slice()))
 
 std::string InsertBatchPostgres::insert_traces(pqxx::work &txn) {
-  std::string full_query;
   std::ostringstream traces_query;
-  std::ostringstream edges_query;
 
   traces_query << "INSERT INTO traces (trace_id, external_hash, mc_seqno_start, mc_seqno_end, "
                   "start_lt, start_utime, end_lt, end_utime, state, pending_edges_, edges_, nodes_) VALUES ";
-  edges_query << "INSERT INTO trace_edges (trace_id, msg_hash, left_tx, right_tx, incomplete, broken) VALUES ";
   
   bool is_first_trace = true;
-  bool is_first_edge = true;
 
   std::unordered_map<td::Bits256, schema::Trace> traces_map;
-  std::unordered_map<std::pair<td::Bits256, td::Bits256>, schema::TraceEdge> edges_map;
   for (const auto& task : insert_tasks_) {
     for(auto &trace : task.parsed_block_->traces_) {
-      {
+      if (trace.state == schema::Trace::State::complete) {
         auto it = traces_map.find(trace.trace_id);
         if (it != traces_map.end() && it->second.end_lt < trace.end_lt) {
           it->second = trace;
         } else {
           traces_map.insert({trace.trace_id, trace});
-        }
-      }
-      for(auto &edge : trace.edges) {
-        auto key = std::make_pair(edge.trace_id, edge.msg_hash);
-        auto it = edges_map.find(key);
-        if (it != edges_map.end() && it->second.incomplete && !edge.incomplete) {
-          it->second = edge;
-        } else {
-          edges_map.insert({key, edge});
         }
       }
     }
@@ -1546,22 +1509,6 @@ std::string InsertBatchPostgres::insert_traces(pqxx::work &txn) {
                   << trace.nodes_
                   << ")";
   }
-  // edges
-  for(auto &[_, edge] : edges_map) {
-    if(is_first_edge) {
-      is_first_edge = false;
-    } else {
-      edges_query << ", ";
-    }
-    edges_query << "("
-                << txn.quote(B64HASH(edge.trace_id)) << ","
-                << txn.quote(B64HASH(edge.msg_hash)) << ","
-                << (edge.left_tx.has_value() ? txn.quote(B64HASH(edge.left_tx.value())) : "NULL" ) << ","
-                << (edge.right_tx.has_value() ? txn.quote(B64HASH(edge.right_tx.value())) : "NULL" ) << ","
-                << TO_SQL_BOOL(edge.incomplete) << ","
-                << TO_SQL_BOOL(edge.broken)
-                << ")";
-  }
   if (!is_first_trace) {
     traces_query << " ON CONFLICT (trace_id) DO UPDATE SET "
                  << "mc_seqno_end = EXCLUDED.mc_seqno_end, "
@@ -1572,20 +1519,9 @@ std::string InsertBatchPostgres::insert_traces(pqxx::work &txn) {
                  << "edges_ = EXCLUDED.edges_, "
                  << "nodes_ = EXCLUDED.nodes_ "
                  << "WHERE traces.end_lt < EXCLUDED.end_lt;\n";
-    full_query = traces_query.str();
   }
-  if (!is_first_edge) {
-    edges_query << " ON CONFLICT (trace_id, msg_hash) DO UPDATE SET "
-                << "trace_id = EXCLUDED.trace_id, "
-                << "msg_hash = EXCLUDED.msg_hash, "
-                << "left_tx = EXCLUDED.left_tx, "
-                << "right_tx = EXCLUDED.right_tx, "
-                << "incomplete = EXCLUDED.incomplete, "
-                << "broken = EXCLUDED.broken "
-                << "WHERE trace_edges.incomplete is true and EXCLUDED.incomplete is false and EXCLUDED.broken is false;\n";
-    full_query += edges_query.str();
-  }
-  return full_query;
+
+  return traces_query.str();
 }
 
 //
@@ -2039,19 +1975,6 @@ void InsertManagerPostgres::start_up() {
       "primary key (trace_id)"
       ");\n"
     );
-
-    query += (
-      "create table if not exists trace_edges ("
-      "trace_id tonhash, "
-      "msg_hash tonhash, "
-      "left_tx tonhash, "
-      "right_tx tonhash, "
-      "incomplete boolean, "
-      "broken boolean, "
-      "primary key (trace_id, msg_hash), "
-      "foreign key (trace_id) references traces"
-      ");\n"
-    );
     
     query += (
       "create table if not exists actions ("
@@ -2106,13 +2029,6 @@ void InsertManagerPostgres::start_up() {
       "last_transaction_lt bigint);\n"
     );
 
-    query += (
-      "create table if not exists address_book ("
-      "address tonaddr not null primary key, "
-      "code_hash tonhash, "
-      "domain varchar);\n"
-    );
-
     LOG(DEBUG) << query;
     txn.exec0(query);
     txn.commit();
@@ -2130,8 +2046,6 @@ void InsertManagerPostgres::start_up() {
     
     // some necessary indexes
     query += (
-      "create index if not exists traces_index_1 on traces (state);\n"
-      "create index if not exists trace_edges_index_1 on trace_edges (incomplete);\n"
       "create index if not exists trace_unclassified_index on traces (state, start_lt) include (trace_id, nodes_) where (classification_state = 'unclassified');\n"
     );
 
@@ -2221,8 +2135,6 @@ void InsertManagerPostgres::start_up() {
         "-- create index if not exists traces_index_5 on traces (external_hash, end_lt asc);\n"
         "-- create index if not exists traces_index_6 on traces (external_hash, end_utime asc);\n"
         "create index if not exists traces_index_7 on traces (classification_state);\n"
-        "create index if not exists trace_edges_index_1 on trace_edges (incomplete);\n"
-        "-- create index if not exists trace_edges_index_2 on trace_edges (msg_hash);\n"
         "-- create index if not exists actions_index_1 on actions (trace_id, start_lt, end_lt);\n"
         "create index if not exists actions_index_2 on actions (action_id);"
       );
@@ -2273,96 +2185,6 @@ void InsertManagerPostgres::start_up() {
 void InsertManagerPostgres::set_max_data_depth(std::int32_t value) {
   LOG(INFO) << "InsertManagerPostgres max_data_depth set to " << value; 
   max_data_depth_ = value;
-}
-
-void InsertManagerPostgres::get_trace_assembler_state(td::Promise<schema::TraceAssemblerState> promise) {
-  pqxx::connection c(credential_.get_connection_string());
-
-  auto to_bits256 = [](std::string value) {
-    auto R = td::base64_decode(value);
-    if (R.is_error()) {
-      LOG(ERROR) << "Failed to decode b64 string: " << value;
-      std::_Exit(2);
-    }
-    return td::Bits256(td::ConstBitPtr(td::Slice(R.move_as_ok()).ubegin()));
-  };
-  try {
-    schema::TraceAssemblerState state;
-    {
-      pqxx::work txn(c);
-      std::string query = "select trace_id, external_hash, mc_seqno_start, mc_seqno_end, start_lt, start_utime, end_lt, end_utime, state, pending_edges_, edges_, nodes_ from traces where state = 'pending';";
-      pqxx::result result = txn.exec(query);
-      txn.commit();
-      for (auto row : result) {
-        schema::Trace trace;
-        trace.trace_id = to_bits256(row[0].as<std::string>());
-        if (!row[1].is_null()) {
-          trace.external_hash = to_bits256(row[1].as<std::string>());
-        }
-        if (!row[2].is_null()) {
-          trace.mc_seqno_start = row[2].as<std::int32_t>();
-        }
-        if (!row[3].is_null()) {
-          trace.mc_seqno_end = row[3].as<std::int32_t>();
-        }
-        if (!row[4].is_null()) {
-          trace.start_lt = row[4].as<std::uint64_t>();
-        }
-        if (!row[5].is_null()) {
-          trace.start_utime = row[5].as<std::uint32_t>();
-        }
-        if (!row[6].is_null()) {
-          trace.end_lt = row[6].as<std::uint64_t>();
-        }
-        if (!row[7].is_null()) {
-          trace.end_utime = row[7].as<std::uint32_t>();
-        }
-        if (row[8].as<std::string>() != "pending") {
-          LOG(ERROR) << "Error in request. Got non-pending trace!";
-        }
-        trace.state = schema::Trace::State::pending;
-        if (!row[9].is_null()) {
-          trace.pending_edges_ = row[9].as<std::int64_t>();
-        }
-        if (!row[10].is_null()) {
-          trace.edges_ = row[10].as<std::int64_t>();
-        }
-        if (!row[11].is_null()) {
-          trace.nodes_ = row[11].as<std::int64_t>();
-        }
-
-        state.pending_traces_.push_back(std::move(trace));
-      }
-    }
-    {
-      pqxx::work txn(c);
-      std::string query = "select trace_id, msg_hash, left_tx, right_tx, incomplete, broken from trace_edges where incomplete;";
-      pqxx::result result = txn.exec(query);
-      txn.commit();
-      for (auto row : result) {
-        schema::TraceEdge edge;
-        edge.trace_id = to_bits256(row[0].as<std::string>());
-        edge.msg_hash = to_bits256(row[1].as<std::string>());
-        if (!row[2].is_null()) {
-          edge.left_tx = to_bits256(row[2].as<std::string>());
-        }
-        if (!row[3].is_null()) {
-          edge.right_tx = to_bits256(row[3].as<std::string>());
-        }
-        edge.type = schema::TraceEdge::Type::ord;
-        edge.incomplete = row[4].as<bool>();
-        if (edge.incomplete != true) {
-          LOG(ERROR) << "Error in request. Got non-pending edge!";
-        }
-        edge.broken = row[5].as<bool>();
-
-        state.pending_edges_.push_back(std::move(edge));
-      }
-    }
-    promise.set_value(std::move(state));
-  } catch (const std::exception &e) {
-    promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error selecting from PG: " << e.what()));
-  }
 }
 
 void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) {

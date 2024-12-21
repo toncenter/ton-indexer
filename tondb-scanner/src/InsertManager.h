@@ -22,7 +22,6 @@ public:
   virtual void insert(std::uint32_t mc_seqno, ParsedBlockPtr block_ds, td::Promise<QueueState> queued_promise, td::Promise<td::Unit> inserted_promise) = 0;
   virtual void get_insert_queue_state(td::Promise<QueueState> promise) = 0;
   virtual void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0) = 0;
-  virtual void get_trace_assembler_state(td::Promise<schema::TraceAssemblerState> promise) = 0;
 
   // // helper template functions
   // template <class T>

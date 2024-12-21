@@ -24,7 +24,6 @@ public:
 
   void create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) override;
   void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0) override;
-  void get_trace_assembler_state(td::Promise<schema::TraceAssemblerState> promise) override;
 };
 
 
