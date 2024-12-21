@@ -9,8 +9,6 @@
 #include "convert-utils.h"
 
 
-#define TO_STD_OPTIONAL(x) ((x) ? std::optional(x.value()) : std::nullopt)
-
 void InsertManagerClickhouse::start_up() {
     LOG(INFO) << "Clickhouse start_up";
     try {
@@ -691,8 +689,8 @@ void InsertBatchClickhouse::insert_transactions(clickhouse::Client& client) {
     auto split_info__sibling_addr_col = std::make_shared<ColumnNullableT<ColumnString>>();
 
     auto store_storage_ph = [&](const schema::TrStoragePhase& storage_ph) {
-        storage_ph__storage_fees_collected_col->Append(storage_ph.storage_fees_collected);
-        storage_ph__storage_fees_due_col->Append(storage_ph.storage_fees_due);
+        storage_ph__storage_fees_collected_col->Append(storage_ph.storage_fees_collected->to_long());
+        storage_ph__storage_fees_due_col->Append(storage_ph.storage_fees_due ? std::optional(storage_ph.storage_fees_due.value()->to_long()) : std::nullopt);
         storage_ph__status_change_col->Append(storage_ph.status_change);
     };
     auto store_empty_storage_ph = [&]() {
@@ -701,8 +699,8 @@ void InsertBatchClickhouse::insert_transactions(clickhouse::Client& client) {
         storage_ph__status_change_col->Append(std::nullopt);
     };
     auto store_credit_ph = [&](const schema::TrCreditPhase& credit_ph) {
-        credit_ph__due_fees_collected_col->Append(credit_ph.due_fees_collected);
-        credit_ph__credit_col->Append(credit_ph.credit);
+        credit_ph__due_fees_collected_col->Append(credit_ph.due_fees_collected ? std::optional(credit_ph.due_fees_collected.value()->to_long()) : std::nullopt);
+        credit_ph__credit_col->Append(credit_ph.credit.grams->to_long());
     };
     auto store_empty_credit_ph = [&]() {
         credit_ph__due_fees_collected_col->Append(std::nullopt);
@@ -732,7 +730,7 @@ void InsertBatchClickhouse::insert_transactions(clickhouse::Client& client) {
             compute_ph__vm__success_col->Append(v->success);
             compute_ph__vm__msg_state_used_col->Append(v->msg_state_used);
             compute_ph__vm__account_activated_col->Append(v->account_activated);
-            compute_ph__vm__gas_fees_col->Append(v->gas_fees);
+            compute_ph__vm__gas_fees_col->Append(v->gas_fees->to_long());
             compute_ph__vm__gas_used_col->Append(v->gas_used);
             compute_ph__vm__gas_limit_col->Append(v->gas_limit);
             compute_ph__vm__gas_credit_col->Append(v->gas_credit);
@@ -766,8 +764,8 @@ void InsertBatchClickhouse::insert_transactions(clickhouse::Client& client) {
         action__valid_col->Append(action.valid);
         action__no_funds_col->Append(action.no_funds);
         action__status_change_col->Append(action.status_change);
-        action__total_fwd_fees_col->Append(action.total_fwd_fees);
-        action__total_action_fees_col->Append(action.total_action_fees);
+        action__total_fwd_fees_col->Append(action.total_fwd_fees ? std::optional(action.total_fwd_fees.value()->to_long()) : std::nullopt);
+        action__total_action_fees_col->Append(action.total_action_fees ? std::optional(action.total_action_fees.value()->to_long()) : std::nullopt);
         action__result_code_col->Append(action.result_code);
         action__result_arg_col->Append(action.result_arg);
         action__tot_actions_col->Append(action.tot_actions);
@@ -807,7 +805,7 @@ void InsertBatchClickhouse::insert_transactions(clickhouse::Client& client) {
             bounce_col->Append(std::optional<std::int8_t>(1));
             bounce__msg_size__cells_col->Append(v->msg_size.cells);
             bounce__msg_size__bits_col->Append(v->msg_size.bits);
-            bounce__no_funds__req_fwd_fees_col->Append(v->req_fwd_fees);
+            bounce__no_funds__req_fwd_fees_col->Append(v->req_fwd_fees->to_long());
             bounce__ok__msg_fees_col->Append(std::nullopt);
             bounce__ok__fwd_fees_col->Append(std::nullopt);
         } else if (auto* v = std::get_if<schema::TrBouncePhase_ok>(&bounce)) {
@@ -815,8 +813,8 @@ void InsertBatchClickhouse::insert_transactions(clickhouse::Client& client) {
             bounce__msg_size__cells_col->Append(v->msg_size.cells);
             bounce__msg_size__bits_col->Append(v->msg_size.bits);
             bounce__no_funds__req_fwd_fees_col->Append(std::nullopt);
-            bounce__ok__msg_fees_col->Append(v->msg_fees);
-            bounce__ok__fwd_fees_col->Append(v->fwd_fees);
+            bounce__ok__msg_fees_col->Append(v->msg_fees->to_long());
+            bounce__ok__fwd_fees_col->Append(v->fwd_fees->to_long());
         }
     };
     auto store_empty_bounce_ph = [&]() {
@@ -851,7 +849,7 @@ void InsertBatchClickhouse::insert_transactions(clickhouse::Client& client) {
                 now_col->Append(tx_.now);
                 orig_status_col->Append(tx_.orig_status);
                 end_status_col->Append(tx_.end_status);
-                total_fees_col->Append(tx_.total_fees);
+                total_fees_col->Append(tx_.total_fees.grams->to_long());
                 account_state_hash_before_col->Append(td::base64_encode(tx_.account_state_hash_after.as_slice()));
                 account_state_hash_after_col->Append(td::base64_encode(tx_.account_state_hash_after.as_slice()));
                 block_workchain_col->Append(blk_.workchain);
@@ -1115,18 +1113,29 @@ void InsertBatchClickhouse::insert_messages(clickhouse::Client &client) {
         mc_block_seqno_col->Append(blk.mc_block_seqno.value());
         direction_col->Append(direction);
         hash_col->Append(td::base64_encode(msg.hash.as_slice()));
-        source_col->Append(TO_STD_OPTIONAL(msg.source));
-        destination_col->Append(TO_STD_OPTIONAL(msg.destination));
-        value_col->Append(TO_STD_OPTIONAL(msg.value));
-        fwd_fee_col->Append(TO_STD_OPTIONAL(msg.fwd_fee));
-        ihr_fee_col->Append(TO_STD_OPTIONAL(msg.ihr_fee));
-        created_lt_col->Append(TO_STD_OPTIONAL(msg.created_lt));
-        created_at_col->Append(TO_STD_OPTIONAL(msg.created_at));
-        opcode_col->Append(TO_STD_OPTIONAL(msg.opcode));
-        ihr_disabled_col->Append(TO_STD_OPTIONAL(msg.ihr_disabled));
-        bounce_col->Append(TO_STD_OPTIONAL(msg.bounce));
-        bounced_col->Append(TO_STD_OPTIONAL(msg.bounced));
-        import_fee_col->Append(TO_STD_OPTIONAL(msg.import_fee));
+        source_col->Append(msg.source);
+        destination_col->Append(msg.destination);
+        value_col->Append(msg.value ? std::optional(msg.value->grams->to_long()) : std::nullopt);
+        fwd_fee_col->Append(msg.fwd_fee ? std::optional(msg.fwd_fee.value()->to_long()) : std::nullopt);
+        ihr_fee_col->Append(msg.ihr_fee ? std::optional(msg.ihr_fee.value()->to_long()) : std::nullopt);
+        created_lt_col->Append(msg.created_lt);
+        created_at_col->Append(msg.created_at);
+        opcode_col->Append(msg.opcode);
+        ihr_disabled_col->Append(msg.ihr_disabled);
+        bounce_col->Append(msg.bounce);
+        bounced_col->Append(msg.bounced);
+        // msg.import_fee is defined by user and can be too large for uint64, so we need to check it
+        // and if it is too large, we will insert NULL.
+        // TODO: change uint64 to uint256
+        std::optional<int64_t> import_fee_val;
+        if (msg.import_fee) {
+            import_fee_val = msg.import_fee.value()->to_long();
+            if (import_fee_val.value() == (~0ULL << 63)) {
+                LOG(WARNING) << "Import fee of msg " << msg.hash.to_hex() << " is too large for bigint: " << msg.import_fee.value();
+                import_fee_val = std::nullopt;
+            }
+        }
+        import_fee_col->Append(import_fee_val);
 
         td::Bits256 body_hash = msg.body->get_hash().bits();
         if(body_hashes.find(body_hash) == body_hashes.end()) {
@@ -1238,7 +1247,7 @@ void InsertBatchClickhouse::insert_account_states(clickhouse::Client &client) {
             hash_col->Append(td::base64_encode(state_.hash.as_slice()));
             account_col->Append(convert::to_raw_address(state_.account));
             timestamp_col->Append(state_.timestamp);
-            balance_col->Append(state_.balance);
+            balance_col->Append(state_.balance.grams->to_long());
             account_status_col->Append(state_.account_status);
             frozen_hash_col->Append(frozen_hash);
             code_hash_col->Append(code_hash);
@@ -1362,7 +1371,7 @@ void InsertBatchClickhouse::insert_nfts(clickhouse::Client &client) {
                 LOG(ERROR) << "Collection " << collection.address << " has null in next_item_index!";
                 next_item_index->Append(Int128());
             }
-            owner_address->Append(TO_STD_OPTIONAL(collection.owner_address));
+            owner_address->Append(collection.owner_address);
             if (collection.collection_content) {
                 collection_content->Append(collection.collection_content.value());
             } else {
@@ -1456,10 +1465,10 @@ void InsertBatchClickhouse::insert_nfts(clickhouse::Client &client) {
         for (const auto& task : insert_tasks_) {
             for (const auto& transfer : task.parsed_block_->get_events<NFTTransfer>()) {
                 auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
-                auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+                auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
                 auto forward_payload_boc_r = convert::to_bytes(transfer.forward_payload);
-                auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+                auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : std::nullopt;
 
                 auto nft_item_address = convert::to_raw_address(transfer.nft_item);
                 Int128 nft_item_index_value{-2};
@@ -1491,13 +1500,13 @@ void InsertBatchClickhouse::insert_nfts(clickhouse::Client &client) {
                 old_owner->Append(transfer.old_owner);
                 new_owner->Append(transfer.new_owner);
                 response_destination->Append(transfer.response_destination);
-                custom_payload->Append(TO_STD_OPTIONAL(custom_payload_boc));
+                custom_payload->Append(custom_payload_boc);
                 if (transfer.forward_amount.not_null()) {
                     forward_amount->Append(str2int128(transfer.forward_amount->to_dec_string()));
                 } else {
                     forward_amount->Append(Int128(-1));
                 }
-                forward_payload->Append(TO_STD_OPTIONAL(forward_payload_boc));
+                forward_payload->Append(forward_payload_boc);
             }
         }
         block.AppendColumn("transaction_hash", transaction_hash);
@@ -1573,7 +1582,7 @@ void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
                 total_supply->Append(Int128());
             }
             mintable->Append(master.mintable);
-            admin_address->Append(TO_STD_OPTIONAL(master.admin_address));
+            admin_address->Append(master.admin_address);
             if (master.jetton_content) {
                 jetton_content->Append(master.jetton_content.value());
             } else {
@@ -1656,10 +1665,10 @@ void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
         for (const auto& task : insert_tasks_) {
             for (const auto& transfer : task.parsed_block_->get_events<JettonTransfer>()) {
                 auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
-                auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+                auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
                 auto forward_payload_boc_r = convert::to_bytes(transfer.forward_payload);
-                auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+                auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : std::nullopt;
 
                 std::string jetton_master_address;
                 {
@@ -1684,13 +1693,13 @@ void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
                 jetton_wallet->Append(transfer.jetton_wallet);
                 jetton_master->Append(jetton_master_address);
                 response_destination->Append(transfer.response_destination);
-                custom_payload->Append(TO_STD_OPTIONAL(custom_payload_boc));
+                custom_payload->Append(custom_payload_boc);
                 if (transfer.forward_ton_amount.not_null()) {
                     forward_ton_amount->Append(str2int128(transfer.forward_ton_amount->to_dec_string()));
                 } else {
                     forward_ton_amount->Append(Int128(-1));
                 }
-                forward_payload->Append(TO_STD_OPTIONAL(forward_payload_boc));
+                forward_payload->Append(forward_payload_boc);
             }
         }
         block.AppendColumn("transaction_hash", transaction_hash);
@@ -1727,7 +1736,7 @@ void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
         for (const auto& task : insert_tasks_) {
             for (const auto& burn : task.parsed_block_->get_events<JettonBurn>()) {
                 auto custom_payload_boc_r = convert::to_bytes(burn.custom_payload);
-                auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+                auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
                 std::string jetton_master_address;
                 {
@@ -1751,7 +1760,7 @@ void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
                     amount->Append(Int128(-1));
                 }
                 response_destination->Append(burn.response_destination);
-                custom_payload->Append(TO_STD_OPTIONAL(custom_payload_boc));
+                custom_payload->Append(custom_payload_boc);
             }
         }
         block.AppendColumn("transaction_hash", transaction_hash);

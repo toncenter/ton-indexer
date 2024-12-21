@@ -199,6 +199,23 @@ struct TraceNode {
   MSGPACK_DEFINE(transaction, emulated);
 };
 
+td::Result<int64_t> to_balance(vm::CellSlice& balance_slice) {
+  auto balance = block::tlb::t_Grams.as_integer_skip(balance_slice);
+  if (balance.is_null()) {
+      return td::Status::Error("Failed to unpack balance");
+  }
+  auto res = balance->to_long();
+  if (res == td::int64(~0ULL << 63)) {
+      return td::Status::Error("Failed to unpack balance (2)");
+  }
+  return res;
+}
+
+td::Result<int64_t> to_balance(td::Ref<vm::CellSlice> balance_ref) {
+  vm::CellSlice balance_slice = *balance_ref;
+  return to_balance(balance_slice);
+}
+
 td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
   Message msg;
   msg.hash = msg_cell->get_hash().bits();
@@ -253,11 +270,11 @@ td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
         return td::Status::Error("Failed to unpack CommonMsgInfo::int_msg_info");
       }
 
-      TRY_RESULT_ASSIGN(msg.value, convert::to_balance(msg_info.value));
+      TRY_RESULT_ASSIGN(msg.value, to_balance(msg_info.value));
       TRY_RESULT_ASSIGN(msg.source, convert::to_raw_address(msg_info.src));
       TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest));
-      TRY_RESULT_ASSIGN(msg.fwd_fee, convert::to_balance(msg_info.fwd_fee));
-      TRY_RESULT_ASSIGN(msg.ihr_fee, convert::to_balance(msg_info.ihr_fee));
+      TRY_RESULT_ASSIGN(msg.fwd_fee, to_balance(msg_info.fwd_fee));
+      TRY_RESULT_ASSIGN(msg.ihr_fee, to_balance(msg_info.ihr_fee));
       msg.created_lt = msg_info.created_lt;
       msg.created_at = msg_info.created_at;
       msg.bounce = msg_info.bounce;
@@ -273,7 +290,7 @@ td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
       
       // msg.source = null, because it is external
       TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest))
-      TRY_RESULT_ASSIGN(msg.import_fee, convert::to_balance(msg_info.import_fee));
+      TRY_RESULT_ASSIGN(msg.import_fee, to_balance(msg_info.import_fee));
       return msg;
     }
     case block::gen::CommonMsgInfo::ext_out_msg_info: {
@@ -299,10 +316,10 @@ td::Result<TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs) {
     return td::Status::Error("Failed to unpack TrStoragePhase");
   }
   TrStoragePhase phase;
-  TRY_RESULT_ASSIGN(phase.storage_fees_collected, convert::to_balance(phase_data.storage_fees_collected));
+  TRY_RESULT_ASSIGN(phase.storage_fees_collected, to_balance(phase_data.storage_fees_collected));
   auto& storage_fees_due = phase_data.storage_fees_due.write();
   if (storage_fees_due.fetch_ulong(1) == 1) {
-    TRY_RESULT_ASSIGN(phase.storage_fees_due, convert::to_balance(storage_fees_due));
+    TRY_RESULT_ASSIGN(phase.storage_fees_due, to_balance(storage_fees_due));
   }
   phase.status_change = static_cast<AccStatusChange>(phase_data.status_change);
   return phase;
@@ -316,9 +333,9 @@ td::Result<TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs) {
   TrCreditPhase phase;
   auto& due_fees_collected = phase_data.due_fees_collected.write();
   if (due_fees_collected.fetch_ulong(1) == 1) {
-    TRY_RESULT_ASSIGN(phase.due_fees_collected, convert::to_balance(due_fees_collected));
+    TRY_RESULT_ASSIGN(phase.due_fees_collected, to_balance(due_fees_collected));
   }
-  TRY_RESULT_ASSIGN(phase.credit, convert::to_balance(phase_data.credit));
+  TRY_RESULT_ASSIGN(phase.credit, to_balance(phase_data.credit));
   return phase;
 }
 
@@ -333,7 +350,7 @@ td::Result<TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs) {
     res.success = compute_vm.success;
     res.msg_state_used = compute_vm.msg_state_used;
     res.account_activated = compute_vm.account_activated;
-    TRY_RESULT_ASSIGN(res.gas_fees, convert::to_balance(compute_vm.gas_fees));
+    TRY_RESULT_ASSIGN(res.gas_fees, to_balance(compute_vm.gas_fees));
     res.gas_used = block::tlb::t_VarUInteger_7.as_uint(*compute_vm.r1.gas_used);
     res.gas_limit = block::tlb::t_VarUInteger_7.as_uint(*compute_vm.r1.gas_limit);
     auto& gas_credit = compute_vm.r1.gas_credit.write();
@@ -383,11 +400,11 @@ td::Result<TrActionPhase> parse_tr_action_phase(vm::CellSlice& cs) {
   res.status_change = static_cast<AccStatusChange>(info.status_change);
   auto& total_fwd_fees = info.total_fwd_fees.write();
   if (total_fwd_fees.fetch_ulong(1) == 1) {
-    TRY_RESULT_ASSIGN(res.total_fwd_fees, convert::to_balance(info.total_fwd_fees));
+    TRY_RESULT_ASSIGN(res.total_fwd_fees, to_balance(info.total_fwd_fees));
   }
   auto& total_action_fees = info.total_action_fees.write();
   if (total_action_fees.fetch_ulong(1) == 1) {
-    TRY_RESULT_ASSIGN(res.total_action_fees, convert::to_balance(info.total_action_fees));
+    TRY_RESULT_ASSIGN(res.total_action_fees, to_balance(info.total_action_fees));
   }
   res.result_code = info.result_code;
   auto& result_arg = info.result_arg.write();
@@ -420,7 +437,7 @@ td::Result<TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs) {
       }
       TrBouncePhase_nofunds res;
       TRY_RESULT_ASSIGN(res.msg_size, parse_storage_used_short(nofunds.msg_size.write()));
-      TRY_RESULT_ASSIGN(res.req_fwd_fees, convert::to_balance(nofunds.req_fwd_fees));
+      TRY_RESULT_ASSIGN(res.req_fwd_fees, to_balance(nofunds.req_fwd_fees));
       return res;
     }
     case block::gen::TrBouncePhase::tr_phase_bounce_ok: {
@@ -430,8 +447,8 @@ td::Result<TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs) {
       }
       TrBouncePhase_ok res;
       TRY_RESULT_ASSIGN(res.msg_size, parse_storage_used_short(ok.msg_size.write()));
-      TRY_RESULT_ASSIGN(res.msg_fees, convert::to_balance(ok.msg_fees));
-      TRY_RESULT_ASSIGN(res.fwd_fees, convert::to_balance(ok.fwd_fees));
+      TRY_RESULT_ASSIGN(res.msg_fees, to_balance(ok.msg_fees));
+      TRY_RESULT_ASSIGN(res.fwd_fees, to_balance(ok.fwd_fees));
       return res;
     }
     default:
@@ -507,7 +524,7 @@ td::Result<Transaction> parse_tx(td::Ref<vm::Cell> root, ton::WorkchainId workch
   schema_tx.orig_status = static_cast<AccountStatus>(trans.orig_status);
   schema_tx.end_status = static_cast<AccountStatus>(trans.end_status);
 
-  TRY_RESULT_ASSIGN(schema_tx.total_fees, convert::to_balance(trans.total_fees));
+  TRY_RESULT_ASSIGN(schema_tx.total_fees, to_balance(trans.total_fees));
 
   if (trans.r1.in_msg->prefetch_long(1)) {
     auto msg = trans.r1.in_msg->prefetch_ref();

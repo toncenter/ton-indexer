@@ -7,6 +7,7 @@
 #define TO_SQL_OPTIONAL(x) ((x) ? std::to_string(x.value()) : "NULL")
 #define TO_SQL_OPTIONAL_BOOL(x) ((x) ? ((x.value()) ? "TRUE" : "FALSE") : "NULL")
 #define TO_SQL_OPTIONAL_STRING(x, txn) ((x) ? (txn.quote(x.value())) : "NULL")
+#define TO_SQL_OPTIONAL_REFINT(x) ((x) ? (x.value()->to_dec_string()) : "NULL")
 
 std::string content_to_json_string(const std::map<std::string, std::string> &content) {
   td::JsonBuilder jetton_content_json;
@@ -20,6 +21,17 @@ std::string content_to_json_string(const std::map<std::string, std::string> &con
   obj.leave();
 
   return jetton_content_json.string_builder().as_cslice().str();
+}
+
+std::string extra_currencies_to_json_string(const std::map<uint32_t, td::RefInt256> &extra_currencies) {
+  td::JsonBuilder extra_currencies_json;
+  auto obj = extra_currencies_json.enter_object();
+  for (auto &currency : extra_currencies) {
+    obj(std::to_string(currency.first), currency.second->to_dec_string());
+  }
+  obj.leave();
+
+  return extra_currencies_json.string_builder().as_cslice().str();
 }
 
 
@@ -174,257 +186,6 @@ std::string InsertBatchPostgres::stringify(schema::Trace::State state) {
   UNREACHABLE();
 }
 
-
-// std::string InsertBatchPostgres::jsonify(const schema::SplitMergeInfo& info) {
-//   auto jb = td::JsonBuilder();
-//   auto c = jb.enter_object();
-//   c("cur_shard_pfx_len", static_cast<int>(info.cur_shard_pfx_len));
-//   c("acc_split_depth", static_cast<int>(info.acc_split_depth));
-//   c("this_addr", info.this_addr.to_hex());
-//   c("sibling_addr", info.sibling_addr.to_hex());
-//   c.leave();
-//   return jb.string_builder().as_cslice().str();
-// }
-
-
-// std::string InsertBatchPostgres::jsonify(const schema::StorageUsedShort& s) {
-//   auto jb = td::JsonBuilder();
-//   auto c = jb.enter_object();
-//   c("cells", std::to_string(s.cells));
-//   c("bits", std::to_string(s.bits));
-//   c.leave();
-//   return jb.string_builder().as_cslice().str();
-// }
-
-
-// std::string InsertBatchPostgres::jsonify(const schema::TrStoragePhase& s) {
-//   auto jb = td::JsonBuilder();
-//   auto c = jb.enter_object();
-//   c("storage_fees_collected", std::to_string(s.storage_fees_collected));
-//   if (s.storage_fees_due) {
-//     c("storage_fees_due", std::to_string(*(s.storage_fees_due)));
-//   }
-//   c("status_change", stringify(s.status_change));
-//   c.leave();
-//   return jb.string_builder().as_cslice().str();
-// }
-
-
-// std::string InsertBatchPostgres::jsonify(const schema::TrCreditPhase& c) {
-//   auto jb = td::JsonBuilder();
-//   auto cc = jb.enter_object();
-//   if (c.due_fees_collected) {
-//     cc("due_fees_collected", std::to_string(*(c.due_fees_collected)));
-//   }
-//   cc("credit", std::to_string(c.credit));
-//   cc.leave();
-//   return jb.string_builder().as_cslice().str();
-// }
-
-
-// std::string InsertBatchPostgres::jsonify(const schema::TrActionPhase& action) {
-//   auto jb = td::JsonBuilder();
-//   auto c = jb.enter_object();
-//   c("success", td::JsonBool(action.success));
-//   c("valid", td::JsonBool(action.valid));
-//   c("no_funds", td::JsonBool(action.no_funds));
-//   c("status_change", stringify(action.status_change));
-//   if (action.total_fwd_fees) {
-//     c("total_fwd_fees", std::to_string(*(action.total_fwd_fees)));
-//   }
-//   if (action.total_action_fees) {
-//     c("total_action_fees", std::to_string(*(action.total_action_fees)));
-//   }
-//   c("result_code", action.result_code);
-//   if (action.result_arg) {
-//     c("result_arg", *(action.result_arg));
-//   }
-//   c("tot_actions", action.tot_actions);
-//   c("spec_actions", action.spec_actions);
-//   c("skipped_actions", action.skipped_actions);
-//   c("msgs_created", action.msgs_created);
-//   c("action_list_hash", td::base64_encode(action.action_list_hash.as_slice()));
-//   c("tot_msg_size", td::JsonRaw(jsonify(action.tot_msg_size)));
-//   c.leave();
-//   return jb.string_builder().as_cslice().str();
-// }
-
-
-// std::string InsertBatchPostgres::jsonify(const schema::TrBouncePhase& bounce) {
-//   auto jb = td::JsonBuilder();
-//   auto c = jb.enter_object();
-//   if (std::holds_alternative<schema::TrBouncePhase_negfunds>(bounce)) {
-//     c("type", "negfunds");
-//   } else if (std::holds_alternative<schema::TrBouncePhase_nofunds>(bounce)) {
-//     const auto& nofunds = std::get<schema::TrBouncePhase_nofunds>(bounce);
-//     c("type", "nofunds");
-//     c("msg_size", td::JsonRaw(jsonify(nofunds.msg_size)));
-//     c("req_fwd_fees", std::to_string(nofunds.req_fwd_fees));
-//   } else if (std::holds_alternative<schema::TrBouncePhase_ok>(bounce)) {
-//     const auto& ok = std::get<schema::TrBouncePhase_ok>(bounce);
-//     c("type", "ok");
-//     c("msg_size", td::JsonRaw(jsonify(ok.msg_size)));
-//     c("msg_fees", std::to_string(ok.msg_fees));
-//     c("fwd_fees", std::to_string(ok.fwd_fees));
-//   }
-//   c.leave();
-//   return jb.string_builder().as_cslice().str();
-// }
-
-
-// std::string InsertBatchPostgres::jsonify(const schema::TrComputePhase& compute) {
-//   auto jb = td::JsonBuilder();
-//   auto c = jb.enter_object();
-//   if (std::holds_alternative<schema::TrComputePhase_skipped>(compute)) {
-//     c("type", "skipped");
-//     c("skip_reason", stringify(std::get<schema::TrComputePhase_skipped>(compute).reason));
-//   } else if (std::holds_alternative<schema::TrComputePhase_vm>(compute)) {
-//     c("type", "vm");
-//     auto& computed = std::get<schema::TrComputePhase_vm>(compute);
-//     c("success", td::JsonBool(computed.success));
-//     c("msg_state_used", td::JsonBool(computed.msg_state_used));
-//     c("account_activated", td::JsonBool(computed.account_activated));
-//     c("gas_fees", std::to_string(computed.gas_fees));
-//     c("gas_used",std::to_string(computed.gas_used));
-//     c("gas_limit", std::to_string(computed.gas_limit));
-//     if (computed.gas_credit) {
-//       c("gas_credit", std::to_string(*(computed.gas_credit)));
-//     }
-//     c("mode", computed.mode);
-//     c("exit_code", computed.exit_code);
-//     if (computed.exit_arg) {
-//       c("exit_arg", *(computed.exit_arg));
-//     }
-//     c("vm_steps", static_cast<int64_t>(computed.vm_steps));
-//     c("vm_init_state_hash", td::base64_encode(computed.vm_init_state_hash.as_slice()));
-//     c("vm_final_state_hash", td::base64_encode(computed.vm_final_state_hash.as_slice()));
-//   }
-//   c.leave();
-//   return jb.string_builder().as_cslice().str();
-// }
-
-
-// std::string InsertBatchPostgres::jsonify(schema::TransactionDescr descr) {
-//   char tmp[10000]; // Adjust the size if needed
-//   td::StringBuilder sb(td::MutableSlice{tmp, sizeof(tmp)});
-//   td::JsonBuilder jb(std::move(sb));
-
-//   auto obj = jb.enter_object();
-//   if (std::holds_alternative<schema::TransactionDescr_ord>(descr)) {
-//     const auto& ord = std::get<schema::TransactionDescr_ord>(descr);
-//     obj("type", "ord");
-//     obj("credit_first", td::JsonBool(ord.credit_first));
-//     obj("storage_ph", td::JsonRaw(jsonify(ord.storage_ph)));
-//     obj("credit_ph", td::JsonRaw(jsonify(ord.credit_ph)));
-//     obj("compute_ph", td::JsonRaw(jsonify(ord.compute_ph)));
-//     if (ord.action.has_value()) {
-//       obj("action", td::JsonRaw(jsonify(ord.action.value())));
-//     }
-//     obj("aborted", td::JsonBool(ord.aborted));
-//     if (ord.bounce.has_value()) {
-//       obj("bounce", td::JsonRaw(jsonify(ord.bounce.value())));
-//     }
-//     obj("destroyed", td::JsonBool(ord.destroyed));
-//     obj.leave();
-//   }
-//   else if (std::holds_alternative<schema::TransactionDescr_storage>(descr)) {
-//     const auto& storage = std::get<schema::TransactionDescr_storage>(descr);
-//     obj("type", "storage");
-//     obj("storage_ph", td::JsonRaw(jsonify(storage.storage_ph)));
-//     obj.leave();
-//   }
-//   else if (std::holds_alternative<schema::TransactionDescr_tick_tock>(descr)) {
-//     const auto& tt = std::get<schema::TransactionDescr_tick_tock>(descr);
-//     obj("type", "tick_tock");
-//     obj("is_tock", td::JsonBool(tt.is_tock));
-//     obj("storage_ph", td::JsonRaw(jsonify(tt.storage_ph)));
-//     obj("compute_ph", td::JsonRaw(jsonify(tt.compute_ph)));
-//     if (tt.action.has_value()) {
-//       obj("action", td::JsonRaw(jsonify(tt.action.value())));
-//     }
-//     obj("aborted", td::JsonBool(tt.aborted));
-//     obj("destroyed", td::JsonBool(tt.destroyed));
-//     obj.leave();
-//   }
-//   else if (std::holds_alternative<schema::TransactionDescr_split_prepare>(descr)) {
-//     const auto& split = std::get<schema::TransactionDescr_split_prepare>(descr);
-//     obj("type", "split_prepare");
-//     obj("split_info", td::JsonRaw(jsonify(split.split_info)));
-//     if (split.storage_ph.has_value()) {
-//       obj("storage_ph", td::JsonRaw(jsonify(split.storage_ph.value())));
-//     }
-//     obj("compute_ph", td::JsonRaw(jsonify(split.compute_ph)));
-//     if (split.action.has_value()) {
-//       obj("action", td::JsonRaw(jsonify(split.action.value())));
-//     }
-//     obj("aborted", td::JsonBool(split.aborted));
-//     obj("destroyed", td::JsonBool(split.destroyed));
-//     obj.leave();
-//   }
-//   else if (std::holds_alternative<schema::TransactionDescr_split_install>(descr)) {
-//     const auto& split = std::get<schema::TransactionDescr_split_install>(descr);
-//     obj("type", "split_install");
-//     obj("split_info", td::JsonRaw(jsonify(split.split_info)));
-//     obj("installed", td::JsonBool(split.installed));
-//     obj.leave();
-//   }
-//   else if (std::holds_alternative<schema::TransactionDescr_merge_prepare>(descr)) {
-//     const auto& merge = std::get<schema::TransactionDescr_merge_prepare>(descr);
-//     obj("type", "merge_prepare");
-//     obj("split_info", td::JsonRaw(jsonify(merge.split_info)));
-//     obj("storage_ph", td::JsonRaw(jsonify(merge.storage_ph)));
-//     obj("aborted", td::JsonBool(merge.aborted));
-//     obj.leave();
-//   }
-//   else if (std::holds_alternative<schema::TransactionDescr_merge_install>(descr)) {
-//     const auto& merge = std::get<schema::TransactionDescr_merge_install>(descr);
-//     obj("type", "merge_install");
-//     obj("split_info", td::JsonRaw(jsonify(merge.split_info)));
-//     if (merge.storage_ph.has_value()) {
-//       obj("storage_ph", td::JsonRaw(jsonify(merge.storage_ph.value())));
-//     }
-//     if (merge.credit_ph.has_value()) {
-//       obj("credit_ph", td::JsonRaw(jsonify(merge.credit_ph.value())));
-//     }
-//     obj("compute_ph", td::JsonRaw(jsonify(merge.compute_ph)));
-//     if (merge.action.has_value()) {
-//       obj("action", td::JsonRaw(jsonify(merge.action.value())));
-//     }
-//     obj("aborted", td::JsonBool(merge.aborted));
-//     obj("destroyed", td::JsonBool(merge.destroyed));
-//     obj.leave();
-//   }
-
-//   return jb.string_builder().as_cslice().str();
-// }
-
-
-// std::string InsertBatchPostgres::jsonify(const schema::BlockReference& block_ref) {
-//   td::JsonBuilder jb;
-//   auto obj = jb.enter_object();
-
-//   obj("workchain", td::JsonInt(block_ref.workchain));
-//   obj("shard", td::JsonLong(block_ref.shard));
-//   obj("seqno", td::JsonInt(block_ref.seqno));
-//   obj.leave();
-
-//   return jb.string_builder().as_cslice().str();
-// }
-
-
-
-// std::string InsertBatchPostgres::jsonify(const std::vector<schema::BlockReference>& prev_blocks) {
-//   td::JsonBuilder jb;
-//   auto obj = jb.enter_array();
-
-//   for (auto & p : prev_blocks) {
-//     obj.enter_value() << td::JsonRaw(jsonify(p));
-//   }
-//   obj.leave();
-//   return jb.string_builder().as_cslice().str();
-// }
-
-
 std::string InsertBatchPostgres::insert_blocks(pqxx::work &txn) {
   std::ostringstream query;
   query << "INSERT INTO blocks (workchain, shard, seqno, root_hash, file_hash, mc_block_workchain, "
@@ -534,31 +295,15 @@ std::string InsertBatchPostgres::insert_shard_state(pqxx::work &txn) {
   return "";
 }
 
-template<typename T>
-std::string to_int64(std::optional<T> value) {
-  return ((value) ? std::to_string(static_cast<std::int64_t>(value.value())) : "NULL");
-}
-
-template<typename T>
-std::string to_int64(td::optional<T> value) {
-  return ((value) ? std::to_string(static_cast<std::int64_t>(value.value())) : "NULL");
-}
-
-template<typename T>
-std::string to_int64(T value) {
-  return std::to_string(static_cast<std::int64_t>(value));
-}
-
-
 std::string InsertBatchPostgres::insert_transactions(pqxx::work &txn) {
   std::ostringstream query;
   query << "INSERT INTO transactions (account, hash, lt, block_workchain, block_shard, block_seqno, "
                                      "mc_block_seqno, trace_id, prev_trans_hash, prev_trans_lt, now, "
-                                     "orig_status, end_status, total_fees, account_state_hash_before, "
-                                     "account_state_hash_after, descr, aborted, destroyed, "
+                                     "orig_status, end_status, total_fees, total_fees_extra_currencies, "
+                                     "account_state_hash_before, account_state_hash_after, descr, aborted, destroyed, "
                                      "credit_first, is_tock, installed, storage_fees_collected, "
                                      "storage_fees_due, storage_status_change, credit_due_fees_collected, "
-                                     "credit, compute_skipped, skipped_reason, compute_success, "
+                                     "credit, credit_extra_currencies, compute_skipped, skipped_reason, compute_success, "
                                      "compute_msg_state_used, compute_account_activated, compute_gas_fees, "
                                      "compute_gas_used, compute_gas_limit, compute_gas_credit, compute_mode, "
                                      "compute_exit_code, compute_exit_arg, compute_vm_steps, "
@@ -572,19 +317,20 @@ std::string InsertBatchPostgres::insert_transactions(pqxx::work &txn) {
                                      "split_info_acc_split_depth, split_info_this_addr, split_info_sibling_addr) VALUES ";
 
   auto store_storage_ph = [&](const schema::TrStoragePhase& storage_ph) {
-    query << to_int64(storage_ph.storage_fees_collected) << ","
-          << to_int64(storage_ph.storage_fees_due) << ","
+    query << storage_ph.storage_fees_collected << ","
+          << TO_SQL_OPTIONAL_REFINT(storage_ph.storage_fees_due) << ","
           << txn.quote(stringify(storage_ph.status_change)) << ",";
   };
   auto store_empty_storage_ph = [&]() {
     query << "NULL, NULL, NULL,";
   };
   auto store_credit_ph = [&](const schema::TrCreditPhase& credit_ph) {
-    query << to_int64(credit_ph.due_fees_collected) << ","
-          << to_int64(credit_ph.credit) << ",";
+    query << TO_SQL_OPTIONAL_REFINT(credit_ph.due_fees_collected) << ","
+          << credit_ph.credit.grams << ","
+          << txn.quote(extra_currencies_to_json_string(credit_ph.credit.extra_currencies)) << ",";
   };
   auto store_empty_credit_ph = [&]() {
-    query << "NULL,NULL,";
+    query << "NULL,NULL,NULL,";
   };
   auto store_compute_ph = [&](const schema::TrComputePhase& compute_ph) {
       if (auto* v = std::get_if<schema::TrComputePhase_skipped>(&compute_ph)) {
@@ -599,10 +345,10 @@ std::string InsertBatchPostgres::insert_transactions(pqxx::work &txn) {
               << TO_SQL_BOOL(v->success) << ","
               << TO_SQL_BOOL(v->msg_state_used) << ","
               << TO_SQL_BOOL(v->account_activated) << ","
-              << to_int64(v->gas_fees) << ","
-              << to_int64(v->gas_used) << ","
-              << to_int64(v->gas_limit) << ","
-              << to_int64(v->gas_credit) << ","
+              << v->gas_used << ","
+              << v->gas_fees << ","
+              << v->gas_limit << ","
+              << TO_SQL_OPTIONAL(v->gas_credit) << ","
               << std::to_string(v->mode) << ","
               << v->exit_code << ","
               << TO_SQL_OPTIONAL(v->exit_arg) << ","
@@ -633,8 +379,8 @@ std::string InsertBatchPostgres::insert_transactions(pqxx::work &txn) {
             << TO_SQL_BOOL(action.valid) << ","
             << TO_SQL_BOOL(action.no_funds) << ","
             << txn.quote(stringify(action.status_change)) << ","
-            << to_int64(action.total_fwd_fees) << ","
-            << to_int64(action.total_action_fees) << ","
+            << TO_SQL_OPTIONAL_REFINT(action.total_fwd_fees) << ","
+            << TO_SQL_OPTIONAL_REFINT(action.total_action_fees) << ","
             << action.result_code << ","
             << TO_SQL_OPTIONAL(action.result_arg) << ","
             << action.tot_actions << ","
@@ -642,8 +388,8 @@ std::string InsertBatchPostgres::insert_transactions(pqxx::work &txn) {
             << action.skipped_actions << ","
             << action.msgs_created << ","
             << txn.quote(td::base64_encode(action.action_list_hash.as_slice())) << ","
-            << to_int64(action.tot_msg_size.cells) << ","
-            << to_int64(action.tot_msg_size.bits) << ",";
+            << action.tot_msg_size.cells << ","
+            << action.tot_msg_size.bits << ",";
   };
   auto store_empty_action_ph = [&]() {
       query << "NULL,"
@@ -668,17 +414,17 @@ std::string InsertBatchPostgres::insert_transactions(pqxx::work &txn) {
               << "NULL,NULL,NULL,NULL,NULL,";
       } else if (auto* v = std::get_if<schema::TrBouncePhase_nofunds>(&bounce)) {
         query << "'nofunds',"
-              << to_int64(v->msg_size.cells) << ","
-              << to_int64(v->msg_size.bits) << ","
-              << to_int64(v->req_fwd_fees) << ","
+              << v->msg_size.cells << ","
+              << v->msg_size.bits << ","
+              << v->req_fwd_fees << ","
               << "NULL,NULL,";
       } else if (auto* v = std::get_if<schema::TrBouncePhase_ok>(&bounce)) {
           query << "'ok',"
-              << to_int64(v->msg_size.cells) << ","
-              << to_int64(v->msg_size.bits) << ","
+              << v->msg_size.cells << ","
+              << v->msg_size.bits << ","
               << "NULL,"
-              << to_int64(v->msg_fees) << ","
-              << to_int64(v->fwd_fees) << ",";
+              << v->msg_fees << ","
+              << v->fwd_fees << ",";
       }
   };
   auto store_empty_bounce_ph = [&]() {
@@ -717,7 +463,8 @@ std::string InsertBatchPostgres::insert_transactions(pqxx::work &txn) {
               << transaction.now << ","
               << txn.quote(stringify(transaction.orig_status)) << ","
               << txn.quote(stringify(transaction.end_status)) << ","
-              << transaction.total_fees << ","
+              << transaction.total_fees.grams << ","
+              << txn.quote(extra_currencies_to_json_string(transaction.total_fees.extra_currencies)) << ","
               << txn.quote(td::base64_encode(transaction.account_state_hash_before.as_slice())) << ","
               << txn.quote(td::base64_encode(transaction.account_state_hash_after.as_slice())) << ",";
         // insert description
@@ -870,7 +617,7 @@ std::string InsertBatchPostgres::insert_messages(pqxx::work &txn) {
   {
     std::ostringstream query;
     query << "INSERT INTO messages (tx_hash, tx_lt, msg_hash, direction, trace_id, source, "
-                                  "destination, value, fwd_fee, ihr_fee, created_lt, "
+                                  "destination, value, value_extra_currencies, fwd_fee, ihr_fee, created_lt, "
                                   "created_at, opcode, ihr_disabled, bounce, bounced, "
                                   "import_fee, body_hash, init_state_hash) VALUES ";
     bool is_first = true;
@@ -880,6 +627,17 @@ std::string InsertBatchPostgres::insert_messages(pqxx::work &txn) {
       } else {
         query << ", ";
       }
+      // msg.import_fee is defined by user and can be too large for bigint, so we need to check it
+      // and if it is too large, we will insert NULL.
+      // TODO: change bigint to numeric
+      std::optional<int64_t> import_fee_val;
+      if (msg.import_fee) {
+        import_fee_val = msg.import_fee.value()->to_long();
+        if (import_fee_val.value() == (~0ULL << 63)) {
+          LOG(WARNING) << "Import fee of msg " << msg.hash.to_hex() << " is too large for bigint: " << msg.import_fee.value();
+          import_fee_val = std::nullopt;
+        }
+      }
       query << "("
             << txn.quote(td::base64_encode(tx.hash.as_slice())) << ","
             << tx.lt << ","
@@ -888,16 +646,17 @@ std::string InsertBatchPostgres::insert_messages(pqxx::work &txn) {
             << txn.quote(td::base64_encode(msg.trace_id.as_slice())) << ","
             << TO_SQL_OPTIONAL_STRING(msg.source, txn) << ","
             << TO_SQL_OPTIONAL_STRING(msg.destination, txn) << ","
-            << to_int64(msg.value) << ","
-            << to_int64(msg.fwd_fee) << ","
-            << to_int64(msg.ihr_fee) << ","
-            << to_int64(msg.created_lt) << ","
+            << (msg.value ? msg.value->grams->to_dec_string() : "NULL") << ","
+            << (msg.value ? txn.quote(extra_currencies_to_json_string(msg.value->extra_currencies)) : "NULL") << ","
+            << TO_SQL_OPTIONAL_REFINT(msg.fwd_fee) << ","
+            << TO_SQL_OPTIONAL_REFINT(msg.ihr_fee) << ","
+            << TO_SQL_OPTIONAL(msg.created_lt) << ","
             << TO_SQL_OPTIONAL(msg.created_at) << ","
             << TO_SQL_OPTIONAL(msg.opcode) << ","
             << TO_SQL_OPTIONAL_BOOL(msg.ihr_disabled) << ","
             << TO_SQL_OPTIONAL_BOOL(msg.bounce) << ","
             << TO_SQL_OPTIONAL_BOOL(msg.bounced) << ","
-            << to_int64(msg.import_fee) << ","
+            << TO_SQL_OPTIONAL(import_fee_val) << ","
             << txn.quote(td::base64_encode(msg.body->get_hash().as_slice())) << ","
             << (msg.init_state.not_null() ? txn.quote(td::base64_encode(msg.init_state->get_hash().as_slice())) : "NULL")
             << ")";
@@ -977,7 +736,7 @@ std::string InsertBatchPostgres::insert_messages(pqxx::work &txn) {
 
 std::string InsertBatchPostgres::insert_account_states(pqxx::work &txn) {
   std::ostringstream query;
-  query << "INSERT INTO account_states (hash, account, balance, account_status, frozen_hash, code_hash, data_hash) VALUES ";
+  query << "INSERT INTO account_states (hash, account, balance, balance_extra_currencies, account_status, frozen_hash, code_hash, data_hash) VALUES ";
   bool is_first = true;
   for (const auto& task : insert_tasks_) {
     for (const auto& account_state : task.parsed_block_->account_states_) {
@@ -1005,7 +764,8 @@ std::string InsertBatchPostgres::insert_account_states(pqxx::work &txn) {
       query << "("
             << txn.quote(td::base64_encode(account_state.hash.as_slice())) << ","
             << txn.quote(convert::to_raw_address(account_state.account)) << ","
-            << account_state.balance << ","
+            << account_state.balance.grams << ","
+            << txn.quote(extra_currencies_to_json_string(account_state.balance.extra_currencies)) << ","
             << txn.quote(account_state.account_status) << ","
             << TO_SQL_OPTIONAL_STRING(frozen_hash, txn) << ","
             << TO_SQL_OPTIONAL_STRING(code_hash, txn) << ","
@@ -1044,7 +804,7 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
   for (auto i = latest_account_states.begin(); i != latest_account_states.end(); ++i) {
     auto& account_state = i->second;
     if (is_first) {
-      query << "INSERT INTO latest_account_states (account, account_friendly, hash, balance, "
+      query << "INSERT INTO latest_account_states (account, account_friendly, hash, balance, balance_extra_currencies, "
                                               "account_status, timestamp, last_trans_hash, last_trans_lt, "
                                               "frozen_hash, data_hash, code_hash, "
                                               "data_boc, code_boc) VALUES ";
@@ -1091,11 +851,12 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
           << txn.quote(convert::to_raw_address(account_state.account)) << ","
           << "NULL,"
           << txn.quote(td::base64_encode(account_state.hash.as_slice())) << ","
-          << account_state.balance << ","
+          << account_state.balance.grams << ","
+          << txn.quote(extra_currencies_to_json_string(account_state.balance.extra_currencies)) << ","
           << txn.quote(account_state.account_status) << ","
           << account_state.timestamp << ","
           << txn.quote(td::base64_encode(account_state.last_trans_hash.as_slice())) << ","
-          << to_int64(account_state.last_trans_lt) << ","
+          << account_state.last_trans_lt << ","
           << TO_SQL_OPTIONAL_STRING(frozen_hash, txn) << ","
           << TO_SQL_OPTIONAL_STRING(data_hash, txn) << ","
           << TO_SQL_OPTIONAL_STRING(code_hash, txn) << ","
@@ -1107,6 +868,7 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
           << "account_friendly = EXCLUDED.account_friendly, "
           << "hash = EXCLUDED.hash, "
           << "balance = EXCLUDED.balance, "
+          << "balance_extra_currencies = EXCLUDED.balance_extra_currencies, "
           << "account_status = EXCLUDED.account_status, "
           << "timestamp = EXCLUDED.timestamp, "
           << "last_trans_hash = EXCLUDED.last_trans_hash, "
@@ -1600,10 +1362,10 @@ std::string InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn) {
         query << ", ";
       }
       auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
-      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
       auto forward_payload_boc_r = convert::to_bytes(transfer.forward_payload);
-      auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+      auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : std::nullopt;
 
       query << "("
             << txn.quote(td::base64_encode(transfer.transaction_hash.as_slice())) << ","
@@ -1648,7 +1410,7 @@ std::string InsertBatchPostgres::insert_jetton_burns(pqxx::work &txn) {
       }
 
       auto custom_payload_boc_r = convert::to_bytes(burn.custom_payload);
-      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
       query << "("
             << txn.quote(td::base64_encode(burn.transaction_hash.as_slice())) << ","
@@ -1689,10 +1451,10 @@ std::string InsertBatchPostgres::insert_nft_transfers(pqxx::work &txn) {
         query << ", ";
       }
       auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
-      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
       auto forward_payload_boc_r = convert::to_bytes(transfer.forward_payload);
-      auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+      auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : std::nullopt;
 
       query << "("
             << txn.quote(td::base64_encode(transfer.transaction_hash.as_slice())) << ","
@@ -1972,6 +1734,7 @@ void InsertManagerPostgres::start_up() {
       "orig_status account_status_type, "
       "end_status account_status_type, "
       "total_fees bigint, "
+      "total_fees_extra_currencies jsonb, "
       "account_state_hash_before tonhash, "
       "account_state_hash_after tonhash, "
       "descr descr_type, "
@@ -1985,6 +1748,7 @@ void InsertManagerPostgres::start_up() {
       "storage_status_change status_change_type, "
       "credit_due_fees_collected bigint, "
       "credit bigint, "
+      "credit_extra_currencies jsonb, "
       "compute_skipped boolean, "
       "skipped_reason skipped_reason_type, "
       "compute_success boolean, "
@@ -2039,6 +1803,7 @@ void InsertManagerPostgres::start_up() {
       "source tonaddr, "
       "destination tonaddr, "
       "value bigint, "
+      "value_extra_currencies jsonb, "
       "fwd_fee bigint, "
       "ihr_fee bigint, "
       "created_lt bigint, "
@@ -2065,6 +1830,7 @@ void InsertManagerPostgres::start_up() {
       "hash tonhash not null primary key, "
       "account tonaddr, "
       "balance bigint, "
+      "balance_extra_currencies jsonb, "
       "account_status account_status_type, "
       "frozen_hash tonhash, "
       "data_hash tonhash, "
@@ -2079,6 +1845,7 @@ void InsertManagerPostgres::start_up() {
       "account_friendly tonaddr, "
       "hash tonhash not null, "
       "balance bigint, "
+      "balance_extra_currencies jsonb, "
       "account_status account_status_type, "
       "timestamp integer, "
       "last_trans_hash tonhash, "
@@ -2477,13 +2244,18 @@ void InsertManagerPostgres::start_up() {
 
     std::string query = "";
     
-    // some necessary indexes
     query += (
       "alter table jetton_wallets add column if not exists mintless_is_claimed boolean;\n"
       "alter table jetton_wallets add column if not exists mintless_amount numeric;\n"
       "alter table jetton_wallets add column if not exists mintless_start_from bigint;\n"
       "alter table jetton_wallets add column if not exists mintless_expire_at bigint;\n"
       "alter table mintless_jetton_masters add column if not exists custom_payload_api_uri varchar[];\n"
+
+      "alter table transactions add column if not exists total_fees_extra_currencies jsonb;\n"
+      "alter table transactions add column if not exists credit_extra_currencies jsonb;\n"
+      "alter table messages add column if not exists value_extra_currencies jsonb;\n"
+      "alter table account_states add column if not exists balance_extra_currencies jsonb;\n"
+      "alter table latest_account_states add column if not exists balance_extra_currencies jsonb;\n"
     );
 
     LOG(DEBUG) << query;

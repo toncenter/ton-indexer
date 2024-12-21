@@ -97,11 +97,12 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
     if (account_state.data_hash) {
       data_hash = td::base64_encode(account_state.data_hash.value().as_slice());
     }
+    // TODO: extracurrencies
     query << "("
           << transaction.quote(convert::to_raw_address(account_state.account)) << ","
           << "NULL,"
           << transaction.quote(td::base64_encode(account_state.hash.as_slice())) << ","
-          << account_state.balance << ","
+          << account_state.balance.grams << ","
           << transaction.quote(account_state.account_status) << ","
           << account_state.timestamp << ","
           << transaction.quote(td::base64_encode(account_state.last_trans_hash.as_slice())) << ","

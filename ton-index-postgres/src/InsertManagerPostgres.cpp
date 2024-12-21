@@ -213,9 +213,9 @@ std::string InsertBatchPostgres::jsonify(const schema::StorageUsedShort& s) {
 std::string InsertBatchPostgres::jsonify(const schema::TrStoragePhase& s) {
   auto jb = td::JsonBuilder();
   auto c = jb.enter_object();
-  c("storage_fees_collected", std::to_string(s.storage_fees_collected));
+  c("storage_fees_collected", s.storage_fees_collected->to_dec_string());
   if (s.storage_fees_due) {
-    c("storage_fees_due", std::to_string(*(s.storage_fees_due)));
+    c("storage_fees_due", s.storage_fees_due.value()->to_dec_string());
   }
   c("status_change", stringify(s.status_change));
   c.leave();
@@ -227,9 +227,9 @@ std::string InsertBatchPostgres::jsonify(const schema::TrCreditPhase& c) {
   auto jb = td::JsonBuilder();
   auto cc = jb.enter_object();
   if (c.due_fees_collected) {
-    cc("due_fees_collected", std::to_string(*(c.due_fees_collected)));
+    cc("due_fees_collected", c.due_fees_collected.value()->to_dec_string());
   }
-  cc("credit", std::to_string(c.credit));
+  cc("credit", c.credit.grams->to_dec_string());
   cc.leave();
   return jb.string_builder().as_cslice().str();
 }
@@ -243,10 +243,10 @@ std::string InsertBatchPostgres::jsonify(const schema::TrActionPhase& action) {
   c("no_funds", td::JsonBool(action.no_funds));
   c("status_change", stringify(action.status_change));
   if (action.total_fwd_fees) {
-    c("total_fwd_fees", std::to_string(*(action.total_fwd_fees)));
+    c("total_fwd_fees", action.total_fwd_fees.value()->to_dec_string());
   }
   if (action.total_action_fees) {
-    c("total_action_fees", std::to_string(*(action.total_action_fees)));
+    c("total_action_fees", action.total_action_fees.value()->to_dec_string());
   }
   c("result_code", action.result_code);
   if (action.result_arg) {
@@ -272,13 +272,13 @@ std::string InsertBatchPostgres::jsonify(const schema::TrBouncePhase& bounce) {
     const auto& nofunds = std::get<schema::TrBouncePhase_nofunds>(bounce);
     c("type", "nofunds");
     c("msg_size", td::JsonRaw(jsonify(nofunds.msg_size)));
-    c("req_fwd_fees", std::to_string(nofunds.req_fwd_fees));
+    c("req_fwd_fees", nofunds.req_fwd_fees->to_dec_string());
   } else if (std::holds_alternative<schema::TrBouncePhase_ok>(bounce)) {
     const auto& ok = std::get<schema::TrBouncePhase_ok>(bounce);
     c("type", "ok");
     c("msg_size", td::JsonRaw(jsonify(ok.msg_size)));
-    c("msg_fees", std::to_string(ok.msg_fees));
-    c("fwd_fees", std::to_string(ok.fwd_fees));
+    c("msg_fees", ok.msg_fees->to_dec_string());
+    c("fwd_fees", ok.fwd_fees->to_dec_string());
   }
   c.leave();
   return jb.string_builder().as_cslice().str();
@@ -297,7 +297,7 @@ std::string InsertBatchPostgres::jsonify(const schema::TrComputePhase& compute) 
     c("success", td::JsonBool(computed.success));
     c("msg_state_used", td::JsonBool(computed.msg_state_used));
     c("account_activated", td::JsonBool(computed.account_activated));
-    c("gas_fees", std::to_string(computed.gas_fees));
+    c("gas_fees", computed.gas_fees->to_dec_string());
     c("gas_used",std::to_string(computed.gas_used));
     c("gas_limit", std::to_string(computed.gas_limit));
     if (computed.gas_credit) {
@@ -555,7 +555,7 @@ void InsertBatchPostgres::insert_transactions(pqxx::work &transaction, const std
               << tx.now << ","
               << TO_SQL_STRING(stringify(tx.orig_status)) << ","
               << TO_SQL_STRING(stringify(tx.end_status)) << ","
-              << tx.total_fees << ","
+              << tx.total_fees.grams << ","
               << TO_SQL_STRING(td::base64_encode(tx.account_state_hash_before.as_slice())) << ","
               << TO_SQL_STRING(td::base64_encode(tx.account_state_hash_after.as_slice())) << ","
               << "'" << jsonify(tx.description) << "'"  // FIXME: remove for production
@@ -641,20 +641,31 @@ void InsertBatchPostgres::insert_messages_impl(const std::vector<schema::Message
     } else {
       query << ", ";
     }
+    // msg.import_fee is defined by user and can be too large for bigint, so we need to check it
+    // and if it is too large, we will insert NULL.
+    // TODO: change bigint to numeric
+    std::optional<int64_t> import_fee_val;
+    if (message.import_fee) {
+      import_fee_val = message.import_fee.value()->to_long();
+      if (import_fee_val.value() == int64_t(~0ULL << 63)) {
+        LOG(WARNING) << "Import fee of msg " << message.hash.to_hex() << " is too large for bigint: " << message.import_fee.value();
+        import_fee_val = std::nullopt;
+      }
+    }
     query << "("
           << "'" << td::base64_encode(message.hash.as_slice()) << "',"
           << (message.source ? "'" + message.source.value() + "'" : "NULL") << ","
           << (message.destination ? "'" + message.destination.value() + "'" : "NULL") << ","
-          << (message.value ? std::to_string(message.value.value()) : "NULL") << ","
-          << (message.fwd_fee ? std::to_string(message.fwd_fee.value()) : "NULL") << ","
-          << (message.ihr_fee ? std::to_string(message.ihr_fee.value()) : "NULL") << ","
+          << (message.value ? message.value->grams->to_dec_string() : "NULL") << ","
+          << (message.fwd_fee ? message.fwd_fee.value()->to_dec_string() : "NULL") << ","
+          << (message.ihr_fee ? message.ihr_fee.value()->to_dec_string() : "NULL") << ","
           << (message.created_lt ? std::to_string(message.created_lt.value()) : "NULL") << ","
           << (message.created_at ? std::to_string(message.created_at.value()) : "NULL") << ","
           << (message.opcode ? std::to_string(message.opcode.value()) : "NULL") << ","
           << (message.ihr_disabled ? TO_SQL_BOOL(message.ihr_disabled.value()) : "NULL") << ","
           << (message.bounce ? TO_SQL_BOOL(message.bounce.value()) : "NULL") << ","
           << (message.bounced ? TO_SQL_BOOL(message.bounced.value()) : "NULL") << ","
-          << (message.import_fee ? std::to_string(message.import_fee.value()) : "NULL") << ","
+          << TO_SQL_OPTIONAL(import_fee_val) << ","
           << "'" << td::base64_encode(message.body->get_hash().as_slice()) << "',"
           << (message.init_state.not_null() ? TO_SQL_STRING(td::base64_encode(message.init_state->get_hash().as_slice())) : "NULL")
           << ")";
@@ -735,7 +746,7 @@ void InsertBatchPostgres::insert_account_states(pqxx::work &transaction, const s
       query << "("
             << TO_SQL_STRING(td::base64_encode(account_state.hash.as_slice())) << ","
             << TO_SQL_STRING(convert::to_raw_address(account_state.account)) << ","
-            << account_state.balance << ","
+            << account_state.balance.grams << ","
             << TO_SQL_STRING(account_state.account_status) << ","
             << TO_SQL_OPTIONAL_STRING(frozen_hash) << ","
             << TO_SQL_OPTIONAL_STRING(code_hash) << ","
@@ -791,7 +802,7 @@ void InsertBatchPostgres::insert_latest_account_states(pqxx::work &transaction, 
     query << "("
           << TO_SQL_STRING(convert::to_raw_address(account_state.account)) << ","
           << TO_SQL_STRING(td::base64_encode(account_state.hash.as_slice())) << ","
-          << account_state.balance << ","
+          << account_state.balance.grams << ","
           << account_state.last_trans_lt << ","
           << account_state.timestamp << ","
           << TO_SQL_STRING(account_state.account_status) << ","
@@ -1038,10 +1049,10 @@ void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &transaction, const
         query << ", ";
       }
       auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
-      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
       auto forward_payload_boc_r = convert::to_bytes(transfer.forward_payload);
-      auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+      auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : std::nullopt;
 
       query << "("
             << TO_SQL_STRING(td::base64_encode(transfer.transaction_hash.as_slice())) << ","
@@ -1079,7 +1090,7 @@ void InsertBatchPostgres::insert_jetton_burns(pqxx::work &transaction, const std
       }
 
       auto custom_payload_boc_r = convert::to_bytes(burn.custom_payload);
-      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
       query << "("
             << TO_SQL_STRING(td::base64_encode(burn.transaction_hash.as_slice())) << ","
@@ -1113,10 +1124,10 @@ void InsertBatchPostgres::insert_nft_transfers(pqxx::work &transaction, const st
         query << ", ";
       }
       auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
-      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+      auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
       auto forward_payload_boc_r = convert::to_bytes(transfer.forward_payload);
-      auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : td::optional<std::string>{};
+      auto forward_payload_boc = forward_payload_boc_r.is_ok() ? forward_payload_boc_r.move_as_ok() : std::nullopt;
 
       query << "("
             << TO_SQL_STRING(td::base64_encode(transfer.transaction_hash.as_slice())) << ","

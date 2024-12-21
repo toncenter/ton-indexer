@@ -20,6 +20,7 @@ private:
   schema::Block parse_block(const td::Ref<vm::Cell>& root_cell, const ton::BlockIdExt& blk_id, block::gen::Block::Record& blk, const block::gen::BlockInfo::Record& info, 
                             const block::gen::BlockExtra::Record& extra, td::optional<schema::Block> &mc_block);
   schema::MasterchainBlockShard parse_shard_state(schema::Block mc_block, const ton::BlockIdExt& shard_blk_id);
+  static td::Result<schema::CurrencyCollection> parse_currency_collection(td::Ref<vm::CellSlice> csr);
   td::Result<schema::Message> parse_message(td::Ref<vm::Cell> msg_cell);
   td::Result<schema::TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs);
   td::Result<schema::TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs);
