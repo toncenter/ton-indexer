@@ -2365,6 +2365,12 @@ const docTemplate = `{
                 "balance": {
                     "type": "string"
                 },
+                "balance_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "code_boc": {
                     "type": "string"
                 },
@@ -2396,6 +2402,12 @@ const docTemplate = `{
                 },
                 "balance": {
                     "type": "string"
+                },
+                "balance_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "code_boc": {
                     "type": "string"
@@ -2785,6 +2797,12 @@ const docTemplate = `{
                     "type": "string",
                     "example": "0"
                 },
+                "credit_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "due_fees_collected": {
                     "type": "string",
                     "example": "0"
@@ -3091,6 +3109,12 @@ const docTemplate = `{
                 "value": {
                     "type": "string",
                     "example": "0"
+                },
+                "value_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -3553,6 +3577,12 @@ const docTemplate = `{
                 "total_fees": {
                     "type": "string",
                     "example": "0"
+                },
+                "total_fees_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "trace_id": {
                     "type": "string"

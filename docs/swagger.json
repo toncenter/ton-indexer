@@ -2357,6 +2357,12 @@
                 "balance": {
                     "type": "string"
                 },
+                "balance_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "code_boc": {
                     "type": "string"
                 },
@@ -2388,6 +2394,12 @@
                 },
                 "balance": {
                     "type": "string"
+                },
+                "balance_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "code_boc": {
                     "type": "string"
@@ -2777,6 +2789,12 @@
                     "type": "string",
                     "example": "0"
                 },
+                "credit_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "due_fees_collected": {
                     "type": "string",
                     "example": "0"
@@ -3083,6 +3101,12 @@
                 "value": {
                     "type": "string",
                     "example": "0"
+                },
+                "value_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -3545,6 +3569,12 @@
                 "total_fees": {
                     "type": "string",
                     "example": "0"
+                },
+                "total_fees_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "trace_id": {
                     "type": "string"

@@ -541,11 +541,11 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 
 	err := row.Scan(&t.Account, &t.Hash, &t.Lt, &t.Workchain, &t.Shard, &t.Seqno,
 		&t.McSeqno, &t.TraceId, &t.PrevTransHash, &t.PrevTransLt, &t.Now,
-		&t.OrigStatus, &t.EndStatus, &t.TotalFees, &t.AccountStateHashBefore,
+		&t.OrigStatus, &t.EndStatus, &t.TotalFees, &t.TotalFeesExtraCurrencies, &t.AccountStateHashBefore,
 		&t.AccountStateHashAfter, &t.Descr.Type, &t.Descr.Aborted, &t.Descr.Destroyed,
 		&t.Descr.CreditFirst, &t.Descr.IsTock, &t.Descr.Installed,
 		&st.StorageFeesCollected, &st.StorageFeesDue, &st.StatusChange,
-		&cr.DueFeesCollected, &cr.Credit,
+		&cr.DueFeesCollected, &cr.Credit, &cr.CreditExtraCurrencies,
 		&co.IsSkipped, &co.Reason, &co.Success, &co.MsgStateUsed,
 		&co.AccountActivated, &co.GasFees, &co.GasUsed, &co.GasLimit,
 		&co.GasCredit, &co.Mode, &co.ExitCode, &co.ExitArg,
@@ -597,7 +597,7 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 func ScanMessage(row pgx.Row) (*Message, error) {
 	var m Message
 	err := row.Scan(&m.TxHash, &m.TxLt, &m.MsgHash, &m.Direction, &m.TraceId, &m.Source, &m.Destination,
-		&m.Value, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
+		&m.Value, &m.ValueExtraCurrencies, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
 		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash)
 	if err != nil {
 		return nil, err
@@ -627,7 +627,7 @@ func ScanMessageWithContent(row pgx.Row) (*Message, error) {
 	var init_state MessageContent
 
 	err := row.Scan(&m.TxHash, &m.TxLt, &m.MsgHash, &m.Direction, &m.TraceId, &m.Source, &m.Destination,
-		&m.Value, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
+		&m.Value, &m.ValueExtraCurrencies, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
 		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash,
 		&body.Hash, &body.Body, &init_state.Hash, &init_state.Body)
 	if body.Hash != nil {
@@ -655,8 +655,8 @@ func ScanMessageContent(row pgx.Row) (*MessageContent, error) {
 
 func ScanAccountState(row pgx.Row) (*AccountState, error) {
 	var acst AccountState
-	err := row.Scan(&acst.Hash, &acst.Account, &acst.Balance, &acst.AccountStatus,
-		&acst.FrozenHash, &acst.DataHash, &acst.CodeHash)
+	err := row.Scan(&acst.Hash, &acst.Account, &acst.Balance, &acst.BalanceExtraCurrencies,
+		&acst.AccountStatus, &acst.FrozenHash, &acst.DataHash, &acst.CodeHash)
 	if err != nil {
 		return nil, err
 	}
@@ -665,9 +665,9 @@ func ScanAccountState(row pgx.Row) (*AccountState, error) {
 
 func ScanAccountStateFull(row pgx.Row) (*AccountStateFull, error) {
 	var acst AccountStateFull
-	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.AccountStatus,
-		&acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt, &acst.DataHash,
-		&acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
+	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.BalanceExtraCurrencies,
+		&acst.AccountStatus, &acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt,
+		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
 	if err != nil {
 		return nil, err
 	}

@@ -132,7 +132,18 @@ func buildTransactionsQuery(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) (string, error) {
-	query := `select T.* from`
+	query := `select T.account, T.hash, T.lt, T.block_workchain, T.block_shard, T.block_seqno, T.mc_block_seqno, T.trace_id, 
+	T.prev_trans_hash, T.prev_trans_lt, T.now, T.orig_status, T.end_status, T.total_fees, T.total_fees_extra_currencies, 
+	T.account_state_hash_before, T.account_state_hash_after, T.descr, T.aborted, T.destroyed, T.credit_first, T.is_tock, 
+	T.installed, T.storage_fees_collected, T.storage_fees_due, T.storage_status_change, T.credit_due_fees_collected, T.credit, 
+	T.credit_extra_currencies, T.compute_skipped, T.skipped_reason, T.compute_success, T.compute_msg_state_used, T.compute_account_activated, 
+	T.compute_gas_fees, T.compute_gas_used, T.compute_gas_limit, T.compute_gas_credit, T.compute_mode, T.compute_exit_code, T.compute_exit_arg, 
+	T.compute_vm_steps, T.compute_vm_init_state_hash, T.compute_vm_final_state_hash, T.action_success, T.action_valid, T.action_no_funds, 
+	T.action_status_change, T.action_total_fwd_fees, T.action_total_action_fees, T.action_result_code, T.action_result_arg, 
+	T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
+	T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
+	T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
+	T.split_info_this_addr, T.split_info_sibling_addr from`
 	from_query := ` transactions as T`
 	filter_list := []string{}
 	filter_query := ``
@@ -274,7 +285,9 @@ func buildMessagesQuery(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) (string, error) {
-	all_columns := ` M.*, B.*, I.*`
+	all_columns := ` M.tx_hash, M.tx_lt, M.msg_hash, M.direction, M.trace_id, M.source, M.destination, M.value, 
+	M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
+	M.bounced, M.import_fee, M.body_hash, M.init_state_hash, B.*, I.*`
 	clmn_query := ` distinct on (M.created_lt, M.msg_hash)` + all_columns
 	from_query := ` messages as M 
 		left join message_contents as B on M.body_hash = B.hash 
@@ -1066,7 +1079,7 @@ func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
 }
 
 func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
-	clmn_query_default := `A.account, A.hash, A.balance, A.account_status, A.frozen_hash, A.last_trans_hash, A.last_trans_lt, A.data_hash, A.code_hash, `
+	clmn_query_default := `A.account, A.hash, A.balance, A.balance_extra_currencies, A.account_status, A.frozen_hash, A.last_trans_hash, A.last_trans_lt, A.data_hash, A.code_hash, `
 	clmn_query := clmn_query_default + `A.data_boc, A.code_boc`
 	from_query := `latest_account_states as A`
 	filter_list := []string{}
@@ -1234,7 +1247,9 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 	}
 	if len(acst_list) > 0 {
 		acst_list_str := strings.Join(acst_list, ",")
-		query = fmt.Sprintf("select * from account_states where hash in (%s)", acst_list_str)
+		query = fmt.Sprintf(`select S.hash, S.account, S.balance, 
+		S.balance_extra_currencies, S.account_status, S.frozen_hash, 
+		S.data_hash, S.code_hash from account_states S where hash in (%s)`, acst_list_str)
 
 		acsts, err := queryAccountStatesImpl(query, conn, settings)
 		if err != nil {
@@ -1257,7 +1272,9 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 	// messages
 	if len(hash_list) > 0 {
 		hash_list_str := strings.Join(hash_list, ",")
-		query = fmt.Sprintf(`select M.*, B.*, I.* from messages as M 
+		query = fmt.Sprintf(`select M.tx_hash, M.tx_lt, M.msg_hash, M.direction, M.trace_id, M.source, M.destination, M.value, 
+			M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
+			M.bounced, M.import_fee, M.body_hash, M.init_state_hash, B.*, I.* from messages as M 
 			left join message_contents as B on M.body_hash = B.hash 
 			left join message_contents as I on M.init_state_hash = I.hash
 			where M.tx_hash in (%s)`, hash_list_str)

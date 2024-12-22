@@ -12,6 +12,10 @@ definitions:
         type: string
       balance:
         type: string
+      balance_extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       code_boc:
         type: string
       code_hash:
@@ -33,6 +37,10 @@ definitions:
         type: string
       balance:
         type: string
+      balance_extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       code_boc:
         type: string
       code_hash:
@@ -294,6 +302,10 @@ definitions:
       credit:
         example: "0"
         type: string
+      credit_extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       due_fees_collected:
         example: "0"
         type: string
@@ -499,6 +511,10 @@ definitions:
       value:
         example: "0"
         type: string
+      value_extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
     type: object
   MessageContent:
     properties:
@@ -806,6 +822,10 @@ definitions:
       total_fees:
         example: "0"
         type: string
+      total_fees_extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       trace_id:
         type: string
     type: object
