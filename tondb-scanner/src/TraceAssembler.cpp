@@ -101,8 +101,8 @@ void TraceAssembler::alarm() {
         return;
     }
 
-    ton::delay_action([this, seqno = expected_seqno_ - 1, pending_traces = pending_traces_, pending_edges = pending_edges_]() {
-        auto S = save_state(this->db_path_, expected_seqno_ - 1, pending_traces_, pending_edges_);
+    ton::delay_action([db_path = this->db_path_, seqno = expected_seqno_ - 1, pending_traces = pending_traces_, pending_edges = pending_edges_]() {
+        auto S = save_state(db_path, seqno, pending_traces, pending_edges);
         if (S.is_error()) {
             LOG(ERROR) << "Error while saving Trace Assembler state: " << S.move_as_error();
         }
