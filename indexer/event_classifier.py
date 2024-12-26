@@ -8,6 +8,7 @@ import traceback
 from datetime import timedelta
 from typing import Optional
 
+import msgpack
 from sqlalchemy import update, select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker, contains_eager
@@ -17,7 +18,7 @@ from indexer.core.database import engine, Trace, Transaction, Message, Action, S
 from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_additional_addresses
-from indexer.events.blocks.utils.block_tree_serializer import block_to_action
+from indexer.events.blocks.utils.block_tree_serializer import block_to_action, serialize_blocks
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing
 from indexer.events.interface_repository import EmulatedTransactionsInterfaceRepository, gather_interfaces, \
@@ -227,16 +228,21 @@ async def start_processing_events_from_db(args: argparse.Namespace):
 
 async def start_emulated_traces_processing():
     pubsub = redis.client.pubsub()
-    await pubsub.subscribe(settings.emulated_traces_reddit_channel)
+    await pubsub.subscribe(settings.emulated_traces_redis_channel)
     while True:
         message = await pubsub.get_message()
         if message is not None and message['type'] == 'message':
             trace_id = message['data'].decode('utf-8')
             try:
                 start = time.time()
-                res = await process_emulated_trace(trace_id)
+                actions = await process_emulated_trace(trace_id)
+                await redis.client.hset(trace_id, 'actions', msgpack.packb([a.to_dict() for a in actions]))
+                print("Processed trace", trace_id, "in", time.time() - start, "seconds")
+                if settings.emulated_traces_redis_response_channel is not None:
+                    await redis.client.publish(settings.emulated_traces_redis_response_channel, trace_id)
             except Exception as e:
                 logger.error(f"Failed to process emulated trace {trace_id}: {e}")
+                logger.exception(e, exc_info=True)
         else:
             await asyncio.sleep(1)
 
@@ -246,7 +252,9 @@ async def process_emulated_trace(trace_id):
     trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
     trace = deserialize_event(trace_id, trace_map)
     context.interface_repository.set(EmulatedTransactionsInterfaceRepository(trace_map))
-    return await process_event_async(trace)
+    blocks = await process_event_async_with_postprocessing(trace)
+    actions, _ = serialize_blocks(blocks, trace_id)
+    return actions
 
 
 async def process_trace_batch_async(ids: list[str]):
@@ -329,7 +337,6 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action]]:
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
         return trace.trace_id, 'failed', []
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--fetch-size',
@@ -344,7 +351,23 @@ if __name__ == '__main__':
                         help='Number of workers to process traces',
                         type=int,
                         default=4)
+    parser.add_argument('--emulated-traces',
+                        help='Process emulated traces',
+                        action='store_true')
+    parser.add_argument('--emulated-traces-redis-channel',
+                        help='Redis channel for emulated traces',
+                        default='new_trace',
+                        type=str)
+    parser.add_argument('--emulated-traces-redis-response-channel',
+                        help='Redis channel to publish processed emulated traces',
+                        default=None,
+                        type=str)
     args = parser.parse_args()
+
+    settings.emulated_traces_redis_channel = args.emulated_traces_redis_channel
+    settings.emulated_traces_redis_response_channel = args.emulated_traces_redis_response_channel
+    settings.emulated_traces = args.emulated_traces
+
     if settings.emulated_traces:
         logger.info("Starting processing emulated traces")
         asyncio.run(start_emulated_traces_processing())

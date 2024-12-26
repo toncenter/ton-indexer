@@ -66,7 +66,7 @@ class AccountId:
     def as_bytes(self):
         if self.address is None:
             return None
-        return self.address.wc.to_bytes(1, byteorder="big", signed=True) + self.address.hash_part
+        return self.address.wc.to_bytes(32, byteorder="big", signed=True) + self.address.hash_part
 
     def as_str(self):
         if self.address is None:

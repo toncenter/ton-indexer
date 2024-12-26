@@ -214,14 +214,16 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
             return None
 
         data = msgpack.unpackb(raw_data, raw=False)
-        interfaces = data[0]
+        if 'interfaces' not in data:
+            return None
+        interfaces = data['interfaces']
         for (interface_type, interface_data) in interfaces:
             if interface_type == 0:
                 return JettonWallet(
-                    balance=interface_data[0],
-                    address=interface_data[1],
-                    owner=interface_data[2],
-                    jetton=interface_data[3],
+                    balance=interface_data['balance'],
+                    address=interface_data['address'],
+                    owner=interface_data['owner'],
+                    jetton=interface_data['jetton'],
                 )
         return None
 
@@ -231,16 +233,18 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
             return None
 
         data = msgpack.unpackb(raw_data, raw=False)
-        interfaces = data[0]
+        if 'interfaces' not in data:
+            return None
+        interfaces = data['interfaces']
         for (interface_type, interface_data) in interfaces:
             if interface_type == 2:
                 return NFTItem(
-                    address=interface_data[0],
-                    init=interface_data[1],
-                    index=interface_data[2],
-                    collection_address=interface_data[3],
-                    owner_address=interface_data[4],
-                    content=interface_data[5],
+                    address=interface_data['address'],
+                    init=interface_data['init'],
+                    index=interface_data['index'],
+                    collection_address=interface_data['collection_address'],
+                    owner_address=interface_data['owner_address'],
+                    content=interface_data['content'],
                 )
         return None
 
@@ -250,16 +254,18 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
             return None
 
         data = msgpack.unpackb(raw_data, raw=False)
-        interfaces = data[0]
+        if 'interfaces' not in data:
+            return None
+        interfaces = data['interfaces']
         for (interface_type, interface_data) in interfaces:
             if interface_type == 4:
                 return NftSale(
-                    address=interface_data[0],
-                    is_complete=interface_data[1],
-                    marketplace_address=interface_data[3],
-                    nft_address=interface_data[4],
-                    nft_owner_address=interface_data[5],
-                    full_price=interface_data[6],
+                    address=interface_data['address'],
+                    is_complete=interface_data['is_complete'],
+                    marketplace_address=interface_data['marketplace_address'],
+                    nft_address=interface_data['nft_address'],
+                    nft_owner_address=interface_data['nft_owner_address'],
+                    full_price=interface_data['full_price'],
                 )
         return None
 
@@ -269,13 +275,15 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
             return None
 
         data = msgpack.unpackb(raw_data, raw=False)
-        interfaces = data[0]
+        if 'interfaces' not in data:
+            return None
+        interfaces = data['interfaces']
         for (interface_type, interface_data) in interfaces:
             if interface_type == 5:
                 return NftAuction(
-                    address=interface_data[0],
-                    nft_addr=interface_data[4],
-                    nft_owner=interface_data[5],
+                    address=interface_data['address'],
+                    nft_addr=interface_data['nft_addr'],
+                    nft_owner=interface_data['nft_owner'],
                 )
         return None
 

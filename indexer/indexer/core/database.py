@@ -3,30 +3,22 @@ from __future__ import annotations
 import asyncio
 import logging
 from time import sleep
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass
-
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy_utils import create_database, database_exists, CompositeType
+from typing import Optional, List, Any
 
 from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric
-from sqlalchemy.schema import ForeignKeyConstraint
 from sqlalchemy import ForeignKey
-from sqlalchemy.orm import relationship
-
+from sqlalchemy import create_engine
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import JSONB
-
-from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
-from sqlalchemy.future import select
-
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.schema import ForeignKeyConstraint
+from sqlalchemy_utils import create_database, database_exists, CompositeType
 
 from indexer.core.settings import Settings
-
 
 logger = logging.getLogger(__name__)
 
@@ -307,6 +299,11 @@ class Action(Base):
                 continue
             full_repr += f"{key}={value}, "
         return full_repr
+
+    def to_dict(self):
+        r = self.__dict__.copy()
+        r.pop('_sa_instance_state')
+        return r
 
     def get_action_accounts(self):
         accounts = []

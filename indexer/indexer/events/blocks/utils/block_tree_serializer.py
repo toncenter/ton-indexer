@@ -460,10 +460,28 @@ def block_to_action(block: Block, trace_id: str) -> Action:
         extended_tx_hashes.add(block.initiating_event_node.get_tx_hash())
         if not block.initiating_event_node.is_tick_tock:
             acc = block.initiating_event_node.message.transaction.account
-            if acc not in action.accounts:
-                logging.info(f"Initiating transaction ({block.initiating_event_node.get_tx_hash()}) account not in accounts. Trace id: {trace_id}. Action id: {action.action_id}")
+            # if acc not in action.accounts:
+            #     logging.info(f"Initiating transaction ({block.initiating_event_node.get_tx_hash()}) account not in accounts. Trace id: {trace_id}. Action id: {action.action_id}")
             action.accounts.append(acc)
     action.tx_hashes = list(extended_tx_hashes)
 
     action.accounts = list(set(a for a in action.accounts if a is not None))
     return action
+
+def serialize_blocks(blocks: list[Block], trace_id) -> tuple[list[Action], str]:
+    actions = []
+    state = 'ok'
+    for block in blocks:
+        if block.btype != 'root':
+            if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
+                continue
+            if block.btype == 'empty':
+                continue
+            if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
+                continue
+            if block.broken:
+                state = 'broken'
+            action = block_to_action(block, trace_id)
+
+            actions.append(action)
+    return actions, state
