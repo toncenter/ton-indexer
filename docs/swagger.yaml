@@ -500,12 +500,16 @@ definitions:
       import_fee:
         example: "0"
         type: string
+      in_msg_tx_hash:
+        type: string
       init_state:
         $ref: '#/definitions/MessageContent'
       message_content:
         $ref: '#/definitions/MessageContent'
       opcode:
         type: integer
+      out_msg_tx_hash:
+        type: string
       source:
         type: string
       value:
@@ -1850,6 +1854,14 @@ paths:
         in: query
         name: direction
         type: string
+      - description: Exclude external messages.
+        in: query
+        name: exclude_externals
+        type: boolean
+      - description: Return only external messages.
+        in: query
+        name: only_externals
+        type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query

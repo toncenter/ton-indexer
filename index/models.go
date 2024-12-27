@@ -182,6 +182,8 @@ type Message struct {
 	ImportFee            *uint64           `json:"import_fee,string"`
 	BodyHash             *HashType         `json:"-"`
 	InitStateHash        *HashType         `json:"-"`
+	InMsgTxHash          *HashType         `json:"in_msg_tx_hash,omitempty"`
+	OutMsgTxHash         *HashType         `json:"out_msg_tx_hash,omitempty"`
 	MessageContent       *MessageContent   `json:"message_content"`
 	InitState            *MessageContent   `json:"init_state"`
 } // @name Message
@@ -751,7 +753,7 @@ type Trace struct {
 	TraceMeta         TraceMeta                 `json:"trace_info"`
 	IsIncomplete      bool                      `json:"is_incomplete"`
 	Warning           string                    `json:"warning,omitempty"`
-	Actions           []*Action                 `json:"actions,omitempty"`
+	Actions           []*Action                 `json:"actions"`
 	Trace             *TraceNode                `json:"trace,omitempty"`
 	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
 	Transactions      map[HashType]*Transaction `json:"transactions,omitempty"`

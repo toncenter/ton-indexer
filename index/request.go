@@ -44,12 +44,14 @@ type AdjacentTransactionRequest struct {
 }
 
 type MessageRequest struct {
-	Direction   *string                 `query:"direction"`
-	MessageHash []HashType              `query:"msg_hash"`
-	Source      *AccountAddressNullable `query:"source"`
-	Destination *AccountAddressNullable `query:"destination"`
-	BodyHash    *HashType               `query:"body_hash"`
-	Opcode      *OpcodeType             `query:"opcode"`
+	Direction        *string                 `query:"direction"`
+	ExcludeExternals *bool                   `query:"exclude_externals"`
+	OnlyExternals    *bool                   `query:"only_externals"`
+	MessageHash      []HashType              `query:"msg_hash"`
+	Source           *AccountAddressNullable `query:"source"`
+	Destination      *AccountAddressNullable `query:"destination"`
+	BodyHash         *HashType               `query:"body_hash"`
+	Opcode           *OpcodeType             `query:"opcode"`
 }
 
 type NFTCollectionRequest struct {

@@ -285,13 +285,14 @@ func buildMessagesQuery(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) (string, error) {
-	all_columns := ` M.tx_hash, M.tx_lt, M.msg_hash, M.direction, M.trace_id, M.source, M.destination, M.value, 
-	M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
-	M.bounced, M.import_fee, M.body_hash, M.init_state_hash, B.*, I.*`
-	clmn_query := ` distinct on (M.created_lt, M.msg_hash)` + all_columns
-	from_query := ` messages as M 
-		left join message_contents as B on M.body_hash = B.hash 
-		left join message_contents as I on M.init_state_hash = I.hash`
+	rest_columns := `M.trace_id, M.source, M.destination, M.value, 
+		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
+		M.bounced, M.import_fee, M.body_hash, M.init_state_hash`
+	clmn_query := `'', 0, M.msg_hash, '', ` + rest_columns + `, 
+		max(case when M.direction='in' then M.tx_hash else null end) as in_tx_hash, 
+		max(case when M.direction='out' then M.tx_hash else null end) as out_tx_hash`
+	from_query := ` messages as M `
+	groupby_query := ` group by M.msg_hash, ` + rest_columns
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
@@ -300,11 +301,8 @@ func buildMessagesQuery(
 		return "", err
 	}
 
-	with_distinct := true
 	if v := msg_req.Direction; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.direction = '%s'", *v))
-		clmn_query = all_columns
-		with_distinct = false
 	}
 	if v := msg_req.Source; v != nil {
 		if *v == "null" {
@@ -356,6 +354,12 @@ func buildMessagesQuery(
 	if v := lt_req.EndLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.created_lt <= %d", *v))
 	}
+	if v := msg_req.ExcludeExternals; v != nil && *v {
+		filter_list = append(filter_list, order_col+" is not NULL")
+	}
+	if v := msg_req.OnlyExternals; v != nil && *v {
+		filter_list = append(filter_list, order_col+" is NULL")
+	}
 
 	sort_order := "desc"
 	if lim_req.Sort != nil {
@@ -364,20 +368,21 @@ func buildMessagesQuery(
 			return "", err
 		}
 	}
-	if with_distinct {
-		clmn_query = ` distinct on (` + order_col + `, M.msg_hash)` + all_columns
-	}
-	orderby_query = fmt.Sprintf(" order by %s %s, M.msg_hash asc", order_col, sort_order)
+	orderby_query = fmt.Sprintf(" order by %s %s, M.msg_hash %s", order_col, sort_order, sort_order)
 
 	// build query
 	if len(filter_list) > 0 {
 		filter_query = ` where ` + strings.Join(filter_list, " and ")
 	}
-	query := `select` + clmn_query
-	query += ` from ` + from_query
-	query += filter_query
-	query += orderby_query
-	query += limit_query
+	inner_query := `select` + clmn_query
+	inner_query += ` from ` + from_query
+	inner_query += filter_query
+	inner_query += groupby_query
+	inner_query += orderby_query
+	inner_query += limit_query
+	query := `select MM.*, B.*, I.* from (` + inner_query + `) as MM 
+	left join message_contents as B on MM.body_hash = B.hash
+	left join message_contents as I on MM.init_state_hash = I.hash;`
 	// log.Println(query) // TODO: remove debug
 	return query, nil
 }
@@ -1274,7 +1279,7 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 		hash_list_str := strings.Join(hash_list, ",")
 		query = fmt.Sprintf(`select M.tx_hash, M.tx_lt, M.msg_hash, M.direction, M.trace_id, M.source, M.destination, M.value, 
 			M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
-			M.bounced, M.import_fee, M.body_hash, M.init_state_hash, B.*, I.* from messages as M 
+			M.bounced, M.import_fee, M.body_hash, M.init_state_hash, NULL, NULL, B.*, I.* from messages as M 
 			left join message_contents as B on M.body_hash = B.hash 
 			left join message_contents as I on M.init_state_hash = I.hash
 			where M.tx_hash in (%s)`, hash_list_str)
@@ -2254,7 +2259,18 @@ func (db *DbClient) QueryAdjacentTransactions(
 		tx_hash_list[idx] = fmt.Sprintf("'%s'", tx_hash_list[idx])
 	}
 	tx_hash_str := strings.Join(tx_hash_list, ",")
-	query := fmt.Sprintf("select * from transactions where hash in (%s) order by lt asc", tx_hash_str)
+	query := fmt.Sprintf(`select T.account, T.hash, T.lt, T.block_workchain, T.block_shard, T.block_seqno, T.mc_block_seqno, T.trace_id, 
+		T.prev_trans_hash, T.prev_trans_lt, T.now, T.orig_status, T.end_status, T.total_fees, T.total_fees_extra_currencies, 
+		T.account_state_hash_before, T.account_state_hash_after, T.descr, T.aborted, T.destroyed, T.credit_first, T.is_tock, 
+		T.installed, T.storage_fees_collected, T.storage_fees_due, T.storage_status_change, T.credit_due_fees_collected, T.credit, 
+		T.credit_extra_currencies, T.compute_skipped, T.skipped_reason, T.compute_success, T.compute_msg_state_used, T.compute_account_activated, 
+		T.compute_gas_fees, T.compute_gas_used, T.compute_gas_limit, T.compute_gas_credit, T.compute_mode, T.compute_exit_code, T.compute_exit_arg, 
+		T.compute_vm_steps, T.compute_vm_init_state_hash, T.compute_vm_final_state_hash, T.action_success, T.action_valid, T.action_no_funds, 
+		T.action_status_change, T.action_total_fwd_fees, T.action_total_action_fees, T.action_result_code, T.action_result_arg, 
+		T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
+		T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
+		T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
+		T.split_info_this_addr, T.split_info_sibling_addr from transactions as T where hash in (%s) order by lt asc`, tx_hash_str)
 	txs, err := queryTransactionsImpl(query, conn, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}

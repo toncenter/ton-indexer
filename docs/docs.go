@@ -1275,6 +1275,18 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "description": "Exclude external messages.",
+                        "name": "exclude_externals",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Return only external messages.",
+                        "name": "only_externals",
+                        "in": "query"
+                    },
+                    {
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
@@ -3094,6 +3106,9 @@ const docTemplate = `{
                     "type": "string",
                     "example": "0"
                 },
+                "in_msg_tx_hash": {
+                    "type": "string"
+                },
                 "init_state": {
                     "$ref": "#/definitions/MessageContent"
                 },
@@ -3102,6 +3117,9 @@ const docTemplate = `{
                 },
                 "opcode": {
                     "type": "integer"
+                },
+                "out_msg_tx_hash": {
+                    "type": "string"
                 },
                 "source": {
                     "type": "string"

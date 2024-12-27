@@ -407,6 +407,8 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @param start_lt query int64 false "Query messages with `created_lt >= start_lt`." minimum(0)
 // @param end_lt query int64 false "Query messages with `created_lt <= end_lt`." minimum(0)
 // @param direction query string false "Direction of message." Enums(in, out)
+// @param exclude_externals query bool false "Exclude external messages."
+// @param only_externals query bool false "Return only external messages."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
