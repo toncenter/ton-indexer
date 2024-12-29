@@ -753,7 +753,7 @@ type Trace struct {
 	TraceMeta         TraceMeta                 `json:"trace_info"`
 	IsIncomplete      bool                      `json:"is_incomplete"`
 	Warning           string                    `json:"warning,omitempty"`
-	Actions           []*Action                 `json:"actions"`
+	Actions           *[]*Action                `json:"actions,omitempty"`
 	Trace             *TraceNode                `json:"trace,omitempty"`
 	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
 	Transactions      map[HashType]*Transaction `json:"transactions,omitempty"`

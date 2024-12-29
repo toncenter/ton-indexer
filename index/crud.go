@@ -1954,6 +1954,12 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 			if err != nil {
 				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query actions: %s", err.Error())}
 			}
+			for idx := range traces {
+				if traces[idx].Actions == nil {
+					new_actions := make([]*Action, 0)
+					traces[idx].Actions = &new_actions
+				}
+			}
 			for idx := range actions {
 				raw_action := &actions[idx]
 
@@ -1963,7 +1969,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 				if err != nil {
 					return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
 				}
-				traces[traces_map[action.TraceId]].Actions = append(traces[traces_map[action.TraceId]].Actions, action)
+				*traces[traces_map[action.TraceId]].Actions = append(*traces[traces_map[action.TraceId]].Actions, action)
 			}
 		}
 		{
