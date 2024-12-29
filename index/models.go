@@ -438,7 +438,7 @@ type RawAction struct {
 	Asset2                                               *AccountAddress
 	Asset2Secondary                                      *AccountAddress
 	Opcode                                               *OpcodeType
-	TxHashes                                             []*HashType
+	TxHashes                                             []HashType
 	Type                                                 string
 	TonTransferContent                                   *string
 	TonTransferEncrypted                                 *bool
@@ -718,7 +718,7 @@ type Action struct {
 	EndLt      int64       `json:"end_lt,string"`
 	StartUtime int64       `json:"start_utime"`
 	EndUtime   int64       `json:"end_utime"`
-	TxHashes   []*HashType `json:"transactions"`
+	TxHashes   []HashType  `json:"transactions"`
 	Success    *bool       `json:"success"`
 	Type       string      `json:"type"`
 	Details    interface{} `json:"details"`
