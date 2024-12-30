@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/kdimentionaltree/ton-index-go/index/emulated"
 	"log"
 	"os"
 	"runtime"
@@ -47,6 +48,7 @@ func onlyOneOf(flags ...bool) bool {
 var pool *index.DbClient
 var masterPool *index.DbClient
 var settings Settings
+var emulatedTracesRepository *emulated.EmulatedTracesRepository
 
 //	@title			TON Index (Go)
 //	@version		1.1.0
@@ -262,6 +264,45 @@ func GetTransactions(c *fiber.Ctx) error {
 	// if len(txs) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
 	// }
+
+	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
+	return c.JSON(txs_resp)
+}
+
+// @summary Get pending transactions
+// @description Get pending transactions by specified filter.
+// @id api_v3_get_pending_transactions
+// @tags blockchain
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	index.TransactionsResponse
+// @failure		400	{object}	index.RequestError
+// @param 	account	query []string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form." collectionFormat(multi)
+// @router			/api/v3/pendingTransasctions [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetPendingTransactions(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+
+	tx_req := index.TransactionRequest{}
+
+	if err := c.QueryParser(&tx_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(tx_req.Account) == 0 {
+		return index.IndexError{Code: 422, Message: "at least 1 account address required"}
+	}
+
+	emulatedContext, err := ContextForAccounts(emulatedTracesRepository, tx_req.Account, true, true)
+	if err != nil {
+		return err
+	}
+	emulatedContext.SetEmulatedOnly(true)
+	txs, book, err := pool.QueryPendingTransactions(request_settings, emulatedContext)
+	if err != nil {
+		return err
+	}
 
 	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
 	return c.JSON(txs_resp)
@@ -1078,6 +1119,42 @@ func GetTraces(c *fiber.Ctx) error {
 	return c.JSON(txs_resp)
 }
 
+// @summary Get Pending Events
+// @description Get events by specified filter.
+// @id api_v3_get_pending_events
+// @tags events
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	index.EventsResponse
+// @failure		400	{object}	index.RequestError
+// @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
+// @router			/api/v3/pendingEvents [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetPendingEvents(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	event_req := index.EventRequest{}
+
+	if err := c.QueryParser(&event_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if !onlyOneOf(event_req.AccountAddress != nil, event_req.TraceId != nil, len(event_req.TransactionHash) > 0, len(event_req.MessageHash) > 0) {
+		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
+	}
+
+	emulatedContext, err := ContextForAccounts(emulatedTracesRepository,
+		[]index.AccountAddress{*event_req.AccountAddress}, true, true)
+
+	res, book, err := pool.QueryPendingEvents(request_settings, emulatedContext)
+	if err != nil {
+		return err
+	}
+
+	txs_resp := index.EventsResponse{Events: res, AddressBook: book}
+	return c.JSON(txs_resp)
+}
+
 // @summary Get Actions
 // @description Get actions by specified filter.
 // @id api_v3_get_actions
@@ -1484,6 +1561,41 @@ func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
 	}
 }
 
+func ContextForAccounts(repository *emulated.EmulatedTracesRepository, accounts []index.AccountAddress, emulated_only bool, filter_transactions bool) (
+	*index.EmulatedTracesContext, error) {
+
+	if len(accounts) == 0 {
+		return index.NewEmptyContext(emulated_only), nil
+	}
+	emulated_context := index.NewEmptyContext(emulated_only)
+	var trace_ids []string
+	for _, account := range accounts {
+		ids, err := repository.GetTraceIdsByAccount(string(account))
+		if err != nil {
+			return nil, err
+		}
+		if ids != nil {
+			trace_ids = append(trace_ids, ids...)
+		}
+	}
+	raw_traces, err := repository.LoadRawTraces(trace_ids)
+	if err != nil {
+		return nil, err
+	}
+	err = emulated_context.FillFromRawData(raw_traces)
+	if err != nil {
+		return nil, err
+	}
+	if filter_transactions {
+		err = emulated_context.FilterTransactionsByAccounts(accounts)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return emulated_context, err
+}
+
 func test() {
 	// addr_str := "0QAvlUF6KtTT7R9/kmxOPULEMd+zbtVBZigkorOlGqWtzVky"
 	// addr, err := address.ParseAddr(addr_str)
@@ -1493,7 +1605,7 @@ func test() {
 func main() {
 	test()
 	var timeout_ms int
-
+	var redis_dsn string
 	flag.StringVar(&settings.PgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
 	flag.StringVar(&settings.PgMasterDsn, "pg-master", "", "PostgreSQL connection string with write access")
 	flag.StringVar(&settings.Request.V2Endpoint, "v2", "", "TON HTTP API endpoint for proxied methods")
@@ -1513,6 +1625,7 @@ func main() {
 	flag.IntVar(&settings.Request.MaxLimit, "max-limit", 1000, "Maximum value for limit")
 	flag.IntVar(&settings.Request.MaxTraceTransactions, "max-trace-txs", 4000, "Maximum number of transactions in trace")
 	flag.IntVar(&settings.MaxThreads, "threads", 0, "Number of threads")
+	flag.StringVar(&redis_dsn, "redis", "", "Redis connection string")
 	flag.Parse()
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
 
@@ -1526,6 +1639,7 @@ func main() {
 		log.Fatal(err)
 		os.Exit(63)
 	}
+	emulatedTracesRepository, err = emulated.NewRepository(redis_dsn)
 	// web server
 	config := fiber.Config{
 		AppName:        "TON Index API",
@@ -1575,6 +1689,7 @@ func main() {
 	app.Get("/api/v3/blocks", GetBlocks)
 
 	// transactions
+	app.Get("/api/v3/pendingTransactions", GetPendingTransactions)
 	app.Get("/api/v3/transactions", GetTransactions)
 	app.Get("/api/v3/transactionsByMasterchainBlock", GetTransactionsByMasterchainBlock)
 	app.Get("/api/v3/transactionsByMessage", GetTransactionsByMessage)
@@ -1609,6 +1724,7 @@ func main() {
 	app.Get("/api/v3/events", GetTraces)
 
 	app.Get("/api/v3/balanceChanges", GetBalanceChanges)
+	app.Get("/api/v3/pendingEvents", GetPendingEvents)
 
 	// api/v2 proxied
 	app.Get("/api/v3/addressInformation", GetV2AddressInformation)

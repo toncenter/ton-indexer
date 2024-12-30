@@ -295,6 +295,7 @@ type Transaction struct {
 	OutMsgs                  []*Message        `json:"out_msgs"`
 	AccountStateBefore       *AccountState     `json:"account_state_before"`
 	AccountStateAfter        *AccountState     `json:"account_state_after"`
+	Emulated                 bool              `json:"emulated"`
 } // @name Transaction
 
 // nfts
