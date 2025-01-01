@@ -304,6 +304,62 @@ class Action(Base):
         r = self.__dict__.copy()
         r.pop('_sa_instance_state')
         return r
+    
+    def to_redis_raw_action(self):
+        result = self.to_dict()
+        # TODO: make this class the same as ton-index-go.RawAction
+        
+        # fixing types - int to str
+        result['value'] = str(result['value']) if result.get('value') else None
+        result['amount'] = str(result['amount']) if result.get('amount') else None
+        if result.get('jetton_transfer_data'):
+            if result['jetton_transfer_data'].get('forward_amount'):
+                result['jetton_transfer_data']['forward_amount'] = str(result['jetton_transfer_data']['forward_amount'])
+            if result['jetton_transfer_data'].get('query_id'):
+                result['jetton_transfer_data']['query_id'] = str(result['jetton_transfer_data']['query_id'])
+        if result.get('nft_transfer_data'):
+            if result['nft_transfer_data'].get('price'):
+                result['nft_transfer_data']['price'] = str(result['nft_transfer_data']['price'])
+            if result['nft_transfer_data'].get('forward_amount'):
+                result['nft_transfer_data']['forward_amount'] = str(result['nft_transfer_data']['forward_amount'])
+            if result['nft_transfer_data'].get('query_id'):
+                result['nft_transfer_data']['query_id'] = str(result['nft_transfer_data']['query_id'])
+            if result['nft_transfer_data'].get('nft_item_index'):
+                result['nft_transfer_data']['nft_item_index'] = str(result['nft_transfer_data']['nft_item_index'])
+        if result.get('jetton_swap_data'):
+            if result['jetton_swap_data'].get('dex_incoming_transfer'):
+                if result['jetton_swap_data']['dex_incoming_transfer'].get('amount'):
+                    result['jetton_swap_data']['dex_incoming_transfer']['amount'] = str(result['jetton_swap_data']['dex_incoming_transfer']['amount'])
+            if result['jetton_swap_data'].get('dex_outgoing_transfer'):
+                if result['jetton_swap_data']['dex_outgoing_transfer'].get('amount'):
+                    result['jetton_swap_data']['dex_outgoing_transfer']['amount'] = str(result['jetton_swap_data']['dex_outgoing_transfer']['amount'])
+        if result.get('nft_mint_data'):
+            if result['nft_mint_data'].get('nft_item_index'):
+                result['nft_mint_data']['nft_item_index'] = str(result['nft_mint_data']['nft_item_index'])
+        if result.get('dex_deposit_liquidity_data'):
+            if result['dex_deposit_liquidity_data'].get('amount1'):
+                result['dex_deposit_liquidity_data']['amount1'] = str(result['dex_deposit_liquidity_data']['amount1'])
+            if result['dex_deposit_liquidity_data'].get('amount2'):
+                result['dex_deposit_liquidity_data']['amount2'] = str(result['dex_deposit_liquidity_data']['amount2'])
+            if result['dex_deposit_liquidity_data'].get('lp_tokens_minted'):
+                result['dex_deposit_liquidity_data']['lp_tokens_minted'] = str(result['dex_deposit_liquidity_data']['lp_tokens_minted'])
+        if result.get('dex_withdraw_liquidity_data'):
+            if result['dex_withdraw_liquidity_data'].get('amount1'):
+                result['dex_withdraw_liquidity_data']['amount1'] = str(result['dex_withdraw_liquidity_data']['amount1'])
+            if result['dex_withdraw_liquidity_data'].get('amount2'):
+                result['dex_withdraw_liquidity_data']['amount2'] = str(result['dex_withdraw_liquidity_data']['amount2'])
+            if result['dex_withdraw_liquidity_data'].get('lp_tokens_burnt'):
+                result['dex_withdraw_liquidity_data']['lp_tokens_burnt'] = str(result['dex_withdraw_liquidity_data']['lp_tokens_burnt'])
+        
+        # flatten result dict
+        for key in list(result.keys()):
+            value = result[key]
+            if isinstance(value, dict):
+                for k, v in value.items():
+                    if key in ['jetton_transfer_data', 'nft_transfer_data', 'jetton_swap_data', 'change_dns_record_data', 'nft_mint_data']:
+                        key.replace('_data', '')    
+                    result[f"{key}_{k}"] = v
+        return result
 
     def get_action_accounts(self):
         accounts = []
