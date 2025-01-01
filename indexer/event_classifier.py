@@ -381,9 +381,6 @@ if __name__ == '__main__':
                         help='Number of workers to process traces',
                         type=int,
                         default=4)
-    parser.add_argument('--redis',
-                        help='Redis DSN',
-                        type=str)
     parser.add_argument('--emulated-traces',
                         help='Process emulated traces',
                         action='store_true')
@@ -400,8 +397,6 @@ if __name__ == '__main__':
                         type=str)
     args = parser.parse_args()
 
-    if args.redis:
-        settings.redis_dsn = args.redis
     settings.emulated_traces_redis_channel = args.emulated_traces_redis_channel
     settings.emulated_traces_redis_response_channel = args.emulated_traces_redis_response_channel
     settings.emulated_traces = args.emulated_traces

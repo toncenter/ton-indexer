@@ -41,8 +41,9 @@ def fill_tx_description(tx: Transaction, data):
     tx.aborted = data['aborted']
     tx.bounce = data['bounce']
     tx.destroyed = data['destroyed']
-    tx.storage_fees_collected = data['storage_ph']['storage_fees_collected']
-    tx.storage_fees_due = data['storage_ph']['storage_fees_due']
+    if data.get('storage_ph') is not None:
+        tx.storage_fees_collected = data['storage_ph']['storage_fees_collected']
+        tx.storage_fees_due = data['storage_ph']['storage_fees_due']
     match data['storage_ph']['status_change']:
         case 0:
             tx.storage_fees_change = 'unchanged'
@@ -50,8 +51,9 @@ def fill_tx_description(tx: Transaction, data):
             tx.storage_fees_change = 'frozen'
         case 2:
             tx.storage_fees_change = 'deleted'
-    tx.due_fees_collected = data['credit_ph']['due_fees_collected']
-    tx.credit = data['credit_ph']['credit']
+    if data.get('credit_ph') is not None:
+        tx.due_fees_collected = data['credit_ph']['due_fees_collected']
+        tx.credit = data['credit_ph']['credit']
     compute_ph_type, compute_ph = data['compute_ph']
     match compute_ph_type:
         case 0:
