@@ -109,7 +109,7 @@ void TraceAssembler::alarm() {
     }, td::Timestamp::now());
 
     ton::delay_action([this]() {
-        auto S = gc_states(this->db_path_, this->expected_seqno_, 10);
+        auto S = gc_states(this->db_path_, this->expected_seqno_, 100);
         if (S.is_error()) {
             LOG(ERROR) << "Error while garbage collecting Trace Assembler states: " << S.move_as_error();
         }
@@ -153,7 +153,7 @@ td::Result<ton::BlockSeqno> TraceAssembler::restore_state(ton::BlockSeqno seqno)
     }
 
     for (const auto& [state_seqno, path] : fileMap) {
-        LOG(INFO) << "Found TA state seqno:" << seqno << " - path: " << path.string() << '\n';
+        LOG(INFO) << "Found TA state seqno: " << state_seqno << " - path: " << path.string() << '\n';
         if (state_seqno > seqno) {
             LOG(WARNING) << "Found trace assembler state " << state_seqno << " newer than requested " << seqno;
             continue;
