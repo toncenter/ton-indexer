@@ -133,6 +133,9 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		pending_messages := 0
 		c.traceIds = append(c.traceIds, trace_id)
 		trace, err := emulated.ConvertHSet(c.emulatedTransactionsRaw[trace_id], trace_id)
+		if err != nil {
+			return err
+		}
 		trace_id_bytes, err := hex.DecodeString(trace_id)
 		if err != nil {
 			return err
@@ -163,7 +166,7 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 				return err
 			}
 
-			if node.Key == trace_id {
+			if node.Key == b64_trace_id {
 				trace_row.StartLt = transactionRow.Lt
 				trace_row.StartUtime = *transactionRow.Now
 			}

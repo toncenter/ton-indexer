@@ -8,7 +8,6 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 	"strconv"
-	"strings"
 )
 
 type AccountStatus int
@@ -456,7 +455,13 @@ func (h *hash) DecodeMsgpack(dec *msgpack.Decoder) error {
 func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 
 	queue := make([]string, 0)
-	queue = append(queue, traceId)
+	first_key_bytes, err := hex.DecodeString(traceId)
+	if err != nil {
+		return Trace{}, fmt.Errorf("failed to decode key: %w", err)
+	}
+
+	first_key := base64.StdEncoding.EncodeToString(first_key_bytes)
+	queue = append(queue, first_key)
 	txs := make([]traceNode, 0)
 	actions := make([]action, 0)
 	if actionsBytes, exists := traceHash["actions"]; exists {
@@ -469,8 +474,12 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 		key := queue[0]
 		queue = queue[1:]
 		var node traceNode
-		nodeBytes := []byte(traceHash[key])
-		err := msgpack.Unmarshal(nodeBytes, &node)
+		nodeData, exists := traceHash[key]
+		if !exists {
+			return Trace{}, fmt.Errorf("key %s not found in trace", key)
+		}
+		nodeBytes := []byte(nodeData)
+		err = msgpack.Unmarshal(nodeBytes, &node)
 		node.Key = key
 		node.TraceId = traceId
 		txs = append(txs, node)
@@ -480,7 +489,7 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 		}
 		for _, outMsg := range node.Transaction.OutMsgs {
 			// bytes to hex string
-			nextKey := strings.ToUpper(hex.EncodeToString(outMsg.Hash[:]))
+			nextKey := base64.StdEncoding.EncodeToString(outMsg.Hash[:])
 			if _, exists := traceHash[nextKey]; exists {
 				queue = append(queue, nextKey)
 			}
