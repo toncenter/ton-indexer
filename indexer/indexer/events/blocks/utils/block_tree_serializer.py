@@ -4,7 +4,7 @@ import base64
 import hashlib
 import logging
 
-from indexer.core.database import Action
+from indexer.core.database import Action, Trace
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock, DnsRenewBlock
@@ -395,8 +395,10 @@ def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawReq
     action.destination = block.data.pool.as_str()
 
 # noinspection PyCompatibility,PyTypeChecker
-def block_to_action(block: Block, trace_id: str) -> Action:
+def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
+    if trace is not None:
+        action.trace_end_lt = trace.end_lt
     match block.btype:
         case 'call_contract' | 'contract_deploy':
             _fill_call_contract_action(block, action)

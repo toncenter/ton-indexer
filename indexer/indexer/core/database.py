@@ -191,6 +191,8 @@ class ActionAccount(Base):
     action_id: str = Column(String, primary_key=True)
     trace_id: str = Column(String, primary_key=True)
     account: str = Column(String(70), primary_key=True)
+    trace_end_lt: int = Column(Numeric)
+    action_end_lt: int = Column(Numeric)
 
 class Action(Base):
     __tablename__ = 'actions'
@@ -297,6 +299,7 @@ class Action(Base):
         Column("provider", String),
         Column("ts_nft", String),
     ]))
+    trace_end_lt: int = Column(Numeric)
     accounts: list[str]
 
 
@@ -311,7 +314,11 @@ class Action(Base):
     def get_action_accounts(self):
         accounts = []
         for account in self.accounts:
-            accounts.append(ActionAccount(action_id=self.action_id, trace_id=self.trace_id, account=account))
+            accounts.append(ActionAccount(action_id=self.action_id,
+                                          trace_id=self.trace_id,
+                                          account=account,
+                                          action_end_lt=self.end_lt,
+                                          trace_end_lt=self.trace_end_lt))
         return accounts
 
 class Transaction(Base):

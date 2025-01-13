@@ -322,7 +322,7 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action]]:
                     continue
                 if block.broken:
                     state = 'broken'
-                action = block_to_action(block, trace.trace_id)
+                action = block_to_action(block, trace.trace_id, trace)
                 actions.append(action)
         return trace.trace_id, state, actions
     except Exception as e:
@@ -335,15 +335,15 @@ if __name__ == '__main__':
     parser.add_argument('--fetch-size',
                         help='Number of prefetched batches',
                         type=int,
-                        default=300)
+                        default=20)
     parser.add_argument('--batch-size',
                         help='Number of traces to process in one batch',
                         type=int,
-                        default=1000)
+                        default=10)
     parser.add_argument('--pool-size',
                         help='Number of workers to process traces',
                         type=int,
-                        default=4)
+                        default=1)
     args = parser.parse_args()
     if settings.emulated_traces:
         logger.info("Starting processing emulated traces")
