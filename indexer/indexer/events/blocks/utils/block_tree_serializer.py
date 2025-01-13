@@ -16,7 +16,7 @@ from indexer.events.blocks.liquidity import (
     DedustDepositLiquidityPartial,
     DedustDepositLiquidity,
 )
-from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
+from indexer.events.blocks.nft import NftDiscoveryBlock, NftTransferBlock, NftMintBlock
 from indexer.events.blocks.staking import TONStakersDepositBlock, TONStakersWithdrawRequestBlock, \
     TONStakersWithdrawBlock, NominatorPoolWithdrawRequestBlock, NominatorPoolDepositBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
@@ -133,6 +133,15 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'custom_payload': block.data['custom_payload'],
         'forward_payload': block.data['forward_payload'],
         'response_destination': block.data['response_destination'].as_str() if block.data['response_destination'] else None,
+    }
+
+def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):
+    action.source = block.data.sender.as_str()
+    action.destination = block.data.nft.as_str()
+    action.nft_discovery_data = {
+        'query_id': block.data.query_id,
+        'collection_address': block.data.result_collection.as_str(),
+        'nft_item_index': block.data.result_index
     }
 
 
@@ -414,6 +423,8 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_jetton_transfer_action(block, action)
         case 'nft_transfer':
             _fill_nft_transfer_action(block, action)
+        case 'nft_discovery':
+            _fill_nft_discovery_action(block, action)
         case 'nft_mint':
             _fill_nft_mint_action(block, action)
         case 'jetton_burn':

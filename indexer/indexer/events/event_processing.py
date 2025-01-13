@@ -15,7 +15,7 @@ from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurn
 from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, DedustWithdrawBlockMatcher, \
     post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher
 from indexer.events.blocks.messages import TonTransferMessage
-from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher
+from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher, NftDiscoveryBlockMatcher
 from indexer.events.blocks.staking import TONStakersDepositMatcher, TONStakersWithdrawMatcher, \
     TONStakersDelayedWithdrawalMatcher, NominatorPoolDepositMatcher, NominatorPoolWithdrawRequestMatcher, \
     NominatorPoolWithdrawMatcher
@@ -71,6 +71,7 @@ matchers = [
     StonfiSwapBlockMatcher(),
     StonfiV2SwapBlockMatcher(),
     NftTransferBlockMatcher(),
+    NftDiscoveryBlockMatcher(),
     TelegramNftPurchaseBlockMatcher(),
     ChangeDnsRecordMatcher(),
     ElectionDepositStakeBlockMatcher(),

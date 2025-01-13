@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from pytoniq_core import Slice, Address
+from pytoniq_core import Address, ExternalAddress, Slice
+from pytoniq_core.boc.address import typing
 
 
 class TeleitemBidInfo:
@@ -28,12 +29,12 @@ class NftPayload:
             self.op = tmp_cell.load_uint(32) & 0xFFFFFFFF
         except:
             return
-        if self.op == 0x38127de1:
+        if self.op == 0x38127DE1:
             self.value = TeleitemBidInfo(tmp_cell)
 
 
 class NftTransfer:
-    opcode = 0x5fcc3d14
+    opcode = 0x5FCC3D14
 
     def __init__(self, slice: Slice):
         slice.load_uint(32)  # opcode
@@ -54,7 +55,7 @@ class NftTransfer:
 
 
 class NftOwnershipAssigned:
-    opcode = 0x05138d91
+    opcode = 0x05138D91
 
     query_id: int
     prev_owner: Address
@@ -73,5 +74,32 @@ class NftOwnershipAssigned:
             self.nft_payload = None
 
 
+# get_static_data#2fcb26a2 query_id:uint64 = InternalMsgBody;
+class NftDiscovery:
+    opcode = 0x2FCB26A2
+    query_id: int
+
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        self.query_id = slice.load_uint(64)
+
+
+# report_static_data#8b771735
+#        query_id:uint64 index:uint256
+#        collection:MsgAddress
+#        = InternalMsgBody;
+class NftReportStaticData:
+    opcode = 0x8B771735
+    query_id: int
+    index: int
+    collection: Address
+
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        self.query_id = slice.load_uint(64)
+        self.index = slice.load_uint(256)
+        self.collection = slice.load_address()
+
+
 class AuctionFillUp:
-    opcode = 0x370fec51
+    opcode = 0x370FEC51

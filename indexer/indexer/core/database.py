@@ -238,6 +238,11 @@ class Action(Base):
         Column("response_destination", String),
         Column("nft_item_index", Numeric),
     ]))
+    nft_discovery_data = Column(CompositeType("nft_discovery_details", [
+        Column("collection_address", Boolean),
+        Column("query_id", Numeric),
+        Column("nft_item_index", Numeric),
+    ]))
     jetton_swap_data = Column(CompositeType("jetton_swap_details", [
         Column("dex", String),
         Column("sender", String),
