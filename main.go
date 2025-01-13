@@ -278,7 +278,7 @@ func GetTransactions(c *fiber.Ctx) error {
 // @success		200	{object}	index.TransactionsResponse
 // @failure		400	{object}	index.RequestError
 // @param 	account	query []string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form." collectionFormat(multi)
-// @router			/api/v3/pendingTransasctions [get]
+// @router			/api/v3/pendingTransactions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetPendingTransactions(c *fiber.Ctx) error {
@@ -1139,12 +1139,16 @@ func GetPendingEvents(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if !onlyOneOf(event_req.AccountAddress != nil, event_req.TraceId != nil, len(event_req.TransactionHash) > 0, len(event_req.MessageHash) > 0) {
-		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
+	if event_req.AccountAddress == nil {
+		return index.IndexError{Code: 422, Message: "account should be specified"}
 	}
 
 	emulatedContext, err := ContextForAccounts(emulatedTracesRepository,
-		[]index.AccountAddress{*event_req.AccountAddress}, true, true)
+		[]index.AccountAddress{*event_req.AccountAddress}, false, false)
+
+	if err != nil {
+		return err
+	}
 
 	res, book, err := pool.QueryPendingEvents(request_settings, emulatedContext)
 	if err != nil {

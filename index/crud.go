@@ -3200,23 +3200,25 @@ func queryPendingEventsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	for trace_id, _ := range emulatedContext.emulatedTransactions {
 		trace_ids = append(trace_ids, fmt.Sprintf("'%s'", trace_id))
 	}
-	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-	defer cancel_ctx()
-	query := fmt.Sprintf("select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id where M.msg_hash in (%s) and T.state='complete'",
-		strings.Join(trace_ids, ","))
-	rows, err := conn.Query(ctx, query)
-	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
-	}
-	completed_trace_ids_in_db := make([]string, 0)
-	for rows.Next() {
-		var trace_id string
-		if err := rows.Scan(&trace_id); err != nil {
+	if len(trace_ids) > 0 {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		query := fmt.Sprintf("select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id where M.msg_hash in (%s) and T.state='complete'",
+			strings.Join(trace_ids, ","))
+		rows, err := conn.Query(ctx, query)
+		if err != nil {
 			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
-		completed_trace_ids_in_db = append(completed_trace_ids_in_db, trace_id)
+		completed_trace_ids_in_db := make([]string, 0)
+		for rows.Next() {
+			var trace_id string
+			if err := rows.Scan(&trace_id); err != nil {
+				return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+			completed_trace_ids_in_db = append(completed_trace_ids_in_db, trace_id)
+		}
+		emulatedContext.RemoveTraces(completed_trace_ids_in_db)
 	}
-	emulatedContext.RemoveTraces(completed_trace_ids_in_db)
 	traceRows := emulatedContext.GetTraces()
 	for _, row := range traceRows {
 		if loc, err := ScanEvent(row); err == nil {
