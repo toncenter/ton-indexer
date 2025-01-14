@@ -874,7 +874,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		clmn_query = clmn_query_default
 	}
 	if v := act_req.ActionId; v != nil {
-		from_query = `actions as A join traces as E on A.trace_id = E.trace_id`
+		from_query = `actions as A`
 		filter_str := filterByArray("A.action_id", v)
 		if len(filter_str) > 0 {
 			filter_list = []string{filter_str}
@@ -892,7 +892,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 	if order_by_now {
 		orderby_query = fmt.Sprintf(" order by E.end_utime %s, E.trace_id %s, A.end_utime %s, A.action_id %s", sort_order, sort_order, sort_order, sort_order)
 	} else {
-		orderby_query = fmt.Sprintf(" order by E.end_lt %s, E.trace_id %s, A.end_lt %s, A.action_id %s", sort_order, sort_order, sort_order, sort_order)
+		orderby_query = fmt.Sprintf(" order by A.trace_end_lt %s, A.trace_id %s, A.end_lt %s, A.action_id %s", sort_order, sort_order, sort_order, sort_order)
 	}
 	filter_list = append(filter_list, "A.end_lt is not NULL")
 	// build query
