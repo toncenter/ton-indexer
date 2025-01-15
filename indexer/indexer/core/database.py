@@ -193,6 +193,8 @@ class ActionAccount(Base):
     account: str = Column(String(70), primary_key=True)
     trace_end_lt: int = Column(Numeric)
     action_end_lt: int = Column(Numeric)
+    trace_end_utime: int = Column(Numeric)
+    action_end_utime: int = Column(Numeric)
 
 class Action(Base):
     __tablename__ = 'actions'
@@ -300,6 +302,8 @@ class Action(Base):
         Column("ts_nft", String),
     ]))
     trace_end_lt: int = Column(Numeric)
+    trace_end_utime: int = Column(Numeric)
+    trace_external_hash: str = Column(String)
     accounts: list[str]
 
 
@@ -318,7 +322,9 @@ class Action(Base):
                                           trace_id=self.trace_id,
                                           account=account,
                                           action_end_lt=self.end_lt,
-                                          trace_end_lt=self.trace_end_lt))
+                                          trace_end_lt=self.trace_end_lt,
+                                          trace_end_utime=self.trace_end_utime,
+                                          action_end_utime=self.end_utime))
         return accounts
 
 class Transaction(Base):
