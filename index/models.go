@@ -500,6 +500,7 @@ type RawAction struct {
 	StakingDataProvider                                  *string
 	StakingDataTsNft                                     *AccountAddress
 	Success                                              *bool
+	TraceExternalHash                                    *HashType
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
@@ -712,17 +713,18 @@ type ActionDetailsWithdrawStakeRequest struct {
 }
 
 type Action struct {
-	TraceId    HashType    `json:"trace_id"`
-	ActionId   HashType    `json:"action_id"`
-	StartLt    int64       `json:"start_lt,string"`
-	EndLt      int64       `json:"end_lt,string"`
-	StartUtime int64       `json:"start_utime"`
-	EndUtime   int64       `json:"end_utime"`
-	TxHashes   []HashType  `json:"transactions"`
-	Success    *bool       `json:"success"`
-	Type       string      `json:"type"`
-	Details    interface{} `json:"details"`
-	RawAction  *RawAction  `json:"raw_action,omitempty" swaggerignore:"true"`
+	TraceId           HashType    `json:"trace_id"`
+	ActionId          HashType    `json:"action_id"`
+	StartLt           int64       `json:"start_lt,string"`
+	EndLt             int64       `json:"end_lt,string"`
+	StartUtime        int64       `json:"start_utime"`
+	EndUtime          int64       `json:"end_utime"`
+	TxHashes          []HashType  `json:"transactions"`
+	Success           *bool       `json:"success"`
+	Type              string      `json:"type"`
+	Details           interface{} `json:"details"`
+	RawAction         *RawAction  `json:"raw_action,omitempty" swaggerignore:"true"`
+	TraceExternalHash *HashType   `json:"trace_external_hash,omitempty"`
 } // @name Action
 
 type TraceMeta struct {

@@ -800,7 +800,8 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		(A.dex_deposit_liquidity_data).lp_tokens_minted,
 		(A.staking_data).provider,
 		(A.staking_data).ts_nft,
-		A.success`
+		A.success,
+		A.trace_external_hash`
 	clmn_query := clmn_query_default
 	from_query := `actions as A join traces as E on A.trace_id = E.trace_id`
 	filter_list := []string{}
@@ -890,7 +891,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 	}
 
 	if order_by_now {
-		orderby_query = fmt.Sprintf(" order by E.end_utime %s, E.trace_id %s, A.end_utime %s, A.action_id %s", sort_order, sort_order, sort_order, sort_order)
+		orderby_query = fmt.Sprintf(" order by A.trace_end_utime %s, A.trace_id %s, A.end_utime %s, A.action_id %s", sort_order, sort_order, sort_order, sort_order)
 	} else {
 		orderby_query = fmt.Sprintf(" order by A.trace_end_lt %s, A.trace_id %s, A.end_lt %s, A.action_id %s", sort_order, sort_order, sort_order, sort_order)
 	}

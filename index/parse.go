@@ -283,6 +283,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 	act.TxHashes = raw.TxHashes
 	act.Success = raw.Success
 	act.Type = raw.Type
+	act.TraceExternalHash = raw.TraceExternalHash
 
 	switch act.Type {
 	case "call_contract":
@@ -822,7 +823,8 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.DexDepositLiquidityDataLpTokensMinted,
 		&act.StakingDataProvider,
 		&act.StakingDataTsNft,
-		&act.Success)
+		&act.Success,
+		&act.TraceExternalHash)
 
 	if err != nil {
 		return nil, err
