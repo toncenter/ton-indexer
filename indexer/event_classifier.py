@@ -335,15 +335,15 @@ if __name__ == '__main__':
     parser.add_argument('--fetch-size',
                         help='Number of prefetched batches',
                         type=int,
-                        default=20)
+                        default=300)
     parser.add_argument('--batch-size',
                         help='Number of traces to process in one batch',
                         type=int,
-                        default=10)
+                        default=1000)
     parser.add_argument('--pool-size',
                         help='Number of workers to process traces',
                         type=int,
-                        default=1)
+                        default=4)
     args = parser.parse_args()
     if settings.emulated_traces:
         logger.info("Starting processing emulated traces")
