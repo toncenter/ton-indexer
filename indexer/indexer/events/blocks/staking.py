@@ -32,10 +32,10 @@ from indexer.events.blocks.utils.block_utils import find_call_contract, get_labe
 @dataclass
 class TONStakersDepositData:
     source: AccountId
-    user_jetton_wallet: AccountId
+    user_jetton_wallet: AccountId | None
     pool: AccountId
     value: Amount
-    tokens_minted: Amount
+    tokens_minted: Amount | None
 
 
 class TONStakersDepositBlock(Block):
@@ -54,7 +54,7 @@ class TONStakersWithdrawRequestData:
     tsTON_wallet: AccountId
     pool: AccountId
     tokens_burnt: Amount
-    minted_nft: AccountId
+    minted_nft: AccountId | None
 
 
 class TONStakersWithdrawRequestBlock(Block):
@@ -149,8 +149,8 @@ class TONStakersDepositMatcher(BlockMatcher):
 
         new_block = TONStakersDepositBlock(
             data=TONStakersDepositData(
-                user_jetton_wallet=AccountId(transfer.get_message().destination) if not failed else None,
-                tokens_minted=Amount(transfer_message.amount) if not failed else None,
+                user_jetton_wallet=AccountId(transfer.get_message().destination) if transfer else None,
+                tokens_minted=Amount(transfer_message.amount) if transfer_message else None,
                 source=AccountId(msg.source),
                 pool=AccountId(msg.destination),
                 value=Amount(msg.value - 10**9),  # 1 TON deposit fee
@@ -190,6 +190,8 @@ class TONStakersWithdrawMatcher(BlockMatcher):
         immediate_withdrawal = get_labeled('immediate_withdrawal', other_blocks, CallContractBlock)
         delayed_withdrawal = get_labeled('delayed_withdrawal', other_blocks, CallContractBlock)
         request = get_labeled('request', other_blocks, CallContractBlock)
+        if not request or not (immediate_withdrawal or delayed_withdrawal):
+            return []
         failed = block.failed
 
         if immediate_withdrawal is not None:
@@ -201,7 +203,7 @@ class TONStakersWithdrawMatcher(BlockMatcher):
                     amount=Amount(burn_request_data.amount),
                 )
             )
-        else:
+        elif delayed_withdrawal is not None:
             nft_mint_block = next((b for b in delayed_withdrawal.next_blocks if isinstance(b, NftMintBlock)), None)
             if nft_mint_block is None:
                 nft_mint_block = find_call_contract(delayed_withdrawal.next_blocks, TONStakersInitNFT.opcode)
@@ -219,6 +221,8 @@ class TONStakersWithdrawMatcher(BlockMatcher):
                     minted_nft=minted_nft
                 )
             )
+        else:
+            return []
         new_block.failed = failed
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

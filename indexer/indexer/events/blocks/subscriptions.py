@@ -40,12 +40,14 @@ class SubscriptionBlockMatcher(BlockMatcher):
         amount = Amount(block.get_message().value)
         failed = False
         subscription_payment = find_call_contract(other_blocks, SubscriptionPayment.opcode)
+        if not subscription_payment:
+            return []
         beneficiary = AccountId(subscription_payment.get_message().destination)
 
         payment_request = find_call_contract(other_blocks, SubscriptionPaymentRequest.opcode)
         if payment_request is not None:
             payment_request_data = SubscriptionPaymentRequest(payment_request.get_body())
-            amount = Amount(payment_request_data.grams)
+            amount = Amount(payment_request_data.grams or 0)
             failed = payment_request.failed
         new_block.data = {
             'subscriber': subscriber,

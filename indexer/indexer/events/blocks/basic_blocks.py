@@ -76,7 +76,7 @@ class CallContractBlock(Block):
         })
         self.failed = node.failed
         self.is_external = node.message.source is None
-        self.opcode = node.get_opcode()
+        self.opcode = node.get_opcode() or -1 # opcode is uint, so when no opcode it's an invalid value
         _fill_flow_from_node(self.value_flow, node)
         tx = node.get_tx()
         if tx is not None and tx.end_status == 'active' and tx.orig_status not in ('active', 'frozen'):

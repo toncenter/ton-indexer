@@ -146,8 +146,9 @@ class MultisigApproveBlockMatcher(BlockMatcher):
         rejected = None
         if accepted is None:
             rejected = get_labeled("rejected", other_blocks, CallContractBlock)
+            # must be either accepted or rejected
             if rejected is None:
-                raise Exception("Must be either accepted or rejected")
+                return []
             exit_code = MultisigApproveRejected(rejected.get_body()).exit_code
 
         signer_index = -1
