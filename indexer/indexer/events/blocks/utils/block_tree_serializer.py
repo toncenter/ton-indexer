@@ -5,21 +5,26 @@ import hashlib
 import logging
 
 from indexer.core.database import Action
-from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
+from indexer.events.blocks.basic_blocks import (CallContractBlock,
+                                                TonTransferBlock)
 from indexer.events.blocks.core import Block
-from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock, DnsRenewBlock
-from indexer.events.blocks.jettons import (
-    JettonMintBlock,
-)
-from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
-from indexer.events.blocks.liquidity import (
-    DedustDepositLiquidityPartial,
-    DedustDepositLiquidity,
-)
-from indexer.events.blocks.nft import NftDiscoveryBlock, NftTransferBlock, NftMintBlock
-from indexer.events.blocks.staking import TONStakersDepositBlock, TONStakersWithdrawRequestBlock, \
-    TONStakersWithdrawBlock, NominatorPoolWithdrawRequestBlock, NominatorPoolDepositBlock
-from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
+from indexer.events.blocks.dns import (ChangeDnsRecordBlock,
+                                       DeleteDnsRecordBlock, DnsRenewBlock)
+from indexer.events.blocks.jettons import (JettonBurnBlock, JettonMintBlock,
+                                           JettonTransferBlock)
+from indexer.events.blocks.liquidity import (DedustDepositLiquidity,
+                                             DedustDepositLiquidityPartial)
+from indexer.events.blocks.multisig import (MultisigApproveBlock,
+                                            MultisigCreateOrderBlock)
+from indexer.events.blocks.nft import (NftDiscoveryBlock, NftMintBlock,
+                                       NftTransferBlock)
+from indexer.events.blocks.staking import (NominatorPoolDepositBlock,
+                                           NominatorPoolWithdrawRequestBlock,
+                                           TONStakersDepositBlock,
+                                           TONStakersWithdrawBlock,
+                                           TONStakersWithdrawRequestBlock)
+from indexer.events.blocks.subscriptions import (SubscriptionBlock,
+                                                 UnsubscribeBlock)
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
 
@@ -242,6 +247,29 @@ def _fill_dex_withdraw_liquidity(block: Block, action: Action):
         'lp_tokens_burnt': block.data['lp_tokens_burnt'].value if block.data['lp_tokens_burnt'] is not None else None
     }
 
+def _fill_multisig_create_order(block: MultisigCreateOrderBlock, action: Action):
+    action.source = _addr(block.data.created_by)
+    action.destination = _addr(block.data.multisig)
+    action.destination_secondary = _addr(block.data.order_contract_address)
+    action.multisig_create_order_data = {
+        "query_id": block.data.query_id,
+        "order_seqno": block.data.order_seqno,
+        "is_created_by_signer": block.data.is_created_by_signer,
+        "is_signed_by_creator": block.data.creator_approved,
+        "creator_index": block.data.creator_index,
+        "expiration_date": block.data.expiration_date,
+        "order_boc": block.data.order_boc_str,
+    }
+
+def _fill_multisig_approve(block: MultisigApproveBlock, action: Action):
+    action.source = _addr(block.data.signer)
+    action.destination = _addr(block.data.order)
+    action.success = block.data.success
+    action.multisig_approve_data = {
+        "signer_index": block.data.signer_index,
+        "exit_code": block.data.exit_code,
+    }
+
 def _fill_jetton_burn_action(block: JettonBurnBlock, action: Action):
     action.source = block.data['owner'].as_str()
     action.source_secondary = block.data['jetton_wallet'].as_str()
@@ -451,6 +479,10 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_dex_deposit_liquidity(block, action)
         case 'dex_withdraw_liquidity':
             _fill_dex_withdraw_liquidity(block, action)
+        case 'multisig_create_order':
+            _fill_multisig_create_order(block, action)
+        case 'multisig_approve':
+            _fill_multisig_approve(block, action)
         case 'unsubscribe':
             _fill_unsubscribe_action(block, action)
         case 'election_deposit' | 'election_recover':

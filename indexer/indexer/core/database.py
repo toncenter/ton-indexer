@@ -298,6 +298,19 @@ class Action(Base):
         Column('dex_jetton_wallet_2', String),
         Column("lp_tokens_burnt", Numeric),
     ]))
+    multisig_create_order_data = Column(CompositeType("multisig_create_order_details", [
+        Column("query_id", Numeric),
+        Column("order_seqno", Numeric),
+        Column("is_created_by_signer", Boolean),
+        Column("is_signed_by_creator", Boolean),
+        Column("creator_index", Numeric),
+        Column("expiration_date", Numeric),
+        Column("order_boc", String),
+    ]))
+    multisig_approve_data = Column(CompositeType("multisig_approve_details", [
+        Column("signer_index", Numeric),
+        Column("exit_code", Numeric),
+    ]))
     staking_data = Column(CompositeType("staking_details", [
         Column("provider", String),
         Column("ts_nft", String),
