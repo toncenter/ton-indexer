@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from indexer.core.database import Trace, engine
 from indexer.events.blocks.auction import AuctionBidMatcher
-from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock, ContractDeploy
+from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock, ContractDeployBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
@@ -49,7 +49,7 @@ async def unwind_deployments(blocks: list[Block]) -> list[Block]:
         queue = block.children_blocks.copy()
         while len(queue) > 0:
             child = queue.pop(0)
-            if isinstance(child, ContractDeploy):
+            if isinstance(child, ContractDeployBlock):
                 blocks.append(child)
             else:
                 queue.extend(child.children_blocks)

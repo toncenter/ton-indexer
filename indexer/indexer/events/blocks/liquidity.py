@@ -4,34 +4,45 @@ from loguru import logger
 
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
-from indexer.events.blocks.basic_matchers import (BlockMatcher,
-                                                  BlockTypeMatcher,
-                                                  ContractMatcher,
-                                                  GenericMatcher, OrMatcher)
+from indexer.events.blocks.basic_matchers import (
+    BlockMatcher,
+    BlockTypeMatcher,
+    ContractMatcher,
+    GenericMatcher,
+    OrMatcher,
+)
 from indexer.events.blocks.core import Block, EmptyBlock
-from indexer.events.blocks.jettons import (JettonBurnBlock,
-                                           JettonTransferBlock,
-                                           JettonTransferBlockMatcher)
+from indexer.events.blocks.jettons import (
+    JettonBurnBlock,
+    JettonTransferBlock,
+    JettonTransferBlockMatcher,
+)
 from indexer.events.blocks.labels import LabelBlock, labeled
 from indexer.events.blocks.messages import PTonTransfer
-from indexer.events.blocks.messages.jettons import (JettonBurn,
-                                                    JettonBurnNotification,
-                                                    JettonInternalTransfer,
-                                                    JettonNotify,
-                                                    JettonTransfer)
+from indexer.events.blocks.messages.jettons import (
+    JettonBurn,
+    JettonBurnNotification,
+    JettonInternalTransfer,
+    JettonNotify,
+    JettonTransfer,
+)
 from indexer.events.blocks.messages.liquidity import (
-    DedustAskLiquidityFactory, DedustDeployDepositContract,
-    DedustDepositLiquidityJettonForwardPayload, DedustDepositLiquidityToPool,
-    DedustDepositTONToVault, DedustDestroyLiquidityDepositContract,
-    DedustReturnExcessFromVault, DedustTopUpLiquidityDepositContract,
-    StonfiV2ProvideLiquidity)
-from indexer.events.blocks.messages.swaps import (DedustPayout,
-                                                  DedustPayoutFromPool)
+    DedustAskLiquidityFactory,
+    DedustDeployDepositContract,
+    DedustDepositLiquidityJettonForwardPayload,
+    DedustDepositLiquidityToPool,
+    DedustDepositTONToVault,
+    DedustDestroyLiquidityDepositContract,
+    DedustReturnExcessFromVault,
+    DedustTopUpLiquidityDepositContract,
+    StonfiV2ProvideLiquidity,
+)
+from indexer.events.blocks.messages.swaps import DedustPayout, DedustPayoutFromPool
 from indexer.events.blocks.utils import AccountId, Amount, Asset
 from indexer.events.blocks.utils.block_utils import find_call_contract
 
 
-class DedustDepositLiquidity(Block):
+class DedustDepositLiquidityBlock(Block):
     def __init__(self, data):
         super().__init__("dedust_deposit_liquidity", [], data)
 
@@ -39,12 +50,28 @@ class DedustDepositLiquidity(Block):
         return f"dedust_deposit_liquidity {self.data}"
 
 
-class DedustDepositLiquidityPartial(Block):
+class DedustDepositLiquidityPartialBlock(Block):
     def __init__(self, data):
         super().__init__("dedust_deposit_liquidity_partial", [], data)
 
     def __repr__(self):
         return f"dedust_deposit_liquidity_partial {self.data}"
+
+
+class DexDepositLiquidityBlock(Block):
+    def __init__(self, data):
+        super().__init__("dex_deposit_liquidity", [], data)
+
+    def __repr__(self):
+        return f"dex_deposit_liquidity {self.data}"
+
+
+class DexWithdrawLiquidityBlock(Block):
+    def __init__(self, data):
+        super().__init__("dex_withdraw_liquidity", [], data)
+
+    def __repr__(self):
+        return f"dex_withdraw_liquidity {self.data}"
 
 
 async def _get_provision_data(
@@ -267,7 +294,7 @@ class DedustDepositBlockMatcher(BlockMatcher):
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        new_block = DedustDepositLiquidity({})
+        new_block = DedustDepositLiquidityBlock({})
         include = [block]
         include.extend(other_blocks)
         new_block.data = await _get_provision_data(block, other_blocks)
@@ -327,7 +354,7 @@ class DedustDepositFirstAssetBlockMatcher(BlockMatcher):
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        new_block = DedustDepositLiquidityPartial({})
+        new_block = DedustDepositLiquidityPartialBlock({})
         include = [block]
         include.extend(other_blocks)
         new_block.data = await _get_deposit_one_data(block, include)
@@ -340,28 +367,45 @@ async def post_process_dedust_liquidity(blocks: list[Block]) -> list[Block]:
     first_deposits = []
     final_deposits = []
     for b in blocks:
-        if isinstance(b, DedustDepositLiquidityPartial):
+        if isinstance(b, DedustDepositLiquidityPartialBlock):
             first_deposits.append(b)
-        elif isinstance(b, DedustDepositLiquidity):
+        elif isinstance(b, DedustDepositLiquidityBlock):
             final_deposits.append(b)
 
     for first_deposit in first_deposits:
         final_deposit = None
         for b in final_deposits:
-            if b.data['deposit_contract'] == first_deposit.data['deposit_contract']:
+            if b.data["deposit_contract"] == first_deposit.data["deposit_contract"]:
                 final_deposit = b
                 break
         if final_deposit:
             final_data = final_deposit.data
-            final_data['asset_1'] = final_data['asset_1'] or first_deposit.data['asset_1']
-            final_data['amount_1'] = final_data['amount_1'] or first_deposit.data['amount_1']
-            final_data['asset_2'] = final_data['asset_2'] or first_deposit.data['asset_2']
-            final_data['amount_2'] = final_data['amount_2'] or first_deposit.data['amount_2']
-            final_data['user_jetton_wallet_1'] = final_data['user_jetton_wallet_1'] or first_deposit.data['user_jetton_wallet_1']
-            final_data['user_jetton_wallet_2'] = final_data['user_jetton_wallet_2'] or first_deposit.data['user_jetton_wallet_2']
+            final_data["asset_1"] = (
+                final_data["asset_1"] or first_deposit.data["asset_1"]
+            )
+            final_data["amount_1"] = (
+                final_data["amount_1"] or first_deposit.data["amount_1"]
+            )
+            final_data["asset_2"] = (
+                final_data["asset_2"] or first_deposit.data["asset_2"]
+            )
+            final_data["amount_2"] = (
+                final_data["amount_2"] or first_deposit.data["amount_2"]
+            )
+            final_data["user_jetton_wallet_1"] = (
+                final_data["user_jetton_wallet_1"]
+                or first_deposit.data["user_jetton_wallet_1"]
+            )
+            final_data["user_jetton_wallet_2"] = (
+                final_data["user_jetton_wallet_2"]
+                or first_deposit.data["user_jetton_wallet_2"]
+            )
             blocks.remove(first_deposit)
             final_deposit.event_nodes.extend(first_deposit.event_nodes)
-            if final_deposit.initiating_event_node != first_deposit.initiating_event_node:
+            if (
+                final_deposit.initiating_event_node
+                != first_deposit.initiating_event_node
+            ):
                 final_deposit.event_nodes.append(first_deposit.initiating_event_node)
             final_deposit.event_nodes = list(set(final_deposit.event_nodes))
             final_deposit.children_blocks.extend(first_deposit.children_blocks)
@@ -404,11 +448,9 @@ class DedustWithdrawBlockMatcher(BlockMatcher):
             ),
         )
 
-
     def test_self(self, block: Block):
         return (
-            isinstance(block, CallContractBlock)
-            and block.opcode == JettonBurn.opcode
+            isinstance(block, CallContractBlock) and block.opcode == JettonBurn.opcode
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
@@ -419,8 +461,11 @@ class DedustWithdrawBlockMatcher(BlockMatcher):
         burn_notify_call = block.next_blocks[0]
         pool = burn_notify_call.get_message().destination
 
-        lp_wallet_info = await context.interface_repository.get().get_jetton_wallet(sender_wallet.upper())
-        if not lp_wallet_info: return []
+        lp_wallet_info = await context.interface_repository.get().get_jetton_wallet(
+            sender_wallet.upper()
+        )
+        if not lp_wallet_info:
+            return []
 
         lp_asset = Asset(is_ton=False, jetton_address=lp_wallet_info.jetton)
 
@@ -442,8 +487,11 @@ class DedustWithdrawBlockMatcher(BlockMatcher):
                 user_wallets.append(None)
             elif call_from_vault.opcode == JettonTransfer.opcode:
                 dex_wallet = call_from_vault.get_message().destination
-                jw_info = await context.interface_repository.get().get_jetton_wallet(dex_wallet.upper())
-                if not jw_info: return []
+                jw_info = await context.interface_repository.get().get_jetton_wallet(
+                    dex_wallet.upper()
+                )
+                if not jw_info:
+                    return []
                 dex_wallets.append(dex_wallet)
                 asset = Asset(is_ton=False, jetton_address=jw_info.jetton)
                 internal_transfer = call_from_vault.next_blocks[0].get_message()
@@ -457,66 +505,96 @@ class DedustWithdrawBlockMatcher(BlockMatcher):
             assets.append(asset)
             dex_vaults.append(call_from_vault.get_message().source)
 
-        new_block = Block('dex_withdraw_liquidity', [])
+        new_block = DexWithdrawLiquidityBlock({})
         new_block.merge_blocks(other_blocks)
         new_block.data = {
-            'dex': 'dedust',
-            'sender': AccountId(sender),
-            'sender_wallet': AccountId(sender_wallet),
-            'pool': AccountId(pool),
-            'asset': lp_asset,
-            'lp_tokens_burnt': burn_data.amount,
-            'is_refund': False,
-            'amount1_out': amounts[0],
-            'asset1_out': assets[0],
-            'dex_wallet_1': dex_vaults[0],
-            'dex_jetton_wallet_1': dex_wallets[0],
-            'wallet1': user_wallets[0],
-            'amount2_out': amounts[1],
-            'asset2_out': assets[1],
-            'dex_wallet_2': dex_vaults[1],
-            'dex_jetton_wallet_2': dex_wallets[1],
-            'wallet2': user_wallets[1]
+            "dex": "dedust",
+            "sender": AccountId(sender),
+            "sender_wallet": AccountId(sender_wallet),
+            "pool": AccountId(pool),
+            "asset": lp_asset,
+            "lp_tokens_burnt": burn_data.amount,
+            "is_refund": False,
+            "amount1_out": amounts[0],
+            "asset1_out": assets[0],
+            "dex_wallet_1": dex_vaults[0],
+            "dex_jetton_wallet_1": dex_wallets[0],
+            "wallet1": user_wallets[0],
+            "amount2_out": amounts[1],
+            "asset2_out": assets[1],
+            "dex_wallet_2": dex_vaults[1],
+            "dex_jetton_wallet_2": dex_wallets[1],
+            "wallet2": user_wallets[1],
         }
         return [new_block]
 
 
 class StonfiV2ProvideLiquidityMatcher(BlockMatcher):
     def __init__(self):
-        another_deposit = labeled('deposit_part',
-                                  GenericMatcher(lambda block: block.btype == 'dex_deposit_liquidity' and
-                                                       block.data['dex'] == 'stonfi_v2'))
+        another_deposit = labeled(
+            "deposit_part",
+            GenericMatcher(
+                lambda block: block.btype == "dex_deposit_liquidity"
+                and block.data["dex"] == "stonfi_v2"
+            ),
+        )
 
-        another_deposit_parent_matcher = BlockMatcher(child_matcher=another_deposit, optional=True)
+        another_deposit_parent_matcher = BlockMatcher(
+            child_matcher=another_deposit, optional=True
+        )
 
-        in_pton_transfer = ContractMatcher(opcode=JettonNotify.opcode,
-                                           parent_matcher=labeled('in_transfer',
-                                                                  ContractMatcher(
-                                                                      opcode=0x01f3835d,
-                                                                      parent_matcher=another_deposit_parent_matcher)))
+        in_pton_transfer = ContractMatcher(
+            opcode=JettonNotify.opcode,
+            parent_matcher=labeled(
+                "in_transfer",
+                ContractMatcher(
+                    opcode=0x01F3835D, parent_matcher=another_deposit_parent_matcher
+                ),
+            ),
+        )
 
-        in_jetton_transfer = labeled('in_transfer', BlockTypeMatcher(block_type='jetton_transfer',
-                                                                     parent_matcher=another_deposit_parent_matcher))
+        in_jetton_transfer = labeled(
+            "in_transfer",
+            BlockTypeMatcher(
+                block_type="jetton_transfer",
+                parent_matcher=another_deposit_parent_matcher,
+            ),
+        )
 
-        in_jetton_transfer_2 = ContractMatcher(opcode=JettonNotify.opcode,
-                                               parent_matcher=ContractMatcher(
-                                                   opcode=JettonInternalTransfer.opcode,
-                                                   parent_matcher=in_jetton_transfer))
+        in_jetton_transfer_2 = ContractMatcher(
+            opcode=JettonNotify.opcode,
+            parent_matcher=ContractMatcher(
+                opcode=JettonInternalTransfer.opcode, parent_matcher=in_jetton_transfer
+            ),
+        )
 
-        in_transfer = OrMatcher([in_pton_transfer, in_jetton_transfer, in_jetton_transfer_2])
+        in_transfer = OrMatcher(
+            [in_pton_transfer, in_jetton_transfer, in_jetton_transfer_2]
+        )
 
-        cb_add_liquidity = ContractMatcher(opcode=0x06ecd527,
-                                           optional=True,
-                                           child_matcher=OrMatcher([labeled('lp_token_transfer',
-                                                                            ContractMatcher(opcode=JettonInternalTransfer.opcode)),
-                                                                    labeled('refund_add_liquidity',
-                                                                            ContractMatcher(opcode=0x50c6a654))]))
+        cb_add_liquidity = ContractMatcher(
+            opcode=0x06ECD527,
+            optional=True,
+            child_matcher=OrMatcher(
+                [
+                    labeled(
+                        "lp_token_transfer",
+                        ContractMatcher(opcode=JettonInternalTransfer.opcode),
+                    ),
+                    labeled("refund_add_liquidity", ContractMatcher(opcode=0x50C6A654)),
+                ]
+            ),
+        )
 
-        super().__init__(parent_matcher=in_transfer,
-                         child_matcher=ContractMatcher(opcode=0x50c6a654, child_matcher=cb_add_liquidity))
+        super().__init__(
+            parent_matcher=in_transfer,
+            child_matcher=ContractMatcher(
+                opcode=0x50C6A654, child_matcher=cb_add_liquidity
+            ),
+        )
 
     def test_self(self, block: Block):
-        return isinstance(block, CallContractBlock) and block.opcode == 0x37c096df
+        return isinstance(block, CallContractBlock) and block.opcode == 0x37C096DF
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         failed = False
@@ -525,13 +603,13 @@ class StonfiV2ProvideLiquidityMatcher(BlockMatcher):
         another_deposit = None
         for b in other_blocks:
             if isinstance(b, LabelBlock):
-                if b.label == 'refund_add_liquidity':
+                if b.label == "refund_add_liquidity":
                     failed = True
-                if b.label == 'in_transfer':
+                if b.label == "in_transfer":
                     in_transfer = b.block
-                if b.label == 'lp_token_transfer':
+                if b.label == "lp_token_transfer":
                     lp_token_transfer = b.block
-                if b.label == 'deposit_part':
+                if b.label == "deposit_part":
                     another_deposit = b.block
         lp_tokens_minted = None
 
@@ -539,44 +617,59 @@ class StonfiV2ProvideLiquidityMatcher(BlockMatcher):
             msg = JettonInternalTransfer(lp_token_transfer.get_body())
             lp_tokens_minted = Amount(msg.amount)
 
-        new_block = Block('dex_deposit_liquidity', [])
+        new_block = DexDepositLiquidityBlock({})
 
         asset = None
         if isinstance(in_transfer, JettonTransferBlock):
-            asset = in_transfer.data['asset']
+            asset = in_transfer.data["asset"]
         else:
             asset = Asset(is_ton=True, jetton_address=None)
         provide_liquidity_msg = StonfiV2ProvideLiquidity(block.get_body())
-        amount = provide_liquidity_msg.amount1 if provide_liquidity_msg.amount1 > 0 else provide_liquidity_msg.amount2
+
+        amount = provide_liquidity_msg.amount1 or 0
+        if amount <= 0:
+            amount = provide_liquidity_msg.amount2 or 0
+
         new_block.data = {
-            'dex': 'stonfi_v2',
-            'amount_1': Amount(amount),
-            'asset_1': asset,
-            'sender': AccountId(provide_liquidity_msg.from_user),
-            'sender_wallet_1': (in_transfer.data['sender_wallet']
-                              if isinstance(in_transfer, JettonTransferBlock) else None),
-            'amount_2': None,
-            'asset_2': None,
-            'sender_wallet_2': None,
-            'pool': AccountId(block.event_nodes[0].message.destination),
-            'lp_tokens_minted': lp_tokens_minted
+            "dex": "stonfi_v2",
+            "amount_1": Amount(amount),
+            "asset_1": asset,
+            "sender": AccountId(provide_liquidity_msg.from_user),
+            "sender_wallet_1": (
+                in_transfer.data["sender_wallet"]
+                if isinstance(in_transfer, JettonTransferBlock)
+                else None
+            ),
+            "amount_2": None,
+            "asset_2": None,
+            "sender_wallet_2": None,
+            "pool": AccountId(block.event_nodes[0].message.destination),
+            "lp_tokens_minted": lp_tokens_minted,
         }
 
         if another_deposit:
-            if another_deposit.data['sender'] == new_block.data['sender'] and \
-                    another_deposit.data['pool'] == new_block.data['pool'] and \
-                    another_deposit.data['lp_tokens_minted'] != new_block.data['lp_tokens_minted']:
+            if (
+                another_deposit.data["sender"] == new_block.data["sender"]
+                and another_deposit.data["pool"] == new_block.data["pool"]
+                and another_deposit.data["lp_tokens_minted"]
+                != new_block.data["lp_tokens_minted"]
+            ):
                 proxy_block = EmptyBlock()
                 proxied_block = another_deposit.previous_block
-                proxied_block.insert_between([another_deposit, in_transfer], proxy_block)
+                proxied_block.insert_between(
+                    [another_deposit, in_transfer], proxy_block
+                )
                 other_blocks.append(proxy_block)
                 other_blocks.remove(proxy_block.previous_block)
-                new_block.data['amount_2'] = another_deposit.data['amount_1']
-                new_block.data['asset_2'] = another_deposit.data['asset_1']
-                new_block.data['sender_wallet_2'] = another_deposit.data['sender_wallet_1']
+                new_block.data["amount_2"] = another_deposit.data["amount_1"]
+                new_block.data["asset_2"] = another_deposit.data["asset_1"]
+                new_block.data["sender_wallet_2"] = another_deposit.data[
+                    "sender_wallet_1"
+                ]
                 if lp_tokens_minted is None:
-                    new_block.data['lp_tokens_minted'] = another_deposit.data['lp_tokens_minted']
-
+                    new_block.data["lp_tokens_minted"] = another_deposit.data[
+                        "lp_tokens_minted"
+                    ]
 
         new_block.merge_blocks([block] + other_blocks)
         new_block.failed = failed
@@ -585,18 +678,25 @@ class StonfiV2ProvideLiquidityMatcher(BlockMatcher):
 
 class StonfiV2WithdrawLiquidityMatcher(BlockMatcher):
     def __init__(self):
-        withdraw_refunded_liquidity = labeled('withdraw_refunded_liquidity', ContractMatcher(
-            opcode=0x0f98e2b8,
-            parent_matcher=ContractMatcher(opcode=0x132b9a2c)
-        ))
-        withdraw_liquidity = labeled('withdraw_liquidity', ContractMatcher(
-            opcode=0x297437cf,
-            parent_matcher=BlockTypeMatcher('jetton_burn')))
-        super().__init__(parent_matcher=OrMatcher([withdraw_refunded_liquidity, withdraw_liquidity]),
-                         child_matcher=BlockTypeMatcher(block_type='jetton_transfer'))
+        withdraw_refunded_liquidity = labeled(
+            "withdraw_refunded_liquidity",
+            ContractMatcher(
+                opcode=0x0F98E2B8, parent_matcher=ContractMatcher(opcode=0x132B9A2C)
+            ),
+        )
+        withdraw_liquidity = labeled(
+            "withdraw_liquidity",
+            ContractMatcher(
+                opcode=0x297437CF, parent_matcher=BlockTypeMatcher("jetton_burn")
+            ),
+        )
+        super().__init__(
+            parent_matcher=OrMatcher([withdraw_refunded_liquidity, withdraw_liquidity]),
+            child_matcher=BlockTypeMatcher(block_type="jetton_transfer"),
+        )
 
     def test_self(self, block: Block):
-        return isinstance(block, CallContractBlock) and block.opcode == 0x657b54f5
+        return isinstance(block, CallContractBlock) and block.opcode == 0x657B54F5
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         payouts = [block]
@@ -614,34 +714,47 @@ class StonfiV2WithdrawLiquidityMatcher(BlockMatcher):
         for b in block.previous_block.next_blocks:
             if b == block or b in other_blocks:
                 continue
-            if isinstance(b, CallContractBlock) and b.opcode == 0x657b54f5:
-                jetton_transfers = [x for x in b.next_blocks if isinstance(x, JettonTransferBlock)]
+            if isinstance(b, CallContractBlock) and b.opcode == 0x657B54F5:
+                jetton_transfers = [
+                    x for x in b.next_blocks if isinstance(x, JettonTransferBlock)
+                ]
                 if len(jetton_transfers) > 0:
                     payouts.append(b)
                     additional_blocks.extend(jetton_transfers)
         for payout in payouts:
-            jetton_transfers = [x for x in payout.next_blocks if isinstance(x, JettonTransferBlock)]
+            jetton_transfers = [
+                x for x in payout.next_blocks if isinstance(x, JettonTransferBlock)
+            ]
             if len(jetton_transfers) > 0:
                 transfer = jetton_transfers[0]
-                pton_transfer = next((x for x in transfer.next_blocks if isinstance(x, CallContractBlock)
-                                      and x.opcode == PTonTransfer.opcode), None)
+                pton_transfer = next(
+                    (
+                        x
+                        for x in transfer.next_blocks
+                        if isinstance(x, CallContractBlock)
+                        and x.opcode == PTonTransfer.opcode
+                    ),
+                    None,
+                )
                 if pton_transfer is not None:
-                    amount = Amount(PTonTransfer(pton_transfer.get_body()).ton_amount)
+                    amount = Amount(
+                        PTonTransfer(pton_transfer.get_body()).ton_amount or 0
+                    )
                     additional_blocks.append(pton_transfer)
                 else:
-                    amount = transfer.data['amount']
+                    amount = transfer.data["amount"]
                 if amount1 is None:
                     amount1 = amount
-                    asset1 = transfer.data['asset']
-                    wallet1 = transfer.data['receiver_wallet']
-                    dex_sender1 = transfer.data['sender']
-                    dex_sender1_jetton_wallet = transfer.data['sender_wallet']
+                    asset1 = transfer.data["asset"]
+                    wallet1 = transfer.data["receiver_wallet"]
+                    dex_sender1 = transfer.data["sender"]
+                    dex_sender1_jetton_wallet = transfer.data["sender_wallet"]
                 else:
                     amount2 = amount
-                    asset2 = transfer.data['asset']
-                    wallet2 = transfer.data['receiver_wallet']
-                    dex_sender2 = transfer.data['sender']
-                    dex_sender2_jetton_wallet = transfer.data['sender_wallet']
+                    asset2 = transfer.data["asset"]
+                    wallet2 = transfer.data["receiver_wallet"]
+                    dex_sender2 = transfer.data["sender"]
+                    dex_sender2_jetton_wallet = transfer.data["sender_wallet"]
         sender = None
         sender_wallet = None
         asset = None
@@ -650,38 +763,40 @@ class StonfiV2WithdrawLiquidityMatcher(BlockMatcher):
 
         for b in other_blocks:
             if isinstance(b, LabelBlock):
-                if b.label == 'withdraw_refunded_liquidity':
+                if b.label == "withdraw_refunded_liquidity":
                     is_withdraw_refunded_liquidity = True
-                    sender = AccountId(b.block.previous_block.event_nodes[0].message.source)
-                if b.label == 'withdraw_liquidity':
+                    sender = AccountId(
+                        b.block.previous_block.event_nodes[0].message.source
+                    )
+                if b.label == "withdraw_liquidity":
                     burn = b.block.previous_block
                     if isinstance(burn, JettonBurnBlock):
-                        sender = burn.data['owner']
-                        sender_wallet = burn.data['jetton_wallet']
-                        burned_lps = burn.data['amount']
-                        asset = burn.data['asset']
+                        sender = burn.data["owner"]
+                        sender_wallet = burn.data["jetton_wallet"]
+                        burned_lps = burn.data["amount"]
+                        asset = burn.data["asset"]
                     else:
                         return []
-        new_block = Block('dex_withdraw_liquidity', [])
+        new_block = DexWithdrawLiquidityBlock({})
         new_block.merge_blocks(payouts + other_blocks + additional_blocks)
 
         new_block.data = {
-            'dex': 'stonfi_v2',
-            'sender': sender,
-            'sender_wallet': sender_wallet,
-            'pool': AccountId(block.event_nodes[0].message.source),
-            'asset': asset,
-            'lp_tokens_burnt': burned_lps,
-            'is_refund': is_withdraw_refunded_liquidity,
-            'amount1_out': amount1,
-            'asset1_out': asset1,
-            'dex_wallet_1': dex_sender1,
-            'dex_jetton_wallet_1': dex_sender1_jetton_wallet,
-            'wallet1': wallet1,
-            'amount2_out': amount2,
-            'asset2_out': asset2,
-            'dex_wallet_2': dex_sender2,
-            'dex_jetton_wallet_2': dex_sender2_jetton_wallet,
-            'wallet2': wallet2
+            "dex": "stonfi_v2",
+            "sender": sender,
+            "sender_wallet": sender_wallet,
+            "pool": AccountId(block.event_nodes[0].message.source),
+            "asset": asset,
+            "lp_tokens_burnt": burned_lps,
+            "is_refund": is_withdraw_refunded_liquidity,
+            "amount1_out": amount1,
+            "asset1_out": asset1,
+            "dex_wallet_1": dex_sender1,
+            "dex_jetton_wallet_1": dex_sender1_jetton_wallet,
+            "wallet1": wallet1,
+            "amount2_out": amount2,
+            "asset2_out": asset2,
+            "dex_wallet_2": dex_sender2,
+            "dex_jetton_wallet_2": dex_sender2_jetton_wallet,
+            "wallet2": wallet2,
         }
         return [new_block]

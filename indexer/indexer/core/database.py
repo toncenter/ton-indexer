@@ -199,8 +199,8 @@ class Action(Base):
     type: str = Column(String())
     trace_id: str = Column(String(44), ForeignKey('traces.trace_id'), nullable=False, primary_key=True)
     tx_hashes: list[str] = Column(ARRAY(String()))
-    value: int = Column(Numeric)
-    amount: int = Column(Numeric)
+    value: int | None = Column(Numeric)
+    amount: int | None = Column(Numeric)
     start_lt: int | None = Column(BigInteger)
     end_lt: int | None = Column(BigInteger)
     start_utime: int | None = Column(BigInteger)
@@ -316,8 +316,9 @@ class Action(Base):
         Column("ts_nft", String),
     ]))
     extended_tx_hashes: list[str] = Column(ARRAY(String()))
-    accounts: list[str]
+    accounts: list[str | None]
 
+    def __init__(self, **kwargs): ...
 
     def __repr__(self):
         full_repr = ""

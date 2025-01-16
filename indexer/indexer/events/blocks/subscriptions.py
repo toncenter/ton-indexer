@@ -9,7 +9,7 @@ from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import find_call_contract
 
 
-class SubscriptionBlock(Block):
+class SubscribeBlock(Block):
     def __init__(self, data):
         super().__init__('subscribe', [], data)
 
@@ -34,7 +34,7 @@ class SubscriptionBlockMatcher(BlockMatcher):
         return isinstance(block, CallContractBlock) and block.opcode == SubscriptionPaymentRequestResponse.opcode
 
     async def build_block(self, block: Block | CallContractBlock, other_blocks: list[Block]) -> list[Block]:
-        new_block = SubscriptionBlock({})
+        new_block = SubscribeBlock({})
         subscriber = AccountId(block.get_message().source)
         subscription = AccountId(block.get_message().destination)
         amount = Amount(block.get_message().value)

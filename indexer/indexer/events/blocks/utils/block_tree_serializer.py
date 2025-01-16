@@ -5,15 +5,18 @@ import hashlib
 import logging
 
 from indexer.core.database import Action
+from indexer.events.blocks.auction import AuctionBidBlock
 from indexer.events.blocks.basic_blocks import (CallContractBlock,
+                                                ContractDeployBlock,
                                                 TonTransferBlock)
 from indexer.events.blocks.core import Block
-from indexer.events.blocks.dns import (ChangeDnsRecordBlock,
-                                       DeleteDnsRecordBlock, DnsRenewBlock)
+from indexer.events.blocks.dns import (DnsChangeRecordBlock,
+                                       DnsDeleteRecordBlock, DnsRenewBlock)
+from indexer.events.blocks.elections import ElectionDepositStakeBlock, ElectionRecoverStakeBlock
 from indexer.events.blocks.jettons import (JettonBurnBlock, JettonMintBlock,
                                            JettonTransferBlock)
-from indexer.events.blocks.liquidity import (DedustDepositLiquidity,
-                                             DedustDepositLiquidityPartial)
+from indexer.events.blocks.liquidity import (DedustDepositLiquidityBlock,
+                                             DedustDepositLiquidityPartialBlock, DexDepositLiquidityBlock, DexWithdrawLiquidityBlock)
 from indexer.events.blocks.multisig import (MultisigApproveBlock,
                                             MultisigCreateOrderBlock)
 from indexer.events.blocks.nft import (NftDiscoveryBlock, NftMintBlock,
@@ -23,7 +26,7 @@ from indexer.events.blocks.staking import (NominatorPoolDepositBlock,
                                            TONStakersDepositBlock,
                                            TONStakersWithdrawBlock,
                                            TONStakersWithdrawRequestBlock)
-from indexer.events.blocks.subscriptions import (SubscriptionBlock,
+from indexer.events.blocks.subscriptions import (SubscribeBlock,
                                                  UnsubscribeBlock)
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
@@ -45,7 +48,7 @@ def _calc_action_id(block: Block) -> str:
     if root_event_node.message is not None:
         key = root_event_node.message.msg_hash
     else:
-        key = root_event_node.get_tx_hash()
+        key = root_event_node.get_tx_hash() or "" 
     key += block.btype
     h = hashlib.sha256(key.encode())
     return base64.b64encode(h.digest()).decode()
@@ -76,12 +79,22 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
     return action
 
 
-def _fill_call_contract_action(block: CallContractBlock, action: Action):
+def _convert_peer_swap(peer_swap: dict) -> dict:
+    in_obj = peer_swap['in']
+    out_obj = peer_swap['out']
+    return {
+        'amount_in': in_obj['amount'].value,
+        'asset_in': in_obj['asset'].jetton_address.as_str() if in_obj['asset'].jetton_address is not None else None,
+        'amount_out': out_obj['amount'].value,
+        'asset_out': out_obj['asset'].jetton_address.as_str() if out_obj['asset'].jetton_address is not None else None,
+    }
+
+
+def _fill_call_contract_action(block: CallContractBlock | ContractDeployBlock, action: Action):
     action.opcode = block.opcode
     action.value = block.data['value'].value
     action.source = block.data['source'].as_str() if block.data['source'] is not None else None
     action.destination = block.data['destination'].as_str() if block.data['destination'] is not None else None
-
 
 def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
     action.value = block.value
@@ -91,7 +104,6 @@ def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
     action.destination = block.data['destination'].as_str()
     content = block.data['comment'].replace("\u0000", "") if block.data['comment'] is not None else None
     action.ton_transfer_data = {'content': content, 'encrypted': block.data['encrypted']}
-
 
 def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):
     action.source = block.data['sender'].as_str()
@@ -121,7 +133,6 @@ def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):
         'is_encrypted_comment': block.data['encrypted_comment']
     }
 
-
 def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
     if 'prev_owner' in block.data and block.data['prev_owner'] is not None:
         action.source = block.data['prev_owner'].as_str()
@@ -149,7 +160,6 @@ def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):
         'nft_item_index': block.data.result_index
     }
 
-
 def _fill_nft_mint_action(block: NftMintBlock, action: Action):
     if block.data["source"]:
         action.source = block.data["source"].as_str()
@@ -161,18 +171,6 @@ def _fill_nft_mint_action(block: NftMintBlock, action: Action):
     action.nft_mint_data = {
         'nft_item_index': block.data["index"],
     }
-
-
-def _convert_peer_swap(peer_swap: dict) -> dict:
-    in_obj = peer_swap['in']
-    out_obj = peer_swap['out']
-    return {
-        'amount_in': in_obj['amount'].value,
-        'asset_in': in_obj['asset'].jetton_address.as_str() if in_obj['asset'].jetton_address is not None else None,
-        'amount_out': out_obj['amount'].value,
-        'asset_out': out_obj['asset'].jetton_address.as_str() if out_obj['asset'].jetton_address is not None else None,
-    }
-
 
 def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
     dex_incoming_transfer = {
@@ -194,7 +192,7 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
     action.asset = dex_incoming_transfer['asset']
     action.asset2 = dex_outgoing_transfer['asset']
     if block.data['dex'] == 'stonfi_v2':
-        action.asset1 = _addr(block.data['source_asset'])
+        action.asset = _addr(block.data['source_asset'])
         action.asset2 = _addr(block.data['destination_asset'])
     action.source = dex_incoming_transfer['source']
     action.source_secondary = dex_incoming_transfer['source_jetton_wallet']
@@ -276,8 +274,7 @@ def _fill_jetton_burn_action(block: JettonBurnBlock, action: Action):
     action.asset = block.data['asset'].jetton_address.as_str()
     action.amount = block.data['amount'].value
 
-
-def _fill_change_dns_record_action(block: ChangeDnsRecordBlock, action: Action):
+def _fill_change_dns_record_action(block: DnsChangeRecordBlock, action: Action):
     action.source = block.data['source'].as_str() if block.data['source'] is not None else None
     action.destination = block.data['destination'].as_str()
     dns_record_data = block.data['value']
@@ -298,8 +295,7 @@ def _fill_change_dns_record_action(block: ChangeDnsRecordBlock, action: Action):
         data['dns_text'] = dns_record_data['dns_text']
     action.change_dns_record_data = data
 
-
-def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
+def _fill_delete_dns_record_action(block: DnsDeleteRecordBlock, action: Action):
     action.source = block.data['source'].as_str() if block.data['source'] is not None else None
     action.destination = block.data['destination'].as_str()
     data = {
@@ -344,23 +340,20 @@ def _fill_tonstakers_withdraw_action(block: TONStakersWithdrawBlock, action: Act
         'ts_nft': _addr(block.data.burnt_nft),
     }
 
-def _fill_subscribe_action(block: SubscriptionBlock, action: Action):
+def _fill_subscribe_action(block: SubscribeBlock, action: Action):
     action.source = block.data['subscriber'].as_str()
     action.destination = block.data['beneficiary'].as_str() if block.data['beneficiary'] is not None else None
     action.destination_secondary = block.data['subscription'].as_str()
     action.amount = block.data['amount'].value
-
 
 def _fill_unsubscribe_action(block: UnsubscribeBlock, action: Action):
     action.source = block.data['subscriber'].as_str()
     action.destination = block.data['beneficiary'].as_str() if block.data['beneficiary'] is not None else None
     action.destination_secondary = block.data['subscription'].as_str()
 
-
 def _fill_election_action(block: Block, action: Action):
     action.source = block.data['stake_holder'].as_str()
     action.amount = block.data['amount'].value if 'amount' in block.data else None
-
 
 def _fill_auction_bid_action(block: Block, action: Action):
     action.source = block.data['bidder'].as_str()
@@ -372,7 +365,7 @@ def _fill_auction_bid_action(block: Block, action: Action):
     }
     action.value = block.data['amount'].value
 
-def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action: Action):
+def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidityBlock, action: Action):
     action.type='dex_deposit_liquidity'
     action.source = _addr(block.data["sender"])
     action.destination = _addr(block.data["pool_address"])
@@ -388,7 +381,7 @@ def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action:
         "lp_tokens_minted": block.data["lp_tokens_minted"].value,
     }
 
-def _fill_dedust_deposit_liquidity_partial_action(block: DedustDepositLiquidityPartial, action: Action):
+def _fill_dedust_deposit_liquidity_partial_action(block: DedustDepositLiquidityPartialBlock, action: Action):
     action.type='dex_deposit_liquidity'
     action.source = _addr(block.data["sender"])
     action.destination_secondary = _addr(block.data["deposit_contract"])
@@ -431,66 +424,71 @@ def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawReq
     action.source = block.data.source.as_str()
     action.destination = block.data.pool.as_str()
 
-# noinspection PyCompatibility,PyTypeChecker
+
 def block_to_action(block: Block, trace_id: str) -> Action:
     action = _base_block_to_action(block, trace_id)
-    match block.btype:
-        case 'call_contract' | 'contract_deploy':
+    match block:
+        case CallContractBlock():
             _fill_call_contract_action(block, action)
-        case 'ton_transfer':
+        case ContractDeployBlock():
+            _fill_call_contract_action(block, action)
+        case TonTransferBlock():
             _fill_ton_transfer_action(block, action)
-        case "nominator_pool_deposit":
+        case NominatorPoolDepositBlock():
             _fill_nominator_pool_deposit_action(block, action)
-        case "nominator_pool_withdraw_request":
+        case NominatorPoolWithdrawRequestBlock():
             _fill_nominator_pool_withdraw_request_action(block, action)
-        case "dedust_deposit_liquidity":
+        case DedustDepositLiquidityBlock():
             _fill_dedust_deposit_liquidity_action(block, action)
-        case "dedust_deposit_liquidity_partial":
+        case DedustDepositLiquidityPartialBlock():
             _fill_dedust_deposit_liquidity_partial_action(block, action)
-        case "jetton_transfer":
+        case JettonTransferBlock():
             _fill_jetton_transfer_action(block, action)
-        case 'nft_transfer':
+        case NftTransferBlock():
             _fill_nft_transfer_action(block, action)
-        case 'nft_discovery':
+        case NftDiscoveryBlock():
             _fill_nft_discovery_action(block, action)
-        case 'nft_mint':
+        case NftMintBlock():
             _fill_nft_mint_action(block, action)
-        case 'jetton_burn':
+        case JettonBurnBlock():
             _fill_jetton_burn_action(block, action)
-        case "jetton_mint":
+        case JettonMintBlock():
             _fill_jetton_mint_action(block, action)
-        case "jetton_swap":
+        case JettonSwapBlock():
             _fill_jetton_swap_action(block, action)
-        case 'change_dns':
+        case DnsChangeRecordBlock():
             _fill_change_dns_record_action(block, action)
-        case 'delete_dns':
+        case DnsDeleteRecordBlock():
             _fill_delete_dns_record_action(block, action)
-        case 'renew_dns':
+        case DnsRenewBlock():
             _fill_dns_renew_action(block, action)
-        case "tonstakers_deposit":
+        case TONStakersDepositBlock():
             _fill_tonstakers_deposit_action(block, action)
-        case "tonstakers_withdraw_request":
+        case TONStakersWithdrawRequestBlock():
             _fill_tonstakers_withdraw_request_action(block, action)
-        case "tonstakers_withdraw":
+        case TONStakersWithdrawBlock():
             _fill_tonstakers_withdraw_action(block, action)
-        case "subscribe":
+        case SubscribeBlock():
             _fill_subscribe_action(block, action)
-        case 'dex_deposit_liquidity':
+        case DexDepositLiquidityBlock():
             _fill_dex_deposit_liquidity(block, action)
-        case 'dex_withdraw_liquidity':
+        case DexWithdrawLiquidityBlock():
             _fill_dex_withdraw_liquidity(block, action)
-        case 'multisig_create_order':
+        case MultisigCreateOrderBlock():
             _fill_multisig_create_order(block, action)
-        case 'multisig_approve':
+        case MultisigApproveBlock():
             _fill_multisig_approve(block, action)
-        case 'unsubscribe':
+        case UnsubscribeBlock():
             _fill_unsubscribe_action(block, action)
-        case 'election_deposit' | 'election_recover':
+        case ElectionDepositStakeBlock():
             _fill_election_action(block, action)
-        case 'auction_bid':
+        case ElectionRecoverStakeBlock():
+            _fill_election_action(block, action)
+        case AuctionBidBlock():
             _fill_auction_bid_action(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
+
     # Fill accounts
     action.accounts.append(action.source)
     action.accounts.append(action.source_secondary)
@@ -500,7 +498,7 @@ def block_to_action(block: Block, trace_id: str) -> Action:
     # Fill extended tx hashes
     extended_tx_hashes = set(action.tx_hashes)
     if block.initiating_event_node is not None:
-        extended_tx_hashes.add(block.initiating_event_node.get_tx_hash())
+        extended_tx_hashes.add(block.initiating_event_node.get_tx_hash() or "")
         if not block.initiating_event_node.is_tick_tock:
             acc = block.initiating_event_node.message.transaction.account
             if acc not in action.accounts:

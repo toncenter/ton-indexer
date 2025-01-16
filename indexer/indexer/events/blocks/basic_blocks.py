@@ -61,7 +61,7 @@ class TonTransferBlock(Block):
         _fill_flow_from_node(self.value_flow, node)
         tx = node.get_tx()
         if tx is not None and tx.end_status == 'active' and tx.orig_status not in ('active', 'frozen'):
-            self.children_blocks.append(ContractDeploy(node))
+            self.children_blocks.append(ContractDeployBlock(node))
 
 class CallContractBlock(Block):
     opcode: int
@@ -80,7 +80,7 @@ class CallContractBlock(Block):
         _fill_flow_from_node(self.value_flow, node)
         tx = node.get_tx()
         if tx is not None and tx.end_status == 'active' and tx.orig_status not in ('active', 'frozen'):
-            self.children_blocks.append(ContractDeploy(node))
+            self.children_blocks.append(ContractDeployBlock(node))
 
     def get_body(self) -> Slice:
         return Slice.one_from_boc(self.event_nodes[0].message.message_content.body)
@@ -91,7 +91,7 @@ class CallContractBlock(Block):
     def __repr__(self):
         return f"!{self.btype}:={hex(self.opcode)}"
 
-class ContractDeploy(Block):
+class ContractDeployBlock(Block):
     def __init__(self, node: EventNode):
         super().__init__('contract_deploy', [node], {
             'opcode': node.get_opcode(),
