@@ -304,6 +304,8 @@ class Action(Base):
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)
+    mc_seqno_end: int = Column(Numeric)
+    trace_mc_seqno_end: int = Column(Numeric)
     accounts: list[str]
 
 

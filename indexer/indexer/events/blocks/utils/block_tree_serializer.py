@@ -49,6 +49,7 @@ def _calc_action_id(block: Block) -> str:
 def _base_block_to_action(block: Block, trace_id: str) -> Action:
     action_id = _calc_action_id(block)
     tx_hashes = list(set(n.get_tx_hash() for n in block.event_nodes))
+    mc_seqno_end = max(n.get_tx().mc_block_seqno for n in block.event_nodes if n.get_tx() is not None)
     accounts = []
     for n in block.event_nodes:
         if n.is_tick_tock:
@@ -66,6 +67,7 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
         start_utime=block.min_utime,
         end_utime=block.max_utime,
         success=not block.failed,
+        mc_seqno_end=mc_seqno_end
     )
     action.accounts = accounts
     return action
@@ -401,6 +403,7 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
         action.trace_end_lt = trace.end_lt
         action.trace_end_utime = trace.end_utime
         action.trace_external_hash = trace.external_hash
+        action.trace_mc_seqno_end = trace.mc_seqno_end
     match block.btype:
         case 'call_contract' | 'contract_deploy':
             _fill_call_contract_action(block, action)
