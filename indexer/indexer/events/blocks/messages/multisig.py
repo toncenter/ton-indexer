@@ -23,6 +23,7 @@ class MultisigNewOrder:
 
     def __init__(self, slice: Slice):
         slice.load_uint(32)
+        self.query_id = slice.load_uint(64)
         self.order_seqno = slice.load_uint(256)
         self.is_signer = slice.load_bool()
         self.singer_index = slice.load_uint(8)
@@ -51,6 +52,7 @@ class MultisigInitOrder:
 
     def __init__(self, slice: Slice):
         slice.load_uint(32)
+        self.query_id = slice.load_uint(64)
         self.threshold = slice.load_uint(8)
         self.signers = (
             slice.load_dict(8, lambda x: x.load_uint(8), lambda x: x.load_address())
@@ -77,6 +79,7 @@ class MultisigApprove:
 
     def __init__(self, slice: Slice):
         slice.load_uint(32)
+        self.query_id = slice.load_uint(64)
         self.signer_index = slice.load_uint(8)
 
 

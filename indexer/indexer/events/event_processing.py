@@ -16,6 +16,7 @@ from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDep
     post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher
 from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.multisig import MultisigApproveBlockMatcher, MultisigCreateOrderBlockMatcher
+from indexer.events.blocks.vesting import VestingSendMessageBlockMatcher, VestingAddWhiteListBlockMatcher
 from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher, NftDiscoveryBlockMatcher
 from indexer.events.blocks.staking import TONStakersDepositMatcher, TONStakersWithdrawMatcher, \
     TONStakersDelayedWithdrawalMatcher, NominatorPoolDepositMatcher, NominatorPoolWithdrawRequestMatcher, \
@@ -68,6 +69,8 @@ matchers = [
     NominatorPoolWithdrawMatcher(),
     MultisigCreateOrderBlockMatcher(),
     MultisigApproveBlockMatcher(),
+    VestingSendMessageBlockMatcher(),
+    VestingAddWhiteListBlockMatcher(),
     JettonTransferBlockMatcher(),
     JettonBurnBlockMatcher(),
     DedustSwapBlockMatcher(),

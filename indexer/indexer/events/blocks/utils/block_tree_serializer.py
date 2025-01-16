@@ -30,6 +30,7 @@ from indexer.events.blocks.subscriptions import (SubscribeBlock,
                                                  UnsubscribeBlock)
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
+from indexer.events.blocks.vesting import VestingAddWhiteListBlock, VestingSendMessageBlock
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +269,29 @@ def _fill_multisig_approve(block: MultisigApproveBlock, action: Action):
         "exit_code": block.data.exit_code,
     }
 
+def _fill_vesting_send_message(block: VestingSendMessageBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.vesting)
+    action.destination_secondary = _addr(block.data.message_destination) # where the msg was sent to
+    action.amount = block.data.message_value.value  # the value of the msg
+    action.vesting_send_message_data = {
+        "query_id": block.data.query_id,
+        "message_boc": block.data.message_boc_str,
+    }
+
+def _fill_vesting_add_whitelist(block: VestingAddWhiteListBlock, action: Action):
+    action.source = _addr(block.data.adder)
+    action.destination = _addr(block.data.vesting)
+    # make a string of the accounts added
+    accounts_added_str = ",".join([
+        (_addr(a) or "addr_none")
+        for a in block.data.accounts_added
+    ])
+    action.vesting_add_whitelist_data = {
+        "query_id": block.data.query_id,
+        "accounts_added": accounts_added_str,
+    }
+
 def _fill_jetton_burn_action(block: JettonBurnBlock, action: Action):
     action.source = block.data['owner'].as_str()
     action.source_secondary = block.data['jetton_wallet'].as_str()
@@ -478,6 +502,10 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_multisig_create_order(block, action)
         case MultisigApproveBlock():
             _fill_multisig_approve(block, action)
+        case VestingSendMessageBlock():
+            _fill_vesting_send_message(block, action)
+        case VestingAddWhiteListBlock():
+            _fill_vesting_add_whitelist(block, action)
         case UnsubscribeBlock():
             _fill_unsubscribe_action(block, action)
         case ElectionDepositStakeBlock():

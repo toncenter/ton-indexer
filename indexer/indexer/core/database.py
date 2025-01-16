@@ -311,6 +311,14 @@ class Action(Base):
         Column("signer_index", Numeric),
         Column("exit_code", Numeric),
     ]))
+    vesting_send_message_data = Column(CompositeType("vesting_send_message_details", [
+        Column("query_id", Numeric),
+        Column("message_boc", String),
+    ]))
+    vesting_add_whitelist_data = Column(CompositeType("vesting_add_whitelist_details", [
+        Column("query_id", Numeric),
+        Column("accounts_added", String), # separated by `,`
+    ]))
     staking_data = Column(CompositeType("staking_details", [
         Column("provider", String),
         Column("ts_nft", String),
