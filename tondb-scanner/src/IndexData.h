@@ -119,8 +119,8 @@ struct SplitMergeInfo {
 
 struct TransactionDescr_ord {
   bool credit_first;
-  TrStoragePhase storage_ph;
-  TrCreditPhase credit_ph;
+  std::optional<TrStoragePhase> storage_ph;
+  std::optional<TrCreditPhase> credit_ph;
   TrComputePhase compute_ph;
   std::optional<TrActionPhase> action;
   bool aborted;

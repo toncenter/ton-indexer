@@ -54,27 +54,27 @@ private:
   std::vector<InsertTaskStruct> insert_tasks_;
   td::Promise<td::Unit> promise_;
   std::int32_t max_data_depth_;
-  std::int32_t retry_count_{0};
+  bool with_copy_{true};
 
   std::string stringify(schema::ComputeSkipReason compute_skip_reason);
   std::string stringify(schema::AccStatusChange acc_status_change);
   std::string stringify(schema::AccountStatus account_status);
   std::string stringify(schema::Trace::State state);
 
-  std::string insert_blocks(pqxx::work &txn);
-  std::string insert_shard_state(pqxx::work &txn);
-  std::string insert_transactions(pqxx::work &txn);
-  std::string insert_messages(pqxx::work &txn);
-  std::string insert_account_states(pqxx::work &txn);
+  void insert_blocks(pqxx::work &txn, bool with_copy);
+  void insert_shard_state(pqxx::work &txn, bool with_copy);
+  void insert_transactions(pqxx::work &txn, bool with_copy);
+  void insert_messages(pqxx::work &txn, bool with_copy);
+  void insert_account_states(pqxx::work &txn, bool with_copy);
   std::string insert_latest_account_states(pqxx::work &txn);
-  std::string insert_jetton_transfers(pqxx::work &txn);
-  std::string insert_jetton_burns(pqxx::work &txn);
-  std::string insert_nft_transfers(pqxx::work &txn);
+  void insert_jetton_transfers(pqxx::work &txn, bool with_copy);
+  void insert_jetton_burns(pqxx::work &txn, bool with_copy);
+  void insert_nft_transfers(pqxx::work &txn, bool with_copy);
   std::string insert_jetton_masters(pqxx::work &txn);
   std::string insert_jetton_wallets(pqxx::work &txn);
   std::string insert_nft_collections(pqxx::work &txn);
   std::string insert_nft_items(pqxx::work &txn);
   std::string insert_getgems_nft_auctions(pqxx::work &txn);
   std::string insert_getgems_nft_sales(pqxx::work &txn);
-  std::string insert_traces(pqxx::work &txn);
+  void insert_traces(pqxx::work &txn, bool with_copy);
 };

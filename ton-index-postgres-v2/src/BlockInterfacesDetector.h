@@ -3,12 +3,6 @@
 #include <block/block.h>
 #include "IndexData.h"
 
-struct AccountStateHasher {
-    std::size_t operator()(const schema::AccountState& account_state) const {
-        return BitArrayHasher()(account_state.hash);
-    }
-};
-
 class BlockInterfaceProcessor: public td::actor::Actor {
 private:
     ParsedBlockPtr block_;
@@ -19,17 +13,14 @@ public:
         block_(std::move(block)), promise_(std::move(promise)) {}
 
     void start_up() override {
-        std::unordered_set<schema::AccountState, AccountStateHasher> account_states_to_detect;
+        std::unordered_map<block::StdAddress, schema::AccountState, AddressHasher> account_states_to_detect;
         for (const auto& account_state : block_->account_states_) {
             if (!account_state.code_hash || !account_state.data_hash) {
                 continue;
             }
-            auto existing = account_states_to_detect.find(account_state);
-            if (existing != account_states_to_detect.end() && account_state.last_trans_lt > existing->last_trans_lt) {
-                account_states_to_detect.erase(existing);
-                account_states_to_detect.insert(account_state);
-            } else {
-                account_states_to_detect.insert(account_state);
+            auto existing = account_states_to_detect.find(account_state.account);
+            if (existing == account_states_to_detect.end() || account_state.last_trans_lt > existing->second.last_trans_lt) {
+                account_states_to_detect[account_state.account] = account_state;
                 interfaces_[account_state.account] = {};
             }
         }
@@ -47,7 +38,7 @@ public:
         auto ig = mp.init_guard();
         ig.add_promise(std::move(P));
 
-        for (const auto& account_state : account_states_to_detect) {
+        for (const auto& [_, account_state] : account_states_to_detect) {
             if (account_state.code.is_null()) {
                 continue;
             }
