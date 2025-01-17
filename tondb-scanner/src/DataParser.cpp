@@ -40,11 +40,14 @@ td::Status ParseQuery::parse_impl() {
     }
 
     // transactions and messages
-    std::set<td::Bits256> addresses;
-    TRY_RESULT_ASSIGN(schema_block.transactions, parse_transactions(block_ds.block_data->block_id(), blk, info, extra, addresses));
+    std::map<td::Bits256, AccountStateShort> account_states_to_get;
+    TRY_RESULT_ASSIGN(schema_block.transactions, parse_transactions(block_ds.block_data->block_id(), blk, info, extra, account_states_to_get));
 
-    // account states
-    TRY_STATUS(parse_account_states(block_ds.block_state, addresses));
+    TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime, account_states_to_get));
+    
+    for (auto &acc : account_states_fast) {
+      result->account_states_.push_back(acc);
+    }
 
     // config
     if (block_ds.block_data->block_id().is_masterchain()) {
@@ -532,7 +535,7 @@ td::Result<schema::TransactionDescr> ParseQuery::process_transaction_descr(vm::C
 
 td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(const ton::BlockIdExt& blk_id, const block::gen::Block::Record &block, 
                               const block::gen::BlockInfo::Record &info, const block::gen::BlockExtra::Record &extra,
-                              std::set<td::Bits256> &addresses) {
+                              std::map<td::Bits256, AccountStateShort> &account_states) {
   std::vector<schema::Transaction> res;
   try {
     vm::AugmentedDictionary acc_dict{vm::load_cell_slice_ref(extra.account_blocks), 256, block::tlb::aug_ShardAccountBlocks};
@@ -615,8 +618,8 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
         TRY_RESULT_ASSIGN(schema_tx.description, process_transaction_descr(descr_cs));
 
         res.push_back(schema_tx);
-
-        addresses.insert(cur_addr);
+        
+        account_states[cur_addr] = {schema_tx.account_state_hash_after, schema_tx.lt, schema_tx.hash};
       }
     }
   } catch (vm::VmError err) {
@@ -625,50 +628,36 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
   return res;
 }
 
-td::Status ParseQuery::parse_account_states(const td::Ref<vm::Cell>& block_state_root, std::set<td::Bits256> &addresses) {
-  auto root = block_state_root;
-  block::gen::ShardStateUnsplit::Record sstate;
-  if (!tlb::unpack_cell(block_state_root, sstate)) {
-    return td::Status::Error("Failed to unpack ShardStateUnsplit");
-  }
-  block::gen::ShardIdent::Record shard_id;
-  if (!tlb::csr_unpack(sstate.shard_id, shard_id)) {
-    return td::Status::Error("Failed to unpack ShardIdent");
-  }
-  vm::AugmentedDictionary accounts_dict{vm::load_cell_slice_ref(sstate.accounts), 256, block::tlb::aug_ShardAccounts};
-  for (auto &addr : addresses) {
-    auto shard_account_csr = accounts_dict.lookup(addr);
-    if (shard_account_csr.is_null()) {
-      // account is uninitialized after this block
-      continue;
-    } 
-    block::gen::ShardAccount::Record acc_info;
-    if(!tlb::csr_unpack(std::move(shard_account_csr), acc_info)) {
-      LOG(ERROR) << "Failed to unpack ShardAccount " << addr;
+td::Result<std::vector<schema::AccountState>> ParseQuery::parse_account_states_new(ton::WorkchainId workchain_id, uint32_t gen_utime, std::map<td::Bits256, AccountStateShort> &account_states) {
+  std::vector<schema::AccountState> res;
+  res.reserve(account_states.size());
+  for (auto &[addr, state_short] : account_states) {
+    auto account_cell_r = cell_db_reader_->load_cell(state_short.account_cell_hash.as_slice());
+    if (account_cell_r.is_error()) {
+      LOG(ERROR) << "Failed to load account state cell " << state_short.account_cell_hash.to_hex();
       continue;
     }
-    int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(acc_info.account));
+    auto account_cell = account_cell_r.move_as_ok();
+    int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account_cell));
     switch (account_tag) {
     case block::gen::Account::account_none: {
-      auto address = block::StdAddress(shard_id.workchain_id, addr);
-      TRY_RESULT(account, parse_none_account(std::move(acc_info.account), address, sstate.gen_utime, acc_info.last_trans_hash, acc_info.last_trans_lt));
-      result->account_states_.push_back(account);
+      auto address = block::StdAddress(workchain_id, addr);
+      TRY_RESULT(account, parse_none_account(std::move(account_cell), address, gen_utime, state_short.last_transaction_hash, state_short.last_transaction_lt));
+      res.push_back(account);
       break;
     }
     case block::gen::Account::account: {
-      TRY_RESULT(account, parse_account(std::move(acc_info.account), sstate.gen_utime, acc_info.last_trans_hash, acc_info.last_trans_lt));
-      result->account_states_.push_back(account);
+      TRY_RESULT(account, parse_account(std::move(account_cell), gen_utime, state_short.last_transaction_hash, state_short.last_transaction_lt));
+      res.push_back(account);
       break;
     }
     default:
       return td::Status::Error("Unknown account tag");
     }
   }
-  // LOG(DEBUG) << "Parsed " << result->account_states_.size() << " account states";
-  return td::Status::OK();
+  return res;
 }
 
-// td::Result<schema::AccountState> ParseQuery::parse_shard_account(td::Ref<vm::CellSlice> account_csr) 
 
 td::Result<schema::AccountState> ParseQuery::parse_none_account(td::Ref<vm::Cell> account_root, block::StdAddress address, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt) {
   block::gen::Account::Record_account_none account_none;

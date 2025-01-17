@@ -6,11 +6,12 @@ class ParseQuery: public td::actor::Actor {
 private:
   const int mc_seqno_;
   MasterchainBlockDataState mc_block_;
+  std::shared_ptr<vm::CellDbReader> cell_db_reader_;
   ParsedBlockPtr result;
   td::Promise<ParsedBlockPtr> promise_;
 public:
-  ParseQuery(int mc_seqno, MasterchainBlockDataState mc_block, td::Promise<ParsedBlockPtr> promise)
-    : mc_seqno_(mc_seqno), mc_block_(std::move(mc_block)), result(std::make_shared<ParsedBlock>()), promise_(std::move(promise)) {}
+  ParseQuery(int mc_seqno, MasterchainBlockDataState mc_block, std::shared_ptr<vm::CellDbReader> cell_db_reader, td::Promise<ParsedBlockPtr> promise)
+    : mc_seqno_(mc_seqno), mc_block_(std::move(mc_block)), cell_db_reader_(std::move(cell_db_reader)), result(std::make_shared<ParsedBlock>()), promise_(std::move(promise)) {}
 
   void start_up() override;
 
@@ -30,10 +31,16 @@ private:
   td::Result<schema::TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs);
   td::Result<schema::SplitMergeInfo> parse_split_merge_info(td::Ref<vm::CellSlice>& cs);
   td::Result<schema::TransactionDescr> process_transaction_descr(vm::CellSlice& td_cs);
+
+  struct AccountStateShort {
+    td::Bits256 account_cell_hash;
+    uint64_t last_transaction_lt;
+    td::Bits256 last_transaction_hash;
+  };
   td::Result<std::vector<schema::Transaction>> parse_transactions(const ton::BlockIdExt& blk_id, const block::gen::Block::Record &block, 
                                 const block::gen::BlockInfo::Record &info, const block::gen::BlockExtra::Record &extra,
-                                std::set<td::Bits256> &addresses);
-  td::Status parse_account_states(const td::Ref<vm::Cell>& block_state_root, std::set<td::Bits256> &addresses);
+                                std::map<td::Bits256, AccountStateShort> &account_states);
+  td::Result<std::vector<schema::AccountState>> parse_account_states_new(ton::WorkchainId workchain_id, uint32_t gen_utime, std::map<td::Bits256, AccountStateShort> &account_states);
   td::Result<schema::AccountState> parse_none_account(td::Ref<vm::Cell> account_root, block::StdAddress address, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt);
 
 public: //TODO: refactor
@@ -45,7 +52,7 @@ class ParseManager: public td::actor::Actor {
 public:
     ParseManager() {}
 
-    void parse(int mc_seqno, MasterchainBlockDataState mc_block, td::Promise<ParsedBlockPtr> promise) {
-      td::actor::create_actor<ParseQuery>("parsequery", mc_seqno, std::move(mc_block), std::move(promise)).release();
+    void parse(int mc_seqno, MasterchainBlockDataState mc_block, std::shared_ptr<vm::CellDbReader> cell_db_reader, td::Promise<ParsedBlockPtr> promise) {
+      td::actor::create_actor<ParseQuery>("parsequery", mc_seqno, std::move(mc_block), cell_db_reader, std::move(promise)).release();
     }
 };

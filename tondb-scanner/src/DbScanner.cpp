@@ -306,6 +306,10 @@ void DbScanner::get_mc_block_handle(ton::BlockSeqno seqno, td::Promise<ton::vali
   td::actor::send_closure(db_, &RootDb::get_block_by_seqno, ton::AccountIdPrefixFull(ton::masterchainId, ton::shardIdAll), seqno, std::move(promise));
 }
 
+void DbScanner::get_cell_db_reader(td::Promise<std::shared_ptr<vm::CellDbReader>> promise) {
+  td::actor::send_closure(db_, &RootDb::get_cell_db_reader, std::move(promise));
+}
+
 void DbScanner::catch_up_with_primary() {
   auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), this](td::Result<td::Unit> R) {
     R.ensure();

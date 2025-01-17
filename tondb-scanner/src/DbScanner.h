@@ -30,6 +30,7 @@ public:
   void get_last_mc_seqno(td::Promise<ton::BlockSeqno> promise);
   void get_oldest_mc_seqno(td::Promise<ton::BlockSeqno> promise);
   void get_mc_block_handle(ton::BlockSeqno seqno, td::Promise<ton::validator::ConstBlockHandle> promise);
+  void get_cell_db_reader(td::Promise<std::shared_ptr<vm::CellDbReader>> promise);
 private:
   void catch_up_with_primary();
 };
