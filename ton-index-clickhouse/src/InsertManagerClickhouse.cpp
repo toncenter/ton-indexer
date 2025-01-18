@@ -860,9 +860,16 @@ void InsertBatchClickhouse::insert_transactions(clickhouse::Client& client) {
                     ord__credit_first_col->Append(v->credit_first);
                     tick_tock__is_tock_col->Append(std::nullopt);
                     split_install__installed_col->Append(std::nullopt);
-
-                    store_storage_ph(v->storage_ph);
-                    store_credit_ph(v->credit_ph);
+                    if (v->storage_ph) {
+                        store_storage_ph(v->storage_ph.value());
+                    } else {
+                        store_empty_storage_ph();
+                    }
+                    if (v->credit_ph) {
+                        store_credit_ph(v->credit_ph.value());
+                    } else {
+                        store_empty_credit_ph();
+                    }
                     store_compute_ph(v->compute_ph);
                     if (v->action) {
                         store_action_ph(v->action.value());

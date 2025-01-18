@@ -130,7 +130,11 @@ void IndexScheduler::seqno_fetched(uint32_t mc_seqno, MasterchainBlockDataState 
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_parsed, mc_seqno, R.move_as_ok());
     });
-    td::actor::send_closure(parse_manager_, &ParseManager::parse, mc_seqno, std::move(block_data_state), std::move(P));
+    td::actor::send_closure(db_scanner_, &DbScanner::get_cell_db_reader, 
+        [SelfId = actor_id(this), parse_manager = parse_manager_, mc_seqno, block_data_state, P = std::move(P)](td::Result<std::shared_ptr<vm::CellDbReader>> cell_db_reader) mutable {
+            CHECK(cell_db_reader.is_ok());
+            td::actor::send_closure(parse_manager, &ParseManager::parse, mc_seqno, std::move(block_data_state), cell_db_reader.move_as_ok(), std::move(P));
+    });
 }
 
 void IndexScheduler::seqno_parsed(uint32_t mc_seqno, ParsedBlockPtr parsed_block) {

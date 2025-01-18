@@ -327,8 +327,12 @@ std::string InsertBatchPostgres::jsonify(schema::TransactionDescr descr) {
     const auto& ord = std::get<schema::TransactionDescr_ord>(descr);
     obj("type", "ord");
     obj("credit_first", td::JsonBool(ord.credit_first));
-    obj("storage_ph", td::JsonRaw(jsonify(ord.storage_ph)));
-    obj("credit_ph", td::JsonRaw(jsonify(ord.credit_ph)));
+    if (ord.storage_ph.has_value()) {
+      obj("storage_ph", td::JsonRaw(jsonify(ord.storage_ph.value())));
+    }
+    if (ord.credit_ph.has_value()) {
+      obj("credit_ph", td::JsonRaw(jsonify(ord.credit_ph.value())));
+    }
     obj("compute_ph", td::JsonRaw(jsonify(ord.compute_ph)));
     if (ord.action.has_value()) {
       obj("action", td::JsonRaw(jsonify(ord.action.value())));
