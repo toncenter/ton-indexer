@@ -34,7 +34,16 @@ template<> struct string_traits<schema::BlockReference>
   }
 };
 
-template<> struct nullness<td::RefInt256> : pqxx::no_null<td::RefInt256> {};
+template<> struct nullness<td::RefInt256>
+{
+  static constexpr bool has_null{true};
+ 
+  static constexpr bool always_null{false};
+ 
+  static bool is_null(td::RefInt256 const &value) {
+    return value.is_null();
+  }
+};
 
 template<> struct string_traits<td::RefInt256>
 {
