@@ -2141,11 +2141,20 @@ func (db *DbClient) QueryMetadata(
 	addr_list []string,
 	settings RequestSettings,
 ) (Metadata, error) {
+	raw_addr_list := []string{}
+	for _, addr := range addr_list {
+		addr_loc := AccountAddressConverter(addr)
+		if addr_loc.IsValid() {
+			if v, ok := addr_loc.Interface().(AccountAddress); ok {
+				raw_addr_list = append(raw_addr_list, string(v))
+			}
+		}
+	}
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
-	return queryMetadataImpl(addr_list, conn, settings)
+	return queryMetadataImpl(raw_addr_list, conn, settings)
 }
 
 func (db *DbClient) QueryAddressBook(
