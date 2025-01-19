@@ -836,11 +836,10 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		filter_list = append(filter_list, fmt.Sprintf("E.end_lt <= %d", *v))
 	}
 	if v := act_req.AccountAddress; v != nil && len(*v) > 0 {
-		filter_str := fmt.Sprintf("EXISTS(SELECT 1 FROM action_accounts AA WHERE AA.action_id=A.action_id AND"+
-			" AA.trace_id = A.trace_id AND AA.account = '%s'::tonaddr)", *v)
+		filter_str := fmt.Sprintf("AA.account = '%s'::tonaddr", *v)
 		filter_list = append(filter_list, filter_str)
 
-		from_query = `actions as A join traces as E on A.trace_id = E.trace_id`
+		from_query = `actions as A join action_accounts as AA on A.trace_id = AA.trace_id and A.action_id = AA.action_id`
 		clmn_query = clmn_query_default
 	}
 	if v := act_req.TransactionHash; v != nil {
@@ -889,11 +888,22 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 			filter_list = []string{filter_str}
 		}
 	}
-
-	if order_by_now {
-		orderby_query = fmt.Sprintf(" order by A.trace_end_utime %s, A.trace_id %s, A.end_utime %s, A.action_id %s", sort_order, sort_order, sort_order, sort_order)
+	if strings.Contains(from_query, "action_accounts") {
+		if order_by_now {
+			orderby_query = fmt.Sprintf(" order by AA.trace_end_utime %s, AA.trace_id %s, AA.action_end_utime %s, AA.action_id %s",
+				sort_order, sort_order, sort_order, sort_order)
+		} else {
+			orderby_query = fmt.Sprintf(" order by AA.trace_end_lt %s, AA.trace_id %s, AA.action_end_lt %s, AA.action_id %s",
+				sort_order, sort_order, sort_order, sort_order)
+		}
 	} else {
-		orderby_query = fmt.Sprintf(" order by A.trace_end_lt %s, A.trace_id %s, A.end_lt %s, A.action_id %s", sort_order, sort_order, sort_order, sort_order)
+		if order_by_now {
+			orderby_query = fmt.Sprintf(" order by A.trace_end_utime %s, A.trace_id %s, A.end_utime %s, A.action_id %s",
+				sort_order, sort_order, sort_order, sort_order)
+		} else {
+			orderby_query = fmt.Sprintf(" order by A.trace_end_lt %s, A.trace_id %s, A.end_lt %s, A.action_id %s",
+				sort_order, sort_order, sort_order, sort_order)
+		}
 	}
 	filter_list = append(filter_list, "A.end_lt is not NULL")
 	// build query
@@ -905,7 +915,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 	query += filter_query
 	query += orderby_query
 	query += limit_query
-	// log.Println(query)
+	log.Println(query)
 	return query, nil
 }
 
