@@ -5,6 +5,7 @@ import multiprocessing as mp
 import sys
 import time
 import traceback
+from collections import defaultdict
 from datetime import timedelta
 from typing import Optional
 
@@ -225,7 +226,6 @@ async def start_processing_events_from_db(args: argparse.Namespace):
     return
 
 # end def
-
 async def start_emulated_traces_processing():
     pubsub = redis.client.pubsub()
     await pubsub.subscribe(settings.emulated_traces_redis_channel)
@@ -235,11 +235,22 @@ async def start_emulated_traces_processing():
             trace_id = message['data'].decode('utf-8')
             try:
                 start = time.time()
-                actions = await process_emulated_trace(trace_id)
+                actions, trace = await process_emulated_trace(trace_id)
                 await redis.client.hset(trace_id, 'actions', msgpack.packb([a.to_dict() for a in actions]))
                 print("Processed trace", trace_id, "in", time.time() - start, "seconds")
                 if settings.emulated_traces_redis_response_channel is not None:
                     await redis.client.publish(settings.emulated_traces_redis_response_channel, trace_id)
+                index = defaultdict(set)
+                for action in actions:
+                    for account in action.get_action_accounts():
+                        k = f"{action.trace_id}:{action.action_id}"
+                        v = trace.start_lt
+                        index[account.account].add((k, v))
+                referenced_accounts = set(index.keys()) - set(t.account for t in trace.transactions)
+                for account, values in index.items():
+                    await redis.client.zadd(f"_aai:{account}", dict(values))
+                for r in referenced_accounts:
+                    await redis.client.publish('referenced_accounts', f"{r}/{trace_id}")
             except Exception as e:
                 logger.error(f"Failed to process emulated trace {trace_id}: {e}")
                 logger.exception(e, exc_info=True)
@@ -254,7 +265,7 @@ async def process_emulated_trace(trace_id):
     context.interface_repository.set(EmulatedTransactionsInterfaceRepository(trace_map))
     blocks = await process_event_async_with_postprocessing(trace)
     actions, _ = serialize_blocks(blocks, trace_id)
-    return actions
+    return actions, trace
 
 
 async def process_trace_batch_async(ids: list[str]):

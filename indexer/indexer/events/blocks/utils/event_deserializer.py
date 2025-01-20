@@ -135,4 +135,5 @@ def deserialize_event(trace_id, packed_transactions_map: dict[str, bytes]) -> Tr
     root_tx = unpack_messagepack_tx(root)
     transactions.append(root_tx)
     load_leaf(root_tx)
-    return Trace(transactions=transactions, edges=edges, trace_id=trace_id, classification_state='unclassified', state='complete')
+    return Trace(transactions=transactions, edges=edges, trace_id=trace_id, classification_state='unclassified',
+                 state='complete', start_lt=root_tx.lt)
