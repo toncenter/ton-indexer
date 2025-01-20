@@ -12,10 +12,6 @@ definitions:
         type: string
       balance:
         type: string
-      balance_extra_currencies:
-        additionalProperties:
-          type: string
-        type: object
       code_boc:
         type: string
       code_hash:
@@ -24,6 +20,10 @@ definitions:
         type: string
       data_hash:
         type: string
+      extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       frozen_hash:
         type: string
       hash:
@@ -37,10 +37,6 @@ definitions:
         type: string
       balance:
         type: string
-      balance_extra_currencies:
-        additionalProperties:
-          type: string
-        type: object
       code_boc:
         type: string
       code_hash:
@@ -49,6 +45,10 @@ definitions:
         type: string
       data_hash:
         type: string
+      extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       frozen_hash:
         type: string
       last_transaction_hash:
@@ -973,6 +973,10 @@ definitions:
         type: string
       code_hash:
         type: string
+      extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       is_signature_allowed:
         type: boolean
       is_wallet:

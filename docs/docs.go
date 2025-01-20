@@ -2445,12 +2445,6 @@ const docTemplate = `{
                 "balance": {
                     "type": "string"
                 },
-                "balance_extra_currencies": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
                 "code_boc": {
                     "type": "string"
                 },
@@ -2462,6 +2456,12 @@ const docTemplate = `{
                 },
                 "data_hash": {
                     "type": "string"
+                },
+                "extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "frozen_hash": {
                     "type": "string"
@@ -2483,12 +2483,6 @@ const docTemplate = `{
                 "balance": {
                     "type": "string"
                 },
-                "balance_extra_currencies": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
                 "code_boc": {
                     "type": "string"
                 },
@@ -2500,6 +2494,12 @@ const docTemplate = `{
                 },
                 "data_hash": {
                     "type": "string"
+                },
+                "extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "frozen_hash": {
                     "type": "string"
@@ -3889,6 +3889,12 @@ const docTemplate = `{
                 },
                 "code_hash": {
                     "type": "string"
+                },
+                "extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "is_signature_allowed": {
                     "type": "boolean"

@@ -264,6 +264,7 @@ func ParseWalletState(state AccountStateFull) (*WalletState, error) {
 	}
 	info.AccountAddress = *state.AccountAddress
 	info.Balance = state.Balance
+	info.BalanceExtraCurrencies = state.BalanceExtraCurrencies
 	info.AccountStatus = state.AccountStatus
 	info.CodeHash = state.CodeHash
 	info.LastTransactionHash = state.LastTransactionHash

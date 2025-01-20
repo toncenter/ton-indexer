@@ -105,17 +105,18 @@ type AccountStateFull struct {
 } // @name AccountStateFull
 
 type WalletState struct {
-	AccountAddress      AccountAddress `json:"address"`
-	IsWallet            bool           `json:"is_wallet"`
-	WalletType          *string        `json:"wallet_type,omitempty"`
-	Seqno               *int64         `json:"seqno,omitempty"`
-	WalletId            *int64         `json:"wallet_id,omitempty"`
-	Balance             *string        `json:"balance,omitempty"`
-	IsSignatureAllowed  *bool          `json:"is_signature_allowed,omitempty"`
-	AccountStatus       *string        `json:"status,omitempty"`
-	CodeHash            *HashType      `json:"code_hash,omitempty"`
-	LastTransactionHash *HashType      `json:"last_transaction_hash"`
-	LastTransactionLt   *int64         `json:"last_transaction_lt,string"`
+	AccountAddress         AccountAddress    `json:"address"`
+	IsWallet               bool              `json:"is_wallet"`
+	WalletType             *string           `json:"wallet_type,omitempty"`
+	Seqno                  *int64            `json:"seqno,omitempty"`
+	WalletId               *int64            `json:"wallet_id,omitempty"`
+	Balance                *string           `json:"balance,omitempty"`
+	BalanceExtraCurrencies map[string]string `json:"extra_currencies,omitempty"`
+	IsSignatureAllowed     *bool             `json:"is_signature_allowed,omitempty"`
+	AccountStatus          *string           `json:"status,omitempty"`
+	CodeHash               *HashType         `json:"code_hash,omitempty"`
+	LastTransactionHash    *HashType         `json:"last_transaction_hash"`
+	LastTransactionLt      *int64            `json:"last_transaction_lt,string"`
 } // @name WalletState
 
 type Block struct {
@@ -523,9 +524,9 @@ type ActionDetailsTonTransfer struct {
 	Source          *AccountAddress    `json:"source"`
 	Destination     *AccountAddress    `json:"destination"`
 	Value           *string            `json:"value"`
+	ExtraCurrencies *map[string]string `json:"value_extra_currencies,omitempty"`
 	Comment         *string            `json:"comment"`
 	Encrypted       *bool              `json:"encrypted"`
-	ExtraCurrencies *map[string]string `json:"extra_currencies,omitempty"`
 }
 
 type ActionDetailsAuctionBid struct {
