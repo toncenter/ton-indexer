@@ -307,6 +307,7 @@ class Action(Base):
     mc_seqno_end: int = Column(Numeric)
     trace_mc_seqno_end: int = Column(Numeric)
     accounts: list[str]
+    value_extra_currencies: dict = Column(JSONB)
 
 
     def __repr__(self):
@@ -464,6 +465,7 @@ class Message(Base):
     import_fee: int = Column(BigInteger)
     body_hash: str = Column(String(44))
     init_state_hash: Optional[str] = Column(String(44), nullable=True)
+    value_extra_currencies: dict = Column(JSONB, nullable=True)
 
     transaction = relationship("Transaction",
                                viewonly=True,

@@ -78,6 +78,7 @@ def _fill_call_contract_action(block: CallContractBlock, action: Action):
     action.value = block.data['value'].value
     action.source = block.data['source'].as_str() if block.data['source'] is not None else None
     action.destination = block.data['destination'].as_str() if block.data['destination'] is not None else None
+    action.value_extra_currencies = block.data['extra_currencies']
 
 
 def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
@@ -88,6 +89,7 @@ def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
     action.destination = block.data['destination'].as_str()
     content = block.data['comment'].replace("\u0000", "") if block.data['comment'] is not None else None
     action.ton_transfer_data = {'content': content, 'encrypted': block.data['encrypted']}
+    action.value_extra_currencies = block.data['extra_currencies']
 
 
 def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):

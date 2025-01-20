@@ -48,6 +48,7 @@ class TonTransferBlock(Block):
             self.comment = None
 
         super().__init__('ton_transfer', [node], {
+            'extra_currencies': node.message.value_extra_currencies,
             'source': AccountId(node.message.source) if node.message.source is not None else None,
             'destination': AccountId(
                 node.message.destination) if node.message.destination is not None else None,
@@ -74,6 +75,7 @@ class CallContractBlock(Block):
 
     def __init__(self, node: EventNode):
         super().__init__('call_contract', [node], {
+            'extra_currencies': node.message.value_extra_currencies,
             'opcode': node.get_opcode(),
             'source': AccountId(node.message.source) if node.message.source is not None else None,
             'destination': AccountId(
