@@ -115,12 +115,14 @@ type AccountRequest struct {
 }
 
 type ActionRequest struct {
-	AccountAddress  *AccountAddress `query:"account"`
-	TransactionHash []HashType      `query:"tx_hash"`
-	MessageHash     []HashType      `query:"msg_hash"`
-	TraceId         []HashType      `query:"trace_id"`
-	ActionId        []HashType      `query:"action_id"`
-	McSeqno         *int32          `query:"mc_seqno"`
+	AccountAddress     *AccountAddress `query:"account"`
+	TransactionHash    []HashType      `query:"tx_hash"`
+	MessageHash        []HashType      `query:"msg_hash"`
+	TraceId            []HashType      `query:"trace_id"`
+	ActionId           []HashType      `query:"action_id"`
+	McSeqno            *int32          `query:"mc_seqno"`
+	IncludeActionTypes []string        `query:"action_type"`
+	ExcludeActionTypes []string        `query:"exclude_action_type"`
 }
 
 type TracesRequest struct {

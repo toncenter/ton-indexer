@@ -216,6 +216,7 @@ func buildTransactionsQuery(
 			filter_list = append(filter_list, fmt.Sprintf("T.account in (%s)", vv_str))
 		}
 	}
+	// TODO: implement ExcludeAccount logic
 	if v := tx_req.Hash; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.hash = '%s'", *v))
 		orderby_query = ``
@@ -888,6 +889,18 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
 			clmn_query = `distinct on (A.trace_end_lt, A.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
+		}
+	}
+	if v := act_req.IncludeActionTypes; len(v) > 0 {
+		filter_str := filterByArray("A.type", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+	}
+	if v := act_req.ExcludeActionTypes; len(v) > 0 {
+		filter_str := filterByArray("A.type", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, fmt.Sprintf("not (%s)", filter_str))
 		}
 	}
 	if v := act_req.McSeqno; v != nil {

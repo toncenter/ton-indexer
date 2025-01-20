@@ -177,6 +177,74 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "array",
+                        "items": {
+                            "enum": [
+                                "call_contract",
+                                "contract_deploy",
+                                "ton_transfer",
+                                "auction_bid",
+                                "change_dns",
+                                "dex_deposit_liquidity",
+                                "dex_withdraw_liquidity",
+                                "delete_dns",
+                                "renew_dns",
+                                "election_deposit",
+                                "election_recover",
+                                "jetton_burn",
+                                "jetton_swap",
+                                "jetton_transfer",
+                                "jetton_mint",
+                                "nft_mint",
+                                "tick_tock",
+                                "stake_deposit",
+                                "stake_withdrawal",
+                                "stake_withdrawal_request",
+                                "subscribe",
+                                "unsubscribe"
+                            ],
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Include action types.",
+                        "name": "action_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "enum": [
+                                "call_contract",
+                                "contract_deploy",
+                                "ton_transfer",
+                                "auction_bid",
+                                "change_dns",
+                                "dex_deposit_liquidity",
+                                "dex_withdraw_liquidity",
+                                "delete_dns",
+                                "renew_dns",
+                                "election_deposit",
+                                "election_recover",
+                                "jetton_burn",
+                                "jetton_swap",
+                                "jetton_transfer",
+                                "jetton_mint",
+                                "nft_mint",
+                                "tick_tock",
+                                "stake_deposit",
+                                "stake_withdrawal",
+                                "stake_withdrawal_request",
+                                "subscribe",
+                                "unsubscribe"
+                            ],
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Exclude action types.",
+                        "name": "exclude_action_type",
+                        "in": "query"
+                    },
+                    {
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
