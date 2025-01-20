@@ -67,7 +67,8 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
         start_utime=block.min_utime,
         end_utime=block.max_utime,
         success=not block.failed,
-        mc_seqno_end=mc_seqno_end
+        mc_seqno_end=mc_seqno_end,
+        value_extra_currencies=dict(),
     )
     action.accounts = accounts
     return action
@@ -78,7 +79,11 @@ def _fill_call_contract_action(block: CallContractBlock, action: Action):
     action.value = block.data['value'].value
     action.source = block.data['source'].as_str() if block.data['source'] is not None else None
     action.destination = block.data['destination'].as_str() if block.data['destination'] is not None else None
-    action.value_extra_currencies = block.data['extra_currencies'] if 'extra_currencies' in block.data else None
+    extra_currencies = block.data['extra_currencies'] if 'extra_currencies' in block.data else None
+    if extra_currencies is not None:
+        action.value_extra_currencies = extra_currencies
+    else:
+        action.value_extra_currencies = dict()
 
 
 def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
@@ -89,7 +94,11 @@ def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
     action.destination = block.data['destination'].as_str()
     content = block.data['comment'].replace("\u0000", "") if block.data['comment'] is not None else None
     action.ton_transfer_data = {'content': content, 'encrypted': block.data['encrypted']}
-    action.value_extra_currencies = block.data['extra_currencies'] if 'extra_currencies' in block.data else None
+    extra_currencies = block.data['extra_currencies'] if 'extra_currencies' in block.data else None
+    if extra_currencies is not None:
+        action.value_extra_currencies = extra_currencies
+    else:
+        action.value_extra_currencies = dict()
 
 
 def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):
