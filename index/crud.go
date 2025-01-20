@@ -803,7 +803,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		A.success,
 		A.trace_external_hash`
 	clmn_query := clmn_query_default
-	from_query := `actions as A join traces as E on A.trace_id = E.trace_id`
+	from_query := `actions as A`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
@@ -821,33 +821,57 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 	}
 	// time
 	order_by_now := false
+	join_accounts := false
+	if v := act_req.AccountAddress; v != nil && len(*v) > 0 {
+		join_accounts = true
+	}
 	if v := utime_req.StartUtime; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("E.end_utime >= %d", *v))
+		field := "A.trace_end_utime"
+		if join_accounts {
+			field = "AA.trace_end_utime"
+		}
+		filter_list = append(filter_list, fmt.Sprintf("%s >= %d", field, *v))
 		order_by_now = true
 	}
 	if v := utime_req.EndUtime; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("E.end_utime <= %d", *v))
+		field := "A.trace_end_utime"
+		if join_accounts {
+			field = "AA.trace_end_utime"
+		}
+		filter_list = append(filter_list, fmt.Sprintf("%s <= %d", field, *v))
 		order_by_now = true
 	}
 	if v := lt_req.StartLt; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("E.end_lt >= %d", *v))
+		field := "A.trace_end_lt"
+		if join_accounts {
+			field = "AA.trace_end_lt"
+		}
+		filter_list = append(filter_list, fmt.Sprintf("%s >= %d", field, *v))
 	}
 	if v := lt_req.EndLt; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("E.end_lt <= %d", *v))
+		field := "A.trace_end_lt"
+		if join_accounts {
+			field = "AA.trace_end_lt"
+		}
+		filter_list = append(filter_list, fmt.Sprintf("%s <= %d", field, *v))
 	}
 	if v := act_req.AccountAddress; v != nil && len(*v) > 0 {
 		filter_str := fmt.Sprintf("AA.account = '%s'::tonaddr", *v)
 		filter_list = append(filter_list, filter_str)
 
-		from_query = `actions as A join action_accounts as AA on A.trace_id = AA.trace_id and A.action_id = AA.action_id`
-		clmn_query = clmn_query_default
+		from_query = `action_accounts as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id`
+		if order_by_now {
+			clmn_query = `distinct on (AA.trace_end_utime, AA.trace_id, AA.action_end_utime, AA.action_id) ` + clmn_query_default
+		} else {
+			clmn_query = `distinct on (AA.trace_end_lt, AA.trace_id, AA.action_end_lt, AA.action_id) ` + clmn_query_default
+		}
 	}
 	if v := act_req.TransactionHash; v != nil {
 		filter_str := filterByArray("T.hash", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
-		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join transactions as T on E.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
+		from_query = `actions as A join transactions as T on A.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
 		if order_by_now {
 			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
@@ -860,7 +884,6 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 			filter_list = append(filter_list, filter_str)
 		}
 		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.tx_hashes`
-		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join messages as M on E.trace_id = M.trace_id and A.tx_hashes @> array[M.tx_hash::tonhash]`
 		if order_by_now {
 			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
@@ -882,7 +905,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		clmn_query = clmn_query_default
 	}
 	if v := act_req.TraceId; v != nil {
-		from_query = `actions as A join traces as E on A.trace_id = E.trace_id`
+		from_query = `actions as A`
 		filter_str := filterByArray("A.trace_id", v)
 		if len(filter_str) > 0 {
 			filter_list = []string{filter_str}
@@ -915,7 +938,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 	query += filter_query
 	query += orderby_query
 	query += limit_query
-	log.Println(query)
+	// log.Println(query)
 	return query, nil
 }
 
