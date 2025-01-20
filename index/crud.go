@@ -849,9 +849,9 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		}
 		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join transactions as T on E.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
 		if order_by_now {
-			clmn_query = `distinct on (E.end_utime, E.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
+			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
-			clmn_query = `distinct on (E.end_lt, E.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
+			clmn_query = `distinct on (A.trace_end_lt, A.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
 		}
 	}
 	if v := act_req.MessageHash; v != nil {
@@ -862,9 +862,9 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.tx_hashes`
 		from_query = `actions as A join traces as E on E.trace_id = A.trace_id join messages as M on E.trace_id = M.trace_id and A.tx_hashes @> array[M.tx_hash::tonhash]`
 		if order_by_now {
-			clmn_query = `distinct on (E.end_utime, E.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
+			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
-			clmn_query = `distinct on (E.end_lt, E.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
+			clmn_query = `distinct on (A.trace_end_lt, A.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
 		}
 	}
 	if v := act_req.McSeqno; v != nil {
