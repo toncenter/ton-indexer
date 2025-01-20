@@ -75,7 +75,7 @@ type AccountState struct {
 	Hash                   HashType          `json:"hash"`
 	Account                *AccountAddress   `json:"-"`
 	Balance                *string           `json:"balance"`
-	BalanceExtraCurrencies map[string]string `json:"balance_extra_currencies"`
+	BalanceExtraCurrencies map[string]string `json:"extra_currencies"`
 	AccountStatus          *string           `json:"account_status"`
 	FrozenHash             *HashType         `json:"frozen_hash"`
 	DataHash               *HashType         `json:"data_hash"`
@@ -93,7 +93,7 @@ type AccountStateFull struct {
 	AccountAddress         *AccountAddress   `json:"address"`
 	Hash                   HashType          `json:"account_state_hash"`
 	Balance                *string           `json:"balance"`
-	BalanceExtraCurrencies map[string]string `json:"balance_extra_currencies"`
+	BalanceExtraCurrencies map[string]string `json:"extra_currencies"`
 	AccountStatus          *string           `json:"status"`
 	FrozenHash             *HashType         `json:"frozen_hash,omitempty"`
 	LastTransactionHash    *HashType         `json:"last_transaction_hash"`
@@ -501,13 +501,15 @@ type RawAction struct {
 	StakingDataTsNft                                     *AccountAddress
 	Success                                              *bool
 	TraceExternalHash                                    *HashType
+	ExtraCurrencies                                      map[string]string
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
-	OpCode      *OpcodeType     `json:"opcode,omitempty"`
-	Source      *AccountAddress `json:"source,omitempty"`
-	Destination *AccountAddress `json:"destination,omitempty"`
-	Value       *string         `json:"value,omitempty"`
+	OpCode          *OpcodeType        `json:"opcode,omitempty"`
+	Source          *AccountAddress    `json:"source,omitempty"`
+	Destination     *AccountAddress    `json:"destination,omitempty"`
+	Value           *string            `json:"value,omitempty"`
+	ExtraCurrencies *map[string]string `json:"extra_currencies,omitempty"`
 }
 
 type ActionDetailsContractDeploy struct {
@@ -518,11 +520,12 @@ type ActionDetailsContractDeploy struct {
 }
 
 type ActionDetailsTonTransfer struct {
-	Source      *AccountAddress `json:"source"`
-	Destination *AccountAddress `json:"destination"`
-	Value       *string         `json:"value"`
-	Comment     *string         `json:"comment"`
-	Encrypted   *bool           `json:"encrypted"`
+	Source          *AccountAddress    `json:"source"`
+	Destination     *AccountAddress    `json:"destination"`
+	Value           *string            `json:"value"`
+	Comment         *string            `json:"comment"`
+	Encrypted       *bool              `json:"encrypted"`
+	ExtraCurrencies *map[string]string `json:"extra_currencies,omitempty"`
 }
 
 type ActionDetailsAuctionBid struct {

@@ -802,7 +802,8 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		(A.staking_data).provider,
 		(A.staking_data).ts_nft,
 		A.success,
-		A.trace_external_hash`
+		A.trace_external_hash,
+		A.value_extra_currencies`
 	clmn_query := clmn_query_default
 	from_query := `actions as A`
 	filter_list := []string{}
@@ -1996,7 +1997,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 				(A.dex_deposit_liquidity_data).lp_tokens_minted,
 				(A.staking_data).provider,
 				(A.staking_data).ts_nft,
-				A.success, A.trace_external_hash from actions as A where ` + filterByArray("A.trace_id", trace_id_list) + ` order by trace_id, start_lt, end_lt`
+				A.success, A.trace_external_hash, A.value_extra_currencies from actions as A where ` + filterByArray("A.trace_id", trace_id_list) + ` order by trace_id, start_lt, end_lt`
 			actions, err := queryRawActionsImpl(query, conn, settings)
 			if err != nil {
 				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query actions: %s", err.Error())}

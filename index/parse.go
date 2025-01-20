@@ -292,6 +292,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Source = raw.Source
 		details.Destination = raw.Destination
 		details.Value = raw.Value
+		details.ExtraCurrencies = &raw.ExtraCurrencies
+		if len(raw.ExtraCurrencies) > 0 {
+			act.Type = "extra_currency_transfer"
+		}
 		act.Details = &details
 	case "contract_deploy":
 		var details ActionDetailsContractDeploy
@@ -307,6 +311,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Value = raw.Value
 		details.Comment = raw.TonTransferContent
 		details.Encrypted = raw.TonTransferEncrypted
+		details.ExtraCurrencies = &raw.ExtraCurrencies
+		if len(raw.ExtraCurrencies) > 0 {
+			act.Type = "extra_currency_transfer"
+		}
 		act.Details = &details
 	case "auction_bid":
 		var details ActionDetailsAuctionBid
@@ -824,7 +832,8 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.StakingDataProvider,
 		&act.StakingDataTsNft,
 		&act.Success,
-		&act.TraceExternalHash)
+		&act.TraceExternalHash,
+		&act.ExtraCurrencies)
 
 	if err != nil {
 		return nil, err
