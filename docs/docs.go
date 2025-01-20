@@ -2489,6 +2489,9 @@ const docTemplate = `{
                 "success": {
                     "type": "boolean"
                 },
+                "trace_external_hash": {
+                    "type": "string"
+                },
                 "trace_id": {
                     "type": "string"
                 },
