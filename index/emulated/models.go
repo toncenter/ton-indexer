@@ -460,8 +460,8 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 		return Trace{}, fmt.Errorf("failed to decode key: %w", err)
 	}
 
-	first_key := base64.StdEncoding.EncodeToString(first_key_bytes)
-	queue = append(queue, first_key)
+	b64_trace_id := base64.StdEncoding.EncodeToString(first_key_bytes)
+	queue = append(queue, b64_trace_id)
 	txs := make([]traceNode, 0)
 	actions := make([]action, 0)
 	if actionsBytes, exists := traceHash["actions"]; exists {
@@ -481,7 +481,7 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 		nodeBytes := []byte(nodeData)
 		err = msgpack.Unmarshal(nodeBytes, &node)
 		node.Key = key
-		node.TraceId = traceId
+		node.TraceId = b64_trace_id
 		txs = append(txs, node)
 
 		if err != nil {
@@ -497,7 +497,7 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 	}
 	_, has_actions := traceHash["actions"]
 	return Trace{
-		TraceId:    traceId,
+		TraceId:    b64_trace_id,
 		Nodes:      txs,
 		Classified: has_actions,
 		Actions:    actions,
