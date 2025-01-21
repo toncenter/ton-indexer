@@ -450,6 +450,34 @@ async def process_emulated_trace(trace_id):
     actions, _ = serialize_blocks(blocks, trace_id)
     return actions, trace
 
+async def start_emulated_task_traces_processing():
+    pubsub = redis.client.pubsub()
+    await pubsub.subscribe(settings.emulated_traces_redis_channel)
+    while True:
+        message = await pubsub.get_message(timeout=1)
+        if message is not None and message['type'] == 'message':
+            task_id = message['data'].decode('utf-8')
+            try:
+                start = time.time()
+                actions = await process_emulated_task_trace(task_id)
+                await redis.client.hset("result_" + task_id, 'actions', msgpack.packb([a.to_dict() for a in actions]))
+                print("Processed task", task_id, "in", time.time() - start, "seconds", len(actions), "actions")
+                await redis.client.publish("classifier_result_channel_" + task_id, "success")
+            except Exception as e:
+                await redis.client.set("classifier_error_" + task_id, str(e))
+                await redis.client.publish("classifier_result_channel_" + task_id, "error")
+                logger.error(f"Failed to process emulated task {task_id}: {e}")
+                logger.exception(e, exc_info=True)
+
+async def process_emulated_task_trace(task_id):
+    trace_map = await redis.client.hgetall("result_" + task_id)
+    trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
+    trace_id = str(trace_map['root_node'], encoding='utf-8')
+    trace = deserialize_event(trace_id, trace_map)
+    context.interface_repository.set(EmulatedTransactionsInterfaceRepository(trace_map))
+    blocks = await process_event_async_with_postprocessing(trace)
+    actions, _ = serialize_blocks(blocks, trace_id)
+    return actions
 
 async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception]:
     if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock':
@@ -497,6 +525,9 @@ if __name__ == '__main__':
     parser.add_argument('--emulated-traces',
                         help='Process emulated traces',
                         action='store_true')
+    parser.add_argument('--emulated-trace-tasks',
+                        help='Process emulated traces tasks',
+                        action='store_true')
     parser.add_argument('--emulated-traces-redis-channel',
                         help='Redis channel for emulated traces',
                         default='new_trace',
@@ -511,7 +542,10 @@ if __name__ == '__main__':
     settings.emulated_traces_redis_response_channel = args.emulated_traces_redis_response_channel
     settings.emulated_traces = args.emulated_traces
 
-    if settings.emulated_traces:
+    if args.emulated_trace_tasks:
+        logger.info("Starting processing emulated trace tasks")
+        asyncio.run(start_emulated_task_traces_processing())
+    elif settings.emulated_traces:
         logger.info("Starting processing emulated traces")
         asyncio.run(start_emulated_traces_processing())
     else:
