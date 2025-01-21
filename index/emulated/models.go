@@ -283,7 +283,7 @@ type actionStakingData struct {
 	TsNft    *string `msgpack:"ts_nft"`
 }
 
-type action struct {
+type Action struct {
 	ActionId                 string                          `msgpack:"action_id"`
 	Type                     string                          `msgpack:"type"`
 	TraceId                  string                          `msgpack:"trace_id"`
@@ -318,7 +318,7 @@ type Trace struct {
 	TraceId    string
 	Nodes      []traceNode
 	Classified bool
-	Actions    []action
+	Actions    []Action
 }
 type traceNode struct {
 	Transaction transaction `msgpack:"transaction"`
@@ -463,7 +463,7 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 	b64_trace_id := base64.StdEncoding.EncodeToString(first_key_bytes)
 	queue = append(queue, b64_trace_id)
 	txs := make([]traceNode, 0)
-	actions := make([]action, 0)
+	actions := make([]Action, 0)
 	if actionsBytes, exists := traceHash["actions"]; exists {
 		err := msgpack.Unmarshal([]byte(actionsBytes), &actions)
 		if err != nil {
@@ -724,7 +724,7 @@ func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 	return messages, messageContents, nil, nil
 }
 
-func (a *action) GetActionRow() (ActionRow, error) {
+func (a *Action) GetActionRow() (ActionRow, error) {
 	// convert action hex trace id to base 64 trace id
 	traceId, err := hex.DecodeString(a.TraceId)
 	if err != nil {
