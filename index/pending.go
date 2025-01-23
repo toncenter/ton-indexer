@@ -52,6 +52,32 @@ func (c *EmulatedTracesContext) RemoveTraces(trace_ids []string) {
 	}
 }
 
+func (c *EmulatedTracesContext) GetTransactionsByTraceIdAndHash(trace_id HashType, tx_hashes []*HashType) []*emulated.TransactionRow {
+	txs := make([]*emulated.TransactionRow, 0)
+	for _, tx_hash := range tx_hashes {
+		for _, tx := range c.emulatedTransactions[string(trace_id)] {
+			if tx.Hash == string(*tx_hash) {
+				txs = append(txs, tx)
+			}
+		}
+	}
+	return txs
+}
+
+func (c *EmulatedTracesContext) FilterTraceActions(trace_action_map map[string][]string) {
+	for trace_id, action_ids := range trace_action_map {
+		filtered_actions := make([]*emulated.ActionRow, 0)
+		for _, action_id := range action_ids {
+			for _, action := range c.emulatedActions[trace_id] {
+				if action.ActionId == action_id {
+					filtered_actions = append(filtered_actions, action)
+				}
+			}
+		}
+		c.emulatedActions[trace_id] = filtered_actions
+	}
+}
+
 func (c *EmulatedTracesContext) RemoveTransactions(transaction_hashes []string) {
 	for _, tx_hash := range transaction_hashes {
 		for trace_id, txs := range c.emulatedTransactions {

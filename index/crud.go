@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -2992,6 +2993,112 @@ func (db *DbClient) QueryActions(
 		}
 	}
 	return actions, book, metadata, nil
+}
+
+// events
+func (db *DbClient) QueryPendingActions(
+	settings RequestSettings,
+	emulatedContext *EmulatedTracesContext,
+) ([]Action, AddressBook, error) {
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	action_rows := emulatedContext.GetActions()
+	var unfiltered_raw_actions_map = map[HashType]RawAction{}
+	var emulated_tx_hash_actions_map = map[HashType][]HashType{}
+
+	for _, row := range action_rows {
+		if action, err := ScanRawAction(row); err == nil {
+			unfiltered_raw_actions_map[action.ActionId] = *action
+			transactions := emulatedContext.GetTransactionsByTraceIdAndHash(action.TraceId, action.TxHashes)
+			all_emulated := true
+			var emulated_transaction_hashes []HashType
+			for _, tx := range transactions {
+				all_emulated = all_emulated && tx.Emulated
+				if tx.Emulated {
+					emulated_transaction_hashes = append(emulated_transaction_hashes, HashType(tx.Hash))
+				}
+			}
+			for _, tx_hash := range action.TxHashes {
+				if slices.Contains(emulated_transaction_hashes, *tx_hash) {
+					emulated_tx_hash_actions_map[*tx_hash] = append(emulated_tx_hash_actions_map[*tx_hash], action.ActionId)
+				}
+			}
+		} else {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+	}
+
+	var msg_hashes []string
+	msg_hash_to_tx := make(map[string]string)
+	for _, msgs := range emulatedContext.emulatedMessages {
+		for _, msg := range msgs {
+			msg_hash_to_tx[msg.MsgHash] = msg.TxHash
+			msg_hashes = append(msg_hashes, fmt.Sprintf("'%s'", msg.MsgHash))
+		}
+	}
+	msg_hashes_in := strings.Join(msg_hashes, ",")
+	query := fmt.Sprintf(`select msg_hash from messages where msg_hash in (%s) and direction = 'in'`, msg_hashes_in)
+	var present_msg_hashes []string
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		present_msg_hashes = append(present_msg_hashes, s)
+	}
+	var raw_actions []RawAction
+	var present_tx_hashes []HashType
+	for _, msg_hash := range present_msg_hashes {
+		tx_hash := msg_hash_to_tx[msg_hash]
+		present_tx_hashes = append(present_tx_hashes, HashType(tx_hash))
+	}
+
+	for _, action := range unfiltered_raw_actions_map {
+		any_transaction_emulated := true
+		for _, hash := range action.TxHashes {
+			if slices.Contains(present_tx_hashes, *hash) {
+				any_transaction_emulated = false
+				break
+			}
+		}
+		if any_transaction_emulated {
+			raw_actions = append(raw_actions, action)
+		}
+	}
+
+	actions := []Action{}
+	book := AddressBook{}
+	addr_map := map[string]bool{}
+	for _, raw_action := range raw_actions {
+		collectAddressesFromAction(&addr_map, &raw_action)
+		action, err := ParseRawAction(&raw_action)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		actions = append(actions, *action)
+	}
+	if len(addr_map) > 0 && !settings.NoAddressBook {
+		addr_list := []string{}
+		for k := range addr_map {
+			addr_list = append(addr_list, string(k))
+		}
+		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+	}
+	return actions, book, nil
 }
 
 func (db *DbClient) QueryTraces(

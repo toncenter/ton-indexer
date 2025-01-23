@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"context"
 	"flag"
 	"fmt"
@@ -294,7 +296,7 @@ func GetPendingTransactions(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "at least 1 account address required"}
 	}
 
-	emulatedContext, err := ContextForAccounts(emulatedTracesRepository, tx_req.Account, true, true)
+	emulatedContext, err := ContextForAccounts(emulatedTracesRepository, tx_req.Account, true, true, false)
 	if err != nil {
 		return err
 	}
@@ -1144,7 +1146,7 @@ func GetPendingEvents(c *fiber.Ctx) error {
 	}
 
 	emulatedContext, err := ContextForAccounts(emulatedTracesRepository,
-		[]index.AccountAddress{*event_req.AccountAddress}, false, false)
+		[]index.AccountAddress{*event_req.AccountAddress}, false, false, false)
 
 	if err != nil {
 		return err
@@ -1218,6 +1220,59 @@ func GetActions(c *fiber.Ctx) error {
 	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	resp := index.ActionsResponse{Actions: res, AddressBook: book, Metadata: metadata}
+	return c.Status(200).JSON(resp)
+}
+
+// @summary Get Pending Actions
+// @description Get actions by specified filter.
+// @id api_v3_get_pending_actions
+// @tags events
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	index.ActionsResponse
+// @failure		400	{object}	index.RequestError
+// @param account query string false "List of account addresses to get actions. Can be sent in hex, base64 or base64url form."
+// @router			/api/v3/pendingActions [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetPendingActions(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	act_req := index.ActionRequest{}
+	lim_req := index.LimitRequest{}
+	utime_req := index.UtimeRequest{}
+	lt_req := index.LtRequest{}
+
+	if err := c.QueryParser(&act_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&utime_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lt_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	emulatedContext, err := ActionContextForAccounts(emulatedTracesRepository,
+		[]index.AccountAddress{*act_req.AccountAddress})
+	if err != nil {
+		return err
+	}
+
+	res, book, err := pool.QueryPendingActions(request_settings, emulatedContext)
+	if err != nil {
+		return err
+	}
+	// if len(res) == 0 {
+	// 	return index.IndexError{Code: 404, Message: "actions not found"}
+	// }
+
+	resp := index.ActionsResponse{Actions: res, AddressBook: book}
 	return c.Status(200).JSON(resp)
 }
 
@@ -1565,7 +1620,8 @@ func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
 	}
 }
 
-func ContextForAccounts(repository *emulated.EmulatedTracesRepository, accounts []index.AccountAddress, emulated_only bool, filter_transactions bool) (
+func ContextForAccounts(repository *emulated.EmulatedTracesRepository, accounts []index.AccountAddress,
+	emulated_only bool, filter_transactions bool, use_action_index bool) (
 	*index.EmulatedTracesContext, error) {
 
 	if len(accounts) == 0 {
@@ -1574,7 +1630,14 @@ func ContextForAccounts(repository *emulated.EmulatedTracesRepository, accounts 
 	emulated_context := index.NewEmptyContext(emulated_only)
 	var trace_ids []string
 	for _, account := range accounts {
-		ids, err := repository.GetTraceIdsByAccount(string(account))
+
+		var ids []string
+		var err error
+		if use_action_index {
+			ids, err = repository.GetTraceIdsByAccount("_aai:" + string(account))
+		} else {
+			ids, err = repository.GetTraceIdsByAccount(string(account))
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1598,6 +1661,42 @@ func ContextForAccounts(repository *emulated.EmulatedTracesRepository, accounts 
 	}
 
 	return emulated_context, err
+}
+
+func ActionContextForAccounts(repository *emulated.EmulatedTracesRepository, accounts []index.AccountAddress) (
+	*index.EmulatedTracesContext, error) {
+	if len(accounts) == 0 {
+		return index.NewEmptyContext(false), nil
+	}
+	emulated_context := index.NewEmptyContext(false)
+	actions := make(map[string][]string)
+	trace_ids := make([]string, 0)
+	for _, account := range accounts {
+		res, err := repository.GetActionIdsByAccount(string(account))
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range res {
+			bytes, err := hex.DecodeString(k)
+			if err != nil {
+				return nil, err
+			}
+			trace_ids = append(trace_ids, k)
+
+			b64_trace_id := base64.StdEncoding.EncodeToString(bytes)
+			actions[b64_trace_id] = v
+		}
+	}
+	raw_traces, err := repository.LoadRawTraces(trace_ids)
+	if err != nil {
+		return nil, err
+	}
+	err = emulated_context.FillFromRawData(raw_traces)
+	if err != nil {
+		return nil, err
+	}
+	emulated_context.FilterTraceActions(actions)
+	return emulated_context, nil
 }
 
 func test() {
@@ -1729,6 +1828,7 @@ func main() {
 
 	app.Get("/api/v3/balanceChanges", GetBalanceChanges)
 	app.Get("/api/v3/pendingEvents", GetPendingEvents)
+	app.Get("/api/v3/pendingActions", GetPendingActions)
 
 	// api/v2 proxied
 	app.Get("/api/v3/addressInformation", GetV2AddressInformation)

@@ -60,3 +60,35 @@ func (receiver *EmulatedTracesRepository) GetTraceIdsByAccount(account string) (
 	}
 	return trace_ids, nil
 }
+
+func (receiver *EmulatedTracesRepository) GetActionIdsByAccount(account string) (map[string][]string, error) {
+	scores := receiver.Rdb.ZRevRangeWithScores(context.Background(), "_aai:"+account, 0, -1)
+	result, err := scores.Result()
+	actions := make(map[string][]string)
+	if err != nil {
+		return nil, err
+	}
+	for _, z := range result {
+		key := z.Member.(string)
+		// split key by :
+		split := strings.Split(key, ":")
+		if len(split) != 2 {
+			return nil, errors.New("Invalid key format")
+		}
+		trace_id := split[0]
+		action_id := split[1]
+		keys_query := receiver.Rdb.Keys(context.Background(), trace_id)
+		key_query_result, err := keys_query.Result()
+		if err != nil {
+			return nil, err
+		}
+		if len(key_query_result) == 0 {
+			return nil, nil
+		}
+		if _, ok := actions[trace_id]; !ok {
+			actions[trace_id] = make([]string, 0)
+		}
+		actions[trace_id] = append(actions[trace_id], action_id)
+	}
+	return actions, nil
+}
