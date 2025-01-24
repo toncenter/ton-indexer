@@ -2994,3 +2994,56 @@ func (db *DbClient) QueryTraces(
 
 	return res, book, metadata, nil
 }
+
+func (db *DbClient) QueryBalanceChanges(
+	req BalanceChangesRequest,
+	settings RequestSettings,
+) (BalanceChangesResult, error) {
+	trace_id := req.TraceId
+	if trace_id == nil && req.ActionId == nil {
+		return BalanceChangesResult{}, IndexError{Code: 400, Message: "trace_id or action_id is required"}
+	}
+
+	conn, err := db.Pool.Acquire(context.Background())
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+	if err != nil {
+		return BalanceChangesResult{}, IndexError{Code: 500, Message: err.Error()}
+	}
+	if trace_id == nil && req.ActionId != nil {
+		query := "SELECT trace_id FROM actions WHERE action_id = $1"
+		err := conn.QueryRow(ctx, query, *req.ActionId).Scan(&trace_id)
+		if err != nil {
+			return BalanceChangesResult{}, IndexError{Code: 404, Message: "action_id not found"}
+		}
+	}
+
+	if trace_id == nil {
+		return BalanceChangesResult{}, IndexError{Code: 400, Message: "trace_id is required"}
+	}
+
+	trace_changes, actions_changes, err := CalculateBalanceChanges(HashType(*trace_id), conn)
+	if err != nil {
+		return BalanceChangesResult{}, IndexError{Code: 500, Message: err.Error()}
+	}
+	var targetChanges *BalanceChanges = trace_changes
+	if req.ActionId != nil {
+		if v, ok := actions_changes[HashType(*req.ActionId)]; ok {
+			targetChanges = v
+		} else {
+			return BalanceChangesResult{}, nil
+		}
+	}
+	jetton_changes := make(map[AccountAddress]map[AccountAddress]string)
+	for accountAddress, jettons := range targetChanges.Jettons {
+		jetton_changes[accountAddress] = make(map[AccountAddress]string)
+		for jetton, balance := range jettons {
+			jetton_changes[accountAddress][jetton] = balance.String()
+		}
+	}
+	return BalanceChangesResult{
+		Ton:     targetChanges.get_summarized_balance_changes(),
+		Fees:    targetChanges.Fees,
+		Jettons: jetton_changes,
+	}, nil
+}

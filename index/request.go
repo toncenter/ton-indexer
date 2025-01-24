@@ -125,6 +125,11 @@ type ActionRequest struct {
 	ExcludeActionTypes []string        `query:"exclude_action_type"`
 }
 
+type BalanceChangesRequest struct {
+	TraceId  *string `query:"trace_id"`
+	ActionId *string `query:"action_id"`
+}
+
 type TracesRequest struct {
 	IncludeActions  bool            `query:"include_actions"`
 	AccountAddress  *AccountAddress `query:"account"`

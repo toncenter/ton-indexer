@@ -813,6 +813,12 @@ type V2EstimateFeeResult struct {
 	DestinationFees []V2EstimatedFee `json:"destination_fees"`
 } // @name V2EstimateFeeResult
 
+type BalanceChangesResult struct {
+	Ton     map[AccountAddress]int64                     `json:"changes"`
+	Fees    map[AccountAddress]int64                     `json:"fees"`
+	Jettons map[AccountAddress]map[AccountAddress]string `json:"jettons"`
+}
+
 // converters
 func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, error) {
 	var info V2AddressInformation

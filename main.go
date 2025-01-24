@@ -1389,6 +1389,21 @@ func GetTestMethod(c *fiber.Ctx) error {
 	return c.Status(200).JSON(test_req)
 }
 
+func GetBalanceChanges(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	req := index.BalanceChangesRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	res, err := pool.QueryBalanceChanges(req, request_settings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(res)
+}
+
 func HealthCheck(c *fiber.Ctx) error {
 	return c.Status(200).SendString("OK")
 }
@@ -1569,6 +1584,8 @@ func main() {
 	app.Get("/api/v3/actions", GetActions)
 	app.Get("/api/v3/traces", GetTraces)
 	app.Get("/api/v3/events", GetTraces)
+
+	app.Get("/api/v3/balanceChanges", GetBalanceChanges)
 
 	// api/v2 proxied
 	app.Get("/api/v3/addressInformation", GetV2AddressInformation)
