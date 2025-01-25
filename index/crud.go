@@ -3036,8 +3036,10 @@ func (db *DbClient) QueryPendingActions(
 	msg_hash_to_tx := make(map[string]string)
 	for _, msgs := range emulatedContext.emulatedMessages {
 		for _, msg := range msgs {
-			msg_hash_to_tx[msg.MsgHash] = msg.TxHash
-			msg_hashes = append(msg_hashes, fmt.Sprintf("'%s'", msg.MsgHash))
+			if msg.Direction == "in" {
+				msg_hash_to_tx[msg.MsgHash] = msg.TxHash
+				msg_hashes = append(msg_hashes, fmt.Sprintf("'%s'", msg.MsgHash))
+			}
 		}
 	}
 	msg_hashes_in := strings.Join(msg_hashes, ",")
