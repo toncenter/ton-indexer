@@ -75,6 +75,10 @@ async def _get_block_data(block, other_blocks):
         elif payment_request.exit_code == stonfi_swap_ok_ref_exit_code:
             ref_amt = amount
             ref_addr = addr
+            for b in payment_request_block.bfs_iter():
+                if b in other_blocks:
+                    other_blocks.remove(b)
+
     actual_out_addr = out_addr
     if isinstance(block, JettonTransferBlock) and block.jetton_transfer_message.stonfi_swap_body is not None:
         out_addr = block.jetton_transfer_message.stonfi_swap_body['jetton_wallet']
@@ -188,12 +192,8 @@ class StonfiV2SwapBlockMatcher(BlockMatcher):
     deposit_ref_fee_opcode = 0x0490f09b
 
     def __init__(self):
-        ref_payout_matcher = labeled('ref_payout', ContractMatcher(
-            opcode=self.pay_vault_opcode,
-            optional=True,
-            child_matcher=ContractMatcher(opcode=self.deposit_ref_fee_opcode, include_excess=True)))
 
-        payout_matcher = labeled('payout', ContractMatcher(self.pay_to_opcode, child_matcher=ref_payout_matcher))
+        payout_matcher = labeled('payout', ContractMatcher(self.pay_to_opcode, child_matcher=None))
 
         peer_swap_matcher = labeled('peer_swap', ContractMatcher(self.swap_opcode,
                                                                  child_matcher=payout_matcher,
@@ -213,7 +213,7 @@ class StonfiV2SwapBlockMatcher(BlockMatcher):
                                  in_pton_transfer])
 
         super().__init__(parent_matcher=in_transfer, optional=False,
-                         children_matchers=[ref_payout_matcher, payout_matcher])
+                         child_matcher=payout_matcher)
 
     def test_self(self, block: Block):
         return isinstance(block, CallContractBlock) and block.opcode == self.swap_opcode
@@ -234,7 +234,6 @@ class StonfiV2SwapBlockMatcher(BlockMatcher):
         peer_swap_blocks = [block]
         in_transfer = None
         out_transfer = None
-        ref_payout = None
         for b in blocks:
             if isinstance(b, LabelBlock):
                 match b.label:
@@ -242,8 +241,6 @@ class StonfiV2SwapBlockMatcher(BlockMatcher):
                         peer_swap_blocks.append(b.block)
                     case 'payout':
                         peer_swap_blocks[-1] = (peer_swap_blocks[-1], b.block)
-                    case 'ref_payout':
-                        ref_payout = b.block
                     case 'out_transfer':
                         out_transfer = b.block
                     case 'in_transfer':

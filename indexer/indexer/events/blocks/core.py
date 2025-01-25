@@ -268,8 +268,11 @@ class Block:
     def __repr__(self):
         return f"!{self.btype}:={self.data}"
 
-    def bfs_iter(self):
-        queue = [self]
+    def bfs_iter(self, include_self=True):
+        if include_self:
+            queue = [self]
+        else:
+            queue = [n for n in self.next_blocks]
         while len(queue) > 0:
             cur = queue.pop(0)
             yield cur
