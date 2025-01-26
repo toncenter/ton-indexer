@@ -3,6 +3,19 @@ from pytoniq_core import Slice
 from indexer.core.database import Message, Transaction
 from indexer.events.blocks.messages import JettonNotify, JettonTransfer
 
+def extract_target_wallet_stonfi_v2_swap(message: Message) -> set[str]:
+    accounts = set()
+    slice = Slice.one_from_boc(message.message_content.body)
+    slice.skip_bits(32 + 64)  # opcode + query_id
+    slice.load_coins()
+    slice.load_address()
+    payload = slice.load_ref().to_slice() if slice.load_bit() else slice.copy()
+    if payload.remaining_bits > 0:
+        opcode = payload.load_uint(32)
+        if opcode == 0x6664de2a:
+            address = payload.load_address()
+            accounts.add(address.to_str(False).upper())
+    return accounts
 
 def extract_target_wallet_stonfi_swap(message: Message) -> set[str]:
     accounts = set()
@@ -14,9 +27,14 @@ def extract_target_wallet_stonfi_swap(message: Message) -> set[str]:
 def extract_additional_addresses(tx: Transaction) -> set[str]:
     accounts = set()
     for msg in tx.messages:
+        if msg.opcode is None:
+            continue
+        opcode = msg.opcode & 0xFFFFFFFF
         try:
-            if msg.opcode == JettonTransfer.opcode or (msg.opcode & 0xFFFFFFFF == JettonTransfer.opcode):
+            if opcode == JettonTransfer.opcode:
                 accounts.update(extract_target_wallet_stonfi_swap(msg))
+            if opcode == JettonNotify.opcode:
+                accounts.update(extract_target_wallet_stonfi_v2_swap(msg))
         except Exception:
             pass
     return accounts

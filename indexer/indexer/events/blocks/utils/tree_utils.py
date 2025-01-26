@@ -63,6 +63,13 @@ class EventNode:
         else:
             return None
 
+    def get_tx(self):
+        if self.is_tick_tock and self.tick_tock_tx is not None:
+            return self.tick_tock_tx
+        elif self.message is not None:
+            return self.message.transaction
+        else:
+            return None
 
     def get_lt(self):
         if self.is_tick_tock and self.tick_tock_tx is not None:

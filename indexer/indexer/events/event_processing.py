@@ -1,23 +1,28 @@
 from __future__ import annotations
 
-import base64
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from indexer.events.blocks.utils import AccountId
-from indexer.core.database import Trace, engine, TraceEdge
-from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock
-from indexer.events.blocks.core import Block
+from indexer.core.database import Trace, engine
 from indexer.events.blocks.auction import AuctionBidMatcher
+from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock, ContractDeploy
+from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
-from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher
+from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher, JettonMintBlockMatcher, \
+    PTonTransferMatcher
+from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, DedustWithdrawBlockMatcher, \
+    post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher
 from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher
+from indexer.events.blocks.staking import TONStakersDepositMatcher, TONStakersWithdrawMatcher, \
+    TONStakersDelayedWithdrawalMatcher, NominatorPoolDepositMatcher, NominatorPoolWithdrawRequestMatcher, \
+    NominatorPoolWithdrawMatcher
 from indexer.events.blocks.subscriptions import SubscriptionBlockMatcher, UnsubscribeBlockMatcher
-from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher
+from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher, StonfiV2SwapBlockMatcher
+from indexer.events.blocks.utils import AccountId
 from indexer.events.blocks.utils import NoMessageBodyException
 from indexer.events.blocks.utils import to_tree, EventNode
 
@@ -39,13 +44,36 @@ def init_block(node: EventNode) -> Block:
         block.connect(init_block(child))
     return block
 
+async def unwind_deployments(blocks: list[Block]) -> list[Block]:
+    visited = set()
+    for block in blocks:
+        queue = block.children_blocks.copy()
+        while len(queue) > 0:
+            child = queue.pop(0)
+            if isinstance(child, ContractDeploy) and child not in visited:
+                blocks.append(child)
+            else:
+                queue.extend(child.children_blocks)
+            visited.add(child)
+    return blocks
 
 matchers = [
     NftMintBlockMatcher(),
+    TONStakersDelayedWithdrawalMatcher(),
+    DedustDepositBlockMatcher(),
+    DedustDepositFirstAssetBlockMatcher(),
+    TONStakersDepositMatcher(),
+    TONStakersWithdrawMatcher(),
+    NominatorPoolDepositMatcher(),
+    NominatorPoolWithdrawRequestMatcher(),
+    NominatorPoolWithdrawMatcher(),
     JettonTransferBlockMatcher(),
+    PTonTransferMatcher(),
+    DedustWithdrawBlockMatcher(),
     JettonBurnBlockMatcher(),
     DedustSwapBlockMatcher(),
     StonfiSwapBlockMatcher(),
+    StonfiV2SwapBlockMatcher(),
     NftTransferBlockMatcher(),
     TelegramNftPurchaseBlockMatcher(),
     ChangeDnsRecordMatcher(),
@@ -53,7 +81,15 @@ matchers = [
     ElectionRecoverStakeBlockMatcher(),
     SubscriptionBlockMatcher(),
     UnsubscribeBlockMatcher(),
-    AuctionBidMatcher()
+    AuctionBidMatcher(),
+    JettonMintBlockMatcher(),
+    StonfiV2ProvideLiquidityMatcher(),
+    StonfiV2WithdrawLiquidityMatcher()
+]
+
+trace_post_processors = [
+    post_process_dedust_liquidity,
+    unwind_deployments
 ]
 
 
@@ -73,3 +109,11 @@ async def process_event_async(trace: Trace) -> Block:
     except Exception as e:
         logging.error(f"Failed to process {trace.trace_id}")
         raise e
+
+async def process_event_async_with_postprocessing(trace: Trace) -> list[Block]:
+    block = await process_event_async(trace)
+    blocks = [block] + list(block.bfs_iter())
+
+    for post_processor in trace_post_processors:
+        blocks = await post_processor(blocks)
+    return blocks

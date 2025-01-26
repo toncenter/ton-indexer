@@ -35,18 +35,29 @@ class AuctionBidMatcher(BlockMatcher):
         bid_block = AuctionBid({})
 
         if 'NftAuction' in interfaces:
-            bid_block.data = {
+            nft_address = interfaces['NftAuction']['nft_addr']
+            nft_item = await context.interface_repository.get().get_nft_item(nft_address)
+            data = {
                 'amount': Amount(block.event_nodes[0].message.value),
                 'bidder': AccountId(block.event_nodes[0].message.source),
                 'auction': AccountId(block.event_nodes[0].message.destination),
-                'nft_address': AccountId(interfaces['NftAuction']['nft_addr']),
+                'nft_address': AccountId(nft_address),
+                'nft_item_index': None,
+                'nft_collection': None
             }
+            if nft_item:
+                data['nft_item_index'] = nft_item.index
+                data['nft_collection'] = AccountId(nft_item.collection_address)
+            bid_block.data = data
         elif 'NFTItem' in interfaces and _is_teleitem(interfaces['NFTItem']):
+            nft_data = interfaces['NFTItem']
             bid_block.data = {
                 'amount': Amount(block.event_nodes[0].message.value),
                 'bidder': AccountId(block.event_nodes[0].message.source),
                 'auction': AccountId(block.event_nodes[0].message.destination),
                 'nft_address': AccountId(block.event_nodes[0].message.destination),
+                'nft_collection': AccountId(nft_data['collection_address']) if nft_data['collection_address'] is not None else None,
+                'nft_item_index': nft_data['index'] if nft_data['index'] is not None else None
             }
         else:
             return []

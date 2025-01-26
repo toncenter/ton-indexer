@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Callable, Iterable
 
+from pytoniq_core import Slice
+
+from indexer.core.database import Message
 from indexer.events.blocks.utils import AccountId
 from indexer.events.blocks.utils.tree_utils import EventNode
 
@@ -15,7 +18,7 @@ def _get_direction_for_block(block: Block) -> int:
 def _ensure_earliest_common_block(blocks: list[Block]) -> Block | None:
     """Ensures that all blocks have a common block in their previous blocks, and returns it."""
     # find block with min min_lt
-    blocks = sorted(blocks, key=lambda b: (b.min_lt, _get_direction_for_block(b)))
+    blocks = sorted(blocks, key=lambda b: (b.min_lt_without_initiating_tx, _get_direction_for_block(b)))
     earliest_node_in_block = blocks[0]
     connected = [earliest_node_in_block]
     for block in blocks:
@@ -97,6 +100,7 @@ class Block:
     children_blocks: list[Block]
     next_blocks: list[Block]
     contract_deployments: set[AccountId]
+    initiating_event_node: EventNode | None
     failed: bool
     previous_block: Block
     parent: Block
@@ -105,12 +109,15 @@ class Block:
     min_utime: int
     max_utime: int
     max_lt: int
+    min_lt_without_initiating_tx: int
     type: str
     value_flow: AccountValueFlow
+    transient: bool
 
     def __init__(self, type: str, nodes: list[EventNode], v=None):
         self.failed = False
         self.broken = False
+        self.transient = False
         self.event_nodes = nodes
         self.children_blocks = []
         self.next_blocks = []
@@ -119,25 +126,36 @@ class Block:
         self.btype = type
         self.data = v
         self.contract_deployments = set()
+        self.initiating_event_node = None
         self.value_flow = AccountValueFlow()
         if len(nodes) != 0:
             self.min_lt = nodes[0].message.transaction.lt
             self.max_lt = nodes[0].message.transaction.lt
             self.min_utime = nodes[0].message.transaction.now
             self.max_utime = nodes[0].message.transaction.now
+            self.min_lt_without_initiating_tx = nodes[0].message.transaction.lt
             self._find_contract_deployments()
+        if len(nodes) == 1:
+            parent = nodes[0].parent
+            self.initiating_event_node = parent
 
         else:
             self.min_lt = 0
             self.max_lt = 0
             self.min_utime = 0
             self.max_utime = 0
+            self.min_lt_without_initiating_tx = 0
 
     def calculate_min_max_lt(self):
         self.min_lt = min(n.message.transaction.lt for n in self.event_nodes)
+        self.min_lt_without_initiating_tx = self.min_lt
         self.min_utime = min(n.message.transaction.now for n in self.event_nodes)
         self.max_lt = max(n.message.transaction.lt for n in self.event_nodes)
         self.max_utime = max(n.message.transaction.now for n in self.event_nodes)
+        if (self.initiating_event_node is not None and self.initiating_event_node.message is not None
+                and self.initiating_event_node.message.transaction is not None):
+            self.min_lt = min(self.min_lt, self.initiating_event_node.message.transaction.lt)
+            self.min_utime = min(self.min_utime, self.initiating_event_node.message.transaction.now)
 
     def iter_prev(self, predicate: Callable[[Block], bool]) -> Iterable[Block]:
         """Iterates over all previous blocks that match predicate, starting from the closest one."""
@@ -168,7 +186,7 @@ class Block:
         #     else:
         #         blocks_to_merge.append(block)
         """Merges all blocks into one. Preserves structure"""
-        blocks_to_merge = list(set(blocks))
+        blocks_to_merge = [b for b in set(blocks) if b.transient is False]
         earliest_block = _ensure_earliest_common_block(blocks_to_merge)
         if earliest_block is None:
             raise "Earliest common block not found"
@@ -185,6 +203,7 @@ class Block:
         self.previous_block = earliest_block.previous_block
         if earliest_block.previous_block is not None:
             earliest_block.previous_block.compact_connections()
+        self.initiating_event_node = earliest_block.initiating_event_node
         self.calculate_min_max_lt()
 
     def find_next(self,
@@ -207,9 +226,31 @@ class Block:
             if should_extend_queue:
                 queue.extend([(c, depth + 1) for c in node.next_blocks])
 
+    def get_body(self) -> Slice:
+        return Slice.one_from_boc(self.event_nodes[0].message.message_content.body)
+
+    def get_message(self) -> Message:
+        return self.event_nodes[0].message
+
     def connect(self, other: 'Block'):
         self.next_blocks.append(other)
         other.previous_block = self
+
+    def insert_between(self, next_blocks: ['Block'], new_block: 'Block'):
+        assert all(n in self.next_blocks for n in next_blocks)
+        for child in self.children_blocks:
+            for next_block in next_blocks:
+                if next_block in child.next_blocks:
+                    child.next_blocks.remove(next_block)
+                    child.next_blocks.append(new_block)
+        self.next_blocks = [n for n in self.next_blocks if n not in next_blocks]
+        for next_block in next_blocks:
+            for child in next_block.children_blocks:
+                if child.previous_block == next_block:
+                    child.previous_block = new_block
+        self.connect(new_block)
+        for next_block in next_blocks:
+            new_block.connect(next_block)
 
     def topmost_parent(self):
         if self.parent is None:
@@ -227,8 +268,11 @@ class Block:
     def __repr__(self):
         return f"!{self.btype}:={self.data}"
 
-    def bfs_iter(self):
-        queue = [self]
+    def bfs_iter(self, include_self=True):
+        if include_self:
+            queue = [self]
+        else:
+            queue = [n for n in self.next_blocks]
         while len(queue) > 0:
             cur = queue.pop(0)
             yield cur
@@ -281,3 +325,7 @@ class SingleLevelWrapper(Block):
 
         self.compact_connections()
         self.calculate_min_max_lt()
+
+class EmptyBlock(Block):
+    def __init__(self):
+        super().__init__('empty', [], None)
