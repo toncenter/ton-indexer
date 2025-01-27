@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from pytoniq_core import Address, Cell, ExternalAddress, Slice
-from pytoniq_core.boc.address import typing
+from pytoniq_core import Cell, Slice
 
 
 class MultisigNewOrder:
@@ -95,6 +94,6 @@ class MultisigApproveRejected:
     opcode = 0xAFAF283E
 
     def __init__(self, slice: Slice):
-        slice.load_uint(32) # op
-        slice.load_uint(64) # query_id
+        slice.load_uint(32)  # op
+        slice.load_uint(64)  # query_id
         self.exit_code = slice.load_uint(32)
