@@ -3009,27 +3009,28 @@ func (db *DbClient) QueryPendingActions(
 	for trace_id, _ := range emulatedContext.emulatedActions {
 		trace_ids = append(trace_ids, fmt.Sprintf(`'%s'`, trace_id))
 	}
-	msg_hashes_in := strings.Join(trace_ids, ",")
-	query := fmt.Sprintf(`select M.msg_hash from messages as M
-		join traces as T on T.trace_id = M.trace_id
-		where M.msg_hash in (%s) and T.state='complete'`, msg_hashes_in)
-	println(query)
-	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-	defer cancel_ctx()
-	rows, err := conn.Query(ctx, query)
-	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
-	}
-	defer rows.Close()
-	var trace_ids_to_remove []string
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
+	if len(trace_ids) > 0 {
+		msg_hashes_in := strings.Join(trace_ids, ",")
+		query := fmt.Sprintf(`select M.msg_hash from messages as M
+			join traces as T on T.trace_id = M.trace_id
+			where M.msg_hash in (%s) and T.state='complete'`, msg_hashes_in)
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		rows, err := conn.Query(ctx, query)
+		if err != nil {
 			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
-		trace_ids_to_remove = append(trace_ids_to_remove, s)
+		defer rows.Close()
+		var trace_ids_to_remove []string
+		for rows.Next() {
+			var s string
+			if err := rows.Scan(&s); err != nil {
+				return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+			trace_ids_to_remove = append(trace_ids_to_remove, s)
+		}
+		emulatedContext.RemoveTraces(trace_ids_to_remove)
 	}
-	emulatedContext.RemoveTraces(trace_ids_to_remove)
 
 	var raw_actions []RawAction
 	for _, actions := range emulatedContext.GetActions() {
@@ -3187,29 +3188,31 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 				msg_hashes = append(msg_hashes, fmt.Sprintf("'%s'", msg.MsgHash))
 			}
 		}
-		msg_hashes_in := strings.Join(msg_hashes, ",")
-		query := fmt.Sprintf(`select msg_hash from messages where msg_hash in (%s) and direction = 'in'`, msg_hashes_in)
-		var present_msg_hashes []string
-		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-		defer cancel_ctx()
-		rows, err := conn.Query(ctx, query)
-		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var s string
-			if err := rows.Scan(&s); err != nil {
+		if len(msg_hashes) > 0 {
+			msg_hashes_in := strings.Join(msg_hashes, ",")
+			query := fmt.Sprintf(`select msg_hash from messages where msg_hash in (%s) and direction = 'in'`, msg_hashes_in)
+			var present_msg_hashes []string
+			ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+			defer cancel_ctx()
+			rows, err := conn.Query(ctx, query)
+			if err != nil {
 				return nil, IndexError{Code: 500, Message: err.Error()}
 			}
-			present_msg_hashes = append(present_msg_hashes, s)
-			println(s)
+			defer rows.Close()
+			for rows.Next() {
+				var s string
+				if err := rows.Scan(&s); err != nil {
+					return nil, IndexError{Code: 500, Message: err.Error()}
+				}
+				present_msg_hashes = append(present_msg_hashes, s)
+				println(s)
+			}
+			tx_hashes_to_remove := []string{}
+			for _, msg_hash := range present_msg_hashes {
+				tx_hashes_to_remove = append(tx_hashes_to_remove, msg_hash_to_tx[msg_hash])
+			}
+			emulatedContext.RemoveTransactions(tx_hashes_to_remove)
 		}
-		tx_hashes_to_remove := []string{}
-		for _, msg_hash := range present_msg_hashes {
-			tx_hashes_to_remove = append(tx_hashes_to_remove, msg_hash_to_tx[msg_hash])
-		}
-		emulatedContext.RemoveTransactions(tx_hashes_to_remove)
 	}
 	txs_map := map[HashType]int{}
 	{
