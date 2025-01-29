@@ -3005,32 +3005,11 @@ func (db *DbClient) QueryPendingActions(
 	}
 	defer conn.Release()
 
-	var trace_ids []string
-	for trace_id, _ := range emulatedContext.emulatedActions {
-		trace_ids = append(trace_ids, fmt.Sprintf(`'%s'`, trace_id))
+	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings)
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
-	if len(trace_ids) > 0 {
-		msg_hashes_in := strings.Join(trace_ids, ",")
-		query := fmt.Sprintf(`select M.msg_hash from messages as M
-			join traces as T on T.trace_id = M.trace_id
-			where M.msg_hash in (%s) and T.state='complete'`, msg_hashes_in)
-		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-		defer cancel_ctx()
-		rows, err := conn.Query(ctx, query)
-		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
-		}
-		defer rows.Close()
-		var trace_ids_to_remove []string
-		for rows.Next() {
-			var s string
-			if err := rows.Scan(&s); err != nil {
-				return nil, nil, IndexError{Code: 500, Message: err.Error()}
-			}
-			trace_ids_to_remove = append(trace_ids_to_remove, s)
-		}
-		emulatedContext.RemoveTraces(trace_ids_to_remove)
-	}
+	emulatedContext.RemoveTraces(completed_traces)
 
 	var raw_actions []RawAction
 	for _, actions := range emulatedContext.GetActions() {
@@ -3180,6 +3159,14 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 	txs := []Transaction{}
 	// find transactions that already present in db
 	if filterCompletedTransaction {
+		// Find fully completed traces
+		completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings)
+		if err != nil {
+			return nil, err
+		}
+		emulatedContext.RemoveTraces(completed_traces)
+
+		// Filter partially completed traces
 		var msg_hashes []string
 		msg_hash_to_tx := make(map[string]string)
 		for _, msgs := range emulatedContext.emulatedMessages {
@@ -3231,12 +3218,9 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 	for _, t := range txs {
 		hash_list = append(hash_list, string(t.Hash))
 	}
-	// account states
 	if len(txs) == 0 {
 		return txs, nil
 	}
-
-	// messages
 	if len(hash_list) > 0 {
 		rows := emulatedContext.GetMessages(hash_list)
 		for _, row := range rows {
@@ -3366,6 +3350,36 @@ func queryPendingEventsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	//
 	return events, addr_list, nil
+}
+
+func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
+	conn *pgxpool.Conn, settings RequestSettings) ([]string, error) {
+
+	trace_ids := make([]string, 0)
+	for trace_id, _ := range emulatedContext.emulatedTransactions {
+		trace_ids = append(trace_ids, fmt.Sprintf("'%s'", trace_id))
+	}
+	if len(trace_ids) > 0 {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		query := fmt.Sprintf("select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id"+
+			" where M.msg_hash in (%s) and T.state='complete'",
+			strings.Join(trace_ids, ","))
+		rows, err := conn.Query(ctx, query)
+		if err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		completed_trace_ids_in_db := make([]string, 0)
+		for rows.Next() {
+			var trace_id string
+			if err := rows.Scan(&trace_id); err != nil {
+				return nil, IndexError{Code: 500, Message: err.Error()}
+			}
+			completed_trace_ids_in_db = append(completed_trace_ids_in_db, trace_id)
+		}
+		return completed_trace_ids_in_db, nil
+	}
+	return nil, nil
 }
 
 func (db *DbClient) QueryPendingTransactions(
