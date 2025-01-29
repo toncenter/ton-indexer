@@ -76,11 +76,11 @@ void IndexScheduler::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> 
     }
 
     ton::BlockSeqno next_seqno = from_seqno_;
-    std::vector<std::uint32_t> seqnos{R.move_as_ok()};
-    if (seqnos.size()) {
-        std::sort(seqnos.begin(), seqnos.end());
-        next_seqno = seqnos[0];
-        for (auto value : seqnos) {
+    auto existing_db_seqnos = R.move_as_ok();
+    if (existing_db_seqnos.size()) {
+        std::sort(existing_db_seqnos.begin(), existing_db_seqnos.end());
+        next_seqno = existing_db_seqnos[0];
+        for (auto value : existing_db_seqnos) {
             if (value == next_seqno) {
                 ++next_seqno;
             } else {
@@ -88,13 +88,20 @@ void IndexScheduler::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> 
             }
         }
         size_t accepted_cnt = next_seqno - from_seqno_;
-        LOG(INFO) << "Accepted " << accepted_cnt << " of " << seqnos.size() << " existing seqnos. Next seqno: " << next_seqno;
+        LOG(INFO) << "Accepted " << accepted_cnt << " of " << existing_db_seqnos.size() 
+                  << " existing seqnos in DB (continuous increasing sequence)";
+        LOG(INFO) << "Next seqno: " << next_seqno;
     }
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), next_seqno](td::Result<ton::BlockSeqno> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), from_seqno = from_seqno_, next_seqno](td::Result<ton::BlockSeqno> R) mutable {
         if (R.is_error()) {
             LOG(WARNING) << "TraceAssembler state not found for seqno " << next_seqno - 1;
-            LOG(WARNING) << "Traces that started before block " << next_seqno << " will be marked as broken and not inserted.";
+            if (next_seqno > from_seqno) {
+                // to make sure we don't miss any traces (we assume no trace lasts for longer than 50 mc blocks)
+                auto to_start_from = std::max(from_seqno, static_cast<int32_t>(next_seqno) - 50); 
+                next_seqno = static_cast<ton::BlockSeqno>(to_start_from);
+            }
+            LOG(WARNING) << "Traces that started before block " << next_seqno << " and will be marked as broken and not inserted.";
             td::actor::send_closure(SelfId, &IndexScheduler::got_trace_assembler_last_state_seqno, next_seqno - 1);
         } else {
             LOG(INFO) << "Restored TraceAssembler state for seqno " << R.ok();

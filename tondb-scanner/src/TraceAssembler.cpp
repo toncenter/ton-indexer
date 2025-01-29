@@ -115,12 +115,17 @@ void TraceAssembler::alarm() {
         }
     }, td::Timestamp::now());
 
-    LOG(INFO) << " Pending traces: " << pending_traces_.size()
+    LOG(INFO) << "Expected seqno: " << expected_seqno_
+              << " Pending traces: " << pending_traces_.size()
               << " Pending edges: " << pending_edges_.size()
               << " Broken traces: " << broken_count_;
 }
 
 void TraceAssembler::assemble(ton::BlockSeqno seqno, ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise) {
+    if (seqno < expected_seqno_) {
+        LOG(FATAL) << "TraceAssembler received seqno " << seqno << " that is lower than expected " << expected_seqno_;
+        return;
+    }
     queue_.emplace(seqno, Task{seqno, std::move(block), std::move(promise)});
 
     process_queue();
