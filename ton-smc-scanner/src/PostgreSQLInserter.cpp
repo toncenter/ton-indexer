@@ -74,7 +74,7 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
       }
   }
   std::ostringstream query;
-  query << "INSERT INTO latest_account_states (account, account_friendly, hash, balance, balance_extra_currencies"
+  query << "INSERT INTO latest_account_states (account, account_friendly, hash, balance, balance_extra_currencies, "
                                               "account_status, timestamp, last_trans_hash, last_trans_lt, "
                                               "frozen_hash, data_hash, code_hash, "
                                               "data_boc, code_boc) VALUES ";
