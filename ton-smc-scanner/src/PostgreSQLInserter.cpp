@@ -23,6 +23,17 @@ std::string content_to_json_string(const std::map<std::string, std::string> &con
   return jetton_content_json.string_builder().as_cslice().str();
 }
 
+std::string extra_currencies_to_json_string(const std::map<uint32_t, td::RefInt256> &extra_currencies) {
+  td::JsonBuilder extra_currencies_json;
+  auto obj = extra_currencies_json.enter_object();
+  for (auto &currency : extra_currencies) {
+    obj(std::to_string(currency.first), currency.second->to_dec_string());
+  }
+  obj.leave();
+
+  return extra_currencies_json.string_builder().as_cslice().str();
+}
+
 void PostgreSQLInserter::start_up() {
     try {
         pqxx::connection c(connection_string_);
@@ -63,7 +74,7 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
       }
   }
   std::ostringstream query;
-  query << "INSERT INTO latest_account_states (account, account_friendly, hash, balance, "
+  query << "INSERT INTO latest_account_states (account, account_friendly, hash, balance, balance_extra_currencies"
                                               "account_status, timestamp, last_trans_hash, last_trans_lt, "
                                               "frozen_hash, data_hash, code_hash, "
                                               "data_boc, code_boc) VALUES ";
@@ -103,6 +114,7 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
           << "NULL,"
           << transaction.quote(td::base64_encode(account_state.hash.as_slice())) << ","
           << account_state.balance.grams << ","
+          << transaction.quote(extra_currencies_to_json_string(account_state.balance.extra_currencies)) << ","
           << transaction.quote(account_state.account_status) << ","
           << account_state.timestamp << ","
           << transaction.quote(td::base64_encode(account_state.last_trans_hash.as_slice())) << ","
