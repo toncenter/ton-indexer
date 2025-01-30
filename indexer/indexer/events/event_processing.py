@@ -7,25 +7,73 @@ from sqlalchemy.orm import sessionmaker
 
 from indexer.core.database import Trace, engine
 from indexer.events.blocks.auction import AuctionBidMatcher
-from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock, ContractDeployBlock
+from indexer.events.blocks.basic_blocks import (
+    CallContractBlock,
+    ContractDeployBlock,
+    TonTransferBlock,
+)
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
-from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
-from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher, JettonMintBlockMatcher
-from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, DedustWithdrawBlockMatcher, \
-    post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher
+from indexer.events.blocks.elections import (
+    ElectionDepositStakeBlockMatcher,
+    ElectionRecoverStakeBlockMatcher,
+)
+from indexer.events.blocks.jettons import (
+    JettonBurnBlockMatcher,
+    JettonMintBlockMatcher,
+    JettonTransferBlockMatcher,
+)
+from indexer.events.blocks.jvault import (
+    JVaultClaimBlockMatcher,
+    JVaultStakeBlockMatcher,
+    JVaultUnstakeBlockMatcher,
+)
+from indexer.events.blocks.liquidity import (
+    DedustDepositBlockMatcher,
+    DedustDepositFirstAssetBlockMatcher,
+    DedustWithdrawBlockMatcher,
+    StonfiV2ProvideLiquidityMatcher,
+    StonfiV2WithdrawLiquidityMatcher,
+    post_process_dedust_liquidity,
+)
 from indexer.events.blocks.messages import TonTransferMessage
-from indexer.events.blocks.multisig import MultisigApproveBlockMatcher, MultisigCreateOrderBlockMatcher
-from indexer.events.blocks.vesting import VestingSendMessageBlockMatcher, VestingAddWhiteListBlockMatcher
-from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher, NftDiscoveryBlockMatcher
-from indexer.events.blocks.staking import TONStakersDepositMatcher, TONStakersWithdrawMatcher, \
-    TONStakersDelayedWithdrawalMatcher, NominatorPoolDepositMatcher, NominatorPoolWithdrawRequestMatcher, \
-    NominatorPoolWithdrawMatcher
-from indexer.events.blocks.subscriptions import SubscriptionBlockMatcher, UnsubscribeBlockMatcher
-from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher, StonfiV2SwapBlockMatcher
-from indexer.events.blocks.utils import AccountId
-from indexer.events.blocks.utils import NoMessageBodyException
-from indexer.events.blocks.utils import to_tree, EventNode
+from indexer.events.blocks.multisig import (
+    MultisigApproveBlockMatcher,
+    MultisigCreateOrderBlockMatcher,
+)
+from indexer.events.blocks.nft import (
+    NftDiscoveryBlockMatcher,
+    NftMintBlockMatcher,
+    NftTransferBlockMatcher,
+    TelegramNftPurchaseBlockMatcher,
+)
+from indexer.events.blocks.staking import (
+    NominatorPoolDepositMatcher,
+    NominatorPoolWithdrawMatcher,
+    NominatorPoolWithdrawRequestMatcher,
+    TONStakersDelayedWithdrawalMatcher,
+    TONStakersDepositMatcher,
+    TONStakersWithdrawMatcher,
+)
+from indexer.events.blocks.subscriptions import (
+    SubscriptionBlockMatcher,
+    UnsubscribeBlockMatcher,
+)
+from indexer.events.blocks.swaps import (
+    DedustSwapBlockMatcher,
+    StonfiSwapBlockMatcher,
+    StonfiV2SwapBlockMatcher,
+)
+from indexer.events.blocks.utils import (
+    AccountId,
+    EventNode,
+    NoMessageBodyException,
+    to_tree,
+)
+from indexer.events.blocks.vesting import (
+    VestingAddWhiteListBlockMatcher,
+    VestingSendMessageBlockMatcher,
+)
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
@@ -33,17 +81,27 @@ logger = logging.getLogger(__name__)
 
 def init_block(node: EventNode) -> Block:
     block = None
-    is_ton_transfer = (node.get_opcode() == 0 or node.get_opcode() is None or
-                       node.get_opcode() == TonTransferMessage.encrypted_opcode)
+    is_ton_transfer = (
+        node.get_opcode() == 0
+        or node.get_opcode() is None
+        or node.get_opcode() == TonTransferMessage.encrypted_opcode
+    )
     if node.is_tick_tock:
-        block = Block('tick_tock', [node], {'account': AccountId(node.tick_tock_tx.account)})
-    elif is_ton_transfer and node.message.destination is not None and node.message.source is not None:
+        block = Block(
+            "tick_tock", [node], {"account": AccountId(node.tick_tock_tx.account)}
+        )
+    elif (
+        is_ton_transfer
+        and node.message.destination is not None
+        and node.message.source is not None
+    ):
         block = TonTransferBlock(node)
     else:
         block = CallContractBlock(node)
     for child in node.children:
         block.connect(init_block(child))
     return block
+
 
 async def unwind_deployments(blocks: list[Block]) -> list[Block]:
     for block in blocks:
@@ -55,6 +113,7 @@ async def unwind_deployments(blocks: list[Block]) -> list[Block]:
             else:
                 queue.extend(child.children_blocks)
     return blocks
+
 
 matchers = [
     NftMintBlockMatcher(),
@@ -87,19 +146,19 @@ matchers = [
     AuctionBidMatcher(),
     JettonMintBlockMatcher(),
     StonfiV2ProvideLiquidityMatcher(),
-    StonfiV2WithdrawLiquidityMatcher()
+    StonfiV2WithdrawLiquidityMatcher(),
+    JVaultStakeBlockMatcher(),
+    JVaultUnstakeBlockMatcher(),
+    JVaultClaimBlockMatcher(),
 ]
 
-trace_post_processors = [
-    post_process_dedust_liquidity,
-    unwind_deployments
-]
+trace_post_processors = [post_process_dedust_liquidity, unwind_deployments]
 
 
 async def process_event_async(trace: Trace) -> Block:
     try:
         node = to_tree(trace.transactions)
-        root = Block('root', [])
+        root = Block("root", [])
         root.connect(init_block(node))
 
         for m in matchers:
@@ -112,6 +171,7 @@ async def process_event_async(trace: Trace) -> Block:
     except Exception as e:
         logging.error(f"Failed to process {trace.trace_id}")
         raise e
+
 
 async def process_event_async_with_postprocessing(trace: Trace) -> list[Block]:
     block = await process_event_async(trace)

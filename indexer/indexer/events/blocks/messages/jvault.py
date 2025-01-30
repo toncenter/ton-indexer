@@ -44,7 +44,7 @@ class JVaultReceiveJettons:
 
 
 class JVaultUnstakeJettons:
-    # ?? -> stake_wallet
+    # user -> stake_wallet
     # unstake_jettons#0x499a9262
     #     query_id:uint64
     #     jettons_to_unstake:Coins

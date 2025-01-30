@@ -2,31 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from time import sleep
-from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
+from time import sleep
+from typing import Any, Dict, List, Optional
 
+from sqlalchemy import (BigInteger, Boolean, Column, Enum, ForeignKey, Index,
+                        Integer, Numeric, String, create_engine)
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy_utils import create_database, database_exists, CompositeType
-
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric
-from sqlalchemy.schema import ForeignKeyConstraint
-from sqlalchemy import ForeignKey
-from sqlalchemy.orm import relationship
-
-from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.dialects.postgresql import JSONB
-
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 from sqlalchemy.future import select
-
+from sqlalchemy.orm import Session, relationship, sessionmaker
+from sqlalchemy.schema import ForeignKeyConstraint
+from sqlalchemy_utils import CompositeType, create_database, database_exists
 
 from indexer.core.settings import Settings
-
 
 logger = logging.getLogger(__name__)
 
@@ -298,6 +288,14 @@ class Action(Base):
         Column('dex_jetton_wallet_2', String),
         Column("lp_tokens_burnt", Numeric),
     ]))
+    jvault_claim_data = Column(CompositeType("jvault_claim_details", [
+        Column("claimed_jettons", ARRAY(String())),
+        Column("claimed_amounts", ARRAY(Numeric()))
+    ]))
+    jvault_stake_data = Column(CompositeType("jvault_stake_details", [
+        Column("period", Numeric),
+        Column("minted_stake_jettons", Numeric)
+    ]))
     multisig_create_order_data = Column(CompositeType("multisig_create_order_details", [
         Column("query_id", Numeric),
         Column("order_seqno", Numeric),
@@ -317,7 +315,7 @@ class Action(Base):
     ]))
     vesting_add_whitelist_data = Column(CompositeType("vesting_add_whitelist_details", [
         Column("query_id", Numeric),
-        Column("accounts_added", String), # separated by `,`
+        Column("accounts_added", ARRAY(String()))
     ]))
     staking_data = Column(CompositeType("staking_details", [
         Column("provider", String),

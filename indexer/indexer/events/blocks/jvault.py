@@ -33,6 +33,8 @@ from indexer.events.blocks.utils.block_utils import get_labeled
 @dataclass
 class JVaultStakeData:
     sender: AccountId
+    stake_wallet: AccountId
+    staking_pool: AccountId
     staked_amount: int
     period: int
     minted_stake_jettons: int
@@ -118,14 +120,21 @@ class JVaultStakeBlockMatcher(BlockMatcher):
         receive_block = get_labeled(
             "receive_stake_jettons_on_stake_wallet", other_blocks
         )
-        if not receive_block:
+        request_update_from_pool = get_labeled("request_update_rewards_from_pool", other_blocks)
+        if not receive_block or not request_update_from_pool:
             return []
+
         receive_info = JVaultReceiveJettons(receive_block.get_body())
         minted_stake_jettons = receive_info.received_jettons
 
+        stake_wallet = receive_block.get_message().destination
+        staking_pool = request_update_from_pool.get_message().destination
+
         new_block = JVaultStakeBlock(
             data=JVaultStakeData(
-                sender=sender,
+                sender=AccountId(sender),
+                stake_wallet=AccountId(stake_wallet),
+                staking_pool=AccountId(staking_pool),
                 staked_amount=staked_amount,
                 period=period,
                 minted_stake_jettons=minted_stake_jettons,
@@ -138,6 +147,8 @@ class JVaultStakeBlockMatcher(BlockMatcher):
 @dataclass
 class JVaultUnstakeData:
     sender: AccountId
+    stake_wallet: AccountId
+    staking_pool: AccountId
     unstaked_amount: int
     unstake_fee_taken: int
 
@@ -199,12 +210,22 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
         unstaked_amount = info.jettons_to_unstake
         unstake_fee = 0
         unstake_fee_block = get_labeled("unstake_fee", other_blocks, TonTransferBlock)
+
         if unstake_fee_block:
             unstake_fee = unstake_fee_block.get_message().value
+
+        request_update_from_pool = get_labeled("request_update_rewards_from_pool", other_blocks)
+        if not request_update_from_pool:
+            return []
+
+        stake_wallet = msg.destination
+        staking_pool = request_update_from_pool.get_message().destination
 
         new_block = JVaultUnstakeBlock(
             data=JVaultUnstakeData(
                 sender=AccountId(msg.source),
+                stake_wallet=AccountId(stake_wallet),
+                staking_pool=AccountId(staking_pool),
                 unstaked_amount=unstaked_amount,
                 unstake_fee_taken=unstake_fee,
             )
@@ -216,6 +237,8 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
 @dataclass
 class JVaultClaimData:
     sender: AccountId
+    stake_wallet: AccountId
+    staking_pool: AccountId
     claimed_jettons: list[AccountId]
     claimed_amounts: list[int]
 
@@ -270,13 +293,22 @@ class JVaultClaimBlockMatcher(BlockMatcher):
         withdrawal = get_labeled(
             "withdraw_claimed_jettons", other_blocks, JettonTransferBlock
         )
-        if not withdrawal:
+        send_to_pool = get_labeled(
+            "send_claimed_rewards", other_blocks, CallContractBlock
+        )
+        if not withdrawal or not send_to_pool:
             return []
+
         amount = withdrawal.jetton_transfer_message.amount
+        sender = msg.source
+        stake_wallet = msg.destination
+        staking_pool = send_to_pool.get_message().destination
 
         new_block = JVaultClaimBlock(
             data=JVaultClaimData(
-                sender=AccountId(msg.source),
+                sender=AccountId(sender),
+                stake_wallet=AccountId(stake_wallet),
+                staking_pool=AccountId(staking_pool),
                 claimed_jettons=list(map(AccountId, info.jettons_to_claim)),
                 claimed_amounts=[amount],
             )
