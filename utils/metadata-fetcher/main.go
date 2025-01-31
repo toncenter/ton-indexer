@@ -374,6 +374,56 @@ func calculateBackoffDelay(retry int) time.Duration {
 	return delay
 }
 
+func createTables(ctx context.Context, pool *pgxpool.Pool) error {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire connection: %v", err)
+	}
+	defer conn.Release()
+	_, err = conn.Exec(ctx, `
+		create unlogged table if not exists background_tasks 
+		(
+			id         bigint generated always as identity
+				constraint background_tasks_pk
+					primary key,
+			type       varchar,
+			status     varchar,
+			retries    integer default 0 not null,
+			retry_at   bigint,
+			started_at bigint,
+			data       jsonb,
+			error      varchar
+		) 
+	`)
+
+	if err != nil {
+		return fmt.Errorf("failed to create background_tasks table: %v", err)
+	}
+
+	_, err = conn.Exec(ctx, `
+		create table if not exists address_metadata
+		(
+			address     varchar not null,
+			type        varchar not null,
+			valid       boolean default true,
+			name        varchar,
+			description varchar,
+			extra       jsonb,
+			symbol      varchar,
+			image       varchar,
+			updated_at  bigint,
+			expires_at  bigint,
+			constraint address_metadata_pk
+				primary key (address, type)
+		)`,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to create address_metadata table: %v", err)
+	}
+	return nil
+}
+
 func initializeDb(ctx context.Context, pgDsn string, processes int) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(pgDsn)
 	if err != nil {
@@ -385,6 +435,10 @@ func initializeDb(ctx context.Context, pgDsn string, processes int) (*pgxpool.Po
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %v", err)
+	}
+	err = createTables(ctx, pool)
+	if err != nil {
+		return nil, err
 	}
 	return pool, nil
 }
