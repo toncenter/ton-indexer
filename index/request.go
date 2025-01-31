@@ -38,6 +38,11 @@ type TransactionRequest struct {
 	Lt             *uint64          `query:"lt"`
 }
 
+type PendingTransactionRequest struct {
+	Account []AccountAddress `query:"account"`
+	TraceId []HashType       `query:"trace_id"`
+}
+
 type AdjacentTransactionRequest struct {
 	Hash      HashType `query:"hash"`
 	Direction *string  `query:"direction"`

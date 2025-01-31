@@ -286,7 +286,7 @@ func GetTransactions(c *fiber.Ctx) error {
 func GetPendingTransactions(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
 
-	tx_req := index.TransactionRequest{}
+	tx_req := index.PendingTransactionRequest{}
 
 	if err := c.QueryParser(&tx_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
@@ -296,11 +296,19 @@ func GetPendingTransactions(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "at least 1 account address required"}
 	}
 
-	emulatedContext, err := ContextForAccounts(emulatedTracesRepository, tx_req.Account, true, true, false)
+	var emulatedContext *index.EmulatedTracesContext
+	var err error
+	if tx_req.Account != nil {
+		emulatedContext, err = ContextByAccount(emulatedTracesRepository,
+			tx_req.Account, true, true, false)
+	} else if tx_req.TraceId != nil {
+		emulatedContext, err = ContextByTraces(emulatedTracesRepository, tx_req.TraceId)
+	} else {
+		return index.IndexError{Code: 422, Message: "only one of account, trace_id should be specified"}
+	}
 	if err != nil {
 		return err
 	}
-	emulatedContext.SetEmulatedOnly(true)
 	txs, book, err := pool.QueryPendingTransactions(request_settings, emulatedContext)
 	if err != nil {
 		return err
@@ -1144,9 +1152,16 @@ func GetPendingEvents(c *fiber.Ctx) error {
 	if event_req.AccountAddress == nil {
 		return index.IndexError{Code: 422, Message: "account should be specified"}
 	}
-
-	emulatedContext, err := ContextForAccounts(emulatedTracesRepository,
-		[]index.AccountAddress{*event_req.AccountAddress}, false, false, false)
+	var emulatedContext *index.EmulatedTracesContext
+	var err error
+	if event_req.AccountAddress != nil {
+		emulatedContext, err = ContextByAccount(emulatedTracesRepository,
+			[]index.AccountAddress{*event_req.AccountAddress}, false, false, false)
+	} else if event_req.TraceId != nil {
+		emulatedContext, err = ContextByTraces(emulatedTracesRepository, event_req.TraceId)
+	} else {
+		return index.IndexError{Code: 422, Message: "only one of account, trace_id should be specified"}
+	}
 
 	if err != nil {
 		return err
@@ -1257,20 +1272,21 @@ func GetPendingActions(c *fiber.Ctx) error {
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
-
-	emulatedContext, err := ActionContextForAccounts(emulatedTracesRepository,
-		[]index.AccountAddress{*act_req.AccountAddress})
-	if err != nil {
-		return err
+	var emulatedContext *index.EmulatedTracesContext
+	var err error
+	if act_req.AccountAddress != nil {
+		emulatedContext, err = ActionContextByAccount(emulatedTracesRepository,
+			[]index.AccountAddress{*act_req.AccountAddress})
+	} else if len(act_req.TraceId) > 0 {
+		emulatedContext, err = ContextByTraces(emulatedTracesRepository, act_req.TraceId)
+	} else {
+		return index.IndexError{Code: 422, Message: "account or trace_id should be specified"}
 	}
 
 	res, book, err := pool.QueryPendingActions(request_settings, emulatedContext)
 	if err != nil {
 		return err
 	}
-	// if len(res) == 0 {
-	// 	return index.IndexError{Code: 404, Message: "actions not found"}
-	// }
 
 	resp := index.ActionsResponse{Actions: res, AddressBook: book}
 	return c.Status(200).JSON(resp)
@@ -1620,7 +1636,7 @@ func ErrorHandlerFunc(ctx *fiber.Ctx, err error) error {
 	}
 }
 
-func ContextForAccounts(repository *emulated.EmulatedTracesRepository, accounts []index.AccountAddress,
+func ContextByAccount(repository *emulated.EmulatedTracesRepository, accounts []index.AccountAddress,
 	emulated_only bool, filter_transactions bool, use_action_index bool) (
 	*index.EmulatedTracesContext, error) {
 
@@ -1663,7 +1679,7 @@ func ContextForAccounts(repository *emulated.EmulatedTracesRepository, accounts 
 	return emulated_context, err
 }
 
-func ActionContextForAccounts(repository *emulated.EmulatedTracesRepository, accounts []index.AccountAddress) (
+func ActionContextByAccount(repository *emulated.EmulatedTracesRepository, accounts []index.AccountAddress) (
 	*index.EmulatedTracesContext, error) {
 	if len(accounts) == 0 {
 		return index.NewEmptyContext(false), nil
@@ -1697,6 +1713,24 @@ func ActionContextForAccounts(repository *emulated.EmulatedTracesRepository, acc
 	}
 	emulated_context.FilterTraceActions(actions)
 	return emulated_context, nil
+}
+
+func ContextByTraces(repository *emulated.EmulatedTracesRepository, trace_ids []index.HashType) (
+	*index.EmulatedTracesContext, error) {
+	if len(trace_ids) == 0 {
+		return index.NewEmptyContext(false), nil
+	}
+	keys := make([]string, 0)
+	for _, trace_id := range trace_ids {
+		keys = append(keys, string(trace_id))
+	}
+	raw_traces, err := repository.LoadRawTraces(keys)
+	if err != nil {
+		return nil, err
+	}
+	emulated_context := index.NewEmptyContext(false)
+	err = emulated_context.FillFromRawData(raw_traces)
+	return emulated_context, err
 }
 
 func test() {
