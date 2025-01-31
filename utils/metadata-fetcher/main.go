@@ -24,6 +24,8 @@ var backoff_multiplier float64
 var max_backoff time.Duration
 var stalled_task_interval time.Duration
 
+var EXPIRATION_PERIOD = 7 * 24 * time.Hour // 1 week
+
 type BackgroundTask struct {
 	Id    int64
 	Type  string
@@ -310,10 +312,11 @@ func processTask(ctx context.Context, pool *pgxpool.Pool, task FetchTask) (taskE
 		return handleTaskFailure(ctx, tx, task, err)
 	}
 
-	_, err = tx.Exec(ctx, `INSERT INTO address_metadata (address, type, valid, name, description, image, symbol, extra, updated_at)
-    							VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (address, type) DO UPDATE SET 
-    							valid = $3, name = $4, description = $5, image = $6, symbol = $7, extra = $8, updated_at = $9`,
-		task.Address, task.Type, true, content.Name, content.Description, content.Image, content.Symbol, content.Extra, time.Now().Unix())
+	_, err = tx.Exec(ctx, `INSERT INTO address_metadata (address, type, valid, name, description, image, symbol, extra, updated_at, expires_at)
+    							VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (address, type) DO UPDATE SET 
+    							valid = $3, name = $4, description = $5, image = $6, symbol = $7, extra = $8, updated_at = $9, expires_at = $10`,
+		task.Address, task.Type, true, content.Name, content.Description, content.Image, content.Symbol, content.Extra,
+		time.Now().Unix(), time.Now().Add(EXPIRATION_PERIOD).Unix())
 	if err != nil {
 		log.Printf("Error inserting metadata for task %v: %v", task, err)
 		return handleTaskFailure(ctx, tx, task, err)
@@ -356,9 +359,10 @@ func handleTaskFailure(ctx context.Context, tx pgx.Tx, task FetchTask, taskErr e
 	}
 	extra_json, _ := json.Marshal(extra)
 
-	_, err := tx.Exec(ctx, `INSERT INTO address_metadata (address, type, valid, name, description, image, symbol, extra, updated_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (address, type) DO UPDATE SET valid = $3`,
-		task.Address, task.Type, false, nil, nil, nil, nil, extra_json, time.Now().Unix())
+	_, err := tx.Exec(ctx, `INSERT INTO address_metadata (address, type, valid, name, description, image, symbol, extra, updated_at, expires_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (address, type) DO UPDATE SET valid = $3, updated_at = $9, expires_at = $10`,
+		task.Address, task.Type, false, nil, nil, nil, nil, extra_json, time.Now().Unix(),
+		time.Now().Add(EXPIRATION_PERIOD).Unix())
 	if err != nil {
 		log.Printf("Error inserting metadata for failed task %v: %v", task, err)
 		return err
