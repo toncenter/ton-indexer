@@ -21,11 +21,12 @@ private:
   InsertManagerPostgres::Credential credential_;
   bool custom_types_{false};
   bool create_indexes_{false};
+  bool run_migrations_{false};
   std::int32_t max_data_depth_{0};
   std::int32_t out_of_sync_seqno_{0};
 public:
-  InsertManagerPostgres(InsertManagerPostgres::Credential credential, bool custom_types, bool create_indexes) : 
-    credential_(credential), custom_types_(custom_types), create_indexes_(create_indexes) {}
+  InsertManagerPostgres(InsertManagerPostgres::Credential credential, bool custom_types, bool create_indexes, bool run_migrations) : 
+    credential_(credential), custom_types_(custom_types), create_indexes_(create_indexes), run_migrations_(run_migrations) {}
 
   void start_up() override;
 

@@ -2101,37 +2101,44 @@ void InsertManagerPostgres::start_up() {
       LOG(ERROR) << "Error while creating indexes in database: " << e.what();
       std::_Exit(1);
     }
+  } else {
+    LOG(WARNING) << "Skipping creation of indexes!";
   }
 
   // some migrations
-  LOG(INFO) << "Running some migrations...";
-  try {
-    pqxx::connection c(credential_.get_connection_string());
-    pqxx::work txn(c);
+  if (run_migrations_) {
+    LOG(INFO) << "Running some migrations...";
+    try {
+      pqxx::connection c(credential_.get_connection_string());
+      pqxx::work txn(c);
 
-    std::string query = "";
-    
-    query += (
-      "alter table jetton_wallets add column if not exists mintless_is_claimed boolean;\n"
-      "alter table jetton_wallets add column if not exists mintless_amount numeric;\n"
-      "alter table jetton_wallets add column if not exists mintless_start_from bigint;\n"
-      "alter table jetton_wallets add column if not exists mintless_expire_at bigint;\n"
-      "alter table mintless_jetton_masters add column if not exists custom_payload_api_uri varchar[];\n"
+      std::string query = "";
+      
+      query += (
+        "alter table jetton_wallets add column if not exists mintless_is_claimed boolean;\n"
+        "alter table jetton_wallets add column if not exists mintless_amount numeric;\n"
+        "alter table jetton_wallets add column if not exists mintless_start_from bigint;\n"
+        "alter table jetton_wallets add column if not exists mintless_expire_at bigint;\n"
+        "alter table mintless_jetton_masters add column if not exists custom_payload_api_uri varchar[];\n"
 
-      "alter table transactions add column if not exists total_fees_extra_currencies jsonb;\n"
-      "alter table transactions add column if not exists credit_extra_currencies jsonb;\n"
-      "alter table messages add column if not exists value_extra_currencies jsonb;\n"
-      "alter table account_states add column if not exists balance_extra_currencies jsonb;\n"
-      "alter table latest_account_states add column if not exists balance_extra_currencies jsonb;\n"
-    );
+        "alter table transactions add column if not exists total_fees_extra_currencies jsonb;\n"
+        "alter table transactions add column if not exists credit_extra_currencies jsonb;\n"
+        "alter table messages add column if not exists value_extra_currencies jsonb;\n"
+        "alter table account_states add column if not exists balance_extra_currencies jsonb;\n"
+        "alter table latest_account_states add column if not exists balance_extra_currencies jsonb;\n"
+      );
 
-    LOG(DEBUG) << query;
-    txn.exec0(query);
-    txn.commit();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while running some migrations in database: " << e.what();
-    std::_Exit(1);
+      LOG(DEBUG) << query;
+      txn.exec0(query);
+      txn.commit();
+    } catch (const std::exception &e) {
+      LOG(ERROR) << "Error while running some migrations in database: " << e.what();
+      std::_Exit(1);
+    }
+  } else {
+    LOG(WARNING) << "Skipping migrations!";
   }
+  LOG(INFO) << "Database is ready!";
 
   // if success
   alarm_timestamp() = td::Timestamp::in(1.0);
