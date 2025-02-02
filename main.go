@@ -1722,7 +1722,14 @@ func ContextByTraces(repository *emulated.EmulatedTracesRepository, trace_ids []
 	}
 	keys := make([]string, 0)
 	for _, trace_id := range trace_ids {
-		keys = append(keys, string(trace_id))
+		var trace_id_hex string
+		trace_id_raw, err := base64.StdEncoding.DecodeString(string(trace_id))
+		if err != nil {
+			trace_id_hex = string(trace_id)
+		} else {
+			trace_id_hex = strings.ToUpper(hex.EncodeToString(trace_id_raw))
+		}
+		keys = append(keys, trace_id_hex)
 	}
 	raw_traces, err := repository.LoadRawTraces(keys)
 	if err != nil {
