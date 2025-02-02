@@ -1478,7 +1478,7 @@ func main() {
 	flag.StringVar(&settings.Request.V2ApiKey, "v2-apikey", "", "API key for TON HTTP API endpoint")
 	flag.IntVar(&settings.MaxConns, "maxconns", 100, "PostgreSQL max connections")
 	flag.IntVar(&settings.MinConns, "minconns", 0, "PostgreSQL min connections")
-	flag.IntVar(&settings.MasterMaxConns, "master-maxconns", 16, "PostgreSQL master max connections")
+	flag.IntVar(&settings.MasterMaxConns, "master-maxconns", 4, "PostgreSQL master max connections")
 	flag.IntVar(&settings.TaskChannelSize, "task-channel-size", 5000, "Task channel size")
 	flag.StringVar(&settings.Bind, "bind", ":8000", "Bind address")
 	flag.StringVar(&settings.InstanceName, "name", "Go", "Instance name to show in Swagger UI")
