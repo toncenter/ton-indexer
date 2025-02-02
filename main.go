@@ -1135,7 +1135,7 @@ func GetTraces(c *fiber.Ctx) error {
 // @tags events
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.EventsResponse
+// @success		200	{object}	index.TracesResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
 // @router			/api/v3/pendingEvents [get]

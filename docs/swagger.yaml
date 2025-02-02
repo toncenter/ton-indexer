@@ -763,21 +763,6 @@ definitions:
       transactions:
         type: integer
     type: object
-  TraceNode:
-    properties:
-      children:
-        items:
-          $ref: '#/definitions/TraceNode'
-        type: array
-      in_msg:
-        $ref: '#/definitions/Message'
-      in_msg_hash:
-        type: string
-      transaction:
-        $ref: '#/definitions/Transaction'
-      tx_hash:
-        type: string
-    type: object
   TracesResponse:
     properties:
       address_book:
@@ -801,6 +786,8 @@ definitions:
         $ref: '#/definitions/BlockId'
       description:
         $ref: '#/definitions/TransactionDescr'
+      emulated:
+        type: boolean
       end_status:
         type: string
       hash:
@@ -1018,6 +1005,21 @@ definitions:
         type: integer
       start_from:
         type: integer
+    type: object
+  index.TraceNode:
+    properties:
+      children:
+        items:
+          $ref: '#/definitions/index.TraceNode'
+        type: array
+      in_msg:
+        $ref: '#/definitions/Message'
+      in_msg_hash:
+        type: string
+      transaction:
+        $ref: '#/definitions/Transaction'
+      tx_hash:
+        type: string
     type: object
 info:
   contact: {}
@@ -2204,6 +2206,96 @@ paths:
       summary: Get NFT Transfers
       tags:
       - nfts
+  /api/v3/pendingActions:
+    get:
+      consumes:
+      - application/json
+      description: Get actions by specified filter.
+      operationId: api_v3_get_pending_actions
+      parameters:
+      - description: List of account addresses to get actions. Can be sent in hex,
+          base64 or base64url form.
+        in: query
+        name: account
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/ActionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Pending Actions
+      tags:
+      - events
+  /api/v3/pendingEvents:
+    get:
+      consumes:
+      - application/json
+      description: Get events by specified filter.
+      operationId: api_v3_get_pending_events
+      parameters:
+      - description: List of account addresses to get transactions. Can be sent in
+          hex, base64 or base64url form.
+        in: query
+        name: account
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/TracesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Pending Events
+      tags:
+      - events
+  /api/v3/pendingTransactions:
+    get:
+      consumes:
+      - application/json
+      description: Get pending transactions by specified filter.
+      operationId: api_v3_get_pending_transactions
+      parameters:
+      - collectionFormat: multi
+        description: List of account addresses to get transactions. Can be sent in
+          hex, base64 or base64url form.
+        in: query
+        items:
+          type: string
+        name: account
+        type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/TransactionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get pending transactions
+      tags:
+      - blockchain
   /api/v3/runGetMethod:
     post:
       consumes:
