@@ -6,13 +6,15 @@ from dataclasses import dataclass
 from pytoniq_core import Slice
 
 from indexer.events import context
+
+from indexer.events.blocks.labels import labeled
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.messages import NftOwnershipAssigned, ExcessMessage
 from indexer.events.blocks.messages.nft import NftDiscovery, NftReportStaticData, NftTransfer, TeleitemBidInfo, AuctionFillUp
 from indexer.events.blocks.utils import AccountId, Amount
-from indexer.events.blocks.utils.block_utils import find_call_contracts
+from indexer.events.blocks.utils.block_utils import find_call_contracts, get_labeled
 from indexer.events.blocks.utils.block_utils import find_messages
 
 
@@ -139,11 +141,13 @@ class NftDiscoveryBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(
             optional=False,
-            child_matcher=ContractMatcher(
-                opcode=NftReportStaticData.opcode,
-                optional=False,
-            ),
-        )
+            child_matcher=labeled("report",
+                            ContractMatcher(
+                                opcode=NftReportStaticData.opcode,
+                                optional=False,
+                            )
+                    ),
+            )
 
     def test_self(self, block: Block):
         return (
@@ -152,9 +156,15 @@ class NftDiscoveryBlockMatcher(BlockMatcher):
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        include = [block]
+
         sender = block.get_message().source
         nft = block.get_message().destination
-        report_data = NftReportStaticData(Slice.one_from_boc(block.next_blocks[0].get_message().message_content.body))
+
+        report_block = get_labeled("report", other_blocks, CallContractBlock)
+        if not report_block:
+            return []
+        report_data = NftReportStaticData(report_block.get_body())
 
         data = NftDiscoveryBlockData(
             sender=AccountId(sender),
@@ -163,9 +173,10 @@ class NftDiscoveryBlockMatcher(BlockMatcher):
             result_index=report_data.index,
             query_id=report_data.query_id,
         )
+        include.append(report_block)
 
         new_block = NftDiscoveryBlock(data)
-        new_block.merge_blocks(other_blocks)
+        new_block.merge_blocks(include)
 
         return [new_block]
 
