@@ -30,15 +30,16 @@ ShardStateScanner::ShardStateScanner(td::Ref<vm::Cell> shard_state, MasterchainB
 void ShardStateScanner::schedule_next() {
     vm::AugmentedDictionary accounts_dict{vm::load_cell_slice_ref(shard_state_data_->sstate_.accounts), 256, block::tlb::aug_ShardAccounts};
 
-    int count = 0;
-    allow_same = true;
-    while (!finished && count < 10000) {
-        td::Ref<vm::CellSlice> shard_account_csr = accounts_dict.vm::DictionaryFixed::lookup_nearest_key(cur_addr_.bits(), 256, true, allow_same);
+    std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> batch;
+    batch.reserve(options_.batch_size_);
+
+    while (batch.size() < options_.batch_size_ && !finished_) {
+        td::Ref<vm::CellSlice> shard_account_csr = accounts_dict.vm::DictionaryFixed::lookup_nearest_key(cur_addr_.bits(), 256, true, allow_same_);
         if (shard_account_csr.is_null()) {
-            finished = true;
+            finished_ = true;
             break;
         }
-        allow_same = false;
+        allow_same_ = false;
         shard_account_csr = accounts_dict.extract_value(shard_account_csr);
         block::gen::ShardAccount::Record acc_info;
         if(!tlb::csr_unpack(shard_account_csr, acc_info)) {
@@ -46,25 +47,20 @@ void ShardStateScanner::schedule_next() {
             continue;
         }
 
-        ++count;
-        queue_.push_back(std::make_pair(cur_addr_, std::move(acc_info)));
-        if (queue_.size() > options_.batch_size_) {
-            // LOG(INFO) << "Dispatched batch of " << queue_.size() << " account states";
-            std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> batch_;
-            std::copy(queue_.begin(), queue_.end(), std::back_inserter(batch_));
-            queue_.clear();
-            
-            in_progress_.fetch_add(1);
-            td::actor::create_actor<StateBatchParser>("parser", std::move(batch_), shard_state_data_, actor_id(this), options_).release();
-        }
+        batch.push_back(std::make_pair(cur_addr_, std::move(acc_info)));
     }
-    processed_ += count;
+
+    LOG(INFO) << shard_.to_str() << ": Dispatched batch of " << batch.size() << " account states";
+    processed_ += batch.size();
+    
+    in_progress_++;
+    td::actor::create_actor<StateBatchParser>("parser", std::move(batch), shard_state_data_, actor_id(this), options_).release();
     
     td::actor::send_closure(options_.insert_manager_, &PostgreSQLInsertManager::checkpoint, shard_, cur_addr_);
-    if(!finished) {
+    if(!finished_) {
         alarm_timestamp() = td::Timestamp::in(0.1);
     } else {
-        LOG(INFO) << "Shard " << shard_.to_str() <<  " is finished!";
+        LOG(INFO) << "Shard " << shard_.to_str() <<  " is finished with " << processed_ << " account states";
         stop();
     }
 }
@@ -115,7 +111,7 @@ void ShardStateScanner::alarm() {
 }
 
 void ShardStateScanner::batch_inserted() {
-    in_progress_.fetch_sub(1);
+    in_progress_--;
 }
 
 void ShardStateScanner::got_checkpoint(td::Bits256 cur_addr) {
@@ -214,9 +210,6 @@ void StateBatchParser::process_account_states(std::vector<schema::AccountState> 
 }
 
 void StateBatchParser::start_up() {
-    // if (cur_addr_.to_hex() != "E753CF93EAEDD2EC01B5DE8F49A334622BD630A8728806ABA65F1443EB7C8FD7") {
-    //     continue;
-    // }
     std::vector<schema::AccountState> state_list;
     for (auto &[addr_, acc_info] : data_) {
         int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(acc_info.account));

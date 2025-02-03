@@ -53,15 +53,14 @@ private:
 
   ShardStateDataPtr shard_state_data_;
   Options options_;
-  std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> queue_;
 
   td::Bits256 cur_addr_{td::Bits256::zero()};
   
   ton::ShardIdFull shard_;
-  bool allow_same{true};
-  bool finished{false};
-  std::atomic_uint32_t in_progress_{0};
-  std::int32_t processed_{0};
+  bool allow_same_{true};
+  bool finished_{false};
+  uint32_t in_progress_{0};
+  uint32_t processed_{0};
 
   std::unordered_map<std::string, int> no_interface_count_;
   std::unordered_set<std::string> code_hashes_to_skip_;

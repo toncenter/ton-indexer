@@ -409,8 +409,14 @@ td::Result<NftItemDetectorR::Result::DNSEntry> NftItemDetectorR::get_dns_entry_d
   auto zero_byte_slice = vm::load_cell_slice_ref(zero_byte_cell);
   td::RefInt256 categories{true, 0};
 
-  TRY_RESULT(stack, execute_smc_method<2>(address_, code_cell_, data_cell_, config_, "dnsresolve", 
-    {vm::StackEntry(zero_byte_slice), vm::StackEntry(categories)}, {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_cell}));
+  TRY_RESULT(stack, execute_smc_method(address_, code_cell_, data_cell_, config_, "dnsresolve", 
+            {vm::StackEntry(zero_byte_slice), vm::StackEntry(categories)}));
+  if (stack.size() != 2) {
+    return td::Status::Error("dnsresolve returned unexpected stack size");
+  }
+  if (stack[0].type() != vm::StackEntry::Type::t_int) {
+    return td::Status::Error("dnsresolve returned unexpected stack type at index 0");
+  }
 
   auto resolved_bits_cnt = stack[0].as_int()->to_long();
   if (resolved_bits_cnt != 8) {
@@ -419,7 +425,8 @@ td::Result<NftItemDetectorR::Result::DNSEntry> NftItemDetectorR::get_dns_entry_d
 
   auto recordset_cell = stack[1].as_cell();
   if (recordset_cell.is_null()) {
-    return td::Status::Error("recordset is null");
+    // recordset is null
+    return Result::DNSEntry{};
   }
 
   vm::Dictionary records{recordset_cell, 256};
