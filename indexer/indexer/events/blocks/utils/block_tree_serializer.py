@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
+from pprint import pformat
 
 from indexer.core.database import Action
 from indexer.events.blocks.auction import AuctionBidBlock
@@ -628,77 +629,77 @@ def _fill_nominator_pool_withdraw_request_action(
 
 def block_to_action(block: Block, trace_id: str) -> Action:
     action = _base_block_to_action(block, trace_id)
-    match block:
-        case CallContractBlock():
-            _fill_call_contract_action(block, action)
-        case ContractDeployBlock():
-            _fill_call_contract_action(block, action)
-        case TonTransferBlock():
-            _fill_ton_transfer_action(block, action)
-        case NominatorPoolDepositBlock():
-            _fill_nominator_pool_deposit_action(block, action)
-        case NominatorPoolWithdrawRequestBlock():
-            _fill_nominator_pool_withdraw_request_action(block, action)
-        case DedustDepositLiquidityBlock():
-            _fill_dedust_deposit_liquidity_action(block, action)
-        case DedustDepositLiquidityPartialBlock():
-            _fill_dedust_deposit_liquidity_partial_action(block, action)
-        case JettonTransferBlock():
-            _fill_jetton_transfer_action(block, action)
-        case NftTransferBlock():
-            _fill_nft_transfer_action(block, action)
-        case NftDiscoveryBlock():
-            _fill_nft_discovery_action(block, action)
-        case NftMintBlock():
-            _fill_nft_mint_action(block, action)
-        case JettonBurnBlock():
-            _fill_jetton_burn_action(block, action)
-        case JettonMintBlock():
-            _fill_jetton_mint_action(block, action)
-        case JettonSwapBlock():
-            _fill_jetton_swap_action(block, action)
-        case DnsChangeRecordBlock():
-            _fill_change_dns_record_action(block, action)
-        case DnsDeleteRecordBlock():
-            _fill_delete_dns_record_action(block, action)
-        case DnsRenewBlock():
-            _fill_dns_renew_action(block, action)
-        case TONStakersDepositBlock():
-            _fill_tonstakers_deposit_action(block, action)
-        case TONStakersWithdrawRequestBlock():
-            _fill_tonstakers_withdraw_request_action(block, action)
-        case TONStakersWithdrawBlock():
-            _fill_tonstakers_withdraw_action(block, action)
-        case SubscribeBlock():
-            _fill_subscribe_action(block, action)
-        case DexDepositLiquidityBlock():
-            _fill_dex_deposit_liquidity(block, action)
-        case DexWithdrawLiquidityBlock():
-            _fill_dex_withdraw_liquidity(block, action)
-        case JVaultStakeBlock():
-            _fill_jvault_stake(block, action)
-        case JVaultUnstakeBlock():
-            _fill_jvault_unstake(block, action)
-        case JVaultClaimBlock():
-            _fill_jvault_claim(block, action)
-        case MultisigCreateOrderBlock():
-            _fill_multisig_create_order(block, action)
-        case MultisigApproveBlock():
-            _fill_multisig_approve(block, action)
-        case VestingSendMessageBlock():
-            _fill_vesting_send_message(block, action)
-        case VestingAddWhiteListBlock():
-            _fill_vesting_add_whitelist(block, action)
-        case UnsubscribeBlock():
-            _fill_unsubscribe_action(block, action)
-        case ElectionDepositStakeBlock():
-            _fill_election_action(block, action)
-        case ElectionRecoverStakeBlock():
-            _fill_election_action(block, action)
-        case AuctionBidBlock():
-            _fill_auction_bid_action(block, action)
-        case _:
-            logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
+    logger.debug("Parsed block: " + pformat(block))
+    if isinstance(block, CallContractBlock):
+        _fill_call_contract_action(block, action)
+    elif isinstance(block, ContractDeployBlock):
+        _fill_call_contract_action(block, action)
+    elif isinstance(block, TonTransferBlock):
+        _fill_ton_transfer_action(block, action)
+    elif isinstance(block, NominatorPoolDepositBlock):
+        _fill_nominator_pool_deposit_action(block, action)
+    elif isinstance(block, NominatorPoolWithdrawRequestBlock):
+        _fill_nominator_pool_withdraw_request_action(block, action)
+    elif isinstance(block, DedustDepositLiquidityBlock):
+        _fill_dedust_deposit_liquidity_action(block, action)
+    elif isinstance(block, DedustDepositLiquidityPartialBlock):
+        _fill_dedust_deposit_liquidity_partial_action(block, action)
+    elif isinstance(block, JettonTransferBlock):
+        _fill_jetton_transfer_action(block, action)
+    elif isinstance(block, NftTransferBlock):
+        _fill_nft_transfer_action(block, action)
+    elif isinstance(block, NftDiscoveryBlock):
+        _fill_nft_discovery_action(block, action)
+    elif isinstance(block, NftMintBlock):
+        _fill_nft_mint_action(block, action)
+    elif isinstance(block, JettonBurnBlock):
+        _fill_jetton_burn_action(block, action)
+    elif isinstance(block, JettonMintBlock):
+        _fill_jetton_mint_action(block, action)
+    elif isinstance(block, JettonSwapBlock):
+        _fill_jetton_swap_action(block, action)
+    elif isinstance(block, DnsChangeRecordBlock):
+        _fill_change_dns_record_action(block, action)
+    elif isinstance(block, DnsDeleteRecordBlock):
+        _fill_delete_dns_record_action(block, action)
+    elif isinstance(block, DnsRenewBlock):
+        _fill_dns_renew_action(block, action)
+    elif isinstance(block, TONStakersDepositBlock):
+        _fill_tonstakers_deposit_action(block, action)
+    elif isinstance(block, TONStakersWithdrawRequestBlock):
+        _fill_tonstakers_withdraw_request_action(block, action)
+    elif isinstance(block, TONStakersWithdrawBlock):
+        _fill_tonstakers_withdraw_action(block, action)
+    elif isinstance(block, SubscribeBlock):
+        _fill_subscribe_action(block, action)
+    elif isinstance(block, DexDepositLiquidityBlock):
+        _fill_dex_deposit_liquidity(block, action)
+    elif isinstance(block, DexWithdrawLiquidityBlock):
+        _fill_dex_withdraw_liquidity(block, action)
+    elif isinstance(block, JVaultStakeBlock):
+        _fill_jvault_stake(block, action)
+    elif isinstance(block, JVaultUnstakeBlock):
+        _fill_jvault_unstake(block, action)
+    elif isinstance(block, JVaultClaimBlock):
+        _fill_jvault_claim(block, action)
+    elif isinstance(block, MultisigCreateOrderBlock):
+        _fill_multisig_create_order(block, action)
+    elif isinstance(block, MultisigApproveBlock):
+        _fill_multisig_approve(block, action)
+    elif isinstance(block, VestingSendMessageBlock):
+        _fill_vesting_send_message(block, action)
+    elif isinstance(block, VestingAddWhiteListBlock):
+        _fill_vesting_add_whitelist(block, action)
+    elif isinstance(block, UnsubscribeBlock):
+        _fill_unsubscribe_action(block, action)
+    elif isinstance(block, ElectionDepositStakeBlock):
+        _fill_election_action(block, action)
+    elif isinstance(block, ElectionRecoverStakeBlock):
+        _fill_election_action(block, action)
+    elif isinstance(block, AuctionBidBlock):
+        _fill_auction_bid_action(block, action)
+    else:
+        logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
 
     # Fill accounts
     action.accounts.append(action.source)
@@ -707,7 +708,7 @@ def block_to_action(block: Block, trace_id: str) -> Action:
     action.accounts.append(action.destination_secondary)
 
     # Fill extended tx hashes
-    extended_tx_hashes = set(action.tx_hashes)
+    extended_tx_hashes = set(action.tx_hashes or [])
     if block.initiating_event_node is not None:
         extended_tx_hashes.add(block.initiating_event_node.get_tx_hash() or "")
         if not block.initiating_event_node.is_tick_tock:

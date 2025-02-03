@@ -18,7 +18,7 @@ from sqlalchemy_utils import CompositeType, create_database, database_exists
 
 from indexer.core.settings import Settings
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('actions-indexer')
 
 MASTERCHAIN_INDEX = -1
 MASTERCHAIN_SHARD = -9223372036854775808
