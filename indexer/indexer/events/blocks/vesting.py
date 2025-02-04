@@ -61,9 +61,12 @@ class VestingAddWhiteListBlock(Block):
 class VestingSendMessageBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(
-            child_matcher=ContractMatcher(
-                opcode=VestingSendMessage.response_opcode,
-                optional=False,
+            child_matcher=labeled(
+                "response",
+                ContractMatcher(
+                    opcode=VestingSendMessage.response_opcode,
+                    optional=False,
+                ),
             )
         )
 
@@ -79,6 +82,11 @@ class VestingSendMessageBlockMatcher(BlockMatcher):
         sender = AccountId(msg.source)
         vesting = AccountId(msg.destination)
 
+        include = [block]
+        resp = get_labeled("response", other_blocks, CallContractBlock)
+        if resp:
+            include.append(resp)
+
         new_block = VestingSendMessageBlock(
             data=VestingSendMessageData(
                 sender=sender,
@@ -91,16 +99,19 @@ class VestingSendMessageBlockMatcher(BlockMatcher):
                 message_value=Amount(request_data.message_value),
             )
         )
-        new_block.merge_blocks([block] + other_blocks)
+        new_block.merge_blocks(include)
         return [new_block]
 
 
 class VestingAddWhiteListBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(
-            child_matcher=ContractMatcher(
-                opcode=VestingAddWhiteList.response_opcode,
-                optional=False,
+            child_matcher=labeled(
+                "response",
+                ContractMatcher(
+                    opcode=VestingAddWhiteList.response_opcode,
+                    optional=False,
+                ),
             )
         )
 
@@ -116,6 +127,11 @@ class VestingAddWhiteListBlockMatcher(BlockMatcher):
         adder = AccountId(msg.source)
         vesting = AccountId(msg.destination)
 
+        include = [block]
+        resp = get_labeled("response", other_blocks, CallContractBlock)
+        if resp:
+            include.append(resp)
+
         new_block = VestingAddWhiteListBlock(
             data=VestingAddWhiteListData(
                 adder=adder,
@@ -126,5 +142,5 @@ class VestingAddWhiteListBlockMatcher(BlockMatcher):
                 ],
             )
         )
-        new_block.merge_blocks([block] + other_blocks)
+        new_block.merge_blocks(include)
         return [new_block]
