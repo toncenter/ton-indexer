@@ -309,6 +309,14 @@ class Action(Base):
         Column("signer_index", Numeric),
         Column("exit_code", Numeric),
     ]))
+    multisig_execute_data = Column(CompositeType("multisig_execute_details", [
+        Column("query_id", Numeric),
+        Column("order_seqno", Numeric),
+        Column("expiration_date", Numeric),
+        Column("approvals_num", Numeric),
+        Column("signers_hash", String),
+        Column("order_boc", String),
+    ]))
     vesting_send_message_data = Column(CompositeType("vesting_send_message_details", [
         Column("query_id", Numeric),
         Column("message_boc", String),

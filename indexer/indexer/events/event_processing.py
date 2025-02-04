@@ -40,6 +40,7 @@ from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.multisig import (
     MultisigApproveBlockMatcher,
     MultisigCreateOrderBlockMatcher,
+    MultisigExecuteBlockMatcher,
 )
 from indexer.events.blocks.nft import (
     NftDiscoveryBlockMatcher,
@@ -128,6 +129,7 @@ matchers = [
     NominatorPoolWithdrawMatcher(),
     MultisigCreateOrderBlockMatcher(),
     MultisigApproveBlockMatcher(),
+    MultisigExecuteBlockMatcher(),
     VestingSendMessageBlockMatcher(),
     VestingAddWhiteListBlockMatcher(),
     JettonTransferBlockMatcher(),

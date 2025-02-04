@@ -97,3 +97,27 @@ class MultisigApproveRejected:
         slice.load_uint(32)  # op
         slice.load_uint(64)  # query_id
         self.exit_code = slice.load_uint(32)
+
+class  MultisigExecute:
+    # order -> multisig
+    opcode = 0x75097f5d
+    query_id: int
+    order_seqno: int
+    expiration_date: int
+    approvals_num: int
+    signers_hash: bytes
+    order: Cell
+    # execute#75097f5d query_id:uint64 
+    #                  order_seqno:uint256
+    #                  expiration_date:uint48
+    #                  approvals_num:uint8
+    #                  signers_hash:bits256
+    #                  order:^Order = InternalMsgBody;
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        self.query_id = slice.load_uint(64)
+        self.order_seqno = slice.load_uint(256)
+        self.expiration_date = slice.load_uint(48)
+        self.approvals_num = slice.load_uint(8)
+        self.signers_hash = slice.load_bytes(32)
+        self.order = slice.load_ref()

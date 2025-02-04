@@ -223,7 +223,8 @@ async def handle_trace(trace):
                 logger.debug("Trace: " + pformat(trace, depth=8))
                 logger.debug("Block to action: " + pformat(action, width=200))
         response = {
-            "dicts": dicts,
+            # "dicts": dicts,
+            "dicts": dicts[-1],
             "matchers": idx_to_matcher,
             "flow": {},
             # 'steps': debug_steps

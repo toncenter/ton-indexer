@@ -15,6 +15,7 @@ from indexer.events.blocks.messages.multisig import (
     MultisigApprove,
     MultisigApproveAccepted,
     MultisigApproveRejected,
+    MultisigExecute,
     MultisigInitOrder,
     MultisigNewOrder,
 )
@@ -65,6 +66,29 @@ class MultisigApproveBlock(Block):
         return f"multisig_approve {self.data}"
 
 
+@dataclass
+class MultisigExecuteData:
+    query_id: int
+    multisig: AccountId
+    success: bool
+    order_contract_address: AccountId
+    order_seqno: int
+    expiration_date: int
+    approvals_num: int
+    signers_hash_str: str
+    order_boc_str: str
+
+
+class MultisigExecuteBlock(Block):
+    data: MultisigExecuteData
+
+    def __init__(self, data):
+        super().__init__("multisig_execute", [], data)
+
+    def __repr__(self):
+        return f"multisig_execute {self.data}"
+
+
 class MultisigCreateOrderBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(
@@ -81,11 +105,13 @@ class MultisigCreateOrderBlockMatcher(BlockMatcher):
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        included = [block]
         init_msg = block.get_message()
         init_data = MultisigNewOrder(block.get_body())
 
         deploy_block = get_labeled("init_order", other_blocks, CallContractBlock)
         assert deploy_block is not None  # well, it can't be None
+        included.append(deploy_block)
         deploy_msg = deploy_block.get_message()
         deploy_data = MultisigInitOrder(deploy_block.get_body())
 
@@ -105,7 +131,7 @@ class MultisigCreateOrderBlockMatcher(BlockMatcher):
                 ),
             )
         )
-        new_block.merge_blocks([block] + other_blocks)
+        new_block.merge_blocks(included)
         return [new_block]
 
 
@@ -141,6 +167,7 @@ class MultisigApproveBlockMatcher(BlockMatcher):
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        included = [block]
         accepted = get_labeled("accepted", other_blocks, CallContractBlock)
         exit_code = 0  # no exit code if accepted. so just set to 0
         rejected = None
@@ -150,6 +177,9 @@ class MultisigApproveBlockMatcher(BlockMatcher):
             if rejected is None:
                 return []
             exit_code = MultisigApproveRejected(rejected.get_body()).exit_code
+            included.append(rejected)
+        else:
+            included.append(accepted)
 
         signer_index = -1
         try:
@@ -171,5 +201,41 @@ class MultisigApproveBlockMatcher(BlockMatcher):
                 exit_code=exit_code,
             )
         )
-        new_block.merge_blocks([block] + other_blocks)
+        new_block.merge_blocks(included)
+        return [new_block]
+
+
+class MultisigExecuteBlockMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == MultisigExecute.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        execute_data = MultisigExecute(block.get_body())
+
+        msg = block.get_message()
+
+        new_block = MultisigExecuteBlock(
+            data=MultisigExecuteData(
+                query_id=execute_data.query_id,
+                multisig=AccountId(msg.destination),
+                success=(not block.failed),
+                order_contract_address=AccountId(msg.source),
+                order_seqno=execute_data.order_seqno,
+                expiration_date=execute_data.expiration_date,
+                approvals_num=execute_data.approvals_num,
+                signers_hash_str=base64.b64encode(execute_data.signers_hash).decode(
+                    "utf-8"
+                ),
+                order_boc_str=base64.b64encode(execute_data.order.to_boc()).decode(
+                    "utf-8"
+                ),
+            )
+        )
+        new_block.merge_blocks([block])
         return [new_block]

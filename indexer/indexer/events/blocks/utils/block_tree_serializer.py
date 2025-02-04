@@ -41,6 +41,7 @@ from indexer.events.blocks.liquidity import (
 from indexer.events.blocks.multisig import (
     MultisigApproveBlock,
     MultisigCreateOrderBlock,
+    MultisigExecuteBlock,
 )
 from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock
 from indexer.events.blocks.staking import (
@@ -411,6 +412,20 @@ def _fill_multisig_approve(block: MultisigApproveBlock, action: Action):
     }
 
 
+def _fill_multisig_execute(block: MultisigExecuteBlock, action: Action):
+    action.source = _addr(block.data.order_contract_address)
+    action.destination = _addr(block.data.multisig)
+    action.success = block.data.success
+    action.multisig_execute_data = {
+        "query_id": block.data.query_id,
+        "order_seqno": block.data.order_seqno,
+        "expiration_date": block.data.expiration_date,
+        "approvals_num": block.data.approvals_num,
+        "signers_hash": block.data.signers_hash_str,
+        "order_boc": block.data.order_boc_str,
+    }
+
+
 def _fill_vesting_send_message(block: VestingSendMessageBlock, action: Action):
     action.source = _addr(block.data.sender)
     action.destination = _addr(block.data.vesting)
@@ -686,6 +701,8 @@ def block_to_action(block: Block, trace_id: str) -> Action:
         _fill_multisig_create_order(block, action)
     elif isinstance(block, MultisigApproveBlock):
         _fill_multisig_approve(block, action)
+    elif isinstance(block, MultisigExecuteBlock):
+        _fill_multisig_execute(block, action)
     elif isinstance(block, VestingSendMessageBlock):
         _fill_vesting_send_message(block, action)
     elif isinstance(block, VestingAddWhiteListBlock):
