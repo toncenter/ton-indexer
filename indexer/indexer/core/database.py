@@ -167,7 +167,7 @@ class Trace(Base):
     nodes_: int = Column(BigInteger)
     classification_state = Column(Enum('unclassified', 'failed', 'ok', 'broken', name='trace_classification_state'))
 
-    edges: List[TraceEdge] = relationship("TraceEdge", back_populates="trace", uselist=True, viewonly=True)
+    # edges: List[TraceEdge] = relationship("TraceEdge", back_populates="trace", uselist=True, viewonly=True)
     transactions: List["Transaction"] = relationship("Transaction",
                                                      foreign_keys=[trace_id],
                                                      primaryjoin='Trace.trace_id == Transaction.trace_id',
@@ -184,7 +184,7 @@ class TraceEdge(Base):
     incomplete: bool = Column(Boolean)
     broken: bool = Column(Boolean)
 
-    trace: "Trace" = relationship("Trace", back_populates="edges", viewonly=True)
+    # trace: "Trace" = relationship("Trace", back_populates="edges", viewonly=True)
 
 class ActionAccount(Base):
     __tablename__ = 'action_accounts'
@@ -199,9 +199,9 @@ class ActionAccount(Base):
 class Action(Base):
     __tablename__ = 'actions'
 
-    action_id: str = Column(String, primary_key=True)
+    trace_id: str = Column(String(44), nullable=False, primary_key=True)
+    action_id: str = Column(String, nullable=False, primary_key=True)
     type: str = Column(String())
-    trace_id: str = Column(String(44), ForeignKey('traces.trace_id'), nullable=False, primary_key=True)
     tx_hashes: list[str] = Column(ARRAY(String()))
     value: int = Column(Numeric)
     amount: int = Column(Numeric)
@@ -306,9 +306,9 @@ class Action(Base):
     trace_external_hash: str = Column(String)
     mc_seqno_end: int = Column(Numeric)
     trace_mc_seqno_end: int = Column(Numeric)
-    accounts: list[str]
     value_extra_currencies: dict = Column(JSONB)
 
+    _accounts: list[str]
 
     def __repr__(self):
         full_repr = ""
@@ -320,7 +320,7 @@ class Action(Base):
 
     def get_action_accounts(self):
         accounts = []
-        for account in self.accounts:
+        for account in self._accounts:
             accounts.append(ActionAccount(action_id=self.action_id,
                                           trace_id=self.trace_id,
                                           account=account,

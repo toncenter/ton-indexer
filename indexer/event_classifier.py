@@ -5,15 +5,22 @@ import multiprocessing as mp
 import sys
 import time
 import traceback
+import codecs
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, List, Tuple
+from dataclasses import asdict
+import json
+from collections import defaultdict
 
-from sqlalchemy import update, select, and_, or_
+from sqlalchemy import update, select, delete, and_, or_, Column, Integer, String, Boolean
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker, contains_eager
+from sqlalchemy.orm import sessionmaker, contains_eager, selectinload
+from sqlalchemy.sql import text
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm.attributes import instance_state
 
 from indexer.core import redis
-from indexer.core.database import engine, Trace, Transaction, Message, Action, SyncSessionMaker
+from indexer.core.database import engine, SyncSessionMaker, Base, Trace, Transaction, Message, Action, ActionAccount
 from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_additional_addresses
@@ -30,75 +37,53 @@ settings = Settings()
 
 
 
+class ClassifierTask(Base):
+    __tablename__ = '_classifier_tasks'
+    id: int = Column(Integer, primary_key=True)
+    mc_seqno: int = Column(Integer)
+    trace_id: str = Column(String(44))
+    pending: bool = Column(Boolean)
+
+
+class ClassifierFailedTrace(Base):
+    __tablename__ = '_classifier_failed_traces'
+    id: int = Column(Integer, primary_key=True)
+    trace_id: str = Column(String(44))
+    error: str = Column(String)
+
+
 # thread procedures
 class UnclassifiedEventsReader(mp.Process):
-    def __init__(self, task_queue: mp.Queue, result_queue: mp.Queue, stats_queue: Optional[mp.Queue]=None, batch_size: int=4096):
+    def __init__(self, task_queue: mp.Queue, result_queue: mp.Queue, stats_queue: Optional[mp.Queue]=None, batch_size: int=4096, prefetch_size: int=100000):
         super().__init__()
         self.task_queue = task_queue
         self.result_queue = result_queue
         self.stats_queue = stats_queue
         self.batch_size = batch_size
-        self.last_lt = None
-        self.last_trace_id = None
-        self.pending_map = {}
+        self.prefetch_size = prefetch_size
         logger.info(f"Reading unclassified tasks with batch size {self.batch_size}")
     
     def read_batch(self):
-        # get new batch
-        db_read_finished = False
-        while not db_read_finished:
+        rows = []
+        with SyncSessionMaker() as session:
             try:
-                with SyncSessionMaker() as session:
-                    query = session.query(Trace.trace_id, Trace.nodes_, Trace.start_lt) \
-                        .filter(Trace.state == 'complete') \
-                        .filter(Trace.classification_state == 'unclassified')
-                    if self.last_lt is not None:
-                        query = query.filter(or_(Trace.start_lt < self.last_lt, and_(Trace.start_lt == self.last_lt, Trace.trace_id < self.last_trace_id)))
-                    query = query.order_by(Trace.start_lt.desc(), Trace.trace_id.desc()) \
-                        .limit(self.batch_size)
-                    query = query.yield_per(self.batch_size)
-                    items = query.all()
-                db_read_finished = True
-            except:
-                logger.warning("Failed to read unclassified traces")
-        # read complete tasks
-        not_empty = True
-        while not_empty:
-            try:
-                processed, big, tasks = self.result_queue.get(False)
-                if self.stats_queue is not None:
-                    self.stats_queue.put((processed, big))
-                for trace_id, _ in tasks:
-                    self.pending_map.pop(trace_id)
-            except:
-                not_empty = False
-
-        # send new tasks
-        trace_ids = []
-        flag = False
-        for trace_id, nodes, lt in items:
-            if not flag:
-                flag = True
-                # logger.critical(f'{lt} {trace_id} {nodes}')
-            if self.last_lt is None:
-                logger.info(f'Reading unclassified traces from {lt}')
-                self.last_lt = lt
-            self.last_lt = lt
-            self.last_trace_id = trace_id
-            if trace_id in self.pending_map:
-                continue
-            self.pending_map[trace_id] = nodes
-            trace_ids.append((trace_id, nodes))
-        # if len(items) > 0:
-        #     logger.critical(f'{lt} {trace_id} {nodes}')
-        if len(items) < self.batch_size:
-            logger.info(f"Incomplete batch of length {len(items)}")
-            self.last_lt = None
-            self.last_trace_id = None
-            time.sleep(1)
-        if len(trace_ids) > 0:
-            self.task_queue.put(trace_ids)
-        return
+                query = f'''with A as (select * from _classifier_tasks 
+                order by mc_seqno desc nulls first limit {self.batch_size})
+                delete from _classifier_tasks T using A where T.id = A.id
+                returning A.*;'''
+                # query = f'''with A as (select * from _classifier_tasks 
+                # where pending is null or not pending order by mc_seqno desc nulls first limit {self.batch_size})
+                # update _classifier_tasks T set pending = true from A where T.id = A.id
+                # returning A.*;'''
+                result = session.execute(query)
+                rows.extend(result.fetchall())
+                session.commit()
+            except Exception as ee:
+                logger.warning(f'Failed to read tasks: {ee}')
+                session.rollback()
+        for row in rows:
+            task = ClassifierTask(id=row.id, mc_seqno=row.mc_seqno, trace_id=row.trace_id, pending=row.pending)
+            self.task_queue.put(task)
     
     def run(self):
         try:
@@ -112,48 +97,139 @@ class UnclassifiedEventsReader(mp.Process):
         return
 # end class
 
+
 class EventClassifierWorker(mp.Process):
-    def __init__(self, id: int, task_queue: mp.Queue, result_queue: mp.Queue, big_traces_threshold=4000):
+    def __init__(self, id: int, task_queue: mp.Queue, result_queue: mp.Queue, big_traces_threshold=4000, force=False):
         super().__init__()
         self.id = id
         self.task_queue = task_queue
         self.result_queue = result_queue
         self.big_traces_threshold = big_traces_threshold
-
-    def mark_big_traces(self, tasks: list[tuple[str, int]]) -> list[str]:
-        batch = []
-        big_traces = 0
-        with SyncSessionMaker() as session:
-            for (trace_id, nodes) in tasks:
-                if nodes > self.big_traces_threshold or nodes == 0:
-                    if nodes > 0:
-                        big_traces += 1
-                    session.execute(update(Trace)
-                        .where(Trace.trace_id == trace_id)
-                        .values(classification_state='broken'))
-                else:
-                    batch.append(trace_id)
-            session.commit()
-        return batch
+        self.force = force
 
     def process_one_batch(self):
-        tasks = self.task_queue.get(True)
+        task = self.task_queue.get(True)
         # logger.info(f'Worker #{self.id} accepted batch of {len(tasks)} tasks')
         try:
-            batch = self.mark_big_traces(tasks)
-            asyncio.get_event_loop().run_until_complete(process_trace_batch_async(batch))
-            total = len(tasks)
-            big_traces = total - len(batch)
+            ok, total, failed, broken = asyncio.get_event_loop().run_until_complete(self.process_trace_batch_async(task))
         except asyncio.CancelledError:
             logger.info("failed to process one batch: coroutine was cancelled")
-            total = len(tasks)
-            big_traces = 0
+            ok, total, failed, broken = False, 0, 0, 0
         except Exception as ee:
-            logger.info(f"failed to process one batch: {ee}")
-            total = len(tasks)
-            big_traces = 0
-        self.result_queue.put((total - big_traces, big_traces, tasks))
+            logger.info(f"unexpectedly failed to process task: {ee}")
+            ok, total, failed, broken = False, 0, 0, 0
+        self.result_queue.put((ok, total, failed, broken))
         return
+    
+    async def process_trace_batch_async(self, task: ClassifierTask) -> Tuple[bool, int]:
+        ok = True
+        processed = 0
+        failed = 0
+        broken = 0
+        logger.debug(f"Task with mc_seqno={task.mc_seqno}, trace_id={task.trace_id}")
+        async with async_session() as session:
+            try:
+                # check existing block
+                exists = False
+                if task.mc_seqno is not None:
+                    sql = f'select mc_seqno from blocks_classified where mc_seqno = {task.mc_seqno}'
+                    result = await session.execute(sql)
+                    rows = result.fetchall()
+                    exists = len(rows) > 0
+                if task.trace_id is not None:
+                    exists = True
+
+                # cleanup previous traces
+                if exists:
+                    if task.mc_seqno is not None:
+                        stmt = select(Trace.trace_id).filter(Trace.mc_seqno_end == task.mc_seqno)
+                        result = await session.execute(stmt)
+                        trace_ids = [x[0] for x in result.fetchall()]
+                        
+                        await session.execute(f'delete from blocks_classified where mc_seqno = {task.mc_seqno}')
+                    elif task.trace_id is not None:
+                        trace_ids = [task.trace_id]
+                    stmt = delete(Action).where(Action.trace_id.in_(trace_ids))
+                    # logger.info(f'stmt: {stmt}')
+                    await session.execute(stmt)
+                    stmt = delete(ActionAccount).where(ActionAccount.trace_id.in_(trace_ids))
+                    # logger.info(f'stmt: {stmt}')
+                    await session.execute(stmt)
+                
+                # read traces
+                fltr = None
+                if task.mc_seqno is not None:
+                    fltr = and_(Trace.mc_seqno_end == task.mc_seqno,
+                                Trace.nodes_ <= self.big_traces_threshold)
+                elif task.trace_id is not None:
+                    fltr = Trace.trace_id == task.trace_id
+                query = select(Trace).filter(fltr)
+                tx_join = selectinload(Trace.transactions).selectinload(Transaction.messages).selectinload(Message.message_content)
+                query = query.options(tx_join)
+                
+                result = await session.execute(query)
+                traces = result.scalars().unique().all()
+                processed = len(traces)
+
+                # Gather interfaces for each account
+                accounts = set()
+                for trace in traces:
+                    for tx in trace.transactions:
+                        accounts.add(tx.account)
+                        accounts.update(extract_additional_addresses(tx))
+
+                interfaces = await gather_interfaces(accounts, session)
+                repository = RedisInterfaceRepository(redis.sync_client)
+                await repository.put_interfaces(interfaces)
+                context.interface_repository.set(repository)
+
+                # Process traces and save actions
+                results = await asyncio.gather(*(process_trace(trace) for trace in traces))
+                ok_traces = []
+                failed_traces = []
+                broken_traces = []
+                for trace_id, state, actions, exc in results:
+                    if state == 'ok' or state == 'broken':
+                        # # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
+                        # if len(actions) > 0:
+                        #     # for action in actions:
+                        #     #     logger.warning(f"action: {action.__dict__}")
+                        #     for action in actions:
+                        #         await session.execute(insert(Action).values({k: v for k, v in action.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
+                        # session.add_all(actions)
+                        # for action in actions:
+                        #     for aa in action.get_action_accounts():
+                        #         await session.execute(insert(ActionAccount).values({k: v for k, v in aa.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing()) 
+                        #     # session.add_all(action.get_action_accounts())
+                        session.add_all(actions)
+                        for action in actions:
+                            session.add_all(action.get_action_accounts())
+
+                        if state == 'ok':
+                            ok_traces.append(trace_id)
+                        else:
+                            sql = text(f"""insert into _classifier_failed_traces(trace_id, broken) 
+                            values (:tid, true) on conflict do nothing;""")
+                            await session.execute(sql.bindparams(tid=trace_id))
+                            broken_traces.append(trace_id)
+                    else:
+                        sql = text(f"""insert into _classifier_failed_traces(trace_id, broken, error) 
+                        values (:tid, false, :err) on conflict do nothing;""")
+                        await session.execute(sql.bindparams(tid=trace_id, err=f'{exc}'))
+                        failed_traces.append(trace_id)
+                failed = len(failed_traces)
+                broken = len(broken_traces)
+                # finish task
+                # await session.execute(f"delete from _classifier_tasks where id = {task.id};")
+                if task.mc_seqno is not None:
+                    await session.execute(f"insert into blocks_classified(mc_seqno) values ({task.mc_seqno});")
+                await session.commit()
+            except Exception as ee:
+                logger.error(f'Failed to process batch: {ee}')
+                await session.rollback()
+                return False, 0, 0, 0
+        return ok, processed, failed, broken
+
         
     def run(self):
         asyncio.set_event_loop(asyncio.new_event_loop())
@@ -173,18 +249,21 @@ async def start_processing_events_from_db(args: argparse.Namespace):
 
     # counting traces
     logger.info("Counting traces")
-    total_traces = 0
-    with SyncSessionMaker() as session:
-        query = session.query(Trace.trace_id) \
-                .filter(Trace.state == 'complete') \
-                .filter(Trace.classification_state == 'unclassified')
-        total_traces = query.count()
-    logger.info(f"Total unclassified traces: {total_traces}")
+    total_traces = args.expected_total
+    if total_traces == 0:
+        with SyncSessionMaker() as session:
+            query = session.query(Trace.trace_id) \
+                    .filter(Trace.state == 'complete') \
+                    .filter(Trace.classification_state == 'unclassified')
+            total_traces = query.count()
+        logger.info(f"Total unclassified traces from database: {total_traces}")
+    else:
+        logger.info(f"Total unclassified traces number is given: {total_traces}")
 
-    task_queue = mp.Queue(args.fetch_size)
+    task_queue = mp.Queue(args.prefetch_size)
     result_queue = mp.Queue()
     stats_queue = mp.Queue()
-    thread = UnclassifiedEventsReader(task_queue, result_queue, stats_queue, args.batch_size)
+    thread = UnclassifiedEventsReader(task_queue, result_queue, stats_queue, args.batch_size, args.prefetch_size)
     thread.start()
     workers = []
     for id in range(args.pool_size):
@@ -193,25 +272,33 @@ async def start_processing_events_from_db(args: argparse.Namespace):
         workers.append(worker)
     
     # stats
-    big_traces = 0
-    count = 0
+    failed_tasks = 0
+    processed_tasks = 0
+    failed_traces = 0
+    broken_traces = 0
+    processed_traces = 0
     start_time = time.time()
     last_time = start_time
     try:
         while True:
             try:
-                processed, big = stats_queue.get(False)
-                count += processed
-                big_traces += big
+                ok, total, failed, broken = result_queue.get(False)
+                processed_traces += total
+                failed_traces += failed
+                broken_traces += broken
+
+                failed_tasks += not ok
+                processed_tasks += 1
             except:
                 await asyncio.sleep(0.5)
             cur_time = time.time()
-            if (cur_time - last_time) > 5:
+            if (cur_time - last_time) > 2:
                 elapsed = cur_time - start_time
-                tps = count / elapsed
-                eta_sec = min(999999999, max(0, int((total_traces - count) / max(tps, 1e-9))))
+                tps = processed_traces / elapsed
+                eta_sec = min(999999999, max(0, int((total_traces - processed_traces) / max(tps, 1e-9))))
                 eta = timedelta(seconds=eta_sec)
-                logger.info(f"{count} traces / {elapsed:02f} sec, traces/sec: {tps:02f} (eta: {eta}), queue size: {task_queue.qsize()}, big traces: {big_traces}")
+                logger.info(f"{processed_traces} traces / {elapsed:02f} sec, traces/sec: {tps:02f} (eta: {eta}), Q: {task_queue.qsize()}, "
+                            f"failed: {failed_traces}, broken: {broken_traces}, failed tasks: {failed_tasks} / {processed_tasks}")
                 last_time = cur_time
     except KeyboardInterrupt:
         logger.info(f'Gracefully stopped in the Main thread')
@@ -222,7 +309,6 @@ async def start_processing_events_from_db(args: argparse.Namespace):
         worker.terminate()
         worker.join()
     return
-
 # end def
 
 async def start_emulated_traces_processing():
@@ -249,65 +335,9 @@ async def process_emulated_trace(trace_id):
     return await process_event_async(trace)
 
 
-async def process_trace_batch_async(ids: list[str]):
-    async with async_session() as session:
-        try:
-            query = select(Trace) \
-                .join(Trace.transactions) \
-                .join(Transaction.messages, isouter=True) \
-                .join(Message.message_content, isouter=True) \
-                .options(contains_eager(Trace.transactions, Transaction.messages, Message.message_content)) \
-                .filter(Trace.trace_id.in_(ids))
-            result = await session.execute(query)
-            traces = result.scalars().unique().all()
-
-            # Gather interfaces for each account
-            accounts = set()
-            for trace in traces:
-                for tx in trace.transactions:
-                    accounts.add(tx.account)
-                    accounts.update(extract_additional_addresses(tx))
-
-            interfaces = await gather_interfaces(accounts, session)
-            repository = RedisInterfaceRepository(redis.sync_client)
-            await repository.put_interfaces(interfaces)
-            context.interface_repository.set(repository)
-            # Process traces and save actions
-            results = await asyncio.gather(*(process_trace(trace) for trace in traces))
-            ok_traces = []
-            failed_traces = []
-            broken_traces = []
-            for trace_id, state, actions in results:
-                if state == 'ok' or state == 'broken':
-                    # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
-                    # session.execute(insert(Action).values(actions).on_conflict_do_nothing()) 
-                    session.add_all(actions)
-                    for action in actions:
-                        session.add_all(action.get_action_accounts())
-
-                    if state == 'ok':
-                        ok_traces.append(trace_id)
-                    else:
-                        broken_traces.append(trace_id)
-                else:
-                    failed_traces.append(trace_id)
-            stmt = update(Trace).where(Trace.trace_id.in_(ok_traces)).values(classification_state='ok')
-            await session.execute(stmt)
-            if len(broken_traces) > 0:
-                stmt = update(Trace).where(Trace.trace_id.in_(broken_traces)).values(classification_state='broken')
-                await session.execute(stmt)
-            stmt = update(Trace).where(Trace.trace_id.in_(failed_traces)).values(classification_state='failed')
-            await session.execute(stmt)
-            await session.commit()
-        except Exception as ee:
-            logger.error(f'Failed to process batch: {ee}')
-            await session.rollback()
-    return
-
-
-async def process_trace(trace: Trace) -> tuple[str, str, list[Action]]:
+async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception]:
     if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock':
-        return trace.trace_id, 'ok', []
+        return trace.trace_id, 'ok', [], None
     try:
         result = await process_event_async_with_postprocessing(trace)
         actions = []
@@ -324,24 +354,28 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action]]:
                     state = 'broken'
                 action = block_to_action(block, trace.trace_id, trace)
                 actions.append(action)
-        return trace.trace_id, state, actions
+        return trace.trace_id, state, actions, None
     except Exception as e:
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
-        return trace.trace_id, 'failed', []
+        return trace.trace_id, 'failed', [], e
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--fetch-size',
-                        help='Number of prefetched batches',
+    parser.add_argument('--prefetch-size',
+                        help='Number of prefetched tasks',
                         type=int,
-                        default=300)
+                        default=100000)
     parser.add_argument('--batch-size',
-                        help='Number of traces to process in one batch',
+                        help='Number of trace-tasks to process in one batch',
                         type=int,
                         default=1000)
     parser.add_argument('--pool-size',
                         help='Number of workers to process traces',
+                        type=int,
+                        default=4)
+    parser.add_argument('--expected-total',
+                        help='Expected number of tasks',
                         type=int,
                         default=4)
     args = parser.parse_args()
