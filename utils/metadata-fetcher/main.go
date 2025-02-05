@@ -50,7 +50,7 @@ type AddressMetadata struct {
 	Extra       map[string]interface{}
 }
 
-func (receiver AddressMetadata) hasAnyData() bool {
+func (receiver *AddressMetadata) hasAnyData() bool {
 	if receiver.Type != nil && *receiver.Type == "jetton_masters" {
 		return receiver.Symbol != nil
 	}
@@ -61,7 +61,7 @@ func (receiver AddressMetadata) hasAnyData() bool {
 	return receiver.Name != nil || receiver.Description != nil || receiver.Image != nil
 }
 
-func (receiver AddressMetadata) merge(other AddressMetadata) {
+func (receiver *AddressMetadata) merge(other AddressMetadata) {
 	if other.Name != nil {
 		receiver.Name = other.Name
 	}
