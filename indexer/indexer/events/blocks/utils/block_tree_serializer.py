@@ -192,7 +192,7 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
     }
     action.asset = dex_incoming_transfer['asset']
     action.asset2 = dex_outgoing_transfer['asset']
-    if block.data['dex'] == 'stonfi_v2':
+    if block.data['dex'] in ('stonfi_v2', 'dedust'):
         action.asset = _addr(block.data['source_asset'])
         action.asset2 = _addr(block.data['destination_asset'])
     action.source = dex_incoming_transfer['source']
