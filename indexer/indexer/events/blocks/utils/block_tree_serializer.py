@@ -234,10 +234,10 @@ def _fill_dex_withdraw_liquidity(block: Block, action: Action):
     action.asset = _addr(block.data['asset'])
     action.dex_withdraw_liquidity_data = {
         "dex": block.data['dex'],
-        "amount_1" : block.data['amount1_out'].value if block.data['amount1_out'] is not None else None,
-        "amount_2" : block.data['amount2_out'].value if block.data['amount2_out'] is not None else None,
-        'asset_out_1' : _addr(block.data['asset1_out']),
-        'asset_out_2' : _addr(block.data['asset2_out']),
+        "amount1" : block.data['amount1_out'].value if block.data['amount1_out'] is not None else None,
+        "amount2" : block.data['amount2_out'].value if block.data['amount2_out'] is not None else None,
+        'asset1_out' : _addr(block.data['asset1_out']),
+        'asset2_out' : _addr(block.data['asset2_out']),
         'user_jetton_wallet_1' : _addr(block.data['wallet1']),
         'user_jetton_wallet_2' : _addr(block.data['wallet2']),
         'dex_jetton_wallet_1': _addr(block.data['dex_jetton_wallet_1']),

@@ -296,6 +296,8 @@ class Action(Base):
         Column('dex_jetton_wallet_1', String),
         Column('dex_jetton_wallet_2', String),
         Column("lp_tokens_burnt", Numeric),
+        Column('dex_wallet_1', String),
+        Column('dex_wallet_2', String)
     ]))
     staking_data = Column(CompositeType("staking_details", [
         Column("provider", String),
