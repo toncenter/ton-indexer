@@ -328,7 +328,7 @@ class StonfiV2SwapBlockMatcher(BlockMatcher):
                     'asset': in_transfer_data['asset']
                 },
                 'out': {
-                    'amount': assets[0][0],
+                    'amount': Amount(assets[0][0]),
                     'asset': pool_addr_jetton_map[assets[0][1].to_str(False).upper()]
                 }
             })
@@ -343,7 +343,7 @@ class StonfiV2SwapBlockMatcher(BlockMatcher):
                     peer_swaps.append({
                         'in': peer_swaps[-1]['out'],
                         'out': {
-                            'amount': assets[0][0],
+                            'amount': Amount(assets[0][0]),
                             'asset': pool_addr_jetton_map[assets[0][1].to_str(False).upper()]
                         }
                     })
