@@ -17,7 +17,7 @@ target_link_directories(ton-integrity-checker
     PUBLIC external/libpqxx
 )
 
-target_compile_features(ton-integrity-checker PRIVATE cxx_std_17)
+target_compile_features(ton-integrity-checker PRIVATE cxx_std_20)
 target_link_libraries(ton-integrity-checker tondb-scanner overlay tdutils tdactor adnl tl_api dht ton_crypto
         catchain validatorsession validator-disk ton_validator validator-disk smc-envelope pqxx)
 

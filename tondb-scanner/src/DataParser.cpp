@@ -8,11 +8,15 @@
 #include "validator/interfaces/block.h"
 #include "validator/interfaces/shard.h"
 #include "convert-utils.h"
+#include "Statistics.h"
 
 using namespace ton::validator; //TODO: remove this
 
 void ParseQuery::start_up() {
+  td::Timer timer;
   auto status = parse_impl();
+  g_statistics.record_time(PARSE_SEQNO, timer.elapsed() * 1e3);
+  
   if(status.is_error()) {
     promise_.set_error(status.move_as_error());
   }
@@ -25,6 +29,7 @@ void ParseQuery::start_up() {
 td::Status ParseQuery::parse_impl() {
   td::optional<schema::Block> mc_block;
   for (auto &block_ds : mc_block_.shard_blocks_diff_) {
+    td::Timer timer;
     // common block info
     block::gen::Block::Record blk;
     block::gen::BlockInfo::Record info;
@@ -40,39 +45,46 @@ td::Status ParseQuery::parse_impl() {
     }
 
     // transactions and messages
+    td::Timer transactions_timer;
     std::map<td::Bits256, AccountStateShort> account_states_to_get;
     TRY_RESULT_ASSIGN(schema_block.transactions, parse_transactions(block_ds.block_data->block_id(), blk, info, extra, account_states_to_get));
+    g_statistics.record_time(PARSE_TRANSACTION, transactions_timer.elapsed() * 1e6, schema_block.transactions.size());
 
+    td::Timer acc_states_timer;
     TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime, account_states_to_get));
+    g_statistics.record_time(PARSE_ACCOUNT_STATE, acc_states_timer.elapsed() * 1e6, account_states_fast.size());
     
     for (auto &acc : account_states_fast) {
-      result->account_states_.push_back(acc);
+      result->account_states_.push_back(std::move(acc));
     }
 
     // config
     if (block_ds.block_data->block_id().is_masterchain()) {
+      td::Timer config_timer;
       TRY_RESULT_ASSIGN(mc_block_.config_, block::ConfigInfo::extract_config(block_ds.block_state, block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries));
+      g_statistics.record_time(PARSE_CONFIG, config_timer.elapsed() * 1e6);
     }
 
     result->blocks_.push_back(schema_block);
+    g_statistics.record_time(PARSE_BLOCK, timer.elapsed() * 1e3);
   }
 
   // shard details
-  for (auto &block_ds : mc_block_.shard_blocks_) {
+  for (const auto &block_ds : mc_block_.shard_blocks_) {
     auto shard_block = parse_shard_state(mc_block.value(), block_ds.block_data->block_id());
-    result->shard_state_.push_back(shard_block);
+    result->shard_state_.push_back(std::move(shard_block));
   }
 
   result->mc_block_ = mc_block_;
   return td::Status::OK();
 }
 
-schema::MasterchainBlockShard ParseQuery::parse_shard_state(schema::Block mc_block, const ton::BlockIdExt& shard_blk_id) {
+schema::MasterchainBlockShard ParseQuery::parse_shard_state(const schema::Block& mc_block, const ton::BlockIdExt& shard_blk_id) {
   return {mc_block.seqno, mc_block.start_lt, mc_block.gen_utime, shard_blk_id.id.workchain, static_cast<int64_t>(shard_blk_id.id.shard), shard_blk_id.id.seqno};
 }
 
 schema::Block ParseQuery::parse_block(const td::Ref<vm::Cell>& root_cell, const ton::BlockIdExt& blk_id, block::gen::Block::Record& blk, const block::gen::BlockInfo::Record& info, 
-                          const block::gen::BlockExtra::Record& extra, td::optional<schema::Block> &mc_block) {
+                          const block::gen::BlockExtra::Record& extra, const td::optional<schema::Block> &mc_block) {
   schema::Block block;
   block.workchain = blk_id.id.workchain;
   block.shard = static_cast<int64_t>(blk_id.id.shard);

@@ -6,7 +6,7 @@ add_executable(celldb-migrate
 target_include_directories(celldb-migrate
     PUBLIC src
 )
-target_compile_features(celldb-migrate PRIVATE cxx_std_17)
+target_compile_features(celldb-migrate PRIVATE cxx_std_20)
 target_link_libraries(celldb-migrate tondb-scanner)
 
 install(TARGETS celldb-migrate RUNTIME DESTINATION bin)

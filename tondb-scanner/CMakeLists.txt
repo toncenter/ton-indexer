@@ -12,6 +12,7 @@ add_library(tondb-scanner STATIC
     src/parse_token_data.cpp
     src/convert-utils.cpp
     src/tokens.cpp
+    src/Statistics.cpp
     src/smc-interfaces/Tokens.cpp
     src/smc-interfaces/NftSale.cpp
     src/smc-interfaces/execute-smc.cpp
@@ -29,7 +30,7 @@ target_link_directories(tondb-scanner
     PUBLIC external/libpqxx
     PUBLIC external/msgpack-c
 )
-target_compile_features(tondb-scanner PRIVATE cxx_std_17)
+target_compile_features(tondb-scanner PRIVATE cxx_std_20)
 target_link_libraries(tondb-scanner overlay tdutils tdactor adnl tl_api dht
         catchain validatorsession validator-disk ton_validator validator-disk smc-envelope
         pqxx msgpack-cxx)

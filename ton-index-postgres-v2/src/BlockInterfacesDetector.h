@@ -2,17 +2,20 @@
 #include <td/actor/MultiPromise.h>
 #include <block/block.h>
 #include "IndexData.h"
+#include "Statistics.h"
 
 class BlockInterfaceProcessor: public td::actor::Actor {
 private:
     ParsedBlockPtr block_;
     td::Promise<ParsedBlockPtr> promise_;
     std::unordered_map<block::StdAddress, std::vector<BlockchainInterfaceV2>, AddressHasher> interfaces_{};
+    td::Timer timer_{true};
 public:
     BlockInterfaceProcessor(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise) : 
         block_(std::move(block)), promise_(std::move(promise)) {}
 
     void start_up() override {
+        timer_.resume();
         std::unordered_map<block::StdAddress, schema::AccountState, AddressHasher> account_states_to_detect;
         for (const auto& account_state : block_->account_states_) {
             if (!account_state.code_hash || !account_state.data_hash) {
@@ -165,6 +168,7 @@ public:
             block_->account_interfaces_ = std::move(interfaces_);
             promise_.set_result(std::move(block_));
         }
+        g_statistics.record_time(DETECT_INTERFACES_SEQNO, timer_.elapsed() * 1e3);
         stop();
     }
 };

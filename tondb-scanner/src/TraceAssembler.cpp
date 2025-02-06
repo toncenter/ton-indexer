@@ -6,6 +6,7 @@
 #include "td/utils/port/path.h"
 #include "common/delay.h"
 #include "convert-utils.h"
+#include "Statistics.h"
 
 namespace fs = std::filesystem;
 
@@ -49,6 +50,7 @@ void TraceAssembler::start_up() {
 }
 
 td::Status gc_states(std::string db_path, ton::BlockSeqno current_seqno, size_t keep_last) {
+    td::Timer timer;
     std::map<int, fs::path, std::greater<int>> fileMap;
 
     for (const auto& entry : fs::directory_iterator(db_path)) {
@@ -80,18 +82,22 @@ td::Status gc_states(std::string db_path, ton::BlockSeqno current_seqno, size_t 
             count++;
         }
     }
+    g_statistics.record_time(TRACE_ASSEMBLER_GC_STATE, timer.elapsed() * 1e6);
     return td::Status::OK();
 }
 
 td::Status save_state(std::string db_path, ton::BlockSeqno seqno, 
                       std::unordered_map<td::Bits256, TraceImplPtr, Bits256Hasher> pending_traces,
                       std::unordered_map<td::Bits256, TraceEdgeImpl, Bits256Hasher> pending_edges) {
+    td::Timer timer;
     std::stringstream buffer;
     msgpack::pack(buffer, pending_traces);
     msgpack::pack(buffer, pending_edges);
  
     auto path = db_path + "/" + std::to_string(seqno) + ".tastate";
-    return td::atomic_write_file(path, buffer.str());
+    auto result = td::atomic_write_file(path, buffer.str());
+    g_statistics.record_time(TRACE_ASSEMBLER_SAVE_STATE, timer.elapsed() * 1e6);
+    return result;
 }
 
 void TraceAssembler::alarm() {
@@ -202,7 +208,9 @@ td::Result<ton::BlockSeqno> TraceAssembler::restore_state(ton::BlockSeqno seqno)
 void TraceAssembler::process_queue() {
     auto it = queue_.find(expected_seqno_);
     while(it != queue_.end()) {
+        td::Timer timer;
         process_block(it->second.seqno_, it->second.block_);
+        g_statistics.record_time(TRACE_ASSEMBLER_PROCESS_BLOCK, timer.elapsed() * 1e6);
         it->second.promise_.set_result(it->second.block_);
 
         // block processed

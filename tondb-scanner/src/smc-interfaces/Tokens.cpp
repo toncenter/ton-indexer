@@ -126,7 +126,7 @@ void JettonWalletDetectorR::start_up() {
     data.mintless_is_claimed = std::nullopt;
   }
 
-  auto R = td::PromiseCreator::lambda([=, SelfId = actor_id(this)](td::Result<schema::AccountState> account_state_r) mutable {
+  auto R = td::PromiseCreator::lambda([=, this, SelfId = actor_id(this)](td::Result<schema::AccountState> account_state_r) mutable {
     if (account_state_r.is_error()) {
       promise_.set_error(account_state_r.move_as_error());
       stop();
@@ -302,7 +302,7 @@ void NftItemDetectorR::start_up() {
     stop();
   } else {
     auto ind_content = stack[4].as_cell();
-    auto R = td::PromiseCreator::lambda([=, SelfId = actor_id(this)](td::Result<schema::AccountState> account_state_r) mutable {
+    auto R = td::PromiseCreator::lambda([=, this, SelfId = actor_id(this)](td::Result<schema::AccountState> account_state_r) mutable {
       if (account_state_r.is_error()) {
         promise_.set_error(account_state_r.move_as_error());
         stop();

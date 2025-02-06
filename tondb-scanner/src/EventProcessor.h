@@ -1,5 +1,6 @@
 #pragma once
 #include "InterfaceDetectors.hpp"
+#include "Statistics.h"
 
 
 // Detects special cases of Actions like - Jetton transfers and burns, NFT transfers
@@ -7,16 +8,19 @@ class ActionDetector: public td::actor::Actor {
 private:
   ParsedBlockPtr block_;
   td::Promise<ParsedBlockPtr> promise_;
+  td::Timer timer_{true};
 public:
   ActionDetector(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise): block_(block), promise_(std::move(promise)) {
   }
 
   void start_up() override {
+    timer_.resume();
     for (const auto& block : block_->blocks_) {
       for (const auto& transaction : block.transactions) {
         process_tx(transaction);
       }
     }
+    g_statistics.record_time(DETECT_ACTIONS_SEQNO, timer_.elapsed() * 1e6);
     promise_.set_value(std::move(block_));
     stop();
   }

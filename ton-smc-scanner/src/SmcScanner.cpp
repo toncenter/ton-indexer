@@ -2,7 +2,7 @@
 #include "convert-utils.h"
 
 void SmcScanner::start_up() {
-    auto P = td::PromiseCreator::lambda([=, SelfId = actor_id(this)](td::Result<MasterchainBlockDataState> R){
+    auto P = td::PromiseCreator::lambda([=, this, SelfId = actor_id(this)](td::Result<MasterchainBlockDataState> R){
         if (R.is_error()) {
             LOG(ERROR) << "Failed to get seqno " << options_.seqno_ << ": " << R.move_as_error();
             stop();

@@ -2,6 +2,7 @@
 #include "validator/interfaces/block.h"
 #include "validator/interfaces/shard.h"
 #include "td/actor/MultiPromise.h"
+#include "Statistics.h"
 
 using namespace ton::validator;
 
@@ -71,6 +72,7 @@ private:
   const int mc_seqno_;
   td::actor::ActorId<ton::validator::RootDb> db_;
   td::Promise<MasterchainBlockDataState> promise_;
+  td::Timer timer_{true};
 
   td::Ref<BlockData> mc_block_data_;
   td::Ref<vm::Cell> mc_block_state_;
@@ -93,6 +95,7 @@ public:
   }
 
   void start_up() override {
+    timer_.resume();
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ConstBlockHandle> R) {
       td::actor::send_closure(SelfId, &IndexQuery::got_mc_block_handle, std::move(R));
     });
@@ -267,11 +270,13 @@ public:
   void finish() {
     // LOG(INFO) << "For seqno " << mc_seqno_ << " got " << result_.shard_blocks_.size() << " shard blocks and " << result_.shard_blocks_diff_.size() << " shard blocks diff";
     promise_.set_value(std::move(result_));
+    g_statistics.record_time(FETCH_SEQNO, timer_.elapsed() * 1e3);
     stop();
   }
 
   void error(td::Status error) {
     promise_.set_error(std::move(error));
+    g_statistics.record_count(SEQNO_FETCH_ERROR);
     stop();
   }
 };
@@ -311,9 +316,12 @@ void DbScanner::get_cell_db_reader(td::Promise<std::shared_ptr<vm::CellDbReader>
 }
 
 void DbScanner::catch_up_with_primary() {
-  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), this](td::Result<td::Unit> R) {
+  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), this, timer = td::Timer{}](td::Result<td::Unit> R) mutable {
     R.ensure();
     this->is_ready_ = true;
+    timer.pause();
+    g_statistics.record_time(CATCH_UP_WITH_PRIMARY, timer.elapsed() * 1e3);
+    LOG(INFO) << "Catch up with primary took " << timer.elapsed() * 1e3 << " micros";
   });
   td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, std::move(R));
 }

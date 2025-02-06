@@ -43,6 +43,9 @@ private:
 
   std::int32_t stats_timeout_{10};
   td::Timestamp next_print_stats_;
+  td::Timestamp next_statistics_flush_;
+
+  std::unordered_map<ton::BlockSeqno, td::Timer> timers_;
 public:
   IndexScheduler(td::actor::ActorId<DbScanner> db_scanner, td::actor::ActorId<InsertManagerInterface> insert_manager,
       td::actor::ActorId<ParseManager> parse_manager, std::string working_dir, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0, bool force_index = false,

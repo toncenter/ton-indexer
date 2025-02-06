@@ -3,6 +3,9 @@
 #include "td/utils/StringBuilder.h"
 #include <iostream>
 #include "BlockInterfacesDetector.h"
+#include "Statistics.h"
+#include "td/utils/filesystem.h"
+#include "common/delay.h"
 
 
 void IndexScheduler::start_up() {
@@ -44,6 +47,18 @@ void IndexScheduler::alarm() {
     if (next_print_stats_.is_in_past()) {
         print_stats();
         next_print_stats_ = td::Timestamp::in(stats_timeout_);
+    }
+    if (next_statistics_flush_.is_in_past()) {
+        ton::delay_action([working_dir = this->working_dir_]() {
+            auto stats = g_statistics.generate_report_and_reset();
+            auto path = working_dir + "/" + "stats.txt";
+            auto status = td::atomic_write_file(path, std::move(stats));
+            if (status.is_error()) {
+                LOG(ERROR) << "Failed to write statistics to " << path << ": " << status.error();
+            }
+        }, td::Timestamp::now());
+        
+        next_statistics_flush_ = td::Timestamp::in(60.0);
     }
 
     auto Q = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<QueueState> R){
@@ -145,6 +160,7 @@ void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
     LOG(DEBUG) << "Scheduled seqno " << mc_seqno;
 
     processing_seqnos_.insert(mc_seqno);
+    timers_[mc_seqno] = td::Timer();
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<MasterchainBlockDataState> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to fetch seqno " << mc_seqno << ": " << R.move_as_error();
@@ -227,12 +243,13 @@ void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBl
 void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Actions processed for seqno " << mc_seqno;
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, timer = td::Timer{}](td::Result<td::Unit> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to insert seqno " << mc_seqno << ": " << R.move_as_error();
             td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
             return;
         }
+        g_statistics.record_time(INSERT_SEQNO, timer.elapsed() * 1e3);
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_inserted, mc_seqno, R.move_as_ok());
     });
     auto Q = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<QueueState> R){
@@ -281,6 +298,8 @@ void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, td::Unit result) {
     if (mc_seqno > last_indexed_seqno_) {
         last_indexed_seqno_ = mc_seqno;
     }
+    g_statistics.record_time(PROCESS_SEQNO, timers_[mc_seqno].elapsed() * 1e3);
+    timers_.erase(mc_seqno);
 }
 
 void IndexScheduler::schedule_next_seqnos() {

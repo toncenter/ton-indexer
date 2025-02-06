@@ -2,6 +2,7 @@
 #include "td/utils/JsonBuilder.h"
 #include "InsertManagerPostgres.h"
 #include "convert-utils.h"
+#include "Statistics.h"
 
 
 namespace pqxx
@@ -393,9 +394,13 @@ void InsertBatchPostgres::start_up() {
 
 void InsertBatchPostgres::alarm() {
   try {
+    td::Timer connect_timer;
     pqxx::connection c(connection_string_);
+    connect_timer.pause();
 
+    td::Timer data_timer;
     pqxx::work txn(c);
+
     insert_blocks(txn, with_copy_);
     insert_shard_state(txn, with_copy_);
     insert_transactions(txn, with_copy_);
@@ -405,6 +410,8 @@ void InsertBatchPostgres::alarm() {
     insert_jetton_burns(txn, with_copy_);
     insert_nft_transfers(txn, with_copy_);
     insert_traces(txn, with_copy_);
+    data_timer.pause();
+    td::Timer states_timer;
     std::string insert_under_mutex_query;
     insert_under_mutex_query += insert_jetton_masters(txn);
     insert_under_mutex_query += insert_jetton_wallets(txn);
@@ -414,21 +421,32 @@ void InsertBatchPostgres::alarm() {
     insert_under_mutex_query += insert_getgems_nft_sales(txn);
     insert_under_mutex_query += insert_latest_account_states(txn);
     
+    td::Timer commit_timer{true};
     {
       std::lock_guard<std::mutex> guard(latest_account_states_update_mutex);
       txn.exec0(insert_under_mutex_query);
+      states_timer.pause();
+      commit_timer.resume();
       txn.commit();
+      commit_timer.pause();
     }
 
     for(auto& task : insert_tasks_) {
       task.promise_.set_value(td::Unit());
     }
     promise_.set_value(td::Unit());
+
+    g_statistics.record_time(INSERT_BATCH_CONNECT, connect_timer.elapsed() * 1e3);
+    g_statistics.record_time(INSERT_BATCH_EXEC_DATA, data_timer.elapsed() * 1e3);
+    g_statistics.record_time(INSERT_BATCH_EXEC_STATES, states_timer.elapsed() * 1e3);
+    g_statistics.record_time(INSERT_BATCH_COMMIT, commit_timer.elapsed() * 1e3);
+
     stop();
   } catch (const pqxx::integrity_constraint_violation &e) {
     LOG(WARNING) << "Error COPY to PG: " << e.what();
     LOG(WARNING) << "Apparently this block already exists in the database. Nevertheless we retry with INSERT ... ON CONFLICT ...";
     with_copy_ = false;
+    g_statistics.record_count(INSERT_CONFLICT);
     alarm_timestamp() = td::Timestamp::now();
   } catch (const std::exception &e) {
     LOG(ERROR) << "Error inserting to PG: " << e.what();
