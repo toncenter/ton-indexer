@@ -178,12 +178,18 @@ class StonfiSwapV2:
             sum_type = current_slice.load_uint(32)
             if sum_type in (0x6664de2a, 0x69cf1a5b):
                 accounts.append(current_slice.load_address().to_str(is_user_friendly=False).upper())
-                cross_swap = current_slice.load_ref().to_slice()
+                if current_slice.remaining_refs > 0:
+                    cross_swap = current_slice.load_ref().to_slice()
+                else:
+                    break
                 cross_swap.load_coins() # min_out
                 cross_swap.load_coins()
-                custom_payload = cross_swap.load_maybe_ref()
-                if custom_payload:
-                    current_slice = custom_payload.to_slice()
+                if cross_swap.remaining_refs > 0:
+                    custom_payload = cross_swap.load_maybe_ref()
+                    if custom_payload:
+                        current_slice = custom_payload.to_slice()
+                    else:
+                        break
                 else:
                     break
             else:
