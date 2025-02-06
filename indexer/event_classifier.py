@@ -25,6 +25,7 @@ from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_additional_addresses
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action
+from indexer.events.blocks.utils.dedust_pools import init_pools_data
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing
 from indexer.events.interface_repository import EmulatedTransactionsInterfaceRepository, gather_interfaces, \
@@ -361,6 +362,7 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
 
 
 if __name__ == '__main__':
+    init_pools_data()
     parser = argparse.ArgumentParser()
     parser.add_argument('--prefetch-size',
                         help='Number of prefetched tasks',
