@@ -21,8 +21,8 @@ def init_pools_data():
                 json.dump(pools_raw, f)
         else:
             raise Exception('Empty response')
-    except Exception as e:
-        print(f'Failed to fetch dedust pools data: {e}')
+    except Exception as fetch_exception:
+        print(f'Failed to fetch dedust pools data: {fetch_exception}')
         try:
             with open(FALLBACK_FILENAME, 'r') as f:
                 pools_raw = json.load(f)
@@ -30,6 +30,7 @@ def init_pools_data():
                 context.dedust_pools.set(dedust_pools)
         except Exception as e:
             print(f'Failed to load dedust pools data from file: {e}')
+            raise e
 
 def parse_raw_pools_data(pools_data: list[dict]) -> dict:
     pools = {}
