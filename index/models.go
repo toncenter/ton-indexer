@@ -668,30 +668,32 @@ type ActionDetailsWtonMint struct {
 }
 
 type ActionDetailsDexDepositLiquidity struct {
-	Dex               *string         `json:"dex"`
-	Amount1           *string         `json:"amount_1"`
-	Amount2           *string         `json:"amount_2"`
-	Asset1            *AccountAddress `json:"asset_1"`
-	Asset2            *AccountAddress `json:"asset_2"`
-	UserJettonWallet1 *AccountAddress `json:"user_jetton_wallet_1"`
-	UserJettonWallet2 *AccountAddress `json:"user_jetton_wallet_2"`
-	Source            *AccountAddress `json:"source"`
-	Pool              *AccountAddress `json:"pool"`
-	LpTokensMinted    *string         `json:"lp_tokens_minted"`
+	Dex                  *string         `json:"dex"`
+	Amount1              *string         `json:"amount_1"`
+	Amount2              *string         `json:"amount_2"`
+	Asset1               *AccountAddress `json:"asset_1"`
+	Asset2               *AccountAddress `json:"asset_2"`
+	UserJettonWallet1    *AccountAddress `json:"user_jetton_wallet_1"`
+	UserJettonWallet2    *AccountAddress `json:"user_jetton_wallet_2"`
+	Source               *AccountAddress `json:"source"`
+	Pool                 *AccountAddress `json:"pool"`
+	DestinationLiquidity *AccountAddress `json:"destination_liquidity"`
+	LpTokensMinted       *string         `json:"lp_tokens_minted"`
 }
 
 type ActionDetailsDexWithdrawLiquidity struct {
-	Dex               *string         `json:"dex"`
-	Amount1           *string         `json:"amount_1"`
-	Amount2           *string         `json:"amount_2"`
-	Asset1            *AccountAddress `json:"asset_1"`
-	Asset2            *AccountAddress `json:"asset_2"`
-	UserJettonWallet1 *AccountAddress `json:"user_jetton_wallet_1"`
-	UserJettonWallet2 *AccountAddress `json:"user_jetton_wallet_2"`
-	LpTokensBurnt     *string         `json:"lp_tokens_burnt"`
-	IsRefund          *bool           `json:"is_refund"`
-	Source            *AccountAddress `json:"source"`
-	Pool              *AccountAddress `json:"pool"`
+	Dex                  *string         `json:"dex"`
+	Amount1              *string         `json:"amount_1"`
+	Amount2              *string         `json:"amount_2"`
+	Asset1               *AccountAddress `json:"asset_1"`
+	Asset2               *AccountAddress `json:"asset_2"`
+	UserJettonWallet1    *AccountAddress `json:"user_jetton_wallet_1"`
+	UserJettonWallet2    *AccountAddress `json:"user_jetton_wallet_2"`
+	LpTokensBurnt        *string         `json:"lp_tokens_burnt"`
+	IsRefund             *bool           `json:"is_refund"`
+	Source               *AccountAddress `json:"source"`
+	Pool                 *AccountAddress `json:"pool"`
+	DestinationLiquidity *AccountAddress `json:"destination_liquidity"`
 }
 
 type ActionDetailsStakeDeposit struct {

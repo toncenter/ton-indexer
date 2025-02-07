@@ -340,6 +340,11 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Source = raw.Source
 		details.Dex = raw.DexDepositLiquidityDataDex
 		details.Pool = raw.Destination
+		if raw.DexDepositLiquidityDataDex != nil && *raw.DexDepositLiquidityDataDex == "dedust" {
+			details.DestinationLiquidity = raw.DestinationSecondary // deposit liquidity contract
+		} else {
+			details.DestinationLiquidity = raw.Destination // liquidity pool
+		}
 		details.Asset1 = raw.DexDepositLiquidityDataAsset1
 		details.Asset2 = raw.DexDepositLiquidityDataAsset2
 		details.Amount1 = raw.DexDepositLiquidityDataAmount1
@@ -353,6 +358,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Source = raw.Source
 		details.Dex = raw.DexWithdrawLiquidityDataDex
 		details.Pool = raw.Destination
+		details.DestinationLiquidity = raw.Destination
 		details.Asset1 = raw.DexWithdrawLiquidityDataAsset1Out
 		details.Asset2 = raw.DexWithdrawLiquidityDataAsset2Out
 		details.Amount1 = raw.DexWithdrawLiquidityDataAmount1
