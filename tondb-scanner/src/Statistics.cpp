@@ -2,13 +2,13 @@
 #include <iomanip>
 
 
-void HistogramImpl::add(uint64_t duration) {
-    count_.fetch_add(1, std::memory_order_relaxed);
+void HistogramImpl::add(uint64_t duration, size_t count = 1) {
+    count_.fetch_add(count, std::memory_order_relaxed);
     sum_.fetch_add(duration, std::memory_order_relaxed);
     update_max(max_, duration);
 
     size_t index = bucketMapper.IndexForValue(duration);
-    buckets_[index].fetch_add(1, std::memory_order_relaxed);
+    buckets_[index].fetch_add(count, std::memory_order_relaxed);
 }
 
 uint64_t HistogramImpl::get_count() const {
@@ -100,7 +100,7 @@ void Statistics::record_time(Histogram hist, uint64_t duration, uint32_t count) 
         // for batch events, we average the duration
         duration /= count;
     }
-    per_core_stats_.get().histograms_[hist].add(duration);
+    per_core_stats_.get().histograms_[hist].add(duration, count);
 }
 
 void Statistics::record_count(Ticker ticker, uint64_t count) {

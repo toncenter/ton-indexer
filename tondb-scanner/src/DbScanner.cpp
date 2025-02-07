@@ -321,7 +321,6 @@ void DbScanner::catch_up_with_primary() {
     this->is_ready_ = true;
     timer.pause();
     g_statistics.record_time(CATCH_UP_WITH_PRIMARY, timer.elapsed() * 1e3);
-    LOG(INFO) << "Catch up with primary took " << timer.elapsed() * 1e3 << " micros";
   });
   td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, std::move(R));
 }

@@ -65,7 +65,7 @@ constexpr HistogramBucketMapper bucketMapper;
 class HistogramImpl {
 public:
   HistogramImpl() = default;
-  void add(uint64_t duration);
+  void add(uint64_t duration, size_t count = 1);
   uint64_t get_count() const;
   uint64_t get_sum() const;
   double compute_percentile(double percentile) const;
