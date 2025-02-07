@@ -73,7 +73,9 @@ services:
 
   postgres:
     image: postgres:16
-    environment: *index-common
+    environment: 
+      <<: *index-common
+      POSTGRES_DB: ${POSTGRES_DBNAME}
     ports:
       - ${POSTGRES_PUBLISH_PORT:-5432}:5432
     secrets:
