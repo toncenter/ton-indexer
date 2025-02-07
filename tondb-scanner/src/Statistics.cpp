@@ -2,7 +2,7 @@
 #include <iomanip>
 
 
-void HistogramImpl::add(uint64_t duration, size_t count = 1) {
+void HistogramImpl::add(uint64_t duration, size_t count) {
     count_.fetch_add(count, std::memory_order_relaxed);
     sum_.fetch_add(duration, std::memory_order_relaxed);
     update_max(max_, duration);
