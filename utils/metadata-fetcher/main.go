@@ -228,6 +228,11 @@ func getMetadataFromJson(metadata map[string]interface{}) AddressMetadata {
 				}
 				result.Extra[key] = value
 			}
+		} else {
+			if result.Extra == nil {
+				result.Extra = make(map[string]interface{})
+			}
+			result.Extra[key] = metadata[key]
 		}
 	}
 
