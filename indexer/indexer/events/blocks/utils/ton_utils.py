@@ -83,8 +83,11 @@ class AccountId:
 class Amount:
     value: int
 
-    def __init__(self, value: int):
-        self.value = value
+    def __init__(self, value: int | Amount):
+        if isinstance(value, Amount):
+            self.value = value.value
+        else:
+            self.value = value
 
     def __repr__(self):
         return str(self.value)
