@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import abc
-import asyncio
 from collections import defaultdict
 from contextvars import ContextVar
+from dataclasses import dataclass
 
 import msgpack
-from attr import dataclass
+import redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from indexer.core.database import JettonWallet, NFTItem, NftSale, NftAuction, LatestAccountState
-import redis
-
 from indexer.events import context
 
 NOMINATOR_POOL_CODE_HASH = "mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8="
