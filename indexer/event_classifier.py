@@ -24,10 +24,11 @@ from indexer.core.database import engine, SyncSessionMaker, Base, Trace, Transac
 from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_additional_addresses
-from indexer.events.blocks.utils.block_tree_serializer import block_to_action
+from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action
 from indexer.events.blocks.utils.dedust_pools import init_pools_data
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
-from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing
+from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing, \
+    try_process_unknown_event
 from indexer.events.interface_repository import EmulatedTransactionsInterfaceRepository, gather_interfaces, \
     RedisInterfaceRepository
 
@@ -396,11 +397,35 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
                 if block.broken:
                     state = 'broken'
                 action = block_to_action(block, trace.trace_id, trace)
+                assert len(action._accounts) > 0, f"Action {action} has no accounts"
                 actions.append(action)
+        if len(actions) == 0 and len(trace.transactions) > 0:
+            actions = await try_classify_unknown_trace(trace)
+
         return trace.trace_id, state, actions, None
     except Exception as e:
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
-        return trace.trace_id, 'failed', [], e
+        unknown_action = create_unknown_action(trace)
+        return trace.trace_id, 'failed', [unknown_action], e
+
+
+async def try_classify_unknown_trace(trace):
+    actions = []
+    blocks = await try_process_unknown_event(trace)
+    for block in blocks:
+        if block.btype in ('root', 'empty'):
+            continue
+        if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
+            continue
+        if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
+            continue
+        action = block_to_action(block, trace.trace_id, trace)
+        assert len(action._accounts) > 0, f"Action {action} has no accounts"
+        actions.append(action)
+    if len(actions) == 0:
+        unknown_action = create_unknown_action(trace)
+        actions.append(unknown_action)
+    return actions
 
 
 if __name__ == '__main__':
