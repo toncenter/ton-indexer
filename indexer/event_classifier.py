@@ -155,6 +155,7 @@ class EventClassifierWorker(mp.Process):
         async with async_session() as session:
             try:
                 trace_ids = []
+                trace_ids_to_cleanup = []
                 mc_seqnos = []
                 is_trace_batch = tasks[0].trace_id is not None
 
@@ -164,6 +165,8 @@ class EventClassifierWorker(mp.Process):
                     else:
                         assert task.trace_id is None, "All tasks must be seqno tasks"
                     mc_seqnos.append(task.mc_seqno)
+                    if task.trace_id is not None:
+                        trace_ids.append(task.trace_id)
                     logger.debug(f"Task with mc_seqno={task.mc_seqno}, trace_id={task.trace_id}")
                     # check existing block
                     exists = False
@@ -177,18 +180,18 @@ class EventClassifierWorker(mp.Process):
                     # cleanup previous traces
                     if exists:
                         if task.trace_id is not None:
-                            trace_ids.append(task.trace_id)
+                            trace_ids_to_cleanup.append(task.trace_id)
                         elif task.mc_seqno is not None:
                             stmt = select(Trace.trace_id).filter(Trace.mc_seqno_end == task.mc_seqno)
                             result = await session.execute(stmt)
-                            trace_ids.extend([x[0] for x in result.fetchall()])
+                            trace_ids_to_cleanup.extend([x[0] for x in result.fetchall()])
 
                             await session.execute(f'delete from blocks_classified where mc_seqno = {task.mc_seqno}')
                 if len(trace_ids) > 0:
-                    stmt = delete(Action).where(Action.trace_id.in_(trace_ids))
+                    stmt = delete(Action).where(Action.trace_id.in_(trace_ids_to_cleanup))
                     # logger.info(f'stmt: {stmt}')
                     await session.execute(stmt)
-                    stmt = delete(ActionAccount).where(ActionAccount.trace_id.in_(trace_ids))
+                    stmt = delete(ActionAccount).where(ActionAccount.trace_id.in_(trace_ids_to_cleanup))
                     # logger.info(f'stmt: {stmt}')
                     await session.execute(stmt)
                 
