@@ -87,11 +87,13 @@ def to_tree(txs: list[Transaction]):
     def create_node(tx: Transaction) -> EventNode:
         """Helper function to create an EventNode from a transaction hash."""
         message = next((m for m in tx.messages if m.direction == "in"), None)
-
-        if message is None and tx.descr == "tick_tock":
-            return EventNode(None, [], is_tick_tock=True, tick_tock_tx=tx)
-        msg_tx[message.msg_hash] = tx.hash
-        return EventNode(message, [])
+        is_tick_tock = (tx.descr == "tick_tock")
+        if message is not None:
+            msg_tx[message.msg_hash] = tx.hash
+        if is_tick_tock:
+            return EventNode(message, [], is_tick_tock=True, tick_tock_tx=tx)
+        else:
+            return EventNode(message, [])
 
     for tx in txs:
         if tx.hash not in nodes:
