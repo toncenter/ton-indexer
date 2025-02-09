@@ -187,7 +187,7 @@ class EventClassifierWorker(mp.Process):
                             trace_ids_to_cleanup.extend([x[0] for x in result.fetchall()])
 
                             await session.execute(f'delete from blocks_classified where mc_seqno = {task.mc_seqno}')
-                if len(trace_ids) > 0:
+                if len(trace_ids_to_cleanup) > 0:
                     stmt = delete(Action).where(Action.trace_id.in_(trace_ids_to_cleanup))
                     # logger.info(f'stmt: {stmt}')
                     await session.execute(stmt)
