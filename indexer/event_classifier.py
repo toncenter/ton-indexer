@@ -68,10 +68,21 @@ class UnclassifiedEventsReader(mp.Process):
         rows = []
         with SyncSessionMaker() as session:
             try:
-                query = f'''with A as (select * from _classifier_tasks 
-                order by mc_seqno desc nulls first limit {self.batch_size})
-                delete from _classifier_tasks T using A where T.id = A.id
-                returning A.*;'''
+                query = f'''
+                               WITH A AS (
+                                   SELECT id 
+                                   FROM _classifier_tasks 
+                                   WHERE (claimed_at IS NULL OR claimed_at < NOW() - INTERVAL '5 minutes')
+                                   ORDER BY mc_seqno DESC NULLS FIRST 
+                                   LIMIT {self.batch_size} 
+                                   FOR UPDATE SKIP LOCKED
+                               )
+                               UPDATE _classifier_tasks
+                               SET claimed_at = NOW()
+                               FROM A
+                               WHERE _classifier_tasks.id = A.id
+                               RETURNING _classifier_tasks.*;
+                           '''
                 # query = f'''with A as (select * from _classifier_tasks 
                 # where pending is null or not pending order by mc_seqno desc nulls first limit {self.batch_size})
                 # update _classifier_tasks T set pending = true from A where T.id = A.id
@@ -82,10 +93,24 @@ class UnclassifiedEventsReader(mp.Process):
             except Exception as ee:
                 logger.warning(f'Failed to read tasks: {ee}')
                 session.rollback()
-        for row in rows:
-            task = ClassifierTask(id=row.id, mc_seqno=row.mc_seqno, trace_id=row.trace_id, pending=row.pending)
-            self.task_queue.put(task)
-    
+        tasks = [ClassifierTask(id=row.id, mc_seqno=row.mc_seqno, trace_id=row.trace_id, pending=row.pending) for row in rows]
+        batches = self._split_tasks_into_batches(tasks)
+        for batch in batches:
+            self.task_queue.put(batch)
+
+    def _split_tasks_into_batches(self, tasks: List[ClassifierTask]) -> List[List[ClassifierTask]]:
+        trace_tasks_batch = []
+        seqno_tasks_batches = []
+        for task in tasks:
+            if task.trace_id is not None:
+                trace_tasks_batch.append(task)
+            else:
+                seqno_tasks_batches.append([task])
+        if len(trace_tasks_batch) == 0:
+            return seqno_tasks_batches
+        else:
+            return seqno_tasks_batches + [trace_tasks_batch]
+
     def run(self):
         try:
             while True:
@@ -109,10 +134,10 @@ class EventClassifierWorker(mp.Process):
         self.force = force
 
     def process_one_batch(self):
-        task = self.task_queue.get(True)
+        tasks = self.task_queue.get(True)
         # logger.info(f'Worker #{self.id} accepted batch of {len(tasks)} tasks')
         try:
-            ok, total, failed, broken = asyncio.get_event_loop().run_until_complete(self.process_trace_batch_async(task))
+            ok, total, failed, broken = asyncio.get_event_loop().run_until_complete(self.process_trace_batch_async(tasks))
         except asyncio.CancelledError:
             logger.info("failed to process one batch: coroutine was cancelled")
             ok, total, failed, broken = False, 0, 0, 0
@@ -122,48 +147,61 @@ class EventClassifierWorker(mp.Process):
         self.result_queue.put((ok, total, failed, broken))
         return
     
-    async def process_trace_batch_async(self, task: ClassifierTask) -> Tuple[bool, int]:
+    async def process_trace_batch_async(self, tasks: List[ClassifierTask]) -> Tuple[bool, int]:
         ok = True
         processed = 0
         failed = 0
         broken = 0
-        logger.debug(f"Task with mc_seqno={task.mc_seqno}, trace_id={task.trace_id}")
         async with async_session() as session:
             try:
-                # check existing block
-                exists = False
-                if task.mc_seqno is not None:
-                    sql = f'select mc_seqno from blocks_classified where mc_seqno = {task.mc_seqno}'
-                    result = await session.execute(sql)
-                    rows = result.fetchall()
-                    exists = len(rows) > 0
-                if task.trace_id is not None:
-                    exists = True
+                trace_ids = []
+                trace_ids_to_cleanup = []
+                mc_seqnos = []
+                is_trace_batch = tasks[0].trace_id is not None
 
-                # cleanup previous traces
-                if exists:
-                    if task.mc_seqno is not None:
-                        stmt = select(Trace.trace_id).filter(Trace.mc_seqno_end == task.mc_seqno)
-                        result = await session.execute(stmt)
-                        trace_ids = [x[0] for x in result.fetchall()]
-                        
-                        await session.execute(f'delete from blocks_classified where mc_seqno = {task.mc_seqno}')
-                    elif task.trace_id is not None:
-                        trace_ids = [task.trace_id]
-                    stmt = delete(Action).where(Action.trace_id.in_(trace_ids))
+                for task in tasks:
+                    if is_trace_batch:
+                        assert task.trace_id is not None, "All tasks must be trace tasks"
+                    else:
+                        assert task.trace_id is None, "All tasks must be seqno tasks"
+                    mc_seqnos.append(task.mc_seqno)
+                    if task.trace_id is not None:
+                        trace_ids.append(task.trace_id)
+                    logger.debug(f"Task with mc_seqno={task.mc_seqno}, trace_id={task.trace_id}")
+                    # check existing block
+                    exists = False
+                    if task.trace_id is not None:
+                        exists = True
+                    elif task.mc_seqno is not None:
+                        sql = f'select mc_seqno from blocks_classified where mc_seqno = {task.mc_seqno}'
+                        result = await session.execute(sql)
+                        rows = result.fetchall()
+                        exists = len(rows) > 0
+                    # cleanup previous traces
+                    if exists:
+                        if task.trace_id is not None:
+                            trace_ids_to_cleanup.append(task.trace_id)
+                        elif task.mc_seqno is not None:
+                            stmt = select(Trace.trace_id).filter(Trace.mc_seqno_end == task.mc_seqno)
+                            result = await session.execute(stmt)
+                            trace_ids_to_cleanup.extend([x[0] for x in result.fetchall()])
+
+                            await session.execute(f'delete from blocks_classified where mc_seqno = {task.mc_seqno}')
+                if len(trace_ids_to_cleanup) > 0:
+                    stmt = delete(Action).where(Action.trace_id.in_(trace_ids_to_cleanup))
                     # logger.info(f'stmt: {stmt}')
                     await session.execute(stmt)
-                    stmt = delete(ActionAccount).where(ActionAccount.trace_id.in_(trace_ids))
+                    stmt = delete(ActionAccount).where(ActionAccount.trace_id.in_(trace_ids_to_cleanup))
                     # logger.info(f'stmt: {stmt}')
                     await session.execute(stmt)
                 
                 # read traces
                 fltr = None
-                if task.mc_seqno is not None:
-                    fltr = and_(Trace.mc_seqno_end == task.mc_seqno,
+                if is_trace_batch:
+                    fltr = Trace.trace_id.in_(trace_ids)
+                else:
+                    fltr = and_(Trace.mc_seqno_end.in_(mc_seqnos),
                                 Trace.nodes_ <= self.big_traces_threshold)
-                elif task.trace_id is not None:
-                    fltr = Trace.trace_id == task.trace_id
                 query = select(Trace).filter(fltr)
                 tx_join = selectinload(Trace.transactions).selectinload(Transaction.messages).selectinload(Message.message_content)
                 query = query.options(tx_join)
@@ -222,8 +260,12 @@ class EventClassifierWorker(mp.Process):
                 broken = len(broken_traces)
                 # finish task
                 # await session.execute(f"delete from _classifier_tasks where id = {task.id};")
-                if task.mc_seqno is not None:
-                    await session.execute(f"insert into blocks_classified(mc_seqno) values ({task.mc_seqno});")
+                for task in tasks:
+                    if not is_trace_batch:
+                        await session.execute(f"insert into blocks_classified(mc_seqno) values ({task.mc_seqno});")
+                task_ids = [task.id for task in tasks]
+                await session.execute(f"delete from _classifier_tasks where id in ({','.join(map(str, task_ids))});")
+
                 await session.commit()
             except Exception as ee:
                 logger.error(f'Failed to process batch: {ee}')
