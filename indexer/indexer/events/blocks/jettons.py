@@ -95,6 +95,51 @@ class JettonTransferBlockMatcher(BlockMatcher):
 
         return [new_block]
 
+class FallbackJettonTransferBlockMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block):
+        return isinstance(block, CallContractBlock) and block.opcode == JettonTransfer.opcode
+
+    async def build_block(self, block: Block | CallContractBlock, other_blocks: list[Block]) -> list[Block]:
+        include = [block]
+        include.extend(other_blocks)
+        jetton_transfer_message = JettonTransfer(block.get_body())
+        new_block = JettonTransferBlock({}, jetton_transfer_message)
+
+        sender = block.get_message().source
+        sender_jetton_wallet = block.get_message().destination
+        receiver = jetton_transfer_message.destination
+
+        data = {
+            'has_internal_transfer': False,
+            'sender': AccountId(sender),
+            'sender_wallet': AccountId(sender_jetton_wallet),
+            'receiver': AccountId(receiver),
+            'receiver_wallet': None,
+            'response_address': AccountId(jetton_transfer_message.response),
+            'forward_amount': Amount(jetton_transfer_message.forward_amount),
+            'query_id': jetton_transfer_message.query_id,
+            'asset': None,
+            'amount': Amount(jetton_transfer_message.amount),
+            'forward_payload': base64.b64encode(jetton_transfer_message.forward_payload).decode(
+                'utf-8') if jetton_transfer_message.forward_payload is not None else None,
+            'custom_payload': base64.b64encode(jetton_transfer_message.custom_payload).decode(
+                'utf-8') if jetton_transfer_message.custom_payload is not None else None,
+            'comment': jetton_transfer_message.comment,
+            'encrypted_comment': jetton_transfer_message.encrypted_comment,
+            'payload_opcode': jetton_transfer_message.payload_sum_type,
+            'stonfi_swap_body': jetton_transfer_message.stonfi_swap_body
+        }
+
+        new_block.data = data
+        new_block.merge_blocks(include)
+        new_block.failed = block.failed
+
+        return [new_block]
+
+
 class PTonTransferMatcher(BlockMatcher):
 
     pton_masters = [

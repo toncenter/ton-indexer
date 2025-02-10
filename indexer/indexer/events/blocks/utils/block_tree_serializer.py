@@ -102,10 +102,10 @@ def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
 
 
 def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):
-    action.source = block.data['sender'].as_str()
-    action.source_secondary = block.data['sender_wallet'].as_str()
-    action.destination = block.data['receiver'].as_str()
-    action.destination_secondary = block.data['receiver_wallet'].as_str() if 'receiver_wallet' in block.data else None
+    action.source = _addr(block.data['sender'])
+    action.source_secondary = _addr(block.data['sender_wallet'])
+    action.destination = _addr(block.data['receiver'])
+    action.destination_secondary = _addr(block.data['receiver_wallet']) if 'receiver_wallet' in block.data else None
     action.amount = block.data['amount'].value
     asset = block.data['asset']
     if asset is None or asset.is_ton:
@@ -409,6 +409,9 @@ def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawReq
     action.source = block.data.source.as_str()
     action.destination = block.data.pool.as_str()
 
+def _fill_tick_tock_action(block: Block, action: Action):
+    action.source = _addr(block.data['account'])
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -467,7 +470,7 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
         case 'auction_bid':
             _fill_auction_bid_action(block, action)
         case 'tick_tock':
-            pass
+            _fill_tick_tock_action(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
@@ -488,4 +491,28 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
     action.tx_hashes = list(extended_tx_hashes)
 
     action._accounts = list(set(a for a in action._accounts if a is not None))
+    return action
+
+def create_unknown_action(trace: Trace) -> Action:
+    logger.debug("Creating unknown action for " + trace.trace_id)
+    tx_hashes = [n.hash for n in trace.transactions]
+    failed = any(n.aborted for n in trace.transactions)
+    action = Action(
+        trace_id=trace.trace_id,
+        type="unknown",
+        action_id=trace.trace_id,
+        tx_hashes=tx_hashes,
+        start_lt=trace.start_lt,
+        end_lt=trace.end_lt,
+        start_utime=trace.start_utime,
+        end_utime=trace.end_utime,
+        success=not failed,
+        mc_seqno_end=trace.mc_seqno_end,
+        value_extra_currencies=dict(),
+        trace_end_lt=trace.end_lt,
+        trace_end_utime=trace.end_utime,
+        trace_external_hash=trace.external_hash,
+        trace_mc_seqno_end=trace.mc_seqno_end
+    )
+    action._accounts = list(set([n.account for n in trace.transactions]))
     return action

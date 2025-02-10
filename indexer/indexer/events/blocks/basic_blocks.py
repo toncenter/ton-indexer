@@ -111,3 +111,11 @@ class ContractDeploy(Block):
         self.failed = node.failed
         self.is_external = node.message.source is None
         self.opcode = node.get_opcode()
+
+class TickTockBlock(Block):
+    def __init__(self, node: EventNode):
+        super().__init__('tick_tock', [node], {
+            'account': AccountId(node.get_tx().account)
+        })
+        self.failed = node.failed
+        self.is_external = node.message.source is None
