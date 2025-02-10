@@ -409,6 +409,9 @@ def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawReq
     action.source = block.data.source.as_str()
     action.destination = block.data.pool.as_str()
 
+def _fill_tick_tock_action(block: Block, action: Action):
+    action.source = _addr(block.data['account'])
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -467,7 +470,7 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
         case 'auction_bid':
             _fill_auction_bid_action(block, action)
         case 'tick_tock':
-            pass
+            _fill_tick_tock_action(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
