@@ -129,9 +129,9 @@ class Block:
         self.initiating_event_node = None
         self.value_flow = AccountValueFlow()
         if len(nodes) != 0:
-            self.min_lt = nodes[0].message.transaction.lt
+            self.min_lt = nodes[0].get_lt()
             self.max_lt = nodes[0].message.transaction.lt
-            self.min_utime = nodes[0].message.transaction.now
+            self.min_utime = nodes[0].get_utime()
             self.max_utime = nodes[0].message.transaction.now
             self.min_lt_without_initiating_tx = nodes[0].message.transaction.lt
             self._find_contract_deployments()
@@ -147,15 +147,12 @@ class Block:
             self.min_lt_without_initiating_tx = 0
 
     def calculate_min_max_lt(self):
-        self.min_lt = min(n.message.transaction.lt for n in self.event_nodes)
+        self.min_lt = min(n.get_lt() for n in self.event_nodes)
         self.min_lt_without_initiating_tx = self.min_lt
-        self.min_utime = min(n.message.transaction.now for n in self.event_nodes)
+        self.min_utime = min(n.get_utime() for n in self.event_nodes)
+
         self.max_lt = max(n.message.transaction.lt for n in self.event_nodes)
         self.max_utime = max(n.message.transaction.now for n in self.event_nodes)
-        if (self.initiating_event_node is not None and self.initiating_event_node.message is not None
-                and self.initiating_event_node.message.transaction is not None):
-            self.min_lt = min(self.min_lt, self.initiating_event_node.message.transaction.lt)
-            self.min_utime = min(self.min_utime, self.initiating_event_node.message.transaction.now)
 
     def iter_prev(self, predicate: Callable[[Block], bool]) -> Iterable[Block]:
         """Iterates over all previous blocks that match predicate, starting from the closest one."""
