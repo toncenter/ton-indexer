@@ -1903,6 +1903,18 @@ func collectAddressesFromAction(addr_list *map[string]bool, raw_action *RawActio
 	if v := raw_action.JettonSwapDexOutgoingTransferDestinationJettonWallet; v != nil {
 		(*addr_list)[(string)(*v)] = true
 	}
+	if v := raw_action.DexDepositLiquidityDataAsset1; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.DexDepositLiquidityDataAsset2; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.DexWithdrawLiquidityDataAsset1Out; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.DexWithdrawLiquidityDataAsset2Out; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
 	return success
 }
 
