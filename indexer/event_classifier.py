@@ -72,7 +72,8 @@ class UnclassifiedEventsReader(mp.Process):
                                WITH A AS (
                                    SELECT id 
                                    FROM _classifier_tasks 
-                                   WHERE (claimed_at IS NULL OR claimed_at < NOW() - INTERVAL '5 minutes')
+                                   WHERE (claimed_at IS NULL OR claimed_at < NOW() - INTERVAL '5 minutes') 
+                                    AND (start_after IS NULL OR start_after <= NOW())
                                    ORDER BY mc_seqno DESC NULLS FIRST 
                                    LIMIT {self.batch_size} 
                                    FOR UPDATE SKIP LOCKED
@@ -185,8 +186,6 @@ class EventClassifierWorker(mp.Process):
                             stmt = select(Trace.trace_id).filter(Trace.mc_seqno_end == task.mc_seqno)
                             result = await session.execute(stmt)
                             trace_ids_to_cleanup.extend([x[0] for x in result.fetchall()])
-
-                            await session.execute(f'delete from blocks_classified where mc_seqno = {task.mc_seqno}')
                 if len(trace_ids_to_cleanup) > 0:
                     stmt = delete(Action).where(Action.trace_id.in_(trace_ids_to_cleanup))
                     # logger.info(f'stmt: {stmt}')
@@ -262,7 +261,7 @@ class EventClassifierWorker(mp.Process):
                 # await session.execute(f"delete from _classifier_tasks where id = {task.id};")
                 for task in tasks:
                     if not is_trace_batch:
-                        await session.execute(f"insert into blocks_classified(mc_seqno) values ({task.mc_seqno});")
+                        await session.execute(f"insert into blocks_classified(mc_seqno) values ({task.mc_seqno}) on conflict do nothing;")
                 task_ids = [task.id for task in tasks]
                 await session.execute(f"delete from _classifier_tasks where id in ({','.join(map(str, task_ids))});")
 
