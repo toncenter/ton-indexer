@@ -39,11 +39,7 @@ class TonTransferBlock(Block):
                 self.comment_encoded = True
                 self.comment = str(base64.b64encode(msg.comment), encoding='utf-8')
             else:
-                try:
-                    self.comment = str(msg.comment, encoding='utf-8')
-                except Exception:
-                    self.comment_encoded = True
-                    self.comment = str(base64.b64encode(msg.comment), encoding='utf-8')
+                self.comment = msg.comment.decode('utf-8', errors='surrogateescape').replace("\u0000", "")
         else:
             self.comment = None
 
@@ -85,6 +81,8 @@ class CallContractBlock(Block):
         self.failed = node.failed
         self.is_external = node.message.source is None
         self.opcode = node.get_opcode()
+        if self.failed and not node.message.value and self.opcode and not node.message.value_extra_currencies:
+            self.failed = False
         _fill_flow_from_node(self.value_flow, node)
         tx = node.get_tx()
         if tx is not None and tx.end_status == 'active' and tx.orig_status not in ('active', 'frozen'):

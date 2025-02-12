@@ -339,7 +339,7 @@ class StonfiV2SwapBlockMatcher(BlockMatcher):
                               (pay_to_msg.amount1_out, pay_to_msg.token1_address)]
                     assets.sort(key=lambda x: x[0], reverse=True)
                     if pay_to_msg.exit_code != 0xc64370e5:
-                        break
+                        continue
                     peer_swaps.append({
                         'in': peer_swaps[-1]['out'],
                         'out': {
