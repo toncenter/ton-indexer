@@ -145,6 +145,7 @@ class FinishedTasksProcessor(mp.Process):
                 try:
                     tasks_str = ','.join([f'{x}' for x in tasks])
                     sql = f'delete from _classifier_tasks where id in ({tasks_str});'
+                    logger.info(f'sql: {sql}')
                     logger.info(f'Closed {len(tasks)} finished tasks')
                     result = session.execute(sql)
                     session.commit()
@@ -301,8 +302,8 @@ class EventClassifierWorker(mp.Process):
                 broken = len(broken_traces)
                 # finish task
                 # await session.execute(f"delete from _classifier_tasks where id = {task.id};")
-                for task in tasks:
-                    if not is_trace_batch:
+                if not is_trace_batch:
+                    for task in tasks:
                         await session.execute(f"insert into blocks_classified(mc_seqno) values ({task.mc_seqno}) on conflict do nothing;")
                 # task_ids = [task.id for task in tasks]
                 # await session.execute(f"delete from _classifier_tasks where id in ({','.join(map(str, task_ids))});")
