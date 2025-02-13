@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -21,6 +22,7 @@ var IPFS_TIMEOUT = 10 * time.Second
 
 var gate *semaphore.Weighted
 var client *http.Client
+var img_url_builder *ImgProxyUrlBuilder
 var ipfs_downloader *IpfsDownloader
 
 var max_retries int
@@ -360,6 +362,16 @@ func processTask(ctx context.Context, pool *pgxpool.Pool, task FetchTask) (taskE
 		return handleTaskFailure(ctx, tx, task, err)
 	}
 
+	// Enrich metadata with proxied images
+	if content.Image != nil {
+		if content.Extra == nil {
+			content.Extra = make(map[string]interface{})
+		}
+		content.Extra["_image_small"] = img_url_builder.BuildUrl(*content.Image, "small")
+		content.Extra["_image_medium"] = img_url_builder.BuildUrl(*content.Image, "medium")
+		content.Extra["_image_big"] = img_url_builder.BuildUrl(*content.Image, "big")
+	}
+
 	_, err = tx.Exec(ctx, `INSERT INTO address_metadata (address, type, valid, name, description, image, symbol, extra, updated_at, expires_at)
     							VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (address, type) DO UPDATE SET 
     							valid = $3, name = $4, description = $5, image = $6, symbol = $7, extra = $8, updated_at = $9, expires_at = $10`,
@@ -522,6 +534,8 @@ func updateStalledTasks(ctx context.Context, pool *pgxpool.Pool) {
 func main() {
 	var pg_dsn string
 	var processes int
+	var imgproxy_key string
+	var imgproxy_salt string
 	flag.StringVar(&pg_dsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
 	flag.IntVar(&processes, "processes", 32, "Set number of parallel queries")
 	flag.DurationVar(&initial_backoff, "initial-backoff", 5*time.Second, "Initial backoff duration")
@@ -530,7 +544,19 @@ func main() {
 	flag.IntVar(&max_retries, "max-retries", 5, "Maximum number of retries")
 	flag.DurationVar(&stalled_task_interval, "stalled-task-interval", 5*time.Minute,
 		"Interval to update stalled tasks")
+	flag.StringVar(&imgproxy_salt, "imgproxy-salt", "", "ImgProxy salt")
+	flag.StringVar(&imgproxy_key, "imgproxy-key", "", "ImgProxy key")
 	flag.Parse()
+
+	key, err := hex.DecodeString(imgproxy_key)
+	if err != nil {
+		log.Fatal("failed to decode img proxy key: ", err)
+	}
+	salt, err := hex.DecodeString(imgproxy_salt)
+	if err != nil {
+		log.Fatal("failed to decode img proxy salt: ", err)
+	}
+	img_url_builder = NewImgProxyUrlBuilder(key, salt)
 
 	var err error
 	ipfs_downloader, err = NewIpfsDownloader()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"reflect"
 	"sort"
 	"strings"
@@ -1460,6 +1461,30 @@ func queryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 		BackgroundTaskManager.EnqueueTasksIfPossible(tasks)
 	}
 	return metadata, nil
+}
+
+func SubstituteImgproxyBaseUrl(metadata *Metadata, base_url string) {
+	proxied_fields := []string{"_image_small", "_image_medium", "_image_big"}
+
+	for _, addr_meta := range *metadata {
+		for _, tokenInfo := range addr_meta.TokenInfo {
+			if tokenInfo.Image == nil || tokenInfo.Extra == nil {
+				continue
+			}
+
+			for _, field := range proxied_fields {
+				if val, exists := tokenInfo.Extra[field]; exists {
+					if img_url, ok := val.(string); ok && img_url != "" {
+						if result, err := url.JoinPath(base_url, img_url); err == nil {
+							tokenInfo.Extra[field] = result
+						} else {
+							log.Printf("Error joining imgproxy base URL with image URL: %v", err)
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {

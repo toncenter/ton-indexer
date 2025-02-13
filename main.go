@@ -31,6 +31,7 @@ type Settings struct {
 	MaxThreads      int
 	Debug           bool
 	Request         index.RequestSettings
+	ImgProxyBaseUrl string
 }
 
 func onlyOneOf(flags ...bool) bool {
@@ -448,6 +449,7 @@ func GetMessages(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 	// if len(msgs) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "messages not found"}
 	// }
@@ -513,6 +515,7 @@ func GetMetadata(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 	return c.JSON(metadata)
 }
 
@@ -560,6 +563,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "account states not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	resp := index.AccountStatesResponse{Accounts: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
@@ -598,6 +602,7 @@ func GetWalletStates(c *fiber.Ctx) error {
 	if err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	resp := index.WalletStatesResponse{Wallets: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
@@ -639,6 +644,8 @@ func GetNFTCollections(c *fiber.Ctx) error {
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "nft collections not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+
 	resp := index.NFTCollectionsResponse{Collections: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
@@ -681,6 +688,8 @@ func GetNFTItems(c *fiber.Ctx) error {
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "nft items not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+
 	resp := index.NFTItemsResponse{Items: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
@@ -747,6 +756,7 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "nft transfers not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	resp := index.NFTTransfersResponse{Transfers: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
@@ -816,6 +826,8 @@ func GetJettonMasters(c *fiber.Ctx) error {
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "jetton masters not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+
 	resp := index.JettonMastersResponse{Masters: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
@@ -859,6 +871,8 @@ func GetJettonWallets(c *fiber.Ctx) error {
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "jetton wallets not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+
 	resp := index.JettonWalletsResponse{Wallets: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
@@ -925,6 +939,7 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "jetton transfers not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	resp := index.JettonTransfersResponse{Transfers: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
@@ -988,6 +1003,7 @@ func GetJettonBurns(c *fiber.Ctx) error {
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "jetton burns not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	resp := index.JettonBurnsResponse{Burns: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
@@ -1052,6 +1068,7 @@ func GetTraces(c *fiber.Ctx) error {
 	// if len(txs) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	txs_resp := index.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(txs_resp)
@@ -1113,6 +1130,7 @@ func GetActions(c *fiber.Ctx) error {
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "actions not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	resp := index.ActionsResponse{Actions: res, AddressBook: book, Metadata: metadata}
 	return c.Status(200).JSON(resp)
@@ -1476,6 +1494,7 @@ func main() {
 	flag.StringVar(&settings.PgMasterDsn, "pg-master", "", "PostgreSQL connection string with write access")
 	flag.StringVar(&settings.Request.V2Endpoint, "v2", "", "TON HTTP API endpoint for proxied methods")
 	flag.StringVar(&settings.Request.V2ApiKey, "v2-apikey", "", "API key for TON HTTP API endpoint")
+	flag.StringVar(&settings.ImgProxyBaseUrl, "imgproxy-baseurl", "", "Imgproxy base URL")
 	flag.IntVar(&settings.MaxConns, "maxconns", 100, "PostgreSQL max connections")
 	flag.IntVar(&settings.MinConns, "minconns", 0, "PostgreSQL min connections")
 	flag.IntVar(&settings.MasterMaxConns, "master-maxconns", 4, "PostgreSQL master max connections")
