@@ -61,10 +61,11 @@ services:
       - postgres_password
     volumes:
       - ${TON_WORKER_DBROOT:-./}:/tondb
+      - index_worker_data:/index_data
     environment: *index-worker
     networks:
       internal:
-    command: --from ${TON_WORKER_FROM:-1}
+    command: --from ${TON_WORKER_FROM:-1} --working-dir /index_data
     restart: unless-stopped
     depends_on:
       alembic:
@@ -96,6 +97,8 @@ services:
 
 volumes:
   postgres_data:
+    external: false
+  index_worker_data:
     external: false
 
 networks:
