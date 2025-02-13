@@ -39,7 +39,7 @@ class TonTransferBlock(Block):
                 self.comment_encoded = True
                 self.comment = str(base64.b64encode(msg.comment), encoding='utf-8')
             else:
-                self.comment = msg.comment.decode('utf-8', errors='surrogateescape').replace("\u0000", "")
+                self.comment = msg.comment.decode('utf-8', errors='backslashreplace').replace("\u0000", "")
         else:
             self.comment = None
 

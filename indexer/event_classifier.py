@@ -6,7 +6,7 @@ import sys
 import time
 import traceback
 import codecs
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional, List, Tuple
 from dataclasses import asdict
 import json
@@ -125,12 +125,54 @@ class UnclassifiedEventsReader(mp.Process):
 # end class
 
 
+class FinishedTasksProcessor(mp.Process):
+    def __init__(self, finished_queue: mp.Queue):
+        super().__init__()
+        self.finished_queue = finished_queue
+        self.last_commit = datetime.now()
+        logger.info(f"Reading finished tasks")
+    
+    def read_finished_tasks(self):
+        tasks = []
+        while (datetime.now() - self.last_commit).total_seconds() < 10:
+            try:
+                result = self.finished_queue.get(timeout=1)
+                tasks.append(result)
+            except:
+                pass
+        if len(tasks) > 0:
+            with SyncSessionMaker() as session:
+                try:
+                    tasks_str = ','.join([f'{x}' for x in tasks])
+                    sql = f'delete from _classifier_tasks where id in ({tasks_str});'
+                    logger.info(f'Closed {len(tasks)} finished tasks')
+                    result = session.execute(sql)
+                    session.commit()
+                except Exception as ee:
+                    logger.warning(f'Failed to close tasks: {ee}')
+                    session.rollback()
+                self.last_commit = datetime.now()
+
+    def run(self):
+        try:
+            while True:
+                self.read_finished_tasks()
+        except KeyboardInterrupt:
+            logger.info(f'Gracefully stopped in the FinishedTasksProcessor')
+        except:
+            logger.info(f'Error in FinishedTasksProcessor: {traceback.format_exc()}')
+        logger.info(f'Thread FinishedTasksProcessor finished')
+        return
+# end class
+
+
 class EventClassifierWorker(mp.Process):
-    def __init__(self, id: int, task_queue: mp.Queue, result_queue: mp.Queue, big_traces_threshold=4000, force=False):
+    def __init__(self, id: int, task_queue: mp.Queue, result_queue: mp.Queue, finished_queue: mp.Queue, big_traces_threshold=4000, force=False):
         super().__init__()
         self.id = id
         self.task_queue = task_queue
         self.result_queue = result_queue
+        self.finished_queue = finished_queue
         self.big_traces_threshold = big_traces_threshold
         self.force = force
 
@@ -262,10 +304,11 @@ class EventClassifierWorker(mp.Process):
                 for task in tasks:
                     if not is_trace_batch:
                         await session.execute(f"insert into blocks_classified(mc_seqno) values ({task.mc_seqno}) on conflict do nothing;")
-                task_ids = [task.id for task in tasks]
-                await session.execute(f"delete from _classifier_tasks where id in ({','.join(map(str, task_ids))});")
-
+                # task_ids = [task.id for task in tasks]
+                # await session.execute(f"delete from _classifier_tasks where id in ({','.join(map(str, task_ids))});")
                 await session.commit()
+                for task in tasks:
+                    self.finished_queue.put(task.id)
             except Exception as ee:
                 logger.error(f'Failed to process batch: {ee}')
                 await session.rollback()
@@ -305,13 +348,16 @@ async def start_processing_events_from_db(args: argparse.Namespace):
     task_queue = mp.Queue(args.prefetch_size)
     result_queue = mp.Queue()
     stats_queue = mp.Queue()
+    finished_queue = mp.Queue()
     thread = UnclassifiedEventsReader(task_queue, result_queue, stats_queue, args.batch_size, args.prefetch_size)
     thread.start()
     workers = []
     for id in range(args.pool_size):
-        worker = EventClassifierWorker(id, task_queue, result_queue, big_traces_threshold=4000)
+        worker = EventClassifierWorker(id, task_queue, result_queue, finished_queue, big_traces_threshold=4000)
         worker.start()
         workers.append(worker)
+    task_closer = FinishedTasksProcessor(finished_queue)
+    task_closer.start()
     
     # stats
     failed_tasks = 0
@@ -350,6 +396,8 @@ async def start_processing_events_from_db(args: argparse.Namespace):
     for worker in workers:
         worker.terminate()
         worker.join()
+    task_closer.terminate()
+    task_closer.join()
     return
 # end def
 
