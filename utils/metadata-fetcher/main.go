@@ -558,7 +558,6 @@ func main() {
 	}
 	img_url_builder = NewImgProxyUrlBuilder(key, salt)
 
-	var err error
 	ipfs_downloader, err = NewIpfsDownloader()
 	defer ipfs_downloader.Close()
 	if err != nil {
