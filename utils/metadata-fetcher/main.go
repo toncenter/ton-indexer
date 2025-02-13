@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -16,8 +17,11 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
+var IPFS_TIMEOUT = 10 * time.Second
+
 var gate *semaphore.Weighted
 var client *http.Client
+var ipfs_downloader *IpfsDownloader
 
 var max_retries int
 var initial_backoff time.Duration
@@ -240,25 +244,63 @@ func getMetadataFromJson(metadata map[string]interface{}) AddressMetadata {
 	return result
 }
 
-func fetchOffchainMetadata(url string) (AddressMetadata, error) {
+func fetchHttpMetadata(url string) (map[string]interface{}, error) {
 	resp, err := client.Get(url)
 	if err != nil {
-		return AddressMetadata{}, fmt.Errorf("failed to fetch content from URL: %v", err)
+		return nil, fmt.Errorf("failed to fetch content from URL: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return AddressMetadata{}, fmt.Errorf("non-OK HTTP status: %s", resp.Status)
+		return nil, fmt.Errorf("non-OK HTTP status: %s", resp.Status)
 	}
 
 	body_bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return AddressMetadata{}, fmt.Errorf("failed to read response body: %v", err)
+		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
 
 	var content map[string]interface{}
 	if err := json.Unmarshal(body_bytes, &content); err != nil {
-		return AddressMetadata{}, fmt.Errorf("failed to unmarshal response body: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal response body: %v", err)
+	}
+	return content, nil
+}
+
+func fetchIpfsMetadata(url string) (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), IPFS_TIMEOUT)
+	defer cancel()
+	file, err := ipfs_downloader.GetFile(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch content from IPFS: %v", err)
+	}
+	var content map[string]interface{}
+	if err := json.Unmarshal([]byte(file), &content); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal IPFS content: %v", err)
+	}
+	return content, nil
+}
+
+func fetchOffchainMetadata(url string) (AddressMetadata, error) {
+	tokens := strings.Split(url, ":")
+	if len(tokens) < 2 {
+		return AddressMetadata{}, fmt.Errorf("invalid URL: %s", url)
+	}
+	var content map[string]interface{}
+	var err error
+	protocol := tokens[0]
+	if protocol == "http" || protocol == "https" {
+		content, err = fetchHttpMetadata(url)
+		if err != nil {
+			return AddressMetadata{}, err
+		}
+	} else if protocol == "ipfs" {
+		content, err = fetchIpfsMetadata(url)
+		if err != nil {
+			return AddressMetadata{}, err
+		}
+	} else {
+		return AddressMetadata{}, fmt.Errorf("unsupported protocol: %s", protocol)
 	}
 	return getMetadataFromJson(content), nil
 }
@@ -489,6 +531,13 @@ func main() {
 	flag.DurationVar(&stalled_task_interval, "stalled-task-interval", 5*time.Minute,
 		"Interval to update stalled tasks")
 	flag.Parse()
+
+	var err error
+	ipfs_downloader, err = NewIpfsDownloader()
+	defer ipfs_downloader.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	gate = semaphore.NewWeighted(int64(processes))
 	client = &http.Client{
