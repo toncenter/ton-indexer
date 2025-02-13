@@ -7,6 +7,7 @@ MIGRATE=0
 BUILD=1
 DEPLOY_API=0
 DEPLOY_EVENTS=0
+DEPLOY_IMGPROXY=0
 
 BUILD_ARGS=
 POSITIONAL_ARGS=()
@@ -17,8 +18,8 @@ function usage() {
     echo ' -m --migrate             Run database migration'
     echo '    --no-build            Do not build docker images'
     echo '    --no-build-cache      No build cache'
-    echo '    --deploy-api          Deploy API'
-    echo '    --deploy-events       Deploy event classfier'
+    echo '    --api                 Deploy API'
+    echo '    --events              Deploy event classfier'
     echo ' -h --help                Show this message'
     exit
 }
@@ -52,6 +53,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --events)
             DEPLOY_EVENTS=1
+            shift
+            ;;
+        --imgproxy)
+            DEPLOY_IMGPROXY=1
             shift
             ;;
         -*|--*)
@@ -105,8 +110,8 @@ fi
 
 # build image
 if [[ $BUILD -eq "1" ]]; then
-    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml build $BUILD_ARGS
-    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml push
+    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml -f docker-compose.imgproxy.yaml build $BUILD_ARGS
+    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml -f docker-compose.imgproxy.yaml push
 fi
 
 if [[ $MIGRATE -eq "1" ]]; then
@@ -122,4 +127,9 @@ fi
 if [[ $DEPLOY_EVENTS -eq "1" ]]; then
     echo "Deploying event classifier"
     docker stack deploy --with-registry-auth -c docker-compose.events.yaml ${STACK_NAME}
+fi
+
+if [[ $DEPLOY_IMGPROXY -eq "1" ]]; then
+    echo "Deploying imgproxy"
+    docker stack deploy --with-registry-auth -c docker-compose.imgproxy.yaml ${STACK_NAME}
 fi

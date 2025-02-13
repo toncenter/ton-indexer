@@ -63,13 +63,29 @@ class EventNode:
         else:
             return None
 
+    def get_tx(self):
+        if self.is_tick_tock and self.tick_tock_tx is not None:
+            return self.tick_tock_tx
+        elif self.message is not None:
+            return self.message.transaction
+        else:
+            return None
 
     def get_lt(self):
         if self.is_tick_tock and self.tick_tock_tx is not None:
             return self.tick_tock_tx.lt
-        else:
+        elif self.message.created_lt is not None:
             return self.message.created_lt
+        else:
+            return self.message.tx_lt
 
+    def get_utime(self):
+        if self.is_tick_tock and self.tick_tock_tx is not None:
+            return self.tick_tock_tx.now
+        elif self.message.created_lt is not None:
+            return self.message.created_at
+        else:
+            return self.message.transaction.now
 
 def to_tree(txs: list[Transaction]):
     txs = sorted(txs, key=lambda tx: tx.lt, reverse=True)
@@ -79,10 +95,13 @@ def to_tree(txs: list[Transaction]):
         """Helper function to create an EventNode from a transaction hash."""
         message = next((m for m in tx.messages if m.direction == "in"), None)
 
-        if message is None and tx.descr == "tick_tock":
-            return EventNode(None, [], is_tick_tock=True, tick_tock_tx=tx)
-        msg_tx[message.msg_hash] = tx.hash
-        return EventNode(message, [])
+        is_tick_tock = (tx.descr == "tick_tock")
+        if message is not None:
+            msg_tx[message.msg_hash] = tx.hash
+        if is_tick_tock:
+            return EventNode(message, [], is_tick_tock=True, tick_tock_tx=tx)
+        else:
+            return EventNode(message, [])
 
     for tx in txs:
         if tx.hash not in nodes:

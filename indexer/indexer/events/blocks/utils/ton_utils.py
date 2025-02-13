@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from pytoniq_core import Address
+from decimal import Decimal
+
+import psycopg2
+from pytoniq_core import Address, ExternalAddress
 
 from indexer.core.database import Transaction
 
@@ -41,9 +44,13 @@ def is_failed(tx: Transaction):
 
 
 class AccountId:
-    def __init__(self, address: str | Address):
-        if isinstance(address, str):
-            if address == 'addr_none':
+    def __init__(self, address: str | Address | ExternalAddress | None):
+        if address is None:
+            self.address = None
+        elif isinstance(address, ExternalAddress):
+            raise ValueError("ExternalAddress is not supported")
+        elif isinstance(address, str):
+            if address == "addr_none":
                 self.address = None
             else:
                 self.address = Address(address)
@@ -51,7 +58,7 @@ class AccountId:
             self.address = address
 
     def __repr__(self):
-        return self.address.to_str(False)
+        return self.address.to_str(False) if self.address else "addr_none"
 
     def __eq__(self, other):
         return self.address == other.address
@@ -76,11 +83,20 @@ class AccountId:
 class Amount:
     value: int
 
-    def __init__(self, value: int):
-        self.value = value
+    def __init__(self, value: int | Amount):
+        if isinstance(value, Amount):
+            self.value = value.value
+        else:
+            self.value = value
 
     def __repr__(self):
         return str(self.value)
 
     def to_json(self):
         return self.value
+
+def convert_amount(amount):
+    return psycopg2.extensions.AsIs(Decimal(amount.value))  # Converts to Decimal
+
+# Register adapter for psycopg2
+psycopg2.extensions.register_adapter(Amount, convert_amount)

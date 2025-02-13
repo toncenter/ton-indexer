@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-from indexer.events.blocks.messages import JettonNotify, JettonInternalTransfer, ExcessMessage, JettonBurnNotification
+from indexer.events.blocks.basic_blocks import CallContractBlock
+from indexer.events.blocks.basic_matchers import BlockMatcher, ContractMatcher
+from indexer.events.blocks.core import Block
 from indexer.events.blocks.messages.subscriptions import SubscriptionPaymentRequestResponse, SubscriptionPayment, \
     SubscriptionPaymentRequest, WalletPluginDestruct
-from indexer.events.blocks.utils.block_utils import find_call_contracts, find_messages, find_call_contract
-from indexer.events import context
-from indexer.events.blocks.basic_blocks import CallContractBlock
-from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher, child_sequence_matcher
-
-from indexer.events.blocks.core import Block
-from indexer.events.blocks.utils import AccountId, Asset, Amount
-from indexer.events.blocks.messages import JettonTransfer, JettonBurn
-from indexer.core.database import JettonWallet
+from indexer.events.blocks.utils import AccountId, Amount
+from indexer.events.blocks.utils.block_utils import find_call_contract
 
 
 class SubscriptionBlock(Block):

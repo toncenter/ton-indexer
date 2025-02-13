@@ -5,15 +5,14 @@ import base64
 from pytoniq_core import Slice
 
 from indexer.events import context
-from indexer.events.blocks.utils.block_utils import find_messages
-from indexer.core.database import SyncSessionMaker, NFTItem
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.messages import NftOwnershipAssigned, ExcessMessage
 from indexer.events.blocks.messages.nft import NftTransfer, TeleitemBidInfo, AuctionFillUp
-from indexer.events.blocks.utils import AccountId, Amount, block_utils
+from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import find_call_contracts
+from indexer.events.blocks.utils.block_utils import find_messages
 
 
 class NftMintBlock(Block):
@@ -114,6 +113,7 @@ class NftTransferBlockMatcher(BlockMatcher):
         new_block.data = data
         if not data['nft']['exists']:
             new_block.broken = True
+        new_block.failed = block.failed
         return [new_block]
 
 
@@ -135,6 +135,7 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         message = block.get_message()
         nft_ownership_message = NftOwnershipAssigned(Slice.one_from_boc(message.message_content.body))
         data['new_owner'] = AccountId(message.destination)
+        data['prev_owner'] = AccountId(nft_ownership_message.prev_owner) if nft_ownership_message.prev_owner is not None else None
         data['query_id'] = nft_ownership_message.query_id
         data['forward_amount'] = None
         data['response_destination'] = None
@@ -179,6 +180,7 @@ class NftMintBlockMatcher(BlockMatcher):
             "source": AccountId(source) if source else None,
             "address": AccountId(address),
             "index": nft_item.index,
+            "opcode": block.event_nodes[0].get_opcode(),
             "collection": AccountId(nft_item.collection_address) if nft_item.collection_address else None,
         }
         new_block = NftMintBlock(data)

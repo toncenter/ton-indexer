@@ -23,5 +23,6 @@ else
     export TON_INDEXER_PG_DSN="${POSTGRES_DIALECT:-postgresql+asyncpg}://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DBNAME}"
 fi
 printenv
+ls -la
 
 exec "$@"

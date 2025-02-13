@@ -1,0 +1,35 @@
+version: '3.9'
+
+x-imgproxy-environment: &imgproxy-environment
+  IMGPROXY_PRESETS:
+  IMGPROXY_KEY:
+  IMGPROXY_SALT:
+
+services:
+  imgproxy:
+    image: ghcr.io/imgproxy/imgproxy:latest
+    environment: *imgproxy-environment
+    ports:
+      - ${IMGPROXY_PORT:-8201}:8080
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - "node.labels.${TONCENTER_ENV:?}.indexer-cpp.imgproxy==true"
+    networks:
+      internal:
+
+networks:
+  internal:
+    attachable: true
+    external: false
+    driver_opts:
+      com.docker.network.driver.mtu: 1350
+  toncenter-global:
+    external: true
+
+secrets:
+  postgres_password:
+    file: private/postgres_password
+  
