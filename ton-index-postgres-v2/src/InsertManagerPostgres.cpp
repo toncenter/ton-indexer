@@ -990,7 +990,7 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
     if (max_data_depth_ >= 0 && account_state.data.not_null() && (max_data_depth_ == 0 || account_state.data->get_depth() <= max_data_depth_)){
       auto data_res = vm::std_boc_serialize(account_state.data);
       if (data_res.is_ok()){
-        data_str = txn.quote(td::base64_encode(data_res.move_as_ok().as_slice().str()));
+        data_str = td::base64_encode(data_res.move_as_ok());
       }
     } else {
       if (account_state.data.not_null()) {
@@ -1001,7 +1001,7 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
     {
       auto code_res = vm::std_boc_serialize(account_state.code);
       if (code_res.is_ok()){
-        code_str = txn.quote(td::base64_encode(code_res.move_as_ok().as_slice().str()));
+        code_str = td::base64_encode(code_res.move_as_ok());
       }
       if (code_str->length() > 128000) {
         LOG(WARNING) << "Large account code: " << account_state.account;
