@@ -1494,39 +1494,26 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		quote_addr_list = append(quote_addr_list, fmt.Sprintf("'%s'", item))
 	}
 
+	// read address book first
+	book_tmp := AddressBook{}
+	addr_list_str := strings.Join(quote_addr_list, ",")
 	{
-		addr_list_str := strings.Join(quote_addr_list, ",")
-
-		query := fmt.Sprintf(`SELECT DISTINCT ON (las.account) las.account, las.code_hash, dns.domain FROM
-  								latest_account_states las
-							LEFT JOIN
-  								dns_entries dns ON las.account = dns.dns_wallet AND dns.dns_wallet = dns.nft_item_owner
-							WHERE
-								las.account IN (%s)
-							ORDER BY
-								las.account, LENGTH(dns.domain) ASC`, addr_list_str)
-
+		query := fmt.Sprintf(`SELECT account, code_hash FROM latest_account_states las
+							WHERE account IN (%s)`, addr_list_str)
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
 			return nil, IndexError{Code: 500, Message: err.Error()}
 		}
-		// select {
-		// case <-ctx.Done():
-		// 	return nil, fmt.Errorf("query timeout %v", settings.Timeout)
-		// default:
-		// }
 		defer rows.Close()
 
-		book_tmp := AddressBook{}
 		for rows.Next() {
 			var account string
 			var code_hash *string
-			var domain *string
-			if err := rows.Scan(&account, &code_hash, &domain); err == nil {
+			if err := rows.Scan(&account, &code_hash); err == nil {
 				addr_str := getAccountAddressFriendly(account, code_hash, settings.IsTestnet)
-				book_tmp[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: &addr_str, Domain: domain}
+				book_tmp[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: &addr_str, Domain: nil}
 			} else {
 				return nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -1534,19 +1521,53 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		if rows.Err() != nil {
 			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
 		}
-		for _, addr := range addr_list {
-			account := ``
-			if addr_val := AccountAddressConverter(addr); addr_val.IsValid() {
-				if addr_str, ok := addr_val.Interface().(AccountAddress); ok {
-					account = string(addr_str)
+	}
+
+	// read dns entries
+	{
+		query := fmt.Sprintf(`select distinct(nft_item_owner), length(domain), domain from dns_entries
+			where nft_item_owner in (%s)
+			and nft_item_owner = dns_wallet
+			order by nft_item_owner, length(domain)`, addr_list_str)
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		rows, err := conn.Query(ctx, query)
+		if err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var account string
+			var length int
+			var domain *string
+			if err := rows.Scan(&account, &length, &domain); err == nil {
+				acc := strings.Trim(account, " ")
+				if book_rec, ok := book_tmp[acc]; ok {
+					book_rec.Domain = domain
+					book_tmp[acc] = book_rec
 				}
-			}
-			if rec, ok := book_tmp[account]; ok {
-				book[addr] = rec
 			} else {
-				addr_str := getAccountAddressFriendly(account, nil, settings.IsTestnet)
-				book[addr] = AddressBookRow{UserFriendly: &addr_str, Domain: nil}
+				return nil, IndexError{Code: 500, Message: err.Error()}
 			}
+		}
+		if rows.Err() != nil {
+			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		}
+	}
+
+	for _, addr := range addr_list {
+		account := ``
+		if addr_val := AccountAddressConverter(addr); addr_val.IsValid() {
+			if addr_str, ok := addr_val.Interface().(AccountAddress); ok {
+				account = string(addr_str)
+			}
+		}
+		if rec, ok := book_tmp[account]; ok {
+			book[addr] = rec
+		} else {
+			addr_str := getAccountAddressFriendly(account, nil, settings.IsTestnet)
+			book[addr] = AddressBookRow{UserFriendly: &addr_str, Domain: nil}
 		}
 	}
 	return book, nil
