@@ -23,6 +23,7 @@ func NewBackgroundTaskManager(pg_dsn string, channel_size int, min_conns int, ma
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Release()
 	user := client.Pool.Config().ConnConfig.User
 
 	row := conn.QueryRow(context.Background(), "SELECT has_table_privilege($1, 'background_tasks', 'INSERT, UPDATE, DELETE')", user)
@@ -51,6 +52,7 @@ func (manager *TaskManager) run(ctx context.Context) {
 			log.Printf("Error acquiring connection to create tasks: %v", err)
 			manager.taskChannel <- tasks
 		}
+		defer conn.Release()
 		tx, err := conn.Begin(ctx)
 		if err != nil {
 			log.Printf("Error beginning transaction to create tasks: %v", err)
