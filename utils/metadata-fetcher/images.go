@@ -17,7 +17,8 @@ func NewImgProxyUrlBuilder(key, salt []byte) *ImgProxyUrlBuilder {
 }
 
 func (b *ImgProxyUrlBuilder) BuildUrl(src string, preset string) string {
-	path := fmt.Sprintf("/pr:%s/plain/%s", preset, src)
+	encoded_url := base64.RawURLEncoding.EncodeToString([]byte(src))
+	path := fmt.Sprintf("/pr:%s/%s", preset, encoded_url)
 	mac := hmac.New(sha256.New, b.key)
 	mac.Write(b.salt)
 	mac.Write([]byte(path))
