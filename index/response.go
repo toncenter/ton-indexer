@@ -83,6 +83,12 @@ type TracesResponse struct {
 	Metadata    Metadata    `json:"metadata"`
 } // @name TracesResponse
 
+type DeprecatedEventsResponse struct {
+	Events      []Trace     `json:"events"`
+	AddressBook AddressBook `json:"address_book"`
+	Metadata    Metadata    `json:"metadata"`
+} // @name DeprecatedEventsResponse
+
 type ActionsResponse struct {
 	Actions     []Action    `json:"actions"`
 	AddressBook AddressBook `json:"address_book"`

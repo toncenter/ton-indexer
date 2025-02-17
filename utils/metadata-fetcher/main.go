@@ -104,7 +104,7 @@ func fetchTasks(ctx context.Context, pool *pgxpool.Pool) ([]FetchTask, error) {
         WHERE status = 'ready'
         AND type = 'fetch_metadata' AND retries <= $1
         AND (retry_at <= EXTRACT(EPOCH FROM NOW())::bigint OR retry_at is NULL)
-        LIMIT 100
+        LIMIT 10000
     `, max_retries)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch tasks: %v", err)
@@ -610,5 +610,4 @@ func main() {
 		}
 		time.Sleep(time.Second)
 	}
-
 }

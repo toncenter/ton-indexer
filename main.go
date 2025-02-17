@@ -1070,6 +1070,10 @@ func GetTraces(c *fiber.Ctx) error {
 	// }
 	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
+	if c.Path() == "/api/v3/events" {
+		txs_resp := index.DeprecatedEventsResponse{Events: res, AddressBook: book, Metadata: metadata}
+		return c.JSON(txs_resp)
+	}
 	txs_resp := index.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(txs_resp)
 }
