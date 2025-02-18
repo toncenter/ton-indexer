@@ -1525,7 +1525,7 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 
 	// read dns entries
 	{
-		query := fmt.Sprintf(`select distinct(nft_item_owner), length(domain), domain from dns_entries
+		query := fmt.Sprintf(`select distinct on(nft_item_owner) nft_item_owner, domain from dns_entries
 			where nft_item_owner in (%s)
 			and nft_item_owner = dns_wallet
 			order by nft_item_owner, length(domain)`, addr_list_str)
@@ -1539,9 +1539,8 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 
 		for rows.Next() {
 			var account string
-			var length int
 			var domain *string
-			if err := rows.Scan(&account, &length, &domain); err == nil {
+			if err := rows.Scan(&account, &domain); err == nil {
 				acc := strings.Trim(account, " ")
 				if book_rec, ok := book_tmp[acc]; ok {
 					book_rec.Domain = domain

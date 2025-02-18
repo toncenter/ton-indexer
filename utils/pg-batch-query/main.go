@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"flag"
+	"log"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/schollz/progressbar/v3"
-	"log"
 )
 
 var pbar *progressbar.ProgressBar
@@ -37,7 +38,7 @@ func main() {
 	var currLt int64
 
 	flag.StringVar(&pgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
-	flag.IntVar(&batchSize, "batch", 100, "Size of batch")
+	flag.IntVar(&batchSize, "processes", 1000, "Parallel processes")
 	flag.Int64Var(&currLt, "fromLt", 0, "Start from lt")
 	flag.Parse()
 

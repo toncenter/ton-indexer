@@ -21,7 +21,7 @@
   vars:
     service: "{{ services.metadata_fetcher }}"
     service_name: "{{ stack_name }}__{{ service.service_name }}"
-  hosts: master_nodes
+  hosts: "{{ stack_name }}__master_nodes"
   become: true
   throttle: 1
   tasks:
@@ -54,7 +54,7 @@
   vars:
     service: "{{ services.api }}"
     service_name: "{{ stack_name }}__{{ service.service_name }}"
-  hosts: replica_nodes
+  hosts: "{{ stack_name }}__replica_nodes"
   become: true
   throttle: 1
   tasks:
