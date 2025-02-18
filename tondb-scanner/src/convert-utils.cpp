@@ -1,5 +1,6 @@
 #include "td/actor/actor.h"
 #include "vm/cells/Cell.h"
+#include "vm/cells/CellSlice.h"
 #include "vm/stack.hpp"
 #include "common/refcnt.hpp"
 #include "smc-envelope/SmartContract.h"
@@ -20,6 +21,17 @@ td::Result<std::string> convert::to_raw_address(td::Ref<vm::CellSlice> cs) {
           block::gen::MsgAddressInt::Record_addr_std addr;
           if (!tlb::csr_unpack(cs, addr)) {
             return td::Status::Error("Failed to unpack MsgAddressInt");
+          }
+          if (addr.anycast.not_null()) {
+            if (addr.anycast->bit_at(0) == 1) {
+              auto anycast_slice = vm::CellSlice(*addr.anycast);
+              anycast_slice.advance(1); // skip maybe bit
+              block::gen::Anycast::Record anycast;
+              if (!tlb::unpack_exact(anycast_slice, anycast)) {
+                return td::Status::Error("Failed to unpack Anycast");
+              }
+              addr.address.bits().copy_from(anycast.rewrite_pfx->cbits(), anycast.depth);
+            }
           }
           return std::to_string(addr.workchain_id) + ":" + addr.address.to_hex();
         }
@@ -51,6 +63,17 @@ td::Result<block::StdAddress> convert::to_std_address(td::Ref<vm::CellSlice> cs)
           block::gen::MsgAddressInt::Record_addr_std addr;
           if (!tlb::csr_unpack(cs, addr)) {
             return td::Status::Error("Failed to unpack addr_std");
+          }
+          if (addr.anycast.not_null()) {
+            if (addr.anycast->bit_at(0) == 1) {
+              auto anycast_slice = vm::CellSlice(*addr.anycast);
+              anycast_slice.advance(1); // skip maybe bit
+              block::gen::Anycast::Record anycast;
+              if (!tlb::unpack_exact(anycast_slice, anycast)) {
+                return td::Status::Error("Failed to unpack Anycast");
+              }
+              addr.address.bits().copy_from(anycast.rewrite_pfx->cbits(), anycast.depth);
+            }
           }
           return block::StdAddress(addr.workchain_id, addr.address);
         }

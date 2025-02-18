@@ -50,3 +50,17 @@ add_custom_command(
 
 add_custom_target(tlb_generate_tokens DEPENDS ${TLB_TOKENS})
 add_dependencies(tondb-scanner tlb_generate_tokens)
+
+set(TONDB_SCANNER_TEST_SOURCE
+  ${CMAKE_CURRENT_SOURCE_DIR}/test/tests.cpp
+  PARENT_SCOPE
+)
+
+add_executable(test-tondb test/tests.cpp ${TONDB_SCANNER_TEST_SOURCE})
+target_include_directories(test-tondb
+    PUBLIC external/ton
+    PUBLIC src/
+)
+
+target_link_libraries(test-tondb PRIVATE tdutils tdactor smc-envelope tondb-scanner ton_block)
+add_dependencies(test-tondb test-tdutils)

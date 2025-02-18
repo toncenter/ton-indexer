@@ -5,13 +5,50 @@
 #include "td/utils/check.h"
 
 #include "crypto/vm/cp0.h"
+#include "crypto/vm/boc.h"
 
 #include "td/utils/tests.h"
 #include "td/actor/actor.h"
 #include "td/utils/base64.h"
+#include "crypto/block/block.h"
+#include "vm/cells/Cell.h"
+#include "convert-utils.h"
 // #include "InterfaceDetector.hpp"
 
 
+
+TEST(convert, to_raw_address) {
+    auto address = vm::std_boc_deserialize(td::base64_decode(td::Slice("te6ccgEBAQEAJAAAQ4ARhy+Ifz/haSyza6FGBWNSde+ZjHy+uBieS1O4PxaPVnA=")).move_as_ok()).move_as_ok();
+    auto raw_address_serialized = convert::to_raw_address(vm::load_cell_slice_ref(address));
+    CHECK(raw_address_serialized.is_ok());
+    ASSERT_EQ("0:8C397C43F9FF0B49659B5D0A302B1A93AF7CCC63E5F5C0C4F25A9DC1F8B47AB3", raw_address_serialized.move_as_ok());
+}
+
+TEST(convert, to_raw_address_with_anycast) {
+    // tx hash 692263ed0c02006a42c2570c1526dc0968e9ef36849086e7888599f5f7745f3b
+    auto address = vm::std_boc_deserialize(td::base64_decode(td::Slice("te6ccgEBAQEAKAAAS74kmhnMAhgIba/WWH4XFusx+cERuqOcvI+CfNEkWIYKL2ECy/pq")).move_as_ok()).move_as_ok();
+    auto raw_address_serialized = convert::to_raw_address(vm::load_cell_slice_ref(address));
+    CHECK(raw_address_serialized.is_ok());
+    ASSERT_EQ("0:249A19CFF5961F85C5BACC7E70446EA8E72F23E09F34491621828BD840B2FE9A", raw_address_serialized.move_as_ok());
+}
+
+TEST(convert, to_std_address) {
+    auto address = vm::std_boc_deserialize(td::base64_decode(td::Slice("te6ccgEBAQEAJAAAQ4ARhy+Ifz/haSyza6FGBWNSde+ZjHy+uBieS1O4PxaPVnA=")).move_as_ok()).move_as_ok();
+    auto std_address_serialized = convert::to_std_address(vm::load_cell_slice_ref(address));
+    CHECK(std_address_serialized.is_ok());
+    td::Bits256 addr;
+    addr.from_hex(td::Slice("8C397C43F9FF0B49659B5D0A302B1A93AF7CCC63E5F5C0C4F25A9DC1F8B47AB3"));
+    ASSERT_EQ(block::StdAddress(0, addr), std_address_serialized.move_as_ok());
+}
+
+TEST(convert, to_std_address_with_anycast) {
+    auto address = vm::std_boc_deserialize(td::base64_decode(td::Slice("te6ccgEBAQEAKAAAS74kmhnMAhgIba/WWH4XFusx+cERuqOcvI+CfNEkWIYKL2ECy/pq")).move_as_ok()).move_as_ok();
+    auto std_address_serialized = convert::to_std_address(vm::load_cell_slice_ref(address));
+    CHECK(std_address_serialized.is_ok());
+    td::Bits256 addr;
+    addr.from_hex(td::Slice("249A19CFF5961F85C5BACC7E70446EA8E72F23E09F34491621828BD840B2FE9A"));
+    ASSERT_EQ(block::StdAddress(0, addr), std_address_serialized.move_as_ok());
+}
 
 
 // TEST(TonDbScanner, JettonWalletDetector) {
@@ -37,3 +74,9 @@
 
 
 
+int main(int argc, char **argv) {
+  td::set_default_failure_signal_handler().ensure();
+    auto &runner = td::TestsRunner::get_default();
+  runner.run_all();
+  return 0;
+}
