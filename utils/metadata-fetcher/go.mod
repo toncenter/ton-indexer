@@ -7,7 +7,7 @@ toolchain go1.23.6
 require (
 	github.com/ipfs/boxo v0.27.4
 	github.com/ipfs/go-cid v0.5.0
-	github.com/ipfs/kubo v0.33.1
+	github.com/ipfs/kubo v0.33.2
 	github.com/jackc/pgx/v5 v5.7.1
 	golang.org/x/sync v0.10.0
 
@@ -90,6 +90,7 @@ require (
 	github.com/ipfs/go-ds-pebble v0.4.2 // indirect
 	github.com/ipfs/go-fs-lock v0.0.7 // indirect
 	github.com/ipfs/go-ipfs-blockstore v1.3.1 // indirect
+	github.com/ipfs/go-ipfs-cmds v0.14.1 // indirect
 	github.com/ipfs/go-ipfs-delay v0.0.1 // indirect
 	github.com/ipfs/go-ipfs-ds-help v1.1.1 // indirect
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.1 // indirect
@@ -128,7 +129,7 @@ require (
 	github.com/libp2p/go-cidranger v1.1.0 // indirect
 	github.com/libp2p/go-doh-resolver v0.5.0 // indirect
 	github.com/libp2p/go-flow-metrics v0.2.0 // indirect
-	github.com/libp2p/go-libp2p v0.38.2 // indirect
+	github.com/libp2p/go-libp2p v0.38.3 // indirect
 	github.com/libp2p/go-libp2p-asn-util v0.4.1 // indirect
 	github.com/libp2p/go-libp2p-kad-dht v0.28.2 // indirect
 	github.com/libp2p/go-libp2p-kbucket v0.6.4 // indirect
@@ -197,6 +198,7 @@ require (
 	github.com/quic-go/webtransport-go v0.8.1-0.20241018022711-4ac2c9250e66 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
+	github.com/rs/cors v1.11.1 // indirect
 	github.com/samber/lo v1.47.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect

@@ -536,6 +536,8 @@ func main() {
 	var processes int
 	var imgproxy_key string
 	var imgproxy_salt string
+	var ipfs_api_url string
+	var ipfs_server_url string
 	flag.StringVar(&pg_dsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
 	flag.IntVar(&processes, "processes", 32, "Set number of parallel queries")
 	flag.DurationVar(&initial_backoff, "initial-backoff", 5*time.Second, "Initial backoff duration")
@@ -546,6 +548,8 @@ func main() {
 		"Interval to update stalled tasks")
 	flag.StringVar(&imgproxy_salt, "imgproxy-salt", "", "ImgProxy salt")
 	flag.StringVar(&imgproxy_key, "imgproxy-key", "", "ImgProxy key")
+	flag.StringVar(&ipfs_api_url, "ipfs-api-url", "", "Ipfs api url (http://127.0.0.1:5001)")
+	flag.StringVar(&ipfs_server_url, "ipfs-server-url", "https://ipfs.io/ipfs", "Ipfs gateway server url")
 	flag.Parse()
 
 	key, err := hex.DecodeString(imgproxy_key)
@@ -556,12 +560,20 @@ func main() {
 	if err != nil {
 		log.Fatal("failed to decode img proxy salt: ", err)
 	}
-	img_url_builder = NewImgProxyUrlBuilder(key, salt)
+	img_url_builder = NewImgProxyUrlBuilder(key, salt, ipfs_server_url)
 
-	ipfs_downloader, err = NewIpfsDownloader()
-	defer ipfs_downloader.Close()
-	if err != nil {
-		log.Fatal(err)
+	if ipfs_api_url == "" {
+		log.Println("Starting embedded ipfs node..")
+		ipfs_downloader, err = NewEmbeddedIpfsDownloader()
+		defer ipfs_downloader.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		ipfs_downloader, err = NewRpcIpfsDownloader(ipfs_api_url)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	gate = semaphore.NewWeighted(int64(processes))

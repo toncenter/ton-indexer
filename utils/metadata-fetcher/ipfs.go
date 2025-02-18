@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/path"
+	"github.com/ipfs/kubo/client/rpc"
 	"github.com/ipfs/kubo/config"
 	"github.com/ipfs/kubo/core"
 	"github.com/ipfs/kubo/core/coreapi"
@@ -15,6 +16,7 @@ import (
 	"github.com/ipfs/kubo/repo"
 	"github.com/ipfs/kubo/repo/fsrepo"
 	"io"
+	"net/http"
 	"os"
 )
 
@@ -26,7 +28,7 @@ type IpfsDownloader struct {
 	api        iface.CoreAPI
 }
 
-func NewIpfsDownloader() (downloader *IpfsDownloader, err error) {
+func NewEmbeddedIpfsDownloader() (downloader *IpfsDownloader, err error) {
 	ctx := context.Background()
 	repoPath, err := os.MkdirTemp("", "ipfs-repo")
 	plugins, err := loader.NewPluginLoader(repoPath)
@@ -79,6 +81,16 @@ func NewIpfsDownloader() (downloader *IpfsDownloader, err error) {
 	return downloader, nil
 }
 
+func NewRpcIpfsDownloader(ipfs_url string) (downloader *IpfsDownloader, err error) {
+	api, err := rpc.NewURLApiWithClient(ipfs_url, http.DefaultClient)
+	if err != nil {
+		return nil, err
+	}
+	return &IpfsDownloader{
+		api: api,
+	}, nil
+}
+
 func (d *IpfsDownloader) GetFile(ctx context.Context, id string) (string, error) {
 	var prepared_id string
 	if id[:7] == "ipfs://" {
@@ -119,5 +131,7 @@ func (d *IpfsDownloader) GetFile(ctx context.Context, id string) (string, error)
 }
 
 func (d *IpfsDownloader) Close() {
-	d.node.Close()
+	if d.node != nil {
+		d.node.Close()
+	}
 }
