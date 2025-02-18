@@ -305,11 +305,11 @@ class EventClassifierWorker(mp.Process):
                 if not is_trace_batch:
                     for task in tasks:
                         await session.execute(f"insert into blocks_classified(mc_seqno) values ({task.mc_seqno}) on conflict do nothing;")
-                # task_ids = [task.id for task in tasks]
-                # await session.execute(f"delete from _classifier_tasks where id in ({','.join(map(str, task_ids))});")
+                task_ids = [task.id for task in tasks]
+                await session.execute(f"delete from _classifier_tasks where id in ({','.join(map(str, task_ids))});")
                 await session.commit()
-                for task in tasks:
-                    self.finished_queue.put(task.id)
+                # for task in tasks:
+                #     self.finished_queue.put(task.id)
             except Exception as ee:
                 logger.error(f'Failed to process batch: {ee}')
                 await session.rollback()
