@@ -57,7 +57,7 @@ public:
   }
 
 private:
-  std::result_of<decltype(&bucketValues)()>::type bucketValues_;
+  std::invoke_result_t<decltype(&bucketValues)> bucketValues_;
 };
 
 constexpr HistogramBucketMapper bucketMapper;

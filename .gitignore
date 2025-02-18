@@ -225,9 +225,7 @@ sandbox/
 # vs code
 .vscode/
 
+.DS_Store
 
-tondb-scanner/src/tokens.cpp
-tondb-scanner/src/tokens.h
-
-ton-index-worker/src/tokens.cpp
-ton-index-worker/src/tokens.h
+tondb-scanner/src/tokens-tlb.cpp
+tondb-scanner/src/tokens-tlb.h

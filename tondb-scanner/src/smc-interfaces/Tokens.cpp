@@ -6,7 +6,7 @@
 #include "Tokens.h"
 #include "parse_token_data.h"
 #include "smc-interfaces/execute-smc.h"
-#include "tokens.h"
+#include "tokens-tlb.h"
 #include "common/checksum.h"
 
 

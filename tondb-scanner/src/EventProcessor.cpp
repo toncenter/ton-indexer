@@ -9,7 +9,7 @@
 #include "IndexData.h"
 #include "td/actor/MultiPromise.h"
 #include "convert-utils.h"
-#include "tokens.h"
+#include "tokens-tlb.h"
 
 
 // process ParsedBlock and try detect master and wallet interfaces

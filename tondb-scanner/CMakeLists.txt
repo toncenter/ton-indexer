@@ -11,7 +11,7 @@ add_library(tondb-scanner STATIC
     src/queue_state.cpp
     src/parse_token_data.cpp
     src/convert-utils.cpp
-    src/tokens.cpp
+    src/tokens-tlb.cpp
     src/Statistics.cpp
     src/smc-interfaces/Tokens.cpp
     src/smc-interfaces/NftSale.cpp
@@ -19,30 +19,22 @@ add_library(tondb-scanner STATIC
 )
 
 target_include_directories(tondb-scanner 
-    PUBLIC external/ton
-    PUBLIC external/libpqxx
-    PUBLIC external/msgpack-c
     PUBLIC src/
 )
 
-target_link_directories(tondb-scanner
-    PUBLIC external/ton
-    PUBLIC external/libpqxx
-    PUBLIC external/msgpack-c
-)
 target_compile_features(tondb-scanner PRIVATE cxx_std_20)
 target_link_libraries(tondb-scanner overlay tdutils tdactor adnl tl_api dht
         catchain validatorsession validator-disk ton_validator validator-disk smc-envelope
         pqxx msgpack-cxx)
 
 set(TLB_TOKENS
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/tokens.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/tokens.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/tokens-tlb.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/tokens-tlb.h
 )
 
 add_custom_command(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src
-    COMMAND tlbc -o tokens -n tokens::gen -z tlb/tokens.tlb
+    COMMAND tlbc -o tokens-tlb -n tokens::gen -z tlb/tokens.tlb
     COMMENT "Generate tokes tlb source files"
     OUTPUT ${TLB_TOKENS}
     DEPENDS tlbc src/tlb/tokens.tlb
