@@ -1167,7 +1167,7 @@ func GetPendingTraces(c *fiber.Ctx) error {
 		return err
 	}
 
-	res, book, err := pool.QueryPendingEvents(request_settings, emulatedContext)
+	res, book, err := pool.QueryPendingTraces(request_settings, emulatedContext)
 	if err != nil {
 		return err
 	}

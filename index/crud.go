@@ -3251,8 +3251,8 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 	return txs, nil
 }
 
-func queryPendingEventsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings) ([]Event, []string, error) {
-	events := []Event{}
+func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings) ([]Trace, []string, error) {
+	traces := []Trace{}
 	trace_ids := make([]string, 0)
 	for trace_id, _ := range emulatedContext.emulatedTransactions {
 		trace_ids = append(trace_ids, fmt.Sprintf("'%s'", trace_id))
@@ -3278,9 +3278,9 @@ func queryPendingEventsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	traceRows := emulatedContext.GetTraces()
 	for _, row := range traceRows {
-		if loc, err := ScanEvent(row); err == nil {
+		if loc, err := ScanTrace(row); err == nil {
 			loc.Transactions = make(map[HashType]*Transaction)
-			events = append(events, *loc)
+			traces = append(traces, *loc)
 		} else {
 			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
@@ -3288,9 +3288,9 @@ func queryPendingEventsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	events_map := map[HashType]int{}
 	trace_id_list := []HashType{}
 	addr_map := map[string]bool{}
-	for idx := range events {
-		events_map[events[idx].TraceId] = idx
-		trace_id_list = append(trace_id_list, events[idx].TraceId)
+	for idx := range traces {
+		events_map[traces[idx].TraceId] = idx
+		trace_id_list = append(trace_id_list, traces[idx].TraceId)
 	}
 	if len(trace_id_list) > 0 {
 		{
@@ -3303,26 +3303,26 @@ func queryPendingEventsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 
 				collectAddressesFromTransactions(&addr_map, tx)
 				if v := tx.TraceId; v != nil {
-					event := &events[events_map[*v]]
+					event := &traces[events_map[*v]]
 					event.TransactionsOrder = append(event.TransactionsOrder, tx.Hash)
 					event.Transactions[tx.Hash] = tx
 				}
 			}
 		}
 	}
-	for idx := range events {
-		if len(events[idx].TransactionsOrder) > 0 {
-			trace, err := assembleEventTraceFromMap(&events[idx].TransactionsOrder, &events[idx].Transactions)
+	for idx := range traces {
+		if len(traces[idx].TransactionsOrder) > 0 {
+			trace, err := assembleTraceTxsFromMap(&traces[idx].TransactionsOrder, &traces[idx].Transactions)
 			if err != nil {
-				if len(events[idx].Warning) > 0 {
-					events[idx].Warning += ", " + err.Error()
+				if len(traces[idx].Warning) > 0 {
+					traces[idx].Warning += ", " + err.Error()
 				} else {
-					events[idx].Warning = err.Error()
+					traces[idx].Warning = err.Error()
 				}
 				// return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to assemble trace: %s", err.Error())}
 			}
 			if trace != nil {
-				events[idx].Trace = trace
+				traces[idx].Trace = trace
 			}
 		}
 	}
@@ -3341,7 +3341,7 @@ func queryPendingEventsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 		if err != nil {
 			return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
 		}
-		events[events_map[action.TraceId]].Actions = append(events[events_map[action.TraceId]].Actions, action)
+		*traces[events_map[action.TraceId]].Actions = append(*traces[events_map[action.TraceId]].Actions, action)
 	}
 	//
 	addr_list := []string{}
@@ -3349,7 +3349,7 @@ func queryPendingEventsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 		addr_list = append(addr_list, k)
 	}
 	//
-	return events, addr_list, nil
+	return traces, addr_list, nil
 }
 
 func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
@@ -3426,14 +3426,14 @@ func (db *DbClient) QueryPendingTransactions(
 	return txs, book, nil
 }
 
-func (db *DbClient) QueryPendingEvents(settings RequestSettings, emulatedContext *EmulatedTracesContext) ([]Event, AddressBook, error) {
+func (db *DbClient) QueryPendingTraces(settings RequestSettings, emulatedContext *EmulatedTracesContext) ([]Trace, AddressBook, error) {
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
-	res, addr_list, err := queryPendingEventsImpl(emulatedContext, conn, settings)
+	res, addr_list, err := queryPendingTracesImpl(emulatedContext, conn, settings)
 	if err != nil {
 		//log.Println(query)
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
