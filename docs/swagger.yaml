@@ -2235,12 +2235,12 @@ paths:
       summary: Get Pending Actions
       tags:
       - events
-  /api/v3/pendingEvents:
+  /api/v3/pendingTraces:
     get:
       consumes:
       - application/json
-      description: Get events by specified filter.
-      operationId: api_v3_get_pending_events
+      description: Get traces by specified filter.
+      operationId: api_v3_get_pending_traces
       parameters:
       - description: List of account addresses to get transactions. Can be sent in
           hex, base64 or base64url form.
@@ -2261,9 +2261,9 @@ paths:
       security:
       - APIKeyHeader: []
       - APIKeyQuery: []
-      summary: Get Pending Events
+      summary: Get Pending Traces
       tags:
-      - events
+      - traces
   /api/v3/pendingTransactions:
     get:
       consumes:

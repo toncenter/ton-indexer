@@ -1790,7 +1790,7 @@
                 }
             }
         },
-        "/api/v3/pendingEvents": {
+        "/api/v3/pendingTraces": {
             "get": {
                 "security": [
                     {
@@ -1800,7 +1800,7 @@
                         "APIKeyQuery": []
                     }
                 ],
-                "description": "Get events by specified filter.",
+                "description": "Get traces by specified filter.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1808,10 +1808,10 @@
                     "application/json"
                 ],
                 "tags": [
-                    "events"
+                    "traces"
                 ],
-                "summary": "Get Pending Events",
-                "operationId": "api_v3_get_pending_events",
+                "summary": "Get Pending Traces",
+                "operationId": "api_v3_get_pending_traces",
                 "parameters": [
                     {
                         "type": "string",

@@ -1,9 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/hex"
-	"context"
 	"flag"
 	"fmt"
 	"github.com/kdimentionaltree/ton-index-go/index/emulated"
@@ -1129,21 +1129,21 @@ func GetTraces(c *fiber.Ctx) error {
 	return c.JSON(txs_resp)
 }
 
-// @summary Get Pending Events
-// @description Get events by specified filter.
-// @id api_v3_get_pending_events
-// @tags events
+// @summary Get Pending Traces
+// @description Get traces by specified filter.
+// @id api_v3_get_pending_traces
+// @tags traces
 // @Accept       json
 // @Produce      json
 // @success		200	{object}	index.TracesResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
-// @router			/api/v3/pendingEvents [get]
+// @router			/api/v3/pendingTraces [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
-func GetPendingEvents(c *fiber.Ctx) error {
+func GetPendingTraces(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
-	event_req := index.EventRequest{}
+	event_req := index.TracesRequest{}
 
 	if err := c.QueryParser(&event_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
@@ -1172,7 +1172,7 @@ func GetPendingEvents(c *fiber.Ctx) error {
 		return err
 	}
 
-	txs_resp := index.EventsResponse{Events: res, AddressBook: book}
+	txs_resp := index.TracesResponse{Traces: res, AddressBook: book}
 	return c.JSON(txs_resp)
 }
 
@@ -1868,7 +1868,7 @@ func main() {
 	app.Get("/api/v3/events", GetTraces)
 
 	app.Get("/api/v3/balanceChanges", GetBalanceChanges)
-	app.Get("/api/v3/pendingEvents", GetPendingEvents)
+	app.Get("/api/v3/pendingTraces", GetPendingTraces)
 	app.Get("/api/v3/pendingActions", GetPendingActions)
 
 	// api/v2 proxied
