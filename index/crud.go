@@ -2330,27 +2330,26 @@ func (db *DbClient) QueryTransactions(
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return txs, book, nil
-	}
-	addr_list := []string{}
-	for _, t := range txs {
-		addr_list = append(addr_list, string(t.Account))
-		if t.InMsg != nil {
-			if t.InMsg.Source != nil {
-				addr_list = append(addr_list, string(*t.InMsg.Source))
+	if !settings.NoAddressBook {
+		addr_list := []string{}
+		for _, t := range txs {
+			addr_list = append(addr_list, string(t.Account))
+			if t.InMsg != nil {
+				if t.InMsg.Source != nil {
+					addr_list = append(addr_list, string(*t.InMsg.Source))
+				}
+			}
+			for _, m := range t.OutMsgs {
+				if m.Destination != nil {
+					addr_list = append(addr_list, string(*m.Destination))
+				}
 			}
 		}
-		for _, m := range t.OutMsgs {
-			if m.Destination != nil {
-				addr_list = append(addr_list, string(*m.Destination))
+		if len(addr_list) > 0 {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-	}
-	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	return txs, book, nil
@@ -2397,27 +2396,26 @@ func (db *DbClient) QueryAdjacentTransactions(
 	}
 
 	book := AddressBook{}
-	if settings.NoAddressBook {
-		return txs, book, nil
-	}
-	addr_list := []string{}
-	for _, t := range txs {
-		addr_list = append(addr_list, string(t.Account))
-		if t.InMsg != nil {
-			if t.InMsg.Source != nil {
-				addr_list = append(addr_list, string(*t.InMsg.Source))
+	if !settings.NoAddressBook {
+		addr_list := []string{}
+		for _, t := range txs {
+			addr_list = append(addr_list, string(t.Account))
+			if t.InMsg != nil {
+				if t.InMsg.Source != nil {
+					addr_list = append(addr_list, string(*t.InMsg.Source))
+				}
+			}
+			for _, m := range t.OutMsgs {
+				if m.Destination != nil {
+					addr_list = append(addr_list, string(*m.Destination))
+				}
 			}
 		}
-		for _, m := range t.OutMsgs {
-			if m.Destination != nil {
-				addr_list = append(addr_list, string(*m.Destination))
+		if len(addr_list) > 0 {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-	}
-	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	return txs, book, nil
@@ -2469,9 +2467,11 @@ func (db *DbClient) QueryMessages(
 			}
 		}
 
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 	return msgs, book, metadata, nil
@@ -2518,9 +2518,11 @@ func (db *DbClient) QueryNFTCollections(
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 	return res, book, metadata, nil
@@ -2570,9 +2572,11 @@ func (db *DbClient) QueryNFTItems(
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 	return res, book, metadata, nil
@@ -2624,9 +2628,11 @@ func (db *DbClient) QueryNFTTransfers(
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 	return res, book, metadata, nil
@@ -2673,9 +2679,11 @@ func (db *DbClient) QueryJettonMasters(
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 	return res, book, metadata, nil
@@ -2722,9 +2730,11 @@ func (db *DbClient) QueryJettonWallets(
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 	return res, book, metadata, nil
@@ -2776,9 +2786,11 @@ func (db *DbClient) QueryJettonTransfers(
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 	return res, book, metadata, nil
@@ -2829,9 +2841,11 @@ func (db *DbClient) QueryJettonBurns(
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 	return res, book, metadata, nil
@@ -2877,9 +2891,11 @@ func (db *DbClient) QueryAccountStates(
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 

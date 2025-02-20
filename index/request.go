@@ -17,6 +17,7 @@ type RequestSettings struct {
 	MaxTraceTransactions int
 	DebugRequest         bool
 	NoAddressBook        bool
+	NoMetadata           bool
 }
 
 // requests

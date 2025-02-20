@@ -1457,6 +1457,11 @@ func GetRequestSettings(c *fiber.Ctx, settings *Settings) index.RequestSettings 
 			request_settings.NoAddressBook = value
 		}
 	}
+	if value_str, ok := ExtractParam(c, "X-No-Metadata", "x_no_metadata"); ok {
+		if value, err := strconv.ParseBool(value_str); err == nil {
+			request_settings.NoMetadata = value
+		}
+	}
 	return request_settings
 }
 
