@@ -753,6 +753,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		Asset2Secondary:      a.Asset2Secondary,
 		Opcode:               a.Opcode,
 		Success:              a.Success,
+		TraceExternalHash:    &traceIdB64,
 	}
 	if a.TonTransferData != nil {
 		row.TonTransferContent = a.TonTransferData.Content
