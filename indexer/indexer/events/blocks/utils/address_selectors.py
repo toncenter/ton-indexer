@@ -1,7 +1,7 @@
 from pytoniq_core import Slice
 
 from indexer.core.database import Message, Transaction
-from indexer.events.blocks.messages import JettonNotify, JettonTransfer
+from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2
 
 def extract_target_wallet_stonfi_v2_swap(message: Message) -> set[str]:
     accounts = set()
@@ -24,6 +24,12 @@ def extract_target_wallet_stonfi_swap(message: Message) -> set[str]:
         accounts.add(jetton_transfer.stonfi_swap_body['jetton_wallet'].to_str(is_user_friendly=False).upper())
     return accounts
 
+def extract_pool_wallets_stonfi_v2(message: Message) -> set[str]:
+    accounts = set()
+    stonfi_swap_msg = StonfiSwapV2(Slice.one_from_boc(message.message_content.body))
+    accounts.update(stonfi_swap_msg.get_pool_accounts_recursive())
+    return accounts
+
 def extract_additional_addresses(tx: Transaction) -> set[str]:
     accounts = set()
     for msg in tx.messages:
@@ -35,6 +41,8 @@ def extract_additional_addresses(tx: Transaction) -> set[str]:
                 accounts.update(extract_target_wallet_stonfi_swap(msg))
             if opcode == JettonNotify.opcode:
                 accounts.update(extract_target_wallet_stonfi_v2_swap(msg))
+            if opcode == StonfiSwapV2.opcode:
+                accounts.update(extract_pool_wallets_stonfi_v2(msg))
         except Exception:
             pass
     return accounts

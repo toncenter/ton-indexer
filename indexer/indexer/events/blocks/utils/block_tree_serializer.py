@@ -4,7 +4,7 @@ import base64
 import hashlib
 import logging
 
-from indexer.core.database import Action
+from indexer.core.database import Action, Trace
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock, DnsRenewBlock
@@ -49,6 +49,7 @@ def _calc_action_id(block: Block) -> str:
 def _base_block_to_action(block: Block, trace_id: str) -> Action:
     action_id = _calc_action_id(block)
     tx_hashes = list(set(n.get_tx_hash() for n in block.event_nodes))
+    mc_seqno_end = max(n.get_tx().mc_block_seqno for n in block.event_nodes if n.get_tx() is not None)
     accounts = []
     for n in block.event_nodes:
         if n.is_tick_tock:
@@ -66,8 +67,10 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
         start_utime=block.min_utime,
         end_utime=block.max_utime,
         success=not block.failed,
+        mc_seqno_end=mc_seqno_end,
+        value_extra_currencies=dict(),
     )
-    action.accounts = accounts
+    action._accounts = accounts
     return action
 
 
@@ -76,6 +79,11 @@ def _fill_call_contract_action(block: CallContractBlock, action: Action):
     action.value = block.data['value'].value
     action.source = block.data['source'].as_str() if block.data['source'] is not None else None
     action.destination = block.data['destination'].as_str() if block.data['destination'] is not None else None
+    extra_currencies = block.data['extra_currencies'] if 'extra_currencies' in block.data else None
+    if extra_currencies is not None:
+        action.value_extra_currencies = extra_currencies
+    else:
+        action.value_extra_currencies = dict()
 
 
 def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
@@ -86,6 +94,11 @@ def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
     action.destination = block.data['destination'].as_str()
     content = block.data['comment'].replace("\u0000", "") if block.data['comment'] is not None else None
     action.ton_transfer_data = {'content': content, 'encrypted': block.data['encrypted']}
+    extra_currencies = block.data['extra_currencies'] if 'extra_currencies' in block.data else None
+    if extra_currencies is not None:
+        action.value_extra_currencies = extra_currencies
+    else:
+        action.value_extra_currencies = dict()
 
 
 def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):
@@ -104,7 +117,7 @@ def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):
         if block.data['encrypted_comment']:
             comment = base64.b64encode(block.data['comment']).decode('utf-8')
         else:
-            comment = block.data['comment'].decode('utf-8').replace("\u0000", "")
+            comment = block.data['comment'].decode('utf-8', errors='backslashreplace').replace("\u0000", "")
     action.jetton_transfer_data = {
         'query_id': block.data['query_id'],
         'response_destination': block.data['response_address'].as_str() if block.data[
@@ -179,8 +192,8 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
     }
     action.asset = dex_incoming_transfer['asset']
     action.asset2 = dex_outgoing_transfer['asset']
-    if block.data['dex'] == 'stonfi_v2':
-        action.asset1 = _addr(block.data['source_asset'])
+    if block.data['dex'] in ('stonfi_v2', 'dedust'):
+        action.asset = _addr(block.data['source_asset'])
         action.asset2 = _addr(block.data['destination_asset'])
     action.source = dex_incoming_transfer['source']
     action.source_secondary = dex_incoming_transfer['source_jetton_wallet']
@@ -197,6 +210,8 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
         'dex_incoming_transfer': dex_incoming_transfer,
         'dex_outgoing_transfer': dex_outgoing_transfer,
     }
+    if 'peer_swaps' in block.data and block.data['peer_swaps'] is not None:
+        action.jetton_swap_data['peer_swaps'] = [_convert_peer_swap(swap) for swap in block.data['peer_swaps']]
 
 def _fill_dex_deposit_liquidity(block: Block, action: Action):
     action.source = _addr(block.data['sender'])
@@ -219,10 +234,10 @@ def _fill_dex_withdraw_liquidity(block: Block, action: Action):
     action.asset = _addr(block.data['asset'])
     action.dex_withdraw_liquidity_data = {
         "dex": block.data['dex'],
-        "amount_1" : block.data['amount1_out'].value if block.data['amount1_out'] is not None else None,
-        "amount_2" : block.data['amount2_out'].value if block.data['amount2_out'] is not None else None,
-        'asset_out_1' : _addr(block.data['asset1_out']),
-        'asset_out_2' : _addr(block.data['asset2_out']),
+        "amount1" : block.data['amount1_out'].value if block.data['amount1_out'] is not None else None,
+        "amount2" : block.data['amount2_out'].value if block.data['amount2_out'] is not None else None,
+        'asset1_out' : _addr(block.data['asset1_out']),
+        'asset2_out' : _addr(block.data['asset2_out']),
         'user_jetton_wallet_1' : _addr(block.data['wallet1']),
         'user_jetton_wallet_2' : _addr(block.data['wallet2']),
         'dex_jetton_wallet_1': _addr(block.data['dex_jetton_wallet_1']),
@@ -394,9 +409,17 @@ def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawReq
     action.source = block.data.source.as_str()
     action.destination = block.data.pool.as_str()
 
+def _fill_tick_tock_action(block: Block, action: Action):
+    action.source = _addr(block.data['account'])
+
 # noinspection PyCompatibility,PyTypeChecker
-def block_to_action(block: Block, trace_id: str) -> Action:
+def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
+    if trace is not None:
+        action.trace_end_lt = trace.end_lt
+        action.trace_end_utime = trace.end_utime
+        action.trace_external_hash = trace.external_hash
+        action.trace_mc_seqno_end = trace.mc_seqno_end
     match block.btype:
         case 'call_contract' | 'contract_deploy':
             _fill_call_contract_action(block, action)
@@ -446,13 +469,15 @@ def block_to_action(block: Block, trace_id: str) -> Action:
             _fill_election_action(block, action)
         case 'auction_bid':
             _fill_auction_bid_action(block, action)
+        case 'tick_tock':
+            _fill_tick_tock_action(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
-    action.accounts.append(action.source)
-    action.accounts.append(action.source_secondary)
-    action.accounts.append(action.destination)
-    action.accounts.append(action.destination_secondary)
+    action._accounts.append(action.source)
+    action._accounts.append(action.source_secondary)
+    action._accounts.append(action.destination)
+    action._accounts.append(action.destination_secondary)
 
     # Fill extended tx hashes
     extended_tx_hashes = set(action.tx_hashes)
@@ -460,12 +485,12 @@ def block_to_action(block: Block, trace_id: str) -> Action:
         extended_tx_hashes.add(block.initiating_event_node.get_tx_hash())
         if not block.initiating_event_node.is_tick_tock:
             acc = block.initiating_event_node.message.transaction.account
-            # if acc not in action.accounts:
-            #     logging.info(f"Initiating transaction ({block.initiating_event_node.get_tx_hash()}) account not in accounts. Trace id: {trace_id}. Action id: {action.action_id}")
-            action.accounts.append(acc)
+            if acc not in action._accounts:
+                logging.debug(f"Initiating transaction ({block.initiating_event_node.get_tx_hash()}) account not in accounts. Trace id: {trace_id}. Action id: {action.action_id}")
+            action._accounts.append(acc)
     action.tx_hashes = list(extended_tx_hashes)
 
-    action.accounts = list(set(a for a in action.accounts if a is not None))
+    action._accounts = list(set(a for a in action._accounts if a is not None))
     return action
 
 def serialize_blocks(blocks: list[Block], trace_id) -> tuple[list[Action], str]:

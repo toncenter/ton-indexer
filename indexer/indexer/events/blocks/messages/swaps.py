@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pytoniq_core import Slice, Address
 
 from indexer.events.blocks.utils import Asset
@@ -90,6 +92,12 @@ class DedustSwapNotification:
 class DedustPayout:
     opcode = 0x474f86cf
 
+    def __init__(self, body: Slice):
+        body.load_uint(32)
+        self.query_id = body.load_uint(64)
+        self.proof = body.load_ref()
+        self.amount = body.load_coins()
+
 
 class DedustPayoutFromPool:
     opcode = 0xad4eb6f5
@@ -109,3 +117,81 @@ class DedustSwapExternal:
 
 class DedustSwap:
     opcode = 0xea06185d
+
+class DedustSwapPayload:
+    opcode = 0xe3a0d482
+
+class StonfiSwapV2:
+    opcode = 0x657b54f5
+    query_id: int
+    from_user: Address
+    left_amount: int
+    right_amount: int
+    transferred_op: int
+    token_wallet1: Address
+    refund_address: Address
+    excesses_address: str
+    tx_deadline: int
+    min_out: int
+    receiver: str
+    fwd_gas: int
+    custom_payload: bytes | None
+    refund_fwd_gas: int
+    refund_payload: bytes | None
+    ref_fee: int
+    ref_address: str
+
+    def __init__(self, boc: Slice):
+        boc.skip_bits(32)  # Skip opcode
+        self.query_id = boc.load_uint(64)
+        self.from_user = boc.load_address()
+        self.left_amount = boc.load_coins()
+        self.right_amount = boc.load_coins()
+        dex_payload_slice = boc.load_ref().to_slice()
+        self.transferred_op = dex_payload_slice.load_uint(32)
+        self.token_wallet1 = dex_payload_slice.load_address()
+        self.refund_address = dex_payload_slice.load_address()
+        self.excesses_address = dex_payload_slice.load_address()
+        self.tx_deadline = dex_payload_slice.load_uint(64)
+        swap_body_slice = dex_payload_slice.load_ref().to_slice()
+        self.min_out = swap_body_slice.load_coins()
+        self.receiver = swap_body_slice.load_address()
+        self.fwd_gas = swap_body_slice.load_coins()
+        custom_payload = swap_body_slice.load_maybe_ref()
+        self.custom_payload = None
+        if custom_payload:
+            self.custom_payload = custom_payload.to_boc(hash_crc32=True)
+        self.refund_fwd_gas = swap_body_slice.load_coins()
+        self.refund_payload = None
+        refund_payload = swap_body_slice.load_maybe_ref()
+        if refund_payload:
+            self.refund_payload = refund_payload.to_boc(hash_crc32=True)
+        self.ref_fee = swap_body_slice.load_uint(16)
+        self.ref_address = swap_body_slice.load_address()
+
+    def get_pool_accounts_recursive(self) -> list[str]:
+        accounts = [self.token_wallet1.to_str(is_user_friendly=False).upper()]
+        if self.custom_payload is None:
+            return accounts
+        current_slice = Slice.one_from_boc(self.custom_payload)
+        while True:
+            sum_type = current_slice.load_uint(32)
+            if sum_type in (0x6664de2a, 0x69cf1a5b):
+                accounts.append(current_slice.load_address().to_str(is_user_friendly=False).upper())
+                if current_slice.remaining_refs > 0:
+                    cross_swap = current_slice.load_ref().to_slice()
+                else:
+                    break
+                cross_swap.load_coins() # min_out
+                cross_swap.load_coins()
+                if cross_swap.remaining_refs > 0:
+                    custom_payload = cross_swap.load_maybe_ref()
+                    if custom_payload:
+                        current_slice = custom_payload.to_slice()
+                    else:
+                        break
+                else:
+                    break
+            else:
+                break
+        return accounts

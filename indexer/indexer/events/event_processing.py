@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from indexer.core.database import Trace, engine
 from indexer.events.blocks.auction import AuctionBidMatcher
-from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock, ContractDeploy
+from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock, ContractDeploy, TickTockBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
@@ -35,7 +35,7 @@ def init_block(node: EventNode) -> Block:
     is_ton_transfer = (node.get_opcode() == 0 or node.get_opcode() is None or
                        node.get_opcode() == TonTransferMessage.encrypted_opcode)
     if node.is_tick_tock:
-        block = Block('tick_tock', [node], {'account': AccountId(node.tick_tock_tx.account)})
+        block = TickTockBlock(node)
     elif is_ton_transfer and node.message.destination is not None and node.message.source is not None:
         block = TonTransferBlock(node)
     else:

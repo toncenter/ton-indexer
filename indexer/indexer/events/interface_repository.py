@@ -1,18 +1,24 @@
 from __future__ import annotations
 
 import abc
-import asyncio
 from collections import defaultdict
 from contextvars import ContextVar
+from dataclasses import dataclass
 
 import msgpack
+import redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from indexer.core.database import JettonWallet, NFTItem, NftSale, NftAuction, LatestAccountState
-import redis
+from indexer.events import context
 
 NOMINATOR_POOL_CODE_HASH = "mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8="
+
+@dataclass
+class DedustPool:
+    address: str
+    assets: dict
 
 class InterfaceRepository(abc.ABC):
     @abc.abstractmethod
@@ -184,6 +190,8 @@ class RedisInterfaceRepository(InterfaceRepository):
             return {}
 
         interfaces = msgpack.unpackb(raw_data, raw=False)
+        if address in context.dedust_pools.get():
+            interfaces['dedust_pool'] = context.dedust_pools.get()[address]
         return interfaces
 
     async def get_nft_auction(self, address: str) -> NftAuction | None:
@@ -200,6 +208,11 @@ class RedisInterfaceRepository(InterfaceRepository):
                 nft_addr=interface_data["nft_addr"],
                 nft_owner=interface_data["nft_owner"],
             )
+        return None
+
+    async def get_dedust_pool(self, address: str) -> DedustPool | None:
+        if address in context.dedust_pools.get():
+            return DedustPool(address=address, assets=context.dedust_pools.get()[address]['assets'])
         return None
 
 
@@ -289,6 +302,12 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
 
     async def get_interfaces(self, address: str) -> dict[str, dict]:
         return {}
+
+    async def get_dedust_pool(self, address: str) -> DedustPool | None:
+
+        if address in context.dedust_pools.get():
+            return DedustPool(address=address, assets=context.dedust_pools.get()[address]['assets'])
+        return None
 
 
 async def _gather_data_from_db(

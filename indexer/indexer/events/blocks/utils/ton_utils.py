@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
+import psycopg2
 from pytoniq_core import Address, ExternalAddress
 
 from indexer.core.database import Transaction
@@ -80,11 +83,20 @@ class AccountId:
 class Amount:
     value: int
 
-    def __init__(self, value: int):
-        self.value = value
+    def __init__(self, value: int | Amount):
+        if isinstance(value, Amount):
+            self.value = value.value
+        else:
+            self.value = value
 
     def __repr__(self):
         return str(self.value)
 
     def to_json(self):
         return self.value
+
+def convert_amount(amount):
+    return psycopg2.extensions.AsIs(Decimal(amount.value))  # Converts to Decimal
+
+# Register adapter for psycopg2
+psycopg2.extensions.register_adapter(Amount, convert_amount)
