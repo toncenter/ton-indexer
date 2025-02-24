@@ -507,7 +507,9 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 
 func buildNFTTransfersQuery(transfer_req NFTTransferRequest, utime_req UtimeRequest,
 	lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
-	clmn_query := ` T.*`
+	clmn_query := ` T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
+		T.nft_item_address, T.nft_item_index, T.nft_collection_address, T.old_owner, T.new_owner, T.response_destination, T.custom_payload,
+		T.forward_amount, T.forward_payload, T.trace_id`
 	from_query := ` nft_transfers as T`
 	filter_list := []string{}
 	filter_query := ``
@@ -683,7 +685,9 @@ func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitReques
 
 func buildJettonTransfersQuery(transfer_req JettonTransferRequest, utime_req UtimeRequest,
 	lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
-	clmn_query := `T.*`
+	clmn_query := `T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
+		T.amount, T.source, T.destination, T.jetton_wallet_address, T.jetton_master_address, T.response_destination, T.custom_payload,
+		T.forward_ton_amount, T.forward_payload, T.trace_id`
 	from_query := `jetton_transfers as T`
 	filter_list := []string{}
 	filter_query := ``
@@ -1065,7 +1069,8 @@ func buildTracesQuery(trace_req TracesRequest, utime_req UtimeRequest, lt_req Lt
 
 func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
 	lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
-	clmn_query := `T.*`
+	clmn_query := `T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
+		T.owner, T.jetton_wallet_address, T.jetton_master_address, T.amount, T.response_destination, T.custom_payload, T.trace_id`
 	from_query := `jetton_burns as T`
 	filter_list := []string{}
 	filter_query := ``
@@ -2089,7 +2094,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 				T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
 				T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 				T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
-				T.split_info_this_addr, T.split_info_sibling_addr from transactions as T where ` + filterByArray("T.trace_id", trace_id_list) + ` order by trace_id, lt`
+				T.split_info_this_addr, T.split_info_sibling_addr from transactions as T where ` + filterByArray("T.trace_id", trace_id_list) + ` order by T.trace_id, T.lt, T.account`
 			txs, err := queryTransactionsImpl(query, conn, settings)
 			if err != nil {
 				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
