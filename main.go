@@ -1167,12 +1167,12 @@ func GetPendingTraces(c *fiber.Ctx) error {
 		return err
 	}
 
-	res, book, err := pool.QueryPendingTraces(request_settings, emulatedContext)
+	res, book, metadata, err := pool.QueryPendingTraces(request_settings, emulatedContext)
 	if err != nil {
 		return err
 	}
 
-	txs_resp := index.TracesResponse{Traces: res, AddressBook: book}
+	txs_resp := index.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(txs_resp)
 }
 

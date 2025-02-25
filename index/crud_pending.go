@@ -56,28 +56,34 @@ func (db *DbClient) QueryPendingActions(
 	return actions, book, metadata, nil
 }
 
-func (db *DbClient) QueryPendingTraces(settings RequestSettings, emulatedContext *EmulatedTracesContext) ([]Trace, AddressBook, error) {
+func (db *DbClient) QueryPendingTraces(settings RequestSettings, emulatedContext *EmulatedTracesContext) ([]Trace, AddressBook, Metadata, error) {
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, addr_list, err := queryPendingTracesImpl(emulatedContext, conn, settings)
 	if err != nil {
 		//log.Println(query)
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	book := AddressBook{}
+	metadata := Metadata{}
+
 	if len(addr_list) > 0 {
 		book, err = queryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 
-	return res, book, nil
+	return res, book, metadata, nil
 }
 
 func (db *DbClient) QueryPendingTransactions(
