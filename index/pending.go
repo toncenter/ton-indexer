@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"github.com/jackc/pgx/v5"
 	"github.com/kdimentionaltree/ton-index-go/index/emulated"
+	"log"
 )
 
 type EmulatedTracesContext struct {
@@ -157,11 +158,13 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		message_count := 0
 		transaction_count := 0
 		pending_messages := 0
-		c.traceIds = append(c.traceIds, trace_id)
 		trace, err := emulated.ConvertHSet(c.emulatedTransactionsRaw[trace_id], trace_id)
 		if err != nil {
-			return err
+			log.Printf("error while converting hset: %s", err.Error())
+			continue
 		}
+		c.traceIds = append(c.traceIds, trace_id)
+
 		trace_id_bytes, err := hex.DecodeString(trace_id)
 		if err != nil {
 			return err

@@ -238,6 +238,7 @@ func (r genericRow) Scan(dest ...any) error {
 		if i < len(r.assigns) && r.assigns[i] != nil {
 			err := r.assigns[i](d)
 			if err != nil {
+				println("error ", err, " ", i, " ", d)
 				return err
 			}
 		}
@@ -363,6 +364,7 @@ func (t *TransactionRow) getAssigns() []assign {
 		assignStringPtr(t.OrigStatus),
 		assignStringPtr(t.EndStatus),
 		assignIntPtr(t.TotalFees),
+		assignMap(t.TotalFeesExtraCurrencies),
 		assignStringPtr(t.AccountStateHashBefore),
 		assignStringPtr(t.AccountStateHashAfter),
 		assignStringPtr(t.Descr),
@@ -376,6 +378,7 @@ func (t *TransactionRow) getAssigns() []assign {
 		assignStringPtr(t.StorageStatusChange),
 		assignIntPtr(t.CreditDueFeesCollected),
 		assignIntPtr(t.Credit),
+		assignMap(t.CreditExtraCurrencies),
 		assignBoolPtr(t.ComputeSkipped),
 		assignStringPtr(t.SkippedReason),
 		assignBoolPtr(t.ComputeSuccess),
@@ -424,6 +427,7 @@ func (t *TransactionRow) Scan(dest ...any) error {
 	for i, d := range dest {
 		err := assigns[i](d)
 		if err != nil {
+			println("error ", err, " ", i, " ", d)
 			return err
 		}
 	}
@@ -439,6 +443,7 @@ func (m *MessageRow) getAssigns() []assign {
 		assignStringPtr(m.Source),
 		assignStringPtr(m.Destination),
 		assignIntPtr(m.Value),
+		assignMap(m.ValueExtraCurrencies),
 		assignIntPtr(m.FwdFee),
 		assignIntPtr(m.IhrFee),
 		assignIntPtr(m.CreatedLt),
@@ -501,7 +506,7 @@ func assignInt[T int64 | int32 | int16 | uint32](src T) assign {
 			break
 
 		default:
-			return fmt.Errorf("unsupported type %T", dest)
+			return fmt.Errorf("unsupported type %T for %s", dest, src)
 		}
 		return nil
 	}
@@ -532,7 +537,8 @@ func assignBool(src bool) assign {
 			dv.SetBool(src)
 			break
 		default:
-			return fmt.Errorf("unsupported type %T", dest)
+			return fmt.Errorf("unsupported type %T for %s", dest, src)
+
 		}
 		return nil
 	}
@@ -576,7 +582,7 @@ func assignHashSlice(src []string) assign {
 				// If the slice element type is string
 				slice := reflect.MakeSlice(dv.Type(), len(src), len(src))
 				for i, v := range src {
-					slice.Index(i).Set(reflect.ValueOf(v))
+					slice.Index(i).SetString(v)
 				}
 				dv.Set(slice)
 			} else if elemType.Kind() == reflect.Ptr && elemType.Elem().Kind() == reflect.String {
@@ -612,7 +618,7 @@ func assignString(src string) assign {
 			dv.SetString(src)
 			break
 		default:
-			return fmt.Errorf("unsupported type %T", dest)
+			return fmt.Errorf("unsupported type %T for %s", dest, src)
 		}
 		return nil
 	}

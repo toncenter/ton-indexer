@@ -144,7 +144,7 @@ func buildTransactionsQuery(
 	T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
 	T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 	T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
-	T.split_info_this_addr, T.split_info_sibling_addr from`
+	T.split_info_this_addr, T.split_info_sibling_addr, false as emulated from`
 	from_query := ` transactions as T`
 	filter_list := []string{}
 	filter_query := ``

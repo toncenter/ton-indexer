@@ -11,27 +11,28 @@ import (
 func (db *DbClient) QueryPendingActions(
 	settings RequestSettings,
 	emulatedContext *EmulatedTracesContext,
-) ([]Action, AddressBook, error) {
+) ([]Action, AddressBook, Metadata, error) {
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	raw_actions, err := queryPendingActionsImpl(emulatedContext, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
 	var actions []Action
 	book := AddressBook{}
 	addr_map := map[string]bool{}
+	metadata := Metadata{}
 
 	for _, raw_action := range raw_actions {
 		collectAddressesFromAction(&addr_map, &raw_action)
 		action, err := ParseRawAction(&raw_action)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 		actions = append(actions, *action)
 	}
@@ -43,11 +44,16 @@ func (db *DbClient) QueryPendingActions(
 		}
 		book, err = queryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+
+		metadata, err = queryMetadataImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 
-	return actions, book, nil
+	return actions, book, metadata, nil
 }
 
 func (db *DbClient) QueryPendingTraces(settings RequestSettings, emulatedContext *EmulatedTracesContext) ([]Trace, AddressBook, error) {
@@ -267,12 +273,15 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 			}
 			completed_trace_ids_in_db = append(completed_trace_ids_in_db, trace_id)
 		}
+		println("Removed ", len(completed_trace_ids_in_db), " completed traces")
 		emulatedContext.RemoveTraces(completed_trace_ids_in_db)
 	}
 	traceRows := emulatedContext.GetTraces()
 	for _, row := range traceRows {
 		if loc, err := ScanTrace(row); err == nil {
 			loc.Transactions = make(map[HashType]*Transaction)
+			actions := make([]*Action, 0)
+			loc.Actions = &actions
 			traces = append(traces, *loc)
 		} else {
 			return nil, nil, IndexError{Code: 500, Message: err.Error()}

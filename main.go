@@ -1277,18 +1277,24 @@ func GetPendingActions(c *fiber.Ctx) error {
 	if act_req.AccountAddress != nil {
 		emulatedContext, err = ActionContextByAccount(emulatedTracesRepository,
 			[]index.AccountAddress{*act_req.AccountAddress})
+		if err != nil {
+			return err
+		}
 	} else if len(act_req.TraceId) > 0 {
 		emulatedContext, err = ContextByTraces(emulatedTracesRepository, act_req.TraceId)
+		if err != nil {
+			return err
+		}
 	} else {
 		return index.IndexError{Code: 422, Message: "account or trace_id should be specified"}
 	}
 
-	res, book, err := pool.QueryPendingActions(request_settings, emulatedContext)
+	res, book, metadata, err := pool.QueryPendingActions(request_settings, emulatedContext)
 	if err != nil {
 		return err
 	}
 
-	resp := index.ActionsResponse{Actions: res, AddressBook: book}
+	resp := index.ActionsResponse{Actions: res, AddressBook: book, Metadata: metadata}
 	return c.Status(200).JSON(resp)
 }
 
