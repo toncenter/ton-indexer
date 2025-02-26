@@ -1690,10 +1690,13 @@ paths:
           type: string
         name: owner_address
         type: array
-      - description: Jetton Master in any form.
+      - collectionFormat: multi
+        description: Jetton Master in any form.
         in: query
+        items:
+          type: string
         name: jetton_address
-        type: string
+        type: array
       - description: Exclude jetton wallets with 0 balance.
         in: query
         name: exclude_zero_balance

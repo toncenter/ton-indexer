@@ -844,7 +844,7 @@ func GetJettonMasters(c *fiber.Ctx) error {
 // @failure 400 {object} index.RequestError
 // @param address query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param owner_address query []string false "Address of Jetton wallet's owner in any form. Max: 1000." collectionFormat(multi)
-// @param jetton_address query string false "Jetton Master in any form."
+// @param jetton_address query []string false "Jetton Master in any form."
 // @param exclude_zero_balance query bool false "Exclude jetton wallets with 0 balance."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -862,6 +862,9 @@ func GetJettonWallets(c *fiber.Ctx) error {
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if len(jetton_req.JettonAddress) > 1 && len(jetton_req.OwnerAddress) != 1 {
+		return index.IndexError{Code: 422, Message: "exact one owner_address required for multiple jetton_address"}
 	}
 
 	res, book, metadata, err := pool.QueryJettonWallets(jetton_req, lim_req, request_settings)

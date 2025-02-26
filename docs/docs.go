@@ -994,7 +994,11 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "string",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
                         "description": "Jetton Master in any form.",
                         "name": "jetton_address",
                         "in": "query"

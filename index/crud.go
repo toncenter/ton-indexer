@@ -664,8 +664,15 @@ func buildJettonWalletsQuery(jetton_req JettonWalletRequest, lim_req LimitReques
 		orderby_query = fmt.Sprintf(` order by J.owner, %s %s`, sort_column, sort_order)
 	}
 	if v := jetton_req.JettonAddress; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("J.jetton = '%s'", *v))
-		orderby_query = fmt.Sprintf(` order by J.jetton, %s %s`, sort_column, sort_order)
+		if len(jetton_req.JettonAddress) == 1 {
+			filter_list = append(filter_list, fmt.Sprintf("J.jetton = '%s'", v[0]))
+			orderby_query = fmt.Sprintf(` order by J.jetton, %s %s`, sort_column, sort_order)
+		} else if len(jetton_req.JettonAddress) > 1 {
+			filter_str := filterByArray("J.jetton", v)
+			if len(filter_str) > 0 {
+				filter_list = append(filter_list, filter_str)
+			}
+		}
 	}
 	if v := jetton_req.ExcludeZeroBalance; v != nil && *v {
 		filter_list = append(filter_list, "J.balance + coalesce(mintless_amount, 0) > 0")
