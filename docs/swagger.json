@@ -143,28 +143,28 @@
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "Query actions for traces, which was finished **after** given timestamp.",
+                        "description": "Query actions for traces with `trace_end_utime \u003e= start_utime`.",
                         "name": "start_utime",
                         "in": "query"
                     },
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "Query actions for traces, which was finished **before** given timestamp.",
+                        "description": "Query actions for traces with `trace_end_utime \u003c= end_utime`.",
                         "name": "end_utime",
                         "in": "query"
                     },
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "Query actions for traces with `end_lt \u003e= start_lt`.",
+                        "description": "Query actions for traces with `trace_end_lt \u003e= start_lt`.",
                         "name": "start_lt",
                         "in": "query"
                     },
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "Query actions for traces with `end_lt \u003c= end_lt`.",
+                        "description": "Query actions for traces with `trace_end_lt \u003c= end_lt`.",
                         "name": "end_lt",
                         "in": "query"
                     },
@@ -551,6 +551,64 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/BlocksResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/dnsEntities": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Query dns entities",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Get DNS Entities",
+                "operationId": "api_v3_get_dns_entities",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "List of addresses in any form to get address book. Max: 1024.",
+                        "name": "address",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include code and data BOCs. Default: true",
+                        "name": "include_boc",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/AccountStatesResponse"
                         }
                     },
                     "400": {
@@ -2553,11 +2611,21 @@
                 "success": {
                     "type": "boolean"
                 },
+                "trace_end_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "trace_end_utime": {
+                    "type": "integer"
+                },
                 "trace_external_hash": {
                     "type": "string"
                 },
                 "trace_id": {
                     "type": "string"
+                },
+                "trace_mc_seqno_end": {
+                    "type": "integer"
                 },
                 "transactions": {
                     "type": "array",

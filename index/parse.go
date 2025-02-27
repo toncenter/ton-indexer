@@ -281,6 +281,9 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 	act.EndLt = raw.EndLt
 	act.StartUtime = raw.StartUtime
 	act.EndUtime = raw.EndUtime
+	act.TraceEndLt = raw.TraceEndLt
+	act.TraceEndUtime = raw.TraceEndUtime
+	act.TraceMcSeqnoEnd = raw.TraceMcSeqnoEnd
 	act.TxHashes = raw.TxHashes
 	act.Success = raw.Success
 	act.Type = raw.Type
@@ -814,6 +817,7 @@ func ScanJettonBurn(row pgx.Row) (*JettonBurn, error) {
 func ScanRawAction(row pgx.Row) (*RawAction, error) {
 	var act RawAction
 	err := row.Scan(&act.TraceId, &act.ActionId, &act.StartLt, &act.EndLt, &act.StartUtime, &act.EndUtime,
+		&act.TraceEndLt, &act.TraceEndUtime, &act.TraceMcSeqnoEnd,
 		&act.Source, &act.SourceSecondary, &act.Destination, &act.DestinationSecondary, &act.Asset, &act.AssetSecondary,
 		&act.Asset2, &act.Asset2Secondary, &act.Opcode, &act.TxHashes, &act.Type, &act.TonTransferContent,
 		&act.TonTransferEncrypted, &act.Value, &act.Amount, &act.JettonTransferResponseDestination, &act.JettonTransferForwardAmount,

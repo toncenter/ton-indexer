@@ -608,6 +608,27 @@ func GetWalletStates(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+// @summary Get DNS Entities
+//
+// @description Query dns entities
+//
+// @id api_v3_get_dns_entities
+// @tags accounts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.AccountStatesResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string true "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
+// @param include_boc query bool false "Include code and data BOCs. Default: true" default(true)
+// // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @router /api/v3/dnsEntities [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetDNSEntities(c *fiber.Ctx) error {
+	return index.IndexError{Code: 501, Message: "not implemented"}
+}
+
 // @summary Get NFT collections
 //
 // @description Get NFT collections by specified filters
@@ -1095,10 +1116,10 @@ func GetTraces(c *fiber.Ctx) error {
 // @param action_id	query []string false "Find actions by the action_id." collectionFormat(multi)
 // @param trace_id	query []string false "Find actions by the trace_id." collectionFormat(multi)
 // @param mc_seqno query int32 false "Query actions of traces which was completed in masterchain block with given seqno"
-// @param start_utime query int32 false "Query actions for traces, which was finished **after** given timestamp." minimum(0)
-// @param end_utime query int32 false "Query actions for traces, which was finished **before** given timestamp." minimum(0)
-// @param start_lt query int64 false "Query actions for traces with `end_lt >= start_lt`." minimum(0)
-// @param end_lt query int64 false "Query actions for traces with `end_lt <= end_lt`." minimum(0)
+// @param start_utime query int32 false "Query actions for traces with `trace_end_utime >= start_utime`." minimum(0)
+// @param end_utime query int32 false "Query actions for traces with `trace_end_utime <= end_utime`." minimum(0)
+// @param start_lt query int64 false "Query actions for traces with `trace_end_lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query actions for traces with `trace_end_lt <= end_lt`." minimum(0)
 // @param action_type query []string false "Include action types." Enums(call_contract, contract_deploy, ton_transfer, auction_bid, change_dns, dex_deposit_liquidity, dex_withdraw_liquidity, delete_dns, renew_dns, election_deposit, election_recover, jetton_burn, jetton_swap, jetton_transfer, jetton_mint, nft_mint, tick_tock, stake_deposit, stake_withdrawal, stake_withdrawal_request, subscribe, unsubscribe)
 // @param exclude_action_type query []string false "Exclude action types." Enums(call_contract, contract_deploy, ton_transfer, auction_bid, change_dns, dex_deposit_liquidity, dex_withdraw_liquidity, delete_dns, renew_dns, election_deposit, election_recover, jetton_burn, jetton_swap, jetton_transfer, jetton_mint, nft_mint, tick_tock, stake_deposit, stake_withdrawal, stake_withdrawal_request, subscribe, unsubscribe)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
@@ -1599,6 +1620,8 @@ func main() {
 	app.Get("/api/v3/metadata", GetMetadata)
 	app.Get("/api/v3/accountStates", GetAccountStates)
 	app.Get("/api/v3/walletStates", GetWalletStates)
+
+	app.Get("/api/v3/dnsEntities", GetDNSEntities)
 
 	// nfts
 	app.Get("/api/v3/nft/collections", GetNFTCollections)

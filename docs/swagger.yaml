@@ -87,10 +87,17 @@ definitions:
         type: integer
       success:
         type: boolean
+      trace_end_lt:
+        example: "0"
+        type: string
+      trace_end_utime:
+        type: integer
       trace_external_hash:
         type: string
       trace_id:
         type: string
+      trace_mc_seqno_end:
+        type: integer
       transactions:
         items:
           type: string
@@ -1108,24 +1115,22 @@ paths:
         in: query
         name: mc_seqno
         type: integer
-      - description: Query actions for traces, which was finished **after** given
-          timestamp.
+      - description: Query actions for traces with `trace_end_utime >= start_utime`.
         in: query
         minimum: 0
         name: start_utime
         type: integer
-      - description: Query actions for traces, which was finished **before** given
-          timestamp.
+      - description: Query actions for traces with `trace_end_utime <= end_utime`.
         in: query
         minimum: 0
         name: end_utime
         type: integer
-      - description: Query actions for traces with `end_lt >= start_lt`.
+      - description: Query actions for traces with `trace_end_lt >= start_lt`.
         in: query
         minimum: 0
         name: start_lt
         type: integer
-      - description: Query actions for traces with `end_lt <= end_lt`.
+      - description: Query actions for traces with `trace_end_lt <= end_lt`.
         in: query
         minimum: 0
         name: end_lt
@@ -1410,6 +1415,43 @@ paths:
       summary: Get blocks
       tags:
       - blockchain
+  /api/v3/dnsEntities:
+    get:
+      consumes:
+      - application/json
+      description: Query dns entities
+      operationId: api_v3_get_dns_entities
+      parameters:
+      - collectionFormat: multi
+        description: 'List of addresses in any form to get address book. Max: 1024.'
+        in: query
+        items:
+          type: string
+        name: address
+        required: true
+        type: array
+      - default: true
+        description: 'Include code and data BOCs. Default: true'
+        in: query
+        name: include_boc
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/AccountStatesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get DNS Entities
+      tags:
+      - accounts
   /api/v3/estimateFee:
     post:
       consumes:

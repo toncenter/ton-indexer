@@ -430,6 +430,9 @@ type RawAction struct {
 	EndLt                                                int64
 	StartUtime                                           int64
 	EndUtime                                             int64
+	TraceEndLt                                           int64
+	TraceEndUtime                                        int64
+	TraceMcSeqnoEnd                                      int32
 	Source                                               *AccountAddress
 	SourceSecondary                                      *AccountAddress
 	Destination                                          *AccountAddress
@@ -725,6 +728,9 @@ type Action struct {
 	EndLt             int64       `json:"end_lt,string"`
 	StartUtime        int64       `json:"start_utime"`
 	EndUtime          int64       `json:"end_utime"`
+	TraceEndLt        int64       `json:"trace_end_lt,string"`
+	TraceEndUtime     int64       `json:"trace_end_utime"`
+	TraceMcSeqnoEnd   int32       `json:"trace_mc_seqno_end"`
 	TxHashes          []HashType  `json:"transactions"`
 	Success           *bool       `json:"success"`
 	Type              string      `json:"type"`
