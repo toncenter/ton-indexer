@@ -107,7 +107,11 @@ public:
                     nft_item_data.code_hash = code_hash;
                     nft_item_data.data_hash = data_hash;
                     if (arg.dns_entry) {
-                        nft_item_data.dns_entry = NFTItemDataV2::DNSEntry{arg.dns_entry->domain, arg.dns_entry->wallet, arg.dns_entry->next_resolver, arg.dns_entry->site_adnl};
+                        nft_item_data.dns_entry = NFTItemDataV2::DNSEntry{arg.dns_entry->domain, 
+                                                                          arg.dns_entry->wallet, 
+                                                                          arg.dns_entry->next_resolver, 
+                                                                          arg.dns_entry->site_adnl, 
+                                                                          arg.dns_entry->storage_bag_id};
                     }
                     interfaces_[address].push_back(nft_item_data);
                 } else if constexpr (std::is_same_v<T, GetGemsNftAuction::Result>) {
