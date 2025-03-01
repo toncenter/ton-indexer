@@ -130,8 +130,8 @@ struct SplitMergeInfo {
 
 struct TransactionDescr_ord {
   bool credit_first;
-  TrStoragePhase storage_ph;
-  TrCreditPhase credit_ph;
+  std::optional<TrStoragePhase> storage_ph;
+  std::optional<TrCreditPhase> credit_ph;
   TrComputePhase compute_ph;
   std::optional<TrActionPhase> action;
   bool aborted;
@@ -192,7 +192,7 @@ struct Transaction {
   MSGPACK_DEFINE(hash, account, lt, prev_trans_hash, prev_trans_lt, now, orig_status, end_status, in_msg, out_msgs, total_fees, account_state_hash_before, account_state_hash_after, description);
 };
 
-struct TraceNode {
+struct RedisTraceNode {
   Transaction transaction;
   bool emulated;
 
@@ -528,7 +528,7 @@ td::Result<Transaction> parse_tx(td::Ref<vm::Cell> root, ton::WorkchainId workch
 
   if (trans.r1.in_msg->prefetch_long(1)) {
     auto msg = trans.r1.in_msg->prefetch_ref();
-    TRY_RESULT_ASSIGN(schema_tx.in_msg, parse_message(trans.r1.in_msg->prefetch_ref()));
+    TRY_RESULT_ASSIGN(schema_tx.in_msg, parse_message(msg));
   }
 
   if (trans.outmsg_cnt != 0) {
@@ -716,5 +716,63 @@ AddressInterfaces parse_interfaces(std::vector<typename Trace::Detector::Detecte
       }
     }, interface);
   }
+  return result;
+}
+
+// enum AccountStatusExt {
+//   nonexist = block::Account::acc_nonexist,
+//   uninit = block::Account::acc_uninit,
+//   frozen = block::Account::acc_frozen,
+//   active = block::Account::acc_active,
+//   deleted = block::Account::acc_deleted
+// };
+// MSGPACK_ADD_ENUM(AccountStatusExt);
+
+
+struct AccountState {
+  td::Bits256 hash;
+  uint64_t balance;
+  std::string account_status; // "uninit", "frozen", "active", "nonexist"
+  std::optional<td::Bits256> frozen_hash;
+  td::Ref<vm::Cell> code_cell;
+  std::optional<td::Bits256> code_hash;
+  td::Ref<vm::Cell> data_cell;
+  std::optional<td::Bits256> data_hash;
+  std::optional<td::Bits256> last_trans_hash;
+  std::optional<uint64_t> last_trans_lt;
+  std::optional<uint32_t> timestamp;
+
+  MSGPACK_DEFINE(hash, timestamp, balance, account_status, frozen_hash, code_hash, data_hash, last_trans_hash, last_trans_lt);
+};
+
+td::Result<AccountState> parse_account(const block::Account& account) {
+  AccountState result;
+  int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account.total_state));
+  switch (account_tag) {
+  case block::gen::Account::account_none: {
+    result.account_status = "nonexist";
+    result.balance = 0;
+    result.hash = account.total_state->get_hash().bits();
+    break;
+  }
+  case block::gen::Account::account: {
+    TRY_RESULT(schema_account, ParseQuery::parse_account(account.total_state, account.now_, account.last_trans_hash_, account.last_trans_lt_));
+    result.hash = schema_account.hash;
+    result.timestamp = schema_account.timestamp;
+    result.balance = schema_account.balance.grams->to_long();
+    result.account_status = schema_account.account_status;
+    result.frozen_hash = schema_account.frozen_hash;
+    result.code_cell = schema_account.code;
+    result.code_hash = schema_account.code_hash;
+    result.data_cell = schema_account.data;
+    result.data_hash = schema_account.data_hash;
+    result.last_trans_hash = schema_account.last_trans_hash;
+    result.last_trans_lt = schema_account.last_trans_lt;
+    break;
+  }
+  default:
+    return td::Status::Error("Unknown account tag");
+  }
+  
   return result;
 }

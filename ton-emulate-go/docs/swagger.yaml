@@ -1,0 +1,43 @@
+basePath: /api/emulate/
+definitions:
+  main.EmulateRequest:
+    properties:
+      boc:
+        example: te6ccgEBAQEAAgAAAA==
+        type: string
+      ignore_chksig:
+        example: false
+        type: boolean
+      include_code_data:
+        example: false
+        type: boolean
+      with_actions:
+        example: false
+        type: boolean
+    type: object
+info:
+  contact: {}
+  description: TON Emulate API provides an endpoint to emulate transactions and traces
+    before committing them to the blockchain.
+  title: TON Emulate API
+  version: 0.0.1
+paths:
+  /v1/emulateTrace:
+    post:
+      consumes:
+      - application/json
+      description: Emulate trace by external message.
+      parameters:
+      - description: External Message Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.EmulateRequest'
+      produces:
+      - application/json
+      responses: {}
+      summary: Emulate trace by external message
+      tags:
+      - emulate
+swagger: "2.0"

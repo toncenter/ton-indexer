@@ -33,7 +33,7 @@ private:
   td::actor::ActorId<ShardStateScanner> shard_state_scanner_;
   Options options_;
   
-  std::unordered_map<block::StdAddress, std::vector<InsertData>, AddressHasher> interfaces_;
+  std::unordered_map<block::StdAddress, std::vector<InsertData>> interfaces_;
   std::vector<InsertData> result_;
 public:
   StateBatchParser(std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> data, ShardStateDataPtr shard_state_data, td::actor::ActorId<ShardStateScanner> shard_state_scanner, Options options)

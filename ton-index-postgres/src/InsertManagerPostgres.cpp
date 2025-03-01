@@ -36,8 +36,8 @@ std::string InsertManagerPostgres::Credential::get_connection_string()  {
 
 // This set is used as a synchronization mechanism to prevent multiple queries for the same message
 // Otherwise Posgres will throw an error deadlock_detected
-std::unordered_set<td::Bits256, BitArrayHasher> messages_in_progress;
-std::unordered_set<td::Bits256, BitArrayHasher> msg_bodies_in_progress;
+std::unordered_set<td::Bits256> messages_in_progress;
+std::unordered_set<td::Bits256> msg_bodies_in_progress;
 std::mutex messages_in_progress_mutex;
 std::mutex latest_account_states_update_mutex;
 

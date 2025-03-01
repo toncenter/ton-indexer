@@ -8,7 +8,7 @@ class BlockInterfaceProcessor: public td::actor::Actor {
 private:
     ParsedBlockPtr block_;
     td::Promise<ParsedBlockPtr> promise_;
-    std::unordered_map<block::StdAddress, std::vector<BlockchainInterfaceV2>, AddressHasher> interfaces_{};
+    std::unordered_map<block::StdAddress, std::vector<BlockchainInterfaceV2>> interfaces_{};
     td::Timer timer_{true};
 public:
     BlockInterfaceProcessor(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise) : 
@@ -16,7 +16,7 @@ public:
 
     void start_up() override {
         timer_.resume();
-        std::unordered_map<block::StdAddress, schema::AccountState, AddressHasher> account_states_to_detect;
+        std::unordered_map<block::StdAddress, schema::AccountState> account_states_to_detect;
         for (const auto& account_state : block_->account_states_) {
             if (!account_state.code_hash || !account_state.data_hash) {
                 continue;

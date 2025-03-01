@@ -22,7 +22,13 @@ void OverlayListener::start_up() {
         }
         void receive_query(ton::adnl::AdnlNodeIdShort src, ton::overlay::OverlayIdShort overlay_id, td::BufferSlice data,
                         td::Promise<td::BufferSlice> promise) override {
-            promise.set_error(td::Status::Error("not implemented"));
+            auto B = ton::fetch_tl_object<ton::ton_api::tonNode_getCapabilities>(std::move(data), true);
+            if (B.is_error()) {
+                promise.set_error(td::Status::Error("not implemented"));
+                return;
+            }
+            
+            promise.set_value(ton::create_serialize_tl_object<ton::ton_api::tonNode_capabilities>(0, 0, 0));
         }
         void receive_broadcast(ton::PublicKeyHash src, ton::overlay::OverlayIdShort overlay_id, td::BufferSlice data) override {
             auto B = ton::fetch_tl_object<ton::ton_api::tonNode_externalMessageBroadcast>(std::move(data), true);
@@ -83,10 +89,6 @@ void OverlayListener::start_up() {
 
     td::actor::send_closure(adnl_, &ton::adnl::Adnl::register_network_manager, adnl_network_manager_.get());
 
-    // TRY_RESULT_PREFIX_ASSIGN(adnl_static_nodes_, ton::adnl::AdnlNodesList::create(dht_config->nodes()),
-    //                        "bad static adnl nodes: ");
-    // td::actor::send_closure(adnl_, &ton::adnl::Adnl::add_static_nodes_from_config, std::move(adnl_static_nodes_));
-    
     ton::adnl::AdnlAddress x = ton::adnl::AdnlAddressImpl::create(
         ton::create_tl_object<ton::ton_api::adnl_address_udp>(addr.get_ipv4(), addr.get_port()));
     ton::adnl::AdnlAddressList addr_list;
@@ -107,7 +109,7 @@ void OverlayListener::start_up() {
 }
 
 void OverlayListener::process_external_message(td::Ref<ton::validator::ExtMessageQ> message) {
-    if (emulator_ == nullptr) {
+    if (mc_data_state_.config_ == nullptr) {
         return;
     }
     auto msg_hash = TraceId{message->root_cell()->get_hash().bits()};
@@ -117,15 +119,14 @@ void OverlayListener::process_external_message(td::Ref<ton::validator::ExtMessag
 
     LOG(INFO) << "Starting processing ExtMessageQ hash: " << msg_hash.to_hex() << " addr: " << message->wc() << ":" << message->addr().to_hex();
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), msg_hash](td::Result<Trace *> R) mutable {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), msg_hash](td::Result<Trace> R) mutable {
         if (R.is_error()) {
             td::actor::send_closure(SelfId, &OverlayListener::trace_error, std::move(msg_hash), R.move_as_error());
         } else {
             td::actor::send_closure(SelfId, &OverlayListener::trace_received, std::move(msg_hash), R.move_as_ok());
         }
     });
-    std::unordered_map<block::StdAddress, std::shared_ptr<block::Account>, AddressHasher> shard_accounts;
-    td::actor::create_actor<TraceEmulator>("TraceEmu", emulator_, shard_states_, std::move(shard_accounts), message->root_cell(), 20, std::move(P)).release();
+    td::actor::create_actor<TraceEmulator>("TraceEmu", mc_data_state_, message->root_cell(), false, std::move(P)).release();
 }
 
 void OverlayListener::trace_error(TraceId trace_id, td::Status error) {
@@ -133,10 +134,10 @@ void OverlayListener::trace_error(TraceId trace_id, td::Status error) {
     known_ext_msgs_.erase(trace_id);
 }
 
-void OverlayListener::trace_received(TraceId trace_id, Trace *trace) {
-    LOG(INFO) << "Emulated trace from ext msg " << trace_id.to_hex() << ": " << trace->transactions_count() << " transactions, " << trace->depth() << " depth";
+void OverlayListener::trace_received(TraceId trace_id, Trace trace) {
+    LOG(INFO) << "Emulated trace from ext msg " << trace_id.to_hex() << ": " << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
     if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_id = trace->id](td::Result<std::unique_ptr<Trace>> R) {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_id = trace.id](td::Result<Trace> R) {
             if (R.is_error()) {
                 td::actor::send_closure(SelfId, &OverlayListener::trace_interfaces_error, trace_id, R.move_as_error());
                 return;
@@ -144,9 +145,14 @@ void OverlayListener::trace_received(TraceId trace_id, Trace *trace) {
             td::actor::send_closure(SelfId, &OverlayListener::finish_processing, R.move_as_ok());
         });
 
-        td::actor::create_actor<TraceInterfaceDetector>("TraceInterfaceDetector", shard_states_, config_, std::unique_ptr<Trace>(trace), std::move(P)).release();
+        std::vector<td::Ref<vm::Cell>> shard_states;
+        for (const auto& shard_state : mc_data_state_.shard_blocks_) {
+            shard_states.push_back(shard_state.block_state);
+        }
+
+        td::actor::create_actor<TraceInterfaceDetector>("TraceInterfaceDetector", std::move(shard_states), mc_data_state_.config_, std::move(trace), std::move(P)).release();
     } else {
-        finish_processing(std::unique_ptr<Trace>(trace));
+        finish_processing(std::move(trace));
     }
 }
 
@@ -154,8 +160,15 @@ void OverlayListener::trace_interfaces_error(TraceId trace_id, td::Status error)
     LOG(ERROR) << "Failed to detect interfaces on trace_id " << trace_id.to_hex() << ": " << error;
 }
 
-void OverlayListener::finish_processing(std::unique_ptr<Trace> trace) {
-    LOG(INFO) << "Finished emulating trace " << trace->id.to_hex();
-    trace_processor_(std::move(trace));
+void OverlayListener::finish_processing(Trace trace) {
+    LOG(INFO) << "Finished emulating trace " << trace.id.to_hex();
+    auto P = td::PromiseCreator::lambda([trace_id = trace.id](td::Result<td::Unit> R) {
+        if (R.is_error()) {
+            LOG(ERROR) << "Failed to insert trace " << trace_id.to_hex() << ": " << R.move_as_error();
+            return;
+        }
+        LOG(DEBUG) << "Successfully inserted trace " << trace_id.to_hex();
+    });
+    trace_processor_(std::move(trace), std::move(P));
     traces_cnt_++;
 }

@@ -57,7 +57,7 @@ public:
 
   void check_return() {
     if (block_data_.not_null() && block_state_root_.not_null()) {
-      promise_.set_value({std::move(block_data_), std::move(block_state_root_)});
+      promise_.set_value({std::move(block_data_), std::move(block_state_root_), std::move(handle_)});
       stop();
     }
   }
@@ -76,6 +76,7 @@ private:
 
   td::Ref<BlockData> mc_block_data_;
   td::Ref<vm::Cell> mc_block_state_;
+  ConstBlockHandle mc_block_handle_;
 
   td::Ref<MasterchainState> mc_prev_block_state_;
   int pending_{0};
@@ -108,16 +109,17 @@ public:
       stop();
       return;
     }
+    mc_block_handle_ = handle.move_as_ok();
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<BlockData>> res) {
       td::actor::send_closure(SelfId, &IndexQuery::got_mc_block_data, std::move(res));
     });
-    td::actor::send_closure(db_, &RootDb::get_block_data, handle.ok(), std::move(P));
+    td::actor::send_closure(db_, &RootDb::get_block_data, mc_block_handle_, std::move(P));
 
     auto R = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Ref<vm::Cell>> res) {
       td::actor::send_closure(SelfId, &IndexQuery::got_mc_block_state, std::move(res));
     });
-    td::actor::send_closure(db_, &RootDb::get_block_state_root, handle.ok(), std::move(R));
+    td::actor::send_closure(db_, &RootDb::get_block_state_root, mc_block_handle_, std::move(R));
   }
 
   void got_mc_block_data(td::Result<td::Ref<BlockData>> block_data) {
@@ -149,8 +151,8 @@ public:
       return;
     }
 
-    result_.shard_blocks_.push_back({mc_block_data_, mc_block_state_});
-    result_.shard_blocks_diff_.push_back({mc_block_data_, mc_block_state_});
+    result_.shard_blocks_.push_back({mc_block_data_, mc_block_state_, mc_block_handle_});
+    result_.shard_blocks_diff_.push_back({mc_block_data_, mc_block_state_, mc_block_handle_});
 
     fetch_shard_blocks();
   }
@@ -333,7 +335,7 @@ void DbScanner::alarm() {
   if (mode_ == dbs_readonly) {
     return;
   }
-  alarm_timestamp() = td::Timestamp::in(1.0);
+  alarm_timestamp() = td::Timestamp::in(catch_up_interval_);
   if (db_.empty()) {
     return;
   }

@@ -5,19 +5,18 @@
 #include "TraceEmulator.h"
 
 
-class TraceInserter: public td::actor::Actor {
+class ITraceInsertManager : public td::actor::Actor {
+public:
+    virtual void insert(Trace trace, td::Promise<td::Unit> promise) = 0;
+};
+
+class RedisInsertManager: public ITraceInsertManager {
 private:
     sw::redis::Redis redis_;
-    std::unique_ptr<Trace> trace_;
-    td::Promise<td::Unit> promise_;
 
 public:
-    inline static std::string redis_uri = "tcp://127.0.0.1:6379";
+    RedisInsertManager(std::string redis_dsn) :
+        redis_(sw::redis::Redis(redis_dsn)) {}
 
-    TraceInserter(std::unique_ptr<Trace> trace, td::Promise<td::Unit> promise) :
-        redis_(sw::redis::Redis(redis_uri)), trace_(std::move(trace)), promise_(std::move(promise)) {
-    }
-
-    void start_up() override;
-    void delete_db_subtree(std::string key);
+    void insert(Trace trace, td::Promise<td::Unit> promise);
 };
