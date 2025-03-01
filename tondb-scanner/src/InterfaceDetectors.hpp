@@ -125,6 +125,8 @@ public:
 template <class T>
 class InterfaceStorage {
 public:
+  InterfaceStorage() {};
+  InterfaceStorage(std::unordered_map<std::string, T> cache) : cache_(cache) {};
   std::unordered_map<std::string, T> cache_{};
 
   void check(block::StdAddress address, td::Promise<T> promise) {
@@ -155,6 +157,13 @@ public:
   JettonMasterDetector(td::actor::ActorId<InterfaceManager> interface_manager, td::actor::ActorId<InsertManagerInterface> insert_manager) 
     : interface_manager_(interface_manager)
     , insert_manager_(insert_manager) {
+  }
+
+  JettonMasterDetector(td::actor::ActorId<InterfaceManager> interface_manager, td::actor::ActorId<InsertManagerInterface> insert_manager,
+    std::unordered_map<std::string, JettonMasterData> cache)
+    : interface_manager_(interface_manager)
+    , insert_manager_(insert_manager)
+    , storage_(cache) {
   }
 
   void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, uint32_t last_tx_now, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonMasterData> promise) override {
@@ -350,6 +359,14 @@ public:
                        td::actor::ActorId<InsertManagerInterface> insert_manager) 
     : jetton_master_detector_(jetton_master_detector)
     , interface_manager_(interface_manager) {
+  }
+    JettonWalletDetector(td::actor::ActorId<JettonMasterDetector> jetton_master_detector,
+                       td::actor::ActorId<InterfaceManager> interface_manager,
+                       td::actor::ActorId<InsertManagerInterface> insert_manager,
+                       std::unordered_map<std::string, JettonWalletData> cache)
+    : jetton_master_detector_(jetton_master_detector)
+    , interface_manager_(interface_manager)
+    , storage_(cache) {
   }
 
   void detect(block::StdAddress address, td::Ref<vm::Cell> code_cell, td::Ref<vm::Cell> data_cell, uint64_t last_tx_lt, uint32_t last_tx_now, const MasterchainBlockDataState& blocks_ds, td::Promise<JettonWalletData> promise) override {
