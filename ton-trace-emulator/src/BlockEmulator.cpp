@@ -49,11 +49,12 @@ public:
     }
 
     void trace_root_received(std::unique_ptr<TraceNode> trace_root) {
-        LOG(INFO) << "Emulated trace: " << trace_root->transactions_count() << " transactions, " << trace_root->depth() << " depth";
         Trace trace;
         trace.root = std::move(trace_root);
         trace.id = tx_.initial_msg_hash.value();
         trace.emulated_accounts = std::move(emulated_accounts_);
+        LOG(INFO) << "Emulated trace " << td::base64_encode(trace.id.as_slice()) << ": "
+            << trace.root->transactions_count() << " transactions, " << trace.root->depth() << " depth";
         promise_.set_value(std::move(trace));
         stop();
     }
@@ -345,12 +346,11 @@ void McBlockEmulator::emulate_traces() {
 }
 
 void McBlockEmulator::trace_error(td::Bits256 tx_hash, TraceId trace_id, td::Status error) {
-    LOG(ERROR) << "Failed to emulate trace_id " << trace_id.to_hex() << " from tx " << tx_hash.to_hex() << ": " << error;
+    LOG(ERROR) << "Failed to emulate trace " << td::base64_encode(trace_id.as_slice()) << " from tx " << tx_hash.to_hex() << ": " << error;
     trace_ids_in_progress_.erase(trace_id);
 }
 
 void McBlockEmulator::trace_received(td::Bits256 tx_hash, Trace trace) {
-    LOG(INFO) << "Emulated trace " << trace.id.to_hex() << " from tx " << tx_hash.to_hex() << ": " << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
     if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_id = trace.id](td::Result<Trace> R) {
             if (R.is_error()) {
@@ -367,18 +367,18 @@ void McBlockEmulator::trace_received(td::Bits256 tx_hash, Trace trace) {
 }
 
 void McBlockEmulator::trace_interfaces_error(TraceId trace_id, td::Status error) {
-    LOG(ERROR) << "Failed to detect interfaces on trace_id " << trace_id.to_hex() << ": " << error;
+    LOG(ERROR) << "Failed to detect interfaces on trace " << td::base64_encode(trace_id.as_slice()) << ": " << error;
     trace_ids_in_progress_.erase(trace_id);
 }
 
 void McBlockEmulator::trace_emulated(Trace trace) {
-    LOG(INFO) << trace.to_string();
+    // LOG(INFO) << trace.to_string();
     
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_id = trace.id](td::Result<td::Unit> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to insert trace " << trace_id.to_hex() << ": " << R.move_as_error();
+            LOG(ERROR) << "Failed to insert trace " << td::base64_encode(trace_id.as_slice()) << ": " << R.move_as_error();
         } else {
-            LOG(DEBUG) << "Successfully inserted trace " << trace_id.to_hex();
+            LOG(DEBUG) << "Successfully inserted trace " << td::base64_encode(trace_id.as_slice());
         }
         td::actor::send_closure(SelfId, &McBlockEmulator::trace_finished, trace_id);
     });

@@ -117,7 +117,7 @@ void OverlayListener::process_external_message(td::Ref<ton::validator::ExtMessag
         return;
     }
 
-    LOG(INFO) << "Starting processing ExtMessageQ hash: " << msg_hash.to_hex() << " addr: " << message->wc() << ":" << message->addr().to_hex();
+    LOG(DEBUG) << "Starting processing ExtMessageQ hash: " << td::base64_encode(msg_hash.as_slice()) << " addr: " << message->wc() << ":" << message->addr().to_hex();
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), msg_hash](td::Result<Trace> R) mutable {
         if (R.is_error()) {
@@ -130,12 +130,13 @@ void OverlayListener::process_external_message(td::Ref<ton::validator::ExtMessag
 }
 
 void OverlayListener::trace_error(TraceId trace_id, td::Status error) {
-    LOG(ERROR) << "Failed to emulate trace_id " << trace_id.to_hex() << ": " << error;
+    LOG(ERROR) << "Failed to emulate trace " << td::base64_encode(trace_id.as_slice()) << ": " << error;
     known_ext_msgs_.erase(trace_id);
 }
 
 void OverlayListener::trace_received(TraceId trace_id, Trace trace) {
-    LOG(INFO) << "Emulated trace from ext msg " << trace_id.to_hex() << ": " << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
+    LOG(INFO) << "Emulated trace " << td::base64_encode(trace_id.as_slice()) << ": " 
+        << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
     if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_id = trace.id](td::Result<Trace> R) {
             if (R.is_error()) {
@@ -157,17 +158,16 @@ void OverlayListener::trace_received(TraceId trace_id, Trace trace) {
 }
 
 void OverlayListener::trace_interfaces_error(TraceId trace_id, td::Status error) {
-    LOG(ERROR) << "Failed to detect interfaces on trace_id " << trace_id.to_hex() << ": " << error;
+    LOG(ERROR) << "Failed to detect interfaces on trace  " << td::base64_encode(trace_id.as_slice()) << ": " << error;
 }
 
 void OverlayListener::finish_processing(Trace trace) {
-    LOG(INFO) << "Finished emulating trace " << trace.id.to_hex();
     auto P = td::PromiseCreator::lambda([trace_id = trace.id](td::Result<td::Unit> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to insert trace " << trace_id.to_hex() << ": " << R.move_as_error();
+            LOG(ERROR) << "Failed to insert trace " << td::base64_encode(trace_id.as_slice()) << ": " << R.move_as_error();
             return;
         }
-        LOG(DEBUG) << "Successfully inserted trace " << trace_id.to_hex();
+        LOG(DEBUG) << "Successfully inserted trace " << td::base64_encode(trace_id.as_slice());
     });
     trace_processor_(std::move(trace), std::move(P));
     traces_cnt_++;

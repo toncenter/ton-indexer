@@ -59,10 +59,10 @@ public:
                 std::stringstream buffer;
                 msgpack::pack(buffer, std::move(node));
 
-                transaction_.hset(trace_.id.to_hex(), td::base64_encode(node.transaction.in_msg.value().hash.as_slice()), buffer.str());
+                transaction_.hset(td::base64_encode(trace_.id.as_slice()), td::base64_encode(node.transaction.in_msg.value().hash.as_slice()), buffer.str());
 
                 auto addr_raw = std::to_string(node.transaction.account.workchain) + ":" + node.transaction.account.addr.to_hex();
-                auto by_addr_key = trace_.id.to_hex() + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
+                auto by_addr_key = td::base64_encode(trace_.id.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
                 transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
             }
 
