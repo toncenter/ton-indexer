@@ -280,6 +280,7 @@ func GetTransactions(c *fiber.Ctx) error {
 // @success		200	{object}	index.TransactionsResponse
 // @failure		400	{object}	index.RequestError
 // @param 	account	query []string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form." collectionFormat(multi)
+// @param trace_id query []string false "Find transactions by trace id."
 // @router			/api/v3/pendingTransactions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -1132,12 +1133,13 @@ func GetTraces(c *fiber.Ctx) error {
 // @summary Get Pending Traces
 // @description Get traces by specified filter.
 // @id api_v3_get_pending_traces
-// @tags traces
+// @tags actions
 // @Accept       json
 // @Produce      json
 // @success		200	{object}	index.TracesResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
+// @param trace_id query []string false "Find trace by trace id."
 // @router			/api/v3/pendingTraces [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -1241,12 +1243,13 @@ func GetActions(c *fiber.Ctx) error {
 // @summary Get Pending Actions
 // @description Get actions by specified filter.
 // @id api_v3_get_pending_actions
-// @tags events
+// @tags actions
 // @Accept       json
 // @Produce      json
 // @success		200	{object}	index.ActionsResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get actions. Can be sent in hex, base64 or base64url form."
+// @param trace_id query []string false "Find actions by trace id"
 // @router			/api/v3/pendingActions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery

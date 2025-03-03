@@ -281,7 +281,7 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.Asset2),
 		assignStringPtr(t.Asset2Secondary),
 		assignIntPtr(t.Opcode),
-		assignHashSlice(t.TxHashes),
+		assignStrCompatibleSlice(t.TxHashes),
 		assignString(t.Type),
 		assignStringPtr(t.TonTransferContent),
 		assignBoolPtr(t.TonTransferEncrypted),
@@ -316,7 +316,7 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.JettonSwapDexOutgoingTransferDestination),
 		assignStringPtr(t.JettonSwapDexOutgoingTransferSourceJettonWallet),
 		assignStringPtr(t.JettonSwapDexOutgoingTransferDestinationJettonWallet),
-		nil, // peer swaps not implemented
+		assignStrCompatibleSlice(t.JettonSwapPeerSwaps),
 		assignStringPtr(t.ChangeDNSRecordKey),
 		assignStringPtr(t.ChangeDNSRecordValueSchema),
 		assignStringPtr(t.ChangeDNSRecordValue),
@@ -565,7 +565,7 @@ func assignMap(src map[string]string) assign {
 		return nil
 	}
 }
-func assignHashSlice(src []string) assign {
+func assignStrCompatibleSlice(src []string) assign {
 	return func(dest any) error {
 		dv := reflect.Indirect(reflect.ValueOf(dest))
 		for dv.Kind() == reflect.Ptr {

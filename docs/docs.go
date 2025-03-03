@@ -1770,7 +1770,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "events"
+                    "actions"
                 ],
                 "summary": "Get Pending Actions",
                 "operationId": "api_v3_get_pending_actions",
@@ -1779,6 +1779,16 @@ const docTemplate = `{
                         "type": "string",
                         "description": "List of account addresses to get actions. Can be sent in hex, base64 or base64url form.",
                         "name": "account",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find actions by trace id",
+                        "name": "trace_id",
                         "in": "query"
                     }
                 ],
@@ -1816,7 +1826,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "traces"
+                    "actions"
                 ],
                 "summary": "Get Pending Traces",
                 "operationId": "api_v3_get_pending_traces",
@@ -1825,6 +1835,16 @@ const docTemplate = `{
                         "type": "string",
                         "description": "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form.",
                         "name": "account",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find trace by trace id.",
+                        "name": "trace_id",
                         "in": "query"
                     }
                 ],
@@ -1875,6 +1895,16 @@ const docTemplate = `{
                         "collectionFormat": "multi",
                         "description": "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form.",
                         "name": "account",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find transactions by trace id.",
+                        "name": "trace_id",
                         "in": "query"
                     }
                 ],

@@ -2218,6 +2218,13 @@ paths:
         in: query
         name: account
         type: string
+      - collectionFormat: multi
+        description: Find actions by trace id
+        in: query
+        items:
+          type: string
+        name: trace_id
+        type: array
       produces:
       - application/json
       responses:
@@ -2234,7 +2241,7 @@ paths:
       - APIKeyQuery: []
       summary: Get Pending Actions
       tags:
-      - events
+      - actions
   /api/v3/pendingTraces:
     get:
       consumes:
@@ -2247,6 +2254,13 @@ paths:
         in: query
         name: account
         type: string
+      - collectionFormat: multi
+        description: Find trace by trace id.
+        in: query
+        items:
+          type: string
+        name: trace_id
+        type: array
       produces:
       - application/json
       responses:
@@ -2263,7 +2277,7 @@ paths:
       - APIKeyQuery: []
       summary: Get Pending Traces
       tags:
-      - traces
+      - actions
   /api/v3/pendingTransactions:
     get:
       consumes:
@@ -2278,6 +2292,13 @@ paths:
         items:
           type: string
         name: account
+        type: array
+      - collectionFormat: multi
+        description: Find transactions by trace id.
+        in: query
+        items:
+          type: string
+        name: trace_id
         type: array
       produces:
       - application/json
