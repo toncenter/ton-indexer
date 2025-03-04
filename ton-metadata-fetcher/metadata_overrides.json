@@ -1,0 +1,22 @@
+{
+  "content_overrides": {
+    "jetton_masters": {
+      "0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208": {
+        "address": "0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208",
+        "name": "DeDust",
+        "description": "DUST is the governance token for the DeDust Protocol.",
+        "social": [
+          "https://t.me/dedust",
+          "https://x.com/dedust_io"
+        ],
+        "websites": [
+          "https://dedust.io"
+        ],
+        "symbol": "DUST",
+        "image": "https://assets.dedust.io/images/dust.gif"
+      }
+    },
+    "nft_collections": {},
+    "nft_items": {}
+  }
+}
