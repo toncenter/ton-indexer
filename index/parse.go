@@ -264,6 +264,7 @@ func ParseWalletState(state AccountStateFull) (*WalletState, error) {
 	}
 	info.AccountAddress = *state.AccountAddress
 	info.Balance = state.Balance
+	info.BalanceExtraCurrencies = state.BalanceExtraCurrencies
 	info.AccountStatus = state.AccountStatus
 	info.CodeHash = state.CodeHash
 	info.LastTransactionHash = state.LastTransactionHash
@@ -280,13 +281,28 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 	act.EndLt = raw.EndLt
 	act.StartUtime = raw.StartUtime
 	act.EndUtime = raw.EndUtime
+	act.TraceEndLt = raw.TraceEndLt
+	act.TraceEndUtime = raw.TraceEndUtime
+	act.TraceMcSeqnoEnd = raw.TraceMcSeqnoEnd
 	act.TxHashes = raw.TxHashes
 	act.Success = raw.Success
 	act.Type = raw.Type
+	act.TraceExternalHash = raw.TraceExternalHash
 
 	switch act.Type {
 	case "call_contract":
 		var details ActionDetailsCallContract
+		details.OpCode = raw.Opcode
+		details.Source = raw.Source
+		details.Destination = raw.Destination
+		details.Value = raw.Value
+		details.ExtraCurrencies = &raw.ExtraCurrencies
+		if len(raw.ExtraCurrencies) > 0 {
+			act.Type = "extra_currency_transfer"
+		}
+		act.Details = &details
+	case "contract_deploy":
+		var details ActionDetailsContractDeploy
 		details.OpCode = raw.Opcode
 		details.Source = raw.Source
 		details.Destination = raw.Destination
@@ -299,6 +315,19 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Value = raw.Value
 		details.Comment = raw.TonTransferContent
 		details.Encrypted = raw.TonTransferEncrypted
+		details.ExtraCurrencies = &raw.ExtraCurrencies
+		if len(raw.ExtraCurrencies) > 0 {
+			act.Type = "extra_currency_transfer"
+		}
+		act.Details = &details
+	case "auction_bid":
+		var details ActionDetailsAuctionBid
+		details.Bidder = raw.Source
+		details.Auction = raw.Destination
+		details.Amount = raw.Value
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.NftItemIndex = raw.NFTTransferNFTItemIndex
 		act.Details = &details
 	case "change_dns":
 		var details ActionDetailsChangeDns
@@ -306,10 +335,51 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Value.SumType = raw.ChangeDNSRecordValueSchema
 		details.Value.DnsSmcAddress = raw.ChangeDNSRecordValue
 		details.Value.Flags = raw.ChangeDNSRecordFlags
+		details.Asset = raw.Destination
+		details.Source = raw.Source
+		act.Details = &details
+	case "dex_deposit_liquidity":
+		var details ActionDetailsDexDepositLiquidity
+		details.Source = raw.Source
+		details.Dex = raw.DexDepositLiquidityDataDex
+		details.Pool = raw.Destination
+		if raw.DexDepositLiquidityDataDex != nil && *raw.DexDepositLiquidityDataDex == "dedust" {
+			details.DestinationLiquidity = raw.DestinationSecondary // deposit liquidity contract
+		} else {
+			details.DestinationLiquidity = raw.Destination // liquidity pool
+		}
+		details.Asset1 = raw.DexDepositLiquidityDataAsset1
+		details.Asset2 = raw.DexDepositLiquidityDataAsset2
+		details.Amount1 = raw.DexDepositLiquidityDataAmount1
+		details.Amount2 = raw.DexDepositLiquidityDataAmount2
+		details.UserJettonWallet1 = raw.DexDepositLiquidityDataUserJettonWallet1
+		details.UserJettonWallet2 = raw.DexDepositLiquidityDataUserJettonWallet2
+		details.LpTokensMinted = raw.DexDepositLiquidityDataLpTokensMinted
+		act.Details = &details
+	case "dex_withdraw_liquidity":
+		var details ActionDetailsDexWithdrawLiquidity
+		details.Source = raw.Source
+		details.Dex = raw.DexWithdrawLiquidityDataDex
+		details.Pool = raw.Destination
+		details.DestinationLiquidity = raw.Destination
+		details.Asset1 = raw.DexWithdrawLiquidityDataAsset1Out
+		details.Asset2 = raw.DexWithdrawLiquidityDataAsset2Out
+		details.Amount1 = raw.DexWithdrawLiquidityDataAmount1
+		details.Amount2 = raw.DexWithdrawLiquidityDataAmount2
+		details.UserJettonWallet1 = raw.DexWithdrawLiquidityDataUserJettonWallet1
+		details.UserJettonWallet2 = raw.DexWithdrawLiquidityDataUserJettonWallet2
+		details.LpTokensBurnt = raw.DexWithdrawLiquidityDataLpTokensBurnt
 		act.Details = &details
 	case "delete_dns":
 		var details ActionDetailsDeleteDns
 		details.Key = raw.ChangeDNSRecordKey
+		details.Asset = raw.Destination
+		details.Source = raw.Source
+		act.Details = &details
+	case "renew_dns":
+		var details ActionDetailsRenewDns
+		details.Asset = raw.Destination
+		details.Source = raw.Source
 		act.Details = &details
 	case "election_deposit":
 		var details ActionDetailsElectionDeposit
@@ -332,6 +402,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		var details ActionDetailsJettonSwap
 		details.Dex = raw.JettonSwapDex
 		details.Sender = raw.Source
+		details.AssetIn = raw.Asset
+		details.AssetOut = raw.Asset2
 		details.DexIncomingTransfer = &ActionDetailsJettonSwapTransfer{}
 		details.DexOutgoingTransfer = &ActionDetailsJettonSwapTransfer{}
 		details.DexIncomingTransfer.Asset = raw.JettonSwapDexIncomingTransferAsset
@@ -367,6 +439,15 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.ForwardPayload = raw.JettonTransferForwardPayload
 		details.ForwardAmount = raw.JettonTransferForwardAmount
 		act.Details = &details
+	case "jetton_mint":
+		var details ActionDetailsJettonMint
+		details.Asset = raw.Asset
+		details.Amount = raw.Amount
+		details.TonAmount = raw.Value
+		details.Receiver = raw.Destination
+		details.ReceiverJettonWallet = raw.DestinationSecondary
+		act.Details = &details
+
 	case "nft_mint":
 		var details ActionDetailsNftMint
 		details.Owner = raw.Source
@@ -392,6 +473,28 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		act.Details = &details
 	case "tick_tock":
 		var details ActionDetailsTickTock
+		act.Details = &details
+	case "stake_deposit":
+		var details ActionDetailsStakeDeposit
+		details.StakeHolder = raw.Source
+		details.Amount = raw.Amount
+		details.Pool = raw.Destination
+		details.Provider = raw.StakingDataProvider
+		act.Details = &details
+	case "stake_withdrawal":
+		var details ActionDetailsWithdrawStake
+		details.StakeHolder = raw.Source
+		details.Amount = raw.Amount
+		details.Pool = raw.Destination
+		details.Provider = raw.StakingDataProvider
+		details.PayoutNft = raw.StakingDataTsNft
+		act.Details = &details
+	case "stake_withdrawal_request":
+		var details ActionDetailsWithdrawStakeRequest
+		details.StakeHolder = raw.Source
+		details.Pool = raw.Destination
+		details.Provider = raw.StakingDataProvider
+		details.PayoutNft = raw.StakingDataTsNft
 		act.Details = &details
 	case "subscribe":
 		var details ActionDetailsSubscribe
@@ -457,11 +560,11 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 
 	err := row.Scan(&t.Account, &t.Hash, &t.Lt, &t.Workchain, &t.Shard, &t.Seqno,
 		&t.McSeqno, &t.TraceId, &t.PrevTransHash, &t.PrevTransLt, &t.Now,
-		&t.OrigStatus, &t.EndStatus, &t.TotalFees, &t.AccountStateHashBefore,
+		&t.OrigStatus, &t.EndStatus, &t.TotalFees, &t.TotalFeesExtraCurrencies, &t.AccountStateHashBefore,
 		&t.AccountStateHashAfter, &t.Descr.Type, &t.Descr.Aborted, &t.Descr.Destroyed,
 		&t.Descr.CreditFirst, &t.Descr.IsTock, &t.Descr.Installed,
 		&st.StorageFeesCollected, &st.StorageFeesDue, &st.StatusChange,
-		&cr.DueFeesCollected, &cr.Credit,
+		&cr.DueFeesCollected, &cr.Credit, &cr.CreditExtraCurrencies,
 		&co.IsSkipped, &co.Reason, &co.Success, &co.MsgStateUsed,
 		&co.AccountActivated, &co.GasFees, &co.GasUsed, &co.GasLimit,
 		&co.GasCredit, &co.Mode, &co.ExitCode, &co.ExitArg,
@@ -513,7 +616,7 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 func ScanMessage(row pgx.Row) (*Message, error) {
 	var m Message
 	err := row.Scan(&m.TxHash, &m.TxLt, &m.MsgHash, &m.Direction, &m.TraceId, &m.Source, &m.Destination,
-		&m.Value, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
+		&m.Value, &m.ValueExtraCurrencies, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
 		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash)
 	if err != nil {
 		return nil, err
@@ -543,9 +646,9 @@ func ScanMessageWithContent(row pgx.Row) (*Message, error) {
 	var init_state MessageContent
 
 	err := row.Scan(&m.TxHash, &m.TxLt, &m.MsgHash, &m.Direction, &m.TraceId, &m.Source, &m.Destination,
-		&m.Value, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
+		&m.Value, &m.ValueExtraCurrencies, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
 		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash,
-		&body.Hash, &body.Body, &init_state.Hash, &init_state.Body)
+		&m.InMsgTxHash, &m.OutMsgTxHash, &body.Hash, &body.Body, &init_state.Hash, &init_state.Body)
 	if body.Hash != nil {
 		body.TryDecodeBody()
 		m.MessageContent = &body
@@ -571,8 +674,8 @@ func ScanMessageContent(row pgx.Row) (*MessageContent, error) {
 
 func ScanAccountState(row pgx.Row) (*AccountState, error) {
 	var acst AccountState
-	err := row.Scan(&acst.Hash, &acst.Account, &acst.Balance, &acst.AccountStatus,
-		&acst.FrozenHash, &acst.DataHash, &acst.CodeHash)
+	err := row.Scan(&acst.Hash, &acst.Account, &acst.Balance, &acst.BalanceExtraCurrencies,
+		&acst.AccountStatus, &acst.FrozenHash, &acst.DataHash, &acst.CodeHash)
 	if err != nil {
 		return nil, err
 	}
@@ -581,13 +684,21 @@ func ScanAccountState(row pgx.Row) (*AccountState, error) {
 
 func ScanAccountStateFull(row pgx.Row) (*AccountStateFull, error) {
 	var acst AccountStateFull
-	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.AccountStatus,
-		&acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt, &acst.DataHash,
-		&acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
+	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.BalanceExtraCurrencies,
+		&acst.AccountStatus, &acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt,
+		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
 	if err != nil {
 		return nil, err
 	}
+	trimQuotes(acst.CodeBoc)
+	trimQuotes(acst.DataBoc)
 	return &acst, nil
+}
+
+func trimQuotes(s *string) {
+	if s != nil {
+		*s = strings.Trim(*s, "'")
+	}
 }
 
 func ScanAccountBalance(row pgx.Row) (*AccountBalance, error) {
@@ -706,6 +817,7 @@ func ScanJettonBurn(row pgx.Row) (*JettonBurn, error) {
 func ScanRawAction(row pgx.Row) (*RawAction, error) {
 	var act RawAction
 	err := row.Scan(&act.TraceId, &act.ActionId, &act.StartLt, &act.EndLt, &act.StartUtime, &act.EndUtime,
+		&act.TraceEndLt, &act.TraceEndUtime, &act.TraceMcSeqnoEnd,
 		&act.Source, &act.SourceSecondary, &act.Destination, &act.DestinationSecondary, &act.Asset, &act.AssetSecondary,
 		&act.Asset2, &act.Asset2Secondary, &act.Opcode, &act.TxHashes, &act.Type, &act.TonTransferContent,
 		&act.TonTransferEncrypted, &act.Value, &act.Amount, &act.JettonTransferResponseDestination, &act.JettonTransferForwardAmount,
@@ -717,7 +829,30 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.JettonSwapDexIncomingTransferDestinationJettonWallet, &act.JettonSwapDexOutgoingTransferAmount, &act.JettonSwapDexOutgoingTransferAsset,
 		&act.JettonSwapDexOutgoingTransferSource, &act.JettonSwapDexOutgoingTransferDestination, &act.JettonSwapDexOutgoingTransferSourceJettonWallet,
 		&act.JettonSwapDexOutgoingTransferDestinationJettonWallet, &act.JettonSwapPeerSwaps, &act.ChangeDNSRecordKey, &act.ChangeDNSRecordValueSchema,
-		&act.ChangeDNSRecordValue, &act.ChangeDNSRecordFlags, &act.NFTMintNFTItemIndex, &act.Success)
+		&act.ChangeDNSRecordValue, &act.ChangeDNSRecordFlags, &act.NFTMintNFTItemIndex,
+		&act.DexWithdrawLiquidityDataDex,
+		&act.DexWithdrawLiquidityDataAmount1,
+		&act.DexWithdrawLiquidityDataAmount2,
+		&act.DexWithdrawLiquidityDataAsset1Out,
+		&act.DexWithdrawLiquidityDataAsset2Out,
+		&act.DexWithdrawLiquidityDataUserJettonWallet1,
+		&act.DexWithdrawLiquidityDataUserJettonWallet2,
+		&act.DexWithdrawLiquidityDataDexJettonWallet1,
+		&act.DexWithdrawLiquidityDataDexJettonWallet2,
+		&act.DexWithdrawLiquidityDataLpTokensBurnt,
+		&act.DexDepositLiquidityDataDex,
+		&act.DexDepositLiquidityDataAmount1,
+		&act.DexDepositLiquidityDataAmount2,
+		&act.DexDepositLiquidityDataAsset1,
+		&act.DexDepositLiquidityDataAsset2,
+		&act.DexDepositLiquidityDataUserJettonWallet1,
+		&act.DexDepositLiquidityDataUserJettonWallet2,
+		&act.DexDepositLiquidityDataLpTokensMinted,
+		&act.StakingDataProvider,
+		&act.StakingDataTsNft,
+		&act.Success,
+		&act.TraceExternalHash,
+		&act.ExtraCurrencies)
 
 	if err != nil {
 		return nil, err
@@ -725,15 +860,15 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 	return &act, nil
 }
 
-func ScanEvent(row pgx.Row) (*Event, error) {
-	var event Event
-	err := row.Scan(&event.TraceId, &event.ExternalHash, &event.McSeqnoStart, &event.McSeqnoEnd,
-		&event.StartLt, &event.StartUtime, &event.EndLt, &event.EndUtime,
-		&event.EventMeta.TraceState, &event.EventMeta.Messages, &event.EventMeta.Transactions,
-		&event.EventMeta.PendingMessages, &event.EventMeta.ClassificationState)
+func ScanTrace(row pgx.Row) (*Trace, error) {
+	var trace Trace
+	err := row.Scan(&trace.TraceId, &trace.ExternalHash, &trace.McSeqnoStart, &trace.McSeqnoEnd,
+		&trace.StartLt, &trace.StartUtime, &trace.EndLt, &trace.EndUtime,
+		&trace.TraceMeta.TraceState, &trace.TraceMeta.Messages, &trace.TraceMeta.Transactions,
+		&trace.TraceMeta.PendingMessages, &trace.TraceMeta.ClassificationState)
 
 	if err != nil {
 		return nil, err
 	}
-	return &event, nil
+	return &trace, nil
 }

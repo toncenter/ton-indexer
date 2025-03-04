@@ -1,18 +1,40 @@
 ---
-application_name: ton-index-go
+stack_name: ton_index
 
-# ADJUST. For additional args call build/ton-index-go -help
-bind_addr: ":4100"
-pg_dsn: postgresql://localhost:5432/mainnet
-additional_args:
+# api config. Adjust this
+pg_database: ton_index
+pg_readonly_user: readonly
+pg_readonly_password: REPLACEME
 
-# deploy config
-remote_hosts: 
+pg_master_user: postgres
+pg_master_password: REPLACEME
+
+# deploy config. Adjust this also
+replica_nodes:
   - ubuntu-01
   - ubuntu-02
   - ubuntu-03
-service_user: root
-service_group: root
-go_binary: ton-index-go
-go_binary_path: /usr/local/bin
+master_nodes:
+  - master-01
+
+build_path: "{{ playbook_dir }}/build"
+binary_path: /usr/local/bin
 systemd_service_path: /etc/systemd/system
+
+services:
+  api:
+    hosts_group: replica_nodes
+    service_user: root
+    service_group: root
+    source_path: "{{ playbook_dir }}/"
+    service_name: api
+    prepare_command: swag init
+    additional_args: -bind ":4100"
+  metadata_fetcher:
+    hosts_group: master_nodes
+    service_user: root
+    service_group: root
+    source_path: "{{ playbook_dir }}/utils/metadata-fetcher"
+    prepare_command:
+    service_name: metadata_fetcher
+    additional_args:

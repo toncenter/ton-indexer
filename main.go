@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -18,15 +19,19 @@ import (
 )
 
 type Settings struct {
-	PgDsn        string
-	MaxConns     int
-	MinConns     int
-	Bind         string
-	InstanceName string
-	Prefork      bool
-	MaxThreads   int
-	Debug        bool
-	Request      index.RequestSettings
+	PgDsn           string
+	PgMasterDsn     string
+	TaskChannelSize int
+	MaxConns        int
+	MinConns        int
+	MasterMaxConns  int
+	Bind            string
+	InstanceName    string
+	Prefork         bool
+	MaxThreads      int
+	Debug           bool
+	Request         index.RequestSettings
+	ImgProxyBaseUrl string
 }
 
 func onlyOneOf(flags ...bool) bool {
@@ -40,6 +45,7 @@ func onlyOneOf(flags ...bool) bool {
 }
 
 var pool *index.DbClient
+var masterPool *index.DbClient
 var settings Settings
 
 //	@title			TON Index (Go)
@@ -169,6 +175,8 @@ func GetShards(c *fiber.Ctx) error {
 // @success		200	{object}	index.TransactionsResponse
 // @failure		400	{object}	index.RequestError
 // @param	seqno query int32 true "Masterchain block seqno."
+// @param   limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param   offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router			/api/v3/masterchainBlockShards [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -176,9 +184,14 @@ func GetShardsDiff(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
 	seqno := c.QueryInt("seqno")
 	blk_req := index.BlockRequest{}
+	lim_req := index.LimitRequest{}
 	blk_req.McSeqno = new(int32)
 	*blk_req.McSeqno = int32(seqno)
-	blks, err := pool.QueryBlocks(blk_req, index.UtimeRequest{}, index.LtRequest{}, index.LimitRequest{}, request_settings)
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	blks, err := pool.QueryBlocks(blk_req, index.UtimeRequest{}, index.LtRequest{}, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
@@ -395,6 +408,8 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @param start_lt query int64 false "Query messages with `created_lt >= start_lt`." minimum(0)
 // @param end_lt query int64 false "Query messages with `created_lt <= end_lt`." minimum(0)
 // @param direction query string false "Direction of message." Enums(in, out)
+// @param exclude_externals query bool false "Exclude external messages."
+// @param only_externals query bool false "Return only external messages."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
@@ -430,15 +445,16 @@ func GetMessages(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	msgs, book, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, request_settings)
+	msgs, book, metadata, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 	// if len(msgs) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "messages not found"}
 	// }
 
-	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book}
+	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book, Metadata: metadata}
 	return c.JSON(msgs_resp)
 }
 
@@ -470,6 +486,37 @@ func GetAddressBook(c *fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(book)
+}
+
+// @summary Metadata
+//
+// @description Query address metadata
+//
+// @id api_v3_get_metadata
+// @tags accounts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.Metadata
+// @failure 400 {object} index.RequestError
+// @param address query []string true "List of addresses in any form to get address metadata. Max: 1024." collectionFormat(multi)
+// @router /api/v3/metadata [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetMetadata(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	var addr_book_req index.AddressBookRequest
+	if err := c.QueryParser(&addr_book_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if len(addr_book_req.Address) == 0 {
+		return index.IndexError{Code: 422, Message: "at least 1 address required"}
+	}
+	metadata, err := pool.QueryMetadata(addr_book_req.Address, request_settings)
+	if err != nil {
+		return err
+	}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+	return c.JSON(metadata)
 }
 
 // @summary Get Account States
@@ -509,15 +556,16 @@ func GetAccountStates(c *fiber.Ctx) error {
 		*account_req.IncludeBOC = true
 	}
 
-	res, book, err := pool.QueryAccountStates(account_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryAccountStates(account_req, lim_req, request_settings)
 	if err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "account states not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
-	resp := index.AccountStatesResponse{Accounts: res, AddressBook: book}
+	resp := index.AccountStatesResponse{Accounts: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -550,13 +598,35 @@ func GetWalletStates(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "address of account is required"}
 	}
 
-	res, book, err := pool.QueryWalletStates(account_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryWalletStates(account_req, lim_req, request_settings)
 	if err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
-	resp := index.WalletStatesResponse{Wallets: res, AddressBook: book}
+	resp := index.WalletStatesResponse{Wallets: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
+}
+
+// @summary Get DNS Entities
+//
+// @description Query dns entities
+//
+// @id api_v3_get_dns_entities
+// @tags accounts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.AccountStatesResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string true "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
+// @param include_boc query bool false "Include code and data BOCs. Default: true" default(true)
+// // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @router /api/v3/dnsEntities [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetDNSEntities(c *fiber.Ctx) error {
+	return index.IndexError{Code: 501, Message: "not implemented"}
 }
 
 // @summary Get NFT collections
@@ -588,14 +658,16 @@ func GetNFTCollections(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryNFTCollections(nft_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryNFTCollections(nft_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "nft collections not found"}
 	// }
-	resp := index.NFTCollectionsResponse{Collections: res, AddressBook: book}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+
+	resp := index.NFTCollectionsResponse{Collections: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -630,14 +702,16 @@ func GetNFTItems(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryNFTItems(nft_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryNFTItems(nft_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "nft items not found"}
 	// }
-	resp := index.NFTItemsResponse{Items: res, AddressBook: book}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+
+	resp := index.NFTItemsResponse{Items: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -696,15 +770,16 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryNFTTransfers(transfer_req, utime_req, lt_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryNFTTransfers(transfer_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "nft transfers not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
-	resp := index.NFTTransfersResponse{Transfers: res, AddressBook: book}
+	resp := index.NFTTransfersResponse{Transfers: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -765,14 +840,16 @@ func GetJettonMasters(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonMasters(jetton_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryJettonMasters(jetton_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "jetton masters not found"}
 	// }
-	resp := index.JettonMastersResponse{Masters: res, AddressBook: book}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+
+	resp := index.JettonMastersResponse{Masters: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -788,7 +865,7 @@ func GetJettonMasters(c *fiber.Ctx) error {
 // @failure 400 {object} index.RequestError
 // @param address query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param owner_address query []string false "Address of Jetton wallet's owner in any form. Max: 1000." collectionFormat(multi)
-// @param jetton_address query string false "Jetton Master in any form."
+// @param jetton_address query []string false "Jetton Master in any form."
 // @param exclude_zero_balance query bool false "Exclude jetton wallets with 0 balance."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -807,15 +884,20 @@ func GetJettonWallets(c *fiber.Ctx) error {
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+	if len(jetton_req.JettonAddress) > 1 && len(jetton_req.OwnerAddress) != 1 {
+		return index.IndexError{Code: 422, Message: "exact one owner_address required for multiple jetton_address"}
+	}
 
-	res, book, err := pool.QueryJettonWallets(jetton_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryJettonWallets(jetton_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "jetton wallets not found"}
 	// }
-	resp := index.JettonWalletsResponse{Wallets: res, AddressBook: book}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+
+	resp := index.JettonWalletsResponse{Wallets: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -832,7 +914,7 @@ func GetJettonWallets(c *fiber.Ctx) error {
 // @param owner_address query []string false "Address of jetton wallet owner in any form. Max 1000" collectionFormat(multi)
 // @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param jetton_master query string false "Jetton master address in any form."
-// @param direction query string false "Direction of transfer." Enums(in, out)
+// @param direction query string false "Direction of transfer. *Note:* applied only with owner_address." Enums(in, out)
 // @param start_utime query int32 false "Query transactions with generation UTC timestamp **after** given timestamp." minimum(0)
 // @param end_utime query int32 false "Query transactions with generation UTC timestamp **before** given timestamp." minimum(0)
 // @param start_lt query int64 false "Query transactions with `lt >= start_lt`." minimum(0)
@@ -874,15 +956,16 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonTransfers(transfer_req, utime_req, lt_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryJettonTransfers(transfer_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "jetton transfers not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
-	resp := index.JettonTransfersResponse{Transfers: res, AddressBook: book}
+	resp := index.JettonTransfersResponse{Transfers: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -937,48 +1020,51 @@ func GetJettonBurns(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryJettonBurns(burn_req, utime_req, lt_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryJettonBurns(burn_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "jetton burns not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
-	resp := index.JettonBurnsResponse{Burns: res, AddressBook: book}
+	resp := index.JettonBurnsResponse{Burns: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
-// @summary Get Events
-// @description Get events by specified filter.
-// @id api_v3_get_events
-// @tags events
+// @summary Get Traces
+// @description Get traces by specified filter.
+// @id api_v3_get_traces
+// @tags actions
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.EventsResponse
+// @success		200	{object}	index.TracesResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
-// @param tx_hash query []string false "Find event by transaction hash."
-// @param msg_hash query []string false "Find event by message hash."
-// @param mc_seqno query int32 false "Masterchain block seqno"
-// @param start_utime query int32 false "Query events, which was finished **after** given timestamp." minimum(0)
-// @param end_utime query int32 false "Query events, which was finished **before** given timestamp." minimum(0)
-// @param start_lt query int64 false "Query events with `end_lt >= start_lt`." minimum(0)
-// @param end_lt query int64 false "Query events with `end_lt <= end_lt`." minimum(0)
+// @param trace_id query []string false "Find trace by trace id."
+// @param tx_hash query []string false "Find trace by transaction hash."
+// @param msg_hash query []string false "Find trace by message hash."
+// @param mc_seqno query int32 false "Query traces that was completed in masterchain block with given seqno"
+// @param start_utime query int32 false "Query traces, which was finished **after** given timestamp." minimum(0)
+// @param end_utime query int32 false "Query traces, which was finished **before** given timestamp." minimum(0)
+// @param start_lt query int64 false "Query traces with `end_lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query traces with `end_lt <= end_lt`." minimum(0)
+// @param include_actions query bool false "Include trace actions." default(false)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
-// @param sort query string false "Sort events by lt." Enums(asc, desc) default(desc)
-// @router			/api/v3/events [get]
+// @param sort query string false "Sort traces by lt." Enums(asc, desc) default(desc)
+// @router			/api/v3/traces [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
-func GetEvents(c *fiber.Ctx) error {
+func GetTraces(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
-	event_req := index.EventRequest{}
+	traces_req := index.TracesRequest{}
 	utime_req := index.UtimeRequest{}
 	lt_req := index.LtRequest{}
 	lim_req := index.LimitRequest{}
 
-	if err := c.QueryParser(&event_req); err != nil {
+	if err := c.QueryParser(&traces_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 	if err := c.QueryParser(&utime_req); err != nil {
@@ -991,57 +1077,90 @@ func GetEvents(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if !onlyOneOf(event_req.AccountAddress != nil, event_req.TraceId != nil, len(event_req.TransactionHash) > 0, len(event_req.MessageHash) > 0) {
+	if !onlyOneOf(traces_req.AccountAddress != nil, traces_req.TraceId != nil, len(traces_req.TransactionHash) > 0, len(traces_req.MessageHash) > 0) {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
 	}
 
-	res, book, err := pool.QueryEvents(event_req, utime_req, lt_req, lim_req, request_settings)
+	if c.Path() == "/api/v3/events" {
+		traces_req.IncludeActions = true
+	}
+
+	res, book, metadata, err := pool.QueryTraces(traces_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(txs) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
-	txs_resp := index.EventsResponse{Events: res, AddressBook: book}
+	if c.Path() == "/api/v3/events" {
+		txs_resp := index.DeprecatedEventsResponse{Events: res, AddressBook: book, Metadata: metadata}
+		return c.JSON(txs_resp)
+	}
+	txs_resp := index.TracesResponse{Traces: res, AddressBook: book, Metadata: metadata}
 	return c.JSON(txs_resp)
 }
 
 // @summary Get Actions
 // @description Get actions by specified filter.
 // @id api_v3_get_actions
-// @tags events
+// @tags actions
 // @Accept       json
 // @Produce      json
 // @success		200	{object}	index.ActionsResponse
 // @failure		400	{object}	index.RequestError
+// @param account query string false "List of account addresses to get actions. Can be sent in hex, base64 or base64url form."
+// @param tx_hash query []string false "Find actions by transaction hash."
+// @param msg_hash query []string false "Find actions by message hash."
 // @param action_id	query []string false "Find actions by the action_id." collectionFormat(multi)
 // @param trace_id	query []string false "Find actions by the trace_id." collectionFormat(multi)
+// @param mc_seqno query int32 false "Query actions of traces which was completed in masterchain block with given seqno"
+// @param start_utime query int32 false "Query actions for traces with `trace_end_utime >= start_utime`." minimum(0)
+// @param end_utime query int32 false "Query actions for traces with `trace_end_utime <= end_utime`." minimum(0)
+// @param start_lt query int64 false "Query actions for traces with `trace_end_lt >= start_lt`." minimum(0)
+// @param end_lt query int64 false "Query actions for traces with `trace_end_lt <= end_lt`." minimum(0)
+// @param action_type query []string false "Include action types." Enums(call_contract, contract_deploy, ton_transfer, auction_bid, change_dns, dex_deposit_liquidity, dex_withdraw_liquidity, delete_dns, renew_dns, election_deposit, election_recover, jetton_burn, jetton_swap, jetton_transfer, jetton_mint, nft_mint, tick_tock, stake_deposit, stake_withdrawal, stake_withdrawal_request, subscribe, unsubscribe)
+// @param exclude_action_type query []string false "Exclude action types." Enums(call_contract, contract_deploy, ton_transfer, auction_bid, change_dns, dex_deposit_liquidity, dex_withdraw_liquidity, delete_dns, renew_dns, election_deposit, election_recover, jetton_burn, jetton_swap, jetton_transfer, jetton_mint, nft_mint, tick_tock, stake_deposit, stake_withdrawal, stake_withdrawal_request, subscribe, unsubscribe)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param sort query string false "Sort actions by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/actions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetActions(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
-	var act_req index.ActionRequest
-	var lim_req index.LimitRequest
+	act_req := index.ActionRequest{}
+	lim_req := index.LimitRequest{}
+	utime_req := index.UtimeRequest{}
+	lt_req := index.LtRequest{}
 
 	if err := c.QueryParser(&act_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
-
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&utime_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lt_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	res, book, err := pool.QueryActions(act_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryActions(act_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
 	}
 	// if len(res) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "actions not found"}
 	// }
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
-	resp := index.ActionsResponse{Actions: res, AddressBook: book}
+	resp := index.ActionsResponse{Actions: res, AddressBook: book, Metadata: metadata}
 	return c.Status(200).JSON(resp)
 }
 
@@ -1083,7 +1202,7 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 	var res *index.V2WalletInformation
 	if !use_v2 {
 		account_req := index.AccountRequest{AccountAddress: []index.AccountAddress{acc_req.AccountAddress}}
-		loc, _, err := pool.QueryWalletStates(account_req, index.LimitRequest{}, request_settings)
+		loc, _, _, err := pool.QueryWalletStates(account_req, index.LimitRequest{}, request_settings)
 		if err != nil {
 			return err
 		}
@@ -1156,7 +1275,7 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 		res = loc
 	} else {
 		account_req := index.AccountRequest{AccountAddress: []index.AccountAddress{acc_req.AccountAddress}}
-		loc, _, err := pool.QueryAccountStates(account_req, index.LimitRequest{}, request_settings)
+		loc, _, _, err := pool.QueryAccountStates(account_req, index.LimitRequest{}, request_settings)
 		if err != nil {
 			return err
 		}
@@ -1316,6 +1435,21 @@ func GetTestMethod(c *fiber.Ctx) error {
 	return c.Status(200).JSON(test_req)
 }
 
+func GetBalanceChanges(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	req := index.BalanceChangesRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	res, err := pool.QueryBalanceChanges(req, request_settings)
+	if err != nil {
+		return err
+	}
+	return c.Status(200).JSON(res)
+}
+
 func HealthCheck(c *fiber.Ctx) error {
 	return c.Status(200).SendString("OK")
 }
@@ -1340,6 +1474,16 @@ func GetRequestSettings(c *fiber.Ctx, settings *Settings) index.RequestSettings 
 	if value_str, ok := ExtractParam(c, "X-Timeout", "x_timeout"); ok {
 		if value, err := strconv.ParseInt(value_str, 10, 32); err == nil {
 			request_settings.Timeout = time.Duration(value) * time.Millisecond
+		}
+	}
+	if value_str, ok := ExtractParam(c, "X-No-Address-Book", "x_no_address_book"); ok {
+		if value, err := strconv.ParseBool(value_str); err == nil {
+			request_settings.NoAddressBook = value
+		}
+	}
+	if value_str, ok := ExtractParam(c, "X-No-Metadata", "x_no_metadata"); ok {
+		if value, err := strconv.ParseBool(value_str); err == nil {
+			request_settings.NoMetadata = value
 		}
 	}
 	return request_settings
@@ -1380,10 +1524,14 @@ func main() {
 	var timeout_ms int
 
 	flag.StringVar(&settings.PgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
+	flag.StringVar(&settings.PgMasterDsn, "pg-master", "", "PostgreSQL connection string with write access")
 	flag.StringVar(&settings.Request.V2Endpoint, "v2", "", "TON HTTP API endpoint for proxied methods")
 	flag.StringVar(&settings.Request.V2ApiKey, "v2-apikey", "", "API key for TON HTTP API endpoint")
+	flag.StringVar(&settings.ImgProxyBaseUrl, "imgproxy-baseurl", "", "Imgproxy base URL")
 	flag.IntVar(&settings.MaxConns, "maxconns", 100, "PostgreSQL max connections")
 	flag.IntVar(&settings.MinConns, "minconns", 0, "PostgreSQL min connections")
+	flag.IntVar(&settings.MasterMaxConns, "master-maxconns", 4, "PostgreSQL master max connections")
+	flag.IntVar(&settings.TaskChannelSize, "task-channel-size", 5000, "Task channel size")
 	flag.StringVar(&settings.Bind, "bind", ":8000", "Bind address")
 	flag.StringVar(&settings.InstanceName, "name", "Go", "Instance name to show in Swagger UI")
 	flag.BoolVar(&settings.Prefork, "prefork", false, "Prefork workers")
@@ -1392,7 +1540,7 @@ func main() {
 	flag.IntVar(&timeout_ms, "query-timeout", 3000, "Query timeout in milliseconds")
 	flag.IntVar(&settings.Request.DefaultLimit, "default-limit", 100, "Default value for limit")
 	flag.IntVar(&settings.Request.MaxLimit, "max-limit", 1000, "Maximum value for limit")
-	flag.IntVar(&settings.Request.MaxEventTransactions, "max-event-txs", 4000, "Maximum number of transactions in event")
+	flag.IntVar(&settings.Request.MaxTraceTransactions, "max-trace-txs", 4000, "Maximum number of transactions in trace")
 	flag.IntVar(&settings.MaxThreads, "threads", 0, "Number of threads")
 	flag.Parse()
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
@@ -1469,8 +1617,11 @@ func main() {
 
 	// account methods
 	app.Get("/api/v3/addressBook", GetAddressBook)
+	app.Get("/api/v3/metadata", GetMetadata)
 	app.Get("/api/v3/accountStates", GetAccountStates)
 	app.Get("/api/v3/walletStates", GetWalletStates)
+
+	app.Get("/api/v3/dnsEntities", GetDNSEntities)
 
 	// nfts
 	app.Get("/api/v3/nft/collections", GetNFTCollections)
@@ -1483,9 +1634,12 @@ func main() {
 	app.Get("/api/v3/jetton/transfers", GetJettonTransfers)
 	app.Get("/api/v3/jetton/burns", GetJettonBurns)
 
-	// events
+	// actions
 	app.Get("/api/v3/actions", GetActions)
-	app.Get("/api/v3/events", GetEvents)
+	app.Get("/api/v3/traces", GetTraces)
+	app.Get("/api/v3/events", GetTraces)
+
+	app.Get("/api/v3/balanceChanges", GetBalanceChanges)
 
 	// api/v2 proxied
 	app.Get("/api/v3/addressInformation", GetV2AddressInformation)
@@ -1508,6 +1662,22 @@ func main() {
 	}
 	app.Get("/api/v3/*", swagger.New(swagger_config))
 	app.Static("/", "./static")
+	index.BackgroundTaskManager, err = index.NewBackgroundTaskManager(settings.PgDsn, settings.TaskChannelSize,
+		0, settings.MasterMaxConns)
+	if err != nil {
+		if len(settings.PgMasterDsn) == 0 {
+			log.Printf("Error creating background task manager: %s", err.Error())
+		} else {
+			index.BackgroundTaskManager, err = index.NewBackgroundTaskManager(settings.PgMasterDsn,
+				settings.TaskChannelSize, 0, settings.MasterMaxConns)
+			if err != nil {
+				log.Printf("Error creating background task manager: %s", err.Error())
+			}
+		}
+	}
+	if index.BackgroundTaskManager != nil {
+		index.BackgroundTaskManager.Start(context.Background())
+	}
 	err = app.Listen(settings.Bind)
 	log.Fatal(err)
 }

@@ -91,11 +91,37 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "events"
+                    "actions"
                 ],
                 "summary": "Get Actions",
                 "operationId": "api_v3_get_actions",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "List of account addresses to get actions. Can be sent in hex, base64 or base64url form.",
+                        "name": "account",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find actions by transaction hash.",
+                        "name": "tx_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find actions by message hash.",
+                        "name": "msg_hash",
+                        "in": "query"
+                    },
                     {
                         "type": "array",
                         "items": {
@@ -114,6 +140,136 @@ const docTemplate = `{
                         "collectionFormat": "multi",
                         "description": "Find actions by the trace_id.",
                         "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Query actions of traces which was completed in masterchain block with given seqno",
+                        "name": "mc_seqno",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query actions for traces with ` + "`" + `trace_end_utime \u003e= start_utime` + "`" + `.",
+                        "name": "start_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query actions for traces with ` + "`" + `trace_end_utime \u003c= end_utime` + "`" + `.",
+                        "name": "end_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query actions for traces with ` + "`" + `trace_end_lt \u003e= start_lt` + "`" + `.",
+                        "name": "start_lt",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query actions for traces with ` + "`" + `trace_end_lt \u003c= end_lt` + "`" + `.",
+                        "name": "end_lt",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "enum": [
+                                "call_contract",
+                                "contract_deploy",
+                                "ton_transfer",
+                                "auction_bid",
+                                "change_dns",
+                                "dex_deposit_liquidity",
+                                "dex_withdraw_liquidity",
+                                "delete_dns",
+                                "renew_dns",
+                                "election_deposit",
+                                "election_recover",
+                                "jetton_burn",
+                                "jetton_swap",
+                                "jetton_transfer",
+                                "jetton_mint",
+                                "nft_mint",
+                                "tick_tock",
+                                "stake_deposit",
+                                "stake_withdrawal",
+                                "stake_withdrawal_request",
+                                "subscribe",
+                                "unsubscribe"
+                            ],
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Include action types.",
+                        "name": "action_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "enum": [
+                                "call_contract",
+                                "contract_deploy",
+                                "ton_transfer",
+                                "auction_bid",
+                                "change_dns",
+                                "dex_deposit_liquidity",
+                                "dex_withdraw_liquidity",
+                                "delete_dns",
+                                "renew_dns",
+                                "election_deposit",
+                                "election_recover",
+                                "jetton_burn",
+                                "jetton_swap",
+                                "jetton_transfer",
+                                "jetton_mint",
+                                "nft_mint",
+                                "tick_tock",
+                                "stake_deposit",
+                                "stake_withdrawal",
+                                "stake_withdrawal_request",
+                                "subscribe",
+                                "unsubscribe"
+                            ],
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Exclude action types.",
+                        "name": "exclude_action_type",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort actions by lt.",
+                        "name": "sort",
                         "in": "query"
                     }
                 ],
@@ -414,6 +570,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v3/dnsEntities": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Query dns entities",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Get DNS Entities",
+                "operationId": "api_v3_get_dns_entities",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "List of addresses in any form to get address book. Max: 1024.",
+                        "name": "address",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include code and data BOCs. Default: true",
+                        "name": "include_boc",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/AccountStatesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/estimateFee": {
             "post": {
                 "security": [
@@ -452,134 +666,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/V2EstimateFeeResult"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/RequestError"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v3/events": {
-            "get": {
-                "security": [
-                    {
-                        "APIKeyHeader": []
-                    },
-                    {
-                        "APIKeyQuery": []
-                    }
-                ],
-                "description": "Get events by specified filter.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "events"
-                ],
-                "summary": "Get Events",
-                "operationId": "api_v3_get_events",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form.",
-                        "name": "account",
-                        "in": "query"
-                    },
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Find event by transaction hash.",
-                        "name": "tx_hash",
-                        "in": "query"
-                    },
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Find event by message hash.",
-                        "name": "msg_hash",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Masterchain block seqno",
-                        "name": "mc_seqno",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "description": "Query events, which was finished **after** given timestamp.",
-                        "name": "start_utime",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "description": "Query events, which was finished **before** given timestamp.",
-                        "name": "end_utime",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "description": "Query events with ` + "`" + `end_lt \u003e= start_lt` + "`" + `.",
-                        "name": "start_lt",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "description": "Query events with ` + "`" + `end_lt \u003c= end_lt` + "`" + `.",
-                        "name": "end_lt",
-                        "in": "query"
-                    },
-                    {
-                        "maximum": 1000,
-                        "minimum": 1,
-                        "type": "integer",
-                        "default": 10,
-                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "default": 0,
-                        "description": "Skip first N rows. Use with *limit* to batch read.",
-                        "name": "offset",
-                        "in": "query"
-                    },
-                    {
-                        "enum": [
-                            "asc",
-                            "desc"
-                        ],
-                        "type": "string",
-                        "default": "desc",
-                        "description": "Sort events by lt.",
-                        "name": "sort",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/EventsResponse"
                         }
                     },
                     "400": {
@@ -845,7 +931,7 @@ const docTemplate = `{
                             "out"
                         ],
                         "type": "string",
-                        "description": "Direction of transfer.",
+                        "description": "Direction of transfer. *Note:* applied only with owner_address.",
                         "name": "direction",
                         "in": "query"
                     },
@@ -966,7 +1052,11 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "string",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
                         "description": "Jetton Master in any form.",
                         "name": "jetton_address",
                         "in": "query"
@@ -1097,6 +1187,23 @@ const docTemplate = `{
                         "name": "seqno",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1298,6 +1405,18 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "description": "Exclude external messages.",
+                        "name": "exclude_externals",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Return only external messages.",
+                        "name": "only_externals",
+                        "in": "query"
+                    },
+                    {
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
@@ -1331,6 +1450,57 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/MessagesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/metadata": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Query address metadata",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Metadata",
+                "operationId": "api_v3_get_metadata",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "List of addresses in any form to get address metadata. Max: 1024.",
+                        "name": "address",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/Metadata"
                         }
                     },
                     "400": {
@@ -1742,6 +1912,151 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/AccountBalance"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/traces": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get traces by specified filter.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Get Traces",
+                "operationId": "api_v3_get_traces",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form.",
+                        "name": "account",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find trace by trace id.",
+                        "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find trace by transaction hash.",
+                        "name": "tx_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find trace by message hash.",
+                        "name": "msg_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Query traces that was completed in masterchain block with given seqno",
+                        "name": "mc_seqno",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query traces, which was finished **after** given timestamp.",
+                        "name": "start_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query traces, which was finished **before** given timestamp.",
+                        "name": "end_utime",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query traces with ` + "`" + `end_lt \u003e= start_lt` + "`" + `.",
+                        "name": "start_lt",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "Query traces with ` + "`" + `end_lt \u003c= end_lt` + "`" + `.",
+                        "name": "end_lt",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include trace actions.",
+                        "name": "include_actions",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort traces by lt.",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/TracesResponse"
                         }
                     },
                     "400": {
@@ -2204,6 +2519,12 @@ const docTemplate = `{
                 "data_hash": {
                     "type": "string"
                 },
+                "extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "frozen_hash": {
                     "type": "string"
                 },
@@ -2236,6 +2557,12 @@ const docTemplate = `{
                 "data_hash": {
                     "type": "string"
                 },
+                "extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "frozen_hash": {
                     "type": "string"
                 },
@@ -2262,6 +2589,9 @@ const docTemplate = `{
                 },
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2279,9 +2609,6 @@ const docTemplate = `{
                 "end_utime": {
                     "type": "integer"
                 },
-                "raw_action": {
-                    "$ref": "#/definitions/RawAction"
-                },
                 "start_lt": {
                     "type": "string",
                     "example": "0"
@@ -2292,8 +2619,21 @@ const docTemplate = `{
                 "success": {
                     "type": "boolean"
                 },
+                "trace_end_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "trace_end_utime": {
+                    "type": "integer"
+                },
+                "trace_external_hash": {
+                    "type": "string"
+                },
                 "trace_id": {
                     "type": "string"
+                },
+                "trace_mc_seqno_end": {
+                    "type": "integer"
                 },
                 "transactions": {
                     "type": "array",
@@ -2366,6 +2706,9 @@ const docTemplate = `{
                 },
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2378,8 +2721,25 @@ const docTemplate = `{
         "AddressBookRow": {
             "type": "object",
             "properties": {
+                "domain": {
+                    "type": "string"
+                },
                 "user_friendly": {
                     "type": "string"
+                }
+            }
+        },
+        "AddressMetadata": {
+            "type": "object",
+            "properties": {
+                "is_indexed": {
+                    "type": "boolean"
+                },
+                "token_info": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/TokenInfo"
+                    }
                 }
             }
         },
@@ -2592,6 +2952,12 @@ const docTemplate = `{
                     "type": "string",
                     "example": "0"
                 },
+                "credit_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "due_fees_collected": {
                     "type": "string",
                     "example": "0"
@@ -2606,101 +2972,6 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
-                }
-            }
-        },
-        "Event": {
-            "type": "object",
-            "properties": {
-                "actions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/Action"
-                    }
-                },
-                "end_lt": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "end_utime": {
-                    "type": "integer"
-                },
-                "external_hash": {
-                    "type": "string"
-                },
-                "is_incomplete": {
-                    "type": "boolean"
-                },
-                "mc_seqno_end": {
-                    "type": "string"
-                },
-                "mc_seqno_start": {
-                    "type": "string"
-                },
-                "start_lt": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "start_utime": {
-                    "type": "integer"
-                },
-                "trace": {
-                    "$ref": "#/definitions/TraceNode"
-                },
-                "trace_id": {
-                    "type": "string"
-                },
-                "trace_info": {
-                    "$ref": "#/definitions/EventMeta"
-                },
-                "transactions": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "$ref": "#/definitions/Transaction"
-                    }
-                },
-                "transactions_order": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "warning": {
-                    "type": "string"
-                }
-            }
-        },
-        "EventMeta": {
-            "type": "object",
-            "properties": {
-                "classification_state": {
-                    "type": "string"
-                },
-                "messages": {
-                    "type": "integer"
-                },
-                "pending_messages": {
-                    "type": "integer"
-                },
-                "trace_state": {
-                    "type": "string"
-                },
-                "transactions": {
-                    "type": "integer"
-                }
-            }
-        },
-        "EventsResponse": {
-            "type": "object",
-            "properties": {
-                "address_book": {
-                    "$ref": "#/definitions/AddressBook"
-                },
-                "events": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/Event"
-                    }
                 }
             }
         },
@@ -2757,6 +3028,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/JettonBurn"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2805,6 +3079,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/JettonMaster"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2870,6 +3147,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/JettonTransfer"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2914,6 +3194,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/JettonWallet"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
             }
         },
@@ -2966,6 +3249,9 @@ const docTemplate = `{
                     "type": "string",
                     "example": "0"
                 },
+                "in_msg_tx_hash": {
+                    "type": "string"
+                },
                 "init_state": {
                     "$ref": "#/definitions/MessageContent"
                 },
@@ -2975,12 +3261,21 @@ const docTemplate = `{
                 "opcode": {
                     "type": "integer"
                 },
+                "out_msg_tx_hash": {
+                    "type": "string"
+                },
                 "source": {
                     "type": "string"
                 },
                 "value": {
                     "type": "string",
                     "example": "0"
+                },
+                "value_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -3009,7 +3304,16 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/Message"
                     }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 }
+            }
+        },
+        "Metadata": {
+            "type": "object",
+            "additionalProperties": {
+                "$ref": "#/definitions/AddressMetadata"
             }
         },
         "MsgSize": {
@@ -3058,6 +3362,9 @@ const docTemplate = `{
             "properties": {
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 },
                 "nft_collections": {
                     "type": "array",
@@ -3109,6 +3416,9 @@ const docTemplate = `{
             "properties": {
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 },
                 "nft_items": {
                     "type": "array",
@@ -3172,193 +3482,14 @@ const docTemplate = `{
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
                 },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
+                },
                 "nft_transfers": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/NFTTransfer"
                     }
-                }
-            }
-        },
-        "RawAction": {
-            "type": "object",
-            "properties": {
-                "actionId": {
-                    "type": "string"
-                },
-                "amount": {
-                    "type": "string"
-                },
-                "asset": {
-                    "type": "string"
-                },
-                "asset2": {
-                    "type": "string"
-                },
-                "asset2Secondary": {
-                    "type": "string"
-                },
-                "assetSecondary": {
-                    "type": "string"
-                },
-                "changeDNSRecordFlags": {
-                    "type": "integer"
-                },
-                "changeDNSRecordKey": {
-                    "type": "string"
-                },
-                "changeDNSRecordValue": {
-                    "type": "string"
-                },
-                "changeDNSRecordValueSchema": {
-                    "type": "string"
-                },
-                "destination": {
-                    "type": "string"
-                },
-                "destinationSecondary": {
-                    "type": "string"
-                },
-                "endLt": {
-                    "type": "integer"
-                },
-                "endUtime": {
-                    "type": "integer"
-                },
-                "jettonSwapDex": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferAmount": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferAsset": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferDestination": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferDestinationJettonWallet": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferSource": {
-                    "type": "string"
-                },
-                "jettonSwapDexIncomingTransferSourceJettonWallet": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferAmount": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferAsset": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferDestination": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferDestinationJettonWallet": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferSource": {
-                    "type": "string"
-                },
-                "jettonSwapDexOutgoingTransferSourceJettonWallet": {
-                    "type": "string"
-                },
-                "jettonSwapPeerSwaps": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "jettonSwapSender": {
-                    "type": "string"
-                },
-                "jettonTransferComment": {
-                    "type": "string"
-                },
-                "jettonTransferCustomPayload": {
-                    "type": "string"
-                },
-                "jettonTransferForwardAmount": {
-                    "type": "string"
-                },
-                "jettonTransferForwardPayload": {
-                    "type": "string"
-                },
-                "jettonTransferIsEncryptedComment": {
-                    "type": "boolean"
-                },
-                "jettonTransferQueryId": {
-                    "type": "string"
-                },
-                "jettonTransferResponseDestination": {
-                    "type": "string"
-                },
-                "nftmintNFTItemIndex": {
-                    "type": "string"
-                },
-                "nfttransferCustomPayload": {
-                    "type": "string"
-                },
-                "nfttransferForwardAmount": {
-                    "type": "string"
-                },
-                "nfttransferForwardPayload": {
-                    "type": "string"
-                },
-                "nfttransferIsPurchase": {
-                    "type": "boolean"
-                },
-                "nfttransferNFTItemIndex": {
-                    "type": "string"
-                },
-                "nfttransferPrice": {
-                    "type": "string"
-                },
-                "nfttransferQueryId": {
-                    "type": "string"
-                },
-                "nfttransferResponseDestination": {
-                    "type": "string"
-                },
-                "opcode": {
-                    "type": "integer"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "sourceSecondary": {
-                    "type": "string"
-                },
-                "startLt": {
-                    "type": "integer"
-                },
-                "startUtime": {
-                    "type": "integer"
-                },
-                "success": {
-                    "type": "boolean"
-                },
-                "tonTransferContent": {
-                    "type": "string"
-                },
-                "tonTransferEncrypted": {
-                    "type": "boolean"
-                },
-                "traceId": {
-                    "type": "string"
-                },
-                "txHashes": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "type": {
-                    "type": "string"
-                },
-                "value": {
-                    "type": "string"
                 }
             }
         },
@@ -3406,6 +3537,111 @@ const docTemplate = `{
                 }
             }
         },
+        "TokenInfo": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "extra": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "image": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "Trace": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Action"
+                    }
+                },
+                "end_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "end_utime": {
+                    "type": "integer"
+                },
+                "external_hash": {
+                    "type": "string"
+                },
+                "is_incomplete": {
+                    "type": "boolean"
+                },
+                "mc_seqno_end": {
+                    "type": "string"
+                },
+                "mc_seqno_start": {
+                    "type": "string"
+                },
+                "start_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "start_utime": {
+                    "type": "integer"
+                },
+                "trace": {
+                    "$ref": "#/definitions/TraceNode"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "trace_info": {
+                    "$ref": "#/definitions/TraceMeta"
+                },
+                "transactions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/Transaction"
+                    }
+                },
+                "transactions_order": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "warning": {
+                    "type": "string"
+                }
+            }
+        },
+        "TraceMeta": {
+            "type": "object",
+            "properties": {
+                "classification_state": {
+                    "type": "string"
+                },
+                "messages": {
+                    "type": "integer"
+                },
+                "pending_messages": {
+                    "type": "integer"
+                },
+                "trace_state": {
+                    "type": "string"
+                },
+                "transactions": {
+                    "type": "integer"
+                }
+            }
+        },
         "TraceNode": {
             "type": "object",
             "properties": {
@@ -3426,6 +3662,23 @@ const docTemplate = `{
                 },
                 "tx_hash": {
                     "type": "string"
+                }
+            }
+        },
+        "TracesResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
+                },
+                "traces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Trace"
+                    }
                 }
             }
         },
@@ -3485,6 +3738,12 @@ const docTemplate = `{
                 "total_fees": {
                     "type": "string",
                     "example": "0"
+                },
+                "total_fees_extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "trace_id": {
                     "type": "string"
@@ -3703,6 +3962,12 @@ const docTemplate = `{
                 "code_hash": {
                     "type": "string"
                 },
+                "extra_currencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "is_signature_allowed": {
                     "type": "boolean"
                 },
@@ -3735,6 +4000,9 @@ const docTemplate = `{
             "properties": {
                 "address_book": {
                     "$ref": "#/definitions/AddressBook"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/Metadata"
                 },
                 "wallets": {
                     "type": "array",

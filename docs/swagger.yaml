@@ -20,6 +20,10 @@ definitions:
         type: string
       data_hash:
         type: string
+      extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       frozen_hash:
         type: string
       hash:
@@ -41,6 +45,10 @@ definitions:
         type: string
       data_hash:
         type: string
+      extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       frozen_hash:
         type: string
       last_transaction_hash:
@@ -59,6 +67,8 @@ definitions:
         type: array
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   Action:
     properties:
@@ -70,8 +80,6 @@ definitions:
         type: string
       end_utime:
         type: integer
-      raw_action:
-        $ref: '#/definitions/RawAction'
       start_lt:
         example: "0"
         type: string
@@ -79,8 +87,17 @@ definitions:
         type: integer
       success:
         type: boolean
+      trace_end_lt:
+        example: "0"
+        type: string
+      trace_end_utime:
+        type: integer
+      trace_external_hash:
+        type: string
       trace_id:
         type: string
+      trace_mc_seqno_end:
+        type: integer
       transactions:
         items:
           type: string
@@ -129,6 +146,8 @@ definitions:
         type: array
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   AddressBook:
     additionalProperties:
@@ -136,8 +155,19 @@ definitions:
     type: object
   AddressBookRow:
     properties:
+      domain:
+        type: string
       user_friendly:
         type: string
+    type: object
+  AddressMetadata:
+    properties:
+      is_indexed:
+        type: boolean
+      token_info:
+        items:
+          $ref: '#/definitions/TokenInfo'
+        type: array
     type: object
   Block:
     properties:
@@ -281,6 +311,10 @@ definitions:
       credit:
         example: "0"
         type: string
+      credit_extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       due_fees_collected:
         example: "0"
         type: string
@@ -291,69 +325,6 @@ definitions:
         type: string
       type:
         type: string
-    type: object
-  Event:
-    properties:
-      actions:
-        items:
-          $ref: '#/definitions/Action'
-        type: array
-      end_lt:
-        example: "0"
-        type: string
-      end_utime:
-        type: integer
-      external_hash:
-        type: string
-      is_incomplete:
-        type: boolean
-      mc_seqno_end:
-        type: string
-      mc_seqno_start:
-        type: string
-      start_lt:
-        example: "0"
-        type: string
-      start_utime:
-        type: integer
-      trace:
-        $ref: '#/definitions/TraceNode'
-      trace_id:
-        type: string
-      trace_info:
-        $ref: '#/definitions/EventMeta'
-      transactions:
-        additionalProperties:
-          $ref: '#/definitions/Transaction'
-        type: object
-      transactions_order:
-        items:
-          type: string
-        type: array
-      warning:
-        type: string
-    type: object
-  EventMeta:
-    properties:
-      classification_state:
-        type: string
-      messages:
-        type: integer
-      pending_messages:
-        type: integer
-      trace_state:
-        type: string
-      transactions:
-        type: integer
-    type: object
-  EventsResponse:
-    properties:
-      address_book:
-        $ref: '#/definitions/AddressBook'
-      events:
-        items:
-          $ref: '#/definitions/Event'
-        type: array
     type: object
   JettonBurn:
     properties:
@@ -391,6 +362,8 @@ definitions:
         items:
           $ref: '#/definitions/JettonBurn'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   JettonMaster:
     properties:
@@ -423,6 +396,8 @@ definitions:
         items:
           $ref: '#/definitions/JettonMaster'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   JettonTransfer:
     properties:
@@ -466,6 +441,8 @@ definitions:
         items:
           $ref: '#/definitions/JettonTransfer'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   JettonWallet:
     properties:
@@ -495,6 +472,8 @@ definitions:
         items:
           $ref: '#/definitions/JettonWallet'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
     type: object
   MasterchainInfo:
     properties:
@@ -530,17 +509,25 @@ definitions:
       import_fee:
         example: "0"
         type: string
+      in_msg_tx_hash:
+        type: string
       init_state:
         $ref: '#/definitions/MessageContent'
       message_content:
         $ref: '#/definitions/MessageContent'
       opcode:
         type: integer
+      out_msg_tx_hash:
+        type: string
       source:
         type: string
       value:
         example: "0"
         type: string
+      value_extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
     type: object
   MessageContent:
     properties:
@@ -559,6 +546,12 @@ definitions:
         items:
           $ref: '#/definitions/Message'
         type: array
+      metadata:
+        $ref: '#/definitions/Metadata'
+    type: object
+  Metadata:
+    additionalProperties:
+      $ref: '#/definitions/AddressMetadata'
     type: object
   MsgSize:
     properties:
@@ -592,6 +585,8 @@ definitions:
     properties:
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
       nft_collections:
         items:
           $ref: '#/definitions/NFTCollection'
@@ -626,6 +621,8 @@ definitions:
     properties:
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
       nft_items:
         items:
           $ref: '#/definitions/NFTItem'
@@ -667,131 +664,12 @@ definitions:
     properties:
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
       nft_transfers:
         items:
           $ref: '#/definitions/NFTTransfer'
         type: array
-    type: object
-  RawAction:
-    properties:
-      actionId:
-        type: string
-      amount:
-        type: string
-      asset:
-        type: string
-      asset2:
-        type: string
-      asset2Secondary:
-        type: string
-      assetSecondary:
-        type: string
-      changeDNSRecordFlags:
-        type: integer
-      changeDNSRecordKey:
-        type: string
-      changeDNSRecordValue:
-        type: string
-      changeDNSRecordValueSchema:
-        type: string
-      destination:
-        type: string
-      destinationSecondary:
-        type: string
-      endLt:
-        type: integer
-      endUtime:
-        type: integer
-      jettonSwapDex:
-        type: string
-      jettonSwapDexIncomingTransferAmount:
-        type: string
-      jettonSwapDexIncomingTransferAsset:
-        type: string
-      jettonSwapDexIncomingTransferDestination:
-        type: string
-      jettonSwapDexIncomingTransferDestinationJettonWallet:
-        type: string
-      jettonSwapDexIncomingTransferSource:
-        type: string
-      jettonSwapDexIncomingTransferSourceJettonWallet:
-        type: string
-      jettonSwapDexOutgoingTransferAmount:
-        type: string
-      jettonSwapDexOutgoingTransferAsset:
-        type: string
-      jettonSwapDexOutgoingTransferDestination:
-        type: string
-      jettonSwapDexOutgoingTransferDestinationJettonWallet:
-        type: string
-      jettonSwapDexOutgoingTransferSource:
-        type: string
-      jettonSwapDexOutgoingTransferSourceJettonWallet:
-        type: string
-      jettonSwapPeerSwaps:
-        items:
-          type: string
-        type: array
-      jettonSwapSender:
-        type: string
-      jettonTransferComment:
-        type: string
-      jettonTransferCustomPayload:
-        type: string
-      jettonTransferForwardAmount:
-        type: string
-      jettonTransferForwardPayload:
-        type: string
-      jettonTransferIsEncryptedComment:
-        type: boolean
-      jettonTransferQueryId:
-        type: string
-      jettonTransferResponseDestination:
-        type: string
-      nftmintNFTItemIndex:
-        type: string
-      nfttransferCustomPayload:
-        type: string
-      nfttransferForwardAmount:
-        type: string
-      nfttransferForwardPayload:
-        type: string
-      nfttransferIsPurchase:
-        type: boolean
-      nfttransferNFTItemIndex:
-        type: string
-      nfttransferPrice:
-        type: string
-      nfttransferQueryId:
-        type: string
-      nfttransferResponseDestination:
-        type: string
-      opcode:
-        type: integer
-      source:
-        type: string
-      sourceSecondary:
-        type: string
-      startLt:
-        type: integer
-      startUtime:
-        type: integer
-      success:
-        type: boolean
-      tonTransferContent:
-        type: string
-      tonTransferEncrypted:
-        type: boolean
-      traceId:
-        type: string
-      txHashes:
-        items:
-          type: string
-        type: array
-      type:
-        type: string
-      value:
-        type: string
     type: object
   RequestError:
     properties:
@@ -822,6 +700,76 @@ definitions:
         example: "0"
         type: string
     type: object
+  TokenInfo:
+    properties:
+      description:
+        type: string
+      extra:
+        additionalProperties: true
+        type: object
+      image:
+        type: string
+      name:
+        type: string
+      symbol:
+        type: string
+      type:
+        type: string
+    type: object
+  Trace:
+    properties:
+      actions:
+        items:
+          $ref: '#/definitions/Action'
+        type: array
+      end_lt:
+        example: "0"
+        type: string
+      end_utime:
+        type: integer
+      external_hash:
+        type: string
+      is_incomplete:
+        type: boolean
+      mc_seqno_end:
+        type: string
+      mc_seqno_start:
+        type: string
+      start_lt:
+        example: "0"
+        type: string
+      start_utime:
+        type: integer
+      trace:
+        $ref: '#/definitions/TraceNode'
+      trace_id:
+        type: string
+      trace_info:
+        $ref: '#/definitions/TraceMeta'
+      transactions:
+        additionalProperties:
+          $ref: '#/definitions/Transaction'
+        type: object
+      transactions_order:
+        items:
+          type: string
+        type: array
+      warning:
+        type: string
+    type: object
+  TraceMeta:
+    properties:
+      classification_state:
+        type: string
+      messages:
+        type: integer
+      pending_messages:
+        type: integer
+      trace_state:
+        type: string
+      transactions:
+        type: integer
+    type: object
   TraceNode:
     properties:
       children:
@@ -836,6 +784,17 @@ definitions:
         $ref: '#/definitions/Transaction'
       tx_hash:
         type: string
+    type: object
+  TracesResponse:
+    properties:
+      address_book:
+        $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
+      traces:
+        items:
+          $ref: '#/definitions/Trace'
+        type: array
     type: object
   Transaction:
     properties:
@@ -876,6 +835,10 @@ definitions:
       total_fees:
         example: "0"
         type: string
+      total_fees_extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       trace_id:
         type: string
     type: object
@@ -1017,6 +980,10 @@ definitions:
         type: string
       code_hash:
         type: string
+      extra_currencies:
+        additionalProperties:
+          type: string
+        type: object
       is_signature_allowed:
         type: boolean
       is_wallet:
@@ -1039,6 +1006,8 @@ definitions:
     properties:
       address_book:
         $ref: '#/definitions/AddressBook'
+      metadata:
+        $ref: '#/definitions/Metadata'
       wallets:
         items:
           $ref: '#/definitions/WalletState'
@@ -1108,6 +1077,25 @@ paths:
       description: Get actions by specified filter.
       operationId: api_v3_get_actions
       parameters:
+      - description: List of account addresses to get actions. Can be sent in hex,
+          base64 or base64url form.
+        in: query
+        name: account
+        type: string
+      - collectionFormat: multi
+        description: Find actions by transaction hash.
+        in: query
+        items:
+          type: string
+        name: tx_hash
+        type: array
+      - collectionFormat: multi
+        description: Find actions by message hash.
+        in: query
+        items:
+          type: string
+        name: msg_hash
+        type: array
       - collectionFormat: multi
         description: Find actions by the action_id.
         in: query
@@ -1122,6 +1110,112 @@ paths:
           type: string
         name: trace_id
         type: array
+      - description: Query actions of traces which was completed in masterchain block
+          with given seqno
+        in: query
+        name: mc_seqno
+        type: integer
+      - description: Query actions for traces with `trace_end_utime >= start_utime`.
+        in: query
+        minimum: 0
+        name: start_utime
+        type: integer
+      - description: Query actions for traces with `trace_end_utime <= end_utime`.
+        in: query
+        minimum: 0
+        name: end_utime
+        type: integer
+      - description: Query actions for traces with `trace_end_lt >= start_lt`.
+        in: query
+        minimum: 0
+        name: start_lt
+        type: integer
+      - description: Query actions for traces with `trace_end_lt <= end_lt`.
+        in: query
+        minimum: 0
+        name: end_lt
+        type: integer
+      - collectionFormat: multi
+        description: Include action types.
+        in: query
+        items:
+          enum:
+          - call_contract
+          - contract_deploy
+          - ton_transfer
+          - auction_bid
+          - change_dns
+          - dex_deposit_liquidity
+          - dex_withdraw_liquidity
+          - delete_dns
+          - renew_dns
+          - election_deposit
+          - election_recover
+          - jetton_burn
+          - jetton_swap
+          - jetton_transfer
+          - jetton_mint
+          - nft_mint
+          - tick_tock
+          - stake_deposit
+          - stake_withdrawal
+          - stake_withdrawal_request
+          - subscribe
+          - unsubscribe
+          type: string
+        name: action_type
+        type: array
+      - collectionFormat: multi
+        description: Exclude action types.
+        in: query
+        items:
+          enum:
+          - call_contract
+          - contract_deploy
+          - ton_transfer
+          - auction_bid
+          - change_dns
+          - dex_deposit_liquidity
+          - dex_withdraw_liquidity
+          - delete_dns
+          - renew_dns
+          - election_deposit
+          - election_recover
+          - jetton_burn
+          - jetton_swap
+          - jetton_transfer
+          - jetton_mint
+          - nft_mint
+          - tick_tock
+          - stake_deposit
+          - stake_withdrawal
+          - stake_withdrawal_request
+          - subscribe
+          - unsubscribe
+          type: string
+        name: exclude_action_type
+        type: array
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 1000
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort actions by lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
       produces:
       - application/json
       responses:
@@ -1138,7 +1232,7 @@ paths:
       - APIKeyQuery: []
       summary: Get Actions
       tags:
-      - events
+      - actions
   /api/v3/addressBook:
     get:
       consumes:
@@ -1321,6 +1415,43 @@ paths:
       summary: Get blocks
       tags:
       - blockchain
+  /api/v3/dnsEntities:
+    get:
+      consumes:
+      - application/json
+      description: Query dns entities
+      operationId: api_v3_get_dns_entities
+      parameters:
+      - collectionFormat: multi
+        description: 'List of addresses in any form to get address book. Max: 1024.'
+        in: query
+        items:
+          type: string
+        name: address
+        required: true
+        type: array
+      - default: true
+        description: 'Include code and data BOCs. Default: true'
+        in: query
+        name: include_boc
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/AccountStatesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get DNS Entities
+      tags:
+      - accounts
   /api/v3/estimateFee:
     post:
       consumes:
@@ -1352,94 +1483,6 @@ paths:
       summary: Estimate Fee
       tags:
       - api/v2
-  /api/v3/events:
-    get:
-      consumes:
-      - application/json
-      description: Get events by specified filter.
-      operationId: api_v3_get_events
-      parameters:
-      - description: List of account addresses to get transactions. Can be sent in
-          hex, base64 or base64url form.
-        in: query
-        name: account
-        type: string
-      - collectionFormat: multi
-        description: Find event by transaction hash.
-        in: query
-        items:
-          type: string
-        name: tx_hash
-        type: array
-      - collectionFormat: multi
-        description: Find event by message hash.
-        in: query
-        items:
-          type: string
-        name: msg_hash
-        type: array
-      - description: Masterchain block seqno
-        in: query
-        name: mc_seqno
-        type: integer
-      - description: Query events, which was finished **after** given timestamp.
-        in: query
-        minimum: 0
-        name: start_utime
-        type: integer
-      - description: Query events, which was finished **before** given timestamp.
-        in: query
-        minimum: 0
-        name: end_utime
-        type: integer
-      - description: Query events with `end_lt >= start_lt`.
-        in: query
-        minimum: 0
-        name: start_lt
-        type: integer
-      - description: Query events with `end_lt <= end_lt`.
-        in: query
-        minimum: 0
-        name: end_lt
-        type: integer
-      - default: 10
-        description: Limit number of queried rows. Use with *offset* to batch read.
-        in: query
-        maximum: 1000
-        minimum: 1
-        name: limit
-        type: integer
-      - default: 0
-        description: Skip first N rows. Use with *limit* to batch read.
-        in: query
-        minimum: 0
-        name: offset
-        type: integer
-      - default: desc
-        description: Sort events by lt.
-        enum:
-        - asc
-        - desc
-        in: query
-        name: sort
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/EventsResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/RequestError'
-      security:
-      - APIKeyHeader: []
-      - APIKeyQuery: []
-      summary: Get Events
-      tags:
-      - events
   /api/v3/jetton/burns:
     get:
       consumes:
@@ -1601,7 +1644,7 @@ paths:
         in: query
         name: jetton_master
         type: string
-      - description: Direction of transfer.
+      - description: Direction of transfer. *Note:* applied only with owner_address.
         enum:
         - in
         - out
@@ -1689,10 +1732,13 @@ paths:
           type: string
         name: owner_address
         type: array
-      - description: Jetton Master in any form.
+      - collectionFormat: multi
+        description: Jetton Master in any form.
         in: query
+        items:
+          type: string
         name: jetton_address
-        type: string
+        type: array
       - description: Exclude jetton wallets with 0 balance.
         in: query
         name: exclude_zero_balance
@@ -1776,6 +1822,19 @@ paths:
         in: query
         name: seqno
         required: true
+        type: integer
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 1000
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
         type: integer
       produces:
       - application/json
@@ -1906,6 +1965,14 @@ paths:
         in: query
         name: direction
         type: string
+      - description: Exclude external messages.
+        in: query
+        name: exclude_externals
+        type: boolean
+      - description: Return only external messages.
+        in: query
+        name: only_externals
+        type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
@@ -1944,6 +2011,39 @@ paths:
       summary: Get messages
       tags:
       - blockchain
+  /api/v3/metadata:
+    get:
+      consumes:
+      - application/json
+      description: Query address metadata
+      operationId: api_v3_get_metadata
+      parameters:
+      - collectionFormat: multi
+        description: 'List of addresses in any form to get address metadata. Max:
+          1024.'
+        in: query
+        items:
+          type: string
+        name: address
+        required: true
+        type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/Metadata'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Metadata
+      tags:
+      - accounts
   /api/v3/nft/collections:
     get:
       consumes:
@@ -2235,6 +2335,107 @@ paths:
       summary: Get Top Accounts By Balance
       tags:
       - stats
+  /api/v3/traces:
+    get:
+      consumes:
+      - application/json
+      description: Get traces by specified filter.
+      operationId: api_v3_get_traces
+      parameters:
+      - description: List of account addresses to get transactions. Can be sent in
+          hex, base64 or base64url form.
+        in: query
+        name: account
+        type: string
+      - collectionFormat: multi
+        description: Find trace by trace id.
+        in: query
+        items:
+          type: string
+        name: trace_id
+        type: array
+      - collectionFormat: multi
+        description: Find trace by transaction hash.
+        in: query
+        items:
+          type: string
+        name: tx_hash
+        type: array
+      - collectionFormat: multi
+        description: Find trace by message hash.
+        in: query
+        items:
+          type: string
+        name: msg_hash
+        type: array
+      - description: Query traces that was completed in masterchain block with given
+          seqno
+        in: query
+        name: mc_seqno
+        type: integer
+      - description: Query traces, which was finished **after** given timestamp.
+        in: query
+        minimum: 0
+        name: start_utime
+        type: integer
+      - description: Query traces, which was finished **before** given timestamp.
+        in: query
+        minimum: 0
+        name: end_utime
+        type: integer
+      - description: Query traces with `end_lt >= start_lt`.
+        in: query
+        minimum: 0
+        name: start_lt
+        type: integer
+      - description: Query traces with `end_lt <= end_lt`.
+        in: query
+        minimum: 0
+        name: end_lt
+        type: integer
+      - default: false
+        description: Include trace actions.
+        in: query
+        name: include_actions
+        type: boolean
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 1000
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort traces by lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/TracesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Traces
+      tags:
+      - actions
   /api/v3/transactions:
     get:
       consumes:

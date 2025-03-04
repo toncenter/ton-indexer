@@ -36,9 +36,34 @@ func (e IndexError) Error() string {
 // models
 type AddressBookRow struct {
 	UserFriendly *string `json:"user_friendly"`
+	Domain       *string `json:"domain"`
 } // @name AddressBookRow
 
 type AddressBook map[string]AddressBookRow // @name AddressBook
+type Metadata map[string]AddressMetadata   // @name Metadata
+
+type BackgroundTask struct {
+	Type  string
+	Retry int
+	Data  map[string]interface{}
+}
+
+type AddressMetadata struct {
+	IsIndexed bool        `json:"is_indexed"`
+	TokenInfo []TokenInfo `json:"token_info"`
+} // @name AddressMetadata
+
+type TokenInfo struct {
+	Address     string                 `json:"-"`
+	Valid       *bool                  `json:"-"`
+	Indexed     bool                   `json:"-"`
+	Type        *string                `json:"type,omitempty"`
+	Name        *string                `json:"name,omitempty"`
+	Symbol      *string                `json:"symbol,omitempty"`
+	Description *string                `json:"description,omitempty"`
+	Image       *string                `json:"image,omitempty"`
+	Extra       map[string]interface{} `json:"extra,omitempty"`
+} // @name TokenInfo
 
 type BlockId struct {
 	Workchain int32   `json:"workchain"`
@@ -47,15 +72,16 @@ type BlockId struct {
 } // @name BlockId
 
 type AccountState struct {
-	Hash          HashType        `json:"hash"`
-	Account       *AccountAddress `json:"-"`
-	Balance       *string         `json:"balance"`
-	AccountStatus *string         `json:"account_status"`
-	FrozenHash    *HashType       `json:"frozen_hash"`
-	DataHash      *HashType       `json:"data_hash"`
-	CodeHash      *HashType       `json:"code_hash"`
-	DataBoc       *string         `json:"data_boc,omitempty"`
-	CodeBoc       *string         `json:"code_boc,omitempty"`
+	Hash                   HashType          `json:"hash"`
+	Account                *AccountAddress   `json:"-"`
+	Balance                *string           `json:"balance"`
+	BalanceExtraCurrencies map[string]string `json:"extra_currencies"`
+	AccountStatus          *string           `json:"account_status"`
+	FrozenHash             *HashType         `json:"frozen_hash"`
+	DataHash               *HashType         `json:"data_hash"`
+	CodeHash               *HashType         `json:"code_hash"`
+	DataBoc                *string           `json:"data_boc,omitempty"`
+	CodeBoc                *string           `json:"code_boc,omitempty"`
 } // @name AccountState
 
 type AccountBalance struct {
@@ -64,31 +90,33 @@ type AccountBalance struct {
 } // @name AccountBalance
 
 type AccountStateFull struct {
-	AccountAddress      *AccountAddress `json:"address"`
-	Hash                HashType        `json:"account_state_hash"`
-	Balance             *string         `json:"balance"`
-	AccountStatus       *string         `json:"status"`
-	FrozenHash          *HashType       `json:"frozen_hash,omitempty"`
-	LastTransactionHash *HashType       `json:"last_transaction_hash"`
-	LastTransactionLt   *int64          `json:"last_transaction_lt,string"`
-	DataHash            *HashType       `json:"data_hash,omitempty"`
-	CodeHash            *HashType       `json:"code_hash,omitempty"`
-	DataBoc             *string         `json:"data_boc,omitempty"`
-	CodeBoc             *string         `json:"code_boc,omitempty"`
+	AccountAddress         *AccountAddress   `json:"address"`
+	Hash                   HashType          `json:"account_state_hash"`
+	Balance                *string           `json:"balance"`
+	BalanceExtraCurrencies map[string]string `json:"extra_currencies"`
+	AccountStatus          *string           `json:"status"`
+	FrozenHash             *HashType         `json:"frozen_hash,omitempty"`
+	LastTransactionHash    *HashType         `json:"last_transaction_hash"`
+	LastTransactionLt      *int64            `json:"last_transaction_lt,string"`
+	DataHash               *HashType         `json:"data_hash,omitempty"`
+	CodeHash               *HashType         `json:"code_hash,omitempty"`
+	DataBoc                *string           `json:"data_boc,omitempty"`
+	CodeBoc                *string           `json:"code_boc,omitempty"`
 } // @name AccountStateFull
 
 type WalletState struct {
-	AccountAddress      AccountAddress `json:"address"`
-	IsWallet            bool           `json:"is_wallet"`
-	WalletType          *string        `json:"wallet_type,omitempty"`
-	Seqno               *int64         `json:"seqno,omitempty"`
-	WalletId            *int64         `json:"wallet_id,omitempty"`
-	Balance             *string        `json:"balance,omitempty"`
-	IsSignatureAllowed  *bool          `json:"is_signature_allowed,omitempty"`
-	AccountStatus       *string        `json:"status,omitempty"`
-	CodeHash            *HashType      `json:"code_hash,omitempty"`
-	LastTransactionHash *HashType      `json:"last_transaction_hash"`
-	LastTransactionLt   *int64         `json:"last_transaction_lt,string"`
+	AccountAddress         AccountAddress    `json:"address"`
+	IsWallet               bool              `json:"is_wallet"`
+	WalletType             *string           `json:"wallet_type,omitempty"`
+	Seqno                  *int64            `json:"seqno,omitempty"`
+	WalletId               *int64            `json:"wallet_id,omitempty"`
+	Balance                *string           `json:"balance,omitempty"`
+	BalanceExtraCurrencies map[string]string `json:"extra_currencies,omitempty"`
+	IsSignatureAllowed     *bool             `json:"is_signature_allowed,omitempty"`
+	AccountStatus          *string           `json:"status,omitempty"`
+	CodeHash               *HashType         `json:"code_hash,omitempty"`
+	LastTransactionHash    *HashType         `json:"last_transaction_hash"`
+	LastTransactionLt      *int64            `json:"last_transaction_lt,string"`
 } // @name WalletState
 
 type Block struct {
@@ -135,27 +163,30 @@ type MessageContent struct {
 } // @name MessageContent
 
 type Message struct {
-	TxHash         HashType        `json:"-"`
-	TxLt           int64           `json:"-"`
-	MsgHash        HashType        `json:"hash"`
-	Direction      string          `json:"-"`
-	TraceId        *HashType       `json:"-"`
-	Source         *AccountAddress `json:"source"`
-	Destination    *AccountAddress `json:"destination"`
-	Value          *int64          `json:"value,string"`
-	FwdFee         *uint64         `json:"fwd_fee,string"`
-	IhrFee         *uint64         `json:"ihr_fee,string"`
-	CreatedLt      *uint64         `json:"created_lt,string"`
-	CreatedAt      *uint32         `json:"created_at,string"`
-	Opcode         *OpcodeType     `json:"opcode"`
-	IhrDisabled    *bool           `json:"ihr_disabled"`
-	Bounce         *bool           `json:"bounce"`
-	Bounced        *bool           `json:"bounced"`
-	ImportFee      *uint64         `json:"import_fee,string"`
-	BodyHash       *HashType       `json:"-"`
-	InitStateHash  *HashType       `json:"-"`
-	MessageContent *MessageContent `json:"message_content"`
-	InitState      *MessageContent `json:"init_state"`
+	TxHash               HashType          `json:"-"`
+	TxLt                 int64             `json:"-"`
+	MsgHash              HashType          `json:"hash"`
+	Direction            string            `json:"-"`
+	TraceId              *HashType         `json:"-"`
+	Source               *AccountAddress   `json:"source"`
+	Destination          *AccountAddress   `json:"destination"`
+	Value                *int64            `json:"value,string"`
+	ValueExtraCurrencies map[string]string `json:"value_extra_currencies"`
+	FwdFee               *uint64           `json:"fwd_fee,string"`
+	IhrFee               *uint64           `json:"ihr_fee,string"`
+	CreatedLt            *uint64           `json:"created_lt,string"`
+	CreatedAt            *uint32           `json:"created_at,string"`
+	Opcode               *OpcodeType       `json:"opcode"`
+	IhrDisabled          *bool             `json:"ihr_disabled"`
+	Bounce               *bool             `json:"bounce"`
+	Bounced              *bool             `json:"bounced"`
+	ImportFee            *uint64           `json:"import_fee,string"`
+	BodyHash             *HashType         `json:"-"`
+	InitStateHash        *HashType         `json:"-"`
+	InMsgTxHash          *HashType         `json:"in_msg_tx_hash,omitempty"`
+	OutMsgTxHash         *HashType         `json:"out_msg_tx_hash,omitempty"`
+	MessageContent       *MessageContent   `json:"message_content"`
+	InitState            *MessageContent   `json:"init_state"`
 } // @name Message
 
 type MsgSize struct {
@@ -170,8 +201,9 @@ type StoragePhase struct {
 } // @name StoragePhase
 
 type CreditPhase struct {
-	DueFeesCollected *int64 `json:"due_fees_collected,string,omitempty"`
-	Credit           *int64 `json:"credit,string,omitempty"`
+	DueFeesCollected      *int64            `json:"due_fees_collected,string,omitempty"`
+	Credit                *int64            `json:"credit,string,omitempty"`
+	CreditExtraCurrencies map[string]string `json:"credit_extra_currencies,omitempty"`
 } // @name CreditPhase
 
 type ComputePhase struct {
@@ -240,28 +272,29 @@ type TransactionDescr struct {
 } // @name TransactionDescr
 
 type Transaction struct {
-	Account                AccountAddress   `json:"account"`
-	Hash                   HashType         `json:"hash"`
-	Lt                     int64            `json:"lt,string"`
-	Now                    int32            `json:"now"`
-	Workchain              int32            `json:"-"`
-	Shard                  ShardId          `json:"-"`
-	Seqno                  int32            `json:"-"`
-	McSeqno                int32            `json:"mc_block_seqno"`
-	TraceId                *HashType        `json:"trace_id,omitempty"`
-	PrevTransHash          HashType         `json:"prev_trans_hash"`
-	PrevTransLt            int64            `json:"prev_trans_lt,string"`
-	OrigStatus             string           `json:"orig_status"`
-	EndStatus              string           `json:"end_status"`
-	TotalFees              int64            `json:"total_fees,string"`
-	AccountStateHashBefore HashType         `json:"-"`
-	AccountStateHashAfter  HashType         `json:"-"`
-	Descr                  TransactionDescr `json:"description"`
-	BlockRef               BlockId          `json:"block_ref"`
-	InMsg                  *Message         `json:"in_msg"`
-	OutMsgs                []*Message       `json:"out_msgs"`
-	AccountStateBefore     *AccountState    `json:"account_state_before"`
-	AccountStateAfter      *AccountState    `json:"account_state_after"`
+	Account                  AccountAddress    `json:"account"`
+	Hash                     HashType          `json:"hash"`
+	Lt                       int64             `json:"lt,string"`
+	Now                      int32             `json:"now"`
+	Workchain                int32             `json:"-"`
+	Shard                    ShardId           `json:"-"`
+	Seqno                    int32             `json:"-"`
+	McSeqno                  int32             `json:"mc_block_seqno"`
+	TraceId                  *HashType         `json:"trace_id,omitempty"`
+	PrevTransHash            HashType          `json:"prev_trans_hash"`
+	PrevTransLt              int64             `json:"prev_trans_lt,string"`
+	OrigStatus               string            `json:"orig_status"`
+	EndStatus                string            `json:"end_status"`
+	TotalFees                int64             `json:"total_fees,string"`
+	TotalFeesExtraCurrencies map[string]string `json:"total_fees_extra_currencies"`
+	AccountStateHashBefore   HashType          `json:"-"`
+	AccountStateHashAfter    HashType          `json:"-"`
+	Descr                    TransactionDescr  `json:"description"`
+	BlockRef                 BlockId           `json:"block_ref"`
+	InMsg                    *Message          `json:"in_msg"`
+	OutMsgs                  []*Message        `json:"out_msgs"`
+	AccountStateBefore       *AccountState     `json:"account_state_before"`
+	AccountStateAfter        *AccountState     `json:"account_state_after"`
 } // @name Transaction
 
 // nfts
@@ -397,6 +430,9 @@ type RawAction struct {
 	EndLt                                                int64
 	StartUtime                                           int64
 	EndUtime                                             int64
+	TraceEndLt                                           int64
+	TraceEndUtime                                        int64
+	TraceMcSeqnoEnd                                      int32
 	Source                                               *AccountAddress
 	SourceSecondary                                      *AccountAddress
 	Destination                                          *AccountAddress
@@ -406,7 +442,7 @@ type RawAction struct {
 	Asset2                                               *AccountAddress
 	Asset2Secondary                                      *AccountAddress
 	Opcode                                               *OpcodeType
-	TxHashes                                             []*HashType
+	TxHashes                                             []HashType
 	Type                                                 string
 	TonTransferContent                                   *string
 	TonTransferEncrypted                                 *bool
@@ -447,10 +483,40 @@ type RawAction struct {
 	ChangeDNSRecordValue                                 *string
 	ChangeDNSRecordFlags                                 *int64
 	NFTMintNFTItemIndex                                  *string
+	DexWithdrawLiquidityDataDex                          *string
+	DexWithdrawLiquidityDataAmount1                      *string
+	DexWithdrawLiquidityDataAmount2                      *string
+	DexWithdrawLiquidityDataAsset1Out                    *AccountAddress
+	DexWithdrawLiquidityDataAsset2Out                    *AccountAddress
+	DexWithdrawLiquidityDataUserJettonWallet1            *AccountAddress
+	DexWithdrawLiquidityDataUserJettonWallet2            *AccountAddress
+	DexWithdrawLiquidityDataDexJettonWallet1             *AccountAddress
+	DexWithdrawLiquidityDataDexJettonWallet2             *AccountAddress
+	DexWithdrawLiquidityDataLpTokensBurnt                *string
+	DexDepositLiquidityDataDex                           *string
+	DexDepositLiquidityDataAmount1                       *string
+	DexDepositLiquidityDataAmount2                       *string
+	DexDepositLiquidityDataAsset1                        *AccountAddress
+	DexDepositLiquidityDataAsset2                        *AccountAddress
+	DexDepositLiquidityDataUserJettonWallet1             *AccountAddress
+	DexDepositLiquidityDataUserJettonWallet2             *AccountAddress
+	DexDepositLiquidityDataLpTokensMinted                *string
+	StakingDataProvider                                  *string
+	StakingDataTsNft                                     *AccountAddress
 	Success                                              *bool
+	TraceExternalHash                                    *HashType
+	ExtraCurrencies                                      map[string]string
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
+	OpCode          *OpcodeType        `json:"opcode,omitempty"`
+	Source          *AccountAddress    `json:"source,omitempty"`
+	Destination     *AccountAddress    `json:"destination,omitempty"`
+	Value           *string            `json:"value,omitempty"`
+	ExtraCurrencies *map[string]string `json:"extra_currencies,omitempty"`
+}
+
+type ActionDetailsContractDeploy struct {
 	OpCode      *OpcodeType     `json:"opcode,omitempty"`
 	Source      *AccountAddress `json:"source,omitempty"`
 	Destination *AccountAddress `json:"destination,omitempty"`
@@ -458,11 +524,21 @@ type ActionDetailsCallContract struct {
 }
 
 type ActionDetailsTonTransfer struct {
-	Source      *AccountAddress `json:"source"`
-	Destination *AccountAddress `json:"destination"`
-	Value       *string         `json:"value"`
-	Comment     *string         `json:"comment"`
-	Encrypted   *bool           `json:"encrypted"`
+	Source          *AccountAddress    `json:"source"`
+	Destination     *AccountAddress    `json:"destination"`
+	Value           *string            `json:"value"`
+	ExtraCurrencies *map[string]string `json:"value_extra_currencies,omitempty"`
+	Comment         *string            `json:"comment"`
+	Encrypted       *bool              `json:"encrypted"`
+}
+
+type ActionDetailsAuctionBid struct {
+	Amount        *string         `json:"amount"`
+	Bidder        *AccountAddress `json:"bidder"`
+	Auction       *AccountAddress `json:"auction"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
 }
 
 type ActionDetailsChangeDnsValue struct {
@@ -472,12 +548,21 @@ type ActionDetailsChangeDnsValue struct {
 }
 
 type ActionDetailsChangeDns struct {
-	Key   *string                     `json:"key"`
-	Value ActionDetailsChangeDnsValue `json:"value"`
+	Key    *string                     `json:"key"`
+	Value  ActionDetailsChangeDnsValue `json:"value"`
+	Source *AccountAddress             `json:"source"`
+	Asset  *AccountAddress             `json:"asset"`
 }
 
 type ActionDetailsDeleteDns struct {
-	Key *string `json:"hash"`
+	Key    *string         `json:"hash"`
+	Source *AccountAddress `json:"source"`
+	Asset  *AccountAddress `json:"asset"`
+}
+
+type ActionDetailsRenewDns struct {
+	Source *AccountAddress `json:"source"`
+	Asset  *AccountAddress `json:"asset"`
 }
 
 type ActionDetailsElectionDeposit struct {
@@ -509,6 +594,8 @@ type ActionDetailsJettonSwapTransfer struct {
 type ActionDetailsJettonSwap struct {
 	Dex                 *string                          `json:"dex"`
 	Sender              *AccountAddress                  `json:"sender"`
+	AssetIn             *AccountAddress                  `json:"asset_in"`
+	AssetOut            *AccountAddress                  `json:"asset_out"`
 	DexIncomingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_incoming_transfer"`
 	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_outgoing_transfer"`
 	PeerSwaps           []string                         `json:"peer_swaps"`
@@ -528,6 +615,14 @@ type ActionDetailsJettonTransfer struct {
 	CustomPayload        *string         `json:"custom_payload"`
 	ForwardPayload       *string         `json:"forward_payload"`
 	ForwardAmount        *string         `json:"forward_amount"`
+}
+
+type ActionDetailsJettonMint struct {
+	Asset                *AccountAddress `json:"asset"`
+	Receiver             *AccountAddress `json:"receiver"`
+	ReceiverJettonWallet *AccountAddress `json:"receiver_jetton_wallet"`
+	Amount               *string         `json:"amount"`
+	TonAmount            *string         `json:"ton_amount"`
 }
 
 type ActionDetailsNftMint struct {
@@ -575,27 +670,82 @@ type ActionDetailsWtonMint struct {
 	Receiver *AccountAddress `json:"receiver"`
 }
 
+type ActionDetailsDexDepositLiquidity struct {
+	Dex                  *string         `json:"dex"`
+	Amount1              *string         `json:"amount_1"`
+	Amount2              *string         `json:"amount_2"`
+	Asset1               *AccountAddress `json:"asset_1"`
+	Asset2               *AccountAddress `json:"asset_2"`
+	UserJettonWallet1    *AccountAddress `json:"user_jetton_wallet_1"`
+	UserJettonWallet2    *AccountAddress `json:"user_jetton_wallet_2"`
+	Source               *AccountAddress `json:"source"`
+	Pool                 *AccountAddress `json:"pool"`
+	DestinationLiquidity *AccountAddress `json:"destination_liquidity"`
+	LpTokensMinted       *string         `json:"lp_tokens_minted"`
+}
+
+type ActionDetailsDexWithdrawLiquidity struct {
+	Dex                  *string         `json:"dex"`
+	Amount1              *string         `json:"amount_1"`
+	Amount2              *string         `json:"amount_2"`
+	Asset1               *AccountAddress `json:"asset_1"`
+	Asset2               *AccountAddress `json:"asset_2"`
+	UserJettonWallet1    *AccountAddress `json:"user_jetton_wallet_1"`
+	UserJettonWallet2    *AccountAddress `json:"user_jetton_wallet_2"`
+	LpTokensBurnt        *string         `json:"lp_tokens_burnt"`
+	IsRefund             *bool           `json:"is_refund"`
+	Source               *AccountAddress `json:"source"`
+	Pool                 *AccountAddress `json:"pool"`
+	DestinationLiquidity *AccountAddress `json:"destination_liquidity"`
+}
+
+type ActionDetailsStakeDeposit struct {
+	Provider    *string         `json:"provider"`
+	StakeHolder *AccountAddress `json:"stake_holder"`
+	Pool        *AccountAddress `json:"pool"`
+	Amount      *string         `json:"amount"`
+}
+
+type ActionDetailsWithdrawStake struct {
+	Provider    *string         `json:"provider"`
+	StakeHolder *AccountAddress `json:"stake_holder"`
+	Pool        *AccountAddress `json:"pool"`
+	Amount      *string         `json:"amount"`
+	PayoutNft   *AccountAddress `json:"payout_nft"`
+}
+
+type ActionDetailsWithdrawStakeRequest struct {
+	Provider    *string         `json:"provider"`
+	StakeHolder *AccountAddress `json:"stake_holder"`
+	Pool        *AccountAddress `json:"pool"`
+	PayoutNft   *AccountAddress `json:"payout_nft"`
+}
+
 type Action struct {
-	TraceId    HashType    `json:"trace_id"`
-	ActionId   HashType    `json:"action_id"`
-	StartLt    int64       `json:"start_lt,string"`
-	EndLt      int64       `json:"end_lt,string"`
-	StartUtime int64       `json:"start_utime"`
-	EndUtime   int64       `json:"end_utime"`
-	TxHashes   []*HashType `json:"transactions"`
-	Success    *bool       `json:"success"`
-	Type       string      `json:"type"`
-	Details    interface{} `json:"details"`
-	RawAction  *RawAction  `json:"raw_action,omitempty"`
+	TraceId           HashType    `json:"trace_id"`
+	ActionId          HashType    `json:"action_id"`
+	StartLt           int64       `json:"start_lt,string"`
+	EndLt             int64       `json:"end_lt,string"`
+	StartUtime        int64       `json:"start_utime"`
+	EndUtime          int64       `json:"end_utime"`
+	TraceEndLt        int64       `json:"trace_end_lt,string"`
+	TraceEndUtime     int64       `json:"trace_end_utime"`
+	TraceMcSeqnoEnd   int32       `json:"trace_mc_seqno_end"`
+	TxHashes          []HashType  `json:"transactions"`
+	Success           *bool       `json:"success"`
+	Type              string      `json:"type"`
+	Details           interface{} `json:"details"`
+	RawAction         *RawAction  `json:"raw_action,omitempty" swaggerignore:"true"`
+	TraceExternalHash *HashType   `json:"trace_external_hash,omitempty"`
 } // @name Action
 
-type EventMeta struct {
+type TraceMeta struct {
 	TraceState          string `json:"trace_state"`
 	Messages            int64  `json:"messages"`
 	Transactions        int64  `json:"transactions"`
 	PendingMessages     int64  `json:"pending_messages"`
 	ClassificationState string `json:"classification_state"`
-} // @name EventMeta
+} // @name TraceMeta
 
 type TraceNode struct {
 	TransactionHash HashType     `json:"tx_hash,omitempty"`
@@ -605,7 +755,7 @@ type TraceNode struct {
 	Children        []*TraceNode `json:"children"`
 } // @name TraceNode
 
-type Event struct {
+type Trace struct {
 	TraceId           HashType                  `json:"trace_id"`
 	ExternalHash      *HashType                 `json:"external_hash"`
 	McSeqnoStart      HashType                  `json:"mc_seqno_start"`
@@ -614,14 +764,14 @@ type Event struct {
 	StartUtime        uint32                    `json:"start_utime"`
 	EndLt             *uint64                   `json:"end_lt,string"`
 	EndUtime          *uint32                   `json:"end_utime"`
-	EventMeta         EventMeta                 `json:"trace_info"`
+	TraceMeta         TraceMeta                 `json:"trace_info"`
 	IsIncomplete      bool                      `json:"is_incomplete"`
 	Warning           string                    `json:"warning,omitempty"`
-	Actions           []*Action                 `json:"actions,omitempty"`
+	Actions           *[]*Action                `json:"actions,omitempty"`
 	Trace             *TraceNode                `json:"trace,omitempty"`
 	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
 	Transactions      map[HashType]*Transaction `json:"transactions,omitempty"`
-} // @name Event
+} // @name Trace
 
 // proxied models
 type V2AddressInformation struct {
@@ -670,6 +820,12 @@ type V2EstimateFeeResult struct {
 	SourceFees      V2EstimatedFee   `json:"source_fees"`
 	DestinationFees []V2EstimatedFee `json:"destination_fees"`
 } // @name V2EstimateFeeResult
+
+type BalanceChangesResult struct {
+	Ton     map[AccountAddress]int64                     `json:"changes"`
+	Fees    map[AccountAddress]int64                     `json:"fees"`
+	Jettons map[AccountAddress]map[AccountAddress]string `json:"jettons"`
+}
 
 // converters
 func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, error) {
