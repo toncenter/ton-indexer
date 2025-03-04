@@ -8,6 +8,7 @@ from indexer.events.blocks.basic_blocks import CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, ContractMatcher
 from indexer.events.blocks.core import Block
 
+zero_key = b'\x00' * 32
 
 class DeleteDnsRecordBlock(Block):
     def __init__(self, data):
@@ -16,6 +17,12 @@ class DeleteDnsRecordBlock(Block):
     def __repr__(self):
         return f"DELETE_DNS {self.event_nodes[0].message.transaction.hash}"
 
+class DnsRenewBlock(Block):
+    def __init__(self, data):
+        super().__init__('renew_dns', [], data)
+
+    def __repr__(self):
+        return f"DNS_RENEW {self.event_nodes[0].message.transaction.hash}"
 
 class ChangeDnsRecordBlock(Block):
     def __init__(self, data):
@@ -47,11 +54,17 @@ class ChangeDnsRecordMatcher(BlockMatcher):
                 'value': change_dns_message.value,
             })
         else:
-            new_block = DeleteDnsRecordBlock({
-                'source': AccountId(sender) if sender is not None else None,
-                'destination': AccountId(block.event_nodes[0].message.destination),
-                'key': change_dns_message.key,
-            })
+            if change_dns_message.key == zero_key:
+                new_block = DnsRenewBlock({
+                    'source': AccountId(sender) if sender is not None else None,
+                    'destination': AccountId(block.event_nodes[0].message.destination),
+                })
+            else:
+                new_block = DeleteDnsRecordBlock({
+                    'source': AccountId(sender) if sender is not None else None,
+                    'destination': AccountId(block.event_nodes[0].message.destination),
+                    'key': change_dns_message.key,
+                })
         new_block.failed = block.failed
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

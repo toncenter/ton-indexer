@@ -15,14 +15,18 @@ class BlockMatcher:
                  parent_matcher: BlockMatcher | None = None,
                  optional=False,
                  children_matchers=None,
-                 include_excess=True):
+                 include_excess=True,
+                 include_bounces=True,
+                 pre_build_auto_append=False):
         self.child_matcher = child_matcher
         self.children_matchers = children_matchers
         self.parent_matcher = parent_matcher
         self.optional = optional
         self.include_excess = include_excess
+        self.include_bounces = include_bounces
+        self.pre_build_auto_append = pre_build_auto_append
 
-    def test_self(self, block: Block):
+    def test_self(self, block: Block) -> bool:
         return True
 
     async def try_build(self, block: Block) -> list[Block] | None:
@@ -36,10 +40,19 @@ class BlockMatcher:
         parent_matched = await self.process_parent_matcher(block, blocks, parent_matched)
         if self_matched and parent_matched and child_matched:
             try:
-                r = await self.build_block(block, blocks)
+                auto_append_opcodes = []
                 if self.include_excess:
+                    auto_append_opcodes.append(ExcessMessage.opcode)
+                if self.include_bounces:
+                    auto_append_opcodes.append(0xffffffff)
+                if len(auto_append_opcodes) > 0 and self.pre_build_auto_append:
                     for next_block in block.next_blocks:
-                        if isinstance(next_block, CallContractBlock) and next_block.opcode == ExcessMessage.opcode:
+                        if isinstance(next_block, CallContractBlock) and next_block.opcode in auto_append_opcodes:
+                            blocks.append(next_block)
+                r = await self.build_block(block, blocks)
+                if len(auto_append_opcodes) > 0 and not self.pre_build_auto_append:
+                    for next_block in block.next_blocks:
+                        if isinstance(next_block, CallContractBlock) and next_block.opcode in auto_append_opcodes:
                             r.append(next_block)
                 return r
             except Exception as e:
@@ -152,6 +165,57 @@ class BlockTypeMatcher(BlockMatcher):
 
     def test_self(self, block: Block):
         return block.btype == self.block_type
+
+class GenericMatcher(BlockMatcher):
+    def __init__(self, test_self_func, child_matcher=None, parent_matcher=None, optional=False):
+        super().__init__(child_matcher, parent_matcher, optional)
+        self.test_self_func = test_self_func
+
+    def test_self(self, block: Block):
+        return self.test_self_func(block)
+
+class RecursiveMatcher(BlockMatcher):
+    def __init__(self, repeating_matcher: BlockMatcher, exit_matcher: BlockMatcher):
+        super().__init__(child_matcher=None, parent_matcher=None)
+        self.repeating_matcher = repeating_matcher
+        self.exit_matcher = exit_matcher
+
+
+    def test_self(self, block: Block):
+        return self.repeating_matcher.test_self(block)
+
+    async def process_child_matcher(self, block, blocks, child_matched):
+        current_blocks = [block]
+        blocks_to_add = []
+        finished = False
+        while True:
+            block_for_check = current_blocks[:]
+            current_blocks = []
+            for c in block_for_check:
+                if self.exit_matcher:
+                    r = await self.exit_matcher.try_build(c)
+                    if r is not None:
+                        blocks_to_add.extend(r)
+                        finished = True
+                if finished:
+                    break
+                r = await self.repeating_matcher.try_build(c)
+                if r is not None:
+                    blocks_to_add.extend(r)
+                    for b in r:
+                        current_blocks.extend(b.next_blocks)
+                    break
+            if finished:
+                break
+            if len(current_blocks) == 0:
+                child_matched = False
+                break
+
+        if len(blocks_to_add) > 0:
+            blocks.extend(set(blocks_to_add))
+            child_matched = True
+
+        return child_matched
 
 
 def child_sequence_matcher(matchers: list[BlockMatcher]) -> BlockMatcher | None:

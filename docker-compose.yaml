@@ -37,7 +37,7 @@ services:
       dockerfile: Dockerfile
     secrets:
       - postgres_password
-    command: python3 /app/event_classifier.py --pool-size ${TON_INDEXER_WORKERS:-8} --fetch-size 10000 --batch-size 500
+    command: python3 /app/event_classifier.py --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 10000 --batch-size 1000 --expected-total 720000000
     environment: *index-api 
     networks:
       internal:
