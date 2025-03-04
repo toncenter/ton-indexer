@@ -25,6 +25,8 @@ var client *http.Client
 var img_url_builder *ImgProxyUrlBuilder
 var ipfs_downloader *IpfsDownloader
 
+var overrideManager *OverrideManager
+
 var max_retries int
 var initial_backoff time.Duration
 var backoff_multiplier float64
@@ -146,14 +148,20 @@ func getCommonMetadataFromDb(ctx context.Context, tx pgx.Tx, task FetchTask) (ma
 	if err := json.Unmarshal(metadata_bytes, &metadata); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %v", err)
 	}
+
+	if override, exists := overrideManager.GetContentOverride(task.Type, task.Address); exists {
+		log.Printf("Applying content override for %s address %s", task.Type, task.Address)
+		metadata = override
+	}
+
 	metadata["_type"] = task.Type
 	return metadata, nil
 }
 
 func getNftMetadataFromDb(ctx context.Context, tx pgx.Tx, task FetchTask) (map[string]interface{}, error) {
 	query := `SELECT n.content, d.domain FROM nft_items n
-		LEFT JOIN dns_entries d ON d.nft_item_address = n.address
-		WHERE n.address = $1`
+        LEFT JOIN dns_entries d ON d.nft_item_address = n.address
+        WHERE n.address = $1`
 	var content_bytes []byte
 	var domain *string
 	err := tx.QueryRow(ctx, query, task.Address).Scan(&content_bytes, &domain)
@@ -164,6 +172,12 @@ func getNftMetadataFromDb(ctx context.Context, tx pgx.Tx, task FetchTask) (map[s
 	if err := json.Unmarshal(content_bytes, &metadata); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %v", err)
 	}
+
+	if override, exists := overrideManager.GetContentOverride(task.Type, task.Address); exists {
+		log.Printf("Applying content override for %s address %s", task.Type, task.Address)
+		metadata = override
+	}
+
 	if domain != nil {
 		metadata["domain"] = *domain
 	}
@@ -538,6 +552,8 @@ func main() {
 	var imgproxy_salt string
 	var ipfs_api_url string
 	var ipfs_server_url string
+	var overridesFilePath string
+
 	flag.StringVar(&pg_dsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
 	flag.IntVar(&processes, "processes", 32, "Set number of parallel queries")
 	flag.DurationVar(&initial_backoff, "initial-backoff", 5*time.Second, "Initial backoff duration")
@@ -550,6 +566,7 @@ func main() {
 	flag.StringVar(&imgproxy_key, "imgproxy-key", "", "ImgProxy key")
 	flag.StringVar(&ipfs_api_url, "ipfs-api-url", "", "Ipfs api url (http://127.0.0.1:5001)")
 	flag.StringVar(&ipfs_server_url, "ipfs-server-url", "https://ipfs.io/ipfs", "Ipfs gateway server url")
+	flag.StringVar(&overridesFilePath, "overrides-file", "metadata_overrides.json", "Path to metadata overrides JSON file")
 	flag.Parse()
 
 	key, err := hex.DecodeString(imgproxy_key)
@@ -574,6 +591,11 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+	}
+
+	overrideManager = NewOverrideManager(overridesFilePath)
+	if err := overrideManager.Load(); err != nil {
+		log.Printf("Warning: Failed to load metadata overrides: %v", err)
 	}
 
 	gate = semaphore.NewWeighted(int64(processes))
