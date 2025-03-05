@@ -2262,6 +2262,7 @@ func (db *DbClient) QueryMetadata(
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
+	defer conn.Release()
 	return queryMetadataImpl(raw_addr_list, conn, settings)
 }
 
@@ -3092,11 +3093,14 @@ func (db *DbClient) QueryBalanceChanges(
 	}
 
 	conn, err := db.Pool.Acquire(context.Background())
-	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-	defer cancel_ctx()
 	if err != nil {
 		return BalanceChangesResult{}, IndexError{Code: 500, Message: err.Error()}
 	}
+	defer conn.Release()
+
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+
 	if trace_id == nil && req.ActionId != nil {
 		query := "SELECT trace_id FROM actions WHERE action_id = $1"
 		err := conn.QueryRow(ctx, query, *req.ActionId).Scan(&trace_id)
