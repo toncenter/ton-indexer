@@ -1790,6 +1790,16 @@ const docTemplate = `{
                         "description": "Find actions by trace id",
                         "name": "trace_id",
                         "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find actions by transaction hash.",
+                        "name": "tx_hash",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1845,6 +1855,16 @@ const docTemplate = `{
                         "collectionFormat": "multi",
                         "description": "Find trace by trace id.",
                         "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Find trace by existing transaction hash.",
+                        "name": "transaction_hash",
                         "in": "query"
                     }
                 ],

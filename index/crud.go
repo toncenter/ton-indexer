@@ -3104,3 +3104,53 @@ func (db *DbClient) QueryBalanceChanges(
 		Jettons: jetton_changes,
 	}, nil
 }
+
+func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs []HashType,
+	settings RequestSettings) ([]HashType, error) {
+
+	if len(txIDs) == 0 {
+		return nil, nil
+	}
+
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+
+	stringTxIDs := make([]string, len(txIDs))
+	for i, hash := range txIDs {
+		stringTxIDs[i] = string(hash)
+	}
+
+	query := `
+        SELECT DISTINCT tr.external_hash 
+        FROM traces tr
+        INNER JOIN transactions tx ON tr.trace_id = tx.trace_id
+        WHERE tx.hash = ANY($1)
+        AND tr.external_hash IS NOT NULL`
+
+	rows, err := conn.Query(ctx, query, pq.Array(stringTxIDs))
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	var externalHashes []HashType
+	for rows.Next() {
+		var hash string
+		if err := rows.Scan(&hash); err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		externalHashes = append(externalHashes, HashType(hash))
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	return externalHashes, nil
+}

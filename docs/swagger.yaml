@@ -2225,6 +2225,13 @@ paths:
           type: string
         name: trace_id
         type: array
+      - collectionFormat: multi
+        description: Find actions by transaction hash.
+        in: query
+        items:
+          type: string
+        name: tx_hash
+        type: array
       produces:
       - application/json
       responses:
@@ -2260,6 +2267,13 @@ paths:
         items:
           type: string
         name: trace_id
+        type: array
+      - collectionFormat: multi
+        description: Find trace by existing transaction hash.
+        in: query
+        items:
+          type: string
+        name: transaction_hash
         type: array
       produces:
       - application/json
