@@ -495,13 +495,8 @@ func (h *hash) DecodeMsgpack(dec *msgpack.Decoder) error {
 func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 
 	queue := make([]string, 0)
-	first_key_bytes, err := hex.DecodeString(traceId)
-	if err != nil {
-		return Trace{}, fmt.Errorf("failed to decode key: %w", err)
-	}
 
-	b64_trace_id := base64.StdEncoding.EncodeToString(first_key_bytes)
-	queue = append(queue, b64_trace_id)
+	queue = append(queue, traceId)
 	txs := make([]traceNode, 0)
 	actions := make([]Action, 0)
 	if actionsBytes, exists := traceHash["actions"]; exists {
@@ -519,9 +514,9 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 			return Trace{}, fmt.Errorf("key %s not found in trace", key)
 		}
 		nodeBytes := []byte(nodeData)
-		err = msgpack.Unmarshal(nodeBytes, &node)
+		err := msgpack.Unmarshal(nodeBytes, &node)
 		node.Key = key
-		node.TraceId = b64_trace_id
+		node.TraceId = traceId
 		txs = append(txs, node)
 
 		if err != nil {
@@ -537,7 +532,7 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 	}
 	_, has_actions := traceHash["actions"]
 	return Trace{
-		TraceId:    b64_trace_id,
+		TraceId:    traceId,
 		Nodes:      txs,
 		Classified: has_actions,
 		Actions:    actions,
@@ -765,17 +760,10 @@ func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 }
 
 func (a *Action) GetActionRow() (ActionRow, error) {
-	// convert action hex trace id to base 64 trace id
-	traceId, err := hex.DecodeString(a.TraceId)
-	if err != nil {
-		return ActionRow{}, err
-	}
-	traceIdB64 := base64.StdEncoding.EncodeToString(traceId)
-
 	row := ActionRow{
 		ActionId:             a.ActionId,
 		Type:                 a.Type,
-		TraceId:              traceIdB64,
+		TraceId:              a.TraceId,
 		TxHashes:             a.TxHashes,
 		Value:                a.Value,
 		Amount:               a.Amount,
@@ -793,7 +781,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		Asset2Secondary:      a.Asset2Secondary,
 		Opcode:               a.Opcode,
 		Success:              a.Success,
-		TraceExternalHash:    &traceIdB64,
+		TraceExternalHash:    &a.TraceId,
 	}
 	if a.TonTransferData != nil {
 		row.TonTransferContent = a.TonTransferData.Content

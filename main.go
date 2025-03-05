@@ -1140,7 +1140,7 @@ func GetTraces(c *fiber.Ctx) error {
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
 // @param trace_id query []string false "Find trace by trace id."
-// @param transaction_hash query []string false "Find trace by existing transaction hash."
+// @param tx_hash query []string false "Find trace by existing transaction hash."
 // @router			/api/v3/pendingTraces [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -1260,7 +1260,6 @@ func GetActions(c *fiber.Ctx) error {
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get actions. Can be sent in hex, base64 or base64url form."
 // @param trace_id query []string false "Find actions by trace id"
-// @param tx_hash query []string false "Find actions by transaction hash."
 // @router			/api/v3/pendingActions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -1273,14 +1272,6 @@ func GetPendingActions(c *fiber.Ctx) error {
 	}
 	var emulatedContext *index.EmulatedTracesContext
 	var err error
-
-	if len(act_req.TransactionHash) > 0 {
-		additional_hashes, err := pool.QueryTransactionsExternalHashes(context.Background(), act_req.TransactionHash, request_settings)
-		if err != nil {
-			return err
-		}
-		act_req.TraceId = append(act_req.TraceId, additional_hashes...)
-	}
 
 	if act_req.AccountAddress != nil {
 		emulatedContext, err = ActionContextByAccount(emulatedTracesRepository,
@@ -1707,14 +1698,8 @@ func ActionContextByAccount(repository *emulated.EmulatedTracesRepository, accou
 			return nil, err
 		}
 		for k, v := range res {
-			bytes, err := hex.DecodeString(k)
-			if err != nil {
-				return nil, err
-			}
 			trace_ids = append(trace_ids, k)
-
-			b64_trace_id := base64.StdEncoding.EncodeToString(bytes)
-			actions[b64_trace_id] = v
+			actions[k] = v
 		}
 	}
 	raw_traces, err := repository.LoadRawTraces(trace_ids)
@@ -1736,14 +1721,18 @@ func ContextByTraces(repository *emulated.EmulatedTracesRepository, trace_ids []
 	}
 	keys := make(map[string]struct{})
 	for _, trace_id := range trace_ids {
-		var trace_id_hex string
-		trace_id_raw, err := base64.StdEncoding.DecodeString(string(trace_id))
+		var trace_id_base64 string
+		_, err := base64.StdEncoding.DecodeString(string(trace_id))
 		if err != nil {
-			trace_id_hex = string(trace_id)
+			b, err := hex.DecodeString(string(trace_id))
+			if err != nil {
+				return nil, err
+			}
+			trace_id_base64 = base64.StdEncoding.EncodeToString(b)
 		} else {
-			trace_id_hex = strings.ToUpper(hex.EncodeToString(trace_id_raw))
+			trace_id_base64 = string(trace_id)
 		}
-		keys[trace_id_hex] = struct{}{}
+		keys[trace_id_base64] = struct{}{}
 	}
 	uniqueKeys := make([]string, 0, len(keys))
 	for key := range keys {

@@ -1,8 +1,6 @@
 package index
 
 import (
-	"encoding/base64"
-	"encoding/hex"
 	"github.com/jackc/pgx/v5"
 	"github.com/kdimentionaltree/ton-index-go/index/emulated"
 	"log"
@@ -165,14 +163,8 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		}
 		c.traceIds = append(c.traceIds, trace_id)
 
-		trace_id_bytes, err := hex.DecodeString(trace_id)
-		if err != nil {
-			return err
-		}
-
-		b64_trace_id := base64.StdEncoding.EncodeToString(trace_id_bytes)
 		trace_row := emulated.TraceRow{
-			TraceId:      b64_trace_id,
+			TraceId:      trace_id,
 			McSeqnoStart: 0,
 			McSeqnoEnd:   nil,
 			EndLt:        nil,
@@ -195,12 +187,12 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 				return err
 			}
 
-			if node.Key == b64_trace_id {
+			if node.Key == trace_id {
 				trace_row.StartLt = transactionRow.Lt
 				trace_row.StartUtime = *transactionRow.Now
 			}
 			if should_save {
-				c.emulatedTransactions[b64_trace_id] = append(c.emulatedTransactions[b64_trace_id], &transactionRow)
+				c.emulatedTransactions[trace_id] = append(c.emulatedTransactions[trace_id], &transactionRow)
 			}
 			messages, contents, initStates, err := node.GetMessages()
 			if err != nil {
@@ -235,13 +227,13 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		trace_row.Transactions = int64(transaction_count)
 		trace_row.Messages = int64(message_count)
 		trace_row.PendingMessages = int64(pending_messages)
-		c.emulatedTraces[b64_trace_id] = &trace_row
+		c.emulatedTraces[trace_id] = &trace_row
 		for _, a := range trace.Actions {
 			row, err := a.GetActionRow()
 			if err != nil {
 				return err
 			}
-			c.emulatedActions[b64_trace_id] = append(c.emulatedActions[b64_trace_id], &row)
+			c.emulatedActions[trace_id] = append(c.emulatedActions[trace_id], &row)
 		}
 	}
 	return nil

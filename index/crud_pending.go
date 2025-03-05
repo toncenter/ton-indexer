@@ -279,7 +279,6 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 			}
 			completed_trace_ids_in_db = append(completed_trace_ids_in_db, trace_id)
 		}
-		println("Removed ", len(completed_trace_ids_in_db), " completed traces")
 		emulatedContext.RemoveTraces(completed_trace_ids_in_db)
 	}
 	traceRows := emulatedContext.GetTraces()
