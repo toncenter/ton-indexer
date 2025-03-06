@@ -2,7 +2,7 @@ name: Test pull request
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
 
 permissions:
   contents: read
@@ -19,6 +19,10 @@ jobs:
       uses: actions/checkout@v3
       with:      
         submodules: 'recursive'
+    
+    - uses: actions/setup-go@v5
+      with:
+        go-version: '>=1.23.0'
 
     - name: Install system libraries
       run: |
@@ -28,14 +32,13 @@ jobs:
         chmod +x llvm.sh
         sudo ./llvm.sh 16 all
 
-
     - name: Configure CMake
       run: cmake -B ${{github.workspace}}/build
 
     - name: Build
       # Build your program with the given configuration
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel $(nproc)
 
     - name: Test
       working-directory: ${{github.workspace}}/build
-      run: ./tondb-scanner/test-tondb
+      run: ./ton-index-worker/tondb-scanner/test-tondb
