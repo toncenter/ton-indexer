@@ -38,12 +38,12 @@ jobs:
           - image-name: ton-indexer-classifier
             context: indexer
             dockerfile: Dockerfile
-          - image-name: ton-indexer-api
-            context: ton-index-go
-            dockerfile: Dockerfile
-          - image-name: ton-indexer-worker
-            context: ton-index-worker
-            dockerfile: Dockerfile
+          # - image-name: ton-indexer-api
+          #   context: ton-index-go
+          #   dockerfile: Dockerfile
+          # - image-name: ton-indexer-worker
+          #   context: ton-index-worker
+          #   dockerfile: Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,7 +64,7 @@ jobs:
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
-          platforms: linux/${{ matrix.arch.platform }}
+          # platforms: linux/${{ matrix.arch.platform }}
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.image-name }}:${{ needs.release.outputs.version }}-${{ matrix.arch.platform }}
