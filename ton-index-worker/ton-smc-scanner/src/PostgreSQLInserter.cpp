@@ -432,7 +432,7 @@ void PostgreSQLInsertManager::checkpoint(ton::ShardIdFull shard, td::Bits256 cur
       if (!c.is_open()) { return; }
       pqxx::work txn(c);    
       td::StringBuilder sb;
-      sb << "create table if not exists _ton_smc_scanner(id int, workchain bigint, shard bigint, cur_addr varchar, primary key (id, workchain, shard));\n";
+      sb << "create unlogged table if not exists _ton_smc_scanner(id int, workchain bigint, shard bigint, cur_addr varchar, primary key (id, workchain, shard));\n";
       sb << "insert into _ton_smc_scanner(id, workchain, shard, cur_addr) values (1, " 
          << shard.workchain << "," << static_cast<std::int64_t>(shard.shard) << ","
          << txn.quote(cur_addr_.to_hex()) 
@@ -469,7 +469,7 @@ void PostgreSQLInsertManager::checkpoint_reset(ton::ShardIdFull shard) {
       pqxx::work txn(c);    
       
       td::StringBuilder sb;
-      sb << "create table if not exists _ton_smc_scanner(id int, workchain bigint, shard bigint, cur_addr varchar, primary key (id, workchain, shard));\n";
+      sb << "create unlogged table if not exists _ton_smc_scanner(id int, workchain bigint, shard bigint, cur_addr varchar, primary key (id, workchain, shard));\n";
       sb << "delete from _ton_smc_scanner where id = 1 and workchain = " << shard.workchain << " and shard = " << static_cast<std::int64_t>(shard.shard) << ";\n";
       txn.exec0(sb.as_cslice().str());
   } catch (const std::exception &e) {

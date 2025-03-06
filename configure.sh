@@ -62,3 +62,6 @@ cat <<EOF >> .env
 TON_WORKER_DBROOT=
 EOF
 fi
+
+# prepare files
+curl -s https://api.dedust.io/v2/pools -o indexer/files/dedust_pools.json

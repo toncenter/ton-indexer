@@ -1539,24 +1539,27 @@ void InsertManagerPostgres::start_up() {
       exec_query("create domain tonaddr as varchar;");
     }
 
+    exec_query("create type account_status_type as enum ('uninit', 'frozen', 'active', 'nonexist');");
     exec_query("create type blockid as (workchain integer, shard bigint, seqno integer);");
     exec_query("create type blockidext as (workchain integer, shard bigint, seqno integer, root_hash tonhash, file_hash tonhash);");
-    exec_query("create type account_status_type as enum('uninit', 'frozen', 'active', 'nonexist');");
-    exec_query("create type descr_type as enum('ord', 'storage', 'tick_tock', 'split_prepare', 'split_install', 'merge_prepare', 'merge_install');");
-    exec_query("create type status_change_type as enum('unchanged', 'frozen', 'deleted');");
-    exec_query("create type skipped_reason_type as enum('no_state', 'bad_state', 'no_gas', 'suspended');");
-    exec_query("create type bounce_type as enum('negfunds', 'nofunds', 'ok');");
-    exec_query("create type trace_state as enum('complete', 'pending', 'broken');");
-    exec_query("create type msg_direction as enum('out', 'in');");
-    exec_query("create type trace_classification_state as enum('unclassified', 'failed', 'ok', 'broken');");
+    exec_query("create type bounce_type as enum ('negfunds', 'nofunds', 'ok');");
+    exec_query("create type descr_type as enum ('ord', 'storage', 'tick_tock', 'split_prepare', 'split_install', 'merge_prepare', 'merge_install');");
+    exec_query("create type msg_direction as enum ('out', 'in');");
+    exec_query("create type skipped_reason_type as enum ('no_state', 'bad_state', 'no_gas', 'suspended');");
+    exec_query("create type status_change_type as enum ('unchanged', 'frozen', 'deleted');");
+    exec_query("create type trace_classification_state as enum ('unclassified', 'failed', 'ok', 'broken');");
+    exec_query("create type trace_state as enum ('complete', 'pending', 'broken');");
     exec_query("create type change_dns_record_details as (key varchar, value_schema varchar, value varchar, flags integer);");
-    exec_query("create type peer_swap_details as (asset_in tonaddr, amount_in numeric, asset_out tonaddr, amount_out numeric);");
+    exec_query("create type dex_deposit_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1 varchar, asset2 varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, lp_tokens_minted numeric);");
     exec_query("create type dex_transfer_details as (amount numeric, asset tonaddr, source tonaddr, destination tonaddr, source_jetton_wallet tonaddr, destination_jetton_wallet tonaddr);");
-    exec_query("create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[]);");
-    exec_query("create type ton_transfer_details as (content text, encrypted boolean);");
-    exec_query("create type nft_transfer_details as (is_purchase boolean, price numeric, query_id numeric, custom_payload text, forward_payload text, forward_amount numeric, response_destination tonaddr, nft_item_index numeric);");
-    exec_query("create type jetton_transfer_details as (response_destination tonaddr, forward_amount numeric, query_id numeric, custom_payload text, forward_payload text, comment text, is_encrypted_comment bool);");
+    exec_query("create type dex_withdraw_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1_out varchar, asset2_out varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, dex_jetton_wallet_1 varchar, dex_jetton_wallet_2 varchar, lp_tokens_burnt numeric, dex_wallet_1 varchar, dex_wallet_2 varchar);");
+    exec_query("create type jetton_transfer_details as(response_destination tonaddr, forward_amount numeric, query_id numeric, custom_payload text, forward_payload text, comment text, is_encrypted_comment boolean);");
     exec_query("create type nft_mint_details as (nft_item_index numeric);");
+    exec_query("create type nft_transfer_details as(is_purchase boolean, price numeric, query_id numeric, custom_payload text, forward_payload text, forward_amount numeric, response_destination tonaddr, nft_item_index numeric);");
+    exec_query("create type peer_swap_details as(asset_in tonaddr, amount_in numeric, asset_out tonaddr, amount_out numeric);");
+    exec_query("create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[]);");
+    exec_query("create type staking_details as(provider varchar, ts_nft varchar);");
+    exec_query("create type ton_transfer_details as (content text, encrypted boolean);");
   }
   catch (const std::exception &e) {
     LOG(ERROR) << "Failed to run some of initial scripts: " << e.what();
@@ -1751,7 +1754,14 @@ void InsertManagerPostgres::start_up() {
       "data_hash tonhash, "
       "code_hash tonhash, "
       "data_boc text, "
-      "code_boc text);\n"
+      "code_boc text) with (autovacuum_vacuum_scale_factor = 0.03);\n"
+    );
+
+    query += (
+      "create table address_book ("
+      "address tonaddr not null primary key, "
+      "code_hash tonhash, "
+      "domain varchar);\n"
     );
 
     query += (
@@ -1813,6 +1823,14 @@ void InsertManagerPostgres::start_up() {
       "last_transaction_lt bigint, "
       "code_hash tonhash, "
       "data_hash tonhash);\n"
+    );
+
+    query += (
+      "create table if not exists mintless_jetton_masters ("
+      "id bigserial,"
+      "address tonaddr not null primary key,"
+      "is_indexed boolean,"
+      "custom_payload_api_uri character varying[]);\n"
     );
 
     query += (
@@ -1920,7 +1938,7 @@ void InsertManagerPostgres::start_up() {
     // traces
     query += (
       "create table if not exists traces ("
-      "trace_id tonhash, "
+      "trace_id tonhash not null primary key, "
       "external_hash tonhash, "
       "mc_seqno_start integer, "
       "mc_seqno_end integer, "
@@ -1932,13 +1950,12 @@ void InsertManagerPostgres::start_up() {
       "pending_edges_ bigint, "
       "edges_ bigint, "
       "nodes_ bigint, "
-      "classification_state trace_classification_state default 'unclassified', "
-      "primary key (trace_id)"
+      "classification_state trace_classification_state default 'unclassified'"
       ");\n"
     );
     
     query += (
-      "create table if not exists actions ("
+      "create table actions ("
       "trace_id tonhash not null, "
       "action_id tonhash not null, "
       "start_lt bigint, "
@@ -1965,17 +1982,30 @@ void InsertManagerPostgres::start_up() {
       "change_dns_record_data change_dns_record_details, "
       "nft_mint_data nft_mint_details, "
       "success boolean default true, "
-      "primary key (trace_id, action_id),"
-      "foreign key (trace_id) references traces"
-      ");\n"
+      "dex_withdraw_liquidity_data dex_withdraw_liquidity_details, "
+      "dex_deposit_liquidity_data dex_deposit_liquidity_details, "
+      "staking_data staking_details, "
+      "trace_end_lt bigint, "
+      "trace_external_hash tonhash, "
+      "trace_end_utime integer, "
+      "mc_seqno_end integer, "
+      "trace_mc_seqno_end integer, "
+      "value_extra_currencies jsonb default '{}'::jsonb, "
+      "primary key (trace_id, action_id)"
+      ") with (autovacuum_vacuum_scale_factor = 0.03);\n"
     );
 
     query += (
-      "create table if not exists mintless_jetton_masters ("
-      "id bigserial not null, "
-      "address tonaddr not null primary key, "
-      "is_indexed boolean, "
-      "custom_payload_api_uri varchar[]);\n"
+      "create table action_accounts ("
+      "action_id tonhash not null, "
+      "trace_id tonhash not null, "
+      "account tonaddr not null, "
+      "trace_end_lt bigint not null, "
+      "action_end_lt bigint not null, "
+      "trace_end_utime integer, "
+      "action_end_utime bigint, "
+      "primary key (account, trace_end_lt, trace_id, action_end_lt, action_id)"
+      ") with (autovacuum_vacuum_scale_factor = 0.03);\n"
     );
 
     query += (
@@ -1988,6 +2018,26 @@ void InsertManagerPostgres::start_up() {
       "dns_site_adnl varchar(64), "
       "dns_storage_bag_id varchar(64), "
       "last_transaction_lt bigint);\n"
+    );
+
+    query += "create table blocks_classified (mc_seqno integer not null primary key);\n";
+
+    query += (
+      "create unlogged table _classifier_tasks ("
+      "id serial, "
+      "mc_seqno integer, "
+      "trace_id tonhash, "
+      "pending boolean, "
+      "claimed_at timestamp, "
+      "start_after timestamp);\n"
+    );
+
+    query += (
+      "create unlogged table _classifier_failed_traces ("
+      "id serial, "
+      "trace_id tonhash, "
+      "broken boolean, "
+      "error varchar);\n"
     );
 
     LOG(DEBUG) << query;
@@ -2007,7 +2057,8 @@ void InsertManagerPostgres::start_up() {
     
     // some necessary indexes
     query += (
-      "create index if not exists trace_unclassified_index on traces (state, start_lt) include (trace_id, nodes_) where (classification_state = 'unclassified');\n"
+      "create index if not exists trace_unclassified_index on traces (state, start_lt) include (trace_id, nodes_) where (classification_state = 'unclassified'::trace_classification_state);\n"
+      "create index if not exists _classifier_tasks_mc_seqno_idx on _classifier_tasks (mc_seqno desc);\n"
     );
 
     LOG(DEBUG) << query;
@@ -2015,6 +2066,134 @@ void InsertManagerPostgres::start_up() {
     txn.commit();
   } catch (const std::exception &e) {
     LOG(ERROR) << "Error while creating required indexes in database: " << e.what();
+    std::_Exit(1);
+  }
+
+  // create functions and triggers
+  LOG(INFO) << "Creating SQL functions and triggers...";
+  try {
+    pqxx::connection c(credential_.get_connection_string());
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    // rebuild broken traces
+    query += (
+      "create or replace function trace_get_root(transaction_hash tonhash)  "
+      "returns tonhash parallel safe language plpgsql as $$ "
+      "declare parent tonhash; current tonhash; msg tonhash; "
+      "begin\n"
+      "    current := transaction_hash;\n"
+      "    parent := transaction_hash;\n"
+      "    while parent is not NULL loop\n"
+      "        select msg_hash into msg from messages where tx_hash = current and direction = 'in';\n"
+      "        select tx_hash into parent from messages where msg_hash = msg and direction = 'out';\n"
+      "        if parent is not null then current := parent; end if;\n"
+      "    end loop;\n"
+      "    return current;\n"
+      "end; $$;\n"
+      "create function rebuild_trace(root_tx_hash tonhash) "
+      "returns tonhash language plpgsql as $$ "
+      "declare "
+      "new_trace_id tonhash; "
+      "flag bool; "
+      "txs tonhash[]; "
+      "new_trace_external_hash tonhash; "
+      "new_trace_start_seqno int; "
+      "new_trace_start_lt bigint; "
+      "new_trace_start_utime int; "
+      "new_trace_end_seqno int; "
+      "new_trace_end_lt bigint; "
+      "new_trace_end_utime int; "
+      "new_trace_nodes int; "
+      "new_trace_edges int; "
+      "new_trace_pending_edges int;\n"
+      "begin\n"
+      "    new_trace_id := root_tx_hash;\n"
+      "    select msg_hash,\n"
+      "        source is null or source = '0:0000000000000000000000000000000000000000000000000000000000000000'\n"
+      "            or source = '-1:0000000000000000000000000000000000000000000000000000000000000000'\n"
+      "    into new_trace_external_hash, flag\n"
+      "    from messages where tx_hash = root_tx_hash and direction = 'in';\n"
+      "    if not flag then\n"
+      "        new_trace_id := trace_get_root(root_tx_hash);\n"
+      "        insert into broken_traces_roots(tx_hash)\n"
+      "        values (new_trace_id)\n"
+      "        on conflict do nothing;\n"
+      "    end if;\n\n"
+      "    -- get transactions\n"
+      "    with recursive cte as (\n"
+      "        select hash as tx_hash from transactions where hash = $1\n"
+      "        union all\n"
+      "        select M2.tx_hash\n"
+      "        from messages M1\n"
+      "            join cte TT on TT.tx_hash = M1.tx_hash\n"
+      "            join messages M2\n"
+      "            on M1.msg_hash = M2.msg_hash and M1.direction = 'out' and\n"
+      "                M2.direction = 'in'\n"
+      "    )\n"
+      "    select array_agg(cte.tx_hash) into txs from cte;\n\n"
+      "    -- get meta and update transactions\n"
+      "    update transactions set trace_id = new_trace_id where hash = any(txs);\n"
+      "    update messages set trace_id = new_trace_id where tx_hash = any(txs);\n\n"
+      "    select\n"
+      "        count(*), min(mc_block_seqno), max(mc_block_seqno), min(lt), max(lt), min(now), max(now)\n"
+      "    into new_trace_nodes, new_trace_start_seqno, new_trace_end_seqno, new_trace_start_lt,\n"
+      "        new_trace_end_lt, new_trace_start_utime, new_trace_end_utime\n"
+      "    from transactions where trace_id = new_trace_id;\n\n"
+      "    -- build edges\n"
+      "    delete from traces where trace_id = new_trace_id;\n\n"
+      "    insert into traces(trace_id) values (new_trace_id) on conflict do nothing;\n\n"
+      "    select count(*), sum((incomplete)::int) into new_trace_edges, new_trace_pending_edges\n"
+      "        from (select\n"
+      "        new_trace_id as trace_id, msg_hash,\n"
+      "        max(case when direction = 'out' then tx_hash end) as left_tx,\n"
+      "        max(case when direction = 'in' then tx_hash end) as right_tx,\n"
+      "        bool_or(source is not NULL and source = '0:0000000000000000000000000000000000000000000000000000000000000000'\n"
+      "            and source = '-1:0000000000000000000000000000000000000000000000000000000000000000')\n"
+      "        and max(case when direction = 'out' then tx_hash end) is null as incomplete,\n"
+      "        bool_or(destination is not NULL) and max(case when direction = 'in' then tx_hash end) is null as broken\n"
+      "    from messages\n"
+      "    where trace_id = new_trace_id\n"
+      "    group by trace_id, msg_hash) as A where A.trace_id = new_trace_id;\n\n"
+      "    update traces set\n"
+      "        external_hash=new_trace_external_hash,\n"
+      "        mc_seqno_start=new_trace_start_seqno,\n"
+      "        mc_seqno_end=new_trace_end_seqno,\n"
+      "        start_lt=new_trace_start_lt,\n"
+      "        start_utime=new_trace_start_utime,\n"
+      "        end_lt=new_trace_end_lt,\n"
+      "        end_utime=new_trace_end_utime,\n"
+      "        state=(case when new_trace_pending_edges = 0 then 'complete' else 'pending' end)::trace_state,\n"
+      "        pending_edges_=new_trace_pending_edges,\n"
+      "        edges_=new_trace_edges,\n"
+      "        nodes_=new_trace_nodes,\n"
+      "        classification_state='unclassified'\n"
+      "    where trace_id = new_trace_id;\n"
+      "    return root_tx_hash;\n"
+      "end $$;\n"
+    );
+
+    // classifier dispatcher trigger
+    query += (
+      "create function on_new_mc_block_func() "
+      "returns trigger language plpgsql as $$ "
+      "begin\n"
+      "insert into _classifier_tasks(mc_seqno, start_after)\n"
+      "values (NEW.seqno, now() + interval '1 seconds');\n"
+      "return null; \n"
+      "end; $$;\n"
+      "create trigger on_new_mc_block "
+      "after insert on blocks for each row when (new.workchain = '-1'::integer) "
+      "execute procedure on_new_mc_block_func();\n"
+    );
+
+    
+    LOG(DEBUG) << query;
+    txn.exec0(query);
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while creating SQL functions and triggers in database: " << e.what();
     std::_Exit(1);
   }
 
