@@ -7,8 +7,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.semantic_version.outputs.version }}
-      version_tag: ${{ steps.semantic_version.outputs.version_tag }}
+      version: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && needs.release.outputs.version_tag || needs.release.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,9 +31,9 @@ jobs:
       matrix:
         arch:
           - runner: ubuntu-24.04
-            platform: linux/amd64
+            platform: amd64
           - runner: ubuntu-24.04-arm
-            platform: linux/arm64
+            platform: arm64
         image:
           - image-name: ton-indexer-classifier
             context: indexer
@@ -65,20 +64,50 @@ jobs:
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
-          platforms: ${{ matrix.arch.platform }}
+          platforms: linux/${{ matrix.arch.platform }}
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.image-name }}:${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && needs.release.outputs.version_tag || needs.release.outputs.version }}
-            ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && format('{0}/{1}:{2}', secrets.DOCKERHUB_USERNAME, matrix.image.image-name, 'latest') || '' }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.image-name }}:${{ needs.release.outputs.version }}-${{ matrix.arch.platform }}
+
+  manifest:
+    needs: [docker, release]
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image:
+          - ton-indexer-classifier
+          - ton-indexer-api
+          - ton-indexer-worker
+    steps:
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          docker manifest create ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }} \
+            --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-amd64 \
+            --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-arm64
+          docker manifest push ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}
+      
+      - name: Create Docker Manifest for Latest
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        run: |
+          docker manifest create ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest \
+            --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-amd64 \
+            --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-arm64
+          docker manifest push ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
 
       - name: Create Git Tag
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/master'
         uses: actions/github-script@v7
         with:
           script: |
             github.rest.git.createRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              ref: 'refs/tags/${{ needs.release.outputs.version_tag }}',
+              ref: 'refs/tags/${{ needs.release.outputs.version }}',
               sha: context.sha
             })
