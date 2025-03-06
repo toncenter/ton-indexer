@@ -2,27 +2,30 @@ name: Docker Build and Push
 
 on:
   push:
+    tags:
+      - 'v*.*.*'
 
 jobs:
   release:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && steps.semantic_version.outputs.version_tag || steps.semantic_version.outputs.version }}
+      version: ${{ github.ref_name }}
+      # version: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && steps.semantic_version.outputs.version_tag || steps.semantic_version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Semantic Versioning
-        id: semantic_version
-        uses: paulhatch/semantic-version@v5.4.0
-        with:
-          tag_prefix: "v"
-          major_pattern: "[*]"
-          minor_pattern: "[+]"
-          version_format: "${major}.${minor}.${patch}.dev${increment}"
-          bump_each_commit: false
+      # - name: Semantic Versioning
+      #   id: semantic_version
+      #   uses: paulhatch/semantic-version@v5.4.0
+      #   with:
+      #     tag_prefix: "v"
+      #     major_pattern: "[*]"
+      #     minor_pattern: "[+]"
+      #     version_format: "${major}.${minor}.${patch}.dev${increment}"
+      #     bump_each_commit: false
 
   docker:
     needs: release
@@ -89,22 +92,22 @@ jobs:
             --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-arm64
           docker manifest push ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}
       
-      - name: Create Docker Manifest for Latest
-        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-        run: |
-          docker manifest create ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest \
-            --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-amd64 \
-            --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-arm64
-          docker manifest push ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
+      # - name: Create Docker Manifest for Latest
+      #   if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+      #   run: |
+      #     docker manifest create ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest \
+      #       --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-amd64 \
+      #       --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-arm64
+      #     docker manifest push ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
 
-      - name: Create Git Tag
-        if: github.ref == 'refs/heads/master'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.git.createRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: 'refs/tags/${{ needs.release.outputs.version }}',
-              sha: context.sha
-            })
+      # - name: Create Git Tag
+      #   if: github.ref == 'refs/heads/master'
+      #   uses: actions/github-script@v7
+      #   with:
+      #     script: |
+      #       github.rest.git.createRef({
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         ref: 'refs/tags/${{ needs.release.outputs.version }}',
+      #         sha: context.sha
+      #       })
