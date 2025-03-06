@@ -1,0 +1,72 @@
+name: Docker Build and Push
+
+on:
+  push:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.semantic_version.outputs.version }}
+      version_tag: ${{ steps.semantic_version.outputs.version_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Semantic Versioning
+        id: semantic_version
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          tag_prefix: "v"
+          major_pattern: "[*]"
+          minor_pattern: "[+]"
+          version_format: "${major}.${minor}.${patch}.dev${increment}"
+          bump_each_commit: false
+
+  docker:
+    needs: release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - image-name: ton-indexer-classifier
+            context: indexer
+            dockerfile: Dockerfile
+          - image-name: ton-indexer-api
+            context: ton-index-go
+            dockerfile: Dockerfile
+          - image-name: ton-indexer-worker
+            context: ton-index-worker
+            dockerfile: Dockerfile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker Buildx qemu fix
+        run: |
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes -c yes
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image-name }}:${{ needs.release.outputs.version }}
+            ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && format('{0}/{1}:{2}', secrets.DOCKERHUB_USERNAME, matrix.image-name, 'latest') || '' }}
+            ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && format('{0}/{1}:{2}', secrets.DOCKERHUB_USERNAME, matrix.image-name, needs.release.outputs.version_tag) || '' }}

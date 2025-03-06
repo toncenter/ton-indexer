@@ -25,4 +25,4 @@ fi
 printenv
 ls -la
 
-exec "$@"
+/app/event_classifier.py $@
