@@ -27,7 +27,7 @@ jobs:
 
   docker:
     needs: release
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, Linux]
     strategy:
       matrix:
         include:
