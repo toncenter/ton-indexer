@@ -8,4 +8,5 @@ include(cmake/golang.cmake)
 
 add_subdirectory(ton-emulate-go)
 add_subdirectory(ton-index-go)
+add_subdirectory(ton-metadata-fetcher)
 add_subdirectory(ton-index-worker)
