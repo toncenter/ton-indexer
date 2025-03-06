@@ -2040,6 +2040,21 @@ void InsertManagerPostgres::start_up() {
       "error varchar);\n"
     );
 
+    query += (
+      "create table if not exists address_metadata ("
+			"address varchar not null, "
+			"type varchar not null, "
+			"valid boolean default true, "
+			"name varchar, "
+			"description varchar, "
+			"extra jsonb, "
+			"symbol varchar, "
+			"image varchar, "
+			"updated_at bigint, "
+			"expires_at bigint, "
+			"constraint address_metadata_pk primary key (address, type));\n"
+    );
+
     LOG(DEBUG) << query;
     txn.exec0(query);
     txn.commit();
@@ -2092,7 +2107,7 @@ void InsertManagerPostgres::start_up() {
       "    end loop;\n"
       "    return current;\n"
       "end; $$;\n"
-      "create function rebuild_trace(root_tx_hash tonhash) "
+      "create or replace function rebuild_trace(root_tx_hash tonhash) "
       "returns tonhash language plpgsql as $$ "
       "declare "
       "new_trace_id tonhash; "
@@ -2176,14 +2191,14 @@ void InsertManagerPostgres::start_up() {
 
     // classifier dispatcher trigger
     query += (
-      "create function on_new_mc_block_func() "
+      "create or replace function on_new_mc_block_func() "
       "returns trigger language plpgsql as $$ "
       "begin\n"
       "insert into _classifier_tasks(mc_seqno, start_after)\n"
       "values (NEW.seqno, now() + interval '1 seconds');\n"
       "return null; \n"
       "end; $$;\n"
-      "create trigger on_new_mc_block "
+      "create or replace trigger on_new_mc_block "
       "after insert on blocks for each row when (new.workchain = '-1'::integer) "
       "execute procedure on_new_mc_block_func();\n"
     );
