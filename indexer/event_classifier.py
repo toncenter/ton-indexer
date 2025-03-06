@@ -13,6 +13,12 @@ import json
 from collections import defaultdict
 
 from sqlalchemy import update, select, delete, and_, or_, Column, Integer, String, Boolean
+from collections import defaultdict
+from datetime import timedelta
+from typing import Optional
+
+import msgpack
+from sqlalchemy import update, select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker, contains_eager, selectinload
 from sqlalchemy.sql import text
@@ -21,11 +27,13 @@ from sqlalchemy.orm.attributes import instance_state
 
 from indexer.core import redis
 from indexer.core.database import engine, SyncSessionMaker, Base, Trace, Transaction, Message, Action, ActionAccount
+from indexer.core.database import engine, Trace, Transaction, Message, Action, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_additional_addresses
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action
 from indexer.events.blocks.utils.dedust_pools import init_pools_data
+from indexer.events.blocks.utils.block_tree_serializer import block_to_action, serialize_blocks
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing
 from indexer.events.interface_repository import EmulatedTransactionsInterfaceRepository, gather_interfaces, \
@@ -84,7 +92,7 @@ class UnclassifiedEventsReader(mp.Process):
                                WHERE _classifier_tasks.id = A.id
                                RETURNING _classifier_tasks.*;
                            '''
-                # query = f'''with A as (select * from _classifier_tasks 
+                # query = f'''with A as (select * from _classifier_tasks
                 # where pending is null or not pending order by mc_seqno desc nulls first limit {self.batch_size})
                 # update _classifier_tasks T set pending = true from A where T.id = A.id
                 # returning A.*;'''
@@ -131,7 +139,7 @@ class FinishedTasksProcessor(mp.Process):
         self.finished_queue = finished_queue
         self.last_commit = datetime.now()
         logger.info(f"Reading finished tasks")
-    
+
     def read_finished_tasks(self):
         tasks = []
         while (datetime.now() - self.last_commit).total_seconds() < 10:
@@ -190,7 +198,7 @@ class EventClassifierWorker(mp.Process):
             ok, total, failed, broken = False, 0, 0, 0
         self.result_queue.put((ok, total, failed, broken))
         return
-    
+
     async def process_trace_batch_async(self, tasks: List[ClassifierTask]) -> Tuple[bool, int]:
         ok = True
         processed = 0
@@ -236,7 +244,7 @@ class EventClassifierWorker(mp.Process):
                     stmt = delete(ActionAccount).where(ActionAccount.trace_id.in_(trace_ids_to_cleanup))
                     # logger.info(f'stmt: {stmt}')
                     await session.execute(stmt)
-                
+
                 # read traces
                 fltr = None
                 if is_trace_batch:
@@ -247,7 +255,7 @@ class EventClassifierWorker(mp.Process):
                 query = select(Trace).filter(fltr)
                 tx_join = selectinload(Trace.transactions).selectinload(Transaction.messages).selectinload(Message.message_content)
                 query = query.options(tx_join)
-                
+
                 result = await session.execute(query)
                 traces = result.scalars().unique().all()
                 processed = len(traces)
@@ -280,7 +288,7 @@ class EventClassifierWorker(mp.Process):
                         # session.add_all(actions)
                         # for action in actions:
                         #     for aa in action.get_action_accounts():
-                        #         await session.execute(insert(ActionAccount).values({k: v for k, v in aa.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing()) 
+                        #         await session.execute(insert(ActionAccount).values({k: v for k, v in aa.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
                         #     # session.add_all(action.get_action_accounts())
                         session.add_all(actions)
                         for action in actions:
@@ -316,7 +324,7 @@ class EventClassifierWorker(mp.Process):
                 return False, 0, 0, 0
         return ok, processed, failed, broken
 
-        
+
     def run(self):
         asyncio.set_event_loop(asyncio.new_event_loop())
         try:
@@ -359,7 +367,7 @@ async def start_processing_events_from_db(args: argparse.Namespace):
         workers.append(worker)
     task_closer = FinishedTasksProcessor(finished_queue)
     task_closer.start()
-    
+
     # stats
     failed_tasks = 0
     processed_tasks = 0
@@ -401,19 +409,34 @@ async def start_processing_events_from_db(args: argparse.Namespace):
     task_closer.join()
     return
 # end def
-
 async def start_emulated_traces_processing():
     pubsub = redis.client.pubsub()
-    await pubsub.subscribe(settings.emulated_traces_reddit_channel)
+    await pubsub.subscribe(settings.emulated_traces_redis_channel)
     while True:
         message = await pubsub.get_message()
         if message is not None and message['type'] == 'message':
             trace_id = message['data'].decode('utf-8')
             try:
                 start = time.time()
-                res = await process_emulated_trace(trace_id)
+                actions, trace = await process_emulated_trace(trace_id)
+                await redis.client.hset(trace_id, 'actions', msgpack.packb([a.to_dict() for a in actions]))
+                print("Processed trace", trace_id, "in", time.time() - start, "seconds")
+                if settings.emulated_traces_redis_response_channel is not None:
+                    await redis.client.publish(settings.emulated_traces_redis_response_channel, trace_id)
+                index = defaultdict(set)
+                for action in actions:
+                    for account in action.get_action_accounts():
+                        k = f"{action.trace_id}:{action.action_id}"
+                        v = trace.start_lt
+                        index[account.account].add((k, v))
+                referenced_accounts = set(index.keys()) - set(t.account for t in trace.transactions)
+                for account, values in index.items():
+                    await redis.client.zadd(f"_aai:{account}", dict(values))
+                for r in referenced_accounts:
+                    await redis.client.publish('referenced_accounts', f"{r}/{trace_id}")
             except Exception as e:
                 logger.error(f"Failed to process emulated trace {trace_id}: {e}")
+                logger.exception(e, exc_info=True)
         else:
             await asyncio.sleep(1)
 
@@ -423,8 +446,38 @@ async def process_emulated_trace(trace_id):
     trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
     trace = deserialize_event(trace_id, trace_map)
     context.interface_repository.set(EmulatedTransactionsInterfaceRepository(trace_map))
-    return await process_event_async(trace)
+    blocks = await process_event_async_with_postprocessing(trace)
+    actions, _ = serialize_blocks(blocks, trace_id)
+    return actions, trace
 
+async def start_emulated_task_traces_processing():
+    pubsub = redis.client.pubsub()
+    await pubsub.subscribe(settings.emulated_traces_redis_channel)
+    while True:
+        message = await pubsub.get_message(timeout=1)
+        if message is not None and message['type'] == 'message':
+            task_id = message['data'].decode('utf-8')
+            try:
+                start = time.time()
+                actions = await process_emulated_task_trace(task_id)
+                await redis.client.hset("result_" + task_id, 'actions', msgpack.packb([a.to_dict() for a in actions]))
+                print("Processed task", task_id, "in", time.time() - start, "seconds", len(actions), "actions")
+                await redis.client.publish("classifier_result_channel_" + task_id, "success")
+            except Exception as e:
+                await redis.client.set("classifier_error_" + task_id, str(e))
+                await redis.client.publish("classifier_result_channel_" + task_id, "error")
+                logger.error(f"Failed to process emulated task {task_id}: {e}")
+                logger.exception(e, exc_info=True)
+
+async def process_emulated_task_trace(task_id):
+    trace_map = await redis.client.hgetall("result_" + task_id)
+    trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
+    trace_id = str(trace_map['root_node'], encoding='utf-8')
+    trace = deserialize_event(trace_id, trace_map)
+    context.interface_repository.set(EmulatedTransactionsInterfaceRepository(trace_map))
+    blocks = await process_event_async_with_postprocessing(trace)
+    actions, _ = serialize_blocks(blocks, trace_id)
+    return actions
 
 async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception]:
     if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock':
@@ -450,7 +503,6 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
         return trace.trace_id, 'failed', [], e
 
-
 if __name__ == '__main__':
     init_pools_data()
     parser = argparse.ArgumentParser()
@@ -470,8 +522,30 @@ if __name__ == '__main__':
                         help='Expected number of tasks',
                         type=int,
                         default=4)
+    parser.add_argument('--emulated-traces',
+                        help='Process emulated traces',
+                        action='store_true')
+    parser.add_argument('--emulated-trace-tasks',
+                        help='Process emulated traces tasks',
+                        action='store_true')
+    parser.add_argument('--emulated-traces-redis-channel',
+                        help='Redis channel for emulated traces',
+                        default='new_trace',
+                        type=str)
+    parser.add_argument('--emulated-traces-redis-response-channel',
+                        help='Redis channel to publish processed emulated traces',
+                        default=None,
+                        type=str)
     args = parser.parse_args()
-    if settings.emulated_traces:
+
+    settings.emulated_traces_redis_channel = args.emulated_traces_redis_channel
+    settings.emulated_traces_redis_response_channel = args.emulated_traces_redis_response_channel
+    settings.emulated_traces = args.emulated_traces
+
+    if args.emulated_trace_tasks:
+        logger.info("Starting processing emulated trace tasks")
+        asyncio.run(start_emulated_task_traces_processing())
+    elif settings.emulated_traces:
         logger.info("Starting processing emulated traces")
         asyncio.run(start_emulated_traces_processing())
     else:

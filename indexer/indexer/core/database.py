@@ -45,7 +45,6 @@ def get_engine(settings: Settings):
                                  pool_timeout=128,
                                  echo=False)
     return engine
-
 engine = get_engine(settings)
 SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
 
@@ -84,6 +83,34 @@ def init_database(create=False):
 AccountStatus = Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status')
 
 
+def convert_numerics_to_strings(data, exclusions):
+    """
+    Recursively converts numeric values to strings in a dictionary, excluding specific top-level keys.
+
+    :param data: The dictionary to process.
+    :param exclusions: A set of top-level keys to exclude from processing.
+    :return: The processed dictionary with numeric values converted to strings.
+    """
+
+    def convert(value):
+        # Helper function to recursively process values
+        if isinstance(value, dict):
+            return {k: convert(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [convert(item) for item in value]
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            return str(value)
+        return value
+
+    # Process the dictionary, applying exclusions
+    result = {}
+    for key, value in data.items():
+        if key in exclusions:
+            result[key] = value  # Exclude these keys
+        else:
+            result[key] = convert(value)
+
+    return result
 
 # classes
 class ShardBlock(Base):
@@ -331,6 +358,13 @@ class Action(Base):
                                           trace_end_utime=self.trace_end_utime,
                                           action_end_utime=self.end_utime))
         return accounts
+
+
+    def to_dict(self):
+        r = self.__dict__.copy()
+        r.pop('_sa_instance_state')
+
+        return convert_numerics_to_strings(r, {'start_lt', 'end_lt', 'start_utime', 'end_utime', 'opcode'})
 
 class Transaction(Base):
     __tablename__ = 'transactions'

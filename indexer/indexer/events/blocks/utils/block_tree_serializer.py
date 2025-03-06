@@ -492,3 +492,21 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
 
     action._accounts = list(set(a for a in action._accounts if a is not None))
     return action
+
+def serialize_blocks(blocks: list[Block], trace_id) -> tuple[list[Action], str]:
+    actions = []
+    state = 'ok'
+    for block in blocks:
+        if block.btype != 'root':
+            if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
+                continue
+            if block.btype == 'empty':
+                continue
+            if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
+                continue
+            if block.broken:
+                state = 'broken'
+            action = block_to_action(block, trace_id)
+
+            actions.append(action)
+    return actions, state

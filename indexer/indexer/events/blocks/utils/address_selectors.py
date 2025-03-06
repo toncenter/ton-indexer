@@ -3,7 +3,6 @@ from pytoniq_core import Slice
 from indexer.core.database import Message, Transaction
 from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2
 
-
 def extract_target_wallet_stonfi_v2_swap(message: Message) -> set[str]:
     accounts = set()
     slice = Slice.one_from_boc(message.message_content.body)
