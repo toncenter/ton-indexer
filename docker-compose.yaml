@@ -1,5 +1,3 @@
-version: "3.9"
-
 x-indexer-environment: &index-common
   POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
   POSTGRES_HOST:
@@ -59,20 +57,21 @@ services:
 
   index-worker:
     build:
-      context: ton-index-cpp
+      context: ton-index-worker
       dockerfile: Dockerfile
     secrets:
       - postgres_password
     volumes:
       - ${TON_WORKER_DBROOT:-./}:/tondb
+      - ton_index_workdir:/ton_index_workdir
     environment: *index-worker
     networks:
       internal:
-    command: --from ${TON_WORKER_FROM:-1}
+    command: --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:-1}
     restart: unless-stopped
 
   postgres:
-    image: postgres:16
+    image: postgres:17
     environment: 
       <<: *index-common
       POSTGRES_DB: ${POSTGRES_DBNAME}
@@ -99,6 +98,8 @@ services:
 
 volumes:
   postgres_data:
+    external: false
+  ton_index_workdir:
     external: false
 
 networks:
