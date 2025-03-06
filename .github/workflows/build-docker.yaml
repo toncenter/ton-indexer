@@ -50,9 +50,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
@@ -64,7 +61,7 @@ jobs:
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
-          # platforms: linux/${{ matrix.arch.platform }}
+          platforms: linux/${{ matrix.arch.platform }}
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.image-name }}:${{ needs.release.outputs.version }}-${{ matrix.arch.platform }}
