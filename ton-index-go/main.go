@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"github.com/kdimentionaltree/ton-index-go/index/emulated"
 	"log"
 	"os"
 	"runtime"
@@ -14,11 +13,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/pprof"
 	"github.com/gofiber/swagger"
-	_ "github.com/kdimentionaltree/ton-index-go/docs"
-	"github.com/kdimentionaltree/ton-index-go/index"
+	_ "github.com/toncenter/ton-indexer/ton-index-go/docs"
+	"github.com/toncenter/ton-indexer/ton-index-go/index"
 )
 
 type Settings struct {

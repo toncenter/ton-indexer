@@ -2,7 +2,7 @@ package index
 
 import (
 	"github.com/jackc/pgx/v5"
-	"github.com/kdimentionaltree/ton-index-go/index/emulated"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 	"log"
 )
 
