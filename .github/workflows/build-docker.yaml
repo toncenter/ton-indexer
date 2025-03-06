@@ -7,7 +7,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && needs.release.outputs.version_tag || needs.release.outputs.version }}
+      version: ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && steps.semantic_version.outputs.version_tag || steps.semantic_version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
