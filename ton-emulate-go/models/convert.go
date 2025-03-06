@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"strconv"
 
-	tonindexgo "github.com/kdimentionaltree/ton-index-go/index"
-	emulated "github.com/kdimentionaltree/ton-index-go/index/emulated"
+	tonindexgo "github.com/toncenter/ton-indexer/ton-index-go/index"
+	emulated "github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
+
 	msgpack "github.com/vmihailenco/msgpack/v5"
 )
 

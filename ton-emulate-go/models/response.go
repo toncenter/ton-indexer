@@ -1,6 +1,6 @@
 package models
 
-import tonindexgo "github.com/kdimentionaltree/ton-index-go/index"
+import tonindexgo "github.com/toncenter/ton-indexer/ton-index-go/index"
 
 type TraceNodeShort struct {
 	TransactionHash Hash              `json:"tx_hash"`
