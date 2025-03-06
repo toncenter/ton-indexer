@@ -27,10 +27,10 @@ jobs:
 
   docker:
     needs: release
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.arch.runner }}
     strategy:
       matrix:
-        include:
+        arch:
           - runner: ubuntu-24.04
             platform: linux/amd64
           - runner: ubuntu-24.04-arm
@@ -65,7 +65,7 @@ jobs:
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
-          platforms: ${{ matrix.platform }}
+          platforms: ${{ matrix.arch.platform }}
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.image-name }}:${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && needs.release.outputs.version_tag || needs.release.outputs.version }}
