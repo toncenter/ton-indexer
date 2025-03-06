@@ -575,7 +575,7 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 		&ms1.Cells, &ms1.Bits,
 		&bo.Type, &ms2.Cells, &ms2.Bits,
 		&bo.ReqFwdFees, &bo.MsgFees, &bo.FwdFees,
-		&sp.CurShardPfxLen, &sp.AccSplitDepth, &sp.ThisAddr, &sp.SiblingAddr)
+		&sp.CurShardPfxLen, &sp.AccSplitDepth, &sp.ThisAddr, &sp.SiblingAddr, &t.Emulated)
 	t.BlockRef = BlockId{t.Workchain, t.Shard, t.Seqno}
 	t.AccountStateAfter = &AccountState{Hash: t.AccountStateHashAfter}
 	t.AccountStateBefore = &AccountState{Hash: t.AccountStateHashBefore}

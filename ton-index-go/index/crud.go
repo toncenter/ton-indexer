@@ -144,7 +144,7 @@ func buildTransactionsQuery(
 	T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
 	T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 	T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
-	T.split_info_this_addr, T.split_info_sibling_addr from`
+	T.split_info_this_addr, T.split_info_sibling_addr, false as emulated from`
 	from_query := ` transactions as T`
 	filter_list := []string{}
 	filter_query := ``
@@ -2103,7 +2103,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 				T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
 				T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 				T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
-				T.split_info_this_addr, T.split_info_sibling_addr from transactions as T where ` + filterByArray("T.trace_id", trace_id_list) + ` order by T.trace_id, T.lt, T.account`
+				T.split_info_this_addr, T.split_info_sibling_addr, false as emulated from transactions as T where ` + filterByArray("T.trace_id", trace_id_list) + ` order by T.trace_id, T.lt, T.account`
 			txs, err := queryTransactionsImpl(query, conn, settings)
 			if err != nil {
 				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
@@ -2404,7 +2404,7 @@ func (db *DbClient) QueryAdjacentTransactions(
 		T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
 		T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 		T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
-		T.split_info_this_addr, T.split_info_sibling_addr from transactions as T where hash in (%s) order by lt asc`, tx_hash_str)
+		T.split_info_this_addr, T.split_info_sibling_addr, false as emulated from transactions as T where hash in (%s) order by lt asc`, tx_hash_str)
 	txs, err := queryTransactionsImpl(query, conn, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
@@ -3137,4 +3137,54 @@ func (db *DbClient) QueryBalanceChanges(
 		Fees:    targetChanges.Fees,
 		Jettons: jetton_changes,
 	}, nil
+}
+
+func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs []HashType,
+	settings RequestSettings) ([]HashType, error) {
+
+	if len(txIDs) == 0 {
+		return nil, nil
+	}
+
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+
+	stringTxIDs := make([]string, len(txIDs))
+	for i, hash := range txIDs {
+		stringTxIDs[i] = string(hash)
+	}
+
+	query := `
+        SELECT DISTINCT tr.external_hash 
+        FROM traces tr
+        INNER JOIN transactions tx ON tr.trace_id = tx.trace_id
+        WHERE tx.hash = ANY($1)
+        AND tr.external_hash IS NOT NULL`
+
+	rows, err := conn.Query(ctx, query, pq.Array(stringTxIDs))
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	var externalHashes []HashType
+	for rows.Next() {
+		var hash string
+		if err := rows.Scan(&hash); err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		externalHashes = append(externalHashes, HashType(hash))
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	return externalHashes, nil
 }
