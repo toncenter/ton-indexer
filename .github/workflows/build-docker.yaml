@@ -27,10 +27,15 @@ jobs:
 
   docker:
     needs: release
-    runs-on: self-hosted
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+        image:
           - image-name: ton-indexer-classifier
             context: indexer
             dockerfile: Dockerfile
@@ -62,13 +67,13 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
-          platforms: linux/amd64,linux/arm64
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
+          platforms: ${{ matrix.platform }}
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image-name }}:${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && needs.release.outputs.version || needs.release.outputs.version_tag }}
-            ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && format('{0}/{1}:{2}', secrets.DOCKERHUB_USERNAME, matrix.image-name, 'latest') || '' }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.image-name }}:${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && needs.release.outputs.version_tag || needs.release.outputs.version }}
+            ${{ github.ref == 'refs/heads/master' && github.event_name == 'push' && format('{0}/{1}:{2}', secrets.DOCKERHUB_USERNAME, matrix.image.image-name, 'latest') || '' }}
 
       - name: Create Git Tag
         if: github.ref == 'refs/heads/main'
