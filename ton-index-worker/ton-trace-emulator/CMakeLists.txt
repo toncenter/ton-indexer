@@ -25,7 +25,7 @@ add_executable(ton-trace-emulator
     src/RedisListener.cpp
 )
 target_include_directories(ton-trace-emulator
-    PUBLIC ${CMAKE_BINARY_DIR}/external/redis-plus-plus/src
+    PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/../external/redis-plus-plus/src
 )
 target_compile_features(ton-trace-emulator PRIVATE cxx_std_20)
 target_compile_definitions(ton-trace-emulator PRIVATE -DMSGPACK_USE_DEFINE_MAP)
