@@ -17,6 +17,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/pprof"
+	"github.com/gofiber/fiber/v2/middleware/redirect"
 	"github.com/gofiber/swagger"
 	_ "github.com/toncenter/ton-indexer/ton-index-go/docs"
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
@@ -1921,6 +1922,14 @@ func main() {
 
 	// test
 	app.Get("/api/v3/__testMethod", GetTestMethod)
+
+	// redirect
+	app.Use(redirect.New(redirect.Config{
+		Rules: map[string]string{
+			"/": "/api/v3/index.html",
+		},
+		StatusCode: 301,
+	}))
 
 	// swagger
 	var swagger_config = swagger.Config{

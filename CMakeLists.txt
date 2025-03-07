@@ -2,7 +2,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 cmake_minimum_required(VERSION 3.0)
 
-project(ton-indexer)
+project(ton-indexer LANGUAGES CXX Go)
 
 include(cmake/golang.cmake)
 
