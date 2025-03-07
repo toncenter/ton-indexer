@@ -258,14 +258,12 @@ type RedisTTLTracker struct {
 
 	pubsubChan <-chan *redis.Message
 
-	// Logger
 	logger *logrus.Logger
 
 	defaultTraceTtl   time.Duration
 	syntheticTraceTtl time.Duration
 	completedTraceTtl time.Duration
 
-	// Retry config for deleting the hash itself (optional).
 	maxRetries int
 	baseDelay  time.Duration
 	maxDelay   time.Duration
@@ -274,7 +272,6 @@ type RedisTTLTracker struct {
 	addressCollector *AddressCollector
 	refaccsChan      <-chan *redis.Message
 
-	// New field for tracking emulated traces
 	syntheticTracesTracker *SyntheticTracesTracker
 }
 
