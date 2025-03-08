@@ -11,12 +11,22 @@ function(add_go_executable NAME)
     COMMAND env GOPATH=${GOPATH} ${CMAKE_Go_COMPILER} build
     -o "${CMAKE_CURRENT_BINARY_DIR}/${NAME}"
     ${CMAKE_GO_FLAGS} ${GO_SOURCE}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    COMMENT "Building Go executable ${NAME}")
 
   add_custom_target(${NAME} ALL DEPENDS ${OUTPUT_DIR}/.timestamp ${ARGN})
   install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/${NAME} DESTINATION bin)
 endfunction(add_go_executable)
 
+function(generate_swagger NAME)
+  add_custom_command(OUTPUT ${OUTPUT_DIR}/swagger.timestamp
+    COMMAND swag init
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Generating Swagger docs with swag init")
+
+  add_custom_target(${NAME}-swagger ALL DEPENDS ${OUTPUT_DIR}/swagger.timestamp ${ARGN})
+  add_dependencies(${NAME} ${NAME}-swagger)
+endfunction(generate_swagger)
 
 function(ADD_GO_LIBRARY NAME BUILD_TYPE)
   if(BUILD_TYPE STREQUAL "STATIC")
