@@ -707,6 +707,10 @@ if __name__ == '__main__':
     parser.add_argument('--use-combined-repository',
                         help='Use combined repository (emulated data + db fallback) for emulated traces',
                         action='store_true')
+    parser.add_argument('--batch-time-window',
+                        help='Batch time window in seconds. Used to batch emulated traces',
+                        default=0.1,
+                        type=float)
     args = parser.parse_args()
 
     settings.emulated_traces_redis_channel = args.emulated_traces_redis_channel
@@ -719,7 +723,8 @@ if __name__ == '__main__':
         asyncio.run(start_emulated_task_traces_processing())
     elif settings.emulated_traces:
         logger.info("Starting processing emulated traces")
-        asyncio.run(start_emulated_traces_processing())
+        asyncio.run(start_emulated_traces_processing(batch_window=args.batch_time_window,
+                                                     max_batch_size=args.batch_size))
     else:
         logger.info("Starting processing events from db")
         asyncio.run(start_processing_events_from_db(args))
