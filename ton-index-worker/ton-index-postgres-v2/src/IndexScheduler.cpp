@@ -132,9 +132,10 @@ void IndexScheduler::got_trace_assembler_last_state_seqno(ton::BlockSeqno last_s
         existing_seqnos_.insert(seqno);
     }
 
-    LOG(INFO) << "Starting indexing from seqno: " << last_state_seqno + 1;
+    from_seqno_ = last_state_seqno + 1;
+    LOG(INFO) << "Starting indexing from seqno: " << from_seqno_;
 
-    td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, last_state_seqno + 1);
+    td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, from_seqno_);
     alarm_timestamp() = td::Timestamp::now();
 }
 
