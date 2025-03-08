@@ -13,5 +13,9 @@ class Settings(BaseSettings):
     emulated_traces_redis_channel: str = 'new_trace'
     emulated_traces_redis_response_channel: Optional[str] = None
 
+    interfaces_cache_size: int = 10000
+    interfaces_cache_ttl: int = 300
+    use_combined_repository: bool = False
+
     class Config:
         env_prefix = 'ton_indexer_'
