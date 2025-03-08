@@ -607,7 +607,7 @@ async def process_emulated_trace_batch(
 
             # Publish referenced accounts
             for r in referenced_accounts:
-                await redis.client.publish('referenced_accounts', f"{r}/{trace_id}")
+                await redis.client.publish('referenced_accounts', f"{r};{trace_id}")
 
             results.append((trace_id, True))
 
