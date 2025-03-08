@@ -18,11 +18,20 @@ function(add_go_executable NAME)
   install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/${NAME} DESTINATION bin)
 endfunction(add_go_executable)
 
+add_custom_command(
+    OUTPUT ${GOPATH}/bin/swag
+    COMMAND env GOPATH=${GOPATH} ${CMAKE_Go_COMPILER} install github.com/swaggo/swag/cmd/swag@latest
+    COMMENT "Installing github.com/swaggo/swag/cmd/swag@latest"
+)
+
+add_custom_target(install_swag DEPENDS ${GOPATH}/bin/swag)
+
 function(generate_swagger NAME)
   add_custom_command(OUTPUT ${OUTPUT_DIR}/swagger.timestamp
-    COMMAND swag init
+    COMMAND ${GOPATH}/bin/swag init
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Generating Swagger docs with swag init")
+    COMMENT "Generating Swagger docs with swag init"
+    DEPENDS install_swag)
 
   add_custom_target(${NAME}-swagger ALL DEPENDS ${OUTPUT_DIR}/swagger.timestamp ${ARGN})
   add_dependencies(${NAME} ${NAME}-swagger)
