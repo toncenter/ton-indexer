@@ -377,7 +377,7 @@ type JettonWalletMintlessInfo struct {
 	StartFrom           *int64   `json:"start_from"`
 	ExpireAt            *int64   `json:"expire_at"`
 	CustomPayloadApiUri []string `json:"custom_payload_api_uri"`
-}
+} // @name JettonWalletMintlessInfo
 
 type JettonWallet struct {
 	Address           AccountAddress            `json:"address"`
@@ -773,6 +773,16 @@ type Trace struct {
 	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
 	Transactions      map[HashType]*Transaction `json:"transactions,omitempty"`
 } // @name Trace
+
+type DNSRecord struct {
+	NftItemAddress AccountAddress  `json:"nft_item_address"`
+	NftItemOwner   *AccountAddress `json:"nft_item_owner"`
+	Domain         string          `json:"domain"`
+	NextResolver   *AccountAddress `json:"dns_next_resolver"`
+	Wallet         *AccountAddress `json:"dns_wallet"`
+	SiteAdnl       *string         `json:"dns_site_adnl"`
+	StorageBagID   *string         `json:"dns_storage_bag_id"`
+} // @name DNSRecord
 
 // proxied models
 type V2AddressInformation struct {
