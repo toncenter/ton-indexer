@@ -128,10 +128,7 @@ void IndexScheduler::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> 
 }
 
 void IndexScheduler::got_trace_assembler_last_state_seqno(ton::BlockSeqno last_state_seqno) {
-    for (auto seqno = from_seqno_; seqno <= last_state_seqno; ++seqno) {
-        existing_seqnos_.insert(seqno);
-    }
-
+    last_known_seqno_ = last_state_seqno;
     from_seqno_ = last_state_seqno + 1;
     LOG(INFO) << "Starting indexing from seqno: " << from_seqno_;
 
