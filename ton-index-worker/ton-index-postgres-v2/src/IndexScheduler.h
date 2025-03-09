@@ -18,7 +18,7 @@ class IndexScheduler: public td::actor::Actor {
 private:
   std::queue<std::uint32_t> queued_seqnos_;
   std::set<std::uint32_t> processing_seqnos_;
-  std::set<std::uint32_t> existing_seqnos_;
+  std::set<std::uint32_t> indexed_seqnos_;
 
   td::actor::ActorId<DbScanner> db_scanner_;
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
@@ -36,7 +36,7 @@ private:
   bool force_index_{false};
 
   std::double_t avg_tps_{0};
-  std::int64_t last_existing_seqno_count_{0};
+  std::int64_t last_indexed_seqno_count_{0};
 
   QueueState max_queue_{30000, 30000, 500000, 500000};
   QueueState cur_queue_state_;
@@ -71,9 +71,10 @@ private:
   void seqno_queued_to_insert(std::uint32_t mc_seqno, QueueState status);
   void seqno_inserted(std::uint32_t mc_seqno, td::Unit result);
 
-  void got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R);
-  void got_trace_assembler_last_state_seqno(ton::BlockSeqno last_state_seqno);
-  void got_last_known_seqno(std::uint32_t last_known_seqno);
+  void process_existing_seqnos(td::Result<std::vector<std::uint32_t>> R);
+  void handle_missing_ta_state(ton::BlockSeqno next_seqno);
+  void handle_valid_ta_state(ton::BlockSeqno last_state_seqno);
+  void got_newest_mc_seqno(std::uint32_t newest_mc_seqno);
 
   void got_insert_queue_state(QueueState status);
 
