@@ -39,10 +39,10 @@ std::string get_time_string(double seconds) {
 void IndexScheduler::alarm() {
     alarm_timestamp() = td::Timestamp::in(1.0);
     std::double_t alpha = 0.99;
-    if (last_existing_seqno_count_ == 0) 
-        last_existing_seqno_count_ = existing_seqnos_.size();
-    avg_tps_ = alpha * avg_tps_ + (1 - alpha) * (existing_seqnos_.size() - last_existing_seqno_count_);
-    last_existing_seqno_count_ = existing_seqnos_.size();
+    if (last_indexed_seqno_count_ == 0) 
+        last_indexed_seqno_count_ = indexed_seqnos_.size();
+    avg_tps_ = alpha * avg_tps_ + (1 - alpha) * (indexed_seqnos_.size() - last_indexed_seqno_count_);
+    last_indexed_seqno_count_ = indexed_seqnos_.size();
     
     if (next_print_stats_.is_in_past()) {
         print_stats();
@@ -72,88 +72,122 @@ void IndexScheduler::alarm() {
             LOG(ERROR) << "Failed to update last seqno: " << R.move_as_error();
             return;
         }
-        td::actor::send_closure(SelfId, &IndexScheduler::got_last_known_seqno, R.move_as_ok());
+        td::actor::send_closure(SelfId, &IndexScheduler::got_newest_mc_seqno, R.move_as_ok());
     });
     td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
 }
 
 void IndexScheduler::run() {
+    if (force_index_) {
+        LOG(WARNING) << "Force reindexing enabled";
+        td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, from_seqno_);
+        last_known_seqno_ = from_seqno_ - 1;
+        alarm_timestamp() = td::Timestamp::now();
+        return;
+    }
+
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<std::vector<std::uint32_t>> R) {
-        td::actor::send_closure(SelfId, &IndexScheduler::got_existing_seqnos, std::move(R));
+        td::actor::send_closure(SelfId, &IndexScheduler::process_existing_seqnos, std::move(R));
     });
     td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_existing_seqnos, std::move(P), from_seqno_, to_seqno_);
 }
 
-void IndexScheduler::got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R) {
+void IndexScheduler::process_existing_seqnos(td::Result<std::vector<std::uint32_t>> R) {
     if (R.is_error()) {
         LOG(ERROR) << "Error reading existing seqnos: " << R.move_as_error();
         return;
     }
 
-    ton::BlockSeqno next_seqno = from_seqno_;
     auto existing_db_seqnos = R.move_as_ok();
-    if (existing_db_seqnos.size()) {
-        std::sort(existing_db_seqnos.begin(), existing_db_seqnos.end());
-        next_seqno = existing_db_seqnos[0];
-        for (auto value : existing_db_seqnos) {
-            if (value == next_seqno) {
-                ++next_seqno;
-            } else {
-                break;
-            }
+    std::sort(existing_db_seqnos.begin(), existing_db_seqnos.end());
+
+    // Find first gap in continuous sequence from current from_seqno_
+    ton::BlockSeqno next_seqno = from_seqno_;
+    for (auto seqno : existing_db_seqnos) {
+        if (seqno == next_seqno) {
+            ++next_seqno;
+        } else {
+            break;
         }
-        size_t accepted_cnt = next_seqno - from_seqno_;
-        LOG(INFO) << "Accepted " << accepted_cnt << " of " << existing_db_seqnos.size() 
-                  << " existing seqnos in DB (continuous increasing sequence)";
-        LOG(INFO) << "Next seqno: " << next_seqno;
     }
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), from_seqno = from_seqno_, next_seqno](td::Result<ton::BlockSeqno> R) mutable {
+    LOG(INFO) << "Found continuous sequence up to " << (next_seqno - 1) 
+              << " in DB (" << (next_seqno - from_seqno_) << " blocks)";
+
+    LOG(INFO) << "Accepted " << next_seqno - from_seqno_ << " of " << existing_db_seqnos.size() 
+              << " existing seqnos in DB (continuous increasing sequence)";
+    LOG(INFO) << "Next seqno: " << next_seqno;
+
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), next_seqno](td::Result<ton::BlockSeqno> R) {
         if (R.is_error()) {
-            LOG(WARNING) << "TraceAssembler state not found for seqno " << next_seqno - 1;
-            if (next_seqno > from_seqno) {
-                // to make sure we don't miss any traces (we assume no trace lasts for longer than 50 mc blocks)
-                auto to_start_from = std::max(from_seqno, static_cast<int32_t>(next_seqno) - 50); 
-                next_seqno = static_cast<ton::BlockSeqno>(to_start_from);
-            }
-            LOG(WARNING) << "Traces that started before block " << next_seqno << " and will be marked as broken and not inserted.";
-            td::actor::send_closure(SelfId, &IndexScheduler::got_trace_assembler_last_state_seqno, next_seqno - 1);
+            LOG(WARNING) << "TraceAssembler state not found for seqno " << (next_seqno - 1);
+            td::actor::send_closure(SelfId, &IndexScheduler::handle_missing_ta_state, next_seqno);
         } else {
             LOG(INFO) << "Restored TraceAssembler state for seqno " << R.ok();
-            td::actor::send_closure(SelfId, &IndexScheduler::got_trace_assembler_last_state_seqno, R.move_as_ok());
+            td::actor::send_closure(SelfId, &IndexScheduler::handle_valid_ta_state, R.move_as_ok());
         }
     });
 
     td::actor::send_closure(trace_assembler_, &TraceAssembler::restore_state, next_seqno - 1, std::move(P));
 }
 
-void IndexScheduler::got_trace_assembler_last_state_seqno(ton::BlockSeqno last_state_seqno) {
-    for (auto seqno = from_seqno_; seqno <= last_state_seqno; ++seqno) {
-        existing_seqnos_.insert(seqno);
+const int TRACE_BACKTRACK_LIMIT = 50;
+
+void IndexScheduler::handle_missing_ta_state(ton::BlockSeqno next_seqno) {
+    LOG(WARNING) << "Trace assembler state missing for seqno " << (next_seqno - 1);
+    
+    const ton::BlockSeqno backtrack_point = std::max(
+        from_seqno_,
+        static_cast<int32_t>(next_seqno) - TRACE_BACKTRACK_LIMIT
+    );
+
+    CHECK(backtrack_point >= from_seqno_);
+
+    if (backtrack_point != from_seqno_) {
+        LOG(WARNING) << "Backtracking " << (from_seqno_ - backtrack_point) 
+                     << " blocks to capture potential ongoing traces";
     }
 
-    LOG(INFO) << "Starting indexing from seqno: " << last_state_seqno + 1;
+    from_seqno_ = backtrack_point;
+    last_known_seqno_ = from_seqno_ - 1;
+    LOG(INFO) << "Resetting indexing start point to " << from_seqno_;
 
-    td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, last_state_seqno + 1);
+    td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, from_seqno_);
     alarm_timestamp() = td::Timestamp::now();
 }
 
-void IndexScheduler::got_last_known_seqno(std::uint32_t last_known_seqno) {
-    if (to_seqno_ > 0 && last_known_seqno_ > to_seqno_) 
+void IndexScheduler::handle_valid_ta_state(ton::BlockSeqno last_state_seqno) {
+    if (last_state_seqno < from_seqno_) {
+        LOG(WARNING) << "Trace assembler state " << last_state_seqno << " is lower than --from " << from_seqno_;
+        last_known_seqno_ = from_seqno_ - 1;
+    } else {
+        last_known_seqno_ = last_state_seqno;
+        from_seqno_ = last_state_seqno + 1;
+    }
+    LOG(INFO) << "Starting indexing from seqno: " << from_seqno_;
+
+    td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, from_seqno_);
+    alarm_timestamp() = td::Timestamp::now();
+}
+
+void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
+    if (to_seqno_ && last_known_seqno_ > to_seqno_) 
         return;
     int skipped_count = 0;
-    for (auto seqno = last_known_seqno_ + 1; seqno <= last_known_seqno; ++seqno) {
-        if (!force_index_ && (existing_seqnos_.find(seqno) != existing_seqnos_.end())) {
-            ++skipped_count;
-        }
-        else if ((from_seqno_ <= 0 || seqno >= from_seqno_) && (to_seqno_ <= 0 || seqno <= to_seqno_)) {
+    for (auto seqno = last_known_seqno_ + 1; seqno <= newest_mc_seqno; ++seqno) {
+        const bool should_skip = indexed_seqnos_.count(seqno);
+        const bool in_range = (from_seqno_ <= seqno) && (to_seqno_ == 0 || seqno <= to_seqno_);
+        
+        if (should_skip) {
+            skipped_count++;
+        } else if (in_range) {
             queued_seqnos_.push(seqno);
         }
     }
     if (skipped_count > 0) {
         LOG(INFO) << "Skipped " << skipped_count << " existing seqnos";
     }
-    last_known_seqno_ = last_known_seqno;
+    last_known_seqno_ = newest_mc_seqno;
 }
 
 void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
@@ -294,7 +328,7 @@ void IndexScheduler::got_insert_queue_state(QueueState status) {
 }
 
 void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, td::Unit result) {
-    existing_seqnos_.insert(mc_seqno);
+    indexed_seqnos_.insert(mc_seqno);
     if (mc_seqno > last_indexed_seqno_) {
         last_indexed_seqno_ = mc_seqno;
     }
