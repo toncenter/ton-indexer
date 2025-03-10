@@ -3206,7 +3206,7 @@ func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest,
         SELECT nft_item_address, nft_item_owner, domain, dns_next_resolver, dns_wallet, dns_site_adnl, dns_storage_bag_id
         FROM dns_entries
         WHERE dns_wallet = $1
-		ORDER BY LENGTH(domain) ASC ` + limit_query
+		ORDER BY LENGTH(domain), domain ASC ` + limit_query
 
 	rows, err := conn.Query(ctx, query, req.WalletAddress)
 	if err != nil {
