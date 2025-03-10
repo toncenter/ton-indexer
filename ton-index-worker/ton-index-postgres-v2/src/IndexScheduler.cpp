@@ -81,6 +81,7 @@ void IndexScheduler::run() {
     if (force_index_) {
         LOG(WARNING) << "Force reindexing enabled";
         td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, from_seqno_);
+        last_known_seqno_ = from_seqno_ - 1;
         alarm_timestamp() = td::Timestamp::now();
         return;
     }
@@ -148,6 +149,7 @@ void IndexScheduler::handle_missing_ta_state(ton::BlockSeqno next_seqno) {
     }
 
     from_seqno_ = backtrack_point;
+    last_known_seqno_ = from_seqno_ - 1;
     LOG(INFO) << "Resetting indexing start point to " << from_seqno_;
 
     td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, from_seqno_);
