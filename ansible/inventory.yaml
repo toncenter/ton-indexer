@@ -15,10 +15,10 @@ all:
     master-01:
       ansible_host: 192.168.69.1
   children:
-    master_nodes:
+    ton_index__master_nodes:
       hosts:
         master-01:
-    replica_nodes:
+    ton_index__replica_nodes:
       hosts:
         ubuntu-01:
           pg_master: master-01.example.com:5432
