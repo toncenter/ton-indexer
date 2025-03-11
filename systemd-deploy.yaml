@@ -1,19 +1,48 @@
 ---
+- name: Prepare to build
+  hosts: localhost
+  tasks:
+    - name: Install requirements
+      ansible.builtin.apt:
+        name:
+          - build-essential 
+          - cmake 
+          - clang 
+          - openssl
+          - libssl-dev
+          - zlib1g-dev
+          - gperf
+          - wget
+          - git
+          - curl
+          - liblz4-dev
+          - pkg-config 
+          - libsecp256k1-dev 
+          - libsodium-dev
+          - python3-dev
+          - libpq-dev
+          - automake
+          - libjemalloc-dev
+          - lsb-release
+          - software-properties-common
+          - gnupg
+          - autoconf 
+          - libtool
+          - libmicrohttpd-dev
+          - ccache
+        state: present
+      become: true
+
 - name: Build binaries
   hosts: localhost
   tasks:
     - name: Build the Go application
       ansible.builtin.shell: |
-          go get
-          mkdir -p {{ build_path }}
-          {{ service.prepare_command }}
-          go build -C {{ service.source_path }} -o {{ build_path }}/{{ stack_name }}__{{ service.service_name }}
+          cmake -DCMAKE_BUILD_TYPE=Release -S . -B {{ build_path }}
+          cmake --build {{ build_path }} --parallel $(nproc) --target ton-index-go ton-metadata-fetcher ton-emulate-go
       changed_when: true
       vars:
         service: "{{ services[item] }}"
-      with_items:
-        - api
-        - metadata_fetcher
       failed_when: build_result.rc != 0
       register: build_result
 
@@ -26,7 +55,7 @@
   tasks:
     - name: Copy service binary
       ansible.builtin.copy:
-        src: "{{ build_path }}/{{ stack_name }}__{{ service.service_name }}"
+        src: "{{ build_path }}/{{ service.binary_path }}"
         dest: "{{ binary_path }}/{{ stack_name }}__{{ service.service_name }}"
         mode: "0777"
         force: true
@@ -60,7 +89,7 @@
   tasks:
     - name: Copy service binary
       ansible.builtin.copy:
-        src: "{{ build_path }}/{{ stack_name }}__{{ service.service_name }}"
+        src: "{{ build_path }}/{{ service.binary_path }}"
         dest: "{{ binary_path }}/{{ stack_name }}__{{ service.service_name }}"
         mode: "0777"
         force: true
