@@ -274,7 +274,7 @@ class TONStakersDelayedWithdrawalMatcher(BlockMatcher):
                     continue
                 break
             return None
-        finally:
+        except Exception as e:
             return None
 
 
