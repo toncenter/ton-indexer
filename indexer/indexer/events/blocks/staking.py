@@ -245,12 +245,35 @@ class TONStakersDelayedWithdrawalMatcher(BlockMatcher):
             data=TONStakersWithdrawData(
                 stake_holder=AccountId(notification_msg.owner),
                 burnt_nft=AccountId(notification.get_message().source),
-                pool=None,
+                pool=self._try_find_pool_addr(notification),
                 amount=Amount(notification_msg.amount)
             )
         )
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
+
+    def _try_find_pool_addr(self, block: Block) -> AccountId | None:
+        supported_opcodes = {
+            TONStakersNftBurnNotification.opcode,
+            TONStakersNftBurn.opcode,
+            TONStakersDistributedAsset.opcode
+        }
+
+        current_block = block
+        while True:
+            current_block = current_block.previous_block
+            if current_block is None:
+                break
+            # if it is start asset distribution call
+            if isinstance(current_block, CallContractBlock) and current_block.opcode == 0x1140a64f:
+                return AccountId(current_block.get_message().source)
+            if isinstance(current_block, TONStakersWithdrawBlock):
+                return current_block.data.pool
+            if isinstance(current_block, CallContractBlock) and current_block.opcode in supported_opcodes:
+                continue
+            break
+        return None
+
 
 class NominatorPoolDepositMatcher(BlockMatcher):
     def __init__(self):
