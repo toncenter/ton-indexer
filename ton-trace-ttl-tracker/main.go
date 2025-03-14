@@ -6,9 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	mapset "github.com/deckarep/golang-set"
-	"github.com/redis/go-redis/v9"
-	"github.com/vmihailenco/msgpack/v5"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,10 +13,19 @@ import (
 	"syscall"
 	"time"
 
+	mapset "github.com/deckarep/golang-set"
+	"github.com/redis/go-redis/v9"
+	"github.com/vmihailenco/msgpack/v5"
+
 	"github.com/sirupsen/logrus"
 )
 
 type hash [32]byte
+
+type TraceData struct {
+	RootNodeKey string
+	Nodes       map[string]TraceNode
+}
 
 type TraceUpdateStats struct {
 	TraceId     string
@@ -367,15 +373,16 @@ func (rtt *RedisTTLTracker) listenForKeys(ctx context.Context) {
 	}
 }
 
-func (rtt *RedisTTLTracker) setupTraceTtl(ctx context.Context, hashKey string, data map[string]TraceNode) {
+func (rtt *RedisTTLTracker) setupTraceTtl(ctx context.Context, hashKey string, data *TraceData) {
 	ttl := rtt.defaultTraceTtl
 	if data != nil {
-		if node, exists := data[hashKey]; exists && node.Emulated {
+		rootNode, exists := data.Nodes[data.RootNodeKey]
+		if exists && rootNode.Emulated {
 			ttl = rtt.syntheticTraceTtl
 		} else {
 			emulated := 0
 			nonEmulated := 0
-			for _, node := range data {
+			for _, node := range data.Nodes {
 				if node.Emulated {
 					emulated++
 				} else {
@@ -395,14 +402,18 @@ func (rtt *RedisTTLTracker) setupTraceTtl(ctx context.Context, hashKey string, d
 	}).Debug("Scheduled (or refreshed) key TTL")
 }
 
-func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (map[string]TraceNode, error) {
+func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (*TraceData, error) {
 	traceData, err := rtt.redisClient.HGetAll(ctx, hashKey).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get hash for key %s: %w", hashKey, err)
 	}
+	rootNodeKey, exists := traceData["root_node"]
+	if !exists {
+		return nil, fmt.Errorf("root_node not found in trace %s", hashKey)
+	}
 	nodes := make(map[string]TraceNode)
 	for key, value := range traceData {
-		if strings.Contains(key, ":") || strings.Contains(key, "actions") {
+		if key == "root_node" || strings.Contains(key, ":") || strings.Contains(key, "actions") {
 			continue
 		}
 		var node TraceNode
@@ -412,12 +423,18 @@ func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (map[
 		}
 		nodes[key] = node
 	}
-	return nodes, nil
+	return &TraceData{
+		RootNodeKey: rootNodeKey,
+		Nodes:       nodes,
+	}, nil
 }
 
 // handleTraceEmulationStatus checks if trace is synthetic and adds it to tracker, otherwise cleanup all synthetic traces for root tx account
-func (rtt *RedisTTLTracker) handleTraceEmulationStatus(ctx context.Context, hashKey string, data map[string]TraceNode) error {
-	rootTxNode, exists := data[hashKey]
+func (rtt *RedisTTLTracker) handleTraceEmulationStatus(ctx context.Context, hashKey string, data *TraceData) error {
+	if data == nil {
+		return nil
+	}
+	rootTxNode, exists := data.Nodes[data.RootNodeKey]
 	if exists {
 		account := rootTxNode.Transaction.Account
 		if rootTxNode.Emulated {
@@ -518,11 +535,12 @@ func (rtt *RedisTTLTracker) handleExpiredKeys(ctx context.Context) {
 	}
 }
 
-func (rtt *RedisTTLTracker) collectAndMergeAddresses(ctx context.Context, hashKey string, data map[string]TraceNode) error {
+func (rtt *RedisTTLTracker) collectAndMergeAddresses(ctx context.Context, hashKey string, data *TraceData) error {
+	if data == nil {
+		return nil
+	}
 	var addresses []string
-
-	for key := range data {
-		node := data[key]
+	for _, node := range data.Nodes {
 		addresses = append(addresses, node.Transaction.Account)
 	}
 
