@@ -74,6 +74,7 @@ public:
                 auto addr_raw = std::to_string(addr.workchain) + ":" + addr.addr.to_hex();
                 transaction_.hset(td::base64_encode(trace_.id.as_slice()), addr_raw, buffer.str());
             }
+            transaction_.hset(td::base64_encode(trace_.id.as_slice()), "root_node", td::base64_encode(trace_.root->node_id.as_slice()));
 
             transaction_.publish("new_trace", td::base64_encode(trace_.id.as_slice()));
             transaction_.exec();

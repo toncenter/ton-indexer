@@ -187,6 +187,7 @@ type Message struct {
 	OutMsgTxHash         *HashType         `json:"out_msg_tx_hash,omitempty"`
 	MessageContent       *MessageContent   `json:"message_content"`
 	InitState            *MessageContent   `json:"init_state"`
+	MsgHashNorm          *HashType         `json:"hash_norm,omitempty"`
 } // @name Message
 
 type MsgSize struct {

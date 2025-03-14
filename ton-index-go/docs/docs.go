@@ -3420,6 +3420,9 @@ const docTemplate = `{
                 "hash": {
                     "type": "string"
                 },
+                "hash_norm": {
+                    "type": "string"
+                },
                 "ihr_disabled": {
                     "type": "boolean"
                 },

@@ -3,9 +3,10 @@ package index
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"sort"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func (db *DbClient) QueryPendingActions(
@@ -23,7 +24,7 @@ func (db *DbClient) QueryPendingActions(
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
-	var actions []Action
+	actions := []Action{}
 	book := AddressBook{}
 	addr_map := map[string]bool{}
 	metadata := Metadata{}
