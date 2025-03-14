@@ -4,6 +4,7 @@ import abc
 from collections import defaultdict
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Optional, Dict, Any
 
 import msgpack
 import redis
@@ -304,10 +305,97 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
         return {}
 
     async def get_dedust_pool(self, address: str) -> DedustPool | None:
-
         if address in context.dedust_pools.get():
             return DedustPool(address=address, assets=context.dedust_pools.get()[address]['assets'])
         return None
+
+
+class EmulatedRepositoryWithDbFallback(InterfaceRepository):
+    def __init__(self,
+                 emulated_repository: InterfaceRepository,
+                 db_interfaces: Dict[str, Dict[str, Dict]] = None):
+        self.emulated_repository = emulated_repository
+        self.db_interfaces = db_interfaces or {}
+
+    async def get_jetton_wallet(self, address: str) -> Optional[JettonWallet]:
+        result = await self.emulated_repository.get_jetton_wallet(address)
+
+        if result is None and address in self.db_interfaces:
+            if "JettonWallet" in self.db_interfaces[address]:
+                data = self.db_interfaces[address]["JettonWallet"]
+                result = JettonWallet(
+                    balance=data["balance"],
+                    address=data["address"],
+                    owner=data["owner"],
+                    jetton=data["jetton"],
+                )
+
+        return result
+
+    async def get_nft_item(self, address: str) -> Optional[NFTItem]:
+        result = await self.emulated_repository.get_nft_item(address)
+
+        if result is None and address in self.db_interfaces:
+            if "NftItem" in self.db_interfaces[address]:
+                data = self.db_interfaces[address]["NftItem"]
+                result = NFTItem(
+                    address=data["address"],
+                    init=data["init"],
+                    index=data["index"],
+                    collection_address=data["collection_address"],
+                    owner_address=data["owner_address"],
+                    content=data["content"],
+                )
+
+        return result
+
+    async def get_nft_sale(self, address: str) -> Optional[NftSale]:
+        result = await self.emulated_repository.get_nft_sale(address)
+
+        if result is None and address in self.db_interfaces:
+            if "NftSale" in self.db_interfaces[address]:
+                data = self.db_interfaces[address]["NftSale"]
+                result = NftSale(
+                    address=data["address"],
+                    is_complete=data["is_complete"],
+                    marketplace_address=data["marketplace_address"],
+                    nft_address=data["nft_address"],
+                    nft_owner_address=data["nft_owner_address"],
+                    full_price=data["full_price"],
+                )
+
+        return result
+
+    async def get_nft_auction(self, address: str) -> Optional[NftAuction]:
+        result = await self.emulated_repository.get_nft_auction(address)
+
+        if result is None and address in self.db_interfaces:
+            if "NftAuction" in self.db_interfaces[address]:
+                data = self.db_interfaces[address]["NftAuction"]
+                result = NftAuction(
+                    address=data["address"],
+                    nft_addr=data["nft_addr"],
+                    nft_owner=data["nft_owner"],
+                )
+
+        return result
+
+    async def get_dedust_pool(self, address: str) -> Optional[DedustPool]:
+        result = await self.emulated_repository.get_dedust_pool(address)
+        return result
+
+    async def get_interfaces(self, address: str) -> Dict[str, Any]:
+        emulated_interfaces = await self.emulated_repository.get_interfaces(address)
+
+        if address in self.db_interfaces:
+            result = {**self.db_interfaces[address]}
+
+            for key, value in emulated_interfaces.items():
+                result[key] = value
+        else:
+            result = emulated_interfaces
+
+        return result
 
 
 async def _gather_data_from_db(
