@@ -16,9 +16,8 @@ struct TransactionInfo {
     ton::LogicalTime lt;
     td::Ref<vm::Cell> root;
     td::Bits256 in_msg_hash;
-    bool is_first;
     std::vector<OutMsgInfo> out_msgs;
-    std::optional<td::Bits256> initial_msg_hash{}; // hash of initial transaction in block that caused this transaction. 
+    std::optional<td::Bits256> ext_in_msg_norm_hash{}; // hash of initial transaction in block that caused this transaction. 
                                                  // This is not necessarily ext in message, because ext in could happen in prev block.
 };
 

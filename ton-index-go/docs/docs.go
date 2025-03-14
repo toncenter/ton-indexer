@@ -3440,6 +3440,9 @@ const docTemplate = `{
                 "message_content": {
                     "$ref": "#/definitions/MessageContent"
                 },
+                "norm_hash": {
+                    "type": "string"
+                },
                 "opcode": {
                     "type": "integer"
                 },

@@ -515,6 +515,8 @@ definitions:
         $ref: '#/definitions/MessageContent'
       message_content:
         $ref: '#/definitions/MessageContent'
+      norm_hash:
+        type: string
       opcode:
         type: integer
       out_msg_tx_hash:

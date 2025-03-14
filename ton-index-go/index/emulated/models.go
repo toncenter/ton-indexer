@@ -5,9 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
+
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/xssnick/tonutils-go/tvm/cell"
-	"strconv"
 )
 
 type AccountStatus int
@@ -496,7 +497,11 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 
 	queue := make([]string, 0)
 
-	queue = append(queue, traceId)
+	rootNodeId, exists := traceHash["root_node"]
+	if !exists {
+		return Trace{}, fmt.Errorf("root_node not found in trace %s", traceId)
+	}
+	queue = append(queue, rootNodeId)
 	txs := make([]traceNode, 0)
 	actions := make([]Action, 0)
 	if actionsBytes, exists := traceHash["actions"]; exists {
