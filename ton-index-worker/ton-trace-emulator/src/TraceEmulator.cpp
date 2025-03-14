@@ -235,9 +235,9 @@ void TraceEmulator::finish(td::Result<std::unique_ptr<TraceNode>> root) {
         return;
     }
     Trace result;
-    auto ext_in_msg_norm_hash = ext_in_msg_get_normalized_hash(in_msg_);
-    if (ext_in_msg_norm_hash.is_ok()) {
-        result.id = ext_in_msg_norm_hash.move_as_ok();
+    auto ext_in_msg_hash_norm = ext_in_msg_get_normalized_hash(in_msg_);
+    if (ext_in_msg_hash_norm.is_ok()) {
+        result.id = ext_in_msg_hash_norm.move_as_ok();
     } else {
         result.id = in_msg_->get_hash().bits();
     }

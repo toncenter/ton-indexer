@@ -3420,6 +3420,9 @@ const docTemplate = `{
                 "hash": {
                     "type": "string"
                 },
+                "hash_norm": {
+                    "type": "string"
+                },
                 "ihr_disabled": {
                     "type": "boolean"
                 },
@@ -3439,9 +3442,6 @@ const docTemplate = `{
                 },
                 "message_content": {
                     "$ref": "#/definitions/MessageContent"
-                },
-                "norm_hash": {
-                    "type": "string"
                 },
                 "opcode": {
                     "type": "integer"

@@ -811,7 +811,7 @@ void InsertBatchPostgres::insert_transactions(pqxx::work &txn, bool with_copy) {
 void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
   std::initializer_list<std::string_view> columns = {"tx_hash", "tx_lt", "msg_hash", "direction", "trace_id", "source", "destination",
                                                 "value", "value_extra_currencies", "fwd_fee", "ihr_fee", "created_lt", "created_at",
-                                                "opcode", "ihr_disabled", "bounce", "bounced", "import_fee", "body_hash", "init_state_hash", "norm_hash"};
+                                                "opcode", "ihr_disabled", "bounce", "bounced", "import_fee", "body_hash", "init_state_hash", "msg_hash_norm"};
   PopulateTableStream stream(txn, "messages", columns, 1000, with_copy);
   if (!with_copy) {
     stream.setConflictDoNothing();
@@ -850,8 +850,8 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
       import_fee_val,
       msg.body->get_hash(),
       msg.init_state.not_null() ? std::make_optional(msg.init_state->get_hash()) : std::nullopt,
-      (msg.norm_hash.has_value() && msg.norm_hash.value() != msg.hash) ? 
-            std::make_optional(msg.norm_hash.value()) : std::nullopt
+      (msg.hash_norm.has_value() && msg.hash_norm.value() != msg.hash) ? 
+            std::make_optional(msg.hash_norm.value()) : std::nullopt
     );
     stream.insert_row(std::move(tuple));
   };
@@ -2236,7 +2236,7 @@ void InsertManagerPostgres::start_up() {
         "alter table account_states add column if not exists balance_extra_currencies jsonb;\n"
         "alter table latest_account_states add column if not exists balance_extra_currencies jsonb;\n"
 
-        "alter table messages add column if not exists norm_hash tonhash;\n"
+        "alter table messages add column if not exists msg_hash_norm tonhash;\n"
       );
 
       LOG(DEBUG) << query;
@@ -2313,7 +2313,7 @@ void InsertManagerPostgres::start_up() {
         "create index if not exists messages_index_7 on messages (created_lt, msg_hash);\n"
         "create index if not exists messages_index_3 on messages (destination, created_lt);\n"
         "create index if not exists messages_index_4 on messages (body_hash);\n"
-        "create index if not exists messages_index_9 on messages (norm_hash);\n"
+        "create index if not exists messages_index_9 on messages (msg_hash_norm);\n"
         "create index if not exists nft_transfers_index_2 on nft_transfers (nft_item_address, tx_lt);\n"
         "create index if not exists nft_transfers_index_3 on nft_transfers (nft_collection_address, tx_now);\n"
         "create index if not exists nft_transfers_index_4 on nft_transfers (nft_collection_address, tx_lt);\n"

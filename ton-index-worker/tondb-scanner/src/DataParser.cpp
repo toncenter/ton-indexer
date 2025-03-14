@@ -273,7 +273,7 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
       // msg.source = null, because it is external
       TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest))
       msg.import_fee = block::tlb::t_Grams.as_integer_skip(msg_info.import_fee.write());
-      TRY_RESULT_ASSIGN(msg.norm_hash, ext_in_msg_get_normalized_hash(msg_cell));
+      TRY_RESULT_ASSIGN(msg.hash_norm, ext_in_msg_get_normalized_hash(msg_cell));
       return msg;
     }
     case block::gen::CommonMsgInfo::ext_out_msg_info: {

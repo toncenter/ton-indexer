@@ -3412,6 +3412,9 @@
                 "hash": {
                     "type": "string"
                 },
+                "hash_norm": {
+                    "type": "string"
+                },
                 "ihr_disabled": {
                     "type": "boolean"
                 },
@@ -3431,9 +3434,6 @@
                 },
                 "message_content": {
                     "$ref": "#/definitions/MessageContent"
-                },
-                "norm_hash": {
-                    "type": "string"
                 },
                 "opcode": {
                     "type": "integer"

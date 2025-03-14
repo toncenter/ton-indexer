@@ -229,7 +229,7 @@ func buildTransactionsQuery(
 	}
 	if v := msg_req.MessageHash; len(v) > 0 {
 		by_msg = true
-		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.norm_hash", v))
+		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
 	}
 	if v := msg_req.Source; v != nil {
@@ -273,7 +273,7 @@ func buildMessagesQuery(
 ) (string, error) {
 	rest_columns := `M.trace_id, M.source, M.destination, M.value, 
 		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
-		M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.norm_hash`
+		M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm`
 	clmn_query := `'', 0, M.msg_hash, '', ` + rest_columns + `, 
 		max(case when M.direction='in' then M.tx_hash else null end) as in_tx_hash, 
 		max(case when M.direction='out' then M.tx_hash else null end) as out_tx_hash`
@@ -308,7 +308,7 @@ func buildMessagesQuery(
 		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d", *v))
 	}
 	if v := msg_req.MessageHash; v != nil {
-		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.norm_hash", v))
+		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
 	}
 	if v := msg_req.BodyHash; v != nil {
@@ -868,7 +868,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		}
 	}
 	if v := act_req.MessageHash; len(v) > 0 {
-		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.norm_hash", v))
+		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
 
 		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.tx_hashes`
@@ -1012,7 +1012,7 @@ func buildTracesQuery(trace_req TracesRequest, utime_req UtimeRequest, lt_req Lt
 		}
 	}
 	if v := trace_req.MessageHash; len(v) > 0 {
-		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.norm_hash", v))
+		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
 		from_query = `traces as E join messages as M on E.trace_id = M.trace_id`
 
@@ -1312,7 +1312,7 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 		hash_list_str := strings.Join(hash_list, ",")
 		query = fmt.Sprintf(`select M.tx_hash, M.tx_lt, M.msg_hash, M.direction, M.trace_id, M.source, M.destination, M.value, 
 			M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
-			M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.norm_hash, NULL, NULL, B.*, I.* from messages as M 
+			M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm, NULL, NULL, B.*, I.* from messages as M 
 			left join message_contents as B on M.body_hash = B.hash 
 			left join message_contents as I on M.init_state_hash = I.hash
 			where M.tx_hash in (%s)`, hash_list_str)

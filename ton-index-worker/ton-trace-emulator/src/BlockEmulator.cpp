@@ -51,7 +51,7 @@ public:
     void trace_root_received(std::unique_ptr<TraceNode> trace_root) {
         Trace trace;
         trace.root = std::move(trace_root);
-        trace.id = tx_.ext_in_msg_norm_hash.value();
+        trace.id = tx_.ext_in_msg_hash_norm.value();
         trace.emulated_accounts = std::move(emulated_accounts_);
         LOG(INFO) << "Emulated trace " << td::base64_encode(trace.id.as_slice()) << ": "
             << trace.root->transactions_count() << " transactions, " << trace.root->depth() << " depth";
@@ -103,9 +103,9 @@ public:
 
             if (tx_by_in_msg_hash_.find(out_msg.hash) != tx_by_in_msg_hash_.end()) {
                 TransactionInfo& child_tx = tx_by_in_msg_hash_.at(out_msg.hash);
-                if (!child_tx.ext_in_msg_norm_hash) {
-                    LOG(WARNING) << "No ext_in_msg_norm_hash for child tx " << child_tx.hash.to_hex();
-                    child_tx.ext_in_msg_norm_hash = tx.ext_in_msg_norm_hash;
+                if (!child_tx.ext_in_msg_hash_norm) {
+                    LOG(WARNING) << "No ext_in_msg_hash_norm for child tx " << child_tx.hash.to_hex();
+                    child_tx.ext_in_msg_hash_norm = tx.ext_in_msg_hash_norm;
                 }
                 
                 td::actor::send_closure(actor_id(this), &TraceTailEmulator::emulate_tx, child_tx, std::move(P));
@@ -204,7 +204,7 @@ public:
                         tx_info.in_msg_hash = msg->get_hash().bits();
                         auto message_cs = vm::load_cell_slice(trans.r1.in_msg->prefetch_ref());
                         if (block::gen::t_CommonMsgInfo.get_tag(message_cs) == block::gen::CommonMsgInfo::ext_in_msg_info) {
-                            tx_info.ext_in_msg_norm_hash = ext_in_msg_get_normalized_hash(msg).move_as_ok();
+                            tx_info.ext_in_msg_hash_norm = ext_in_msg_get_normalized_hash(msg).move_as_ok();
                         }
                     } else {
                         LOG(ERROR) << "Ordinary transaction without in_msg, skipping";
@@ -291,20 +291,20 @@ void McBlockEmulator::process_txs() {
     }
 
     for (auto& tx : txs_) {
-        if (tx.ext_in_msg_norm_hash.has_value()) {
-            // this is first tx of the trace, ext_in_msg_norm_hash is already set
-        } else if (txs_by_out_msg_hash.find(tx.in_msg_hash) != txs_by_out_msg_hash.end() && txs_by_out_msg_hash[tx.in_msg_hash].ext_in_msg_norm_hash.has_value()) {
-            tx.ext_in_msg_norm_hash = txs_by_out_msg_hash[tx.in_msg_hash].ext_in_msg_norm_hash;
+        if (tx.ext_in_msg_hash_norm.has_value()) {
+            // this is first tx of the trace, ext_in_msg_hash_norm is already set
+        } else if (txs_by_out_msg_hash.find(tx.in_msg_hash) != txs_by_out_msg_hash.end() && txs_by_out_msg_hash[tx.in_msg_hash].ext_in_msg_hash_norm.has_value()) {
+            tx.ext_in_msg_hash_norm = txs_by_out_msg_hash[tx.in_msg_hash].ext_in_msg_hash_norm;
         } else if (interblock_trace_ids_.find(tx.in_msg_hash) != interblock_trace_ids_.end()) {
-            tx.ext_in_msg_norm_hash = interblock_trace_ids_[tx.in_msg_hash];
+            tx.ext_in_msg_hash_norm = interblock_trace_ids_[tx.in_msg_hash];
         } else {
-            LOG(WARNING) << "Couldn't get ext_in_msg_norm_hash for tx " << tx.hash.to_hex() << ". This tx will be skipped.";
+            LOG(WARNING) << "Couldn't get ext_in_msg_hash_norm for tx " << tx.hash.to_hex() << ". This tx will be skipped.";
         }
 
         // write trace_id for out_msgs for interblock chains
-        if (tx.ext_in_msg_norm_hash.has_value()) {
+        if (tx.ext_in_msg_hash_norm.has_value()) {
             for (const auto& out_msg : tx.out_msgs) {
-                interblock_trace_ids_[out_msg.hash] = tx.ext_in_msg_norm_hash.value();
+                interblock_trace_ids_[out_msg.hash] = tx.ext_in_msg_hash_norm.value();
             }
         }
 
@@ -316,11 +316,11 @@ void McBlockEmulator::process_txs() {
 
 void McBlockEmulator::emulate_traces() {
     for (auto& tx : txs_) {
-        if (!tx.ext_in_msg_norm_hash.has_value()) {
-            // we don't emulate traces for transactions that have no ext_in_msg_norm_hash
+        if (!tx.ext_in_msg_hash_norm.has_value()) {
+            // we don't emulate traces for transactions that have no ext_in_msg_hash_norm
             continue;
         }
-        if (trace_ids_in_progress_.find(tx.ext_in_msg_norm_hash.value()) != trace_ids_in_progress_.end()) {
+        if (trace_ids_in_progress_.find(tx.ext_in_msg_hash_norm.value()) != trace_ids_in_progress_.end()) {
             // we already emulating trace for this trace_id
             continue;
         }
@@ -329,11 +329,11 @@ void McBlockEmulator::emulate_traces() {
         // if (tx.hash.to_hex() != "36F63618F374305C85AAEF856E4EE055540FA6F199453F8F2D347C199F7FDBB2") {
         //     continue;
         // }
-        // if (tx.ext_in_msg_norm_hash.value().to_hex() != "A97D033AF645F4D1BE66EFFCCA441D570A1867BED666FC462A55FC620EE8EE18") {
+        // if (tx.ext_in_msg_hash_norm.value().to_hex() != "A97D033AF645F4D1BE66EFFCCA441D570A1867BED666FC462A55FC620EE8EE18") {
         //     continue;
         // }
         
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), tx_hash = tx.hash, trace_id = tx.ext_in_msg_norm_hash.value()](td::Result<Trace> R) {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), tx_hash = tx.hash, trace_id = tx.ext_in_msg_hash_norm.value()](td::Result<Trace> R) {
             if (R.is_error()) {
                 td::actor::send_closure(SelfId, &McBlockEmulator::trace_error, tx_hash, trace_id, R.move_as_error());
                 return;
@@ -343,7 +343,7 @@ void McBlockEmulator::emulate_traces() {
         });
         td::actor::create_actor<TraceTailEmulator>("TraceTailEmulator", mc_data_state_, tx_by_in_msg_hash_, tx, std::move(P)).release();
 
-        trace_ids_in_progress_.insert(tx.ext_in_msg_norm_hash.value());
+        trace_ids_in_progress_.insert(tx.ext_in_msg_hash_norm.value());
     }
 }
 
