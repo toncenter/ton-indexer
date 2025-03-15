@@ -40,6 +40,12 @@ void InsertManagerBase::insert(std::uint32_t mc_seqno, ParsedBlockPtr block_ds, 
     insert_queue_.push(std::move(task));
     queue_state_ += status_delta;
     queued_promise.set_result(queue_state_);
+
+    if (parallel_insert_actors_ == 0) {
+        // here assuming that indexer is in sync with the blockchain head 
+        // and we can insert the next block immediately
+        schedule_next_insert_batches(false);
+    }
 }
 
 
