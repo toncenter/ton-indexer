@@ -662,25 +662,44 @@ func GetWalletStates(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
-// @summary Get DNS Entities
+// @summary Get DNS Records
 //
-// @description Query dns entities
+// @description Query DNS records by specified filters. Currently .ton and .t.me DNS are supported.
 //
-// @id api_v3_get_dns_entities
-// @tags accounts
+// @id api_v3_get_dns_records
+// @tags dns
 // @Accept json
 // @Produce json
-// @success 200 {object} index.AccountStatesResponse
+// @success 200 {object} index.DNSRecordsResponse
 // @failure 400 {object} index.RequestError
-// @param address query []string true "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
-// @param include_boc query bool false "Include code and data BOCs. Default: true" default(true)
+// @param wallet query string true "Wallet address in any form. DNS records that contain this address in wallet category will be returned."
 // // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
-// @router /api/v3/dnsEntities [get]
+// @router /api/v3/dns/records [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
-func GetDNSEntities(c *fiber.Ctx) error {
-	return index.IndexError{Code: 501, Message: "not implemented"}
+func GetDNSRecords(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	var req index.DNSRecordsRequest
+	var lim_req index.LimitRequest
+	if err := c.QueryParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(*req.WalletAddress) == 0 {
+		return index.IndexError{Code: 422, Message: "wallet address is required"}
+	}
+
+	res, book, err := pool.QueryDNSRecords(lim_req, req, request_settings)
+	if err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	resp := index.DNSRecordsResponse{Records: res, AddressBook: book}
+	return c.JSON(resp)
 }
 
 // @summary Get NFT collections
@@ -1889,7 +1908,7 @@ func main() {
 	app.Get("/api/v3/accountStates", GetAccountStates)
 	app.Get("/api/v3/walletStates", GetWalletStates)
 
-	app.Get("/api/v3/dnsEntities", GetDNSEntities)
+	app.Get("/api/v3/dns/records", GetDNSRecords)
 
 	// nfts
 	app.Get("/api/v3/nft/collections", GetNFTCollections)
