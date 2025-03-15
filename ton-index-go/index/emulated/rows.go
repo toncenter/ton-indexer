@@ -2,9 +2,10 @@ package emulated
 
 import (
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"reflect"
 	"strconv"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type TransactionRow struct {
@@ -101,6 +102,7 @@ type MessageRow struct {
 	ImportFee            *int64
 	BodyHash             *string
 	InitStateHash        *string
+	MsgHashNorm          *string
 }
 
 type MessageContentRow struct {
@@ -455,6 +457,7 @@ func (m *MessageRow) getAssigns() []assign {
 		assignIntPtr(m.ImportFee),
 		assignStringPtr(m.BodyHash),
 		assignStringPtr(m.InitStateHash),
+		assignStringPtr(m.MsgHashNorm),
 	}
 }
 

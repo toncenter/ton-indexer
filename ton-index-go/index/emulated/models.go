@@ -164,6 +164,7 @@ type trMessage struct {
 	ImportFee    *int64  `msgpack:"import_fee" json:"import_fee"`
 	BodyBoc      string  `msgpack:"body_boc" json:"body_boc"`
 	InitStateBoc *string `msgpack:"init_state_boc" json:"init_state_boc"`
+	HashNorm     *hash   `msgpack:"hash_norm" json:"hash_norm"`
 }
 
 type transactionDescr struct {
@@ -705,6 +706,11 @@ func (m *trMessage) GetMessageRow(traceId string, direction string, txLt int64, 
 			Body: m.InitStateBoc,
 		}
 	}
+	var hashNorm *string = nil
+	if m.HashNorm != nil {
+		n := base64.StdEncoding.EncodeToString((*m.HashNorm)[:])
+		hashNorm = &n
+	}
 	msgRow := MessageRow{
 		TxHash:               txHash,
 		TxLt:                 txLt,
@@ -726,6 +732,7 @@ func (m *trMessage) GetMessageRow(traceId string, direction string, txLt int64, 
 		ImportFee:            m.ImportFee,
 		BodyHash:             &bodyHash,
 		InitStateHash:        initStateHash,
+		MsgHashNorm:          hashNorm,
 	}
 	return msgRow, body, initState, nil
 }
