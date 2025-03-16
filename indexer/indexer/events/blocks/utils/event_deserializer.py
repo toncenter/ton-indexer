@@ -120,7 +120,7 @@ def deserialize_event(trace_id, packed_transactions_map: dict[str, bytes]) -> Tr
     edges = []
     transactions = []
     try:
-        root_id = packed_transactions_map['root_node']
+        root_id = packed_transactions_map['root_node'].decode()
     except KeyError:
         raise ValueError(f"root_node key not found for trace '{trace_id}'")
     try:
