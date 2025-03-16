@@ -14,7 +14,7 @@ type EmulatedTracesContext struct {
 	emulatedMessageContents   map[string]*emulated.MessageContentRow
 	emulatedMessageInitStates map[string]*emulated.MessageContentRow
 	emulatedMessages          map[string][]*emulated.MessageRow
-	traceIds                  []string
+	traceKeys                 []string
 	emulatedOnly              bool
 }
 
@@ -27,7 +27,7 @@ func NewEmptyContext(emulated_only bool) *EmulatedTracesContext {
 		emulatedMessageContents:   make(map[string]*emulated.MessageContentRow),
 		emulatedMessageInitStates: make(map[string]*emulated.MessageContentRow),
 		emulatedMessages:          make(map[string][]*emulated.MessageRow),
-		traceIds:                  make([]string, 0),
+		traceKeys:                 make([]string, 0),
 		emulatedOnly:              emulated_only,
 	}
 }
@@ -42,12 +42,12 @@ func (c *EmulatedTracesContext) IsEmptyContext() bool {
 	return len(c.emulatedTransactions) == 0
 }
 
-func (c *EmulatedTracesContext) RemoveTraces(trace_ids []string) {
-	for _, trace_id := range trace_ids {
-		delete(c.emulatedTransactions, trace_id)
-		delete(c.emulatedMessages, trace_id)
-		delete(c.emulatedTraces, trace_id)
-		delete(c.emulatedActions, trace_id)
+func (c *EmulatedTracesContext) RemoveTraces(trace_keys []string) {
+	for _, trace_key := range trace_keys {
+		delete(c.emulatedTransactions, trace_key)
+		delete(c.emulatedMessages, trace_key)
+		delete(c.emulatedTraces, trace_key)
+		delete(c.emulatedActions, trace_key)
 	}
 }
 
@@ -152,19 +152,21 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 	for k, v := range rawData {
 		c.emulatedTransactionsRaw[k] = v
 	}
-	for trace_id := range rawData {
+	for traceKey := range rawData {
 		message_count := 0
 		transaction_count := 0
 		pending_messages := 0
-		trace, err := emulated.ConvertHSet(c.emulatedTransactionsRaw[trace_id], trace_id)
+		trace, err := emulated.ConvertHSet(c.emulatedTransactionsRaw[traceKey], traceKey)
 		if err != nil {
 			log.Printf("error while converting hset: %s", err.Error())
 			continue
 		}
-		c.traceIds = append(c.traceIds, trace_id)
+		c.traceKeys = append(c.traceKeys, traceKey)
 
 		trace_row := emulated.TraceRow{
-			TraceId:      trace_id,
+			TraceId:      trace.TraceId,
+			TraceKey:     traceKey,
+			ExternalHash: &trace.ExternalHash,
 			McSeqnoStart: 0,
 			McSeqnoEnd:   nil,
 			EndLt:        nil,
@@ -187,19 +189,19 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 				return err
 			}
 
-			if node.Key == trace_id {
+			if node.Key == traceKey {
 				trace_row.StartLt = transactionRow.Lt
 				trace_row.StartUtime = *transactionRow.Now
 			}
 			if should_save {
-				c.emulatedTransactions[trace_id] = append(c.emulatedTransactions[trace_id], &transactionRow)
+				c.emulatedTransactions[traceKey] = append(c.emulatedTransactions[traceKey], &transactionRow)
 			}
 			messages, contents, initStates, err := node.GetMessages()
 			if err != nil {
 				return err
 			}
 			for _, msg := range messages {
-				if node.Key == trace_id && msg.Source == nil {
+				if node.Key == traceKey && msg.Source == nil {
 					trace_row.ExternalHash = &msg.MsgHash
 				}
 				if should_save {
@@ -227,13 +229,13 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		trace_row.Transactions = int64(transaction_count)
 		trace_row.Messages = int64(message_count)
 		trace_row.PendingMessages = int64(pending_messages)
-		c.emulatedTraces[trace_id] = &trace_row
+		c.emulatedTraces[traceKey] = &trace_row
 		for _, a := range trace.Actions {
 			row, err := a.GetActionRow()
 			if err != nil {
 				return err
 			}
-			c.emulatedActions[trace_id] = append(c.emulatedActions[trace_id], &row)
+			c.emulatedActions[traceKey] = append(c.emulatedActions[traceKey], &row)
 		}
 	}
 	return nil

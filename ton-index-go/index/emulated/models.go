@@ -296,6 +296,9 @@ type Action struct {
 	EndLt                    *int64                          `msgpack:"end_lt"`
 	StartUtime               *int64                          `msgpack:"start_utime"`
 	EndUtime                 *int64                          `msgpack:"end_utime"`
+	TraceEndLt               *uint64                         `msgpack:"trace_end_lt"`
+	TraceEndUtime            *int32                          `msgpack:"trace_end_utime"`
+	TraceStartLt             *int64                          `msgpack:"trace_start_lt"`
 	Source                   *string                         `msgpack:"source"`
 	SourceSecondary          *string                         `msgpack:"source_secondary"`
 	Destination              *string                         `msgpack:"destination"`
@@ -357,10 +360,11 @@ func (a *Action) GetPeerSwapsStrings() []string {
 }
 
 type Trace struct {
-	TraceId    string
-	Nodes      []traceNode
-	Classified bool
-	Actions    []Action
+	TraceId      string
+	ExternalHash string
+	Nodes        []traceNode
+	Classified   bool
+	Actions      []Action
 }
 type traceNode struct {
 	Transaction transaction `msgpack:"transaction"`
@@ -494,23 +498,20 @@ func (h *hash) DecodeMsgpack(dec *msgpack.Decoder) error {
 	copy(h[:], bytes)
 	return nil
 }
-func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
+func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 
 	queue := make([]string, 0)
 
 	rootNodeId, exists := traceHash["root_node"]
 	if !exists {
-		return Trace{}, fmt.Errorf("root_node not found in trace %s", traceId)
+		return Trace{}, fmt.Errorf("root_node not found in trace %s", traceKey)
 	}
 	queue = append(queue, rootNodeId)
 	txs := make([]traceNode, 0)
 	actions := make([]Action, 0)
-	if actionsBytes, exists := traceHash["actions"]; exists {
-		err := msgpack.Unmarshal([]byte(actionsBytes), &actions)
-		if err != nil {
-			return Trace{}, fmt.Errorf("failed to unmarshal actions: %w", err)
-		}
-	}
+	var endLt uint64 = 0
+	var endUtime int32 = 0
+	var actualTraceId = traceKey
 	for len(queue) > 0 {
 		key := queue[0]
 		queue = queue[1:]
@@ -522,7 +523,12 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 		nodeBytes := []byte(nodeData)
 		err := msgpack.Unmarshal(nodeBytes, &node)
 		node.Key = key
-		node.TraceId = traceId
+		if key == rootNodeId && !node.Emulated {
+			id := base64.StdEncoding.EncodeToString(node.Transaction.Hash[:])
+			actualTraceId = id
+		}
+
+		node.TraceId = actualTraceId
 		txs = append(txs, node)
 
 		if err != nil {
@@ -535,13 +541,30 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 				queue = append(queue, nextKey)
 			}
 		}
+		if endLt < node.Transaction.Lt {
+			endLt = node.Transaction.Lt
+		}
+		if endUtime < node.Transaction.Now {
+			endUtime = node.Transaction.Now
+		}
+	}
+	if actionsBytes, exists := traceHash["actions"]; exists {
+		err := msgpack.Unmarshal([]byte(actionsBytes), &actions)
+		for _, action := range actions {
+			action.TraceEndUtime = &endUtime
+			action.TraceEndLt = &endLt
+		}
+		if err != nil {
+			return Trace{}, fmt.Errorf("failed to unmarshal actions: %w", err)
+		}
 	}
 	_, has_actions := traceHash["actions"]
 	return Trace{
-		TraceId:    traceId,
-		Nodes:      txs,
-		Classified: has_actions,
-		Actions:    actions,
+		TraceId:      actualTraceId,
+		ExternalHash: rootNodeId,
+		Nodes:        txs,
+		Classified:   has_actions,
+		Actions:      actions,
 	}, nil
 }
 

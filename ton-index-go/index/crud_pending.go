@@ -133,28 +133,32 @@ func (db *DbClient) QueryPendingTransactions(
 
 func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
 	conn *pgxpool.Conn, settings RequestSettings) ([]string, error) {
-
-	trace_ids := make([]string, 0)
-	for trace_id, _ := range emulatedContext.emulatedTransactions {
-		trace_ids = append(trace_ids, fmt.Sprintf("'%s'", trace_id))
+	external_hash_map := make(map[string]string)
+	trace_external_hashes := make([]string, 0)
+	for _, trace := range emulatedContext.emulatedTraces {
+		if trace.ExternalHash == nil {
+			continue
+		}
+		external_hash_map[*trace.ExternalHash] = trace.TraceKey
+		trace_external_hashes = append(trace_external_hashes, fmt.Sprintf("'%s'", *trace.ExternalHash))
 	}
-	if len(trace_ids) > 0 {
+	if len(trace_external_hashes) > 0 {
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		query := fmt.Sprintf("select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id"+
 			" where M.msg_hash in (%s) and T.state='complete'",
-			strings.Join(trace_ids, ","))
+			strings.Join(trace_external_hashes, ","))
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
 			return nil, IndexError{Code: 500, Message: err.Error()}
 		}
 		completed_trace_ids_in_db := make([]string, 0)
 		for rows.Next() {
-			var trace_id string
-			if err := rows.Scan(&trace_id); err != nil {
+			var external_hash string
+			if err := rows.Scan(&external_hash); err != nil {
 				return nil, IndexError{Code: 500, Message: err.Error()}
 			}
-			completed_trace_ids_in_db = append(completed_trace_ids_in_db, trace_id)
+			completed_trace_ids_in_db = append(completed_trace_ids_in_db, external_hash_map[external_hash])
 		}
 		return completed_trace_ids_in_db, nil
 	}
@@ -259,29 +263,11 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 
 func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings) ([]Trace, []string, error) {
 	var traces []Trace
-	trace_ids := make([]string, 0)
-	for trace_id, _ := range emulatedContext.emulatedTransactions {
-		trace_ids = append(trace_ids, fmt.Sprintf("'%s'", trace_id))
+	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings)
+	if err != nil {
+		return nil, nil, err
 	}
-	if len(trace_ids) > 0 {
-		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-		defer cancel_ctx()
-		query := fmt.Sprintf("select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id where M.msg_hash in (%s) and T.state='complete'",
-			strings.Join(trace_ids, ","))
-		rows, err := conn.Query(ctx, query)
-		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
-		}
-		completed_trace_ids_in_db := make([]string, 0)
-		for rows.Next() {
-			var trace_id string
-			if err := rows.Scan(&trace_id); err != nil {
-				return nil, nil, IndexError{Code: 500, Message: err.Error()}
-			}
-			completed_trace_ids_in_db = append(completed_trace_ids_in_db, trace_id)
-		}
-		emulatedContext.RemoveTraces(completed_trace_ids_in_db)
-	}
+	emulatedContext.RemoveTraces(completed_traces)
 	traceRows := emulatedContext.GetTraces()
 	for _, row := range traceRows {
 		if loc, err := ScanTrace(row); err == nil {

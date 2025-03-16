@@ -111,6 +111,7 @@ type MessageContentRow struct {
 }
 
 type TraceRow struct {
+	TraceKey            string
 	TraceId             string
 	ExternalHash        *string
 	McSeqnoStart        int32
@@ -133,6 +134,9 @@ type ActionRow struct {
 	EndLt                                                int64
 	StartUtime                                           int64
 	EndUtime                                             int64
+	TraceEndLt                                           *int64
+	TraceEndUtime                                        *int64
+	TraceMcSeqnoEnd                                      *int32
 	Source                                               *string
 	SourceSecondary                                      *string
 	Destination                                          *string
@@ -274,6 +278,9 @@ func (t *ActionRow) getAssigns() []assign {
 		assignInt(t.EndLt),
 		assignInt(t.StartUtime),
 		assignInt(t.EndUtime),
+		assignIntPtr(t.TraceEndLt),
+		assignIntPtr(t.TraceEndUtime),
+		assignIntPtr(t.TraceMcSeqnoEnd),
 		assignStringPtr(t.Source),
 		assignStringPtr(t.SourceSecondary),
 		assignStringPtr(t.Destination),
