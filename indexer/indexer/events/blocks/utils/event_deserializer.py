@@ -138,7 +138,10 @@ def deserialize_event(trace_id, packed_transactions_map: dict[str, bytes]) -> Tr
             load_leaf(child_tx)
 
     root_tx = unpack_messagepack_tx(root)
+    if root_tx and not root_tx.emulated:
+        trace_id = root_tx.hash
     transactions.append(root_tx)
     load_leaf(root_tx)
+
     return Trace(transactions=transactions, trace_id=trace_id, classification_state='unclassified',
-                 state='complete', start_lt=root_tx.lt)
+                 state='complete', start_lt=root_tx.lt, external_hash=root_id)

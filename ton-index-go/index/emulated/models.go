@@ -289,6 +289,7 @@ type Action struct {
 	ActionId                 string                          `msgpack:"action_id"`
 	Type                     string                          `msgpack:"type"`
 	TraceId                  string                          `msgpack:"trace_id"`
+	TraceExternalHash        string                          `msgpack:"trace_external_hash"`
 	TxHashes                 []string                        `msgpack:"tx_hashes"`
 	Value                    *string                         `msgpack:"value"`
 	Amount                   *string                         `msgpack:"amount"`
@@ -511,7 +512,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 	actions := make([]Action, 0)
 	var endLt uint64 = 0
 	var endUtime int32 = 0
-	var actualTraceId = traceKey
+	var traceId = ""
 	for len(queue) > 0 {
 		key := queue[0]
 		queue = queue[1:]
@@ -525,10 +526,10 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 		node.Key = key
 		if key == rootNodeId && !node.Emulated {
 			id := base64.StdEncoding.EncodeToString(node.Transaction.Hash[:])
-			actualTraceId = id
+			traceId = id
 		}
 
-		node.TraceId = actualTraceId
+		node.TraceId = traceId
 		txs = append(txs, node)
 
 		if err != nil {
@@ -560,7 +561,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 	}
 	_, has_actions := traceHash["actions"]
 	return Trace{
-		TraceId:      actualTraceId,
+		TraceId:      traceId,
 		ExternalHash: rootNodeId,
 		Nodes:        txs,
 		Classified:   has_actions,
@@ -766,7 +767,7 @@ func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 	messages := make([]MessageRow, 0)
 
 	for _, outMsg := range n.Transaction.OutMsgs {
-		msgRow, body, initState, err := outMsg.GetMessageRow(n.TraceId, "out", int64(n.Transaction.Lt),
+		msgRow, body, initState, err := outMsg.GetMessageRow(n.Key, "out", int64(n.Transaction.Lt),
 			base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
 		if err != nil {
 			return nil, nil, nil, err
@@ -779,7 +780,7 @@ func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 			initStates[*msgRow.InitStateHash] = *initState
 		}
 	}
-	inMsgRow, body, initState, err := n.Transaction.InMsg.GetMessageRow(n.TraceId, "in", int64(n.Transaction.Lt),
+	inMsgRow, body, initState, err := n.Transaction.InMsg.GetMessageRow(n.Key, "in", int64(n.Transaction.Lt),
 		base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
 	if err != nil {
 		return nil, nil, nil, err
@@ -816,7 +817,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		Asset2Secondary:      a.Asset2Secondary,
 		Opcode:               a.Opcode,
 		Success:              a.Success,
-		TraceExternalHash:    &a.TraceId,
+		TraceExternalHash:    &a.TraceExternalHash,
 	}
 	if a.TonTransferData != nil {
 		row.TonTransferContent = a.TonTransferData.Content

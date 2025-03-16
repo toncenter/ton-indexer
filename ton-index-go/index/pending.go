@@ -15,6 +15,7 @@ type EmulatedTracesContext struct {
 	emulatedMessageInitStates map[string]*emulated.MessageContentRow
 	emulatedMessages          map[string][]*emulated.MessageRow
 	traceKeys                 []string
+	txHashTraceExternalHash   map[string]string
 	emulatedOnly              bool
 }
 
@@ -28,6 +29,7 @@ func NewEmptyContext(emulated_only bool) *EmulatedTracesContext {
 		emulatedMessageInitStates: make(map[string]*emulated.MessageContentRow),
 		emulatedMessages:          make(map[string][]*emulated.MessageRow),
 		traceKeys:                 make([]string, 0),
+		txHashTraceExternalHash:   make(map[string]string),
 		emulatedOnly:              emulated_only,
 	}
 }
@@ -195,6 +197,7 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 			}
 			if should_save {
 				c.emulatedTransactions[traceKey] = append(c.emulatedTransactions[traceKey], &transactionRow)
+				c.txHashTraceExternalHash[transactionRow.Hash] = trace.ExternalHash
 			}
 			messages, contents, initStates, err := node.GetMessages()
 			if err != nil {

@@ -216,6 +216,10 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 		rows := emulatedContext.GetTransactions()
 		for _, row := range rows {
 			if tx, err := ScanTransaction(row); err == nil {
+				if external_hash, ok := emulatedContext.txHashTraceExternalHash[string(tx.Hash)]; ok {
+					hash := HashType(external_hash)
+					tx.TraceExternalHash = &hash
+				}
 				txs = append(txs, *tx)
 				txs_map[tx.Hash] = len(txs) - 1
 			} else {
@@ -283,23 +287,25 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	var trace_id_list []HashType
 	addr_map := map[string]bool{}
 	for idx := range traces {
-		events_map[traces[idx].TraceId] = idx
-		trace_id_list = append(trace_id_list, traces[idx].TraceId)
+		events_map[*traces[idx].ExternalHash] = idx
+		trace_id_list = append(trace_id_list, *traces[idx].ExternalHash)
 	}
-	if len(trace_id_list) > 0 {
-		{
-			txs, err := queryPendingTransactions(emulatedContext, conn, settings, false)
-			if err != nil {
-				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
-			}
-			for idx := range txs {
-				tx := &txs[idx]
+	fully_emulated_traces := make(map[HashType]bool)
 
-				collectAddressesFromTransactions(&addr_map, tx)
-				if v := tx.TraceId; v != nil {
-					event := &traces[events_map[*v]]
-					event.TransactionsOrder = append(event.TransactionsOrder, tx.Hash)
-					event.Transactions[tx.Hash] = tx
+	if len(trace_id_list) > 0 {
+		txs, err := queryPendingTransactions(emulatedContext, conn, settings, false)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
+		}
+		for idx := range txs {
+			tx := &txs[idx]
+			collectAddressesFromTransactions(&addr_map, tx)
+			if v := tx.TraceExternalHash; v != nil {
+				trace := &traces[events_map[*v]]
+				trace.TransactionsOrder = append(trace.TransactionsOrder, tx.Hash)
+				trace.Transactions[tx.Hash] = tx
+				if idx == 0 && tx.Emulated {
+					fully_emulated_traces[*trace.ExternalHash] = true
 				}
 			}
 		}
@@ -336,7 +342,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 		if err != nil {
 			return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
 		}
-		*traces[events_map[action.TraceId]].Actions = append(*traces[events_map[action.TraceId]].Actions, action)
+		*traces[events_map[*action.TraceExternalHash]].Actions = append(*traces[events_map[*action.TraceExternalHash]].Actions, action)
 	}
 	//
 	for k := range addr_map {

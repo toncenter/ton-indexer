@@ -514,7 +514,7 @@ async def get_interfaces_with_cache(accounts: Set[str], session: AsyncSession) -
 
 
 async def process_emulated_trace_batch(
-        trace_ids: List[str],
+        trace_keys: List[str],
         session: AsyncSession,
         use_combined: bool = False
 ) -> List[Tuple[str, bool]]:
@@ -523,26 +523,26 @@ async def process_emulated_trace_batch(
     all_accounts = set()
     traces_data = {}
 
-    for trace_id in trace_ids:
+    for trace_key in trace_keys:
         try:
-            trace_map = await redis.client.hgetall(trace_id)
+            trace_map = await redis.client.hgetall(trace_key)
             trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
 
             if not trace_map:
-                logger.warning(f"No data found in Redis for trace {trace_id}")
-                results.append((trace_id, False))
+                logger.warning(f"No data found in Redis for trace {trace_key}")
+                results.append((trace_key, False))
                 continue
 
-            trace = deserialize_event(trace_id, trace_map)
-            traces_data[trace_id] = (trace, trace_map)
+            trace = deserialize_event(trace_key, trace_map)
+            traces_data[trace_key] = (trace, trace_map)
 
             for tx in trace.transactions:
                 all_accounts.add(tx.account)
                 all_accounts.update(extract_additional_addresses(tx))
 
         except Exception as e:
-            logger.error(f"Failed to extract accounts from trace {trace_id}: {e}")
-            results.append((trace_id, False))
+            logger.error(f"Failed to extract accounts from trace {trace_key}: {e}")
+            results.append((trace_key, False))
 
     # Gather interfaces
     db_interfaces = {}
@@ -557,7 +557,7 @@ async def process_emulated_trace_batch(
             # Continue with empty db_interfaces
 
     # Process traces
-    for trace_id, (trace, trace_map) in traces_data.items():
+    for trace_key, (trace, trace_map) in traces_data.items():
         try:
             start = time.time()
 
@@ -574,20 +574,25 @@ async def process_emulated_trace_batch(
 
             # Process trace
             blocks = await process_event_async_with_postprocessing(trace)
-            actions, _ = serialize_blocks(blocks, trace_id)
+            actions, _ = serialize_blocks(blocks, trace.trace_id)
+            if trace.transactions[0].emulated:
+                for action in actions:
+                    action.trace_id = None
+                    action.trace_external_hash = trace.external_hash
+
 
             # Store results in Redis
             action_data = msgpack.packb([a.to_dict() for a in actions])
-            await redis.client.hset(trace_id, 'actions', action_data)
+            await redis.client.hset(trace_key, 'actions', action_data)
 
             processing_time = time.time() - start
-            logger.info(f"Processed trace {trace_id} in {processing_time:.3f} seconds")
+            logger.info(f"Processed trace {trace_key} in {processing_time:.3f} seconds")
 
             # Publish completion if configured
             if settings.emulated_traces_redis_response_channel:
                 await redis.client.publish(
                     settings.emulated_traces_redis_response_channel,
-                    trace_id
+                    trace_key
                 )
 
             # Build index
@@ -608,14 +613,14 @@ async def process_emulated_trace_batch(
 
             # Publish referenced accounts
             for r in referenced_accounts:
-                await redis.client.publish('referenced_accounts', f"{r};{trace_id}")
+                await redis.client.publish('referenced_accounts', f"{r};{trace_key}")
 
-            results.append((trace_id, True))
+            results.append((trace_key, True))
 
         except Exception as e:
-            logger.error(f"Failed to process emulated trace {trace_id}: {e}")
+            logger.error(f"Failed to process emulated trace {trace_key}: {e}")
             logger.exception(e)
-            results.append((trace_id, False))
+            results.append((trace_key, False))
 
     return results
 
@@ -646,6 +651,10 @@ async def process_emulated_task_trace(task_id):
     context.interface_repository.set(EmulatedTransactionsInterfaceRepository(trace_map))
     blocks = await process_event_async_with_postprocessing(trace)
     actions, _ = serialize_blocks(blocks, trace_id)
+    if trace.transactions[0].emulated:
+        for action in actions:
+            action.trace_id = None
+            action.trace_external_hash = trace.external_hash
     return actions
 
 async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception]:
