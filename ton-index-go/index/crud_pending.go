@@ -333,6 +333,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 			}
 		}
 	}
+	var addr_list []string
 	actions := make([]RawAction, 0)
 	for _, row := range emulatedContext.GetActions() {
 		if loc, err := ScanRawAction(row); err == nil {
@@ -343,6 +344,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	for idx := range actions {
 		raw_action := &actions[idx]
+		collectAddressesFromAction(&addr_map, raw_action)
 
 		action, err := ParseRawAction(raw_action)
 		if err != nil {
@@ -351,7 +353,6 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 		*traces[events_map[action.TraceId]].Actions = append(*traces[events_map[action.TraceId]].Actions, action)
 	}
 	//
-	var addr_list []string
 	for k := range addr_map {
 		addr_list = append(addr_list, k)
 	}
