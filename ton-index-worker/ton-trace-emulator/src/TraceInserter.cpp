@@ -47,9 +47,10 @@ public:
             }
 
             // delete previously emulated trace
-            for (const auto& key : tx_keys_to_delete) {
-                transaction_.hdel(td::base64_encode(trace_.id.as_slice()), key);
+            if (tx_keys_to_delete.size() > 0) {
+                transaction_.hdel(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), tx_keys_to_delete.begin(), tx_keys_to_delete.end());
             }
+
             for (const auto& [addr, by_addr_key] : addr_keys_to_delete) {
                 transaction_.zrem(addr, by_addr_key);
             }
@@ -59,10 +60,10 @@ public:
                 std::stringstream buffer;
                 msgpack::pack(buffer, std::move(node));
 
-                transaction_.hset(td::base64_encode(trace_.id.as_slice()), td::base64_encode(node.transaction.in_msg.value().hash.as_slice()), buffer.str());
+                transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), td::base64_encode(node.transaction.in_msg.value().hash.as_slice()), buffer.str());
 
                 auto addr_raw = std::to_string(node.transaction.account.workchain) + ":" + node.transaction.account.addr.to_hex();
-                auto by_addr_key = td::base64_encode(trace_.id.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
+                auto by_addr_key = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
                 transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
             }
 
@@ -72,11 +73,18 @@ public:
                 std::stringstream buffer;
                 msgpack::pack(buffer, interfaces_redis);
                 auto addr_raw = std::to_string(addr.workchain) + ":" + addr.addr.to_hex();
-                transaction_.hset(td::base64_encode(trace_.id.as_slice()), addr_raw, buffer.str());
+                transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), addr_raw, buffer.str());
             }
-            transaction_.hset(td::base64_encode(trace_.id.as_slice()), "root_node", td::base64_encode(trace_.root->node_id.as_slice()));
+            transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "root_node", td::base64_encode(trace_.root->node_id.as_slice()));
+            
+            if (!trace_.root->emulated) {
+                transaction_.set("tr_root_tx:" + td::base64_encode(trace_.root_tx_hash.as_slice()), td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()));
+                transaction_.expire("tr_root_tx:" + td::base64_encode(trace_.root_tx_hash.as_slice()), 600);
+            }
+            transaction_.set("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()));
+            transaction_.expire("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), 600);
 
-            transaction_.publish("new_trace", td::base64_encode(trace_.id.as_slice()));
+            transaction_.publish("new_trace", td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()));
             transaction_.exec();
 
             promise_.set_value(td::Unit());
@@ -88,7 +96,7 @@ public:
         stop();
     }
     void delete_db_subtree(std::string key, std::vector<std::string>& tx_keys, std::vector<std::pair<std::string, std::string>>& addr_keys) {
-        auto emulated_in_db = transaction_.redis().hget(td::base64_encode(trace_.id.as_slice()), key);
+        auto emulated_in_db = transaction_.redis().hget(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), key);
         if (emulated_in_db) {
             auto serialized = emulated_in_db.value();
             RedisTraceNode node;
@@ -101,7 +109,7 @@ public:
             tx_keys.push_back(key);
 
             auto addr_raw = std::to_string(node.transaction.account.workchain) + ":" + node.transaction.account.addr.to_hex();
-            auto by_addr_key = td::base64_encode(trace_.id.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
+            auto by_addr_key = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
             addr_keys.push_back(std::make_pair(addr_raw, by_addr_key));
         }
     }

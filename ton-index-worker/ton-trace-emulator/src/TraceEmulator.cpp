@@ -237,10 +237,11 @@ void TraceEmulator::finish(td::Result<std::unique_ptr<TraceNode>> root) {
     Trace result;
     auto ext_in_msg_hash_norm = ext_in_msg_get_normalized_hash(in_msg_);
     if (ext_in_msg_hash_norm.is_ok()) {
-        result.id = ext_in_msg_hash_norm.move_as_ok();
-    } else {
-        result.id = in_msg_->get_hash().bits();
+        // in some cases we in_msg might not be the ext-in msg - if user wants to emulate trace starting from some internal message
+        result.ext_in_msg_hash_norm = ext_in_msg_hash_norm.move_as_ok();
     }
+    result.ext_in_msg_hash = in_msg_->get_hash().bits();
+    result.root_tx_hash = root.ok()->transaction_root->get_hash().bits();
     result.root = root.move_as_ok();
     result.rand_seed = rand_seed_;
     result.emulated_accounts = std::move(emulated_accounts_);

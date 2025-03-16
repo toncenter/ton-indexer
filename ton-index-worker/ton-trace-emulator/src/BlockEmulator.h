@@ -10,6 +10,12 @@ struct OutMsgInfo {
     td::Ref<vm::Cell> root;
 };
 
+struct TraceIds {
+    td::Bits256 root_tx_hash;
+    td::Bits256 ext_in_msg_hash;
+    td::Bits256 ext_in_msg_hash_norm;
+};
+
 struct TransactionInfo {
     block::StdAddress account;
     td::Bits256 hash;
@@ -17,8 +23,7 @@ struct TransactionInfo {
     td::Ref<vm::Cell> root;
     td::Bits256 in_msg_hash;
     std::vector<OutMsgInfo> out_msgs;
-    std::optional<td::Bits256> ext_in_msg_hash_norm{}; // hash of initial transaction in block that caused this transaction. 
-                                                 // This is not necessarily ext in message, because ext in could happen in prev block.
+    std::optional<TraceIds> trace_ids{};
 };
 
 class McBlockEmulator: public td::actor::Actor {
@@ -41,17 +46,17 @@ private:
 
     // static map for matching in-out msgs between blocks to propagate trace ids. TODO: clean up old entries.
     // TODO: care of thread safety
-    inline static std::unordered_map<td::Bits256, TraceId> interblock_trace_ids_;
+    inline static std::unordered_map<td::Bits256, TraceIds> interblock_trace_ids_;
 
     void parse_error(ton::BlockId blkid, td::Status error);
     void block_parsed(ton::BlockId blkid, std::vector<TransactionInfo> txs);
     void process_txs();
     void emulate_traces();
-    void trace_error(td::Bits256 tx_hash, TraceId trace_id, td::Status error);
+    void trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error);
     void trace_received(td::Bits256 tx_hash, Trace trace);
-    void trace_interfaces_error(TraceId trace_id, td::Status error);
+    void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error);
     void trace_emulated(Trace trace);
-    void trace_finished(TraceId trace_id);
+    void trace_finished(td::Bits256 trace_root_tx_hash);
 
     td::Result<block::Account> fetch_account(const block::StdAddress& addr, ton::UnixTime now);
 
