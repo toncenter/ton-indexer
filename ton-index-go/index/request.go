@@ -145,6 +145,10 @@ type TracesRequest struct {
 	McSeqno         *int32          `query:"mc_seqno"`
 }
 
+type DNSRecordsRequest struct {
+	WalletAddress *AccountAddress `query:"wallet"`
+}
+
 type SortType string
 
 const (

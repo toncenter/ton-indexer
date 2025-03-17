@@ -7,7 +7,7 @@ option(TON_USE_JEMALLOC "Use \"ON\" to enable JeMalloc." OFF)
 
 # Find jemalloc
 if (TON_USE_JEMALLOC)
-    list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/ton/CMake")
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/external/ton/CMake")
     find_package(jemalloc REQUIRED)
 
     if (JEMALLOC_FOUND)
