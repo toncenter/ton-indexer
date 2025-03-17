@@ -480,8 +480,15 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 		orderby_query = ` order by N.owner_address, N.collection_address, N.index`
 	}
 	if v := nft_req.CollectionAddress; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("N.collection_address = '%s'", *v))
-		orderby_query = ` order by collection_address, index`
+		if len(nft_req.CollectionAddress) == 1 {
+			filter_list = append(filter_list, fmt.Sprintf("N.collection_address = '%s'", v[0]))
+			orderby_query = ` order by collection_address, index`
+		} else if len(nft_req.CollectionAddress) > 1 {
+			filter_str := filterByArray("N.collection_address", v)
+			if len(filter_str) > 0 {
+				filter_list = append(filter_list, filter_str)
+			}
+		}
 	}
 	if v := nft_req.Index; v != nil {
 		if nft_req.CollectionAddress == nil {

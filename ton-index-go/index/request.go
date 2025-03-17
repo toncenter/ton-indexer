@@ -68,7 +68,7 @@ type NFTCollectionRequest struct {
 type NFTItemRequest struct {
 	Address           []AccountAddress `query:"address"`
 	OwnerAddress      []AccountAddress `query:"owner_address"`
-	CollectionAddress *AccountAddress  `query:"collection_address"`
+	CollectionAddress []AccountAddress `query:"collection_address"`
 	Index             []string         `query:"index"`
 }
 
