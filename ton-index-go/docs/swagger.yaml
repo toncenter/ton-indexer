@@ -828,6 +828,8 @@ definitions:
         additionalProperties:
           type: string
         type: object
+      trace_external_hash:
+        type: string
       trace_id:
         type: string
     type: object
@@ -2266,11 +2268,11 @@ paths:
         name: account
         type: string
       - collectionFormat: multi
-        description: Find actions by trace id
+        description: Find actions by trace external hash
         in: query
         items:
           type: string
-        name: trace_id
+        name: ext_msg_hash
         type: array
       produces:
       - application/json
@@ -2302,18 +2304,11 @@ paths:
         name: account
         type: string
       - collectionFormat: multi
-        description: Find trace by trace id.
+        description: Find trace by external hash
         in: query
         items:
           type: string
-        name: trace_id
-        type: array
-      - collectionFormat: multi
-        description: Find trace by existing transaction hash.
-        in: query
-        items:
-          type: string
-        name: tx_hash
+        name: ext_msg_hash
         type: array
       produces:
       - application/json

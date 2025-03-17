@@ -1165,29 +1165,20 @@ func GetTraces(c *fiber.Ctx) error {
 // @success		200	{object}	index.TracesResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
-// @param trace_id query []string false "Find trace by trace id."
-// @param tx_hash query []string false "Find trace by existing transaction hash."
+// @param ext_msg_hash query []string false "Find trace by external hash"
 // @router			/api/v3/pendingTraces [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetPendingTraces(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
-	event_req := index.TracesRequest{}
+	event_req := index.PendingTracesRequest{}
 
 	if err := c.QueryParser(&event_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if event_req.AccountAddress == nil && len(event_req.TraceId) == 0 && len(event_req.TransactionHash) == 0 {
-		return index.IndexError{Code: 422, Message: "account, trace_id or tx_hash should be specified"}
-	}
-
-	if len(event_req.TransactionHash) > 0 {
-		additional_hashes, err := pool.QueryTransactionsExternalHashes(context.Background(), event_req.TransactionHash, request_settings)
-		if err != nil {
-			return err
-		}
-		event_req.TraceId = append(event_req.TraceId, additional_hashes...)
+	if event_req.AccountAddress == nil && len(event_req.ExtMsgHash) == 0 {
+		return index.IndexError{Code: 422, Message: "account or ext_msg_hash should be specified"}
 	}
 
 	var emulatedContext *index.EmulatedTracesContext
@@ -1195,8 +1186,8 @@ func GetPendingTraces(c *fiber.Ctx) error {
 	if event_req.AccountAddress != nil {
 		emulatedContext, err = ContextByAccount(emulatedTracesRepository,
 			[]index.AccountAddress{*event_req.AccountAddress}, false, false, false)
-	} else if event_req.TraceId != nil {
-		emulatedContext, err = ContextByTraces(emulatedTracesRepository, event_req.TraceId)
+	} else if len(event_req.ExtMsgHash) > 0 {
+		emulatedContext, err = ContextByExtMsgHash(emulatedTracesRepository, event_req.ExtMsgHash)
 	} else {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id should be specified"}
 	}
@@ -1285,13 +1276,13 @@ func GetActions(c *fiber.Ctx) error {
 // @success		200	{object}	index.ActionsResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get actions. Can be sent in hex, base64 or base64url form."
-// @param trace_id query []string false "Find actions by trace id"
+// @param ext_msg_hash query []string false "Find actions by trace external hash"
 // @router			/api/v3/pendingActions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetPendingActions(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
-	act_req := index.ActionRequest{}
+	act_req := index.PendingActionsRequest{}
 
 	if err := c.QueryParser(&act_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
@@ -1305,13 +1296,13 @@ func GetPendingActions(c *fiber.Ctx) error {
 		if err != nil {
 			return err
 		}
-	} else if len(act_req.TraceId) > 0 {
-		emulatedContext, err = ContextByTraces(emulatedTracesRepository, act_req.TraceId)
+	} else if len(act_req.ExtMsgHash) > 0 {
+		emulatedContext, err = ContextByExtMsgHash(emulatedTracesRepository, act_req.ExtMsgHash)
 		if err != nil {
 			return err
 		}
 	} else {
-		return index.IndexError{Code: 422, Message: "account or trace_id should be specified"}
+		return index.IndexError{Code: 422, Message: "account or ext_msg_hash should be specified"}
 	}
 
 	res, book, metadata, err := pool.QueryPendingActions(request_settings, emulatedContext)
@@ -1747,17 +1738,47 @@ func ActionContextByAccount(repository *emulated.EmulatedTracesRepository, accou
 
 func ContextByTraces(repository *emulated.EmulatedTracesRepository, trace_ids []index.HashType) (
 	*index.EmulatedTracesContext, error) {
-	if len(trace_ids) == 0 {
+	uniqueKeys := prepareHashes(trace_ids)
+	if len(uniqueKeys) == 0 {
 		return index.NewEmptyContext(false), nil
 	}
+	raw_traces, err := repository.LoadRawTraces(uniqueKeys)
+	if err != nil {
+		return nil, err
+	}
+	emulated_context := index.NewEmptyContext(false)
+	err = emulated_context.FillFromRawData(raw_traces)
+	return emulated_context, err
+}
+
+func ContextByExtMsgHash(repository *emulated.EmulatedTracesRepository, ext_msg_hashes []index.HashType) (
+	*index.EmulatedTracesContext, error) {
+	uniqueKeys := prepareHashes(ext_msg_hashes)
+	if len(uniqueKeys) == 0 {
+		return index.NewEmptyContext(false), nil
+	}
+	raw_traces, err := repository.LoadRawTracesByExtMsg(uniqueKeys)
+	if err != nil {
+		return nil, err
+	}
+	emulated_context := index.NewEmptyContext(false)
+	err = emulated_context.FillFromRawData(raw_traces)
+	return emulated_context, err
+}
+
+func prepareHashes(hashes []index.HashType) []string {
+	if len(hashes) == 0 {
+		return nil
+	}
 	keys := make(map[string]struct{})
-	for _, trace_id := range trace_ids {
+	for _, trace_id := range hashes {
 		var trace_id_base64 string
 		_, err := base64.StdEncoding.DecodeString(string(trace_id))
 		if err != nil {
 			b, err := hex.DecodeString(string(trace_id))
 			if err != nil {
-				return nil, err
+				log.Printf("Error decoding trace id: %s", err.Error())
+				continue
 			}
 			trace_id_base64 = base64.StdEncoding.EncodeToString(b)
 		} else {
@@ -1769,13 +1790,7 @@ func ContextByTraces(repository *emulated.EmulatedTracesRepository, trace_ids []
 	for key := range keys {
 		uniqueKeys = append(uniqueKeys, key)
 	}
-	raw_traces, err := repository.LoadRawTraces(uniqueKeys)
-	if err != nil {
-		return nil, err
-	}
-	emulated_context := index.NewEmptyContext(false)
-	err = emulated_context.FillFromRawData(raw_traces)
-	return emulated_context, err
+	return uniqueKeys
 }
 
 func test() {

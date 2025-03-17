@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/redis/go-redis/v9"
+	"log"
 	"strings"
 )
 
@@ -27,7 +28,33 @@ func (receiver *EmulatedTracesRepository) LoadRawTraces(trace_ids []string) (map
 		if err != nil {
 			return nil, err
 		}
-		result[trace_id] = trace_query_result
+		if len(trace_query_result) > 0 {
+			result[trace_id] = trace_query_result
+		}
+	}
+	return result, nil
+}
+
+func (receiver *EmulatedTracesRepository) LoadRawTracesByExtMsg(hashes []string) (map[string]map[string]string, error) {
+	result, err := receiver.LoadRawTraces(hashes)
+	if err != nil {
+		return nil, err
+	}
+	for _, hash := range hashes {
+		if _, ok := result[hash]; ok {
+			continue
+		}
+		normalized_hash, err := receiver.Rdb.Get(context.Background(), "tr_in_msg:"+hash).Result()
+		if err != nil {
+			log.Printf("Error loading normalized hash for trace %s: %v", hash, err)
+			continue
+		}
+		query := receiver.Rdb.HGetAll(context.Background(), normalized_hash)
+		trace_query_result, err := query.Result()
+		if err != nil {
+			return nil, err
+		}
+		result[normalized_hash] = trace_query_result
 	}
 	return result, nil
 }
