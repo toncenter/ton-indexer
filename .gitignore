@@ -309,7 +309,7 @@ CTestTestfile.cmake
 _deps
 
 # custom
-[Bb][Uu][Ii][Ll][Dd]
+[Bb][Uu][Ii][Ll][Dd]*
 sandbox/
 .vscode/
 .DS_Store

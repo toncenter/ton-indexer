@@ -599,6 +599,7 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
         schema_tx.prev_trans_hash = trans.prev_trans_hash;
         schema_tx.prev_trans_lt = trans.prev_trans_lt;
         schema_tx.now = trans.now;
+        schema_tx.mc_seqno = mc_seqno_;
 
         schema_tx.orig_status = static_cast<schema::AccountStatus>(trans.orig_status);
         schema_tx.end_status = static_cast<schema::AccountStatus>(trans.end_status);
