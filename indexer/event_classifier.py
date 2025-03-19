@@ -599,7 +599,7 @@ async def process_emulated_trace_batch(
             index = defaultdict(set)
             for action in actions:
                 for account in action.get_action_accounts():
-                    k = f"{action.trace_id}:{action.action_id}"
+                    k = f"{trace_key}:{action.action_id}"
                     v = trace.start_lt
                     index[account.account].add((k, v))
 

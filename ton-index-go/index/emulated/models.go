@@ -551,9 +551,10 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 	}
 	if actionsBytes, exists := traceHash["actions"]; exists {
 		err := msgpack.Unmarshal([]byte(actionsBytes), &actions)
-		for _, action := range actions {
-			action.TraceEndUtime = &endUtime
-			action.TraceEndLt = &endLt
+		for i := range actions {
+			actions[i].TraceEndUtime = &endUtime
+			actions[i].TraceEndLt = &endLt
+			actions[i].TraceExternalHash = rootNodeId
 		}
 		if err != nil {
 			return Trace{}, fmt.Errorf("failed to unmarshal actions: %w", err)
