@@ -112,7 +112,7 @@ type MessageContentRow struct {
 
 type TraceRow struct {
 	TraceKey            string
-	TraceId             string
+	TraceId             *string
 	ExternalHash        *string
 	McSeqnoStart        int32
 	McSeqnoEnd          *int32
@@ -128,7 +128,7 @@ type TraceRow struct {
 }
 
 type ActionRow struct {
-	TraceId                                              string
+	TraceId                                              *string
 	ActionId                                             string
 	StartLt                                              int64
 	EndLt                                                int64
@@ -254,7 +254,7 @@ func (r genericRow) Scan(dest ...any) error {
 
 func (t *TraceRow) getAssigns() []assign {
 	return []assign{
-		assignString(t.TraceId),
+		assignStringPtr(t.TraceId),
 		assignStringPtr(t.ExternalHash),
 		assignInt(t.McSeqnoStart),
 		assignIntPtr(t.McSeqnoEnd),
@@ -272,7 +272,7 @@ func (t *TraceRow) getAssigns() []assign {
 
 func (t *ActionRow) getAssigns() []assign {
 	return []assign{
-		assignString(t.TraceId),
+		assignStringPtr(t.TraceId),
 		assignString(t.ActionId),
 		assignInt(t.StartLt),
 		assignInt(t.EndLt),

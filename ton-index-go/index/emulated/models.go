@@ -288,7 +288,7 @@ type actionStakingData struct {
 type Action struct {
 	ActionId                 string                          `msgpack:"action_id"`
 	Type                     string                          `msgpack:"type"`
-	TraceId                  string                          `msgpack:"trace_id"`
+	TraceId                  *string                         `msgpack:"trace_id"`
 	TraceExternalHash        string                          `msgpack:"trace_external_hash"`
 	TxHashes                 []string                        `msgpack:"tx_hashes"`
 	Value                    *string                         `msgpack:"value"`
@@ -361,7 +361,7 @@ func (a *Action) GetPeerSwapsStrings() []string {
 }
 
 type Trace struct {
-	TraceId      string
+	TraceId      *string
 	ExternalHash string
 	Nodes        []traceNode
 	Classified   bool
@@ -370,7 +370,7 @@ type Trace struct {
 type traceNode struct {
 	Transaction transaction `msgpack:"transaction"`
 	Emulated    bool        `msgpack:"emulated"`
-	TraceId     string
+	TraceId     *string
 	Key         string
 }
 
@@ -512,7 +512,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 	actions := make([]Action, 0)
 	var endLt uint64 = 0
 	var endUtime int32 = 0
-	var traceId = ""
+	var traceId *string
 	for len(queue) > 0 {
 		key := queue[0]
 		queue = queue[1:]
@@ -526,7 +526,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 		node.Key = key
 		if key == rootNodeId && !node.Emulated {
 			id := base64.StdEncoding.EncodeToString(node.Transaction.Hash[:])
-			traceId = id
+			traceId = &id
 		}
 
 		node.TraceId = traceId
@@ -555,6 +555,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 			actions[i].TraceEndUtime = &endUtime
 			actions[i].TraceEndLt = &endLt
 			actions[i].TraceExternalHash = rootNodeId
+			actions[i].TraceId = traceId
 		}
 		if err != nil {
 			return Trace{}, fmt.Errorf("failed to unmarshal actions: %w", err)
@@ -599,7 +600,7 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 		BlockShard:               nil,
 		BlockSeqno:               nil,
 		McBlockSeqno:             nil,
-		TraceID:                  &n.TraceId,
+		TraceID:                  n.TraceId,
 		PrevTransHash:            n.Transaction.PrevTransHash.Hex(),
 		PrevTransLt:              &n.Transaction.PrevTransLt,
 		Now:                      &n.Transaction.Now,

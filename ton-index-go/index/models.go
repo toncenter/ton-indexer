@@ -427,7 +427,7 @@ type JettonBurn struct {
 
 // traces
 type RawAction struct {
-	TraceId                                              HashType
+	TraceId                                              *HashType
 	ActionId                                             HashType
 	StartLt                                              int64
 	EndLt                                                int64
