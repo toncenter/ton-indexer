@@ -2,7 +2,6 @@ package emulated
 
 import (
 	"context"
-	"errors"
 	"github.com/redis/go-redis/v9"
 	"log"
 	"strings"
@@ -72,16 +71,18 @@ func (receiver *EmulatedTracesRepository) GetTraceIdsByAccount(account string) (
 		// split key by :
 		split := strings.Split(key, ":")
 		if len(split) != 2 {
-			return nil, errors.New("Invalid key format")
+			log.Println("Invalid key format: " + key)
+			continue
 		}
 		trace_id := split[0]
 		keys_query := receiver.Rdb.Keys(context.Background(), trace_id)
 		key_query_result, err := keys_query.Result()
 		if err != nil {
-			return nil, err
+			log.Println("Error getting keys:", err)
+			continue
 		}
 		if len(key_query_result) == 0 {
-			return nil, nil
+			continue
 		}
 		trace_ids = append(trace_ids, trace_id)
 	}
@@ -100,17 +101,19 @@ func (receiver *EmulatedTracesRepository) GetActionIdsByAccount(account string) 
 		// split key by :
 		split := strings.Split(key, ":")
 		if len(split) != 2 {
-			return nil, errors.New("Invalid key format")
+			log.Println("Invalid key format: " + key)
+			continue
 		}
 		trace_id := split[0]
 		action_id := split[1]
 		keys_query := receiver.Rdb.Keys(context.Background(), trace_id)
 		key_query_result, err := keys_query.Result()
 		if err != nil {
-			return nil, err
+			log.Println("Error getting keys: ", err)
+			continue
 		}
 		if len(key_query_result) == 0 {
-			return nil, nil
+			continue
 		}
 		if _, ok := actions[trace_id]; !ok {
 			actions[trace_id] = make([]string, 0)
