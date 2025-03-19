@@ -725,7 +725,7 @@ type ActionDetailsWithdrawStakeRequest struct {
 }
 
 type Action struct {
-	TraceId           HashType    `json:"trace_id,omitempty"`
+	TraceId           *HashType   `json:"trace_id"`
 	ActionId          HashType    `json:"action_id"`
 	StartLt           int64       `json:"start_lt,string"`
 	EndLt             int64       `json:"end_lt,string"`
@@ -759,7 +759,7 @@ type TraceNode struct {
 } // @name TraceNode
 
 type Trace struct {
-	TraceId           HashType                  `json:"trace_id,omitempty"`
+	TraceId           *HashType                 `json:"trace_id"`
 	ExternalHash      *HashType                 `json:"external_hash"`
 	McSeqnoStart      HashType                  `json:"mc_seqno_start"`
 	McSeqnoEnd        HashType                  `json:"mc_seqno_end"`

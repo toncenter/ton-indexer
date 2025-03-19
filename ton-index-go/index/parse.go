@@ -275,7 +275,7 @@ func ParseWalletState(state AccountStateFull) (*WalletState, error) {
 func ParseRawAction(raw *RawAction) (*Action, error) {
 	var act Action
 
-	act.TraceId = raw.TraceId
+	act.TraceId = &raw.TraceId
 	act.ActionId = raw.ActionId
 	act.StartLt = raw.StartLt
 	act.EndLt = raw.EndLt

@@ -1991,12 +1991,12 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 	trace_id_list := []HashType{}
 	addr_map := map[string]bool{}
 	for idx := range traces {
-		traces_map[traces[idx].TraceId] = idx
+		traces_map[*traces[idx].TraceId] = idx
 		if settings.MaxTraceTransactions > 0 && traces[idx].TraceMeta.Transactions > int64(settings.MaxTraceTransactions) {
 			traces[idx].IsIncomplete = true
 			traces[idx].Warning = "trace is too large"
 		} else {
-			trace_id_list = append(trace_id_list, traces[idx].TraceId)
+			trace_id_list = append(trace_id_list, *traces[idx].TraceId)
 		}
 	}
 	if len(trace_id_list) > 0 {
@@ -2059,7 +2059,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 				if err != nil {
 					return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
 				}
-				*traces[traces_map[action.TraceId]].Actions = append(*traces[traces_map[action.TraceId]].Actions, action)
+				*traces[traces_map[*action.TraceId]].Actions = append(*traces[traces_map[*action.TraceId]].Actions, action)
 			}
 		}
 		{
