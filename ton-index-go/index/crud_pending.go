@@ -132,7 +132,7 @@ func (db *DbClient) QueryPendingTransactions(
 }
 
 func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
-	conn *pgxpool.Conn, settings RequestSettings) ([]string, error) {
+	conn *pgxpool.Conn, settings RequestSettings, classified_only bool) ([]string, error) {
 	external_hash_map := make(map[string]string)
 	trace_external_hashes := make([]string, 0)
 	for _, trace := range emulatedContext.emulatedTraces {
@@ -145,8 +145,11 @@ func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
 	if len(trace_external_hashes) > 0 {
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
-		query := fmt.Sprintf("select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id"+
-			" where M.msg_hash in (%s) and T.state='complete'",
+		query := "select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id"
+		if classified_only {
+			query += " join blocks_classified BC on BC.mc_seqno = T.mc_seqno_end"
+		}
+		query += fmt.Sprintf(" where M.msg_hash in (%s) and T.state='complete'",
 			strings.Join(trace_external_hashes, ","))
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
@@ -170,7 +173,7 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 	// find transactions that already present in db
 	if filterCompletedTransaction {
 		// Find fully completed traces
-		completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings)
+		completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, false)
 		if err != nil {
 			return nil, err
 		}
@@ -202,7 +205,6 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 					return nil, IndexError{Code: 500, Message: err.Error()}
 				}
 				present_msg_hashes = append(present_msg_hashes, s)
-				println(s)
 			}
 			var tx_hashes_to_remove []string
 			for _, msg_hash := range present_msg_hashes {
@@ -267,7 +269,7 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 
 func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings) ([]Trace, []string, error) {
 	var traces []Trace
-	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings)
+	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -357,7 +359,7 @@ func queryPendingActionsImpl(
 	conn *pgxpool.Conn,
 	settings RequestSettings,
 ) ([]RawAction, error) {
-	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings)
+	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, true)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
