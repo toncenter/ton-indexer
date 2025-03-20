@@ -35,6 +35,7 @@ private:
   std::int32_t to_seqno_{0};
   bool force_index_{false};
 
+  td::Timestamp last_alarm_timestamp_;
   std::double_t avg_tps_{0};
   std::int64_t last_indexed_seqno_count_{0};
 

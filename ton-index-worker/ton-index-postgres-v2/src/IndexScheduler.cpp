@@ -38,12 +38,31 @@ std::string get_time_string(double seconds) {
 
 void IndexScheduler::alarm() {
     alarm_timestamp() = td::Timestamp::in(1.0);
-    std::double_t alpha = 0.99;
-    if (last_indexed_seqno_count_ == 0) 
-        last_indexed_seqno_count_ = indexed_seqnos_.size();
-    avg_tps_ = alpha * avg_tps_ + (1 - alpha) * (indexed_seqnos_.size() - last_indexed_seqno_count_);
-    last_indexed_seqno_count_ = indexed_seqnos_.size();
-    
+
+    td::Timestamp now = td::Timestamp::now();
+    double dt = 0.0;
+    if (last_alarm_timestamp_) {
+        dt = now.at() - last_alarm_timestamp_.at();
+    }
+    last_alarm_timestamp_ = now;
+
+    constexpr double alpha = 0.99; // Decay factor per second
+
+    auto current_count = indexed_seqnos_.size();
+
+    if (last_indexed_seqno_count_ == 0) {
+        last_indexed_seqno_count_ = current_count;
+    }
+
+    if (dt > 0) {
+        auto delta_count = current_count - last_indexed_seqno_count_;
+        double new_tps = static_cast<double>(delta_count) / dt;
+        double alpha_dt = std::pow(alpha, dt);
+        avg_tps_ = alpha_dt * avg_tps_ + (1 - alpha_dt) * new_tps;
+    }
+
+    last_indexed_seqno_count_ = current_count;
+
     if (next_print_stats_.is_in_past()) {
         print_stats();
         next_print_stats_ = td::Timestamp::in(stats_timeout_);
@@ -303,7 +322,7 @@ void IndexScheduler::print_stats() {
     }
 
     sb << end_seqno;
-    sb << "\t" << avg_tps_ << "/s (" << get_time_string(eta) << ")"
+    sb << "\t" << td::StringBuilder::FixedDouble(avg_tps_, 2) << " mb/s (" << get_time_string(eta) << ")"
        << "\tQ[" << cur_queue_state_.mc_blocks_ << "M, " 
        << cur_queue_state_.blocks_ << "b, " 
        << cur_queue_state_.txs_ << "t, " 
