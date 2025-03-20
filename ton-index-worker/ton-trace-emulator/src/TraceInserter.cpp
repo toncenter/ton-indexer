@@ -75,7 +75,7 @@ public:
                 auto addr_raw = std::to_string(addr.workchain) + ":" + addr.addr.to_hex();
                 transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), addr_raw, buffer.str());
             }
-            transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "root_node", td::base64_encode(trace_.root->node_id.as_slice()));
+            transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
             
             if (!trace_.root->emulated) {
                 transaction_.set("tr_root_tx:" + td::base64_encode(trace_.root_tx_hash.as_slice()), td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()));
