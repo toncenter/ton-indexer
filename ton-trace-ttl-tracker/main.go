@@ -450,6 +450,9 @@ func (rtt *RedisTTLTracker) handleTraceEmulationStatus(ctx context.Context, hash
 			if len(clearedTraces) > 0 {
 				// Expire all synthetic traces
 				for _, traceId := range clearedTraces {
+					if traceId == hashKey {
+						continue
+					}
 					rtt.expiryTracker.Add(traceId, time.Now())
 
 					rtt.logger.WithFields(logrus.Fields{
