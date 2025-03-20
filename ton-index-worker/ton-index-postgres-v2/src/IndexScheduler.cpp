@@ -178,6 +178,7 @@ void IndexScheduler::handle_missing_ta_state(ton::BlockSeqno next_seqno) {
 void IndexScheduler::handle_valid_ta_state(ton::BlockSeqno last_state_seqno) {
     if (last_state_seqno < from_seqno_) {
         LOG(WARNING) << "Trace assembler state " << last_state_seqno << " is lower than --from " << from_seqno_;
+        td::actor::send_closure(trace_assembler_, &TraceAssembler::reset_state);
         last_known_seqno_ = from_seqno_ - 1;
     } else {
         last_known_seqno_ = last_state_seqno;
