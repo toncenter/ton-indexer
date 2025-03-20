@@ -1622,7 +1622,11 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "string",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
                         "description": "Collection address in any form.",
                         "name": "collection_address",
                         "in": "query"

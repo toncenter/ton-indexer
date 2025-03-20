@@ -2138,10 +2138,13 @@ paths:
           type: string
         name: owner_address
         type: array
-      - description: Collection address in any form.
+      - collectionFormat: multi
+        description: Collection address in any form.
         in: query
+        items:
+          type: string
         name: collection_address
-        type: string
+        type: array
       - collectionFormat: multi
         description: 'Index of item for given collection. Max: 1000.'
         in: query

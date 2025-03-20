@@ -756,7 +756,7 @@ func GetNFTCollections(c *fiber.Ctx) error {
 // @failure 400 {object} index.RequestError
 // @param address query []string false "NFT item address in any form. Max: 1000." collectionFormat(multi)
 // @param owner_address query []string false "Address of NFT item owner in any form. Max: 1000." collectionFormat(multi)
-// @param collection_address query string false "Collection address in any form."
+// @param collection_address query []string false "Collection address in any form."
 // @param index query []string false "Index of item for given collection. Max: 1000." collectionFormat(multi)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -773,6 +773,9 @@ func GetNFTItems(c *fiber.Ctx) error {
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if len(nft_req.CollectionAddress) > 1 && len(nft_req.OwnerAddress) != 1 {
+		return index.IndexError{Code: 422, Message: "exact one owner_address required for multiple collection_address"}
 	}
 
 	res, book, metadata, err := pool.QueryNFTItems(nft_req, lim_req, request_settings)
