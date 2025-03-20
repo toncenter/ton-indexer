@@ -34,6 +34,7 @@ private:
   std::int32_t from_seqno_{0};
   std::int32_t to_seqno_{0};
   bool force_index_{false};
+  bool is_in_sync_{false};
 
   td::Timestamp last_alarm_timestamp_;
   std::double_t avg_tps_{0};
@@ -63,7 +64,7 @@ private:
   void schedule_next_seqnos();
 
   void schedule_seqno(std::uint32_t mc_seqno);
-  void reschedule_seqno(std::uint32_t mc_seqno);
+  void reschedule_seqno(std::uint32_t mc_seqno, bool silent = false);
   void seqno_fetched(std::uint32_t mc_seqno, MasterchainBlockDataState block_data_state);
   void seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
