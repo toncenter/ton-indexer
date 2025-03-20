@@ -34,7 +34,7 @@ done
 sudo apt update
 sudo apt install -y build-essential cmake clang openssl libssl-dev zlib1g-dev \
                     gperf wget git curl libreadline-dev ccache libmicrohttpd-dev liblz4-dev \
-                    pkg-config libsecp256k1-dev libsodium-dev python3-dev libpq-dev ninja-build
+                    pkg-config libsecp256k1-dev libsodium-dev libhiredis-dev python3-dev libpq-dev ninja-build
 
 # build
 if [[ $FORCE_BUILD -eq "1" ]]; then

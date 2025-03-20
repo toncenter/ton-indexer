@@ -19,6 +19,7 @@
           - pkg-config
           - libsecp256k1-dev
           - libsodium-dev
+          - libhiredis-dev
           - python3-dev
           - libpq-dev
           - automake

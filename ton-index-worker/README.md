@@ -26,7 +26,7 @@ Do the following steps to build and run index worker from source.
 1. Install required packages: 
 
         sudo apt-get update -y
-        sudo apt-get install -y build-essential cmake clang openssl libssl-dev zlib1g-dev gperf wget git curl libreadline-dev ccache libmicrohttpd-dev pkg-config libsecp256k1-dev libsodium-dev python3-dev libpq-dev ninja-build
+        sudo apt-get install -y build-essential cmake clang openssl libssl-dev zlib1g-dev gperf wget git curl libreadline-dev ccache libmicrohttpd-dev pkg-config libsecp256k1-dev libsodium-dev libhiredis-dev python3-dev libpq-dev ninja-build
 2. Build TON index worker binary:
 
         mkdir -p build
