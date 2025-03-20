@@ -37,7 +37,7 @@ std::string get_time_string(double seconds) {
 }
 
 void IndexScheduler::alarm() {
-    alarm_timestamp() = td::Timestamp::in(1.0);
+    alarm_timestamp() = td::Timestamp::in(is_in_sync_ ? 1.0 : 0.1);
 
     td::Timestamp now = td::Timestamp::now();
     double dt = 0.0;
@@ -189,8 +189,10 @@ void IndexScheduler::handle_valid_ta_state(ton::BlockSeqno last_state_seqno) {
     alarm_timestamp() = td::Timestamp::now();
 }
 
+const int IS_IN_SYNC_THRESHOLD = 3;
+
 void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
-    if (to_seqno_ && last_known_seqno_ > to_seqno_) 
+    if (to_seqno_ && last_known_seqno_ > to_seqno_)
         return;
     int skipped_count = 0;
     for (auto seqno = last_known_seqno_ + 1; seqno <= newest_mc_seqno; ++seqno) {
@@ -207,6 +209,16 @@ void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
         LOG(INFO) << "Skipped " << skipped_count << " existing seqnos";
     }
     last_known_seqno_ = newest_mc_seqno;
+
+    if (!is_in_sync_ && (last_known_seqno_ - last_indexed_seqno_ <= IS_IN_SYNC_THRESHOLD)) {
+        LOG(INFO) << "Indexer is in sync with TON node";
+        is_in_sync_ = true;
+        td::actor::send_closure(db_scanner_, &DbScanner::set_catch_up_interval, 0.1);
+    } else if (is_in_sync_ && (last_known_seqno_ - last_indexed_seqno_ > IS_IN_SYNC_THRESHOLD)) {
+        LOG(WARNING) << "Indexing is out of sync with TON node";
+        is_in_sync_ = false;
+        td::actor::send_closure(db_scanner_, &DbScanner::set_catch_up_interval, 1.0);
+    }
 }
 
 void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
@@ -214,10 +226,12 @@ void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
 
     processing_seqnos_.insert(mc_seqno);
     timers_[mc_seqno] = td::Timer();
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<MasterchainBlockDataState> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, is_in_sync = is_in_sync_](td::Result<MasterchainBlockDataState> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to fetch seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
+            if (!is_in_sync) {
+                LOG(ERROR) << "Failed to fetch seqno " << mc_seqno << ": " << R.error();
+            }
+            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, is_in_sync);
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_fetched, mc_seqno, R.move_as_ok());
@@ -226,8 +240,10 @@ void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
     td::actor::send_closure(db_scanner_, &DbScanner::fetch_seqno, mc_seqno, std::move(P));
 }
 
-void IndexScheduler::reschedule_seqno(std::uint32_t mc_seqno) {
-    LOG(WARNING) << "Rescheduling seqno " << mc_seqno;
+void IndexScheduler::reschedule_seqno(std::uint32_t mc_seqno, bool silent) {
+    if (!silent) {
+        LOG(WARNING) << "Rescheduling seqno " << mc_seqno;
+    }
     processing_seqnos_.erase(mc_seqno);
     queued_seqnos_.push(mc_seqno);
 }
@@ -238,7 +254,7 @@ void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, MasterchainBlockDataS
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to parse seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
+            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, false);
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_parsed, mc_seqno, R.move_as_ok());
@@ -257,7 +273,7 @@ void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to asseble traces for seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
+            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, false);
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_traces_assembled, mc_seqno, R.move_as_ok());
@@ -271,7 +287,7 @@ void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockP
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to detect interfaces for seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
+            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, false);
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_interfaces_processed, mc_seqno, R.move_as_ok());
@@ -285,7 +301,7 @@ void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBl
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to detect actions for seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
+            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, false);
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_actions_processed, mc_seqno, R.move_as_ok());
@@ -299,7 +315,7 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, timer = td::Timer{}](td::Result<td::Unit> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to insert seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
+            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, false);
             return;
         }
         g_statistics.record_time(INSERT_SEQNO, timer.elapsed() * 1e3);
@@ -309,7 +325,8 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
         R.ensure();
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_queued_to_insert, mc_seqno, R.move_as_ok());
     });
-    td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, mc_seqno, std::move(parsed_block), std::move(Q), std::move(P));
+    td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, mc_seqno, std::move(parsed_block), 
+                                is_in_sync_, std::move(Q), std::move(P));
 }
 
 void IndexScheduler::print_stats() {

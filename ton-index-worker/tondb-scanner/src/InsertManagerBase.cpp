@@ -34,12 +34,16 @@ void InsertManagerBase::print_info() {
 }
 
 
-void InsertManagerBase::insert(std::uint32_t mc_seqno, ParsedBlockPtr block_ds, td::Promise<QueueState> queued_promise, td::Promise<td::Unit> inserted_promise) {
+void InsertManagerBase::insert(std::uint32_t mc_seqno, ParsedBlockPtr block_ds, bool force, td::Promise<QueueState> queued_promise, td::Promise<td::Unit> inserted_promise) {
     auto task = InsertTaskStruct{mc_seqno, std::move(block_ds), std::move(inserted_promise)};
     auto status_delta = task.get_queue_state();
     insert_queue_.push(std::move(task));
     queue_state_ += status_delta;
     queued_promise.set_result(queue_state_);
+
+    if (force) {
+        schedule_next_insert_batches(false);
+    }
 }
 
 
