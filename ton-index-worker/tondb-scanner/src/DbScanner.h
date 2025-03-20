@@ -27,6 +27,9 @@ public:
   void start_up() override;
   void alarm() override;
 
+  void set_catch_up_interval(float interval) {
+    catch_up_interval_ = interval;
+  }
   void fetch_seqno(std::uint32_t mc_seqno, td::Promise<MasterchainBlockDataState> promise);
   void get_last_mc_seqno(td::Promise<ton::BlockSeqno> promise);
   void get_oldest_mc_seqno(td::Promise<ton::BlockSeqno> promise);
