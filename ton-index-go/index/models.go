@@ -1,6 +1,8 @@
 package index
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type ShardId int64                 // @name ShardId
 type AccountAddress string         // @name AccountAddress
@@ -379,7 +381,7 @@ type JettonWalletMintlessInfo struct {
 	StartFrom           *int64   `json:"start_from"`
 	ExpireAt            *int64   `json:"expire_at"`
 	CustomPayloadApiUri []string `json:"custom_payload_api_uri"`
-}
+} // @name JettonWalletMintlessInfo
 
 type JettonWallet struct {
 	Address           AccountAddress            `json:"address"`
@@ -424,6 +426,32 @@ type JettonBurn struct {
 	CustomPayload       *string         `json:"custom_payload"`
 	TraceId             *HashType       `json:"trace_id"`
 } // @name JettonBurn
+
+type RawActionJettonSwapPeerSwap struct {
+	AssetIn   *AccountAddress
+	AmountIn  *string
+	AssetOut  *AccountAddress
+	AmountOut *string
+}
+
+func (p *RawActionJettonSwapPeerSwap) ScanNull() error {
+	return fmt.Errorf("cannot scan NULL into RawActionJettonSwapPeerSwap")
+}
+
+func (p *RawActionJettonSwapPeerSwap) ScanIndex(i int) any {
+	switch i {
+	case 0:
+		return &p.AssetIn
+	case 1:
+		return &p.AmountIn
+	case 2:
+		return &p.AssetOut
+	case 3:
+		return &p.AmountOut
+	default:
+		panic("invalid index")
+	}
+}
 
 // traces
 type RawAction struct {
@@ -480,7 +508,7 @@ type RawAction struct {
 	JettonSwapDexOutgoingTransferDestination             *AccountAddress
 	JettonSwapDexOutgoingTransferSourceJettonWallet      *AccountAddress
 	JettonSwapDexOutgoingTransferDestinationJettonWallet *AccountAddress
-	JettonSwapPeerSwaps                                  []string
+	JettonSwapPeerSwaps                                  []RawActionJettonSwapPeerSwap
 	ChangeDNSRecordKey                                   *string
 	ChangeDNSRecordValueSchema                           *string
 	ChangeDNSRecordValue                                 *string
@@ -594,14 +622,21 @@ type ActionDetailsJettonSwapTransfer struct {
 	Amount                  *string         `json:"amount"`
 }
 
+type ActionDetailsJettonSwapPeerSwap struct {
+	AssetIn   *AccountAddress `json:"asset_in"`
+	AmountIn  *string         `json:"amount_in"`
+	AssetOut  *AccountAddress `json:"asset_out"`
+	AmountOut *string         `json:"amount_out"`
+}
+
 type ActionDetailsJettonSwap struct {
-	Dex                 *string                          `json:"dex"`
-	Sender              *AccountAddress                  `json:"sender"`
-	AssetIn             *AccountAddress                  `json:"asset_in"`
-	AssetOut            *AccountAddress                  `json:"asset_out"`
-	DexIncomingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_incoming_transfer"`
-	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_outgoing_transfer"`
-	PeerSwaps           []string                         `json:"peer_swaps"`
+	Dex                 *string                           `json:"dex"`
+	Sender              *AccountAddress                   `json:"sender"`
+	AssetIn             *AccountAddress                   `json:"asset_in"`
+	AssetOut            *AccountAddress                   `json:"asset_out"`
+	DexIncomingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_incoming_transfer"`
+	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_outgoing_transfer"`
+	PeerSwaps           []ActionDetailsJettonSwapPeerSwap `json:"peer_swaps"`
 }
 
 type ActionDetailsJettonTransfer struct {
@@ -775,6 +810,16 @@ type Trace struct {
 	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
 	Transactions      map[HashType]*Transaction `json:"transactions,omitempty"`
 } // @name Trace
+
+type DNSRecord struct {
+	NftItemAddress AccountAddress  `json:"nft_item_address"`
+	NftItemOwner   *AccountAddress `json:"nft_item_owner"`
+	Domain         string          `json:"domain"`
+	NextResolver   *AccountAddress `json:"dns_next_resolver"`
+	Wallet         *AccountAddress `json:"dns_wallet"`
+	SiteAdnl       *string         `json:"dns_site_adnl"`
+	StorageBagID   *string         `json:"dns_storage_bag_id"`
+} // @name DNSRecord
 
 // proxied models
 type V2AddressInformation struct {

@@ -418,10 +418,12 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.DexOutgoingTransfer.SourceJettonWallet = raw.JettonSwapDexOutgoingTransferSourceJettonWallet
 		details.DexOutgoingTransfer.DestinationJettonWallet = raw.JettonSwapDexOutgoingTransferDestinationJettonWallet
 		details.DexOutgoingTransfer.Amount = raw.JettonSwapDexOutgoingTransferAmount
-		details.PeerSwaps = raw.JettonSwapPeerSwaps
-		if details.PeerSwaps == nil {
-			details.PeerSwaps = []string{}
+
+		details.PeerSwaps = []ActionDetailsJettonSwapPeerSwap{}
+		for _, peer := range raw.JettonSwapPeerSwaps {
+			details.PeerSwaps = append(details.PeerSwaps, ActionDetailsJettonSwapPeerSwap(peer))
 		}
+
 		act.Details = &details
 	case "jetton_transfer":
 		var details ActionDetailsJettonTransfer

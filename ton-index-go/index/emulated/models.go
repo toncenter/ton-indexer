@@ -859,33 +859,8 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.JettonSwapDexOutgoingTransferDestination = a.JettonSwapData.DexOutgoingTransfer.Destination
 		row.JettonSwapDexOutgoingTransferSourceJettonWallet = a.JettonSwapData.DexOutgoingTransfer.SourceJettonWallet
 		row.JettonSwapDexOutgoingTransferDestinationJettonWallet = a.JettonSwapData.DexOutgoingTransfer.DestinationJettonWallet
-		if len(a.JettonSwapData.PeerSwaps) > 0 {
-			peerSwapStrings := make([]string, len(a.JettonSwapData.PeerSwaps))
-			for i, swap := range a.JettonSwapData.PeerSwaps {
-				assetIn := ""
-				if swap.AssetIn != nil {
-					assetIn = *swap.AssetIn
-				}
 
-				amountIn := ""
-				if swap.AmountIn != nil {
-					amountIn = *swap.AmountIn
-				}
-
-				assetOut := ""
-				if swap.AssetOut != nil {
-					assetOut = *swap.AssetOut
-				}
-
-				amountOut := ""
-				if swap.AmountOut != nil {
-					amountOut = *swap.AmountOut
-				}
-
-				peerSwapStrings[i] = fmt.Sprintf("(%s,%s,%s,%s)", assetIn, amountIn, assetOut, amountOut)
-			}
-			row.JettonSwapPeerSwaps = peerSwapStrings
-		}
+		row.JettonSwapPeerSwaps = a.GetPeerSwapsStrings()
 	}
 	if a.ChangeDnsRecordData != nil {
 		var dnsRecordsFlag *int64

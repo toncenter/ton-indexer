@@ -570,7 +570,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v3/dnsEntities": {
+        "/api/v3/dns/records": {
             "get": {
                 "security": [
                     {
@@ -580,7 +580,7 @@ const docTemplate = `{
                         "APIKeyQuery": []
                     }
                 ],
-                "description": "Query dns entities",
+                "description": "Query DNS records by specified filters. Currently .ton and .t.me DNS are supported.",
                 "consumes": [
                     "application/json"
                 ],
@@ -588,35 +588,24 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "accounts"
+                    "dns"
                 ],
-                "summary": "Get DNS Entities",
-                "operationId": "api_v3_get_dns_entities",
+                "summary": "Get DNS Records",
+                "operationId": "api_v3_get_dns_records",
                 "parameters": [
                     {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "List of addresses in any form to get address book. Max: 1024.",
-                        "name": "address",
+                        "type": "string",
+                        "description": "Wallet address in any form. DNS records that contain this address in wallet category will be returned.",
+                        "name": "wallet",
                         "in": "query",
                         "required": true
-                    },
-                    {
-                        "type": "boolean",
-                        "default": true,
-                        "description": "Include code and data BOCs. Default: true",
-                        "name": "include_boc",
-                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/AccountStatesResponse"
+                            "$ref": "#/definitions/DNSRecordsResponse"
                         }
                     },
                     "400": {
@@ -1633,7 +1622,11 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "string",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
                         "description": "Collection address in any form.",
                         "name": "collection_address",
                         "in": "query"
@@ -3136,6 +3129,46 @@ const docTemplate = `{
                 }
             }
         },
+        "DNSRecord": {
+            "type": "object",
+            "properties": {
+                "dns_next_resolver": {
+                    "type": "string"
+                },
+                "dns_site_adnl": {
+                    "type": "string"
+                },
+                "dns_storage_bag_id": {
+                    "type": "string"
+                },
+                "dns_wallet": {
+                    "type": "string"
+                },
+                "domain": {
+                    "type": "string"
+                },
+                "nft_item_address": {
+                    "type": "string"
+                },
+                "nft_item_owner": {
+                    "type": "string"
+                }
+            }
+        },
+        "DNSRecordsResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "records": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/DNSRecord"
+                    }
+                }
+            }
+        },
         "DecodedContent": {
             "type": "object",
             "properties": {
@@ -3348,10 +3381,30 @@ const docTemplate = `{
                     "example": "0"
                 },
                 "mintless_info": {
-                    "$ref": "#/definitions/index.JettonWalletMintlessInfo"
+                    "$ref": "#/definitions/JettonWalletMintlessInfo"
                 },
                 "owner": {
                     "type": "string"
+                }
+            }
+        },
+        "JettonWalletMintlessInfo": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "custom_payload_api_uri": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "expire_at": {
+                    "type": "integer"
+                },
+                "start_from": {
+                    "type": "integer"
                 }
             }
         },
@@ -4167,26 +4220,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/WalletState"
                     }
-                }
-            }
-        },
-        "index.JettonWalletMintlessInfo": {
-            "type": "object",
-            "properties": {
-                "amount": {
-                    "type": "string"
-                },
-                "custom_payload_api_uri": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "expire_at": {
-                    "type": "integer"
-                },
-                "start_from": {
-                    "type": "integer"
                 }
             }
         },
