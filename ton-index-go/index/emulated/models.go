@@ -316,45 +316,6 @@ type Action struct {
 	StakingData              *actionStakingData              `msgpack:"staking_data"`
 }
 
-func FormatPeerSwaps(peerSwaps []actionPeerSwapDetails) []string {
-	result := make([]string, len(peerSwaps))
-
-	for i, swap := range peerSwaps {
-		assetIn := ""
-		if swap.AssetIn != nil {
-			assetIn = *swap.AssetIn
-		}
-
-		amountIn := ""
-		if swap.AmountIn != nil {
-			amountIn = *swap.AmountIn
-		}
-
-		assetOut := ""
-		if swap.AssetOut != nil {
-			assetOut = *swap.AssetOut
-		}
-
-		amountOut := ""
-		if swap.AmountOut != nil {
-			amountOut = *swap.AmountOut
-		}
-
-		// Format the string as "(assetIn,amountIn,assetOut,amountOut)"
-		result[i] = fmt.Sprintf("(%s,%s,%s,%s)", assetIn, amountIn, assetOut, amountOut)
-	}
-
-	return result
-}
-
-func (a *Action) GetPeerSwapsStrings() []string {
-	if a.JettonSwapData == nil || len(a.JettonSwapData.PeerSwaps) == 0 {
-		return []string{}
-	}
-
-	return FormatPeerSwaps(a.JettonSwapData.PeerSwaps)
-}
-
 type Trace struct {
 	TraceId    string
 	Nodes      []traceNode
@@ -823,7 +784,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.JettonSwapDexOutgoingTransferSourceJettonWallet = a.JettonSwapData.DexOutgoingTransfer.SourceJettonWallet
 		row.JettonSwapDexOutgoingTransferDestinationJettonWallet = a.JettonSwapData.DexOutgoingTransfer.DestinationJettonWallet
 
-		row.JettonSwapPeerSwaps = a.GetPeerSwapsStrings()
+		row.JettonSwapPeerSwaps = a.JettonSwapData.PeerSwaps
 	}
 	if a.ChangeDnsRecordData != nil {
 		var dnsRecordsFlag *int64
