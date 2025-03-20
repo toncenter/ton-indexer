@@ -299,6 +299,10 @@ func GetPendingTransactions(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "at least 1 account address required"}
 	}
 
+	if emulatedTracesRepository == nil {
+		return index.IndexError{Code: 500, Message: "emulatedTracesRepository is not initialized"}
+	}
+
 	var emulatedContext *index.EmulatedTracesContext
 	var err error
 	if tx_req.Account != nil {
@@ -1203,6 +1207,10 @@ func GetPendingTraces(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "account or ext_msg_hash should be specified"}
 	}
 
+	if emulatedTracesRepository == nil {
+		return index.IndexError{Code: 500, Message: "emulatedTracesRepository is not initialized"}
+	}
+
 	var emulatedContext *index.EmulatedTracesContext
 	var err error
 	if event_req.AccountAddress != nil {
@@ -1309,9 +1317,13 @@ func GetPendingActions(c *fiber.Ctx) error {
 	if err := c.QueryParser(&act_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+
+	if emulatedTracesRepository == nil {
+		return index.IndexError{Code: 500, Message: "emulatedTracesRepository is not initialized"}
+	}
+
 	var emulatedContext *index.EmulatedTracesContext
 	var err error
-
 	if act_req.AccountAddress != nil {
 		emulatedContext, err = ActionContextByAccount(emulatedTracesRepository,
 			[]index.AccountAddress{*act_req.AccountAddress})
@@ -1859,6 +1871,9 @@ func main() {
 		os.Exit(63)
 	}
 	emulatedTracesRepository, err = emulated.NewRepository(redis_dsn)
+	if err != nil {
+		log.Printf("Error creating emulated traces repository: %s", err.Error())
+	}
 	// web server
 	config := fiber.Config{
 		AppName:        "TON Index API",
