@@ -1,6 +1,8 @@
 package index
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type ShardId int64                 // @name ShardId
 type AccountAddress string         // @name AccountAddress
@@ -423,6 +425,32 @@ type JettonBurn struct {
 	TraceId             *HashType       `json:"trace_id"`
 } // @name JettonBurn
 
+type RawActionJettonSwapPeerSwap struct {
+	AssetIn   *AccountAddress
+	AmountIn  *string
+	AssetOut  *AccountAddress
+	AmountOut *string
+}
+
+func (p *RawActionJettonSwapPeerSwap) ScanNull() error {
+	return fmt.Errorf("cannot scan NULL into RawActionJettonSwapPeerSwap")
+}
+
+func (p *RawActionJettonSwapPeerSwap) ScanIndex(i int) any {
+	switch i {
+	case 0:
+		return &p.AssetIn
+	case 1:
+		return &p.AmountIn
+	case 2:
+		return &p.AssetOut
+	case 3:
+		return &p.AmountOut
+	default:
+		panic("invalid index")
+	}
+}
+
 // traces
 type RawAction struct {
 	TraceId                                              HashType
@@ -478,7 +506,7 @@ type RawAction struct {
 	JettonSwapDexOutgoingTransferDestination             *AccountAddress
 	JettonSwapDexOutgoingTransferSourceJettonWallet      *AccountAddress
 	JettonSwapDexOutgoingTransferDestinationJettonWallet *AccountAddress
-	JettonSwapPeerSwaps                                  []string
+	JettonSwapPeerSwaps                                  []RawActionJettonSwapPeerSwap
 	ChangeDNSRecordKey                                   *string
 	ChangeDNSRecordValueSchema                           *string
 	ChangeDNSRecordValue                                 *string
@@ -592,14 +620,21 @@ type ActionDetailsJettonSwapTransfer struct {
 	Amount                  *string         `json:"amount"`
 }
 
+type ActionDetailsJettonSwapPeerSwap struct {
+	AssetIn   *AccountAddress `json:"asset_in"`
+	AmountIn  *string         `json:"amount_in"`
+	AssetOut  *AccountAddress `json:"asset_out"`
+	AmountOut *string         `json:"amount_out"`
+}
+
 type ActionDetailsJettonSwap struct {
-	Dex                 *string                          `json:"dex"`
-	Sender              *AccountAddress                  `json:"sender"`
-	AssetIn             *AccountAddress                  `json:"asset_in"`
-	AssetOut            *AccountAddress                  `json:"asset_out"`
-	DexIncomingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_incoming_transfer"`
-	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_outgoing_transfer"`
-	PeerSwaps           []string                         `json:"peer_swaps"`
+	Dex                 *string                           `json:"dex"`
+	Sender              *AccountAddress                   `json:"sender"`
+	AssetIn             *AccountAddress                   `json:"asset_in"`
+	AssetOut            *AccountAddress                   `json:"asset_out"`
+	DexIncomingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_incoming_transfer"`
+	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_outgoing_transfer"`
+	PeerSwaps           []ActionDetailsJettonSwapPeerSwap `json:"peer_swaps"`
 }
 
 type ActionDetailsJettonTransfer struct {
