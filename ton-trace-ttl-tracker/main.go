@@ -657,9 +657,9 @@ func minDuration(a, b time.Duration) time.Duration {
 func main() {
 	redisAddr := flag.String("redis-dsn", "", "Redis server address")
 
-	ttlFlag := flag.Duration("ttl", 5*time.Minute, "TTL duration for traces (e.g. '24h', '30m')")
-	syntheticTtlFlag := flag.Duration("synthetic-ttl", 9000*time.Second, "TTL duration for synthetic traces (e.g. '24h', '30m')")
-	completedTtlFlag := flag.Duration("completed-ttl", 9000*time.Second, "TTL duration for completed traces (e.g. '24h', '30m')")
+	ttlFlag := flag.Duration("ttl", 1*time.Minute, "TTL duration for traces (e.g. '24h', '30m')")
+	syntheticTtlFlag := flag.Duration("synthetic-ttl", 30*time.Second, "TTL duration for synthetic traces (e.g. '24h', '30m')")
+	completedTtlFlag := flag.Duration("completed-ttl", 30*time.Second, "TTL duration for completed traces (e.g. '24h', '30m')")
 	channelName := flag.String("channel", "new_trace", "Redis Pub/Sub channel name for new hash keys")
 
 	// Retry configuration
