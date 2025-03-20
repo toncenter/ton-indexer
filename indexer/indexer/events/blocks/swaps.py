@@ -542,6 +542,7 @@ class DedustSwapBlockMatcher(BlockMatcher):
                 if isinstance(payout_block, JettonTransferBlock):
                     payout = payout_block
                     receiver_wallet = payout.data['receiver_wallet']
+                    receiver = payout.data['receiver']
                     dex_outgoing_wallet = payout.data['sender']
                     dex_outgoing_jetton_wallet = payout.data['sender_wallet']
                     actual_asset_out = payout.data['asset']
