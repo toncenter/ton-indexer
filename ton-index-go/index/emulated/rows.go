@@ -2,9 +2,10 @@ package emulated
 
 import (
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"reflect"
 	"strconv"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type TransactionRow struct {
@@ -101,6 +102,7 @@ type MessageRow struct {
 	ImportFee            *int64
 	BodyHash             *string
 	InitStateHash        *string
+	MsgHashNorm          *string
 }
 
 type MessageContentRow struct {
@@ -109,7 +111,8 @@ type MessageContentRow struct {
 }
 
 type TraceRow struct {
-	TraceId             string
+	TraceKey            string
+	TraceId             *string
 	ExternalHash        *string
 	McSeqnoStart        int32
 	McSeqnoEnd          *int32
@@ -125,12 +128,15 @@ type TraceRow struct {
 }
 
 type ActionRow struct {
-	TraceId                                              string
+	TraceId                                              *string
 	ActionId                                             string
 	StartLt                                              int64
 	EndLt                                                int64
 	StartUtime                                           int64
 	EndUtime                                             int64
+	TraceEndLt                                           *int64
+	TraceEndUtime                                        *int64
+	TraceMcSeqnoEnd                                      *int32
 	Source                                               *string
 	SourceSecondary                                      *string
 	Destination                                          *string
@@ -248,7 +254,7 @@ func (r genericRow) Scan(dest ...any) error {
 
 func (t *TraceRow) getAssigns() []assign {
 	return []assign{
-		assignString(t.TraceId),
+		assignStringPtr(t.TraceId),
 		assignStringPtr(t.ExternalHash),
 		assignInt(t.McSeqnoStart),
 		assignIntPtr(t.McSeqnoEnd),
@@ -266,12 +272,15 @@ func (t *TraceRow) getAssigns() []assign {
 
 func (t *ActionRow) getAssigns() []assign {
 	return []assign{
-		assignString(t.TraceId),
+		assignStringPtr(t.TraceId),
 		assignString(t.ActionId),
 		assignInt(t.StartLt),
 		assignInt(t.EndLt),
 		assignInt(t.StartUtime),
 		assignInt(t.EndUtime),
+		assignIntPtr(t.TraceEndLt),
+		assignIntPtr(t.TraceEndUtime),
+		assignIntPtr(t.TraceMcSeqnoEnd),
 		assignStringPtr(t.Source),
 		assignStringPtr(t.SourceSecondary),
 		assignStringPtr(t.Destination),
@@ -455,6 +464,7 @@ func (m *MessageRow) getAssigns() []assign {
 		assignIntPtr(m.ImportFee),
 		assignStringPtr(m.BodyHash),
 		assignStringPtr(m.InitStateHash),
+		assignStringPtr(m.MsgHashNorm),
 	}
 }
 

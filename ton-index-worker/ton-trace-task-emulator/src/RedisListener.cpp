@@ -78,7 +78,7 @@ void RedisListener::trace_error(TraceTask task, ton::BlockId mc_block_id, td::St
 void RedisListener::trace_received(TraceTask task, ton::BlockId mc_block_id, Trace trace) {
   LOG(INFO) << "Emulated trace " << task.id << ": " << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
   if (task.detect_interfaces) {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), task = std::move(task), mc_block_id = std::move(mc_block_id), trace_id = trace.id](td::Result<Trace> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), task = std::move(task), mc_block_id = std::move(mc_block_id)](td::Result<Trace> R) {
       if (R.is_error()) {
         td::actor::send_closure(SelfId, &RedisListener::trace_interfaces_error, std::move(task), std::move(mc_block_id), R.move_as_error());
         return;

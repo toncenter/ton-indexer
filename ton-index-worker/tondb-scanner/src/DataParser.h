@@ -1,6 +1,7 @@
 #pragma once
 #include "IndexData.h"
 
+td::Result<td::Bits256> ext_in_msg_get_normalized_hash(td::Ref<vm::Cell> ext_in_msg_cell);
 
 class ParseQuery: public td::actor::Actor {
 private:

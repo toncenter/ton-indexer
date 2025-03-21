@@ -164,6 +164,7 @@ type trMessage struct {
 	ImportFee    *int64  `msgpack:"import_fee" json:"import_fee"`
 	BodyBoc      string  `msgpack:"body_boc" json:"body_boc"`
 	InitStateBoc *string `msgpack:"init_state_boc" json:"init_state_boc"`
+	HashNorm     *hash   `msgpack:"hash_norm" json:"hash_norm"`
 }
 
 type transactionDescr struct {
@@ -287,7 +288,8 @@ type actionStakingData struct {
 type Action struct {
 	ActionId                 string                          `msgpack:"action_id"`
 	Type                     string                          `msgpack:"type"`
-	TraceId                  string                          `msgpack:"trace_id"`
+	TraceId                  *string                         `msgpack:"trace_id"`
+	TraceExternalHash        string                          `msgpack:"trace_external_hash"`
 	TxHashes                 []string                        `msgpack:"tx_hashes"`
 	Value                    *string                         `msgpack:"value"`
 	Amount                   *string                         `msgpack:"amount"`
@@ -295,6 +297,9 @@ type Action struct {
 	EndLt                    *int64                          `msgpack:"end_lt"`
 	StartUtime               *int64                          `msgpack:"start_utime"`
 	EndUtime                 *int64                          `msgpack:"end_utime"`
+	TraceEndLt               *uint64                         `msgpack:"trace_end_lt"`
+	TraceEndUtime            *int32                          `msgpack:"trace_end_utime"`
+	TraceStartLt             *int64                          `msgpack:"trace_start_lt"`
 	Source                   *string                         `msgpack:"source"`
 	SourceSecondary          *string                         `msgpack:"source_secondary"`
 	Destination              *string                         `msgpack:"destination"`
@@ -317,15 +322,16 @@ type Action struct {
 }
 
 type Trace struct {
-	TraceId    string
-	Nodes      []traceNode
-	Classified bool
-	Actions    []Action
+	TraceId      *string
+	ExternalHash string
+	Nodes        []traceNode
+	Classified   bool
+	Actions      []Action
 }
 type traceNode struct {
 	Transaction transaction `msgpack:"transaction"`
 	Emulated    bool        `msgpack:"emulated"`
-	TraceId     string
+	TraceId     *string
 	Key         string
 }
 
@@ -454,19 +460,20 @@ func (h *hash) DecodeMsgpack(dec *msgpack.Decoder) error {
 	copy(h[:], bytes)
 	return nil
 }
-func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
+func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 
 	queue := make([]string, 0)
 
-	queue = append(queue, traceId)
+	rootNodeId, exists := traceHash["root_node"]
+	if !exists {
+		return Trace{}, fmt.Errorf("root_node not found in trace %s", traceKey)
+	}
+	queue = append(queue, rootNodeId)
 	txs := make([]traceNode, 0)
 	actions := make([]Action, 0)
-	if actionsBytes, exists := traceHash["actions"]; exists {
-		err := msgpack.Unmarshal([]byte(actionsBytes), &actions)
-		if err != nil {
-			return Trace{}, fmt.Errorf("failed to unmarshal actions: %w", err)
-		}
-	}
+	var endLt uint64 = 0
+	var endUtime int32 = 0
+	var traceId *string
 	for len(queue) > 0 {
 		key := queue[0]
 		queue = queue[1:]
@@ -478,6 +485,11 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 		nodeBytes := []byte(nodeData)
 		err := msgpack.Unmarshal(nodeBytes, &node)
 		node.Key = key
+		if key == rootNodeId && !node.Emulated {
+			id := base64.StdEncoding.EncodeToString(node.Transaction.Hash[:])
+			traceId = &id
+		}
+
 		node.TraceId = traceId
 		txs = append(txs, node)
 
@@ -491,13 +503,32 @@ func ConvertHSet(traceHash map[string]string, traceId string) (Trace, error) {
 				queue = append(queue, nextKey)
 			}
 		}
+		if endLt < node.Transaction.Lt {
+			endLt = node.Transaction.Lt
+		}
+		if endUtime < node.Transaction.Now {
+			endUtime = node.Transaction.Now
+		}
+	}
+	if actionsBytes, exists := traceHash["actions"]; exists {
+		err := msgpack.Unmarshal([]byte(actionsBytes), &actions)
+		for i := range actions {
+			actions[i].TraceEndUtime = &endUtime
+			actions[i].TraceEndLt = &endLt
+			actions[i].TraceExternalHash = rootNodeId
+			actions[i].TraceId = traceId
+		}
+		if err != nil {
+			return Trace{}, fmt.Errorf("failed to unmarshal actions: %w", err)
+		}
 	}
 	_, has_actions := traceHash["actions"]
 	return Trace{
-		TraceId:    traceId,
-		Nodes:      txs,
-		Classified: has_actions,
-		Actions:    actions,
+		TraceId:      traceId,
+		ExternalHash: rootNodeId,
+		Nodes:        txs,
+		Classified:   has_actions,
+		Actions:      actions,
 	}, nil
 }
 
@@ -530,7 +561,7 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 		BlockShard:               nil,
 		BlockSeqno:               nil,
 		McBlockSeqno:             nil,
-		TraceID:                  &n.TraceId,
+		TraceID:                  n.TraceId,
 		PrevTransHash:            n.Transaction.PrevTransHash.Hex(),
 		PrevTransLt:              &n.Transaction.PrevTransLt,
 		Now:                      &n.Transaction.Now,
@@ -662,6 +693,11 @@ func (m *trMessage) GetMessageRow(traceId string, direction string, txLt int64, 
 			Body: m.InitStateBoc,
 		}
 	}
+	var hashNorm *string = nil
+	if m.HashNorm != nil {
+		n := base64.StdEncoding.EncodeToString((*m.HashNorm)[:])
+		hashNorm = &n
+	}
 	msgRow := MessageRow{
 		TxHash:               txHash,
 		TxLt:                 txLt,
@@ -683,6 +719,7 @@ func (m *trMessage) GetMessageRow(traceId string, direction string, txLt int64, 
 		ImportFee:            m.ImportFee,
 		BodyHash:             &bodyHash,
 		InitStateHash:        initStateHash,
+		MsgHashNorm:          hashNorm,
 	}
 	return msgRow, body, initState, nil
 }
@@ -693,7 +730,7 @@ func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 	messages := make([]MessageRow, 0)
 
 	for _, outMsg := range n.Transaction.OutMsgs {
-		msgRow, body, initState, err := outMsg.GetMessageRow(n.TraceId, "out", int64(n.Transaction.Lt),
+		msgRow, body, initState, err := outMsg.GetMessageRow(n.Key, "out", int64(n.Transaction.Lt),
 			base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
 		if err != nil {
 			return nil, nil, nil, err
@@ -706,7 +743,7 @@ func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 			initStates[*msgRow.InitStateHash] = *initState
 		}
 	}
-	inMsgRow, body, initState, err := n.Transaction.InMsg.GetMessageRow(n.TraceId, "in", int64(n.Transaction.Lt),
+	inMsgRow, body, initState, err := n.Transaction.InMsg.GetMessageRow(n.Key, "in", int64(n.Transaction.Lt),
 		base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
 	if err != nil {
 		return nil, nil, nil, err
@@ -743,7 +780,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		Asset2Secondary:      a.Asset2Secondary,
 		Opcode:               a.Opcode,
 		Success:              a.Success,
-		TraceExternalHash:    &a.TraceId,
+		TraceExternalHash:    &a.TraceExternalHash,
 	}
 	if a.TonTransferData != nil {
 		row.TonTransferContent = a.TonTransferData.Content

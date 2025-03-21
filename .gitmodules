@@ -9,9 +9,6 @@
 	path = ton-index-worker/external/clickhouse-cpp
 	url = https://github.com/kdimentionaltree/clickhouse-cpp.git
   branch = absl-fix
-[submodule "external/hiredis"]
-	path = ton-index-worker/external/hiredis
-	url = https://github.com/redis/hiredis.git
 [submodule "external/redis-plus-plus"]
 	path = ton-index-worker/external/redis-plus-plus
 	url = https://github.com/sewenew/redis-plus-plus.git

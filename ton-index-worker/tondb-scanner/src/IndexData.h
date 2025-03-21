@@ -184,6 +184,7 @@ using TransactionDescr = std::variant<TransactionDescr_ord,
 
 struct Message {
   td::Bits256 hash;
+  std::optional<td::Bits256> hash_norm;
   std::optional<std::string> source;
   std::optional<std::string> destination;
   std::optional<CurrencyCollection> value;

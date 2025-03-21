@@ -61,7 +61,9 @@ struct TraceNode {
 };
 
 struct Trace {
-    TraceId id;
+    td::Bits256 root_tx_hash;
+    td::Bits256 ext_in_msg_hash;
+    td::Bits256 ext_in_msg_hash_norm;
     std::unique_ptr<TraceNode> root;
     td::Bits256 rand_seed;
 
@@ -75,6 +77,14 @@ struct Trace {
     int depth() const {
         return root->depth();
     }
+
+    // // hash of root tx (only if not emulated)
+    // std::optional<td::Bits256> id() const {
+    //     if (root->emulated) {
+    //         return std::nullopt;
+    //     }
+    //     return root->transaction_root->get_hash().bits();
+    // }
 
     int transactions_count() const {
         return root->transactions_count();
