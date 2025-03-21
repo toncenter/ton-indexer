@@ -142,7 +142,17 @@
         service_name: "{{ stack_name }}__{{ service.service_name }}"
         start_cmd: "{{ deploy_path }}/venv/bin/python3 {{ deploy_path }}/indexer/event_classifier.py {{ service.additional_args }}"
     
-    - name: Restart and enable service
+    - name: Start and enable service redis-server
+      ansible.builtin.systemd:
+        name: redis-server
+        state: started
+        enabled: true
+        force: true
+        daemon_reload: true
+      throttle: 1
+      become: true
+
+    - name: Restart and enable emulation services
       ansible.builtin.systemd:
         name: "{{ service_name }}"
         state: restarted
@@ -154,7 +164,6 @@
       throttle: 1
       become: true
       with_items:
-       - redis-server
        - emulate_api
        - trace_task_emulator
        - action_classifier
