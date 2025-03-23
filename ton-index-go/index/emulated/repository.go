@@ -25,7 +25,7 @@ func (receiver *EmulatedTracesRepository) LoadRawTraces(trace_ids []string) (map
 		trace_query := receiver.Rdb.HGetAll(context.Background(), trace_id)
 		trace_query_result, err := trace_query.Result()
 		if err != nil {
-			return nil, err
+			log.Println("Error loading trace: ", trace_id, err)
 		}
 		if len(trace_query_result) > 0 {
 			result[trace_id] = trace_query_result
@@ -51,7 +51,12 @@ func (receiver *EmulatedTracesRepository) LoadRawTracesByExtMsg(hashes []string)
 		query := receiver.Rdb.HGetAll(context.Background(), normalized_hash)
 		trace_query_result, err := query.Result()
 		if err != nil {
-			return nil, err
+			log.Println("Trace not found: ", normalized_hash, err)
+			continue
+		}
+		if len(trace_query_result) == 0 {
+			log.Println("Trace not found: ", normalized_hash)
+			continue
 		}
 		result[normalized_hash] = trace_query_result
 	}
