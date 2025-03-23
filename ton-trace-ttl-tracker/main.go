@@ -644,7 +644,7 @@ func (rtt *RedisTTLTracker) removeKeysFromSortedSet(ctx context.Context, address
 	return nil
 }
 
-// containsColon checks if a string contains a ':' character (your scenario for addresses).
+// containsColon checks if a string contains a ':' character
 func containsColon(s string) bool {
 	return strings.Contains(s, ":")
 }
@@ -655,6 +655,281 @@ func minDuration(a, b time.Duration) time.Duration {
 		return a
 	}
 	return b
+}
+
+// RedisSnapshot represents a point-in-time snapshot of Redis keys and set contents
+type RedisSnapshot struct {
+	Keys        map[string]struct{}        // All keys in Redis
+	SetContents map[string]map[string]bool // Set key -> Set of members
+}
+
+// RedisCleanupTool detects and removes stalled/untracked data in Redis
+type RedisCleanupTool struct {
+	redisClient      *redis.Client
+	logger           *logrus.Logger
+	snapshotInterval time.Duration
+	expiryTracker    *ExpiryTracker // Access to tracked keys
+	cleanupMutex     sync.Mutex     // Protect cleanup operations
+}
+
+// NewRedisCleanupTool creates a new instance of the cleanup tool
+func NewRedisCleanupTool(
+	client *redis.Client,
+	logger *logrus.Logger,
+	snapshotInterval time.Duration,
+	expiryTracker *ExpiryTracker,
+) *RedisCleanupTool {
+	return &RedisCleanupTool{
+		redisClient:      client,
+		logger:           logger,
+		snapshotInterval: snapshotInterval,
+		expiryTracker:    expiryTracker,
+	}
+}
+
+// takeSnapshot captures the current state of Redis data
+func (rct *RedisCleanupTool) takeSnapshot(ctx context.Context) (*RedisSnapshot, error) {
+	rct.logger.Info("Taking Redis snapshot...")
+
+	snapshot := &RedisSnapshot{
+		Keys:        make(map[string]struct{}),
+		SetContents: make(map[string]map[string]bool),
+	}
+
+	// Get all keys
+	var cursor uint64
+	var keys []string
+	var err error
+
+	for {
+		keys, cursor, err = rct.redisClient.Scan(ctx, cursor, "*", 1000).Result()
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan Redis keys: %w", err)
+		}
+
+		// Add keys to snapshot
+		for _, key := range keys {
+			// Skip certain keys
+			if strings.Contains(key, "tr_in_msg") || strings.Contains(key, "tr_root_tx") {
+				continue
+			}
+
+			// Skip if key is currently being tracked by ExpiryTracker
+			if _, tracked := rct.expiryTracker.latestExpiries[key]; tracked {
+				continue
+			}
+
+			snapshot.Keys[key] = struct{}{}
+
+			// For each key, check its type
+			keyType, err := rct.redisClient.Type(ctx, key).Result()
+			if err != nil {
+				rct.logger.WithError(err).WithField("key", key).
+					Warn("Failed to determine key type")
+				continue
+			}
+
+			if keyType == "set" || keyType == "zset" {
+				// For sets and sorted sets, get all members
+				var members []string
+				if keyType == "set" {
+					members, err = rct.redisClient.SMembers(ctx, key).Result()
+				} else {
+					members, err = rct.redisClient.ZRange(ctx, key, 0, -1).Result()
+				}
+
+				if err != nil {
+					rct.logger.WithError(err).WithField("key", key).
+						Warn("Failed to get set/zset members")
+					continue
+				}
+
+				memberMap := make(map[string]bool)
+				for _, member := range members {
+					memberMap[member] = true
+				}
+				snapshot.SetContents[key] = memberMap
+			}
+		}
+
+		if cursor == 0 {
+			break
+		}
+	}
+
+	rct.logger.WithFields(logrus.Fields{
+		"keys":        len(snapshot.Keys),
+		"collections": len(snapshot.SetContents),
+	}).Info("Redis snapshot completed")
+
+	return snapshot, nil
+}
+
+// isTraceDataKey checks if the key is a trace data hash
+func (rct *RedisCleanupTool) isTraceDataKey(ctx context.Context, key string) bool {
+	// Check if it might be a trace hash by looking for the root_node field
+	exists, err := rct.redisClient.HExists(ctx, key, "root_node").Result()
+	if err != nil {
+		// If error, we can't confirm it's a trace hash
+		return false
+	}
+	return exists
+}
+
+// isKeyBeingTracked checks if a key is currently being actively tracked
+func (rct *RedisCleanupTool) isKeyBeingTracked(ctx context.Context, key string) bool {
+	_, tracked := rct.expiryTracker.latestExpiries[key]
+	return tracked
+}
+
+// extractTraceKeysFromMember parses a set member string to find the trace hash key
+func extractTraceKeysFromMember(setKey string, member string) string {
+	parts := strings.Split(member, ":")
+	if len(parts) >= 2 {
+		traceId := parts[0]
+		if len(traceId) > 0 {
+			return traceId
+		}
+	}
+	return ""
+}
+
+// cleanup compares two snapshots and cleans up stalled data
+func (rct *RedisCleanupTool) cleanup(ctx context.Context, oldSnapshot, newSnapshot *RedisSnapshot) {
+	rct.cleanupMutex.Lock()
+	defer rct.cleanupMutex.Unlock()
+
+	rct.logger.Info("Starting Redis cleanup process...")
+
+	// Find stalled keys (present in both snapshots)
+	stalledKeys := make([]string, 0)
+	for key := range oldSnapshot.Keys {
+		if _, exists := newSnapshot.Keys[key]; exists {
+			// Verify it's not currently tracked
+			if !rct.isKeyBeingTracked(ctx, key) {
+				// Only process trace data keys
+				if rct.isTraceDataKey(ctx, key) {
+					stalledKeys = append(stalledKeys, key)
+				}
+			}
+		}
+	}
+
+	// Delete stalled hash keys
+	if len(stalledKeys) > 0 {
+		rct.logger.WithField("count", len(stalledKeys)).
+			Info("Found stalled trace hash keys to clean up")
+
+		for _, key := range stalledKeys {
+			rct.logger.WithField("key", key).Info("Deleting stalled trace hash key")
+			if err := rct.redisClient.Del(ctx, key).Err(); err != nil {
+				rct.logger.WithError(err).WithField("key", key).
+					Error("Failed to delete stalled key")
+			}
+		}
+	}
+
+	// Process stalled set members
+	stalledSetItems := make(map[string][]string) // Set key -> list of stalled members
+
+	for setKey, oldMembers := range oldSnapshot.SetContents {
+		if newMembers, exists := newSnapshot.SetContents[setKey]; exists {
+			// For every member in both snapshots
+			for member := range oldMembers {
+				if newMembers[member] {
+					// Extract trace key using set-specific parsing logic
+					traceKey := extractTraceKeysFromMember(setKey, member)
+
+					if traceKey == "" {
+						continue
+					}
+
+					// If trace is being tracked, don't remove the member
+					if !rct.isKeyBeingTracked(ctx, traceKey) {
+						if _, exists := stalledSetItems[setKey]; !exists {
+							stalledSetItems[setKey] = make([]string, 0)
+						}
+						stalledSetItems[setKey] = append(stalledSetItems[setKey], member)
+					}
+				}
+			}
+		}
+	}
+
+	// Delete stalled set members
+	for setKey, members := range stalledSetItems {
+		if len(members) == 0 {
+			continue
+		}
+
+		// Check if key is a set or sorted set
+		keyType, err := rct.redisClient.Type(ctx, setKey).Result()
+		if err != nil {
+			rct.logger.WithError(err).WithField("setKey", setKey).
+				Error("Failed to determine set key type")
+			continue
+		}
+
+		rct.logger.WithFields(logrus.Fields{
+			"setKey":      setKey,
+			"memberCount": len(members),
+			"keyType":     keyType,
+			"isAAI":       strings.HasPrefix(setKey, "_aai:"),
+		}).Info("Removing stalled members from set/zset")
+
+		// Remove members
+		args := make([]interface{}, len(members))
+		for i, member := range members {
+			args[i] = member
+		}
+
+		if keyType == "set" {
+			err = rct.redisClient.SRem(ctx, setKey, args...).Err()
+		} else if keyType == "zset" {
+			err = rct.redisClient.ZRem(ctx, setKey, args...).Err()
+		}
+
+		if err != nil {
+			rct.logger.WithError(err).WithField("setKey", setKey).
+				Error("Failed to remove stalled members")
+		}
+	}
+
+	rct.logger.WithFields(logrus.Fields{
+		"hashKeysRemoved":        len(stalledKeys),
+		"setsWithRemovedMembers": len(stalledSetItems),
+	}).Info("Redis cleanup completed")
+}
+
+// Run executes the cleanup process periodically
+func (rct *RedisCleanupTool) Run(ctx context.Context) {
+	rct.logger.WithField("interval", rct.snapshotInterval).
+		Info("Starting Redis cleanup tool")
+	oldSnapshot, err := rct.takeSnapshot(ctx)
+	if err != nil {
+		rct.logger.WithError(err).Error("Failed to take initial Redis snapshot")
+		return
+	}
+
+	ticker := time.NewTicker(rct.snapshotInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			rct.logger.Info("Redis cleanup tool shutting down")
+			return
+		case <-ticker.C:
+			newSnapshot, err := rct.takeSnapshot(ctx)
+			if err != nil {
+				rct.logger.WithError(err).Error("Failed to take new Redis snapshot")
+				continue
+			}
+
+			rct.cleanup(ctx, oldSnapshot, newSnapshot)
+			oldSnapshot = newSnapshot
+		}
+	}
 }
 
 func main() {
@@ -669,6 +944,10 @@ func main() {
 	maxRetries := flag.Int("max-retries", 3, "Maximum number of retries for cleanup")
 	baseDelay := flag.Duration("base-delay", 1*time.Second, "Initial delay for exponential backoff")
 	maxDelay := flag.Duration("max-delay", 30*time.Second, "Maximum delay for exponential backoff")
+
+	// Redis cleanup tool configuration
+	cleanupIntervalFlag := flag.Duration("cleanup-interval", 30*time.Minute, "Interval between Redis cleanup runs")
+	enableCleanup := flag.Bool("enable-cleanup", false, "Enable automatic Redis cleanup of stalled data")
 
 	flag.Parse()
 
@@ -719,6 +998,20 @@ func main() {
 		*maxDelay,
 	)
 	ttlTracker.Run(ctx)
+
+	// Start Redis cleanup tool if enabled
+	if *enableCleanup {
+		logger.WithField("interval", cleanupIntervalFlag.String()).
+			Info("Initializing Redis cleanup tool")
+		cleanupTool := NewRedisCleanupTool(
+			redisClient,
+			logger,
+			*cleanupIntervalFlag,
+			ttlTracker.expiryTracker,
+		)
+		go cleanupTool.Run(ctx)
+	}
+
 	<-ctx.Done()
 
 	// Cleanup
