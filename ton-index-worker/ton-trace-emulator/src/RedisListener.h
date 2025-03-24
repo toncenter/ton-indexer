@@ -29,8 +29,8 @@ public:
   void set_mc_data_state(MasterchainBlockDataState mc_data_state);
 
 private:
-  void trace_error(td::Bits256 trace_root_tx_hash, td::Status error);
-  void trace_received(td::Bits256 trace_root_tx_hash, Trace trace);
-  void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error);
+  void trace_error(td::Bits256 ext_in_msg_hash, td::Status error);
+  void trace_received(Trace trace);
+  void trace_interfaces_error(td::Bits256 ext_in_msg_hash, td::Status error);
   void finish_processing(Trace trace);
 };

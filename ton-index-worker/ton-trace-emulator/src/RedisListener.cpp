@@ -28,7 +28,7 @@ void RedisListener::alarm() {
       if (R.is_error()) {
         td::actor::send_closure(SelfId, &RedisListener::trace_error, msg_hash, R.move_as_error());
       } else {
-        td::actor::send_closure(SelfId, &RedisListener::trace_received, msg_hash, R.move_as_ok());
+        td::actor::send_closure(SelfId, &RedisListener::trace_received, R.move_as_ok());
       }
     });
 
@@ -45,20 +45,21 @@ void RedisListener::set_mc_data_state(MasterchainBlockDataState mc_data_state) {
   }
 
   mc_data_state_ = std::move(mc_data_state);
+  known_ext_msgs_.clear();
 }
 
-void RedisListener::trace_error(td::Bits256 trace_root_tx_hash, td::Status error) {
-  LOG(ERROR) << "Failed to emulate trace " << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
-  known_ext_msgs_.erase(trace_root_tx_hash);
+void RedisListener::trace_error(td::Bits256 ext_in_msg_hash, td::Status error) {
+  LOG(ERROR) << "Failed to emulate trace from msg " << td::base64_encode(ext_in_msg_hash.as_slice()) << ": " << error;
+  known_ext_msgs_.erase(ext_in_msg_hash);
 }
 
-void RedisListener::trace_received(td::Bits256 trace_root_tx_hash, Trace trace) {
-  LOG(INFO) << "Emulated trace " << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " 
+void RedisListener::trace_received(Trace trace) {
+  LOG(INFO) << "Emulated trace from msg " << td::base64_encode(trace.ext_in_msg_hash.as_slice()) << ": " 
         << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
   if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_root_tx_hash = trace.root_tx_hash](td::Result<Trace> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), ext_in_msg_hash = trace.ext_in_msg_hash](td::Result<Trace> R) {
       if (R.is_error()) {
-        td::actor::send_closure(SelfId, &RedisListener::trace_interfaces_error, trace_root_tx_hash, R.move_as_error());
+        td::actor::send_closure(SelfId, &RedisListener::trace_interfaces_error, ext_in_msg_hash, R.move_as_error());
         return;
       }
       td::actor::send_closure(SelfId, &RedisListener::finish_processing, R.move_as_ok());
@@ -70,17 +71,17 @@ void RedisListener::trace_received(td::Bits256 trace_root_tx_hash, Trace trace) 
   }
 }
 
-void RedisListener::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error) {
-    LOG(ERROR) << "Failed to detect interfaces on trace " << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
+void RedisListener::trace_interfaces_error(td::Bits256 ext_in_msg_hash, td::Status error) {
+    LOG(ERROR) << "Failed to detect interfaces on trace from msg " << td::base64_encode(ext_in_msg_hash.as_slice()) << ": " << error;
 }
 
 void RedisListener::finish_processing(Trace trace) {
-    auto P = td::PromiseCreator::lambda([trace_root_tx_hash = trace.root_tx_hash](td::Result<td::Unit> R) {
+    auto P = td::PromiseCreator::lambda([ext_in_msg_hash = trace.ext_in_msg_hash](td::Result<td::Unit> R) {
       if (R.is_error()) {
-        LOG(ERROR) << "Failed to insert trace " << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << R.move_as_error();
+        LOG(ERROR) << "Failed to insert trace from msg " << td::base64_encode(ext_in_msg_hash.as_slice()) << ": " << R.move_as_error();
         return;
       }
-      LOG(DEBUG) << "Successfully inserted trace " << td::base64_encode(trace_root_tx_hash.as_slice());
+      LOG(DEBUG) << "Successfully inserted trace from msg " << td::base64_encode(ext_in_msg_hash.as_slice());
     });
     trace_processor_(std::move(trace), std::move(P));
 }
