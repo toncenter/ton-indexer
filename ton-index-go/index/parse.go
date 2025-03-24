@@ -333,7 +333,25 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		var details ActionDetailsChangeDns
 		details.Key = raw.ChangeDNSRecordKey
 		details.Value.SumType = raw.ChangeDNSRecordValueSchema
-		details.Value.DnsSmcAddress = raw.ChangeDNSRecordValue
+		if raw.ChangeDNSRecordValueSchema != nil {
+			switch *raw.ChangeDNSRecordValueSchema {
+			case "DNSNextResolver":
+				details.Value.DnsNextResolverAddress = raw.ChangeDNSRecordValue
+				break
+			case "DNSAdnlAddress":
+				details.Value.DnsAdnlAddress = raw.ChangeDNSRecordValue
+				break
+			case "DNSSmcAddress":
+				details.Value.DnsSmcAddress = raw.ChangeDNSRecordValue
+				break
+			case "DNSStorageAddress":
+				details.Value.DnsStorageAddress = raw.ChangeDNSRecordValue
+				break
+			case "DNSText":
+				details.Value.DnsStorageAddress = raw.ChangeDNSRecordValue
+				break
+			}
+		}
 		details.Value.Flags = raw.ChangeDNSRecordFlags
 		details.Asset = raw.Destination
 		details.Source = raw.Source

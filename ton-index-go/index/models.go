@@ -543,9 +543,13 @@ type ActionDetailsAuctionBid struct {
 }
 
 type ActionDetailsChangeDnsValue struct {
-	SumType       *string `json:"sum_type"`
-	DnsSmcAddress *string `json:"dns_smc_address"`
-	Flags         *int64  `json:"flags"`
+	SumType                *string `json:"sum_type"`
+	DnsSmcAddress          *string `json:"dns_smc_address"`
+	DnsAdnlAddress         *string `json:"dns_adnl_address"`
+	DnsText                *string `json:"dns_text"`
+	DnsNextResolverAddress *string `json:"dns_next_resolver_address"`
+	DnsStorageAddress      *string `json:"dns_storage_address"`
+	Flags                  *int64  `json:"flags"`
 }
 
 type ActionDetailsChangeDns struct {
