@@ -2321,7 +2321,7 @@ void InsertManagerPostgres::start_up() {
         "create index if not exists messages_index_7 on messages (created_lt, msg_hash);\n"
         "create index if not exists messages_index_3 on messages (destination, created_lt);\n"
         "create index if not exists messages_index_4 on messages (body_hash);\n"
-        "create index if not exists messages_index_9 on messages (msg_hash_norm);\n"
+        "create index if not exists messages_index_9 on messages (msg_hash_norm) where msg_hash_norm is not null;\n"
         "create index if not exists nft_transfers_index_2 on nft_transfers (nft_item_address, tx_lt);\n"
         "create index if not exists nft_transfers_index_3 on nft_transfers (nft_collection_address, tx_now);\n"
         "create index if not exists nft_transfers_index_4 on nft_transfers (nft_collection_address, tx_lt);\n"
