@@ -1842,8 +1842,8 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "Find actions by trace id",
-                        "name": "trace_id",
+                        "description": "Find actions by trace external hash",
+                        "name": "ext_msg_hash",
                         "in": "query"
                     }
                 ],
@@ -1898,18 +1898,8 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "Find trace by trace id.",
-                        "name": "trace_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Find trace by existing transaction hash.",
-                        "name": "tx_hash",
+                        "description": "Find trace by external hash",
+                        "name": "ext_msg_hash",
                         "in": "query"
                     }
                 ],
@@ -3473,6 +3463,9 @@ const docTemplate = `{
                 "hash": {
                     "type": "string"
                 },
+                "hash_norm": {
+                    "type": "string"
+                },
                 "ihr_disabled": {
                     "type": "boolean"
                 },
@@ -3959,6 +3952,9 @@ const docTemplate = `{
                     "additionalProperties": {
                         "type": "string"
                     }
+                },
+                "trace_external_hash": {
+                    "type": "string"
                 },
                 "trace_id": {
                     "type": "string"

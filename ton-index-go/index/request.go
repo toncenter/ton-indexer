@@ -145,6 +145,16 @@ type TracesRequest struct {
 	McSeqno         *int32          `query:"mc_seqno"`
 }
 
+type PendingTracesRequest struct {
+	AccountAddress *AccountAddress `query:"account"`
+	ExtMsgHash     []HashType      `query:"ext_msg_hash"`
+}
+
+type PendingActionsRequest struct {
+	AccountAddress *AccountAddress `query:"account"`
+	ExtMsgHash     []HashType      `query:"ext_msg_hash"`
+}
+
 type DNSRecordsRequest struct {
 	WalletAddress *AccountAddress `query:"wallet"`
 }

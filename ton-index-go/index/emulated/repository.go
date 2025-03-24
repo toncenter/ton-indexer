@@ -2,8 +2,8 @@ package emulated
 
 import (
 	"context"
-	"errors"
 	"github.com/redis/go-redis/v9"
+	"log"
 	"strings"
 )
 
@@ -25,9 +25,40 @@ func (receiver *EmulatedTracesRepository) LoadRawTraces(trace_ids []string) (map
 		trace_query := receiver.Rdb.HGetAll(context.Background(), trace_id)
 		trace_query_result, err := trace_query.Result()
 		if err != nil {
-			return nil, err
+			log.Println("Error loading trace: ", trace_id, err)
 		}
-		result[trace_id] = trace_query_result
+		if len(trace_query_result) > 0 {
+			result[trace_id] = trace_query_result
+		}
+	}
+	return result, nil
+}
+
+func (receiver *EmulatedTracesRepository) LoadRawTracesByExtMsg(hashes []string) (map[string]map[string]string, error) {
+	result, err := receiver.LoadRawTraces(hashes)
+	if err != nil {
+		return nil, err
+	}
+	for _, hash := range hashes {
+		if _, ok := result[hash]; ok {
+			continue
+		}
+		normalized_hash, err := receiver.Rdb.Get(context.Background(), "tr_in_msg:"+hash).Result()
+		if err != nil {
+			log.Printf("Error loading normalized hash for trace %s: %v", hash, err)
+			continue
+		}
+		query := receiver.Rdb.HGetAll(context.Background(), normalized_hash)
+		trace_query_result, err := query.Result()
+		if err != nil {
+			log.Println("Trace not found: ", normalized_hash, err)
+			continue
+		}
+		if len(trace_query_result) == 0 {
+			log.Println("Trace not found: ", normalized_hash)
+			continue
+		}
+		result[normalized_hash] = trace_query_result
 	}
 	return result, nil
 }
@@ -45,16 +76,18 @@ func (receiver *EmulatedTracesRepository) GetTraceIdsByAccount(account string) (
 		// split key by :
 		split := strings.Split(key, ":")
 		if len(split) != 2 {
-			return nil, errors.New("Invalid key format")
+			log.Println("Invalid key format: " + key)
+			continue
 		}
 		trace_id := split[0]
 		keys_query := receiver.Rdb.Keys(context.Background(), trace_id)
 		key_query_result, err := keys_query.Result()
 		if err != nil {
-			return nil, err
+			log.Println("Error getting keys:", err)
+			continue
 		}
 		if len(key_query_result) == 0 {
-			return nil, nil
+			continue
 		}
 		trace_ids = append(trace_ids, trace_id)
 	}
@@ -73,17 +106,19 @@ func (receiver *EmulatedTracesRepository) GetActionIdsByAccount(account string) 
 		// split key by :
 		split := strings.Split(key, ":")
 		if len(split) != 2 {
-			return nil, errors.New("Invalid key format")
+			log.Println("Invalid key format: " + key)
+			continue
 		}
 		trace_id := split[0]
 		action_id := split[1]
 		keys_query := receiver.Rdb.Keys(context.Background(), trace_id)
 		key_query_result, err := keys_query.Result()
 		if err != nil {
-			return nil, err
+			log.Println("Error getting keys: ", err)
+			continue
 		}
 		if len(key_query_result) == 0 {
-			return nil, nil
+			continue
 		}
 		if _, ok := actions[trace_id]; !ok {
 			actions[trace_id] = make([]string, 0)

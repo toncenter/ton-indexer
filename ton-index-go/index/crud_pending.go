@@ -3,9 +3,10 @@ package index
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"sort"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func (db *DbClient) QueryPendingActions(
@@ -23,7 +24,7 @@ func (db *DbClient) QueryPendingActions(
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
-	var actions []Action
+	actions := []Action{}
 	book := AddressBook{}
 	addr_map := map[string]bool{}
 	metadata := Metadata{}
@@ -131,29 +132,36 @@ func (db *DbClient) QueryPendingTransactions(
 }
 
 func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
-	conn *pgxpool.Conn, settings RequestSettings) ([]string, error) {
-
-	trace_ids := make([]string, 0)
-	for trace_id, _ := range emulatedContext.emulatedTransactions {
-		trace_ids = append(trace_ids, fmt.Sprintf("'%s'", trace_id))
+	conn *pgxpool.Conn, settings RequestSettings, classified_only bool) ([]string, error) {
+	external_hash_map := make(map[string]string)
+	trace_external_hashes := make([]string, 0)
+	for _, trace := range emulatedContext.emulatedTraces {
+		if trace.ExternalHash == nil {
+			continue
+		}
+		external_hash_map[*trace.ExternalHash] = trace.TraceKey
+		trace_external_hashes = append(trace_external_hashes, fmt.Sprintf("'%s'", *trace.ExternalHash))
 	}
-	if len(trace_ids) > 0 {
+	if len(trace_external_hashes) > 0 {
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
-		query := fmt.Sprintf("select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id"+
-			" where M.msg_hash in (%s) and T.state='complete'",
-			strings.Join(trace_ids, ","))
+		query := "select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id"
+		if classified_only {
+			query += " join blocks_classified BC on BC.mc_seqno = T.mc_seqno_end"
+		}
+		query += fmt.Sprintf(" where M.msg_hash in (%s) and T.state='complete'",
+			strings.Join(trace_external_hashes, ","))
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
 			return nil, IndexError{Code: 500, Message: err.Error()}
 		}
 		completed_trace_ids_in_db := make([]string, 0)
 		for rows.Next() {
-			var trace_id string
-			if err := rows.Scan(&trace_id); err != nil {
+			var external_hash string
+			if err := rows.Scan(&external_hash); err != nil {
 				return nil, IndexError{Code: 500, Message: err.Error()}
 			}
-			completed_trace_ids_in_db = append(completed_trace_ids_in_db, trace_id)
+			completed_trace_ids_in_db = append(completed_trace_ids_in_db, external_hash_map[external_hash])
 		}
 		return completed_trace_ids_in_db, nil
 	}
@@ -165,7 +173,7 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 	// find transactions that already present in db
 	if filterCompletedTransaction {
 		// Find fully completed traces
-		completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings)
+		completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, false)
 		if err != nil {
 			return nil, err
 		}
@@ -197,7 +205,6 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 					return nil, IndexError{Code: 500, Message: err.Error()}
 				}
 				present_msg_hashes = append(present_msg_hashes, s)
-				println(s)
 			}
 			var tx_hashes_to_remove []string
 			for _, msg_hash := range present_msg_hashes {
@@ -211,6 +218,10 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 		rows := emulatedContext.GetTransactions()
 		for _, row := range rows {
 			if tx, err := ScanTransaction(row); err == nil {
+				if external_hash, ok := emulatedContext.txHashTraceExternalHash[string(tx.Hash)]; ok {
+					hash := HashType(external_hash)
+					tx.TraceExternalHash = &hash
+				}
 				txs = append(txs, *tx)
 				txs_map[tx.Hash] = len(txs) - 1
 			} else {
@@ -258,29 +269,11 @@ func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxp
 
 func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings) ([]Trace, []string, error) {
 	var traces []Trace
-	trace_ids := make([]string, 0)
-	for trace_id, _ := range emulatedContext.emulatedTransactions {
-		trace_ids = append(trace_ids, fmt.Sprintf("'%s'", trace_id))
+	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, true)
+	if err != nil {
+		return nil, nil, err
 	}
-	if len(trace_ids) > 0 {
-		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-		defer cancel_ctx()
-		query := fmt.Sprintf("select DISTINCT M.msg_hash from messages M join traces T on T.trace_id = M.trace_id where M.msg_hash in (%s) and T.state='complete'",
-			strings.Join(trace_ids, ","))
-		rows, err := conn.Query(ctx, query)
-		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
-		}
-		completed_trace_ids_in_db := make([]string, 0)
-		for rows.Next() {
-			var trace_id string
-			if err := rows.Scan(&trace_id); err != nil {
-				return nil, nil, IndexError{Code: 500, Message: err.Error()}
-			}
-			completed_trace_ids_in_db = append(completed_trace_ids_in_db, trace_id)
-		}
-		emulatedContext.RemoveTraces(completed_trace_ids_in_db)
-	}
+	emulatedContext.RemoveTraces(completed_traces)
 	traceRows := emulatedContext.GetTraces()
 	for _, row := range traceRows {
 		if loc, err := ScanTrace(row); err == nil {
@@ -296,23 +289,25 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	var trace_id_list []HashType
 	addr_map := map[string]bool{}
 	for idx := range traces {
-		events_map[traces[idx].TraceId] = idx
-		trace_id_list = append(trace_id_list, traces[idx].TraceId)
+		events_map[*traces[idx].ExternalHash] = idx
+		trace_id_list = append(trace_id_list, *traces[idx].ExternalHash)
 	}
-	if len(trace_id_list) > 0 {
-		{
-			txs, err := queryPendingTransactions(emulatedContext, conn, settings, false)
-			if err != nil {
-				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
-			}
-			for idx := range txs {
-				tx := &txs[idx]
+	fully_emulated_traces := make(map[HashType]bool)
 
-				collectAddressesFromTransactions(&addr_map, tx)
-				if v := tx.TraceId; v != nil {
-					event := &traces[events_map[*v]]
-					event.TransactionsOrder = append(event.TransactionsOrder, tx.Hash)
-					event.Transactions[tx.Hash] = tx
+	if len(trace_id_list) > 0 {
+		txs, err := queryPendingTransactions(emulatedContext, conn, settings, false)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
+		}
+		for idx := range txs {
+			tx := &txs[idx]
+			collectAddressesFromTransactions(&addr_map, tx)
+			if v := tx.TraceExternalHash; v != nil {
+				trace := &traces[events_map[*v]]
+				trace.TransactionsOrder = append(trace.TransactionsOrder, tx.Hash)
+				trace.Transactions[tx.Hash] = tx
+				if idx == 0 && tx.Emulated {
+					fully_emulated_traces[*trace.ExternalHash] = true
 				}
 			}
 		}
@@ -332,6 +327,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 			}
 		}
 	}
+	var addr_list []string
 	actions := make([]RawAction, 0)
 	for _, row := range emulatedContext.GetActions() {
 		if loc, err := ScanRawAction(row); err == nil {
@@ -342,15 +338,15 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	for idx := range actions {
 		raw_action := &actions[idx]
+		collectAddressesFromAction(&addr_map, raw_action)
 
 		action, err := ParseRawAction(raw_action)
 		if err != nil {
 			return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
 		}
-		*traces[events_map[action.TraceId]].Actions = append(*traces[events_map[action.TraceId]].Actions, action)
+		*traces[events_map[*action.TraceExternalHash]].Actions = append(*traces[events_map[*action.TraceExternalHash]].Actions, action)
 	}
 	//
-	var addr_list []string
 	for k := range addr_map {
 		addr_list = append(addr_list, k)
 	}
@@ -363,7 +359,7 @@ func queryPendingActionsImpl(
 	conn *pgxpool.Conn,
 	settings RequestSettings,
 ) ([]RawAction, error) {
-	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings)
+	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, true)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
