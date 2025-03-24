@@ -289,19 +289,18 @@ void McBlockEmulator::process_txs() {
         return a.lt < b.lt;
     });
 
-    std::unordered_map<td::Bits256, TransactionInfo> txs_by_out_msg_hash;
     for (auto& tx : txs_) {
         for (const auto& out_msg : tx.out_msgs) {
-            txs_by_out_msg_hash.insert({out_msg.hash, tx});
+            tx_by_out_msg_hash_.insert({out_msg.hash, tx});
         }
     }
 
     for (auto& tx : txs_) {
         if (tx.trace_ids.has_value()) {
             // we already have trace_ids for this tx
-        } else if (txs_by_out_msg_hash.find(tx.in_msg_hash) != txs_by_out_msg_hash.end() && 
-                   txs_by_out_msg_hash[tx.in_msg_hash].trace_ids.has_value()) {
-            tx.trace_ids = txs_by_out_msg_hash[tx.in_msg_hash].trace_ids;
+        } else if (tx_by_out_msg_hash_.find(tx.in_msg_hash) != tx_by_out_msg_hash_.end() && 
+                   tx_by_out_msg_hash_[tx.in_msg_hash].trace_ids.has_value()) {
+            tx.trace_ids = tx_by_out_msg_hash_[tx.in_msg_hash].trace_ids;
         } else if (interblock_trace_ids_.find(tx.in_msg_hash) != interblock_trace_ids_.end()) {
             tx.trace_ids = interblock_trace_ids_[tx.in_msg_hash];
         } else {
@@ -327,8 +326,9 @@ void McBlockEmulator::emulate_traces() {
             // we don't emulate traces for transactions that have no trace_ids
             continue;
         }
-        if (trace_ids_in_progress_.find(tx.trace_ids->root_tx_hash) != trace_ids_in_progress_.end()) {
-            // we already emulating this trace
+        
+        // if this tx.in_msg is some out_msg of another tx in the same block, we don't emulate it
+        if (tx_by_out_msg_hash_.find(tx.in_msg_hash) != tx_by_out_msg_hash_.end()) {
             continue;
         }
 
@@ -350,13 +350,13 @@ void McBlockEmulator::emulate_traces() {
         });
         td::actor::create_actor<TraceTailEmulator>("TraceTailEmulator", mc_data_state_, tx_by_in_msg_hash_, tx, std::move(P)).release();
 
-        trace_ids_in_progress_.insert(tx.trace_ids->root_tx_hash);
+        in_progress_cnt_++;
     }
 }
 
 void McBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error) {
     LOG(ERROR) << "Failed to emulate trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice()) << " from tx " << tx_hash.to_hex() << ": " << error;
-    trace_ids_in_progress_.erase(trace_root_tx_hash);
+    in_progress_cnt_--;
 }
 
 void McBlockEmulator::trace_received(td::Bits256 tx_hash, Trace trace) {
@@ -377,7 +377,7 @@ void McBlockEmulator::trace_received(td::Bits256 tx_hash, Trace trace) {
 
 void McBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error) {
     LOG(ERROR) << "Failed to detect interfaces on trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
-    trace_ids_in_progress_.erase(trace_root_tx_hash);
+    in_progress_cnt_--;
 }
 
 void McBlockEmulator::trace_emulated(Trace trace) {
@@ -396,10 +396,10 @@ void McBlockEmulator::trace_emulated(Trace trace) {
 }
 
 void McBlockEmulator::trace_finished(td::Bits256 trace_root_tx_hash) {
-    trace_ids_in_progress_.erase(trace_root_tx_hash);
+    in_progress_cnt_--;
     traces_cnt_++;
 
-    if (trace_ids_in_progress_.empty()) {
+    if (in_progress_cnt_ == 0) {
         auto blkid = mc_data_state_.shard_blocks_[0].block_data->block_id().id;
         LOG(INFO) << "Finished emulating block " << blkid.to_str() << ": " << traces_cnt_ << " traces in " << (td::Timestamp::now().at() - start_time_.at()) * 1000 << " ms";
         promise_.set_value(td::Unit());

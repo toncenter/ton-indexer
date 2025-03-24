@@ -36,9 +36,11 @@ private:
 
     std::vector<td::Ref<vm::Cell>> shard_states_;
 
-    std::unordered_map<td::Bits256, TransactionInfo> tx_by_in_msg_hash_;
+    std::unordered_map<td::Bits256, TransactionInfo> tx_by_in_msg_hash_; // mapping from msg hash to tx that processed it as in_msg
+    std::unordered_map<td::Bits256, TransactionInfo> tx_by_out_msg_hash_; // mapping from msg hash to tx that created it as out_msg
 
     std::unordered_set<TraceId> trace_ids_in_progress_;
+    size_t in_progress_cnt_{0};
 
     int traces_cnt_{0};
 
