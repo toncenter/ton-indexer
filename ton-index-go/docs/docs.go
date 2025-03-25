@@ -4123,6 +4123,9 @@ const docTemplate = `{
             "properties": {
                 "message_hash": {
                     "type": "string"
+                },
+                "message_hash_norm": {
+                    "type": "string"
                 }
             }
         },

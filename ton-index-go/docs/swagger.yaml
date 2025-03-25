@@ -978,6 +978,8 @@ definitions:
     properties:
       message_hash:
         type: string
+      message_hash_norm:
+        type: string
     type: object
   V2StackEntity:
     properties:
