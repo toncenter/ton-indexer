@@ -32,7 +32,7 @@ Do the following steps to build and run index worker from source.
         mkdir -p build
         cd build
         cmake -DCMAKE_BUILD_TYPE=Release -GNinja ..
-        ninja -j$(nproc) ton-index-postgres-v2
+        ninja -j$(nproc) ton-index-postgres
 
 3. Install binary to your system:
 
@@ -44,7 +44,7 @@ Do the following steps to build and run index worker from source.
 
 5. Run TON index worker:
 
-        ton-index-postgres-v2 <args>
+        ton-index-postgres <args>
 
 ### 1.3. Available arguments:
 * `--db <path>` - path to TON node directory. Pass `/var/ton-work/db`, if you have TON node installed by mytonctrl. **Required**.
