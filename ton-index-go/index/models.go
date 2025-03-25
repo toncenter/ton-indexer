@@ -843,7 +843,8 @@ type V2WalletInformation struct {
 } // @name V2WalletInformation
 
 type V2SendMessageResult struct {
-	MessageHash *HashType `json:"message_hash,omitempty"`
+	MessageHash     *HashType `json:"message_hash,omitempty"`
+	MessageHashNorm *HashType `json:"message_hash_norm,omitempty"`
 } //@name V2SendMessageResult
 
 type V2StackEntity struct {
