@@ -25,8 +25,8 @@ echo "Postgres host: $POSTGRES_HOST (ip: $POSTGRES_HOST_IP)"
 
 ulimit -n 1000000
 printenv
-echo "Running binary ${TON_WORKER_BINARY:-ton-index-postgres-v2}"
-${TON_WORKER_BINARY:-ton-index-postgres-v2} --host $POSTGRES_HOST_IP \
+echo "Running binary ${TON_WORKER_BINARY:-ton-index-postgres}"
+${TON_WORKER_BINARY:-ton-index-postgres} --host $POSTGRES_HOST_IP \
     --port $POSTGRES_PORT \
     --user $POSTGRES_USER \
     --password $POSTGRES_PASSWORD \
