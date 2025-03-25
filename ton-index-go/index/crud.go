@@ -1390,11 +1390,11 @@ func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool
 }
 
 func queryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
-	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' AND m.expires_at > extract(epoch from now()) where n.address = ANY($1)" +
+	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1)" +
 		" union all " +
-		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra  from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' AND m.expires_at > extract(epoch from now()) where c.address = ANY($1)" +
+		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra  from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1)" +
 		" union all " +
-		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra  from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  AND m.expires_at > extract(epoch from now()) where j.address = ANY($1)"
+		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra  from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1)"
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
