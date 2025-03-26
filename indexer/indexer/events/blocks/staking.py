@@ -219,7 +219,7 @@ class TONStakersWithdrawMatcher(BlockMatcher):
                     tsTON_wallet=AccountId(msg.destination),
                     pool=AccountId(request.get_message().destination),
                     tokens_burnt=Amount(burn_request_data.amount),
-                    minted_nft=minted_nft
+                    minted_nft=minted_nft,
                 )
             )
         new_block.failed = failed
@@ -249,7 +249,8 @@ class TONStakersDelayedWithdrawalMatcher(BlockMatcher):
                 stake_holder=AccountId(notification_msg.owner),
                 burnt_nft=AccountId(notification.get_message().source),
                 pool=self._try_find_pool_addr(notification),
-                amount=Amount(notification_msg.amount)
+                amount=Amount(notification_msg.amount),
+                tokens_burnt=None
             )
         )
         new_block.merge_blocks([block] + other_blocks)
