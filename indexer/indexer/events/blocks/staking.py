@@ -71,6 +71,7 @@ class TONStakersWithdrawData:
     stake_holder: AccountId
     burnt_nft: AccountId | None
     pool: AccountId | None
+    tokens_burnt: Amount | None
     amount: Amount
 
 
@@ -193,12 +194,14 @@ class TONStakersWithdrawMatcher(BlockMatcher):
         failed = block.failed
 
         if immediate_withdrawal is not None:
+            value = immediate_withdrawal.get_message().value - immediate_withdrawal.previous_block.get_message().value
             new_block = TONStakersWithdrawBlock(
                 data=TONStakersWithdrawData(
                     stake_holder=AccountId(msg.source),
                     burnt_nft=None,
                     pool=AccountId(request.get_message().destination),
-                    amount=Amount(burn_request_data.amount),
+                    tokens_burnt=Amount(burn_request_data.amount),
+                    amount=Amount(value)
                 )
             )
         else:

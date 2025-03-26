@@ -322,6 +322,7 @@ def _fill_tonstakers_withdraw_action(block: TONStakersWithdrawBlock, action: Act
     action.staking_data = {
         'provider': 'tonstakers',
         'ts_nft': _addr(block.data.burnt_nft),
+        'tokens_burnt': block.data.tokens_burnt.value
     }
 
 def _fill_subscribe_action(block: SubscriptionBlock, action: Action):
