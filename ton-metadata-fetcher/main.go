@@ -582,10 +582,10 @@ func main() {
 	if ipfs_api_url == "" {
 		log.Println("Starting embedded ipfs node..")
 		ipfs_downloader, err = NewEmbeddedIpfsDownloader()
-		defer ipfs_downloader.Close()
 		if err != nil {
 			log.Fatal(err)
 		}
+		defer ipfs_downloader.Close()
 	} else {
 		ipfs_downloader, err = NewRpcIpfsDownloader(ipfs_api_url)
 		if err != nil {
@@ -610,11 +610,6 @@ func main() {
 	}
 	defer pool.Close()
 	go updateStalledTasks(ctx, pool)
-	conn, err := pool.Acquire(ctx)
-	if err != nil {
-		log.Fatal("failed to acquire connection: ", err)
-	}
-	defer conn.Release()
 	for {
 		tasks, err := fetchTasks(ctx, pool)
 		if err != nil {
@@ -629,7 +624,7 @@ func main() {
 				log.Printf("failed to acquire worker: %s\n", err.Error())
 				continue
 			}
-			_, err := conn.Exec(ctx, `UPDATE background_tasks
+			_, err := pool.Exec(ctx, `UPDATE background_tasks
 					SET status = 'in_progress',
 						started_at = EXTRACT(EPOCH FROM NOW())::bigint
 					WHERE id = $1`,
