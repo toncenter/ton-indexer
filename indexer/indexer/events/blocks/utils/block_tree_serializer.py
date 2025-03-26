@@ -266,14 +266,16 @@ def _fill_change_dns_record_action(block: ChangeDnsRecordBlock, action: Action):
         'key': block.data['key'].hex(),
     }
     if data['value_schema'] in ('DNSNextResolver', 'DNSSmcAddress'):
-        data['address'] = dns_record_data['address'].as_str()
+        data['value'] = dns_record_data['address'].as_str()
     elif data['value_schema'] == 'DNSAdnlAddress':
-        data['address'] = dns_record_data['address'].hex()
+        data['value'] = dns_record_data['address'].hex()
         data['flags'] = dns_record_data['flags']
+    elif data["value_schema"] == 'DNSStorageAddress':
+        data['value'] = dns_record_data['address'].hex()
     if data['value_schema'] == 'DNSSmcAddress':
         data['flags'] = dns_record_data['flags']
     if data['value_schema'] == 'DNSText':
-        data['dns_text'] = dns_record_data['dns_text']
+        data['value'] = dns_record_data['dns_text']
     action.change_dns_record_data = data
 
 
@@ -320,6 +322,7 @@ def _fill_tonstakers_withdraw_action(block: TONStakersWithdrawBlock, action: Act
     action.staking_data = {
         'provider': 'tonstakers',
         'ts_nft': _addr(block.data.burnt_nft),
+        'tokens_burnt': block.data.tokens_burnt.value
     }
 
 def _fill_subscribe_action(block: SubscriptionBlock, action: Action):

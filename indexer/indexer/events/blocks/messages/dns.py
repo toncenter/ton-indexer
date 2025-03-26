@@ -8,6 +8,7 @@ class ChangeDnsRecordMessage:
 
     def __init__(self, boc: Slice):
         op = boc.load_uint(32)  # opcode
+        self.query_id = boc.load_uint(64)
         self.key = boc.load_bytes(32)
         self.has_value = boc.remaining_refs > 0
         if self.has_value:

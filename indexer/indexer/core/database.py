@@ -329,6 +329,7 @@ class Action(Base):
     staking_data = Column(CompositeType("staking_details", [
         Column("provider", String),
         Column("ts_nft", String),
+        Column("tokens_burnt", Numeric)
     ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
