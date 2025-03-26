@@ -8,6 +8,30 @@ import (
 	"sync"
 )
 
+const defaultOverridesContent = `
+{
+  "content_overrides": {
+    "jetton_masters": {
+      "0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208": {
+        "address": "0:65AAC9B5E380EAE928DB3C8E238D9BC0D61A9320FDC2BC7A2F6C87D6FEDF9208",
+        "name": "DeDust",
+        "description": "DUST is the governance token for the DeDust Protocol.",
+        "social": [
+          "https://t.me/dedust",
+          "https://x.com/dedust_io"
+        ],
+        "websites": [
+          "https://dedust.io"
+        ],
+        "symbol": "DUST",
+        "image": "https://assets.dedust.io/images/dust.gif"
+      }
+    },
+    "nft_collections": {},
+    "nft_items": {}
+  }
+}`
+
 type ContentOverridesMap map[string]map[string]interface{}
 
 type OverridesData struct {
@@ -32,36 +56,19 @@ func (m *OverrideManager) Load() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Check if file exists, if not, create an empty one
-	if _, err := os.Stat(m.filePath); os.IsNotExist(err) {
-		log.Printf("Creating empty overrides file at %s", m.filePath)
-		emptyData := OverridesData{
-			ContentOverrides: map[string]ContentOverridesMap{
-				"nft_collections": {},
-				"nft_items":       {},
-				"jetton_masters":  {},
-			},
-		}
-		bytes, err := json.MarshalIndent(emptyData, "", "  ")
+	content := []byte(defaultOverridesContent)
+	// If file exists, read it
+	if _, err := os.Stat(m.filePath); err == nil {
+		bytes, err := os.ReadFile(m.filePath)
 		if err != nil {
-			return fmt.Errorf("failed to marshal empty overrides: %v", err)
+			log.Printf("failed to read overrides file: %v. Using default content.", err)
+		} else {
+			content = bytes
 		}
-		if err := os.WriteFile(m.filePath, bytes, 0644); err != nil {
-			return fmt.Errorf("failed to create empty overrides file: %v", err)
-		}
-		m.data = emptyData
-		m.loaded = true
-		return nil
-	}
-
-	// Read and parse the file
-	bytes, err := os.ReadFile(m.filePath)
-	if err != nil {
-		return fmt.Errorf("failed to read overrides file: %v", err)
 	}
 
 	var data OverridesData
-	if err := json.Unmarshal(bytes, &data); err != nil {
+	if err := json.Unmarshal(content, &data); err != nil {
 		return fmt.Errorf("failed to unmarshal overrides: %v", err)
 	}
 
@@ -77,7 +84,7 @@ func (m *OverrideManager) Load() error {
 
 	m.data = data
 	m.loaded = true
-	log.Printf("Loaded %d content overrides from %s", m.countOverrides(), m.filePath)
+	log.Printf("Loaded %d content overrides", m.countOverrides())
 	return nil
 }
 

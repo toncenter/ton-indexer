@@ -94,6 +94,12 @@ type ActionsResponse struct {
 	AddressBook AddressBook `json:"address_book"`
 	Metadata    Metadata    `json:"metadata"`
 } // @name ActionsResponse
+
+type DNSRecordsResponse struct {
+	Records     []DNSRecord `json:"records"`
+	AddressBook AddressBook `json:"address_book"`
+} // @name DNSRecordsResponse
+
 // errors
 type RequestError struct {
 	Message string `json:"error"`

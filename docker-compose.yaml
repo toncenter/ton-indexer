@@ -19,7 +19,7 @@ x-index-api: &index-api
 x-index-worker: &index-worker
   TON_WORKER_FROM:
   TON_WORKER_DBROOT: /tondb
-  TON_WORKER_BINARY: ton-index-postgres-v2
+  TON_WORKER_BINARY: ton-index-postgres
   TON_WORKER_ADDITIONAL_ARGS:
   <<: *index-common
 
@@ -29,18 +29,21 @@ services:
     networks:
       - internal
     command: redis-server --maxclients 40000
+
   event-classifier:
+    image: toncenter/ton-indexer-classifier:${VERSION:-latest}
     build:
       context: indexer
       dockerfile: Dockerfile
     secrets:
       - postgres_password
-    command: python3 /app/event_classifier.py --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 10000 --batch-size 1000 --expected-total 720000000
+    command: --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 10000 --batch-size 1000 --expected-total 720000000
     environment: *index-api 
     networks:
       internal:
 
   index-api:
+    image: toncenter/ton-indexer-api:${VERSION:-latest}
     build:
       context: ton-index-go
       dockerfile: Dockerfile
@@ -56,6 +59,7 @@ services:
       internal:
 
   index-worker:
+    image: toncenter/ton-indexer-worker:${VERSION:-latest}
     build:
       context: ton-index-worker
       dockerfile: Dockerfile

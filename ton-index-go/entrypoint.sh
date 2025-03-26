@@ -9,6 +9,8 @@ if [ ! -z "$POSTGRES_PASSWORD_FILE" ]; then
         exit 1
     fi
     POSTGRES_PASSWORD=$(cat ${POSTGRES_PASSWORD_FILE})
+elif [ ! -z "$POSTGRES_PASSWORD" ]; then
+    echo "Postgres password specified"
 else
     echo "Postgres password file not specified!"
     exit 1

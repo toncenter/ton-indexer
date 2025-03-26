@@ -10,13 +10,6 @@ pg_master_user: postgres
 pg_master_password: REPLACEME
 
 # deploy config. Adjust this also
-replica_nodes:
-  - ubuntu-01
-  - ubuntu-02
-  - ubuntu-03
-master_nodes:
-  - master-01
-
 build_path: "{{ playbook_dir }}/build"
 binary_path: /usr/local/bin
 systemd_service_path: /etc/systemd/system
@@ -26,15 +19,19 @@ services:
     hosts_group: replica_nodes
     service_user: root
     service_group: root
-    source_path: "{{ playbook_dir }}/"
+    binary_path: "ton-index-go/ton-index-go"
     service_name: api
     prepare_command: swag init
+    pg_additional_args:
+    pg_master_additional_args:
     additional_args: -bind ":4100"
   metadata_fetcher:
     hosts_group: master_nodes
     service_user: root
     service_group: root
-    source_path: "{{ playbook_dir }}/utils/metadata-fetcher"
+    binary_path: "ton-metadata-fetcher/ton-metadata-fetcher"
     prepare_command:
+    pg_additional_args:
+    pg_master_additional_args:
     service_name: metadata_fetcher
     additional_args:

@@ -198,7 +198,7 @@ func buildTransactionsQuery(
 		orderby_query = fmt.Sprintf(" order by T.lt %s, account asc", sort_order)
 	}
 
-	if v := tx_req.Account; v != nil {
+	if v := tx_req.Account; len(v) > 0 {
 		if len(v) == 1 {
 			filter_list = append(filter_list, fmt.Sprintf("T.account = '%s'", v[0]))
 			if order_by_now {
@@ -207,14 +207,8 @@ func buildTransactionsQuery(
 				orderby_query = fmt.Sprintf(" order by account asc, T.lt %s", sort_order)
 			}
 		} else if len(v) > 1 {
-			vv := []string{}
-			for _, x := range v {
-				if len(x) > 0 {
-					vv = append(vv, fmt.Sprintf("'%s'", x))
-				}
-			}
-			vv_str := strings.Join(vv, ",")
-			filter_list = append(filter_list, fmt.Sprintf("T.account in (%s)", vv_str))
+			filter_str := filterByArray("T.account", v)
+			filter_list = append(filter_list, filter_str)
 		}
 	}
 	// TODO: implement ExcludeAccount logic
@@ -233,20 +227,10 @@ func buildTransactionsQuery(
 		by_msg = true
 		filter_list = append(filter_list, fmt.Sprintf("M.direction = '%s'", *v))
 	}
-	if v := msg_req.MessageHash; v != nil {
+	if v := msg_req.MessageHash; len(v) > 0 {
 		by_msg = true
-		if len(v) == 1 {
-			filter_list = append(filter_list, fmt.Sprintf("M.msg_hash = '%s'", v[0]))
-		} else if len(v) > 1 {
-			vv := []string{}
-			for _, x := range v {
-				if len(x) > 0 {
-					vv = append(vv, fmt.Sprintf("'%s'", x))
-				}
-			}
-			vv_str := strings.Join(vv, ",")
-			filter_list = append(filter_list, fmt.Sprintf("M.msg_hash in (%s)", vv_str))
-		}
+		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
+		filter_list = append(filter_list, filter_str)
 	}
 	if v := msg_req.Source; v != nil {
 		by_msg = true
@@ -289,7 +273,7 @@ func buildMessagesQuery(
 ) (string, error) {
 	rest_columns := `M.trace_id, M.source, M.destination, M.value, 
 		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
-		M.bounced, M.import_fee, M.body_hash, M.init_state_hash`
+		M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm`
 	clmn_query := `'', 0, M.msg_hash, '', ` + rest_columns + `, 
 		max(case when M.direction='in' then M.tx_hash else null end) as in_tx_hash, 
 		max(case when M.direction='out' then M.tx_hash else null end) as out_tx_hash`
@@ -324,18 +308,8 @@ func buildMessagesQuery(
 		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d", *v))
 	}
 	if v := msg_req.MessageHash; v != nil {
-		if len(v) == 1 {
-			filter_list = append(filter_list, fmt.Sprintf("M.msg_hash = '%s'", v[0]))
-		} else if len(v) > 1 {
-			vv := []string{}
-			for _, x := range v {
-				if len(x) > 0 {
-					vv = append(vv, fmt.Sprintf("'%s'", x))
-				}
-			}
-			vv_str := strings.Join(vv, ",")
-			filter_list = append(filter_list, fmt.Sprintf("M.msg_hash in (%s)", vv_str))
-		}
+		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
+		filter_list = append(filter_list, filter_str)
 	}
 	if v := msg_req.BodyHash; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", *v))
@@ -480,8 +454,15 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 		orderby_query = ` order by N.owner_address, N.collection_address, N.index`
 	}
 	if v := nft_req.CollectionAddress; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("N.collection_address = '%s'", *v))
-		orderby_query = ` order by collection_address, index`
+		if len(nft_req.CollectionAddress) == 1 {
+			filter_list = append(filter_list, fmt.Sprintf("N.collection_address = '%s'", v[0]))
+			orderby_query = ` order by collection_address, index`
+		} else if len(nft_req.CollectionAddress) > 1 {
+			filter_str := filterByArray("N.collection_address", v)
+			if len(filter_str) > 0 {
+				filter_list = append(filter_list, filter_str)
+			}
+		}
 	}
 	if v := nft_req.Index; v != nil {
 		if nft_req.CollectionAddress == nil {
@@ -893,11 +874,10 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 			clmn_query = `distinct on (A.trace_end_lt, A.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
 		}
 	}
-	if v := act_req.MessageHash; v != nil {
-		filter_str := filterByArray("M.msg_hash", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
+	if v := act_req.MessageHash; len(v) > 0 {
+		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
+		filter_list = append(filter_list, filter_str)
+
 		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.tx_hashes`
 		if order_by_now {
 			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
@@ -1038,11 +1018,9 @@ func buildTracesQuery(trace_req TracesRequest, utime_req UtimeRequest, lt_req Lt
 			clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
 		}
 	}
-	if v := trace_req.MessageHash; v != nil {
-		filter_str := filterByArray("M.msg_hash", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
+	if v := trace_req.MessageHash; len(v) > 0 {
+		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
+		filter_list = append(filter_list, filter_str)
 		from_query = `traces as E join messages as M on E.trace_id = M.trace_id`
 
 		if order_by_now {
@@ -1341,7 +1319,7 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 		hash_list_str := strings.Join(hash_list, ",")
 		query = fmt.Sprintf(`select M.tx_hash, M.tx_lt, M.msg_hash, M.direction, M.trace_id, M.source, M.destination, M.value, 
 			M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
-			M.bounced, M.import_fee, M.body_hash, M.init_state_hash, NULL, NULL, B.*, I.* from messages as M 
+			M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm, NULL, NULL, B.*, I.* from messages as M 
 			left join message_contents as B on M.body_hash = B.hash 
 			left join message_contents as I on M.init_state_hash = I.hash
 			where M.tx_hash in (%s)`, hash_list_str)
@@ -1412,11 +1390,11 @@ func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool
 }
 
 func queryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
-	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' AND m.expires_at > extract(epoch from now()) where n.address = ANY($1)" +
+	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1)" +
 		" union all " +
-		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra  from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' AND m.expires_at > extract(epoch from now()) where c.address = ANY($1)" +
+		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra  from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1)" +
 		" union all " +
-		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra  from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  AND m.expires_at > extract(epoch from now()) where j.address = ANY($1)"
+		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra  from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1)"
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
@@ -1554,10 +1532,9 @@ func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 			var account string
 			var domain *string
 			if err := rows.Scan(&account, &domain); err == nil {
-				acc := strings.Trim(account, " ")
-				if book_rec, ok := book_tmp[acc]; ok {
+				if book_rec, ok := book_tmp[account]; ok {
 					book_rec.Domain = domain
-					book_tmp[acc] = book_rec
+					book_tmp[account] = book_rec
 				}
 			} else {
 				return nil, IndexError{Code: 500, Message: err.Error()}
@@ -2020,12 +1997,12 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 	trace_id_list := []HashType{}
 	addr_map := map[string]bool{}
 	for idx := range traces {
-		traces_map[traces[idx].TraceId] = idx
+		traces_map[*traces[idx].TraceId] = idx
 		if settings.MaxTraceTransactions > 0 && traces[idx].TraceMeta.Transactions > int64(settings.MaxTraceTransactions) {
 			traces[idx].IsIncomplete = true
 			traces[idx].Warning = "trace is too large"
 		} else {
-			trace_id_list = append(trace_id_list, traces[idx].TraceId)
+			trace_id_list = append(trace_id_list, *traces[idx].TraceId)
 		}
 	}
 	if len(trace_id_list) > 0 {
@@ -2088,7 +2065,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 				if err != nil {
 					return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
 				}
-				*traces[traces_map[action.TraceId]].Actions = append(*traces[traces_map[action.TraceId]].Actions, action)
+				*traces[traces_map[*action.TraceId]].Actions = append(*traces[traces_map[*action.TraceId]].Actions, action)
 			}
 		}
 		{
@@ -3187,4 +3164,62 @@ func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs [
 	}
 
 	return externalHashes, nil
+}
+
+func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest, settings RequestSettings) ([]DNSRecord, AddressBook, error) {
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	query := `
+        SELECT nft_item_address, nft_item_owner, domain, dns_next_resolver, dns_wallet, dns_site_adnl, dns_storage_bag_id
+        FROM dns_entries
+        WHERE dns_wallet = $1
+		ORDER BY LENGTH(domain), domain ASC ` + limit_query
+
+	rows, err := conn.Query(ctx, query, req.WalletAddress)
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	records := []DNSRecord{}
+	for rows.Next() {
+		var record DNSRecord
+		if err := rows.Scan(&record.NftItemAddress, &record.NftItemOwner, &record.Domain,
+			&record.NextResolver, &record.Wallet, &record.SiteAdnl, &record.StorageBagID); err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		records = append(records, record)
+	}
+	book := AddressBook{}
+	if !settings.NoAddressBook {
+		addr_list := []string{}
+		for _, r := range records {
+			addr_list = append(addr_list, string(r.NftItemAddress))
+			if r.NftItemOwner != nil {
+				addr_list = append(addr_list, string(*r.NftItemOwner))
+			}
+			if r.Wallet != nil {
+				addr_list = append(addr_list, string(*r.Wallet))
+			}
+		}
+		if len(addr_list) > 0 {
+			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+	}
+
+	return records, book, nil
 }

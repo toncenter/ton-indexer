@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -20,9 +21,14 @@ func afterConnectRegisterTypes(ctx context.Context, conn *pgx.Conn) error {
 		"_tonaddr",
 		"tonhash",
 		"_tonhash",
+		"peer_swap_details",
+		"_peer_swap_details",
 	}
 	for _, type_name := range data_type_names {
-		data_type, _ := conn.LoadType(ctx, type_name)
+		data_type, err := conn.LoadType(ctx, type_name)
+		if err != nil {
+			return fmt.Errorf("failed to load type '%s': %v", type_name, err)
+		}
 		conn.TypeMap().RegisterType(data_type)
 	}
 	return nil

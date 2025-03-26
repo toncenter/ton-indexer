@@ -23,14 +23,14 @@ private:
     td::actor::ActorOwn<ton::adnl::AdnlNetworkManager> adnl_network_manager_;
 
     MasterchainBlockDataState mc_data_state_;
-    std::unordered_set<td::Bits256> known_ext_msgs_; // this set grows infinitely. TODO: remove old messages
+    std::unordered_set<td::Bits256> known_ext_msgs_;
     
     int traces_cnt_{0};
 
     void process_external_message(td::Ref<ton::validator::ExtMessageQ> message);
-    void trace_error(TraceId trace_id, td::Status error);
-    void trace_received(TraceId trace_id, Trace trace);
-    void trace_interfaces_error(TraceId trace_id, td::Status error);
+    void trace_error(td::Bits256 ext_in_msg_hash, td::Status error);
+    void trace_received(Trace trace);
+    void trace_interfaces_error(td::Bits256 ext_in_msg_hash, td::Status error);
     void finish_processing(Trace trace);
 
 public:
@@ -41,5 +41,6 @@ public:
 
     void set_mc_data_state(MasterchainBlockDataState mc_data_state) {
         mc_data_state_ = std::move(mc_data_state);
+        known_ext_msgs_.clear();
     }
 };

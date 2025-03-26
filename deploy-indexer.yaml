@@ -40,7 +40,7 @@
     - name: Build the Go application
       ansible.builtin.shell: |
           cmake -DCMAKE_BUILD_TYPE=Release -S . -B {{ build_path }}
-          cmake --build {{ build_path }} --parallel $(nproc) --target ton-index-go ton-metadata-fetcher ton-emulate-go
+          cmake --build {{ build_path }} --parallel $(nproc) --target ton-index-go ton-metadata-fetcher
       changed_when: true
       vars:
         service: "{{ services[item] }}"
@@ -54,10 +54,16 @@
   hosts: "{{ stack_name }}__master_nodes"
   become: true
   tasks:
+    - name: Ensure binary directory
+      ansible.builtin.file:
+        path: "{{ deploy_path }}"
+        recurse: true
+        state: directory
+
     - name: Copy service binary
       ansible.builtin.copy:
         src: "{{ build_path }}/{{ service.binary_path }}"
-        dest: "{{ binary_path }}/{{ stack_name }}__{{ service.service_name }}"
+        dest: "{{ deploy_path }}/{{ stack_name }}__{{ service.service_name }}"
         mode: "0777"
         force: true
 
@@ -88,10 +94,16 @@
   hosts: "{{ stack_name }}__replica_nodes"
   become: true
   tasks:
+    - name: Ensure binary directory
+      ansible.builtin.file:
+        path: "{{ deploy_path }}"
+        recurse: true
+        state: directory
+
     - name: Copy service binary
       ansible.builtin.copy:
         src: "{{ build_path }}/{{ service.binary_path }}"
-        dest: "{{ binary_path }}/{{ stack_name }}__{{ service.service_name }}"
+        dest: "{{ deploy_path }}/{{ service_name }}"
         mode: "0777"
         force: true
 
@@ -104,7 +116,7 @@
       vars:
         pg_dsn: "postgresql://{{ pg_readonly_user }}:{{ pg_readonly_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
         pg_master_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master }}/{{ pg_database }}?application_name={{ service_name }}"
-        start_cmd: "{{ service_name }} -pg {{ pg_dsn }} -pg-master {{ pg_master_dsn }} {{ service.additional_args }}"
+        start_cmd: "{{ deploy_path }}/{{ service_name }} -pg {{ pg_dsn }} -pg-master {{ pg_master_dsn }} {{ service.additional_args }}"
 
     - name: Restart and enable service
       ansible.builtin.systemd:
@@ -115,90 +127,3 @@
         daemon_reload: true
       throttle: 1
       become: true
-
-
-
-# - name: Build Go application and deploy to remote hosts
-#   hosts: localhost
-#   vars:
-#     api_systemd_service_name: "{{application_name}}.service"
-#     metadata_fetcher_systemd_service_name: "{{application_name}}-metadata-fetcher.service"
-#   tasks:
-#     block: 
-#     - name: Build the Go application
-#       ansible.builtin.shell: |
-#           go get
-#           mkdir -p build
-#           swag init
-#           go build -o build/{{ service_settings.api.binary }}
-#           go build -C utils/metadata-fetcher -o ../../build/{{ service_settings.metadata_fetcher.binary }}
-#       changed_when: true
-#       failed_when: false
-#       register: go_build_result
-
-#     - name: Check Go build result
-#       ansible.builtin.fail:
-#         msg: "Go build failed! {{ go_build_result }}"
-#       when: go_build_result.rc != 0
-
-#     - name: Copy the Go binary to remote hosts
-#       ansible.builtin.copy:
-#         src: "build/{{ go_binary }}"
-#         dest: "{{ go_binary_path }}/{{ go_binary }}"
-#         mode: "0777"
-#         force: true
-#       become: true
-#       delegate_to: "{{ item }}"
-#       with_items: "{{ remote_hosts }}"
-
-#     - name: Copy the Go binary to remote hosts
-#       ansible.builtin.copy:
-#         src: "build/{{ metadata_fetcher_binary }}"
-#         dest: "{{ go_binary_path }}/{{ metadata_fetcher_binary }}"
-#         mode: "0777"
-#         force: true
-#       become: true
-#       delegate_to: "{{ item }}"
-#       with_items: "{{ master_nodes }}"
-
-#     - name: Create systemd service from template if it doesn't exist
-#       ansible.builtin.template:
-#         src: "ansible/index_api.yaml.j2"
-#         dest: "{{ systemd_service_path }}/{{ systemd_service_name }}"
-#         mode: "0644"
-#         force: true
-#       become: true
-#       delegate_to: "{{ item }}"
-#       with_items: "{{ remote_hosts }}"
-
-#     - name: Create metadata fetcher systemd service from template if it doesn't exist
-#       ansible.builtin.template:
-#         src: "ansible/metadata_fetcher.yaml.j2"
-#         dest: "{{ systemd_service_path }}/{{ metadata_fetcher_systemd_service_name }}"
-#         mode: "0644"
-#         force: true
-#       become: true
-#       delegate_to: "{{ item }}"
-#       with_items: "{{ master_nodes }}"
-
-#     - name: Restart and enable the Go application service
-#       ansible.builtin.systemd:
-#         name: "{{ systemd_service_name }}"
-#         state: restarted
-#         enabled: true
-#         daemon_reload: true
-#       become: true
-#       throttle: 1
-#       delegate_to: "{{ item }}"
-#       with_items: "{{ remote_hosts }}"
-
-#     - name: Restart and enable the Go application service
-#       ansible.builtin.systemd:
-#         name: "{{ metadata_fetcher_systemd_service_name }}"
-#         state: restarted
-#         enabled: true
-#         daemon_reload: true
-#       become: true
-#       throttle: 1
-#       delegate_to: "{{ item }}"
-#       with_items: "{{ master_nodes }}"

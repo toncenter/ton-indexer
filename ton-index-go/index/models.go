@@ -1,6 +1,8 @@
 package index
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type ShardId int64                 // @name ShardId
 type AccountAddress string         // @name AccountAddress
@@ -187,6 +189,7 @@ type Message struct {
 	OutMsgTxHash         *HashType         `json:"out_msg_tx_hash,omitempty"`
 	MessageContent       *MessageContent   `json:"message_content"`
 	InitState            *MessageContent   `json:"init_state"`
+	MsgHashNorm          *HashType         `json:"hash_norm,omitempty"`
 } // @name Message
 
 type MsgSize struct {
@@ -281,6 +284,7 @@ type Transaction struct {
 	Seqno                    int32             `json:"-"`
 	McSeqno                  int32             `json:"mc_block_seqno"`
 	TraceId                  *HashType         `json:"trace_id,omitempty"`
+	TraceExternalHash        *HashType         `json:"trace_external_hash,omitempty"`
 	PrevTransHash            HashType          `json:"prev_trans_hash"`
 	PrevTransLt              int64             `json:"prev_trans_lt,string"`
 	OrigStatus               string            `json:"orig_status"`
@@ -377,7 +381,7 @@ type JettonWalletMintlessInfo struct {
 	StartFrom           *int64   `json:"start_from"`
 	ExpireAt            *int64   `json:"expire_at"`
 	CustomPayloadApiUri []string `json:"custom_payload_api_uri"`
-}
+} // @name JettonWalletMintlessInfo
 
 type JettonWallet struct {
 	Address           AccountAddress            `json:"address"`
@@ -423,9 +427,35 @@ type JettonBurn struct {
 	TraceId             *HashType       `json:"trace_id"`
 } // @name JettonBurn
 
+type RawActionJettonSwapPeerSwap struct {
+	AssetIn   *AccountAddress
+	AmountIn  *string
+	AssetOut  *AccountAddress
+	AmountOut *string
+}
+
+func (p *RawActionJettonSwapPeerSwap) ScanNull() error {
+	return fmt.Errorf("cannot scan NULL into RawActionJettonSwapPeerSwap")
+}
+
+func (p *RawActionJettonSwapPeerSwap) ScanIndex(i int) any {
+	switch i {
+	case 0:
+		return &p.AssetIn
+	case 1:
+		return &p.AmountIn
+	case 2:
+		return &p.AssetOut
+	case 3:
+		return &p.AmountOut
+	default:
+		panic("invalid index")
+	}
+}
+
 // traces
 type RawAction struct {
-	TraceId                                              HashType
+	TraceId                                              *HashType
 	ActionId                                             HashType
 	StartLt                                              int64
 	EndLt                                                int64
@@ -478,7 +508,7 @@ type RawAction struct {
 	JettonSwapDexOutgoingTransferDestination             *AccountAddress
 	JettonSwapDexOutgoingTransferSourceJettonWallet      *AccountAddress
 	JettonSwapDexOutgoingTransferDestinationJettonWallet *AccountAddress
-	JettonSwapPeerSwaps                                  []string
+	JettonSwapPeerSwaps                                  []RawActionJettonSwapPeerSwap
 	ChangeDNSRecordKey                                   *string
 	ChangeDNSRecordValueSchema                           *string
 	ChangeDNSRecordValue                                 *string
@@ -596,14 +626,21 @@ type ActionDetailsJettonSwapTransfer struct {
 	Amount                  *string         `json:"amount"`
 }
 
+type ActionDetailsJettonSwapPeerSwap struct {
+	AssetIn   *AccountAddress `json:"asset_in"`
+	AmountIn  *string         `json:"amount_in"`
+	AssetOut  *AccountAddress `json:"asset_out"`
+	AmountOut *string         `json:"amount_out"`
+}
+
 type ActionDetailsJettonSwap struct {
-	Dex                 *string                          `json:"dex"`
-	Sender              *AccountAddress                  `json:"sender"`
-	AssetIn             *AccountAddress                  `json:"asset_in"`
-	AssetOut            *AccountAddress                  `json:"asset_out"`
-	DexIncomingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_incoming_transfer"`
-	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer `json:"dex_outgoing_transfer"`
-	PeerSwaps           []string                         `json:"peer_swaps"`
+	Dex                 *string                           `json:"dex"`
+	Sender              *AccountAddress                   `json:"sender"`
+	AssetIn             *AccountAddress                   `json:"asset_in"`
+	AssetOut            *AccountAddress                   `json:"asset_out"`
+	DexIncomingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_incoming_transfer"`
+	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_outgoing_transfer"`
+	PeerSwaps           []ActionDetailsJettonSwapPeerSwap `json:"peer_swaps"`
 }
 
 type ActionDetailsJettonTransfer struct {
@@ -727,7 +764,7 @@ type ActionDetailsWithdrawStakeRequest struct {
 }
 
 type Action struct {
-	TraceId           HashType    `json:"trace_id"`
+	TraceId           *HashType   `json:"trace_id"`
 	ActionId          HashType    `json:"action_id"`
 	StartLt           int64       `json:"start_lt,string"`
 	EndLt             int64       `json:"end_lt,string"`
@@ -761,7 +798,7 @@ type TraceNode struct {
 } // @name TraceNode
 
 type Trace struct {
-	TraceId           HashType                  `json:"trace_id"`
+	TraceId           *HashType                 `json:"trace_id"`
 	ExternalHash      *HashType                 `json:"external_hash"`
 	McSeqnoStart      HashType                  `json:"mc_seqno_start"`
 	McSeqnoEnd        HashType                  `json:"mc_seqno_end"`
@@ -777,6 +814,16 @@ type Trace struct {
 	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
 	Transactions      map[HashType]*Transaction `json:"transactions,omitempty"`
 } // @name Trace
+
+type DNSRecord struct {
+	NftItemAddress AccountAddress  `json:"nft_item_address"`
+	NftItemOwner   *AccountAddress `json:"nft_item_owner"`
+	Domain         string          `json:"domain"`
+	NextResolver   *AccountAddress `json:"dns_next_resolver"`
+	Wallet         *AccountAddress `json:"dns_wallet"`
+	SiteAdnl       *string         `json:"dns_site_adnl"`
+	StorageBagID   *string         `json:"dns_storage_bag_id"`
+} // @name DNSRecord
 
 // proxied models
 type V2AddressInformation struct {
@@ -800,7 +847,8 @@ type V2WalletInformation struct {
 } // @name V2WalletInformation
 
 type V2SendMessageResult struct {
-	MessageHash *HashType `json:"message_hash,omitempty"`
+	MessageHash     *HashType `json:"message_hash,omitempty"`
+	MessageHashNorm *HashType `json:"message_hash_norm,omitempty"`
 } //@name V2SendMessageResult
 
 type V2StackEntity struct {

@@ -1,0 +1,82 @@
+name: Docker Build and Push
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+  docker:
+    needs: release
+    runs-on: ${{ matrix.arch.runner }}
+    strategy:
+      matrix:
+        arch:
+          - runner: ubuntu-24.04
+            platform: amd64
+          - runner: ubuntu-24.04-arm
+            platform: arm64
+        image:
+          - image-name: ton-indexer-classifier
+            context: indexer
+            dockerfile: Dockerfile
+          - image-name: ton-indexer-api
+            context: ton-index-go
+            dockerfile: Dockerfile
+          - image-name: ton-indexer-worker
+            context: ton-index-worker
+            dockerfile: Dockerfile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
+          platforms: linux/${{ matrix.arch.platform }}
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.image-name }}:${{ needs.release.outputs.version }}-${{ matrix.arch.platform }}
+
+  manifest:
+    needs: [docker, release]
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image:
+          - ton-indexer-classifier
+          - ton-indexer-api
+          - ton-indexer-worker
+    steps:
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          docker manifest create ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }} \
+            --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-amd64 \
+            --amend ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}-arm64
+          docker manifest push ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ needs.release.outputs.version }}

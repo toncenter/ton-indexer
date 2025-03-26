@@ -141,6 +141,12 @@ void TraceAssembler::set_expected_seqno(ton::BlockSeqno new_expected_seqno) {
     expected_seqno_ = new_expected_seqno;
 }
 
+void TraceAssembler::reset_state() {
+    pending_traces_.clear();
+    pending_edges_.clear();
+    broken_count_ = 0;
+}
+
 td::Result<ton::BlockSeqno> TraceAssembler::restore_state(ton::BlockSeqno seqno) {
     std::map<int, fs::path, std::greater<int>> fileMap;
     try {

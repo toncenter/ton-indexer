@@ -204,6 +204,10 @@ func PostMessage(req V2SendMessageRequest, settings RequestSettings) (*V2SendMes
 
 	result.MessageHash = new(HashType)
 	*result.MessageHash = HashType(res["hash"].(string))
+	if v, ok := res["hash_norm"]; ok {
+		result.MessageHashNorm = new(HashType)
+		*result.MessageHashNorm = HashType(v.(string))
+	}
 	return &result, nil
 }
 

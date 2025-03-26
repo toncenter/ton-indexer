@@ -119,11 +119,15 @@ def unpack_messagepack_tx(data: bytes) -> Transaction:
 def deserialize_event(trace_id, packed_transactions_map: dict[str, bytes]) -> Trace:
     edges = []
     transactions = []
-    if trace_id in packed_transactions_map:
-        root = packed_transactions_map[trace_id]
-    else:
-        root = packed_transactions_map[base64.b64encode(bytes.fromhex(trace_id)).decode()]
-
+    try:
+        root_id = packed_transactions_map['root_node'].decode()
+    except KeyError:
+        raise ValueError(f"root_node key not found for trace '{trace_id}'")
+    try:
+        root = packed_transactions_map[root_id]
+    except KeyError:
+        raise ValueError(f"Root tx not found for trace '{trace_id}'")
+    
     def load_leaf(tx):
         for msg in tx.messages:
             if msg.direction != 'out' or msg.destination is None:
@@ -134,7 +138,10 @@ def deserialize_event(trace_id, packed_transactions_map: dict[str, bytes]) -> Tr
             load_leaf(child_tx)
 
     root_tx = unpack_messagepack_tx(root)
+    if root_tx and not root_tx.emulated:
+        trace_id = root_tx.hash
     transactions.append(root_tx)
     load_leaf(root_tx)
+
     return Trace(transactions=transactions, trace_id=trace_id, classification_state='unclassified',
-                 state='complete', start_lt=root_tx.lt)
+                 state='complete', start_lt=root_tx.lt, external_hash=root_id)

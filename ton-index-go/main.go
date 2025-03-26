@@ -17,6 +17,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/pprof"
+	"github.com/gofiber/fiber/v2/middleware/redirect"
 	"github.com/gofiber/swagger"
 	_ "github.com/toncenter/ton-indexer/ton-index-go/docs"
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
@@ -296,6 +297,10 @@ func GetPendingTransactions(c *fiber.Ctx) error {
 
 	if len(tx_req.Account) == 0 {
 		return index.IndexError{Code: 422, Message: "at least 1 account address required"}
+	}
+
+	if emulatedTracesRepository == nil {
+		return index.IndexError{Code: 500, Message: "emulatedTracesRepository is not initialized"}
 	}
 
 	var emulatedContext *index.EmulatedTracesContext
@@ -661,25 +666,44 @@ func GetWalletStates(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
-// @summary Get DNS Entities
+// @summary Get DNS Records
 //
-// @description Query dns entities
+// @description Query DNS records by specified filters. Currently .ton and .t.me DNS are supported.
 //
-// @id api_v3_get_dns_entities
-// @tags accounts
+// @id api_v3_get_dns_records
+// @tags dns
 // @Accept json
 // @Produce json
-// @success 200 {object} index.AccountStatesResponse
+// @success 200 {object} index.DNSRecordsResponse
 // @failure 400 {object} index.RequestError
-// @param address query []string true "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
-// @param include_boc query bool false "Include code and data BOCs. Default: true" default(true)
+// @param wallet query string true "Wallet address in any form. DNS records that contain this address in wallet category will be returned."
 // // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
-// @router /api/v3/dnsEntities [get]
+// @router /api/v3/dns/records [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
-func GetDNSEntities(c *fiber.Ctx) error {
-	return index.IndexError{Code: 501, Message: "not implemented"}
+func GetDNSRecords(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	var req index.DNSRecordsRequest
+	var lim_req index.LimitRequest
+	if err := c.QueryParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(*req.WalletAddress) == 0 {
+		return index.IndexError{Code: 422, Message: "wallet address is required"}
+	}
+
+	res, book, err := pool.QueryDNSRecords(lim_req, req, request_settings)
+	if err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	resp := index.DNSRecordsResponse{Records: res, AddressBook: book}
+	return c.JSON(resp)
 }
 
 // @summary Get NFT collections
@@ -736,7 +760,7 @@ func GetNFTCollections(c *fiber.Ctx) error {
 // @failure 400 {object} index.RequestError
 // @param address query []string false "NFT item address in any form. Max: 1000." collectionFormat(multi)
 // @param owner_address query []string false "Address of NFT item owner in any form. Max: 1000." collectionFormat(multi)
-// @param collection_address query string false "Collection address in any form."
+// @param collection_address query []string false "Collection address in any form."
 // @param index query []string false "Index of item for given collection. Max: 1000." collectionFormat(multi)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -753,6 +777,9 @@ func GetNFTItems(c *fiber.Ctx) error {
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if len(nft_req.CollectionAddress) > 1 && len(nft_req.OwnerAddress) != 1 {
+		return index.IndexError{Code: 422, Message: "exact one owner_address required for multiple collection_address"}
 	}
 
 	res, book, metadata, err := pool.QueryNFTItems(nft_req, lim_req, request_settings)
@@ -1164,29 +1191,24 @@ func GetTraces(c *fiber.Ctx) error {
 // @success		200	{object}	index.TracesResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
-// @param trace_id query []string false "Find trace by trace id."
-// @param tx_hash query []string false "Find trace by existing transaction hash."
+// @param ext_msg_hash query []string false "Find trace by external hash"
 // @router			/api/v3/pendingTraces [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetPendingTraces(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
-	event_req := index.TracesRequest{}
+	event_req := index.PendingTracesRequest{}
 
 	if err := c.QueryParser(&event_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if event_req.AccountAddress == nil && len(event_req.TraceId) == 0 && len(event_req.TransactionHash) == 0 {
-		return index.IndexError{Code: 422, Message: "account, trace_id or tx_hash should be specified"}
+	if event_req.AccountAddress == nil && len(event_req.ExtMsgHash) == 0 {
+		return index.IndexError{Code: 422, Message: "account or ext_msg_hash should be specified"}
 	}
 
-	if len(event_req.TransactionHash) > 0 {
-		additional_hashes, err := pool.QueryTransactionsExternalHashes(context.Background(), event_req.TransactionHash, request_settings)
-		if err != nil {
-			return err
-		}
-		event_req.TraceId = append(event_req.TraceId, additional_hashes...)
+	if emulatedTracesRepository == nil {
+		return index.IndexError{Code: 500, Message: "emulatedTracesRepository is not initialized"}
 	}
 
 	var emulatedContext *index.EmulatedTracesContext
@@ -1194,8 +1216,8 @@ func GetPendingTraces(c *fiber.Ctx) error {
 	if event_req.AccountAddress != nil {
 		emulatedContext, err = ContextByAccount(emulatedTracesRepository,
 			[]index.AccountAddress{*event_req.AccountAddress}, false, false, false)
-	} else if event_req.TraceId != nil {
-		emulatedContext, err = ContextByTraces(emulatedTracesRepository, event_req.TraceId)
+	} else if len(event_req.ExtMsgHash) > 0 {
+		emulatedContext, err = ContextByExtMsgHash(emulatedTracesRepository, event_req.ExtMsgHash)
 	} else {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id should be specified"}
 	}
@@ -1284,33 +1306,37 @@ func GetActions(c *fiber.Ctx) error {
 // @success		200	{object}	index.ActionsResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get actions. Can be sent in hex, base64 or base64url form."
-// @param trace_id query []string false "Find actions by trace id"
+// @param ext_msg_hash query []string false "Find actions by trace external hash"
 // @router			/api/v3/pendingActions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetPendingActions(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
-	act_req := index.ActionRequest{}
+	act_req := index.PendingActionsRequest{}
 
 	if err := c.QueryParser(&act_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+
+	if emulatedTracesRepository == nil {
+		return index.IndexError{Code: 500, Message: "emulatedTracesRepository is not initialized"}
+	}
+
 	var emulatedContext *index.EmulatedTracesContext
 	var err error
-
 	if act_req.AccountAddress != nil {
 		emulatedContext, err = ActionContextByAccount(emulatedTracesRepository,
 			[]index.AccountAddress{*act_req.AccountAddress})
 		if err != nil {
 			return err
 		}
-	} else if len(act_req.TraceId) > 0 {
-		emulatedContext, err = ContextByTraces(emulatedTracesRepository, act_req.TraceId)
+	} else if len(act_req.ExtMsgHash) > 0 {
+		emulatedContext, err = ContextByExtMsgHash(emulatedTracesRepository, act_req.ExtMsgHash)
 		if err != nil {
 			return err
 		}
 	} else {
-		return index.IndexError{Code: 422, Message: "account or trace_id should be specified"}
+		return index.IndexError{Code: 422, Message: "account or ext_msg_hash should be specified"}
 	}
 
 	res, book, metadata, err := pool.QueryPendingActions(request_settings, emulatedContext)
@@ -1746,17 +1772,47 @@ func ActionContextByAccount(repository *emulated.EmulatedTracesRepository, accou
 
 func ContextByTraces(repository *emulated.EmulatedTracesRepository, trace_ids []index.HashType) (
 	*index.EmulatedTracesContext, error) {
-	if len(trace_ids) == 0 {
+	uniqueKeys := prepareHashes(trace_ids)
+	if len(uniqueKeys) == 0 {
 		return index.NewEmptyContext(false), nil
 	}
+	raw_traces, err := repository.LoadRawTraces(uniqueKeys)
+	if err != nil {
+		return nil, err
+	}
+	emulated_context := index.NewEmptyContext(false)
+	err = emulated_context.FillFromRawData(raw_traces)
+	return emulated_context, err
+}
+
+func ContextByExtMsgHash(repository *emulated.EmulatedTracesRepository, ext_msg_hashes []index.HashType) (
+	*index.EmulatedTracesContext, error) {
+	uniqueKeys := prepareHashes(ext_msg_hashes)
+	if len(uniqueKeys) == 0 {
+		return index.NewEmptyContext(false), nil
+	}
+	raw_traces, err := repository.LoadRawTracesByExtMsg(uniqueKeys)
+	if err != nil {
+		return nil, err
+	}
+	emulated_context := index.NewEmptyContext(false)
+	err = emulated_context.FillFromRawData(raw_traces)
+	return emulated_context, err
+}
+
+func prepareHashes(hashes []index.HashType) []string {
+	if len(hashes) == 0 {
+		return nil
+	}
 	keys := make(map[string]struct{})
-	for _, trace_id := range trace_ids {
+	for _, trace_id := range hashes {
 		var trace_id_base64 string
 		_, err := base64.StdEncoding.DecodeString(string(trace_id))
 		if err != nil {
 			b, err := hex.DecodeString(string(trace_id))
 			if err != nil {
-				return nil, err
+				log.Printf("Error decoding trace id: %s", err.Error())
+				continue
 			}
 			trace_id_base64 = base64.StdEncoding.EncodeToString(b)
 		} else {
@@ -1768,13 +1824,7 @@ func ContextByTraces(repository *emulated.EmulatedTracesRepository, trace_ids []
 	for key := range keys {
 		uniqueKeys = append(uniqueKeys, key)
 	}
-	raw_traces, err := repository.LoadRawTraces(uniqueKeys)
-	if err != nil {
-		return nil, err
-	}
-	emulated_context := index.NewEmptyContext(false)
-	err = emulated_context.FillFromRawData(raw_traces)
-	return emulated_context, err
+	return uniqueKeys
 }
 
 func test() {
@@ -1821,6 +1871,9 @@ func main() {
 		os.Exit(63)
 	}
 	emulatedTracesRepository, err = emulated.NewRepository(redis_dsn)
+	if err != nil {
+		log.Printf("Error creating emulated traces repository: %s", err.Error())
+	}
 	// web server
 	config := fiber.Config{
 		AppName:        "TON Index API",
@@ -1888,7 +1941,7 @@ func main() {
 	app.Get("/api/v3/accountStates", GetAccountStates)
 	app.Get("/api/v3/walletStates", GetWalletStates)
 
-	app.Get("/api/v3/dnsEntities", GetDNSEntities)
+	app.Get("/api/v3/dns/records", GetDNSRecords)
 
 	// nfts
 	app.Get("/api/v3/nft/collections", GetNFTCollections)
@@ -1921,6 +1974,14 @@ func main() {
 
 	// test
 	app.Get("/api/v3/__testMethod", GetTestMethod)
+
+	// redirect
+	app.Use(redirect.New(redirect.Config{
+		Rules: map[string]string{
+			"/": "/api/v3/index.html",
+		},
+		StatusCode: 301,
+	}))
 
 	// swagger
 	var swagger_config = swagger.Config{

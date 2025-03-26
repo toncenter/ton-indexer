@@ -165,7 +165,10 @@ struct Message {
   td::Ref<vm::Cell> init_state;
   std::optional<std::string> init_state_boc;
 
-  MSGPACK_DEFINE(hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, opcode, ihr_disabled, bounce, bounced, import_fee, body_boc, init_state_boc)
+  std::optional<td::Bits256> hash_norm;
+
+  MSGPACK_DEFINE(hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, 
+                 opcode, ihr_disabled, bounce, bounced, import_fee, body_boc, init_state_boc, hash_norm)
 };
 
 struct Transaction {
@@ -291,6 +294,7 @@ td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
       // msg.source = null, because it is external
       TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest))
       TRY_RESULT_ASSIGN(msg.import_fee, to_balance(msg_info.import_fee));
+      TRY_RESULT_ASSIGN(msg.hash_norm, ext_in_msg_get_normalized_hash(msg_cell));
       return msg;
     }
     case block::gen::CommonMsgInfo::ext_out_msg_info: {

@@ -94,6 +94,7 @@ public:
     void assemble(ton::BlockSeqno mc_seqno, ParsedBlockPtr mc_block_, td::Promise<ParsedBlockPtr> promise);
     
     td::Result<ton::BlockSeqno> restore_state(ton::BlockSeqno expected_seqno);
+    void reset_state();
     void set_expected_seqno(ton::BlockSeqno expected_seqno);
     void start_up() override;
     void alarm() override;

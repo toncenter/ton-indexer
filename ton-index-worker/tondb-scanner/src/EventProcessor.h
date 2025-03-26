@@ -87,6 +87,7 @@ public:
     } else {
       return td::Status::Error("Unexpected transaction description");
     }
+    transfer.mc_seqno = transaction.mc_seqno;
 
     transfer.query_id = transfer_record.query_id;
     transfer.amount = block::tlb::t_VarUInteger_16.as_integer(transfer_record.amount);
@@ -136,6 +137,7 @@ public:
     } else {
       return td::Status::Error("Unexpected transaction description");
     }
+    burn.mc_seqno = transaction.mc_seqno;
 
     burn.query_id = burn_record.query_id;
     if (!transaction.in_msg || !transaction.in_msg->source) {
@@ -176,6 +178,7 @@ public:
     } else {
       transfer.transaction_aborted = 0;
     }
+    transfer.mc_seqno = transaction.mc_seqno;
 
     transfer.query_id = transfer_record.query_id;
     transfer.nft_item = transaction.account;

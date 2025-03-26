@@ -436,10 +436,12 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.DexOutgoingTransfer.SourceJettonWallet = raw.JettonSwapDexOutgoingTransferSourceJettonWallet
 		details.DexOutgoingTransfer.DestinationJettonWallet = raw.JettonSwapDexOutgoingTransferDestinationJettonWallet
 		details.DexOutgoingTransfer.Amount = raw.JettonSwapDexOutgoingTransferAmount
-		details.PeerSwaps = raw.JettonSwapPeerSwaps
-		if details.PeerSwaps == nil {
-			details.PeerSwaps = []string{}
+
+		details.PeerSwaps = []ActionDetailsJettonSwapPeerSwap{}
+		for _, peer := range raw.JettonSwapPeerSwaps {
+			details.PeerSwaps = append(details.PeerSwaps, ActionDetailsJettonSwapPeerSwap(peer))
 		}
+
 		act.Details = &details
 	case "jetton_transfer":
 		var details ActionDetailsJettonTransfer
@@ -631,17 +633,6 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 	return &t, nil
 }
 
-func ScanMessage(row pgx.Row) (*Message, error) {
-	var m Message
-	err := row.Scan(&m.TxHash, &m.TxLt, &m.MsgHash, &m.Direction, &m.TraceId, &m.Source, &m.Destination,
-		&m.Value, &m.ValueExtraCurrencies, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
-		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash)
-	if err != nil {
-		return nil, err
-	}
-	return &m, nil
-}
-
 func (mc *MessageContent) TryDecodeBody() error {
 	if mc.Body == nil {
 		return errors.New("empty MessageContent")
@@ -665,7 +656,7 @@ func ScanMessageWithContent(row pgx.Row) (*Message, error) {
 
 	err := row.Scan(&m.TxHash, &m.TxLt, &m.MsgHash, &m.Direction, &m.TraceId, &m.Source, &m.Destination,
 		&m.Value, &m.ValueExtraCurrencies, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
-		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash,
+		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash, &m.MsgHashNorm,
 		&m.InMsgTxHash, &m.OutMsgTxHash, &body.Hash, &body.Body, &init_state.Hash, &init_state.Body)
 	if body.Hash != nil {
 		body.TryDecodeBody()

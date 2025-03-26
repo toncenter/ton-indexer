@@ -2,9 +2,10 @@ package emulated
 
 import (
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"reflect"
 	"strconv"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type TransactionRow struct {
@@ -101,6 +102,7 @@ type MessageRow struct {
 	ImportFee            *int64
 	BodyHash             *string
 	InitStateHash        *string
+	MsgHashNorm          *string
 }
 
 type MessageContentRow struct {
@@ -109,7 +111,8 @@ type MessageContentRow struct {
 }
 
 type TraceRow struct {
-	TraceId             string
+	TraceKey            string
+	TraceId             *string
 	ExternalHash        *string
 	McSeqnoStart        int32
 	McSeqnoEnd          *int32
@@ -125,12 +128,15 @@ type TraceRow struct {
 }
 
 type ActionRow struct {
-	TraceId                                              string
+	TraceId                                              *string
 	ActionId                                             string
 	StartLt                                              int64
 	EndLt                                                int64
 	StartUtime                                           int64
 	EndUtime                                             int64
+	TraceEndLt                                           *int64
+	TraceEndUtime                                        *int64
+	TraceMcSeqnoEnd                                      *int32
 	Source                                               *string
 	SourceSecondary                                      *string
 	Destination                                          *string
@@ -175,7 +181,7 @@ type ActionRow struct {
 	JettonSwapDexOutgoingTransferDestination             *string
 	JettonSwapDexOutgoingTransferSourceJettonWallet      *string
 	JettonSwapDexOutgoingTransferDestinationJettonWallet *string
-	JettonSwapPeerSwaps                                  []string
+	JettonSwapPeerSwaps                                  []actionPeerSwapDetails
 	ChangeDNSRecordKey                                   *string
 	ChangeDNSRecordValueSchema                           *string
 	ChangeDNSRecordValue                                 *string
@@ -248,7 +254,7 @@ func (r genericRow) Scan(dest ...any) error {
 
 func (t *TraceRow) getAssigns() []assign {
 	return []assign{
-		assignString(t.TraceId),
+		assignStringPtr(t.TraceId),
 		assignStringPtr(t.ExternalHash),
 		assignInt(t.McSeqnoStart),
 		assignIntPtr(t.McSeqnoEnd),
@@ -266,12 +272,15 @@ func (t *TraceRow) getAssigns() []assign {
 
 func (t *ActionRow) getAssigns() []assign {
 	return []assign{
-		assignString(t.TraceId),
+		assignStringPtr(t.TraceId),
 		assignString(t.ActionId),
 		assignInt(t.StartLt),
 		assignInt(t.EndLt),
 		assignInt(t.StartUtime),
 		assignInt(t.EndUtime),
+		assignIntPtr(t.TraceEndLt),
+		assignIntPtr(t.TraceEndUtime),
+		assignIntPtr(t.TraceMcSeqnoEnd),
 		assignStringPtr(t.Source),
 		assignStringPtr(t.SourceSecondary),
 		assignStringPtr(t.Destination),
@@ -316,7 +325,7 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.JettonSwapDexOutgoingTransferDestination),
 		assignStringPtr(t.JettonSwapDexOutgoingTransferSourceJettonWallet),
 		assignStringPtr(t.JettonSwapDexOutgoingTransferDestinationJettonWallet),
-		assignStrCompatibleSlice(t.JettonSwapPeerSwaps),
+		assignSlice(t.JettonSwapPeerSwaps),
 		assignStringPtr(t.ChangeDNSRecordKey),
 		assignStringPtr(t.ChangeDNSRecordValueSchema),
 		assignStringPtr(t.ChangeDNSRecordValue),
@@ -455,6 +464,7 @@ func (m *MessageRow) getAssigns() []assign {
 		assignIntPtr(m.ImportFee),
 		assignStringPtr(m.BodyHash),
 		assignStringPtr(m.InitStateHash),
+		assignStringPtr(m.MsgHashNorm),
 	}
 }
 
@@ -622,4 +632,89 @@ func assignString(src string) assign {
 		}
 		return nil
 	}
+}
+
+func assignStruct(src interface{}) assign {
+	return func(dest any) error {
+		dv := reflect.ValueOf(dest)
+		if dv.Kind() != reflect.Ptr {
+			return fmt.Errorf("destination must be a pointer to a struct")
+		}
+		dv = dv.Elem()
+		if dv.Kind() != reflect.Struct {
+			return fmt.Errorf("destination is not a struct")
+		}
+
+		sv := reflect.ValueOf(src)
+		if sv.Kind() == reflect.Ptr {
+			sv = sv.Elem()
+		}
+		if sv.Kind() != reflect.Struct {
+			return fmt.Errorf("source is not a struct")
+		}
+
+		srcType := sv.Type()
+		for i := 0; i < srcType.NumField(); i++ {
+			srcField := sv.Field(i)
+			srcFieldName := srcType.Field(i).Name
+			destField := dv.FieldByName(srcFieldName)
+			if !destField.IsValid() || !destField.CanSet() {
+				continue // Skip if field doesn't exist or can't be set
+			}
+			if srcField.Type().AssignableTo(destField.Type()) {
+				destField.Set(srcField)
+			} else if srcField.Type().ConvertibleTo(destField.Type()) {
+				destField.Set(srcField.Convert(destField.Type()))
+			} else {
+				return fmt.Errorf("field %s cannot be set", srcFieldName)
+			}
+		}
+		return nil
+	}
+}
+
+func assignSlice[T any](src []T) assign {
+	return func(dest any) error {
+		dv := reflect.Indirect(reflect.ValueOf(dest))
+		if dv.Kind() != reflect.Slice {
+			return fmt.Errorf("destination is not a slice, got %T", dest)
+		}
+
+		slice := reflect.MakeSlice(dv.Type(), len(src), len(src))
+
+		for i, v := range src {
+			elem := slice.Index(i)
+			if elem.Kind() == reflect.Ptr {
+				// Handle pointer elements (e.g., []*DestStruct)
+				newElem := reflect.New(elem.Type().Elem())
+				if err := assignValue(reflect.ValueOf(v), newElem.Elem()); err != nil {
+					return err
+				}
+				elem.Set(newElem)
+			} else {
+				// Handle value elements (e.g., []DestStruct)
+				if err := assignValue(reflect.ValueOf(v), elem.Addr().Interface()); err != nil {
+					return err
+				}
+			}
+		}
+
+		dv.Set(slice)
+		return nil
+	}
+}
+
+func assignValue(src reflect.Value, dest any) error {
+	dv := reflect.ValueOf(dest).Elem()
+	if src.Type().AssignableTo(dv.Type()) {
+		dv.Set(src)
+		return nil
+	}
+
+	switch dv.Kind() {
+	case reflect.Struct:
+		return assignStruct(src.Interface())(dest)
+	}
+
+	return fmt.Errorf("unsupported assignment from %v to %v", src.Type(), dv.Type())
 }

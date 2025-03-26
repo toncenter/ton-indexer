@@ -68,7 +68,7 @@ type NFTCollectionRequest struct {
 type NFTItemRequest struct {
 	Address           []AccountAddress `query:"address"`
 	OwnerAddress      []AccountAddress `query:"owner_address"`
-	CollectionAddress *AccountAddress  `query:"collection_address"`
+	CollectionAddress []AccountAddress `query:"collection_address"`
 	Index             []string         `query:"index"`
 }
 
@@ -143,6 +143,20 @@ type TracesRequest struct {
 	TransactionHash []HashType      `query:"tx_hash"`
 	MessageHash     []HashType      `query:"msg_hash"`
 	McSeqno         *int32          `query:"mc_seqno"`
+}
+
+type PendingTracesRequest struct {
+	AccountAddress *AccountAddress `query:"account"`
+	ExtMsgHash     []HashType      `query:"ext_msg_hash"`
+}
+
+type PendingActionsRequest struct {
+	AccountAddress *AccountAddress `query:"account"`
+	ExtMsgHash     []HashType      `query:"ext_msg_hash"`
+}
+
+type DNSRecordsRequest struct {
+	WalletAddress *AccountAddress `query:"wallet"`
 }
 
 type SortType string
