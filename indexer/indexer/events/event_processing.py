@@ -75,6 +75,11 @@ from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlockMatcher,
     VestingSendMessageBlockMatcher,
 )
+from indexer.events.blocks.evaa import (
+    EvaaSupplyBlockMatcher,
+    EvaaWithdrawBlockMatcher,
+    EvaaLiquidateBlockMatcher,
+)
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
@@ -124,9 +129,6 @@ matchers = [
     DedustWithdrawBlockMatcher(),
     TONStakersDepositMatcher(),
     TONStakersWithdrawMatcher(),
-    NominatorPoolDepositMatcher(),
-    NominatorPoolWithdrawRequestMatcher(),
-    NominatorPoolWithdrawMatcher(),
     MultisigCreateOrderBlockMatcher(),
     MultisigApproveBlockMatcher(),
     MultisigExecuteBlockMatcher(),
@@ -152,6 +154,12 @@ matchers = [
     JVaultStakeBlockMatcher(),
     JVaultUnstakeBlockMatcher(),
     JVaultClaimBlockMatcher(),
+    EvaaSupplyBlockMatcher(),
+    EvaaWithdrawBlockMatcher(),
+    EvaaLiquidateBlockMatcher(),
+    NominatorPoolDepositMatcher(),
+    NominatorPoolWithdrawRequestMatcher(),
+    NominatorPoolWithdrawMatcher(),
 ]
 
 trace_post_processors = [post_process_dedust_liquidity, unwind_deployments]

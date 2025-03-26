@@ -266,6 +266,22 @@ class Action(Base):
     ]))
     nft_mint_data = Column(CompositeType("nft_mint_details", [
         Column("nft_item_index", Numeric)]))
+    evaa_supply_data = Column(CompositeType("evaa_supply_details", [
+        Column("is_ton", Boolean),
+        Column("sender_jetton_wallet", String),
+        Column("recipient_jetton_wallet", String),
+        Column("master_jetton_wallet", String)
+    ]))
+    evaa_withdraw_data = Column(CompositeType("evaa_withdraw_details", [
+        Column("is_ton", Boolean),
+        Column("recipient_jetton_wallet", String),
+        Column("master_jetton_wallet", String),
+        Column("fail_reason", String)
+    ]))
+    evaa_liquidate_data = Column(CompositeType("evaa_liquidate_details", [
+        Column("fail_reason", String),
+        Column("debt_amount", Numeric)
+    ]))
     dex_deposit_liquidity_data = Column(CompositeType("dex_deposit_liquidity_details", [
         Column("dex", String),
         Column("amount1", Numeric),

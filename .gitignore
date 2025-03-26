@@ -120,9 +120,11 @@ venv.bak/
 /logs
 
 .vscode/
+.cursor/
 /private
 /indexer/private
 .DS_Store
+settings.json
 
 /sandbox
 .env*
@@ -131,3 +133,4 @@ sandbox.ipynb
 Session.vim
 indexer/indexer/core/t_est.py
 some.txt
+

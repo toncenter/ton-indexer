@@ -58,6 +58,11 @@ from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlock,
     VestingSendMessageBlock,
 )
+from indexer.events.blocks.evaa import (
+    EvaaSupplyBlock,
+    EvaaWithdrawBlock,
+    EvaaLiquidateBlock,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -642,6 +647,50 @@ def _fill_nominator_pool_withdraw_request_action(
     action.destination = block.data.pool.as_str()
 
 
+def _fill_evaa_supply_action(block: EvaaSupplyBlock, action: Action):
+    action.source = str(block.data.sender)
+    action.destination = str(block.data.recipient)
+    action.destination_secondary = str(block.data.recipient_contract)
+    action.amount = block.data.amount
+    action.asset = str(block.data.asset_id) if not block.data.is_ton else None
+    action.success = block.data.is_success
+    action.evaa_supply_data = {
+        "is_ton": block.data.is_ton,
+        "sender_jetton_wallet": str(block.data.sender_jetton_wallet) if block.data.sender_jetton_wallet else None,
+        "recipient_jetton_wallet": str(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
+        "master_jetton_wallet": str(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None
+    }
+
+
+def _fill_evaa_withdraw_action(block: EvaaWithdrawBlock, action: Action):
+    action.source = str(block.data.owner)
+    action.destination = str(block.data.recipient)
+    action.destination_secondary = str(block.data.owner_contract)
+    action.amount = block.data.amount
+    action.asset = str(block.data.asset_id) if not block.data.is_ton else None
+    action.success = block.data.is_success
+    action.evaa_withdraw_data = {
+        "is_ton": block.data.is_ton,
+        "recipient_jetton_wallet": str(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
+        "master_jetton_wallet": str(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None,
+        "fail_reason": block.data.fail_reason
+    }
+
+
+def _fill_evaa_liquidate_action(block: EvaaLiquidateBlock, action: Action):
+    action.source = str(block.data.liquidator)
+    action.destination = str(block.data.borrower)
+    action.destination_secondary = str(block.data.borrower_contract) if block.data.borrower_contract else None
+    action.asset = str(block.data.collateral_asset_id)
+    action.asset2 = str(block.data.debt_asset_id)
+    action.amount = block.data.collateral_amount
+    action.success = block.data.is_success
+    action.evaa_liquidate_data = {
+        "fail_reason": block.data.fail_reason,
+        "debt_amount": block.data.debt_amount
+    }
+
+
 def block_to_action(block: Block, trace_id: str) -> Action:
     action = _base_block_to_action(block, trace_id)
     logger.debug("Parsed block: " + pformat(block))
@@ -715,6 +764,12 @@ def block_to_action(block: Block, trace_id: str) -> Action:
         _fill_election_action(block, action)
     elif isinstance(block, AuctionBidBlock):
         _fill_auction_bid_action(block, action)
+    elif isinstance(block, EvaaSupplyBlock):
+        _fill_evaa_supply_action(block, action)
+    elif isinstance(block, EvaaWithdrawBlock):
+        _fill_evaa_withdraw_action(block, action)
+    elif isinstance(block, EvaaLiquidateBlock):
+        _fill_evaa_liquidate_action(block, action)
     else:
         logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
 
