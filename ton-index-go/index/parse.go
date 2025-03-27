@@ -333,6 +333,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		var details ActionDetailsChangeDns
 		details.Key = raw.ChangeDNSRecordKey
 		details.Value.SumType = raw.ChangeDNSRecordValueSchema
+		details.NFTCollection = raw.Asset
 		if raw.ChangeDNSRecordValueSchema != nil {
 			switch *raw.ChangeDNSRecordValueSchema {
 			case "DNSNextResolver":
@@ -393,11 +394,13 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Key = raw.ChangeDNSRecordKey
 		details.Asset = raw.Destination
 		details.Source = raw.Source
+		details.NFTCollection = raw.Asset
 		act.Details = &details
 	case "renew_dns":
 		var details ActionDetailsRenewDns
 		details.Asset = raw.Destination
 		details.Source = raw.Source
+		details.NFTCollection = raw.Asset
 		act.Details = &details
 	case "election_deposit":
 		var details ActionDetailsElectionDeposit
