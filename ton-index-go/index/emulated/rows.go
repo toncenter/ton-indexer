@@ -465,6 +465,8 @@ func (m *MessageRow) getAssigns() []assign {
 		assignStringPtr(m.BodyHash),
 		assignStringPtr(m.InitStateHash),
 		assignStringPtr(m.MsgHashNorm),
+		assignStringPtr(nil), // InMsgTxHash
+		assignStringPtr(nil), // OutMsgTxHash
 	}
 }
 
