@@ -277,7 +277,7 @@ def _fill_change_dns_record_action(block: ChangeDnsRecordBlock, action: Action):
     if data['value_schema'] == 'DNSText':
         data['value'] = dns_record_data['dns_text']
     action.change_dns_record_data = data
-
+    action.asset = _addr(block.data['collection_address'])
 
 def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
     action.source = block.data['source'].as_str() if block.data['source'] is not None else None
@@ -288,6 +288,7 @@ def _fill_delete_dns_record_action(block: DeleteDnsRecordBlock, action: Action):
         'address': None,
         'key': block.data['key'].hex(),
     }
+    action.asset = _addr(block.data['collection_address'])
     action.change_dns_record_data = data
 
 def _fill_tonstakers_deposit_action(block: TONStakersDepositBlock, action: Action):
@@ -302,6 +303,7 @@ def _fill_tonstakers_deposit_action(block: TONStakersDepositBlock, action: Actio
 def _fill_dns_renew_action(block: DnsRenewBlock, action: Action):
     action.source = _addr(block.data['source'])
     action.destination = _addr(block.data['destination'])
+    action.asset = _addr(block.data['collection_address'])
 
 def _fill_tonstakers_withdraw_request_action(block: TONStakersWithdrawRequestBlock, action: Action):
     action.source = _addr(block.data.source)
