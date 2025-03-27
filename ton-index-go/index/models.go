@@ -583,21 +583,24 @@ type ActionDetailsChangeDnsValue struct {
 }
 
 type ActionDetailsChangeDns struct {
-	Key    *string                     `json:"key"`
-	Value  ActionDetailsChangeDnsValue `json:"value"`
-	Source *AccountAddress             `json:"source"`
-	Asset  *AccountAddress             `json:"asset"`
+	Key           *string                     `json:"key"`
+	Value         ActionDetailsChangeDnsValue `json:"value"`
+	Source        *AccountAddress             `json:"source"`
+	Asset         *AccountAddress             `json:"asset"`
+	NFTCollection *AccountAddress             `json:"nft_collection"`
 }
 
 type ActionDetailsDeleteDns struct {
-	Key    *string         `json:"hash"`
-	Source *AccountAddress `json:"source"`
-	Asset  *AccountAddress `json:"asset"`
+	Key           *string         `json:"hash"`
+	Source        *AccountAddress `json:"source"`
+	Asset         *AccountAddress `json:"asset"`
+	NFTCollection *AccountAddress `json:"nft_collection"`
 }
 
 type ActionDetailsRenewDns struct {
-	Source *AccountAddress `json:"source"`
-	Asset  *AccountAddress `json:"asset"`
+	Source        *AccountAddress `json:"source"`
+	Asset         *AccountAddress `json:"asset"`
+	NFTCollection *AccountAddress `json:"nft_collection"`
 }
 
 type ActionDetailsElectionDeposit struct {
