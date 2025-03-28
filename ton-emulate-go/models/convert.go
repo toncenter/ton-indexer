@@ -1,66 +1,117 @@
 package models
 
 import (
-	"encoding/base64"
 	"fmt"
+	"log"
 	"strconv"
 
-	tonindexgo "github.com/toncenter/ton-indexer/ton-index-go/index"
-	emulated "github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
+	"github.com/toncenter/ton-indexer/ton-index-go/index"
 
 	msgpack "github.com/vmihailenco/msgpack/v5"
 )
 
-func ConvertHsetToTraceNodeShort(hset map[string]string) (*TraceNodeShort, map[Hash]*Transaction, error) {
-	trace_id := hset["root_node"]
-	rootNodeBytes := []byte(hset[trace_id])
-	if len(rootNodeBytes) == 0 {
-		return nil, nil, fmt.Errorf("root node not found")
+func convertHashToLocal(h *index.HashType) *Hash {
+	if h == nil {
+		return nil
 	}
-
-	txMap := make(map[Hash]*Transaction)
-	node, err := convertNode(hset, rootNodeBytes, txMap)
+	hash, err := FromBase64(string(*h))
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert root node: %w", err)
+		log.Printf("failed to convert base64 string to [32]byte: %s", err.Error())
+		return nil
 	}
-	return node, txMap, nil
+	return &hash
 }
 
-func convertNode(hset map[string]string, nodeBytes []byte, txMap map[Hash]*Transaction) (*TraceNodeShort, error) {
-	var node TraceNode
-	err := msgpack.Unmarshal(nodeBytes, &node)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal node: %w", err)
+func convertHashToIndex(h *Hash) *index.HashType {
+	if h == nil {
+		return nil
+	}
+	hash := index.HashType(h.Base64())
+	return &hash
+}
+
+func convertToIndexAccountState(hash *index.HashType, accountStates map[Hash]*AccountState) *index.AccountState {
+	if hash == nil {
+		return nil
 	}
 
-	txMap[node.Transaction.Hash] = &node.Transaction
-
-	short := &TraceNodeShort{
-		TransactionHash: node.Transaction.Hash,
-		InMsgHash:       node.Transaction.InMsg.Hash,
-		Children:        make([]*TraceNodeShort, 0, len(node.Transaction.OutMsgs)),
+	localHash := convertHashToLocal(hash)
+	if localHash == nil {
+		log.Println("failed to convert base64 string to [32]byte")
+		return nil
 	}
 
-	for _, outMsg := range node.Transaction.OutMsgs {
-		// Get child node by out message hash
-		msgKey := base64.StdEncoding.EncodeToString(outMsg.Hash[:])
-		if childBytes, exists := hset[msgKey]; exists {
-			childNode := []byte(childBytes)
-			nodeShort, err := convertNode(hset, childNode, txMap)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert child node: %w", err)
-			}
-			short.Children = append(short.Children, nodeShort)
-		}
+	accountState, ok := accountStates[*localHash]
+	if !ok {
+		return nil
 	}
 
-	return short, nil
+	balance := strconv.FormatUint(accountState.Balance, 10)
+	return &index.AccountState{
+		Hash:          *convertHashToIndex(&accountState.Hash),
+		Balance:       &balance,
+		AccountStatus: &accountState.AccountStatus,
+		FrozenHash:    convertHashToIndex(accountState.FrozenHash),
+		DataHash:      convertHashToIndex(accountState.DataHash),
+		CodeHash:      convertHashToIndex(accountState.CodeHash),
+	}
 }
 
 func TransformToAPIResponse(hset map[string]string) (*EmulateTraceResponse, error) {
-	shortTrace, txMap, err := ConvertHsetToTraceNodeShort(hset)
+	emulatedContext := index.NewEmptyContext(true)
+	raw_traces := make(map[string]map[string]string)
+	raw_traces[hset["root_node"]] = hset
+	err := emulatedContext.FillFromRawData(raw_traces)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fill context from raw data: %w", err)
+	}
+
+	traceRows := emulatedContext.GetTraces()
+	if len(traceRows) != 1 {
+		return nil, fmt.Errorf("more than 1 trace in the context")
+	}
+
+	trace, err := index.ScanTrace(traceRows[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan trace: %w", err)
+	}
+	txs, err := index.QueryPendingTransactionsImpl(emulatedContext, nil, index.RequestSettings{}, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get trace transactions: %w", err)
+	}
+	trace.Transactions = make(map[index.HashType]*index.Transaction)
+	for idx := range txs {
+		tx := &txs[idx]
+		if v := tx.TraceExternalHash; v != nil {
+			trace.TransactionsOrder = append(trace.TransactionsOrder, tx.Hash)
+			trace.Transactions[tx.Hash] = tx
+		}
+	}
+
+	traceRoot, err := index.AssembleTraceTxsFromMap(&trace.TransactionsOrder, &trace.Transactions)
+	if err != nil {
+		log.Printf("failed to assemble trace transactions: %s", err.Error())
+	}
+	trace.Trace = traceRoot
+
+	actions := make([]*index.Action, 0)
+	trace.Actions = &actions
+	rawActions := make([]index.RawAction, 0)
+	for _, row := range emulatedContext.GetActions() {
+		if loc, err := index.ScanRawAction(row); err == nil {
+			rawActions = append(rawActions, *loc)
+		} else {
+			return nil, fmt.Errorf("failed to scan raw action: %w", err)
+		}
+	}
+	for idx := range rawActions {
+		rawAction := &rawActions[idx]
+
+		action, err := index.ParseRawAction(rawAction)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse raw action: %w", err)
+		}
+		*trace.Actions = append(*trace.Actions, action)
 	}
 
 	var accountStates map[Hash]*AccountState
@@ -69,36 +120,14 @@ func TransformToAPIResponse(hset map[string]string) (*EmulateTraceResponse, erro
 		return nil, fmt.Errorf("failed to unmarshal account states: %w", err)
 	}
 
-	var actionsPointer *[]tonindexgo.Action = nil
-	actionsData, ok := hset["actions"]
-	if ok {
-		actions := make([]emulated.Action, 0)
-		err = msgpack.Unmarshal([]byte(actionsData), &actions)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal actions: %w", err)
+	// iterate transactions and fill account states
+	for _, tx := range trace.Transactions {
+		if tx.AccountStateBefore != nil {
+			tx.AccountStateBefore = convertToIndexAccountState(&tx.AccountStateHashBefore, accountStates)
 		}
-
-		goActions := make([]tonindexgo.Action, 0, len(actions))
-
-		for _, a := range actions {
-			row, err := a.GetActionRow()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get action row: %w", err)
-			}
-			pgx_row := emulated.NewRow(&row)
-
-			rawAction, err := tonindexgo.ScanRawAction(pgx_row)
-			if err != nil {
-				return nil, fmt.Errorf("failed to scan raw action: %w", err)
-			}
-
-			goAction, err := tonindexgo.ParseRawAction(rawAction)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse action: %w", err)
-			}
-			goActions = append(goActions, *goAction)
+		if tx.AccountStateAfter != nil {
+			tx.AccountStateAfter = convertToIndexAccountState(&tx.AccountStateHashAfter, accountStates)
 		}
-		actionsPointer = &goActions
 	}
 
 	mcBlockSeqno, err := strconv.ParseUint(hset["mc_block_seqno"], 10, 32)
@@ -127,14 +156,13 @@ func TransformToAPIResponse(hset map[string]string) (*EmulateTraceResponse, erro
 	}
 
 	response := EmulateTraceResponse{
-		McBlockSeqno:  uint32(mcBlockSeqno),
-		Trace:         *shortTrace,
-		Transactions:  txMap,
-		AccountStates: accountStates,
-		Actions:       actionsPointer,
-		CodeCells:     codeCellsPointer,
-		DataCells:     dataCellsPointer,
-		RandSeed:      hset["rand_seed"],
+		McBlockSeqno: uint32(mcBlockSeqno),
+		Trace:        *trace.Trace,
+		Transactions: trace.Transactions,
+		Actions:      trace.Actions,
+		CodeCells:    codeCellsPointer,
+		DataCells:    dataCellsPointer,
+		RandSeed:     hset["rand_seed"],
 	}
 	return &response, nil
 }

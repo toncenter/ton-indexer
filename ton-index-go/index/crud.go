@@ -2099,7 +2099,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 	}
 	for idx := range traces {
 		if len(traces[idx].TransactionsOrder) > 0 {
-			trace, err := assembleTraceTxsFromMap(&traces[idx].TransactionsOrder, &traces[idx].Transactions)
+			trace, err := AssembleTraceTxsFromMap(&traces[idx].TransactionsOrder, &traces[idx].Transactions)
 			if err != nil {
 				if len(traces[idx].Warning) > 0 {
 					traces[idx].Warning += ", " + err.Error()
@@ -2123,7 +2123,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 	return traces, addr_list, nil
 }
 
-func assembleTraceTxsFromMap(tx_order *[]HashType, txs *map[HashType]*Transaction) (*TraceNode, error) {
+func AssembleTraceTxsFromMap(tx_order *[]HashType, txs *map[HashType]*Transaction) (*TraceNode, error) {
 	nodes := map[HashType]*TraceNode{}
 	warning := ``
 	var root *TraceNode = nil

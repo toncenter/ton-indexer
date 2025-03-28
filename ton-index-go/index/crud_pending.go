@@ -102,7 +102,7 @@ func (db *DbClient) QueryPendingTransactions(
 	}
 	defer conn.Release()
 
-	txs, err := queryPendingTransactions(emulatedContext, conn, settings, true)
+	txs, err := QueryPendingTransactionsImpl(emulatedContext, conn, settings, true)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -168,7 +168,7 @@ func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
 	return nil, nil
 }
 
-func queryPendingTransactions(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings, filterCompletedTransaction bool) ([]Transaction, error) {
+func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings, filterCompletedTransaction bool) ([]Transaction, error) {
 	var txs []Transaction
 	// find transactions that already present in db
 	if filterCompletedTransaction {
@@ -295,7 +295,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	fully_emulated_traces := make(map[HashType]bool)
 
 	if len(trace_id_list) > 0 {
-		txs, err := queryPendingTransactions(emulatedContext, conn, settings, false)
+		txs, err := QueryPendingTransactionsImpl(emulatedContext, conn, settings, false)
 		if err != nil {
 			return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
 		}
@@ -314,7 +314,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	for idx := range traces {
 		if len(traces[idx].TransactionsOrder) > 0 {
-			trace, err := assembleTraceTxsFromMap(&traces[idx].TransactionsOrder, &traces[idx].Transactions)
+			trace, err := AssembleTraceTxsFromMap(&traces[idx].TransactionsOrder, &traces[idx].Transactions)
 			if err != nil {
 				if len(traces[idx].Warning) > 0 {
 					traces[idx].Warning += ", " + err.Error()
