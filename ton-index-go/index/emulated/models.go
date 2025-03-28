@@ -2,7 +2,6 @@ package emulated
 
 import (
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -532,8 +531,8 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 	}, nil
 }
 
-func (h hash) Hex() *string {
-	str := hex.EncodeToString(h[:])
+func (h hash) Base64Ptr() *string {
+	str := base64.StdEncoding.EncodeToString(h[:])
 	return &str
 }
 
@@ -555,22 +554,22 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 
 	txRow := TransactionRow{
 		Account:                  n.Transaction.Account,
-		Hash:                     base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]),
+		Hash:                     *n.Transaction.Hash.Base64Ptr(),
 		Lt:                       int64(n.Transaction.Lt),
 		BlockWorkchain:           nil,
 		BlockShard:               nil,
 		BlockSeqno:               nil,
 		McBlockSeqno:             nil,
 		TraceID:                  n.TraceId,
-		PrevTransHash:            n.Transaction.PrevTransHash.Hex(),
+		PrevTransHash:            n.Transaction.PrevTransHash.Base64Ptr(),
 		PrevTransLt:              &n.Transaction.PrevTransLt,
 		Now:                      &n.Transaction.Now,
 		OrigStatus:               &origStatus,
 		EndStatus:                &endStatus,
 		TotalFees:                n.Transaction.TotalFees,
 		TotalFeesExtraCurrencies: nil,
-		AccountStateHashBefore:   n.Transaction.AccountStateHashBefore.Hex(),
-		AccountStateHashAfter:    n.Transaction.AccountStateHashAfter.Hex(),
+		AccountStateHashBefore:   n.Transaction.AccountStateHashBefore.Base64Ptr(),
+		AccountStateHashAfter:    n.Transaction.AccountStateHashAfter.Base64Ptr(),
 		Descr:                    &ord_val,
 		Aborted:                  &n.Transaction.Description.Aborted,
 		Destroyed:                &n.Transaction.Description.Destroyed,
@@ -608,8 +607,8 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 		txRow.ComputeExitCode = &vm.ExitCode
 		txRow.ComputeExitArg = vm.ExitArg
 		txRow.ComputeVmSteps = vm.VmSteps
-		txRow.ComputeVmInitStateHash = vm.VmInitStateHash.Hex()
-		txRow.ComputeVmFinalStateHash = vm.VmFinalStateHash.Hex()
+		txRow.ComputeVmInitStateHash = vm.VmInitStateHash.Base64Ptr()
+		txRow.ComputeVmFinalStateHash = vm.VmFinalStateHash.Base64Ptr()
 	}
 
 	if n.Transaction.Description.Action != nil {
@@ -629,7 +628,7 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 		txRow.ActionSpecActions = n.Transaction.Description.Action.SpecActions
 		txRow.ActionSkippedActions = n.Transaction.Description.Action.SkippedActions
 		txRow.ActionMsgsCreated = n.Transaction.Description.Action.MsgsCreated
-		txRow.ActionActionListHash = n.Transaction.Description.Action.ActionListHash.Hex()
+		txRow.ActionActionListHash = n.Transaction.Description.Action.ActionListHash.Base64Ptr()
 		txRow.ActionTotMsgSizeCells = n.Transaction.Description.Action.TotMsgSize.Cells
 		txRow.ActionTotMsgSizeBits = n.Transaction.Description.Action.TotMsgSize.Bits
 	}
