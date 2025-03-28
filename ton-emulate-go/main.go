@@ -13,13 +13,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/swagger"
 
-	models "github.com/toncenter/ton-indexer/ton-emulate-go/models"
-
 	"github.com/go-redis/redis/v8"
 
 	"github.com/vmihailenco/msgpack/v5"
 
 	_ "github.com/toncenter/ton-indexer/ton-emulate-go/docs"
+	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
 )
 
 type TraceTask struct {
