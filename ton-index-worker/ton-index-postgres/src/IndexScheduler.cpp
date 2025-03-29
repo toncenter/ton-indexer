@@ -203,7 +203,7 @@ void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
         if (should_skip) {
             skipped_count++;
         } else if (in_range) {
-            queued_seqnos_.push(seqno);
+            queued_seqnos_.push_back(seqno);
         }
     }
     if (skipped_count > 0) {
@@ -246,7 +246,7 @@ void IndexScheduler::reschedule_seqno(std::uint32_t mc_seqno, bool silent) {
         LOG(WARNING) << "Rescheduling seqno " << mc_seqno;
     }
     processing_seqnos_.erase(mc_seqno);
-    queued_seqnos_.push(mc_seqno);
+    queued_seqnos_.push_front(mc_seqno);
 }
 
 void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, MasterchainBlockDataState block_data_state) {
@@ -377,7 +377,7 @@ void IndexScheduler::schedule_next_seqnos() {
     LOG(DEBUG) << "Scheduling next seqnos. Current tasks: " << processing_seqnos_.size();
     while (!queued_seqnos_.empty() && (processing_seqnos_.size() < max_active_tasks_)) {
         std::uint32_t seqno = queued_seqnos_.front();
-        queued_seqnos_.pop();
+        queued_seqnos_.pop_front();
         schedule_seqno(seqno);
     }
 
