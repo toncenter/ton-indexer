@@ -164,14 +164,14 @@ func TransformToAPIResponse(hset map[string]string) (*EmulateTraceResponse, erro
 	}
 
 	response := EmulateTraceResponse{
-		McBlockSeqno:       uint32(mcBlockSeqno),
-		Trace:              *trace.Trace,
-		Transactions:       trace.Transactions,
-		Actions:            trace.Actions,
-		CodeCells:          codeCellsPointer,
-		DataCells:          dataCellsPointer,
-		RandSeed:           hset["rand_seed"],
-		DepthLimitExceeded: depthLimitExceeded,
+		McBlockSeqno: uint32(mcBlockSeqno),
+		Trace:        *trace.Trace,
+		Transactions: trace.Transactions,
+		Actions:      trace.Actions,
+		CodeCells:    codeCellsPointer,
+		DataCells:    dataCellsPointer,
+		RandSeed:     hset["rand_seed"],
+		IsIncomplete: depthLimitExceeded,
 	}
 	return &response, nil
 }
