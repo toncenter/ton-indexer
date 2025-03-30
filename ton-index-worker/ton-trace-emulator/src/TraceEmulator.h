@@ -23,6 +23,7 @@ struct TraceNode {
     std::vector<std::unique_ptr<TraceNode>> children;
     td::Ref<vm::Cell> transaction_root;
     bool emulated;
+    bool depth_limit_reached{false}; // true if due to depth limit children of the node were not emulated
 
     int depth() const {
         int res = 0;
@@ -30,6 +31,18 @@ struct TraceNode {
             res = std::max(res, child->depth());
         }
         return res + 1;
+    }
+
+    bool depth_limit_exceeded() const {
+        if (depth_limit_reached) {
+            return true;
+        }
+        for (const auto& child : children) {
+            if (child->depth_limit_exceeded()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     int transactions_count() const {
@@ -78,13 +91,9 @@ struct Trace {
         return root->depth();
     }
 
-    // // hash of root tx (only if not emulated)
-    // std::optional<td::Bits256> id() const {
-    //     if (root->emulated) {
-    //         return std::nullopt;
-    //     }
-    //     return root->transaction_root->get_hash().bits();
-    // }
+    bool depth_limit_exceeded() const {
+        return root->depth_limit_exceeded();
+    }
 
     int transactions_count() const {
         return root->transactions_count();

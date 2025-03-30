@@ -155,14 +155,23 @@ func TransformToAPIResponse(hset map[string]string) (*EmulateTraceResponse, erro
 		dataCellsPointer = &dataCellsMap
 	}
 
+	var depthLimitExceeded bool
+	if depthLimit, ok := hset["depth_limit_exceeded"]; ok {
+		depthLimitExceeded, err = strconv.ParseBool(depthLimit)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert depth_limit_exceeded to bool: %w", err)
+		}
+	}
+
 	response := EmulateTraceResponse{
-		McBlockSeqno: uint32(mcBlockSeqno),
-		Trace:        *trace.Trace,
-		Transactions: trace.Transactions,
-		Actions:      trace.Actions,
-		CodeCells:    codeCellsPointer,
-		DataCells:    dataCellsPointer,
-		RandSeed:     hset["rand_seed"],
+		McBlockSeqno:       uint32(mcBlockSeqno),
+		Trace:              *trace.Trace,
+		Transactions:       trace.Transactions,
+		Actions:            trace.Actions,
+		CodeCells:          codeCellsPointer,
+		DataCells:          dataCellsPointer,
+		RandSeed:           hset["rand_seed"],
+		DepthLimitExceeded: depthLimitExceeded,
 	}
 	return &response, nil
 }

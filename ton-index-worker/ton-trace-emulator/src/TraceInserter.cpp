@@ -76,6 +76,7 @@ public:
                 transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), addr_raw, buffer.str());
             }
             transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
+            transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "depth_limit_exceeded", trace_.depth_limit_exceeded() ? "1" : "0");
             
             if (!trace_.root->emulated) {
                 transaction_.set("tr_root_tx:" + td::base64_encode(trace_.root_tx_hash.as_slice()), td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()));

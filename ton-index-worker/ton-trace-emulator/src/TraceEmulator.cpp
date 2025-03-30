@@ -126,7 +126,7 @@ void TraceEmulatorImpl::emulate_transaction(block::Account account, block::StdAd
         return;
     }
     size_t pending = 0;
-    if (depth > 0 && trans.outmsg_cnt > 0) {
+    if (trans.outmsg_cnt > 0) {
         vm::Dictionary dict{trans.r1.out_msgs, 15};
         for (int ind = 0; ind < trans.outmsg_cnt; ind++) {
             auto out_msg = dict.lookup_ref(td::BitArray<15>{ind});
@@ -146,6 +146,11 @@ void TraceEmulatorImpl::emulate_transaction(block::Account account, block::StdAd
             }
             auto out_msg_address = out_msg_address_r.move_as_ok();
             
+            if (depth == 0) {
+                result->depth_limit_reached = true;
+                break;
+            }
+            
             {
                 std::lock_guard<std::mutex> lock(emulated_accounts_mutex_);
                 if (emulator_actors_.find(out_msg_address) == emulator_actors_.end()) {
@@ -164,7 +169,7 @@ void TraceEmulatorImpl::emulate_transaction(block::Account account, block::StdAd
             pending++;
         }
         result->children.resize(pending);
-    } 
+    }
     if (pending == 0) {
         promise.set_value(std::move(result));
         return;

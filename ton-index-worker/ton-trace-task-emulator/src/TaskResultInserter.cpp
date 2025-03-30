@@ -66,6 +66,7 @@ public:
             transaction_.hset("result_" + result_.task.id, "root_node", td::base64_encode(result_.trace.ok().root->node_id.as_slice()));
             transaction_.hset("result_" + result_.task.id, "mc_block_seqno", std::to_string(result_.mc_block_id.seqno));
             transaction_.hset("result_" + result_.task.id, "rand_seed", td::base64_encode(result_.trace.ok().rand_seed.as_slice()));
+            transaction_.hset("result_" + result_.task.id, "depth_limit_exceeded", result_.trace.ok().depth_limit_exceeded() ? "1" : "0");
 
             std::unordered_map<td::Bits256, AccountState> account_states;
             std::unordered_map<td::Bits256, std::string> code_cells;
