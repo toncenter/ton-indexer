@@ -22,18 +22,20 @@ import (
 )
 
 type TraceTask struct {
-	ID               string `msgpack:"id"`
-	BOC              string `msgpack:"boc"`
-	IgnoreChksig     bool   `msgpack:"ignore_chksig"`
-	DetectInterfaces bool   `msgpack:"detect_interfaces"`
-	IncludeCodeData  bool   `msgpack:"include_code_data"`
+	ID               string  `msgpack:"id"`
+	BOC              string  `msgpack:"boc"`
+	IgnoreChksig     bool    `msgpack:"ignore_chksig"`
+	DetectInterfaces bool    `msgpack:"detect_interfaces"`
+	IncludeCodeData  bool    `msgpack:"include_code_data"`
+	McBlockSeqno     *uint32 `msgpack:"mc_block_seqno"`
 }
 
 type EmulateRequest struct {
-	Boc             string `json:"boc" example:"te6ccgEBAQEAAgAAAA=="`
-	IgnoreChksig    bool   `json:"ignore_chksig" example:"false"`
-	WithActions     bool   `json:"with_actions" example:"false"`
-	IncludeCodeData bool   `json:"include_code_data" example:"false"`
+	Boc             string  `json:"boc" example:"te6ccgEBAQEAAgAAAA=="`
+	IgnoreChksig    bool    `json:"ignore_chksig" example:"false"`
+	WithActions     bool    `json:"with_actions" example:"false"`
+	IncludeCodeData bool    `json:"include_code_data" example:"false"`
+	McBlockSeqno    *uint32 `json:"mc_block_seqno" example:"12"`
 }
 
 // validate function for EmulateRequest
@@ -96,6 +98,7 @@ func emulateTrace(c *fiber.Ctx) error {
 		IgnoreChksig:     req.IgnoreChksig,
 		DetectInterfaces: req.WithActions,
 		IncludeCodeData:  req.IncludeCodeData,
+		McBlockSeqno:     req.McBlockSeqno,
 	}
 
 	// Serialize the task using msgpack

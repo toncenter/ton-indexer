@@ -11,6 +11,9 @@ definitions:
       include_code_data:
         example: false
         type: boolean
+      mc_block_seqno:
+        example: null
+        type: integer
       with_actions:
         example: false
         type: boolean

@@ -59,6 +59,11 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": false
                 },
+                "mc_block_seqno": {
+                    "type": "integer",
+                    "example": null,
+                    "nullable": true
+                },
                 "with_actions": {
                     "type": "boolean",
                     "example": false
