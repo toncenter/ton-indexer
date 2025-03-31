@@ -43,7 +43,7 @@ services:
   action_classifier:
     service_name: action_classifier
     additional_args: --emulated-trace-tasks --emulated-traces-redis-channel classifierchannel
-    environment: ton_indexer_redis_dsn=redis://@localhost:6379
+    environment: ton_indexer_redis_dsn=redis://localhost:6379
   trace_emulator:
     service_name: trace_emulator
     additional_args: --working-dir /var/ton-trace-emulator --db /var/ton-work/db --threads 16 --redis "redis://{{ pendings_redis_password }}@localhost:6379" --addr "{{ host_addr }}" --global-config /var/ton-work/etc/global.config.json 2>&1
@@ -54,5 +54,5 @@ services:
     environment: "ton_indexer_redis_dsn=redis://:{{ pendings_redis_password }}@localhost:6379"
   trace_ttl_tracker:
     service_name: trace_ttl_tracker
-    additional_args: --ttl 1m "--redis-dsn=redis://{{ pendings_redis_password }}@localhost:6379" --synthetic-ttl=30s --completed-ttl=30s --enable-cleanup --cleanup-interval=1h
+    additional_args: --ttl 1m "--redis-dsn=redis://:{{ pendings_redis_password }}@localhost:6379" --synthetic-ttl=30s --completed-ttl=30s --enable-cleanup --cleanup-interval=1h
 
