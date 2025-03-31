@@ -54,7 +54,7 @@ void RedisListener::alarm() {
       auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_block_seqno, task, msg_cell, ignore_chksig](td::Result<MasterchainBlockDataState> R) {
         if (R.is_error()) {
             td::actor::send_closure(SelfId, &RedisListener::trace_error, 
-                std::move(task), std::nullopt, R.move_as_error_prefix(PSLICE() << "failed to fetch mc block seqno " << mc_block_seqno));
+                std::move(task), std::nullopt, R.move_as_error_prefix(PSLICE() << "failed to fetch mc block  " << mc_block_seqno << ": "));
             return;
         }
         auto mc_block_ds = R.move_as_ok();
