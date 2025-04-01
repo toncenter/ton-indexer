@@ -601,7 +601,7 @@ void InsertBatchPostgres::insert_transactions(pqxx::work &txn, bool with_copy) {
   };
 
   using compute_ph_tuple = std::tuple<std::optional<bool>, std::optional<std::string>, std::optional<bool>, std::optional<bool>, std::optional<bool>, 
-                                      std::optional<uint64_t>, std::optional<td::RefInt256>, std::optional<uint64_t>, std::optional<size_t>, 
+                                      std::optional<td::RefInt256>, std::optional<uint64_t>, std::optional<uint64_t>, std::optional<size_t>, 
                                       std::optional<int32_t>, std::optional<int32_t>, std::optional<int32_t>, std::optional<uint32_t>, 
                                       std::optional<td::Bits256>, std::optional<td::Bits256>>;
   auto store_compute_ph = [&](const schema::TrComputePhase& compute_ph) -> compute_ph_tuple {
@@ -614,7 +614,7 @@ void InsertBatchPostgres::insert_transactions(pqxx::work &txn, bool with_copy) {
                 std::nullopt, std::nullopt};
       } else if constexpr (std::is_same_v<T, schema::TrComputePhase_vm>) {
         return {false, std::nullopt, arg.success, arg.msg_state_used, arg.account_activated, 
-                arg.gas_used, arg.gas_fees, arg.gas_limit, arg.gas_credit, 
+                arg.gas_fees, arg.gas_used, arg.gas_limit, arg.gas_credit, 
                 arg.mode, arg.exit_code, arg.exit_arg, arg.vm_steps, 
                 arg.vm_init_state_hash, arg.vm_final_state_hash};
       } else {

@@ -599,6 +599,16 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 		&bo.Type, &ms2.Cells, &ms2.Bits,
 		&bo.ReqFwdFees, &bo.MsgFees, &bo.FwdFees,
 		&sp.CurShardPfxLen, &sp.AccSplitDepth, &sp.ThisAddr, &sp.SiblingAddr, &t.Emulated)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// fix for incorrectly inserted data - gas_fees and gas_used were swapped
+	if co.GasFees != nil && co.GasUsed != nil && *co.GasFees < *co.GasUsed {
+		co.GasFees, co.GasUsed = co.GasUsed, co.GasFees
+	}
+
 	t.BlockRef = BlockId{t.Workchain, t.Shard, t.Seqno}
 	t.AccountStateAfter = &AccountState{Hash: t.AccountStateHashAfter}
 	t.AccountStateBefore = &AccountState{Hash: t.AccountStateHashBefore}
@@ -630,9 +640,6 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 		t.Descr.SplitInfo = &sp
 	}
 
-	if err != nil {
-		return nil, err
-	}
 	return &t, nil
 }
 
