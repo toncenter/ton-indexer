@@ -37,7 +37,7 @@ class TraceTaskScheduler : public td::actor::Actor {
       insert_trace_ = [insert_manager = insert_manager_.get()](TraceEmulationResult result, td::Promise<td::Unit> promise) {
         td::actor::send_closure(insert_manager, &ITaskResultInserter::insert, std::move(result), std::move(promise));
       };
-      redis_listener_ = td::actor::create_actor<RedisListener>("RedisListener", redis_dsn_, input_redis_queue_, insert_trace_);
+      redis_listener_ = td::actor::create_actor<RedisListener>("RedisListener", redis_dsn_, input_redis_queue_, db_scanner, insert_trace_);
     };
 
     virtual void start_up() override;
