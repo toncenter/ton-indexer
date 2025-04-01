@@ -35,7 +35,7 @@ type EmulateRequest struct {
 	IgnoreChksig    bool    `json:"ignore_chksig" example:"false"`
 	WithActions     bool    `json:"with_actions" example:"false"`
 	IncludeCodeData bool    `json:"include_code_data" example:"false"`
-	McBlockSeqno    *uint32 `json:"mc_block_seqno" example:"12"`
+	McBlockSeqno    *uint32 `json:"mc_block_seqno" example:"null"`
 }
 
 // validate function for EmulateRequest
