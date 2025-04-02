@@ -22,7 +22,7 @@ int main(int argc, char *argv[]) {
   std::string working_dir;
   td::uint32 threads = 7;
   std::string redis_dsn = "tcp://127.0.0.1:6379";
-  std::string redis_queue_name = "";
+  std::string redis_channel = "";
   
   std::string global_config_path;
   std::string inet_addr;
@@ -58,8 +58,8 @@ int main(int argc, char *argv[]) {
     redis_dsn = fname.str();
   });
 
-  p.add_option('\0', "redis-queue", "Redis queue name for input msgs", [&](td::Slice fname) { 
-    redis_queue_name = fname.str();
+  p.add_option('\0', "redis-channel", "Redis channel name for input msgs", [&](td::Slice fname) { 
+    redis_channel = fname.str();
   });
 
   p.add_option('\0', "global-config", "Path to global config json file (for listening overlay)", [&](td::Slice fname) { 
@@ -99,7 +99,7 @@ int main(int argc, char *argv[]) {
   scheduler.run_in_context([&] { 
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir, 0.5);
     insert_manager = td::actor::create_actor<RedisInsertManager>("RedisInsertManager", redis_dsn);
-    td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), insert_manager.get(), global_config_path, inet_addr, redis_dsn, redis_queue_name).release();
+    td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), insert_manager.get(), global_config_path, inet_addr, redis_dsn, redis_channel).release();
   });
   
   scheduler.run();
