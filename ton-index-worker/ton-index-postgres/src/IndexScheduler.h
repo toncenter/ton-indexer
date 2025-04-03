@@ -16,7 +16,7 @@ using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR
 
 class IndexScheduler: public td::actor::Actor {
 private:
-  std::queue<std::uint32_t> queued_seqnos_;
+  std::deque<std::uint32_t> queued_seqnos_;
   std::set<std::uint32_t> processing_seqnos_;
   std::set<std::uint32_t> indexed_seqnos_;
 
