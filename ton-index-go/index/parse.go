@@ -493,6 +493,13 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.CustomPayload = raw.NFTTransferCustomPayload
 		details.ForwardPayload = raw.NFTTransferForwardPayload
 		details.ForwardAmount = raw.NFTTransferForwardAmount
+		if raw.NFTTransferForwardPayload != nil {
+			comment, isEncrypted, err := ParseCommentFromPayload(*raw.NFTTransferForwardPayload)
+			if err == nil {
+				details.Comment = comment
+				details.IsEncryptedComment = &isEncrypted
+			}
+		}
 		act.Details = &details
 	case "tick_tock":
 		var details ActionDetailsTickTock

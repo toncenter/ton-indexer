@@ -690,6 +690,8 @@ type ActionDetailsNftTransfer struct {
 	CustomPayload       *string         `json:"custom_payload"`
 	ForwardPayload      *string         `json:"forward_payload"`
 	ForwardAmount       *string         `json:"forward_amount"`
+	Comment             *string         `json:"comment"`
+	IsEncryptedComment  *bool           `json:"is_encrypted_comment"`
 }
 
 type ActionDetailsTickTock struct {
