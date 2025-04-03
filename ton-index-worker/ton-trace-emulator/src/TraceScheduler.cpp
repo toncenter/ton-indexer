@@ -122,7 +122,6 @@ void TraceEmulatorScheduler::alarm() {
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ton::BlockSeqno> R){
         if (R.is_error()) {
             LOG(ERROR) << "Failed to update last seqno: " << R.move_as_error();
-            std::_Exit(2);
             return;
         }
         td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, R.move_as_ok());
