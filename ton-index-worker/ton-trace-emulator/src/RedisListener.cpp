@@ -61,6 +61,10 @@ void RedisListener::start_up() {
 }
 
 void RedisListener::on_new_message(td::Ref<vm::Cell> msg_cell) {
+  if (mc_data_state_.config_ == nullptr) {
+    return;
+  }
+
   auto msg_hash = td::Bits256(msg_cell->get_hash().bits());
   auto [x, inserted] = known_ext_msgs_.insert(msg_hash);
   if (!inserted) {
