@@ -80,15 +80,6 @@ func (receiver *EmulatedTracesRepository) GetTraceIdsByAccount(account string) (
 			continue
 		}
 		trace_id := split[0]
-		keys_query := receiver.Rdb.Keys(context.Background(), trace_id)
-		key_query_result, err := keys_query.Result()
-		if err != nil {
-			log.Println("Error getting keys:", err)
-			continue
-		}
-		if len(key_query_result) == 0 {
-			continue
-		}
 		trace_ids = append(trace_ids, trace_id)
 	}
 	return trace_ids, nil
@@ -111,15 +102,6 @@ func (receiver *EmulatedTracesRepository) GetActionIdsByAccount(account string) 
 		}
 		trace_id := split[0]
 		action_id := split[1]
-		keys_query := receiver.Rdb.Keys(context.Background(), trace_id)
-		key_query_result, err := keys_query.Result()
-		if err != nil {
-			log.Println("Error getting keys: ", err)
-			continue
-		}
-		if len(key_query_result) == 0 {
-			continue
-		}
 		if _, ok := actions[trace_id]; !ok {
 			actions[trace_id] = make([]string, 0)
 		}
