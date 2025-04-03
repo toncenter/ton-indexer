@@ -174,7 +174,7 @@ td::Result<td::Bits256> ext_in_msg_get_normalized_hash(td::Ref<vm::Cell> ext_in_
 
   td::Ref<vm::Cell> body;
   auto body_cs = message.body.write();
-  if (body_cs.fetch_long(1) == 1) {
+  if (body_cs.fetch_ulong(1) == 1) {
     body = body_cs.fetch_ref();
   } else {
     body = vm::CellBuilder().append_cellslice(body_cs).finalize();
