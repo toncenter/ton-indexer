@@ -53,6 +53,15 @@ class JettonTransferBlockMatcher(BlockMatcher):
 
         internal_transfer = find_call_contract(other_blocks, JettonInternalTransfer.opcode)
         has_internal_transfer = internal_transfer is not None
+        amount = jetton_transfer_message.amount
+        forward_ton_amount = jetton_transfer_message.forward_amount
+        if has_internal_transfer:
+            try:
+                internal_transfer_msg = JettonInternalTransfer(internal_transfer.get_body())
+                amount = internal_transfer_msg.amount
+                forward_ton_amount = internal_transfer_msg.forward_ton_amount
+            except Exception:
+                pass
         sender = block.get_message().source
         sender_jetton_wallet = block.get_message().destination
         receiver_wallet = internal_transfer.get_message().destination
@@ -75,10 +84,12 @@ class JettonTransferBlockMatcher(BlockMatcher):
             'receiver': AccountId(receiver),
             'receiver_wallet': AccountId(receiver_wallet),
             'response_address': AccountId(jetton_transfer_message.response),
-            'forward_amount': Amount(jetton_transfer_message.forward_amount),
+            'forward_amount': Amount(forward_ton_amount),
+            'desired_forward_amount': Amount(jetton_transfer_message.forward_amount),
             'query_id': jetton_transfer_message.query_id,
             'asset': asset,
-            'amount': Amount(jetton_transfer_message.amount),
+            'amount': Amount(amount),
+            'desired_amount': Amount(jetton_transfer_message.amount),
             'forward_payload': base64.b64encode(jetton_transfer_message.forward_payload).decode(
                 'utf-8') if jetton_transfer_message.forward_payload is not None else None,
             'custom_payload': base64.b64encode(jetton_transfer_message.custom_payload).decode(

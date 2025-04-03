@@ -546,6 +546,7 @@ class DedustSwapBlockMatcher(BlockMatcher):
                     dex_outgoing_wallet = payout.data['sender']
                     dex_outgoing_jetton_wallet = payout.data['sender_wallet']
                     actual_asset_out = payout.data['asset']
+                    actual_amount_out = payout.data['amount']
                 elif isinstance(payout_block, CallContractBlock) and payout_block.opcode == DedustPayout.opcode:
                     payout = payout_block
                     dex_outgoing_wallet = AccountId(payout.get_message().source)
