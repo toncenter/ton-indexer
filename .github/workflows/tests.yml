@@ -32,6 +32,11 @@ jobs:
         chmod +x llvm.sh
         sudo ./llvm.sh 16 all
 
+    - name: Setup cmake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: '3.x'
+
     - name: Configure CMake
       run: cmake -B ${{github.workspace}}/build
 

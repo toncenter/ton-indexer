@@ -12,10 +12,10 @@ void TraceEmulatorScheduler::start_up() {
         overlay_listener_ = td::actor::create_actor<OverlayListener>("OverlayListener", global_config_path_, inet_addr_, insert_trace_);
     }
 
-    if (input_redis_queue_.empty()) {
+    if (input_redis_channel_.empty()) {
         LOG(WARNING) << "Input redis queue name is empty. RedisListener was not started.";
     } else {
-        redis_listener_ = td::actor::create_actor<RedisListener>("RedisListener", redis_dsn_, input_redis_queue_, insert_trace_);
+        redis_listener_ = td::actor::create_actor<RedisListener>("RedisListener", redis_dsn_, input_redis_channel_, insert_trace_);
     }
 }
 
@@ -122,7 +122,6 @@ void TraceEmulatorScheduler::alarm() {
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ton::BlockSeqno> R){
         if (R.is_error()) {
             LOG(ERROR) << "Failed to update last seqno: " << R.move_as_error();
-            std::_Exit(2);
             return;
         }
         td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, R.move_as_ok());
