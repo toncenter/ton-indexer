@@ -1,5 +1,5 @@
 #include "RedisListener.h"
-
+#include "Statistics.h"
   
 void ChannelListener::setup_subscriber() {
   sw::redis::ConnectionOptions connection_options = sw::redis::Uri(redis_dsn_).connection_options();
@@ -80,6 +80,8 @@ void RedisListener::on_new_message(td::Ref<vm::Cell> msg_cell) {
   });
 
   td::actor::create_actor<TraceEmulator>("TraceEmu", mc_data_state_, msg_cell, false, std::move(P)).release();
+
+  g_statistics.record_count(EMULATE_SRC_REDIS);
 }
 
 void RedisListener::set_mc_data_state(MasterchainBlockDataState mc_data_state) {

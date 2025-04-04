@@ -4,6 +4,7 @@
 #include <emulator/transaction-emulator.h>
 #include "crypto/openssl/rand.hpp"
 #include "TraceEmulator.h"
+#include "Statistics.h"
 
 td::Result<block::StdAddress> fetch_msg_dest_address(td::Ref<vm::Cell> msg, int& type) {
     auto message_cs = vm::load_cell_slice(msg);
@@ -211,6 +212,8 @@ TraceEmulator::TraceEmulator(MasterchainBlockDataState mc_data_state, td::Ref<vm
 }
 
 void TraceEmulator::start_up() {
+    timer_.resume();
+
     std::vector<td::Ref<vm::Cell>> shard_states;
     for (const auto& shard_state : mc_data_state_.shard_blocks_) {
         shard_states.push_back(shard_state.block_state);
@@ -235,6 +238,7 @@ void TraceEmulator::start_up() {
 
 void TraceEmulator::finish(td::Result<std::unique_ptr<TraceNode>> root) {
     if (root.is_error()) {
+        g_statistics.record_count(EMULATE_TRACE_ERROR);
         promise_.set_error(root.move_as_error());
         stop();
         return;
@@ -251,5 +255,6 @@ void TraceEmulator::finish(td::Result<std::unique_ptr<TraceNode>> root) {
     result.rand_seed = rand_seed_;
     result.emulated_accounts = std::move(emulated_accounts_);
     promise_.set_result(std::move(result));
+    g_statistics.record_time(EMULATE_TRACE, timer_.elapsed() * 1e3);
     stop();
 }

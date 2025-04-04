@@ -127,6 +127,8 @@ void OverlayListener::process_external_message(td::Ref<ton::validator::ExtMessag
         }
     });
     td::actor::create_actor<TraceEmulator>("TraceEmu", mc_data_state_, message->root_cell(), false, std::move(P)).release();
+
+    g_statistics.record_count(EMULATE_SRC_OVERLAY);
 }
 
 void OverlayListener::trace_error(td::Bits256 ext_in_msg_hash, td::Status error) {

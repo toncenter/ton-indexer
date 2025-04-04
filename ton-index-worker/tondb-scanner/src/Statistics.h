@@ -89,6 +89,11 @@ private:
 enum Ticker : uint32_t {
   SEQNO_FETCH_ERROR = 0,
   INSERT_CONFLICT,
+  EMULATE_TRACE_ERROR,
+
+  EMULATE_SRC_REDIS,
+  EMULATE_SRC_OVERLAY,
+  EMULATE_SRC_BLOCKS,
   TICKERS_COUNT
 };
 
@@ -116,6 +121,9 @@ enum Histogram : uint32_t {
   INSERT_BATCH_EXEC_DATA,
   INSERT_BATCH_EXEC_STATES,
   INSERT_BATCH_COMMIT,
+
+  EMULATE_TRACE,
+  INSERT_TRACE,
   
   HISTOGRAMS_COUNT
 };
@@ -123,6 +131,10 @@ enum Histogram : uint32_t {
 const std::unordered_map<uint32_t, std::string_view> ticker_names = {
     {SEQNO_FETCH_ERROR, "indexer.seqno.fetch.error"},
     {INSERT_CONFLICT, "indexer.insert.conflict"},
+    {EMULATE_TRACE_ERROR, "emulator.emulate.trace.error"},
+    {EMULATE_SRC_REDIS, "emulator.source.redis"},
+    {EMULATE_SRC_OVERLAY, "emulator.source.overlay"},
+    {EMULATE_SRC_BLOCKS, "emulator.source.blocks"}
 };
 const std::unordered_map<uint32_t, std::string_view> histogram_names = {
     {PROCESS_SEQNO, "indexer.index.seqno.millis"},
@@ -143,6 +155,8 @@ const std::unordered_map<uint32_t, std::string_view> histogram_names = {
     {INSERT_BATCH_EXEC_DATA, "indexer.insert.batch.exec_data.millis"},
     {INSERT_BATCH_EXEC_STATES, "indexer.insert.batch.exec_states.millis"},
     {INSERT_BATCH_COMMIT, "indexer.insert.batch.commit.millis"},
+    {EMULATE_TRACE, "emulator.emulate.trace.millis"},
+    {INSERT_TRACE, "emulator.insert.trace.millis"},
 };
 
 class Statistics {
