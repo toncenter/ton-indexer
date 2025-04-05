@@ -31,15 +31,19 @@ public:
         emulator_->set_libs(vm::Dictionary(libraries_root, 256));
         emulator_->set_unixtime(td::Timestamp::now().at_unix());
 
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<std::unique_ptr<TraceNode>> R) mutable {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), timer = td::Timer()](td::Result<std::unique_ptr<TraceNode>> R) mutable {
             if (R.is_error()) {
                 td::actor::send_closure(SelfId, &TraceTailEmulator::trace_error, R.move_as_error());
+                g_statistics.record_count(EMULATE_TRACE_ERROR);
             } else {
                 td::actor::send_closure(SelfId, &TraceTailEmulator::trace_root_received, R.move_as_ok());
+                g_statistics.record_time(EMULATE_TRACE, timer.elapsed() * 1e3);
             }
         });
 
         emulate_tx(tx_, std::move(P));
+
+        g_statistics.record_count(EMULATE_SRC_BLOCKS);
     }
 
     void trace_error(td::Status error) {

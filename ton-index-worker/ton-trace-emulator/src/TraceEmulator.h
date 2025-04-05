@@ -147,6 +147,8 @@ private:
     std::multimap<block::StdAddress, block::Account, AddrCmp> emulated_accounts_;
     std::mutex emulated_accounts_mutex_;
     std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>> emulator_actors_;
+
+    td::Timer timer_{false};
 public:
     TraceEmulator(MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise);
 

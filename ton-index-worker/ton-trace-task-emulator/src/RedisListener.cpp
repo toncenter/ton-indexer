@@ -1,4 +1,5 @@
 #include "RedisListener.h"
+#include "Statistics.h"
 
 
 void RedisListener::start_up() {
@@ -64,6 +65,10 @@ void RedisListener::alarm() {
                 break;
             }
         }
+        if (mc_block_ds.config_ == nullptr) {
+            td::actor::send_closure(SelfId, &RedisListener::trace_error, std::move(task), mc_block_ds.config_->block_id.id, td::Status::Error("failed to extract config"));
+            return;
+        }
         auto P = td::PromiseCreator::lambda([SelfId, task = std::move(task), mc_block_ds](td::Result<Trace> R) mutable {
           if (R.is_error()) {
             td::actor::send_closure(SelfId, &RedisListener::trace_error, std::move(task), mc_block_ds.config_->block_id.id, R.move_as_error());
@@ -72,6 +77,8 @@ void RedisListener::alarm() {
           }
         });
         td::actor::create_actor<TraceEmulator>("TraceEmu", mc_block_ds, msg_cell, ignore_chksig, std::move(P)).release();
+
+        g_statistics.record_count(EMULATE_SRC_REDIS);
       });
       td::actor::send_closure(db_scanner_, &DbScanner::fetch_seqno, mc_block_seqno, std::move(P));
     } else {
@@ -83,6 +90,8 @@ void RedisListener::alarm() {
         }
       });
       td::actor::create_actor<TraceEmulator>("TraceEmu", mc_data_state_, msg_cell, ignore_chksig, std::move(P)).release();
+
+      g_statistics.record_count(EMULATE_SRC_REDIS);
     }
   }
 

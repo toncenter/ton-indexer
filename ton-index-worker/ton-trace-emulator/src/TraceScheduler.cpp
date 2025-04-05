@@ -1,6 +1,8 @@
 #include "TraceScheduler.h"
 #include "BlockEmulator.h"
 #include "TraceInserter.h"
+#include "td/utils/filesystem.h"
+#include "common/delay.h"
 
 
 void TraceEmulatorScheduler::start_up() {
@@ -130,6 +132,19 @@ void TraceEmulatorScheduler::alarm() {
     td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
 
     fetch_seqnos();
+
+    if (next_statistics_flush_.is_in_past()) {
+        ton::delay_action([working_dir = this->working_dir_]() {
+            auto stats = g_statistics.generate_report_and_reset();
+            auto path = working_dir + "/" + "stats.txt";
+            auto status = td::atomic_write_file(path, std::move(stats));
+            if (status.is_error()) {
+                LOG(ERROR) << "Failed to write statistics to " << path << ": " << status.error();
+            }
+        }, td::Timestamp::now());
+        
+        next_statistics_flush_ = td::Timestamp::in(60.0);
+    }
 
     alarm_timestamp() = td::Timestamp::in(0.3);
 }

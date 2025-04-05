@@ -1,5 +1,6 @@
 #include "TaskResultInserter.h"
 #include "Serializer.hpp"
+#include "Statistics.h"
 
 
 class TaskResultInserter: public td::actor::Actor {
@@ -14,6 +15,7 @@ public:
     }
 
     void start_up() override {
+        td::Timer timer;
         auto result_channel = "emulator_channel_" + result_.task.id;
         try {
             if (result_.trace.is_error()) {
@@ -133,6 +135,7 @@ public:
         } catch (const std::exception &e) {
             promise_.set_error(td::Status::Error("Got exception while inserting trace: " + std::string(e.what())));
         }
+        g_statistics.record_time(INSERT_TRACE, timer.elapsed() * 1e3);
         stop();
     }
 

@@ -1,5 +1,6 @@
 #include "TraceInserter.h"
 #include "Serializer.hpp"
+#include "Statistics.h"
 
 class TraceInserter: public td::actor::Actor {
 private:
@@ -13,6 +14,7 @@ public:
     }
 
     void start_up() override {
+        td::Timer timer;
         try {
             std::queue<std::reference_wrapper<TraceNode>> queue;
         
@@ -94,6 +96,7 @@ public:
         } catch (const std::exception &e) {
             promise_.set_error(td::Status::Error("Got exception while inserting trace: " + std::string(e.what())));
         }
+        g_statistics.record_time(INSERT_TRACE, timer.elapsed() * 1e3);
         stop();
     }
     void delete_db_subtree(std::string key, std::vector<std::string>& tx_keys, std::vector<std::pair<std::string, std::string>>& addr_keys) {

@@ -99,7 +99,8 @@ int main(int argc, char *argv[]) {
   scheduler.run_in_context([&] { 
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir, 0.5);
     insert_manager = td::actor::create_actor<RedisInsertManager>("RedisInsertManager", redis_dsn);
-    td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), insert_manager.get(), global_config_path, inet_addr, redis_dsn, redis_channel).release();
+    td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), insert_manager.get(), 
+      global_config_path, inet_addr, redis_dsn, redis_channel, working_dir).release();
   });
   
   scheduler.run();
