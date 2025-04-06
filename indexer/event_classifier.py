@@ -180,7 +180,7 @@ class FinishedTasksProcessor(mp.Process):
 
 
 class EventClassifierWorker(mp.Process):
-    def __init__(self, id: int, task_queue: mp.Queue, result_queue: mp.Queue, finished_queue: mp.Queue, big_traces_threshold=4000, force=False):
+    def __init__(self, id: int, task_queue: mp.Queue, result_queue: mp.Queue, finished_queue: mp.Queue, big_traces_threshold=4000, force=False, shared_context: mp.Namespace=None):
         super().__init__()
         self.id = id
         self.task_queue = task_queue
@@ -188,7 +188,7 @@ class EventClassifierWorker(mp.Process):
         self.finished_queue = finished_queue
         self.big_traces_threshold = big_traces_threshold
         self.force = force
-
+        self.shared_context = shared_context
     def process_one_batch(self):
         tasks = self.task_queue.get(True)
         # logger.info(f'Worker #{self.id} accepted batch of {len(tasks)} tasks')
@@ -331,6 +331,8 @@ class EventClassifierWorker(mp.Process):
 
     def run(self):
         asyncio.set_event_loop(asyncio.new_event_loop())
+        if self.shared_context is not None:
+            context.dedust_pools.set(self.shared_context.dedust_pools)
         try:
             while True:
                 self.process_one_batch()
@@ -342,7 +344,7 @@ class EventClassifierWorker(mp.Process):
         logger.info(f'Thread EventClassifierWorker #{self.id} finished')
         return
 
-async def start_processing_events_from_db(args: argparse.Namespace):
+async def start_processing_events_from_db(args: argparse.Namespace, shared_context: mp.Namespace):
     logger.info(f"Creating pool of {args.pool_size} workers")
 
     # counting traces
@@ -366,7 +368,7 @@ async def start_processing_events_from_db(args: argparse.Namespace):
     thread.start()
     workers = []
     for id in range(args.pool_size):
-        worker = EventClassifierWorker(id, task_queue, result_queue, finished_queue, big_traces_threshold=4000)
+        worker = EventClassifierWorker(id, task_queue, result_queue, finished_queue, big_traces_threshold=4000, shared_context=shared_context)
         worker.start()
         workers.append(worker)
     task_closer = FinishedTasksProcessor(finished_queue)
@@ -662,27 +664,19 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
         return trace.trace_id, 'ok', [], None
     try:
         result = await process_event_async_with_postprocessing(trace)
-        actions = []
-        state = 'ok'
-        for block in result:
-            if block.btype != 'root':
-                if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
-                    continue
-                if block.btype == 'empty':
-                    continue
-                if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
-                    continue
-                if block.broken:
-                    state = 'broken'
-                action = block_to_action(block, trace.trace_id, trace)
-                actions.append(action)
+        actions, state = serialize_blocks(result, trace.trace_id, trace)
         return trace.trace_id, state, actions, None
     except Exception as e:
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
         return trace.trace_id, 'failed', [], e
 
 if __name__ == '__main__':
+    manager = mp.Manager()
+    shared_context = manager.Namespace()
     init_pools_data()
+
+    shared_context.dedust_pools = context.dedust_pools.get()
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--prefetch-size',
                         help='Number of prefetched tasks',
@@ -737,4 +731,4 @@ if __name__ == '__main__':
                                                      max_batch_size=args.batch_size))
     else:
         logger.info("Starting processing events from db")
-        asyncio.run(start_processing_events_from_db(args))
+        asyncio.run(start_processing_events_from_db(args, shared_context))

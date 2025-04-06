@@ -337,6 +337,8 @@ class Action(Base):
     mc_seqno_end: int = Column(Numeric)
     trace_mc_seqno_end: int = Column(Numeric)
     value_extra_currencies: dict = Column(JSONB)
+    parent_action_id: str = Column(String)
+    ancestor_type: list[str] = Column(ARRAY(String), default=[])
 
     _accounts: list[str]
 
@@ -586,8 +588,8 @@ class JettonMaster(Base):
     code_hash = Column(String)
     data_hash = Column(String)
     last_transaction_lt = Column(BigInteger)
-    code_boc = Column(String)
-    data_boc = Column(String)
+    # code_boc = Column(String)
+    # data_boc = Column(String)
 
 
 class JettonTransfer(Base):
@@ -635,8 +637,8 @@ class NFTCollection(Base):
     data_hash = Column(String)
     code_hash = Column(String)
     last_transaction_lt = Column(BigInteger)
-    code_boc = Column(String)
-    data_boc = Column(String)
+    # code_boc = Column(String)
+    # data_boc = Column(String)
 
     items: List["NFTItem"] = relationship('NFTItem',
                                           foreign_keys=[address],

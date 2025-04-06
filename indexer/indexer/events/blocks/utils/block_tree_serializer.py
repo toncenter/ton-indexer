@@ -498,8 +498,12 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
     action._accounts = list(set(a for a in action._accounts if a is not None))
     return action
 
-def serialize_blocks(blocks: list[Block], trace_id) -> tuple[list[Action], str]:
+#TODO: Actualize basic ops
+basic_ops = [ 'call_contract', 'contract_deploy', 'jetton_burn', 'tick_tock', 'jetton_transfer']
+
+def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None) -> tuple[list[Action], str]:
     actions = []
+    action_ids = []
     state = 'ok'
     for block in blocks:
         if block.btype != 'root':
@@ -511,7 +515,25 @@ def serialize_blocks(blocks: list[Block], trace_id) -> tuple[list[Action], str]:
                 continue
             if block.broken:
                 state = 'broken'
-            action = block_to_action(block, trace_id)
-
+            action = block_to_action(block, trace_id, trace)
+            action.parent_action_id = parent_acton_id
+            action_ids.append(action.action_id)
             actions.append(action)
+            if block.btype not in basic_ops:
+                child_actions, child_state = serialize_blocks(block.children_blocks, trace_id, trace, action.action_id)
+
+                print(f"Child blocks serialized. State: {child_state}/{len(child_actions)}")
+                for child_action in child_actions:
+                    if child_action.ancestor_type is None:
+                        child_action.ancestor_type = []
+                    child_action.ancestor_type.append(block.btype)
+                    child_action.ancestor_type = list(set(child_action.ancestor_type))
+                    if child_action.action_id not in action_ids:
+                        action_ids.append(child_action.action_id)
+                        actions.append(child_action)
+                        print("Child action added")
+                    else:
+                        print("Something wrong")
+                if child_state != 'ok':
+                    state = child_state
     return actions, state
