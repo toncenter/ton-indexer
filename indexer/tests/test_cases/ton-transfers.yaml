@@ -1,5 +1,5 @@
 cases:
-  test-case:
+  "Simple ton transfer":
     trace-id: CFl6PQXQyJ4FQFj9YsZwblnCg3m8Po9wuiBmrR4zGz4=
     expected-blocks:
       - type: ton_transfer

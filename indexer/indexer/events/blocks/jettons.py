@@ -130,21 +130,17 @@ class PTonTransferMatcher(BlockMatcher):
         wallet_info = await context.interface_repository.get().get_jetton_wallet(wallet)
         if wallet_info is None or wallet_info.jetton not in PTonTransferMatcher.pton_masters:
             return []
-
+        receiver = jetton_transfer_message.destination
         sender = block.get_message().source
-
-        sender_wallet = None
-        receiver_wallet = block.get_message().destination
-        receiver = wallet_info.owner
 
         asset = Asset(is_ton=False, jetton_address=wallet_info.jetton)
 
         data = {
             'has_internal_transfer': False,
             'sender': AccountId(sender),
-            'sender_wallet': AccountId(sender_wallet),
+            'sender_wallet': None,
             'receiver': AccountId(receiver),
-            'receiver_wallet': AccountId(receiver_wallet),
+            'receiver_wallet': None,
             'response_address': AccountId(jetton_transfer_message.response),
             'forward_amount': Amount(jetton_transfer_message.forward_amount),
             'query_id': jetton_transfer_message.query_id,
