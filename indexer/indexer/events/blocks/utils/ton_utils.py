@@ -32,6 +32,14 @@ class Asset:
     def __repr__(self):
         return self.to_json()
 
+    def __eq__(self, other):
+        if isinstance(other, Asset):
+            return self.is_ton == other.is_ton and self.jetton_address == other.jetton_address
+        elif isinstance(other, str):
+            return self.jetton_address.as_str().lower() == other.lower() or (self.is_ton and other.lower() == "ton")
+        elif other is None:
+            return self.is_ton == True and self.jetton_address is None
+
 
 def is_failed(tx: Transaction):
     description = tx.description
@@ -94,6 +102,13 @@ class Amount:
 
     def to_json(self):
         return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, Amount):
+            return self.value == other.value
+        elif isinstance(other, int):
+            return self.value == other
+        return False
 
 def convert_amount(amount):
     return psycopg2.extensions.AsIs(Decimal(amount.value))  # Converts to Decimal
