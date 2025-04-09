@@ -7,3 +7,6 @@ class TestTonTransfers(BaseGenericActionTest):
 
 class TestStonfiSwaps(BaseGenericActionTest):
     yaml_file = "stonfi-swaps.yaml"
+
+class TestStonfiV2Swaps(BaseGenericActionTest):
+    yaml_file = "stonfi-v2-swaps.yaml"
