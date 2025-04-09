@@ -69,6 +69,13 @@ class AccountId:
         return self.address.to_str(False) if self.address else "addr_none"
 
     def __eq__(self, other):
+        if isinstance(other, AccountId):
+            return self.as_str() == other.as_str()
+        elif isinstance(other, str):
+            try:
+                return self.as_str() == AccountId(other).as_str()
+            except:
+                return False
         return self.address == other.address
 
     def __hash__(self):

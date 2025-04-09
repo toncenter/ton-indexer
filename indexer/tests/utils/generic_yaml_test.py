@@ -156,11 +156,11 @@ async def run_test_case(case_name: str, case_data: Dict, traces_dir: Path):
                 for path, expected_value in expected_block.get("values", {}).items():
                     if isinstance(expected_value, dict):
                         # For nested structures, get the parent object and compare structures
-                        actual_obj = get_nested_value(block.data, path)
+                        actual_obj = get_nested_value(block, path)
                         check_value(actual_obj, expected_value, path)
                     else:
                         # For flat values, use the existing approach
-                        actual_value = get_nested_value(block.data, path)
+                        actual_value = get_nested_value(block, path)
                         check_value(actual_value, expected_value, path)
 
     # Check expected actions

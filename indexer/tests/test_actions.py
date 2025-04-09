@@ -10,3 +10,6 @@ class TestStonfiSwaps(BaseGenericActionTest):
 
 class TestStonfiV2Swaps(BaseGenericActionTest):
     yaml_file = "stonfi-v2-swaps.yaml"
+
+class TestJettonMints(BaseGenericActionTest):
+    yaml_file = "jetton-mints.yaml"
