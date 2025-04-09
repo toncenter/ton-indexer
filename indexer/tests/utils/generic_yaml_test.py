@@ -154,14 +154,8 @@ async def run_test_case(case_name: str, case_data: Dict, traces_dir: Path):
             for block in matching_blocks:
                 # Check all expected values
                 for path, expected_value in expected_block.get("values", {}).items():
-                    if isinstance(expected_value, dict):
-                        # For nested structures, get the parent object and compare structures
-                        actual_obj = get_nested_value(block, path)
-                        check_value(actual_obj, expected_value, path)
-                    else:
-                        # For flat values, use the existing approach
-                        actual_value = get_nested_value(block, path)
-                        check_value(actual_value, expected_value, path)
+                    actual_obj = get_nested_value(block, path)
+                    check_value(actual_obj, expected_value, path)
 
     # Check expected actions
     if "expected-actions" in case_data:
@@ -187,14 +181,8 @@ async def run_test_case(case_name: str, case_data: Dict, traces_dir: Path):
             for action in matching_actions:
                 # Check all expected values
                 for path, expected_value in expected_action.get("values", {}).items():
-                    if isinstance(expected_value, dict):
-                        # For nested structures, get the parent object and compare structures
-                        actual_obj = get_nested_value(action, path)
-                        check_value(actual_obj, expected_value, path)
-                    else:
-                        # For flat values, use the existing approach
-                        actual_value = get_nested_value(action, path)
-                        check_value(actual_value, expected_value, path)
+                    actual_obj = get_nested_value(action, path)
+                    check_value(actual_obj, expected_value, path)
 
 
 # Base test class with common functionality

@@ -3,7 +3,7 @@ cases:
     trace-id: CFl6PQXQyJ4FQFj9YsZwblnCg3m8Po9wuiBmrR4zGz4=
     expected-blocks:
       - type: ton_transfer
-        values:
+        values.data:
           source: "-1:0000000000000000000000000000000000000000000000000000000000000000"
           destination: "-1:3333333333333333333333333333333333333333333333333333333333333333"
           value: 2630055735
