@@ -299,6 +299,7 @@ type Action struct {
 	TraceEndLt               *uint64                         `msgpack:"trace_end_lt"`
 	TraceEndUtime            *int32                          `msgpack:"trace_end_utime"`
 	TraceStartLt             *int64                          `msgpack:"trace_start_lt"`
+	TraceMcSeqnoEnd          *uint32                         `msgpack:"trace_mc_seqno_end"`
 	Source                   *string                         `msgpack:"source"`
 	SourceSecondary          *string                         `msgpack:"source_secondary"`
 	Destination              *string                         `msgpack:"destination"`
@@ -479,6 +480,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 	actions := make([]Action, 0)
 	var endLt uint64 = 0
 	var endUtime int32 = 0
+	var mcSeqnoEnd uint32 = 0
 	var traceId *string
 	for len(queue) > 0 {
 		key := queue[0]
@@ -515,12 +517,16 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 		if endUtime < node.Transaction.Now {
 			endUtime = node.Transaction.Now
 		}
+		if mcSeqnoEnd < node.McBlockSeqno {
+			mcSeqnoEnd = node.McBlockSeqno
+		}
 	}
 	if actionsBytes, exists := traceHash["actions"]; exists {
 		err := msgpack.Unmarshal([]byte(actionsBytes), &actions)
 		for i := range actions {
 			actions[i].TraceEndUtime = &endUtime
 			actions[i].TraceEndLt = &endLt
+			actions[i].TraceMcSeqnoEnd = &mcSeqnoEnd
 			actions[i].TraceExternalHash = rootNodeId
 			actions[i].TraceId = traceId
 		}
@@ -774,6 +780,9 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		Amount:               a.Amount,
 		StartLt:              *a.StartLt,
 		EndLt:                *a.EndLt,
+		TraceEndLt:           a.TraceEndLt,
+		TraceMcSeqnoEnd:      a.TraceMcSeqnoEnd,
+		TraceEndUtime:        a.TraceEndUtime,
 		StartUtime:           *a.StartUtime,
 		EndUtime:             *a.EndUtime,
 		Source:               a.Source,

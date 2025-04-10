@@ -134,9 +134,9 @@ type ActionRow struct {
 	EndLt                                                int64
 	StartUtime                                           int64
 	EndUtime                                             int64
-	TraceEndLt                                           *int64
-	TraceEndUtime                                        *int64
-	TraceMcSeqnoEnd                                      *int32
+	TraceEndLt                                           *uint64
+	TraceEndUtime                                        *int32
+	TraceMcSeqnoEnd                                      *uint32
 	Source                                               *string
 	SourceSecondary                                      *string
 	Destination                                          *string
