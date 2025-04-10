@@ -80,14 +80,14 @@ func (d ComputeSkipReason) Str() (string, error) {
 }
 
 type trStoragePhase struct {
-	StorageFeesCollected *int64          `msgpack:"storage_fees_collected" json:"storage_fees_collected"`
-	StorageFeesDue       *int64          `msgpack:"storage_fees_due" json:"storage_fees_due"`
+	StorageFeesCollected uint64          `msgpack:"storage_fees_collected" json:"storage_fees_collected"`
+	StorageFeesDue       *uint64         `msgpack:"storage_fees_due" json:"storage_fees_due"`
 	StatusChange         AccStatusChange `msgpack:"status_change" json:"status_change"`
 }
 
 type trCreditPhase struct {
-	DueFeesCollected *int64 `msgpack:"due_fees_collected" json:"due_fees_collected"`
-	Credit           *int64 `msgpack:"credit" json:"credit"`
+	DueFeesCollected *uint64 `msgpack:"due_fees_collected" json:"due_fees_collected"`
+	Credit           uint64  `msgpack:"credit" json:"credit"`
 }
 
 type trComputePhaseSkipped struct {
@@ -95,24 +95,24 @@ type trComputePhaseSkipped struct {
 }
 
 type trComputePhaseVm struct {
-	Success          bool   `msgpack:"success" json:"success"`
-	MsgStateUsed     bool   `msgpack:"msg_state_used" json:"msg_state_used"`
-	AccountActivated bool   `msgpack:"account_activated" json:"account_activated"`
-	GasFees          *int64 `msgpack:"gas_fees" json:"gas_fees"`
-	GasUsed          *int64 `msgpack:"gas_used" json:"gas_used"`
-	GasLimit         *int64 `msgpack:"gas_limit" json:"gas_limit"`
-	GasCredit        *int64 `msgpack:"gas_credit" json:"gas_credit"`
-	Mode             *int16 `msgpack:"mode" json:"mode"`
-	ExitCode         int32  `msgpack:"exit_code" json:"exit_code"`
-	ExitArg          *int32 `msgpack:"exit_arg" json:"exit_arg"`
-	VmSteps          *int64 `msgpack:"vm_steps" json:"vm_steps"`
-	VmInitStateHash  hash   `msgpack:"vm_init_state_hash" json:"vm_init_state_hash"`
-	VmFinalStateHash hash   `msgpack:"vm_final_state_hash" json:"vm_final_state_hash"`
+	Success          bool    `msgpack:"success" json:"success"`
+	MsgStateUsed     bool    `msgpack:"msg_state_used" json:"msg_state_used"`
+	AccountActivated bool    `msgpack:"account_activated" json:"account_activated"`
+	GasFees          uint64  `msgpack:"gas_fees" json:"gas_fees"`
+	GasUsed          uint64  `msgpack:"gas_used" json:"gas_used"`
+	GasLimit         uint64  `msgpack:"gas_limit" json:"gas_limit"`
+	GasCredit        *uint64 `msgpack:"gas_credit" json:"gas_credit"`
+	Mode             int8    `msgpack:"mode" json:"mode"`
+	ExitCode         int32   `msgpack:"exit_code" json:"exit_code"`
+	ExitArg          *int32  `msgpack:"exit_arg" json:"exit_arg"`
+	VmSteps          uint32  `msgpack:"vm_steps" json:"vm_steps"`
+	VmInitStateHash  hash    `msgpack:"vm_init_state_hash" json:"vm_init_state_hash"`
+	VmFinalStateHash hash    `msgpack:"vm_final_state_hash" json:"vm_final_state_hash"`
 }
 
 type storageUsedShort struct {
-	Cells *int64 `msgpack:"cells" json:"cells"`
-	Bits  *int64 `msgpack:"bits" json:"bits"`
+	Cells uint64 `msgpack:"cells" json:"cells"`
+	Bits  uint64 `msgpack:"bits" json:"bits"`
 }
 
 type trActionPhase struct {
@@ -120,14 +120,14 @@ type trActionPhase struct {
 	Valid           bool             `msgpack:"valid" json:"valid"`
 	NoFunds         bool             `msgpack:"no_funds" json:"no_funds"`
 	StatusChange    AccStatusChange  `msgpack:"status_change" json:"status_change"`
-	TotalFwdFees    *int64           `msgpack:"total_fwd_fees" json:"total_fwd_fees"`
-	TotalActionFees *int64           `msgpack:"total_action_fees" json:"total_action_fees"`
+	TotalFwdFees    *uint64          `msgpack:"total_fwd_fees" json:"total_fwd_fees"`
+	TotalActionFees *uint64          `msgpack:"total_action_fees" json:"total_action_fees"`
 	ResultCode      *int32           `msgpack:"result_code" json:"result_code"`
 	ResultArg       *int32           `msgpack:"result_arg" json:"result_arg"`
-	TotActions      *int32           `msgpack:"tot_actions" json:"tot_actions"`
-	SpecActions     *int32           `msgpack:"spec_actions" json:"spec_actions"`
-	SkippedActions  *int32           `msgpack:"skipped_actions" json:"skipped_actions"`
-	MsgsCreated     *int32           `msgpack:"msgs_created" json:"msgs_created"`
+	TotActions      *uint16          `msgpack:"tot_actions" json:"tot_actions"`
+	SpecActions     *uint16          `msgpack:"spec_actions" json:"spec_actions"`
+	SkippedActions  *uint16          `msgpack:"skipped_actions" json:"skipped_actions"`
+	MsgsCreated     *uint16          `msgpack:"msgs_created" json:"msgs_created"`
 	ActionListHash  hash             `msgpack:"action_list_hash" json:"action_list_hash"`
 	TotMsgSize      storageUsedShort `msgpack:"tot_msg_size" json:"tot_msg_size"`
 }
@@ -138,29 +138,29 @@ type trBouncePhaseNegfunds struct {
 
 type trBouncePhaseNofunds struct {
 	MsgSize    storageUsedShort `msgpack:"msg_size" json:"msg_size"`
-	ReqFwdFees *int64           `msgpack:"req_fwd_fees" json:"req_fwd_fees"`
+	ReqFwdFees uint64           `msgpack:"req_fwd_fees" json:"req_fwd_fees"`
 }
 
 type trBouncePhaseOk struct {
 	MsgSize storageUsedShort `msgpack:"msg_size" json:"msg_size"`
-	MsgFees *int64           `msgpack:"msg_fees" json:"msg_fees"`
-	FwdFees *int64           `msgpack:"fwd_fees" json:"fwd_fees"`
+	MsgFees uint64           `msgpack:"msg_fees" json:"msg_fees"`
+	FwdFees uint64           `msgpack:"fwd_fees" json:"fwd_fees"`
 }
 
 type trMessage struct {
 	Hash         hash    `msgpack:"hash" json:"hash"`
 	Source       *string `msgpack:"source" json:"source"`
 	Destination  *string `msgpack:"destination" json:"destination"`
-	Value        *int64  `msgpack:"value" json:"value"`
-	FwdFee       *int64  `msgpack:"fwd_fee" json:"fwd_fee"`
-	IhrFee       *int64  `msgpack:"ihr_fee" json:"ihr_fee"`
-	CreatedLt    *int64  `msgpack:"created_lt" json:"created_lt"`
-	CreatedAt    *int64  `msgpack:"created_at" json:"created_at"`
+	Value        *uint64 `msgpack:"value" json:"value"`
+	FwdFee       *uint64 `msgpack:"fwd_fee" json:"fwd_fee"`
+	IhrFee       *uint64 `msgpack:"ihr_fee" json:"ihr_fee"`
+	CreatedLt    *uint64 `msgpack:"created_lt" json:"created_lt"`
+	CreatedAt    *uint32 `msgpack:"created_at" json:"created_at"`
 	Opcode       *int32  `msgpack:"opcode" json:"opcode"`
 	IhrDisabled  *bool   `msgpack:"ihr_disabled" json:"ihr_disabled"`
 	Bounce       *bool   `msgpack:"bounce" json:"bounce"`
 	Bounced      *bool   `msgpack:"bounced" json:"bounced"`
-	ImportFee    *int64  `msgpack:"import_fee" json:"import_fee"`
+	ImportFee    *uint64 `msgpack:"import_fee" json:"import_fee"`
 	BodyBoc      string  `msgpack:"body_boc" json:"body_boc"`
 	InitStateBoc *string `msgpack:"init_state_boc" json:"init_state_boc"`
 	HashNorm     *hash   `msgpack:"hash_norm" json:"hash_norm"`
@@ -168,8 +168,8 @@ type trMessage struct {
 
 type transactionDescr struct {
 	CreditFirst bool            `msgpack:"credit_first" json:"credit_first"`
-	StoragePh   trStoragePhase  `msgpack:"storage_ph" json:"storage_ph"`
-	CreditPh    trCreditPhase   `msgpack:"credit_ph" json:"credit_ph"`
+	StoragePh   *trStoragePhase `msgpack:"storage_ph" json:"storage_ph"`
+	CreditPh    *trCreditPhase  `msgpack:"credit_ph" json:"credit_ph"`
 	ComputePh   computePhaseVar `msgpack:"compute_ph" json:"compute_ph"`
 	Action      *trActionPhase  `msgpack:"action" json:"action"`
 	Aborted     bool            `msgpack:"aborted" json:"aborted"`
@@ -182,13 +182,13 @@ type transaction struct {
 	Account                string           `msgpack:"account" json:"account"`
 	Lt                     uint64           `msgpack:"lt" json:"lt,string"`
 	PrevTransHash          hash             `msgpack:"prev_trans_hash" json:"prev_trans_hash"`
-	PrevTransLt            int64            `msgpack:"prev_trans_lt" json:"prev_trans_lt,string"`
-	Now                    int32            `msgpack:"now" json:"now"`
+	PrevTransLt            uint64           `msgpack:"prev_trans_lt" json:"prev_trans_lt,string"`
+	Now                    uint32           `msgpack:"now" json:"now"`
 	OrigStatus             AccountStatus    `msgpack:"orig_status" json:"orig_status"`
 	EndStatus              AccountStatus    `msgpack:"end_status" json:"end_status"`
 	InMsg                  *trMessage       `msgpack:"in_msg" json:"in_msg"`
 	OutMsgs                []trMessage      `msgpack:"out_msgs" json:"out_msgs"`
-	TotalFees              *int64           `msgpack:"total_fees" json:"total_fees"`
+	TotalFees              uint64           `msgpack:"total_fees" json:"total_fees"`
 	AccountStateHashBefore hash             `msgpack:"account_state_hash_before" json:"account_state_hash_before"`
 	AccountStateHashAfter  hash             `msgpack:"account_state_hash_after" json:"account_state_hash_after"`
 	Description            transactionDescr `msgpack:"description" json:"description"`
@@ -292,13 +292,13 @@ type Action struct {
 	TxHashes                 []string                        `msgpack:"tx_hashes"`
 	Value                    *string                         `msgpack:"value"`
 	Amount                   *string                         `msgpack:"amount"`
-	StartLt                  *int64                          `msgpack:"start_lt"`
-	EndLt                    *int64                          `msgpack:"end_lt"`
-	StartUtime               *int64                          `msgpack:"start_utime"`
-	EndUtime                 *int64                          `msgpack:"end_utime"`
+	StartLt                  *uint64                         `msgpack:"start_lt"`
+	EndLt                    *uint64                         `msgpack:"end_lt"`
+	StartUtime               *uint32                         `msgpack:"start_utime"`
+	EndUtime                 *uint32                         `msgpack:"end_utime"`
 	TraceEndLt               *uint64                         `msgpack:"trace_end_lt"`
-	TraceEndUtime            *int32                          `msgpack:"trace_end_utime"`
-	TraceStartLt             *int64                          `msgpack:"trace_start_lt"`
+	TraceEndUtime            *uint32                         `msgpack:"trace_end_utime"`
+	TraceStartLt             *uint64                         `msgpack:"trace_start_lt"`
 	TraceMcSeqnoEnd          *uint32                         `msgpack:"trace_mc_seqno_end"`
 	Source                   *string                         `msgpack:"source"`
 	SourceSecondary          *string                         `msgpack:"source_secondary"`
@@ -479,7 +479,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 	txs := make([]traceNode, 0)
 	actions := make([]Action, 0)
 	var endLt uint64 = 0
-	var endUtime int32 = 0
+	var endUtime uint32 = 0
 	var mcSeqnoEnd uint32 = 0
 	var traceId *string
 	for len(queue) > 0 {
@@ -565,10 +565,23 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 		return TransactionRow{}, err
 	}
 
+	var storageFeesCollected *uint64 = nil
+	var storageFeesDue *uint64 = nil
+	if n.Transaction.Description.StoragePh != nil {
+		storageFeesCollected = &n.Transaction.Description.StoragePh.StorageFeesCollected
+		storageFeesDue = n.Transaction.Description.StoragePh.StorageFeesDue
+	}
+	var creditDueFeesCollected *uint64 = nil
+	var credit *uint64 = nil
+	if n.Transaction.Description.CreditPh != nil {
+		creditDueFeesCollected = n.Transaction.Description.CreditPh.DueFeesCollected
+		credit = &n.Transaction.Description.CreditPh.Credit
+	}
+
 	txRow := TransactionRow{
 		Account:                  n.Transaction.Account,
 		Hash:                     *n.Transaction.Hash.Base64Ptr(),
-		Lt:                       int64(n.Transaction.Lt),
+		Lt:                       n.Transaction.Lt,
 		BlockWorkchain:           &n.BlockId.Workchain,
 		BlockShard:               &n.BlockId.Shard,
 		BlockSeqno:               &n.BlockId.Seqno,
@@ -579,7 +592,7 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 		Now:                      &n.Transaction.Now,
 		OrigStatus:               &origStatus,
 		EndStatus:                &endStatus,
-		TotalFees:                n.Transaction.TotalFees,
+		TotalFees:                &n.Transaction.TotalFees,
 		TotalFeesExtraCurrencies: map[string]string{},
 		AccountStateHashBefore:   n.Transaction.AccountStateHashBefore.Base64Ptr(),
 		AccountStateHashAfter:    n.Transaction.AccountStateHashAfter.Base64Ptr(),
@@ -589,11 +602,11 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 		CreditFirst:              &n.Transaction.Description.CreditFirst,
 		IsTock:                   &is_tock,
 		Installed:                &is_tock,
-		StorageFeesCollected:     n.Transaction.Description.StoragePh.StorageFeesCollected,
-		StorageFeesDue:           n.Transaction.Description.StoragePh.StorageFeesDue,
+		StorageFeesCollected:     storageFeesCollected,
+		StorageFeesDue:           storageFeesDue,
 		StorageStatusChange:      &storageStatusChange,
-		CreditDueFeesCollected:   n.Transaction.Description.CreditPh.DueFeesCollected,
-		Credit:                   n.Transaction.Description.CreditPh.Credit,
+		CreditDueFeesCollected:   creditDueFeesCollected,
+		Credit:                   credit,
 		CreditExtraCurrencies:    map[string]string{},
 		Emulated:                 n.Emulated,
 	}
@@ -612,14 +625,14 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 		txRow.ComputeSuccess = &vm.Success
 		txRow.ComputeMsgStateUsed = &vm.MsgStateUsed
 		txRow.ComputeAccountActivated = &vm.AccountActivated
-		txRow.ComputeGasFees = vm.GasFees
-		txRow.ComputeGasUsed = vm.GasUsed
-		txRow.ComputeGasLimit = vm.GasLimit
+		txRow.ComputeGasFees = &vm.GasFees
+		txRow.ComputeGasUsed = &vm.GasUsed
+		txRow.ComputeGasLimit = &vm.GasLimit
 		txRow.ComputeGasCredit = vm.GasCredit
-		txRow.ComputeMode = vm.Mode
+		txRow.ComputeMode = &vm.Mode
 		txRow.ComputeExitCode = &vm.ExitCode
 		txRow.ComputeExitArg = vm.ExitArg
-		txRow.ComputeVmSteps = vm.VmSteps
+		txRow.ComputeVmSteps = &vm.VmSteps
 		txRow.ComputeVmInitStateHash = vm.VmInitStateHash.Base64Ptr()
 		txRow.ComputeVmFinalStateHash = vm.VmFinalStateHash.Base64Ptr()
 	}
@@ -642,8 +655,8 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 		txRow.ActionSkippedActions = n.Transaction.Description.Action.SkippedActions
 		txRow.ActionMsgsCreated = n.Transaction.Description.Action.MsgsCreated
 		txRow.ActionActionListHash = n.Transaction.Description.Action.ActionListHash.Base64Ptr()
-		txRow.ActionTotMsgSizeCells = n.Transaction.Description.Action.TotMsgSize.Cells
-		txRow.ActionTotMsgSizeBits = n.Transaction.Description.Action.TotMsgSize.Bits
+		txRow.ActionTotMsgSizeCells = &n.Transaction.Description.Action.TotMsgSize.Cells
+		txRow.ActionTotMsgSizeBits = &n.Transaction.Description.Action.TotMsgSize.Bits
 	}
 
 	if n.Transaction.Description.Bounce != nil {
@@ -654,17 +667,17 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 			txRow.Bounce = new(string)
 			*txRow.Bounce = "nofunds"
 			phase := n.Transaction.Description.Bounce.Data.(trBouncePhaseNofunds)
-			txRow.BounceMsgSizeCells = phase.MsgSize.Cells
-			txRow.BounceMsgSizeBits = phase.MsgSize.Bits
-			txRow.BounceReqFwdFees = phase.ReqFwdFees
+			txRow.BounceMsgSizeCells = &phase.MsgSize.Cells
+			txRow.BounceMsgSizeBits = &phase.MsgSize.Bits
+			txRow.BounceReqFwdFees = &phase.ReqFwdFees
 		} else {
 			txRow.Bounce = new(string)
 			*txRow.Bounce = "ok"
 			phase := n.Transaction.Description.Bounce.Data.(trBouncePhaseOk)
-			txRow.BounceMsgSizeCells = phase.MsgSize.Cells
-			txRow.BounceMsgSizeBits = phase.MsgSize.Bits
-			txRow.BounceMsgFees = phase.MsgFees
-			txRow.BounceFwdFees = phase.FwdFees
+			txRow.BounceMsgSizeCells = &phase.MsgSize.Cells
+			txRow.BounceMsgSizeBits = &phase.MsgSize.Bits
+			txRow.BounceMsgFees = &phase.MsgFees
+			txRow.BounceFwdFees = &phase.FwdFees
 		}
 	}
 	return txRow, nil
@@ -684,7 +697,7 @@ func calcHash(boc string) (string, error) {
 	return hash_b64, nil
 }
 
-func (m *trMessage) GetMessageRow(traceId string, direction string, txLt int64, txHash string) (row MessageRow, body *MessageContentRow, initState *MessageContentRow, err error) {
+func (m *trMessage) GetMessageRow(traceId string, direction string, txLt uint64, txHash string) (row MessageRow, body *MessageContentRow, initState *MessageContentRow, err error) {
 	bodyHash, err := calcHash(m.BodyBoc)
 	if err != nil {
 		return MessageRow{}, nil, nil, err
@@ -742,7 +755,7 @@ func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 	messages := make([]MessageRow, 0)
 
 	for _, outMsg := range n.Transaction.OutMsgs {
-		msgRow, body, initState, err := outMsg.GetMessageRow(n.Key, "out", int64(n.Transaction.Lt),
+		msgRow, body, initState, err := outMsg.GetMessageRow(n.Key, "out", n.Transaction.Lt,
 			base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
 		if err != nil {
 			return nil, nil, nil, err
@@ -755,7 +768,7 @@ func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 			initStates[*msgRow.InitStateHash] = *initState
 		}
 	}
-	inMsgRow, body, initState, err := n.Transaction.InMsg.GetMessageRow(n.Key, "in", int64(n.Transaction.Lt),
+	inMsgRow, body, initState, err := n.Transaction.InMsg.GetMessageRow(n.Key, "in", n.Transaction.Lt,
 		base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
 	if err != nil {
 		return nil, nil, nil, err

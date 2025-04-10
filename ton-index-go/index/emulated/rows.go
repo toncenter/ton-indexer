@@ -11,18 +11,18 @@ import (
 type TransactionRow struct {
 	Account                  string
 	Hash                     string
-	Lt                       int64
+	Lt                       uint64
 	BlockWorkchain           *int32
 	BlockShard               *uint64
 	BlockSeqno               *uint32
 	McBlockSeqno             *uint32
 	TraceID                  *string
 	PrevTransHash            *string
-	PrevTransLt              *int64
-	Now                      *int32
+	PrevTransLt              *uint64
+	Now                      *uint32
 	OrigStatus               *string
 	EndStatus                *string
-	TotalFees                *int64
+	TotalFees                *uint64
 	TotalFeesExtraCurrencies map[string]string
 	AccountStateHashBefore   *string
 	AccountStateHashAfter    *string
@@ -32,48 +32,48 @@ type TransactionRow struct {
 	CreditFirst              *bool
 	IsTock                   *bool
 	Installed                *bool
-	StorageFeesCollected     *int64
-	StorageFeesDue           *int64
+	StorageFeesCollected     *uint64
+	StorageFeesDue           *uint64
 	StorageStatusChange      *string
-	CreditDueFeesCollected   *int64
-	Credit                   *int64
+	CreditDueFeesCollected   *uint64
+	Credit                   *uint64
 	CreditExtraCurrencies    map[string]string
 	ComputeSkipped           *bool
 	SkippedReason            *string
 	ComputeSuccess           *bool
 	ComputeMsgStateUsed      *bool
 	ComputeAccountActivated  *bool
-	ComputeGasFees           *int64
-	ComputeGasUsed           *int64
-	ComputeGasLimit          *int64
-	ComputeGasCredit         *int64
-	ComputeMode              *int16
+	ComputeGasFees           *uint64
+	ComputeGasUsed           *uint64
+	ComputeGasLimit          *uint64
+	ComputeGasCredit         *uint64
+	ComputeMode              *int8
 	ComputeExitCode          *int32
 	ComputeExitArg           *int32
-	ComputeVmSteps           *int64
+	ComputeVmSteps           *uint32
 	ComputeVmInitStateHash   *string
 	ComputeVmFinalStateHash  *string
 	ActionSuccess            *bool
 	ActionValid              *bool
 	ActionNoFunds            *bool
 	ActionStatusChange       *string
-	ActionTotalFwdFees       *int64
-	ActionTotalActionFees    *int64
+	ActionTotalFwdFees       *uint64
+	ActionTotalActionFees    *uint64
 	ActionResultCode         *int32
 	ActionResultArg          *int32
-	ActionTotActions         *int32
-	ActionSpecActions        *int32
-	ActionSkippedActions     *int32
-	ActionMsgsCreated        *int32
+	ActionTotActions         *uint16
+	ActionSpecActions        *uint16
+	ActionSkippedActions     *uint16
+	ActionMsgsCreated        *uint16
 	ActionActionListHash     *string
-	ActionTotMsgSizeCells    *int64
-	ActionTotMsgSizeBits     *int64
+	ActionTotMsgSizeCells    *uint64
+	ActionTotMsgSizeBits     *uint64
 	Bounce                   *string
-	BounceMsgSizeCells       *int64
-	BounceMsgSizeBits        *int64
-	BounceReqFwdFees         *int64
-	BounceMsgFees            *int64
-	BounceFwdFees            *int64
+	BounceMsgSizeCells       *uint64
+	BounceMsgSizeBits        *uint64
+	BounceReqFwdFees         *uint64
+	BounceMsgFees            *uint64
+	BounceFwdFees            *uint64
 	SplitInfoCurShardPfxLen  *int32
 	SplitInfoAccSplitDepth   *int32
 	SplitInfoThisAddr        *string
@@ -83,23 +83,23 @@ type TransactionRow struct {
 
 type MessageRow struct {
 	TxHash               string
-	TxLt                 int64
+	TxLt                 uint64
 	MsgHash              string
 	Direction            string
 	TraceID              *string
 	Source               *string
 	Destination          *string
-	Value                *int64
+	Value                *uint64
 	ValueExtraCurrencies map[string]string
-	FwdFee               *int64
-	IhrFee               *int64
-	CreatedLt            *int64
-	CreatedAt            *int64
+	FwdFee               *uint64
+	IhrFee               *uint64
+	CreatedLt            *uint64
+	CreatedAt            *uint32
 	Opcode               *int32
 	IhrDisabled          *bool
 	Bounce               *bool
 	Bounced              *bool
-	ImportFee            *int64
+	ImportFee            *uint64
 	BodyHash             *string
 	InitStateHash        *string
 	MsgHashNorm          *string
@@ -114,28 +114,28 @@ type TraceRow struct {
 	TraceKey            string
 	TraceId             *string
 	ExternalHash        *string
-	McSeqnoStart        int32
-	McSeqnoEnd          *int32
-	StartLt             int64
-	StartUtime          int32
-	EndLt               *int64
-	EndUtime            *int32
+	McSeqnoStart        uint32
+	McSeqnoEnd          uint32
+	StartLt             uint64
+	StartUtime          uint32
+	EndLt               uint64
+	EndUtime            uint32
 	TraceState          string
-	Messages            int64
-	Transactions        int64
-	PendingMessages     int64
+	Messages            uint16
+	Transactions        uint16
+	PendingMessages     uint16
 	ClassificationState string
 }
 
 type ActionRow struct {
 	TraceId                                              *string
 	ActionId                                             string
-	StartLt                                              int64
-	EndLt                                                int64
-	StartUtime                                           int64
-	EndUtime                                             int64
+	StartLt                                              uint64
+	EndLt                                                uint64
+	StartUtime                                           uint32
+	EndUtime                                             uint32
 	TraceEndLt                                           *uint64
-	TraceEndUtime                                        *int32
+	TraceEndUtime                                        *uint32
 	TraceMcSeqnoEnd                                      *uint32
 	Source                                               *string
 	SourceSecondary                                      *string
@@ -257,11 +257,11 @@ func (t *TraceRow) getAssigns() []assign {
 		assignStringPtr(t.TraceId),
 		assignStringPtr(t.ExternalHash),
 		assignInt(t.McSeqnoStart),
-		assignIntPtr(t.McSeqnoEnd),
+		assignInt(t.McSeqnoEnd),
 		assignInt(t.StartLt),
 		assignInt(t.StartUtime),
-		assignIntPtr(t.EndLt),
-		assignIntPtr(t.EndUtime),
+		assignInt(t.EndLt),
+		assignInt(t.EndUtime),
 		assignString(t.TraceState),
 		assignInt(t.Messages),
 		assignInt(t.Transactions),
@@ -486,7 +486,7 @@ func (m *MessageRow) Scan(dest ...any) error {
 	}
 	return nil
 }
-func assignIntPtr[T int64 | int32 | int16 | uint32 | uint64](src *T) assign {
+func assignIntPtr[T int64 | int32 | int16 | int8 | uint32 | uint64 | uint16](src *T) assign {
 	if src == nil {
 		return func(dest any) error {
 			return nil
@@ -494,7 +494,7 @@ func assignIntPtr[T int64 | int32 | int16 | uint32 | uint64](src *T) assign {
 	}
 	return assignInt(*src)
 }
-func assignInt[T int64 | int32 | int16 | uint32 | uint64](src T) assign {
+func assignInt[T int64 | int32 | int16 | int8 | uint16 | uint32 | uint64](src T) assign {
 	return func(dest any) error {
 
 		dv := reflect.Indirect(reflect.ValueOf(dest))
@@ -508,17 +508,15 @@ func assignInt[T int64 | int32 | int16 | uint32 | uint64](src T) assign {
 		switch dv.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			dv.SetInt(int64(src))
-			break
+
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			dv.SetUint(uint64(src))
-			break
 
 		case reflect.String:
 			dv.SetString(strconv.FormatInt(int64(src), 10))
-			break
 
 		default:
-			return fmt.Errorf("unsupported type %T for %s", dest, src)
+			return fmt.Errorf("unsupported type %T for %d", dest, src)
 		}
 		return nil
 	}

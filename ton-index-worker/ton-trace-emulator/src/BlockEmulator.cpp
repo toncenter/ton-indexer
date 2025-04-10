@@ -1,6 +1,5 @@
 #include "BlockEmulator.h"
 #include "TraceInterfaceDetector.h"
-#include "crypto/openssl/rand.hpp"
 
 
 class BlockParser: public td::actor::Actor {
