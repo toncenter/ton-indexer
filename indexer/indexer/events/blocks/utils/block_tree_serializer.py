@@ -103,9 +103,9 @@ def _fill_ton_transfer_action(block: TonTransferBlock, action: Action):
 
 def _fill_jetton_transfer_action(block: JettonTransferBlock, action: Action):
     action.source = block.data['sender'].as_str()
-    action.source_secondary = block.data['sender_wallet'].as_str()
+    action.source_secondary = _addr(block.data['sender_wallet'])
     action.destination = block.data['receiver'].as_str()
-    action.destination_secondary = block.data['receiver_wallet'].as_str() if 'receiver_wallet' in block.data else None
+    action.destination_secondary = _addr(block.data['receiver_wallet']) if 'receiver_wallet' in block.data else None
     action.amount = block.data['amount'].value
     asset = block.data['asset']
     if asset is None or asset.is_ton:
@@ -298,6 +298,7 @@ def _fill_tonstakers_deposit_action(block: TONStakersDepositBlock, action: Actio
     action.amount = block.data.value.value
     action.staking_data = {
         'provider': 'tonstakers',
+        'tokens_minted': block.data.tokens_minted.value if block.data.tokens_minted else None
     }
 
 def _fill_dns_renew_action(block: DnsRenewBlock, action: Action):

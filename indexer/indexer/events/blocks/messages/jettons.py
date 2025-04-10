@@ -128,3 +128,23 @@ class JettonMint:
         self.query_id = slice.load_uint(64)
         self.to_address = slice.load_address()
         self.ton_amount = slice.load_coins()
+
+class MinterJettonMint:
+    opcode = 0x00000015
+    query_id: int
+    to_address: Address
+    ton_amount: int
+    master_msg: Cell
+    master_msg_query_id: int
+    master_msg_jetton_amount: int
+    
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)  # Skip op
+        self.query_id = slice.load_uint(64)
+        self.to_address = slice.load_address()
+        self.ton_amount = slice.load_coins()
+        self.master_msg = slice.load_ref()
+        master_msg_slice = self.master_msg.to_slice()
+        master_msg_slice.load_uint(32)  # Skip op
+        self.master_msg_query_id = master_msg_slice.load_uint(64)
+        self.master_msg_jetton_amount = master_msg_slice.load_coins()

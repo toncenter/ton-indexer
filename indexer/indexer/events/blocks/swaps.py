@@ -103,7 +103,7 @@ async def _get_block_data(block, other_blocks):
     incoming_transfer = {
         'asset': Asset(is_ton=in_jetton is None, jetton_address=in_jetton),
         'amount': Amount(swap_message.amount),
-        'source': AccountId(swap_message.from_user_address),
+        'source': AccountId(swap_message.from_real_user),
         'source_jetton_wallet': in_source_jetton_wallet,
         'destination': AccountId(dex_in_wallet.owner),
         'destination_jetton_wallet': AccountId(swap_message.token_wallet),
@@ -130,8 +130,8 @@ async def _get_block_data(block, other_blocks):
         target_asset = None
     return {
         'dex': 'stonfi',
-        'sender': AccountId(swap_message.from_user_address),
-        'receiver': AccountId(swap_message.from_real_user),
+        'sender': AccountId(swap_message.from_real_user),
+        'receiver': AccountId(swap_message.from_user_address),
         'dex_incoming_transfer': incoming_transfer,
         'dex_outgoing_transfer': outgoing_transfer,
         'destination_asset': target_asset,
