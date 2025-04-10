@@ -98,8 +98,6 @@ private:
     std::shared_ptr<emulator::TransactionEmulator> emulator_;
 
     std::unordered_map<TraceNode *, std::pair<std::unique_ptr<TraceNode>, td::Promise<std::unique_ptr<TraceNode>>>> result_promises_;
-
-    uint32_t utime_{0};
 public:
     TraceEmulatorImpl(ton::BlockId block_id, EmulationContext& context,
         std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>>& emulator_actors, std::mutex& emulator_actors_mutex)
@@ -110,7 +108,7 @@ public:
             emulator_->set_ignore_chksig(context.get_ignore_chksig());
     }
 
-    void emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, td::Promise<std::unique_ptr<TraceNode>> promise);
+    void emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, ton::LogicalTime lt, td::Promise<std::unique_ptr<TraceNode>> promise);
 
 private:
     void child_emulated(TraceNode *parent_node_raw, std::unique_ptr<TraceNode> child, size_t ind);

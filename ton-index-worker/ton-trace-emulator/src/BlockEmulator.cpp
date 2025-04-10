@@ -258,7 +258,9 @@ void McBlockEmulator::emulate_traces() {
         for (const auto& shard_state : mc_data_state_.shard_blocks_) {
             auto blkid = shard_state.handle->id().id;
             auto timestamp = shard_state.handle->unix_time();
-            context->add_shard_state(blkid, timestamp, shard_state.block_state);
+            auto lt = shard_state.handle->logical_time();
+            lt = lt - lt % block::ConfigInfo::get_lt_align();
+            context->add_shard_state(blkid, timestamp, lt, shard_state.block_state);
         }
         context->increase_seqno(3);
 

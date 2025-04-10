@@ -22,6 +22,7 @@ private:
     struct ShardState {
         ton::BlockId blkid;
         uint32_t timestamp;
+        ton::LogicalTime lt;
         td::Ref<vm::Cell> shard_state_cell;
     };
 
@@ -35,23 +36,42 @@ private:
     const size_t txs_count_limit_{1000};
     std::atomic<size_t> txs_count_{0};
 
+    const float block_rate = 0.37f;
+
 public:
     EmulationContext(uint32_t mc_seqno, std::shared_ptr<block::ConfigInfo> config, bool ignore_chksig = false)
         : mc_seqno_(mc_seqno), config_(std::move(config)), ignore_chksig_(ignore_chksig) {
         prng::rand_gen().strong_rand_bytes(rand_seed_.data(), 32);
+        std::srand(std::time(nullptr));
     }
 
-    void add_shard_state(const ton::BlockId& blkid, uint32_t timestamp, td::Ref<vm::Cell> cell) {
-        shard_states_.emplace_back(ShardState{blkid, timestamp, std::move(cell)});
+    void add_shard_state(const ton::BlockId& blkid, uint32_t timestamp, ton::LogicalTime lt, td::Ref<vm::Cell> cell) {
+        shard_states_.emplace_back(ShardState{blkid, timestamp, lt, std::move(cell)});
     }
 
     void increase_seqno(size_t count) {
         for (auto& shard_state : shard_states_) {
             shard_state.blkid.seqno += count;
-            shard_state.timestamp += 3 * count;
+            for (int i = 0; i < count; ++i) {
+                shard_state.timestamp += randomized_rounding(1.f / block_rate);
+            }
+            shard_state.lt += count * block::ConfigInfo::get_lt_align();
         }
         mc_seqno_ += count;
     }
+
+    uint32_t randomized_rounding(float num) {
+        int integerPart = static_cast<uint32_t>(num);
+        float fractionalPart = num - integerPart;
+    
+        float randomValue = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+    
+        if (randomValue < fractionalPart) {
+            return integerPart + 1;
+        } else {
+            return integerPart;
+        }
+    }    
 
     void increase_tx_count(size_t count) {
         txs_count_.fetch_add(count);
@@ -73,7 +93,14 @@ public:
             auto range = emulated_accounts_.equal_range(address);
             if (range.first != range.second) {
                 auto it = std::prev(range.second);
-                return it->second;
+                auto account = it->second;
+                for (auto& shard_state : shard_states_) {
+                    if (ton::shard_contains(shard_state.blkid.shard_full(), ton::extract_addr_prefix(address.workchain, address.addr))) {
+                        account.now_ = shard_state.timestamp;
+                        break;
+                    }
+                }
+                
             }
         }
 
@@ -133,7 +160,7 @@ private:
                     return td::Status::Error("Failed to unpack account");
                 }
             }
-            account_state.block_lt = account_state.last_trans_lt_ - account_state.last_trans_lt_ % block::ConfigInfo::get_lt_align();
+            account_state.block_lt = shard_state.lt;
 
             std::lock_guard<std::mutex> lock(emulated_accounts_mutex_);
             emulated_accounts_.insert({address, account_state});

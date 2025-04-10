@@ -35,7 +35,7 @@ td::Result<block::StdAddress> fetch_msg_dest_address(td::Ref<vm::Cell> msg, int&
     }
 }
 
-void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address,
+void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, ton::LogicalTime lt,
                                 td::Promise<std::unique_ptr<TraceNode>> promise) {
     auto account_r = context_.get_account_state(address);
     if (account_r.is_error()) {
@@ -43,8 +43,14 @@ void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress addr
         return;
     }
     auto account = account_r.move_as_ok();
-
-    auto emulation_r = emulator_->emulate_transaction(std::move(account), in_msg, 0, 0, block::transaction::Transaction::tr_ord);
+    ton::UnixTime unixtime = 0;
+    for (auto& shard_state : context_.get_shard_states()) {
+        if (shard_state.blkid == block_id_) {
+            unixtime = shard_state.timestamp;
+            break;
+        }
+    }
+    auto emulation_r = emulator_->emulate_transaction(std::move(account), in_msg, unixtime, lt, block::transaction::Transaction::tr_ord);
     if (emulation_r.is_error()) {
         promise.set_error(emulation_r.move_as_error());
         return;
@@ -115,7 +121,7 @@ void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress addr
                 }
                 td::actor::send_closure(SelfId, &TraceEmulatorImpl::child_emulated, trace_raw, R.move_as_ok(), child_ind);
             });
-            td::actor::send_closure(emulator_actors_[out_msg_address].get(), &TraceEmulatorImpl::emulate, out_msg, out_msg_address, std::move(P));
+            td::actor::send_closure(emulator_actors_[out_msg_address].get(), &TraceEmulatorImpl::emulate, out_msg, out_msg_address, lt + 1, std::move(P));
             pending++;
         }
         result->children.resize(pending);
@@ -156,6 +162,14 @@ void TraceEmulatorImpl::child_error(TraceNode *parent_node_raw, td::Status error
 }
 
 void ShardBlockEmulator::start_up() {
+    ton::LogicalTime lt = 0;
+    for (auto& shard_state : context_.get_shard_states()) {
+        if (shard_state.blkid == block_id_) {
+            lt = shard_state.lt;
+            break;
+        }
+    }
+
     size_t pending = 0;
     for (auto& msg: in_msgs_) {
         int type;
@@ -185,7 +199,7 @@ void ShardBlockEmulator::start_up() {
             }
             td::actor::send_closure(SelfId, &ShardBlockEmulator::child_emulated, R.move_as_ok(), child_ind);
         });
-        td::actor::send_closure(emulator_actors_[out_msg_address].get(), &TraceEmulatorImpl::emulate, msg, out_msg_address, std::move(P));
+        td::actor::send_closure(emulator_actors_[out_msg_address].get(), &TraceEmulatorImpl::emulate, msg, out_msg_address, lt, std::move(P));
         pending++;
     }
     result_.resize(pending);
@@ -396,7 +410,9 @@ void TraceEmulator::start_up() {
     for (const auto& shard_state : mc_data_state_.shard_blocks_) {
         auto blkid = shard_state.handle->id().id;
         auto timestamp = shard_state.handle->unix_time();
-        context_->add_shard_state(blkid, timestamp, shard_state.block_state);
+        auto lt = shard_state.handle->logical_time();
+        lt = lt - lt % block::ConfigInfo::get_lt_align();
+        context_->add_shard_state(blkid, timestamp, lt, shard_state.block_state);
     }
     context_->increase_seqno(1);
     
