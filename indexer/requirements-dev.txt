@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest
+pytest-asyncio
+lz4
+PyYAML
+Jinja2

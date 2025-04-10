@@ -23,5 +23,3 @@ pymongo
 msgpack
 contextvars
 argparse
-pytest
-lz4
