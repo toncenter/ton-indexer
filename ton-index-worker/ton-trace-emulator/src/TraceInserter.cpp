@@ -31,19 +31,19 @@ public:
                     queue.push(*child);
                 }
 
-                auto tx_r = parse_tx(current.transaction_root, current.address.workchain);
-                if (tx_r.is_error()) {
-                    promise_.set_error(tx_r.move_as_error_prefix("Failed to parse transaction: "));
+                auto redis_node_r = parse_trace_node(current);
+                if (redis_node_r.is_error()) {
+                    promise_.set_error(redis_node_r.move_as_error_prefix("Failed to parse trace node: "));
                     stop();
                     return;
                 }
-                auto tx = tx_r.move_as_ok();
+                auto redis_node = redis_node_r.move_as_ok();
 
                 if (!current.emulated) {
-                    delete_db_subtree(td::base64_encode(tx.in_msg.value().hash.as_slice()), tx_keys_to_delete, addr_keys_to_delete);
+                    delete_db_subtree(td::base64_encode(redis_node.transaction.in_msg.value().hash.as_slice()), tx_keys_to_delete, addr_keys_to_delete);
                 }
 
-                flattened_trace.push_back(RedisTraceNode{std::move(tx), current.emulated});
+                flattened_trace.push_back(std::move(redis_node));
 
                 queue.pop();
             }
@@ -78,7 +78,7 @@ public:
                 transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), addr_raw, buffer.str());
             }
             transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
-            transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "depth_limit_exceeded", trace_.depth_limit_exceeded() ? "1" : "0");
+            transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "depth_limit_exceeded", trace_.tx_limit_exceeded ? "1" : "0");
             
             if (!trace_.root->emulated) {
                 transaction_.set("tr_root_tx:" + td::base64_encode(trace_.root_tx_hash.as_slice()), td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()));

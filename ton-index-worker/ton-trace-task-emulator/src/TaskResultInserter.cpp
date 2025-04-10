@@ -43,16 +43,14 @@ public:
                 for (auto& child : current.children) {
                     queue.push(*child);
                 }
-
-                auto tx_r = parse_tx(current.transaction_root, current.address.workchain);
-                if (tx_r.is_error()) {
-                    promise_.set_error(tx_r.move_as_error_prefix("Failed to parse transaction: "));
+                auto redis_node_r = parse_trace_node(current);
+                if (redis_node_r.is_error()) {
+                    promise_.set_error(redis_node_r.move_as_error_prefix("Failed to parse trace node: "));
                     stop();
                     return;
                 }
-                auto tx = tx_r.move_as_ok();
-
-                nodes.push_back(RedisTraceNode{std::move(tx), current.emulated});
+                auto redis_node = redis_node_r.move_as_ok();
+                nodes.push_back(std::move(redis_node));
 
                 queue.pop();
             }
@@ -68,7 +66,7 @@ public:
             transaction_.hset("result_" + result_.task.id, "root_node", td::base64_encode(result_.trace.ok().root->node_id.as_slice()));
             transaction_.hset("result_" + result_.task.id, "mc_block_seqno", std::to_string(result_.mc_block_id.value().seqno));
             transaction_.hset("result_" + result_.task.id, "rand_seed", td::base64_encode(result_.trace.ok().rand_seed.as_slice()));
-            transaction_.hset("result_" + result_.task.id, "depth_limit_exceeded", result_.trace.ok().depth_limit_exceeded() ? "1" : "0");
+            transaction_.hset("result_" + result_.task.id, "depth_limit_exceeded", result_.trace.ok().tx_limit_exceeded ? "1" : "0");
 
             std::unordered_map<td::Bits256, AccountState> account_states;
             std::unordered_map<td::Bits256, std::string> code_cells;

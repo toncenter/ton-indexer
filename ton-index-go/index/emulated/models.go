@@ -320,6 +320,11 @@ type Action struct {
 	StakingData              *actionStakingData              `msgpack:"staking_data"`
 }
 
+type blockId struct {
+	Workchain int32  `msgpack:"workchain"`
+	Shard     uint64 `msgpack:"shard"`
+	Seqno     uint32 `msgpack:"seqno"`
+}
 type Trace struct {
 	TraceId      *string
 	ExternalHash string
@@ -328,10 +333,12 @@ type Trace struct {
 	Actions      []Action
 }
 type traceNode struct {
-	Transaction transaction `msgpack:"transaction"`
-	Emulated    bool        `msgpack:"emulated"`
-	TraceId     *string
-	Key         string
+	Transaction  transaction `msgpack:"transaction"`
+	Emulated     bool        `msgpack:"emulated"`
+	BlockId      blockId     `msgpack:"block_id"`
+	McBlockSeqno uint32      `msgpack:"mc_block_seqno"`
+	TraceId      *string
+	Key          string
 }
 
 type computePhaseVar struct {
@@ -556,10 +563,10 @@ func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
 		Account:                  n.Transaction.Account,
 		Hash:                     *n.Transaction.Hash.Base64Ptr(),
 		Lt:                       int64(n.Transaction.Lt),
-		BlockWorkchain:           nil,
-		BlockShard:               nil,
-		BlockSeqno:               nil,
-		McBlockSeqno:             nil,
+		BlockWorkchain:           &n.BlockId.Workchain,
+		BlockShard:               &n.BlockId.Shard,
+		BlockSeqno:               &n.BlockId.Seqno,
+		McBlockSeqno:             &n.McBlockSeqno,
 		TraceID:                  n.TraceId,
 		PrevTransHash:            n.Transaction.PrevTransHash.Base64Ptr(),
 		PrevTransLt:              &n.Transaction.PrevTransLt,

@@ -13,9 +13,9 @@ type TransactionRow struct {
 	Hash                     string
 	Lt                       int64
 	BlockWorkchain           *int32
-	BlockShard               *int64
-	BlockSeqno               *int32
-	McBlockSeqno             *int32
+	BlockShard               *uint64
+	BlockSeqno               *uint32
+	McBlockSeqno             *uint32
 	TraceID                  *string
 	PrevTransHash            *string
 	PrevTransLt              *int64
@@ -486,7 +486,7 @@ func (m *MessageRow) Scan(dest ...any) error {
 	}
 	return nil
 }
-func assignIntPtr[T int64 | int32 | int16 | uint32](src *T) assign {
+func assignIntPtr[T int64 | int32 | int16 | uint32 | uint64](src *T) assign {
 	if src == nil {
 		return func(dest any) error {
 			return nil
@@ -494,7 +494,7 @@ func assignIntPtr[T int64 | int32 | int16 | uint32](src *T) assign {
 	}
 	return assignInt(*src)
 }
-func assignInt[T int64 | int32 | int16 | uint32](src T) assign {
+func assignInt[T int64 | int32 | int16 | uint32 | uint64](src T) assign {
 	return func(dest any) error {
 
 		dv := reflect.Indirect(reflect.ValueOf(dest))

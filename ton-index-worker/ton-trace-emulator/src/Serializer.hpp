@@ -171,6 +171,14 @@ struct Message {
                  opcode, ihr_disabled, bounce, bounced, import_fee, body_boc, init_state_boc, hash_norm)
 };
 
+struct BlockId {
+  int32_t workchain;
+  uint64_t shard;
+  uint32_t seqno;
+
+  MSGPACK_DEFINE(workchain, shard, seqno);
+};
+
 struct Transaction {
   td::Bits256 hash;
   block::StdAddress account;
@@ -192,14 +200,17 @@ struct Transaction {
 
   TransactionDescr description;
 
-  MSGPACK_DEFINE(hash, account, lt, prev_trans_hash, prev_trans_lt, now, orig_status, end_status, in_msg, out_msgs, total_fees, account_state_hash_before, account_state_hash_after, description);
+  MSGPACK_DEFINE(hash, account, lt, prev_trans_hash, prev_trans_lt, now, orig_status, end_status, in_msg, out_msgs, 
+    total_fees, account_state_hash_before, account_state_hash_after, description);
 };
 
 struct RedisTraceNode {
   Transaction transaction;
   bool emulated;
+  uint32_t mc_block_seqno;
+  BlockId block_id;
 
-  MSGPACK_DEFINE(transaction, emulated);
+  MSGPACK_DEFINE(transaction, emulated, mc_block_seqno, block_id);
 };
 
 td::Result<int64_t> to_balance(vm::CellSlice& balance_slice) {
@@ -556,6 +567,16 @@ td::Result<Transaction> parse_tx(td::Ref<vm::Cell> root, ton::WorkchainId workch
   return schema_tx;
 }
 
+td::Result<RedisTraceNode> parse_trace_node(const TraceNode& node) {
+  TRY_RESULT(tx, parse_tx(node.transaction_root, node.address.workchain));
+  auto redis_blkid = BlockId{.workchain = node.block_id.workchain, 
+                             .shard = node.block_id.shard, 
+                             .seqno = node.block_id.seqno};
+  return RedisTraceNode{.transaction = tx, 
+                        .emulated = node.emulated, 
+                        .mc_block_seqno = node.mc_block_seqno, 
+                        .block_id = redis_blkid};
+}
 
 struct JettonWalletSchema {
   td::RefInt256 balance;

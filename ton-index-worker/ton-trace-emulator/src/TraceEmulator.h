@@ -3,27 +3,23 @@
 #include <td/actor/actor.h>
 #include <emulator/transaction-emulator.h>
 #include "DbScanner.h"
+#include "EmulationContext.h"
 
 #include "smc-interfaces/InterfacesDetector.h"
 
 using TraceId = td::Bits256;
 
-struct AddrCmp {
-    bool operator()(const block::StdAddress& lhs, const block::StdAddress& rhs) const {
-        if (lhs.workchain != rhs.workchain) {
-            return lhs.workchain < rhs.workchain;
-        }
-        return lhs.addr < rhs.addr;
-    }
-};
 
 struct TraceNode {
     td::Bits256 node_id; // hash of cur tx in msg
     block::StdAddress address;
     std::vector<std::unique_ptr<TraceNode>> children;
     td::Ref<vm::Cell> transaction_root;
+
+    ton::BlockSeqno mc_block_seqno;
+    ton::BlockId block_id;
+
     bool emulated;
-    bool depth_limit_reached{false}; // true if due to depth limit children of the node were not emulated
 
     int depth() const {
         int res = 0;
@@ -31,18 +27,6 @@ struct TraceNode {
             res = std::max(res, child->depth());
         }
         return res + 1;
-    }
-
-    bool depth_limit_exceeded() const {
-        if (depth_limit_reached) {
-            return true;
-        }
-        for (const auto& child : children) {
-            if (child->depth_limit_exceeded()) {
-                return true;
-            }
-        }
-        return false;
     }
 
     int transactions_count() const {
@@ -79,6 +63,7 @@ struct Trace {
     td::Bits256 ext_in_msg_hash_norm;
     std::unique_ptr<TraceNode> root;
     td::Bits256 rand_seed;
+    bool tx_limit_exceeded{false};
 
     using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR, 
                                         NftItemDetectorR, NftCollectionDetectorR,
@@ -89,10 +74,6 @@ struct Trace {
 
     int depth() const {
         return root->depth();
-    }
-
-    bool depth_limit_exceeded() const {
-        return root->depth_limit_exceeded();
     }
 
     int transactions_count() const {
@@ -108,30 +89,78 @@ td::Result<block::StdAddress> fetch_msg_dest_address(td::Ref<vm::Cell> msg, int&
 
 class TraceEmulatorImpl: public td::actor::Actor {
 private:
-    std::shared_ptr<emulator::TransactionEmulator> emulator_;
-    std::vector<td::Ref<vm::Cell>> shard_states_;
-    std::multimap<block::StdAddress, block::Account, AddrCmp>& emulated_accounts_;
-    std::mutex& emulated_accounts_mutex_;
+    ton::BlockId block_id_;
+    EmulationContext& context_;
+    
     std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>>& emulator_actors_;
+    std::mutex& emulator_actors_mutex_;
+
+    std::shared_ptr<emulator::TransactionEmulator> emulator_;
+
     std::unordered_map<TraceNode *, std::pair<std::unique_ptr<TraceNode>, td::Promise<std::unique_ptr<TraceNode>>>> result_promises_;
 
     uint32_t utime_{0};
 public:
-    TraceEmulatorImpl(std::shared_ptr<emulator::TransactionEmulator> emulator, std::vector<td::Ref<vm::Cell>> shard_states, 
-                  std::multimap<block::StdAddress, block::Account, AddrCmp>& emulated_accounts, std::mutex& emulated_accounts_mutex,
-                  std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>>& emulator_actors)
-        : emulator_(std::move(emulator)), shard_states_(std::move(shard_states)), 
-          emulated_accounts_(emulated_accounts), emulated_accounts_mutex_(emulated_accounts_mutex), emulator_actors_(emulator_actors) {
+    TraceEmulatorImpl(ton::BlockId block_id, EmulationContext& context,
+        std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>>& emulator_actors, std::mutex& emulator_actors_mutex)
+        : block_id_(block_id), context_(context), emulator_actors_(emulator_actors), emulator_actors_mutex_(emulator_actors_mutex) {
+            emulator_ = std::make_shared<emulator::TransactionEmulator>(context.get_config(), 0);
+            auto libraries_root = context.get_config()->get_libraries_root();
+            emulator_->set_libs(vm::Dictionary(libraries_root, 256));
+            emulator_->set_ignore_chksig(context.get_ignore_chksig());
     }
 
-    void emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, size_t depth, td::Promise<std::unique_ptr<TraceNode>> promise);
+    void emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, td::Promise<std::unique_ptr<TraceNode>> promise);
 
 private:
-    td::Result<block::Account> unpack_account(vm::AugmentedDictionary& accounts_dict, const block::StdAddress& account_addr, uint32_t utime);
-    void emulate_transaction(block::Account account, block::StdAddress address,
-                            td::Ref<vm::Cell> in_msg, size_t depth, td::Promise<std::unique_ptr<TraceNode>> promise);
     void child_emulated(TraceNode *parent_node_raw, std::unique_ptr<TraceNode> child, size_t ind);
     void child_error(TraceNode *parent_node_raw, td::Status error);
+};
+
+class ShardBlockEmulator: public td::actor::Actor {
+private:
+    ton::BlockId block_id_;
+    EmulationContext& context_;
+    std::vector<td::Ref<vm::Cell>> in_msgs_; // only msgs to accounts in current shard
+    td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise_;
+
+    std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>> emulator_actors_;
+    std::mutex emulator_actors_mutex_;
+    std::vector<std::unique_ptr<TraceNode>> result_{};
+public:
+    ShardBlockEmulator(ton::BlockId block_id, EmulationContext& context, std::vector<td::Ref<vm::Cell>> in_msgs,
+                    td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise)
+        : block_id_(block_id), context_(context), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)) {
+    }
+
+    void start_up() override;
+
+private:
+    void error(td::Status error);
+    void child_emulated(std::unique_ptr<TraceNode> node, size_t child_ind);
+};
+
+class MasterchainBlockEmulator: public td::actor::Actor {
+private:
+    std::shared_ptr<emulator::TransactionEmulator> emulator_;
+    EmulationContext& context_;
+    std::vector<td::Ref<vm::Cell>> in_msgs_;
+    td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise_;
+    std::vector<std::unique_ptr<TraceNode>> result_{};
+
+public:
+    MasterchainBlockEmulator(EmulationContext& context, std::vector<td::Ref<vm::Cell>> in_msgs,
+                            td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise)
+        : context_(context), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)) {
+    }
+
+    void start_up() override;
+
+private:
+    void shard_emulated(block::ShardId shard, std::vector<std::unique_ptr<TraceNode>> shard_traces, td::Promise<> promise);
+    void all_shards_emulated();
+    void error(td::Status error);
+    void next_mc_emulated(std::vector<std::unique_ptr<TraceNode>> children);
 };
 
 // Emulates whole trace, in_msg is external inbound message
@@ -143,16 +172,13 @@ private:
     td::Promise<Trace> promise_;
     td::Bits256 rand_seed_;
 
-    std::shared_ptr<emulator::TransactionEmulator> emulator_;
-    std::multimap<block::StdAddress, block::Account, AddrCmp> emulated_accounts_;
-    std::mutex emulated_accounts_mutex_;
-    std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>> emulator_actors_;
+    std::unique_ptr<EmulationContext> context_;
 
     td::Timer timer_{false};
 public:
     TraceEmulator(MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise);
 
     void start_up() override;
-    void finish(td::Result<std::unique_ptr<TraceNode>> root);
+    void finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> root_r);
 };
 
