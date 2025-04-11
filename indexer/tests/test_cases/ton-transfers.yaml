@@ -1,0 +1,26 @@
+cases:
+  "Simple ton transfer":
+    trace-id: CFl6PQXQyJ4FQFj9YsZwblnCg3m8Po9wuiBmrR4zGz4=
+    expected-blocks:
+      - type: ton_transfer
+        values.data:
+          source: "-1:0000000000000000000000000000000000000000000000000000000000000000"
+          destination: "-1:3333333333333333333333333333333333333333333333333333333333333333"
+          value: 2630055735
+          comment: null
+          encrypted: false
+    expected-actions:
+      - type: ton_transfer
+        values:
+          tx_hashes:
+            - CFl6PQXQyJ4FQFj9YsZwblnCg3m8Po9wuiBmrR4zGz4=
+          start_lt: 55850691000000
+          end_lt: 55850691000002
+          success: true
+          value: 2630055735
+          source: "-1:0000000000000000000000000000000000000000000000000000000000000000"
+          destination: "-1:3333333333333333333333333333333333333333333333333333333333333333"
+          ton_transfer_data:
+            content: null
+            encrypted: false
+          action_id: 2w63ODTcF5Jcx0ff5OOJKZ9kMhn5BzeYKr3R+OLEZMU=
