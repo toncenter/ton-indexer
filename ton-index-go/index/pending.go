@@ -1,9 +1,10 @@
 package index
 
 import (
+	"log"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
-	"log"
 )
 
 type EmulatedTracesContext struct {
@@ -155,9 +156,9 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		c.emulatedTransactionsRaw[k] = v
 	}
 	for traceKey := range rawData {
-		message_count := 0
-		transaction_count := 0
-		pending_messages := 0
+		var message_count uint16 = 0
+		var transaction_count uint16 = 0
+		var pending_messages uint16 = 0
 		trace, err := emulated.ConvertHSet(c.emulatedTransactionsRaw[traceKey], traceKey)
 		if err != nil {
 			log.Printf("error while converting hset: %s", err.Error())
@@ -170,9 +171,6 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 			TraceKey:     traceKey,
 			ExternalHash: &trace.ExternalHash,
 			McSeqnoStart: 0,
-			McSeqnoEnd:   nil,
-			EndLt:        nil,
-			EndUtime:     nil,
 			TraceState:   "pending",
 		}
 		if trace.Classified {
@@ -180,6 +178,10 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		} else {
 			trace_row.ClassificationState = "unclassified"
 		}
+
+		var maxLt uint64 = 0
+		var maxUtime uint32 = 0
+		var maxMcSeqno uint32 = 0
 
 		for _, node := range trace.Nodes {
 			var should_save = true
@@ -191,10 +193,16 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 				return err
 			}
 
-			if node.Key == traceKey {
+			if node.Key == trace.ExternalHash {
 				trace_row.StartLt = transactionRow.Lt
 				trace_row.StartUtime = *transactionRow.Now
+				trace_row.McSeqnoStart = *transactionRow.McBlockSeqno
 			}
+
+			maxLt = max(maxLt, transactionRow.Lt)
+			maxUtime = max(maxUtime, *transactionRow.Now)
+			maxMcSeqno = max(maxMcSeqno, *transactionRow.McBlockSeqno)
+
 			if should_save {
 				c.emulatedTransactions[traceKey] = append(c.emulatedTransactions[traceKey], &transactionRow)
 				c.txHashTraceExternalHash[transactionRow.Hash] = trace.ExternalHash
@@ -227,11 +235,13 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 				}
 			}
 			transaction_count++
-
 		}
-		trace_row.Transactions = int64(transaction_count)
-		trace_row.Messages = int64(message_count)
-		trace_row.PendingMessages = int64(pending_messages)
+		trace_row.EndLt = maxLt
+		trace_row.EndUtime = maxUtime
+		trace_row.McSeqnoEnd = maxMcSeqno
+		trace_row.Transactions = transaction_count
+		trace_row.Messages = message_count
+		trace_row.PendingMessages = pending_messages
 		c.emulatedTraces[traceKey] = &trace_row
 		for _, a := range trace.Actions {
 			row, err := a.GetActionRow()

@@ -1,150 +1,14 @@
 #include "BlockEmulator.h"
 #include "TraceInterfaceDetector.h"
 
-// Emulates tail of already started trace, in_msg is internal inbound message
-class TraceTailEmulator: public td::actor::Actor {
-private:
-    MasterchainBlockDataState mc_data_state_;
-    std::unordered_map<td::Bits256, TransactionInfo> tx_by_in_msg_hash_;
-    TransactionInfo tx_;
-    td::Promise<Trace> promise_;
-
-    std::vector<td::Ref<vm::Cell>> shard_states_;
-    std::shared_ptr<emulator::TransactionEmulator> emulator_;
-    std::multimap<block::StdAddress, block::Account, AddrCmp> emulated_accounts_;
-    std::mutex emulated_accounts_mutex_;
-    std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>> emulator_actors_;
-
-public:
-    TraceTailEmulator(MasterchainBlockDataState mc_data_state, std::unordered_map<td::Bits256, TransactionInfo> tx_by_in_msg_hash, TransactionInfo tx, td::Promise<Trace> promise)
-        : mc_data_state_(std::move(mc_data_state)), tx_by_in_msg_hash_(std::move(tx_by_in_msg_hash)),
-          tx_(std::move(tx)), promise_(std::move(promise)) {
-
-        for (const auto& shard_state : mc_data_state_.shard_blocks_) {
-            shard_states_.push_back(shard_state.block_state);
-        }
-    }
-
-    void start_up() override {
-        emulator_ = std::make_shared<emulator::TransactionEmulator>(mc_data_state_.config_, 0);
-        auto libraries_root = mc_data_state_.config_->get_libraries_root();
-        emulator_->set_libs(vm::Dictionary(libraries_root, 256));
-        emulator_->set_unixtime(td::Timestamp::now().at_unix());
-
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), timer = td::Timer()](td::Result<std::unique_ptr<TraceNode>> R) mutable {
-            if (R.is_error()) {
-                td::actor::send_closure(SelfId, &TraceTailEmulator::trace_error, R.move_as_error());
-                g_statistics.record_count(EMULATE_TRACE_ERROR);
-            } else {
-                td::actor::send_closure(SelfId, &TraceTailEmulator::trace_root_received, R.move_as_ok());
-                g_statistics.record_time(EMULATE_TRACE, timer.elapsed() * 1e3);
-            }
-        });
-
-        emulate_tx(tx_, std::move(P));
-
-        g_statistics.record_count(EMULATE_SRC_BLOCKS);
-    }
-
-    void trace_error(td::Status error) {
-        LOG(ERROR) << "Failed to emulate trace: " << error;
-        promise_.set_error(std::move(error));
-        stop();
-    }
-
-    void trace_root_received(std::unique_ptr<TraceNode> trace_root) {
-        Trace trace;
-        trace.root = std::move(trace_root);
-        trace.root_tx_hash = tx_.trace_ids->root_tx_hash;
-        trace.ext_in_msg_hash = tx_.trace_ids->ext_in_msg_hash;
-        trace.ext_in_msg_hash_norm = tx_.trace_ids->ext_in_msg_hash_norm;
-        trace.emulated_accounts = std::move(emulated_accounts_);
-        LOG(INFO) << "Emulated trace with root tx " << td::base64_encode(trace.root_tx_hash.as_slice()) << ": "
-            << trace.root->transactions_count() << " transactions, " << trace.root->depth() << " depth";
-        promise_.set_value(std::move(trace));
-        stop();
-    }
-
-    void emulate_tx(TransactionInfo tx, td::Promise<std::unique_ptr<TraceNode>> promise) {        
-        auto trace_node = std::make_shared<TraceNode>();
-        trace_node->emulated = false;
-        trace_node->transaction_root = tx.root;
-        trace_node->node_id = tx.in_msg_hash;
-        trace_node->address = tx.account;
-
-        std::weak_ptr<TraceNode> trace_node_weak = trace_node;
-
-        td::MultiPromise mp;
-        auto ig = mp.init_guard();
-        ig.add_promise([SelfId = actor_id(this), trace_node, promise = std::move(promise)](td::Result<td::Unit> R) mutable {
-            if (R.is_error()) {
-                promise.set_error(R.move_as_error());
-                return;
-            }
-            auto result = std::make_unique<TraceNode>(std::move(*trace_node));
-            promise.set_value(std::move(result));
-        });
-
-        int child_ind = 0;
-        for (const auto& out_msg : tx.out_msgs) {
-            // LOG(INFO) << "tx: " << tx.hash.to_hex() << " creating trace for msg " << out_msg.hash.to_hex();
-            int type;
-            auto destination_r = fetch_msg_dest_address(out_msg.root, type);
-            if (type == block::gen::CommonMsgInfo::ext_out_msg_info) {
-                continue;
-            }
-            if (destination_r.is_error()) {
-                LOG(ERROR) << "Failed to fetch destination address for out_msg " << out_msg.hash.to_hex();
-                continue;
-            }
-            auto destination = destination_r.move_as_ok();
-
-            auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), msg_hash = out_msg.hash, parent_node_weak = trace_node_weak, child_ind, subpromise = ig.get_promise()](td::Result<std::unique_ptr<TraceNode>> R) mutable {
-                if (R.is_error()) {
-                    subpromise.set_error(R.move_as_error());
-                    return;
-                }
-                td::actor::send_closure(SelfId, &TraceTailEmulator::child_node_emulated, parent_node_weak, R.move_as_ok(), child_ind, std::move(subpromise));
-            });
-
-            if (tx_by_in_msg_hash_.find(out_msg.hash) != tx_by_in_msg_hash_.end()) {
-                TransactionInfo& child_tx = tx_by_in_msg_hash_.at(out_msg.hash);
-                if (!child_tx.trace_ids.has_value()) {
-                    LOG(WARNING) << "No trace ids for child tx " << child_tx.hash.to_hex();
-                    child_tx.trace_ids = tx.trace_ids;
-                }
-                
-                td::actor::send_closure(actor_id(this), &TraceTailEmulator::emulate_tx, child_tx, std::move(P));
-            } else {
-                {
-                    std::lock_guard<std::mutex> lock(emulated_accounts_mutex_);
-                    if (emulator_actors_.find(destination) == emulator_actors_.end()) {
-                        emulator_actors_[destination] = td::actor::create_actor<TraceEmulatorImpl>("TraceEmulatorImpl", emulator_, shard_states_, emulated_accounts_, emulated_accounts_mutex_, emulator_actors_);
-                    }
-                }
-                td::actor::send_closure(emulator_actors_[destination].get(), &TraceEmulatorImpl::emulate, out_msg.root, destination, 20, std::move(P));
-            }
-            child_ind++;
-        }
-        trace_node->children.resize(child_ind);
-    }
-
-    void child_node_emulated(std::weak_ptr<TraceNode> parent_node_weak, std::unique_ptr<TraceNode> child, size_t ind, td::Promise<> promise) {
-        auto parent_node = parent_node_weak.lock();
-        if (!parent_node) {
-            return;
-        }
-        parent_node->children[ind] = std::move(child);
-        promise.set_result(td::Unit());
-    }
-};
 
 class BlockParser: public td::actor::Actor {
     td::Ref<ton::validator::BlockData> block_data_;
+    ton::BlockSeqno mc_block_seqno_;
     td::Promise<std::vector<TransactionInfo>> promise_;
 public:
-    BlockParser(td::Ref<ton::validator::BlockData> block_data, td::Promise<std::vector<TransactionInfo>> promise)
-        : block_data_(std::move(block_data)), promise_(std::move(promise)) {}
+    BlockParser(td::Ref<ton::validator::BlockData> block_data, ton::BlockSeqno mc_block_seqno, td::Promise<std::vector<TransactionInfo>> promise)
+        : block_data_(std::move(block_data)), mc_block_seqno_(mc_block_seqno), promise_(std::move(promise)) {}
 
     void start_up() override {
         std::vector<TransactionInfo> res;
@@ -204,6 +68,8 @@ public:
                     tx_info.hash = tvalue->get_hash().bits();
                     tx_info.root = tvalue;
                     tx_info.lt = trans.lt;
+                    tx_info.block_id = block_data_->block_id().id;
+                    tx_info.mc_block_seqno = mc_block_seqno_;
 
                     if (trans.r1.in_msg->prefetch_long(1)) {
                         auto msg = trans.r1.in_msg->prefetch_ref();
@@ -260,6 +126,7 @@ void McBlockEmulator::start_up() {
     for (const auto& shard_state : mc_data_state_.shard_blocks_) {
         shard_states_.push_back(shard_state.block_state);
     }
+    auto mc_block_seqno = mc_data_state_.shard_blocks_[0].handle->id().seqno();
 
     for (auto& block_data : mc_data_state_.shard_blocks_diff_) {
         LOG(INFO) << "Parsing block " << block_data.block_data->block_id().to_str();
@@ -270,7 +137,8 @@ void McBlockEmulator::start_up() {
             }
             td::actor::send_closure(SelfId, &McBlockEmulator::block_parsed, blk_id, R.move_as_ok());
         });
-        td::actor::create_actor<BlockParser>("BlockParser", block_data.block_data, std::move(P)).release();
+        
+        td::actor::create_actor<BlockParser>("BlockParser", block_data.block_data, mc_block_seqno, std::move(P)).release();
     }
 }
 
@@ -324,6 +192,44 @@ void McBlockEmulator::process_txs() {
     emulate_traces();
 }
 
+
+std::unique_ptr<TraceNode> McBlockEmulator::construct_commited_trace(const TransactionInfo& tx, std::vector<td::Ref<vm::Cell>>& msgs_to_emulate) {
+    auto trace_node = std::make_unique<TraceNode>();
+    trace_node->emulated = false;
+    trace_node->transaction_root = tx.root;
+    trace_node->node_id = tx.in_msg_hash;
+    trace_node->address = tx.account;
+    trace_node->block_id = tx.block_id;
+    trace_node->mc_block_seqno = tx.mc_block_seqno;
+
+    for (const auto& out_msg : tx.out_msgs) {
+        int type;
+        auto destination_r = fetch_msg_dest_address(out_msg.root, type);
+        if (type == block::gen::CommonMsgInfo::ext_out_msg_info) {
+            continue;
+        }
+        if (destination_r.is_error()) {
+            LOG(ERROR) << "Failed to fetch destination address for out_msg " << out_msg.hash.to_hex();
+            continue;
+        }
+        auto destination = destination_r.move_as_ok();
+
+        if (tx_by_in_msg_hash_.find(out_msg.hash) != tx_by_in_msg_hash_.end()) {
+            TransactionInfo& child_tx = tx_by_in_msg_hash_.at(out_msg.hash);
+            if (!child_tx.trace_ids.has_value()) {
+                LOG(WARNING) << "No trace ids for child tx " << child_tx.hash.to_hex();
+                child_tx.trace_ids = tx.trace_ids;
+            }
+
+            auto child_trace_node = construct_commited_trace(child_tx, msgs_to_emulate);
+            trace_node->children.push_back(std::move(child_trace_node));
+        } else {
+            msgs_to_emulate.push_back(out_msg.root);
+        }
+    }
+    return trace_node;
+}
+
 void McBlockEmulator::emulate_traces() {
     for (auto& tx : txs_) {
         if (!tx.trace_ids.has_value()) {
@@ -336,34 +242,61 @@ void McBlockEmulator::emulate_traces() {
             continue;
         }
 
-        // for debugging
-        // if (tx.hash.to_hex() != "36F63618F374305C85AAEF856E4EE055540FA6F199453F8F2D347C199F7FDBB2") {
-        //     continue;
-        // }
-        // if (tx.ext_in_msg_hash_norm.value().to_hex() != "A97D033AF645F4D1BE66EFFCCA441D570A1867BED666FC462A55FC620EE8EE18") {
-        //     continue;
-        // }
-        
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), tx_hash = tx.hash, trace_root_tx_hash = tx.trace_ids->root_tx_hash](td::Result<Trace> R) {
-            if (R.is_error()) {
-                td::actor::send_closure(SelfId, &McBlockEmulator::trace_error, tx_hash, trace_root_tx_hash, R.move_as_error());
-                return;
-            }
-
-            td::actor::send_closure(SelfId, &McBlockEmulator::trace_received, tx_hash, R.move_as_ok());
-        });
-        td::actor::create_actor<TraceTailEmulator>("TraceTailEmulator", mc_data_state_, tx_by_in_msg_hash_, tx, std::move(P)).release();
-
         in_progress_cnt_++;
+
+        std::vector<td::Ref<vm::Cell>> msgs_to_emulate;
+        auto parent_node = construct_commited_trace(tx, msgs_to_emulate);
+        
+        if (msgs_to_emulate.empty()) {
+            children_emulated(std::move(parent_node), {}, tx.trace_ids.value(), nullptr);
+            continue;
+        }
+        
+        // for now we emulate each trace independently
+        auto context = std::make_unique<EmulationContext>(mc_data_state_.shard_blocks_[0].handle->id().id.seqno, mc_data_state_.config_);
+        for (const auto& shard_state : mc_data_state_.shard_blocks_) {
+            auto blkid = shard_state.handle->id().id;
+            auto timestamp = shard_state.handle->unix_time();
+            auto lt = shard_state.handle->logical_time();
+            lt = lt - lt % block::ConfigInfo::get_lt_align();
+            context->add_shard_state(blkid, timestamp, lt, shard_state.block_state);
+        }
+        context->increase_seqno(3);
+
+        EmulationContext& context_ref = *context;
+
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), parent_node = std::move(parent_node), tx_info = tx, context = std::move(context)]
+                (td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
+            if (R.is_error()) {
+                td::actor::send_closure(SelfId, &McBlockEmulator::trace_error, tx_info.hash, tx_info.trace_ids->root_tx_hash, R.move_as_error());
+            } else {
+                td::actor::send_closure(SelfId, &McBlockEmulator::children_emulated, 
+                    std::move(parent_node), R.move_as_ok(), tx_info.trace_ids.value(), std::move(context));
+            }
+        });
+
+        td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", context_ref, std::move(msgs_to_emulate), std::move(P)).release();
     }
 }
 
-void McBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error) {
-    LOG(ERROR) << "Failed to emulate trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice()) << " from tx " << tx_hash.to_hex() << ": " << error;
-    in_progress_cnt_--;
-}
+void McBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent_node, std::vector<std::unique_ptr<TraceNode>> child_nodes, 
+                                     TraceIds trace_ids, std::unique_ptr<EmulationContext> context) {
+    parent_node->children.insert(parent_node->children.end(),
+        std::make_move_iterator(child_nodes.begin()),
+        std::make_move_iterator(child_nodes.end()));
 
-void McBlockEmulator::trace_received(td::Bits256 tx_hash, Trace trace) {
+    Trace trace;
+    trace.ext_in_msg_hash = trace_ids.ext_in_msg_hash;
+    trace.ext_in_msg_hash_norm = trace_ids.ext_in_msg_hash_norm;
+    trace.root_tx_hash = trace_ids.root_tx_hash;
+    trace.root = std::move(parent_node);
+    trace.root_tx_hash = trace.root->transaction_root->get_hash().bits();
+    if (context) {
+        trace.rand_seed = context->get_rand_seed();
+        trace.emulated_accounts = context->release_account_states();
+        trace.tx_limit_exceeded = context->is_limit_exceeded();
+    }
+
     if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_root_tx_hash = trace.root_tx_hash](td::Result<Trace> R) {
             if (R.is_error()) {
@@ -377,6 +310,11 @@ void McBlockEmulator::trace_received(td::Bits256 tx_hash, Trace trace) {
     } else {
         trace_emulated(std::move(trace));
     }
+}
+
+void McBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error) {
+    LOG(ERROR) << "Failed to emulate trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice()) << " from tx " << tx_hash.to_hex() << ": " << error;
+    in_progress_cnt_--;
 }
 
 void McBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error) {
