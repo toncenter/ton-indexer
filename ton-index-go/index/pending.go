@@ -193,7 +193,7 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 				return err
 			}
 
-			if node.Key == traceKey {
+			if node.Key == trace.ExternalHash {
 				trace_row.StartLt = transactionRow.Lt
 				trace_row.StartUtime = *transactionRow.Now
 				trace_row.McSeqnoStart = *transactionRow.McBlockSeqno
