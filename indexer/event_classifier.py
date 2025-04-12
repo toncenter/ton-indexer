@@ -15,7 +15,7 @@ from dataclasses import asdict
 import json
 from collections import defaultdict
 
-from sqlalchemy import update, select, delete, and_, or_, Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, event
 from collections import defaultdict
 from datetime import timedelta
 from typing import Optional
@@ -48,6 +48,12 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = Settings()
 interface_cache: LRUCache | None = None
+
+
+def add_on_conflict_ignore(conn, cursor, statement, parameters, context, executemany):
+    if statement.lstrip().upper().startswith('INSERT INTO ACTIONS'):
+        statement += " ON CONFLICT DO NOTHING"
+    return statement, parameters
 
 
 class ClassifierTask(Base):
@@ -210,6 +216,12 @@ class EventClassifierWorker(mp.Process):
         broken = 0
         async with async_session() as session:
             try:
+                # Setup usage of ON CONFLICT DO NOTHING for action inserts
+                connection = await session.connection()
+                event.listen(connection.sync_connection,
+                             "before_cursor_execute",
+                             add_on_conflict_ignore,
+                             retval=True)
                 trace_ids = []
                 trace_ids_to_cleanup = []
                 mc_seqnos = []
