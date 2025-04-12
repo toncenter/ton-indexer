@@ -63,6 +63,7 @@ var (
 	emulatorQueueName = flag.String("emulator-queue", "emulatorqueue", "Redis queue name")
 	classifierChannel = flag.String("classifier-channel", "classifierchannel", "Redis queue name")
 	pg                = flag.String("pg", "", "PostgreSQL connection string")
+	imgProxyBaseUrl   = flag.String("imgproxy-baseurl", "", "Image proxy base URL")
 	serverPort        = flag.Int("port", 8080, "Server port")
 	prefork           = flag.Bool("prefork", false, "Use prefork")
 	testnet           = flag.Bool("testnet", false, "Use testnet")
@@ -187,6 +188,9 @@ func emulateTrace(c *fiber.Ctx) error {
 	result, err := models.TransformToAPIResponse(hset, pool, *testnet, req.IncludeAddressBook, req.IncludeMetadata)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to transform result: "+err.Error())
+	}
+	if *imgProxyBaseUrl != "" && result.Metadata != nil {
+		index.SubstituteImgproxyBaseUrl(result.Metadata, *imgProxyBaseUrl)
 	}
 
 	return c.Status(200).JSON(result)
