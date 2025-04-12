@@ -1872,7 +1872,7 @@ func queryRawActionsImpl(query string, conn *pgxpool.Conn, settings RequestSetti
 	return res, nil
 }
 
-func collectAddressesFromAction(addr_list *map[string]bool, raw_action *RawAction) bool {
+func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawAction) bool {
 	success := true
 
 	if v := raw_action.Source; v != nil {
@@ -2059,7 +2059,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 			for idx := range actions {
 				raw_action := &actions[idx]
 
-				collectAddressesFromAction(&addr_map, raw_action)
+				CollectAddressesFromAction(&addr_map, raw_action)
 
 				action, err := ParseRawAction(raw_action)
 				if err != nil {
@@ -2977,7 +2977,7 @@ func (db *DbClient) QueryActions(
 	metadata := Metadata{}
 	addr_map := map[string]bool{}
 	for idx := range raw_actions {
-		collectAddressesFromAction(&addr_map, &raw_actions[idx])
+		CollectAddressesFromAction(&addr_map, &raw_actions[idx])
 		action, err := ParseRawAction(&raw_actions[idx])
 		if err != nil {
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}

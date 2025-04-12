@@ -30,7 +30,7 @@ func (db *DbClient) QueryPendingActions(
 	metadata := Metadata{}
 
 	for _, raw_action := range raw_actions {
-		collectAddressesFromAction(&addr_map, &raw_action)
+		CollectAddressesFromAction(&addr_map, &raw_action)
 		action, err := ParseRawAction(&raw_action)
 		if err != nil {
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
@@ -338,7 +338,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	for idx := range actions {
 		raw_action := &actions[idx]
-		collectAddressesFromAction(&addr_map, raw_action)
+		CollectAddressesFromAction(&addr_map, raw_action)
 
 		action, err := ParseRawAction(raw_action)
 		if err != nil {

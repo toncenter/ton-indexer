@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
+	"slices"
 	"strconv"
 	"time"
 
@@ -107,8 +109,10 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 			return nil, fmt.Errorf("failed to scan raw action: %w", err)
 		}
 	}
+	addr_map := map[string]bool{}
 	for idx := range rawActions {
 		rawAction := &rawActions[idx]
+		index.CollectAddressesFromAction(&addr_map, rawAction)
 
 		action, err := index.ParseRawAction(rawAction)
 		if err != nil {
@@ -124,7 +128,6 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 	}
 
 	// iterate transactions and fill account states
-	addr_list := []string{}
 	for _, tx := range trace.Transactions {
 		if tx.AccountStateBefore != nil {
 			tx.AccountStateBefore = convertToIndexAccountState(&tx.AccountStateHashBefore, accountStates)
@@ -132,7 +135,7 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 		if tx.AccountStateAfter != nil {
 			tx.AccountStateAfter = convertToIndexAccountState(&tx.AccountStateHashAfter, accountStates)
 		}
-		addr_list = append(addr_list, string(tx.Account))
+		addr_map[string(tx.Account)] = true
 	}
 
 	var book *index.AddressBook = nil
@@ -148,6 +151,7 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 			Timeout:   3 * time.Second,
 			IsTestnet: isTestnet,
 		}
+		addr_list := slices.Collect(maps.Keys(addr_map))
 
 		if includeAddressBook {
 			bookVal, err := index.QueryAddressBookImpl(addr_list, conn, settings)
