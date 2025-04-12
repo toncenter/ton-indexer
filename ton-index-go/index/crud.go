@@ -795,6 +795,8 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		(A.dex_deposit_liquidity_data).lp_tokens_minted,
 		(A.staking_data).provider,
 		(A.staking_data).ts_nft,
+		(A.staking_data).tokens_burnt,
+		(A.staking_data).tokens_minted,
 		A.success,
 		A.trace_external_hash,
 		A.value_extra_currencies`
