@@ -162,7 +162,6 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 		}
 
 		if includeMetadata {
-			defer conn.Release()
 			metadataVal, err := index.QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, fmt.Errorf("failed to query metadata: %w", err)
