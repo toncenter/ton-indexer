@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import logging
 import multiprocessing as mp
+from multiprocessing import Manager
 import sys
 import time
 import traceback
@@ -15,7 +16,7 @@ from dataclasses import asdict
 import json
 from collections import defaultdict
 
-from sqlalchemy import Column, Integer, String, Boolean, event
+from sqlalchemy import Column, Integer, String, Boolean, event, delete
 from collections import defaultdict
 from datetime import timedelta
 from typing import Optional
@@ -186,12 +187,13 @@ class FinishedTasksProcessor(mp.Process):
 
 
 class EventClassifierWorker(mp.Process):
-    def __init__(self, id: int, task_queue: mp.Queue, result_queue: mp.Queue, finished_queue: mp.Queue, big_traces_threshold=4000, force=False):
+    def __init__(self, id: int, task_queue: mp.Queue, result_queue: mp.Queue, finished_queue: mp.Queue, shared_namespace, big_traces_threshold=4000, force=False):
         super().__init__()
         self.id = id
         self.task_queue = task_queue
         self.result_queue = result_queue
         self.finished_queue = finished_queue
+        self.shared_namespace = shared_namespace
         self.big_traces_threshold = big_traces_threshold
         self.force = force
 
@@ -343,6 +345,10 @@ class EventClassifierWorker(mp.Process):
 
     def run(self):
         asyncio.set_event_loop(asyncio.new_event_loop())
+        # Restore the dedust_pools context from the shared namespace
+        if hasattr(self.shared_namespace, 'dedust_pools'):
+            context.dedust_pools.set(self.shared_namespace.dedust_pools)
+            logger.debug(f"Worker #{self.id} restored dedust_pools from shared namespace")
         try:
             while True:
                 self.process_one_batch()
@@ -354,7 +360,7 @@ class EventClassifierWorker(mp.Process):
         logger.info(f'Thread EventClassifierWorker #{self.id} finished')
         return
 
-async def start_processing_events_from_db(args: argparse.Namespace):
+async def start_processing_events_from_db(args: argparse.Namespace, shared_namespace):
     logger.info(f"Creating pool of {args.pool_size} workers")
 
     # counting traces
@@ -378,7 +384,7 @@ async def start_processing_events_from_db(args: argparse.Namespace):
     thread.start()
     workers = []
     for id in range(args.pool_size):
-        worker = EventClassifierWorker(id, task_queue, result_queue, finished_queue, big_traces_threshold=4000)
+        worker = EventClassifierWorker(id, task_queue, result_queue, finished_queue, shared_namespace, big_traces_threshold=4000)
         worker.start()
         workers.append(worker)
     task_closer = FinishedTasksProcessor(finished_queue)
@@ -694,7 +700,15 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
         return trace.trace_id, 'failed', [], e
 
 if __name__ == '__main__':
+    # Create a shared namespace for cross-process data sharing
+    manager = Manager()
+    shared_namespace = manager.Namespace()
+    
+    # Initialize pools data and store in shared namespace
     init_pools_data()
+    # Save pools data from context to shared namespace
+    shared_namespace.dedust_pools = context.dedust_pools.get()
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--prefetch-size',
                         help='Number of prefetched tasks',
@@ -749,4 +763,4 @@ if __name__ == '__main__':
                                                      max_batch_size=args.batch_size))
     else:
         logger.info("Starting processing events from db")
-        asyncio.run(start_processing_events_from_db(args))
+        asyncio.run(start_processing_events_from_db(args, shared_namespace))
