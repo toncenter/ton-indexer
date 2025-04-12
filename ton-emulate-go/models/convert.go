@@ -1,9 +1,11 @@
 package models
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
 
@@ -57,7 +59,8 @@ func convertToIndexAccountState(hash *index.HashType, accountStates map[Hash]*Ac
 	}
 }
 
-func TransformToAPIResponse(hset map[string]string) (*EmulateTraceResponse, error) {
+func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
+	isTestnet bool, includeAddressBook bool, includeMetadata bool) (*EmulateTraceResponse, error) {
 	emulatedContext := index.NewEmptyContext(true)
 	raw_traces := make(map[string]map[string]string)
 	raw_traces[hset["root_node"]] = hset
@@ -121,12 +124,46 @@ func TransformToAPIResponse(hset map[string]string) (*EmulateTraceResponse, erro
 	}
 
 	// iterate transactions and fill account states
+	addr_list := []string{}
 	for _, tx := range trace.Transactions {
 		if tx.AccountStateBefore != nil {
 			tx.AccountStateBefore = convertToIndexAccountState(&tx.AccountStateHashBefore, accountStates)
 		}
 		if tx.AccountStateAfter != nil {
 			tx.AccountStateAfter = convertToIndexAccountState(&tx.AccountStateHashAfter, accountStates)
+		}
+		addr_list = append(addr_list, string(tx.Account))
+	}
+
+	var book *index.AddressBook = nil
+	var metadata *index.Metadata = nil
+	if includeAddressBook || includeMetadata {
+		conn, err := pool.Pool.Acquire(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to acquire connection: %w", err)
+		}
+		defer conn.Release()
+
+		settings := index.RequestSettings{
+			Timeout:   3 * time.Second,
+			IsTestnet: isTestnet,
+		}
+
+		if includeAddressBook {
+			bookVal, err := index.QueryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, fmt.Errorf("failed to query address book: %w", err)
+			}
+			book = &bookVal
+		}
+
+		if includeMetadata {
+			defer conn.Release()
+			metadataVal, err := index.QueryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, fmt.Errorf("failed to query metadata: %w", err)
+			}
+			metadata = &metadataVal
 		}
 	}
 
@@ -170,6 +207,8 @@ func TransformToAPIResponse(hset map[string]string) (*EmulateTraceResponse, erro
 		Actions:      trace.Actions,
 		CodeCells:    codeCellsPointer,
 		DataCells:    dataCellsPointer,
+		AddressBook:  book,
+		Metadata:     metadata,
 		RandSeed:     hset["rand_seed"],
 		IsIncomplete: depthLimitExceeded,
 	}

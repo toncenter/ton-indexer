@@ -43,12 +43,12 @@ func (db *DbClient) QueryPendingActions(
 		for k := range addr_map {
 			addr_list = append(addr_list, k)
 		}
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		book, err = QueryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
+		metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
@@ -74,11 +74,11 @@ func (db *DbClient) QueryPendingTraces(settings RequestSettings, emulatedContext
 	metadata := Metadata{}
 
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		book, err = QueryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
+		metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
@@ -123,7 +123,7 @@ func (db *DbClient) QueryPendingTransactions(
 	}
 	book := AddressBook{}
 	if len(addr_list) > 0 {
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		book, err = QueryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
 			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}

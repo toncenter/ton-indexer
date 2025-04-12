@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/swagger"
+	"github.com/toncenter/ton-indexer/ton-index-go/index"
 
 	"github.com/go-redis/redis/v8"
 
@@ -31,11 +32,13 @@ type TraceTask struct {
 }
 
 type EmulateRequest struct {
-	Boc             string  `json:"boc" example:"te6ccgEBAQEAAgAAAA=="`
-	IgnoreChksig    bool    `json:"ignore_chksig" example:"false"`
-	WithActions     bool    `json:"with_actions" example:"false"`
-	IncludeCodeData bool    `json:"include_code_data" example:"false"`
-	McBlockSeqno    *uint32 `json:"mc_block_seqno" example:"null"`
+	Boc                string  `json:"boc" example:"te6ccgEBAQEAAgAAAA=="`
+	IgnoreChksig       bool    `json:"ignore_chksig" example:"false"`
+	WithActions        bool    `json:"with_actions" example:"false"`
+	IncludeCodeData    bool    `json:"include_code_data" example:"false"`
+	IncludeAddressBook bool    `json:"include_address_book" example:"false"`
+	IncludeMetadata    bool    `json:"include_metadata" example:"false"`
+	McBlockSeqno       *uint32 `json:"mc_block_seqno" example:"null"`
 }
 
 // validate function for EmulateRequest
@@ -44,6 +47,13 @@ func (req EmulateRequest) Validate() error {
 		return fmt.Errorf("boc is required")
 	}
 	_, err := base64.StdEncoding.Strict().DecodeString(req.Boc)
+	if err != nil {
+		return fmt.Errorf("invalid boc: %v", err)
+	}
+	if pool == nil && (req.IncludeAddressBook || req.IncludeMetadata) {
+		return fmt.Errorf("address book and metadata are not available")
+	}
+
 	return err
 }
 
@@ -52,9 +62,13 @@ var (
 	redisAddr         = flag.String("redis", "localhost:6379", "Redis server dsn")
 	emulatorQueueName = flag.String("emulator-queue", "emulatorqueue", "Redis queue name")
 	classifierChannel = flag.String("classifier-channel", "classifierchannel", "Redis queue name")
+	pg                = flag.String("pg", "", "PostgreSQL connection string")
 	serverPort        = flag.Int("port", 8080, "Server port")
 	prefork           = flag.Bool("prefork", false, "Use prefork")
+	testnet           = flag.Bool("testnet", false, "Use testnet")
 )
+
+var pool *index.DbClient
 
 func generateTaskID() string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -170,7 +184,7 @@ func emulateTrace(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to get result from Redis: "+err.Error())
 	}
 
-	result, err := models.TransformToAPIResponse(hset)
+	result, err := models.TransformToAPIResponse(hset, pool, *testnet, req.IncludeAddressBook, req.IncludeMetadata)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to transform result: "+err.Error())
 	}
@@ -180,6 +194,19 @@ func emulateTrace(c *fiber.Ctx) error {
 
 func main() {
 	flag.Parse()
+
+	var err error
+	if *pg == "" {
+		log.Print("PostgreSQL connection string is not provided")
+		log.Print("AddressBook and Metadata will not be available")
+	} else {
+		log.Print("PostgreSQL connection string: ", *pg)
+		pool, err = index.NewDbClient(*pg, 100, 0)
+		if err != nil {
+			log.Print("failed to connect to PostgreSQL: ", err)
+			log.Print("AddressBook and Metadata will not be available")
+		}
+	}
 
 	config := fiber.Config{
 		AppName:        "TON Index API",
@@ -226,6 +253,6 @@ func main() {
 	}
 	app.Get("/api/emulate/*", swagger.New(swagger_config))
 	bind := fmt.Sprintf(":%d", *serverPort)
-	err := app.Listen(bind)
+	err = app.Listen(bind)
 	log.Fatal(err)
 }

@@ -58,6 +58,14 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": false
                 },
+                "include_address_book": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "include_metadata": {
+                    "type": "boolean",
+                    "example": false
+                },
                 "with_actions": {
                     "type": "boolean",
                     "example": false
