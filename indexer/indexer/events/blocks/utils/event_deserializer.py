@@ -102,7 +102,7 @@ def unpack_messagepack_tx(data: bytes) -> Transaction:
         prev_trans_lt=tx_data['prev_trans_lt'],
         account=tx_data['account'],
         now=tx_data['now'],
-        mc_block_seqno=0,
+        mc_block_seqno=decoded_data['mc_block_seqno'],
         orig_status=account_status_map[tx_data['orig_status']],
         end_status=account_status_map[tx_data['end_status']],
         total_fees=tx_data['total_fees'],

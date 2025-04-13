@@ -21,6 +21,8 @@ struct TransactionInfo {
     td::Bits256 hash;
     ton::LogicalTime lt;
     td::Ref<vm::Cell> root;
+    ton::BlockId block_id;
+    ton::BlockSeqno mc_block_seqno;
     td::Bits256 in_msg_hash;
     std::vector<OutMsgInfo> out_msgs;
     std::optional<TraceIds> trace_ids{};
@@ -54,6 +56,11 @@ private:
     void block_parsed(ton::BlockId blkid, std::vector<TransactionInfo> txs);
     void process_txs();
     void emulate_traces();
+    std::unique_ptr<TraceNode> construct_commited_trace(const TransactionInfo& tx, std::vector<td::Ref<vm::Cell>>& msgs_to_emulate);
+    void emulated_nodes_received(std::vector<std::unique_ptr<TraceNode>> commited_nodes,
+        std::vector<std::unique_ptr<TraceNode>> emulated_nodes, std::unique_ptr<EmulationContext> context);
+    void children_emulated(std::unique_ptr<TraceNode> parent_node, std::vector<std::unique_ptr<TraceNode>> child_nodes, 
+        TraceIds trace_ids, std::unique_ptr<EmulationContext> context);
     void trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error);
     void trace_received(td::Bits256 tx_hash, Trace trace);
     void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error);

@@ -110,7 +110,8 @@ void TraceEmulatorScheduler::emulate_blocks() {
             }
             LOG(INFO) << "Success emulating mc block " << blkid.to_str();
         });
-        td::actor::create_actor<McBlockEmulator>("McBlockEmulator", it->second, insert_trace_, std::move(P)).release();
+        auto actor_name = PSLICE() << "McBlockEmulator" << last_emulated_seqno_ + 1;
+        td::actor::create_actor<McBlockEmulator>(actor_name, it->second, insert_trace_, std::move(P)).release();
 
         blocks_to_emulate_.erase(it);
         last_emulated_seqno_++;
