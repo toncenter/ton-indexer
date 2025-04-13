@@ -4,7 +4,7 @@ from indexer.events.blocks.basic_matchers import BlockMatcher
 from indexer.events.blocks.basic_blocks import Block, TonTransferBlock
 
 
-class AuctionBidBlock(Block):
+class AuctionBid(Block):
     def __init__(self, data):
         super().__init__('auction_bid', [], data)
 
@@ -32,7 +32,7 @@ class AuctionBidMatcher(BlockMatcher):
         if interfaces is None:
             return []
 
-        bid_block = AuctionBidBlock({})
+        bid_block = AuctionBid({})
 
         if 'NftAuction' in interfaces:
             nft_address = interfaces['NftAuction']['nft_addr']

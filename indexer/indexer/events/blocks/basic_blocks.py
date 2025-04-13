@@ -61,7 +61,7 @@ class TonTransferBlock(Block):
         _fill_flow_from_node(self.value_flow, node)
         tx = node.get_tx()
         if tx is not None and tx.end_status == 'active' and tx.orig_status not in ('active', 'frozen'):
-            self.children_blocks.append(ContractDeployBlock(node))
+            self.children_blocks.append(ContractDeploy(node))
 
 class CallContractBlock(Block):
     opcode: int
@@ -76,11 +76,11 @@ class CallContractBlock(Block):
         })
         self.failed = node.failed
         self.is_external = node.message.source is None
-        self.opcode = node.get_opcode() or -1 # opcode is uint, so when no opcode it's an invalid value
+        self.opcode = node.get_opcode()
         _fill_flow_from_node(self.value_flow, node)
         tx = node.get_tx()
         if tx is not None and tx.end_status == 'active' and tx.orig_status not in ('active', 'frozen'):
-            self.children_blocks.append(ContractDeployBlock(node))
+            self.children_blocks.append(ContractDeploy(node))
 
     def get_body(self) -> Slice:
         return Slice.one_from_boc(self.event_nodes[0].message.message_content.body)
@@ -91,7 +91,7 @@ class CallContractBlock(Block):
     def __repr__(self):
         return f"!{self.btype}:={hex(self.opcode)}"
 
-class ContractDeployBlock(Block):
+class ContractDeploy(Block):
     def __init__(self, node: EventNode):
         super().__init__('contract_deploy', [node], {
             'opcode': node.get_opcode(),

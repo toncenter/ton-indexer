@@ -7,9 +7,7 @@ from indexer.events.blocks.messages import ElectorRecoverStakeConfirmation, Elec
 from indexer.events.blocks.utils import Amount, AccountId
 from indexer.events.blocks.utils.block_utils import get_labeled
 
-
 elector_address = '-1:3333333333333333333333333333333333333333333333333333333333333333'
-
 
 class ElectionDepositStakeBlock(Block):
     def __init__(self, data):
@@ -62,7 +60,7 @@ class ElectionRecoverStakeBlockMatcher(BlockMatcher):
                 and block.get_message().destination == elector_address)
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        data: dict = {
+        data = {
             'stake_holder': AccountId(block.event_nodes[0].message.source)
         }
         response = get_labeled('confirmation', other_blocks, CallContractBlock)
