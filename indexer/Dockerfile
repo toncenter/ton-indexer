@@ -6,6 +6,7 @@ RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.txt
 
 # app
 COPY . /app
+COPY files/* /app
 WORKDIR /app
 
 # entrypoint

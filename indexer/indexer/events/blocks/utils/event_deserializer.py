@@ -10,166 +10,127 @@ account_status_map = ['uninit', 'frozen', 'active', 'nonexist']
 
 
 def _message_from_tuple(tx: Transaction, data, direction: str) -> Message:
-    (msg_hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, opcode, ihr_disabled, bounce,
-     bounced,
-     import_fee, body_boc, init_state_boc) = data
-    message_content = MessageContent(hash='', body=body_boc)
+    message_content = MessageContent(hash='', body=data['body_boc'])
     message = Message(
-        msg_hash=msg_hash,
+        msg_hash=base64.b64encode(data['hash']).decode(),
         tx_hash=tx.hash,
         tx_lt=tx.lt,
-        source=source,
-        destination=destination,
+        source=data['source'],
+        destination=data['destination'],
         direction=direction,
-        value=value,
-        fwd_fee=fwd_fee,
-        ihr_fee=ihr_fee,
-        created_lt=created_lt,
-        created_at=created_at,
-        opcode=opcode,
-        ihr_disabled=ihr_disabled,
-        bounce=bounce,
-        bounced=bounced,
-        import_fee=import_fee,
+        value=data['value'],
+        fwd_fee=data['fwd_fee'],
+        ihr_fee=data['ihr_fee'],
+        created_lt=data['created_lt'],
+        created_at=data['created_at'],
+        opcode=data['opcode'],
+        ihr_disabled=data['ihr_disabled'],
+        bounce=data['bounce'],
+        bounced=data['bounced'],
+        import_fee=data['import_fee'],
         message_content=message_content,
         transaction=tx,
     )
-    if init_state_boc is not None:
-        message.init_state = MessageContent(hash='', body=init_state_boc)
+    if data['init_state_boc'] is not None:
+        message.init_state = MessageContent(hash='', body=data['init_state_boc'])
     return message
 
-
-def _tx_description_from_tuple(data):
-    (credit_first, storage_ph_tuple, credit_ph_tuple, compute_ph_tuple, action, aborted, bounce, destroyed) = data
-    storage_ph = {
-        'storage_fees_collected': storage_ph_tuple[0],
-        'storage_fees_due': storage_ph_tuple[1],
-        'status_change': storage_ph_tuple[2]
-    }
-    credit_ph = {
-        'due_fees_collected': credit_ph_tuple[0],
-        'credit': credit_ph_tuple[1],
-    }
-    compute_ph_type = compute_ph_tuple[0]
-    compute_ph = None
-    if compute_ph_type == 0:
-        compute_ph = {
-            'type': 'skipped',
-            'reason': compute_ph_tuple[1][0]
-        }
-    else:
-        compute_ph = {
-            'type': 'vm',
-            'success': compute_ph_tuple[1][0],
-            'msg_state_used': compute_ph_tuple[1][1],
-            'account_activated': compute_ph_tuple[1][2],
-            'gas_fees': compute_ph_tuple[1][3],
-            'gas_used': compute_ph_tuple[1][4],
-            'gas_limit': compute_ph_tuple[1][5],
-            'gas_credit': compute_ph_tuple[1][6],
-            'mode': compute_ph_tuple[1][7],
-            'exit_code': compute_ph_tuple[1][8],
-            'exit_arg': compute_ph_tuple[1][9],
-            'vm_steps': compute_ph_tuple[1][10],
-            'vm_init_state_hash': compute_ph_tuple[1][11],
-            'vm_final_state_hash': compute_ph_tuple[1][12],
-        }
-    return {
-        'credit_first': credit_first,
-        'storage_ph': storage_ph,
-        'credit_ph': credit_ph,
-        'compute_ph': compute_ph,
-        'aborted': aborted,
-        'bounce': bounce,
-        'destroyed': destroyed,
-    }
-
 def fill_tx_description(tx: Transaction, data):
-    (credit_first, storage_ph_tuple, credit_ph_tuple, compute_ph_tuple, action, aborted, bounce, destroyed) = data
     tx.descr = 'ord'
-    tx.credit_first = credit_first
-    tx.aborted = aborted
-    tx.bounce = bounce
-    tx.destroyed = destroyed
-    tx.storage_fees_collected = storage_ph_tuple[0]
-    tx.storage_fees_due = storage_ph_tuple[1]
-    match storage_ph_tuple[2]:
+    tx.credit_first = data['credit_first']
+    tx.aborted = data['aborted']
+    tx.bounce = data['bounce']
+    tx.destroyed = data['destroyed']
+    if data.get('storage_ph') is not None:
+        tx.storage_fees_collected = data['storage_ph']['storage_fees_collected']
+        tx.storage_fees_due = data['storage_ph']['storage_fees_due']
+    match data['storage_ph']['status_change']:
         case 0:
             tx.storage_fees_change = 'unchanged'
         case 1:
             tx.storage_fees_change = 'frozen'
         case 2:
             tx.storage_fees_change = 'deleted'
-    tx.due_fees_collected = credit_ph_tuple[0]
-    tx.credit = credit_ph_tuple[1]
-    match compute_ph_tuple[0]:
+    if data.get('credit_ph') is not None:
+        tx.due_fees_collected = data['credit_ph']['due_fees_collected']
+        tx.credit = data['credit_ph']['credit']
+    compute_ph_type, compute_ph = data['compute_ph']
+    match compute_ph_type:
         case 0:
             tx.compute_skipped = True
-            tx.skipped_reason = compute_ph_tuple[1][0]
+            tx.skipped_reason = compute_ph['reason']
         case 1:
             tx.compute_mode = 'vm'
-            tx.compute_success = compute_ph_tuple[1][0]
-            tx.compute_msg_state_used = compute_ph_tuple[1][1]
-            tx.compute_account_activated = compute_ph_tuple[1][2]
-            tx.compute_gas_fees = compute_ph_tuple[1][3]
-            tx.compute_gas_used = compute_ph_tuple[1][4]
-            tx.compute_gas_limit = compute_ph_tuple[1][5]
-            tx.compute_gas_credit = compute_ph_tuple[1][6]
-            tx.compute_mode = compute_ph_tuple[1][7]
-            tx.compute_exit_code = compute_ph_tuple[1][8]
-            tx.compute_exit_arg = compute_ph_tuple[1][9]
-            tx.compute_vm_steps = compute_ph_tuple[1][10]
-            tx.compute_vm_init_state_hash = compute_ph_tuple[1][11]
-            tx.compute_vm_final_state_hash = compute_ph_tuple[1][12]
+            tx.compute_success = compute_ph['success']
+            tx.compute_msg_state_used = compute_ph['msg_state_used']
+            tx.compute_account_activated = compute_ph['account_activated']
+            tx.compute_gas_fees = compute_ph['gas_fees']
+            tx.compute_gas_used = compute_ph['gas_used']
+            tx.compute_gas_limit = compute_ph['gas_limit']
+            tx.compute_gas_credit = compute_ph['gas_credit']
+            tx.compute_mode = compute_ph['mode']
+            tx.compute_exit_code = compute_ph['exit_code']
+            tx.compute_exit_arg = compute_ph['exit_arg']
+            tx.compute_vm_steps = compute_ph['vm_steps']
+            tx.compute_vm_init_state_hash = compute_ph['vm_init_state_hash']
+            tx.compute_vm_final_state_hash = compute_ph['vm_final_state_hash']
+    action = data['action']
     if action is not None:
-        tx.action_success = action[0]
-        tx.action_valid = action[1]
-        tx.action_no_funds = action[2]
-        tx.action_status_change = action[3]
-        tx.action_total_fwd_fees = action[4]
-        tx.action_total_action_fees = action[5]
-        tx.action_result_code = action[6]
-        tx.action_result_arg = action[7]
-        tx.action_tot_actions = action[8]
-        tx.action_spec_actions = action[9]
-        tx.action_skipped_actions = action[10]
-        tx.action_msgs_created = action[11]
-        tx.action_action_list_hash = action[12]
-        tx.action_tot_msg_size_cells = action[13][0]
-        tx.action_tot_msg_size_bits = action[13][1]
+        tx.action_success = action['success']
+        tx.action_valid = action['valid']
+        tx.action_no_funds = action['no_funds']
+        tx.action_status_change = action['status_change']
+        tx.action_total_fwd_fees = action['total_fwd_fees']
+        tx.action_total_action_fees = action['total_action_fees']
+        tx.action_result_code = action['result_code']
+        tx.action_result_arg = action['result_arg']
+        tx.action_tot_actions = action['tot_actions']
+        tx.action_spec_actions = action['spec_actions']
+        tx.action_skipped_actions = action['skipped_actions']
+        tx.action_msgs_created = action['msgs_created']
+        tx.action_action_list_hash = action['action_list_hash']
+        tx.action_tot_msg_size_cells = action['tot_msg_size']['cells']
+        tx.action_tot_msg_size_bits = action['tot_msg_size']['bits']
 
 def unpack_messagepack_tx(data: bytes) -> Transaction:
-    (tx_data, emulated) = msgpack.unpackb(data, raw=False)
-    (tx_hash, account, lt, prev_trans_hash, prev_trans_lt, now, orig_status, end_status, in_msg, out_msgs, total_fees,
-     account_state_hash_before, account_state_hash_after, description) = tx_data
+    decoded_data = msgpack.unpackb(data, raw=False)
+    tx_data = decoded_data['transaction']
     tx = Transaction(
-        lt=lt,
-        hash=tx_hash,
-        prev_trans_hash=prev_trans_hash,
-        prev_trans_lt=prev_trans_lt,
-        account=account,
-        now=now,
-        orig_status=account_status_map[orig_status],
-        end_status=account_status_map[end_status],
-        total_fees=total_fees,
-        account_state_hash_before=account_state_hash_before,
-        account_state_hash_after=account_state_hash_after,
-        emulated=emulated
+        lt=tx_data['lt'],
+        hash=base64.b64encode(tx_data['hash']).decode(),
+        prev_trans_hash=base64.b64encode(tx_data['prev_trans_hash']).decode(),
+        prev_trans_lt=tx_data['prev_trans_lt'],
+        account=tx_data['account'],
+        now=tx_data['now'],
+        mc_block_seqno=decoded_data['mc_block_seqno'],
+        orig_status=account_status_map[tx_data['orig_status']],
+        end_status=account_status_map[tx_data['end_status']],
+        total_fees=tx_data['total_fees'],
+        account_state_hash_before=base64.b64encode(tx_data['account_state_hash_before']).decode(),
+        account_state_hash_after=base64.b64encode(tx_data['account_state_hash_after']).decode(),
+        emulated=decoded_data['emulated']
     )
-    fill_tx_description(tx, description)
-    tx.messages = [_message_from_tuple(tx, msg, 'out') for msg in out_msgs] + [
-        _message_from_tuple(tx, in_msg, 'in')]
+    fill_tx_description(tx, tx_data['description'])
+    tx.messages = [_message_from_tuple(tx, msg, 'out') for msg in tx_data['out_msgs']] + [
+        _message_from_tuple(tx, tx_data['in_msg'], 'in')]
     return tx
 
 
 def deserialize_event(trace_id, packed_transactions_map: dict[str, bytes]) -> Trace:
     edges = []
     transactions = []
-    root = packed_transactions_map[trace_id]
-
+    try:
+        root_id = packed_transactions_map['root_node'].decode()
+    except KeyError:
+        raise ValueError(f"root_node key not found for trace '{trace_id}'")
+    try:
+        root = packed_transactions_map[root_id]
+    except KeyError:
+        raise ValueError(f"Root tx not found for trace '{trace_id}'")
+    
     def load_leaf(tx):
         for msg in tx.messages:
-            if msg.direction != 'out':
+            if msg.direction != 'out' or msg.destination is None:
                 continue
             child_tx = unpack_messagepack_tx(packed_transactions_map[msg.msg_hash])
             edges.append(TraceEdge(left_tx=tx.hash, right_tx=child_tx.hash, msg_hash=msg.msg_hash, trace_id=trace_id))
@@ -177,6 +138,10 @@ def deserialize_event(trace_id, packed_transactions_map: dict[str, bytes]) -> Tr
             load_leaf(child_tx)
 
     root_tx = unpack_messagepack_tx(root)
+    if root_tx and not root_tx.emulated:
+        trace_id = root_tx.hash
     transactions.append(root_tx)
     load_leaf(root_tx)
-    return Trace(transactions=transactions, edges=edges, trace_id=trace_id, classification_state='unclassified', state='complete')
+
+    return Trace(transactions=transactions, trace_id=trace_id, classification_state='unclassified',
+                 state='complete', start_lt=root_tx.lt, external_hash=root_id)

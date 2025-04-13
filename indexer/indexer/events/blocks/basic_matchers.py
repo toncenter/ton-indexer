@@ -192,6 +192,49 @@ class GenericMatcher(BlockMatcher):
     def test_self(self, block: Block):
         return self.test_self_func(block)
 
+class RecursiveMatcher(BlockMatcher):
+    def __init__(self, repeating_matcher: BlockMatcher, exit_matcher: BlockMatcher):
+        super().__init__(child_matcher=None, parent_matcher=None)
+        self.repeating_matcher = repeating_matcher
+        self.exit_matcher = exit_matcher
+
+
+    def test_self(self, block: Block):
+        return self.repeating_matcher.test_self(block)
+
+    async def process_child_matcher(self, block, blocks, child_matched):
+        current_blocks = [block]
+        blocks_to_add = []
+        finished = False
+        while True:
+            block_for_check = current_blocks[:]
+            current_blocks = []
+            for c in block_for_check:
+                if self.exit_matcher:
+                    r = await self.exit_matcher.try_build(c)
+                    if r is not None:
+                        blocks_to_add.extend(r)
+                        finished = True
+                if finished:
+                    break
+                r = await self.repeating_matcher.try_build(c)
+                if r is not None:
+                    blocks_to_add.extend(r)
+                    for b in r:
+                        current_blocks.extend(b.next_blocks)
+                    break
+            if finished:
+                break
+            if len(current_blocks) == 0:
+                child_matched = False
+                break
+
+        if len(blocks_to_add) > 0:
+            blocks.extend(set(blocks_to_add))
+            child_matched = True
+
+        return child_matched
+
 
 def child_sequence_matcher(matchers: list[BlockMatcher]) -> BlockMatcher | None:
     if len(matchers) == 0:

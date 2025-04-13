@@ -1,0 +1,129 @@
+---
+- name: Prepare to build
+  hosts: localhost
+  tasks:
+    - name: Install requirements
+      ansible.builtin.apt:
+        name:
+          - build-essential 
+          - cmake 
+          - clang 
+          - openssl
+          - libssl-dev
+          - zlib1g-dev
+          - gperf
+          - wget
+          - git
+          - curl
+          - liblz4-dev
+          - pkg-config 
+          - libsecp256k1-dev 
+          - libsodium-dev
+          - libhiredis-dev
+          - python3-dev
+          - libpq-dev
+          - automake
+          - libjemalloc-dev
+          - lsb-release
+          - software-properties-common
+          - gnupg
+          - autoconf 
+          - libtool
+          - libmicrohttpd-dev
+          - ccache
+        state: present
+      become: true
+
+- name: Build binaries
+  hosts: localhost
+  tasks:
+    - name: Build the Go application
+      ansible.builtin.shell: |
+          cmake -DCMAKE_BUILD_TYPE=Release -S . -B {{ build_path }}
+          cmake --build {{ build_path }} --parallel $(nproc) --target ton-index-go ton-metadata-fetcher
+      changed_when: true
+      vars:
+        service: "{{ services[item] }}"
+      failed_when: build_result.rc != 0
+      register: build_result
+
+- name: Deploy metadata_fetcher service on master nodes
+  vars:
+    service: "{{ services.metadata_fetcher }}"
+    service_name: "{{ stack_name }}__{{ service.service_name }}"
+  hosts: "{{ stack_name }}__master_nodes"
+  become: true
+  tasks:
+    - name: Ensure binary directory
+      ansible.builtin.file:
+        path: "{{ deploy_path }}"
+        recurse: true
+        state: directory
+
+    - name: Copy service binary
+      ansible.builtin.copy:
+        src: "{{ build_path }}/{{ service.binary_path }}"
+        dest: "{{ deploy_path }}/{{ stack_name }}__{{ service.service_name }}"
+        mode: "0777"
+        force: true
+
+    - name: Create systemd service from template
+      ansible.builtin.template:
+        src: "ansible/systemd.service.j2"
+        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+        mode: "0644"
+        force: true
+      vars:
+        pg_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
+        start_cmd: "{{ service_name }} -pg {{ pg_dsn }} {{ service.additional_args }}"
+
+    - name: Restart and enable service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        enabled: true
+        force: true
+        daemon_reload: true
+      throttle: 1
+      become: true
+
+- name: Deploy api service on replica nodes
+  vars:
+    service: "{{ services.api }}"
+    service_name: "{{ stack_name }}__{{ service.service_name }}"
+  hosts: "{{ stack_name }}__replica_nodes"
+  become: true
+  tasks:
+    - name: Ensure binary directory
+      ansible.builtin.file:
+        path: "{{ deploy_path }}"
+        recurse: true
+        state: directory
+
+    - name: Copy service binary
+      ansible.builtin.copy:
+        src: "{{ build_path }}/{{ service.binary_path }}"
+        dest: "{{ deploy_path }}/{{ service_name }}"
+        mode: "0777"
+        force: true
+
+    - name: Create systemd service from template
+      ansible.builtin.template:
+        src: "ansible/systemd.service.j2"
+        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+        mode: "0644"
+        force: true
+      vars:
+        pg_dsn: "postgresql://{{ pg_readonly_user }}:{{ pg_readonly_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
+        pg_master_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master }}/{{ pg_database }}?application_name={{ service_name }}"
+        start_cmd: "{{ deploy_path }}/{{ service_name }} -pg {{ pg_dsn }} -pg-master {{ pg_master_dsn }} {{ service.additional_args }}"
+
+    - name: Restart and enable service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        enabled: true
+        force: true
+        daemon_reload: true
+      throttle: 1
+      become: true

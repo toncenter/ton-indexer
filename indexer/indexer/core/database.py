@@ -2,23 +2,33 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
 from time import sleep
-from typing import Any, Dict, List, Optional
+from typing import Optional, List, Dict, Any
+from dataclasses import dataclass
 
-from sqlalchemy import (BigInteger, Boolean, Column, Enum, ForeignKey, Index,
-                        Integer, Numeric, String, create_engine)
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.future import select
-from sqlalchemy.orm import Session, relationship, sessionmaker
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy_utils import create_database, database_exists, CompositeType
+
+from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric
 from sqlalchemy.schema import ForeignKeyConstraint
-from sqlalchemy_utils import CompositeType, create_database, database_exists
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import relationship
+
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import JSONB
+
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.future import select
+
 
 from indexer.core.settings import Settings
 
-logger = logging.getLogger('actions-indexer')
+
+logger = logging.getLogger(__name__)
 
 MASTERCHAIN_INDEX = -1
 MASTERCHAIN_SHARD = -9223372036854775808
@@ -35,7 +45,6 @@ def get_engine(settings: Settings):
                                  pool_timeout=128,
                                  echo=False)
     return engine
-
 engine = get_engine(settings)
 SessionMaker = sessionmaker(bind=engine, class_=AsyncSession)
 
@@ -74,6 +83,34 @@ def init_database(create=False):
 AccountStatus = Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status')
 
 
+def convert_numerics_to_strings(data, exclusions):
+    """
+    Recursively converts numeric values to strings in a dictionary, excluding specific top-level keys.
+
+    :param data: The dictionary to process.
+    :param exclusions: A set of top-level keys to exclude from processing.
+    :return: The processed dictionary with numeric values converted to strings.
+    """
+
+    def convert(value):
+        # Helper function to recursively process values
+        if isinstance(value, dict):
+            return {k: convert(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [convert(item) for item in value]
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            return str(value)
+        return value
+
+    # Process the dictionary, applying exclusions
+    result = {}
+    for key, value in data.items():
+        if key in exclusions:
+            result[key] = value  # Exclude these keys
+        else:
+            result[key] = convert(value)
+
+    return result
 
 # classes
 class ShardBlock(Base):
@@ -157,7 +194,7 @@ class Trace(Base):
     nodes_: int = Column(BigInteger)
     classification_state = Column(Enum('unclassified', 'failed', 'ok', 'broken', name='trace_classification_state'))
 
-    edges: List[TraceEdge] = relationship("TraceEdge", back_populates="trace", uselist=True, viewonly=True)
+    # edges: List[TraceEdge] = relationship("TraceEdge", back_populates="trace", uselist=True, viewonly=True)
     transactions: List["Transaction"] = relationship("Transaction",
                                                      foreign_keys=[trace_id],
                                                      primaryjoin='Trace.trace_id == Transaction.trace_id',
@@ -174,20 +211,24 @@ class TraceEdge(Base):
     incomplete: bool = Column(Boolean)
     broken: bool = Column(Boolean)
 
-    trace: "Trace" = relationship("Trace", back_populates="edges", viewonly=True)
+    # trace: "Trace" = relationship("Trace", back_populates="edges", viewonly=True)
 
 class ActionAccount(Base):
     __tablename__ = 'action_accounts'
     action_id: str = Column(String, primary_key=True)
     trace_id: str = Column(String, primary_key=True)
     account: str = Column(String(70), primary_key=True)
+    trace_end_lt: int = Column(Numeric)
+    action_end_lt: int = Column(Numeric)
+    trace_end_utime: int = Column(Numeric)
+    action_end_utime: int = Column(Numeric)
 
 class Action(Base):
     __tablename__ = 'actions'
 
-    action_id: str = Column(String, primary_key=True)
+    trace_id: str = Column(String(44), nullable=False, primary_key=True)
+    action_id: str = Column(String, nullable=False, primary_key=True)
     type: str = Column(String())
-    trace_id: str = Column(String(44), ForeignKey('traces.trace_id'), nullable=False, primary_key=True)
     tx_hashes: list[str] = Column(ARRAY(String()))
     value: int | None = Column(Numeric)
     amount: int | None = Column(Numeric)
@@ -303,6 +344,8 @@ class Action(Base):
         Column('dex_jetton_wallet_1', String),
         Column('dex_jetton_wallet_2', String),
         Column("lp_tokens_burnt", Numeric),
+        Column('dex_wallet_1', String),
+        Column('dex_wallet_2', String)
     ]))
     jvault_claim_data = Column(CompositeType("jvault_claim_details", [
         Column("claimed_jettons", ARRAY(String())),
@@ -344,11 +387,16 @@ class Action(Base):
     staking_data = Column(CompositeType("staking_details", [
         Column("provider", String),
         Column("ts_nft", String),
+        Column("tokens_burnt", Numeric)
     ]))
-    extended_tx_hashes: list[str] = Column(ARRAY(String()))
-    accounts: list[str | None]
+    trace_end_lt: int = Column(Numeric)
+    trace_end_utime: int = Column(Numeric)
+    trace_external_hash: str = Column(String)
+    mc_seqno_end: int = Column(Numeric)
+    trace_mc_seqno_end: int = Column(Numeric)
+    value_extra_currencies: dict = Column(JSONB)
 
-    def __init__(self, **kwargs): ...
+    _accounts: list[str]
 
     def __repr__(self):
         full_repr = ""
@@ -360,9 +408,22 @@ class Action(Base):
 
     def get_action_accounts(self):
         accounts = []
-        for account in self.accounts:
-            accounts.append(ActionAccount(action_id=self.action_id, trace_id=self.trace_id, account=account))
+        for account in self._accounts:
+            accounts.append(ActionAccount(action_id=self.action_id,
+                                          trace_id=self.trace_id,
+                                          account=account,
+                                          action_end_lt=self.end_lt,
+                                          trace_end_lt=self.trace_end_lt,
+                                          trace_end_utime=self.trace_end_utime,
+                                          action_end_utime=self.end_utime))
         return accounts
+
+
+    def to_dict(self):
+        r = self.__dict__.copy()
+        r.pop('_sa_instance_state')
+
+        return convert_numerics_to_strings(r, {'start_lt', 'end_lt', 'start_utime', 'end_utime', 'opcode'})
 
 class Transaction(Base):
     __tablename__ = 'transactions'
@@ -499,6 +560,7 @@ class Message(Base):
     import_fee: int = Column(BigInteger)
     body_hash: str = Column(String(44))
     init_state_hash: Optional[str] = Column(String(44), nullable=True)
+    value_extra_currencies: dict = Column(JSONB, nullable=True)
 
     transaction = relationship("Transaction",
                                viewonly=True,

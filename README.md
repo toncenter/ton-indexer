@@ -13,7 +13,7 @@ TON node stores data in a key-value database RocksDB.  While RocksDB excels in s
 
 TON Indexer stack consists of:
 1. `postgres`: PostgreSQL server to store indexed data and perform queries.
-2. `index-api`: FastAPI server with convenient endpoints to access the database.
+2. `index-api`: [Fiber](https://github.com/gofiber/fiber) server with convenient endpoints to access the database.
 3. `event-classifier`: trace classification service.
 4. `index-worker`: TON Index worker to read and parse data from TON node database. This service must be run on the machine with a working TON Node.
 
@@ -60,7 +60,7 @@ Do the following steps to setup TON Indexer:
 
 ## Swagger
 
-To test API, built-in swagger can be used. It is available after running `docker compose` at `localhost:8081`
+To test API, built-in swagger can be used. It is available after running `docker compose` at `localhost:8081/api/v3`
 
 # FAQ
 
@@ -76,3 +76,12 @@ To test API, built-in swagger can be used. It is available after running `docker
   * Build new image of worker: `docker compose build index-worker`
 * Run new version: `docker compose up -d postgres event-classifier event-cache index-api`
   * Run new version of worker: `docker compose up -d index-worker`
+
+# LICENSE
+
+TON Indexer is licensed under the **Server Side Public License v1 (SSPL)**.
+
+You are free to use, modify, and redistribute this project under the SSPL terms. If you plan to offer it as a paid service, you must comply with SSPL’s requirement  
+to open-source all infrastructure code used to host the service.
+
+To use the software **without** open-sourcing your infrastructure, please [contact us](https://t.me/toncenter_support) for a commercial license.

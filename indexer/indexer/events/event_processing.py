@@ -7,11 +7,12 @@ from sqlalchemy.orm import sessionmaker
 
 from indexer.core.database import Trace, engine
 from indexer.events.blocks.auction import AuctionBidMatcher
-from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock, ContractDeploy
+from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock, ContractDeploy, TickTockBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
-from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher, JettonMintBlockMatcher
+from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher, JettonMintBlockMatcher, \
+    PTonTransferMatcher
 from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, DedustWithdrawBlockMatcher, \
     post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher
 from indexer.events.blocks.messages import TonTransferMessage
@@ -34,7 +35,7 @@ def init_block(node: EventNode) -> Block:
     is_ton_transfer = (node.get_opcode() == 0 or node.get_opcode() is None or
                        node.get_opcode() == TonTransferMessage.encrypted_opcode)
     if node.is_tick_tock:
-        block = Block('tick_tock', [node], {'account': AccountId(node.tick_tock_tx.account)})
+        block = TickTockBlock(node)
     elif is_ton_transfer and node.message.destination is not None and node.message.source is not None:
         block = TonTransferBlock(node)
     else:
@@ -44,14 +45,16 @@ def init_block(node: EventNode) -> Block:
     return block
 
 async def unwind_deployments(blocks: list[Block]) -> list[Block]:
+    visited = set()
     for block in blocks:
         queue = block.children_blocks.copy()
         while len(queue) > 0:
             child = queue.pop(0)
-            if isinstance(child, ContractDeploy):
+            if isinstance(child, ContractDeploy) and child not in visited:
                 blocks.append(child)
             else:
                 queue.extend(child.children_blocks)
+            visited.add(child)
     return blocks
 
 matchers = [
@@ -59,13 +62,14 @@ matchers = [
     TONStakersDelayedWithdrawalMatcher(),
     DedustDepositBlockMatcher(),
     DedustDepositFirstAssetBlockMatcher(),
-    DedustWithdrawBlockMatcher(),
     TONStakersDepositMatcher(),
     TONStakersWithdrawMatcher(),
     NominatorPoolDepositMatcher(),
     NominatorPoolWithdrawRequestMatcher(),
     NominatorPoolWithdrawMatcher(),
     JettonTransferBlockMatcher(),
+    PTonTransferMatcher(),
+    DedustWithdrawBlockMatcher(),
     JettonBurnBlockMatcher(),
     DedustSwapBlockMatcher(),
     StonfiSwapBlockMatcher(),

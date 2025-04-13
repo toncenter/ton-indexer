@@ -49,8 +49,8 @@ class AuctionBidMatcher(BlockMatcher):
                 data['nft_item_index'] = nft_item.index
                 data['nft_collection'] = AccountId(nft_item.collection_address)
             bid_block.data = data
-        elif 'NFTItem' in interfaces and _is_teleitem(interfaces['NFTItem']):
-            nft_data = interfaces['NFTItem']
+        elif 'NftItem' in interfaces and _is_teleitem(interfaces['NftItem']):
+            nft_data = interfaces['NftItem']
             bid_block.data = {
                 'amount': Amount(block.event_nodes[0].message.value),
                 'bidder': AccountId(block.event_nodes[0].message.source),

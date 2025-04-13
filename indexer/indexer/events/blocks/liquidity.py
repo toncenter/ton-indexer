@@ -28,7 +28,7 @@ from indexer.events.blocks.messages.liquidity import (
 from indexer.events.blocks.messages.swaps import (DedustPayout,
                                                   DedustPayoutFromPool)
 from indexer.events.blocks.utils import AccountId, Amount, Asset
-from indexer.events.blocks.utils.block_utils import find_call_contract
+from indexer.events.blocks.utils.block_utils import find_call_contract, find_call_contracts, get_labeled
 
 
 class DedustDepositLiquidity(Block):
@@ -384,8 +384,8 @@ class DedustWithdrawBlockMatcher(BlockMatcher):
                         opcode=DedustPayoutFromPool.opcode,
                         child_matcher=OrMatcher(
                             [
-                                ContractMatcher(opcode=DedustPayout.opcode),
-                                BlockTypeMatcher(block_type="jetton_transfer"),
+                                labeled('payout_1', ContractMatcher(opcode=DedustPayout.opcode)),
+                                labeled('payout_1', BlockTypeMatcher(block_type="jetton_transfer")),
                             ]
                         ),
                         optional=False,
@@ -394,8 +394,8 @@ class DedustWithdrawBlockMatcher(BlockMatcher):
                         opcode=DedustPayoutFromPool.opcode,
                         child_matcher=OrMatcher(
                             [
-                                ContractMatcher(opcode=DedustPayout.opcode),
-                                BlockTypeMatcher(block_type="jetton_transfer"),
+                                labeled('payout_2', ContractMatcher(opcode=DedustPayout.opcode)),
+                                labeled('payout_2', BlockTypeMatcher(block_type="jetton_transfer")),
                             ]
                         ),
                         optional=False,
@@ -424,55 +424,55 @@ class DedustWithdrawBlockMatcher(BlockMatcher):
 
         lp_asset = Asset(is_ton=False, jetton_address=lp_wallet_info.jetton)
 
-        payouts = burn_notify_call.next_blocks
+        payouts = [
+            get_labeled('payout_1', other_blocks, Block),
+            get_labeled('payout_2', other_blocks, Block)
+        ]
         assets = []
         amounts = []
         dex_wallets = []
         dex_vaults = []
         user_wallets = []
         for payout in payouts:
-            call_from_vault = payout.next_blocks[0]
+            call_from_vault = payout
+            payout_request = payout.previous_block
 
-            if not isinstance(call_from_vault, CallContractBlock):
-                return []
-
-            if call_from_vault.opcode == DedustPayout.opcode:
+            if isinstance(call_from_vault, CallContractBlock) and call_from_vault.opcode == DedustPayout.opcode:
                 asset = Asset(is_ton=True, jetton_address=None)
                 dex_wallets.append(None)
                 user_wallets.append(None)
-            elif call_from_vault.opcode == JettonTransfer.opcode:
-                dex_wallet = call_from_vault.get_message().destination
-                jw_info = await context.interface_repository.get().get_jetton_wallet(dex_wallet.upper())
-                if not jw_info: return []
+                dex_vaults.append(AccountId(call_from_vault.get_message().source))
+            elif isinstance(call_from_vault, JettonTransferBlock):
+                dex_wallet = call_from_vault.data['sender_wallet']
                 dex_wallets.append(dex_wallet)
-                asset = Asset(is_ton=False, jetton_address=jw_info.jetton)
-                internal_transfer = call_from_vault.next_blocks[0].get_message()
-                user_wallets.append(internal_transfer.destination)
+                asset = call_from_vault.data['asset']
+                user_wallets.append(call_from_vault.data['receiver_wallet'])
+                dex_vaults.append(call_from_vault.data['sender'])
+
             else:
                 # unexpected opcode
                 return []
 
-            payoutData = DedustPayoutFromPool(payout.get_body())
-            amounts.append(payoutData.amount)
+            payout_data = DedustPayoutFromPool(payout_request.get_body())
+            amounts.append(payout_data.amount)
             assets.append(asset)
-            dex_vaults.append(call_from_vault.get_message().source)
 
         new_block = Block('dex_withdraw_liquidity', [])
-        new_block.merge_blocks(other_blocks)
+        new_block.merge_blocks([block] + other_blocks)
         new_block.data = {
             'dex': 'dedust',
             'sender': AccountId(sender),
             'sender_wallet': AccountId(sender_wallet),
             'pool': AccountId(pool),
             'asset': lp_asset,
-            'lp_tokens_burnt': burn_data.amount,
+            'lp_tokens_burnt': Amount(burn_data.amount),
             'is_refund': False,
-            'amount1_out': amounts[0],
+            'amount1_out': Amount(amounts[0]),
             'asset1_out': assets[0],
             'dex_wallet_1': dex_vaults[0],
             'dex_jetton_wallet_1': dex_wallets[0],
             'wallet1': user_wallets[0],
-            'amount2_out': amounts[1],
+            'amount2_out': Amount(amounts[1]),
             'asset2_out': assets[1],
             'dex_wallet_2': dex_vaults[1],
             'dex_jetton_wallet_2': dex_wallets[1],

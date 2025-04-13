@@ -1,5 +1,3 @@
-version: "3.9"
-
 x-indexer-environment: &index-common
   POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
   POSTGRES_HOST:
@@ -21,7 +19,7 @@ x-index-api: &index-api
 x-index-worker: &index-worker
   TON_WORKER_FROM:
   TON_WORKER_DBROOT: /tondb
-  TON_WORKER_BINARY: ton-index-postgres-v2
+  TON_WORKER_BINARY: ton-index-postgres
   TON_WORKER_ADDITIONAL_ARGS:
   <<: *index-common
 
@@ -31,18 +29,21 @@ services:
     networks:
       - internal
     command: redis-server --maxclients 40000
+
   event-classifier:
+    image: toncenter/ton-indexer-classifier:${VERSION:-latest}
     build:
       context: indexer
       dockerfile: Dockerfile
     secrets:
       - postgres_password
-    command: python3 /app/event_classifier.py --pool-size ${TON_INDEXER_WORKERS:-8} --fetch-size 1000 --batch-size 100
+    command: --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 10000 --batch-size 1000 --expected-total 720000000
     environment: *index-api 
     networks:
       internal:
 
   index-api:
+    image: toncenter/ton-indexer-api:${VERSION:-latest}
     build:
       context: ton-index-go
       dockerfile: Dockerfile
@@ -58,22 +59,26 @@ services:
       internal:
 
   index-worker:
+    image: toncenter/ton-indexer-worker:${VERSION:-latest}
     build:
-      context: ton-index-cpp
+      context: ton-index-worker
       dockerfile: Dockerfile
     secrets:
       - postgres_password
     volumes:
       - ${TON_WORKER_DBROOT:-./}:/tondb
+      - ton_index_workdir:/ton_index_workdir
     environment: *index-worker
     networks:
       internal:
-    command: --from ${TON_WORKER_FROM:-1}
+    command: --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:-1}
     restart: unless-stopped
 
   postgres:
-    image: postgres:16
-    environment: *index-common
+    image: postgres:17
+    environment: 
+      <<: *index-common
+      POSTGRES_DB: ${POSTGRES_DBNAME}
     ports:
       - ${POSTGRES_PUBLISH_PORT:-5432}:5432
     secrets:
@@ -97,6 +102,8 @@ services:
 
 volumes:
   postgres_data:
+    external: false
+  ton_index_workdir:
     external: false
 
 networks:

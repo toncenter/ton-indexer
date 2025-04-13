@@ -1,0 +1,58 @@
+---
+stack_name: ton_index
+
+# api config. Adjust this
+pg_database: ton_index
+pg_readonly_user: readonly
+pg_readonly_password: REPLACEME
+
+pg_master_user: postgres
+pg_master_password: REPLACEME
+
+pendings_redis_password: REPLACEME
+
+# deploy config. Adjust this also
+build_path: "{{ playbook_dir }}/build"
+binary_path: /usr/local/bin
+systemd_service_path: /etc/systemd/system
+
+services:
+  api:
+    hosts_group: replica_nodes
+    service_user: root
+    service_group: root
+    binary_path: "ton-index-go/ton-index-go"
+    service_name: api
+    prepare_command: swag init
+    additional_args: -bind ":4100"
+  metadata_fetcher:
+    hosts_group: master_nodes
+    service_user: root
+    service_group: root
+    binary_path: "ton-metadata-fetcher/ton-metadata-fetcher"
+    prepare_command:
+    service_name: metadata_fetcher
+    additional_args:
+  emulate_api:
+    service_name: emulate_api
+    additional_args: -prefork
+  trace_task_emulator:
+    service_name: trace_task_emulator
+    additional_args: --working-dir /var/ton-trace-task-emulator --db /var/ton-work/db --threads 16 2>&1
+    workdir: "{{ deploy_path }}"
+  action_classifier:
+    service_name: action_classifier
+    additional_args: --emulated-trace-tasks --emulated-traces-redis-channel classifierchannel
+    environment: ton_indexer_redis_dsn=redis://localhost:6379
+  trace_emulator:
+    service_name: trace_emulator
+    additional_args: --working-dir /var/ton-trace-emulator --db /var/ton-work/db --threads 16 --redis "redis://{{ pendings_redis_password }}@localhost:6379" --addr "{{ host_addr }}" --global-config /var/ton-work/etc/global.config.json 2>&1
+    workdir: "{{ deploy_path }}"
+  pendings_action_classifier:
+    service_name: pendings_action_classifier
+    additional_args: --emulated-traces --batch-time-window=0.2
+    environment: "ton_indexer_redis_dsn=redis://:{{ pendings_redis_password }}@localhost:6379"
+  trace_ttl_tracker:
+    service_name: trace_ttl_tracker
+    additional_args: --ttl 1m "--redis-dsn=redis://:{{ pendings_redis_password }}@localhost:6379" --synthetic-ttl=30s --completed-ttl=30s --enable-cleanup --cleanup-interval=1h
+

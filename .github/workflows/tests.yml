@@ -1,0 +1,49 @@
+name: Test pull request
+
+on:
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+      with:      
+        submodules: 'recursive'
+    
+    - uses: actions/setup-go@v5
+      with:
+        go-version: '>=1.23.0'
+
+    - name: Install system libraries
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential git cmake ninja-build zlib1g-dev libsecp256k1-dev libmicrohttpd-dev libsodium-dev liblz4-dev libjemalloc-dev libhiredis-dev
+        wget https://apt.llvm.org/llvm.sh
+        chmod +x llvm.sh
+        sudo ./llvm.sh 16 all
+
+    - name: Setup cmake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: '3.x'
+
+    - name: Configure CMake
+      run: cmake -B ${{github.workspace}}/build
+
+    - name: Build
+      # Build your program with the given configuration
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel $(nproc)
+
+    - name: Test
+      working-directory: ${{github.workspace}}/build
+      run: ./ton-index-worker/tondb-scanner/test-tondb

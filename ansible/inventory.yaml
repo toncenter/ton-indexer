@@ -1,0 +1,36 @@
+all:
+  vars:
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+  hosts:
+    ubuntu-01:
+      ansible_host: 192.168.66.1
+      pg_master: master-01
+    ubuntu-02:
+      ansible_host: 192.168.66.2
+      pg_master: master-01
+    ubuntu-03:
+      ansible_host: 192.168.66.3
+      pg_master: master-01
+    master-01:
+      ansible_host: 192.168.69.1
+  children:
+    ton_index__master_nodes:
+      hosts:
+        master-01:
+    ton_index__replica_nodes:
+      hosts:
+        ubuntu-01:
+          pg_master: master-01.example.com:5432
+        ubuntu-02:
+          pg_master: master-01.example.com:5432
+        ubuntu-03:
+          pg_master: master-01.example.com:5432
+    ton_index__emulation:
+      hosts:
+        emulation-01:
+    ton_index__pendings:
+      hosts:
+        pendings-01:
+          host_addr: 1.2.3.4:9876 # public ip of this machine with port to be used for ton-trace-emulator
+        

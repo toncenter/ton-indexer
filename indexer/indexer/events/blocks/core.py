@@ -18,7 +18,7 @@ def _get_direction_for_block(block: Block) -> int:
 def _ensure_earliest_common_block(blocks: list[Block]) -> Block | None:
     """Ensures that all blocks have a common block in their previous blocks, and returns it."""
     # find block with min min_lt
-    blocks = sorted(blocks, key=lambda b: (b.min_lt, _get_direction_for_block(b)))
+    blocks = sorted(blocks, key=lambda b: (b.min_lt_without_initiating_tx, _get_direction_for_block(b)))
     earliest_node_in_block = blocks[0]
     connected = [earliest_node_in_block]
     for block in blocks:
@@ -109,6 +109,7 @@ class Block:
     min_utime: int
     max_utime: int
     max_lt: int
+    min_lt_without_initiating_tx: int
     type: str
     value_flow: AccountValueFlow
     transient: bool
@@ -128,10 +129,11 @@ class Block:
         self.initiating_event_node = None
         self.value_flow = AccountValueFlow()
         if len(nodes) != 0:
-            self.min_lt = nodes[0].message.transaction.lt
+            self.min_lt = nodes[0].get_lt()
             self.max_lt = nodes[0].message.transaction.lt
-            self.min_utime = nodes[0].message.transaction.now
+            self.min_utime = nodes[0].get_utime()
             self.max_utime = nodes[0].message.transaction.now
+            self.min_lt_without_initiating_tx = nodes[0].message.transaction.lt
             self._find_contract_deployments()
         if len(nodes) == 1:
             parent = nodes[0].parent
@@ -142,16 +144,15 @@ class Block:
             self.max_lt = 0
             self.min_utime = 0
             self.max_utime = 0
+            self.min_lt_without_initiating_tx = 0
 
     def calculate_min_max_lt(self):
-        self.min_lt = min(n.message.transaction.lt for n in self.event_nodes)
-        self.min_utime = min(n.message.transaction.now for n in self.event_nodes)
+        self.min_lt = min(n.get_lt() for n in self.event_nodes)
+        self.min_lt_without_initiating_tx = self.min_lt
+        self.min_utime = min(n.get_utime() for n in self.event_nodes)
+
         self.max_lt = max(n.message.transaction.lt for n in self.event_nodes)
         self.max_utime = max(n.message.transaction.now for n in self.event_nodes)
-        if (self.initiating_event_node is not None and self.initiating_event_node.message is not None
-                and self.initiating_event_node.message.transaction is not None):
-            self.min_lt = min(self.min_lt, self.initiating_event_node.message.transaction.lt)
-            self.min_utime = min(self.min_utime, self.initiating_event_node.message.transaction.now)
 
     def iter_prev(self, predicate: Callable[[Block], bool]) -> Iterable[Block]:
         """Iterates over all previous blocks that match predicate, starting from the closest one."""
@@ -264,8 +265,11 @@ class Block:
     def __repr__(self):
         return f"!{self.btype}:={self.data}"
 
-    def bfs_iter(self):
-        queue = [self]
+    def bfs_iter(self, include_self=True):
+        if include_self:
+            queue = [self]
+        else:
+            queue = [n for n in self.next_blocks]
         while len(queue) > 0:
             cur = queue.pop(0)
             yield cur

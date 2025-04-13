@@ -1,0 +1,24 @@
+[Unit]
+Description = "{{ service.service_name }} service"
+After = network.target
+
+[Service]
+Type = simple
+Restart = always
+RestartSec = 5
+ExecStart={{ start_cmd }}
+ExecStopPost = /bin/echo "{{ service.service_name }} service down"
+User = {{ service.service_user | default("root") }}
+Group = {{ service.service_group | default("root") }}
+{% if service.environment is defined %}
+Environment="{{ service.environment }}"
+{% endif %}
+{% if service.workdir is defined %}
+WorkingDirector={{ service.workdir }}
+{% endif %}
+LimitNOFILE = infinity
+LimitNPROC = infinity
+LimitMEMLOCK = infinity
+
+[Install]
+WantedBy = multi-user.target

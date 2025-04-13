@@ -9,10 +9,13 @@ if [ ! -z "$POSTGRES_PASSWORD_FILE" ]; then
         exit 1
     fi
     POSTGRES_PASSWORD=$(cat ${POSTGRES_PASSWORD_FILE})
+elif [ ! -z "$POSTGRES_PASSWORD" ]; then
+    echo "Postgres password specified"
 else
     echo "Postgres password file not specified!"
     exit 1
 fi
+
 export TQDM_NCOLS=0
 export TQDM_POSITION=-1
 if [ -z "$POSTGRES_PASSWORD" ]; then
@@ -23,5 +26,6 @@ else
     export TON_INDEXER_PG_DSN="${POSTGRES_DIALECT:-postgresql+asyncpg}://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DBNAME}"
 fi
 printenv
+ls -la
 
-exec "$@"
+/app/event_classifier.py $@

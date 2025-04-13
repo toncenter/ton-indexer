@@ -71,6 +71,7 @@ class TONStakersWithdrawData:
     stake_holder: AccountId
     burnt_nft: AccountId | None
     pool: AccountId | None
+    tokens_burnt: Amount | None
     amount: Amount
 
 
@@ -193,12 +194,14 @@ class TONStakersWithdrawMatcher(BlockMatcher):
         failed = block.failed
 
         if immediate_withdrawal is not None:
+            value = immediate_withdrawal.get_message().value - immediate_withdrawal.previous_block.get_message().value
             new_block = TONStakersWithdrawBlock(
                 data=TONStakersWithdrawData(
                     stake_holder=AccountId(msg.source),
                     burnt_nft=None,
                     pool=AccountId(request.get_message().destination),
-                    amount=Amount(burn_request_data.amount),
+                    tokens_burnt=Amount(burn_request_data.amount),
+                    amount=Amount(value)
                 )
             )
         else:
@@ -216,7 +219,7 @@ class TONStakersWithdrawMatcher(BlockMatcher):
                     tsTON_wallet=AccountId(msg.destination),
                     pool=AccountId(request.get_message().destination),
                     tokens_burnt=Amount(burn_request_data.amount),
-                    minted_nft=minted_nft
+                    minted_nft=minted_nft,
                 )
             )
         new_block.failed = failed
@@ -245,12 +248,39 @@ class TONStakersDelayedWithdrawalMatcher(BlockMatcher):
             data=TONStakersWithdrawData(
                 stake_holder=AccountId(notification_msg.owner),
                 burnt_nft=AccountId(notification.get_message().source),
-                pool=None,
-                amount=Amount(notification_msg.amount)
+                pool=self._try_find_pool_addr(notification),
+                amount=Amount(notification_msg.amount),
+                tokens_burnt=None
             )
         )
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
+
+    def _try_find_pool_addr(self, block: Block) -> AccountId | None:
+        try:
+            supported_opcodes = {
+                TONStakersNftBurnNotification.opcode,
+                TONStakersNftBurn.opcode,
+                TONStakersDistributedAsset.opcode
+            }
+
+            current_block = block
+            while True:
+                current_block = current_block.previous_block
+                if current_block is None:
+                    break
+                # if it is start asset distribution call
+                if isinstance(current_block, CallContractBlock) and current_block.opcode == 0x1140a64f:
+                    return AccountId(current_block.get_message().source)
+                if isinstance(current_block, TONStakersWithdrawBlock):
+                    return current_block.data.pool
+                if isinstance(current_block, CallContractBlock) and current_block.opcode in supported_opcodes:
+                    continue
+                break
+            return None
+        except Exception as e:
+            return None
+
 
 class NominatorPoolDepositMatcher(BlockMatcher):
     def __init__(self):

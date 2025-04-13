@@ -7,6 +7,8 @@ MIGRATE=0
 BUILD=1
 DEPLOY_API=0
 DEPLOY_EVENTS=0
+DEPLOY_IMGPROXY=0
+UPDATE_POOLS=0
 
 BUILD_ARGS=
 POSITIONAL_ARGS=()
@@ -52,6 +54,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --events)
             DEPLOY_EVENTS=1
+            shift
+            ;;
+        --imgproxy)
+            DEPLOY_IMGPROXY=1
+            shift
+            ;;
+        --update-pools)
+            UPDATE_POOLS=1
             shift
             ;;
         -*|--*)
@@ -105,8 +115,13 @@ fi
 
 # build image
 if [[ $BUILD -eq "1" ]]; then
-    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml build $BUILD_ARGS
-    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml push
+    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml -f docker-compose.imgproxy.yaml build $BUILD_ARGS
+    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml -f docker-compose.imgproxy.yaml push
+fi
+
+if [[ $UPDATE_POOLS -eq "1" ]]; then
+    echo "updating DeDust pools"
+    curl -s https://api.dedust.io/v2/pools -o indexer/files/dedust_pools.json
 fi
 
 if [[ $MIGRATE -eq "1" ]]; then
@@ -122,4 +137,9 @@ fi
 if [[ $DEPLOY_EVENTS -eq "1" ]]; then
     echo "Deploying event classifier"
     docker stack deploy --with-registry-auth -c docker-compose.events.yaml ${STACK_NAME}
+fi
+
+if [[ $DEPLOY_IMGPROXY -eq "1" ]]; then
+    echo "Deploying imgproxy"
+    docker stack deploy --with-registry-auth -c docker-compose.imgproxy.yaml ${STACK_NAME}
 fi

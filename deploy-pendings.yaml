@@ -1,0 +1,151 @@
+---
+- name: Prepare to build
+  hosts: localhost
+  tasks:
+    - name: Install requirements
+      ansible.builtin.apt:
+        name:
+          - build-essential
+          - cmake
+          - clang
+          - openssl
+          - libssl-dev
+          - zlib1g-dev
+          - gperf
+          - wget
+          - git
+          - curl
+          - liblz4-dev
+          - pkg-config
+          - libsecp256k1-dev
+          - libsodium-dev
+          - libhiredis-dev
+          - python3-dev
+          - libpq-dev
+          - automake
+          - libjemalloc-dev
+          - lsb-release
+          - software-properties-common
+          - gnupg
+          - autoconf
+          - libtool
+          - libmicrohttpd-dev
+          - ccache
+        state: present
+      become: true
+
+- name: Build binaries
+  hosts: localhost
+  tasks:
+    - name: Remove CMakeCache.txt
+      ansible.builtin.file:
+        path: "{{ build_path }}/CMakeCache.txt"
+        state: absent
+    - name: Build ton-trace-emulator and ton-trace-ttl-tracker 
+      ansible.builtin.shell: |
+          mkdir -p {{ build_path }}
+          cmake -DCMAKE_BUILD_TYPE=Release -S . -B {{ build_path }} > {{ build_path }}/prepare.log 2>&1
+          cmake --build {{ build_path }} --parallel $(nproc) --target ton-trace-emulator ton-trace-ttl-tracker > {{ build_path }}/build.log 2>&1
+      changed_when: true
+      vars:
+        service: "{{ services[item] }}"
+      failed_when: build_result.rc != 0
+      register: build_result
+
+- name: Deploy services
+  hosts: "{{ stack_name }}__pendings"
+  become: true
+  tasks:
+    - name: Ensure binary directory
+      ansible.builtin.file:
+        path: "{{ deploy_path }}"
+        recurse: true
+        state: directory
+
+    - name: Install requirements
+      ansible.builtin.apt:
+        name:
+          - python3-pip
+          - python3-venv
+          - dnsutils
+          - libpq-dev
+          - libsecp256k1-dev
+          - libsodium-dev
+          - libhiredis-dev
+        state: present
+      become: true
+
+    - name: Copy binaries
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "0777"
+        force: true
+      with_items:
+        - src: "{{ build_path }}/ton-index-worker/ton-trace-emulator/ton-trace-emulator"
+          dest: "{{ deploy_path }}/{{ stack_name }}__trace_emulator"
+        - src: "{{ build_path }}/ton-trace-ttl-tracker/ton-trace-ttl-tracker"
+          dest: "{{ deploy_path }}/{{ stack_name }}__trace_ttl_tracker"
+    
+    - name: Update ldconfig
+      ansible.builtin.shell: ldconfig
+
+    - name: Copy python module
+      ansible.builtin.copy:
+        src: indexer
+        dest: "{{ deploy_path }}"
+
+    - name: Setup venv
+      ansible.builtin.pip:
+        requirements: "{{ deploy_path }}/indexer/requirements.txt"
+        virtualenv: "{{ deploy_path }}/venv"
+        virtualenv_command: "python3 -m venv"
+        extra_args: "--no-cache-dir"
+    
+    - name: Setup trace_emulator and trace_ttl_tracker service
+      ansible.builtin.template:
+        src: "ansible/systemd.service.j2"
+        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+        mode: "0644"
+        force: true
+      vars:
+        service: "{{ services[item] }}"
+        service_name: "{{ stack_name }}__{{ item }}"
+        start_cmd: "{{ deploy_path }}/{{ service_name }} {{ service.additional_args }}"
+      with_items:
+        - trace_emulator
+        - trace_ttl_tracker
+    
+    - name: Setup action classifier service
+      ansible.builtin.template:
+        src: "ansible/systemd.service.j2"
+        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+        mode: "0644"
+        force: true
+      vars:
+        service: "{{ services.pendings_action_classifier }}"
+        service_name: "{{ stack_name }}__{{ service.service_name }}"
+        start_cmd: "{{ deploy_path }}/venv/bin/python3 {{ deploy_path }}/indexer/event_classifier.py {{ service.additional_args }}"
+
+    - name: Install and configure Redis
+      ansible.builtin.include_role:
+        name: geerlingguy.redis
+      vars:
+        redis_bind_interface: '0.0.0.0'
+        redis_requirepass: "{{ pendings_redis_password }}"
+
+    - name: Restart and enable pendings services
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        enabled: true
+        force: true
+        daemon_reload: true
+      vars:
+        service_name: "{{ stack_name }}__{{ item }}"
+      throttle: 1
+      become: true
+      with_items:
+       - trace_emulator
+       - pendings_action_classifier
+       - trace_ttl_tracker
