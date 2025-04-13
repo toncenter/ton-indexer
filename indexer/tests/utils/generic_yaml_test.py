@@ -159,7 +159,8 @@ async def run_test_case(case_name: str, case_data: Dict, traces_dir: Path):
 
     # Check expected actions
     if "expected-actions" in case_data:
-        actions, _ = serialize_blocks(result_blocks, trace.trace_id)
+        serialize_child_actions = case_data.get("serialize-child-actions", False)
+        actions, _ = serialize_blocks(result_blocks, trace.trace_id, serialize_child_actions=serialize_child_actions)
         for expected_action in case_data["expected-actions"]:
             action_type = expected_action.get("type")
             assert action_type, f"Missing action type in expected-actions for case {case_name}"
