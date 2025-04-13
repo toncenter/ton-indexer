@@ -8,20 +8,24 @@ from indexer.core.database import Action, Trace
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock, DnsRenewBlock
+from indexer.events.blocks.evaa import EvaaSupplyBlock, EvaaWithdrawBlock, EvaaLiquidateBlock
 from indexer.events.blocks.jettons import (
     JettonMintBlock,
 )
 from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
+from indexer.events.blocks.jvault import JVaultStakeBlock, JVaultUnstakeBlock, JVaultClaimBlock
 from indexer.events.blocks.liquidity import (
     DedustDepositLiquidityPartial,
     DedustDepositLiquidity,
 )
-from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
+from indexer.events.blocks.multisig import MultisigCreateOrderBlock, MultisigApproveBlock, MultisigExecuteBlock
+from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock, NftDiscoveryBlock
 from indexer.events.blocks.staking import TONStakersDepositBlock, TONStakersWithdrawRequestBlock, \
     TONStakersWithdrawBlock, NominatorPoolWithdrawRequestBlock, NominatorPoolDepositBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
+from indexer.events.blocks.vesting import VestingSendMessageBlock, VestingAddWhiteListBlock
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +152,14 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'response_destination': block.data['response_destination'].as_str() if block.data['response_destination'] else None,
     }
 
+def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):
+    action.source = block.data.sender.as_str()
+    action.destination = block.data.nft.as_str()
+    action.nft_discovery_data = {
+        "query_id": block.data.query_id,
+        "collection_address": block.data.result_collection.as_str(),
+        "nft_item_index": block.data.result_index,
+    }
 
 def _fill_nft_mint_action(block: NftMintBlock, action: Action):
     if block.data["source"]:
@@ -418,6 +430,137 @@ def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawReq
 def _fill_tick_tock_action(block: Block, action: Action):
     action.source = _addr(block.data['account'])
 
+def _fill_evaa_supply_action(block: EvaaSupplyBlock, action: Action):
+    action.source = str(block.data.sender)
+    action.destination = str(block.data.recipient)
+    action.destination_secondary = str(block.data.recipient_contract)
+    action.amount = block.data.amount
+    action.asset = str(block.data.asset_id) if not block.data.is_ton else None
+    action.success = block.data.is_success
+    action.evaa_supply_data = {
+        "is_ton": block.data.is_ton,
+        "sender_jetton_wallet": str(block.data.sender_jetton_wallet) if block.data.sender_jetton_wallet else None,
+        "recipient_jetton_wallet": str(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
+        "master_jetton_wallet": str(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None
+    }
+
+
+def _fill_evaa_withdraw_action(block: EvaaWithdrawBlock, action: Action):
+    action.source = str(block.data.owner)
+    action.destination = str(block.data.recipient)
+    action.destination_secondary = str(block.data.owner_contract)
+    action.amount = block.data.amount
+    action.asset = str(block.data.asset_id) if not block.data.is_ton else None
+    action.success = block.data.is_success
+    action.evaa_withdraw_data = {
+        "is_ton": block.data.is_ton,
+        "recipient_jetton_wallet": str(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
+        "master_jetton_wallet": str(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None,
+        "fail_reason": block.data.fail_reason
+    }
+
+
+def _fill_evaa_liquidate_action(block: EvaaLiquidateBlock, action: Action):
+    action.source = str(block.data.liquidator)
+    action.destination = str(block.data.borrower)
+    action.destination_secondary = str(block.data.borrower_contract) if block.data.borrower_contract else None
+    action.asset = str(block.data.collateral_asset_id)
+    action.asset2 = str(block.data.debt_asset_id)
+    action.amount = block.data.collateral_amount
+    action.success = block.data.is_success
+    action.evaa_liquidate_data = {
+        "fail_reason": block.data.fail_reason,
+        "debt_amount": block.data.debt_amount
+    }
+def _fill_jvault_stake(block: JVaultStakeBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.stake_wallet)
+    action.destination = _addr(block.data.staking_pool)
+    action.amount = block.data.staked_amount
+    action.jvault_stake_data = {
+        "period": block.data.period,
+        "minted_stake_jettons": block.data.minted_stake_jettons,
+    }
+
+
+def _fill_jvault_unstake(block: JVaultUnstakeBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.stake_wallet)
+    action.destination = _addr(block.data.staking_pool)
+    action.amount = block.data.unstaked_amount
+
+
+def _fill_jvault_claim(block: JVaultClaimBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.stake_wallet)
+    action.destination = _addr(block.data.staking_pool)
+    action.jvault_claim_data = {
+        "claimed_jettons": list(map(_addr, block.data.claimed_jettons)),
+        "claimed_amounts": block.data.claimed_amounts,
+    }
+
+
+def _fill_multisig_create_order(block: MultisigCreateOrderBlock, action: Action):
+    action.source = _addr(block.data.created_by)
+    action.destination = _addr(block.data.multisig)
+    action.destination_secondary = _addr(block.data.order_contract_address)
+    action.multisig_create_order_data = {
+        "query_id": block.data.query_id,
+        "order_seqno": block.data.order_seqno,
+        "is_created_by_signer": block.data.is_created_by_signer,
+        "is_signed_by_creator": block.data.creator_approved,
+        "creator_index": block.data.creator_index,
+        "expiration_date": block.data.expiration_date,
+        "order_boc": block.data.order_boc_str,
+    }
+
+
+def _fill_multisig_approve(block: MultisigApproveBlock, action: Action):
+    action.source = _addr(block.data.signer)
+    action.destination = _addr(block.data.order)
+    action.success = block.data.success
+    action.multisig_approve_data = {
+        "signer_index": block.data.signer_index,
+        "exit_code": block.data.exit_code,
+    }
+
+
+def _fill_multisig_execute(block: MultisigExecuteBlock, action: Action):
+    action.source = _addr(block.data.order_contract_address)
+    action.destination = _addr(block.data.multisig)
+    action.success = block.data.success
+    action.multisig_execute_data = {
+        "query_id": block.data.query_id,
+        "order_seqno": block.data.order_seqno,
+        "expiration_date": block.data.expiration_date,
+        "approvals_num": block.data.approvals_num,
+        "signers_hash": block.data.signers_hash_str,
+        "order_boc": block.data.order_boc_str,
+    }
+
+
+def _fill_vesting_send_message(block: VestingSendMessageBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.vesting)
+    action.destination_secondary = _addr(
+        block.data.message_destination
+    )  # where the msg was sent to
+    action.amount = block.data.message_value.value  # the value of the msg
+    action.vesting_send_message_data = {
+        "query_id": block.data.query_id,
+        "message_boc": block.data.message_boc_str,
+    }
+
+
+def _fill_vesting_add_whitelist(block: VestingAddWhiteListBlock, action: Action):
+    action.source = _addr(block.data.adder)
+    action.destination = _addr(block.data.vesting)
+    action.vesting_add_whitelist_data = {
+        "query_id": block.data.query_id,
+        "accounts_added": list(map(_addr, block.data.accounts_added)),
+    }
+
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -475,6 +618,28 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_election_action(block, action)
         case 'auction_bid':
             _fill_auction_bid_action(block, action)
+        case 'jvault_unstake':
+            _fill_jvault_unstake(block, action)
+        case 'jvault_stake':
+            _fill_jvault_stake(block, action)
+        case 'jvault_claim':
+            _fill_jvault_claim(block, action)
+        case 'multisig_create_order':
+            _fill_multisig_create_order(block, action)
+        case 'multisig_approve':
+            _fill_multisig_approve(block, action)
+        case 'multisig_execute':
+            _fill_multisig_execute(block, action)
+        case 'evaa_supply':
+            _fill_evaa_supply_action(block, action)
+        case 'evaa_withdraw':
+            _fill_evaa_withdraw_action(block, action)
+        case 'evaa_liquidate':
+            _fill_evaa_liquidate_action(block, action)
+        case 'vesting_send_message':
+            _fill_vesting_send_message(block, action)
+        case 'vesting_add_whitelist':
+            _fill_vesting_add_whitelist(block, action)
         case 'tick_tock':
             _fill_tick_tock_action(block, action)
         case _:

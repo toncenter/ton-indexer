@@ -11,20 +11,26 @@ from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlo
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
+from indexer.events.blocks.evaa import EvaaSupplyBlockMatcher, EvaaLiquidateBlockMatcher, EvaaWithdrawBlockMatcher
 from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher, JettonMintBlockMatcher, \
     PTonTransferMatcher
-from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, DedustWithdrawBlockMatcher, \
+from indexer.events.blocks.jvault import JVaultStakeBlockMatcher, JVaultUnstakeBlockMatcher, JVaultClaimBlockMatcher
+from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, \
+    DedustWithdrawBlockMatcher, \
     post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher
 from indexer.events.blocks.messages import TonTransferMessage
-from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher
+from indexer.events.blocks.multisig import MultisigCreateOrderBlockMatcher, MultisigExecuteBlockMatcher, \
+    MultisigApproveBlockMatcher
+from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher, \
+    NftDiscoveryBlockMatcher
 from indexer.events.blocks.staking import TONStakersDepositMatcher, TONStakersWithdrawMatcher, \
     TONStakersDelayedWithdrawalMatcher, NominatorPoolDepositMatcher, NominatorPoolWithdrawRequestMatcher, \
     NominatorPoolWithdrawMatcher
 from indexer.events.blocks.subscriptions import SubscriptionBlockMatcher, UnsubscribeBlockMatcher
 from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher, StonfiV2SwapBlockMatcher
-from indexer.events.blocks.utils import AccountId
 from indexer.events.blocks.utils import NoMessageBodyException
 from indexer.events.blocks.utils import to_tree, EventNode
+from indexer.events.blocks.vesting import VestingSendMessageBlockMatcher, VestingAddWhiteListBlockMatcher
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
@@ -64,6 +70,11 @@ matchers = [
     DedustDepositFirstAssetBlockMatcher(),
     TONStakersDepositMatcher(),
     TONStakersWithdrawMatcher(),
+    MultisigCreateOrderBlockMatcher(),
+    MultisigApproveBlockMatcher(),
+    MultisigExecuteBlockMatcher(),
+    VestingSendMessageBlockMatcher(),
+    VestingAddWhiteListBlockMatcher(),
     NominatorPoolDepositMatcher(),
     NominatorPoolWithdrawRequestMatcher(),
     NominatorPoolWithdrawMatcher(),
@@ -76,6 +87,7 @@ matchers = [
     StonfiV2SwapBlockMatcher(),
     NftTransferBlockMatcher(),
     TelegramNftPurchaseBlockMatcher(),
+    NftDiscoveryBlockMatcher(),
     ChangeDnsRecordMatcher(),
     ElectionDepositStakeBlockMatcher(),
     ElectionRecoverStakeBlockMatcher(),
@@ -84,7 +96,13 @@ matchers = [
     AuctionBidMatcher(),
     JettonMintBlockMatcher(),
     StonfiV2ProvideLiquidityMatcher(),
-    StonfiV2WithdrawLiquidityMatcher()
+    StonfiV2WithdrawLiquidityMatcher(),
+    JVaultStakeBlockMatcher(),
+    JVaultUnstakeBlockMatcher(),
+    JVaultClaimBlockMatcher(),
+    EvaaSupplyBlockMatcher(),
+    EvaaWithdrawBlockMatcher(),
+    EvaaLiquidateBlockMatcher(),
 ]
 
 trace_post_processors = [
