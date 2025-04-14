@@ -11,6 +11,8 @@ type EmulateTraceResponse struct {
 	Actions      *[]*index.Action                      `json:"actions,omitempty"`
 	CodeCells    *map[Hash]string                      `json:"code_cells,omitempty"`
 	DataCells    *map[Hash]string                      `json:"data_cells,omitempty"`
+	AddressBook  *index.AddressBook                    `json:"address_book,omitempty"`
+	Metadata     *index.Metadata                       `json:"metadata,omitempty"`
 	RandSeed     string                                `json:"rand_seed"`
 	IsIncomplete bool                                  `json:"is_incomplete"`
 }

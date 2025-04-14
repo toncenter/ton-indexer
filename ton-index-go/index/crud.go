@@ -1391,7 +1391,7 @@ func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool
 	return txs, nil
 }
 
-func queryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
+func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
 	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1)" +
 		" union all " +
 		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra  from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1)" +
@@ -1480,7 +1480,7 @@ func SubstituteImgproxyBaseUrl(metadata *Metadata, base_url string) {
 	}
 }
 
-func queryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
+func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
 	book := AddressBook{}
 	quote_addr_list := []string{}
 	for _, item := range addr_list {
@@ -1874,7 +1874,7 @@ func queryRawActionsImpl(query string, conn *pgxpool.Conn, settings RequestSetti
 	return res, nil
 }
 
-func collectAddressesFromAction(addr_list *map[string]bool, raw_action *RawAction) bool {
+func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawAction) bool {
 	success := true
 
 	if v := raw_action.Source; v != nil {
@@ -2061,7 +2061,7 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 			for idx := range actions {
 				raw_action := &actions[idx]
 
-				collectAddressesFromAction(&addr_map, raw_action)
+				CollectAddressesFromAction(&addr_map, raw_action)
 
 				action, err := ParseRawAction(raw_action)
 				if err != nil {
@@ -2242,7 +2242,7 @@ func (db *DbClient) QueryMetadata(
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
-	return queryMetadataImpl(raw_addr_list, conn, settings)
+	return QueryMetadataImpl(raw_addr_list, conn, settings)
 }
 
 func (db *DbClient) QueryAddressBook(
@@ -2267,7 +2267,7 @@ func (db *DbClient) QueryAddressBook(
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
-	book, err := queryAddressBookImpl(raw_addr_list, conn, settings)
+	book, err := QueryAddressBookImpl(raw_addr_list, conn, settings)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2340,7 +2340,7 @@ func (db *DbClient) QueryTransactions(
 			}
 		}
 		if len(addr_list) > 0 {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2406,7 +2406,7 @@ func (db *DbClient) QueryAdjacentTransactions(
 			}
 		}
 		if len(addr_list) > 0 {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2455,14 +2455,14 @@ func (db *DbClient) QueryMessages(
 	}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 
 		if !settings.NoMetadata {
-			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2507,13 +2507,13 @@ func (db *DbClient) QueryNFTCollections(
 	}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
-			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2561,13 +2561,13 @@ func (db *DbClient) QueryNFTItems(
 	}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
-			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2617,13 +2617,13 @@ func (db *DbClient) QueryNFTTransfers(
 	}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
-			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2668,13 +2668,13 @@ func (db *DbClient) QueryJettonMasters(
 	}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
-			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2719,13 +2719,13 @@ func (db *DbClient) QueryJettonWallets(
 	}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
-			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2775,13 +2775,13 @@ func (db *DbClient) QueryJettonTransfers(
 	}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
-			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2830,13 +2830,13 @@ func (db *DbClient) QueryJettonBurns(
 	}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
-			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2880,13 +2880,13 @@ func (db *DbClient) QueryAccountStates(
 	}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
-			metadata, err = queryMetadataImpl(addr_list, conn, settings)
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -2979,7 +2979,7 @@ func (db *DbClient) QueryActions(
 	metadata := Metadata{}
 	addr_map := map[string]bool{}
 	for idx := range raw_actions {
-		collectAddressesFromAction(&addr_map, &raw_actions[idx])
+		CollectAddressesFromAction(&addr_map, &raw_actions[idx])
 		action, err := ParseRawAction(&raw_actions[idx])
 		if err != nil {
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
@@ -2991,12 +2991,12 @@ func (db *DbClient) QueryActions(
 		for k := range addr_map {
 			addr_list = append(addr_list, string(k))
 		}
-		book, err = queryAddressBookImpl(addr_list, conn, settings)
+		book, err = QueryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
+		metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
@@ -3048,12 +3048,12 @@ func (db *DbClient) QueryTraces(
 	metadata := Metadata{}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-		metadata, err = queryMetadataImpl(addr_list, conn, settings)
+		metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
@@ -3216,7 +3216,7 @@ func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest,
 			}
 		}
 		if len(addr_list) > 0 {
-			book, err = queryAddressBookImpl(addr_list, conn, settings)
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}

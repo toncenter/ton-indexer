@@ -3,8 +3,6 @@ package index
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -50,12 +48,10 @@ func NewDbClient(dsn string, maxconns int, minconns int) (*DbClient, error) {
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
-		log.Fatalf("Failed to connect to database '%s': %v\n", dsn, err)
-		os.Exit(63)
+		return nil, fmt.Errorf("failed to create connection pool: %v", err)
 	}
 	if err = pool.Ping(context.Background()); err != nil {
-		log.Fatalf("Failed to ping to database '%s': %v\n", dsn, err)
-		os.Exit(64)
+		return nil, fmt.Errorf("failed to ping database: %v", err)
 	}
 	return &DbClient{pool}, nil
 }
