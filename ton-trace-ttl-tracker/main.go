@@ -715,7 +715,10 @@ func (rct *RedisCleanupTool) takeSnapshot(ctx context.Context) (*RedisSnapshot, 
 			}
 
 			// Skip if key is currently being tracked by ExpiryTracker
-			if _, tracked := rct.expiryTracker.latestExpiries[key]; tracked {
+			rct.expiryTracker.mu.Lock()
+			_, tracked := rct.expiryTracker.latestExpiries[key]
+			rct.expiryTracker.mu.Unlock()
+			if tracked {
 				continue
 			}
 
@@ -778,6 +781,8 @@ func (rct *RedisCleanupTool) isTraceDataKey(ctx context.Context, key string) boo
 
 // isKeyBeingTracked checks if a key is currently being actively tracked
 func (rct *RedisCleanupTool) isKeyBeingTracked(ctx context.Context, key string) bool {
+	rct.expiryTracker.mu.Lock()
+	defer rct.expiryTracker.mu.Unlock()
 	_, tracked := rct.expiryTracker.latestExpiries[key]
 	return tracked
 }
