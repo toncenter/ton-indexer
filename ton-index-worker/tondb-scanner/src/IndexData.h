@@ -71,7 +71,7 @@ struct TrComputePhase_vm {
 using TrComputePhase = std::variant<TrComputePhase_skipped, 
                                     TrComputePhase_vm>;
 
-struct StorageUsedShort {
+struct StorageUsed {
   uint64_t cells;
   uint64_t bits;
 };
@@ -90,19 +90,19 @@ struct TrActionPhase {
   uint16_t skipped_actions;
   uint16_t msgs_created;
   td::Bits256 action_list_hash;
-  StorageUsedShort tot_msg_size;
+  StorageUsed tot_msg_size;
 };
 
 struct TrBouncePhase_negfunds {
 };
 
 struct TrBouncePhase_nofunds {
-  StorageUsedShort msg_size;
+  StorageUsed msg_size;
   td::RefInt256 req_fwd_fees;
 };
 
 struct TrBouncePhase_ok {
-  StorageUsedShort msg_size;
+  StorageUsed msg_size;
   td::RefInt256 msg_fees;
   td::RefInt256 fwd_fees;
 };
