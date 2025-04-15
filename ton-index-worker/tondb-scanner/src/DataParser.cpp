@@ -360,12 +360,12 @@ td::Result<schema::TrComputePhase> ParseQuery::parse_tr_compute_phase(vm::CellSl
   return td::Status::OK();
 }
 
-td::Result<schema::StorageUsedShort> ParseQuery::parse_storage_used_short(vm::CellSlice& cs) {
-  block::gen::StorageUsedShort::Record info;
+td::Result<schema::StorageUsed> ParseQuery::parse_storage_used(vm::CellSlice& cs) {
+  block::gen::StorageUsed::Record info;
   if (!tlb::unpack(cs, info)) {
-    return td::Status::Error("Error unpacking StorageUsedShort");
+    return td::Status::Error("Error unpacking StorageUsed");
   }
-  schema::StorageUsedShort res;
+  schema::StorageUsed res;
   res.bits = block::tlb::t_VarUInteger_7.as_uint(*info.bits);
   res.cells = block::tlb::t_VarUInteger_7.as_uint(*info.cells);
   return res;
@@ -399,7 +399,7 @@ td::Result<schema::TrActionPhase> ParseQuery::parse_tr_action_phase(vm::CellSlic
   res.skipped_actions = info.skipped_actions;
   res.msgs_created = info.msgs_created;
   res.action_list_hash = info.action_list_hash;
-  TRY_RESULT_ASSIGN(res.tot_msg_size, parse_storage_used_short(info.tot_msg_size.write()));
+  TRY_RESULT_ASSIGN(res.tot_msg_size, parse_storage_used(info.tot_msg_size.write()));
   return res;
 }
 
@@ -419,7 +419,7 @@ td::Result<schema::TrBouncePhase> ParseQuery::parse_tr_bounce_phase(vm::CellSlic
         return td::Status::Error("Error unpacking tr_phase_bounce_nofunds");
       }
       schema::TrBouncePhase_nofunds res;
-      TRY_RESULT_ASSIGN(res.msg_size, parse_storage_used_short(nofunds.msg_size.write()));
+      TRY_RESULT_ASSIGN(res.msg_size, parse_storage_used(nofunds.msg_size.write()));
       res.req_fwd_fees = block::tlb::t_Grams.as_integer_skip(nofunds.req_fwd_fees.write());
       return res;
     }
@@ -429,7 +429,7 @@ td::Result<schema::TrBouncePhase> ParseQuery::parse_tr_bounce_phase(vm::CellSlic
         return td::Status::Error("Error unpacking tr_phase_bounce_ok");
       }
       schema::TrBouncePhase_ok res;
-      TRY_RESULT_ASSIGN(res.msg_size, parse_storage_used_short(ok.msg_size.write()));
+      TRY_RESULT_ASSIGN(res.msg_size, parse_storage_used(ok.msg_size.write()));
       res.msg_fees = block::tlb::t_Grams.as_integer_skip(ok.msg_fees.write());
       res.fwd_fees = block::tlb::t_Grams.as_integer_skip(ok.fwd_fees.write());
       return res;

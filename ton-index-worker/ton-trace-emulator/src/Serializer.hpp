@@ -68,7 +68,7 @@ struct TrComputePhase_vm {
 using TrComputePhase = std::variant<TrComputePhase_skipped, 
                                     TrComputePhase_vm>;
 
-struct StorageUsedShort {
+struct StorageUsed {
   uint64_t cells;
   uint64_t bits;
 
@@ -89,7 +89,7 @@ struct TrActionPhase {
   uint16_t skipped_actions;
   uint16_t msgs_created;
   td::Bits256 action_list_hash;
-  StorageUsedShort tot_msg_size;
+  StorageUsed tot_msg_size;
 
   MSGPACK_DEFINE(success, valid, no_funds, status_change, total_fwd_fees, total_action_fees, result_code, result_arg, tot_actions, spec_actions, skipped_actions, msgs_created, action_list_hash, tot_msg_size);
 };
@@ -101,14 +101,14 @@ struct TrBouncePhase_negfunds {
 };
 
 struct TrBouncePhase_nofunds {
-  StorageUsedShort msg_size;
+  StorageUsed msg_size;
   uint64_t req_fwd_fees;
 
   MSGPACK_DEFINE(msg_size, req_fwd_fees);
 };
 
 struct TrBouncePhase_ok {
-  StorageUsedShort msg_size;
+  StorageUsed msg_size;
   uint64_t msg_fees;
   uint64_t fwd_fees;
 
@@ -392,12 +392,12 @@ td::Result<TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs) {
   return td::Status::OK();
 }
 
-td::Result<StorageUsedShort> parse_storage_used_short(vm::CellSlice& cs) {
-  block::gen::StorageUsedShort::Record info;
+td::Result<StorageUsed> parse_storage_used_short(vm::CellSlice& cs) {
+  block::gen::StorageUsed::Record info;
   if (!tlb::unpack(cs, info)) {
-    return td::Status::Error("Error unpacking StorageUsedShort");
+    return td::Status::Error("Error unpacking StorageUsed");
   }
-  StorageUsedShort res;
+  StorageUsed res;
   res.bits = block::tlb::t_VarUInteger_7.as_uint(*info.bits);
   res.cells = block::tlb::t_VarUInteger_7.as_uint(*info.cells);
   return res;
