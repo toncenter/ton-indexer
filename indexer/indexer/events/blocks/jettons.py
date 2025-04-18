@@ -176,20 +176,20 @@ async def _get_jetton_burn_data(new_block: Block, block: Block | CallContractBlo
     return data
 
 async def _get_jetton_mint_data(
-    new_block: Block, block: Block | CallContractBlock
+    new_block: Block, block: Block | CallContractBlock,
+    blocks: list[Block]
 ) -> tuple[dict, bool]:
     if block.opcode == MinterJettonMint.opcode:
         jetton_mint_info = MinterJettonMint(block.get_body())
     else:
         jetton_mint_info = JettonMint(block.get_body())
-    if not block.failed:
-        internal_transfer_info = JettonInternalTransfer(block.next_blocks[0].get_body())
-        failed = block.failed or block.next_blocks[0].failed
-        # receiver_address = (
-        #     block.next_blocks[0].next_blocks[0].event_nodes[0].message.destination
-        # )
+    internal_transfer_block = find_call_contract(blocks, JettonInternalTransfer.opcode)
 
-        receiver_jwallet_addr = block.next_blocks[0].event_nodes[0].message.destination
+    if not block.failed and internal_transfer_block is not None:
+        internal_transfer_info = JettonInternalTransfer(internal_transfer_block.get_body())
+        failed = block.failed or internal_transfer_block.failed
+
+        receiver_jwallet_addr = internal_transfer_block.event_nodes[0].message.destination
         receiver_jwallet = await context.interface_repository.get().get_jetton_wallet(
             receiver_jwallet_addr
         )
@@ -274,6 +274,6 @@ class JettonMintBlockMatcher(BlockMatcher):
         new_block = JettonMintBlock()
         include = [block]
         include.extend(other_blocks)
-        new_block.data, new_block.failed = await _get_jetton_mint_data(new_block, block)
+        new_block.data, new_block.failed = await _get_jetton_mint_data(new_block, block, other_blocks)
         new_block.merge_blocks(include)
         return [new_block]
