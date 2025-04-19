@@ -315,6 +315,11 @@ td::Status find_out_msgs_to_emulate_next(const std::unique_ptr<TraceNode>& node,
 }
 
 void MasterchainBlockEmulator::all_shards_emulated() {
+    if (context_.is_limit_exceeded()) {
+        promise_.set_result(std::move(result_));
+        stop();
+        return;
+    }
     std::vector<td::Ref<vm::Cell>> to_emulate_in_next_mc_block;
     for (const auto& node : result_) {       
         auto r = find_out_msgs_to_emulate_next(node, to_emulate_in_next_mc_block);

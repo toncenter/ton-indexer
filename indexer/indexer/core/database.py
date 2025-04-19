@@ -387,7 +387,8 @@ class Action(Base):
     staking_data = Column(CompositeType("staking_details", [
         Column("provider", String),
         Column("ts_nft", String),
-        Column("tokens_burnt", Numeric)
+        Column("tokens_burnt", Numeric),
+        Column("tokens_minted", Numeric),
     ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
@@ -644,8 +645,6 @@ class JettonMaster(Base):
     code_hash = Column(String)
     data_hash = Column(String)
     last_transaction_lt = Column(BigInteger)
-    code_boc = Column(String)
-    data_boc = Column(String)
 
 
 class JettonTransfer(Base):
@@ -693,8 +692,6 @@ class NFTCollection(Base):
     data_hash = Column(String)
     code_hash = Column(String)
     last_transaction_lt = Column(BigInteger)
-    code_boc = Column(String)
-    data_boc = Column(String)
 
     items: List["NFTItem"] = relationship('NFTItem',
                                           foreign_keys=[address],

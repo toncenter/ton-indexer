@@ -1564,7 +1564,7 @@ void InsertManagerPostgres::start_up() {
     exec_query("create type nft_transfer_details as(is_purchase boolean, price numeric, query_id numeric, custom_payload text, forward_payload text, forward_amount numeric, response_destination tonaddr, nft_item_index numeric);");
     exec_query("create type peer_swap_details as(asset_in tonaddr, amount_in numeric, asset_out tonaddr, amount_out numeric);");
     exec_query("create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[]);");
-    exec_query("create type staking_details as (provider varchar, ts_nft varchar, tokens_burnt numeric);");
+    exec_query("create type staking_details as (provider varchar, ts_nft varchar, tokens_burnt numeric, tokens_minted numeric);");
     exec_query("create type ton_transfer_details as (content text, encrypted boolean);");
   }
   catch (const std::exception &e) {

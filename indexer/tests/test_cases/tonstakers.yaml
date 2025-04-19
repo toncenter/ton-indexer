@@ -1,0 +1,167 @@
+cases:
+  "TS Stake deposit":
+    trace-id: rbzKlyNgAhDnQ15r4tremaPVl_xURNgmSJQSyhGLSX4=
+    expected-blocks:
+      - type: tonstakers_deposit
+        values:
+          data:
+            source: 0:90D9D438C3D05F474DD5ABC232C2A7D493D3D890C43EF74742999A68015AB874
+            user_jetton_wallet: 0:E42D6A4F3EA62E2B57376AA23331BE5243F9ACFB0E46CD67AD652FD574C99DAF
+            pool: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+            value: 10000000000
+            tokens_minted: 9439323796
+    expected-actions:
+      - type: stake_deposit
+        values:
+          tx_hashes:
+            - /7lfl/nvDY009KqdkU8BK6ieEAAxSGzUP5/eMdA/2zk=
+            - tYvFEuKkQWuOCmnuERN03ffK+rplYJJoSoh+ZAzSRgE=
+            - xcbagVRZBwqnCl+FTkfJcW0WwmG9Sjrl3hFETNKR2dE=
+            - iLXG2yPGnNkIhXk52pSa+RjNXNSZyg+qI/v9nkFDaQ8=
+            - wHE+TagEFmWT9cWI3hvxtG1bKfcS4UQ+y7ySifFcBs8=
+            - rbzKlyNgAhDnQ15r4tremaPVl/xURNgmSJQSyhGLSX4=
+          _accounts:
+            - 0:E42D6A4F3EA62E2B57376AA23331BE5243F9ACFB0E46CD67AD652FD574C99DAF
+            - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+            - 0:90D9D438C3D05F474DD5ABC232C2A7D493D3D890C43EF74742999A68015AB874
+            - 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+          success: true
+          source: 0:90D9D438C3D05F474DD5ABC232C2A7D493D3D890C43EF74742999A68015AB874
+          destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+          asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+          amount: 10000000000
+          staking_data:
+            provider: tonstakers
+            tokens_minted: 9439323796
+  "TS Withdrawal request":
+    trace-id: GO-NI0EjOuhj1z4YzHK-VDAAOJsLm710DvyRRRMXhoY=
+    expected-blocks:
+      - type: nft_mint
+        values:
+          data:
+            address: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
+            index: 49
+            collection: 0:0BA5C4C5C3A4896EB494116FBA4CDB83CE84ED3266FFA8C2859960F9D778669E
+      - type: nft_transfer
+        values:
+          data:
+            new_owner: 0:86530F927FE5C3C25FA6C117332FDC2C626F98DCE1E165FFE73014809FD43FCC
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            prev_owner: null
+            is_purchase: false
+    expected-actions:
+      - type: nft_mint
+        values:
+          success: true
+          destination: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
+          asset_secondary: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
+          source: 0:0BA5C4C5C3A4896EB494116FBA4CDB83CE84ED3266FFA8C2859960F9D778669E
+          asset: 0:0BA5C4C5C3A4896EB494116FBA4CDB83CE84ED3266FFA8C2859960F9D778669E
+          nft_mint_data:
+            nft_item_index: 49
+      - type: stake_withdrawal_request
+        values:
+          tx_hashes:
+            - y8HAvsj8wJ/GaxA1/ejlQHv7SDeOay9VaSCHtSCaVMc=
+            - DyQJCORFmmOHuVWR/KyXUxIyUfWlehqYm+CNPn9doYY=
+            - Y1AisfkNC94JFyH0Wgp7+IeFdZpuI/NmXDobacmzSYw=
+            - GO+NI0EjOuhj1z4YzHK+VDAAOJsLm710DvyRRRMXhoY=
+            - BZ813BpSIbji0ENW40+a24tcfCt3Id6mVg12JnR0jCk=
+          _accounts:
+            - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+            - 0:0BA5C4C5C3A4896EB494116FBA4CDB83CE84ED3266FFA8C2859960F9D778669E
+            - 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+            - 0:86530F927FE5C3C25FA6C117332FDC2C626F98DCE1E165FFE73014809FD43FCC
+            - 0:518C1B9462A4073EAD26B9308BEF3350ABBB6D21666E17ECC1D4BB5656C2227A
+          success: true
+          source: 0:86530F927FE5C3C25FA6C117332FDC2C626F98DCE1E165FFE73014809FD43FCC
+          source_secondary: 0:518C1B9462A4073EAD26B9308BEF3350ABBB6D21666E17ECC1D4BB5656C2227A
+          destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+          asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+          amount: 67599
+          staking_data:
+            provider: tonstakers
+            ts_nft: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
+      - type: nft_transfer
+        values:
+          destination: 0:86530F927FE5C3C25FA6C117332FDC2C626F98DCE1E165FFE73014809FD43FCC
+          asset_secondary: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
+          asset: 0:0BA5C4C5C3A4896EB494116FBA4CDB83CE84ED3266FFA8C2859960F9D778669E
+          nft_transfer_data:
+            query_id: 6083770387559464359
+            is_purchase: false
+            price: null
+            nft_item_index: 49.0
+            forward_amount: null
+            custom_payload: null
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            response_destination: null
+  "TS Withdrawal via nft burn":
+    trace-id: a0rjbO1XsPBt-2LXRQZT4piiD8x_OrfG82dU0in-WUc=
+    expected-blocks:
+      - type: tonstakers_withdraw
+        selector: "{{ value.min_lt == 49329360000002 }}"
+        values:
+          data:
+            stake_holder: 0:454E01198AFFB8A7D37AA7156816BC0F1FA8AE02BD5CDD6327CFA2BF133AE921
+            burnt_nft: 0:30A867E3D5D69284A96CFF30B742316CD5B514C55FCC2E9564F42D65A9A3D252
+            pool: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+            tokens_burnt: null
+            amount: 4170935
+    expected-actions:
+      - type: stake_withdrawal
+        selector: "{{ value.start_lt == 49329360000002 }}"
+        values:
+          _accounts:
+            - 0:454E01198AFFB8A7D37AA7156816BC0F1FA8AE02BD5CDD6327CFA2BF133AE921
+            - 0:30A867E3D5D69284A96CFF30B742316CD5B514C55FCC2E9564F42D65A9A3D252
+            - 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+            - 0:73BB3452DBB73C9DB94C604B8238397DE206D144A43975C5001D49A9CF9040C2
+            - 0:9E96100D5C6170EBE584F383DE873905B573A8D4050A45F97127E2DA03E49010
+          tx_hashes:
+            - E1Hrp9NqTZBjNRoD7dEX0vjIaShGKw5cHsdt2zRrYZY=
+            - wQi2OgTPNC22kZS/T1XN+mtjO7/OAI2ALTjCwhKVwYU=
+            - 2Wo0GlurbVmJADBUZ5eovSImVH82RHov3x2bTDTjfx8=
+            - lZWrnFBu0t4NGPLydB5SXZ5witbDu+hu8pvA7jZjNHU=
+          amount: 4170935
+          source: 0:454E01198AFFB8A7D37AA7156816BC0F1FA8AE02BD5CDD6327CFA2BF133AE921
+          destination: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
+          asset: null
+          staking_data:
+            provider: tonstakers
+            ts_nft: 0:30A867E3D5D69284A96CFF30B742316CD5B514C55FCC2E9564F42D65A9A3D252
+            tokens_burnt: null
+  "TS Immediate Withdrawal":
+    trace-id: oND3Z5gMq1cKAe6TOJ5QAsqt-8_6wtG6X1hgkHP_Yhk=
+    expected-blocks:
+      - type: tonstakers_withdraw
+        values:
+          data:
+            stake_holder: 0:0926C763841945D6B99A7FF960D0D3CE69A79B2E1D60E1B8C966BEB135557435
+            burnt_nft: null
+            pool: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+            tokens_burnt: 499933340
+            amount: 477298994
+            asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+    expected-actions:
+      - type: stake_withdrawal
+        values:
+          tx_hashes:
+            - +FFSJfobbwKHkj0Cz2W3St4R+F0Rs4IWKrGnHtW2Xu0=
+            - yKsoebYYAM+KTpI6S6Hgo7cz+t8ZbItv7qIdjW/nH0Y=
+            - oND3Z5gMq1cKAe6TOJ5QAsqt+8/6wtG6X1hgkHP/Yhk=
+            - mTMc5G1TOtZJJ77o77esiYo++zJt7Rh7t3JNqxbdtIk=
+            - /6tynZnn+8X2mn4MFgMRmGDWZfbMLxGyjXOoY/R0oi4=
+          _accounts:
+            - 0:0926C763841945D6B99A7FF960D0D3CE69A79B2E1D60E1B8C966BEB135557435
+            - 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+            - 0:D073AFD2A6FC28D9764765929A360EC20FCF43D565239E17A34ABFDFD9D82C73
+            - 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+          source: 0:0926C763841945D6B99A7FF960D0D3CE69A79B2E1D60E1B8C966BEB135557435
+          destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
+          asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+          staking_data:
+            provider: tonstakers
+            ts_nft: null
+            tokens_burnt: 499933340
+          amount: 477298994
