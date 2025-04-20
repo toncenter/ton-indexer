@@ -130,6 +130,10 @@ public:
         return ignore_chksig_;
     }
 
+    void set_ignore_chksig(bool ignore_chksig) {
+        ignore_chksig_ = ignore_chksig;
+    }
+
     const std::vector<ShardState>& get_shard_states() const {
         return shard_states_;
     }
