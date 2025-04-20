@@ -9,7 +9,7 @@ from indexer.events.blocks.basic_matchers import (
     BlockMatcher,
     BlockTypeMatcher,
     ContractMatcher,
-    child_sequence_matcher,
+    child_sequence_matcher, OrMatcher, RecursiveMatcher,
 )
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.jettons import JettonTransferBlock
@@ -26,18 +26,19 @@ from indexer.events.blocks.messages.jvault import (
     JVaultUpdateReferrer,
     JVaultUpdateRewards,
 )
-from indexer.events.blocks.utils import AccountId
+from indexer.events.blocks.utils import AccountId, Asset
 from indexer.events.blocks.utils.block_utils import get_labeled
 
 
 @dataclass
 class JVaultStakeData:
     sender: AccountId
+    sender_wallet: AccountId
+    asset: Asset
     stake_wallet: AccountId
     staking_pool: AccountId
     staked_amount: int
     period: int
-    minted_stake_jettons: int
 
 
 class JVaultStakeBlock(Block):
@@ -64,6 +65,11 @@ refs_stuff_snake = child_sequence_matcher(
     ]
 )
 
+referral_subchain = RecursiveMatcher(repeating_matcher=ContractMatcher(opcode=JVaultRequestUpdateReferrer.opcode, include_excess=True),
+                                        exit_matcher=ContractMatcher(opcode=JVaultUpdateReferrer.opcode, include_excess=True),
+                                        optional=True)
+referral_chain = RecursiveMatcher(repeating_matcher=referral_subchain, exit_matcher=None, optional=True)
+
 update_with_exceses = labeled(
     "update_rewards_on_stake_wallet",
     ContractMatcher(
@@ -81,16 +87,22 @@ class JVaultStakeBlockMatcher(BlockMatcher):
             ContractMatcher(
                 opcode=JVaultRequestUpdateRewards.opcode,
                 optional=False,
-                children_matchers=[refs_stuff_snake, update_with_exceses],
+                children_matchers=[referral_chain, update_with_exceses],
             ),
         )
+
+        cancellation = labeled('cancellation', ContractMatcher(
+            opcode=0x9eada1d9, # TODO add to messages
+            optional=False,
+            child_matcher=BlockTypeMatcher(block_type="jetton_transfer", optional=True),
+        ))
 
         staked_jettons_snake = labeled(
             "receive_stake_jettons_on_stake_wallet",
             ContractMatcher(
                 opcode=JVaultReceiveJettons.opcode,
                 optional=False,
-                child_matcher=request_update,
+                child_matcher=OrMatcher([request_update, cancellation]),
             ),
         )
 
@@ -109,8 +121,9 @@ class JVaultStakeBlockMatcher(BlockMatcher):
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         if not isinstance(block, JettonTransferBlock):
             return []
-
         sender = block.data["sender"]
+        sender_wallet = block.data["sender_wallet"]
+
         msg = block.jetton_transfer_message
         staked_amount = msg.amount
         body = Cell.from_boc(msg.forward_payload)[0].begin_parse()
@@ -120,26 +133,28 @@ class JVaultStakeBlockMatcher(BlockMatcher):
         receive_block = get_labeled(
             "receive_stake_jettons_on_stake_wallet", other_blocks
         )
-        request_update_from_pool = get_labeled("request_update_rewards_from_pool", other_blocks)
-        if not receive_block or not request_update_from_pool:
+        failed = receive_block.failed
+        if not receive_block:
             return []
 
-        receive_info = JVaultReceiveJettons(receive_block.get_body())
-        minted_stake_jettons = receive_info.received_jettons
-
+        cancellation = get_labeled('cancellation', other_blocks, CallContractBlock)
+        request_update_from_pool = get_labeled("request_update_rewards_from_pool", other_blocks)
         stake_wallet = receive_block.get_message().destination
-        staking_pool = request_update_from_pool.get_message().destination
+        staking_pool = receive_block.get_message().source
 
+        if cancellation:
+            failed = True
+        elif request_update_from_pool:
+            failed = failed or request_update_from_pool.failed
+        else:
+            return []
+        data = JVaultStakeData(sender=AccountId(sender), stake_wallet=AccountId(stake_wallet),
+                               sender_wallet=AccountId(sender_wallet), asset=block.data["asset"],
+                               staking_pool=AccountId(staking_pool), staked_amount=staked_amount, period=period)
         new_block = JVaultStakeBlock(
-            data=JVaultStakeData(
-                sender=AccountId(sender),
-                stake_wallet=AccountId(stake_wallet),
-                staking_pool=AccountId(staking_pool),
-                staked_amount=staked_amount,
-                period=period,
-                minted_stake_jettons=minted_stake_jettons,
-            )
+            data=data
         )
+        new_block.failed = failed
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
 

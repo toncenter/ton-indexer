@@ -477,12 +477,13 @@ def _fill_evaa_liquidate_action(block: EvaaLiquidateBlock, action: Action):
     }
 def _fill_jvault_stake(block: JVaultStakeBlock, action: Action):
     action.source = _addr(block.data.sender)
-    action.source_secondary = _addr(block.data.stake_wallet)
+    action.source_secondary = _addr(block.data.sender_wallet)
+    action.asset = _addr(block.data.asset)
     action.destination = _addr(block.data.staking_pool)
     action.amount = block.data.staked_amount
     action.jvault_stake_data = {
         "period": block.data.period,
-        "minted_stake_jettons": block.data.minted_stake_jettons,
+        "stake_wallet": _addr(block.data.stake_wallet),
     }
 
 

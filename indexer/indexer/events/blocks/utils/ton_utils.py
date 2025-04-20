@@ -62,6 +62,8 @@ class AccountId:
                 self.address = None
             else:
                 self.address = Address(address)
+        elif isinstance(address, AccountId):
+            self.address = address.address
         else:
             self.address = address
 

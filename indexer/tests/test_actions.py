@@ -16,3 +16,6 @@ class TestJettonMints(BaseGenericActionTest):
 
 class TestTonstakersActions(BaseGenericActionTest):
     yaml_file = "tonstakers.yaml"
+
+class TestJvaultActions(BaseGenericActionTest):
+    yaml_file = "jvault.yaml"
