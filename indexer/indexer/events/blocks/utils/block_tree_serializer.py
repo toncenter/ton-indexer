@@ -502,8 +502,15 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
     action._accounts = list(set(a for a in action._accounts if a is not None))
     return action
 
-#TODO: Actualize basic ops
-basic_ops = [ 'call_contract', 'contract_deploy', 'jetton_burn', 'tick_tock', 'jetton_transfer']
+basic_ops = [ 'call_contract',
+              'contract_deploy',
+              'jetton_burn',
+              'tick_tock',
+              'jetton_transfer',
+              'nft_transfer',
+              'nft_mint',
+              'jetton_mint',
+              ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:
     actions = []
@@ -526,8 +533,6 @@ def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_
             if serialize_child_actions:
                 if block.btype not in basic_ops:
                     child_actions, child_state = serialize_blocks(block.children_blocks, trace_id, trace, action.action_id, serialize_child_actions)
-
-                    print(f"Child blocks serialized. State: {child_state}/{len(child_actions)}")
                     for child_action in child_actions:
                         if child_action.ancestor_type is None:
                             child_action.ancestor_type = []
@@ -536,9 +541,8 @@ def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_
                         if child_action.action_id not in action_ids:
                             action_ids.append(child_action.action_id)
                             actions.append(child_action)
-                            print("Child action added")
                         else:
-                            print("Something wrong")
+                            raise Exception(f"Duplicate action id {child_action.action_id} in trace {trace_id}")
                     if child_state != 'ok':
                         state = child_state
     return actions, state
