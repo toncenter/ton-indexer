@@ -510,6 +510,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Amount = raw.Amount
 		details.Pool = raw.Destination
 		details.Provider = raw.StakingDataProvider
+		details.TokensMinted = raw.StakingDataTokensMinted
+		details.Asset = raw.Asset
 		act.Details = &details
 	case "stake_withdrawal":
 		var details ActionDetailsWithdrawStake
@@ -518,6 +520,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Pool = raw.Destination
 		details.Provider = raw.StakingDataProvider
 		details.PayoutNft = raw.StakingDataTsNft
+		details.TokensBurnt = raw.StakingDataTokensBurnt
+		details.Asset = raw.Asset
 		act.Details = &details
 	case "stake_withdrawal_request":
 		var details ActionDetailsWithdrawStakeRequest
@@ -525,6 +529,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Pool = raw.Destination
 		details.Provider = raw.StakingDataProvider
 		details.PayoutNft = raw.StakingDataTsNft
+		details.Asset = raw.Asset
+		if details.Provider != nil && *details.Provider == "tonstakers" {
+			details.TokensBurnt = raw.Amount
+		}
 		act.Details = &details
 	case "subscribe":
 		var details ActionDetailsSubscribe
@@ -876,6 +884,8 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.DexDepositLiquidityDataLpTokensMinted,
 		&act.StakingDataProvider,
 		&act.StakingDataTsNft,
+		&act.StakingDataTokensBurnt,
+		&act.StakingDataTokensMinted,
 		&act.Success,
 		&act.TraceExternalHash,
 		&act.ExtraCurrencies)

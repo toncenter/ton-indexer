@@ -296,6 +296,7 @@ def _fill_tonstakers_deposit_action(block: TONStakersDepositBlock, action: Actio
     action.source = _addr(block.data.source)
     action.destination = _addr(block.data.pool)
     action.amount = block.data.value.value
+    action.asset = _addr(block.data.asset)
     action.staking_data = {
         'provider': 'tonstakers',
         'tokens_minted': block.data.tokens_minted.value if block.data.tokens_minted else None
@@ -312,6 +313,7 @@ def _fill_tonstakers_withdraw_request_action(block: TONStakersWithdrawRequestBlo
     action.destination = _addr(block.data.pool)
     action.amount = block.data.tokens_burnt.value
     action.type = 'stake_withdrawal_request'
+    action.asset = _addr(block.data.asset)
     action.staking_data = {
         'provider': 'tonstakers',
         'ts_nft': _addr(block.data.minted_nft)
@@ -327,6 +329,7 @@ def _fill_tonstakers_withdraw_action(block: TONStakersWithdrawBlock, action: Act
         'ts_nft': _addr(block.data.burnt_nft),
         'tokens_burnt': block.data.tokens_burnt.value if block.data.tokens_burnt is not None else None,
     }
+    action.asset = _addr(block.data.asset)
 
 def _fill_subscribe_action(block: SubscriptionBlock, action: Action):
     action.source = block.data['subscriber'].as_str()

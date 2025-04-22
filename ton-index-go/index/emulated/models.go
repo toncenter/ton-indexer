@@ -280,8 +280,10 @@ type actionDexWithdrawLiquidityData struct {
 }
 
 type actionStakingData struct {
-	Provider *string `msgpack:"provider"`
-	TsNft    *string `msgpack:"ts_nft"`
+	Provider     *string `msgpack:"provider"`
+	TsNft        *string `msgpack:"ts_nft"`
+	TokensBurnt  *string `msgpack:"tokens_minted"`
+	TokensMinted *string `msgpack:"tokens_minted"`
 }
 
 type Action struct {
@@ -893,6 +895,8 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 	if a.StakingData != nil {
 		row.StakingDataProvider = a.StakingData.Provider
 		row.StakingDataTsNft = a.StakingData.TsNft
+		row.StakingTokensBurnt = a.StakingData.TokensBurnt
+		row.StakingTokensMinted = a.StakingData.TokensMinted
 	}
 	return row, nil
 }

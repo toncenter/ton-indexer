@@ -13,3 +13,6 @@ class TestStonfiV2Swaps(BaseGenericActionTest):
 
 class TestJettonMints(BaseGenericActionTest):
     yaml_file = "jetton-mints.yaml"
+
+class TestTonstakersActions(BaseGenericActionTest):
+    yaml_file = "tonstakers.yaml"

@@ -130,6 +130,10 @@ public:
         return ignore_chksig_;
     }
 
+    void set_ignore_chksig(bool ignore_chksig) {
+        ignore_chksig_ = ignore_chksig;
+    }
+
     const std::vector<ShardState>& get_shard_states() const {
         return shard_states_;
     }
@@ -163,9 +167,9 @@ private:
             account_state.block_lt = shard_state.lt;
 
             std::lock_guard<std::mutex> lock(emulated_accounts_mutex_);
-            emulated_accounts_.insert({address, account_state});
+            auto it = emulated_accounts_.insert({address, std::move(account_state)});
 
-            return account_state;
+            return it->second;
         }
         return td::Status::Error("Account not found in shard_states");
     }

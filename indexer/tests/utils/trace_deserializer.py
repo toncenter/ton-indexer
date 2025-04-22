@@ -141,6 +141,16 @@ def deserialize_jetton_wallet(data: Dict[str, Any]) -> JettonWallet:
         jetton=data['jetton'],
     )
 
+def deserialize_nft_item(data: Dict[str, Any]) -> NFTItem:
+    """Deserialize dictionary to NFTItem."""
+    return NFTItem(
+        address=data['address'],
+        init=data['init'],
+        index=data['index'],
+        collection_address=data['collection_address'],
+        owner_address=data['owner_address'],
+        content=data['content'],
+    )
 
 def deserialize_dedust_pool(account, data: Dict[str, Any]) -> DedustPool:
     """Deserialize dictionary to DedustPool"""

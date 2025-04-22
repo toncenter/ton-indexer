@@ -534,6 +534,8 @@ type RawAction struct {
 	DexDepositLiquidityDataLpTokensMinted                *string
 	StakingDataProvider                                  *string
 	StakingDataTsNft                                     *AccountAddress
+	StakingDataTokensBurnt                               *string
+	StakingDataTokensMinted                              *string
 	Success                                              *bool
 	TraceExternalHash                                    *HashType
 	ExtraCurrencies                                      map[string]string
@@ -747,10 +749,12 @@ type ActionDetailsDexWithdrawLiquidity struct {
 }
 
 type ActionDetailsStakeDeposit struct {
-	Provider    *string         `json:"provider"`
-	StakeHolder *AccountAddress `json:"stake_holder"`
-	Pool        *AccountAddress `json:"pool"`
-	Amount      *string         `json:"amount"`
+	Provider     *string         `json:"provider"`
+	StakeHolder  *AccountAddress `json:"stake_holder"`
+	Pool         *AccountAddress `json:"pool"`
+	Amount       *string         `json:"amount"`
+	TokensMinted *string         `json:"tokens_minted"`
+	Asset        *AccountAddress `json:"asset"`
 }
 
 type ActionDetailsWithdrawStake struct {
@@ -759,6 +763,8 @@ type ActionDetailsWithdrawStake struct {
 	Pool        *AccountAddress `json:"pool"`
 	Amount      *string         `json:"amount"`
 	PayoutNft   *AccountAddress `json:"payout_nft"`
+	TokensBurnt *string         `json:"tokens_burnt"`
+	Asset       *AccountAddress `json:"asset"`
 }
 
 type ActionDetailsWithdrawStakeRequest struct {
@@ -766,6 +772,8 @@ type ActionDetailsWithdrawStakeRequest struct {
 	StakeHolder *AccountAddress `json:"stake_holder"`
 	Pool        *AccountAddress `json:"pool"`
 	PayoutNft   *AccountAddress `json:"payout_nft"`
+	Asset       *AccountAddress `json:"asset"`
+	TokensBurnt *string         `json:"tokens_burnt"`
 }
 
 type Action struct {

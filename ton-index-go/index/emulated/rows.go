@@ -207,6 +207,8 @@ type ActionRow struct {
 	DexDepositLiquidityDataLpTokensMinted                *string
 	StakingDataProvider                                  *string
 	StakingDataTsNft                                     *string
+	StakingTokensBurnt                                   *string
+	StakingTokensMinted                                  *string
 	Success                                              bool
 	TraceExternalHash                                    *string
 	ExtraCurrencies                                      map[string]string
@@ -351,6 +353,8 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.DexDepositLiquidityDataLpTokensMinted),
 		assignStringPtr(t.StakingDataProvider),
 		assignStringPtr(t.StakingDataTsNft),
+		assignStringPtr(t.StakingTokensBurnt),
+		assignStringPtr(t.StakingTokensMinted),
 		assignBool(t.Success),
 		assignStringPtr(t.TraceExternalHash),
 		assignMap(t.ExtraCurrencies),

@@ -85,7 +85,6 @@ def evaluate_jinja_expression(template_str: str, actual_value: Any) -> bool:
         return False
     return bool(result)
 
-
 def check_value(actual_value: Any, expected_value: Any, path: str) -> None:
     """Check if the actual value matches the expected value, with support for Jinja templates."""
     if isinstance(expected_value, str) and expected_value.startswith("{{") and expected_value.endswith("}}"):
@@ -95,19 +94,19 @@ def check_value(actual_value: Any, expected_value: Any, path: str) -> None:
     elif isinstance(expected_value, list) and isinstance(actual_value, list):
         assert set(actual_value) == set(
             expected_value), f"Lists don't match at '{path}':\nExpected: {expected_value}\nActual: {actual_value}"
-    elif isinstance(expected_value, dict) and isinstance(actual_value, dict):
-        # Handle nested dictionary comparison
+    elif isinstance(expected_value, dict) and (isinstance(actual_value, dict) or hasattr(actual_value, "__dict__")):
+        # Handle nested dictionary comparison or dataclass
+        actual_dict = actual_value if isinstance(actual_value, dict) else vars(actual_value)
         for key, nested_expected in expected_value.items():
             nested_path = f"{path}.{key}" if path else key
-            if key not in actual_value:
-                assert False, f"Missing key '{key}' at '{path}'.\nExpected keys: {list(expected_value.keys())}\nActual keys: {list(actual_value.keys())}"
-            nested_actual = actual_value[key]
+            if key not in actual_dict:
+                assert False, f"Missing key '{key}' at '{path}'.\nExpected keys: {list(expected_value.keys())}\nActual keys: {list(actual_dict.keys())}"
+            nested_actual = actual_dict[key]
             # Recursively check each nested value
             check_value(nested_actual, nested_expected, nested_path)
     else:
         # Direct comparison with clear error message
         assert actual_value == expected_value, f"Values don't match at '{path}':\nExpected: {expected_value}\nActual: {actual_value}"
-
 
 def find_matching_item(items, selector_expr):
     """Find an item that matches the selector expression."""
