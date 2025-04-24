@@ -639,7 +639,7 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 	if st.StatusChange != nil {
 		t.Descr.StoragePh = &st
 	}
-	if cr.DueFeesCollected != nil {
+	if cr.DueFeesCollected != nil || cr.Credit != nil || cr.CreditExtraCurrencies != nil {
 		t.Descr.CreditPh = &cr
 	}
 	if co.IsSkipped != nil {
