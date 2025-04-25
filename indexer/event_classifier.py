@@ -299,6 +299,8 @@ class EventClassifierWorker(mp.Process):
                 ok_traces = []
                 failed_traces = []
                 broken_traces = []
+                inserted_actions = set()
+                inserted_action_accounts = set()
                 for trace_id, state, actions, exc in results:
                     if state == 'ok' or state == 'broken':
                         # # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
@@ -314,7 +316,19 @@ class EventClassifierWorker(mp.Process):
                         #     # session.add_all(action.get_action_accounts())
                         session.add_all(actions)
                         for action in actions:
+                            concat_key = action.action_id + '_' + action.trace_id
+                            if concat_key in inserted_actions:
+                                raise Exception(f"Duplicate action: {concat_key}")
+                            else:
+                                inserted_actions.add(concat_key)
+                            for action_account in action.get_action_accounts():
+                                account_concat_key = action_account.account + '_' + action_account.action_id + '_' + action.trace_id
+                                if account_concat_key in inserted_action_accounts:
+                                    raise Exception(f"Duplicate action account: {account_concat_key}")
+                                else:
+                                    inserted_action_accounts.add(account_concat_key)
                             session.add_all(action.get_action_accounts())
+
 
                         if state == 'ok':
                             ok_traces.append(trace_id)
