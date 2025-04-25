@@ -52,7 +52,7 @@ interface_cache: LRUCache | None = None
 
 
 def add_on_conflict_ignore(conn, cursor, statement, parameters, context, executemany):
-    if statement.lstrip().upper().startswith('INSERT INTO ACTIONS'):
+    if statement.lstrip().upper().startswith('INSERT INTO ACTION'):
         statement += " ON CONFLICT DO NOTHING"
     return statement, parameters
 
