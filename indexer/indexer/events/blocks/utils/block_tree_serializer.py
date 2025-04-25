@@ -528,6 +528,8 @@ def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_
             if block.broken:
                 state = 'broken'
             action = block_to_action(block, trace_id, trace)
+            if parent_acton_id is not None and action.action_id == parent_acton_id:
+                continue
             action.parent_action_id = parent_acton_id
             action_ids.append(action.action_id)
             actions.append(action)
