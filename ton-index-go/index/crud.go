@@ -2047,6 +2047,8 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 				(A.dex_deposit_liquidity_data).lp_tokens_minted,
 				(A.staking_data).provider,
 				(A.staking_data).ts_nft,
+				(A.staking_data).tokens_burnt,
+				(A.staking_data).tokens_minted,
 				A.success, A.trace_external_hash, A.value_extra_currencies from actions as A where ` + filterByArray("A.trace_id", trace_id_list) + ` order by trace_id, start_lt, end_lt`
 			actions, err := queryRawActionsImpl(query, conn, settings)
 			if err != nil {
