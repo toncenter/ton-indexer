@@ -19,3 +19,6 @@ class TestTonstakersActions(BaseGenericActionTest):
 
 class TestJvaultActions(BaseGenericActionTest):
     yaml_file = "jvault.yaml"
+
+class TestEvaaActions(BaseGenericActionTest):
+    yaml_file = "evaa.yaml"

@@ -434,32 +434,36 @@ def _fill_tick_tock_action(block: Block, action: Action):
     action.source = _addr(block.data['account'])
 
 def _fill_evaa_supply_action(block: EvaaSupplyBlock, action: Action):
-    action.source = str(block.data.sender)
-    action.destination = str(block.data.recipient)
-    action.destination_secondary = str(block.data.recipient_contract)
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.sender_jetton_wallet)
+    action.destination = _addr(block.data.recipient)
+    action.destination_secondary = _addr(block.data.recipient_contract)
     action.amount = block.data.amount
-    action.asset = str(block.data.asset_id) if not block.data.is_ton else None
+    action.asset = _addr(block.data.asset)
     action.success = block.data.is_success
     action.evaa_supply_data = {
         "is_ton": block.data.is_ton,
-        "sender_jetton_wallet": str(block.data.sender_jetton_wallet) if block.data.sender_jetton_wallet else None,
-        "recipient_jetton_wallet": str(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
-        "master_jetton_wallet": str(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None
+        "asset_id": str(block.data.asset_id),
+        "master": _addr(block.data.master),
+        "recipient_jetton_wallet": _addr(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
+        "master_jetton_wallet": _addr(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None
     }
 
 
 def _fill_evaa_withdraw_action(block: EvaaWithdrawBlock, action: Action):
-    action.source = str(block.data.owner)
-    action.destination = str(block.data.recipient)
-    action.destination_secondary = str(block.data.owner_contract)
+    action.source = _addr(block.data.owner)
+    action.destination = _addr(block.data.recipient)
+    action.destination_secondary = _addr(block.data.owner_contract)
     action.amount = block.data.amount
-    action.asset = str(block.data.asset_id) if not block.data.is_ton else None
+    action.asset = _addr(block.data.asset)
     action.success = block.data.is_success
     action.evaa_withdraw_data = {
         "is_ton": block.data.is_ton,
-        "recipient_jetton_wallet": str(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
-        "master_jetton_wallet": str(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None,
-        "fail_reason": block.data.fail_reason
+        "recipient_jetton_wallet": _addr(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
+        "master_jetton_wallet": _addr(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None,
+        "fail_reason": block.data.fail_reason,
+        "master": _addr(block.data.master),
+        "asset_id": hex(block.data.asset_id)
     }
 
 

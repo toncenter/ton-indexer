@@ -4,7 +4,7 @@ import base64
 import logging
 from dataclasses import dataclass
 
-from pytoniq_core import Cell
+from pytoniq_core import Cell, Slice
 
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import (
@@ -37,9 +37,9 @@ from indexer.events.blocks.messages.evaa import (
     EvaaWithdrawMaster,
     EvaaWithdrawNoFundsExcess,
     EvaaWithdrawSuccess,
-    EvaaWithdrawUser,
+    EvaaWithdrawUser, EvaaSupplyJettonForwardMessage,
 )
-from indexer.events.blocks.utils import AccountId
+from indexer.events.blocks.utils import AccountId, Asset
 from indexer.events.blocks.utils.block_utils import get_labeled
 from indexer.events.blocks.utils.ton_utils import Amount
 from indexer.core.database import Action
@@ -56,8 +56,39 @@ evaa_action_comment_matcher = GenericMatcher(
     optional=True,
 )
 
-# ------------------------- Supply (ton and jetton) -------------------------
+def load_user_header(slice: Slice) -> tuple[int | None, Cell | None, int]:
+    user_version = slice.load_coins()
+    upgrade_info = slice.load_maybe_ref()
+    upgrade_exec = slice.load_uint(2)
+    return user_version, upgrade_info, upgrade_exec
 
+class EvaaContractWithHeaderMatcher(ContractMatcher):
+    def __init__(self, opcode,
+                 header_func = load_user_header,
+                 child_matcher=None,
+                 parent_matcher=None,
+                 optional=False,
+                 children_matchers=None,
+                 include_excess=True):
+        self.header_func = header_func
+        super().__init__(opcode, child_matcher, parent_matcher, optional, children_matchers, include_excess)
+
+    def test_self(self, block: Block):
+        if not isinstance(block, CallContractBlock):
+            return False
+        try:
+            body = block.get_body()
+            self.header_func(body)
+            msg_opcode = body.load_uint(32)
+            if msg_opcode == self.opcode:
+                return True
+            else:
+                return False
+        except Exception as e:
+            logger.error(e, exc_info=True)
+            return False
+
+# ------------------------- Supply (ton and jetton) -------------------------
 
 @dataclass
 class EvaaSupplyData:
@@ -71,6 +102,8 @@ class EvaaSupplyData:
     sender_jetton_wallet: AccountId | None = None
     recipient_jetton_wallet: AccountId | None = None
     master_jetton_wallet: AccountId | None = None
+    master: AccountId | None = None
+    asset: Asset | None = None
 
 
 class EvaaSupplyBlock(Block):
@@ -112,7 +145,7 @@ class EvaaSupplyBlockMatcher(BlockMatcher):
 
         user_matcher = labeled(
             "supply_user",
-            ContractMatcher(
+            EvaaContractWithHeaderMatcher(
                 opcode=EvaaSupplyUser.opcode,
                 optional=False,
                 child_matcher=OrMatcher(
@@ -159,7 +192,8 @@ class EvaaSupplyBlockMatcher(BlockMatcher):
         recipient_address = None
         recipient_jetton_wallet = None
         master_jetton_wallet = None
-
+        master = None
+        asset = Asset(is_ton=True)
         if is_ton:
             msg = block.get_message()
             sender = AccountId(msg.source)
@@ -167,20 +201,21 @@ class EvaaSupplyBlockMatcher(BlockMatcher):
             supply_master_data = EvaaSupplyMaster(block.get_body())
             amount = supply_master_data.supply_amount
             recipient_address = AccountId(supply_master_data.recipient_address)
+            master = AccountId(block.get_message().destination)
         else:
             sender = AccountId(block.data["sender"])
             sender_jetton_wallet = AccountId(block.data["sender_wallet"])
             master_jetton_wallet = AccountId(block.data["receiver_wallet"])
             amount = block.data["amount"].value
-
+            master = block.data["receiver"]
+            asset = block.data['asset']
             if not block.data.get("forward_payload"):
                 logger.warning("No forward_payload in jetton supply")
                 return []
 
-            payload_cell = Cell.from_boc(block.data["forward_payload"])[0]
-            supply_master_data = EvaaSupplyMaster(payload_cell.begin_parse())
+            payload_slice = Slice.one_from_boc(block.data["forward_payload"])
+            supply_master_data = EvaaSupplyJettonForwardMessage(payload_slice)
             recipient_address = AccountId(supply_master_data.recipient_address)
-
             # determine recipient_jetton_wallet
             if sender == recipient_address:
                 recipient_jetton_wallet = sender_jetton_wallet
@@ -203,7 +238,9 @@ class EvaaSupplyBlockMatcher(BlockMatcher):
 
         recipient_contract = AccountId(supply_user_block.get_message().destination)
 
-        supply_user_data = EvaaSupplyUser(supply_user_block.get_body())
+        supply_user_body = supply_user_block.get_body()
+        load_user_header(supply_user_body)
+        supply_user_data = EvaaSupplyUser(supply_user_body)
         asset_id = supply_user_data.asset_id
 
         success_block = get_labeled("supply_success", other_blocks, CallContractBlock)
@@ -228,6 +265,9 @@ class EvaaSupplyBlockMatcher(BlockMatcher):
                     asset_id=asset_id,
                     recipient_jetton_wallet=recipient_jetton_wallet,
                     master_jetton_wallet=master_jetton_wallet,
+                    sender_jetton_wallet=sender_jetton_wallet,
+                    master=master,
+                    asset=asset,
                 )
             )
 
@@ -251,6 +291,9 @@ class EvaaSupplyBlockMatcher(BlockMatcher):
                     asset_id=asset_id,
                     recipient_jetton_wallet=recipient_jetton_wallet,
                     master_jetton_wallet=master_jetton_wallet,
+                    sender_jetton_wallet=sender_jetton_wallet,
+                    master=master,
+                    asset=asset,
                 )
             )
             # include possible blocks
@@ -281,7 +324,8 @@ class EvaaWithdrawData:
     recipient_jetton_wallet: AccountId | None = None
     master_jetton_wallet: AccountId | None = None
     fail_reason: str | None = None
-
+    master: AccountId | None = None
+    asset: Asset | None = None
 
 class EvaaWithdrawBlock(Block):
     data: EvaaWithdrawData
@@ -319,9 +363,10 @@ class EvaaWithdrawBlockMatcher(BlockMatcher):
         # opcode used for both payout and user smc update
         success_matcher = labeled(
             "withdraw_success",
-            ContractMatcher(
+            EvaaContractWithHeaderMatcher(
                 opcode=EvaaWithdrawSuccess.opcode,
                 optional=False,
+                child_matcher=BlockTypeMatcher(block_type="ton_transfer")
             ),
         )
 
@@ -379,7 +424,7 @@ class EvaaWithdrawBlockMatcher(BlockMatcher):
 
         user_matcher = labeled(
             "withdraw_on_user",
-            ContractMatcher(
+            EvaaContractWithHeaderMatcher(
                 opcode=EvaaWithdrawUser.opcode,
                 optional=False,
                 child_matcher=ExclusiveOrMatcher(
@@ -406,9 +451,11 @@ class EvaaWithdrawBlockMatcher(BlockMatcher):
         msg = block.get_message()
         owner = AccountId(msg.source)
 
-        withdraw_master_data = EvaaWithdrawMaster(block.get_body())
+        withdraw_master_body = block.get_body()
+        master = AccountId(block.get_message().destination)
+        withdraw_master_data = EvaaWithdrawMaster(withdraw_master_body)
         asset_id = withdraw_master_data.asset_id
-        amount = withdraw_master_data.amount
+        desired_amount = withdraw_master_data.amount
         recipient = AccountId(withdraw_master_data.recipient_address)
 
         is_ton = asset_id == TON_ASSET_ID
@@ -420,19 +467,20 @@ class EvaaWithdrawBlockMatcher(BlockMatcher):
         )
         if not withdraw_user_block:
             return []
-
         owner_contract = AccountId(withdraw_user_block.get_message().destination)
 
         withdraw_collateralized_success = get_labeled(
             "withdraw_collateralized_success", other_blocks, CallContractBlock
         )
-
+        amount = desired_amount
         if withdraw_collateralized_success:
             collateralized_data = EvaaWithdrawCollateralized(
                 withdraw_collateralized_success.get_body()
             )
+            amount = collateralized_data.withdraw_amount_current
 
             if is_ton:
+                asset = Asset(is_ton=True)
                 ton_payout = get_labeled("ton_payout", other_blocks, CallContractBlock)
                 if not ton_payout:
                     return []
@@ -442,16 +490,16 @@ class EvaaWithdrawBlockMatcher(BlockMatcher):
                 )
                 if not jetton_payout:
                     return []
-
+                asset = jetton_payout.data["asset"]
                 recipient_jetton_wallet = AccountId(
                     jetton_payout.data["receiver_wallet"]
                 )
                 master_jetton_wallet = AccountId(jetton_payout.data["sender_wallet"])
 
                 in_transfer_value = jetton_payout.data["amount"].value
-                if amount != in_transfer_value:
-                    logger.warning(f"amount mismatch: {amount} != {in_transfer_value}")
-                    amount = in_transfer_value
+                if desired_amount != in_transfer_value:
+                    logger.warning(f"amount mismatch: {desired_amount} != {in_transfer_value}")
+                    desired_amount = in_transfer_value
 
             new_block = EvaaWithdrawBlock(
                 data=EvaaWithdrawData(
@@ -464,6 +512,8 @@ class EvaaWithdrawBlockMatcher(BlockMatcher):
                     is_ton=is_ton,
                     recipient_jetton_wallet=recipient_jetton_wallet,
                     master_jetton_wallet=master_jetton_wallet,
+                    master=master,
+                    asset=asset,
                 )
             )
 
@@ -480,10 +530,11 @@ class EvaaWithdrawBlockMatcher(BlockMatcher):
                     owner_contract=owner_contract,
                     recipient=recipient,
                     asset_id=asset_id,
-                    amount=amount,
+                    amount=desired_amount,
                     is_success=False,
                     is_ton=is_ton,
                     fail_reason="withdraw_no_funds_excess",
+                    master=master
                 )
             )
             new_block.merge_blocks([block] + other_blocks)
@@ -501,7 +552,7 @@ class EvaaWithdrawBlockMatcher(BlockMatcher):
                     owner_contract=owner_contract,
                     recipient=recipient,
                     asset_id=asset_id,
-                    amount=amount,
+                    amount=desired_amount,
                     is_success=False,
                     is_ton=is_ton,
                     fail_reason=error_data.reason,
@@ -592,7 +643,7 @@ class EvaaLiquidateBlockMatcher(BlockMatcher):
                 opcode=EvaaLiquidateSatisfied.opcode,
                 optional=False,
                 children_matchers=[
-                    ContractMatcher(  # to user contract
+                    EvaaContractWithHeaderMatcher(  # to user contract
                         opcode=EvaaLiquidateSuccess.opcode,
                         optional=False,
                         child_matcher=evaa_action_comment_matcher,
@@ -629,7 +680,7 @@ class EvaaLiquidateBlockMatcher(BlockMatcher):
         # path: liquidate_user -> (satisfied or unsatisfied)
         user_matcher = labeled(
             "liquidate_user",
-            ContractMatcher(
+            EvaaContractWithHeaderMatcher(
                 opcode=EvaaLiquidateUser.opcode,
                 optional=False,
                 child_matcher=ExclusiveOrMatcher(

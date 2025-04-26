@@ -193,8 +193,8 @@ class GenericMatcher(BlockMatcher):
         return self.test_self_func(block)
 
 class RecursiveMatcher(BlockMatcher):
-    def __init__(self, repeating_matcher: BlockMatcher, exit_matcher: BlockMatcher):
-        super().__init__(child_matcher=None, parent_matcher=None)
+    def __init__(self, repeating_matcher: BlockMatcher, exit_matcher: BlockMatcher, optional: bool = False):
+        super().__init__(child_matcher=None, parent_matcher=None, optional=optional)
         self.repeating_matcher = repeating_matcher
         self.exit_matcher = exit_matcher
 

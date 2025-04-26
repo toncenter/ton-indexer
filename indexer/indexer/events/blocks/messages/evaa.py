@@ -24,7 +24,26 @@ class EvaaSupplyMaster:
         self.supply_amount = slice.load_uint(64)  # amount type in schema
         self.recipient_address = slice.load_address()
         # skip rest - not needed for indexing
+class EvaaSupplyJettonForwardMessage:
+    # owner -> master
+    # schema.tlb#L184
+    # supply_master#00000001 query_id:uint64 include_user_code:BoolExtended supply_amount:Amount recipient_address:MsgAddressInt
+    #    forward_ton_amount:Amount custom_response_payload:^Cell = InternalMsgBody; // * -> Master
+    opcode = 0x1  # op::supply_master
 
+    include_user_code: bool
+    forward_amount: int
+    recipient_address: Address
+    custom_response_payload: Cell
+
+    def __init__(self, slice: Slice, skip_query_id: bool = False):
+        opcode = slice.load_uint(32)
+        assert opcode == self.opcode, f"Invalid opcode: {opcode}"
+
+        self.include_user_code = slice.load_int(2) != 0
+        self.recipient_address = slice.load_address()
+        self.forward_amount = slice.load_uint(64)  # amount type in schema
+        self.custom_response_payload = slice.load_ref()
 
 class EvaaSupplyUser:
     # master -> user
@@ -333,10 +352,16 @@ class EvaaLiquidateSatisfied:
         self.collateral_asset_id = ref_data.load_uint(256)
         self.delta_collateral_principal = ref_data.load_int(64)
         self.collateral_reward = ref_data.load_uint(64)
-        self.min_collateral_amount = ref_data.load_uint(64)
-        self.new_user_collateral_principal = ref_data.load_int(64)
-        self.forward_ton_amount = ref_data.load_uint(64)
-        self.custom_response_payload = ref_data.load_ref()
+        if ref_data.remaining_bits > 0:
+            self.min_collateral_amount = ref_data.load_uint(64)
+            self.new_user_collateral_principal = ref_data.load_int(64)
+            self.forward_ton_amount = ref_data.load_uint(64)
+            self.custom_response_payload = ref_data.load_ref()
+        else:
+            self.min_collateral_amount = None
+            self.new_user_collateral_principal = None
+            self.forward_ton_amount = None
+            self.custom_response_payload = None
 
 
 class EvaaLiquidateUnsatisfied:

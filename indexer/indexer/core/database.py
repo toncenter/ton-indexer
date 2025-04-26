@@ -308,16 +308,19 @@ class Action(Base):
     nft_mint_data = Column(CompositeType("nft_mint_details", [
         Column("nft_item_index", Numeric)]))
     evaa_supply_data = Column(CompositeType("evaa_supply_details", [
-        Column("is_ton", Boolean),
         Column("sender_jetton_wallet", String),
         Column("recipient_jetton_wallet", String),
-        Column("master_jetton_wallet", String)
+        Column("master_jetton_wallet", String),
+        Column("master", String),
+        Column("asset_id", String)
     ]))
     evaa_withdraw_data = Column(CompositeType("evaa_withdraw_details", [
-        Column("is_ton", Boolean),
+        Column("sender_jetton_wallet", String),
         Column("recipient_jetton_wallet", String),
         Column("master_jetton_wallet", String),
-        Column("fail_reason", String)
+        Column("master", String),
+        Column("fail_reason", String),
+        Column("asset_id", String)
     ]))
     evaa_liquidate_data = Column(CompositeType("evaa_liquidate_details", [
         Column("fail_reason", String),
@@ -554,7 +557,7 @@ class Message(Base):
     ihr_fee: int = Column(BigInteger)
     created_lt: int = Column(BigInteger)
     created_at: int = Column(BigInteger)
-    opcode: int = Column(Integer)
+    opcode: int = Column(BigInteger)
     ihr_disabled: bool = Column(Boolean)
     bounce: bool = Column(Boolean)
     bounced: bool = Column(Boolean)
