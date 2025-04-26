@@ -15,13 +15,14 @@ class NoMessageBodyException(Exception):
 
 class EventNode:
     def __init__(self, message: Message, children: list['EventNode'], is_tick_tock: bool = False,
-                 tick_tock_tx: Transaction = None):
+                 tick_tock_tx: Transaction = None, ghost_node: bool = False):
         self.message = message
         self.is_tick_tock = is_tick_tock
         self.tick_tock_tx = tick_tock_tx
         self.parent = None
         self.children = children
         self.handled = False
+        self.ghost_node = ghost_node
         if not is_tick_tock:
             self.emulated = message.transaction.emulated
             self.failed = message.transaction.aborted

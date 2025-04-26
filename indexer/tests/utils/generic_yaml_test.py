@@ -6,6 +6,7 @@ import pytest
 import yaml
 from jinja2 import Template
 
+from event_classifier import process_trace
 from indexer.events import context
 from indexer.events.blocks.utils.block_tree_serializer import serialize_blocks
 from indexer.events.event_processing import process_event_async_with_postprocessing
@@ -129,7 +130,7 @@ async def run_test_case(case_name: str, case_data: Dict, traces_dir: Path):
     assert trace_id, f"Missing trace-id for case {case_name}"
     # Process the trace
     result_blocks = await process_event_async_with_postprocessing(trace)
-
+    _, _, actions, _ = await process_trace(trace)
     # Check expected blocks
     if "expected-blocks" in case_data:
         for expected_block in case_data["expected-blocks"]:
@@ -158,7 +159,7 @@ async def run_test_case(case_name: str, case_data: Dict, traces_dir: Path):
 
     # Check expected actions
     if "expected-actions" in case_data:
-        actions, _ = serialize_blocks(result_blocks, trace.trace_id)
+        # actions, _ = serialize_blocks(result_blocks, trace.trace_id)
         for expected_action in case_data["expected-actions"]:
             action_type = expected_action.get("type")
             assert action_type, f"Missing action type in expected-actions for case {case_name}"
@@ -187,9 +188,12 @@ async def run_test_case(case_name: str, case_data: Dict, traces_dir: Path):
 # Base test class with common functionality
 class BaseGenericActionTest:
     yaml_file = None  # Will be overridden by subclasses
+    generate_test_cases = True
 
     @classmethod
     def pytest_generate_tests(cls, metafunc):
+        if not cls.generate_test_cases:
+            return
         """Generate test cases from the YAML file specified by the subclass."""
         if "case_name" in metafunc.fixturenames and "case_data" in metafunc.fixturenames:
             # Make sure yaml_file is set

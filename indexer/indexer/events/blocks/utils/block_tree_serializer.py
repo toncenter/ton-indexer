@@ -655,8 +655,9 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
     # Fill accounts
     action._accounts.append(action.source)
     action._accounts.append(action.source_secondary)
-    action._accounts.append(action.destination)
-    action._accounts.append(action.destination_secondary)
+    if not block.is_ghost_block:
+        action._accounts.append(action.destination)
+        action._accounts.append(action.destination_secondary)
 
     # Fill extended tx hashes
     extended_tx_hashes = set(action.tx_hashes)
@@ -689,3 +690,27 @@ def serialize_blocks(blocks: list[Block], trace_id) -> tuple[list[Action], str]:
 
             actions.append(action)
     return actions, state
+
+def create_unknown_action(trace: Trace) -> Action:
+    logger.debug("Creating unknown action for " + trace.trace_id)
+    tx_hashes = [n.hash for n in trace.transactions]
+    failed = any(n.aborted for n in trace.transactions)
+    action = Action(
+        trace_id=trace.trace_id,
+        type="unknown",
+        action_id=trace.trace_id,
+        tx_hashes=tx_hashes,
+        start_lt=trace.start_lt,
+        end_lt=trace.end_lt,
+        start_utime=trace.start_utime,
+        end_utime=trace.end_utime,
+        success=not failed,
+        mc_seqno_end=trace.mc_seqno_end,
+        value_extra_currencies=dict(),
+        trace_end_lt=trace.end_lt,
+        trace_end_utime=trace.end_utime,
+        trace_external_hash=trace.external_hash,
+        trace_mc_seqno_end=trace.mc_seqno_end
+    )
+    action._accounts = list(set([n.account for n in trace.transactions]))
+    return action

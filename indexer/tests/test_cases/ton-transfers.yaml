@@ -24,3 +24,19 @@ cases:
             content: null
             encrypted: false
           action_id: 2w63ODTcF5Jcx0ff5OOJKZ9kMhn5BzeYKr3R+OLEZMU=
+  Failed ton transfer (external-in only):
+    trace-id: Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ--D-3E=
+    expected-actions:
+      - type: ton_transfer
+        values:
+          success: False
+          _accounts:
+            - 0:9E53B9A59CC76005E9B00D571D4933D8548361F87608D58BC1A0029FACCEF345
+          tx_hashes:
+            - Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ++D+3E=
+          value: 17192063
+          ton_transfer_data:
+            content: '109872119'
+            encrypted: False
+          source: 0:9E53B9A59CC76005E9B00D571D4933D8548361F87608D58BC1A0029FACCEF345
+          destination: 0:F99B14600AE44D2F12B178E8C6EABD78892AE82C5E45B6898F9DEB7EB203F9C4
