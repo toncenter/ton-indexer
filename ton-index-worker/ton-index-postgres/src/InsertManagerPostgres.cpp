@@ -407,6 +407,7 @@ void InsertBatchPostgres::alarm() {
     insert_under_mutex_query += insert_nft_items(txn);
     insert_under_mutex_query += insert_getgems_nft_auctions(txn);
     insert_under_mutex_query += insert_getgems_nft_sales(txn);
+    insert_under_mutex_query += insert_contract_methods(txn);
     insert_under_mutex_query += insert_latest_account_states(txn);
     
     td::Timer commit_timer{true};
@@ -1491,6 +1492,47 @@ void InsertBatchPostgres::insert_traces(pqxx::work &txn, bool with_copy) {
   stream.finish();
 }
 
+std::string InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
+  std::unordered_map<td::Bits256, ContractMethodsData> contract_methods;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& [code_hash, methods_data] : task.parsed_block_->contract_methods_) {
+      if (contract_methods.find(code_hash) == contract_methods.end()) {
+        contract_methods[code_hash] = methods_data;
+      }
+    }
+  }
+
+  std::initializer_list<std::string_view> columns = {
+    "code_hash", "methods", "timestamp"
+  };
+
+  PopulateTableStream stream(txn, "contract_methods", columns, 1000, false);
+  stream.setConflictDoUpdate({"code_hash"}, "contract_methods.timestamp < EXCLUDED.timestamp");
+
+  for (const auto& [code_hash, methods_data] : contract_methods) {
+    // turn `vector<unsigned long long>` into PostgreSQL array string
+    std::ostringstream methods_str;
+    methods_str << "{";
+    bool first = true;
+    for (const auto& method_id : methods_data.method_ids) {
+      if (!first) methods_str << ", ";
+      methods_str << method_id;
+      first = false;
+    }
+    methods_str << "}";
+
+    auto tuple = std::make_tuple(
+      methods_data.code_hash,
+      methods_str.str(),
+      methods_data.timestamp
+    );
+    stream.insert_row(std::move(tuple));
+  }
+
+  return stream.get_str();
+}
+
 //
 // InsertManagerPostgres
 //
@@ -2074,6 +2116,13 @@ void InsertManagerPostgres::start_up() {
     );
 
     query += (
+      "create table if not exists contract_methods ("
+      "code_hash tonhash not null primary key, "
+      "methods bigint[], "
+      "timestamp bigint not null);\n"
+    );
+
+    query += (
       "create table if not exists address_metadata ("
 			"address varchar not null, "
 			"type varchar not null, "
@@ -2381,7 +2430,8 @@ void InsertManagerPostgres::start_up() {
         "create index if not exists actions_index_5 on actions (trace_mc_seqno_end);\n"
         "create index if not exists action_accounts_index_1 on action_accounts (action_id);\n"
         "create index if not exists action_accounts_index_2 on action_accounts (trace_id, action_id);\n"
-        "create index if not exists action_accounts_index_3 on action_accounts (account, trace_end_utime, trace_id, action_end_utime, action_id);"
+        "create index if not exists action_accounts_index_3 on action_accounts (account, trace_end_utime, trace_id, action_end_utime, action_id);\n"
+        "create index if not exists contract_methods_code_hash_idx on contract_methods (code_hash);"
       );
 
       LOG(DEBUG) << query;
