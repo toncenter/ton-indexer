@@ -26,6 +26,9 @@ class TestTonstakersActions(BaseGenericActionTest):
 class TestJvaultActions(BaseGenericActionTest):
     yaml_file = "jvault.yaml"
 
+class TestJettonTransfersActions(BaseGenericActionTest):
+    yaml_file = "jetton-transfer.yaml"
+
 class TestEvaaActions(BaseGenericActionTest):
     yaml_file = "evaa.yaml"
 

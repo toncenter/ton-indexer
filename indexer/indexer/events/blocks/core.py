@@ -206,6 +206,10 @@ class Block:
             earliest_block.previous_block.compact_connections()
         self.initiating_event_node = earliest_block.initiating_event_node
         self.calculate_min_max_lt()
+        for node in self.event_nodes:
+            if node.ghost_node:
+                self.is_ghost_block = True
+                break
 
     def find_next(self,
                   node_filter: Callable[['Block', int], bool] = None,

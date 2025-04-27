@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 
 from pytoniq_core import Slice, WalletMessage, CurrencyCollection, Cell, StateInit, Address
@@ -134,3 +136,23 @@ class WalletV5R1ExternalMessage:
                 break
             current_ref = s.load_ref()
             self.payload.append(PayloadMessage(s.load_ref()))
+
+def extract_payload_from_wallet_message(body: bytes) -> tuple[list[PayloadMessage], str|None]:
+    wallets = [WalletV3ExternalMessage, WalletV4ExternalMessage, WalletV5R1ExternalMessage]
+    wallet_types = ["v3", "v4", "v5r1"]
+    external_message = None
+    wallet_type = None
+    
+    for i, wallet_class in enumerate(wallets):
+        try:
+            slice = Slice.one_from_boc(body)
+            external_message = wallet_class(slice)
+            wallet_type = wallet_types[i]
+            break
+        except Exception:
+            pass
+            
+    if external_message is None:
+        return [], None
+        
+    return external_message.payload, wallet_type
