@@ -565,6 +565,11 @@ struct GetGemsNftFixPriceSaleData {
   td::Bits256 data_hash;
 };
 
+struct ContractMethodsData {
+  td::Bits256 code_hash;
+  std::vector<unsigned long long> method_ids;
+  uint64_t timestamp;
+};
 
 //
 // Containers
@@ -668,6 +673,8 @@ struct ParsedBlock {
     }
     return result;
   }
+
+  std::unordered_map<td::Bits256, ContractMethodsData> contract_methods_;
 };
 
 using ParsedBlockPtr = std::shared_ptr<ParsedBlock>;
