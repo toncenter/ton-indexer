@@ -173,6 +173,7 @@ async def process_event_async(trace: Trace) -> Block:
         raise e
     except Exception as e:
         logging.error(f"Failed to process {trace.trace_id}")
+        logging.exception(e, exc_info=True)
         raise e
 
 async def process_event_async_with_postprocessing(trace: Trace) -> list[Block]:

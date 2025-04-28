@@ -106,6 +106,7 @@ public:
             auto libraries_root = context.get_config()->get_libraries_root();
             emulator_->set_libs(vm::Dictionary(libraries_root, 256));
             emulator_->set_ignore_chksig(context.get_ignore_chksig());
+            context.set_ignore_chksig(false); // ignore chksig only on root tx
     }
 
     void emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, ton::LogicalTime lt, td::Promise<std::unique_ptr<TraceNode>> promise);

@@ -54,8 +54,12 @@ interface_cache: LRUCache | None = None
 
 
 def add_on_conflict_ignore(conn, cursor, statement, parameters, context, executemany):
-    if statement.lstrip().upper().startswith('INSERT INTO ACTIONS'):
+    stipped_statement = statement.lstrip().upper()
+    if stipped_statement.startswith('INSERT INTO ACTIONS'):
         statement += " ON CONFLICT DO NOTHING"
+    elif stipped_statement.startswith('INSERT INTO ACTION_ACCOUNTS'):
+        statement += " ON CONFLICT DO NOTHING"
+
     return statement, parameters
 
 
@@ -298,6 +302,8 @@ class EventClassifierWorker(mp.Process):
                 ok_traces = []
                 failed_traces = []
                 broken_traces = []
+                inserted_actions = set()
+                inserted_action_accounts = set()
                 for trace_id, state, actions, exc in results:
                     if state == 'ok' or state == 'broken':
                         # # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
@@ -313,6 +319,17 @@ class EventClassifierWorker(mp.Process):
                         #     # session.add_all(action.get_action_accounts())
                         session.add_all(actions)
                         for action in actions:
+                            concat_key = action.action_id + '_' + action.trace_id
+                            if concat_key in inserted_actions:
+                                raise Exception(f"Duplicate action: {concat_key}")
+                            else:
+                                inserted_actions.add(concat_key)
+                            for action_account in action.get_action_accounts():
+                                account_concat_key = action_account.account + '_' + action_account.action_id + '_' + action.trace_id
+                                if account_concat_key in inserted_action_accounts:
+                                    raise Exception(f"Duplicate action account: {account_concat_key}")
+                                else:
+                                    inserted_action_accounts.add(account_concat_key)
                             session.add_all(action.get_action_accounts())
 
                         if state == 'ok':
@@ -681,20 +698,7 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
         return trace.trace_id, 'ok', [], None
     try:
         result = await process_event_async_with_postprocessing(trace)
-        actions = []
-        state = 'ok'
-        for block in result:
-            if block.btype != 'root':
-                if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
-                    continue
-                if block.btype == 'empty':
-                    continue
-                if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
-                    continue
-                if block.broken:
-                    state = 'broken'
-                action = block_to_action(block, trace.trace_id, trace)
-                actions.append(action)
+        actions, state = serialize_blocks(result, trace.trace_id, trace)
         if len(actions) == 0 and len(trace.transactions) > 0:
             actions = await try_classify_unknown_trace(trace)
         return trace.trace_id, state, actions, None
@@ -724,12 +728,12 @@ if __name__ == '__main__':
     # Create a shared namespace for cross-process data sharing
     manager = Manager()
     shared_namespace = manager.Namespace()
-    
+
     # Initialize pools data and store in shared namespace
     init_pools_data()
     # Save pools data from context to shared namespace
     shared_namespace.dedust_pools = context.dedust_pools.get()
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--prefetch-size',
                         help='Number of prefetched tasks',

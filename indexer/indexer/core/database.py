@@ -214,7 +214,7 @@ class TraceEdge(Base):
     # trace: "Trace" = relationship("Trace", back_populates="edges", viewonly=True)
 
 class ActionAccount(Base):
-    __tablename__ = 'action_accounts'
+    __tablename__ = 'action_accounts_versioning'
     action_id: str = Column(String, primary_key=True)
     trace_id: str = Column(String, primary_key=True)
     account: str = Column(String(70), primary_key=True)
@@ -224,7 +224,7 @@ class ActionAccount(Base):
     action_end_utime: int = Column(Numeric)
 
 class Action(Base):
-    __tablename__ = 'actions'
+    __tablename__ = 'actions_versioning'
 
     trace_id: str = Column(String(44), nullable=False, primary_key=True)
     action_id: str = Column(String, nullable=False, primary_key=True)
@@ -396,6 +396,8 @@ class Action(Base):
     mc_seqno_end: int = Column(Numeric)
     trace_mc_seqno_end: int = Column(Numeric)
     value_extra_currencies: dict = Column(JSONB)
+    parent_action_id: str = Column(String)
+    ancestor_type: list[str] = Column(ARRAY(String), default=[])
 
     _accounts: list[str]
 

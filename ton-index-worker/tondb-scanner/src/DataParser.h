@@ -27,7 +27,7 @@ private:
   td::Result<schema::TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs);
   td::Result<schema::TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs);
   td::Result<schema::TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs);
-  td::Result<schema::StorageUsedShort> parse_storage_used_short(vm::CellSlice& cs);
+  td::Result<schema::StorageUsed> parse_storage_used(vm::CellSlice& cs);
   td::Result<schema::TrActionPhase> parse_tr_action_phase(vm::CellSlice& cs);
   td::Result<schema::TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs);
   td::Result<schema::SplitMergeInfo> parse_split_merge_info(td::Ref<vm::CellSlice>& cs);

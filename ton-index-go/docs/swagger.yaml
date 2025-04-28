@@ -1229,6 +1229,13 @@ paths:
           type: string
         name: exclude_action_type
         type: array
+      - collectionFormat: multi
+        description: Supported action types
+        in: query
+        items:
+          type: string
+        name: supported_action_types
+        type: array
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
