@@ -269,11 +269,6 @@ class Action(Base):
         Column("response_destination", String),
         Column("nft_item_index", Numeric),
     ]))
-    nft_discovery_data = Column(CompositeType("nft_discovery_details", [
-        Column("collection_address", Boolean),
-        Column("query_id", Numeric),
-        Column("nft_item_index", Numeric),
-    ]))
     jetton_swap_data = Column(CompositeType("jetton_swap_details", [
         Column("dex", String),
         Column("sender", String),
@@ -312,7 +307,8 @@ class Action(Base):
         Column("recipient_jetton_wallet", String),
         Column("master_jetton_wallet", String),
         Column("master", String),
-        Column("asset_id", String)
+        Column("asset_id", String),
+        Column("is_ton", Boolean)
     ]))
     evaa_withdraw_data = Column(CompositeType("evaa_withdraw_details", [
         Column("sender_jetton_wallet", String),
@@ -356,7 +352,8 @@ class Action(Base):
     ]))
     jvault_stake_data = Column(CompositeType("jvault_stake_details", [
         Column("period", Numeric),
-        Column("minted_stake_jettons", Numeric)
+        Column("minted_stake_jettons", Numeric),
+        Column("stake_wallet", String)
     ]))
     multisig_create_order_data = Column(CompositeType("multisig_create_order_details", [
         Column("query_id", Numeric),

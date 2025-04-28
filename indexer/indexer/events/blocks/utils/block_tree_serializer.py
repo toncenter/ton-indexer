@@ -153,11 +153,10 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
     }
 
 def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):
-    action.source = block.data.sender.as_str()
-    action.destination = block.data.nft.as_str()
-    action.nft_discovery_data = {
-        "query_id": block.data.query_id,
-        "collection_address": block.data.result_collection.as_str(),
+    action.source = _addr(block.data.sender)
+    action.asset = _addr(block.data.result_collection)
+    action.asset_secondary = _addr(block.data.nft)
+    action.nft_transfer_data = {
         "nft_item_index": block.data.result_index,
     }
 
