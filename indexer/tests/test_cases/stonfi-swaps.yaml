@@ -51,6 +51,7 @@ cases:
               destination_jetton_wallet: null
               asset: 0:8CDC1D7640AD5EE326527FC1AD0514F468B30DC84B0173F0E155F451B4E11F7C
       - type: jetton_transfer # Referral payout
+        selector: "{{ value.parent_action_id == None }}"
         values:
           _accounts:
             - 0:1150B518B2626AD51899F98887F8824B70065456455F7FE2813F012699A4061F
