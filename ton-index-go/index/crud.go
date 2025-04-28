@@ -1952,6 +1952,48 @@ func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawActio
 	if v := raw_action.DexWithdrawLiquidityDataAsset2Out; v != nil {
 		(*addr_list)[(string)(*v)] = true
 	}
+
+	// Multisig fields
+	if v := raw_action.DestinationSecondary; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+
+	// EVAA fields
+	if v := raw_action.EvaaSupplySenderJettonWallet; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.EvaaSupplyRecipientJettonWallet; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.EvaaSupplyMasterJettonWallet; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.EvaaSupplyMaster; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.EvaaWithdrawRecipientJettonWallet; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.EvaaWithdrawMasterJettonWallet; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.EvaaWithdrawMaster; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+
+	// JVault fields
+	if v := raw_action.JvaultStakeStakeWallet; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	for _, v := range raw_action.JvaultClaimClaimedJettons {
+		(*addr_list)[(string)(v)] = true
+	}
+
+	// Vesting fields
+	for _, v := range raw_action.VestingAddWhitelistAccountsAdded {
+		(*addr_list)[(string)(v)] = true
+	}
+
 	return success
 }
 
@@ -2049,7 +2091,45 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 				(A.staking_data).ts_nft,
 				(A.staking_data).tokens_burnt,
 				(A.staking_data).tokens_minted,
-				A.success, A.trace_external_hash, A.value_extra_currencies from actions as A where ` + filterByArray("A.trace_id", trace_id_list) + ` order by trace_id, start_lt, end_lt`
+				A.success, A.trace_external_hash, A.value_extra_currencies,
+				(A.multisig_create_order_data).query_id,
+				(A.multisig_create_order_data).order_seqno,
+				(A.multisig_create_order_data).is_created_by_signer,
+				(A.multisig_create_order_data).is_signed_by_creator,
+				(A.multisig_create_order_data).creator_index,
+				(A.multisig_create_order_data).expiration_date,
+				(A.multisig_create_order_data).order_boc,
+				(A.multisig_approve_data).signer_index,
+				(A.multisig_approve_data).exit_code,
+				(A.multisig_execute_data).query_id,
+				(A.multisig_execute_data).order_seqno,
+				(A.multisig_execute_data).expiration_date,
+				(A.multisig_execute_data).approvals_num,
+				(A.multisig_execute_data).signers_hash,
+				(A.multisig_execute_data).order_boc,
+				(A.vesting_send_message_data).query_id,
+				(A.vesting_send_message_data).message_boc,
+				(A.vesting_add_whitelist_data).query_id,
+				(A.vesting_add_whitelist_data).accounts_added,
+				(A.evaa_supply_data).sender_jetton_wallet,
+				(A.evaa_supply_data).recipient_jetton_wallet,
+				(A.evaa_supply_data).master_jetton_wallet,
+				(A.evaa_supply_data).master,
+				(A.evaa_supply_data).asset_id,
+				(A.evaa_supply_data).is_ton,
+				(A.evaa_withdraw_data).recipient_jetton_wallet,
+				(A.evaa_withdraw_data).master_jetton_wallet,
+				(A.evaa_withdraw_data).master,
+				(A.evaa_withdraw_data).fail_reason,
+				(A.evaa_withdraw_data).asset_id,
+				(A.evaa_liquidate_data).fail_reason,
+				(A.evaa_liquidate_data).debt_amount,
+				(A.evaa_liquidate_data).asset_id,
+				(A.jvault_claim_data).claimed_jettons,
+				(A.jvault_claim_data).claimed_amounts,
+				(A.jvault_stake_data).period,
+				(A.jvault_stake_data).minted_stake_jettons,
+				(A.jvault_stake_data).stake_wallet from actions as A where ` + filterByArray("A.trace_id", trace_id_list) + ` order by trace_id, start_lt, end_lt`
 			actions, err := queryRawActionsImpl(query, conn, settings)
 			if err != nil {
 				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query actions: %s", err.Error())}

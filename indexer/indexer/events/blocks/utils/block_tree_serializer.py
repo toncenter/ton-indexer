@@ -442,12 +442,11 @@ def _fill_evaa_supply_action(block: EvaaSupplyBlock, action: Action):
     action.success = block.data.is_success
     action.evaa_supply_data = {
         "is_ton": block.data.is_ton,
-        "asset_id": str(block.data.asset_id),
+        "asset_id": hex(block.data.asset_id) if block.data.asset_id is not None else None,
         "master": _addr(block.data.master),
         "recipient_jetton_wallet": _addr(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
         "master_jetton_wallet": _addr(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None
     }
-
 
 def _fill_evaa_withdraw_action(block: EvaaWithdrawBlock, action: Action):
     action.source = _addr(block.data.owner)
@@ -462,7 +461,7 @@ def _fill_evaa_withdraw_action(block: EvaaWithdrawBlock, action: Action):
         "master_jetton_wallet": _addr(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None,
         "fail_reason": block.data.fail_reason,
         "master": _addr(block.data.master),
-        "asset_id": hex(block.data.asset_id)
+        "asset_id": hex(block.data.asset_id) if block.data.asset_id is not None else None,
     }
 
 
@@ -471,10 +470,10 @@ def _fill_evaa_liquidate_action(block: EvaaLiquidateBlock, action: Action):
     action.destination = str(block.data.borrower)
     action.destination_secondary = str(block.data.borrower_contract) if block.data.borrower_contract else None
     action.asset = str(block.data.collateral_asset_id)
-    action.asset2 = str(block.data.debt_asset_id)
     action.amount = block.data.collateral_amount
     action.success = block.data.is_success
     action.evaa_liquidate_data = {
+        'asset_id': hex(block.data.collateral_asset_id) if block.data.collateral_asset_id is not None else None,
         "fail_reason": block.data.fail_reason,
         "debt_amount": block.data.debt_amount
     }

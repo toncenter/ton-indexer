@@ -3,9 +3,10 @@ package index
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var BasicActions = [...]string{
@@ -25,6 +26,19 @@ var ActionTypeShortcuts = map[string][]string{
 		"dex_withdraw_liquidity", "unsubscribe", "election_deposit", "election_recover",
 		"auction_bid", "tick_tock",
 	},
+	"v2": {
+		"call_contract", "contract_deploy", "ton_transfer", "stake_deposit",
+		"stake_withdrawal", "stake_withdrawal_request", "dex_deposit_liquidity",
+		"jetton_transfer", "nft_transfer", "nft_mint", "jetton_burn", "jetton_mint",
+		"jetton_swap", "change_dns", "delete_dns", "renew_dns", "subscribe",
+		"dex_withdraw_liquidity", "unsubscribe", "election_deposit", "election_recover",
+		"auction_bid", "tick_tock",
+		// New action types
+		"multisig_create_order", "multisig_approve", "multisig_execute",
+		"vesting_send_message", "vesting_add_whitelist",
+		"evaa_supply", "evaa_withdraw", "evaa_liquidate",
+		"jvault_stake", "jvault_unstake", "jvault_claim",
+	},
 	"staking": {
 		"stake_deposit", "stake_withdrawal", "stake_withdrawal_request",
 	},
@@ -39,6 +53,18 @@ var ActionTypeShortcuts = map[string][]string{
 	},
 	"dns": {
 		"change_dns", "delete_dns", "renew_dns",
+	},
+	"multisig": {
+		"multisig_create_order", "multisig_approve", "multisig_execute",
+	},
+	"vesting": {
+		"vesting_send_message", "vesting_add_whitelist",
+	},
+	"lending": {
+		"evaa_supply", "evaa_withdraw", "evaa_liquidate",
+	},
+	"jvault": {
+		"jvault_stake", "jvault_unstake", "jvault_claim",
 	},
 }
 
@@ -178,9 +204,47 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.staking_data).tokens_minted,
 		A.success,
 		A.trace_external_hash,
-		A.value_extra_currencies`
+		A.value_extra_currencies,
+		(A.multisig_create_order_data).query_id,
+		(A.multisig_create_order_data).order_seqno,
+		(A.multisig_create_order_data).is_created_by_signer,
+		(A.multisig_create_order_data).is_signed_by_creator,
+		(A.multisig_create_order_data).creator_index,
+		(A.multisig_create_order_data).expiration_date,
+		(A.multisig_create_order_data).order_boc,
+		(A.multisig_approve_data).signer_index,
+		(A.multisig_approve_data).exit_code,
+		(A.multisig_execute_data).query_id,
+		(A.multisig_execute_data).order_seqno,
+		(A.multisig_execute_data).expiration_date,
+		(A.multisig_execute_data).approvals_num,
+		(A.multisig_execute_data).signers_hash,
+		(A.multisig_execute_data).order_boc,
+		(A.vesting_send_message_data).query_id,
+		(A.vesting_send_message_data).message_boc,
+		(A.vesting_add_whitelist_data).query_id,
+		(A.vesting_add_whitelist_data).accounts_added,
+		(A.evaa_supply_data).sender_jetton_wallet,
+		(A.evaa_supply_data).recipient_jetton_wallet,
+		(A.evaa_supply_data).master_jetton_wallet,
+		(A.evaa_supply_data).master,
+		(A.evaa_supply_data).asset_id,
+		(A.evaa_supply_data).is_ton,
+		(A.evaa_withdraw_data).recipient_jetton_wallet,
+		(A.evaa_withdraw_data).master_jetton_wallet,
+		(A.evaa_withdraw_data).master,
+		(A.evaa_withdraw_data).fail_reason,
+		(A.evaa_withdraw_data).asset_id,
+		(A.evaa_liquidate_data).fail_reason,
+		(A.evaa_liquidate_data).debt_amount,
+		(A.evaa_liquidate_data).asset_id,
+		(A.jvault_claim_data).claimed_jettons,
+		(A.jvault_claim_data).claimed_amounts,
+		(A.jvault_stake_data).period,
+		(A.jvault_stake_data).minted_stake_jettons,
+		(A.jvault_stake_data).stake_wallet`
 	clmn_query := clmn_query_default
-	from_query := `actions_versioning as A`
+	from_query := `actions as A`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
@@ -236,7 +300,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		filter_str := fmt.Sprintf("AA.account = '%s'::tonaddr", *v)
 		filter_list = append(filter_list, filter_str)
 
-		from_query = `action_accounts_versioning as AA join actions_versioning as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id`
+		from_query = `action_accounts as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id`
 		if order_by_now {
 			clmn_query = `distinct on (AA.trace_end_utime, AA.trace_id, AA.action_end_utime, AA.action_id) ` + clmn_query_default
 		} else {
@@ -248,7 +312,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
-		from_query = `actions_versioning as A join transactions as T on A.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
+		from_query = `actions as A join transactions as T on A.trace_id = T.trace_id and A.tx_hashes @> array[T.hash::tonhash]`
 		if order_by_now {
 			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
@@ -259,7 +323,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
 
-		from_query = `actions_versioning as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.tx_hashes`
+		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.tx_hashes`
 		if order_by_now {
 			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
@@ -281,11 +345,11 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 	if v := act_req.McSeqno; v != nil {
 		filter_list = append(filter_list, `E.state = 'complete'`)
 		filter_list = append(filter_list, fmt.Sprintf("E.mc_seqno_end = %d", *v))
-		from_query = `actions_versioning as A join traces as E on A.trace_id = E.trace_id`
+		from_query = `actions as A join traces as E on A.trace_id = E.trace_id`
 		clmn_query = clmn_query_default
 	}
 	if v := act_req.ActionId; v != nil {
-		from_query = `actions_versioning as A`
+		from_query = `actions as A`
 		filter_str := filterByArray("A.action_id", v)
 		if len(filter_str) > 0 {
 			filter_list = []string{filter_str}
@@ -293,13 +357,13 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		clmn_query = clmn_query_default
 	}
 	if v := act_req.TraceId; v != nil {
-		from_query = `actions_versioning as A`
+		from_query = `actions as A`
 		filter_str := filterByArray("A.trace_id", v)
 		if len(filter_str) > 0 {
 			filter_list = []string{filter_str}
 		}
 	}
-	if strings.Contains(from_query, "action_accounts_versioning") {
+	if strings.Contains(from_query, "action_accounts") {
 		if order_by_now {
 			orderby_query = fmt.Sprintf(" order by AA.trace_end_utime %s, AA.trace_id %s, AA.action_end_utime %s, AA.action_id %s",
 				sort_order, sort_order, sort_order, sort_order)
@@ -333,7 +397,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 	var args []any
 	args = append(args, act_req.SupportedActionTypes)
 
-	// log.Println(query)
+	log.Println(query)
 	return query, args, nil
 }
 

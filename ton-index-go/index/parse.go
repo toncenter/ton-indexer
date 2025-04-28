@@ -548,6 +548,127 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Subscription = raw.DestinationSecondary
 		details.Amount = raw.Amount
 		act.Details = &details
+	case "multisig_create_order":
+		act.Details = ActionDetailsMultisigCreateOrder{
+			QueryId:           raw.MultisigCreateOrderQueryId,
+			OrderSeqno:        raw.MultisigCreateOrderOrderSeqno,
+			IsCreatedBySigner: raw.MultisigCreateOrderIsCreatedBySigner,
+			IsSignedByCreator: raw.MultisigCreateOrderIsSignedByCreator,
+			CreatorIndex:      raw.MultisigCreateOrderCreatorIndex,
+			ExpirationDate:    raw.MultisigCreateOrderExpirationDate,
+			OrderBoc:          raw.MultisigCreateOrderOrderBoc,
+			Source:            raw.Source,
+			Destination:       raw.Destination,
+			DestinationOrder:  raw.DestinationSecondary,
+		}
+	case "multisig_approve":
+		act.Details = ActionDetailsMultisigApprove{
+			SignerIndex: raw.MultisigApproveSignerIndex,
+			ExitCode:    raw.MultisigApproveExitCode,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+		}
+	case "multisig_execute":
+		act.Details = ActionDetailsMultisigExecute{
+			QueryId:        raw.MultisigExecuteQueryId,
+			OrderSeqno:     raw.MultisigExecuteOrderSeqno,
+			ExpirationDate: raw.MultisigExecuteExpirationDate,
+			ApprovalsNum:   raw.MultisigExecuteApprovalsNum,
+			SignersHash:    raw.MultisigExecuteSignersHash,
+			OrderBoc:       raw.MultisigExecuteOrderBoc,
+			Source:         raw.Source,
+			Destination:    raw.Destination,
+		}
+	case "vesting_send_message":
+		act.Details = ActionDetailsVestingSendMessage{
+			QueryId:     raw.VestingSendMessageQueryId,
+			MessageBoc:  raw.VestingSendMessageMessageBoc,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+			Target:      raw.DestinationSecondary,
+			Amount:      raw.Amount,
+		}
+	case "vesting_add_whitelist":
+		act.Details = ActionDetailsVestingAddWhitelist{
+			QueryId:       raw.VestingAddWhitelistQueryId,
+			AccountsAdded: raw.VestingAddWhitelistAccountsAdded,
+			Source:        raw.Source,
+			Destination:   raw.Destination,
+		}
+	case "evaa_supply":
+		act.Details = ActionDetailsEvaaSupply{
+			SenderJettonWallet:    raw.EvaaSupplySenderJettonWallet,
+			RecipientJettonWallet: raw.EvaaSupplyRecipientJettonWallet,
+			MasterJettonWallet:    raw.EvaaSupplyMasterJettonWallet,
+			Master:                raw.EvaaSupplyMaster,
+			AssetId:               raw.EvaaSupplyAssetId,
+			IsTon:                 raw.EvaaSupplyIsTon,
+			Source:                raw.Source,
+			SourceWallet:          raw.SourceSecondary,
+			Destination:           raw.Destination,
+			DestinationPool:       raw.DestinationSecondary,
+			Asset:                 raw.Asset,
+			Amount:                raw.Amount,
+		}
+	case "evaa_withdraw":
+		act.Details = ActionDetailsEvaaWithdraw{
+			RecipientJettonWallet: raw.EvaaWithdrawRecipientJettonWallet,
+			MasterJettonWallet:    raw.EvaaWithdrawMasterJettonWallet,
+			Master:                raw.EvaaWithdrawMaster,
+			FailReason:            raw.EvaaWithdrawFailReason,
+			AssetId:               raw.EvaaWithdrawAssetId,
+			Source:                raw.Source,
+			Destination:           raw.Destination,
+			DestinationPool:       raw.DestinationSecondary,
+			Asset:                 raw.Asset,
+			Amount:                raw.Amount,
+		}
+	case "evaa_liquidate":
+		act.Details = ActionDetailsEvaaLiquidate{
+			FailReason:   raw.EvaaLiquidateFailReason,
+			DebtAmount:   raw.EvaaLiquidateDebtAmount,
+			Source:       raw.Source,
+			Borrower:     raw.Destination,
+			BorrowerPool: raw.DestinationSecondary,
+			Collateral:   raw.Asset,
+			AssetId:      raw.EvaaLiquidateAssetId,
+			Amount:       raw.Amount,
+		}
+	case "jvault_claim":
+		claimedRewards := make([]JettonAmountPair, 0)
+		if len(raw.JvaultClaimClaimedJettons) == len(raw.JvaultClaimClaimedAmounts) {
+			for i := range raw.JvaultClaimClaimedJettons {
+				claimedRewards = append(claimedRewards, JettonAmountPair{
+					Jetton: &raw.JvaultClaimClaimedJettons[i],
+					Amount: &raw.JvaultClaimClaimedAmounts[i],
+				})
+			}
+		}
+		act.Details = ActionDetailsJvaultClaim{
+			ClaimedRewards: claimedRewards,
+			Source:         raw.Source,
+			SourceWallet:   raw.SourceSecondary,
+			Destination:    raw.Destination,
+		}
+	case "jvault_stake":
+		act.Details = ActionDetailsJvaultStake{
+			Period:             raw.JvaultStakePeriod,
+			MintedStakeJettons: raw.JvaultStakeMintedStakeJettons,
+			StakeWallet:        raw.JvaultStakeStakeWallet,
+			Source:             raw.Source,
+			SourceWallet:       raw.SourceSecondary,
+			Asset:              raw.Asset,
+			Destination:        raw.Destination,
+			Amount:             raw.Amount,
+		}
+	case "jvault_unstake":
+		act.Details = ActionDetailsJvaultUnstake{
+			Source:       raw.Source,
+			SourceWallet: raw.SourceSecondary,
+			Destination:  raw.Destination,
+			Amount:       raw.Amount,
+			ExitCode:     raw.JvaultExitCode,
+		}
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
@@ -888,7 +1009,45 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.StakingDataTokensMinted,
 		&act.Success,
 		&act.TraceExternalHash,
-		&act.ExtraCurrencies)
+		&act.ExtraCurrencies,
+		&act.MultisigCreateOrderQueryId,
+		&act.MultisigCreateOrderOrderSeqno,
+		&act.MultisigCreateOrderIsCreatedBySigner,
+		&act.MultisigCreateOrderIsSignedByCreator,
+		&act.MultisigCreateOrderCreatorIndex,
+		&act.MultisigCreateOrderExpirationDate,
+		&act.MultisigCreateOrderOrderBoc,
+		&act.MultisigApproveSignerIndex,
+		&act.MultisigApproveExitCode,
+		&act.MultisigExecuteQueryId,
+		&act.MultisigExecuteOrderSeqno,
+		&act.MultisigExecuteExpirationDate,
+		&act.MultisigExecuteApprovalsNum,
+		&act.MultisigExecuteSignersHash,
+		&act.MultisigExecuteOrderBoc,
+		&act.VestingSendMessageQueryId,
+		&act.VestingSendMessageMessageBoc,
+		&act.VestingAddWhitelistQueryId,
+		&act.VestingAddWhitelistAccountsAdded,
+		&act.EvaaSupplySenderJettonWallet,
+		&act.EvaaSupplyRecipientJettonWallet,
+		&act.EvaaSupplyMasterJettonWallet,
+		&act.EvaaSupplyMaster,
+		&act.EvaaSupplyAssetId,
+		&act.EvaaSupplyIsTon,
+		&act.EvaaWithdrawRecipientJettonWallet,
+		&act.EvaaWithdrawMasterJettonWallet,
+		&act.EvaaWithdrawMaster,
+		&act.EvaaWithdrawFailReason,
+		&act.EvaaWithdrawAssetId,
+		&act.EvaaLiquidateFailReason,
+		&act.EvaaLiquidateDebtAmount,
+		&act.EvaaLiquidateAssetId,
+		&act.JvaultClaimClaimedJettons,
+		&act.JvaultClaimClaimedAmounts,
+		&act.JvaultStakePeriod,
+		&act.JvaultStakeMintedStakeJettons,
+		&act.JvaultStakeStakeWallet)
 
 	if err != nil {
 		return nil, err

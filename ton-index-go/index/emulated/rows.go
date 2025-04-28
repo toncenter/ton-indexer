@@ -212,6 +212,59 @@ type ActionRow struct {
 	Success                                              bool
 	TraceExternalHash                                    *string
 	ExtraCurrencies                                      map[string]string
+	// Multisig action fields
+	MultisigCreateOrderQueryId           *string
+	MultisigCreateOrderOrderSeqno        *string
+	MultisigCreateOrderIsCreatedBySigner *bool
+	MultisigCreateOrderIsSignedByCreator *bool
+	MultisigCreateOrderCreatorIndex      *int64
+	MultisigCreateOrderExpirationDate    *int64
+	MultisigCreateOrderOrderBoc          *string
+
+	MultisigApproveSignerIndex *int64
+	MultisigApproveExitCode    *int32
+
+	MultisigExecuteQueryId        *string
+	MultisigExecuteOrderSeqno     *string
+	MultisigExecuteExpirationDate *int64
+	MultisigExecuteApprovalsNum   *int64
+	MultisigExecuteSignersHash    *string
+	MultisigExecuteOrderBoc       *string
+
+	// Vesting action fields
+	VestingSendMessageQueryId    *string
+	VestingSendMessageMessageBoc *string
+
+	VestingAddWhitelistQueryId       *string
+	VestingAddWhitelistAccountsAdded []string
+
+	// EVAA action fields
+	EvaaSupplySenderJettonWallet    *string
+	EvaaSupplyRecipientJettonWallet *string
+	EvaaSupplyMasterJettonWallet    *string
+	EvaaSupplyMaster                *string
+	EvaaSupplyAssetId               *string
+	EvaaSupplyIsTon                 *bool
+
+	EvaaWithdrawRecipientJettonWallet *string
+	EvaaWithdrawMasterJettonWallet    *string
+	EvaaWithdrawMaster                *string
+	EvaaWithdrawFailReason            *string
+	EvaaWithdrawAssetId               *string
+
+	EvaaLiquidateFailReason *string
+	EvaaLiquidateDebtAmount *string
+	EvaaLiquidateAssetId    *string
+
+	// JVault action fields
+	JvaultClaimClaimedJettons []string
+	JvaultClaimClaimedAmounts []string
+
+	JvaultStakePeriod             *int64
+	JvaultStakeMintedStakeJettons *string
+	JvaultStakeStakeWallet        *string
+
+	JvaultUnstakeOpcode *uint32
 }
 
 type assign func(dest any) error
@@ -358,6 +411,45 @@ func (t *ActionRow) getAssigns() []assign {
 		assignBool(t.Success),
 		assignStringPtr(t.TraceExternalHash),
 		assignMap(t.ExtraCurrencies),
+		assignStringPtr(t.MultisigCreateOrderQueryId),
+		assignStringPtr(t.MultisigCreateOrderOrderSeqno),
+		assignBoolPtr(t.MultisigCreateOrderIsCreatedBySigner),
+		assignBoolPtr(t.MultisigCreateOrderIsSignedByCreator),
+		assignIntPtr(t.MultisigCreateOrderCreatorIndex),
+		assignIntPtr(t.MultisigCreateOrderExpirationDate),
+		assignStringPtr(t.MultisigCreateOrderOrderBoc),
+		assignIntPtr(t.MultisigApproveSignerIndex),
+		assignIntPtr(t.MultisigApproveExitCode),
+		assignStringPtr(t.MultisigExecuteQueryId),
+		assignStringPtr(t.MultisigExecuteOrderSeqno),
+		assignIntPtr(t.MultisigExecuteExpirationDate),
+		assignIntPtr(t.MultisigExecuteApprovalsNum),
+		assignStringPtr(t.MultisigExecuteSignersHash),
+		assignStringPtr(t.MultisigExecuteOrderBoc),
+		assignStringPtr(t.VestingSendMessageQueryId),
+		assignStringPtr(t.VestingSendMessageMessageBoc),
+		assignStringPtr(t.VestingAddWhitelistQueryId),
+		assignStrCompatibleSlice(t.VestingAddWhitelistAccountsAdded),
+		assignStringPtr(t.EvaaSupplySenderJettonWallet),
+		assignStringPtr(t.EvaaSupplyRecipientJettonWallet),
+		assignStringPtr(t.EvaaSupplyMasterJettonWallet),
+		assignStringPtr(t.EvaaSupplyMaster),
+		assignStringPtr(t.EvaaSupplyAssetId),
+		assignBoolPtr(t.EvaaSupplyIsTon),
+		assignStringPtr(t.EvaaWithdrawRecipientJettonWallet),
+		assignStringPtr(t.EvaaWithdrawMasterJettonWallet),
+		assignStringPtr(t.EvaaWithdrawMaster),
+		assignStringPtr(t.EvaaWithdrawFailReason),
+		assignStringPtr(t.EvaaWithdrawAssetId),
+		assignStringPtr(t.EvaaLiquidateFailReason),
+		assignStringPtr(t.EvaaLiquidateDebtAmount),
+		assignStringPtr(t.EvaaLiquidateAssetId),
+		assignStrCompatibleSlice(t.JvaultClaimClaimedJettons),
+		assignStrCompatibleSlice(t.JvaultClaimClaimedAmounts),
+		assignIntPtr(t.JvaultStakePeriod),
+		assignStringPtr(t.JvaultStakeMintedStakeJettons),
+		assignStringPtr(t.JvaultStakeStakeWallet),
+		assignIntPtr(t.JvaultUnstakeOpcode),
 	}
 }
 

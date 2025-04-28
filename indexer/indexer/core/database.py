@@ -214,7 +214,7 @@ class TraceEdge(Base):
     # trace: "Trace" = relationship("Trace", back_populates="edges", viewonly=True)
 
 class ActionAccount(Base):
-    __tablename__ = 'action_accounts_versioning'
+    __tablename__ = 'action_accounts'
     action_id: str = Column(String, primary_key=True)
     trace_id: str = Column(String, primary_key=True)
     account: str = Column(String(70), primary_key=True)
@@ -224,7 +224,7 @@ class ActionAccount(Base):
     action_end_utime: int = Column(Numeric)
 
 class Action(Base):
-    __tablename__ = 'actions_versioning'
+    __tablename__ = 'actions'
 
     trace_id: str = Column(String(44), nullable=False, primary_key=True)
     action_id: str = Column(String, nullable=False, primary_key=True)
@@ -320,7 +320,9 @@ class Action(Base):
     ]))
     evaa_liquidate_data = Column(CompositeType("evaa_liquidate_details", [
         Column("fail_reason", String),
-        Column("debt_amount", Numeric)
+        Column("debt_amount", Numeric),
+        Column("asset_id", String)
+
     ]))
     dex_deposit_liquidity_data = Column(CompositeType("dex_deposit_liquidity_details", [
         Column("dex", String),
