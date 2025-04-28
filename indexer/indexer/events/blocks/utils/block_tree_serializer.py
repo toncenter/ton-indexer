@@ -672,16 +672,32 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
     action._accounts = list(set(a for a in action._accounts if a is not None))
     return action
 
-basic_ops = [ 'call_contract',
-              'contract_deploy',
-              'jetton_burn',
-              'tick_tock',
-              'jetton_transfer',
-              'nft_transfer',
-              'nft_mint',
-              'jetton_mint',
-              'ton_transfer',
-              ]
+
+v1_ops = [
+    'call_contract',
+    'contract_deploy',
+    'jetton_burn',
+    'tick_tock',
+    'jetton_transfer',
+    'nft_transfer',
+    'nft_mint',
+    'jetton_mint',
+    'ton_transfer',
+    'stake_deposit',
+    'stake_withdrawal',
+    'stake_withdrawal_request',
+    'dex_deposit_liquidity',
+    'jetton_swap',
+    'change_dns',
+    'delete_dns',
+    'renew_dns',
+    'subscribe',
+    'dex_withdraw_liquidity',
+    'unsubscribe',
+    'election_deposit',
+    'election_recover',
+    'auction_bid',
+]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:
     actions = []
@@ -704,7 +720,7 @@ def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_
             action_ids.append(action.action_id)
             actions.append(action)
             if serialize_child_actions:
-                if block.btype not in basic_ops:
+                if block.btype not in v1_ops:
                     child_actions, child_state = serialize_blocks(block.children_blocks, trace_id, trace, action.action_id, serialize_child_actions)
                     for child_action in child_actions:
                         if child_action.type == 'contract_deploy':
