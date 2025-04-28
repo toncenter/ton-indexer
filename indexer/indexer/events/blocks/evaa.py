@@ -390,7 +390,7 @@ class EvaaWithdrawBlockMatcher(BlockMatcher):
         # and excesses with the reason are sent back to the user
         fail_no_funds_matcher = labeled(
             "withdraw_fail_no_funds",
-            ContractMatcher(
+            EvaaContractWithHeaderMatcher(
                 opcode=EvaaWithdrawFail.opcode,
                 optional=False,
                 child_matcher=labeled(
@@ -556,6 +556,7 @@ class EvaaWithdrawBlockMatcher(BlockMatcher):
                     is_success=False,
                     is_ton=is_ton,
                     fail_reason=error_data.reason,
+                    master=master
                 )
             )
             new_block.merge_blocks([block] + other_blocks)

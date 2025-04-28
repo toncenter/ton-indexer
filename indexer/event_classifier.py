@@ -34,7 +34,8 @@ from indexer.core.database import engine, SyncSessionMaker, Base, Trace, Transac
 from indexer.core.database import engine, Trace, Transaction, Message, Action, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
-from indexer.events.blocks.utils.address_selectors import extract_additional_addresses
+from indexer.events.blocks.utils.address_selectors import extract_additional_addresses, \
+    extract_extra_accounts_data_requests, extract_accounts_from_trace
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action
 from indexer.events.blocks.utils.dedust_pools import init_pools_data
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action, serialize_blocks
@@ -42,7 +43,7 @@ from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing, \
     try_process_unknown_event
 from indexer.events.interface_repository import EmulatedTransactionsInterfaceRepository, gather_interfaces, \
-    RedisInterfaceRepository, EmulatedRepositoryWithDbFallback
+    RedisInterfaceRepository, EmulatedRepositoryWithDbFallback, ExtraAccountRequest
 from indexer.events.utils.lru_cache import LRUCache
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -281,12 +282,13 @@ class EventClassifierWorker(mp.Process):
 
                 # Gather interfaces for each account
                 accounts = set()
+                extra_data_requests = set()
                 for trace in traces:
-                    for tx in trace.transactions:
-                        accounts.add(tx.account)
-                        accounts.update(extract_additional_addresses(tx))
+                    accs, req = extract_accounts_from_trace(trace)
+                    accounts.update(accs)
+                    extra_data_requests.update(req)
 
-                interfaces = await gather_interfaces(accounts, session)
+                interfaces = await gather_interfaces(accounts, session, extra_requests=extra_data_requests)
                 repository = RedisInterfaceRepository(redis.sync_client)
                 await repository.put_interfaces(interfaces)
                 context.interface_repository.set(repository)
@@ -500,7 +502,7 @@ async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_
         logger.info("Emulated trace processing stopped")
 
 
-async def get_interfaces_with_cache(accounts: Set[str], session: AsyncSession) -> Dict[str, Dict[str, Dict]]:
+async def get_interfaces_with_cache(accounts: Set[str], session: AsyncSession, extra_requests: Set[ExtraAccountRequest]) -> Dict[str, Dict[str, Dict]]:
     if not accounts:
         return {}
 
@@ -518,7 +520,7 @@ async def get_interfaces_with_cache(accounts: Set[str], session: AsyncSession) -
     # Fetch interfaces for accounts not in cache
     if accounts_to_fetch:
         logger.debug(f"Fetching interfaces for {len(accounts_to_fetch)} accounts from DB")
-        db_interfaces = await gather_interfaces(accounts_to_fetch, session)
+        db_interfaces = await gather_interfaces(accounts_to_fetch, session, extra_requests=extra_requests)
 
         # Update cache with new interfaces
         for account, interfaces in db_interfaces.items():
@@ -555,9 +557,7 @@ async def process_emulated_trace_batch(
             trace = deserialize_event(trace_key, trace_map)
             traces_data[trace_key] = (trace, trace_map)
 
-            for tx in trace.transactions:
-                all_accounts.add(tx.account)
-                all_accounts.update(extract_additional_addresses(tx))
+            all_accounts, extra_data_requests = extract_accounts_from_trace(trace)
 
         except Exception as e:
             logger.error(f"Failed to extract accounts from trace {trace_key}: {e}")
@@ -569,7 +569,7 @@ async def process_emulated_trace_batch(
         try:
             logger.debug(f"Getting interfaces for {len(all_accounts)} accounts")
             # Use our cached interface function that uses the global cache
-            db_interfaces = await get_interfaces_with_cache(all_accounts, session)
+            db_interfaces = await get_interfaces_with_cache(all_accounts, session, extra_requests=extra_data_requests)
             logger.debug(f"Got interfaces for {len(db_interfaces)} accounts")
         except Exception as e:
             logger.error(f"Failed to gather interfaces: {e}")

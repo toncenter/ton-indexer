@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pytoniq_core import Cell
+from pytoniq_core import Cell, Slice
 
+from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import (
     BlockMatcher,
@@ -50,20 +51,6 @@ class JVaultStakeBlock(Block):
     def __repr__(self):
         return f"jvault_stake {self.data}"
 
-
-# it's actually same opcode 3 times...
-refs_stuff_snake = child_sequence_matcher(
-    [
-        ContractMatcher(opcode=JVaultRequestUpdateReferrer.opcode, optional=True),
-        ContractMatcher(opcode=JVaultRequestUpdateReferrer.opcode, optional=True),
-        ContractMatcher(opcode=JVaultRequestUpdateReferrer.opcode, optional=True),
-        ContractMatcher(  # finally
-            opcode=JVaultUpdateReferrer.opcode,
-            optional=True,
-            include_excess=True,  # ends with excesses
-        ),
-    ]
-)
 
 referral_subchain = RecursiveMatcher(repeating_matcher=ContractMatcher(opcode=JVaultRequestUpdateReferrer.opcode, include_excess=True),
                                         exit_matcher=ContractMatcher(opcode=JVaultUpdateReferrer.opcode, include_excess=True),
@@ -165,7 +152,8 @@ class JVaultUnstakeData:
     stake_wallet: AccountId
     staking_pool: AccountId
     unstaked_amount: int
-    unstake_fee_taken: int
+    unstake_fee_taken: int | None
+    exit_code: int | None = None
 
 
 class JVaultUnstakeBlock(Block):
@@ -190,10 +178,9 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
                 "request_update_rewards_from_pool",
                 ContractMatcher(
                     opcode=JVaultRequestUpdateRewards.opcode,
-                    optional=False,
+                    optional=True,
                     children_matchers=[  # 2-4 blocks
-                        # optional
-                        refs_stuff_snake,
+                        referral_chain,
                         # optional
                         labeled(
                             "unstake_fee",
@@ -223,17 +210,35 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
         msg = block.get_message()
         info = JVaultUnstakeJettons(block.get_body())
         unstaked_amount = info.jettons_to_unstake
+        stake_wallet = msg.destination
+
+        request_update_from_pool = get_labeled("request_update_rewards_from_pool", other_blocks)
+        if not request_update_from_pool:
+            extra = await context.interface_repository.get().get_extra_data(stake_wallet, "data_boc")
+            if extra is None:
+                return []
+            staking_pool = Slice.one_from_boc(extra).load_address()
+            new_block = JVaultUnstakeBlock(
+                data=JVaultUnstakeData(
+                    sender=AccountId(msg.source),
+                    stake_wallet=AccountId(stake_wallet),
+                    staking_pool=AccountId(staking_pool),
+                    unstaked_amount=unstaked_amount,
+                    unstake_fee_taken=None,
+                    exit_code=block.get_message().transaction.compute_exit_code
+                )
+            )
+            new_block.merge_blocks([block] + other_blocks)
+            return [new_block]
+
         unstake_fee = 0
         unstake_fee_block = get_labeled("unstake_fee", other_blocks, TonTransferBlock)
 
         if unstake_fee_block:
             unstake_fee = unstake_fee_block.get_message().value
 
-        request_update_from_pool = get_labeled("request_update_rewards_from_pool", other_blocks)
-        if not request_update_from_pool:
-            return []
 
-        stake_wallet = msg.destination
+
         staking_pool = request_update_from_pool.get_message().destination
 
         new_block = JVaultUnstakeBlock(
@@ -269,8 +274,6 @@ class JVaultClaimBlock(Block):
 
 
 class JVaultClaimBlockMatcher(BlockMatcher):
-    # https://tonviewer.com/transaction/eb639edae4a3d535bab8837e85fce1484f09a59527e52e6966258521186095d6
-
     def __init__(self):
         super().__init__(
             parent_matcher=None,
@@ -281,8 +284,6 @@ class JVaultClaimBlockMatcher(BlockMatcher):
                     opcode=JVaultSendClaimedRewards.opcode,
                     optional=False,
                     children_matchers=[
-                        # optional
-                        refs_stuff_snake,
                         # required
                         labeled(
                             "withdraw_claimed_jettons",

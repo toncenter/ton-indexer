@@ -1,8 +1,9 @@
 from pytoniq_core import Slice
 
-from indexer.core.database import Message, Transaction
-from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2
+from indexer.core.database import Message, Transaction, Trace
+from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2, JVaultUnstakeJettons
 from indexer.events.blocks.messages.externals import extract_payload_from_wallet_message
+from indexer.events.interface_repository import ExtraAccountRequest
 
 
 def extract_target_wallet_stonfi_v2_swap(message: Message) -> set[str]:
@@ -70,3 +71,25 @@ def extract_additional_addresses(tx: Transaction) -> set[str]:
         except Exception:
             pass
     return accounts
+
+def extract_extra_accounts_data_requests(tx: Transaction) -> set[ExtraAccountRequest]:
+    requests = set()
+    for msg in tx.messages:
+        if msg.opcode is None:
+            continue
+        opcode = msg.opcode & 0xFFFFFFFF
+        try:
+            if opcode == JVaultUnstakeJettons.opcode and msg.destination is not None:
+                requests.add(ExtraAccountRequest(msg.destination, request='data_boc'))
+        except Exception:
+            pass
+    return requests
+
+def extract_accounts_from_trace(trace: Trace) -> tuple[set[str], set[ExtraAccountRequest]]:
+    accounts = set()
+    extra_data_requests = set()
+    for tx in trace.transactions:
+        accounts.add(tx.account)
+        accounts.update(extract_additional_addresses(tx))
+        extra_data_requests.update(extract_extra_accounts_data_requests(tx))
+    return accounts, extra_data_requests

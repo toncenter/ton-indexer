@@ -496,6 +496,7 @@ def _fill_jvault_unstake(block: JVaultUnstakeBlock, action: Action):
     action.source_secondary = _addr(block.data.stake_wallet)
     action.destination = _addr(block.data.staking_pool)
     action.amount = block.data.unstaked_amount
+    action.opcode = block.data.exit_code
 
 
 def _fill_jvault_claim(block: JVaultClaimBlock, action: Action):

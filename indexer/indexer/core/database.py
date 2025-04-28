@@ -772,6 +772,7 @@ class LatestAccountState(Base):
     timestamp = Column(Integer)
     last_trans_lt = Column(BigInteger)
     balance: int = Column(Numeric)
+    data_boc: str = Column(String)
 
 # Indexes
 # Index("blocks_index_1", Block.workchain, Block.shard, Block.seqno)

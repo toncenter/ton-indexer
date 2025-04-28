@@ -124,3 +124,24 @@ cases:
           source_secondary: 0:AB6523CEDE8BA846048E0756BADB1EBAC7A81E386A14B59F063514D1485D8C05
           destination: 0:AA5C2D9CB469BECB874312C79ABC9DA6C2E64C92C108FE31A2F26B00D8134CD7
           amount: 300731712275
+  Claim rewards:
+    trace-id: Lsy5I_gotIvt0EYwoPuqd-1s-IyYNR3Sc0XmM_lWKa8=
+    expected-actions:
+        - type: jvault_claim
+          values:
+            success: true
+            source: 0:D94FCAE73C2E76C960834E0F5E739B0AD28D42EB9EE1C6A1BD5E0E7FE8257CCF
+            source_secondary: 0:32F3F3C9881BF73850082C9F5F4D5B654F4062E71EDD93D868BC59447F9AA2AA
+            destination: 0:AA5C2D9CB469BECB874312C79ABC9DA6C2E64C92C108FE31A2F26B00D8134CD7
+            jvault_claim_data.claimed_jettons[0]: 0:A048BDFAAC1F51AEAE2C1100CF5F1C1D1D316AD4E013A4030F7E2DF2A4ADE68D
+            jvault_claim_data.claimed_amounts[0]: 7919563
+  Unstake (failed):
+    trace-id: mTVGq-A5PCaXAdu-Xuab0J-vtygXRJ1GwqZbW-aYN84=
+    expected-actions:
+      - type: jvault_unstake
+        values:
+          source: 0:65B421152A62C54E6442A21046863932D38BC088726A8624867A2769BA42253E
+          source_secondary: 0:E3C257DF3F8AF0EBD28AB14EF3C994E1CAD17A2FFCD03A42E862EE0C53D3830F
+          amount: 716000000000
+          destination: 0:B7AE84E2451B282F37D854AEF2555A086634C4A808D05378EEEDA43B1D64D52F
+          opcode: 56 # Exit code

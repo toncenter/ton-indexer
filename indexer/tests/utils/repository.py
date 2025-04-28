@@ -33,3 +33,8 @@ class TestInterfaceRepository(InterfaceRepository):
 
     async def get_interfaces(self, address: str):
         return self.interfaces.get(address, {})
+
+    async def get_extra_data(self, address: str, request: str):
+        if request in self.interfaces.get(address, {}):
+            return self.interfaces[address][request]
+        return None

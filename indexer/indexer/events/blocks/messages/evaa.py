@@ -32,9 +32,9 @@ class EvaaSupplyJettonForwardMessage:
     opcode = 0x1  # op::supply_master
 
     include_user_code: bool
-    forward_amount: int
+    forward_amount: int | None
     recipient_address: Address
-    custom_response_payload: Cell
+    custom_response_payload: Cell | None
 
     def __init__(self, slice: Slice, skip_query_id: bool = False):
         opcode = slice.load_uint(32)
@@ -42,8 +42,12 @@ class EvaaSupplyJettonForwardMessage:
 
         self.include_user_code = slice.load_int(2) != 0
         self.recipient_address = slice.load_address()
-        self.forward_amount = slice.load_uint(64)  # amount type in schema
-        self.custom_response_payload = slice.load_ref()
+        if slice.remaining_bits > 0:
+            self.forward_amount = slice.load_uint(64)  # amount type in schema
+            self.custom_response_payload = slice.load_ref()
+        else:
+            self.forward_amount = None
+            self.custom_response_payload = None
 
 class EvaaSupplyUser:
     # master -> user

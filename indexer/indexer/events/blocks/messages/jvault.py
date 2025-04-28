@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from pytoniq_core import Address, Slice
+from pytoniq_core import Address, Slice, Builder
 
 
 def load_address_list(slice: Slice) -> list[Address]:
     addr_dict = (
-        slice.load_dict(267, lambda x: x.load_address(), lambda x: x.load_uint(1)) or {}
+        slice.load_dict(267,
+                    key_deserializer=lambda x: Builder().store_bits(x).end_cell().to_slice().load_address(),
+                    value_deserializer=None) or {}
     )
     return list(addr_dict.keys())
 
