@@ -28,6 +28,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"vesting_send_message", "vesting_add_whitelist",
 		"evaa_supply", "evaa_withdraw", "evaa_liquidate",
 		"jvault_stake", "jvault_unstake", "jvault_claim",
+		"nft_discovery",
 		"unknown",
 	},
 	"staking": {

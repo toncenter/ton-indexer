@@ -641,6 +641,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_multisig_approve(block, action)
         case 'multisig_execute':
             _fill_multisig_execute(block, action)
+        case 'nft_discovery':
+            _fill_nft_discovery_action(block, action)
         case 'evaa_supply':
             _fill_evaa_supply_action(block, action)
         case 'evaa_withdraw':

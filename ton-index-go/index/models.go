@@ -1104,3 +1104,10 @@ type ActionDetailsJvaultUnstake struct {
 	Amount      *string         `json:"amount"`
 	ExitCode    *int64          `json:"exit_code"`
 }
+
+type ActionDetailsNftDiscovery struct {
+	Source        *AccountAddress `json:"source"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+}
