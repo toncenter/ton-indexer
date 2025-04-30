@@ -32,6 +32,9 @@ class TestJettonTransfersActions(BaseGenericActionTest):
 class TestEvaaActions(BaseGenericActionTest):
     yaml_file = "evaa.yaml"
 
+class TestVestingActions(BaseGenericActionTest):
+    yaml_file = "vesting.yaml"
+
 class TestUnknownAction:
 
     @pytest.mark.asyncio

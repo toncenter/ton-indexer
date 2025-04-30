@@ -1,0 +1,40 @@
+cases:
+  Vesting add whitelist:
+    trace-id: 03XZQ1CkN3nBPi4IICznU8BWFghrneCV17qcdq33BrA=
+    expected-actions:
+      - type: vesting_add_whitelist
+        values:
+          _accounts:
+            - 0:E9D864419C6A77FBC1D2EC7AFE840C1C349FCC1D2E19520FC73F547DD1721E9E
+            - 0:FD8B2FC26CB0FE2D27B911FD0409D72DEDA2089C1EA7722D2910EA5354900B2D
+          vesting_add_whitelist_data:
+            query_id: 0
+            accounts_added:
+              - "-1:ECB7B7B4C200424F8D837AC9E0C5EDCA800A162546CD5706FB86549C0FE03038"
+          tx_hashes:
+            - 03XZQ1CkN3nBPi4IICznU8BWFghrneCV17qcdq33BrA=
+            - N8B/OJbZp7RSfQ6anS0VEQNoxsdylsghLOXHguYLuBg=
+            - BbxgEIO8vDScr3AXNWyL1CsU3D1cv8VIvE4yLMgJYic=
+          source: 0:FD8B2FC26CB0FE2D27B911FD0409D72DEDA2089C1EA7722D2910EA5354900B2D
+          destination: 0:E9D864419C6A77FBC1D2EC7AFE840C1C349FCC1D2E19520FC73F547DD1721E9E
+          success: true
+  Vesting send message:
+    trace-id: 03RZCW7mu3eJp-FWifVzKsRHafUrqQNu4E6YwZxvXJ0=
+    expected-actions:
+      - type: vesting_send_message
+        values:
+          _accounts:
+            - 0:335908D9CDA99C650695253FAD22BE00E0B1005634133589DFA8BDF522B367BA
+            - 0:0F956925D8E1E32E5189E35100ADEF828BE779D079C6D8B966B2209FCCE213D4
+            - 0:A8A697ABD5448BB35EBBD414E4C9D8F621F53B67B54551560645B8EC25F87D39
+          tx_hashes:
+            - s2TCbu7I/2pxgpVHSKEmCHJp8DmmujA04SzUqvEMcUw=
+            - jEFg8m3O2KaxbYwClL3h9bIkEoqJeRzBO34s8bgkFGs=
+            - 03RZCW7mu3eJp+FWifVzKsRHafUrqQNu4E6YwZxvXJ0=
+          amount: 100000000000
+          vesting_send_message_data:
+            query_id: 0
+            message_boc: te6ccgEBAQEAQgAAgGIAVFNL1eqiRdmvXeoKcmTsexD6nbPaoqirAyLcdhL8PpyoukO3QAAAAAAAAAAAAAAAAAAAAAAAAERlcG9zaXQ=
+          source: 0:335908D9CDA99C650695253FAD22BE00E0B1005634133589DFA8BDF522B367BA
+          destination: 0:0F956925D8E1E32E5189E35100ADEF828BE779D079C6D8B966B2209FCCE213D4
+          destination_secondary: 0:A8A697ABD5448BB35EBBD414E4C9D8F621F53B67B54551560645B8EC25F87D39
