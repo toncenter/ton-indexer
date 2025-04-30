@@ -697,6 +697,13 @@ v1_ops = [
     'election_deposit',
     'election_recover',
     'auction_bid',
+    'nominator_pool_deposit',
+    'nominator_pool_withdraw_request',
+    'dedust_deposit_liquidity',
+    'dedust_deposit_liquidity_partial',
+    'tonstakers_deposit',
+    'tonstakers_withdraw_request',
+    'tonstakers_withdraw',
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:
