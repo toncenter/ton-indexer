@@ -1158,6 +1158,10 @@ func GetTraces(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
+	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
+		traces_req.SupportedActionTypes = []string{value_str}
+	}
+
 	if !onlyOneOf(traces_req.AccountAddress != nil, traces_req.TraceId != nil, len(traces_req.TransactionHash) > 0, len(traces_req.MessageHash) > 0) {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
 	}
@@ -1207,6 +1211,10 @@ func GetPendingTraces(c *fiber.Ctx) error {
 
 	if event_req.AccountAddress == nil && len(event_req.ExtMsgHash) == 0 {
 		return index.IndexError{Code: 422, Message: "account or ext_msg_hash should be specified"}
+	}
+
+	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
+		event_req.SupportedActionTypes = []string{value_str}
 	}
 
 	if emulatedTracesRepository == nil {
@@ -1286,6 +1294,10 @@ func GetActions(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
+	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
+		act_req.SupportedActionTypes = []string{value_str}
+	}
+
 	res, book, metadata, err := pool.QueryActionsV2(act_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
@@ -1319,6 +1331,10 @@ func GetPendingActions(c *fiber.Ctx) error {
 
 	if err := c.QueryParser(&act_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
+		act_req.SupportedActionTypes = []string{value_str}
 	}
 
 	if emulatedTracesRepository == nil {
@@ -1660,6 +1676,7 @@ func GetRequestSettings(c *fiber.Ctx, settings *Settings) index.RequestSettings 
 	}
 	if value_str, ok := ExtractParam(c, "X-Timeout", "x_timeout"); ok {
 		if value, err := strconv.ParseInt(value_str, 10, 32); err == nil {
+			value = min(value, 3000)
 			request_settings.Timeout = time.Duration(value) * time.Millisecond
 		}
 	}
