@@ -102,7 +102,7 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 	actions := make([]*index.Action, 0)
 	trace.Actions = &actions
 	rawActions := make([]index.RawAction, 0)
-	for _, row := range emulatedContext.GetActions() {
+	for _, row := range emulatedContext.GetActions([]string{"v1"}) {
 		if loc, err := index.ScanRawAction(row); err == nil {
 			rawActions = append(rawActions, *loc)
 		} else {
