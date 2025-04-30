@@ -9,17 +9,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func (db *DbClient) QueryPendingActions(
-	settings RequestSettings,
-	emulatedContext *EmulatedTracesContext,
-) ([]Action, AddressBook, Metadata, error) {
+func (db *DbClient) QueryPendingActions(settings RequestSettings, emulatedContext *EmulatedTracesContext, request PendingActionsRequest) ([]Action, AddressBook, Metadata, error) {
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
-	raw_actions, err := queryPendingActionsImpl(emulatedContext, conn, settings)
+	raw_actions, err := queryPendingActionsImpl(emulatedContext, conn, settings, request)
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -57,14 +54,14 @@ func (db *DbClient) QueryPendingActions(
 	return actions, book, metadata, nil
 }
 
-func (db *DbClient) QueryPendingTraces(settings RequestSettings, emulatedContext *EmulatedTracesContext) ([]Trace, AddressBook, Metadata, error) {
+func (db *DbClient) QueryPendingTraces(settings RequestSettings, emulatedContext *EmulatedTracesContext, request PendingTracesRequest) ([]Trace, AddressBook, Metadata, error) {
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
-	res, addr_list, err := queryPendingTracesImpl(emulatedContext, conn, settings)
+	res, addr_list, err := queryPendingTracesImpl(emulatedContext, conn, settings, request)
 	if err != nil {
 		//log.Println(query)
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
@@ -267,7 +264,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 	return txs, nil
 }
 
-func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings) ([]Trace, []string, error) {
+func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings, request PendingTracesRequest) ([]Trace, []string, error) {
 	var traces []Trace
 	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, true)
 	if err != nil {
@@ -329,7 +326,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	var addr_list []string
 	actions := make([]RawAction, 0)
-	for _, row := range emulatedContext.GetActions() {
+	for _, row := range emulatedContext.GetActions(request.SupportedActionTypes) {
 		if loc, err := ScanRawAction(row); err == nil {
 			actions = append(actions, *loc)
 		} else {
@@ -354,11 +351,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	return traces, addr_list, nil
 }
 
-func queryPendingActionsImpl(
-	emulatedContext *EmulatedTracesContext,
-	conn *pgxpool.Conn,
-	settings RequestSettings,
-) ([]RawAction, error) {
+func queryPendingActionsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings, request PendingActionsRequest) ([]RawAction, error) {
 	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, true)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
@@ -366,7 +359,7 @@ func queryPendingActionsImpl(
 	emulatedContext.RemoveTraces(completed_traces)
 
 	var raw_actions []RawAction
-	for _, actions := range emulatedContext.GetActions() {
+	for _, actions := range emulatedContext.GetActions(request.SupportedActionTypes) {
 		if action, err := ScanRawAction(actions); err == nil {
 			raw_actions = append(raw_actions, *action)
 		} else {

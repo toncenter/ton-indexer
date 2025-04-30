@@ -138,22 +138,25 @@ type BalanceChangesRequest struct {
 }
 
 type TracesRequest struct {
-	IncludeActions  bool            `query:"include_actions"`
-	AccountAddress  *AccountAddress `query:"account"`
-	TraceId         []HashType      `query:"trace_id"`
-	TransactionHash []HashType      `query:"tx_hash"`
-	MessageHash     []HashType      `query:"msg_hash"`
-	McSeqno         *int32          `query:"mc_seqno"`
+	IncludeActions       bool            `query:"include_actions"`
+	AccountAddress       *AccountAddress `query:"account"`
+	TraceId              []HashType      `query:"trace_id"`
+	TransactionHash      []HashType      `query:"tx_hash"`
+	MessageHash          []HashType      `query:"msg_hash"`
+	McSeqno              *int32          `query:"mc_seqno"`
+	SupportedActionTypes []string        `query:"supported_action_types"`
 }
 
 type PendingTracesRequest struct {
-	AccountAddress *AccountAddress `query:"account"`
-	ExtMsgHash     []HashType      `query:"ext_msg_hash"`
+	AccountAddress       *AccountAddress `query:"account"`
+	ExtMsgHash           []HashType      `query:"ext_msg_hash"`
+	SupportedActionTypes []string        `query:"supported_action_types"`
 }
 
 type PendingActionsRequest struct {
-	AccountAddress *AccountAddress `query:"account"`
-	ExtMsgHash     []HashType      `query:"ext_msg_hash"`
+	AccountAddress       *AccountAddress `query:"account"`
+	ExtMsgHash           []HashType      `query:"ext_msg_hash"`
+	SupportedActionTypes []string        `query:"supported_action_types"`
 }
 
 type DNSRecordsRequest struct {

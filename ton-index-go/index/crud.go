@@ -1846,10 +1846,10 @@ func queryJettonBurnsImpl(query string, conn *pgxpool.Conn, settings RequestSett
 	return res, nil
 }
 
-func queryRawActionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]RawAction, error) {
+func queryRawActionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings, args ...any) ([]RawAction, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
-	rows, err := conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2014,7 +2014,7 @@ func collectAddressesFromTransactions(addr_list *map[string]bool, tx *Transactio
 	return success
 }
 
-func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, settings RequestSettings) ([]Trace, []string, error) {
+func queryTracesImpl(query string, includeActions bool, supportedActionTypes []string, conn *pgxpool.Conn, settings RequestSettings) ([]Trace, []string, error) {
 	traces := []Trace{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -2051,6 +2051,11 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 	}
 	if len(trace_id_list) > 0 {
 		if includeActions {
+			arrayFilter := filterByArray("A.trace_id", trace_id_list)
+			typeFilter := `A.type = ANY($1) AND NOT(A.ancestor_type && $1::varchar[])`
+			if len(arrayFilter) > 0 {
+				typeFilter = " AND " + typeFilter
+			}
 			query := `select A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start_utime, A.end_utime, 
 				A.trace_end_lt, A.trace_end_utime, A.trace_mc_seqno_end, A.source, A.source_secondary,
 				A.destination, A.destination_secondary, A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, A.opcode, A.tx_hashes,
@@ -2129,8 +2134,9 @@ func queryTracesImpl(query string, includeActions bool, conn *pgxpool.Conn, sett
 				(A.jvault_claim_data).claimed_amounts,
 				(A.jvault_stake_data).period,
 				(A.jvault_stake_data).minted_stake_jettons,
-				(A.jvault_stake_data).stake_wallet from actions as A where ` + filterByArray("A.trace_id", trace_id_list) + ` order by trace_id, start_lt, end_lt`
-			actions, err := queryRawActionsImpl(query, conn, settings)
+				(A.jvault_stake_data).stake_wallet from actions as A where ` +
+				arrayFilter + typeFilter + `order by trace_id, start_lt, end_lt`
+			actions, err := queryRawActionsImpl(query, conn, settings, supportedActionTypes)
 			if err != nil {
 				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query actions: %s", err.Error())}
 			}
@@ -3120,7 +3126,7 @@ func (db *DbClient) QueryTraces(
 		}
 	}
 
-	res, addr_list, err := queryTracesImpl(query, trace_req.IncludeActions, conn, settings)
+	res, addr_list, err := queryTracesImpl(query, trace_req.IncludeActions, trace_req.SupportedActionTypes, conn, settings)
 	if err != nil {
 		log.Println(query)
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}

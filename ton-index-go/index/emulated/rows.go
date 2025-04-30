@@ -265,6 +265,9 @@ type ActionRow struct {
 	JvaultStakeStakeWallet        *string
 
 	JvaultUnstakeOpcode *uint32
+
+	AncestorType   []string
+	ParentActionId *string
 }
 
 type assign func(dest any) error

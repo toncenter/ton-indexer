@@ -1,10 +1,10 @@
 package index
 
 import (
-	"log"
-
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
+	"log"
 )
 
 type EmulatedTracesContext struct {
@@ -117,10 +117,17 @@ func (c *EmulatedTracesContext) GetTraces() []pgx.Row {
 	return rows
 }
 
-func (c *EmulatedTracesContext) GetActions() []pgx.Row {
+func (c *EmulatedTracesContext) GetActions(supportedActions []string) []pgx.Row {
 	rows := make([]pgx.Row, 0)
+	supportedActionsSet := mapset.NewSet(supportedActions...)
 	for _, actions := range c.emulatedActions {
 		for _, action := range actions {
+			if supportedActionsSet.ContainsAny(action.AncestorType...) {
+				continue
+			}
+			if !supportedActionsSet.ContainsAny(action.Type) {
+				continue
+			}
 			rows = append(rows, emulated.NewRow(action))
 		}
 	}

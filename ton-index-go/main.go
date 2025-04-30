@@ -1131,6 +1131,7 @@ func GetJettonBurns(c *fiber.Ctx) error {
 // @param start_lt query int64 false "Query traces with `end_lt >= start_lt`." minimum(0)
 // @param end_lt query int64 false "Query traces with `end_lt <= end_lt`." minimum(0)
 // @param include_actions query bool false "Include trace actions." default(false)
+// @param supported_action_types query []string false "Supported action types"
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort traces by lt." Enums(asc, desc) default(desc)
@@ -1164,6 +1165,7 @@ func GetTraces(c *fiber.Ctx) error {
 	if c.Path() == "/api/v3/events" {
 		traces_req.IncludeActions = true
 	}
+	traces_req.SupportedActionTypes = index.ExpandActionTypeShortcuts(traces_req.SupportedActionTypes)
 
 	res, book, metadata, err := pool.QueryTraces(traces_req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
@@ -1221,12 +1223,11 @@ func GetPendingTraces(c *fiber.Ctx) error {
 	} else {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id should be specified"}
 	}
-
 	if err != nil {
 		return err
 	}
-
-	res, book, metadata, err := pool.QueryPendingTraces(request_settings, emulatedContext)
+	event_req.SupportedActionTypes = index.ExpandActionTypeShortcuts(event_req.SupportedActionTypes)
+	res, book, metadata, err := pool.QueryPendingTraces(request_settings, emulatedContext, event_req)
 	if err != nil {
 		return err
 	}
@@ -1308,6 +1309,7 @@ func GetActions(c *fiber.Ctx) error {
 // @failure		400	{object}	index.RequestError
 // @param account query string false "List of account addresses to get actions. Can be sent in hex, base64 or base64url form."
 // @param ext_msg_hash query []string false "Find actions by trace external hash"
+// @param supported_action_types query []string false "Supported action types"
 // @router			/api/v3/pendingActions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -1339,8 +1341,8 @@ func GetPendingActions(c *fiber.Ctx) error {
 	} else {
 		return index.IndexError{Code: 422, Message: "account or ext_msg_hash should be specified"}
 	}
-
-	res, book, metadata, err := pool.QueryPendingActions(request_settings, emulatedContext)
+	act_req.SupportedActionTypes = index.ExpandActionTypeShortcuts(act_req.SupportedActionTypes)
+	res, book, metadata, err := pool.QueryPendingActions(request_settings, emulatedContext, act_req)
 	if err != nil {
 		return err
 	}
