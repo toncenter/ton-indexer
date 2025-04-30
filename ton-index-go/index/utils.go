@@ -58,6 +58,7 @@ var ActionTypeShortcuts = map[string][]string{
 
 func ExpandActionTypeShortcuts(shortcuts []string) []string {
 	var expandedTypes []string
+	shortcuts = append(shortcuts, "v1")
 	typesMap := make(map[string]bool)
 	typesMap["v1"] = true // ensure v1 types always present
 
