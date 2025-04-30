@@ -584,8 +584,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			QueryId:     raw.VestingSendMessageQueryId,
 			MessageBoc:  raw.VestingSendMessageMessageBoc,
 			Source:      raw.Source,
-			Destination: raw.Destination,
-			Target:      raw.DestinationSecondary,
+			Vesting:     raw.Destination,
+			Destination: raw.DestinationSecondary,
 			Amount:      raw.Amount,
 		}
 	case "vesting_add_whitelist":
@@ -593,7 +593,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			QueryId:       raw.VestingAddWhitelistQueryId,
 			AccountsAdded: raw.VestingAddWhitelistAccountsAdded,
 			Source:        raw.Source,
-			Destination:   raw.Destination,
+			Vesting:       raw.Destination,
 		}
 	case "evaa_supply":
 		act.Details = ActionDetailsEvaaSupply{
@@ -605,8 +605,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			IsTon:                 raw.EvaaSupplyIsTon,
 			Source:                raw.Source,
 			SourceWallet:          raw.SourceSecondary,
-			Destination:           raw.Destination,
-			DestinationPool:       raw.DestinationSecondary,
+			Recipient:             raw.Destination,
+			RecipientContract:     raw.DestinationSecondary,
 			Asset:                 raw.Asset,
 			Amount:                raw.Amount,
 		}
@@ -618,21 +618,21 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			FailReason:            raw.EvaaWithdrawFailReason,
 			AssetId:               raw.EvaaWithdrawAssetId,
 			Source:                raw.Source,
-			Destination:           raw.Destination,
-			DestinationPool:       raw.DestinationSecondary,
+			Recipient:             raw.Destination,
+			OwnerContract:         raw.DestinationSecondary,
 			Asset:                 raw.Asset,
 			Amount:                raw.Amount,
 		}
 	case "evaa_liquidate":
 		act.Details = ActionDetailsEvaaLiquidate{
-			FailReason:   raw.EvaaLiquidateFailReason,
-			DebtAmount:   raw.EvaaLiquidateDebtAmount,
-			Source:       raw.Source,
-			Borrower:     raw.Destination,
-			BorrowerPool: raw.DestinationSecondary,
-			Collateral:   raw.Asset,
-			AssetId:      raw.EvaaLiquidateAssetId,
-			Amount:       raw.Amount,
+			FailReason:       raw.EvaaLiquidateFailReason,
+			DebtAmount:       raw.EvaaLiquidateDebtAmount,
+			Source:           raw.Source,
+			Borrower:         raw.Destination,
+			BorrowerContract: raw.DestinationSecondary,
+			Collateral:       raw.Asset,
+			AssetId:          raw.EvaaLiquidateAssetId,
+			Amount:           raw.Amount,
 		}
 	case "jvault_claim":
 		claimedRewards := make([]JettonAmountPair, 0)
@@ -647,8 +647,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		act.Details = ActionDetailsJvaultClaim{
 			ClaimedRewards: claimedRewards,
 			Source:         raw.Source,
-			SourceWallet:   raw.SourceSecondary,
-			Destination:    raw.Destination,
+			StakeWallet:    raw.SourceSecondary,
+			Pool:           raw.Destination,
 		}
 	case "jvault_stake":
 		act.Details = ActionDetailsJvaultStake{
@@ -656,18 +656,18 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			MintedStakeJettons: raw.JvaultStakeMintedStakeJettons,
 			StakeWallet:        raw.JvaultStakeStakeWallet,
 			Source:             raw.Source,
-			SourceWallet:       raw.SourceSecondary,
+			SourceJettonWallet: raw.SourceSecondary,
 			Asset:              raw.Asset,
-			Destination:        raw.Destination,
+			Pool:               raw.Destination,
 			Amount:             raw.Amount,
 		}
 	case "jvault_unstake":
 		act.Details = ActionDetailsJvaultUnstake{
-			Source:       raw.Source,
-			SourceWallet: raw.SourceSecondary,
-			Destination:  raw.Destination,
-			Amount:       raw.Amount,
-			ExitCode:     raw.JvaultExitCode,
+			Source:      raw.Source,
+			StakeWallet: raw.SourceSecondary,
+			Pool:        raw.Destination,
+			Amount:      raw.Amount,
+			ExitCode:    raw.JvaultExitCode,
 		}
 	default:
 		details := map[string]string{}

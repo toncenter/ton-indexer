@@ -1021,8 +1021,8 @@ type ActionDetailsVestingSendMessage struct {
 	QueryId     *string         `json:"query_id"`
 	MessageBoc  *string         `json:"message_boc"`
 	Source      *AccountAddress `json:"source"`
+	Vesting     *AccountAddress `json:"vesting"`
 	Destination *AccountAddress `json:"destination"`
-	Target      *AccountAddress `json:"target"`
 	Amount      *string         `json:"amount"`
 }
 
@@ -1030,7 +1030,7 @@ type ActionDetailsVestingAddWhitelist struct {
 	QueryId       *string          `json:"query_id"`
 	AccountsAdded []AccountAddress `json:"accounts_added"`
 	Source        *AccountAddress  `json:"source"`
-	Destination   *AccountAddress  `json:"destination"`
+	Vesting       *AccountAddress  `json:"vesting"`
 }
 
 // EVAA action details structs
@@ -1043,8 +1043,8 @@ type ActionDetailsEvaaSupply struct {
 	IsTon                 *bool           `json:"is_ton"`
 	Source                *AccountAddress `json:"source"`
 	SourceWallet          *AccountAddress `json:"source_wallet"`
-	Destination           *AccountAddress `json:"destination"`
-	DestinationPool       *AccountAddress `json:"destination_pool"`
+	Recipient             *AccountAddress `json:"recipient"`
+	RecipientContract     *AccountAddress `json:"recipient_contract"`
 	Asset                 *AccountAddress `json:"asset"`
 	Amount                *string         `json:"amount"`
 }
@@ -1056,21 +1056,21 @@ type ActionDetailsEvaaWithdraw struct {
 	FailReason            *string         `json:"fail_reason"`
 	AssetId               *string         `json:"asset_id"`
 	Source                *AccountAddress `json:"source"`
-	Destination           *AccountAddress `json:"destination"`
-	DestinationPool       *AccountAddress `json:"destination_pool"`
+	Recipient             *AccountAddress `json:"recipient"`
+	OwnerContract         *AccountAddress `json:"owner_contract"`
 	Asset                 *AccountAddress `json:"asset"`
 	Amount                *string         `json:"amount"`
 }
 
 type ActionDetailsEvaaLiquidate struct {
-	FailReason   *string         `json:"fail_reason"`
-	DebtAmount   *string         `json:"debt_amount"`
-	Source       *AccountAddress `json:"source"`
-	Borrower     *AccountAddress `json:"borrower"`
-	BorrowerPool *AccountAddress `json:"borrower_pool"`
-	Collateral   *AccountAddress `json:"collateral"`
-	AssetId      *string         `json:"asset_id"`
-	Amount       *string         `json:"amount"`
+	FailReason       *string         `json:"fail_reason"`
+	DebtAmount       *string         `json:"debt_amount"`
+	Source           *AccountAddress `json:"source"`
+	Borrower         *AccountAddress `json:"borrower"`
+	BorrowerContract *AccountAddress `json:"borrower_contract"`
+	Collateral       *AccountAddress `json:"collateral"`
+	AssetId          *string         `json:"asset_id"`
+	Amount           *string         `json:"amount"`
 }
 
 // JVault action details structs
@@ -1082,8 +1082,8 @@ type JettonAmountPair struct {
 type ActionDetailsJvaultClaim struct {
 	ClaimedRewards []JettonAmountPair `json:"claimed_rewards"`
 	Source         *AccountAddress    `json:"source"`
-	SourceWallet   *AccountAddress    `json:"source_wallet"`
-	Destination    *AccountAddress    `json:"destination"`
+	StakeWallet    *AccountAddress    `json:"stake_wallet"`
+	Pool           *AccountAddress    `json:"pool"`
 }
 
 type ActionDetailsJvaultStake struct {
@@ -1091,16 +1091,16 @@ type ActionDetailsJvaultStake struct {
 	MintedStakeJettons *string         `json:"minted_stake_jettons"`
 	StakeWallet        *AccountAddress `json:"stake_wallet"`
 	Source             *AccountAddress `json:"source"`
-	SourceWallet       *AccountAddress `json:"source_wallet"`
+	SourceJettonWallet *AccountAddress `json:"source_jetton_wallet"`
 	Asset              *AccountAddress `json:"asset"`
-	Destination        *AccountAddress `json:"destination"`
+	Pool               *AccountAddress `json:"pool"`
 	Amount             *string         `json:"amount"`
 }
 
 type ActionDetailsJvaultUnstake struct {
-	Source       *AccountAddress `json:"source"`
-	SourceWallet *AccountAddress `json:"source_wallet"`
-	Destination  *AccountAddress `json:"destination"`
-	Amount       *string         `json:"amount"`
-	ExitCode     *int64          `json:"exit_code"`
+	Source      *AccountAddress `json:"source"`
+	StakeWallet *AccountAddress `json:"stake_wallet"`
+	Pool        *AccountAddress `json:"pool"`
+	Amount      *string         `json:"amount"`
+	ExitCode    *int64          `json:"exit_code"`
 }

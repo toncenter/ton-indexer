@@ -440,6 +440,8 @@ def _fill_evaa_supply_action(block: EvaaSupplyBlock, action: Action):
     action.amount = block.data.amount
     action.asset = _addr(block.data.asset)
     action.success = block.data.is_success
+    if block.failed:
+        action.success = False
     action.evaa_supply_data = {
         "is_ton": block.data.is_ton,
         "asset_id": hex(block.data.asset_id) if block.data.asset_id is not None else None,
@@ -455,6 +457,8 @@ def _fill_evaa_withdraw_action(block: EvaaWithdrawBlock, action: Action):
     action.amount = block.data.amount
     action.asset = _addr(block.data.asset)
     action.success = block.data.is_success
+    if block.failed:
+        action.success = False
     action.evaa_withdraw_data = {
         "is_ton": block.data.is_ton,
         "recipient_jetton_wallet": _addr(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
