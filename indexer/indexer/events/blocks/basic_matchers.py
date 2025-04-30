@@ -56,7 +56,6 @@ class BlockMatcher:
                             r.append(next_block)
                 return r
             except Exception as e:
-                logger.exception(e, exc_info=True)
                 logger.error(f"Error while building block {block} with matcher {self.__class__.__name__}: {e}. Trace id: {block.event_nodes[0].message.trace_id}")
                 return None
         else:
