@@ -611,6 +611,8 @@ async def process_emulated_trace_batch(
             # Process trace
             blocks = await process_event_async_with_postprocessing(trace)
             actions, _ = serialize_blocks(blocks, trace.trace_id)
+            if len(actions) == 0:
+                actions = await try_classify_unknown_trace(trace)
             if trace.transactions[0].emulated:
                 for action in actions:
                     action.trace_id = None
@@ -704,7 +706,10 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
         return trace.trace_id, state, actions, None
     except Exception as e:
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
-        return trace.trace_id, 'failed', [], e
+        try:
+            return trace.trace_id, 'failed', [create_unknown_action(trace)], e
+        except:
+            return trace.trace_id, 'failed', [], e
 
 async def try_classify_unknown_trace(trace):
     actions = []
