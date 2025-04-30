@@ -300,8 +300,9 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		}
 	}
 	filter_list = append(filter_list, "A.end_lt is not NULL")
-
-	filter_list = append(filter_list, "A.type = ANY($1)")
+	if v := act_req.IncludeActionTypes; len(v) == 0 {
+		filter_list = append(filter_list, "A.type = ANY($1)")
+	}
 	filter_list = append(filter_list, "NOT(A.ancestor_type && $1::varchar[])")
 
 	// build query
