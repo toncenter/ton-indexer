@@ -166,6 +166,19 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 			if err != nil {
 				return nil, fmt.Errorf("failed to query metadata: %w", err)
 			}
+
+			// append raw interfaces data to metadata (e.g. token is being deployed in emulated trace)
+			for _, addr := range addr_list {
+				interfacesMsgPacked, hasInterfaces := hset[addr]
+				if !hasInterfaces {
+					continue
+				}
+				err = appendRawInterfacesDataToMetadata(addr, interfacesMsgPacked, &metadataVal)
+				if err != nil {
+					return nil, fmt.Errorf("failed to convert raw interfaces to metadata: %w", err)
+				}
+			}
+
 			metadata = &metadataVal
 		}
 	}

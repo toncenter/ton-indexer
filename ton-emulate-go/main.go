@@ -111,7 +111,7 @@ func emulateTrace(c *fiber.Ctx) error {
 		ID:               taskID,
 		BOC:              req.Boc,
 		IgnoreChksig:     req.IgnoreChksig,
-		DetectInterfaces: req.WithActions,
+		DetectInterfaces: req.WithActions || req.IncludeMetadata,
 		IncludeCodeData:  req.IncludeCodeData,
 		McBlockSeqno:     req.McBlockSeqno,
 	}

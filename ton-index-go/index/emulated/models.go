@@ -398,8 +398,6 @@ func (s *BouncePhaseVar) DecodeMsgpack(dec *msgpack.Decoder) error {
 		return fmt.Errorf("invalid variant array length: %d", length)
 	}
 
-	fmt.Println(length)
-
 	index, err := dec.DecodeUint8()
 	if err != nil {
 		return err
