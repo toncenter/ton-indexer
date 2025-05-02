@@ -317,7 +317,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 	var args []any
 	args = append(args, act_req.SupportedActionTypes)
 
-	log.Println(query)
+	//log.Println(query)
 	return query, args, nil
 }
 
