@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import redis.asyncio as aioredis
 import redis
 
@@ -26,5 +28,11 @@ def create_sync_redis_client():
     logger.info(f"sync redis: {client}")
     return client
 
-client = create_redis_client()
-sync_client = create_sync_redis_client()
+client: redis.Redis | None = None
+sync_client: aioredis.Redis | None = None
+
+if settings.redis_dsn:
+    client = create_redis_client()
+    sync_client = create_sync_redis_client()
+else:
+    logger.warning("No redis dsn provided")

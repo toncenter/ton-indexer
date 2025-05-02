@@ -784,6 +784,10 @@ if __name__ == '__main__':
     settings.emulated_traces = args.emulated_traces
     settings.use_combined_repository = args.use_combined_repository
 
+    if redis.client is None:
+        logger.error("Redis client not initialized. Aborting...")
+        sys.exit(1)
+
     if args.emulated_trace_tasks:
         logger.info("Starting processing emulated trace tasks")
         asyncio.run(start_emulated_task_traces_processing())
