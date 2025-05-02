@@ -31,6 +31,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"nft_discovery",
 		"unknown",
 	},
+	"latest": {"v2"},
 	"staking": {
 		"stake_deposit", "stake_withdrawal", "stake_withdrawal_request",
 	},
@@ -58,25 +59,52 @@ var ActionTypeShortcuts = map[string][]string{
 }
 
 func ExpandActionTypeShortcuts(shortcuts []string) []string {
-	var expandedTypes []string
-	shortcuts = append(shortcuts, "v1")
 	typesMap := make(map[string]bool)
-	typesMap["v1"] = true // ensure v1 types always present
+	seen := make(map[string]bool) // Track processed shortcuts to avoid cycles
 
 	for _, shortcut := range shortcuts {
-		if types, ok := ActionTypeShortcuts[shortcut]; ok {
-			for _, t := range types {
-				typesMap[t] = true
-			}
-		} else {
-			typesMap[shortcut] = true
-		}
+		expandShortcutRecursive(shortcut, typesMap, seen, 0)
 	}
+	// Always ensure v1 types are included
+	expandShortcutRecursive("v1", typesMap, seen, 0)
 
 	// Convert map keys to slice
+	var expandedTypes []string
 	for t := range typesMap {
-		expandedTypes = append(expandedTypes, t)
+		// Only include actual action types, not shortcut names
+		if _, isShortcut := ActionTypeShortcuts[t]; !isShortcut {
+			expandedTypes = append(expandedTypes, t)
+			println(t)
+		}
+	}
+	return expandedTypes
+}
+
+func expandShortcutRecursive(shortcut string, typesMap map[string]bool, seen map[string]bool, depth int) {
+	if depth > 10 {
+		return
 	}
 
-	return expandedTypes
+	// Check if we've already processed this shortcut in current branch
+	if seen[shortcut] {
+		return
+	}
+
+	// Mark this shortcut as seen in current branch
+	seen[shortcut] = true
+
+	if types, ok := ActionTypeShortcuts[shortcut]; ok {
+		for _, t := range types {
+			if _, isShortcut := ActionTypeShortcuts[t]; isShortcut {
+				expandShortcutRecursive(t, typesMap, seen, depth+1)
+			} else {
+				typesMap[t] = true
+			}
+		}
+	} else {
+		// This is not a shortcut, it's an actual action type
+		typesMap[shortcut] = true
+	}
+	// Unmark the shortcut when leaving this branch
+	seen[shortcut] = false
 }
