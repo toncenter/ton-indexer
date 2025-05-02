@@ -1566,6 +1566,16 @@ void InsertManagerPostgres::start_up() {
     exec_query("create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[]);");
     exec_query("create type staking_details as (provider varchar, ts_nft varchar, tokens_burnt numeric, tokens_minted numeric);");
     exec_query("create type ton_transfer_details as (content text, encrypted boolean);");
+    exec_query("create type multisig_create_order_details as (query_id numeric, order_seqno numeric, is_created_by_signer boolean, is_signed_by_creator boolean, creator_index numeric, expiration_date numeric, order_boc varchar);");
+    exec_query("create type multisig_approve_details as (signer_index numeric, exit_code numeric);");
+    exec_query("create type multisig_execute_details as (query_id numeric, order_seqno numeric, expiration_date numeric, approvals_num numeric, signers_hash varchar, order_boc varchar);");
+    exec_query("create type vesting_send_message_details as (query_id numeric, message_boc varchar);");
+    exec_query("create type vesting_add_whitelist_details as (query_id numeric, accounts_added varchar[]);");
+    exec_query("create type evaa_supply_details as (sender_jetton_wallet varchar, recipient_jetton_wallet varchar, master_jetton_wallet varchar, master varchar, asset_id varchar, is_ton boolean);");
+    exec_query("create type evaa_withdraw_details as (sender_jetton_wallet varchar, recipient_jetton_wallet varchar, master_jetton_wallet varchar, master varchar, fail_reason varchar, asset_id varchar);");
+    exec_query("create type evaa_liquidate_details as (fail_reason text, debt_amount numeric, asset_id varchar);");
+    exec_query("create type jvault_claim_details as (claimed_jettons varchar[], claimed_amounts numeric[]);");
+    exec_query("create type jvault_stake_details as (period numeric, minted_stake_jettons numeric, stake_wallet varchar);");
   }
   catch (const std::exception &e) {
     LOG(ERROR) << "Failed to run some of initial scripts: " << e.what();
@@ -2000,6 +2010,18 @@ void InsertManagerPostgres::start_up() {
       "trace_end_utime integer, "
       "mc_seqno_end integer, "
       "trace_mc_seqno_end integer, "
+      "multisig_create_order_data multisig_create_order_details, "
+      "multisig_approve_data multisig_approve_details, "
+      "multisig_execute_data multisig_execute_details, "
+      "vesting_send_message_data vesting_send_message_details, "
+      "vesting_add_whitelist_data vesting_add_whitelist_details, "
+      "evaa_supply_data evaa_supply_details, "
+      "evaa_withdraw_data evaa_withdraw_details, "
+      "evaa_liquidate_data evaa_liquidate_details, "
+      "jvault_claim_data jvault_claim_details, "
+      "jvault_stake_data jvault_stake_details, "
+      "parent_action_id varchar, "
+      "ancestor_type varchar[] default '{}', "
       "value_extra_currencies jsonb default '{}'::jsonb, "
       "primary key (trace_id, action_id)"
       ") with (autovacuum_vacuum_scale_factor = 0.03);\n"
@@ -2245,6 +2267,19 @@ void InsertManagerPostgres::start_up() {
         "alter table latest_account_states add column if not exists balance_extra_currencies jsonb;\n"
 
         "alter table messages add column if not exists msg_hash_norm tonhash;\n"
+
+        "alter table actions add column if not exists parent_action_id varchar;\n"
+        "alter table actions add column if not exists ancestor_type varchar[] default '{}';\n"
+        "alter table actions add column if not exists multisig_create_order_data multisig_create_order_details;\n"
+        "alter table actions add column if not exists multisig_approve_data multisig_approve_details;\n"
+        "alter table actions add column if not exists multisig_execute_data multisig_execute_details;\n"
+        "alter table actions add column if not exists vesting_send_message_data vesting_send_message_details;\n"
+        "alter table actions add column if not exists vesting_add_whitelist_data vesting_add_whitelist_details;\n"
+        "alter table actions add column if not exists evaa_supply_data evaa_supply_details;\n"
+        "alter table actions add column if not exists evaa_withdraw_data evaa_withdraw_details;\n"
+        "alter table actions add column if not exists evaa_liquidate_data evaa_liquidate_details;\n"
+        "alter table actions add column if not exists jvault_claim_data jvault_claim_details;\n"
+        "alter table actions add column if not exists jvault_stake_data jvault_stake_details;\n"
       );
 
       LOG(DEBUG) << query;
