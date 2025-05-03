@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,10 +25,11 @@ import (
 
 // Command-line flags
 var (
-	redisAddr     = flag.String("redis", "localhost:6379", "Redis server dsn")
-	tracesChannel = flag.String("traces-channel", "new_trace", "Redis channel for blockchain events")
-	serverPort    = flag.Int("port", 8085, "Server port")
-	prefork       = flag.Bool("prefork", false, "Use prefork")
+	redisAddr          = flag.String("redis", "localhost:6379", "Redis server dsn")
+	tracesChannel      = flag.String("traces-channel", "new_trace", "Redis channel for blockchain events")
+	commitedTxsChannel = flag.String("commited-txs-channel", "new_commited_tx", "Redis channel for committed transactions")
+	serverPort         = flag.Int("port", 8085, "Server port")
+	prefork            = flag.Bool("prefork", false, "Use prefork")
 )
 
 // Subscription represents a client's subscription to blockchain events
@@ -113,6 +115,7 @@ func (manager *ClientManager) Run() {
 							if err := client.SendEvent(msgBytes); err != nil {
 								log.Printf("Error sending event to client %s: %v", client.ID, err)
 							}
+							log.Printf("Sent event to client %s: %d bytes", client.ID, len(msgBytes))
 						}
 					}
 				}
@@ -147,8 +150,8 @@ func shouldSendEvent(sub *Subscription, event *BlockchainEvent) bool {
 	return false
 }
 
-// SubscribeToEvents subscribes to blockchain events from Redis
-func SubscribeToEvents(ctx context.Context, rdb *redis.Client, manager *ClientManager) {
+// SubscribeToTraces subscribes to blockchain events from Redis
+func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientManager) {
 	pubsub := rdb.Subscribe(ctx, *tracesChannel)
 	defer pubsub.Close()
 
@@ -160,8 +163,6 @@ func SubscribeToEvents(ctx context.Context, rdb *redis.Client, manager *ClientMa
 			log.Printf("Error receiving message from Redis: %v", err)
 			continue
 		}
-
-		log.Printf("Received message from Redis: %s", msg.Payload)
 
 		traceExternalHashNorm := msg.Payload
 		ProcessNewTrace(ctx, rdb, traceExternalHashNorm, manager)
@@ -206,10 +207,6 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		}
 	}
 
-	if len(txs) == 0 {
-		return
-	}
-
 	var tx_hashes []string
 	for _, t := range txs {
 		tx_hashes = append(tx_hashes, string(t.Hash))
@@ -243,14 +240,14 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		})
 	}
 
-	txByAccount := map[string][]index.Transaction{}
+	txsByAccount := map[string][]index.Transaction{}
 	for _, tx := range txs {
 		if !tx.Emulated {
 			continue
 		}
-		txByAccount[string(tx.Account)] = append(txByAccount[string(tx.Account)], tx)
+		txsByAccount[string(tx.Account)] = append(txsByAccount[string(tx.Account)], tx)
 	}
-	for account, txs := range txByAccount {
+	for account, txs := range txsByAccount {
 		notification := &PendingTransactionsNotification{
 			TraceExternalHashNorm: traceExternalHashNorm,
 			Transactions:          txs,
@@ -262,8 +259,68 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		}
 		manager.broadcast <- event
 
-		log.Printf("Broadcasting %d pending transactions for account %s", len(txs), account)
+		// log.Printf("Broadcasting %d pending transactions for account %s", len(txs), account)
 	}
+}
+
+func SubscribeToCommittedTransactions(ctx context.Context, rdb *redis.Client, manager *ClientManager) {
+	pubsub := rdb.Subscribe(ctx, *commitedTxsChannel)
+	defer pubsub.Close()
+
+	log.Printf("Subscribed to Redis channel: %s", *commitedTxsChannel)
+
+	for {
+		msg, err := pubsub.ReceiveMessage(ctx)
+		if err != nil {
+			log.Printf("Error receiving message from Redis: %v", err)
+			continue
+		}
+
+		log.Printf("Received message from Redis: %s", msg.Payload)
+
+		parts := strings.Split(msg.Payload, ":")
+		if len(parts) != 2 {
+			log.Printf("Invalid message format: %s", msg.Payload)
+			continue
+		}
+		traceExternalHashNorm := parts[0]
+		txInMsgHash := parts[1]
+
+		ProcessNewCommitedTx(ctx, rdb, traceExternalHashNorm, txInMsgHash, manager)
+	}
+}
+
+func ProcessNewCommitedTx(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txInMsgHash string, manager *ClientManager) {
+	txRaw := rdb.HGet(ctx, traceExternalHashNorm, txInMsgHash)
+	if txRaw.Err() != nil {
+		log.Printf("Error loading transaction: %v", txRaw.Err())
+		return
+	}
+
+	var node emulated.TraceNode
+	if err := json.Unmarshal([]byte(txRaw.Val()), &node); err != nil {
+		log.Printf("Error unmarshalling transaction: %v", err)
+		return
+	}
+	txRow, err := node.GetTransactionRow()
+	if err != nil {
+		log.Printf("Error getting transaction row: %v", err)
+		return
+	}
+	tx, err := index.ScanTransaction(emulated.NewRow(&txRow))
+	if err != nil {
+		log.Printf("Error scanning transaction: %v", err)
+		return
+	}
+
+	event := &BlockchainEvent{
+		Type:    "transactions",
+		Address: string(tx.Account),
+		Data:    tx,
+	}
+	manager.broadcast <- event
+
+	// log.Printf("Broadcasting committed transaction for account %s", string(tx.Account))
 }
 
 // @title TON Streaming API
@@ -397,8 +454,21 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					continue
 				}
 				var addressesRaw []string
+				validAddresses := true
 				for _, addr := range subReq.Addresses {
-					
+					// Convert address to Raw form using AccountAddressConverter
+					rawAddrValue := index.AccountAddressConverter(addr)
+					if !rawAddrValue.IsValid() {
+						c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"error":"Invalid address: %s"}`, addr)))
+						validAddresses = false
+						break
+					}
+					rawAddr := rawAddrValue.Interface().(index.AccountAddress)
+					addressesRaw = append(addressesRaw, string(rawAddr))
+				}
+				if !validAddresses {
+					continue
+				}
 
 				// Validate event types
 				validTypes := true
@@ -416,7 +486,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				// Update client subscription
 				client.mu.Lock()
 				client.Subscription = &Subscription{
-					Addresses: subReq.Addresses,
+					Addresses: addressesRaw,
 					Types:     subReq.Types,
 				}
 				client.mu.Unlock()
@@ -451,7 +521,8 @@ func main() {
 	go manager.Run()
 
 	// Subscribe to blockchain events
-	go SubscribeToEvents(ctx, rdb, manager)
+	go SubscribeToTraces(ctx, rdb, manager)
+	go SubscribeToCommittedTransactions(ctx, rdb, manager)
 
 	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
