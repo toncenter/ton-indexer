@@ -67,6 +67,10 @@ public:
                 auto addr_raw = std::to_string(node.transaction.account.workchain) + ":" + node.transaction.account.addr.to_hex();
                 auto by_addr_key = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
                 transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
+
+                if (!node.emulated) {
+                    transaction_.publish("new_commited_tx", td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice()));
+                }
             }
 
             // insert interfaces
@@ -88,6 +92,7 @@ public:
             transaction_.expire("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), 600);
 
             transaction_.publish("new_trace", td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()));
+            
             transaction_.exec();
 
             promise_.set_value(td::Unit());
