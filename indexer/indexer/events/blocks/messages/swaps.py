@@ -123,23 +123,23 @@ class DedustSwapPayload:
 
 class StonfiSwapV2:
     opcode = 0x657b54f5
-    query_id: int
-    from_user: Address
-    left_amount: int
-    right_amount: int
-    transferred_op: int
-    token_wallet1: Address
-    refund_address: Address
-    excesses_address: str
-    tx_deadline: int
-    min_out: int
-    receiver: str
-    fwd_gas: int
-    custom_payload: bytes | None
-    refund_fwd_gas: int
-    refund_payload: bytes | None
-    ref_fee: int
-    ref_address: str
+    # query_id: int
+    # from_user: Address
+    # left_amount: int
+    # right_amount: int
+    # transferred_op: int
+    # token_wallet1: Address
+    # refund_address: Address
+    # excesses_address: str
+    # tx_deadline: int
+    # min_out: int
+    # receiver: str
+    # fwd_gas: int
+    # custom_payload: bytes | None
+    # refund_fwd_gas: int
+    # refund_payload: bytes | None
+    # ref_fee: int
+    # ref_address: str
 
     def __init__(self, boc: Slice):
         boc.skip_bits(32)  # Skip opcode
@@ -170,14 +170,15 @@ class StonfiSwapV2:
         self.ref_address = swap_body_slice.load_address()
 
     def get_pool_accounts_recursive(self) -> list[str]:
-        accounts = [self.token_wallet1.to_str(is_user_friendly=False).upper()]
+        accounts = [self.token_wallet1.to_str(is_user_friendly=False).upper() if isinstance(self.token_wallet1, Address) else ""]
         if self.custom_payload is None:
             return accounts
         current_slice = Slice.one_from_boc(self.custom_payload)
         while True:
             sum_type = current_slice.load_uint(32)
             if sum_type in (0x6664de2a, 0x69cf1a5b):
-                accounts.append(current_slice.load_address().to_str(is_user_friendly=False).upper())
+                account = current_slice.load_address()
+                accounts.append(account.to_str(is_user_friendly=False).upper() if isinstance(account, Address) else "")
                 if current_slice.remaining_refs > 0:
                     cross_swap = current_slice.load_ref().to_slice()
                 else:
@@ -195,3 +196,4 @@ class StonfiSwapV2:
             else:
                 break
         return accounts
+    
