@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pytoniq_core import Slice, Address
+from pytoniq_core import Slice, Address, Cell
 
 from indexer.events.blocks.utils import Asset
 
@@ -197,3 +197,278 @@ class StonfiSwapV2:
                 break
         return accounts
     
+
+# --- TONCO Router Messages ---
+
+class ToncoRouterV3CreatePool:
+    """
+    Opcode: 0x2e3034ef
+    TL-B:
+    ROUTERV3_CREATE_POOL#2e3034ef 
+        query_id:uint64
+        jetton_wallet0:MsgAddress
+        jetton_wallet1:MsgAddress
+        tick_spacing:int24
+        initial_priceX96:uint160
+        protocol_fee:uint16
+        lp_fee_base:uint16
+        lp_fee_current:uint16
+        nftv3_content:^Cell
+        nftv3item_content:^Cell
+        minter_cell:^[
+            jetton0_minter:MsgAddress
+            jetton1_minter:MsgAddress
+            controller_addr:MsgAddress
+        ]  
+    = ContractMessages;
+    """
+    opcode = 0x2e3034ef
+
+    def __init__(self, body: Slice):
+        body.load_uint(32) # opcode
+        self.query_id = body.load_uint(64)
+        self.jetton_wallet0 = body.load_address()
+        self.jetton_wallet1 = body.load_address()
+        self.tick_spacing = body.load_int(24)
+        self.initial_priceX96 = body.load_uint(160)
+        self.protocol_fee = body.load_uint(16)
+        self.lp_fee_base = body.load_uint(16)
+        self.lp_fee_current = body.load_uint(16)
+        self.nftv3_content = body.load_ref()
+        self.nftv3item_content = body.load_ref()
+
+        minter_cell_ref = body.load_ref()
+        minter_slice = minter_cell_ref.to_slice()
+        self.jetton0_minter = minter_slice.load_address()
+        self.jetton1_minter = minter_slice.load_address()
+        self.controller_addr = minter_slice.load_address()
+
+
+class RouterV3PayToPayload:
+    """
+    Payload format for JETTON_TRANSFER_NOTIFICATION (0x7362d09c)
+    Opcode: 0xa1daa96d
+    TL-B:
+    ROUTERV3_PAY_TO#a1daa96d
+        query_id:uint64
+        reciever0:MsgAddress
+        reciever1:MsgAddress
+        exit_code:uint32
+        seqno:uint64
+        coinsinfo_cell:(Maybe ^[
+            amount0:(VarUInteger 16)
+            jetton0_address:MsgAddress
+            amount1:(VarUInteger 16)
+            jetton1_address:MsgAddress
+        ] ) 
+        (exit_code = 200)?(
+            indexer_swap_info_cell:(Maybe ^[
+                liquidity:uint128
+                price_sqrt:uint160
+                tick:int24
+                fee_growth_global_0x128:int256
+                fee_growth_global_1x128:int256
+            ] ) 
+        )
+        (exit_code = 201)?(
+            indexer_burn_info_cell:(Maybe ^[
+                nft_index:uint64
+                liquidity_burned:uint128
+                tick_lower:int24
+                tick_upper:int24
+                tick_burn:int24
+            ] ) 
+        )
+    = ContractMessages;
+    """
+    opcode = 0xa1daa96d
+
+    def __init__(self, body: Slice):
+        body.load_uint(32) # payload opcode
+        self.query_id = body.load_uint(64)
+        self.receiver0 = body.load_address()
+        self.receiver1 = body.load_address()
+        self.exit_code = body.load_uint(32)
+        self.seqno = body.load_uint(64)
+
+        # coinsinfo_cell
+        self.amount0 = None
+        self.jetton0_address = None
+        self.amount1 = None
+        self.jetton1_address = None
+        coinsinfo_cell_ref = body.load_maybe_ref()
+        if coinsinfo_cell_ref:
+            coinsinfo_slice = coinsinfo_cell_ref.to_slice()
+            self.amount0 = coinsinfo_slice.load_coins()
+            self.jetton0_address = coinsinfo_slice.load_address()
+            self.amount1 = coinsinfo_slice.load_coins()
+            self.jetton1_address = coinsinfo_slice.load_address()
+
+        # indexer_swap_info_cell (conditional)
+        self.liquidity = None
+        self.price_sqrt = None
+        self.tick_swap = None
+        self.fee_growth_global_0x128 = None
+        self.fee_growth_global_1x128 = None
+        self.has_swap_info = False
+        if self.exit_code == 200:
+            self.has_swap_info = True
+            indexer_swap_info_cell_ref = body.load_maybe_ref()
+            if indexer_swap_info_cell_ref:
+                indexer_swap_info_slice = indexer_swap_info_cell_ref.to_slice()
+                self.liquidity = indexer_swap_info_slice.load_uint(128)
+                self.price_sqrt = indexer_swap_info_slice.load_uint(160)
+                self.tick_swap = indexer_swap_info_slice.load_int(24)
+                self.fee_growth_global_0x128 = indexer_swap_info_slice.load_int(256)
+                self.fee_growth_global_1x128 = indexer_swap_info_slice.load_int(256)
+
+        # indexer_burn_info_cell (conditional)
+        self.nft_index = None
+        self.liquidity_burned = None
+        self.tick_lower = None
+        self.tick_upper = None
+        self.tick_burn = None
+        self.has_burn_info = False
+        if self.exit_code == 201:
+            self.has_burn_info = True
+            indexer_burn_info_cell_ref = body.load_maybe_ref()
+            if indexer_burn_info_cell_ref:
+                indexer_burn_info_slice = indexer_burn_info_cell_ref.to_slice()
+                self.nft_index = indexer_burn_info_slice.load_uint(64)
+                self.liquidity_burned = indexer_burn_info_slice.load_uint(128)
+                self.tick_lower = indexer_burn_info_slice.load_int(24)
+                self.tick_upper = indexer_burn_info_slice.load_int(24)
+                self.tick_burn = indexer_burn_info_slice.load_int(24)
+
+class ToncoResetGas:
+    """
+    Opcode: 0x42a0fb43
+    TL-B:
+    ROUTERV3_RESET_GAS#42a0fb43 
+        query_id:uint64
+    = ContractMessages;
+    """
+    opcode = 0x42a0fb43
+
+    def __init__(self, body: Slice):
+        body.load_uint(32)
+        self.query_id = body.load_uint(64)
+    
+
+# --- TONCO Position NFT Messages ---
+
+class ToncoPositionNftV3PositionInit:
+    """
+    Opcode: 0xd5ecca2a
+    TL-B:
+    POSITIONNFTV3_POSITION_INIT#d5ecca2a 
+        query_id:uint64
+        user_address:MsgAddress
+        liquidity:uint128
+        tick_lower:int24
+        tick_upper:int24
+        old_fee_cell:^[
+            fee_growth_inside_0_last_x128:uint256
+            fee_growth_inside_1_last_x128:uint256
+            nft_index:uint64
+            jetton0_amount:(VarUInteger 16)
+            jetton1_amount:(VarUInteger 16)
+            tick:int24
+        ]  
+    = ContractMessages;
+    """
+    opcode = 0xd5ecca2a
+
+    def __init__(self, body: Slice):
+        body.load_uint(32) # opcode
+        self.query_id = body.load_uint(64)
+        self.user_address = body.load_address()
+        self.liquidity = body.load_uint(128)
+        self.tick_lower = body.load_int(24)
+        self.tick_upper = body.load_int(24)
+
+        old_fee_cell_ref = body.load_ref()
+        old_fee_slice = old_fee_cell_ref.to_slice()
+        self.fee_growth_inside0_last_x128 = old_fee_slice.load_uint(256)
+        self.fee_growth_inside1_last_x128 = old_fee_slice.load_uint(256)
+        self.nft_index = old_fee_slice.load_uint(64)
+        self.jetton0_amount = old_fee_slice.load_coins()
+        self.jetton1_amount = old_fee_slice.load_coins()
+        self.tick = old_fee_slice.load_int(24)
+
+class ToncoPositionNftV3PositionBurn:
+    """
+    Opcode: 0x46ca335a
+    TL-B:
+    POSITIONNFTV3_POSITION_BURN#46ca335a 
+        query_id:uint64
+        nft_owner:MsgAddress
+        liquidity_to_burn:uint128
+        tick_lower:int24
+        tick_upper:int24
+        old_fee_cell:^[
+            fee_growth_inside_0_last_x128:uint256
+            fee_growth_inside_1_last_x128:uint256
+        ]  
+    = ContractMessages;
+    """
+    opcode = 0x46ca335a
+
+    def __init__(self, body: Slice):
+        body.load_uint(32) # opcode
+        self.query_id = body.load_uint(64)
+        self.nft_owner = body.load_address()
+        self.liquidity_to_burn = body.load_uint(128)
+        self.tick_lower = body.load_int(24)
+        self.tick_upper = body.load_int(24)
+
+        old_fee_cell_ref = body.load_ref()
+        old_fee_slice = old_fee_cell_ref.to_slice()
+        self.fee_growth_inside0_last_x128 = old_fee_slice.load_uint(256)
+        self.fee_growth_inside1_last_x128 = old_fee_slice.load_uint(256)
+
+
+# --- TONCO Account Messages ---
+
+class ToncoAccountV3AddLiquidity:
+    """
+    Opcode: 0x3ebe5431
+    TL-B:
+    ACCOUNTV3_ADD_LIQUIDITY#3ebe5431 
+        query_id:uint64
+        new_amount0:(VarUInteger 16)
+        new_amount1:(VarUInteger 16)
+        new_enough0:(VarUInteger 16)
+        new_enough1:(VarUInteger 16)
+        liquidity:uint128
+        tick_lower:int24
+        tick_upper:int24
+    = ContractMessages;
+    """
+    opcode = 0x3ebe5431
+
+    def __init__(self, body: Slice):
+        body.load_uint(32) # opcode
+        self.query_id = body.load_uint(64)
+        self.new_amount0 = body.load_coins()
+        self.new_amount1 = body.load_coins()
+        self.new_enough0 = body.load_coins()
+        self.new_enough1 = body.load_coins()
+        self.liquidity = body.load_uint(128)
+        self.tick_lower = body.load_int(24)
+        self.tick_upper = body.load_int(24)
+
+
+class ToncoAccountV3RefundMe:
+    """
+    Opcode: 0xbf3f447
+    TL-B:
+    ACCOUNTV3_REFUND_ME#bf3f447 
+        query_id:uint64
+    = ContractMessages;
+    """
+    opcode = 0xbf3f447
+
+    def __init__(self, body: Slice):
+        body.load_uint(32) # opcode
+        self.query_id = body.load_uint(64)
