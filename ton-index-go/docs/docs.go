@@ -245,6 +245,16 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Supported action types",
+                        "name": "supported_action_types",
+                        "in": "query"
+                    },
+                    {
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
@@ -1845,6 +1855,16 @@ const docTemplate = `{
                         "description": "Find actions by trace external hash",
                         "name": "ext_msg_hash",
                         "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Supported action types",
+                        "name": "supported_action_types",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2186,6 +2206,16 @@ const docTemplate = `{
                         "default": false,
                         "description": "Include trace actions.",
                         "name": "include_actions",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Supported action types",
+                        "name": "supported_action_types",
                         "in": "query"
                     },
                     {

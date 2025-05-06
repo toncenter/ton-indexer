@@ -113,6 +113,7 @@ class Block:
     type: str
     value_flow: AccountValueFlow
     transient: bool
+    is_ghost_block: bool # Ghost block is a block that represents an intended but not started operation
 
     def __init__(self, type: str, nodes: list[EventNode], v=None):
         self.failed = False
@@ -128,6 +129,9 @@ class Block:
         self.contract_deployments = set()
         self.initiating_event_node = None
         self.value_flow = AccountValueFlow()
+        self.is_ghost_block = False
+        if len(nodes) == 1 and nodes[0].ghost_node:
+            self.is_ghost_block = True
         if len(nodes) != 0:
             self.min_lt = nodes[0].get_lt()
             self.max_lt = nodes[0].message.transaction.lt
@@ -202,6 +206,10 @@ class Block:
             earliest_block.previous_block.compact_connections()
         self.initiating_event_node = earliest_block.initiating_event_node
         self.calculate_min_max_lt()
+        for node in self.event_nodes:
+            if node.ghost_node:
+                self.is_ghost_block = True
+                break
 
     def find_next(self,
                   node_filter: Callable[['Block', int], bool] = None,

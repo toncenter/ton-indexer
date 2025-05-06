@@ -88,7 +88,9 @@ class BlockMatcher:
 
     async def process_children_matchers(self, block, blocks, child):
         next_blocks = block.next_blocks.copy()
-        remaining_matchers = self.children_matchers.copy()
+        remaining_matchers = (
+            self.children_matchers.copy() if self.children_matchers else []
+        )
         blocks = []
         while len(remaining_matchers) > 0:
             matcher = remaining_matchers[0]
@@ -135,6 +137,19 @@ class OrMatcher(BlockMatcher):
         return None
 
 
+class ExclusiveOrMatcher(OrMatcher):
+    def __init__(
+        self,
+        matchers: list[ContractMatcher | BlockMatcher | BlockTypeMatcher],
+        optional=False,
+    ):
+        super().__init__(matchers, optional)
+
+    def test_self(self, block: Block):
+        matched = [m.test_self(block) for m in self.matchers]
+        return sum(matched) == 1
+
+
 class TonTransferMatcher(BlockMatcher):
 
     def __init__(self):
@@ -159,12 +174,15 @@ class ContractMatcher(BlockMatcher):
 
 
 class BlockTypeMatcher(BlockMatcher):
-    def __init__(self, block_type, child_matcher=None, parent_matcher=None, optional=False):
+    def __init__(
+        self, block_type, child_matcher=None, parent_matcher=None, optional=False
+    ):
         super().__init__(child_matcher, parent_matcher, optional)
         self.block_type = block_type
 
     def test_self(self, block: Block):
         return block.btype == self.block_type
+
 
 class GenericMatcher(BlockMatcher):
     def __init__(self, test_self_func, child_matcher=None, parent_matcher=None, optional=False):
@@ -175,8 +193,8 @@ class GenericMatcher(BlockMatcher):
         return self.test_self_func(block)
 
 class RecursiveMatcher(BlockMatcher):
-    def __init__(self, repeating_matcher: BlockMatcher, exit_matcher: BlockMatcher):
-        super().__init__(child_matcher=None, parent_matcher=None)
+    def __init__(self, repeating_matcher: BlockMatcher, exit_matcher: BlockMatcher, optional: bool = False):
+        super().__init__(child_matcher=None, parent_matcher=None, optional=optional)
         self.repeating_matcher = repeating_matcher
         self.exit_matcher = exit_matcher
 

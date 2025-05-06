@@ -43,79 +43,6 @@ class InterfaceRepository(abc.ABC):
         pass
 
 
-class InMemoryInterfaceRepository(InterfaceRepository):
-    def __init__(self, interface_map: dict[str, dict[str, dict]], backoff_repository: InterfaceRepository):
-        self.interface_map = interface_map
-        self.backoff_repository = backoff_repository
-
-    async def get_jetton_wallet(self, address: str) -> JettonWallet | None:
-        if address in self.interface_map:
-            interfaces = self.interface_map[address]
-            for (interface_type, interface_data) in interfaces.items():
-                if interface_type == "JettonWallet":
-                    return JettonWallet(
-                        balance=interface_data["balance"],
-                        address=interface_data["address"],
-                        owner=interface_data["owner"],
-                        jetton=interface_data["jetton"],
-                    )
-        elif self.backoff_repository is not None:
-            return await self.backoff_repository.get_jetton_wallet(address)
-        return None
-
-    async def get_nft_item(self, address: str) -> NFTItem | None:
-        if address in self.interface_map:
-            interfaces = self.interface_map[address]
-            for (interface_type, interface_data) in interfaces.items():
-                if interface_type == "NftItem":
-                    return NFTItem(
-                        address=interface_data["address"],
-                        init=interface_data["init"],
-                        index=interface_data["index"],
-                        collection_address=interface_data["collection_address"],
-                        owner_address=interface_data["owner_address"],
-                        content=interface_data["content"],
-                    )
-        elif self.backoff_repository is not None:
-            return await self.backoff_repository.get_nft_item(address)
-        return None
-
-    async def get_nft_sale(self, address: str) -> NftSale | None:
-        if address in self.interface_map:
-            interfaces = self.interface_map[address]
-            for (interface_type, interface_data) in interfaces.items():
-                if interface_type == "NftSale":
-                    return NftSale(
-                        address=interface_data["address"],
-                        is_complete=interface_data["is_complete"],
-                        marketplace_address=interface_data["marketplace_address"],
-                        nft_address=interface_data["nft_address"],
-                        nft_owner_address=interface_data["nft_owner_address"],
-                        full_price=interface_data["full_price"],
-                    )
-        return None
-
-    async def get_nft_auction(self, address: str) -> NftAuction | None:
-        return None
-
-
-class SqlAlchemyInterfaceRepository(InterfaceRepository):
-    def __init__(self, session: ContextVar[AsyncSession]):
-        self.session = session
-
-    async def get_jetton_wallet(self, address: str) -> JettonWallet | None:
-        return await self.session.get().get(JettonWallet, address)
-
-    async def get_nft_item(self, address: str) -> NFTItem | None:
-        return await self.session.get().get(NFTItem, address)
-
-    async def get_nft_sale(self, address: str) -> NftSale | None:
-        return None
-
-    async def get_nft_auction(self, address: str) -> NftAuction | None:
-        return await self.session.get().get(NftAuction, address)
-
-
 class RedisInterfaceRepository(InterfaceRepository):
     prefix = "I_"  # Prefix for keys in Redis
 
@@ -214,6 +141,15 @@ class RedisInterfaceRepository(InterfaceRepository):
     async def get_dedust_pool(self, address: str) -> DedustPool | None:
         if address in context.dedust_pools.get():
             return DedustPool(address=address, assets=context.dedust_pools.get()[address]['assets'])
+        return None
+
+    async def get_extra_data(self, address: str, request: str) -> Any:
+        raw_data = self.connection.get(RedisInterfaceRepository.prefix + address)
+        if raw_data is None:
+            return None
+        interfaces = msgpack.unpackb(raw_data, raw=False)
+        if request in interfaces:
+            return interfaces[request]
         return None
 
 
@@ -397,16 +333,23 @@ class EmulatedRepositoryWithDbFallback(InterfaceRepository):
 
         return result
 
+    async def get_extra_data(self, address: str, request: str) -> Any:
+        if address in self.db_interfaces and request in self.db_interfaces[address]:
+            data = self.db_interfaces[address][request]
+            return data
+        return None
 
 async def _gather_data_from_db(
         accounts: set[str],
-        session: AsyncSession
-) -> tuple[list[JettonWallet], list[NFTItem], list[NftSale], list[NftAuction], list[LatestAccountState]]:
+        session: AsyncSession,
+        extra_requests: list[ExtraAccountRequest] = None,
+) -> tuple[list[JettonWallet], list[NFTItem], list[NftSale], list[NftAuction], list[LatestAccountState], list[dict]]:
     jetton_wallets = []
     nft_items = []
     nft_sales = []
     getgems_auctions = []
     nominator_pools = []
+    extra = []
     account_list = list(accounts)
     for i in range(0, len(account_list), 5000):
         batch = account_list[i:i + 5000]
@@ -427,12 +370,47 @@ async def _gather_data_from_db(
         getgems_auctions += auctions
         nominator_pools += list(pools.scalars().all())
 
-    return jetton_wallets, nft_items, nft_sales, getgems_auctions, nominator_pools
+    if extra_requests is not None:
+        extra_requests_dict = defaultdict(set)
+        for req in extra_requests:
+            extra_requests_dict[req.request].add(str(req.account))
+        for request, request_accounts in extra_requests_dict.items():
+            if request == 'data_boc':
+                data_bocs = await session.execute(select(LatestAccountState.account, LatestAccountState.data_boc)
+                                                  .filter(LatestAccountState.account.in_(request_accounts)))
+                data = data_bocs.all()
+                for wallet in data:
+                    extra.append({
+                        'account': wallet[0],
+                        'data_boc': wallet[1],
+                        'request': request
+                    })
 
 
-async def gather_interfaces(accounts: set[str], session: AsyncSession) -> dict[str, dict[str, dict]]:
+    return jetton_wallets, nft_items, nft_sales, getgems_auctions, nominator_pools, extra
+
+class ExtraAccountRequest:
+    def __init__(self, value, request=None):
+        self.account = value
+        self.request = request
+
+    def __eq__(self, other):
+        if isinstance(other, ExtraAccountRequest):
+            return self.account == other.account and self.request == other.request
+        return False
+
+    def __hash__(self):
+        return hash((self.account, self.request))
+
+    def __str__(self):
+        return f"ExtraAccountRequest({self.account}, {self.request})"
+
+
+async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_requests: set[ExtraAccountRequest] = None)\
+        -> dict[str, dict[str, dict]]:
     result = defaultdict(dict)
-    (jetton_wallets, nft_items, nft_sales, nft_auctions, nominator_pools) = await _gather_data_from_db(accounts, session)
+    (jetton_wallets, nft_items, nft_sales, nft_auctions, nominator_pools, extra) = await _gather_data_from_db(
+        accounts, session, extra_requests=extra_requests)
     for wallet in accounts:
         result[wallet] = {}
     for wallet in jetton_wallets:
@@ -470,4 +448,6 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession) -> dict[s
         result[account_state.account]["NominatorPool"] = {
             "address": account_state.account,
         }
+    for wallet in extra:
+        result[wallet['account']][wallet['request']] = wallet["data_boc"]
     return result

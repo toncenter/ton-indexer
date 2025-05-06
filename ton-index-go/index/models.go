@@ -539,6 +539,45 @@ type RawAction struct {
 	Success                                              *bool
 	TraceExternalHash                                    *HashType
 	ExtraCurrencies                                      map[string]string
+	MultisigCreateOrderQueryId                           *string
+	MultisigCreateOrderOrderSeqno                        *string
+	MultisigCreateOrderIsCreatedBySigner                 *bool
+	MultisigCreateOrderIsSignedByCreator                 *bool
+	MultisigCreateOrderCreatorIndex                      *int64
+	MultisigCreateOrderExpirationDate                    *int64
+	MultisigCreateOrderOrderBoc                          *string
+	MultisigApproveSignerIndex                           *int64
+	MultisigApproveExitCode                              *int32
+	MultisigExecuteQueryId                               *string
+	MultisigExecuteOrderSeqno                            *string
+	MultisigExecuteExpirationDate                        *int64
+	MultisigExecuteApprovalsNum                          *int64
+	MultisigExecuteSignersHash                           *string
+	MultisigExecuteOrderBoc                              *string
+	VestingSendMessageQueryId                            *string
+	VestingSendMessageMessageBoc                         *string
+	VestingAddWhitelistQueryId                           *string
+	VestingAddWhitelistAccountsAdded                     []AccountAddress
+	EvaaSupplySenderJettonWallet                         *AccountAddress
+	EvaaSupplyRecipientJettonWallet                      *AccountAddress
+	EvaaSupplyMasterJettonWallet                         *AccountAddress
+	EvaaSupplyMaster                                     *AccountAddress
+	EvaaSupplyAssetId                                    *string
+	EvaaSupplyIsTon                                      *bool
+	EvaaWithdrawRecipientJettonWallet                    *AccountAddress
+	EvaaWithdrawMasterJettonWallet                       *AccountAddress
+	EvaaWithdrawMaster                                   *AccountAddress
+	EvaaWithdrawFailReason                               *string
+	EvaaWithdrawAssetId                                  *string
+	EvaaLiquidateFailReason                              *string
+	EvaaLiquidateDebtAmount                              *string
+	EvaaLiquidateAssetId                                 *string
+	JvaultClaimClaimedJettons                            []AccountAddress
+	JvaultClaimClaimedAmounts                            []string
+	JvaultStakePeriod                                    *int64
+	JvaultStakeMintedStakeJettons                        *string
+	JvaultStakeStakeWallet                               *AccountAddress
+	JvaultExitCode                                       *int64
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
@@ -943,4 +982,132 @@ func WalletInformationFromV3(state WalletState) (*V2WalletInformation, error) {
 	}
 	info.Status = *state.AccountStatus
 	return &info, nil
+}
+
+// Multisig action details structs
+type ActionDetailsMultisigCreateOrder struct {
+	QueryId           *string         `json:"query_id"`
+	OrderSeqno        *string         `json:"order_seqno"`
+	IsCreatedBySigner *bool           `json:"is_created_by_signer"`
+	IsSignedByCreator *bool           `json:"is_signed_by_creator"`
+	CreatorIndex      *int64          `json:"creator_index"`
+	ExpirationDate    *int64          `json:"expiration_date"`
+	OrderBoc          *string         `json:"order_boc"`
+	Source            *AccountAddress `json:"source"`
+	Destination       *AccountAddress `json:"destination"`
+	DestinationOrder  *AccountAddress `json:"destination_order"`
+}
+
+type ActionDetailsMultisigApprove struct {
+	SignerIndex *int64          `json:"signer_index"`
+	ExitCode    *int32          `json:"exit_code"`
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+}
+
+type ActionDetailsMultisigExecute struct {
+	QueryId        *string         `json:"query_id"`
+	OrderSeqno     *string         `json:"order_seqno"`
+	ExpirationDate *int64          `json:"expiration_date"`
+	ApprovalsNum   *int64          `json:"approvals_num"`
+	SignersHash    *string         `json:"signers_hash"`
+	OrderBoc       *string         `json:"order_boc"`
+	Source         *AccountAddress `json:"source"`
+	Destination    *AccountAddress `json:"destination"`
+}
+
+// Vesting action details structs
+type ActionDetailsVestingSendMessage struct {
+	QueryId     *string         `json:"query_id"`
+	MessageBoc  *string         `json:"message_boc"`
+	Source      *AccountAddress `json:"source"`
+	Vesting     *AccountAddress `json:"vesting"`
+	Destination *AccountAddress `json:"destination"`
+	Amount      *string         `json:"amount"`
+}
+
+type ActionDetailsVestingAddWhitelist struct {
+	QueryId       *string          `json:"query_id"`
+	AccountsAdded []AccountAddress `json:"accounts_added"`
+	Source        *AccountAddress  `json:"source"`
+	Vesting       *AccountAddress  `json:"vesting"`
+}
+
+// EVAA action details structs
+type ActionDetailsEvaaSupply struct {
+	SenderJettonWallet    *AccountAddress `json:"sender_jetton_wallet"`
+	RecipientJettonWallet *AccountAddress `json:"recipient_jetton_wallet"`
+	MasterJettonWallet    *AccountAddress `json:"master_jetton_wallet"`
+	Master                *AccountAddress `json:"master"`
+	AssetId               *string         `json:"asset_id"`
+	IsTon                 *bool           `json:"is_ton"`
+	Source                *AccountAddress `json:"source"`
+	SourceWallet          *AccountAddress `json:"source_wallet"`
+	Recipient             *AccountAddress `json:"recipient"`
+	RecipientContract     *AccountAddress `json:"recipient_contract"`
+	Asset                 *AccountAddress `json:"asset"`
+	Amount                *string         `json:"amount"`
+}
+
+type ActionDetailsEvaaWithdraw struct {
+	RecipientJettonWallet *AccountAddress `json:"recipient_jetton_wallet"`
+	MasterJettonWallet    *AccountAddress `json:"master_jetton_wallet"`
+	Master                *AccountAddress `json:"master"`
+	FailReason            *string         `json:"fail_reason"`
+	AssetId               *string         `json:"asset_id"`
+	Source                *AccountAddress `json:"source"`
+	Recipient             *AccountAddress `json:"recipient"`
+	OwnerContract         *AccountAddress `json:"owner_contract"`
+	Asset                 *AccountAddress `json:"asset"`
+	Amount                *string         `json:"amount"`
+}
+
+type ActionDetailsEvaaLiquidate struct {
+	FailReason       *string         `json:"fail_reason"`
+	DebtAmount       *string         `json:"debt_amount"`
+	Source           *AccountAddress `json:"source"`
+	Borrower         *AccountAddress `json:"borrower"`
+	BorrowerContract *AccountAddress `json:"borrower_contract"`
+	Collateral       *AccountAddress `json:"collateral"`
+	AssetId          *string         `json:"asset_id"`
+	Amount           *string         `json:"amount"`
+}
+
+// JVault action details structs
+type JettonAmountPair struct {
+	Jetton *AccountAddress `json:"jetton"`
+	Amount *string         `json:"amount"`
+}
+
+type ActionDetailsJvaultClaim struct {
+	ClaimedRewards []JettonAmountPair `json:"claimed_rewards"`
+	Source         *AccountAddress    `json:"source"`
+	StakeWallet    *AccountAddress    `json:"stake_wallet"`
+	Pool           *AccountAddress    `json:"pool"`
+}
+
+type ActionDetailsJvaultStake struct {
+	Period             *int64          `json:"period"`
+	MintedStakeJettons *string         `json:"minted_stake_jettons"`
+	StakeWallet        *AccountAddress `json:"stake_wallet"`
+	Source             *AccountAddress `json:"source"`
+	SourceJettonWallet *AccountAddress `json:"source_jetton_wallet"`
+	Asset              *AccountAddress `json:"asset"`
+	Pool               *AccountAddress `json:"pool"`
+	Amount             *string         `json:"amount"`
+}
+
+type ActionDetailsJvaultUnstake struct {
+	Source      *AccountAddress `json:"source"`
+	StakeWallet *AccountAddress `json:"stake_wallet"`
+	Pool        *AccountAddress `json:"pool"`
+	Amount      *string         `json:"amount"`
+	ExitCode    *int64          `json:"exit_code"`
+}
+
+type ActionDetailsNftDiscovery struct {
+	Source        *AccountAddress `json:"source"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
 }

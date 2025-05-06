@@ -7,3 +7,7 @@ from .staking import *
 from .subscriptions import *
 from .dns import *
 from .liquidity import *
+from .multisig import *
+from .jvault import *
+from .vesting import *
+from .evaa import *

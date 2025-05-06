@@ -313,6 +313,8 @@ type Action struct {
 	Opcode                   *uint32                         `msgpack:"opcode"`
 	Success                  bool                            `msgpack:"success"`
 	TonTransferData          *actionTonTransferDetails       `msgpack:"ton_transfer_data"`
+	AncestorType             []string                        `msgpack:"ancestor_type"`
+	ParentActionId           *string                         `msgpack:"parent_action_id"`
 	JettonTransferData       *actionJettonTransferDetails    `msgpack:"jetton_transfer_data"`
 	NftTransferData          *actionNftTransferDetails       `msgpack:"nft_transfer_data"`
 	JettonSwapData           *actionJettonSwapDetails        `msgpack:"jetton_swap_data"`
@@ -809,6 +811,8 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		Opcode:               a.Opcode,
 		Success:              a.Success,
 		TraceExternalHash:    &a.TraceExternalHash,
+		ParentActionId:       a.ParentActionId,
+		AncestorType:         a.AncestorType,
 	}
 	if a.TonTransferData != nil {
 		row.TonTransferContent = a.TonTransferData.Content

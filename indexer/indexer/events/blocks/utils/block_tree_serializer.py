@@ -8,20 +8,24 @@ from indexer.core.database import Action, Trace
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock, DnsRenewBlock
+from indexer.events.blocks.evaa import EvaaSupplyBlock, EvaaWithdrawBlock, EvaaLiquidateBlock
 from indexer.events.blocks.jettons import (
     JettonMintBlock,
 )
 from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
+from indexer.events.blocks.jvault import JVaultStakeBlock, JVaultUnstakeBlock, JVaultClaimBlock
 from indexer.events.blocks.liquidity import (
     DedustDepositLiquidityPartial,
     DedustDepositLiquidity,
 )
-from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock
+from indexer.events.blocks.multisig import MultisigCreateOrderBlock, MultisigApproveBlock, MultisigExecuteBlock
+from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock, NftDiscoveryBlock
 from indexer.events.blocks.staking import TONStakersDepositBlock, TONStakersWithdrawRequestBlock, \
     TONStakersWithdrawBlock, NominatorPoolWithdrawRequestBlock, NominatorPoolDepositBlock
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
+from indexer.events.blocks.vesting import VestingSendMessageBlock, VestingAddWhiteListBlock
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +152,13 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'response_destination': block.data['response_destination'].as_str() if block.data['response_destination'] else None,
     }
 
+def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.asset = _addr(block.data.result_collection)
+    action.asset_secondary = _addr(block.data.nft)
+    action.nft_transfer_data = {
+        "nft_item_index": block.data.result_index,
+    }
 
 def _fill_nft_mint_action(block: NftMintBlock, action: Action):
     if block.data["source"]:
@@ -421,6 +432,146 @@ def _fill_nominator_pool_withdraw_request_action(block: NominatorPoolWithdrawReq
 def _fill_tick_tock_action(block: Block, action: Action):
     action.source = _addr(block.data['account'])
 
+def _fill_evaa_supply_action(block: EvaaSupplyBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.sender_jetton_wallet)
+    action.destination = _addr(block.data.recipient)
+    action.destination_secondary = _addr(block.data.recipient_contract)
+    action.amount = block.data.amount
+    action.asset = _addr(block.data.asset)
+    action.success = block.data.is_success
+    if block.failed:
+        action.success = False
+    action.evaa_supply_data = {
+        "is_ton": block.data.is_ton,
+        "asset_id": hex(block.data.asset_id) if block.data.asset_id is not None else None,
+        "master": _addr(block.data.master),
+        "recipient_jetton_wallet": _addr(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
+        "master_jetton_wallet": _addr(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None
+    }
+
+def _fill_evaa_withdraw_action(block: EvaaWithdrawBlock, action: Action):
+    action.source = _addr(block.data.owner)
+    action.destination = _addr(block.data.recipient)
+    action.destination_secondary = _addr(block.data.owner_contract)
+    action.amount = block.data.amount
+    action.asset = _addr(block.data.asset)
+    action.success = block.data.is_success
+    if block.failed:
+        action.success = False
+    action.evaa_withdraw_data = {
+        "is_ton": block.data.is_ton,
+        "recipient_jetton_wallet": _addr(block.data.recipient_jetton_wallet) if block.data.recipient_jetton_wallet else None,
+        "master_jetton_wallet": _addr(block.data.master_jetton_wallet) if block.data.master_jetton_wallet else None,
+        "fail_reason": block.data.fail_reason,
+        "master": _addr(block.data.master),
+        "asset_id": hex(block.data.asset_id) if block.data.asset_id is not None else None,
+    }
+
+
+def _fill_evaa_liquidate_action(block: EvaaLiquidateBlock, action: Action):
+    action.source = str(block.data.liquidator)
+    action.destination = str(block.data.borrower)
+    action.destination_secondary = str(block.data.borrower_contract) if block.data.borrower_contract else None
+    action.asset = str(block.data.collateral_asset_id)
+    action.amount = block.data.collateral_amount
+    action.success = block.data.is_success
+    action.evaa_liquidate_data = {
+        'asset_id': hex(block.data.collateral_asset_id) if block.data.collateral_asset_id is not None else None,
+        "fail_reason": block.data.fail_reason,
+        "debt_amount": block.data.debt_amount
+    }
+def _fill_jvault_stake(block: JVaultStakeBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.sender_wallet)
+    action.asset = _addr(block.data.asset)
+    action.destination = _addr(block.data.staking_pool)
+    action.amount = block.data.staked_amount
+    action.jvault_stake_data = {
+        "period": block.data.period,
+        "stake_wallet": _addr(block.data.stake_wallet),
+    }
+
+
+def _fill_jvault_unstake(block: JVaultUnstakeBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.stake_wallet)
+    action.destination = _addr(block.data.staking_pool)
+    action.amount = block.data.unstaked_amount
+    action.opcode = block.data.exit_code
+
+
+def _fill_jvault_claim(block: JVaultClaimBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.stake_wallet)
+    action.destination = _addr(block.data.staking_pool)
+    action.jvault_claim_data = {
+        "claimed_jettons": list(map(_addr, block.data.claimed_jettons)),
+        "claimed_amounts": block.data.claimed_amounts,
+    }
+
+
+def _fill_multisig_create_order(block: MultisigCreateOrderBlock, action: Action):
+    action.source = _addr(block.data.created_by)
+    action.destination = _addr(block.data.multisig)
+    action.destination_secondary = _addr(block.data.order_contract_address)
+    action.multisig_create_order_data = {
+        "query_id": block.data.query_id,
+        "order_seqno": block.data.order_seqno,
+        "is_created_by_signer": block.data.is_created_by_signer,
+        "is_signed_by_creator": block.data.creator_approved,
+        "creator_index": block.data.creator_index,
+        "expiration_date": block.data.expiration_date,
+        "order_boc": block.data.order_boc_str,
+    }
+
+
+def _fill_multisig_approve(block: MultisigApproveBlock, action: Action):
+    action.source = _addr(block.data.signer)
+    action.destination = _addr(block.data.order)
+    action.success = block.data.success
+    action.multisig_approve_data = {
+        "signer_index": block.data.signer_index,
+        "exit_code": block.data.exit_code,
+    }
+
+
+def _fill_multisig_execute(block: MultisigExecuteBlock, action: Action):
+    action.source = _addr(block.data.order_contract_address)
+    action.destination = _addr(block.data.multisig)
+    action.success = block.data.success
+    action.multisig_execute_data = {
+        "query_id": block.data.query_id,
+        "order_seqno": block.data.order_seqno,
+        "expiration_date": block.data.expiration_date,
+        "approvals_num": block.data.approvals_num,
+        "signers_hash": block.data.signers_hash_str,
+        "order_boc": block.data.order_boc_str,
+    }
+
+
+def _fill_vesting_send_message(block: VestingSendMessageBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.vesting)
+    action.destination_secondary = _addr(
+        block.data.message_destination
+    )  # where the msg was sent to
+    action.amount = block.data.message_value.value  # the value of the msg
+    action.vesting_send_message_data = {
+        "query_id": block.data.query_id,
+        "message_boc": block.data.message_boc_str,
+    }
+
+
+def _fill_vesting_add_whitelist(block: VestingAddWhiteListBlock, action: Action):
+    action.source = _addr(block.data.adder)
+    action.destination = _addr(block.data.vesting)
+    action.vesting_add_whitelist_data = {
+        "query_id": block.data.query_id,
+        "accounts_added": list(map(_addr, block.data.accounts_added)),
+    }
+
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -478,6 +629,30 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_election_action(block, action)
         case 'auction_bid':
             _fill_auction_bid_action(block, action)
+        case 'jvault_unstake':
+            _fill_jvault_unstake(block, action)
+        case 'jvault_stake':
+            _fill_jvault_stake(block, action)
+        case 'jvault_claim':
+            _fill_jvault_claim(block, action)
+        case 'multisig_create_order':
+            _fill_multisig_create_order(block, action)
+        case 'multisig_approve':
+            _fill_multisig_approve(block, action)
+        case 'multisig_execute':
+            _fill_multisig_execute(block, action)
+        case 'nft_discovery':
+            _fill_nft_discovery_action(block, action)
+        case 'evaa_supply':
+            _fill_evaa_supply_action(block, action)
+        case 'evaa_withdraw':
+            _fill_evaa_withdraw_action(block, action)
+        case 'evaa_liquidate':
+            _fill_evaa_liquidate_action(block, action)
+        case 'vesting_send_message':
+            _fill_vesting_send_message(block, action)
+        case 'vesting_add_whitelist':
+            _fill_vesting_add_whitelist(block, action)
         case 'tick_tock':
             _fill_tick_tock_action(block, action)
         case _:
@@ -485,8 +660,9 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
     # Fill accounts
     action._accounts.append(action.source)
     action._accounts.append(action.source_secondary)
-    action._accounts.append(action.destination)
-    action._accounts.append(action.destination_secondary)
+    if not block.is_ghost_block:
+        action._accounts.append(action.destination)
+        action._accounts.append(action.destination_secondary)
 
     # Fill extended tx hashes
     extended_tx_hashes = set(action.tx_hashes)
@@ -502,8 +678,43 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
     action._accounts = list(set(a for a in action._accounts if a is not None))
     return action
 
-def serialize_blocks(blocks: list[Block], trace_id) -> tuple[list[Action], str]:
+
+v1_ops = [
+    'call_contract',
+    'contract_deploy',
+    'jetton_burn',
+    'tick_tock',
+    'jetton_transfer',
+    'nft_transfer',
+    'nft_mint',
+    'jetton_mint',
+    'ton_transfer',
+    'stake_deposit',
+    'stake_withdrawal',
+    'stake_withdrawal_request',
+    'dex_deposit_liquidity',
+    'jetton_swap',
+    'change_dns',
+    'delete_dns',
+    'renew_dns',
+    'subscribe',
+    'dex_withdraw_liquidity',
+    'unsubscribe',
+    'election_deposit',
+    'election_recover',
+    'auction_bid',
+    'nominator_pool_deposit',
+    'nominator_pool_withdraw_request',
+    'dedust_deposit_liquidity',
+    'dedust_deposit_liquidity_partial',
+    'tonstakers_deposit',
+    'tonstakers_withdraw_request',
+    'tonstakers_withdraw',
+]
+
+def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:
     actions = []
+    action_ids = []
     state = 'ok'
     for block in blocks:
         if block.btype != 'root':
@@ -515,7 +726,51 @@ def serialize_blocks(blocks: list[Block], trace_id) -> tuple[list[Action], str]:
                 continue
             if block.broken:
                 state = 'broken'
-            action = block_to_action(block, trace_id)
-
+            action = block_to_action(block, trace_id, trace)
+            if parent_acton_id is not None and action.action_id == parent_acton_id:
+                continue
+            action.parent_action_id = parent_acton_id
+            action_ids.append(action.action_id)
             actions.append(action)
+            if serialize_child_actions:
+                if block.btype not in v1_ops:
+                    child_actions, child_state = serialize_blocks(block.children_blocks, trace_id, trace, action.action_id, serialize_child_actions)
+                    for child_action in child_actions:
+                        if child_action.type == 'contract_deploy':
+                            continue
+                        if child_action.ancestor_type is None:
+                            child_action.ancestor_type = []
+                        child_action.ancestor_type.append(block.btype)
+                        child_action.ancestor_type = list(set(child_action.ancestor_type))
+                        if child_action.action_id not in action_ids:
+                            action_ids.append(child_action.action_id)
+                            actions.append(child_action)
+                        else:
+                            raise Exception(f"Duplicate action id {child_action.action_id} in trace {trace_id}")
+                    if child_state != 'ok':
+                        state = child_state
     return actions, state
+
+def create_unknown_action(trace: Trace) -> Action:
+    logger.debug("Creating unknown action for " + trace.trace_id)
+    tx_hashes = [n.hash for n in trace.transactions]
+    failed = any(n.aborted for n in trace.transactions)
+    action = Action(
+        trace_id=trace.trace_id,
+        type="unknown",
+        action_id=trace.trace_id,
+        tx_hashes=tx_hashes,
+        start_lt=trace.start_lt,
+        end_lt=trace.end_lt,
+        start_utime=trace.start_utime,
+        end_utime=trace.end_utime,
+        success=not failed,
+        mc_seqno_end=trace.mc_seqno_end,
+        value_extra_currencies=dict(),
+        trace_end_lt=trace.end_lt,
+        trace_end_utime=trace.end_utime,
+        trace_external_hash=trace.external_hash,
+        trace_mc_seqno_end=trace.mc_seqno_end
+    )
+    action._accounts = list(set([n.account for n in trace.transactions]))
+    return action

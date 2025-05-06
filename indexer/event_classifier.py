@@ -34,14 +34,16 @@ from indexer.core.database import engine, SyncSessionMaker, Base, Trace, Transac
 from indexer.core.database import engine, Trace, Transaction, Message, Action, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
-from indexer.events.blocks.utils.address_selectors import extract_additional_addresses
-from indexer.events.blocks.utils.block_tree_serializer import block_to_action
+from indexer.events.blocks.utils.address_selectors import extract_additional_addresses, \
+    extract_extra_accounts_data_requests, extract_accounts_from_trace
+from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action
 from indexer.events.blocks.utils.dedust_pools import init_pools_data
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action, serialize_blocks
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
-from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing
+from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing, \
+    try_process_unknown_event
 from indexer.events.interface_repository import EmulatedTransactionsInterfaceRepository, gather_interfaces, \
-    RedisInterfaceRepository, EmulatedRepositoryWithDbFallback
+    RedisInterfaceRepository, EmulatedRepositoryWithDbFallback, ExtraAccountRequest
 from indexer.events.utils.lru_cache import LRUCache
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -52,8 +54,12 @@ interface_cache: LRUCache | None = None
 
 
 def add_on_conflict_ignore(conn, cursor, statement, parameters, context, executemany):
-    if statement.lstrip().upper().startswith('INSERT INTO ACTIONS'):
+    stipped_statement = statement.lstrip().upper()
+    if stipped_statement.startswith('INSERT INTO ACTIONS'):
         statement += " ON CONFLICT DO NOTHING"
+    elif stipped_statement.startswith('INSERT INTO ACTION_ACCOUNTS'):
+        statement += " ON CONFLICT DO NOTHING"
+
     return statement, parameters
 
 
@@ -280,12 +286,13 @@ class EventClassifierWorker(mp.Process):
 
                 # Gather interfaces for each account
                 accounts = set()
+                extra_data_requests = set()
                 for trace in traces:
-                    for tx in trace.transactions:
-                        accounts.add(tx.account)
-                        accounts.update(extract_additional_addresses(tx))
+                    accs, req = extract_accounts_from_trace(trace)
+                    accounts.update(accs)
+                    extra_data_requests.update(req)
 
-                interfaces = await gather_interfaces(accounts, session)
+                interfaces = await gather_interfaces(accounts, session, extra_requests=extra_data_requests)
                 repository = RedisInterfaceRepository(redis.sync_client)
                 await repository.put_interfaces(interfaces)
                 context.interface_repository.set(repository)
@@ -295,6 +302,8 @@ class EventClassifierWorker(mp.Process):
                 ok_traces = []
                 failed_traces = []
                 broken_traces = []
+                inserted_actions = set()
+                inserted_action_accounts = set()
                 for trace_id, state, actions, exc in results:
                     if state == 'ok' or state == 'broken':
                         # # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
@@ -310,6 +319,17 @@ class EventClassifierWorker(mp.Process):
                         #     # session.add_all(action.get_action_accounts())
                         session.add_all(actions)
                         for action in actions:
+                            concat_key = action.action_id + '_' + action.trace_id
+                            if concat_key in inserted_actions:
+                                raise Exception(f"Duplicate action: {concat_key}")
+                            else:
+                                inserted_actions.add(concat_key)
+                            for action_account in action.get_action_accounts():
+                                account_concat_key = action_account.account + '_' + action_account.action_id + '_' + action.trace_id
+                                if account_concat_key in inserted_action_accounts:
+                                    raise Exception(f"Duplicate action account: {account_concat_key}")
+                                else:
+                                    inserted_action_accounts.add(account_concat_key)
                             session.add_all(action.get_action_accounts())
 
                         if state == 'ok':
@@ -499,7 +519,7 @@ async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_
         logger.info("Emulated trace processing stopped")
 
 
-async def get_interfaces_with_cache(accounts: Set[str], session: AsyncSession) -> Dict[str, Dict[str, Dict]]:
+async def get_interfaces_with_cache(accounts: Set[str], session: AsyncSession, extra_requests: Set[ExtraAccountRequest]) -> Dict[str, Dict[str, Dict]]:
     if not accounts:
         return {}
 
@@ -517,7 +537,7 @@ async def get_interfaces_with_cache(accounts: Set[str], session: AsyncSession) -
     # Fetch interfaces for accounts not in cache
     if accounts_to_fetch:
         logger.debug(f"Fetching interfaces for {len(accounts_to_fetch)} accounts from DB")
-        db_interfaces = await gather_interfaces(accounts_to_fetch, session)
+        db_interfaces = await gather_interfaces(accounts_to_fetch, session, extra_requests=extra_requests)
 
         # Update cache with new interfaces
         for account, interfaces in db_interfaces.items():
@@ -554,9 +574,7 @@ async def process_emulated_trace_batch(
             trace = deserialize_event(trace_key, trace_map)
             traces_data[trace_key] = (trace, trace_map)
 
-            for tx in trace.transactions:
-                all_accounts.add(tx.account)
-                all_accounts.update(extract_additional_addresses(tx))
+            all_accounts, extra_data_requests = extract_accounts_from_trace(trace)
 
         except Exception as e:
             logger.error(f"Failed to extract accounts from trace {trace_key}: {e}")
@@ -568,7 +586,7 @@ async def process_emulated_trace_batch(
         try:
             logger.debug(f"Getting interfaces for {len(all_accounts)} accounts")
             # Use our cached interface function that uses the global cache
-            db_interfaces = await get_interfaces_with_cache(all_accounts, session)
+            db_interfaces = await get_interfaces_with_cache(all_accounts, session, extra_requests=extra_data_requests)
             logger.debug(f"Got interfaces for {len(db_interfaces)} accounts")
         except Exception as e:
             logger.error(f"Failed to gather interfaces: {e}")
@@ -593,6 +611,8 @@ async def process_emulated_trace_batch(
             # Process trace
             blocks = await process_event_async_with_postprocessing(trace)
             actions, _ = serialize_blocks(blocks, trace.trace_id)
+            if len(actions) == 0:
+                actions = await try_classify_unknown_trace(trace)
             if trace.transactions[0].emulated:
                 for action in actions:
                     action.trace_id = None
@@ -680,35 +700,45 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
         return trace.trace_id, 'ok', [], None
     try:
         result = await process_event_async_with_postprocessing(trace)
-        actions = []
-        state = 'ok'
-        for block in result:
-            if block.btype != 'root':
-                if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
-                    continue
-                if block.btype == 'empty':
-                    continue
-                if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
-                    continue
-                if block.broken:
-                    state = 'broken'
-                action = block_to_action(block, trace.trace_id, trace)
-                actions.append(action)
+        actions, state = serialize_blocks(result, trace.trace_id, trace)
+        if len(actions) == 0 and len(trace.transactions) > 0:
+            actions = await try_classify_unknown_trace(trace)
         return trace.trace_id, state, actions, None
     except Exception as e:
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
-        return trace.trace_id, 'failed', [], e
+        try:
+            return trace.trace_id, 'failed', [create_unknown_action(trace)], e
+        except:
+            return trace.trace_id, 'failed', [], e
+
+async def try_classify_unknown_trace(trace):
+    actions = []
+    blocks = await try_process_unknown_event(trace)
+    for block in blocks:
+        if block.btype in ('root', 'empty'):
+            continue
+        if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
+            continue
+        if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
+            continue
+        action = block_to_action(block, trace.trace_id, trace)
+        assert len(action._accounts) > 0, f"Action {action} has no accounts"
+        actions.append(action)
+    if len(actions) == 0:
+        unknown_action = create_unknown_action(trace)
+        actions.append(unknown_action)
+    return actions
 
 if __name__ == '__main__':
     # Create a shared namespace for cross-process data sharing
     manager = Manager()
     shared_namespace = manager.Namespace()
-    
+
     # Initialize pools data and store in shared namespace
     init_pools_data()
     # Save pools data from context to shared namespace
     shared_namespace.dedust_pools = context.dedust_pools.get()
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--prefetch-size',
                         help='Number of prefetched tasks',
@@ -753,6 +783,10 @@ if __name__ == '__main__':
     settings.emulated_traces_redis_response_channel = args.emulated_traces_redis_response_channel
     settings.emulated_traces = args.emulated_traces
     settings.use_combined_repository = args.use_combined_repository
+
+    if redis.client is None:
+        logger.error("Redis client not initialized. Aborting...")
+        sys.exit(1)
 
     if args.emulated_trace_tasks:
         logger.info("Starting processing emulated trace tasks")

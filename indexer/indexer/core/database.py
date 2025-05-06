@@ -230,8 +230,8 @@ class Action(Base):
     action_id: str = Column(String, nullable=False, primary_key=True)
     type: str = Column(String())
     tx_hashes: list[str] = Column(ARRAY(String()))
-    value: int = Column(Numeric)
-    amount: int = Column(Numeric)
+    value: int | None = Column(Numeric)
+    amount: int | None = Column(Numeric)
     start_lt: int | None = Column(BigInteger)
     end_lt: int | None = Column(BigInteger)
     start_utime: int | None = Column(BigInteger)
@@ -302,6 +302,28 @@ class Action(Base):
     ]))
     nft_mint_data = Column(CompositeType("nft_mint_details", [
         Column("nft_item_index", Numeric)]))
+    evaa_supply_data = Column(CompositeType("evaa_supply_details", [
+        Column("sender_jetton_wallet", String),
+        Column("recipient_jetton_wallet", String),
+        Column("master_jetton_wallet", String),
+        Column("master", String),
+        Column("asset_id", String),
+        Column("is_ton", Boolean)
+    ]))
+    evaa_withdraw_data = Column(CompositeType("evaa_withdraw_details", [
+        Column("sender_jetton_wallet", String),
+        Column("recipient_jetton_wallet", String),
+        Column("master_jetton_wallet", String),
+        Column("master", String),
+        Column("fail_reason", String),
+        Column("asset_id", String)
+    ]))
+    evaa_liquidate_data = Column(CompositeType("evaa_liquidate_details", [
+        Column("fail_reason", String),
+        Column("debt_amount", Numeric),
+        Column("asset_id", String)
+
+    ]))
     dex_deposit_liquidity_data = Column(CompositeType("dex_deposit_liquidity_details", [
         Column("dex", String),
         Column("amount1", Numeric),
@@ -326,6 +348,44 @@ class Action(Base):
         Column('dex_wallet_1', String),
         Column('dex_wallet_2', String)
     ]))
+    jvault_claim_data = Column(CompositeType("jvault_claim_details", [
+        Column("claimed_jettons", ARRAY(String())),
+        Column("claimed_amounts", ARRAY(Numeric()))
+    ]))
+    jvault_stake_data = Column(CompositeType("jvault_stake_details", [
+        Column("period", Numeric),
+        Column("minted_stake_jettons", Numeric),
+        Column("stake_wallet", String)
+    ]))
+    multisig_create_order_data = Column(CompositeType("multisig_create_order_details", [
+        Column("query_id", Numeric),
+        Column("order_seqno", Numeric),
+        Column("is_created_by_signer", Boolean),
+        Column("is_signed_by_creator", Boolean),
+        Column("creator_index", Numeric),
+        Column("expiration_date", Numeric),
+        Column("order_boc", String),
+    ]))
+    multisig_approve_data = Column(CompositeType("multisig_approve_details", [
+        Column("signer_index", Numeric),
+        Column("exit_code", Numeric),
+    ]))
+    multisig_execute_data = Column(CompositeType("multisig_execute_details", [
+        Column("query_id", Numeric),
+        Column("order_seqno", Numeric),
+        Column("expiration_date", Numeric),
+        Column("approvals_num", Numeric),
+        Column("signers_hash", String),
+        Column("order_boc", String),
+    ]))
+    vesting_send_message_data = Column(CompositeType("vesting_send_message_details", [
+        Column("query_id", Numeric),
+        Column("message_boc", String),
+    ]))
+    vesting_add_whitelist_data = Column(CompositeType("vesting_add_whitelist_details", [
+        Column("query_id", Numeric),
+        Column("accounts_added", ARRAY(String()))
+    ]))
     staking_data = Column(CompositeType("staking_details", [
         Column("provider", String),
         Column("ts_nft", String),
@@ -338,6 +398,8 @@ class Action(Base):
     mc_seqno_end: int = Column(Numeric)
     trace_mc_seqno_end: int = Column(Numeric)
     value_extra_currencies: dict = Column(JSONB)
+    parent_action_id: str = Column(String)
+    ancestor_type: list[str] = Column(ARRAY(String), default=[])
 
     _accounts: list[str]
 
@@ -496,7 +558,7 @@ class Message(Base):
     ihr_fee: int = Column(BigInteger)
     created_lt: int = Column(BigInteger)
     created_at: int = Column(BigInteger)
-    opcode: int = Column(Integer)
+    opcode: int = Column(BigInteger)
     ihr_disabled: bool = Column(Boolean)
     bounce: bool = Column(Boolean)
     bounced: bool = Column(Boolean)
@@ -711,6 +773,7 @@ class LatestAccountState(Base):
     timestamp = Column(Integer)
     last_trans_lt = Column(BigInteger)
     balance: int = Column(Numeric)
+    data_boc: str = Column(String)
 
 # Indexes
 # Index("blocks_index_1", Block.workchain, Block.shard, Block.seqno)

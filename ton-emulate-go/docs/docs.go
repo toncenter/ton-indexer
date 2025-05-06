@@ -36,6 +36,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/main.EmulateRequest"
                         }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Supported actions version",
+                        "name": "X-Actions-Version",
+                        "in": "header"
                     }
                 ],
                 "responses": {}

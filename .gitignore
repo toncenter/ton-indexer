@@ -216,9 +216,11 @@ Vagrantfile
 
 # custom
 .vscode/
+.cursor/
 /private
 /indexer/private
 .DS_Store
+settings.json
 
 .env*
 env

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 
 from pytoniq_core import Slice
 
 from indexer.events import context
+
+from indexer.events.blocks.labels import labeled
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.messages import NftOwnershipAssigned, ExcessMessage
-from indexer.events.blocks.messages.nft import NftTransfer, TeleitemBidInfo, AuctionFillUp
+from indexer.events.blocks.messages.nft import NftDiscovery, NftReportStaticData, NftTransfer, TeleitemBidInfo, AuctionFillUp
 from indexer.events.blocks.utils import AccountId, Amount
-from indexer.events.blocks.utils.block_utils import find_call_contracts
+from indexer.events.blocks.utils.block_utils import find_call_contracts, get_labeled
 from indexer.events.blocks.utils.block_utils import find_messages
 
 
@@ -23,6 +26,24 @@ class NftMintBlock(Block):
 class NftTransferBlock(Block):
     def __init__(self):
         super().__init__('nft_transfer', [],  None)
+
+
+@dataclass
+class NftDiscoveryBlockData:
+    sender: AccountId
+    nft: AccountId
+    result_collection: AccountId
+    result_index: int
+    query_id: int
+
+class NftDiscoveryBlock(Block):
+    data: NftDiscoveryBlockData
+
+    def __init__(self, data: NftDiscoveryBlockData):
+        super().__init__("nft_discovery", [], data)
+
+    def __repr__(self):
+        return f"nft_discovery {self.data}"
 
 
 async def _get_nft_data(nft_address: AccountId):
@@ -114,6 +135,49 @@ class NftTransferBlockMatcher(BlockMatcher):
         if not data['nft']['exists']:
             new_block.broken = True
         new_block.failed = block.failed
+        return [new_block]
+
+class NftDiscoveryBlockMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(
+            optional=False,
+            child_matcher=labeled("report",
+                            ContractMatcher(
+                                opcode=NftReportStaticData.opcode,
+                                optional=False,
+                            )
+                    ),
+            )
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == NftDiscovery.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        include = [block]
+
+        sender = block.get_message().source
+        nft = block.get_message().destination
+
+        report_block = get_labeled("report", other_blocks, CallContractBlock)
+        if not report_block:
+            return []
+        report_data = NftReportStaticData(report_block.get_body())
+
+        data = NftDiscoveryBlockData(
+            sender=AccountId(sender),
+            nft=AccountId(nft),
+            result_collection=AccountId(report_data.collection),
+            result_index=report_data.index,
+            query_id=report_data.query_id,
+        )
+        include.append(report_block)
+
+        new_block = NftDiscoveryBlock(data)
+        new_block.merge_blocks(include)
+
         return [new_block]
 
 

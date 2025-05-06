@@ -1,0 +1,174 @@
+cases:
+  Ton supply:
+    trace-id: Pz4XQKMBH155_M3Bolebl8ulXipSfJ42eP-wG4Wn5Og=
+    expected-actions:
+      - type: evaa_supply
+        values:
+          source: 0:8FDE0001DD5DBA237F221036AB232A7F834A3A5E64BB9B273D62121E49784A69
+          destination: 0:8FDE0001DD5DBA237F221036AB232A7F834A3A5E64BB9B273D62121E49784A69
+          destination_secondary: 0:B99157A0246C66C566A89BE7DDAF86EF0163E66F24A2939637C361C3FB25400B
+          amount: 1000000000
+          evaa_supply_data:
+            master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+
+  Jetton supply:
+    trace-id: j-5yrT2HRDFd7Eu9tmXI1IPjZa2VOnfL9vyKVeE18GM=
+    expected-actions:
+      - type: evaa_supply
+        values:
+          source: 0:99DE397CC852047641AB7789474F6BC3535A7E59C5600524B81D5E0D8E4EA68E
+          source_secondary: 0:1C9E32F7FC0F998AB7505D2318BFF751A91AF364B4A1563B0F1754321989BFB7
+          destination_secondary: 0:86263B94D12D8114FAE733659C51B714A81B90FBE335659021B92C41E6B44534
+          destination: 0:99DE397CC852047641AB7789474F6BC3535A7E59C5600524B81D5E0D8E4EA68E
+          asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+          amount: 47133134852
+          evaa_supply_data:
+            master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+            master_jetton_wallet: 0:910B4B5E961BF54044AF4F1DB89CDA94581EF6CC2CAC5D0D01C7DEE5573B9C43
+            recipient_jetton_wallet: 0:1C9E32F7FC0F998AB7505D2318BFF751A91AF364B4A1563B0F1754321989BFB7
+  Withdraw Ton:
+    trace-id: n7wJbUq7_-Li9GUnwlje3eGe5u1mZQGNEXQlGV8L-cI=
+    expected-actions:
+      - type: evaa_withdraw
+        values:
+          type: evaa_withdraw
+          success: true
+          tx_hashes:
+            - n7wJbUq7/+Li9GUnwlje3eGe5u1mZQGNEXQlGV8L+cI=
+            - /SAUHO+JfDQfka5IiBGUqWU1omb3PmG0Od9TuDMIFgo=
+            - cCfx+NrTPHSmSctbzOwVPan475CSHgUxsRexdMnVMms=
+            - edCwz/2kL80M7L+gq/5bRyQ0VQZqXlTndD6F5pNor80=
+            - Hhwuy2Qju3xLGrRWxYb6ajUFl0XZ7kxDgcd6jrrVJZM=
+            - xa+MEsVZb3VtEJzRLpGBabBz8fiD8VeE4JwFpdTBM7w=
+            - MPdBQP6a70oNOCoBPQLuepRxexiGbn7AM3uAAVrsq6U=
+          amount: 417016017
+          source: 0:F4A601F44755743A2259DFEDED666AC795CE55285F2E3411B6A0C7C24DCA09E2
+          destination: 0:F4A601F44755743A2259DFEDED666AC795CE55285F2E3411B6A0C7C24DCA09E2
+          destination_secondary: 0:CE29635B425B669DA1A661B9E986C7324A3AB740CC78E565F7FD4948CE855DA0
+          asset: null
+          evaa_withdraw_data:
+            master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+  Withdraw tsTon:
+    trace-id: OyAQgEdEKZcuU2-3dAkKpk_RFjTYJXXQYxCKoZSB7uA=
+    expected-actions:
+      - type: evaa_withdraw
+        values:
+          amount: 1000000040
+          source: 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+          destination: 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+          destination_secondary: 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+          asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+          evaa_withdraw_data:
+            master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+            recipient_jetton_wallet: 0:FCDA58A21B343F303964401D89ABCD922B6A51EF6EA3A8DC2A4B7BD37494A2D5
+            master_jetton_wallet: 0:910B4B5E961BF54044AF4F1DB89CDA94581EF6CC2CAC5D0D01C7DEE5573B9C43
+          _accounts:
+            - 0:910B4B5E961BF54044AF4F1DB89CDA94581EF6CC2CAC5D0D01C7DEE5573B9C43
+            - 0:B9C2F27E009E3B27734CF7EC5E9627F8F646920ABEC4B2ED83619F6226CFF821
+            - 0:A378E318EFE4DDCECBAFB9275CBB003C79644E92DB7D058CB35E55E1B1E3C273
+            - 0:FCDA58A21B343F303964401D89ABCD922B6A51EF6EA3A8DC2A4B7BD37494A2D5
+            - 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+          tx_hashes:
+            - KNmtpg++oHP1XERiPCVv6M346M5OvfNcmdzcQ3d1Dnk=
+            - lh0/qlYYgUOeQ7830l/NVdGJ6DXwGWzfWNGvuxFenFE=
+            - wicb/qOdePNJGX2yfrmeRYQ0J5sAdpy6iXzZGkUFeZo=
+            - b/LTj8HoCL5NTEIZCvVGp9Z1x0uKCXMls0eLKnSIT2o=
+            - lm3GydZZgRu8az2mHcYLWfNOBE97H6ZBPcDWi9wR1wU=
+            - OyAQgEdEKZcuU2+3dAkKpk/RFjTYJXXQYxCKoZSB7uA=
+            - 4wX2SPh3FBJCP8ZQ5ixnLQK+kf8hNgctvLPsB8ttbns=
+            - Gfpse+4t8rFmlifFmdLRnvyDkfLiUNvmuQHPWE7qgZE=
+            - 7mlRkxcRRp8K4mxz/15Rdato4NqFjJzmcM0vVSO39S4=
+  Jetton supply (failed):
+    trace-id: ww5gZmgoXhHJ1a1wukBU5Dp1LxufRT1pzfniQTgUXxE=
+    expected-actions:
+      - type: evaa_supply
+        values:
+          _accounts:
+            - 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+            - 0:87A94BE9FF96ADED4166DDFBC9B124B88B8820B40EDE3321270BE6774E341CD3
+            - 0:488191CDBFC7B2EAD6D724182980F6654358B963A883804BF0C30258E6549321
+            - 0:706C5D28B712F203756B4638C2D6AEE2DC6ECBB68129772063644B8DB6B842E1
+            - 0:F86A74601D394C1BC736D789543E39F70D42C188B97DEF577390CE705FB2B317
+          success: false
+          source: 0:87A94BE9FF96ADED4166DDFBC9B124B88B8820B40EDE3321270BE6774E341CD3
+          source_secondary: 0:F86A74601D394C1BC736D789543E39F70D42C188B97DEF577390CE705FB2B317
+          destination: 0:87A94BE9FF96ADED4166DDFBC9B124B88B8820B40EDE3321270BE6774E341CD3
+          destination_secondary: 0:488191CDBFC7B2EAD6D724182980F6654358B963A883804BF0C30258E6549321
+          evaa_supply_data:
+            master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+            recipient_jetton_wallet: 0:F86A74601D394C1BC736D789543E39F70D42C188B97DEF577390CE705FB2B317
+            master_jetton_wallet: 0:706C5D28B712F203756B4638C2D6AEE2DC6ECBB68129772063644B8DB6B842E1
+            is_ton: false
+          amount: 1500000000
+          asset: 0:729C13B6DF2C07CBF0A06AB63D34AF454F3D320EC1BCD8FB5C6D24D0806A17C2
+  Ton withdrawal (no funds):
+    trace-id: 0CHtYFyuAUpk75hWntPKTfF2qcVEfOXnt4BCzfzXD2w=
+    expected-actions:
+      - type: evaa_withdraw
+        values:
+          success: false
+          source: 0:FD113DE0F747CDB3BD760CF4512A1C10B7C3A4BF6315B51202D4EA82EAA1363C
+          destination: 0:FD113DE0F747CDB3BD760CF4512A1C10B7C3A4BF6315B51202D4EA82EAA1363C
+          destination_secondary: 0:3940379060541039C7ECF572FB42C8DF1758EFD302E50288D6047C69C384E91D
+          amount: 1628764327
+          evaa_withdraw_data:
+            fail_reason: withdraw_no_funds_excess
+            master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+            asset_id: "0x1a4219fe5e60d63af2a3cc7dce6fec69b45c6b5718497a6148e7c232ac87bd8a"
+            recipient_jetton_wallet: null
+            master_jetton_wallet: null
+            is_ton: true
+  Jetton withdrawal(locked):
+    trace-id: 02KO-3RSDiakxzyMbk2MxKMsVsAgtGM78n1aWdxqFm4=
+    expected-actions:
+      - type: evaa_withdraw
+        values:
+          success: false
+          source: 0:4FC332474B5E3FB5A09CB37A010DC6C3AE2BD2B25A6AC6756F4CD08114D962D7
+          destination: 0:4FC332474B5E3FB5A09CB37A010DC6C3AE2BD2B25A6AC6756F4CD08114D962D7
+          destination_secondary: 0:310330DD0E813C6FA4E400610EEEC96F48A5B537230AA546C2382D452F8EA332
+          amount: 3736185
+          evaa_withdraw_data:
+            is_ton: false
+            asset_id: "0xca9006bd3fb03d355daeeff93b24be90afaa6e3ca0073ff5720f8a852c933278"
+            recipient_jetton_wallet: null
+            master_jetton_wallet: null
+            fail_reason: withdraw_locked_excess
+            master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+          asset: null
+  Jetton withdrawal (withdraw_not_collateralized_excess):
+    trace-id: 02N57kDv6SOZ0OaS-7TnLwTtvm5xt12EM7aaLOl5QKk=
+    expected-actions:
+      - type: evaa_withdraw
+        values:
+          success: false
+          source: 0:5ABC87F2579E7D37413C3987FF9F6748E9802B02E4CA513001A4C03F0A76B4F5
+          destination: 0:5ABC87F2579E7D37413C3987FF9F6748E9802B02E4CA513001A4C03F0A76B4F5
+          destination_secondary: 0:C58845287A8823DD15139FB92A80A4E0B43D3D7BA2057B7D420CBF9F940725AD
+          amount: 20377210
+          asset: null
+          evaa_withdraw_data:
+            is_ton: false
+            recipient_jetton_wallet: null
+            master_jetton_wallet: null
+            fail_reason: withdraw_not_collateralized_excess
+            master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+            asset_id: "0xca9006bd3fb03d355daeeff93b24be90afaa6e3ca0073ff5720f8a852c933278"
+  Ton withdrawal (withdraw_missing_prices_excess):
+    trace-id: 0DBVOFKwlN16c0lzUq8T55Hzca_Yxuc52mDgXW-xBYU=
+    expected-actions:
+      - type: evaa_withdraw
+        values:
+          success: false
+          source: 0:74454DCFA578189794A4EC93183C1FB23406DAD9E4599980465578E362486C96
+          destination: 0:74454DCFA578189794A4EC93183C1FB23406DAD9E4599980465578E362486C96
+          destination_secondary: 0:70D127DD1F455ADA284F9D18778FD9E29208C58BA7891A10CF3F523965BDB5DD
+          amount: 18446744073709551615
+          evaa_withdraw_data:
+            is_ton: true
+            recipient_jetton_wallet: null
+            master_jetton_wallet: null
+            fail_reason: withdraw_missing_prices_excess
+            master: 0:BCAD466A47FA565750729565253CD073CA24D856804499090C2100D95C809F9E
+            asset_id: "0x1a4219fe5e60d63af2a3cc7dce6fec69b45c6b5718497a6148e7c232ac87bd8a"
+          asset: null
