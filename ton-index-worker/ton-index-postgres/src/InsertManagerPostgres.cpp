@@ -1493,39 +1493,40 @@ void InsertBatchPostgres::insert_traces(pqxx::work &txn, bool with_copy) {
 }
 
 std::string InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
-  std::unordered_map<td::Bits256, ContractMethodsData> contract_methods;
+  std::unordered_multimap<td::Bits256, uint64_t> contract_methods;
+  std::unordered_set<td::Bits256> unique_code_hashes;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& [code_hash, methods_data] : task.parsed_block_->contract_methods_) {
-      if (contract_methods.find(code_hash) == contract_methods.end()) {
-        contract_methods[code_hash] = methods_data;
-      }
+    for (const auto& [code_hash, method_id] : task.parsed_block_->contract_methods_) {
+      contract_methods.emplace(code_hash, method_id);
+      unique_code_hashes.insert(code_hash);
     }
   }
 
+
   std::initializer_list<std::string_view> columns = {
-    "code_hash", "methods", "timestamp"
+    "code_hash", "methods"
   };
 
   PopulateTableStream stream(txn, "contract_methods", columns, 1000, false);
-  stream.setConflictDoUpdate({"code_hash"}, "contract_methods.timestamp < EXCLUDED.timestamp");
+  stream.setConflictDoNothing(); // don't update existings
 
-  for (const auto& [code_hash, methods_data] : contract_methods) {
-    // turn `vector<unsigned long long>` into PostgreSQL array string
+  for (const auto& code_hash : unique_code_hashes) {
+    // turn method_ids into PostgreSQL array string
     std::ostringstream methods_str;
     methods_str << "{";
     bool first = true;
-    for (const auto& method_id : methods_data.method_ids) {
+    auto range = contract_methods.equal_range(code_hash);
+    for (auto it = range.first; it != range.second; ++it) {
       if (!first) methods_str << ", ";
-      methods_str << method_id;
+      methods_str << it->second;
       first = false;
     }
     methods_str << "}";
 
     auto tuple = std::make_tuple(
-      methods_data.code_hash,
-      methods_str.str(),
-      methods_data.timestamp
+      code_hash,
+      methods_str.str()
     );
     stream.insert_row(std::move(tuple));
   }
@@ -2095,8 +2096,7 @@ void InsertManagerPostgres::start_up() {
     query += (
       "create table if not exists contract_methods ("
       "code_hash tonhash not null primary key, "
-      "methods bigint[], "
-      "timestamp bigint not null);\n"
+      "methods bigint[]);\n"
     );
 
     query += (
