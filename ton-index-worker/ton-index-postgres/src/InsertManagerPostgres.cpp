@@ -419,10 +419,12 @@ void InsertBatchPostgres::alarm() {
       commit_timer.pause();
     }
 
-    {
-      pqxx::work txn2(c);
-      insert_contract_methods(txn2);
-      txn2.commit();
+    try {
+      pqxx::work txn_methods(c);
+      insert_contract_methods(txn_methods);
+      txn_methods.commit(); 
+    } catch (const std::exception &e) {
+      LOG(ERROR) << "Error inserting contract_methods: " << e.what();
     }
 
     for(auto& task : insert_tasks_) {
@@ -1497,7 +1499,7 @@ void InsertBatchPostgres::insert_traces(pqxx::work &txn, bool with_copy) {
   stream.finish();
 }
 
-std::string InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
+void InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
   std::unordered_multimap<td::Bits256, uint64_t> contract_methods;
   std::unordered_set<td::Bits256> unique_code_hashes;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
@@ -1507,7 +1509,6 @@ std::string InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
       unique_code_hashes.insert(code_hash);
     }
   }
-
 
   std::initializer_list<std::string_view> columns = {
     "code_hash", "methods"
@@ -1536,7 +1537,7 @@ std::string InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
     stream.insert_row(std::move(tuple));
   }
 
-  return stream.get_str();
+  stream.finish();
 }
 
 //
