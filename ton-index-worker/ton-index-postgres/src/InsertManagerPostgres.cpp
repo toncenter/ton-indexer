@@ -407,7 +407,6 @@ void InsertBatchPostgres::alarm() {
     insert_under_mutex_query += insert_nft_items(txn);
     insert_under_mutex_query += insert_getgems_nft_auctions(txn);
     insert_under_mutex_query += insert_getgems_nft_sales(txn);
-    insert_under_mutex_query += insert_contract_methods(txn);
     insert_under_mutex_query += insert_latest_account_states(txn);
     
     td::Timer commit_timer{true};
@@ -418,6 +417,12 @@ void InsertBatchPostgres::alarm() {
       commit_timer.resume();
       txn.commit();
       commit_timer.pause();
+    }
+
+    {
+      pqxx::work txn2(c);
+      insert_contract_methods(txn2);
+      txn2.commit();
     }
 
     for(auto& task : insert_tasks_) {
