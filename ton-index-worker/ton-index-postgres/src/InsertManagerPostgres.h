@@ -77,6 +77,6 @@ private:
   std::string insert_nft_items(pqxx::work &txn);
   std::string insert_getgems_nft_auctions(pqxx::work &txn);
   std::string insert_getgems_nft_sales(pqxx::work &txn);
-  std::string insert_contract_methods(pqxx::work &txn);
+  void insert_contract_methods(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
 };
