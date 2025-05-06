@@ -16,7 +16,7 @@ private:
     ParsedBlockPtr block_;
     td::Promise<ParsedBlockPtr> promise_;
     std::unordered_map<block::StdAddress, std::vector<BlockchainInterfaceV2>> interfaces_{};
-    std::unordered_map<td::Bits256, ContractMethodsData> contract_methods_{};
+    std::unordered_multimap<td::Bits256, uint64_t> contract_methods_{};
     td::Timer timer_{true};
 public:
     BlockInterfaceProcessor(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise) : 
@@ -40,11 +40,9 @@ public:
                     if (contract_methods_.find(code_hash) == contract_methods_.end()) {
                         auto methods_result = parse_contract_methods(account_state.code);
                         if (methods_result.is_ok()) {
-                            ContractMethodsData methods_data;
-                            methods_data.code_hash = code_hash;
-                            methods_data.method_ids = methods_result.move_as_ok();
-                            methods_data.timestamp = account_state.timestamp;
-                            contract_methods_[code_hash] = std::move(methods_data);
+                            for (auto method_id : methods_result.move_as_ok()) {
+                                contract_methods_.emplace(code_hash, method_id);
+                            }
                         }
                     }
                 }
