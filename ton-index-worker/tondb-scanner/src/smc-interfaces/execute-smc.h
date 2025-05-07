@@ -11,8 +11,9 @@ td::Result<std::vector<vm::StackEntry>> execute_smc_method(const block::StdAddre
                                         std::vector<vm::StackEntry> input, const std::array<vm::StackEntry::Type, N>& expected_types) {
   TRY_RESULT(stack, execute_smc_method(address, code, data, config, method_id, std::move(input)));
   
-  if (stack.size() != expected_types.size()) {
-    return td::Status::Error(method_id + " unexpected result stack depth");
+  // some contracts return additional stack entries, so don't check exact size match
+  if (stack.size() < expected_types.size()) {
+    return td::Status::Error(method_id + " less than expected result stack depth");
   }
   for (size_t i = 0; i < expected_types.size(); i++) {
     if (stack[i].type() != expected_types[i]) {
