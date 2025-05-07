@@ -142,6 +142,9 @@ def deserialize_event(trace_id, packed_transactions_map: dict[str, bytes]) -> Tr
         trace_id = root_tx.hash
     transactions.append(root_tx)
     load_leaf(root_tx)
+    max_lt = max(transactions, key=lambda t: t.lt)
+    max_utime = max(transactions, key=lambda t: t.now)
 
     return Trace(transactions=transactions, trace_id=trace_id, classification_state='unclassified',
-                 state='complete', start_lt=root_tx.lt, external_hash=root_id)
+                 state='complete', start_lt=root_tx.lt, external_hash=root_id,
+                 start_utime=root_tx.now, end_lt=max_lt.lt, end_utime=max_utime.now)
