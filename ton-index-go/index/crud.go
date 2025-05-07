@@ -1427,15 +1427,21 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 				Type:    row.Type,
 				Indexed: false,
 			})
-		} else if *row.Valid {
+		} else {
 			row.Indexed = true
 
 			if _, ok := token_info_map[*row.Type]; !ok {
 				token_info_map[row.Address] = []TokenInfo{}
 			}
-			token_info_map[row.Address] = append(token_info_map[row.Address], row)
-		} else {
-			token_info_map[row.Address] = []TokenInfo{}
+			if *row.Valid {
+				token_info_map[row.Address] = append(token_info_map[row.Address], row)
+			} else {
+				token_info_map[row.Address] = append(token_info_map[row.Address], TokenInfo{
+					Address: row.Address,
+					Indexed: true,
+					Type:    row.Type,
+				})
+			}
 		}
 	}
 	metadata := Metadata{}
