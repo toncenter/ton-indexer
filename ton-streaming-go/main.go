@@ -197,7 +197,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	actions := make([]*index.Action, 0)
 	actionAddresses := make([]*map[string]bool, 0)
 	rawActions := make([]index.RawAction, 0)
-	for _, row := range emulatedContext.GetActions() {
+	for _, row := range emulatedContext.GetActions(index.ExpandActionTypeShortcuts([]string{"v1"})) {
 		if loc, err := index.ScanRawAction(row); err == nil {
 			rawActions = append(rawActions, *loc)
 		} else {
