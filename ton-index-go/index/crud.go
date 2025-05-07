@@ -1439,6 +1439,7 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 				token_info_map[row.Address] = append(token_info_map[row.Address], TokenInfo{
 					Address: row.Address,
 					Indexed: true,
+					Valid:   row.Valid,
 					Type:    row.Type,
 				})
 			}
