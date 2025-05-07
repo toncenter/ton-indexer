@@ -282,7 +282,7 @@ type actionDexWithdrawLiquidityData struct {
 type actionStakingData struct {
 	Provider     *string `msgpack:"provider"`
 	TsNft        *string `msgpack:"ts_nft"`
-	TokensBurnt  *string `msgpack:"tokens_minted"`
+	TokensBurnt  *string `msgpack:"tokens_burnt"`
 	TokensMinted *string `msgpack:"tokens_minted"`
 }
 
