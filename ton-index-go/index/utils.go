@@ -74,7 +74,7 @@ func ExpandActionTypeShortcuts(shortcuts []string) []string {
 		// Only include actual action types, not shortcut names
 		if _, isShortcut := ActionTypeShortcuts[t]; !isShortcut {
 			expandedTypes = append(expandedTypes, t)
-			println(t)
+			// println(t)
 		}
 	}
 	return expandedTypes
