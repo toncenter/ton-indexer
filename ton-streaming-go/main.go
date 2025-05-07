@@ -221,12 +221,11 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	actionByAccount := map[string][]*index.Action{}
 
 	for idx, action := range actions {
-		for addr, _ := range *actionAddresses[idx] {
-			if _, ok := actionByAccount[addr]; ok {
-				actionByAccount[addr] = append(actionByAccount[addr], action)
-			}
+		for addr := range *actionAddresses[idx] {
+			actionByAccount[addr] = append(actionByAccount[addr], action)
 		}
 	}
+	// log.Println("actionByAccount", actionByAccount)
 
 	for addr, actions := range actionByAccount {
 		notification := &PendingActionsNotification{
