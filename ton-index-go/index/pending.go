@@ -5,6 +5,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 	"log"
+	"sort"
 )
 
 type EmulatedTracesContext struct {
@@ -257,6 +258,9 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 			}
 			c.emulatedActions[traceKey] = append(c.emulatedActions[traceKey], &row)
 		}
+		sort.Slice(c.emulatedActions[traceKey], func(i, j int) bool {
+			return c.emulatedActions[traceKey][i].EndLt < c.emulatedActions[traceKey][j].EndLt
+		})
 	}
 	return nil
 }
