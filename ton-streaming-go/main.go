@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/websocket/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/vmihailenco/msgpack/v5"
 
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
@@ -25,11 +26,12 @@ import (
 
 // Command-line flags
 var (
-	redisAddr          = flag.String("redis", "localhost:6379", "Redis server dsn")
-	tracesChannel      = flag.String("traces-channel", "new_trace", "Redis channel for blockchain events")
-	commitedTxsChannel = flag.String("commited-txs-channel", "new_commited_tx", "Redis channel for committed transactions")
-	serverPort         = flag.Int("port", 8085, "Server port")
-	prefork            = flag.Bool("prefork", false, "Use prefork")
+	redisAddr               = flag.String("redis", "localhost:6379", "Redis server dsn")
+	tracesChannel           = flag.String("traces-channel", "new_trace", "Redis channel for blockchain events")
+	commitedTxsChannel      = flag.String("commited-txs-channel", "new_commited_tx", "Redis channel for committed transactions")
+	classifiedTracesChannel = flag.String("classified-traces-channel", "classified_trace", "Redis channel for classified traces")
+	serverPort              = flag.Int("port", 8085, "Server port")
+	prefork                 = flag.Bool("prefork", false, "Use prefork")
 )
 
 // Subscription represents a client's subscription to blockchain events
@@ -148,6 +150,98 @@ func shouldSendEvent(sub *Subscription, event *BlockchainEvent) bool {
 	}
 
 	return false
+}
+
+type PendingActionsNotification struct {
+	TraceExternalHashNorm string          `json:"trace_external_hash_norm"`
+	Actions               []*index.Action `json:"actions"`
+}
+
+func SubscribeToClassifiedTraces(ctx context.Context, rdb *redis.Client, manager *ClientManager) {
+	pubsub := rdb.Subscribe(ctx, *classifiedTracesChannel)
+	defer pubsub.Close()
+
+	log.Printf("Subscribed to Redis channel: %s", *classifiedTracesChannel)
+
+	for {
+		msg, err := pubsub.ReceiveMessage(ctx)
+		if err != nil {
+			log.Printf("Error receiving message from Redis: %v", err)
+			continue
+		}
+
+		traceExternalHashNorm := msg.Payload
+		ProcessNewClassifiedTrace(ctx, rdb, traceExternalHashNorm, manager)
+	}
+}
+
+func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager) {
+	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
+	raw_traces, err := repository.LoadRawTracesByExtMsg([]string{traceExternalHashNorm})
+	if err != nil {
+		log.Printf("Error loading raw traces: %v", err)
+		return
+	}
+
+	emulatedContext := index.NewEmptyContext(true)
+	err = emulatedContext.FillFromRawData(raw_traces)
+	if err != nil {
+		log.Printf("Error filling context from raw data: %v", err)
+		return
+	}
+	if len(emulatedContext.GetTraces()) != 1 {
+		log.Printf("More than 1 trace in the context")
+		return
+	}
+
+	actions := make([]*index.Action, 0)
+	actionAddresses := make([]*map[string]bool, 0)
+	rawActions := make([]index.RawAction, 0)
+	for _, row := range emulatedContext.GetActions() {
+		if loc, err := index.ScanRawAction(row); err == nil {
+			rawActions = append(rawActions, *loc)
+		} else {
+			log.Printf("Error scanning raw action: %v", err)
+			continue
+		}
+	}
+	for _, rawAction := range rawActions {
+		action_addr_map := map[string]bool{}
+		index.CollectAddressesFromAction(&action_addr_map, &rawAction)
+
+		action, err := index.ParseRawAction(&rawAction)
+		if err != nil {
+			log.Printf("Error parsing raw action: %v", err)
+			continue
+		}
+		actions = append(actions, action)
+		actionAddresses = append(actionAddresses, &action_addr_map)
+	}
+
+	actionByAccount := map[string][]*index.Action{}
+
+	for idx, action := range actions {
+		for addr, _ := range *actionAddresses[idx] {
+			if _, ok := actionByAccount[addr]; ok {
+				actionByAccount[addr] = append(actionByAccount[addr], action)
+			}
+		}
+	}
+
+	for addr, actions := range actionByAccount {
+		notification := &PendingActionsNotification{
+			TraceExternalHashNorm: traceExternalHashNorm,
+			Actions:               actions,
+		}
+		event := &BlockchainEvent{
+			Type:    "pending_actions",
+			Address: addr,
+			Data:    notification,
+		}
+		manager.broadcast <- event
+
+		log.Printf("Broadcasting %d pending actions for account %s", len(actions), addr)
+	}
 }
 
 // SubscribeToTraces subscribes to blockchain events from Redis
@@ -298,7 +392,7 @@ func ProcessNewCommitedTx(ctx context.Context, rdb *redis.Client, traceExternalH
 	}
 
 	var node emulated.TraceNode
-	if err := json.Unmarshal([]byte(txRaw.Val()), &node); err != nil {
+	if err := msgpack.Unmarshal([]byte(txRaw.Val()), &node); err != nil {
 		log.Printf("Error unmarshalling transaction: %v", err)
 		return
 	}
@@ -523,6 +617,7 @@ func main() {
 	// Subscribe to blockchain events
 	go SubscribeToTraces(ctx, rdb, manager)
 	go SubscribeToCommittedTransactions(ctx, rdb, manager)
+	go SubscribeToClassifiedTraces(ctx, rdb, manager)
 
 	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
