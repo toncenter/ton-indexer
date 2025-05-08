@@ -57,7 +57,7 @@ type AddressMetadata struct {
 
 type TokenInfo struct {
 	Address     string                 `json:"-"`
-	Valid       *bool                  `json:"-"`
+	Valid       *bool                  `json:"valid,omitempty"`
 	Indexed     bool                   `json:"-"`
 	Type        *string                `json:"type,omitempty"`
 	Name        *string                `json:"name,omitempty"`
