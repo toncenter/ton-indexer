@@ -5,6 +5,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 	"log"
+	"sort"
 )
 
 type EmulatedTracesContext struct {
@@ -120,15 +121,20 @@ func (c *EmulatedTracesContext) GetTraces() []pgx.Row {
 func (c *EmulatedTracesContext) GetActions(supportedActions []string) []pgx.Row {
 	rows := make([]pgx.Row, 0)
 	supportedActionsSet := mapset.NewSet(supportedActions...)
-	for _, actions := range c.emulatedActions {
-		for _, action := range actions {
-			if supportedActionsSet.ContainsAny(action.AncestorType...) {
-				continue
+	for _, traceKey := range c.traceKeys {
+		if actions, ok := c.emulatedActions[traceKey]; ok {
+			sort.Slice(actions, func(i, j int) bool {
+				return actions[i].EndLt > actions[j].EndLt
+			})
+			for _, action := range actions {
+				if supportedActionsSet.ContainsAny(action.AncestorType...) {
+					continue
+				}
+				if !supportedActionsSet.ContainsAny(action.Type) {
+					continue
+				}
+				rows = append(rows, emulated.NewRow(action))
 			}
-			if !supportedActionsSet.ContainsAny(action.Type) {
-				continue
-			}
-			rows = append(rows, emulated.NewRow(action))
 		}
 	}
 	return rows
@@ -258,6 +264,15 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 			c.emulatedActions[traceKey] = append(c.emulatedActions[traceKey], &row)
 		}
 	}
+	sort.Slice(c.traceKeys, func(i, j int) bool {
+		trace1, trace1Exists := c.emulatedTraces[c.traceKeys[i]]
+		trace2, trace2Exists := c.emulatedTraces[c.traceKeys[j]]
+		if trace1Exists && trace2Exists {
+			return trace1.EndLt > trace2.EndLt
+		} else {
+			return true
+		}
+	})
 	return nil
 }
 
