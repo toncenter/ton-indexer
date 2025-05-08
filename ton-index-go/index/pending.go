@@ -270,7 +270,6 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		if trace1Exists && trace2Exists {
 			return trace1.EndLt > trace2.EndLt
 		} else {
-			println("ERR")
 			return true
 		}
 	})
