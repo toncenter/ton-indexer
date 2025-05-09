@@ -565,7 +565,6 @@ struct GetGemsNftFixPriceSaleData {
   td::Bits256 data_hash;
 };
 
-
 //
 // Containers
 //
@@ -668,6 +667,8 @@ struct ParsedBlock {
     }
     return result;
   }
+
+  std::unordered_multimap<td::Bits256, uint64_t> contract_methods_;
 };
 
 using ParsedBlockPtr = std::shared_ptr<ParsedBlock>;
