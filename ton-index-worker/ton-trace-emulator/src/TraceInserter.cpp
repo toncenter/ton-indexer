@@ -57,6 +57,9 @@ public:
                 transaction_.zrem(addr, by_addr_key);
             }
 
+            std::string commited_txs_hashes = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) + ":";
+            bool has_commited_txs = false;
+
             // insert new trace
             for (const auto& node : flattened_trace) {
                 std::stringstream buffer;
@@ -69,8 +72,15 @@ public:
                 transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
 
                 if (!node.emulated) {
-                    transaction_.publish("new_commited_tx", td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice()));
+                    if (has_commited_txs) {
+                        commited_txs_hashes += ",";
+                    }
+                    commited_txs_hashes += td::base64_encode(node.transaction.hash.as_slice());
+                    has_commited_txs = true;
                 }
+            }
+            if (has_commited_txs) {
+                transaction_.publish("new_commited_txs", commited_txs_hashes);
             }
 
             // insert interfaces
