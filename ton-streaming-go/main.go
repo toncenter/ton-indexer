@@ -792,6 +792,16 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 		if len(subReq.Addresses) == 0 || len(subReq.Types) == 0 {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Addresses and types are required"})
 		}
+		var addressesRaw []string
+		for _, addr := range subReq.Addresses {
+			rawAddrValue := index.AccountAddressConverter(addr)
+			if !rawAddrValue.IsValid() {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("Invalid address: %s", addr)})
+			}
+			rawAddr := rawAddrValue.Interface().(index.AccountAddress)
+			addressesRaw = append(addressesRaw, string(rawAddr))
+		}
+
 		for _, t := range subReq.Types {
 			switch t {
 			case "pending_actions", "actions", "pending_transactions", "transactions":
@@ -806,7 +816,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 		client := &Client{
 			ID:           clientID,
 			Connected:    true,
-			Subscription: &Subscription{Addresses: subReq.Addresses, Types: subReq.Types, IncludeAddressBook: subReq.IncludeAddressBook, IncludeMetadata: subReq.IncludeMetadata},
+			Subscription: &Subscription{Addresses: addressesRaw, Types: subReq.Types, IncludeAddressBook: subReq.IncludeAddressBook, IncludeMetadata: subReq.IncludeMetadata},
 			// when manager wants to send something, it will push into eventCh
 			SendEvent: func(data []byte) error {
 				select {
@@ -922,7 +932,6 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				var addressesRaw []string
 				validAddresses := true
 				for _, addr := range subReq.Addresses {
-					// Convert address to Raw form using AccountAddressConverter
 					rawAddrValue := index.AccountAddressConverter(addr)
 					if !rawAddrValue.IsValid() {
 						c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"error":"Invalid address: %s"}`, addr)))
@@ -1039,8 +1048,10 @@ func main() {
 
 	// Swagger documentation
 	api.Get("/*", swagger.New(swagger.Config{
-		Title:       "TON Streaming API - Swagger UI",
-		DeepLinking: true,
+		Title:           "TON Streaming API - Swagger UI",
+		Layout:          "BaseLayout",
+		DeepLinking:     true,
+		TryItOutEnabled: true,
 	}))
 
 	// Start server
