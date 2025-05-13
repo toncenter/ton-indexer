@@ -347,7 +347,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		return
 	}
 
-	emulatedContext := index.NewEmptyContext(true)
+	emulatedContext := index.NewEmptyContext(false)
 	if err := emulatedContext.FillFromRawData(raw_traces); err != nil {
 		log.Printf("Error filling context from raw data: %v", err)
 		return
@@ -544,7 +544,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		return
 	}
 
-	emulatedContext := index.NewEmptyContext(true)
+	emulatedContext := index.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(raw_traces)
 	if err != nil {
 		log.Printf("Error filling context from raw data: %v", err)
@@ -648,7 +648,7 @@ func SubscribeToCommittedTransactions(ctx context.Context, rdb *redis.Client, ma
 			continue
 		}
 
-		log.Printf("Received message from Redis: %s", msg.Payload)
+		// log.Printf("Received message from Redis: %s", msg.Payload)
 
 		parts := strings.Split(msg.Payload, ":")
 		if len(parts) != 2 {
@@ -674,7 +674,7 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 		return
 	}
 
-	emulatedContext := index.NewEmptyContext(true)
+	emulatedContext := index.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(raw_traces)
 	if err != nil {
 		log.Printf("Error filling context from raw data: %v", err)
