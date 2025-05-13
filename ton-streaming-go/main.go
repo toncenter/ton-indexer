@@ -139,20 +139,22 @@ func NewClientManager() *ClientManager {
 	}
 }
 
-func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventType string, addressesToNotify []string) (bool, bool) {
+func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []string, addressesToNotify []string) (bool, bool) {
 	shouldFetchAddressBook := false
 	shouldFetchMetadata := false
 
 	for _, client := range manager.clients {
-		client.mu.Lock()
-		if client.Connected && client.Subscription != nil &&
-			client.Subscription.InterestedIn(eventType, addressesToNotify) {
-			shouldFetchAddressBook = shouldFetchAddressBook || client.Subscription.IncludeAddressBook
-			shouldFetchMetadata = shouldFetchMetadata || client.Subscription.IncludeMetadata
-		}
-		client.mu.Unlock()
-		if shouldFetchAddressBook && shouldFetchMetadata {
-			break
+		for _, eventType := range eventTypes {
+			client.mu.Lock()
+			if client.Connected && client.Subscription != nil &&
+				client.Subscription.InterestedIn(eventType, addressesToNotify) {
+				shouldFetchAddressBook = shouldFetchAddressBook || client.Subscription.IncludeAddressBook
+				shouldFetchMetadata = shouldFetchMetadata || client.Subscription.IncludeMetadata
+			}
+			client.mu.Unlock()
+			if shouldFetchAddressBook && shouldFetchMetadata {
+				break
+			}
 		}
 	}
 
@@ -406,7 +408,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	for _, actionAddr := range actionsAddresses {
 		allAddresses = append(allAddresses, actionAddr...)
 	}
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata("pending_actions", allAddresses)
+	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]string{"pending_actions", "actions"}, allAddresses)
 	if shouldFetchAddressBook || shouldFetchMetadata {
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
@@ -616,7 +618,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata("pending_transactions", allAddresses)
+	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]string{"pending_transactions"}, allAddresses)
 	if shouldFetchAddressBook || shouldFetchMetadata {
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
@@ -627,6 +629,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	}
 
 	manager.broadcast <- &TransactionsNotification{
+		Type:                  "pending_transactions",
 		TraceExternalHashNorm: traceExternalHashNorm,
 		Transactions:          txs,
 		AddressBook:           addressBook,
@@ -751,7 +754,7 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata("pending_transactions", allAddresses)
+	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]string{"transactions"}, allAddresses)
 	if shouldFetchAddressBook || shouldFetchMetadata {
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
@@ -762,10 +765,11 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 	}
 
 	manager.broadcast <- &TransactionsNotification{
-		Type:         "transactions",
-		Transactions: txs,
-		AddressBook:  addressBook,
-		Metadata:     metadata,
+		Type:                  "transactions",
+		TraceExternalHashNorm: traceExternalHashNorm,
+		Transactions:          txs,
+		AddressBook:           addressBook,
+		Metadata:              metadata,
 	}
 }
 
@@ -841,7 +845,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 		// 5) Hijack to a streaming writer
 		c.Status(fiber.StatusOK).Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
 			// send an initial "connected" event
-			fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"connected\"}\n\n")
+			fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"subscribed\"}\n\n")
 			w.Flush()
 			log.Printf("Client %s connected via SSE", clientID)
 
