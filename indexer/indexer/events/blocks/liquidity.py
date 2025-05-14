@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import defaultdict
+
 from loguru import logger
 
 from indexer.events import context
@@ -339,11 +341,20 @@ class DedustDepositFirstAssetBlockMatcher(BlockMatcher):
 async def post_process_dedust_liquidity(blocks: list[Block]) -> list[Block]:
     first_deposits = []
     final_deposits = []
+    used_deposit_contracts = defaultdict(int)
+
     for b in blocks:
         if isinstance(b, DedustDepositLiquidityPartial):
             first_deposits.append(b)
+            used_deposit_contracts[b.data['deposit_contract']] += 1
         elif isinstance(b, DedustDepositLiquidity):
             final_deposits.append(b)
+            used_deposit_contracts[b.data['deposit_contract']] += 1
+
+    for a, v in used_deposit_contracts.items():
+        if v > 2:
+            logger.warning(f"Found {v} deposits for the same contract {a}. Skipping merging")
+            return blocks
 
     for first_deposit in first_deposits:
         final_deposit = None
