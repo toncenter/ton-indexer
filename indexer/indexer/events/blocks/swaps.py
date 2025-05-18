@@ -1,11 +1,12 @@
 from __future__ import annotations
+from typing import Any
 
 from pytoniq_core import Slice
 
 from indexer.core.database import Message
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
-from indexer.events.blocks.basic_matchers import BlockMatcher, child_sequence_matcher, ContractMatcher, \
+from indexer.events.blocks.basic_matchers import BlockMatcher, ExclusiveOrMatcher, child_sequence_matcher, ContractMatcher, \
     BlockTypeMatcher, OrMatcher, RecursiveMatcher
 from indexer.events.blocks.core import Block, SingleLevelWrapper
 from indexer.events.blocks.jettons import JettonTransferBlock, PTonTransferMatcher
@@ -15,7 +16,24 @@ from indexer.events.blocks.messages import DedustPayout, DedustPayoutFromPool, D
 from indexer.events.blocks.messages import StonfiSwapMessage, StonfiPaymentRequest, DedustSwapNotification
 from indexer.events.blocks.utils import AccountId, Asset, Amount
 from indexer.events.blocks.utils.address_selectors import extract_target_wallet_stonfi_v2_swap
-from indexer.events.blocks.utils.block_utils import find_call_contracts, find_messages
+from indexer.events.blocks.utils.block_utils import find_call_contracts, find_messages, get_labeled
+
+from indexer.events.blocks.messages.swaps import (
+    RouterV3PayToPayload,
+    ToncoPoolV3Swap,
+    ToncoRouterV3CreatePool,
+    ToncoPoolV3Init,
+    ToncoPoolV3SwapMessage,
+    ToncoRouterV3PayToMessage,
+)
+from indexer.events.blocks.messages.common import ExcessMessage
+from indexer.events.blocks.messages.jettons import JettonNotify
+
+import logging
+from dataclasses import dataclass
+
+
+logger = logging.getLogger(__name__)
 
 stonfi_swap_ok_exit_code = 0xc64370e5
 stonfi_swap_ok_ref_exit_code = 0x45078540
@@ -612,4 +630,399 @@ class DedustSwapBlockMatcher(BlockMatcher):
         new_block.merge_blocks(include)
         new_block.data = data
         new_block.failed = failed
+        return [new_block]
+
+
+@dataclass
+class ToncoDeployPoolData:
+    deployer: AccountId
+    router: AccountId
+    pool: AccountId
+    jetton0_router_wallet: AccountId
+    jetton1_router_wallet: AccountId
+    jetton0_minter: AccountId
+    jetton1_minter: AccountId
+    tick_spacing: int
+    initial_price_x96: int
+    protocol_fee: int
+    lp_fee_base: int
+    lp_fee_current: int
+    pool_active: bool
+    success: bool
+
+
+class ToncoDeployPoolBlock(Block):
+    data: ToncoDeployPoolData
+
+    def __init__(self, data: ToncoDeployPoolData):
+        super().__init__("tonco_deploy_pool", [], data)
+
+    def __repr__(self):
+        return f"tonco_deploy_pool pool={self.data.pool.address} success={self.data.success}"
+
+
+class ToncoDeployPoolBlockMatcher(BlockMatcher):
+    """Matches the sequence of messages for TONCO pool deployment and initialization."""
+    def __init__(self):
+        excesses_matcher = labeled(
+            "excesses",
+            ContractMatcher(ExcessMessage.opcode, optional=True)
+        )
+        init_pool_matcher = labeled(
+            "init_pool",
+            ContractMatcher(
+                ToncoPoolV3Init.opcode,
+                optional=False,
+                child_matcher=excesses_matcher
+            )
+        )
+        super().__init__(child_matcher=init_pool_matcher)
+
+    def test_self(self, block: Block):
+        """Check if the block is the starting message: ROUTERV3_CREATE_POOL."""
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == ToncoRouterV3CreatePool.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        """Builds the ToncoDeployPoolBlock if the full sequence is found."""
+        create_pool_block = block
+        create_pool_msg = create_pool_block.get_message()
+        try:
+            create_pool_data = ToncoRouterV3CreatePool(create_pool_block.get_body())
+        except Exception as e:
+            logger.error(f"Failed to parse ToncoRouterV3CreatePool: {e}", exc_info=True)
+            return []
+
+        init_pool_block = get_labeled("init_pool", other_blocks, CallContractBlock)
+        if not init_pool_block:
+            return []
+
+        init_pool_msg = init_pool_block.get_message()
+        try:
+            init_pool_data = ToncoPoolV3Init(init_pool_block.get_body())
+        except Exception as e:
+            logger.error(f"Failed to parse ToncoPoolV3Init: {e}", exc_info=True)
+            return []
+
+        excesses_block = get_labeled("excesses", other_blocks, CallContractBlock)
+
+        pool_address = AccountId(init_pool_msg.destination)
+        router_address = AccountId(create_pool_msg.destination)
+
+        jetton0_minter_addr = create_pool_data.jetton0_minter
+        jetton1_minter_addr = create_pool_data.jetton1_minter
+        jetton0_router_wallet_addr = create_pool_data.jetton_wallet0
+        jetton1_router_wallet_addr = create_pool_data.jetton_wallet1
+
+        try:
+            data = ToncoDeployPoolData(
+                deployer=AccountId(create_pool_msg.source),
+                router=router_address,
+                pool=pool_address,
+                jetton0_router_wallet=AccountId(jetton0_router_wallet_addr),
+                jetton1_router_wallet=AccountId(jetton1_router_wallet_addr),
+                jetton0_minter=AccountId(jetton0_minter_addr),
+                jetton1_minter=AccountId(jetton1_minter_addr),
+                tick_spacing=create_pool_data.tick_spacing,
+                initial_price_x96=create_pool_data.initial_price_x96,
+                protocol_fee=create_pool_data.protocol_fee,
+                lp_fee_base=create_pool_data.lp_fee_base,
+                lp_fee_current=create_pool_data.lp_fee_current,
+                pool_active=True if init_pool_data.pool_active else False,
+                success=True, # successful if we found the init message
+            )
+        except Exception as e:
+             logger.error(f"Failed to create ToncoDeployPoolData in trace {block.get_message().trace_id}: {e}", exc_info=True)
+             return []
+
+        new_block = ToncoDeployPoolBlock(data=data)
+        blocks_to_merge = [create_pool_block, init_pool_block]
+        if excesses_block:
+            blocks_to_merge.append(excesses_block)
+        new_block.merge_blocks(blocks_to_merge)
+        return [new_block]
+
+
+class ToncoSwapBlockMatcher(BlockMatcher):
+    swap_opcode = ToncoPoolV3SwapMessage.opcode
+    pay_to_opcode = ToncoRouterV3PayToMessage.opcode
+    pay_vault_opcode = 0x63381632
+    pton_incoming_transfer_opcode = 0x01f3835d
+
+    def __init__(self):
+        # almost the same as StonfiV2SwapBlockMatcher, but
+        # - using Tonco opcodes
+        # - multihops are like literally one swap after another, 
+        #   so router sends tokens to itself to continue
+        in_pton_transfer = ContractMatcher(opcode=JettonNotify.opcode,
+                                           parent_matcher=labeled('in_transfer',
+                                                                  ContractMatcher(opcode=self.pton_incoming_transfer_opcode)))
+
+        in_transfer = OrMatcher([labeled('in_transfer', BlockTypeMatcher(block_type='jetton_transfer')),
+                                 in_pton_transfer])
+
+        peer_swap_matcher = labeled('peer_swap', ContractMatcher(self.swap_opcode,
+                                                                 child_matcher=None,
+                                                                 optional=True))
+        
+        peer_swap_thru_notify = labeled('notify_before_peer_swap', ContractMatcher(opcode=JettonNotify.opcode,
+                                                                                   child_matcher=peer_swap_matcher))
+        
+        maybe_peer_swap_or_even_notify = OrMatcher([peer_swap_matcher, peer_swap_thru_notify])
+
+        out_pton_block_matcher = ContractMatcher(opcode=PTonTransfer.opcode,
+                                                 child_matcher=maybe_peer_swap_or_even_notify, # reference, not copy
+                                                 optional=True)
+
+        out_jetton_block_matcher = BlockTypeMatcher(block_type='jetton_transfer',
+                                                    child_matcher=peer_swap_matcher, # reference, not copy
+                                                    optional=True)
+        
+        out_transfer_matcher = labeled('out_transfer', OrMatcher([out_jetton_block_matcher, out_pton_block_matcher]))
+
+        payout_matcher = labeled('payout', ContractMatcher(self.pay_to_opcode, child_matcher=out_transfer_matcher))
+
+        peer_swap_matcher.child_matcher = payout_matcher
+
+        super().__init__(parent_matcher=in_transfer, optional=False,
+                         child_matcher=payout_matcher)
+
+    def test_self(self, block: Block):
+        return isinstance(block, CallContractBlock) and block.opcode == self.swap_opcode
+
+    async def _get_target_asset_from_notification(self, message: Message): # TODO: edit for tonco scheme
+        try:
+            address = next(iter(extract_target_wallet_stonfi_v2_swap(message)), None)
+            if address is None:
+                return None
+            jetton_wallet = await context.interface_repository.get().get_jetton_wallet(address)
+            if jetton_wallet is not None:
+                return Asset(is_ton=False, jetton_address=jetton_wallet.jetton)
+        except Exception:
+            return None
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        for b in other_blocks:
+            print(b)
+        blocks = sorted(other_blocks, key=lambda x: x.min_lt)
+        peer_swap_blocks: list[Any] = [block]
+        in_transfer = None
+        out_transfer = None
+        for b in blocks:
+            if isinstance(b, LabelBlock):
+                match b.label:
+                    case 'peer_swap':
+                        peer_swap_blocks.append(b.block)
+                    case 'payout':
+                        peer_swap_blocks[-1] = (peer_swap_blocks[-1], b.block)
+                    case 'out_transfer':
+                        out_transfer = b.block
+                    case 'in_transfer':
+                        in_transfer = b.block
+
+        if not in_transfer or not out_transfer:
+            return []
+        
+        ok = True
+        actual_swap_steps: list[tuple[AccountId, int, RouterV3PayToPayload, ToncoPoolV3Swap]] = []
+        destination_asset = None
+        # parse messages for each swap step
+        for (swap, pay_to) in peer_swap_blocks:
+            pay_to_msg = RouterV3PayToPayload(pay_to.get_body())
+            if pay_to_msg.exit_code != 0 and pay_to_msg.exit_code != 200:
+                ok = False
+
+            swap_msg = ToncoPoolV3Swap(swap.get_body())
+            # for Tonco we use source_wallet instead of token_wallet1
+            actual_swap_steps.append((AccountId(swap_msg.source_wallet), swap.min_lt, pay_to_msg, swap_msg))
+        
+        actual_swap_steps.sort(key=lambda x: x[1])
+
+        # detection of the target asset for multi-hop swap
+        # Tonco has no direct analog of get_pool_accounts_recursive, so we use
+        # data from the last swap step and target_address
+        if actual_swap_steps:
+            last_swap_msg = actual_swap_steps[-1][3]
+            last_pay_to_msg = actual_swap_steps[-1][2]
+            
+            # detecting it from target_address or jetton addresses
+            target_address = None
+            
+            # we use the paid tokens with the largest amount
+            if last_pay_to_msg.amount0 is not None and last_pay_to_msg.amount1 is not None:
+                if last_pay_to_msg.amount0 > last_pay_to_msg.amount1:
+                    target_address = last_pay_to_msg.jetton0_address
+                else:
+                    target_address = last_pay_to_msg.jetton1_address
+
+            target_address = AccountId(target_address)
+
+            if target_address:
+                target_pool_wallet = await context.interface_repository.get().get_jetton_wallet(target_address.as_str() or "")
+                if target_pool_wallet is not None:
+                    if target_pool_wallet.jetton in PTonTransferMatcher.pton_masters:
+                        destination_asset = Asset(is_ton=True)
+                    else:
+                        destination_asset = Asset(is_ton=False, jetton_address=target_pool_wallet.jetton)
+
+        # make map: wallet_address -> Asset for swap steps
+        swap_steps: list[Asset] = []
+        pool_addr_jetton_map: dict[str, Asset] = {}
+        for wallet_data in actual_swap_steps:
+            source_wallet = wallet_data[0]
+            jetton = await context.interface_repository.get().get_jetton_wallet(source_wallet.as_str() or "")
+            if jetton is not None:
+                if jetton.jetton in PTonTransferMatcher.pton_masters:
+                    asset = Asset(is_ton=True)
+                else:
+                    asset = Asset(is_ton=False, jetton_address=jetton.jetton)
+                pool_addr_jetton_map[source_wallet.as_str() or ""] = asset
+                swap_steps.append(asset)
+            else:
+                block.broken = True
+                swap_steps = []
+                break
+
+        in_transfer_data = {}
+        sender = None
+        if isinstance(in_transfer, JettonTransferBlock):
+            sender = in_transfer.data['sender']
+            jetton_address = in_transfer.data['asset'].jetton_address
+            if jetton_address and jetton_address.as_str() in PTonTransferMatcher.pton_masters:
+                asset = Asset(is_ton=True)
+            else:
+                asset = Asset(is_ton=in_transfer.data['asset'].is_ton, jetton_address=jetton_address)
+            in_transfer_data = {
+                'asset': asset,
+                'amount': in_transfer.data['amount'],
+                'source': in_transfer.data['sender'],
+                'source_jetton_wallet': in_transfer.data['sender_wallet'],
+                'destination': in_transfer.data['receiver'],
+                'destination_jetton_wallet': in_transfer.data['receiver_wallet']
+            }
+        else:
+            message = in_transfer.event_nodes[0].message
+            amount = message.value
+            if message.opcode == PTonTransfer.opcode:
+                amount = PTonTransfer(in_transfer.get_body()).ton_amount
+            sender = AccountId(message.source)
+            in_transfer_data = {
+                'asset': Asset(is_ton=True, jetton_address=None),
+                'amount': Amount(amount or 0),
+                'source': AccountId(message.source),
+                'source_jetton_wallet': None,
+                'destination': AccountId(block.event_nodes[0].message.source),
+                'destination_jetton_wallet': AccountId(message.destination)
+            }
+
+        # getting multi-hop swaps data
+        peer_swaps = []
+        if len(actual_swap_steps) > 1:
+            # first step uses data from incoming transfer
+            first_pay_to_msg = actual_swap_steps[0][2]
+            assets: list[tuple[int, AccountId]] = []
+            assets.append((first_pay_to_msg.amount0 or 0, AccountId(first_pay_to_msg.jetton0_address)))
+            assets.append((first_pay_to_msg.amount1 or 0, AccountId(first_pay_to_msg.jetton1_address)))
+            
+            assets.sort(key=lambda x: x[0], reverse=True)
+            wallet_addr = assets[0][1].as_str()
+            out_asset = pool_addr_jetton_map.get(wallet_addr or "")
+            
+            if out_asset:
+                peer_swaps.append({
+                    'in': {
+                        'amount': in_transfer_data['amount'],
+                        'asset': in_transfer_data['asset']
+                    },
+                    'out': {
+                        'amount': Amount(assets[0][0]),
+                        'asset': out_asset
+                    }
+                })
+                
+                # the next ones use out data of the prev as their input
+                for i in range(len(actual_swap_steps) - 1):
+                    pay_to_msg = actual_swap_steps[i + 1][2]
+                    if pay_to_msg.exit_code != 0 and pay_to_msg.exit_code != 200:
+                        continue
+                        
+                    assets = []
+                    assets.append((pay_to_msg.amount0 or 0, AccountId(pay_to_msg.jetton0_address)))
+                    assets.append((pay_to_msg.amount1 or 0, AccountId(pay_to_msg.jetton1_address)))
+                        
+                    assets.sort(key=lambda x: x[0], reverse=True)
+                    wallet_addr = assets[0][1].as_str()
+                    next_out_asset = pool_addr_jetton_map.get(wallet_addr or "")
+                    
+                    if next_out_asset:
+                        peer_swaps.append({
+                            'in': peer_swaps[-1]['out'],
+                            'out': {
+                                'amount': Amount(assets[0][0] or 0),
+                                'asset': next_out_asset
+                            }
+                        })
+
+        out_transfer_data = {}
+        additional_blocks_to_include = []
+        pton_transfer = next((x for x in out_transfer.next_blocks if isinstance(x, CallContractBlock)
+                              and x.opcode == PTonTransfer.opcode), None)
+        
+        if 'has_internal_transfer' in out_transfer.data and out_transfer.data['has_internal_transfer']:
+            jetton_address = out_transfer.data['asset'].jetton_address
+            if jetton_address.as_str() in PTonTransferMatcher.pton_masters:
+                asset = Asset(is_ton=True)
+            else:
+                asset = Asset(is_ton=out_transfer.data['asset'].is_ton, jetton_address=jetton_address)
+            
+            out_transfer_data = {
+                'asset': asset,
+                'amount': out_transfer.data['amount'],
+                'source': out_transfer.data['sender'],
+                'source_jetton_wallet': out_transfer.data['sender_wallet'],
+                'destination': out_transfer.data['receiver'],
+                'destination_jetton_wallet': out_transfer.data['receiver_wallet']
+            }
+        elif pton_transfer:
+            additional_blocks_to_include.append(pton_transfer)
+            amount = PTonTransfer(pton_transfer.get_body()).ton_amount or 0
+                
+            out_transfer_data = {
+                'asset': Asset(is_ton=True, jetton_address=None),
+                'amount': Amount(amount),
+                'source': out_transfer.data.get('sender'),
+                'source_jetton_wallet': out_transfer.data.get('sender_wallet'),
+                'destination': AccountId(pton_transfer.get_message().destination),
+                'destination_jetton_wallet': None,
+            }
+        else:
+            return []
+            
+        new_block = JettonSwapBlock({
+            'dex': 'tonco',
+            'source_asset': in_transfer_data['asset'],
+            'destination_asset': out_transfer_data['asset'],
+            'sender': sender,
+            'dex_incoming_transfer': in_transfer_data,
+            'dex_outgoing_transfer': out_transfer_data,
+            'referral_amount': None,
+            'referral_address': None,
+            'peer_swaps': [] if len(peer_swaps) <= 1 else peer_swaps,
+        })
+        
+        new_block.merge_blocks([block] + other_blocks + additional_blocks_to_include)
+        new_block.failed = not ok
+        
+        # handle failed swap
+        if not ok:
+            if destination_asset is not None:
+                new_block.data['destination_asset'] = destination_asset
+            else:
+                target_asset = await self._get_target_asset_from_notification(
+                    block.previous_block.event_nodes[0].message)
+                if target_asset is not None:
+                    new_block.data['destination_asset'] = target_asset
+                    
         return [new_block]
