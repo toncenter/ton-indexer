@@ -40,6 +40,9 @@ class Asset:
         elif other is None:
             return self.is_ton == True and self.jetton_address is None
 
+    def __hash__(self):
+        return hash(self.is_ton) + hash(self.jetton_address)
+
 
 def is_failed(tx: Transaction):
     description = tx.description

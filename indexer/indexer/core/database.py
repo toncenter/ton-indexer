@@ -333,6 +333,14 @@ class Action(Base):
         Column('user_jetton_wallet_1', String),
         Column('user_jetton_wallet_2', String),
         Column("lp_tokens_minted", Numeric),
+        Column("target_asset_1", String),
+        Column("target_asset_2", String),
+        Column("target_amount_1", Numeric),
+        Column("target_amount_2", Numeric),
+        Column("vault_excesses", ARRAY(CompositeType("liquidity_vault_excess_details", [
+            Column("asset", String),
+            Column("amount", Numeric),
+        ])))
     ]))
     dex_withdraw_liquidity_data = Column(CompositeType("dex_withdraw_liquidity_details", [
         Column("dex", String),

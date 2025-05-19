@@ -26,25 +26,30 @@ class LabelBlock(Block):
 
 
 class LabeledBlockConstructorMatcher(BlockMatcher):
-    def __init__(self, block_type: str, test_self_func, **kwargs):
+    def __init__(self, block_type: str, test_self_func, build_block_func=None, **kwargs):
         self.block_type = block_type
         self.test_self_func = test_self_func
+        self.build_block_func = build_block_func
         super().__init__(**kwargs)
 
     def test_self(self, block: Block):
         return self.test_self_func(block)
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        new_block = LabelBlock(self.block_type, block)
-        return [new_block, block] + other_blocks
+        if self.build_block_func is None:
+            new_block = LabelBlock(self.block_type, block)
+            return [new_block, block] + other_blocks
+        else:
+            built_block = await self.build_block_func(block, other_blocks)
+            return [LabelBlock(self.block_type, built_block[0]), *built_block]
 
-
-def labeled(label: str, matcher: BlockMatcher) -> BlockMatcher:
+def labeled(label: str, matcher: BlockMatcher, call_build_block: bool = False) -> BlockMatcher:
     return LabeledBlockConstructorMatcher(label,
                                           lambda x: matcher.test_self(x),
                                           child_matcher=matcher.child_matcher,
                                           children_matchers=matcher.children_matchers,
                                           parent_matcher=matcher.parent_matcher,
                                           optional=matcher.optional,
-                                          include_excess=matcher.include_excess
+                                          include_excess=matcher.include_excess,
+                                          build_block_func=matcher.build_block if call_build_block else None
                                           )

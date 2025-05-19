@@ -38,3 +38,13 @@ def get_labeled(label: str, blocks: list[Block], block_type: Type[T] = Block ) -
         if isinstance(b, LabelBlock) and isinstance(b.block, block_type):
             if b.label == label:
                 return b.block
+    return None
+
+
+def get_multiple_labeled(label: str, blocks: list[Block], block_type: Type[T] = Block ) -> list[T]:
+    labeled = []
+    for b in blocks:
+        if isinstance(b, LabelBlock) and isinstance(b.block, block_type):
+            if b.label == label:
+                labeled.append(b.block)
+    return labeled
