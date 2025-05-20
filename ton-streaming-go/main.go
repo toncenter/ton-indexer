@@ -400,10 +400,29 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		actionsAddresses = append(actionsAddresses, actionAddresses)
 	}
 
+	// sort actions by EndLt and StartLt descending
+	idx := make([]int, len(actions))
+	for i := range idx {
+		idx[i] = i
+	}
+	sort.Slice(idx, func(i, j int) bool {
+		if actions[idx[i]].EndLt == actions[idx[j]].EndLt {
+			return actions[idx[i]].StartLt < actions[idx[j]].StartLt
+		}
+		return actions[idx[i]].EndLt < actions[idx[j]].EndLt
+	})
+
+	sortedActions := make([]*index.Action, len(actions))
+	sortedActionsAddresses := make([][]string, len(actionsAddresses))
+	for i, k := range idx {
+		sortedActions[i] = actions[k]
+		sortedActionsAddresses[i] = actionsAddresses[k]
+	}
+
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
 	allAddresses := []string{}
-	for _, actionAddr := range actionsAddresses {
+	for _, actionAddr := range sortedActionsAddresses {
 		allAddresses = append(allAddresses, actionAddr...)
 	}
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]EventType{PendingActions, Actions}, allAddresses)
@@ -419,8 +438,8 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	manager.broadcast <- &ActionsNotification{
 		Type:                  PendingActions,
 		TraceExternalHashNorm: traceExternalHashNorm,
-		Actions:               actions,
-		ActionAddresses:       actionsAddresses,
+		Actions:               sortedActions,
+		ActionAddresses:       sortedActionsAddresses,
 		AddressBook:           addressBook,
 		Metadata:              metadata,
 	}
@@ -429,8 +448,8 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		manager.broadcast <- &ActionsNotification{
 			Type:                  Actions,
 			TraceExternalHashNorm: traceExternalHashNorm,
-			Actions:               actions,
-			ActionAddresses:       actionsAddresses,
+			Actions:               sortedActions,
+			ActionAddresses:       sortedActionsAddresses,
 			AddressBook:           addressBook,
 			Metadata:              metadata,
 		}
@@ -616,6 +635,11 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		)
 	}
 
+	// Sort transactions by Lt descending
+	sort.Slice(txs, func(i, j int) bool {
+		return txs[i].Lt > txs[j].Lt
+	})
+
 	manager.broadcast <- &TransactionsNotification{
 		Type:                  PendingTransactions,
 		TraceExternalHashNorm: traceExternalHashNorm,
@@ -751,6 +775,11 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 			shouldFetchMetadata,
 		)
 	}
+
+	// Sort transactions by Lt descending
+	sort.Slice(txs, func(i, j int) bool {
+		return txs[i].Lt > txs[j].Lt
+	})
 
 	manager.broadcast <- &TransactionsNotification{
 		Type:                  Transactions,
