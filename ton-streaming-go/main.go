@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -15,14 +16,12 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/swagger"
 	"github.com/gofiber/websocket/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
 
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
-	_ "github.com/toncenter/ton-indexer/ton-streaming-go/docs"
 )
 
 // Command-line flags
@@ -38,34 +37,42 @@ var (
 	imgProxyBaseUrl         = flag.String("imgproxy-baseurl", "", "Image proxy base URL")
 )
 
+type EventType string
+
+const (
+	Transactions        EventType = "transactions"
+	Actions             EventType = "actions"
+	PendingTransactions EventType = "pending_transactions"
+	PendingActions      EventType = "pending_actions"
+)
+
 // Subscription represents a client's subscription to blockchain events
 type Subscription struct {
-	Addresses          []string
-	Types              []string
-	IncludeAddressBook bool
-	IncludeMetadata    bool
+	SubscribedAddresses map[string][]EventType
+	IncludeAddressBook  bool
+	IncludeMetadata     bool
 }
 
-func (s *Subscription) InterestedInType(eventType string) bool {
-	// Check if the client is subscribed to this event type
-	for _, t := range s.Types {
-		if t == eventType {
-			return true
+func (s *Subscription) AddSubscribedAddresses(addresses map[string][]EventType) {
+	for addr, eventTypes := range addresses {
+		if _, ok := s.SubscribedAddresses[addr]; !ok {
+			s.SubscribedAddresses[addr] = eventTypes
+		} else {
+			s.SubscribedAddresses[addr] = append(s.SubscribedAddresses[addr], eventTypes...)
 		}
 	}
-	return false
 }
 
-func (s *Subscription) InterestedIn(eventType string, eventAddresses []string) bool {
-	// Check if the client is subscribed to this event type
-	if !s.InterestedInType(eventType) {
-		return false
+func (s *Subscription) Unsubscribe(addresses []string) {
+	for _, addr := range addresses {
+		delete(s.SubscribedAddresses, addr)
 	}
+}
 
-	// Check if the client is subscribed to this address
-	for _, subsrcAddr := range s.Addresses {
-		for _, eventAddr := range eventAddresses {
-			if subsrcAddr == eventAddr {
+func (s *Subscription) InterestedIn(eventType EventType, eventAddresses []string) bool {
+	for _, eventAddr := range eventAddresses {
+		if _, ok := s.SubscribedAddresses[eventAddr]; ok {
+			if slices.Contains(s.SubscribedAddresses[eventAddr], eventType) {
 				return true
 			}
 		}
@@ -76,17 +83,18 @@ func (s *Subscription) InterestedIn(eventType string, eventAddresses []string) b
 
 // SubscriptionRequest represents a subscription/unsubscription request
 type SubscriptionRequest struct {
-	Operation            string   `json:"operation"`
-	Addresses            []string `json:"addresses"`
-	Types                []string `json:"types"`
-	SupportedActionTypes []string `json:"supported_action_types"`
-	IncludeAddressBook   bool     `json:"include_address_book,omitempty"`
-	IncludeMetadata      bool     `json:"include_metadata,omitempty"`
+	Id                   *string      `json:"id"`
+	Operation            string       `json:"operation"`
+	Addresses            *[]string    `json:"addresses"`
+	Types                *[]EventType `json:"types"`
+	SupportedActionTypes *[]string    `json:"supported_action_types"`
+	IncludeAddressBook   *bool        `json:"include_address_book,omitempty"`
+	IncludeMetadata      *bool        `json:"include_metadata,omitempty"`
 }
 
 // BlockchainEvent represents an event from the blockchain
 type BlockchainEvent struct {
-	Type        string             `json:"type"`
+	Type        EventType          `json:"type"`
 	Data        any                `json:"data"`
 	AddressBook *index.AddressBook `json:"address_book,omitempty"`
 	Metadata    *index.Metadata    `json:"metadata,omitempty"`
@@ -96,7 +104,7 @@ type BlockchainEvent struct {
 type Client struct {
 	ID           string
 	Connected    bool
-	Subscription *Subscription
+	Subscription Subscription
 	SendEvent    func([]byte) error
 	sendChan     chan []byte
 	mu           sync.Mutex
@@ -139,15 +147,14 @@ func NewClientManager() *ClientManager {
 	}
 }
 
-func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []string, addressesToNotify []string) (bool, bool) {
+func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []EventType, addressesToNotify []string) (bool, bool) {
 	shouldFetchAddressBook := false
 	shouldFetchMetadata := false
 
 	for _, client := range manager.clients {
 		for _, eventType := range eventTypes {
 			client.mu.Lock()
-			if client.Connected && client.Subscription != nil &&
-				client.Subscription.InterestedIn(eventType, addressesToNotify) {
+			if client.Connected && client.Subscription.InterestedIn(eventType, addressesToNotify) {
 				shouldFetchAddressBook = shouldFetchAddressBook || client.Subscription.IncludeAddressBook
 				shouldFetchMetadata = shouldFetchMetadata || client.Subscription.IncludeMetadata
 			}
@@ -183,7 +190,7 @@ func (manager *ClientManager) Run() {
 			manager.mu.RLock()
 			for _, client := range manager.clients {
 				client.mu.Lock()
-				if client.Connected && client.Subscription != nil {
+				if client.Connected {
 					if event := notification.AdjustForClient(client); event != nil {
 						msgBytes, err := json.Marshal(event)
 						if err != nil {
@@ -256,7 +263,7 @@ type Notification interface {
 }
 
 type ActionsNotification struct {
-	Type                  string             `json:"type"`
+	Type                  EventType          `json:"type"`
 	TraceExternalHashNorm string             `json:"trace_external_hash_norm"`
 	Actions               []*index.Action    `json:"actions"`
 	ActionAddresses       [][]string         `json:"-"`
@@ -267,10 +274,6 @@ type ActionsNotification struct {
 var _ Notification = (*ActionsNotification)(nil)
 
 func (n *ActionsNotification) AdjustForClient(client *Client) any {
-	if !client.Subscription.InterestedInType(n.Type) {
-		return nil
-	}
-
 	var adjustedActions []*index.Action
 	var adjustedActionAddresses [][]string
 	var adjustedAddressBook *index.AddressBook
@@ -284,16 +287,11 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	var allAddresses = map[string]bool{}
 	for idx, action := range n.Actions {
 		actionAddresses := n.ActionAddresses[idx]
-		includeAction := false
-		for _, addr := range actionAddresses {
-			if slices.Contains(client.Subscription.Addresses, addr) {
-				adjustedActions = append(adjustedActions, action)
-				adjustedActionAddresses = append(adjustedActionAddresses, actionAddresses)
-				includeAction = true
-				break
-			}
-		}
-		if includeAction {
+
+		if client.Subscription.InterestedIn(n.Type, actionAddresses) {
+			adjustedActions = append(adjustedActions, action)
+			adjustedActionAddresses = append(adjustedActionAddresses, actionAddresses)
+
 			for _, addr := range actionAddresses {
 				allAddresses[addr] = true
 				if adjustedAddressBook != nil {
@@ -408,7 +406,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	for _, actionAddr := range actionsAddresses {
 		allAddresses = append(allAddresses, actionAddr...)
 	}
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]string{"pending_actions", "actions"}, allAddresses)
+	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]EventType{PendingActions, Actions}, allAddresses)
 	if shouldFetchAddressBook || shouldFetchMetadata {
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
@@ -419,7 +417,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	}
 
 	manager.broadcast <- &ActionsNotification{
-		Type:                  "pending_actions",
+		Type:                  PendingActions,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		Actions:               actions,
 		ActionAddresses:       actionsAddresses,
@@ -429,7 +427,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 
 	if traceIsCommited {
 		manager.broadcast <- &ActionsNotification{
-			Type:                  "actions",
+			Type:                  Actions,
 			TraceExternalHashNorm: traceExternalHashNorm,
 			Actions:               actions,
 			ActionAddresses:       actionsAddresses,
@@ -459,7 +457,7 @@ func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientMa
 }
 
 type TransactionsNotification struct {
-	Type                  string              `json:"type"`
+	Type                  EventType           `json:"type"`
 	TraceExternalHashNorm string              `json:"trace_external_hash_norm"`
 	Transactions          []index.Transaction `json:"transactions"`
 	AddressBook           *index.AddressBook  `json:"address_book,omitempty"`
@@ -469,10 +467,6 @@ type TransactionsNotification struct {
 var _ Notification = (*TransactionsNotification)(nil)
 
 func (n *TransactionsNotification) AdjustForClient(client *Client) any {
-	if !client.Subscription.InterestedInType(n.Type) {
-		return nil
-	}
-
 	var adjustedTransactions []index.Transaction
 	var adjustedAddressBook *index.AddressBook
 	var adjustedMetadata *index.Metadata
@@ -485,15 +479,9 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 
 	var allAddresses = map[string]bool{}
 	for _, tx := range n.Transactions {
-		includeTransaction := false
 		account := string(tx.Account)
 
-		// Check if the transaction account is in the subscribed addresses
-		if slices.Contains(client.Subscription.Addresses, account) {
-			includeTransaction = true
-		}
-
-		if includeTransaction {
+		if client.Subscription.InterestedIn(n.Type, []string{account}) {
 			adjustedTransactions = append(adjustedTransactions, tx)
 			allAddresses[account] = true
 
@@ -618,7 +606,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]string{"pending_transactions"}, allAddresses)
+	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]EventType{PendingTransactions}, allAddresses)
 	if shouldFetchAddressBook || shouldFetchMetadata {
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
@@ -629,7 +617,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	}
 
 	manager.broadcast <- &TransactionsNotification{
-		Type:                  "pending_transactions",
+		Type:                  PendingTransactions,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		Transactions:          txs,
 		AddressBook:           addressBook,
@@ -754,7 +742,7 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]string{"transactions"}, allAddresses)
+	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]EventType{Transactions}, allAddresses)
 	if shouldFetchAddressBook || shouldFetchMetadata {
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
@@ -765,7 +753,7 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 	}
 
 	manager.broadcast <- &TransactionsNotification{
-		Type:                  "transactions",
+		Type:                  Transactions,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		Transactions:          txs,
 		AddressBook:           addressBook,
@@ -773,114 +761,154 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 	}
 }
 
-// @title TON Streaming API
-// @version 0.0.1
-// @description TON Streaming API provides real-time blockchain events via SSE, WebSocket, and WebTransport.
-// @basePath /api/streaming/
+type ErrorResponse struct {
+	Id    *string `json:"id,omitempty"`
+	Error string  `json:"error"`
+}
 
-// SSEHandler handles Server-Sent Events connections
-// @Summary Subscribe to blockchain events via SSE
-// @Schemes
-// @Description Subscribe to real-time blockchain events using Server-Sent Events.
-// @Tags streaming
-// @Accept json
-// @Produce text/event-stream
-// @Router /v1/sse [post]
+type StatusResponse struct {
+	Id     *string `json:"id,omitempty"`
+	Status string  `json:"status"`
+}
+
+var validEventTypes = map[EventType]struct{}{
+	PendingActions:      {},
+	Actions:             {},
+	PendingTransactions: {},
+	Transactions:        {},
+}
+
+// ValidateSubscription performs all syntactic checks in one place and returns the
+// address→event‑types map that goes straight into the Subscription struct.
+func ValidateSubscription(req *SubscriptionRequest) (map[string][]EventType, error) {
+	if req.Operation != "subscribe" {
+		return nil, fmt.Errorf("invalid operation: %s", req.Operation)
+	}
+
+	if req.Addresses == nil || len(*req.Addresses) == 0 || req.Types == nil || len(*req.Types) == 0 {
+		return nil, errors.New("addresses and types are required")
+	}
+
+	// convert addresses once; capacity = len(req.Addresses) avoids reallocs
+	addrMap := make(map[string][]EventType, len(*req.Addresses))
+	for _, a := range *req.Addresses {
+		cnv, err := convertAddress(a)
+		if err != nil {
+			return nil, err
+		}
+		addrMap[cnv] = *req.Types
+	}
+
+	for _, t := range *req.Types {
+		if _, ok := validEventTypes[t]; !ok {
+			return nil, fmt.Errorf("invalid event type: %s", t)
+		}
+	}
+	return addrMap, nil
+}
+
+// convertAddress keeps the reflection ugliness in one place.
+func convertAddress(s string) (string, error) {
+	raw := index.AccountAddressConverter(s)
+	if !raw.IsValid() {
+		return "", fmt.Errorf("invalid address: %s", s)
+	}
+	return string(raw.Interface().(index.AccountAddress)), nil
+}
+
+// writeSSE marshals v and writes a single Server‑Sent‑Event frame.
+func writeSSE(w *bufio.Writer, event string, v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return writeSSEBytes(w, event, data)
+}
+
+func writeSSEBytes(w *bufio.Writer, event string, payload []byte) error {
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, payload); err != nil {
+		return err
+	}
+	return w.Flush()
+}
+
+// sendWSJSONErr centralises websocket error frames.
+func sendWSJSONErr(c *websocket.Conn, id *string, err error) {
+	if msg, e := json.Marshal(ErrorResponse{Id: id, Error: err.Error()}); e == nil {
+		_ = c.WriteMessage(websocket.TextMessage, msg)
+	} else {
+		log.Printf("marshal error response: %v", e)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// HTTP‑SSE handler
+// ────────────────────────────────────────────────────────────────────────────────
+
 func SSEHandler(manager *ClientManager) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// 1) Parse + validate subscription *before* starting the stream
-		var subReq SubscriptionRequest
-		if err := c.BodyParser(&subReq); err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid subscription request"})
+		var req SubscriptionRequest
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Error: fmt.Sprintf("invalid subscription request: %v", err)})
 		}
-		if len(subReq.Addresses) == 0 || len(subReq.Types) == 0 {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Addresses and types are required"})
-		}
-		var addressesRaw []string
-		for _, addr := range subReq.Addresses {
-			rawAddrValue := index.AccountAddressConverter(addr)
-			if !rawAddrValue.IsValid() {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("Invalid address: %s", addr)})
-			}
-			rawAddr := rawAddrValue.Interface().(index.AccountAddress)
-			addressesRaw = append(addressesRaw, string(rawAddr))
+		addrMap, err := ValidateSubscription(&req)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Id: req.Id, Error: err.Error()})
 		}
 
-		for _, t := range subReq.Types {
-			switch t {
-			case "pending_actions", "actions", "pending_transactions", "transactions":
-			default:
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("Invalid event type: %s", t)})
-			}
-		}
-
-		// 2) Create client + channel
 		clientID := fmt.Sprintf("%s-%s", c.IP(), time.Now().Format(time.RFC3339Nano))
 		eventCh := make(chan []byte, 16)
 		client := &Client{
-			ID:           clientID,
-			Connected:    true,
-			Subscription: &Subscription{Addresses: addressesRaw, Types: subReq.Types, IncludeAddressBook: subReq.IncludeAddressBook, IncludeMetadata: subReq.IncludeMetadata},
-			// when manager wants to send something, it will push into eventCh
-			SendEvent: func(data []byte) error {
+			ID:        clientID,
+			Connected: true,
+			Subscription: Subscription{
+				SubscribedAddresses: addrMap,
+				IncludeAddressBook:  req.IncludeAddressBook != nil && *req.IncludeAddressBook,
+				IncludeMetadata:     req.IncludeMetadata != nil && *req.IncludeMetadata,
+			},
+			SendEvent: func(b []byte) error {
 				select {
-				case eventCh <- data:
-					return nil
+				case eventCh <- b:
+					return nil // buffered write
 				default:
-					// drop if buffer full
-					return nil
+					return nil // drop if buffer full
 				}
 			},
 		}
-
-		// 3) Register
 		manager.register <- client
 
-		// 4) Set SSE headers
+		// 3) SSE plumbing
 		c.Set("Content-Type", "text/event-stream")
 		c.Set("Cache-Control", "no-cache")
 		c.Set("Connection", "keep-alive")
 		c.Set("Transfer-Encoding", "chunked")
 
-		// 5) Hijack to a streaming writer
 		c.Status(fiber.StatusOK).Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
-			// send an initial "connected" event
-			fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"subscribed\"}\n\n")
-			w.Flush()
+			if err := writeSSE(w, "connected", StatusResponse{Id: req.Id, Status: "subscribed"}); err != nil {
+				log.Printf("write connected frame: %v", err)
+				return
+			}
 			log.Printf("Client %s connected via SSE", clientID)
 
-			keepAlive := time.NewTicker(30 * time.Second)
+			keepAlive := time.NewTicker(15 * time.Second)
 			defer keepAlive.Stop()
 
 			for {
 				select {
 				case data := <-eventCh:
-					// actual SSE payload
-					_, err := fmt.Fprintf(w, "event: event\ndata: %s\n\n", data)
-					if err != nil {
-						// write error → client gone
+					if err := writeSSEBytes(w, "event", data); err != nil {
 						client.Connected = false
 						manager.unregister <- client
 						return
 					}
-					if err := w.Flush(); err != nil {
-						client.Connected = false
-						manager.unregister <- client
-						return
-					}
-
+					_ = w.Flush()
 				case <-keepAlive.C:
-					// comment‐style keepalive
 					if _, err := w.WriteString(": keepalive\n\n"); err != nil {
 						client.Connected = false
 						manager.unregister <- client
 						return
 					}
-					if err := w.Flush(); err != nil {
-						client.Connected = false
-						manager.unregister <- client
-						return
-					}
+					_ = w.Flush()
 				}
 			}
 		}))
@@ -888,101 +916,95 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 	}
 }
 
-// WebSocketHandler handles WebSocket connections
+// ────────────────────────────────────────────────────────────────────────────────
+// WebSocket handler
+// ────────────────────────────────────────────────────────────────────────────────
+
 func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 	return func(c *websocket.Conn) {
-		// Create a new client
 		clientID := c.RemoteAddr().String()
 		client := &Client{
 			ID:        clientID,
 			Connected: true,
-			SendEvent: func(data []byte) error {
-				return c.WriteMessage(websocket.TextMessage, data)
+			Subscription: Subscription{
+				SubscribedAddresses: make(map[string][]EventType),
+				IncludeAddressBook:  false,
+				IncludeMetadata:     false,
 			},
+			SendEvent: func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
 		}
-
-		// Register the client
 		manager.register <- client
-
-		// Handle WebSocket messages
-		var (
-			msg []byte
-			err error
-		)
+		defer func() {
+			client.Connected = false
+			manager.unregister <- client
+		}()
 
 		for {
-			if _, msg, err = c.ReadMessage(); err != nil {
-				log.Println("read:", err)
-				break
+			_, msg, err := c.ReadMessage()
+			if err != nil {
+				log.Printf("read: %v", err)
+				return
 			}
-			log.Printf("recv: %s", msg)
 
-			// Parse the message
-			var subReq SubscriptionRequest
-			if err := json.Unmarshal(msg, &subReq); err != nil {
-				log.Printf("Error parsing subscription request: %v", err)
-				c.WriteMessage(websocket.TextMessage, []byte(`{"error":"Invalid subscription request"}`))
+			var req SubscriptionRequest
+			if err := json.Unmarshal(msg, &req); err != nil {
+				sendWSJSONErr(c, nil, fmt.Errorf("invalid subscription request: %v", err))
 				continue
 			}
 
-			// Handle subscription/unsubscription
-			switch subReq.Operation {
-			case "subscribe":
-				// Validate subscription
-				if len(subReq.Addresses) == 0 || len(subReq.Types) == 0 {
-					c.WriteMessage(websocket.TextMessage, []byte(`{"error":"Addresses and types are required"}`))
-					continue
-				}
-				var addressesRaw []string
-				validAddresses := true
-				for _, addr := range subReq.Addresses {
-					rawAddrValue := index.AccountAddressConverter(addr)
-					if !rawAddrValue.IsValid() {
-						c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"error":"Invalid address: %s"}`, addr)))
-						validAddresses = false
-						break
-					}
-					rawAddr := rawAddrValue.Interface().(index.AccountAddress)
-					addressesRaw = append(addressesRaw, string(rawAddr))
-				}
-				if !validAddresses {
-					continue
-				}
-
-				// Validate event types
-				validTypes := true
-				for _, t := range subReq.Types {
-					if t != "pending_actions" && t != "actions" && t != "pending_transactions" && t != "transactions" {
-						c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"error":"Invalid event type: %s"}`, t)))
-						validTypes = false
-						break
-					}
-				}
-				if !validTypes {
-					continue
-				}
-
-				// Update client subscription
-				client.mu.Lock()
-				client.Subscription = &Subscription{
-					Addresses:          addressesRaw,
-					Types:              subReq.Types,
-					IncludeAddressBook: subReq.IncludeAddressBook,
-					IncludeMetadata:    subReq.IncludeMetadata,
-				}
-				client.mu.Unlock()
-
-				// Send confirmation
-				c.WriteMessage(websocket.TextMessage, []byte(`{"status":"subscribed"}`))
-
-			default:
-				c.WriteMessage(websocket.TextMessage, []byte(`{"error":"Invalid operation"}`))
+			if req.Operation == "ping" {
+				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "pong"})
+				_ = c.WriteMessage(websocket.TextMessage, ack)
+				continue
 			}
-		}
 
-		// Unregister the client when the connection is closed
-		client.Connected = false
-		manager.unregister <- client
+			if req.Operation == "unsubscribe" {
+				if req.Addresses == nil || len(*req.Addresses) == 0 {
+					sendWSJSONErr(c, req.Id, fmt.Errorf("addresses are required"))
+					continue
+				}
+				cnvAddrs := make([]string, len(*req.Addresses))
+				addrsValid := true
+				for i, a := range *req.Addresses {
+					cnvAddrs[i], err = convertAddress(a)
+					if err != nil {
+						addrsValid = false
+						sendWSJSONErr(c, req.Id, err)
+						break
+					}
+				}
+				if !addrsValid {
+					continue
+				}
+
+				client.mu.Lock()
+				client.Subscription.Unsubscribe(cnvAddrs)
+				client.mu.Unlock()
+				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "unsubscribed"})
+				_ = c.WriteMessage(websocket.TextMessage, ack)
+				continue
+			}
+
+			addrMap, err := ValidateSubscription(&req)
+			if err != nil {
+				sendWSJSONErr(c, req.Id, err)
+				continue
+			}
+
+			// apply subscription atomically
+			client.mu.Lock()
+			client.Subscription.AddSubscribedAddresses(addrMap)
+			if req.IncludeAddressBook != nil {
+				client.Subscription.IncludeAddressBook = *req.IncludeAddressBook
+			}
+			if req.IncludeMetadata != nil {
+				client.Subscription.IncludeMetadata = *req.IncludeMetadata
+			}
+			client.mu.Unlock()
+
+			ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "subscribed"})
+			_ = c.WriteMessage(websocket.TextMessage, ack)
+		}
 	}
 }
 
@@ -1029,6 +1051,7 @@ func main() {
 		AppName:     "TON Streaming API",
 		Prefork:     *prefork,
 		ReadTimeout: 5 * time.Second,
+		ProxyHeader: fiber.HeaderXForwardedFor,
 	})
 
 	// Middleware
@@ -1049,14 +1072,6 @@ func main() {
 		return fiber.ErrUpgradeRequired
 	})
 	api.Get("/v1/ws", websocket.New(WebSocketHandler(manager)))
-
-	// Swagger documentation
-	api.Get("/*", swagger.New(swagger.Config{
-		Title:           "TON Streaming API - Swagger UI",
-		Layout:          "BaseLayout",
-		DeepLinking:     true,
-		TryItOutEnabled: true,
-	}))
 
 	// Start server
 	log.Printf("Starting server on port %d", *serverPort)
