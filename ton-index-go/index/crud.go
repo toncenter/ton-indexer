@@ -2152,7 +2152,8 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.jvault_claim_data).claimed_amounts,
 				(A.jvault_stake_data).period,
 				(A.jvault_stake_data).minted_stake_jettons,
-				(A.jvault_stake_data).stake_wallet from actions as A where ` +
+				(A.jvault_stake_data).stake_wallet,
+				A.ancestor_type from actions as A where ` +
 				arrayFilter + typeFilter + `order by trace_id, start_lt, end_lt`
 			actions, err := queryRawActionsImpl(query, conn, settings, supportedActionTypes)
 			if err != nil {

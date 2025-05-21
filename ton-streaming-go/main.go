@@ -48,9 +48,10 @@ const (
 
 // Subscription represents a client's subscription to blockchain events
 type Subscription struct {
-	SubscribedAddresses map[string][]EventType
-	IncludeAddressBook  bool
-	IncludeMetadata     bool
+	SubscribedAddresses  map[string][]EventType
+	SupportedActionTypes []string
+	IncludeAddressBook   bool
+	IncludeMetadata      bool
 }
 
 func (s *Subscription) AddSubscribedAddresses(addresses map[string][]EventType) {
@@ -375,7 +376,8 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 
 	var actions = []*index.Action{}
 	var actionsAddresses = [][]string{}
-	for _, row := range emulatedContext.GetActions(index.ExpandActionTypeShortcuts([]string{"v1"})) {
+
+	for _, row := range emulatedContext.GetAllActions() { // GetAllActions returns actions in ascending order
 		var rawAction *index.RawAction
 		if loc, err := index.ScanRawAction(row); err == nil {
 			rawAction = loc
@@ -400,29 +402,10 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		actionsAddresses = append(actionsAddresses, actionAddresses)
 	}
 
-	// sort actions by EndLt and StartLt descending
-	idx := make([]int, len(actions))
-	for i := range idx {
-		idx[i] = i
-	}
-	sort.Slice(idx, func(i, j int) bool {
-		if actions[idx[i]].EndLt == actions[idx[j]].EndLt {
-			return actions[idx[i]].StartLt < actions[idx[j]].StartLt
-		}
-		return actions[idx[i]].EndLt < actions[idx[j]].EndLt
-	})
-
-	sortedActions := make([]*index.Action, len(actions))
-	sortedActionsAddresses := make([][]string, len(actionsAddresses))
-	for i, k := range idx {
-		sortedActions[i] = actions[k]
-		sortedActionsAddresses[i] = actionsAddresses[k]
-	}
-
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
 	allAddresses := []string{}
-	for _, actionAddr := range sortedActionsAddresses {
+	for _, actionAddr := range actionsAddresses {
 		allAddresses = append(allAddresses, actionAddr...)
 	}
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]EventType{PendingActions, Actions}, allAddresses)
@@ -438,8 +421,8 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	manager.broadcast <- &ActionsNotification{
 		Type:                  PendingActions,
 		TraceExternalHashNorm: traceExternalHashNorm,
-		Actions:               sortedActions,
-		ActionAddresses:       sortedActionsAddresses,
+		Actions:               actions,
+		ActionAddresses:       actionsAddresses,
 		AddressBook:           addressBook,
 		Metadata:              metadata,
 	}
@@ -448,8 +431,8 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		manager.broadcast <- &ActionsNotification{
 			Type:                  Actions,
 			TraceExternalHashNorm: traceExternalHashNorm,
-			Actions:               sortedActions,
-			ActionAddresses:       sortedActionsAddresses,
+			Actions:               actions,
+			ActionAddresses:       actionsAddresses,
 			AddressBook:           addressBook,
 			Metadata:              metadata,
 		}
@@ -887,13 +870,20 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 
 		clientID := fmt.Sprintf("%s-%s", c.IP(), time.Now().Format(time.RFC3339Nano))
 		eventCh := make(chan []byte, 16)
+
+		supportedActionTypes := []string{}
+		if req.SupportedActionTypes != nil {
+			supportedActionTypes = *req.SupportedActionTypes
+		}
+
 		client := &Client{
 			ID:        clientID,
 			Connected: true,
 			Subscription: Subscription{
-				SubscribedAddresses: addrMap,
-				IncludeAddressBook:  req.IncludeAddressBook != nil && *req.IncludeAddressBook,
-				IncludeMetadata:     req.IncludeMetadata != nil && *req.IncludeMetadata,
+				SubscribedAddresses:  addrMap,
+				IncludeAddressBook:   req.IncludeAddressBook != nil && *req.IncludeAddressBook,
+				IncludeMetadata:      req.IncludeMetadata != nil && *req.IncludeMetadata,
+				SupportedActionTypes: supportedActionTypes,
 			},
 			SendEvent: func(b []byte) error {
 				select {
@@ -1028,6 +1018,9 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			}
 			if req.IncludeMetadata != nil {
 				client.Subscription.IncludeMetadata = *req.IncludeMetadata
+			}
+			if req.SupportedActionTypes != nil {
+				client.Subscription.SupportedActionTypes = *req.SupportedActionTypes
 			}
 			client.mu.Unlock()
 
