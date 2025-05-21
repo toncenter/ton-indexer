@@ -205,6 +205,11 @@ type ActionRow struct {
 	DexDepositLiquidityDataUserJettonWallet1             *string
 	DexDepositLiquidityDataUserJettonWallet2             *string
 	DexDepositLiquidityDataLpTokensMinted                *string
+	DexDepositLiquidityDataTargetAsset1                  *string
+	DexDepositLiquidityDataTargetAsset2                  *string
+	DexDepositLiquidityDataTargetAmount1                 *string
+	DexDepositLiquidityDataTargetAmount2                 *string
+	DexDepositLiquidityDataVaultExcesses                 []actionVaultExcess
 	StakingDataProvider                                  *string
 	StakingDataTsNft                                     *string
 	StakingTokensBurnt                                   *string
@@ -407,6 +412,11 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.DexDepositLiquidityDataUserJettonWallet1),
 		assignStringPtr(t.DexDepositLiquidityDataUserJettonWallet2),
 		assignStringPtr(t.DexDepositLiquidityDataLpTokensMinted),
+		assignStringPtr(t.DexDepositLiquidityDataTargetAsset1),
+		assignStringPtr(t.DexDepositLiquidityDataTargetAsset2),
+		assignStringPtr(t.DexDepositLiquidityDataTargetAmount1),
+		assignStringPtr(t.DexDepositLiquidityDataTargetAmount2),
+		assignSlice(t.DexDepositLiquidityDataVaultExcesses),
 		assignStringPtr(t.StakingDataProvider),
 		assignStringPtr(t.StakingDataTsNft),
 		assignStringPtr(t.StakingTokensBurnt),

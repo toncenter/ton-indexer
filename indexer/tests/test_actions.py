@@ -35,6 +35,9 @@ class TestEvaaActions(BaseGenericActionTest):
 class TestVestingActions(BaseGenericActionTest):
     yaml_file = "vesting.yaml"
 
+class TestDedustLiquiditiesActions(BaseGenericActionTest):
+    yaml_file = "dedust-liquidities.yaml"
+
 class TestUnknownAction:
 
     @pytest.mark.asyncio

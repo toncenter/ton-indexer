@@ -1556,7 +1556,8 @@ void InsertManagerPostgres::start_up() {
     exec_query("create type trace_classification_state as enum ('unclassified', 'failed', 'ok', 'broken');");
     exec_query("create type trace_state as enum ('complete', 'pending', 'broken');");
     exec_query("create type change_dns_record_details as (key varchar, value_schema varchar, value varchar, flags integer);");
-    exec_query("create type dex_deposit_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1 varchar, asset2 varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, lp_tokens_minted numeric);");
+    exec_query("create type liquidity_vault_excess_details as (asset varchar, amount NUMERIC);");
+    exec_query("create type dex_deposit_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1 varchar, asset2 varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, lp_tokens_minted numeric, target_asset_1 varchar, target_asset_2 varchar, target_amount_1 numeric, target_amount_2 numeric, vault_excesses liquidity_vault_excess_details[]);");
     exec_query("create type dex_transfer_details as (amount numeric, asset tonaddr, source tonaddr, destination tonaddr, source_jetton_wallet tonaddr, destination_jetton_wallet tonaddr);");
     exec_query("create type dex_withdraw_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1_out varchar, asset2_out varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, dex_jetton_wallet_1 varchar, dex_jetton_wallet_2 varchar, lp_tokens_burnt numeric, dex_wallet_1 varchar, dex_wallet_2 varchar);");
     exec_query("create type jetton_transfer_details as(response_destination tonaddr, forward_amount numeric, query_id numeric, custom_payload text, forward_payload text, comment text, is_encrypted_comment boolean);");

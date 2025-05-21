@@ -374,6 +374,14 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.UserJettonWallet1 = raw.DexDepositLiquidityDataUserJettonWallet1
 		details.UserJettonWallet2 = raw.DexDepositLiquidityDataUserJettonWallet2
 		details.LpTokensMinted = raw.DexDepositLiquidityDataLpTokensMinted
+		details.TargetAmount1 = raw.DexDepositLiquidityDataTargetAmount1
+		details.TargetAsset1 = raw.DexDepositLiquidityDataTargetAsset1
+		details.TargetAmount2 = raw.DexDepositLiquidityDataTargetAmount2
+		details.TargetAsset2 = raw.DexDepositLiquidityDataTargetAsset2
+		details.VaultExcesses = []ActionDetailsLiquidityVaultExcess{}
+		for _, excess := range raw.DexDepositLiquidityDataVaultExcesses {
+			details.VaultExcesses = append(details.VaultExcesses, ActionDetailsLiquidityVaultExcess(excess))
+		}
 		act.Details = &details
 	case "dex_withdraw_liquidity":
 		var details ActionDetailsDexWithdrawLiquidity
@@ -1010,6 +1018,11 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.DexDepositLiquidityDataUserJettonWallet1,
 		&act.DexDepositLiquidityDataUserJettonWallet2,
 		&act.DexDepositLiquidityDataLpTokensMinted,
+		&act.DexDepositLiquidityDataTargetAsset1,
+		&act.DexDepositLiquidityDataTargetAsset1,
+		&act.DexDepositLiquidityDataTargetAmount1,
+		&act.DexDepositLiquidityDataTargetAmount2,
+		&act.DexDepositLiquidityDataVaultExcesses,
 		&act.StakingDataProvider,
 		&act.StakingDataTsNft,
 		&act.StakingDataTokensBurnt,

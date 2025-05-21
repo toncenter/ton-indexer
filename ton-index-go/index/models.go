@@ -453,6 +453,26 @@ func (p *RawActionJettonSwapPeerSwap) ScanIndex(i int) any {
 	}
 }
 
+type RawActionVaultExcessEntry struct {
+	Asset  *AccountAddress
+	Amount *string
+}
+
+func (p *RawActionVaultExcessEntry) ScanNull() error {
+	return fmt.Errorf("cannot scan NULL into RawActionVaultExcessEntry")
+}
+
+func (p *RawActionVaultExcessEntry) ScanIndex(i int) any {
+	switch i {
+	case 0:
+		return &p.Asset
+	case 1:
+		return &p.Amount
+	default:
+		panic("invalid index")
+	}
+}
+
 // traces
 type RawAction struct {
 	TraceId                                              *HashType
@@ -532,6 +552,11 @@ type RawAction struct {
 	DexDepositLiquidityDataUserJettonWallet1             *AccountAddress
 	DexDepositLiquidityDataUserJettonWallet2             *AccountAddress
 	DexDepositLiquidityDataLpTokensMinted                *string
+	DexDepositLiquidityDataTargetAsset1                  *AccountAddress
+	DexDepositLiquidityDataTargetAsset2                  *AccountAddress
+	DexDepositLiquidityDataTargetAmount1                 *string
+	DexDepositLiquidityDataTargetAmount2                 *string
+	DexDepositLiquidityDataVaultExcesses                 []RawActionVaultExcessEntry
 	StakingDataProvider                                  *string
 	StakingDataTsNft                                     *AccountAddress
 	StakingDataTokensBurnt                               *string
@@ -757,19 +782,27 @@ type ActionDetailsWtonMint struct {
 	Amount   *string         `json:"amount"`
 	Receiver *AccountAddress `json:"receiver"`
 }
-
+type ActionDetailsLiquidityVaultExcess struct {
+	Asset  *AccountAddress `json:"asset"`
+	Amount *string         `json:"amount"`
+}
 type ActionDetailsDexDepositLiquidity struct {
-	Dex                  *string         `json:"dex"`
-	Amount1              *string         `json:"amount_1"`
-	Amount2              *string         `json:"amount_2"`
-	Asset1               *AccountAddress `json:"asset_1"`
-	Asset2               *AccountAddress `json:"asset_2"`
-	UserJettonWallet1    *AccountAddress `json:"user_jetton_wallet_1"`
-	UserJettonWallet2    *AccountAddress `json:"user_jetton_wallet_2"`
-	Source               *AccountAddress `json:"source"`
-	Pool                 *AccountAddress `json:"pool"`
-	DestinationLiquidity *AccountAddress `json:"destination_liquidity"`
-	LpTokensMinted       *string         `json:"lp_tokens_minted"`
+	Dex                  *string                             `json:"dex"`
+	Amount1              *string                             `json:"amount_1"`
+	Amount2              *string                             `json:"amount_2"`
+	Asset1               *AccountAddress                     `json:"asset_1"`
+	Asset2               *AccountAddress                     `json:"asset_2"`
+	UserJettonWallet1    *AccountAddress                     `json:"user_jetton_wallet_1"`
+	UserJettonWallet2    *AccountAddress                     `json:"user_jetton_wallet_2"`
+	Source               *AccountAddress                     `json:"source"`
+	Pool                 *AccountAddress                     `json:"pool"`
+	DestinationLiquidity *AccountAddress                     `json:"destination_liquidity"`
+	LpTokensMinted       *string                             `json:"lp_tokens_minted"`
+	TargetAsset1         *AccountAddress                     `json:"target_asset_1"`
+	TargetAsset2         *AccountAddress                     `json:"target_asset_2"`
+	TargetAmount1        *string                             `json:"target_amount_1"`
+	TargetAmount2        *string                             `json:"target_amount_2"`
+	VaultExcesses        []ActionDetailsLiquidityVaultExcess `json:"vault_excesses"`
 }
 
 type ActionDetailsDexWithdrawLiquidity struct {

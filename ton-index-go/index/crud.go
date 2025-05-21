@@ -1953,6 +1953,12 @@ func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawActio
 	if v := raw_action.DexDepositLiquidityDataAsset2; v != nil {
 		(*addr_list)[(string)(*v)] = true
 	}
+	if v := raw_action.DexDepositLiquidityDataTargetAsset1; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.DexDepositLiquidityDataTargetAsset2; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
 	if v := raw_action.DexWithdrawLiquidityDataAsset1Out; v != nil {
 		(*addr_list)[(string)(*v)] = true
 	}
@@ -2099,6 +2105,11 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.dex_deposit_liquidity_data).user_jetton_wallet_1,
 				(A.dex_deposit_liquidity_data).user_jetton_wallet_2,
 				(A.dex_deposit_liquidity_data).lp_tokens_minted,
+				(A.dex_deposit_liquidity_data).target_asset_1,
+				(A.dex_deposit_liquidity_data).target_asset_2,
+				(A.dex_deposit_liquidity_data).target_amount_1,
+				(A.dex_deposit_liquidity_data).target_amount_2,
+				(A.dex_deposit_liquidity_data).vault_excesses,
 				(A.staking_data).provider,
 				(A.staking_data).ts_nft,
 				(A.staking_data).tokens_burnt,
