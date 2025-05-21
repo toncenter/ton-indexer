@@ -602,7 +602,6 @@ type RawAction struct {
 	JvaultStakePeriod                                    *int64
 	JvaultStakeMintedStakeJettons                        *string
 	JvaultStakeStakeWallet                               *AccountAddress
-	JvaultExitCode                                       *int64
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
