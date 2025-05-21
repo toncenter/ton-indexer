@@ -203,7 +203,7 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
     }
     action.asset = dex_incoming_transfer['asset']
     action.asset2 = dex_outgoing_transfer['asset']
-    if block.data['dex'] in ('stonfi_v2', 'dedust'):
+    if block.data['dex'] in ('stonfi_v2', 'dedust', 'tonco'):
         action.asset = _addr(block.data['source_asset'])
         action.asset2 = _addr(block.data['destination_asset'])
     action.source = dex_incoming_transfer['source']
@@ -220,6 +220,7 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
         'sender': _addr(block.data['sender']),
         'dex_incoming_transfer': dex_incoming_transfer,
         'dex_outgoing_transfer': dex_outgoing_transfer,
+        'min_out_amount': block.data['min_out_amount'] if 'min_out_amount' in block.data else None
     }
     if 'peer_swaps' in block.data and block.data['peer_swaps'] is not None:
         action.jetton_swap_data['peer_swaps'] = [_convert_peer_swap(swap) for swap in block.data['peer_swaps']]
@@ -571,6 +572,25 @@ def _fill_vesting_add_whitelist(block: VestingAddWhiteListBlock, action: Action)
         "accounts_added": list(map(_addr, block.data.accounts_added)),
     }
 
+def _fill_tonco_deploy_pool(block, action):
+    d = block.data
+    action.success = d.success
+    action.source = _addr(d.deployer)
+    action.destination = _addr(d.router)
+    action.destination_secondary = _addr(d.pool)
+    action.tonco_deploy_pool_data = {
+        "jetton0_router_wallet": _addr(d.jetton0_router_wallet),
+        "jetton1_router_wallet": _addr(d.jetton1_router_wallet),
+        "jetton0_minter": _addr(d.jetton0_minter),
+        "jetton1_minter": _addr(d.jetton1_minter),
+        "tick_spacing": d.tick_spacing,
+        "initial_price_x96": d.initial_price_x96,
+        "protocol_fee": d.protocol_fee,
+        "lp_fee_base": d.lp_fee_base,
+        "lp_fee_current": d.lp_fee_current,
+        "pool_active": d.pool_active,
+    }
+
 
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
@@ -653,6 +673,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_vesting_send_message(block, action)
         case 'vesting_add_whitelist':
             _fill_vesting_add_whitelist(block, action)
+        case 'tonco_deploy_pool':
+            _fill_tonco_deploy_pool(block, action)
         case 'tick_tock':
             _fill_tick_tock_action(block, action)
         case _:
@@ -710,6 +732,7 @@ v1_ops = [
     'tonstakers_deposit',
     'tonstakers_withdraw_request',
     'tonstakers_withdraw',
+    'tonco_deploy_pool',
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:

@@ -35,9 +35,6 @@ class TestEvaaActions(BaseGenericActionTest):
 class TestVestingActions(BaseGenericActionTest):
     yaml_file = "vesting.yaml"
 
-class TestToncoActions(BaseGenericActionTest):
-    yaml_file = "tonco.yaml"
-
 class TestUnknownAction:
 
     @pytest.mark.asyncio
@@ -55,3 +52,6 @@ class TestUnknownAction:
         assert actions[0].type == "unknown"
         assert set(actions[0]._accounts) == {"0:9E53B9A59CC76005E9B00D571D4933D8548361F87608D58BC1A0029FACCEF345"}
         assert set(actions[0].tx_hashes) == {"Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ++D+3E="}
+
+class TestToncoActions(BaseGenericActionTest):
+    yaml_file = "tonco.yaml"

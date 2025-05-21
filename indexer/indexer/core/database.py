@@ -293,7 +293,9 @@ class Action(Base):
             Column("amount_in", Numeric),
             Column("asset_out", String),
             Column("amount_out", Numeric),
-        ])))]))
+        ]))),
+        Column("min_out_amount", Numeric)
+    ]))
     change_dns_record_data = Column(CompositeType("change_dns_record_details", [
         Column("key", String),
         Column("value_schema", String),
@@ -391,6 +393,18 @@ class Action(Base):
         Column("ts_nft", String),
         Column("tokens_burnt", Numeric),
         Column("tokens_minted", Numeric),
+    ]))
+    tonco_deploy_pool_data = Column(CompositeType("tonco_deploy_pool_details", [
+        Column("jetton0_router_wallet", String),
+        Column("jetton1_router_wallet", String),
+        Column("jetton0_minter", String),
+        Column("jetton1_minter", String),
+        Column("tick_spacing", Integer),
+        Column("initial_price_x96", Numeric),
+        Column("protocol_fee", Integer),
+        Column("lp_fee_base", Integer),
+        Column("lp_fee_current", Integer),
+        Column("pool_active", Boolean),
     ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)

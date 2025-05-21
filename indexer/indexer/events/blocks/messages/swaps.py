@@ -48,12 +48,17 @@ def load_asset(slice: Slice) -> Asset:
         return Asset(False, Address((wc, account_id)))
 
 class PTonTransfer:
+    # ton_transfer query_id:uint64 ton_amount:Coins refund_address:MsgAddress forward_payload:(Either Cell ^Cell) = InternalMsgBody;
     opcode = 0x01f3835d
     def __init__(self, body: Slice):
         body.load_uint(32)
         self.query_id = body.load_uint(64)
         self.ton_amount = body.load_coins()
         self.refund_address = body.load_address()
+        self.forward_payload = body.load_maybe_ref()
+        if not self.forward_payload and body.remaining_refs > 0:
+            self.forward_payload = body.to_cell()
+
 
 
 class StonfiV2PayTo:
@@ -209,7 +214,7 @@ class ToncoRouterV3CreatePool:
         jetton_wallet0:MsgAddress
         jetton_wallet1:MsgAddress
         tick_spacing:int24
-        initial_priceX96:uint160
+        initial_price_x96:uint160
         protocol_fee:uint16
         lp_fee_base:uint16
         lp_fee_current:uint16
@@ -230,7 +235,7 @@ class ToncoRouterV3CreatePool:
         self.jetton_wallet0 = body.load_address()
         self.jetton_wallet1 = body.load_address()
         self.tick_spacing = body.load_int(24)
-        self.initial_priceX96 = body.load_uint(160)
+        self.initial_price_x96 = body.load_uint(160)
         self.protocol_fee = body.load_uint(16)
         self.lp_fee_base = body.load_uint(16)
         self.lp_fee_current = body.load_uint(16)
@@ -244,7 +249,7 @@ class ToncoRouterV3CreatePool:
         self.controller_addr = minter_slice.load_address()
 
 
-class RouterV3PayToPayload:
+class ToncoRouterV3PayTo:
     """
     Payload format for JETTON_TRANSFER_NOTIFICATION (0x7362d09c)
     Opcode: 0xa1daa96d
@@ -299,9 +304,9 @@ class RouterV3PayToPayload:
         coinsinfo_cell_ref = body.load_maybe_ref()
         if coinsinfo_cell_ref:
             coinsinfo_slice = coinsinfo_cell_ref.to_slice()
-            self.amount0 = coinsinfo_slice.load_coins()
+            self.amount0 = coinsinfo_slice.load_coins() or 0
             self.jetton0_address = coinsinfo_slice.load_address()
-            self.amount1 = coinsinfo_slice.load_coins()
+            self.amount1 = coinsinfo_slice.load_coins() or 0
             self.jetton1_address = coinsinfo_slice.load_address()
 
         # indexer_swap_info_cell (conditional)
@@ -316,7 +321,7 @@ class RouterV3PayToPayload:
             indexer_swap_info_cell_ref = body.load_maybe_ref()
             if indexer_swap_info_cell_ref:
                 indexer_swap_info_slice = indexer_swap_info_cell_ref.to_slice()
-                self.liquidity = indexer_swap_info_slice.load_uint(128)
+                self.liquidity = indexer_swap_info_slice.load_uint(128) or 0
                 self.price_sqrt = indexer_swap_info_slice.load_uint(160)
                 self.tick_swap = indexer_swap_info_slice.load_int(24)
                 self.fee_growth_global_0x128 = indexer_swap_info_slice.load_int(256)
@@ -353,7 +358,7 @@ class ToncoResetGas:
     def __init__(self, body: Slice):
         body.load_uint(32)
         self.query_id = body.load_uint(64)
-    
+
 
 # --- TONCO Position NFT Messages ---
 
@@ -661,15 +666,68 @@ class ToncoPoolV3Swap:
         self.owner_address = body.load_address()
         self.source_wallet = body.load_address()
         params_cell = body.load_ref().to_slice()
-        self.amount = params_cell.load_coins()
+        self.amount = params_cell.load_coins() or 0
         self.sqrt_price_limit_x96 = params_cell.load_uint(160)
-        self.min_out_amount = params_cell.load_coins()
+        self.min_out_amount = params_cell.load_coins() or 0
         payloads_cell = body.load_ref().to_slice()
         self.target_address = payloads_cell.load_address()
-        self.ok_forward_amount = payloads_cell.load_coins()
+        self.ok_forward_amount = payloads_cell.load_coins() or 0
         self.ok_forward_payload = payloads_cell.load_maybe_ref()
-        self.ret_forward_amount = payloads_cell.load_coins()
+        self.ret_forward_amount = payloads_cell.load_coins() or 0
         self.ret_forward_payload = payloads_cell.load_maybe_ref()
+    
+class ToncoPoolV3SwapPayload:
+    """With reason most obscure and purpose veiled in shadow,
+    tonco does employ the selfsame opcode for in_transfer payload, yet
+    with form so strange and foreign, not once described in scrolls of documentation.
+    Thus, like ancient runes deciphered, here lie message builders from the mystical 'eir sdk:
+
+    ```ts
+    swapRequest = beginCell()
+      .storeUint(ContractOpcodes.POOLV3_SWAP, 32) // Request to swap
+      .storeAddress(routerJettonWallet) // JettonWallet attached to Router is used to identify target token
+      .storeUint(priceLimitSqrt, 160) // Minimum/maximum price that we are ready to reach
+      .storeCoins(minimumAmountOut) // Minimum amount to get back
+      .storeAddress(recipient) // Address to receive result of the swap
+      .storeUint(0, 1) // Payload Maybe Ref // Address to recieve result of the swap
+      .endCell();
+    const multicallMessage = beginCell()
+        .storeUint(ContractOpcodes.POOLV3_SWAP, 32)
+        .storeAddress(jettonRouterWallet)
+        .storeUint(priceLimitSqrt || BigInt(0), 160)
+        .storeCoins(minimumAmountOut || BigInt(0))
+        .storeAddress(recipient)
+        .storeMaybeRef(getInnerMessage(isEmpty, Boolean(isPTON)))
+        .endCell();
+    ```"""
+    payload_opcode = 0xa7fb58f8
+    def __init__(self, body: Slice):
+        body.load_uint(32)
+        self.target_router_jwallet = body.load_address()
+        self.price_limit_sqrt = body.load_uint(160)
+        self.min_out_amount = body.load_coins() or 0
+        self.recipient = body.load_address()
+        self.payload = body.load_maybe_ref()
+    
+    def get_target_wallets_and_amounts_recursive(self) -> list[tuple[str, int]]:
+        accounts = []
+        
+        if isinstance(self.target_router_jwallet, Address):
+            accounts.append((self.target_router_jwallet.to_str(False).upper(), self.min_out_amount))
+        
+        if self.payload:
+            try:
+                inner_payload = self.payload.to_slice()
+                op = inner_payload.preload_uint(32)
+                if op == self.payload_opcode:
+                    next_payload = ToncoPoolV3SwapPayload(inner_payload)
+                    accounts.extend(next_payload.get_target_wallets_and_amounts_recursive())
+            except Exception:
+                pass
+        return accounts
+    
+    def get_target_wallets_recursive(self) -> set[str]:
+        return set([account[0] for account in self.get_target_wallets_and_amounts_recursive()])
 
 
 # --- TONCO Account Messages ---
@@ -716,4 +774,3 @@ class ToncoAccountV3RefundMe:
     def __init__(self, body: Slice):
         body.load_uint(32) # opcode
         self.query_id = body.load_uint(64)
-
