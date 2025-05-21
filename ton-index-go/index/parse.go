@@ -675,7 +675,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			StakeWallet: raw.SourceSecondary,
 			Pool:        raw.Destination,
 			Amount:      raw.Amount,
-			ExitCode:    raw.JvaultExitCode,
+			ExitCode:    (*int64)(raw.Opcode),
 		}
 	case "nft_discovery":
 		act.Details = ActionDetailsNftDiscovery{
