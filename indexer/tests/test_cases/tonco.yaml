@@ -1,0 +1,203 @@
+cases:
+  Tonco deploy pools:
+    trace-id: 4Zs27oXglTqSa90MBUaUOxgYCXpLG7JLnLQKw+CGiws=
+    expected-actions:
+      - type: tonco_deploy_pool
+        selector: "{{ value.destination_secondary == '0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931' }}"
+        values:
+          source: 0:911177BF27ED7FCD01D143160ACD1BBC31452506F7B893F4C57495449E12142D
+          destination: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+          destination_secondary: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+          success: true
+          tonco_deploy_pool_data:
+            jetton0_router_wallet: 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+            jetton1_router_wallet: 0:ACAD45796724B3F00AD42A4311B20667DA4BE28A43951587A381F73AA9552209
+            jetton0_minter: 0:949C4C66760C002800E2FA3D8A3CA4E1C90A9373B53AE7472033483BF14CD95E
+            jetton1_minter: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            tick_spacing: 60
+            initial_price_x96: 5919263403564396162379850192
+            protocol_fee: 33268
+            lp_fee_base: 15
+      
+      - type: tonco_deploy_pool
+        selector: "{{ value.destination_secondary == '0:D72A0D3ECBB43F8530EF08DCEF0BCFB6FCEB555833818D08E7C2DA111DDC4E9B' }}"
+        values:
+          source: 0:911177BF27ED7FCD01D143160ACD1BBC31452506F7B893F4C57495449E12142D
+          destination: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+          destination_secondary: 0:D72A0D3ECBB43F8530EF08DCEF0BCFB6FCEB555833818D08E7C2DA111DDC4E9B
+          success: true
+          tonco_deploy_pool_data:
+            jetton0_router_wallet: 0:3E49B65A5300D3A2D2C1D8232A88B1C0F721D1734EC98C8C980AF48FA41FB124
+            jetton1_router_wallet: 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+            jetton0_minter: 0:2F956143C461769579BAEF2E32CC2D7BC18283F40D20BB03E432CD603AC33FFC
+            jetton1_minter: 0:949C4C66760C002800E2FA3D8A3CA4E1C90A9373B53AE7472033483BF14CD95E
+            tick_spacing: 60
+            initial_price_x96: 2159938633973433351177391787024
+            protocol_fee: 33268
+            lp_fee_base: 15
+
+      - type: tonco_deploy_pool
+        selector: "{{ value.destination_secondary == '0:5F21B88BE3CA3B9D3D3D8E61D426F51A0E691C83B6A244B9969DDE256E0E66D8' }}"
+        values:
+          source: 0:911177BF27ED7FCD01D143160ACD1BBC31452506F7B893F4C57495449E12142D
+          destination: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+          destination_secondary: 0:5F21B88BE3CA3B9D3D3D8E61D426F51A0E691C83B6A244B9969DDE256E0E66D8
+          success: true
+          tonco_deploy_pool_data:
+            jetton0_router_wallet: 0:09BBE265C7C26E172D08818A5ABA2497C99A6F78BBFAC05AE5EACEB177354115
+            jetton1_router_wallet: 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+            jetton0_minter: 0:59FDC69F3F20EBE4A513B3468DC61D194C3864A4464E3662C903648D1A52E6E0
+            jetton1_minter: 0:949C4C66760C002800E2FA3D8A3CA4E1C90A9373B53AE7472033483BF14CD95E
+            tick_spacing: 60
+            initial_price_x96: 19318238274885264014289165235
+            protocol_fee: 33268
+            lp_fee_base: 15
+
+      - type: tonco_deploy_pool
+        selector: "{{ value.destination_secondary == '0:E27238EFC54C059FC67563957A7DAE9E3738D1F28174B809498C46532246A199' }}"
+        values:
+          source: 0:911177BF27ED7FCD01D143160ACD1BBC31452506F7B893F4C57495449E12142D
+          destination: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+          destination_secondary: 0:E27238EFC54C059FC67563957A7DAE9E3738D1F28174B809498C46532246A199
+          success: true
+          tonco_deploy_pool_data:
+            jetton0_router_wallet: 0:6C2562DA5419A2C1F9DBD9DEABD309DA0F9AE0232186E1CE3EE0BEFE335BBC42
+            jetton1_router_wallet: 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+            jetton0_minter: 0:AFC49CB8786F21C87045B19EDE78FC6B46C51048513F8E9A6D44060199C1BF0C
+            jetton1_minter: 0:949C4C66760C002800E2FA3D8A3CA4E1C90A9373B53AE7472033483BF14CD95E
+            tick_spacing: 60
+            initial_price_x96: 884060731490950018992967799
+            protocol_fee: 33268
+            lp_fee_base: 15
+
+      - type: tonco_deploy_pool
+        selector: "{{ value.destination_secondary == '0:951AAB2CC50BABC6E434FFADA95D55CFB75D3EE9B0D9AD2A6798049D7E89926E' }}"
+        values:
+          source: 0:911177BF27ED7FCD01D143160ACD1BBC31452506F7B893F4C57495449E12142D
+          destination: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+          destination_secondary: 0:951AAB2CC50BABC6E434FFADA95D55CFB75D3EE9B0D9AD2A6798049D7E89926E
+          success: true
+          tonco_deploy_pool_data:
+            jetton0_router_wallet: 0:912CB3D915C24E910A94F0A6B769EE6D008BF5AD35F4AAD1E0CFF2237AA0374F
+            jetton1_router_wallet: 0:ACAD45796724B3F00AD42A4311B20667DA4BE28A43951587A381F73AA9552209
+            jetton0_minter: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
+            jetton1_minter: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            tick_spacing: 60
+            initial_price_x96: 6053490479719594607004550322
+            protocol_fee: 33268
+            lp_fee_base: 15
+
+  Tonco swap USDT -> TON:
+    trace-id: g1JLQayzzERU9tojKPorN9Asd-MCF_0omnRkwOd_Olo=
+    expected-actions:
+      - type: jetton_swap
+        values:
+          jetton_swap_data:
+            peer_swaps: []
+            dex: tonco
+            sender: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+            dex_incoming_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 12908705
+              source: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+              source_jetton_wallet: 0:66645F72E516B6499286E2847B90D4907408011CFDA4D5753EB8E2AC3C2E12EE
+              destination: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+              destination_jetton_wallet: 0:ACAD45796724B3F00AD42A4311B20667DA4BE28A43951587A381F73AA9552209
+            dex_outgoing_transfer:
+              asset: null
+              amount: 3788797653
+              source: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+              source_jetton_wallet: null
+              destination: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+              destination_jetton_wallet: null
+
+  Tonco swap USDT -> STORM with hop:
+    trace-id: CjtIXjqazbSFrtPqqMMFBgMG6-huwp5CfNtXpQAf8xY=
+    expected-actions:
+      - type: jetton_swap
+        values:
+          jetton_swap_data.peer_swaps[0]:
+            amount_in: 10000000
+            asset_in: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            amount_out: 2907640091
+            asset_out: null
+          jetton_swap_data.peer_swaps[1]:
+            amount_in: 2907640091
+            asset_in: null
+            amount_out: 541070180798
+            asset_out: 0:6CA2C99C66B0FA1478A303BA9618BC39C28FDA1FC50DE37E618BDDF98C9FD24C
+          jetton_swap_data:
+            dex: tonco
+            sender: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+            dex_incoming_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 10000000
+              source: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+              source_jetton_wallet: 0:66645F72E516B6499286E2847B90D4907408011CFDA4D5753EB8E2AC3C2E12EE
+              destination: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+              destination_jetton_wallet: 0:ACAD45796724B3F00AD42A4311B20667DA4BE28A43951587A381F73AA9552209
+            dex_outgoing_transfer:
+              asset: 0:6CA2C99C66B0FA1478A303BA9618BC39C28FDA1FC50DE37E618BDDF98C9FD24C
+              amount: 541070180798
+              source: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+              source_jetton_wallet: 0:3EB3EBA11279124F2DDD8ECA6C10BCC602CFA4FA9CC819A46A7AF0E6FD9BC7B4
+              destination: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+              destination_jetton_wallet: 0:AC1A1D26FA88B310EDC87D2604A5101E438B48D487A157D507B38BA741087706
+
+  Tonco swap TON -> USDT failed:
+    trace-id: 02TsVcC_MOggAZvHHBITbHCvzAt_hCq5WVAiKcZFMno=
+    expected-actions:
+      - type: jetton_swap
+        values:
+          asset: null
+          asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+          source: 0:93D1D18CC577322A938CD3E6F86BEDAF1D05A30947B936E88B78512E5DFB335A
+          jetton_swap_data:
+            dex: tonco
+            dex_incoming_transfer:
+              asset: null
+              amount: 952556061547
+              source: 0:93D1D18CC577322A938CD3E6F86BEDAF1D05A30947B936E88B78512E5DFB335A
+              source_jetton_wallet: null
+              destination: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+              destination_jetton_wallet: 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+            dex_outgoing_transfer:
+              asset: null
+              amount: 952556061547
+              source: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+              source_jetton_wallet: null
+              destination: 0:93D1D18CC577322A938CD3E6F86BEDAF1D05A30947B936E88B78512E5DFB335A
+              destination_jetton_wallet: null
+            peer_swaps: []
+            min_out_amount: 2856642750
+
+  Tonco swap TON -> KUKU:
+    trace-id: 03dhjTFKdEV_03M0b0aDfZvdlWxVoUutqXaXRyYG9nw=
+    expected-actions:
+      - type: jetton_swap
+        values:
+          asset: null
+          asset2: 0:8353D80DB0653BD7316E016E3DF0757D248E32D354E49C9A60B71BCB3D46A73E
+          source: 0:7A31101385A1677BC23E996DE3104F6816D1D6A019663013A7DCDC903D870501
+          jetton_swap_data:
+            dex: tonco
+            dex_incoming_transfer:
+              asset: null
+              amount: 10000000000
+              source: 0:7A31101385A1677BC23E996DE3104F6816D1D6A019663013A7DCDC903D870501
+              source_jetton_wallet: null
+              destination: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+              destination_jetton_wallet: 0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17
+            dex_outgoing_transfer:
+              asset: 0:8353D80DB0653BD7316E016E3DF0757D248E32D354E49C9A60B71BCB3D46A73E
+              amount: 48774167123703
+              source: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+              source_jetton_wallet: 0:5F4F4273326DBEA5F5DEA2FB7B1C4EDEC4845071B7D4D910981822151C528EE3
+              destination: 0:7A31101385A1677BC23E996DE3104F6816D1D6A019663013A7DCDC903D870501
+              destination_jetton_wallet: 0:F5132426DE87C2E13869A66462CBD3CDA5281C4FF4136E2A78382305044DC85A
+            peer_swaps: []
+            min_out_amount: 48774167123703
+      - type: ton_transfer
+        values:
+          value: 10000000
+          comment: null
