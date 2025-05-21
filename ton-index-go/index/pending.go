@@ -124,12 +124,33 @@ func (c *EmulatedTracesContext) GetTraces() []pgx.Row {
 	return rows
 }
 
+func (c *EmulatedTracesContext) GetAllActions() []pgx.Row {
+	rows := make([]pgx.Row, 0)
+	for _, traceKey := range c.traceKeys {
+		if actions, ok := c.emulatedActions[traceKey]; ok {
+			sort.Slice(actions, func(i, j int) bool {
+				if actions[i].EndLt == actions[j].EndLt {
+					return actions[i].StartLt > actions[j].StartLt
+				}
+				return actions[i].EndLt > actions[j].EndLt
+			})
+			for _, action := range actions {
+				rows = append(rows, emulated.NewRow(action))
+			}
+		}
+	}
+	return rows
+}
+
 func (c *EmulatedTracesContext) GetActions(supportedActions []string) []pgx.Row {
 	rows := make([]pgx.Row, 0)
 	supportedActionsSet := mapset.NewSet(supportedActions...)
 	for _, traceKey := range c.traceKeys {
 		if actions, ok := c.emulatedActions[traceKey]; ok {
 			sort.Slice(actions, func(i, j int) bool {
+				if actions[i].EndLt == actions[j].EndLt {
+					return actions[i].StartLt > actions[j].StartLt
+				}
 				return actions[i].EndLt > actions[j].EndLt
 			})
 			for _, action := range actions {
