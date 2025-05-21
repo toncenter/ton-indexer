@@ -462,6 +462,8 @@ func (t *ActionRow) getAssigns() []assign {
 		assignIntPtr(t.JvaultStakePeriod),
 		assignStringPtr(t.JvaultStakeMintedStakeJettons),
 		assignStringPtr(t.JvaultStakeStakeWallet),
+
+		assignStrCompatibleSlice(t.AncestorType),
 	}
 }
 

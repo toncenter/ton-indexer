@@ -166,7 +166,8 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.jvault_claim_data).claimed_amounts,
 		(A.jvault_stake_data).period,
 		(A.jvault_stake_data).minted_stake_jettons,
-		(A.jvault_stake_data).stake_wallet`
+		(A.jvault_stake_data).stake_wallet,
+		A.ancestor_type`
 	clmn_query := clmn_query_default
 	from_query := `actions as A`
 	filter_list := []string{}

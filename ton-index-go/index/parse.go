@@ -739,6 +739,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		act.Details = &details
 		act.RawAction = raw
 	}
+	act.AncestorType = raw.AncestorType
 	return &act, nil
 }
 
@@ -1116,7 +1117,11 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.JvaultClaimClaimedAmounts,
 		&act.JvaultStakePeriod,
 		&act.JvaultStakeMintedStakeJettons,
-		&act.JvaultStakeStakeWallet)
+		&act.JvaultStakeStakeWallet,
+		// &act.JvaultExitCode,
+
+		&act.AncestorType,
+	)
 
 	if err != nil {
 		return nil, err
