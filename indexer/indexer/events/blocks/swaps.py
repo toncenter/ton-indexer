@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any
 
-from pytoniq_core import Slice
+from pytoniq_core import Slice, Cell, begin_cell
 
 from indexer.core.database import Message
 from indexer.events import context
@@ -928,6 +928,7 @@ class ToncoSwapBlockMatcher(BlockMatcher):
         # process incoming transfer data
         in_transfer_data = {}
         sender = None
+        in_transfer_payload = begin_cell().end_cell()
         
         if isinstance(in_transfer_block, JettonTransferBlock):
             sender = in_transfer_block.data.get('sender')
@@ -947,8 +948,10 @@ class ToncoSwapBlockMatcher(BlockMatcher):
                 'source_jetton_wallet': in_transfer_block.data.get('sender_wallet'),
                 'destination': in_transfer_block.data.get('receiver'),
                 'destination_jetton_wallet': in_transfer_block.data.get('receiver_wallet'),
-                'forward_payload': in_transfer_block.data.get('forward_payload')  # added forward_payload
             }
+            payload = in_transfer_block.data.get('forward_payload')
+            if isinstance(payload, Cell):
+                in_transfer_payload = payload
         else:
             # handle incoming TON or pTON transfer via notification
             try:
@@ -969,8 +972,9 @@ class ToncoSwapBlockMatcher(BlockMatcher):
                     'source_jetton_wallet': None,
                     'destination': AccountId(block.event_nodes[0].message.source),
                     'destination_jetton_wallet': AccountId(message.destination),
-                    'forward_payload': forward_payload
                 }
+                if forward_payload:
+                    in_transfer_payload = forward_payload
             except Exception as e:
                 logger.warning(f"Error processing Tonco swap incoming (ton) transfer: {e}", exc_info=True)
                 return []
@@ -1118,25 +1122,28 @@ class ToncoSwapBlockMatcher(BlockMatcher):
         min_out_amount = out_transfer_data['amount']
         # if the swap failed, extract target_jetton_wallet from original swap message
         if not ok and swap_steps:
-            swap_payload = ToncoPoolV3SwapPayload(in_transfer_data['forward_payload'].begin_parse())
-            target_wallets = swap_payload.get_target_wallets_and_amounts_recursive()
-            target_jetton_wallet, min_out_amount = target_wallets[-1] if target_wallets else (None, None)
-            if target_jetton_wallet:
-                target_asset = jetton_wallet_asset_map.get(target_jetton_wallet)
-                if not target_asset:
-                    try:
-                        target_wallet = await context.interface_repository.get().get_jetton_wallet(target_jetton_wallet)
-                        if target_wallet is not None:
-                            if target_wallet.jetton in PTonTransferMatcher.pton_masters:
-                                target_asset = Asset(is_ton=True)
-                            else:
-                                target_asset = Asset(is_ton=False, jetton_address=target_wallet.jetton)
-                    except Exception as e:
-                        logger.warning(f"Error determining target asset for failed swap: {e}")
-                
-                if target_asset:
-                    destination_asset = target_asset
-                    min_out_amount = Amount(min_out_amount or 0)
+            try:
+                swap_payload = ToncoPoolV3SwapPayload(in_transfer_payload.begin_parse())
+                target_wallets = swap_payload.get_target_wallets_and_amounts_recursive()
+                target_jetton_wallet, min_out_amount = target_wallets[-1] if target_wallets else (None, None)
+                if target_jetton_wallet:
+                    target_asset = jetton_wallet_asset_map.get(target_jetton_wallet)
+                    if not target_asset:
+                        try:
+                            target_wallet = await context.interface_repository.get().get_jetton_wallet(target_jetton_wallet)
+                            if target_wallet is not None:
+                                if target_wallet.jetton in PTonTransferMatcher.pton_masters:
+                                    target_asset = Asset(is_ton=True)
+                                else:
+                                    target_asset = Asset(is_ton=False, jetton_address=target_wallet.jetton)
+                        except Exception as e:
+                            logger.warning(f"Error determining target asset for failed swap: {e}")
+                    
+                    if target_asset:
+                        destination_asset = target_asset
+                        min_out_amount = Amount(min_out_amount or 0)
+            except Exception as e:
+                logger.info(f"Error determining target asset for failed swap: {e}")
             
         # final block
         new_block = JettonSwapBlock({
