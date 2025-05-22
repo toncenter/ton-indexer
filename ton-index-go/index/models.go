@@ -1102,6 +1102,8 @@ type ActionDetailsEvaaLiquidate struct {
 	BorrowerContract *AccountAddress `json:"borrower_contract"`
 	Collateral       *AccountAddress `json:"collateral"`
 	AssetId          *string         `json:"asset_id"`
+	Asset            *AccountAddress `json:"asset"`
+	IsKnownAsset     bool            `json:"is_known_asset"`
 	Amount           *string         `json:"amount"`
 }
 
