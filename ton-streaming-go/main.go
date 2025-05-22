@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/websocket/v2"
@@ -286,10 +287,18 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 		adjustedMetadata = &index.Metadata{}
 	}
 	var allAddresses = map[string]bool{}
+	supportedActionsSet := mapset.NewSet(client.Subscription.SupportedActionTypes...)
 	for idx, action := range n.Actions {
 		actionAddresses := n.ActionAddresses[idx]
 
 		if client.Subscription.InterestedIn(n.Type, actionAddresses) {
+			if supportedActionsSet.ContainsAny(action.AncestorType...) {
+				continue
+			}
+			if !supportedActionsSet.ContainsAny(action.Type) {
+				continue
+			}
+
 			adjustedActions = append(adjustedActions, action)
 			adjustedActionAddresses = append(adjustedActionAddresses, actionAddresses)
 
@@ -873,7 +882,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 
 		supportedActionTypes := []string{}
 		if req.SupportedActionTypes != nil {
-			supportedActionTypes = *req.SupportedActionTypes
+			supportedActionTypes = index.ExpandActionTypeShortcuts(*req.SupportedActionTypes)
 		}
 
 		client := &Client{
@@ -946,9 +955,10 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			ID:        clientID,
 			Connected: true,
 			Subscription: Subscription{
-				SubscribedAddresses: make(map[string][]EventType),
-				IncludeAddressBook:  false,
-				IncludeMetadata:     false,
+				SubscribedAddresses:  make(map[string][]EventType),
+				SupportedActionTypes: []string{},
+				IncludeAddressBook:   false,
+				IncludeMetadata:      false,
 			},
 			SendEvent: func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
 		}
@@ -1020,7 +1030,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				client.Subscription.IncludeMetadata = *req.IncludeMetadata
 			}
 			if req.SupportedActionTypes != nil {
-				client.Subscription.SupportedActionTypes = *req.SupportedActionTypes
+				client.Subscription.SupportedActionTypes = index.ExpandActionTypeShortcuts(*req.SupportedActionTypes)
 			}
 			client.mu.Unlock()
 
