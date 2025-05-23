@@ -90,7 +90,7 @@ type GenericRequest struct {
 	Addresses            *[]string    `json:"addresses"`
 	Types                *[]EventType `json:"types"`
 	ActionTypes          []string     `json:"action_types"`
-	SupportedActionTypes *[]string    `json:"supported_action_types"`
+	SupportedActionTypes []string     `json:"supported_action_types"`
 	IncludeAddressBook   *bool        `json:"include_address_book,omitempty"`
 	IncludeMetadata      *bool        `json:"include_metadata,omitempty"`
 }
@@ -850,7 +850,7 @@ func ValidateSubscription(req *GenericRequest) (map[string][]EventType, error) {
 	hasSettings := req.IncludeAddressBook != nil ||
 		req.IncludeMetadata != nil ||
 		len(req.ActionTypes) > 0 ||
-		req.SupportedActionTypes != nil
+		len(req.SupportedActionTypes) > 0
 
 	if hasSettings {
 		return nil, fmt.Errorf("changing settings are not allowed for subscribe operation, use separate operation configure")
@@ -888,7 +888,7 @@ func ValidateSettings(req *GenericRequest) error {
 	hasSettings := req.IncludeAddressBook != nil ||
 		req.IncludeMetadata != nil ||
 		len(req.ActionTypes) > 0 ||
-		req.SupportedActionTypes != nil
+		len(req.SupportedActionTypes) > 0
 
 	if !hasSettings {
 		return fmt.Errorf("at least one setting must be provided for configure operation")
@@ -949,11 +949,6 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 		clientID := fmt.Sprintf("%s-%s", c.IP(), time.Now().Format(time.RFC3339Nano))
 		eventCh := make(chan []byte, 16)
 
-		supportedActionTypes := []string{}
-		if req.SupportedActionTypes != nil {
-			supportedActionTypes = index.ExpandActionTypeShortcuts(*req.SupportedActionTypes)
-		}
-
 		client := &Client{
 			ID:        clientID,
 			Connected: true,
@@ -962,7 +957,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				IncludeAddressBook:   req.IncludeAddressBook != nil && *req.IncludeAddressBook,
 				IncludeMetadata:      req.IncludeMetadata != nil && *req.IncludeMetadata,
 				ActionTypes:          req.ActionTypes,
-				SupportedActionTypes: supportedActionTypes,
+				SupportedActionTypes: index.ExpandActionTypeShortcuts(req.SupportedActionTypes),
 			},
 			SendEvent: func(b []byte) error {
 				select {
@@ -1026,7 +1021,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			Connected: true,
 			Subscription: Subscription{
 				SubscribedAddresses:  make(map[string][]EventType),
-				SupportedActionTypes: []string{},
+				SupportedActionTypes: index.ExpandActionTypeShortcuts([]string{}),
 				IncludeAddressBook:   false,
 				IncludeMetadata:      false,
 			},
@@ -1117,8 +1112,8 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				if req.IncludeMetadata != nil {
 					client.Subscription.IncludeMetadata = *req.IncludeMetadata
 				}
-				if req.SupportedActionTypes != nil {
-					client.Subscription.SupportedActionTypes = index.ExpandActionTypeShortcuts(*req.SupportedActionTypes)
+				if len(req.SupportedActionTypes) > 0 {
+					client.Subscription.SupportedActionTypes = index.ExpandActionTypeShortcuts(req.SupportedActionTypes)
 				}
 				if len(req.ActionTypes) > 0 {
 					client.Subscription.ActionTypes = req.ActionTypes
