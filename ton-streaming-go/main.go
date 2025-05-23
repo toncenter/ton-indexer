@@ -50,6 +50,7 @@ const (
 // Subscription represents a client's subscription to blockchain events
 type Subscription struct {
 	SubscribedAddresses  map[string][]EventType
+	ActionTypes          []string
 	SupportedActionTypes []string
 	IncludeAddressBook   bool
 	IncludeMetadata      bool
@@ -89,6 +90,7 @@ type SubscriptionRequest struct {
 	Operation            string       `json:"operation"`
 	Addresses            *[]string    `json:"addresses"`
 	Types                *[]EventType `json:"types"`
+	ActionTypes          []string     `json:"action_types"`
 	SupportedActionTypes *[]string    `json:"supported_action_types"`
 	IncludeAddressBook   *bool        `json:"include_address_book,omitempty"`
 	IncludeMetadata      *bool        `json:"include_metadata,omitempty"`
@@ -288,10 +290,15 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	}
 	var allAddresses = map[string]bool{}
 	supportedActionsSet := mapset.NewSet(client.Subscription.SupportedActionTypes...)
+	filterActionsSet := mapset.NewSet(client.Subscription.ActionTypes...)
 	for idx, action := range n.Actions {
 		actionAddresses := n.ActionAddresses[idx]
 
 		if client.Subscription.InterestedIn(n.Type, actionAddresses) {
+			if !filterActionsSet.IsEmpty() && !filterActionsSet.ContainsAny(action.Type) {
+				continue
+			}
+
 			if supportedActionsSet.ContainsAny(action.AncestorType...) {
 				continue
 			}
@@ -892,6 +899,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				SubscribedAddresses:  addrMap,
 				IncludeAddressBook:   req.IncludeAddressBook != nil && *req.IncludeAddressBook,
 				IncludeMetadata:      req.IncludeMetadata != nil && *req.IncludeMetadata,
+				ActionTypes:          req.ActionTypes,
 				SupportedActionTypes: supportedActionTypes,
 			},
 			SendEvent: func(b []byte) error {
@@ -950,7 +958,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 
 func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 	return func(c *websocket.Conn) {
-		clientID := c.RemoteAddr().String()
+		clientID := fmt.Sprintf("%s-%s", c.RemoteAddr(), time.Now().Format(time.RFC3339Nano))
 		client := &Client{
 			ID:        clientID,
 			Connected: true,
@@ -1031,6 +1039,9 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			}
 			if req.SupportedActionTypes != nil {
 				client.Subscription.SupportedActionTypes = index.ExpandActionTypeShortcuts(*req.SupportedActionTypes)
+			}
+			if len(req.ActionTypes) > 0 {
+				client.Subscription.ActionTypes = req.ActionTypes
 			}
 			client.mu.Unlock()
 
