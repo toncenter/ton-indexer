@@ -359,21 +359,22 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	raw_traces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
 	if err != nil {
-		log.Printf("Error loading raw traces: %v", err)
+		log.Printf("Error loading raw traces: %v, trace key: %s", err, traceExternalHashNorm)
 		return
 	}
 
 	emulatedContext := index.NewEmptyContext(false)
-	if err := emulatedContext.FillFromRawData(raw_traces); err != nil {
-		log.Printf("Error filling context from raw data: %v", err)
+	err = emulatedContext.FillFromRawData(raw_traces)
+	if err != nil {
+		log.Printf("Error filling context from raw data: %v, trace key: %s", err, traceExternalHashNorm)
 		return
 	}
 	if emulatedContext.GetTraceCount() > 1 {
-		log.Printf("More than 1 trace in the context")
+		log.Printf("More than 1 trace in the context, trace key: %s", traceExternalHashNorm)
 		return
 	}
 	if emulatedContext.GetTraceCount() == 0 {
-		log.Printf("No traces in the context")
+		log.Printf("No traces in the context, trace key: %s", traceExternalHashNorm)
 		return
 	}
 
@@ -547,22 +548,22 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	raw_traces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
 	if err != nil {
-		log.Printf("Error loading raw traces: %v", err)
+		log.Printf("Error loading raw traces: %v, trace key: %s", err, traceExternalHashNorm)
 		return
 	}
 
 	emulatedContext := index.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(raw_traces)
 	if err != nil {
-		log.Printf("Error filling context from raw data: %v", err)
+		log.Printf("Error filling context from raw data: %v, trace key: %s", err, traceExternalHashNorm)
 		return
 	}
 	if emulatedContext.GetTraceCount() > 1 {
-		log.Printf("More than 1 trace in the context")
+		log.Printf("More than 1 trace in the context, trace key: %s", traceExternalHashNorm)
 		return
 	}
 	if emulatedContext.GetTraceCount() == 0 {
-		log.Printf("No traces in the context")
+		log.Printf("No traces in the context, trace key: %s", traceExternalHashNorm)
 		return
 	}
 
@@ -683,22 +684,22 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	raw_traces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
 	if err != nil {
-		log.Printf("Error loading raw traces: %v", err)
+		log.Printf("Error loading raw traces: %v, trace key: %s", err, traceExternalHashNorm)
 		return
 	}
 
 	emulatedContext := index.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(raw_traces)
 	if err != nil {
-		log.Printf("Error filling context from raw data: %v", err)
+		log.Printf("Error filling context from raw data: %v, trace key: %s", err, traceExternalHashNorm)
 		return
 	}
 	if emulatedContext.GetTraceCount() > 1 {
-		log.Printf("More than 1 trace in the context")
+		log.Printf("More than 1 trace in the context, trace key: %s", traceExternalHashNorm)
 		return
 	}
 	if emulatedContext.GetTraceCount() == 0 {
-		log.Printf("No traces in the context")
+		log.Printf("No traces in the context, trace key: %s", traceExternalHashNorm)
 		return
 	}
 	rows := emulatedContext.GetTransactionsByTraceIdAndHash(traceExternalHashNorm, txHashes)
