@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -84,10 +83,10 @@ func (s *Subscription) InterestedIn(eventType EventType, eventAddresses []string
 	return false
 }
 
-// SubscriptionRequest represents a subscription/unsubscription request
-type SubscriptionRequest struct {
+// GenericRequest represents a subscription/unsubscription request
+type GenericRequest struct {
 	Id                   *string      `json:"id"`
-	Operation            string       `json:"operation"`
+	Operation            *string      `json:"operation"`
 	Addresses            *[]string    `json:"addresses"`
 	Types                *[]EventType `json:"types"`
 	ActionTypes          []string     `json:"action_types"`
@@ -806,15 +805,55 @@ var validEventTypes = map[EventType]struct{}{
 	Transactions:        {},
 }
 
-// ValidateSubscription performs all syntactic checks in one place and returns the
-// address→event‑types map that goes straight into the Subscription struct.
-func ValidateSubscription(req *SubscriptionRequest) (map[string][]EventType, error) {
-	if req.Operation != "subscribe" {
-		return nil, fmt.Errorf("invalid operation: %s", req.Operation)
+func ValidateSSERequest(req *GenericRequest) (map[string][]EventType, error) {
+	if req.Addresses == nil || len(*req.Addresses) == 0 {
+		return nil, fmt.Errorf("addresses are required for subscribe operation")
+	}
+	if req.Types == nil || len(*req.Types) == 0 {
+		return nil, fmt.Errorf("types are required for subscribe operation")
 	}
 
-	if req.Addresses == nil || len(*req.Addresses) == 0 || req.Types == nil || len(*req.Types) == 0 {
-		return nil, errors.New("addresses and types are required")
+	addrMap := make(map[string][]EventType, len(*req.Addresses))
+	for _, a := range *req.Addresses {
+		cnv, err := convertAddress(a)
+		if err != nil {
+			return nil, err
+		}
+		addrMap[cnv] = *req.Types
+	}
+
+	for _, t := range *req.Types {
+		if _, ok := validEventTypes[t]; !ok {
+			return nil, fmt.Errorf("invalid event type: %s", t)
+		}
+	}
+	return addrMap, nil
+}
+
+func ValidateSubscription(req *GenericRequest) (map[string][]EventType, error) {
+	if req.Operation == nil {
+		return nil, fmt.Errorf("operation is required")
+	}
+
+	if *req.Operation != "subscribe" {
+		return nil, fmt.Errorf("invalid operation: %s", *req.Operation)
+	}
+
+	// For subscribe operation, addresses and types are required
+	if req.Addresses == nil || len(*req.Addresses) == 0 {
+		return nil, fmt.Errorf("addresses are required for subscribe operation")
+	}
+	if req.Types == nil || len(*req.Types) == 0 {
+		return nil, fmt.Errorf("types are required for subscribe operation")
+	}
+
+	hasSettings := req.IncludeAddressBook != nil ||
+		req.IncludeMetadata != nil ||
+		len(req.ActionTypes) > 0 ||
+		req.SupportedActionTypes != nil
+
+	if hasSettings {
+		return nil, fmt.Errorf("changing settings are not allowed for subscribe operation, use separate operation configure")
 	}
 
 	// convert addresses once; capacity = len(req.Addresses) avoids reallocs
@@ -833,6 +872,29 @@ func ValidateSubscription(req *SubscriptionRequest) (map[string][]EventType, err
 		}
 	}
 	return addrMap, nil
+}
+
+// ValidateSettings validates the settings update request
+func ValidateSettings(req *GenericRequest) error {
+	if req.Operation == nil {
+		return fmt.Errorf("operation is required")
+	}
+
+	if *req.Operation != "configure" {
+		return fmt.Errorf("invalid operation: %s", *req.Operation)
+	}
+
+	// For configure, at least one setting should be provided
+	hasSettings := req.IncludeAddressBook != nil ||
+		req.IncludeMetadata != nil ||
+		len(req.ActionTypes) > 0 ||
+		req.SupportedActionTypes != nil
+
+	if !hasSettings {
+		return fmt.Errorf("at least one setting must be provided for configure operation")
+	}
+
+	return nil
 }
 
 // convertAddress keeps the reflection ugliness in one place.
@@ -875,7 +937,7 @@ func sendWSJSONErr(c *websocket.Conn, id *string, err error) {
 
 func SSEHandler(manager *ClientManager) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		var req SubscriptionRequest
+		var req GenericRequest
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Error: fmt.Sprintf("invalid subscription request: %v", err)})
 		}
@@ -983,19 +1045,23 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				return
 			}
 
-			var req SubscriptionRequest
+			var req GenericRequest
 			if err := json.Unmarshal(msg, &req); err != nil {
 				sendWSJSONErr(c, nil, fmt.Errorf("invalid subscription request: %v", err))
 				continue
 			}
-
-			if req.Operation == "ping" {
-				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "pong"})
-				_ = c.WriteMessage(websocket.TextMessage, ack)
+			if req.Operation == nil {
+				sendWSJSONErr(c, req.Id, fmt.Errorf("operation is required"))
 				continue
 			}
 
-			if req.Operation == "unsubscribe" {
+			switch *req.Operation {
+			case "ping":
+				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "pong"})
+				_ = c.WriteMessage(websocket.TextMessage, ack)
+				continue
+
+			case "unsubscribe":
 				if req.Addresses == nil || len(*req.Addresses) == 0 {
 					sendWSJSONErr(c, req.Id, fmt.Errorf("addresses are required"))
 					continue
@@ -1020,33 +1086,52 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "unsubscribed"})
 				_ = c.WriteMessage(websocket.TextMessage, ack)
 				continue
-			}
 
-			addrMap, err := ValidateSubscription(&req)
-			if err != nil {
-				sendWSJSONErr(c, req.Id, err)
+			case "subscribe":
+				// Handle address subscription
+				addrMap, err := ValidateSubscription(&req)
+				if err != nil {
+					sendWSJSONErr(c, req.Id, err)
+					continue
+				}
+
+				client.mu.Lock()
+				client.Subscription.AddSubscribedAddresses(addrMap)
+				client.mu.Unlock()
+
+				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "subscribed"})
+				_ = c.WriteMessage(websocket.TextMessage, ack)
 				continue
-			}
 
-			// apply subscription atomically
-			client.mu.Lock()
-			client.Subscription.AddSubscribedAddresses(addrMap)
-			if req.IncludeAddressBook != nil {
-				client.Subscription.IncludeAddressBook = *req.IncludeAddressBook
-			}
-			if req.IncludeMetadata != nil {
-				client.Subscription.IncludeMetadata = *req.IncludeMetadata
-			}
-			if req.SupportedActionTypes != nil {
-				client.Subscription.SupportedActionTypes = index.ExpandActionTypeShortcuts(*req.SupportedActionTypes)
-			}
-			if len(req.ActionTypes) > 0 {
-				client.Subscription.ActionTypes = req.ActionTypes
-			}
-			client.mu.Unlock()
+			case "configure":
+				// Handle settings update
+				if err := ValidateSettings(&req); err != nil {
+					sendWSJSONErr(c, req.Id, err)
+					continue
+				}
 
-			ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "subscribed"})
-			_ = c.WriteMessage(websocket.TextMessage, ack)
+				client.mu.Lock()
+				if req.IncludeAddressBook != nil {
+					client.Subscription.IncludeAddressBook = *req.IncludeAddressBook
+				}
+				if req.IncludeMetadata != nil {
+					client.Subscription.IncludeMetadata = *req.IncludeMetadata
+				}
+				if req.SupportedActionTypes != nil {
+					client.Subscription.SupportedActionTypes = index.ExpandActionTypeShortcuts(*req.SupportedActionTypes)
+				}
+				if len(req.ActionTypes) > 0 {
+					client.Subscription.ActionTypes = req.ActionTypes
+				}
+				client.mu.Unlock()
+
+				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "configured"})
+				_ = c.WriteMessage(websocket.TextMessage, ack)
+				continue
+
+			default:
+				sendWSJSONErr(c, req.Id, fmt.Errorf("unknown operation: %s", *req.Operation))
+			}
 		}
 	}
 }
