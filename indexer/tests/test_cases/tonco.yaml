@@ -283,3 +283,54 @@ cases:
             amount2: null
             asset2: null # TON
             user_jetton_wallet_2: null
+
+  Tonco deposit liquidity two sides jetton:
+    trace-id: 0_JGy9zypUz4Br8zqCwx12YnRM-WxcP2MDeYHHDkdwI=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        selector: "{{ value.dex_deposit_liquidity_data.is_complete == false }}"
+        values:
+          source: 0:D0BE5B9AC15B195A8514ACF29518A5D3C85D376238EB208FACA60B747FFA6CFA
+          source_secondary: 0:A92F898C29B1E36A52E526A7AD2EF7D41B16F45B1ACA603F8F68A5143AABB536
+          destination: 0:2E609100FC431B6EA5D63EB4EB4C5B05B7EDCA44D614E401A688142C10A2AAE3
+          destination_secondary: 0:BDE1E32E6A67D65AD8B5E2858103ABA2936D70238376934460E365397CC8A6E3
+          success: true
+          dex_deposit_liquidity_data:
+            position_amount_1: 144005990000
+            position_amount_2: 14400599
+            lp_tokens_minted: null
+            tick_lower: -887200
+            tick_upper: 887200
+            nft_index: null
+            nft_address: null
+            is_complete: false
+            amount1: null
+            asset1: 0:D754F98F4442B360E76309D22D1617E1FDDEE3713AE9518AEB634ABB86C1B533
+            user_jetton_wallet_1: null
+            amount2: 14544604
+            asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            user_jetton_wallet_2: 0:A92F898C29B1E36A52E526A7AD2EF7D41B16F45B1ACA603F8F68A5143AABB536
+
+      - type: dex_deposit_liquidity
+        selector: "{{ value.dex_deposit_liquidity_data.is_complete == true }}"
+        values:
+          source: 0:D0BE5B9AC15B195A8514ACF29518A5D3C85D376238EB208FACA60B747FFA6CFA
+          source_secondary: 0:2158838C4F08DC12B612381B27D2AA083DF41D030D9788476B7D332B3597470F
+          destination: 0:2E609100FC431B6EA5D63EB4EB4C5B05B7EDCA44D614E401A688142C10A2AAE3
+          destination_secondary: 0:BDE1E32E6A67D65AD8B5E2858103ABA2936D70238376934460E365397CC8A6E3
+          success: true
+          dex_deposit_liquidity_data:
+            position_amount_1: 144005990000
+            position_amount_2: 14400599
+            lp_tokens_minted: 1440059900
+            tick_lower: -887200
+            tick_upper: 887200
+            nft_index: 7
+            nft_address: 0:F5BCCDBC2797808A175849A8F4B5C274BDAF39D3C852DEBF462D91C5F09A39C6
+            is_complete: true
+            amount1: 145446049900
+            asset1: 0:D754F98F4442B360E76309D22D1617E1FDDEE3713AE9518AEB634ABB86C1B533
+            user_jetton_wallet_1: 0:2158838C4F08DC12B612381B27D2AA083DF41D030D9788476B7D332B3597470F
+            amount2: null
+            asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            user_jetton_wallet_2: null
