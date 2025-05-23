@@ -781,13 +781,13 @@ class ToncoSwapBlockMatcher(BlockMatcher):
         
         # 4. matchers for outgoing transfers that DEFINITELY lead to the next hop
         # they can be optional in the overall list, but their child elements (intermediate_notify_then_swap) are not.
-                                                                    # как бы кому-то это не показалось странным,
-                                                                    # но да, в этом матчере после блока типа jetton_transfer
-                                                                    # идет опкод PTonTransfer, а за ним JettonNotify.
-                                                                    # это фича матчера PTonTransferMatcher, который, 
-                                                                    # когда роутер отправляет pton самому же себе, 
-                                                                    # маркирует экшоном типа jetton_transfer только лишь 
-                                                                    # сообщение JettonTransfer и не сообщением дальше.
+                                                                    # Though it may seem a curious tale to some,
+                                                                    # yet in this matcher, after the jetton_transfer block,
+                                                                    # follows the opcode PTonTransfer, and then JettonNotify.
+                                                                    # Tis a feature of the PTonTransferMatcher, whereupon,
+                                                                    # when the router sends pton unto itself,
+                                                                    # it doth mark the action as jetton_transfer solely for
+                                                                    # the JettonTransfer message and naught beyond.
         out_pton_DEFINITELY_leading_to_hop = BlockTypeMatcher(block_type='jetton_transfer', optional=False,
                                                              child_matcher=
                                                                 ContractMatcher(opcode=PTonTransfer.opcode, optional=False,
