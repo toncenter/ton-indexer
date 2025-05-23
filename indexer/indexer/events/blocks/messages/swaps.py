@@ -539,6 +539,29 @@ class ToncoPoolV3Mint:
         self.tick_lower = body.load_int(24)
         self.tick_upper = body.load_int(24)
 
+class ToncoPoolV3MinAndRefund:
+    """
+    POOLV3_MINT#81702ef8
+        query_id:uint64
+        amount0_funded:(VarUInteger 16)
+        amount1_funded:(VarUInteger 16)
+        recipient:MsgAddress
+        liquidity:uint128
+        tickLower:int24
+        tickUpper:int24
+    = ContractMessages;
+    """
+    opcode = 0x81702ef8
+    def __init__(self, body: Slice):
+        body.load_uint(32)
+        self.query_id = body.load_uint(64)
+        self.amount0_funded = body.load_coins()
+        self.amount1_funded = body.load_coins()
+        self.recipient = body.load_address()
+        self.liquidity = body.load_uint(128)
+        self.tick_lower = body.load_int(24)
+        self.tick_upper = body.load_int(24)
+
 class ToncoPoolV3Burn:
     """
     POOLV3_BURN#d73ac09d
@@ -729,6 +752,35 @@ class ToncoPoolV3SwapPayload:
     def get_target_wallets_recursive(self) -> set[str]:
         return set([account[0] for account in self.get_target_wallets_and_amounts_recursive()])
 
+class ToncoPoolV3FundAccountPayload:
+    """
+    Payload for jetton notification during liquidity provision.
+    Used inside jetton transfers to router for mint operations.
+    TL-B structure from SDK:
+    POOLV3_FUND_ACCOUNT#4468de77
+        other_jetton_wallet:MsgAddress    // jetton wallet of the other token
+        amount0:(VarUInteger 16)          // amount of first token
+        amount1:(VarUInteger 16)          // amount of second token  
+        liquidity:uint128                 // liquidity to provide
+        tick_lower:int24                  // lower tick
+        tick_upper:int24                  // upper tick
+    = ContractMessages;
+    """
+    payload_opcode = 0x4468de77
+
+    def __init__(self, body: Slice):
+        body.load_uint(32) # opcode
+        self.other_jetton_wallet = body.load_address()
+        self.amount0 = body.load_coins() or 0
+        self.amount1 = body.load_coins() or 0
+        # self.liquidity = body.load_uint(128)
+        # self.tick_lower = body.load_int(24)
+        # self.tick_upper = body.load_int(24)
+    
+    def get_other_jetton_wallet(self) -> str:
+        if not isinstance(self.other_jetton_wallet, Address):
+            raise ValueError("other_jetton_wallet is not an Address")
+        return self.other_jetton_wallet.to_str(False).upper()
 
 # --- TONCO Account Messages ---
 
@@ -752,10 +804,10 @@ class ToncoAccountV3AddLiquidity:
     def __init__(self, body: Slice):
         body.load_uint(32) # opcode
         self.query_id = body.load_uint(64)
-        self.new_amount0 = body.load_coins()
-        self.new_amount1 = body.load_coins()
-        self.new_enough0 = body.load_coins()
-        self.new_enough1 = body.load_coins()
+        self.new_amount0 = body.load_coins() or 0
+        self.new_amount1 = body.load_coins() or 0
+        self.new_enough0 = body.load_coins() or 0
+        self.new_enough1 = body.load_coins() or 0
         self.liquidity = body.load_uint(128)
         self.tick_lower = body.load_int(24)
         self.tick_upper = body.load_int(24)

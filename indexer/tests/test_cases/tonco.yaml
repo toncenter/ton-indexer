@@ -201,3 +201,85 @@ cases:
         values:
           value: 10000000
           comment: null
+
+  Tonco deposit liquidity (normal):
+    trace-id: 0GW2kNF4nRhw5xA3b5E35-EhF9H25H3Nvm5MJJo2VD0=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        selector: "{{ value.dex_deposit_liquidity_data.is_complete == false }}"
+        values:
+          source: 0:400FC42F5A69D0B901DCDF210E4FC03D6FB6DF4DF785EF76D997E3A0DDE9511C
+          source_secondary: null
+          destination: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+          destination_secondary: 0:554E29AE7BE927BE21C5B59BFEBBD5F744618E72C3221DDB3E5D3845EADAA65A
+          success: true
+          dex_deposit_liquidity_data:
+            position_amount_1: 2999999999829
+            position_amount_2: 5708578661
+            lp_tokens_minted: null
+            tick_lower: -57180
+            tick_upper: -52980
+            nft_index: null
+            nft_address: null
+            is_complete: false
+            amount1: 3029999999827
+            asset1: null # TON
+            user_jetton_wallet_1: null
+            amount2: null
+            asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            user_jetton_wallet_2: null
+      - type: dex_deposit_liquidity
+        selector: "{{ value.dex_deposit_liquidity_data.is_complete == true }}"
+        values:
+          source: 0:400FC42F5A69D0B901DCDF210E4FC03D6FB6DF4DF785EF76D997E3A0DDE9511C
+          source_secondary: 0:2BC21F6C2C85ECCF0DFC7FC5CAEC8A124799E6BB47E37206D014322F0DE33EFA
+          destination: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+          destination_secondary: 0:554E29AE7BE927BE21C5B59BFEBBD5F744618E72C3221DDB3E5D3845EADAA65A
+          dex_deposit_liquidity_data:
+            position_amount_1: 2999999999829
+            position_amount_2: 5708578661
+            lp_tokens_minted: 1398855824493
+            tick_lower: -57180
+            tick_upper: -52980
+            nft_index: 3086
+            nft_address: 0:A74CC446A0805F61AF677B3754167DFC5CBB37D94488F9B3D9FA04C91262A06F
+            is_complete: true
+            amount1: null
+            asset1: null # TON
+            user_jetton_wallet_1: null
+            amount2: 5765664447
+            asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            user_jetton_wallet_2: 0:2BC21F6C2C85ECCF0DFC7FC5CAEC8A124799E6BB47E37206D014322F0DE33EFA
+
+  Tonco deposit liquidity one side TON (strange case):
+    trace-id: 0--IKFmIbKevaBKSEvai2YCm47_coyO30KO1VyYaXvI=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        source: 0:CA60B05A0C462173EA29A54440EF9AF5887AEF78184E448526E2C75B4355A60E
+        source_secondary: 0:5B2E06C2F9983FD9CC8AC7F92462C20EB53AD9EFD3CF017394D571DBBDF6F6DC # asset1 wallet
+        destination: 0:B066D702EAE43F5546A98B90ED7E8C38578741F8AE9CADF43BA3D8F55F2D2478 # pool
+        destination_secondary: 0:62DF5CBE11EB2BFEBD40C9E1E3E1DEF8D5B42030AF6F9D403E66252F1031BD2F # account contract
+        values:
+          dex_deposit_liquidity_data:
+            dex: tonco
+
+            position_amount_1: 200000000000
+            position_amount_2: 0
+
+            lp_tokens_minted: 1736002138543
+
+            tick_lower: -17390
+            tick_upper: -16400
+
+            nft_index: 23
+            nft_address: 0:A797F301E9EC010C88765AE955DA0530C5C95B3A6F553FEE9CB5C89008ED29A0
+
+            is_complete: true
+
+            amount1: 200000000000
+            asset1: 0:AE3E6D351E576276E439E7168117FD64696FD6014CB90C77B2F2CBAACD4FCC00
+            user_jetton_wallet_1: 0:5B2E06C2F9983FD9CC8AC7F92462C20EB53AD9EFD3CF017394D571DBBDF6F6DC
+
+            amount2: null
+            asset2: null # TON
+            user_jetton_wallet_2: null

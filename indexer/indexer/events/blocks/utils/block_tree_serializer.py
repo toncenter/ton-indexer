@@ -17,6 +17,7 @@ from indexer.events.blocks.jvault import JVaultStakeBlock, JVaultUnstakeBlock, J
 from indexer.events.blocks.liquidity import (
     DedustDepositLiquidityPartial,
     DedustDepositLiquidity,
+    ToncoDepositLiquidityBlock,
 )
 from indexer.events.blocks.multisig import MultisigCreateOrderBlock, MultisigApproveBlock, MultisigExecuteBlock
 from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock, NftDiscoveryBlock
@@ -591,6 +592,30 @@ def _fill_tonco_deploy_pool(block, action):
         "pool_active": d.pool_active,
     }
 
+def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, action: Action):
+    action.type = 'dex_deposit_liquidity'
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.sender_wallet_1 or block.data.sender_wallet_2)
+    action.destination = _addr(block.data.pool)
+    action.destination_secondary = _addr(block.data.account_contract)
+    action.dex_deposit_liquidity_data = {
+        "dex": "tonco",
+        "amount1": block.data.amount_1,
+        "amount2": block.data.amount_2,
+        "asset1": block.data.asset_1,
+        "asset2": block.data.asset_2,
+        "user_jetton_wallet_1": _addr(block.data.sender_wallet_1),
+        "user_jetton_wallet_2": _addr(block.data.sender_wallet_2),
+        "lp_tokens_minted": block.data.lp_tokens_minted,
+        "tick_lower": block.data.tick_lower,
+        "tick_upper": block.data.tick_upper,
+        "nft_index": block.data.nft_index,
+        "nft_address": block.data.nft_address,
+        "is_complete": block.data.is_complete,
+        "position_amount_1": block.data.position_amount_1,
+        "position_amount_2": block.data.position_amount_2,
+    }
+
 
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
@@ -613,6 +638,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_dedust_deposit_liquidity_action(block, action)
         case "dedust_deposit_liquidity_partial":
             _fill_dedust_deposit_liquidity_partial_action(block, action)
+        case "tonco_deposit_liquidity":
+            _fill_tonco_deposit_liquidity_action(block, action)
         case "jetton_transfer":
             _fill_jetton_transfer_action(block, action)
         case 'nft_transfer':

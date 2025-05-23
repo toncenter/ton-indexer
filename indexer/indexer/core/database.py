@@ -335,6 +335,14 @@ class Action(Base):
         Column('user_jetton_wallet_1', String),
         Column('user_jetton_wallet_2', String),
         Column("lp_tokens_minted", Numeric),
+        # new fields for tonco (concentrated liquidity):
+        Column("tick_lower", Numeric),
+        Column("tick_upper", Numeric),
+        Column("nft_index", Numeric),
+        Column("nft_address", String),
+        Column("is_complete", Boolean),
+        Column("position_amount_1", Numeric),
+        Column("position_amount_2", Numeric)
     ]))
     dex_withdraw_liquidity_data = Column(CompositeType("dex_withdraw_liquidity_details", [
         Column("dex", String),

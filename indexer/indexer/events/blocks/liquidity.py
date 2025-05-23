@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from loguru import logger
+from dataclasses import dataclass
+
+from pytoniq_core import begin_cell, Cell
 
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
@@ -11,9 +14,9 @@ from indexer.events.blocks.basic_matchers import (BlockMatcher,
 from indexer.events.blocks.core import Block, EmptyBlock
 from indexer.events.blocks.jettons import (JettonBurnBlock,
                                            JettonTransferBlock,
-                                           JettonTransferBlockMatcher)
+                                           JettonTransferBlockMatcher, PTonTransferMatcher)
 from indexer.events.blocks.labels import LabelBlock, labeled
-from indexer.events.blocks.messages import PTonTransfer
+from indexer.events.blocks.messages import PTonTransfer, ExcessMessage
 from indexer.events.blocks.messages.jettons import (JettonBurn,
                                                     JettonBurnNotification,
                                                     JettonInternalTransfer,
@@ -26,7 +29,10 @@ from indexer.events.blocks.messages.liquidity import (
     DedustReturnExcessFromVault, DedustTopUpLiquidityDepositContract,
     StonfiV2ProvideLiquidity)
 from indexer.events.blocks.messages.swaps import (DedustPayout,
-                                                  DedustPayoutFromPool)
+                                                  DedustPayoutFromPool,
+                                                  ToncoPoolV3FundAccount,
+                                                  ToncoAccountV3AddLiquidity, ToncoPoolV3FundAccountPayload, ToncoPoolV3MinAndRefund,
+                                                  ToncoRouterV3PayTo, ToncoPositionNftV3PositionInit)
 from indexer.events.blocks.utils import AccountId, Amount, Asset
 from indexer.events.blocks.utils.block_utils import find_call_contract, find_call_contracts, get_labeled
 
@@ -684,4 +690,229 @@ class StonfiV2WithdrawLiquidityMatcher(BlockMatcher):
             'dex_jetton_wallet_2': dex_sender2_jetton_wallet,
             'wallet2': wallet2
         }
+        return [new_block]
+
+@dataclass
+class ToncoDepositLiquidityData:
+    sender: AccountId
+    pool: AccountId
+    account_contract: AccountId
+    position_amount_1: Amount
+    position_amount_2: Amount
+    lp_tokens_minted: Amount | None
+    tick_lower: int
+    tick_upper: int
+    nft_index: int | None
+    nft_address: AccountId | None
+    is_complete: bool
+    amount_1: Amount | None
+    asset_1: Asset | None
+    sender_wallet_1: AccountId | None
+    amount_2: Amount | None
+    asset_2: Asset | None
+    sender_wallet_2: AccountId | None
+
+
+class ToncoDepositLiquidityBlock(Block):
+    data: ToncoDepositLiquidityData
+
+    def __init__(self, data: ToncoDepositLiquidityData):
+        super().__init__("tonco_deposit_liquidity", [], data)
+
+    def __repr__(self):
+        return f"tonco_deposit_liquidity pool={self.data.pool.address} sender={self.data.sender.address} complete={self.data.is_complete}"
+
+
+class ToncoDepositLiquidityMatcher(BlockMatcher):
+    def __init__(self):
+        # match either TON transfer (PTonTransfer) or jetton transfer input
+        ton_input = labeled('ton_input', ContractMatcher(
+            opcode=JettonNotify.opcode,
+            parent_matcher=labeled('ton_input_addition', ContractMatcher(opcode=PTonTransfer.opcode))
+        ))
+
+        jetton_input = labeled('jetton_input', BlockTypeMatcher("jetton_transfer"))
+        
+        input_transfer = OrMatcher([ton_input, jetton_input])
+        
+        # this will cover all cases:
+        # 1. a) jetton transfer                b) jetton transfer + PTonTransfer
+        # 2. a) jetton transfer + PTonTransfer b) jetton transfer
+        # 3. a) jetton transfer                b) jetton transfer
+        output_ton_or_jetton = BlockTypeMatcher(block_type='jetton_transfer', 
+                                                child_matcher=ContractMatcher(opcode=PTonTransfer.opcode, 
+                                                                              optional=True), 
+                                                optional=True)
+
+        refund_payments = ContractMatcher(
+            optional=True,
+            opcode=ToncoRouterV3PayTo.opcode,  # 0xa1daa96d
+            children_matchers=[ # 2 outputs
+                output_ton_or_jetton,
+                output_ton_or_jetton
+            ],
+        )
+
+        call_pool_for_mint_and_refund = ContractMatcher(
+            optional=True,
+            opcode=ToncoPoolV3MinAndRefund.opcode,
+            children_matchers=[
+                refund_payments,
+                labeled('nft_mint', BlockTypeMatcher(block_type='nft_mint')),
+                ContractMatcher(opcode=ExcessMessage.opcode, optional=True),
+            ]
+        )
+        
+        super().__init__(
+            optional=False,
+            parent_matcher=ContractMatcher(
+                opcode=ToncoPoolV3FundAccount.opcode,  # 0x4468de77
+                parent_matcher=input_transfer
+            ),
+            child_matcher=call_pool_for_mint_and_refund
+        )
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock) 
+            and block.opcode == ToncoAccountV3AddLiquidity.opcode  # 0x3ebe5431
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        additional_blocks = []
+
+        add_liquidity_msg = ToncoAccountV3AddLiquidity(block.get_body())
+        is_first_asset_deposited = add_liquidity_msg.new_amount0 > 0 # to order assets
+        
+        # find NFT position init call
+        position_init_msg = None
+        lp_tokens_minted = None
+        nft_index = None
+        nft_address = None
+        is_complete = False
+        position_init_call = get_labeled('nft_mint', other_blocks)
+        if position_init_call:
+            position_init_msg = ToncoPositionNftV3PositionInit(position_init_call.get_body())
+            lp_tokens_minted = Amount(position_init_msg.liquidity)
+            nft_index = position_init_msg.nft_index
+            nft_address = AccountId(position_init_call.get_message().destination)
+            is_complete = True
+
+        # find the input transfer (jetton or PTon)
+        input_transfer = get_labeled('ton_input', other_blocks) or get_labeled('jetton_input', other_blocks)
+
+        if not input_transfer:
+            logger.error(f"Input transfer not found for {block.get_message().source}")
+            return []
+
+        # extract data from JettonNotify - the universal approach
+        jetton_notify_block = None
+        
+        if input_transfer.btype == 'jetton_transfer':
+            # jetton transfer -> find JettonNotify in its children
+            jetton_notify_block = find_call_contract(input_transfer.children_blocks, JettonNotify.opcode)
+        else:
+            # PTonTransfer case - it should be the notify itself 
+            if isinstance(input_transfer, CallContractBlock) and input_transfer.opcode == JettonNotify.opcode:
+                jetton_notify_block = input_transfer
+
+        addition = get_labeled('ton_input_addition', other_blocks)
+        if addition:
+            additional_blocks.append(addition)
+
+        if not jetton_notify_block:
+            logger.error(f"JettonNotify not found in input transfer chain {block.get_message().tx_hash}") # TODO
+            return []
+
+        try:
+            jetton_notify = JettonNotify(jetton_notify_block.get_body())
+            
+            sent_amount = Amount(jetton_notify.jetton_amount or 0)
+            sender = AccountId(jetton_notify.from_user)
+            
+            if not jetton_notify.forward_payload_cell:
+                logger.error(f"No forward payload in JettonNotify for {block.get_message().source}")
+                return []
+                
+            payload_slice = jetton_notify.forward_payload_cell.to_slice()
+            if payload_slice.preload_uint(32) != ToncoPoolV3FundAccountPayload.payload_opcode:
+                logger.error(f"Invalid payload opcode in JettonNotify for {block.get_message().source}")
+                return []
+                
+            payload_data = ToncoPoolV3FundAccountPayload(payload_slice)
+            other_jetton_wallet_str = payload_data.get_other_jetton_wallet()
+            
+            # determine sender jetton wallet
+            sender_wallet = None
+            if input_transfer.btype == 'jetton_transfer':
+                sender_wallet = input_transfer.data.get('sender_wallet')
+            
+            router_wallet_str = jetton_notify_block.get_message().source
+            
+        except Exception as e:
+            logger.error(f"Failed to parse JettonNotify message: {e}")
+            return []
+
+        first_asset = None
+        try:
+            jetton_wallet = await context.interface_repository.get().get_jetton_wallet(router_wallet_str)
+            if jetton_wallet is not None:
+                if jetton_wallet.jetton in PTonTransferMatcher.pton_masters:
+                    first_asset = Asset(is_ton=True, jetton_address=None)
+                else:
+                    first_asset = Asset(is_ton=False, jetton_address=jetton_wallet.jetton)
+            else:
+                logger.warning(f"Jetton wallet not found for router_wallet_str={router_wallet_str}")
+                first_asset = Asset(is_ton=True, jetton_address=None)
+        except Exception as e:
+            logger.warning(f"Failed to determine first asset: {e}")
+        
+        second_asset = None
+        try:
+            jetton_wallet = await context.interface_repository.get().get_jetton_wallet(other_jetton_wallet_str)
+            if jetton_wallet is not None:
+                if jetton_wallet.jetton in PTonTransferMatcher.pton_masters:
+                    second_asset = Asset(is_ton=True, jetton_address=None)
+                else:
+                    second_asset = Asset(is_ton=False, jetton_address=jetton_wallet.jetton)
+        except Exception as e:
+            logger.warning(f"Error determining second asset for liquidity: {e}")
+        
+        if is_first_asset_deposited:
+            amount_1=sent_amount
+            asset_1=first_asset
+            amount_2=None
+            asset_2=second_asset
+            sender_wallet_1=sender_wallet
+            sender_wallet_2=None
+        else:
+            amount_1=None
+            asset_1=second_asset
+            amount_2=sent_amount
+            asset_2=first_asset
+            sender_wallet_1=None
+            sender_wallet_2=sender_wallet
+
+        data = ToncoDepositLiquidityData(
+            sender=sender,
+            pool=AccountId(block.get_message().source),
+            account_contract=AccountId(block.get_message().destination),
+            position_amount_1=Amount(add_liquidity_msg.new_enough0 or 0),
+            position_amount_2=Amount(add_liquidity_msg.new_enough1 or 0),
+            lp_tokens_minted=lp_tokens_minted,
+            tick_lower=add_liquidity_msg.tick_lower,
+            tick_upper=add_liquidity_msg.tick_upper,
+            nft_index=nft_index,
+            nft_address=nft_address,
+            is_complete=is_complete,
+            amount_1=amount_1,
+            asset_1=asset_1,
+            sender_wallet_1=sender_wallet_1,
+            amount_2=amount_2,
+            asset_2=asset_2,
+            sender_wallet_2=sender_wallet_2,
+        )
+        
+        new_block = ToncoDepositLiquidityBlock(data)
+        new_block.merge_blocks([block] + other_blocks + additional_blocks)
         return [new_block]
