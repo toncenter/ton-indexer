@@ -941,7 +941,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Error: fmt.Sprintf("invalid subscription request: %v", err)})
 		}
-		addrMap, err := ValidateSubscription(&req)
+		addrMap, err := ValidateSSERequest(&req)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Id: req.Id, Error: err.Error()})
 		}
