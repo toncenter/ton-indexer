@@ -398,6 +398,7 @@ void InsertBatchPostgres::alarm() {
     insert_jetton_burns(txn, with_copy_);
     insert_nft_transfers(txn, with_copy_);
     insert_traces(txn, with_copy_);
+    insert_contract_methods(txn);
     data_timer.pause();
     td::Timer states_timer;
     std::string insert_under_mutex_query;
@@ -417,14 +418,6 @@ void InsertBatchPostgres::alarm() {
       commit_timer.resume();
       txn.commit();
       commit_timer.pause();
-    }
-
-    try {
-      pqxx::work txn_methods(c);
-      insert_contract_methods(txn_methods);
-      txn_methods.commit(); 
-    } catch (const std::exception &e) {
-      LOG(ERROR) << "Error inserting contract_methods: " << e.what();
     }
 
     for(auto& task : insert_tasks_) {
@@ -2437,7 +2430,6 @@ void InsertManagerPostgres::start_up() {
         "create index if not exists action_accounts_index_1 on action_accounts (action_id);\n"
         "create index if not exists action_accounts_index_2 on action_accounts (trace_id, action_id);\n"
         "create index if not exists action_accounts_index_3 on action_accounts (account, trace_end_utime, trace_id, action_end_utime, action_id);\n"
-        "create index if not exists contract_methods_code_hash_idx on contract_methods (code_hash);"
       );
 
       LOG(DEBUG) << query;
