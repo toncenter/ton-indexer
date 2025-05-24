@@ -398,6 +398,7 @@ void InsertBatchPostgres::alarm() {
     insert_jetton_burns(txn, with_copy_);
     insert_nft_transfers(txn, with_copy_);
     insert_traces(txn, with_copy_);
+    insert_contract_methods(txn);
     data_timer.pause();
     td::Timer states_timer;
     std::string insert_under_mutex_query;
@@ -1491,6 +1492,47 @@ void InsertBatchPostgres::insert_traces(pqxx::work &txn, bool with_copy) {
   stream.finish();
 }
 
+void InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
+  std::unordered_multimap<td::Bits256, uint64_t> contract_methods;
+  std::unordered_set<td::Bits256> unique_code_hashes;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& [code_hash, method_id] : task.parsed_block_->contract_methods_) {
+      contract_methods.emplace(code_hash, method_id);
+      unique_code_hashes.insert(code_hash);
+    }
+  }
+
+  std::initializer_list<std::string_view> columns = {
+    "code_hash", "methods"
+  };
+
+  PopulateTableStream stream(txn, "contract_methods", columns, 1000, false);
+  stream.setConflictDoNothing(); // don't update existings
+
+  for (const auto& code_hash : unique_code_hashes) {
+    // turn method_ids into PostgreSQL array string
+    std::ostringstream methods_str;
+    methods_str << "{";
+    bool first = true;
+    auto range = contract_methods.equal_range(code_hash);
+    for (auto it = range.first; it != range.second; ++it) {
+      if (!first) methods_str << ", ";
+      methods_str << it->second;
+      first = false;
+    }
+    methods_str << "}";
+
+    auto tuple = std::make_tuple(
+      code_hash,
+      methods_str.str()
+    );
+    stream.insert_row(std::move(tuple));
+  }
+
+  stream.finish();
+}
+
 //
 // InsertManagerPostgres
 //
@@ -2074,6 +2116,12 @@ void InsertManagerPostgres::start_up() {
     );
 
     query += (
+      "create table if not exists contract_methods ("
+      "code_hash tonhash not null primary key, "
+      "methods bigint[]);\n"
+    );
+
+    query += (
       "create table if not exists address_metadata ("
 			"address varchar not null, "
 			"type varchar not null, "
@@ -2381,7 +2429,7 @@ void InsertManagerPostgres::start_up() {
         "create index if not exists actions_index_5 on actions (trace_mc_seqno_end);\n"
         "create index if not exists action_accounts_index_1 on action_accounts (action_id);\n"
         "create index if not exists action_accounts_index_2 on action_accounts (trace_id, action_id);\n"
-        "create index if not exists action_accounts_index_3 on action_accounts (account, trace_end_utime, trace_id, action_end_utime, action_id);"
+        "create index if not exists action_accounts_index_3 on action_accounts (account, trace_end_utime, trace_id, action_end_utime, action_id);\n"
       );
 
       LOG(DEBUG) << query;
