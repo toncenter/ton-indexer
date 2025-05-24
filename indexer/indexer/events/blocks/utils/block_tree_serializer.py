@@ -18,6 +18,7 @@ from indexer.events.blocks.liquidity import (
     DedustDepositLiquidityPartial,
     DedustDepositLiquidity,
     ToncoDepositLiquidityBlock,
+    ToncoWithdrawLiquidityBlock,
 )
 from indexer.events.blocks.multisig import MultisigCreateOrderBlock, MultisigApproveBlock, MultisigExecuteBlock
 from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock, NftDiscoveryBlock
@@ -260,6 +261,33 @@ def _fill_dex_withdraw_liquidity(block: Block, action: Action):
         'is_refund' : block.data['is_refund'],
         'lp_tokens_burnt': block.data['lp_tokens_burnt'].value if block.data['lp_tokens_burnt'] is not None else None
     }
+
+def _fill_tonco_withdraw_liquidity(block: ToncoWithdrawLiquidityBlock, action: Action):
+    action.type = 'dex_withdraw_liquidity'
+    d = block.data
+    action.source = _addr(d.sender)
+    action.source_secondary = None # tonco uses NFT, no LP jetton wallet for sender
+    action.destination = _addr(d.pool)
+    action.asset = None # lp asset is nft, not a jetton, so primary asset on action is None
+    action.dex_withdraw_liquidity_data = {
+        "dex": "tonco",
+        "amount1": d.amount1_out.value if d.amount1_out is not None else None,
+        "amount2": d.amount2_out.value if d.amount2_out is not None else None,
+        'asset1_out': _addr(d.asset1_out),
+        'asset2_out': _addr(d.asset2_out),
+        'user_jetton_wallet_1': _addr(d.wallet1),
+        'user_jetton_wallet_2': _addr(d.wallet2),
+        'dex_jetton_wallet_1': _addr(d.dex_jetton_wallet_1),
+        'dex_wallet_1': _addr(d.dex_wallet_1),
+        'dex_wallet_2': _addr(d.dex_wallet_2),
+        'dex_jetton_wallet_2': _addr(d.dex_jetton_wallet_2),
+        'lp_tokens_burnt': d.liquidity_burnt.value if d.liquidity_burnt is not None else None,
+        'burned_nft_index': d.burned_nft_index,
+        'burned_nft_address': _addr(d.burned_nft_address),
+        'tick_lower': d.tick_lower,
+        'tick_upper': d.tick_upper
+    }
+
 
 def _fill_jetton_burn_action(block: JettonBurnBlock, action: Action):
     action.source = block.data['owner'].as_str()
@@ -600,20 +628,20 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
     action.destination_secondary = _addr(block.data.account_contract)
     action.dex_deposit_liquidity_data = {
         "dex": "tonco",
-        "amount1": block.data.amount_1,
-        "amount2": block.data.amount_2,
-        "asset1": block.data.asset_1,
-        "asset2": block.data.asset_2,
+        "amount1": block.data.amount_1.value if block.data.amount_1 else None,
+        "amount2": block.data.amount_2.value if block.data.amount_2 else None,
+        "asset1": _addr(block.data.asset_1),
+        "asset2": _addr(block.data.asset_2),
         "user_jetton_wallet_1": _addr(block.data.sender_wallet_1),
         "user_jetton_wallet_2": _addr(block.data.sender_wallet_2),
-        "lp_tokens_minted": block.data.lp_tokens_minted,
+        "lp_tokens_minted": block.data.lp_tokens_minted.value if block.data.lp_tokens_minted else None,
         "tick_lower": block.data.tick_lower,
         "tick_upper": block.data.tick_upper,
         "nft_index": block.data.nft_index,
-        "nft_address": block.data.nft_address,
+        "nft_address": _addr(block.data.nft_address),
         "is_complete": block.data.is_complete,
-        "position_amount_1": block.data.position_amount_1,
-        "position_amount_2": block.data.position_amount_2,
+        "position_amount_1": block.data.position_amount_1.value,
+        "position_amount_2": block.data.position_amount_2.value,
     }
 
 
@@ -704,6 +732,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_tonco_deploy_pool(block, action)
         case 'tick_tock':
             _fill_tick_tock_action(block, action)
+        case 'tonco_withdraw_liquidity':
+            _fill_tonco_withdraw_liquidity(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
@@ -760,6 +790,8 @@ v1_ops = [
     'tonstakers_withdraw_request',
     'tonstakers_withdraw',
     'tonco_deploy_pool',
+    'tonco_deposit_liquidity',
+    'tonco_withdraw_liquidity',
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:

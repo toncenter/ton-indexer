@@ -19,7 +19,7 @@ from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurn
 from indexer.events.blocks.jvault import JVaultStakeBlockMatcher, JVaultUnstakeBlockMatcher, JVaultClaimBlockMatcher
 from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, \
     DedustWithdrawBlockMatcher, \
-    post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher, ToncoDepositLiquidityMatcher
+    post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher, ToncoDepositLiquidityMatcher, ToncoWithdrawLiquidityMatcher
 from indexer.events.blocks.messages import TonTransferMessage
 from indexer.events.blocks.messages.externals import WalletV3ExternalMessage, WalletV4ExternalMessage, \
     WalletV5R1ExternalMessage, extract_payload_from_wallet_message
@@ -150,6 +150,7 @@ matchers = [
     EvaaWithdrawBlockMatcher(),
     EvaaLiquidateBlockMatcher(),
     ToncoDeployPoolBlockMatcher(),
+    ToncoWithdrawLiquidityMatcher(),
 ]
 
 trace_post_processors = [

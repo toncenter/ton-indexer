@@ -334,3 +334,28 @@ cases:
             amount2: null
             asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
             user_jetton_wallet_2: null
+
+  Tonco withdraw liquidity:
+    trace-id: 0JSRYHwEQ6P5aTAh8p8_YgJS5LZlapbc_W4VTjSrshk=
+    expected-actions:
+      - type: dex_withdraw_liquidity
+        values:
+          source: 0:3F7D5D018BAC19C23D47E714F21863F3C620F89CEF6D48A72A0AE0F2D68D7CF8
+          destination: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+          dex_withdraw_liquidity_data:
+            dex: tonco
+            lp_tokens_burnt: 557736918
+            amount1: 324026863
+            amount2: 2999999
+            asset1_out: null
+            asset2_out: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            user_jetton_wallet_1: null
+            user_jetton_wallet_2: 0:1D468B6965F795E098910B5133CBE226F9161AF3E01D2AFD8DB146372CF1CFAA
+            dex_jetton_wallet_1: null
+            dex_jetton_wallet_2: 0:ACAD45796724B3F00AD42A4311B20667DA4BE28A43951587A381F73AA9552209
+            dex_wallet_1: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+            dex_wallet_2: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+            burned_nft_index: 1204
+            burned_nft_address: 0:25DCA00B89840073546AE2F783257FE093AD6344F167E75DB2B28B68FBEC13FB
+            tick_lower: -51720
+            tick_upper: -49380

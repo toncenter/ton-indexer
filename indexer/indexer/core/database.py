@@ -356,7 +356,12 @@ class Action(Base):
         Column('dex_jetton_wallet_2', String),
         Column("lp_tokens_burnt", Numeric),
         Column('dex_wallet_1', String),
-        Column('dex_wallet_2', String)
+        Column('dex_wallet_2', String),
+        # new fields for tonco (concentrated liquidity):
+        Column('burned_nft_index', Numeric),
+        Column('burned_nft_address', String),
+        Column('tick_lower', Numeric),
+        Column('tick_upper', Numeric)
     ]))
     jvault_claim_data = Column(CompositeType("jvault_claim_details", [
         Column("claimed_jettons", ARRAY(String())),

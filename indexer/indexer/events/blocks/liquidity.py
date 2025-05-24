@@ -32,7 +32,8 @@ from indexer.events.blocks.messages.swaps import (DedustPayout,
                                                   DedustPayoutFromPool,
                                                   ToncoPoolV3FundAccount,
                                                   ToncoAccountV3AddLiquidity, ToncoPoolV3FundAccountPayload, ToncoPoolV3MinAndRefund,
-                                                  ToncoRouterV3PayTo, ToncoPositionNftV3PositionInit)
+                                                  ToncoRouterV3PayTo, ToncoPositionNftV3PositionInit, ToncoPoolV3Burn,
+                                                  ToncoPositionNftV3PositionBurn, ToncoPoolV3StartBurn)
 from indexer.events.blocks.utils import AccountId, Amount, Asset
 from indexer.events.blocks.utils.block_utils import find_call_contract, find_call_contracts, get_labeled
 
@@ -441,7 +442,10 @@ class DedustWithdrawBlockMatcher(BlockMatcher):
         user_wallets = []
         for payout in payouts:
             call_from_vault = payout
-            payout_request = payout.previous_block
+            payout_request = payout.previous_block if payout else None
+            
+            if not payout_request:
+                continue
 
             if isinstance(call_from_vault, CallContractBlock) and call_from_vault.opcode == DedustPayout.opcode:
                 asset = Asset(is_ton=True, jetton_address=None)
@@ -553,10 +557,10 @@ class StonfiV2ProvideLiquidityMatcher(BlockMatcher):
         else:
             asset = Asset(is_ton=True, jetton_address=None)
         provide_liquidity_msg = StonfiV2ProvideLiquidity(block.get_body())
-        amount = provide_liquidity_msg.amount1 if provide_liquidity_msg.amount1 > 0 else provide_liquidity_msg.amount2
+        amount = provide_liquidity_msg.amount1 if provide_liquidity_msg.amount1 and provide_liquidity_msg.amount1 > 0 else provide_liquidity_msg.amount2
         new_block.data = {
             'dex': 'stonfi_v2',
-            'amount_1': Amount(amount),
+            'amount_1': Amount(amount or 0),
             'asset_1': asset,
             'sender': AccountId(provide_liquidity_msg.from_user),
             'sender_wallet_1': (in_transfer.data['sender_wallet']
@@ -632,19 +636,23 @@ class StonfiV2WithdrawLiquidityMatcher(BlockMatcher):
                 pton_transfer = next((x for x in transfer.next_blocks if isinstance(x, CallContractBlock)
                                       and x.opcode == PTonTransfer.opcode), None)
                 if pton_transfer is not None:
-                    amount = Amount(PTonTransfer(pton_transfer.get_body()).ton_amount)
+                    pton_msg = PTonTransfer(pton_transfer.get_body())
+                    amount = Amount(pton_msg.ton_amount or 0)
                     additional_blocks.append(pton_transfer)
+                    asset = Asset(is_ton=True, jetton_address=None)
                 else:
                     amount = transfer.data['amount']
+                    asset = transfer.data['asset']
+                
                 if amount1 is None:
                     amount1 = amount
-                    asset1 = transfer.data['asset']
+                    asset1 = asset
                     wallet1 = transfer.data['receiver_wallet']
                     dex_sender1 = transfer.data['sender']
                     dex_sender1_jetton_wallet = transfer.data['sender_wallet']
                 else:
                     amount2 = amount
-                    asset2 = transfer.data['asset']
+                    asset2 = asset
                     wallet2 = transfer.data['receiver_wallet']
                     dex_sender2 = transfer.data['sender']
                     dex_sender2_jetton_wallet = transfer.data['sender_wallet']
@@ -915,4 +923,233 @@ class ToncoDepositLiquidityMatcher(BlockMatcher):
         
         new_block = ToncoDepositLiquidityBlock(data)
         new_block.merge_blocks([block] + other_blocks + additional_blocks)
+        return [new_block]
+
+TONCO_ROUTER_WTTON_WALLET_ADDR = "0:871DA9215B14902166F0EA2A16DB56278D528108377F8158C5F4CCFDFDD22E17"
+
+@dataclass
+class ToncoWithdrawLiquidityData:
+    sender: AccountId
+    pool: AccountId
+    burned_nft_index: int | None
+    burned_nft_address: AccountId | None
+    liquidity_burnt: Amount
+    tick_lower: int
+    tick_upper: int
+    amount1_out: Amount | None
+    asset1_out: Asset | None
+    dex_wallet_1: AccountId | None
+    dex_jetton_wallet_1: AccountId | None
+    wallet1: AccountId | None
+    amount2_out: Amount | None
+    asset2_out: Asset | None
+    dex_wallet_2: AccountId | None
+    dex_jetton_wallet_2: AccountId | None
+    wallet2: AccountId | None
+
+
+class ToncoWithdrawLiquidityBlock(Block):
+    data: ToncoWithdrawLiquidityData
+
+    def __init__(self, data: ToncoWithdrawLiquidityData):
+        super().__init__("tonco_withdraw_liquidity", [], data)
+
+    def __repr__(self):
+        return f"tonco_withdraw_liquidity pool={self.data.pool.address} sender={self.data.sender.address} liquidity={self.data.liquidity_burnt}"
+
+
+class ToncoWithdrawLiquidityMatcher(BlockMatcher):
+    def __init__(self):
+        output_ton_or_jetton = BlockTypeMatcher(
+            block_type='jetton_transfer', 
+            child_matcher=ContractMatcher(opcode=PTonTransfer.opcode, optional=True), 
+            optional=True
+        )
+        
+        # router sends out two payments
+        router_payouts = ContractMatcher(
+            opcode=ToncoRouterV3PayTo.opcode,  # 0xa1daa96d
+            optional=False,
+            children_matchers=[
+                labeled('payout_1', output_ton_or_jetton),
+                labeled('payout_2', output_ton_or_jetton)
+            ]
+        )
+
+        # pool processes the burn
+        pool_burn = ContractMatcher(
+            opcode=ToncoPoolV3Burn.opcode,  # 0xd73ac09d
+            optional=False,
+            child_matcher=router_payouts
+        )
+
+        # NFT position burn request
+        position_burn = ContractMatcher(
+            opcode=ToncoPositionNftV3PositionBurn.opcode,  # 0x46ca335a
+            child_matcher=pool_burn,
+            optional=False
+        )
+
+        super().__init__(
+            optional=False,
+            child_matcher=position_burn,
+        )
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock) 
+            and block.opcode == ToncoPoolV3StartBurn.opcode  # 0x530b5f2c
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        additional_blocks = []
+        
+        # parse start burn message (ToncoPoolV3StartBurn)
+        start_burn_msg = ToncoPoolV3StartBurn(block.get_body())
+        burned_nft_index = start_burn_msg.burned_index
+        liquidity_burnt = Amount(start_burn_msg.liquidity_to_burn)
+        tick_lower = start_burn_msg.tick_lower
+        tick_upper = start_burn_msg.tick_upper
+        
+        pool = AccountId(block.get_message().destination)
+        
+        position_burn_call = find_call_contract(block.next_blocks, ToncoPositionNftV3PositionBurn.opcode)
+        if not position_burn_call:
+            return []
+        
+        # parse position burn to get sender (original NFT owner) and burned_nft_address (the NFT itself)
+        position_burn_msg = ToncoPositionNftV3PositionBurn(position_burn_call.get_body())
+        sender = AccountId(position_burn_msg.nft_owner)
+        burned_nft_address = AccountId(position_burn_call.get_message().destination) 
+        
+        pool_burn_call = find_call_contract(position_burn_call.next_blocks, ToncoPoolV3Burn.opcode)
+        if not pool_burn_call:
+            return []
+                
+        # parse pool burn to potentially update burned_nft_index
+        try:
+            pool_burn_msg_payload = ToncoPoolV3Burn(pool_burn_call.get_body())
+            if pool_burn_msg_payload.burned_index:
+                burned_nft_index = pool_burn_msg_payload.burned_index
+        except Exception as e:
+            logger.warning(f"Failed to parse pool burn message (ToncoPoolV3Burn): {e}")
+        
+        payout_1 = get_labeled('payout_1', other_blocks)
+        payout_2 = get_labeled('payout_2', other_blocks)
+        
+        # find ToncoRouterV3PayTo call (Pool -> Router/User)
+        router_payout_call = find_call_contract(pool_burn_call.next_blocks, ToncoRouterV3PayTo.opcode)
+        if not router_payout_call:
+            logger.error("Router payout call (ToncoRouterV3PayTo) not found in Tonco withdraw")
+            return []
+        
+        router_payout_msg = ToncoRouterV3PayTo(router_payout_call.get_body())
+        
+        # determine assets and amounts from router_payout_msg - order matters!
+        asset0_data_from_router = {
+            'amount': Amount(router_payout_msg.amount0 or 0),
+            'wallet_addr': AccountId(router_payout_msg.jetton0_address) if router_payout_msg.jetton0_address else None,
+            'receiver': AccountId(router_payout_msg.receiver0) if router_payout_msg.receiver0 else None
+        }
+
+        asset1_data_from_router = {
+            'amount': Amount(router_payout_msg.amount1 or 0),
+            'wallet_addr': AccountId(router_payout_msg.jetton1_address) if router_payout_msg.jetton1_address else None,
+            'receiver': AccountId(router_payout_msg.receiver1) if router_payout_msg.receiver1 else None
+        }
+        router_assets_info = [asset0_data_from_router, asset1_data_from_router]
+
+        # pton check
+        for i in router_assets_info:
+            if i['wallet_addr'].as_str() == TONCO_ROUTER_WTTON_WALLET_ADDR:
+                i['wallet_addr'] = None
+
+        
+        # process actual transfers to extract definitive asset types
+        actual_payout_transfers = [payout_1, payout_2]
+        processed_payouts = []
+
+        for i, payout_transfer_block in enumerate(actual_payout_transfers):
+            temp_processed_payout = {}
+            if payout_transfer_block and isinstance(payout_transfer_block, JettonTransferBlock):
+                pton_transfer_block = find_call_contract(payout_transfer_block.next_blocks, PTonTransfer.opcode)
+                if pton_transfer_block is not None:
+                    pton_msg = PTonTransfer(pton_transfer_block.get_body())
+                    temp_processed_payout['amount'] = Amount(pton_msg.ton_amount or 0)
+                    temp_processed_payout['asset'] = Asset(is_ton=True, jetton_address=None)
+                    additional_blocks.append(pton_transfer_block)
+                else:
+                    temp_processed_payout['amount'] = payout_transfer_block.data['amount']
+                    temp_processed_payout['asset'] = payout_transfer_block.data['asset']
+                
+                temp_processed_payout['dex_wallet'] = payout_transfer_block.data['sender'] # router actually
+                temp_processed_payout['dex_jetton_wallet'] = payout_transfer_block.data['sender_wallet']
+                temp_processed_payout['wallet'] = payout_transfer_block.data['receiver_wallet']
+                processed_payouts.append(temp_processed_payout)
+            # elif i < len(router_assets_info): # fallback to router message data
+            #     router_asset_info = router_assets_info[i]
+            #     asset = None
+            #     if router_asset_info['wallet_addr']:
+            #         jetton_wallet = await context.interface_repository.get().get_jetton_wallet(router_asset_info['wallet_addr'].as_str())
+            #         if jetton_wallet and jetton_wallet.jetton in PTonTransferMatcher.pton_masters:
+            #             asset = Asset(is_ton=True, jetton_address=None)
+            #         elif jetton_wallet:
+            #             asset = Asset(is_ton=False, jetton_address=jetton_wallet.jetton)
+            #     processed_payouts.append({
+            #         'amount': router_asset_info['amount'],
+            #         'asset': asset,
+            #         'dex_wallet': AccountId(router_payout_call.get_message().source),
+            #         'dex_jetton_wallet': router_asset_info['wallet_addr'],
+            #         'wallet': router_asset_info['receiver'] 
+            #     })
+            else:
+                return []
+            
+        # sort processed_payouts according to the pool's asset0 and asset1
+        w1 = processed_payouts[0]['dex_jetton_wallet']
+        w2 = router_assets_info[0]['wallet_addr']
+        w1 = w1.as_str() if w1 else None
+        w2 = w2.as_str() if w2 else None
+        if w1 != w2:
+            processed_payouts = processed_payouts[::-1]
+            # check result
+            w1_new = processed_payouts[0]['dex_jetton_wallet']
+            w1_new = w1_new.as_str() if w1_new else None
+            if w1_new != w2:
+                logger.warning(f"Failed to sort Tonco withdraw liquidity: {w1} and {w1_new} != {w2}")
+
+
+        # fill output data class
+        data = ToncoWithdrawLiquidityData(
+            sender=sender,
+            pool=pool,
+            burned_nft_index=burned_nft_index,
+            burned_nft_address=burned_nft_address,
+            liquidity_burnt=liquidity_burnt,
+            tick_lower=tick_lower,
+            tick_upper=tick_upper,
+
+            amount1_out=processed_payouts[0].get('amount') if len(processed_payouts) > 0 else None,
+            asset1_out=processed_payouts[0].get('asset') if len(processed_payouts) > 0 else None,
+            dex_wallet_1=processed_payouts[0].get('dex_wallet') if len(processed_payouts) > 0 else None,
+            dex_jetton_wallet_1=processed_payouts[0].get('dex_jetton_wallet') if len(processed_payouts) > 0 else None,
+            wallet1=processed_payouts[0].get('wallet') if len(processed_payouts) > 0 else None,
+
+            amount2_out=processed_payouts[1].get('amount') if len(processed_payouts) > 1 else None,
+            asset2_out=processed_payouts[1].get('asset') if len(processed_payouts) > 1 else None,
+            dex_wallet_2=processed_payouts[1].get('dex_wallet') if len(processed_payouts) > 1 else None,
+            dex_jetton_wallet_2=processed_payouts[1].get('dex_jetton_wallet') if len(processed_payouts) > 1 else None,
+            wallet2=processed_payouts[1].get('wallet') if len(processed_payouts) > 1 else None,
+        )
+        
+        new_block = ToncoWithdrawLiquidityBlock(data)
+        
+        blocks_to_merge = [block] + other_blocks + additional_blocks
+        for call_block in [position_burn_call, pool_burn_call, router_payout_call]:
+            if call_block and call_block not in blocks_to_merge:
+                blocks_to_merge.append(call_block)
+            
+        new_block.merge_blocks(list(set(blocks_to_merge)))
+        new_block.failed = router_payout_msg.exit_code != 0 and router_payout_msg.exit_code != 201 
+        
         return [new_block]
