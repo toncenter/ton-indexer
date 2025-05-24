@@ -1025,7 +1025,7 @@ class ToncoWithdrawLiquidityMatcher(BlockMatcher):
         pool_burn_call = find_call_contract(position_burn_call.next_blocks, ToncoPoolV3Burn.opcode)
         if not pool_burn_call:
             return []
-                
+
         # parse pool burn to potentially update burned_nft_index
         try:
             pool_burn_msg_payload = ToncoPoolV3Burn(pool_burn_call.get_body())
@@ -1070,8 +1070,11 @@ class ToncoWithdrawLiquidityMatcher(BlockMatcher):
         processed_payouts = []
 
         for i, payout_transfer_block in enumerate(actual_payout_transfers):
+            # if payout_transfer_block is None:
+            #     continue
+
             temp_processed_payout = {}
-            if payout_transfer_block and isinstance(payout_transfer_block, JettonTransferBlock):
+            if isinstance(payout_transfer_block, JettonTransferBlock):
                 pton_transfer_block = find_call_contract(payout_transfer_block.next_blocks, PTonTransfer.opcode)
                 if pton_transfer_block is not None:
                     pton_msg = PTonTransfer(pton_transfer_block.get_body())
@@ -1086,22 +1089,22 @@ class ToncoWithdrawLiquidityMatcher(BlockMatcher):
                 temp_processed_payout['dex_jetton_wallet'] = payout_transfer_block.data['sender_wallet']
                 temp_processed_payout['wallet'] = payout_transfer_block.data['receiver_wallet']
                 processed_payouts.append(temp_processed_payout)
-            # elif i < len(router_assets_info): # fallback to router message data
-            #     router_asset_info = router_assets_info[i]
-            #     asset = None
-            #     if router_asset_info['wallet_addr']:
-            #         jetton_wallet = await context.interface_repository.get().get_jetton_wallet(router_asset_info['wallet_addr'].as_str())
-            #         if jetton_wallet and jetton_wallet.jetton in PTonTransferMatcher.pton_masters:
-            #             asset = Asset(is_ton=True, jetton_address=None)
-            #         elif jetton_wallet:
-            #             asset = Asset(is_ton=False, jetton_address=jetton_wallet.jetton)
-            #     processed_payouts.append({
-            #         'amount': router_asset_info['amount'],
-            #         'asset': asset,
-            #         'dex_wallet': AccountId(router_payout_call.get_message().source),
-            #         'dex_jetton_wallet': router_asset_info['wallet_addr'],
-            #         'wallet': router_asset_info['receiver'] 
-            #     })
+            elif i < len(router_assets_info): # fallback to router message data
+                router_asset_info = router_assets_info[i]
+                asset = None
+                if router_asset_info['wallet_addr']:
+                    jetton_wallet = await context.interface_repository.get().get_jetton_wallet(router_asset_info['wallet_addr'].as_str())
+                    if jetton_wallet and jetton_wallet.jetton in PTonTransferMatcher.pton_masters:
+                        asset = Asset(is_ton=True, jetton_address=None)
+                    elif jetton_wallet:
+                        asset = Asset(is_ton=False, jetton_address=jetton_wallet.jetton)
+                processed_payouts.append({
+                    'amount': router_asset_info['amount'],
+                    'asset': asset,
+                    'dex_wallet': AccountId(router_payout_call.get_message().source),
+                    'dex_jetton_wallet': router_asset_info['wallet_addr'],
+                    'wallet': router_asset_info['receiver'] 
+                })
             else:
                 return []
             

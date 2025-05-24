@@ -344,6 +344,14 @@ class ToncoRouterV3PayTo:
                 self.tick_lower = indexer_burn_info_slice.load_int(24)
                 self.tick_upper = indexer_burn_info_slice.load_int(24)
                 self.tick_burn = indexer_burn_info_slice.load_int(24)
+    
+    def get_jetton_wallets(self) -> list[str]:
+        jetton_wallets = []
+        if isinstance(self.jetton0_address, Address):
+            jetton_wallets.append(self.jetton0_address.to_str(is_user_friendly=False).upper())
+        if isinstance(self.jetton1_address, Address):
+            jetton_wallets.append(self.jetton1_address.to_str(is_user_friendly=False).upper())
+        return jetton_wallets
 
 class ToncoResetGas:
     """

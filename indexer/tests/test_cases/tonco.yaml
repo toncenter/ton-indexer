@@ -359,3 +359,30 @@ cases:
             burned_nft_address: 0:25DCA00B89840073546AE2F783257FE093AD6344F167E75DB2B28B68FBEC13FB
             tick_lower: -51720
             tick_upper: -49380
+
+  Tonco withdraw liquidity (one side):
+    trace-id: 0Jzh0p9LKCaM7xi4yiGWOJEnn9WZ8xKUkTzY30DDQ3Q=
+    expected-actions:
+      - type: dex_withdraw_liquidity
+        values:
+          source: 0:16604175CDC32DFD20A7C11675D292642AB0FF432DF13551861782D97123627E
+          destination: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+          dex_withdraw_liquidity_data:
+            dex: tonco
+            lp_tokens_burnt: 152272971461
+            amount1: 402668702340
+            amount2: 0
+            asset1_out: null
+            burned_nft_index: 3069
+            burned_nft_address: 0:D45327FD7064DE916ECA997075D099B5BAA9547C16EC920E0385B068923E2A4D
+            tick_lower: -56460
+            tick_upper: -53040
+            dex_wallet_1: 0:BFFADD270A738531DA7B13BA8FC403826C2586173F9EDE9C316FAB53BC59AC86
+            dex_jetton_wallet_1: null
+            user_jetton_wallet_1: null
+            # FIXME: actually it's 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE,
+            # and it is so in webapp. but tests somehow ignore address_selectors for this case.
+            asset2_out: null
+            dex_wallet_2: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
+            dex_jetton_wallet_2: 0:ACAD45796724B3F00AD42A4311B20667DA4BE28A43951587A381F73AA9552209
+            user_jetton_wallet_2: 0:16604175CDC32DFD20A7C11675D292642AB0FF432DF13551861782D97123627E

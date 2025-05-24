@@ -1,10 +1,9 @@
 from pytoniq_core import Slice
 
 from indexer.core.database import Message, Transaction, Trace
-from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2, JVaultUnstakeJettons, ToncoPoolV3SwapPayload, ToncoPoolV3FundAccountPayload
+from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2, JVaultUnstakeJettons, ToncoPoolV3SwapPayload, ToncoPoolV3FundAccountPayload, ToncoRouterV3PayTo
 from indexer.events.blocks.messages.externals import extract_payload_from_wallet_message
 from indexer.events.interface_repository import ExtraAccountRequest
-
 
 def extract_target_wallet_stonfi_v2_swap(message: Message) -> set[str]:
     accounts = set()
@@ -57,6 +56,11 @@ def extract_other_jetton_tonco_deposit(message: Message) -> set[str]:
                 accounts.add(payload_info.get_other_jetton_wallet())
     return accounts
 
+def extract_jetton_tonco_payout(message: Message) -> set[str]:
+    payout_msg = ToncoRouterV3PayTo(Slice.one_from_boc(message.message_content.body))
+    accounts = set(payout_msg.get_jetton_wallets())
+    return accounts
+
 def extract_addresses_from_external(message: Message) -> set[str]:
     if message.source is not None:
         return set()
@@ -93,6 +97,8 @@ def extract_additional_addresses(tx: Transaction) -> set[str]:
                 accounts.update(extract_other_jetton_tonco_deposit(msg))
             if opcode == StonfiSwapV2.opcode:
                 accounts.update(extract_pool_wallets_stonfi_v2(msg))
+            if opcode == ToncoRouterV3PayTo.opcode:
+                accounts.update(extract_jetton_tonco_payout(msg))
         except Exception:
             pass
     return accounts
