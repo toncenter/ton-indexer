@@ -3816,6 +3816,9 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                },
+                "valid": {
+                    "type": "boolean"
                 }
             }
         },

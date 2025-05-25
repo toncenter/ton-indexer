@@ -756,6 +756,8 @@ definitions:
         type: string
       type:
         type: string
+      valid:
+        type: boolean
     type: object
   Trace:
     properties:
