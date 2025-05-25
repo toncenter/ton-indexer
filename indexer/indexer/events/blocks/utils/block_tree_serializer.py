@@ -17,6 +17,7 @@ from indexer.events.blocks.jvault import JVaultStakeBlock, JVaultUnstakeBlock, J
 from indexer.events.blocks.liquidity import (
     DedustDepositLiquidityPartial,
     DedustDepositLiquidity,
+    ToncoDeployPoolBlock,
     ToncoDepositLiquidityBlock,
     ToncoWithdrawLiquidityBlock,
 )
@@ -601,7 +602,7 @@ def _fill_vesting_add_whitelist(block: VestingAddWhiteListBlock, action: Action)
         "accounts_added": list(map(_addr, block.data.accounts_added)),
     }
 
-def _fill_tonco_deploy_pool(block, action):
+def _fill_tonco_deploy_pool(block: ToncoDeployPoolBlock, action: Action):
     d = block.data
     action.success = d.success
     action.source = _addr(d.deployer)
