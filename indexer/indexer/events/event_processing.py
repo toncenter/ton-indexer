@@ -7,34 +7,89 @@ from pytoniq_core import Slice
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from indexer.core.database import Trace, engine, Message, MessageContent
+from indexer.core.database import Message, MessageContent, Trace, engine
 from indexer.events.blocks.auction import AuctionBidMatcher
-from indexer.events.blocks.basic_blocks import TonTransferBlock, CallContractBlock, ContractDeploy, TickTockBlock
+from indexer.events.blocks.basic_blocks import (
+    CallContractBlock,
+    ContractDeploy,
+    TickTockBlock,
+    TonTransferBlock,
+)
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
-from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, ElectionRecoverStakeBlockMatcher
-from indexer.events.blocks.evaa import EvaaSupplyBlockMatcher, EvaaLiquidateBlockMatcher, EvaaWithdrawBlockMatcher
-from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher, JettonMintBlockMatcher, \
-    PTonTransferMatcher, FallbackJettonTransferBlockMatcher
-from indexer.events.blocks.jvault import JVaultStakeBlockMatcher, JVaultUnstakeBlockMatcher, JVaultClaimBlockMatcher
-from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, \
-    DedustWithdrawBlockMatcher, \
-    post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher, ToncoDepositLiquidityMatcher, ToncoWithdrawLiquidityMatcher, ToncoDeployPoolBlockMatcher
+from indexer.events.blocks.elections import (
+    ElectionDepositStakeBlockMatcher,
+    ElectionRecoverStakeBlockMatcher,
+)
+from indexer.events.blocks.evaa import (
+    EvaaLiquidateBlockMatcher,
+    EvaaSupplyBlockMatcher,
+    EvaaWithdrawBlockMatcher,
+)
+from indexer.events.blocks.jettons import (
+    FallbackJettonTransferBlockMatcher,
+    JettonBurnBlockMatcher,
+    JettonMintBlockMatcher,
+    JettonTransferBlockMatcher,
+    PTonTransferMatcher,
+)
+from indexer.events.blocks.jvault import (
+    JVaultClaimBlockMatcher,
+    JVaultStakeBlockMatcher,
+    JVaultUnstakeBlockMatcher,
+)
+from indexer.events.blocks.liquidity import (
+    DedustDepositBlockMatcher,
+    DedustDepositFirstAssetBlockMatcher,
+    DedustWithdrawBlockMatcher,
+    StonfiV2ProvideLiquidityMatcher,
+    StonfiV2WithdrawLiquidityMatcher,
+    ToncoDeployPoolBlockMatcher,
+    ToncoDepositLiquidityMatcher,
+    ToncoWithdrawLiquidityMatcher,
+    post_process_dedust_liquidity,
+)
 from indexer.events.blocks.messages import TonTransferMessage
-from indexer.events.blocks.messages.externals import WalletV3ExternalMessage, WalletV4ExternalMessage, \
-    WalletV5R1ExternalMessage, extract_payload_from_wallet_message
-from indexer.events.blocks.multisig import MultisigCreateOrderBlockMatcher, MultisigExecuteBlockMatcher, \
-    MultisigApproveBlockMatcher
-from indexer.events.blocks.nft import NftTransferBlockMatcher, TelegramNftPurchaseBlockMatcher, NftMintBlockMatcher, \
-    NftDiscoveryBlockMatcher
-from indexer.events.blocks.staking import TONStakersDepositMatcher, TONStakersWithdrawMatcher, \
-    TONStakersDelayedWithdrawalMatcher, NominatorPoolDepositMatcher, NominatorPoolWithdrawRequestMatcher, \
-    NominatorPoolWithdrawMatcher
-from indexer.events.blocks.subscriptions import SubscriptionBlockMatcher, UnsubscribeBlockMatcher
-from indexer.events.blocks.swaps import DedustSwapBlockMatcher, StonfiSwapBlockMatcher, StonfiV2SwapBlockMatcher, ToncoSwapBlockMatcher
-from indexer.events.blocks.utils import NoMessageBodyException
-from indexer.events.blocks.utils import to_tree, EventNode
-from indexer.events.blocks.vesting import VestingSendMessageBlockMatcher, VestingAddWhiteListBlockMatcher
+from indexer.events.blocks.messages.externals import (
+    WalletV3ExternalMessage,
+    WalletV4ExternalMessage,
+    WalletV5R1ExternalMessage,
+    extract_payload_from_wallet_message,
+)
+from indexer.events.blocks.multisig import (
+    MultisigApproveBlockMatcher,
+    MultisigCreateOrderBlockMatcher,
+    MultisigExecuteBlockMatcher,
+)
+from indexer.events.blocks.nft import (
+    NftDiscoveryBlockMatcher,
+    NftMintBlockMatcher,
+    NftTransferBlockMatcher,
+    TelegramNftPurchaseBlockMatcher,
+)
+from indexer.events.blocks.staking import (
+    NominatorPoolDepositMatcher,
+    NominatorPoolWithdrawMatcher,
+    NominatorPoolWithdrawRequestMatcher,
+    TONStakersDelayedWithdrawalMatcher,
+    TONStakersDepositMatcher,
+    TONStakersWithdrawMatcher,
+)
+from indexer.events.blocks.subscriptions import (
+    SubscriptionBlockMatcher,
+    UnsubscribeBlockMatcher,
+)
+from indexer.events.blocks.swaps import (
+    DedustSwapBlockMatcher,
+    StonfiSwapBlockMatcher,
+    StonfiV2SwapBlockMatcher,
+    ToncoSwapBlockMatcher,
+)
+from indexer.events.blocks.utils import EventNode, NoMessageBodyException, to_tree
+from indexer.events.blocks.vesting import (
+    VestingAddWhiteListBlockMatcher,
+    VestingSendMessageBlockMatcher,
+)
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)

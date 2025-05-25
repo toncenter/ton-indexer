@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loguru import logger
-from pytoniq_core import Cell, begin_cell
 
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock
@@ -58,11 +57,7 @@ from indexer.events.blocks.messages.liquidity import (
     ToncoRouterV3CreatePool,
 )
 from indexer.events.blocks.utils import AccountId, Amount, Asset
-from indexer.events.blocks.utils.block_utils import (
-    find_call_contract,
-    find_call_contracts,
-    get_labeled,
-)
+from indexer.events.blocks.utils.block_utils import find_call_contract, get_labeled
 
 
 class DedustDepositLiquidity(Block):

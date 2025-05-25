@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Any
 
 from pytoniq_core import Cell, Slice, begin_cell
 
@@ -13,7 +11,6 @@ from indexer.events.blocks.basic_matchers import (
     BlockMatcher,
     BlockTypeMatcher,
     ContractMatcher,
-    ExclusiveOrMatcher,
     OrMatcher,
     RecursiveMatcher,
     child_sequence_matcher,
@@ -35,13 +32,10 @@ from indexer.events.blocks.messages import (
     StonfiSwapMessage,
     StonfiSwapV2,
     StonfiV2PayTo,
-    ToncoPoolV3Init,
     ToncoPoolV3Swap,
     ToncoPoolV3SwapPayload,
-    ToncoRouterV3CreatePool,
     ToncoRouterV3PayTo,
 )
-from indexer.events.blocks.messages.common import ExcessMessage
 from indexer.events.blocks.messages.jettons import JettonNotify, JettonTransfer
 from indexer.events.blocks.utils import AccountId, Amount, Asset
 from indexer.events.blocks.utils.address_selectors import (
@@ -51,7 +45,6 @@ from indexer.events.blocks.utils.block_utils import (
     find_call_contract,
     find_call_contracts,
     find_messages,
-    get_labeled,
 )
 
 logger = logging.getLogger(__name__)

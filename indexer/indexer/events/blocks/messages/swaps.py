@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pytoniq_core import Slice, Address, Cell
+from pytoniq_core import Address, Slice
 
 from indexer.events.blocks.utils import Asset
 

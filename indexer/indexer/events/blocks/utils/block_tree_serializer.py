@@ -7,28 +7,53 @@ import logging
 from indexer.core.database import Action, Trace
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
-from indexer.events.blocks.dns import ChangeDnsRecordBlock, DeleteDnsRecordBlock, DnsRenewBlock
-from indexer.events.blocks.evaa import EvaaSupplyBlock, EvaaWithdrawBlock, EvaaLiquidateBlock
-from indexer.events.blocks.jettons import (
-    JettonMintBlock,
+from indexer.events.blocks.dns import (
+    ChangeDnsRecordBlock,
+    DeleteDnsRecordBlock,
+    DnsRenewBlock,
 )
-from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
-from indexer.events.blocks.jvault import JVaultStakeBlock, JVaultUnstakeBlock, JVaultClaimBlock
+from indexer.events.blocks.evaa import (
+    EvaaLiquidateBlock,
+    EvaaSupplyBlock,
+    EvaaWithdrawBlock,
+)
+from indexer.events.blocks.jettons import (
+    JettonBurnBlock,
+    JettonMintBlock,
+    JettonTransferBlock,
+)
+from indexer.events.blocks.jvault import (
+    JVaultClaimBlock,
+    JVaultStakeBlock,
+    JVaultUnstakeBlock,
+)
 from indexer.events.blocks.liquidity import (
-    DedustDepositLiquidityPartial,
     DedustDepositLiquidity,
+    DedustDepositLiquidityPartial,
     ToncoDeployPoolBlock,
     ToncoDepositLiquidityBlock,
     ToncoWithdrawLiquidityBlock,
 )
-from indexer.events.blocks.multisig import MultisigCreateOrderBlock, MultisigApproveBlock, MultisigExecuteBlock
-from indexer.events.blocks.nft import NftTransferBlock, NftMintBlock, NftDiscoveryBlock
-from indexer.events.blocks.staking import TONStakersDepositBlock, TONStakersWithdrawRequestBlock, \
-    TONStakersWithdrawBlock, NominatorPoolWithdrawRequestBlock, NominatorPoolDepositBlock
+from indexer.events.blocks.multisig import (
+    MultisigApproveBlock,
+    MultisigCreateOrderBlock,
+    MultisigExecuteBlock,
+)
+from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock
+from indexer.events.blocks.staking import (
+    NominatorPoolDepositBlock,
+    NominatorPoolWithdrawRequestBlock,
+    TONStakersDepositBlock,
+    TONStakersWithdrawBlock,
+    TONStakersWithdrawRequestBlock,
+)
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
-from indexer.events.blocks.vesting import VestingSendMessageBlock, VestingAddWhiteListBlock
+from indexer.events.blocks.vesting import (
+    VestingAddWhiteListBlock,
+    VestingSendMessageBlock,
+)
 
 logger = logging.getLogger(__name__)
 
