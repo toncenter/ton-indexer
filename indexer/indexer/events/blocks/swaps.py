@@ -13,18 +13,15 @@ from indexer.events.blocks.jettons import JettonTransferBlock, PTonTransferMatch
 from indexer.events.blocks.labels import labeled, LabelBlock
 from indexer.events.blocks.messages import DedustPayout, DedustPayoutFromPool, DedustSwapPeer, DedustSwapExternal, \
     DedustSwap, StonfiV2PayTo, JettonNotify, PTonTransfer, DedustSwapPayload, StonfiSwapV2
-from indexer.events.blocks.messages import StonfiSwapMessage, StonfiPaymentRequest, DedustSwapNotification
+from indexer.events.blocks.messages import StonfiSwapMessage, StonfiPaymentRequest, DedustSwapNotification, ToncoPoolV3SwapPayload, \
+    ToncoRouterV3PayTo, \
+    ToncoPoolV3Swap, \
+    ToncoRouterV3CreatePool, \
+    ToncoPoolV3Init
 from indexer.events.blocks.utils import AccountId, Asset, Amount
 from indexer.events.blocks.utils.address_selectors import extract_target_wallet_stonfi_v2_swap
 from indexer.events.blocks.utils.block_utils import find_call_contract, find_call_contracts, find_messages, get_labeled
 
-from indexer.events.blocks.messages.swaps import (
-    ToncoPoolV3SwapPayload,
-    ToncoRouterV3PayTo,
-    ToncoPoolV3Swap,
-    ToncoRouterV3CreatePool,
-    ToncoPoolV3Init,
-)
 from indexer.events.blocks.messages.common import ExcessMessage
 from indexer.events.blocks.messages.jettons import JettonNotify, JettonTransfer
 

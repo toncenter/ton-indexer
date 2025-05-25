@@ -28,12 +28,12 @@ from indexer.events.blocks.messages.liquidity import (
     DedustDepositTONToVault, DedustDestroyLiquidityDepositContract,
     DedustReturnExcessFromVault, DedustTopUpLiquidityDepositContract,
     StonfiV2ProvideLiquidity)
-from indexer.events.blocks.messages.swaps import (DedustPayout,
-                                                  DedustPayoutFromPool,
-                                                  ToncoPoolV3FundAccount,
-                                                  ToncoAccountV3AddLiquidity, ToncoPoolV3FundAccountPayload, ToncoPoolV3MinAndRefund,
-                                                  ToncoRouterV3PayTo, ToncoPositionNftV3PositionInit, ToncoPoolV3Burn,
-                                                  ToncoPositionNftV3PositionBurn, ToncoPoolV3StartBurn)
+from indexer.events.blocks.messages import (DedustPayout,
+                                            DedustPayoutFromPool,
+                                            ToncoPoolV3FundAccount,
+                                            ToncoAccountV3AddLiquidity, ToncoPoolV3FundAccountPayload, ToncoPoolV3MinAndRefund,
+                                            ToncoRouterV3PayTo, ToncoPositionNftV3PositionInit, ToncoPoolV3Burn,
+                                            ToncoPositionNftV3PositionBurn, ToncoPoolV3StartBurn)
 from indexer.events.blocks.utils import AccountId, Amount, Asset
 from indexer.events.blocks.utils.block_utils import find_call_contract, find_call_contracts, get_labeled
 
