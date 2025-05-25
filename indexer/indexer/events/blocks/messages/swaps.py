@@ -222,7 +222,9 @@ class ToncoPoolV3Swap:
         ]
     = ContractMessages;
     """
-    opcode = 0xa7fb58f8
+
+    opcode = 0xA7FB58F8
+
     def __init__(self, body: Slice):
         body.load_uint(32)
         self.query_id = body.load_uint(64)
@@ -238,7 +240,8 @@ class ToncoPoolV3Swap:
         self.ok_forward_payload = payloads_cell.load_maybe_ref()
         self.ret_forward_amount = payloads_cell.load_coins() or 0
         self.ret_forward_payload = payloads_cell.load_maybe_ref()
-    
+
+
 class ToncoPoolV3SwapPayload:
     """With reason most obscure and purpose veiled in shadow,
     tonco does employ the selfsame opcode for in_transfer payload, yet
@@ -263,7 +266,9 @@ class ToncoPoolV3SwapPayload:
         .storeMaybeRef(getInnerMessage(isEmpty, Boolean(isPTON)))
         .endCell();
     ```"""
-    payload_opcode = 0xa7fb58f8
+
+    payload_opcode = 0xA7FB58F8
+
     def __init__(self, body: Slice):
         body.load_uint(32)
         self.target_router_jwallet = body.load_address()
@@ -271,27 +276,34 @@ class ToncoPoolV3SwapPayload:
         self.min_out_amount = body.load_coins() or 0
         self.recipient = body.load_address()
         self.payload = body.load_maybe_ref()
-    
+
     def get_target_wallets_and_amounts_recursive(self) -> list[tuple[str, int]]:
         accounts = []
-        
+
         if isinstance(self.target_router_jwallet, Address):
-            accounts.append((self.target_router_jwallet.to_str(False).upper(), self.min_out_amount))
-        
+            accounts.append(
+                (self.target_router_jwallet.to_str(False).upper(), self.min_out_amount)
+            )
+
         if self.payload:
             try:
                 inner_payload = self.payload.to_slice()
                 op = inner_payload.preload_uint(32)
                 if op == self.payload_opcode:
                     next_payload = ToncoPoolV3SwapPayload(inner_payload)
-                    accounts.extend(next_payload.get_target_wallets_and_amounts_recursive())
+                    accounts.extend(
+                        next_payload.get_target_wallets_and_amounts_recursive()
+                    )
             except Exception:
                 pass
         return accounts
-    
+
     def get_target_wallets_recursive(self) -> set[str]:
-        return set([account[0] for account in self.get_target_wallets_and_amounts_recursive()])
-    
+        return set(
+            [account[0] for account in self.get_target_wallets_and_amounts_recursive()]
+        )
+
+
 class ToncoRouterV3PayTo:
     """
     Payload format for JETTON_TRANSFER_NOTIFICATION (0x7362d09c)
@@ -308,7 +320,7 @@ class ToncoRouterV3PayTo:
             jetton0_address:MsgAddress
             amount1:(VarUInteger 16)
             jetton1_address:MsgAddress
-        ] ) 
+        ] )
         (exit_code = 200)?(
             indexer_swap_info_cell:(Maybe ^[
                 liquidity:uint128
@@ -316,7 +328,7 @@ class ToncoRouterV3PayTo:
                 tick:int24
                 fee_growth_global_0x128:int256
                 fee_growth_global_1x128:int256
-            ] ) 
+            ] )
         )
         (exit_code = 201)?(
             indexer_burn_info_cell:(Maybe ^[
@@ -325,14 +337,15 @@ class ToncoRouterV3PayTo:
                 tick_lower:int24
                 tick_upper:int24
                 tick_burn:int24
-            ] ) 
+            ] )
         )
     = ContractMessages;
     """
-    opcode = 0xa1daa96d
+
+    opcode = 0xA1DAA96D
 
     def __init__(self, body: Slice):
-        body.load_uint(32) # payload opcode
+        body.load_uint(32)  # payload opcode
         self.query_id = body.load_uint(64)
         self.receiver0 = body.load_address()
         self.receiver1 = body.load_address()
@@ -387,11 +400,15 @@ class ToncoRouterV3PayTo:
                 self.tick_lower = indexer_burn_info_slice.load_int(24)
                 self.tick_upper = indexer_burn_info_slice.load_int(24)
                 self.tick_burn = indexer_burn_info_slice.load_int(24)
-    
+
     def get_jetton_wallets(self) -> list[str]:
         jetton_wallets = []
         if isinstance(self.jetton0_address, Address):
-            jetton_wallets.append(self.jetton0_address.to_str(is_user_friendly=False).upper())
+            jetton_wallets.append(
+                self.jetton0_address.to_str(is_user_friendly=False).upper()
+            )
         if isinstance(self.jetton1_address, Address):
-            jetton_wallets.append(self.jetton1_address.to_str(is_user_friendly=False).upper())
+            jetton_wallets.append(
+                self.jetton1_address.to_str(is_user_friendly=False).upper()
+            )
         return jetton_wallets
