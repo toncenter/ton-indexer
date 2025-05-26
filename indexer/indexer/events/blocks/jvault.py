@@ -280,7 +280,6 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
 
 
         staking_pool = request_update_from_pool.get_message().destination
-        extra = await context.interface_repository.get().get_extra_data(stake_wallet, "data_boc")
         new_block = JVaultUnstakeBlock(
             data=JVaultUnstakeData(
                 sender=AccountId(msg.source),
