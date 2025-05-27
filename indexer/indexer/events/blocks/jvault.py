@@ -250,12 +250,11 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
         unstaked_amount = info.jettons_to_unstake
         stake_wallet = msg.destination
         unstake_transfer = get_labeled('withdraw_unstaked_jettons', other_blocks, JettonTransferBlock)
-
+        staking_pool, asset, jvault_asset = await extract_jvault_assets(stake_wallet)
+        if staking_pool is None or asset is None:
+            return []
         request_update_from_pool = get_labeled("request_update_rewards_from_pool", other_blocks)
         if not request_update_from_pool or not unstake_transfer:
-            staking_pool, asset, jvault_asset = await extract_jvault_assets(stake_wallet)
-            if staking_pool is None or asset is None:
-                return []
             new_block = JVaultUnstakeBlock(
                 data=JVaultUnstakeData(
                     sender=AccountId(msg.source),
@@ -270,7 +269,8 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
             )
             new_block.merge_blocks([block] + other_blocks)
             return [new_block]
-
+        if asset != unstake_transfer.data["asset"]:
+            raise Exception(f"Assets do not match: {asset} != {unstake_transfer.data['asset']}")
         unstake_fee = 0
         unstake_fee_block = get_labeled("unstake_fee", other_blocks, TonTransferBlock)
 
@@ -287,7 +287,8 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
                 staking_pool=AccountId(staking_pool),
                 unstaked_amount=unstaked_amount,
                 unstake_fee_taken=unstake_fee,
-                asset=unstake_transfer.data["asset"]
+                asset=unstake_transfer.data["asset"],
+                jvault_asset=jvault_asset,
             )
         )
         new_block.merge_blocks([block] + other_blocks)
