@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import abc
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 
 import msgpack
 import redis
@@ -350,6 +350,47 @@ async def _gather_data_from_db(
     getgems_auctions = []
     nominator_pools = []
     extra = []
+    queue = deque(extra_requests or [])
+    processed = set()
+
+    queue_iterations = 0
+    while queue:
+        queue_iterations += 1
+        if queue_iterations > 10:
+            break
+        batch = defaultdict(list)
+        batch_processors = {}
+
+        while queue:
+            extra_request = queue.popleft()
+
+            if (extra_request.account, extra_request.request_type) not in processed:
+                batch[extra_request.request_type].append(extra_request.account)
+                batch_processors[(extra_request.account, extra_request.request_type)] = extra_request.callback
+                processed.add((extra_request.account, extra_request.request_type))
+
+        # Execute batch
+        for req_type, accounts_batch in batch.items():
+            if req_type == 'data_boc':
+                results = await session.execute(
+                    select(LatestAccountState.account, LatestAccountState.data_boc)
+                    .filter(LatestAccountState.account.in_(accounts_batch))
+                )
+
+                for account, data_boc in results:
+                    processor = batch_processors.get((account, req_type))
+                    n_extra = {
+                        'account': account,
+                        'request': req_type,
+                        'data_boc': data_boc
+                    }
+                    if processor:
+                        new_requests, new_accounts = processor(n_extra)
+                        queue.extend(new_requests)
+                        accounts.update(new_accounts)
+                    extra.append(n_extra)
+
+
     account_list = list(accounts)
     for i in range(0, len(account_list), 5000):
         batch = account_list[i:i + 5000]
@@ -370,40 +411,15 @@ async def _gather_data_from_db(
         getgems_auctions += auctions
         nominator_pools += list(pools.scalars().all())
 
-    if extra_requests is not None:
-        extra_requests_dict = defaultdict(set)
-        for req in extra_requests:
-            extra_requests_dict[req.request].add(str(req.account))
-        for request, request_accounts in extra_requests_dict.items():
-            if request == 'data_boc':
-                data_bocs = await session.execute(select(LatestAccountState.account, LatestAccountState.data_boc)
-                                                  .filter(LatestAccountState.account.in_(request_accounts)))
-                data = data_bocs.all()
-                for wallet in data:
-                    extra.append({
-                        'account': wallet[0],
-                        'data_boc': wallet[1],
-                        'request': request
-                    })
-
 
     return jetton_wallets, nft_items, nft_sales, getgems_auctions, nominator_pools, extra
 
+@dataclass(frozen=True, eq=True)
 class ExtraAccountRequest:
-    def __init__(self, value, request=None):
-        self.account = value
-        self.request = request
-
-    def __eq__(self, other):
-        if isinstance(other, ExtraAccountRequest):
-            return self.account == other.account and self.request == other.request
-        return False
-
-    def __hash__(self):
-        return hash((self.account, self.request))
-
-    def __str__(self):
-        return f"ExtraAccountRequest({self.account}, {self.request})"
+    account: str
+    request_type: str = 'data_boc'
+    # Callback returns (new_requests, accounts_for_interfaces)
+    callback: Optional[Callable[[dict], tuple[list['ExtraAccountRequest'], set[str]]]] = None
 
 
 async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_requests: set[ExtraAccountRequest] = None)\
@@ -449,5 +465,5 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
             "address": account_state.account,
         }
     for wallet in extra:
-        result[wallet['account']][wallet['request']] = wallet["data_boc"]
+        result[wallet['account']][wallet['request']] = wallet
     return result

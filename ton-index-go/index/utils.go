@@ -27,7 +27,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"multisig_create_order", "multisig_approve", "multisig_execute",
 		"vesting_send_message", "vesting_add_whitelist",
 		"evaa_supply", "evaa_withdraw", "evaa_liquidate",
-		"jvault_stake", "jvault_unstake", "jvault_claim",
+		"jvault_stake", "jvault_unstake", "jvault_claim", "jvault_unstake_request",
 		"nft_discovery",
 		"unknown",
 	},
@@ -54,7 +54,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"evaa_supply", "evaa_withdraw", "evaa_liquidate",
 	},
 	"jvault": {
-		"jvault_stake", "jvault_unstake", "jvault_claim",
+		"jvault_stake", "jvault_unstake", "jvault_claim", "jvault_unstake_request",
 	},
 }
 

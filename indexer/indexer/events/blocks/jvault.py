@@ -26,9 +26,45 @@ from indexer.events.blocks.messages.jvault import (
     JVaultUnstakeJettons,
     JVaultUpdateReferrer,
     JVaultUpdateRewards,
+    JVaultUnstakeRequest,
 )
 from indexer.events.blocks.utils import AccountId, Asset
 from indexer.events.blocks.utils.block_utils import get_labeled
+
+
+async def extract_jvault_assets(stake_wallet: str) -> tuple[AccountId | None, Asset | None, Asset | None]:
+    """
+    Extract JVault assets from stake wallet data.
+    
+    Returns:
+        Tuple of (staking_pool, asset, jvault_asset)
+        - staking_pool: The staking pool address
+        - asset: The underlying asset being staked
+        - jvault_asset: The JVault token representing the stake
+    """
+    try:
+        extra = await context.interface_repository.get().get_extra_data(stake_wallet, "data_boc")
+        if extra is None:
+            return None, None, None
+        
+        pool_data_slice = Slice.one_from_boc(extra['data_boc'])
+        staking_pool = pool_data_slice.load_address()
+        minter_address = pool_data_slice.load_address()
+        
+        stake_pool_extra = await context.interface_repository.get().get_extra_data(
+            staking_pool.to_str(is_user_friendly=False).upper(), "data_boc"
+        )
+        if stake_pool_extra is None:
+            return AccountId(staking_pool), None, Asset(jetton_address=minter_address, is_ton=False)
+        
+        lock_wallet_address = stake_pool_extra['lock_wallet_address']
+        lock_wallet = await context.interface_repository.get().get_jetton_wallet(lock_wallet_address)
+        asset = Asset(jetton_address=lock_wallet.jetton, is_ton=False)
+        jvault_asset = Asset(jetton_address=minter_address, is_ton=False)
+        
+        return AccountId(staking_pool), asset, jvault_asset
+    except Exception:
+        return None, None, None
 
 
 @dataclass
@@ -153,6 +189,8 @@ class JVaultUnstakeData:
     staking_pool: AccountId
     unstaked_amount: int
     unstake_fee_taken: int | None
+    asset: Asset | None = None
+    jvault_asset: Asset | None = None
     exit_code: int | None = None
 
 
@@ -211,20 +249,22 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
         info = JVaultUnstakeJettons(block.get_body())
         unstaked_amount = info.jettons_to_unstake
         stake_wallet = msg.destination
+        unstake_transfer = get_labeled('withdraw_unstaked_jettons', other_blocks, JettonTransferBlock)
 
         request_update_from_pool = get_labeled("request_update_rewards_from_pool", other_blocks)
-        if not request_update_from_pool:
-            extra = await context.interface_repository.get().get_extra_data(stake_wallet, "data_boc")
-            if extra is None:
+        if not request_update_from_pool or not unstake_transfer:
+            staking_pool, asset, jvault_asset = await extract_jvault_assets(stake_wallet)
+            if staking_pool is None or asset is None:
                 return []
-            staking_pool = Slice.one_from_boc(extra).load_address()
             new_block = JVaultUnstakeBlock(
                 data=JVaultUnstakeData(
                     sender=AccountId(msg.source),
                     stake_wallet=AccountId(stake_wallet),
-                    staking_pool=AccountId(staking_pool),
+                    staking_pool=staking_pool,
                     unstaked_amount=unstaked_amount,
                     unstake_fee_taken=None,
+                    asset=asset,
+                    jvault_asset=jvault_asset,
                     exit_code=block.get_message().transaction.compute_exit_code
                 )
             )
@@ -240,7 +280,6 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
 
 
         staking_pool = request_update_from_pool.get_message().destination
-
         new_block = JVaultUnstakeBlock(
             data=JVaultUnstakeData(
                 sender=AccountId(msg.source),
@@ -248,6 +287,7 @@ class JVaultUnstakeBlockMatcher(BlockMatcher):
                 staking_pool=AccountId(staking_pool),
                 unstaked_amount=unstaked_amount,
                 unstake_fee_taken=unstake_fee,
+                asset=unstake_transfer.data["asset"]
             )
         )
         new_block.merge_blocks([block] + other_blocks)
@@ -329,5 +369,107 @@ class JVaultClaimBlockMatcher(BlockMatcher):
                 claimed_amounts=[amount],
             )
         )
+        new_block.merge_blocks([block] + other_blocks)
+        return [new_block]
+
+@dataclass
+class JVaultUnstakeRequestData:
+    sender: AccountId
+    stake_wallet: AccountId
+    staking_pool: AccountId
+    requested_amount: int
+    asset: Asset | None = None
+    jvault_asset: Asset | None = None
+    exit_code: int | None = None
+
+
+class JVaultUnstakeRequestBlock(Block):
+    data: JVaultUnstakeRequestData
+
+    def __init__(self, data: JVaultUnstakeRequestData):
+        super().__init__("jvault_unstake_request", [], data)
+
+    def __repr__(self):
+        return f"jvault_unstake_request {self.data}"
+
+class JVaultUnstakeRequestBlockMatcher(BlockMatcher):
+    # Transaction flow:
+    # 1. User sends unstake_request to stake_wallet
+    # 2. Stake wallet sends request_update_rewards to staking_pool (with negative tvl_change)
+    # 3. Staking pool may update referrer wallets
+    # 4. Staking pool sends update_rewards back to stake_wallet
+    # 5. Excess messages are sent
+
+    def __init__(self):
+        super().__init__(
+            parent_matcher=None,
+            optional=False,
+            child_matcher=labeled(
+                "request_update_rewards_from_pool",
+                ContractMatcher(
+                    opcode=JVaultRequestUpdateRewards.opcode,
+                    optional=True,
+                    children_matchers=[
+                        referral_chain,  # optional referral updates
+                        update_with_exceses,  # required update_rewards response
+                    ],
+                ),
+            ),
+        )
+
+    def test_self(self, block: Block):
+        return (
+                isinstance(block, CallContractBlock)
+                and block.opcode == JVaultUnstakeRequest.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        msg = block.get_message()
+        info = JVaultUnstakeRequest(block.get_body())
+        requested_amount = info.jettons_to_unstake
+        stake_wallet = msg.destination
+
+        request_update_from_pool = get_labeled(
+            "request_update_rewards_from_pool", other_blocks
+        )
+
+        if not request_update_from_pool:
+            # If the request failed early, we might not have the update message
+            # Try to get staking pool address and assets from stake wallet data
+            staking_pool, asset, jvault_asset = await extract_jvault_assets(stake_wallet)
+            if staking_pool is None or asset is None:
+                return []
+            new_block = JVaultUnstakeRequestBlock(
+                data=JVaultUnstakeRequestData(
+                    sender=AccountId(msg.source),
+                    stake_wallet=AccountId(stake_wallet),
+                    staking_pool=staking_pool,
+                    requested_amount=requested_amount,
+                    asset=asset,
+                    jvault_asset=jvault_asset,
+                    exit_code=block.get_message().transaction.compute_exit_code,
+                )
+            )
+            new_block.failed = True  # Mark as failed since update didn't happen
+            new_block.merge_blocks([block] + other_blocks)
+            return [new_block]
+
+        staking_pool = request_update_from_pool.get_message().destination
+        failed = block.failed or request_update_from_pool.failed
+
+        # Extract assets from stake wallet data
+        _, asset, jvault_asset = await extract_jvault_assets(stake_wallet)
+
+        new_block = JVaultUnstakeRequestBlock(
+            data=JVaultUnstakeRequestData(
+                sender=AccountId(msg.source),
+                stake_wallet=AccountId(stake_wallet),
+                staking_pool=AccountId(staking_pool),
+                requested_amount=requested_amount,
+                asset=asset,
+                jvault_asset=jvault_asset,
+            )
+        )
+        new_block.failed = failed
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

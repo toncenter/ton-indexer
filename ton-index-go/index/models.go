@@ -1132,11 +1132,23 @@ type ActionDetailsJvaultStake struct {
 }
 
 type ActionDetailsJvaultUnstake struct {
-	Source      *AccountAddress `json:"source"`
-	StakeWallet *AccountAddress `json:"stake_wallet"`
-	Pool        *AccountAddress `json:"pool"`
-	Amount      *string         `json:"amount"`
-	ExitCode    *int64          `json:"exit_code"`
+	Source       *AccountAddress `json:"source"`
+	StakeWallet  *AccountAddress `json:"stake_wallet"`
+	Pool         *AccountAddress `json:"pool"`
+	Amount       *string         `json:"amount"`
+	ExitCode     *int64          `json:"exit_code"`
+	Asset        *AccountAddress `json:"asset"`
+	StakingAsset *AccountAddress `json:"staking_asset"`
+}
+
+type ActionDetailsJvaultUnstakeRequest struct {
+	Source       *AccountAddress `json:"source"`
+	StakeWallet  *AccountAddress `json:"stake_wallet"`
+	Pool         *AccountAddress `json:"pool"`
+	Amount       *string         `json:"amount"`
+	ExitCode     *int64          `json:"exit_code"`
+	Asset        *AccountAddress `json:"asset"`
+	StakingAsset *AccountAddress `json:"staking_asset"`
 }
 
 type ActionDetailsNftDiscovery struct {

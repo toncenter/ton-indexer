@@ -13,7 +13,7 @@ from indexer.events.blocks.jettons import (
     JettonMintBlock,
 )
 from indexer.events.blocks.jettons import JettonTransferBlock, JettonBurnBlock
-from indexer.events.blocks.jvault import JVaultStakeBlock, JVaultUnstakeBlock, JVaultClaimBlock
+from indexer.events.blocks.jvault import JVaultStakeBlock, JVaultUnstakeBlock, JVaultClaimBlock, JVaultUnstakeRequestBlock
 from indexer.events.blocks.liquidity import (
     DedustDepositLiquidityPartial,
     DedustDepositLiquidity,
@@ -514,6 +514,8 @@ def _fill_jvault_unstake(block: JVaultUnstakeBlock, action: Action):
     action.destination = _addr(block.data.staking_pool)
     action.amount = block.data.unstaked_amount
     action.opcode = block.data.exit_code
+    action.asset = _addr(block.data.asset)
+    action.asset2 = _addr(block.data.jvault_asset)
 
 
 def _fill_jvault_claim(block: JVaultClaimBlock, action: Action):
@@ -524,6 +526,16 @@ def _fill_jvault_claim(block: JVaultClaimBlock, action: Action):
         "claimed_jettons": list(map(_addr, block.data.claimed_jettons)),
         "claimed_amounts": block.data.claimed_amounts,
     }
+
+
+def _fill_jvault_unstake_request(block: JVaultUnstakeRequestBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.stake_wallet)
+    action.destination = _addr(block.data.staking_pool)
+    action.amount = block.data.requested_amount
+    action.asset = _addr(block.data.asset)
+    action.asset2 = _addr(block.data.jvault_asset)
+    action.opcode = block.data.exit_code
 
 
 def _fill_multisig_create_order(block: MultisigCreateOrderBlock, action: Action):
@@ -650,6 +662,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_jvault_stake(block, action)
         case 'jvault_claim':
             _fill_jvault_claim(block, action)
+        case 'jvault_unstake_request':
+            _fill_jvault_unstake_request(block, action)
         case 'multisig_create_order':
             _fill_multisig_create_order(block, action)
         case 'multisig_approve':

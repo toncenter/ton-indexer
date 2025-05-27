@@ -16,7 +16,8 @@ from indexer.events.blocks.elections import ElectionDepositStakeBlockMatcher, El
 from indexer.events.blocks.evaa import EvaaSupplyBlockMatcher, EvaaLiquidateBlockMatcher, EvaaWithdrawBlockMatcher
 from indexer.events.blocks.jettons import JettonTransferBlockMatcher, JettonBurnBlockMatcher, JettonMintBlockMatcher, \
     PTonTransferMatcher, FallbackJettonTransferBlockMatcher
-from indexer.events.blocks.jvault import JVaultStakeBlockMatcher, JVaultUnstakeBlockMatcher, JVaultClaimBlockMatcher
+from indexer.events.blocks.jvault import JVaultStakeBlockMatcher, JVaultUnstakeBlockMatcher, JVaultClaimBlockMatcher, \
+    JVaultUnstakeRequestBlockMatcher
 from indexer.events.blocks.liquidity import DedustDepositBlockMatcher, DedustDepositFirstAssetBlockMatcher, \
     DedustWithdrawBlockMatcher, \
     post_process_dedust_liquidity, StonfiV2ProvideLiquidityMatcher, StonfiV2WithdrawLiquidityMatcher
@@ -144,6 +145,7 @@ matchers = [
     JVaultStakeBlockMatcher(),
     JVaultUnstakeBlockMatcher(),
     JVaultClaimBlockMatcher(),
+    JVaultUnstakeRequestBlockMatcher(),
     EvaaSupplyBlockMatcher(),
     EvaaWithdrawBlockMatcher(),
     EvaaLiquidateBlockMatcher(),

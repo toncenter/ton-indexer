@@ -708,11 +708,23 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		}
 	case "jvault_unstake":
 		act.Details = ActionDetailsJvaultUnstake{
-			Source:      raw.Source,
-			StakeWallet: raw.SourceSecondary,
-			Pool:        raw.Destination,
-			Amount:      raw.Amount,
-			ExitCode:    (*int64)(raw.Opcode),
+			Source:       raw.Source,
+			StakeWallet:  raw.SourceSecondary,
+			Pool:         raw.Destination,
+			Amount:       raw.Amount,
+			ExitCode:     (*int64)(raw.Opcode),
+			Asset:        raw.Asset,
+			StakingAsset: raw.Asset2,
+		}
+	case "jvault_unstake_request":
+		act.Details = ActionDetailsJvaultUnstakeRequest{
+			Source:       raw.Source,
+			StakeWallet:  raw.SourceSecondary,
+			Pool:         raw.Destination,
+			Amount:       raw.Amount,
+			ExitCode:     (*int64)(raw.Opcode),
+			Asset:        raw.Asset,
+			StakingAsset: raw.Asset2,
 		}
 	case "nft_discovery":
 		act.Details = ActionDetailsNftDiscovery{
