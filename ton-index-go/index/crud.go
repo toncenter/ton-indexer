@@ -2002,6 +2002,12 @@ func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawActio
 		(*addr_list)[(string)(v)] = true
 	}
 
+	if v := raw_action.EvaaLiquidateAssetId; v != nil {
+		if master, ok := ParseEvaaAssetId(*v); ok && master != nil {
+			(*addr_list)[(string)(*master)] = true
+		}
+	}
+
 	// Vesting fields
 	for _, v := range raw_action.VestingAddWhitelistAccountsAdded {
 		(*addr_list)[(string)(v)] = true

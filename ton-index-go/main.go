@@ -2028,6 +2028,8 @@ func main() {
 	if index.BackgroundTaskManager != nil {
 		index.BackgroundTaskManager.Start(context.Background())
 	}
+
+	index.IsTestnet = settings.Request.IsTestnet
 	err = app.Listen(settings.Bind)
 	log.Fatal(err)
 }
