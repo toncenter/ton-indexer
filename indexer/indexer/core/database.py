@@ -335,6 +335,14 @@ class Action(Base):
         Column('user_jetton_wallet_1', String),
         Column('user_jetton_wallet_2', String),
         Column("lp_tokens_minted", Numeric),
+        Column("target_asset_1", String),
+        Column("target_asset_2", String),
+        Column("target_amount_1", Numeric),
+        Column("target_amount_2", Numeric),
+        Column("vault_excesses", ARRAY(CompositeType("liquidity_vault_excess_details", [
+            Column("asset", String),
+            Column("amount", Numeric),
+        ]))),
         # new fields for tonco (concentrated liquidity):
         Column("tick_lower", Numeric),
         Column("tick_upper", Numeric),
@@ -455,7 +463,8 @@ class Action(Base):
         r = self.__dict__.copy()
         r.pop('_sa_instance_state')
 
-        return convert_numerics_to_strings(r, {'start_lt', 'end_lt', 'start_utime', 'end_utime', 'opcode'})
+        return convert_numerics_to_strings(r, {'start_lt', 'end_lt', 'start_utime', 'end_utime', 'opcode',
+                                               'trace_end_lt', 'trace_end_utime', 'mc_seqno_end', 'trace_mc_seqno_end'})
 
 class Transaction(Base):
     __tablename__ = 'transactions'

@@ -25,7 +25,7 @@ from indexer.events.blocks.jettons import (
 from indexer.events.blocks.jvault import (
     JVaultClaimBlock,
     JVaultStakeBlock,
-    JVaultUnstakeBlock,
+    JVaultUnstakeBlock, JVaultUnstakeRequestBlock,
 )
 from indexer.events.blocks.liquidity import (
     DedustDepositLiquidity,
@@ -431,15 +431,26 @@ def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action:
     action.source = _addr(block.data["sender"])
     action.destination = _addr(block.data["pool_address"])
     action.destination_secondary = _addr(block.data["deposit_contract"])
+    vault_excesses = []
+    for excess in block.data["vault_excesses"]:
+        vault_excesses.append({
+            'asset': _addr(excess[0]),
+            'amount': excess[1].value,
+        })
     action.dex_deposit_liquidity_data = {
         "dex": block.data["dex"],
-        "asset1": _addr(block.data["asset_1"].jetton_address),
-        "amount1": block.data["amount_1"].value,
-        "asset2": _addr(block.data["asset_2"].jetton_address),
-        "amount2": block.data["amount_2"].value,
+        "asset1": _addr(block.data["asset_1"]),
+        "amount1": block.data["amount_1"].value if block.data["amount_1"] is not None else None,
+        "asset2": _addr(block.data["asset_2"]),
+        "amount2": block.data["amount_2"].value if block.data["amount_2"] is not None else None,
         "user_jetton_wallet_1": _addr(block.data["user_jetton_wallet_1"]),
         "user_jetton_wallet_2": _addr(block.data["user_jetton_wallet_2"]),
-        "lp_tokens_minted": block.data["lp_tokens_minted"].value,
+        "lp_tokens_minted": block.data["lp_tokens_minted"].value if block.data["lp_tokens_minted"] is not None else None,
+        "target_asset_1": _addr(block.data["target_asset_1"]),
+        "target_amount_1": block.data["target_amount_1"].value if block.data["target_amount_1"] is not None else None,
+        "target_asset_2": _addr(block.data["target_asset_2"]),
+        "target_amount_2": block.data["target_amount_2"].value if block.data["target_amount_2"] is not None else None,
+        "vault_excesses": vault_excesses
     }
 
 def _fill_dedust_deposit_liquidity_partial_action(block: DedustDepositLiquidityPartial, action: Action):
@@ -448,13 +459,17 @@ def _fill_dedust_deposit_liquidity_partial_action(block: DedustDepositLiquidityP
     action.destination_secondary = _addr(block.data["deposit_contract"])
     action.dex_deposit_liquidity_data = {
         "dex": block.data["dex"],
-        "asset1": _addr(block.data["asset_1"].jetton_address),
-        "amount1": block.data["amount_1"].value,
-        "asset2": _addr(block.data["asset_2"].jetton_address),
-        "amount2": block.data["amount_2"].value,
+        "asset1": _addr(block.data["asset_1"]),
+        "amount1": block.data["amount_1"].value if block.data["amount_1"] is not None else None,
+        "asset2": _addr(block.data["asset_2"]),
+        "amount2": block.data["amount_2"].value if block.data["amount_2"] is not None else None,
         "user_jetton_wallet_1": _addr(block.data["user_jetton_wallet_1"]),
         "user_jetton_wallet_2": _addr(block.data["user_jetton_wallet_2"]),
         "lp_tokens_minted": None,
+        "target_asset_1": _addr(block.data["target_asset_1"]),
+        "target_amount_1": block.data["target_amount_1"].value if block.data["target_amount_1"] is not None else None,
+        "target_asset_2": _addr(block.data["target_asset_2"]),
+        "target_amount_2": block.data["target_amount_2"].value if block.data["target_amount_2"] is not None else None,
     }
 
 def _fill_jetton_mint_action(block: JettonMintBlock, action: Action):
@@ -555,6 +570,8 @@ def _fill_jvault_unstake(block: JVaultUnstakeBlock, action: Action):
     action.destination = _addr(block.data.staking_pool)
     action.amount = block.data.unstaked_amount
     action.opcode = block.data.exit_code
+    action.asset = _addr(block.data.asset)
+    action.asset2 = _addr(block.data.jvault_asset)
 
 
 def _fill_jvault_claim(block: JVaultClaimBlock, action: Action):
@@ -565,6 +582,16 @@ def _fill_jvault_claim(block: JVaultClaimBlock, action: Action):
         "claimed_jettons": list(map(_addr, block.data.claimed_jettons)),
         "claimed_amounts": block.data.claimed_amounts,
     }
+
+
+def _fill_jvault_unstake_request(block: JVaultUnstakeRequestBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.stake_wallet)
+    action.destination = _addr(block.data.staking_pool)
+    action.amount = block.data.requested_amount
+    action.asset = _addr(block.data.asset)
+    action.asset2 = _addr(block.data.jvault_asset)
+    action.opcode = block.data.exit_code
 
 
 def _fill_multisig_create_order(block: MultisigCreateOrderBlock, action: Action):
@@ -669,8 +696,6 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
         "position_amount_1": block.data.position_amount_1.value,
         "position_amount_2": block.data.position_amount_2.value,
     }
-
-
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -736,6 +761,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_jvault_stake(block, action)
         case 'jvault_claim':
             _fill_jvault_claim(block, action)
+        case 'jvault_unstake_request':
+            _fill_jvault_unstake_request(block, action)
         case 'multisig_create_order':
             _fill_multisig_create_order(block, action)
         case 'multisig_approve':
@@ -815,9 +842,6 @@ v1_ops = [
     'tonstakers_deposit',
     'tonstakers_withdraw_request',
     'tonstakers_withdraw',
-    'tonco_deploy_pool',
-    'tonco_deposit_liquidity',
-    'tonco_withdraw_liquidity',
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:

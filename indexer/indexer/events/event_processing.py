@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import base64
 import logging
+import base64
 
 from pytoniq_core import Slice
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from indexer.core.database import Message, MessageContent, Trace, engine
+from indexer.core.database import Trace, Message, engine, MessageContent
 from indexer.events.blocks.auction import AuctionBidMatcher
 from indexer.events.blocks.basic_blocks import (
     CallContractBlock,
@@ -36,7 +36,7 @@ from indexer.events.blocks.jettons import (
 from indexer.events.blocks.jvault import (
     JVaultClaimBlockMatcher,
     JVaultStakeBlockMatcher,
-    JVaultUnstakeBlockMatcher,
+    JVaultUnstakeBlockMatcher, JVaultUnstakeRequestBlockMatcher,
 )
 from indexer.events.blocks.liquidity import (
     DedustDepositBlockMatcher,
@@ -113,9 +113,9 @@ def init_block(node: EventNode) -> Block:
 def init_from_external(node: EventNode) -> Block:
     node.failed = True
     body = node.message.message_content.body
-    
+
     payloads, _ = extract_payload_from_wallet_message(body)
-    
+
     for payload in payloads:
         if payload.info is None:
             continue
@@ -197,13 +197,14 @@ matchers = [
     JettonMintBlockMatcher(),
     StonfiV2ProvideLiquidityMatcher(),
     StonfiV2WithdrawLiquidityMatcher(),
-    ToncoDepositLiquidityMatcher(),
     JVaultStakeBlockMatcher(),
     JVaultUnstakeBlockMatcher(),
     JVaultClaimBlockMatcher(),
+    JVaultUnstakeRequestBlockMatcher(),
     EvaaSupplyBlockMatcher(),
     EvaaWithdrawBlockMatcher(),
     EvaaLiquidateBlockMatcher(),
+    ToncoDepositLiquidityMatcher(),
     ToncoDeployPoolBlockMatcher(),
     ToncoWithdrawLiquidityMatcher(),
 ]

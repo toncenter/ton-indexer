@@ -1,9 +1,11 @@
 from pytoniq_core import Slice
 
-from indexer.core.database import Message, Transaction, Trace
-from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2, JVaultUnstakeJettons, ToncoPoolV3SwapPayload, ToncoPoolV3FundAccountPayload, ToncoRouterV3PayTo
+from indexer.core.database import Message, Transaction
+from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2, JVaultUnstakeJettons, \
+    JVaultUnstakeRequest, ToncoRouterV3PayTo, ToncoPoolV3FundAccountPayload, ToncoPoolV3SwapPayload
 from indexer.events.blocks.messages.externals import extract_payload_from_wallet_message
 from indexer.events.interface_repository import ExtraAccountRequest
+
 
 def extract_target_wallet_stonfi_v2_swap(message: Message) -> set[str]:
     accounts = set()
@@ -30,6 +32,26 @@ def extract_pool_wallets_stonfi_v2(message: Message) -> set[str]:
     accounts = set()
     stonfi_swap_msg = StonfiSwapV2(Slice.one_from_boc(message.message_content.body))
     accounts.update(stonfi_swap_msg.get_pool_accounts_recursive())
+    return accounts
+
+
+def extract_addresses_from_external(message: Message) -> set[str]:
+    if message.source is not None:
+        return set()
+    accounts = set()
+    payloads, _ = extract_payload_from_wallet_message(message.message_content.body)
+    for payload in payloads:
+        if payload.info is None:
+            continue
+        opcode = payload.opcode & 0xFFFFFFFF
+        if payload.info.dest is not None:
+            accounts.add(payload.info.dest.to_str(is_user_friendly=False).upper())
+        try:
+            if opcode == JettonTransfer.opcode:
+                msg = JettonTransfer(payload.body.to_slice())
+                accounts.add(msg.destination.to_str(is_user_friendly=False).upper())
+        except Exception:
+            pass
     return accounts
 
 def extract_target_wallet_tonco_swap(message: Message) -> set[str]:
@@ -103,6 +125,38 @@ def extract_additional_addresses(tx: Transaction) -> set[str]:
             pass
     return accounts
 
+def derive_accounts_from_stake_pool(extra_data: dict):
+    data_boc = extra_data['data_boc']
+    try:
+        slice = Slice.one_from_boc(data_boc)
+        slice.skip_bits(1+32)
+        slice.load_address() # admin_address
+        slice.load_address() # creator_address
+        lock_wallet_address = slice.load_address()
+        extra_data['lock_wallet_address'] = lock_wallet_address.to_str(is_user_friendly=False).upper()
+        return [], {lock_wallet_address.to_str(is_user_friendly=False).upper()}
+    except:
+        return [], set()
+
+def derive_accounts_from_stake_wallet(extra_data: dict):
+    data_boc = extra_data['data_boc']
+    try:
+        slice = Slice.one_from_boc(data_boc)
+        pool = slice.load_address()
+        extra_data['pool'] = pool.to_str(is_user_friendly=False).upper()
+        new_request = ExtraAccountRequest(account=pool.to_str(is_user_friendly=False).upper(),
+                                          request_type='data_boc',
+                                          callback=derive_accounts_from_stake_pool)
+        return [new_request], {pool.to_str(is_user_friendly=False).upper()}
+    except:
+        return [], set()
+
+def extract_from_jvault_unstake_data(message: Message) -> ExtraAccountRequest:
+    return ExtraAccountRequest(account=message.destination,
+                               request_type='data_boc',
+                               callback=derive_accounts_from_stake_wallet)
+
+
 def extract_extra_accounts_data_requests(tx: Transaction) -> set[ExtraAccountRequest]:
     requests = set()
     for msg in tx.messages:
@@ -110,9 +164,9 @@ def extract_extra_accounts_data_requests(tx: Transaction) -> set[ExtraAccountReq
             continue
         opcode = msg.opcode & 0xFFFFFFFF
         try:
-            if opcode == JVaultUnstakeJettons.opcode and msg.destination is not None:
-                requests.add(ExtraAccountRequest(msg.destination, request='data_boc'))
-        except Exception:
+            if opcode in [JVaultUnstakeJettons.opcode, JVaultUnstakeRequest.opcode] and msg.destination is not None:
+                requests.add(extract_from_jvault_unstake_data(msg))
+        except Exception as e:
             pass
     return requests
 

@@ -3,12 +3,20 @@
 #include <block/block.h>
 #include "IndexData.h"
 #include "Statistics.h"
+#include "parse_contract_methods.h"
+#include "smc-interfaces/InterfacesDetector.h"
+
+using AllShardStates = std::vector<td::Ref<vm::Cell>>;
+using FullDetector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR, 
+                                     NftItemDetectorR, NftCollectionDetectorR,
+                                     GetGemsNftAuction, GetGemsNftFixPriceSale>;
 
 class BlockInterfaceProcessor: public td::actor::Actor {
 private:
     ParsedBlockPtr block_;
     td::Promise<ParsedBlockPtr> promise_;
     std::unordered_map<block::StdAddress, std::vector<BlockchainInterfaceV2>> interfaces_{};
+    std::unordered_multimap<td::Bits256, uint64_t> contract_methods_{};
     td::Timer timer_{true};
 public:
     BlockInterfaceProcessor(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise) : 
@@ -25,6 +33,19 @@ public:
             if (existing == account_states_to_detect.end() || account_state.last_trans_lt > existing->second.last_trans_lt) {
                 account_states_to_detect[account_state.account] = account_state;
                 interfaces_[account_state.account] = {};
+                
+                // check if need to parse contract methods
+                if (account_state.code.not_null()) {
+                    auto code_hash = account_state.code_hash.value();
+                    if (contract_methods_.find(code_hash) == contract_methods_.end()) {
+                        auto methods_result = parse_contract_methods(account_state.code);
+                        if (methods_result.is_ok()) {
+                            for (auto method_id : methods_result.move_as_ok()) {
+                                contract_methods_.emplace(code_hash, method_id);
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -45,15 +66,15 @@ public:
             if (account_state.code.is_null()) {
                 continue;
             }
-            td::actor::create_actor<Detector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_, 
-                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](std::vector<typename Detector::DetectedInterface> interfaces) mutable {
+            td::actor::create_actor<FullDetector>("InterfacesDetector", account_state.account, account_state.code, account_state.data, shard_states, block_->mc_block_.config_, 
+                td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](std::vector<typename FullDetector::DetectedInterface> interfaces) mutable {
                     td::actor::send_closure(SelfId, &BlockInterfaceProcessor::process_address_interfaces, account_state.account, std::move(interfaces), 
                                             account_state.code_hash.value(), account_state.data_hash.value(), account_state.last_trans_lt, account_state.timestamp, std::move(promise));
             })).release();
         }
     }
 
-    void process_address_interfaces(block::StdAddress address, std::vector<typename Detector::DetectedInterface> interfaces, 
+    void process_address_interfaces(block::StdAddress address, std::vector<typename FullDetector::DetectedInterface> interfaces, 
                                     td::Bits256 code_hash, td::Bits256 data_hash, uint64_t last_trans_lt, uint32_t last_trans_now, td::Promise<td::Unit> promise) {
         for (auto& interface : interfaces) {
             std::visit([&](auto&& arg) {
@@ -170,6 +191,7 @@ public:
             promise_.set_error(status.move_as_error_prefix("Failed to detect interfaces: "));
         } else {
             block_->account_interfaces_ = std::move(interfaces_);
+            block_->contract_methods_ = std::move(contract_methods_);
             promise_.set_result(std::move(block_));
         }
         g_statistics.record_time(DETECT_INTERFACES_SEQNO, timer_.elapsed() * 1e3);

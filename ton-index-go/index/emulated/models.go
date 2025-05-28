@@ -236,6 +236,11 @@ type actionPeerSwapDetails struct {
 	AmountOut *string `msgpack:"amount_out"`
 }
 
+type actionVaultExcess struct {
+	Asset  *string `msgpack:"asset"`
+	Amount *string `msgpack:"amount"`
+}
+
 type actionJettonSwapDetails struct {
 	Dex                 *string                  `msgpack:"dex"`
 	Sender              *string                  `msgpack:"sender"`
@@ -256,14 +261,19 @@ type actionNftMintDetails struct {
 }
 
 type actionDexDepositLiquidityData struct {
-	Dex               *string `msgpack:"dex"`
-	Amount1           *string `msgpack:"amount1"`
-	Amount2           *string `msgpack:"amount2"`
-	Asset1            *string `msgpack:"asset1"`
-	Asset2            *string `msgpack:"asset2"`
-	UserJettonWallet1 *string `msgpack:"user_jetton_wallet_1"`
-	UserJettonWallet2 *string `msgpack:"user_jetton_wallet_2"`
-	LpTokensMinted    *string `msgpack:"lp_tokens_minted"`
+	Dex               *string             `msgpack:"dex"`
+	Amount1           *string             `msgpack:"amount1"`
+	Amount2           *string             `msgpack:"amount2"`
+	Asset1            *string             `msgpack:"asset1"`
+	Asset2            *string             `msgpack:"asset2"`
+	UserJettonWallet1 *string             `msgpack:"user_jetton_wallet_1"`
+	UserJettonWallet2 *string             `msgpack:"user_jetton_wallet_2"`
+	LpTokensMinted    *string             `msgpack:"lp_tokens_minted"`
+	TargetAsset1      *string             `msgpack:"target_asset_1"`
+	TargetAsset2      *string             `msgpack:"target_asset_2"`
+	TargetAmount1     *string             `msgpack:"target_amount_1"`
+	TargetAmount2     *string             `msgpack:"target_amount_2"`
+	VaultExcesses     []actionVaultExcess `msgpack:"vault_excesses"`
 }
 
 type actionDexWithdrawLiquidityData struct {
@@ -282,7 +292,7 @@ type actionDexWithdrawLiquidityData struct {
 type actionStakingData struct {
 	Provider     *string `msgpack:"provider"`
 	TsNft        *string `msgpack:"ts_nft"`
-	TokensBurnt  *string `msgpack:"tokens_minted"`
+	TokensBurnt  *string `msgpack:"tokens_burnt"`
 	TokensMinted *string `msgpack:"tokens_minted"`
 }
 
@@ -399,8 +409,6 @@ func (s *BouncePhaseVar) DecodeMsgpack(dec *msgpack.Decoder) error {
 	if length != 2 {
 		return fmt.Errorf("invalid variant array length: %d", length)
 	}
-
-	fmt.Println(length)
 
 	index, err := dec.DecodeUint8()
 	if err != nil {
@@ -883,6 +891,11 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.DexDepositLiquidityDataUserJettonWallet1 = a.DexDepositLiquidityData.UserJettonWallet1
 		row.DexDepositLiquidityDataUserJettonWallet2 = a.DexDepositLiquidityData.UserJettonWallet2
 		row.DexDepositLiquidityDataLpTokensMinted = a.DexDepositLiquidityData.LpTokensMinted
+		row.DexDepositLiquidityDataTargetAsset1 = a.DexDepositLiquidityData.TargetAsset1
+		row.DexDepositLiquidityDataTargetAsset2 = a.DexDepositLiquidityData.TargetAsset2
+		row.DexDepositLiquidityDataTargetAmount1 = a.DexDepositLiquidityData.TargetAmount1
+		row.DexDepositLiquidityDataTargetAmount2 = a.DexDepositLiquidityData.TargetAmount2
+		row.DexDepositLiquidityDataVaultExcesses = a.DexDepositLiquidityData.VaultExcesses
 	}
 	if a.DexWithdrawLiquidityData != nil {
 		row.DexWithdrawLiquidityDataDex = a.DexWithdrawLiquidityData.Dex

@@ -1427,15 +1427,22 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 				Type:    row.Type,
 				Indexed: false,
 			})
-		} else if *row.Valid {
+		} else {
 			row.Indexed = true
 
 			if _, ok := token_info_map[*row.Type]; !ok {
 				token_info_map[row.Address] = []TokenInfo{}
 			}
-			token_info_map[row.Address] = append(token_info_map[row.Address], row)
-		} else {
-			token_info_map[row.Address] = []TokenInfo{}
+			if *row.Valid {
+				token_info_map[row.Address] = append(token_info_map[row.Address], row)
+			} else {
+				token_info_map[row.Address] = append(token_info_map[row.Address], TokenInfo{
+					Address: row.Address,
+					Indexed: true,
+					Valid:   row.Valid,
+					Type:    row.Type,
+				})
+			}
 		}
 	}
 	metadata := Metadata{}
@@ -1946,6 +1953,12 @@ func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawActio
 	if v := raw_action.DexDepositLiquidityDataAsset2; v != nil {
 		(*addr_list)[(string)(*v)] = true
 	}
+	if v := raw_action.DexDepositLiquidityDataTargetAsset1; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.DexDepositLiquidityDataTargetAsset2; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
 	if v := raw_action.DexWithdrawLiquidityDataAsset1Out; v != nil {
 		(*addr_list)[(string)(*v)] = true
 	}
@@ -1987,6 +2000,12 @@ func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawActio
 	}
 	for _, v := range raw_action.JvaultClaimClaimedJettons {
 		(*addr_list)[(string)(v)] = true
+	}
+
+	if v := raw_action.EvaaLiquidateAssetId; v != nil {
+		if master, ok := ParseEvaaAssetId(*v); ok && master != nil {
+			(*addr_list)[(string)(*master)] = true
+		}
 	}
 
 	// Vesting fields
@@ -2092,6 +2111,11 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.dex_deposit_liquidity_data).user_jetton_wallet_1,
 				(A.dex_deposit_liquidity_data).user_jetton_wallet_2,
 				(A.dex_deposit_liquidity_data).lp_tokens_minted,
+				(A.dex_deposit_liquidity_data).target_asset_1,
+				(A.dex_deposit_liquidity_data).target_asset_2,
+				(A.dex_deposit_liquidity_data).target_amount_1,
+				(A.dex_deposit_liquidity_data).target_amount_2,
+				(A.dex_deposit_liquidity_data).vault_excesses,
 				(A.staking_data).provider,
 				(A.staking_data).ts_nft,
 				(A.staking_data).tokens_burnt,

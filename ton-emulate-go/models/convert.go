@@ -62,7 +62,7 @@ func convertToIndexAccountState(hash *index.HashType, accountStates map[Hash]*Ac
 }
 
 func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
-	isTestnet bool, includeAddressBook bool, includeMetadata bool) (*EmulateTraceResponse, error) {
+	isTestnet bool, includeAddressBook bool, includeMetadata bool, supportedActionTypes []string) (*EmulateTraceResponse, error) {
 	emulatedContext := index.NewEmptyContext(true)
 	raw_traces := make(map[string]map[string]string)
 	raw_traces[hset["root_node"]] = hset
@@ -102,7 +102,7 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 	actions := make([]*index.Action, 0)
 	trace.Actions = &actions
 	rawActions := make([]index.RawAction, 0)
-	for _, row := range emulatedContext.GetActions([]string{"v1"}) {
+	for _, row := range emulatedContext.GetActions(supportedActionTypes) {
 		if loc, err := index.ScanRawAction(row); err == nil {
 			rawActions = append(rawActions, *loc)
 		} else {
@@ -166,6 +166,19 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 			if err != nil {
 				return nil, fmt.Errorf("failed to query metadata: %w", err)
 			}
+
+			// append raw interfaces data to metadata (e.g. token is being deployed in emulated trace)
+			for _, addr := range addr_list {
+				interfacesMsgPacked, hasInterfaces := hset[addr]
+				if !hasInterfaces {
+					continue
+				}
+				err = appendRawInterfacesDataToMetadata(addr, interfacesMsgPacked, &metadataVal)
+				if err != nil {
+					return nil, fmt.Errorf("failed to convert raw interfaces to metadata: %w", err)
+				}
+			}
+
 			metadata = &metadataVal
 		}
 	}

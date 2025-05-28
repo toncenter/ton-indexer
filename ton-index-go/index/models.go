@@ -57,7 +57,7 @@ type AddressMetadata struct {
 
 type TokenInfo struct {
 	Address     string                 `json:"-"`
-	Valid       *bool                  `json:"-"`
+	Valid       *bool                  `json:"valid,omitempty"`
 	Indexed     bool                   `json:"-"`
 	Type        *string                `json:"type,omitempty"`
 	Name        *string                `json:"name,omitempty"`
@@ -453,6 +453,26 @@ func (p *RawActionJettonSwapPeerSwap) ScanIndex(i int) any {
 	}
 }
 
+type RawActionVaultExcessEntry struct {
+	Asset  *AccountAddress
+	Amount *string
+}
+
+func (p *RawActionVaultExcessEntry) ScanNull() error {
+	return fmt.Errorf("cannot scan NULL into RawActionVaultExcessEntry")
+}
+
+func (p *RawActionVaultExcessEntry) ScanIndex(i int) any {
+	switch i {
+	case 0:
+		return &p.Asset
+	case 1:
+		return &p.Amount
+	default:
+		panic("invalid index")
+	}
+}
+
 // traces
 type RawAction struct {
 	TraceId                                              *HashType
@@ -532,6 +552,11 @@ type RawAction struct {
 	DexDepositLiquidityDataUserJettonWallet1             *AccountAddress
 	DexDepositLiquidityDataUserJettonWallet2             *AccountAddress
 	DexDepositLiquidityDataLpTokensMinted                *string
+	DexDepositLiquidityDataTargetAsset1                  *AccountAddress
+	DexDepositLiquidityDataTargetAsset2                  *AccountAddress
+	DexDepositLiquidityDataTargetAmount1                 *string
+	DexDepositLiquidityDataTargetAmount2                 *string
+	DexDepositLiquidityDataVaultExcesses                 []RawActionVaultExcessEntry
 	StakingDataProvider                                  *string
 	StakingDataTsNft                                     *AccountAddress
 	StakingDataTokensBurnt                               *string
@@ -577,7 +602,6 @@ type RawAction struct {
 	JvaultStakePeriod                                    *int64
 	JvaultStakeMintedStakeJettons                        *string
 	JvaultStakeStakeWallet                               *AccountAddress
-	JvaultExitCode                                       *int64
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
@@ -757,19 +781,27 @@ type ActionDetailsWtonMint struct {
 	Amount   *string         `json:"amount"`
 	Receiver *AccountAddress `json:"receiver"`
 }
-
+type ActionDetailsLiquidityVaultExcess struct {
+	Asset  *AccountAddress `json:"asset"`
+	Amount *string         `json:"amount"`
+}
 type ActionDetailsDexDepositLiquidity struct {
-	Dex                  *string         `json:"dex"`
-	Amount1              *string         `json:"amount_1"`
-	Amount2              *string         `json:"amount_2"`
-	Asset1               *AccountAddress `json:"asset_1"`
-	Asset2               *AccountAddress `json:"asset_2"`
-	UserJettonWallet1    *AccountAddress `json:"user_jetton_wallet_1"`
-	UserJettonWallet2    *AccountAddress `json:"user_jetton_wallet_2"`
-	Source               *AccountAddress `json:"source"`
-	Pool                 *AccountAddress `json:"pool"`
-	DestinationLiquidity *AccountAddress `json:"destination_liquidity"`
-	LpTokensMinted       *string         `json:"lp_tokens_minted"`
+	Dex                  *string                             `json:"dex"`
+	Amount1              *string                             `json:"amount_1"`
+	Amount2              *string                             `json:"amount_2"`
+	Asset1               *AccountAddress                     `json:"asset_1"`
+	Asset2               *AccountAddress                     `json:"asset_2"`
+	UserJettonWallet1    *AccountAddress                     `json:"user_jetton_wallet_1"`
+	UserJettonWallet2    *AccountAddress                     `json:"user_jetton_wallet_2"`
+	Source               *AccountAddress                     `json:"source"`
+	Pool                 *AccountAddress                     `json:"pool"`
+	DestinationLiquidity *AccountAddress                     `json:"destination_liquidity"`
+	LpTokensMinted       *string                             `json:"lp_tokens_minted"`
+	TargetAsset1         *AccountAddress                     `json:"target_asset_1"`
+	TargetAsset2         *AccountAddress                     `json:"target_asset_2"`
+	TargetAmount1        *string                             `json:"target_amount_1"`
+	TargetAmount2        *string                             `json:"target_amount_2"`
+	VaultExcesses        []ActionDetailsLiquidityVaultExcess `json:"vault_excesses"`
 }
 
 type ActionDetailsDexWithdrawLiquidity struct {
@@ -1070,6 +1102,8 @@ type ActionDetailsEvaaLiquidate struct {
 	BorrowerContract *AccountAddress `json:"borrower_contract"`
 	Collateral       *AccountAddress `json:"collateral"`
 	AssetId          *string         `json:"asset_id"`
+	Asset            *AccountAddress `json:"asset"`
+	IsKnownAsset     bool            `json:"is_known_asset"`
 	Amount           *string         `json:"amount"`
 }
 
@@ -1098,11 +1132,23 @@ type ActionDetailsJvaultStake struct {
 }
 
 type ActionDetailsJvaultUnstake struct {
-	Source      *AccountAddress `json:"source"`
-	StakeWallet *AccountAddress `json:"stake_wallet"`
-	Pool        *AccountAddress `json:"pool"`
-	Amount      *string         `json:"amount"`
-	ExitCode    *int64          `json:"exit_code"`
+	Source       *AccountAddress `json:"source"`
+	StakeWallet  *AccountAddress `json:"stake_wallet"`
+	Pool         *AccountAddress `json:"pool"`
+	Amount       *string         `json:"amount"`
+	ExitCode     *int64          `json:"exit_code"`
+	Asset        *AccountAddress `json:"asset"`
+	StakingAsset *AccountAddress `json:"staking_asset"`
+}
+
+type ActionDetailsJvaultUnstakeRequest struct {
+	Source       *AccountAddress `json:"source"`
+	StakeWallet  *AccountAddress `json:"stake_wallet"`
+	Pool         *AccountAddress `json:"pool"`
+	Amount       *string         `json:"amount"`
+	ExitCode     *int64          `json:"exit_code"`
+	Asset        *AccountAddress `json:"asset"`
+	StakingAsset *AccountAddress `json:"staking_asset"`
 }
 
 type ActionDetailsNftDiscovery struct {

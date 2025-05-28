@@ -93,6 +93,7 @@ func generateTaskID() string {
 // @Accept json
 // @Produce json
 // @Param   request     body    EmulateRequest     true        "External Message Request"
+// @Param	X-Actions-Version	header	string	false	"Supported actions version"
 // @Router /v1/emulateTrace [post]
 func emulateTrace(c *fiber.Ctx) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -106,12 +107,18 @@ func emulateTrace(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request: "+err.Error())
 	}
 
+	var supportedActionTypes []string
+	if valueStr, ok := ExtractHeader(c, "X-Actions-Version"); ok {
+		supportedActionTypes = []string{valueStr}
+	}
+	supportedActionTypes = index.ExpandActionTypeShortcuts(supportedActionTypes)
+
 	taskID := generateTaskID()
 	task := TraceTask{
 		ID:               taskID,
 		BOC:              req.Boc,
 		IgnoreChksig:     req.IgnoreChksig,
-		DetectInterfaces: req.WithActions,
+		DetectInterfaces: req.WithActions || req.IncludeMetadata,
 		IncludeCodeData:  req.IncludeCodeData,
 		McBlockSeqno:     req.McBlockSeqno,
 	}
@@ -185,7 +192,8 @@ func emulateTrace(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to get result from Redis: "+err.Error())
 	}
 
-	result, err := models.TransformToAPIResponse(hset, pool, *testnet, req.IncludeAddressBook, req.IncludeMetadata)
+	result, err := models.TransformToAPIResponse(hset, pool, *testnet, req.IncludeAddressBook, req.IncludeMetadata,
+		supportedActionTypes)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to transform result: "+err.Error())
 	}
@@ -194,6 +202,13 @@ func emulateTrace(c *fiber.Ctx) error {
 	}
 
 	return c.Status(200).JSON(result)
+}
+
+func ExtractHeader(ctx *fiber.Ctx, header string) (string, bool) {
+	if val := ctx.GetReqHeaders()[header]; len(val) > 0 {
+		return val[0], true
+	}
+	return ``, false
 }
 
 func main() {

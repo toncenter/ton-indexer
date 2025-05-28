@@ -62,6 +62,21 @@ class JVaultUnstakeJettons:
         self.query_id = slice.load_uint(64)
         self.jettons_to_unstake = slice.load_coins() or 0
 
+class JVaultUnstakeRequest:
+    # user -> stake_wallet
+    # unstake_request#0168d4b7
+    #     query_id:uint64
+    #     jettons_to_unstake:Coins
+    # = InternalMsgBody;
+    opcode = 0x0168D4B7
+
+    query_id: int
+    jettons_to_unstake: int
+
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        self.query_id = slice.load_uint(64)
+        self.jettons_to_unstake = slice.load_coins() or 0
 
 class JVaultClaim:
     # user -> stake_wallet
