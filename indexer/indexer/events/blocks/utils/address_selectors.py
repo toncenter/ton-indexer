@@ -1,6 +1,6 @@
 from pytoniq_core import Slice
 
-from indexer.core.database import Message, Transaction
+from indexer.core.database import Message, Transaction, Trace
 from indexer.events.blocks.messages import JettonNotify, JettonTransfer, StonfiSwapV2, JVaultUnstakeJettons, \
     JVaultUnstakeRequest, ToncoRouterV3PayTo, ToncoPoolV3FundAccountPayload, ToncoPoolV3SwapPayload
 from indexer.events.blocks.messages.externals import extract_payload_from_wallet_message
