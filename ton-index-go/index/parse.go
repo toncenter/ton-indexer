@@ -1118,7 +1118,6 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.JvaultStakePeriod,
 		&act.JvaultStakeMintedStakeJettons,
 		&act.JvaultStakeStakeWallet,
-		// &act.JvaultExitCode,
 
 		&act.AncestorType,
 	)
