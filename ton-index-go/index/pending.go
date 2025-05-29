@@ -1,11 +1,13 @@
 package index
 
 import (
+	"log"
+
+	"sort"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
-	"log"
-	"sort"
 )
 
 type EmulatedTracesContext struct {
@@ -55,11 +57,11 @@ func (c *EmulatedTracesContext) RemoveTraces(trace_keys []string) {
 	}
 }
 
-func (c *EmulatedTracesContext) GetTransactionsByTraceIdAndHash(trace_id HashType, tx_hashes []*HashType) []*emulated.TransactionRow {
+func (c *EmulatedTracesContext) GetTransactionsByTraceIdAndHash(trace_id string, tx_hashes []string) []*emulated.TransactionRow {
 	txs := make([]*emulated.TransactionRow, 0)
 	for _, tx_hash := range tx_hashes {
-		for _, tx := range c.emulatedTransactions[string(trace_id)] {
-			if tx.Hash == string(*tx_hash) {
+		for _, tx := range c.emulatedTransactions[trace_id] {
+			if tx.Hash == tx_hash {
 				txs = append(txs, tx)
 			}
 		}
@@ -110,10 +112,32 @@ func (c *EmulatedTracesContext) GetTransactions() []pgx.Row {
 	return rows
 }
 
+func (c *EmulatedTracesContext) GetTraceCount() int {
+	return len(c.emulatedTraces)
+}
+
 func (c *EmulatedTracesContext) GetTraces() []pgx.Row {
 	rows := make([]pgx.Row, 0)
 	for _, trace := range c.emulatedTraces {
 		rows = append(rows, emulated.NewRow(trace))
+	}
+	return rows
+}
+
+func (c *EmulatedTracesContext) GetAllActions() []pgx.Row {
+	rows := make([]pgx.Row, 0)
+	for _, traceKey := range c.traceKeys {
+		if actions, ok := c.emulatedActions[traceKey]; ok {
+			sort.Slice(actions, func(i, j int) bool {
+				if actions[i].EndLt == actions[j].EndLt {
+					return actions[i].StartLt > actions[j].StartLt
+				}
+				return actions[i].EndLt > actions[j].EndLt
+			})
+			for _, action := range actions {
+				rows = append(rows, emulated.NewRow(action))
+			}
+		}
 	}
 	return rows
 }
@@ -124,6 +148,9 @@ func (c *EmulatedTracesContext) GetActions(supportedActions []string) []pgx.Row 
 	for _, traceKey := range c.traceKeys {
 		if actions, ok := c.emulatedActions[traceKey]; ok {
 			sort.Slice(actions, func(i, j int) bool {
+				if actions[i].EndLt == actions[j].EndLt {
+					return actions[i].StartLt > actions[j].StartLt
+				}
 				return actions[i].EndLt > actions[j].EndLt
 			})
 			for _, action := range actions {
