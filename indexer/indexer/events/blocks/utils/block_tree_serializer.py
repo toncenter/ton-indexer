@@ -693,8 +693,10 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
         "nft_index": block.data.nft_index,
         "nft_address": _addr(block.data.nft_address),
         "is_complete": block.data.is_complete,
-        "position_amount_1": block.data.position_amount_1.value,
-        "position_amount_2": block.data.position_amount_2.value,
+        "target_amount_1": block.data.position_amount_1.value,
+        "target_amount_2": block.data.position_amount_2.value,
+        "target_asset_1": _addr(block.data.asset_1),
+        "target_asset_2": _addr(block.data.asset_2),
     }
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
