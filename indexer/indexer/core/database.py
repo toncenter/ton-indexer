@@ -328,29 +328,27 @@ class Action(Base):
     ]))
     dex_deposit_liquidity_data = Column(CompositeType("dex_deposit_liquidity_details", [
         Column("dex", String),
-        Column("amount1", Numeric),
-        Column("amount2", Numeric),
+        Column("amount1", Numeric),  # actual amount deposited
+        Column("amount2", Numeric),  # actual amount deposited
         Column("asset1", String),
         Column("asset2", String),
         Column('user_jetton_wallet_1', String),
         Column('user_jetton_wallet_2', String),
-        Column("lp_tokens_minted", Numeric),
+        Column("lp_tokens_minted", Numeric),  # or `liquidity` points credited (if it's an NFT)
         Column("target_asset_1", String),
-        Column("target_asset_2", String),
-        Column("target_amount_1", Numeric),
-        Column("target_amount_2", Numeric),
+        Column("target_asset_2", String),  # these should be the same as asset_(1,2)
+        Column("target_amount_1", Numeric),  # desired amount to be deposited
+        Column("target_amount_2", Numeric),  # desired amount to be deposited
         Column("vault_excesses", ARRAY(CompositeType("liquidity_vault_excess_details", [
             Column("asset", String),
-            Column("amount", Numeric),
+            Column("amount", Numeric),  # usually amount_(1,2) - target_amount_(1,2)
         ]))),
-        # new fields for tonco (concentrated liquidity):
+        # fields for tonco (concentrated liquidity):
         Column("tick_lower", Numeric),
         Column("tick_upper", Numeric),
         Column("nft_index", Numeric),
         Column("nft_address", String),
         Column("is_complete", Boolean),
-        Column("position_amount_1", Numeric),
-        Column("position_amount_2", Numeric)
     ]))
     dex_withdraw_liquidity_data = Column(CompositeType("dex_withdraw_liquidity_details", [
         Column("dex", String),

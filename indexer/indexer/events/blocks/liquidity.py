@@ -886,6 +886,7 @@ class ToncoDepositLiquidityData:
     amount_2: Amount | None
     asset_2: Asset | None
     sender_wallet_2: AccountId | None
+    excesses: list[tuple[Asset, Amount]] | None = None
 
 
 class ToncoDepositLiquidityBlock(Block):
@@ -925,10 +926,16 @@ class ToncoDepositLiquidityMatcher(BlockMatcher):
             optional=True,
         )
 
-        refund_payments = ContractMatcher(
-            optional=True,
-            opcode=ToncoRouterV3PayTo.opcode,  # 0xa1daa96d
-            children_matchers=[output_ton_or_jetton, output_ton_or_jetton],  # 2 outputs
+        excess_output_0_matcher = labeled("excess_transfer_0", output_ton_or_jetton)
+        excess_output_1_matcher = labeled("excess_transfer_1", output_ton_or_jetton)
+
+        refund_payments = labeled(
+            "refund_router_call",
+            ContractMatcher(
+                optional=True,
+                opcode=ToncoRouterV3PayTo.opcode,  # 0xa1daa96d
+                children_matchers=[excess_output_0_matcher, excess_output_1_matcher],
+            )
         )
 
         call_pool_for_mint_and_refund = ContractMatcher(
@@ -1099,6 +1106,26 @@ class ToncoDepositLiquidityMatcher(BlockMatcher):
             sender_wallet_1 = None
             sender_wallet_2 = sender_wallet
 
+        # extract excesses
+        excesses = []
+        for i in range(2):
+            excess_transfer = get_labeled(f"excess_transfer_{i}", other_blocks)
+            if excess_transfer:
+                if isinstance(excess_transfer, JettonTransferBlock):
+                    pton_transfer = find_call_contract(
+                        excess_transfer.next_blocks, PTonTransfer.opcode
+                    )
+                    if pton_transfer:
+                        pton_msg = PTonTransfer(pton_transfer.get_body())
+                        excess_amount = Amount(pton_msg.ton_amount or 0)
+                        excess_asset = Asset(is_ton=True, jetton_address=None)
+                    else:
+                        excess_amount = excess_transfer.data["amount"]
+                        excess_asset = excess_transfer.data["asset"]
+                else:
+                    continue
+                excesses.append((excess_asset, excess_amount))
+
         data = ToncoDepositLiquidityData(
             sender=sender,
             pool=AccountId(block.get_message().source),
@@ -1117,6 +1144,7 @@ class ToncoDepositLiquidityMatcher(BlockMatcher):
             amount_2=amount_2,
             asset_2=asset_2,
             sender_wallet_2=sender_wallet_2,
+            excesses=excesses,
         )
 
         new_block = ToncoDepositLiquidityBlock(data)
