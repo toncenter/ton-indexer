@@ -37,6 +37,8 @@ from indexer.events.blocks.utils import NoMessageBodyException
 from indexer.events.blocks.utils import to_tree, EventNode
 from indexer.events.blocks.vesting import VestingSendMessageBlockMatcher, VestingAddWhiteListBlockMatcher
 
+from indexer.events.blocks.tgbtc import TgBTCBurnBlockMatcher, TgBTCMintBlockMatcher, TgBTCNewKeyBlockMatcher
+
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
 
@@ -149,6 +151,9 @@ matchers = [
     EvaaSupplyBlockMatcher(),
     EvaaWithdrawBlockMatcher(),
     EvaaLiquidateBlockMatcher(),
+    TgBTCMintBlockMatcher(),
+    TgBTCBurnBlockMatcher(),
+    TgBTCNewKeyBlockMatcher(),
 ]
 
 trace_post_processors = [

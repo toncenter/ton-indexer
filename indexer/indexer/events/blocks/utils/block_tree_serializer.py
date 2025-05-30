@@ -26,6 +26,7 @@ from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBl
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
 from indexer.events.blocks.vesting import VestingSendMessageBlock, VestingAddWhiteListBlock
+from indexer.events.blocks.tgbtc import TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
 
 logger = logging.getLogger(__name__)
 
@@ -599,6 +600,33 @@ def _fill_vesting_add_whitelist(block: VestingAddWhiteListBlock, action: Action)
     }
 
 
+def _fill_tgbtc_mint_action(block: TgBTCMintBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.recipient)
+    action.amount = block.data.amount
+    action.asset = _addr(block.data.asset)
+    action.success = block.data.success
+    if block.data.bitcoin_txid:
+        action.asset2_secondary = hex(block.data.bitcoin_txid)
+
+
+def _fill_tgbtc_burn_action(block: TgBTCBurnBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.jetton_wallet)
+    action.destination = _addr(block.data.pegout_address)
+    action.amount = block.data.amount.value
+    action.asset = _addr(block.data.asset)
+
+
+def _fill_tgbtc_new_key_action(block: TgBTCNewKeyBlock, action: Action):
+    action.source = _addr(block.data.teleport_contract)
+    action.destination = _addr(block.data.coordinator_contract)
+    action.amount = block.data.amount
+    action.source_secondary = hex(block.data.old_pubkey)
+    action.destination_secondary = hex(block.data.new_pubkey)
+    action.value = block.data.timestamp
+
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -682,6 +710,12 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_vesting_send_message(block, action)
         case 'vesting_add_whitelist':
             _fill_vesting_add_whitelist(block, action)
+        case 'tgbtc_mint':
+            _fill_tgbtc_mint_action(block, action)
+        case 'tgbtc_burn':
+            _fill_tgbtc_burn_action(block, action)
+        case 'tgbtc_new_key':
+            _fill_tgbtc_new_key_action(block, action)
         case 'tick_tock':
             _fill_tick_tock_action(block, action)
         case _:
@@ -739,6 +773,9 @@ v1_ops = [
     'tonstakers_deposit',
     'tonstakers_withdraw_request',
     'tonstakers_withdraw',
+    'tgbtc_mint',
+    'tgbtc_burn',
+    'tgbtc_new_key',
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:
