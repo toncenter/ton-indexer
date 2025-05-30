@@ -607,7 +607,7 @@ def _fill_tgbtc_mint_action(block: TgBTCMintBlock, action: Action):
     action.asset = _addr(block.data.asset)
     action.success = block.data.success
     if block.data.bitcoin_txid:
-        action.asset2_secondary = hex(block.data.bitcoin_txid)
+        action.asset2_secondary = hex(block.data.bitcoin_txid)[2:]
 
 
 def _fill_tgbtc_burn_action(block: TgBTCBurnBlock, action: Action):
@@ -620,10 +620,10 @@ def _fill_tgbtc_burn_action(block: TgBTCBurnBlock, action: Action):
 
 def _fill_tgbtc_new_key_action(block: TgBTCNewKeyBlock, action: Action):
     action.source = _addr(block.data.teleport_contract)
+    action.source_secondary = hex(block.data.pubkey)[2:]
     action.destination = _addr(block.data.coordinator_contract)
+    action.destination_secondary = _addr(block.data.pegout_address)
     action.amount = block.data.amount
-    action.source_secondary = hex(block.data.old_pubkey)
-    action.destination_secondary = hex(block.data.new_pubkey)
     action.value = block.data.timestamp
 
 

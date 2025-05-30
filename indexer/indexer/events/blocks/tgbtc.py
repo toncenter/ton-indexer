@@ -198,8 +198,7 @@ class TgBTCBurnBlockMatcher(BlockMatcher):
 class TgBTCNewKeyData:
     teleport_contract: AccountId
     coordinator_contract: AccountId
-    old_pubkey: int
-    new_pubkey: int
+    pubkey: int
     pegout_address: AccountId
     timestamp: int
     amount: int
@@ -268,8 +267,7 @@ class TgBTCNewKeyBlockMatcher(BlockMatcher):
         data = TgBTCNewKeyData(
             teleport_contract=AccountId(dkg_completed_log_msg.source),
             coordinator_contract=AccountId(new_key_log_msg.source),
-            old_pubkey=dkg_completed_log_data.internal_pubkey,
-            new_pubkey=new_key_log_data.new_internal_pubkey,
+            pubkey=new_key_log_data.new_internal_pubkey,
             pegout_address=new_key_log_data.pegout_address,
             timestamp=dkg_completed_log_data.timestamp,
             amount=new_key_log_data.amount,

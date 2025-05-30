@@ -1,0 +1,24 @@
+cases:
+  tgBTC new key:
+    trace-id: XbaXJMw3ssABoaIXul2iIN_kYfu-HoPsD0NZFLyMRxA=
+    expected-actions:
+      - type: tgbtc_new_key
+        values:
+            source: 0:F8DD1B5D010FD8F2797CE92AB3C6394BFFEAC0BDD66204393FB3B39317EA11C6
+            destination: 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+            source_secondary: 382e9d762046f4bb5cde2ce1b7780cb499b5394972163930cf88bc55463acb70
+            destination_secondary: 0:8772FC3544750A35733D5E0EB1A1FE0E5986495614451B00B73943F9F55F8B7F
+            value: 1748633438
+            amount: 425489053588
+
+  tgBTC new key (just another):
+    trace-id: SSUQR8t_fRnph032XDanjuRYexTLHTmAWQG5qBrBgtM=
+    expected-actions:
+      - type: tgbtc_new_key
+        values:
+          source: 0:F8DD1B5D010FD8F2797CE92AB3C6394BFFEAC0BDD66204393FB3B39317EA11C6
+          source_secondary: bca58e7898026854a2f14ef0beffbf7e9fa7efa2f38deae30c1ac729247c6d3b
+          destination: 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+          destination_secondary: 0:20B8CE7C5DDFC263FCFF2AA752C4F2D4590BF31C4DABF1FB4D034DE605E62260
+          value: 1748619032
+          amount: 425489053700
