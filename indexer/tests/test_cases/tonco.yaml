@@ -213,9 +213,12 @@ cases:
           destination: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
           destination_secondary: 0:554E29AE7BE927BE21C5B59BFEBBD5F744618E72C3221DDB3E5D3845EADAA65A
           success: true
+
+          dex_deposit_liquidity_data.vault_excesses: []
+
           dex_deposit_liquidity_data:
-            position_amount_1: 2999999999829
-            position_amount_2: 5708578661
+            target_amount_1: 2999999999829
+            target_amount_2: 5708578661
             lp_tokens_minted: null
             tick_lower: -57180
             tick_upper: -52980
@@ -228,6 +231,7 @@ cases:
             amount2: null
             asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
             user_jetton_wallet_2: null
+
       - type: dex_deposit_liquidity
         selector: "{{ value.dex_deposit_liquidity_data.is_complete == true }}"
         values:
@@ -235,9 +239,16 @@ cases:
           source_secondary: 0:2BC21F6C2C85ECCF0DFC7FC5CAEC8A124799E6BB47E37206D014322F0DE33EFA
           destination: 0:F6E6F4AD13073E875413D6A96C60F430A94E4888E868C79208D02FF1B0336931
           destination_secondary: 0:554E29AE7BE927BE21C5B59BFEBBD5F744618E72C3221DDB3E5D3845EADAA65A
+
+          dex_deposit_liquidity_data.vault_excesses:
+            - asset: null
+              amount: 29999999998
+            - asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 57085786
+
           dex_deposit_liquidity_data:
-            position_amount_1: 2999999999829
-            position_amount_2: 5708578661
+            target_amount_1: 2999999999829
+            target_amount_2: 5708578661
             lp_tokens_minted: 1398855824493
             tick_lower: -57180
             tick_upper: -52980
@@ -262,9 +273,10 @@ cases:
         values:
           dex_deposit_liquidity_data:
             dex: tonco
+            vault_excesses: []
 
-            position_amount_1: 200000000000
-            position_amount_2: 0
+            target_amount_1: 200000000000
+            target_amount_2: 0
 
             lp_tokens_minted: 1736002138543
 
@@ -296,8 +308,8 @@ cases:
           destination_secondary: 0:BDE1E32E6A67D65AD8B5E2858103ABA2936D70238376934460E365397CC8A6E3
           success: true
           dex_deposit_liquidity_data:
-            position_amount_1: 144005990000
-            position_amount_2: 14400599
+            target_amount_1: 144005990000
+            target_amount_2: 14400599
             lp_tokens_minted: null
             tick_lower: -887200
             tick_upper: 887200
@@ -320,8 +332,16 @@ cases:
           destination_secondary: 0:BDE1E32E6A67D65AD8B5E2858103ABA2936D70238376934460E365397CC8A6E3
           success: true
           dex_deposit_liquidity_data:
-            position_amount_1: 144005990000
-            position_amount_2: 14400599
+            dex: tonco
+
+            vault_excesses:
+            - asset: 0:D754F98F4442B360E76309D22D1617E1FDDEE3713AE9518AEB634ABB86C1B533
+              amount: 1440059900
+            - asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 144005
+
+            target_amount_1: 144005990000
+            target_amount_2: 14400599
             lp_tokens_minted: 1440059900
             tick_lower: -887200
             tick_upper: 887200
