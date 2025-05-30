@@ -679,6 +679,13 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
     action.source_secondary = _addr(block.data.sender_wallet_1 or block.data.sender_wallet_2)
     action.destination = _addr(block.data.pool)
     action.destination_secondary = _addr(block.data.account_contract)
+    vault_excesses = []
+    if block.data.excesses:
+        for excess in block.data.excesses:
+            vault_excesses.append({
+                'asset': _addr(excess[0]),
+                'amount': excess[1].value,
+            })
     action.dex_deposit_liquidity_data = {
         "dex": "tonco",
         "amount1": block.data.amount_1.value if block.data.amount_1 else None,
@@ -697,6 +704,7 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
         "target_amount_2": block.data.position_amount_2.value,
         "target_asset_1": _addr(block.data.asset_1),
         "target_asset_2": _addr(block.data.asset_2),
+        "vault_excesses": vault_excesses,
     }
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
