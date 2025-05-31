@@ -11,8 +11,9 @@ from indexer.events.blocks.basic_matchers import (
     BlockTypeMatcher,
     ContractMatcher,
     GenericMatcher,
+    OrMatcher,
 )
-from indexer.events.blocks.core import Block, EmptyBlock
+from indexer.events.blocks.core import Block
 from indexer.events.blocks.jettons import JettonBurnBlock
 from indexer.events.blocks.labels import labeled
 
@@ -175,24 +176,34 @@ class TgBTCBurnBlock(Block):
 
 class TgBTCBurnBlockMatcher(BlockMatcher):
     def __init__(self):
-        super().__init__(
-            child_matcher=ContractMatcher(
-                opcode=JettonBurnNotification.opcode,
-                optional=False,
+        children_matchers = [
+            labeled(
+                "tgbtc_burn_log",
+                ContractMatcher(opcode=TgBTCBurnEvent.opcode, optional=False),
+            ),
+            ContractMatcher(
+                opcode=0xBE44E7A6,
+                optional=True,
                 children_matchers=[
-                    labeled(
-                        "tgbtc_burn_log",
-                        ContractMatcher(opcode=TgBTCBurnEvent.opcode, optional=False),
+                    ContractMatcher(opcode=0x1A84C0E0, optional=True),
+                    BlockTypeMatcher("ton_transfer", optional=True),
+                ],
+            ),
+        ]
+        super().__init__(
+            child_matcher=OrMatcher(
+                [
+                    ContractMatcher(
+                        opcode=JettonBurnNotification.opcode,
+                        optional=False,
+                        children_matchers=children_matchers,
                     ),
                     ContractMatcher(
-                        opcode=0xBE44E7A6,
+                        opcode=0x587643A2,
                         optional=False,
-                        children_matchers=[
-                            ContractMatcher(opcode=0x1A84C0E0, optional=True),
-                            BlockTypeMatcher("ton_transfer", optional=True),
-                        ],
+                        children_matchers=children_matchers,
                     ),
-                ],
+                ]
             )
         )
 

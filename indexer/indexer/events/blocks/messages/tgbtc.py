@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pytoniq_core import Cell, Slice
+from pytoniq_core import Cell, Slice, Address
 
 from indexer.events.blocks.utils.ton_utils import AccountId
 
@@ -42,8 +42,14 @@ class TgBTCBurnEvent:
     def __init__(self, slice: Slice):
         slice.load_uint(32)
         self.amount = slice.load_coins() or 0
-        self.sender_address = AccountId(slice.load_address())
-        self.pegout_address = AccountId(slice.load_address())
+        sender = slice.load_address()
+        pegout = slice.load_address()
+        self.sender_address = (
+            AccountId(sender) if isinstance(sender, Address) else AccountId(None)
+        )
+        self.pegout_address = (
+            AccountId(pegout) if isinstance(pegout, Address) else AccountId(None)
+        )
 
 
 class TgBTCNewKeyEvent:
