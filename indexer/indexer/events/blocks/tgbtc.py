@@ -33,8 +33,10 @@ class TgBTCMintData:
     recipient: AccountId | None
     amount: int | None
     asset: Asset | None
-    bitcoin_txid: int | None
+    bitcoin_txid: str | None
     success: bool
+    recipient_wallet: AccountId | None
+    teleport_contract: AccountId | None
 
 
 class TgBTCMintBlock(Block):
@@ -49,75 +51,107 @@ class TgBTCMintBlock(Block):
 
 class TgBTCMintBlockMatcher(BlockMatcher):
     def __init__(self):
+        # we will actually include all the parent blocks until the first one (0x3F781D24), but later
         super().__init__(
-            # all optional, but marked success is only when sucess log and jetton_mint are found
-            child_matcher=ContractMatcher(
-                opcode=0x498AF388,
-                optional=True,
-                child_matcher=ContractMatcher(
-                    opcode=0xC98AF388,
-                    optional=True,
-                    child_matcher=ContractMatcher(
-                        opcode=0x642A879B,
-                        optional=True,
-                        child_matcher=ContractMatcher(
-                            opcode=0xE42A879B,
-                            optional=True,
-                            children_matchers=[
-                                labeled(
-                                    "success_log",
-                                    ContractMatcher(opcode=0x77A80EF3, optional=True),
-                                ),
-                                labeled(
-                                    "jetton_mint",
-                                    BlockTypeMatcher("jetton_mint", optional=True),
-                                ),
-                            ],
-                        ),
-                    ),
+            children_matchers=[
+                labeled(
+                    "success_log", ContractMatcher(opcode=0x77A80EF3, optional=False)
                 ),
-            )
+                labeled("jetton_mint", BlockTypeMatcher("jetton_mint", optional=False)),
+            ]
         )
 
     def test_self(self, block: Block):
-        return isinstance(block, CallContractBlock) and block.opcode == 0x3F781D24
+        # the tail of the mint chain
+        return isinstance(block, CallContractBlock) and block.opcode == 0xE42A879B
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
-        sender = block.get_message().source
+        success_log_block = get_labeled("success_log", other_blocks, CallContractBlock)
+        jetton_mint_block = get_labeled("jetton_mint", other_blocks)
+
+        if (
+            not success_log_block
+            or not jetton_mint_block
+            or jetton_mint_block.btype != "jetton_mint"
+        ):
+            return []
+
+        current_block_in_chain = block
+        collected_intermediate_blocks = {block}
+        collected_intermediate_blocks.add(success_log_block)
+        collected_intermediate_blocks.add(jetton_mint_block)
+        for ob in other_blocks:
+            collected_intermediate_blocks.add(ob)
+
+        head_block = None  # all mints start with 0x3F781D24
+
+        temp_check = current_block_in_chain
+        for _ in range(20):
+            if temp_check.previous_block:
+                collected_intermediate_blocks.add(temp_check.previous_block)
+                for child_of_prev in temp_check.previous_block.children_blocks:
+                    if child_of_prev != temp_check:
+                        collected_intermediate_blocks.add(child_of_prev)
+
+                temp_check = temp_check.previous_block
+                if (
+                    isinstance(temp_check, CallContractBlock)
+                    and temp_check.opcode == 0x3F781D24
+                ):
+                    head_block = temp_check
+                    break
+            else:
+                break
+
+        if not head_block:
+            return []
+
+        collected_intermediate_blocks.add(head_block)
+
+        sender = AccountId(head_block.get_message().source)
         recipient = None
         amount = None
         minted_asset = None
-        minted_amount = None
+        bitcoin_txid = None
+        recipient_wallet = None
+        teleport_contract = None
         success = False
 
-        success_log = get_labeled("success_log", other_blocks)
-        jetton_mint = get_labeled("jetton_mint", other_blocks)
-        if success_log and jetton_mint:
+        try:
+            log_data = TgBTCMintEvent(success_log_block.get_body())
+            parsed_amount = log_data.amount
             success = True
-            log_data = TgBTCMintEvent(success_log.get_body())
             recipient = log_data.recipient_address
-            amount = log_data.amount
-            bitcoin_txid = log_data.bitcoin_txid
-            minted_asset = jetton_mint.data["asset"]
-            minted_amount = jetton_mint.data["amount"]
-            if minted_amount != amount:
-                logger.warning(
-                    f"Minted amount {minted_amount} does not match log amount {amount}"
-                )
-                return []
-
-        new_block = TgBTCMintBlock(
-            data=TgBTCMintData(
-                sender=AccountId(sender),
-                recipient=recipient,
-                amount=amount,
-                asset=minted_asset,
-                bitcoin_txid=bitcoin_txid,
-                success=success,
+            teleport_contract = AccountId(success_log_block.get_message().source)
+            amount = parsed_amount
+            bitcoin_txid_bytes_big_endian = log_data.bitcoin_txid.to_bytes(
+                32, byteorder="little"
             )
+            bitcoin_txid = bitcoin_txid_bytes_big_endian.hex()
+            minted_asset = jetton_mint_block.data["asset"]
+            recipient_wallet = AccountId(jetton_mint_block.data["to_jetton_wallet"])
+        except Exception as e:
+            logger.warning(
+                f"TgBTCMint: Failed to parse TgBTCMintEvent log or process jetton_mint: {e}"
+            )
+
+        if not success:
+            return []
+
+        mint_data = TgBTCMintData(
+            sender=sender,
+            recipient=recipient,
+            amount=amount,
+            asset=minted_asset,
+            bitcoin_txid=bitcoin_txid,
+            success=success,
+            recipient_wallet=recipient_wallet,
+            teleport_contract=teleport_contract,
         )
-        new_block.merge_blocks(other_blocks + [block])
-        return [new_block]
+
+        new_logical_block = TgBTCMintBlock(data=mint_data)
+        new_logical_block.merge_blocks(list(collected_intermediate_blocks))
+        return [new_logical_block]
 
 
 @dataclass
@@ -218,10 +252,6 @@ class TgBTCNewKeyBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(
             parent_matcher=GenericMatcher(
-                # go to sibling dkg_completed_log block via parent matcher
-                # parent is an external msg with signature,
-                # so opcode is random, and we accept any block
-                # that has a suitable child
                 test_self_func=lambda block: True,
                 optional=False,
                 child_matcher=labeled(
