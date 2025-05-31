@@ -38,6 +38,7 @@ class TgBTCMintData:
     success: bool
     recipient_wallet: AccountId | None
     teleport_contract: AccountId | None
+    crippled: bool = False
 
 
 class TgBTCMintBlock(Block):
@@ -158,10 +159,11 @@ class TgBTCMintBlockMatcher(BlockMatcher):
 @dataclass
 class TgBTCBurnData:
     sender: AccountId
-    jetton_wallet: AccountId
-    asset: Asset
+    jetton_wallet: AccountId | None
+    asset: Asset | None
     amount: Amount
     pegout_address: AccountId
+    crippled: bool = False
 
 
 class TgBTCBurnBlock(Block):
@@ -241,12 +243,13 @@ class TgBTCBurnBlockMatcher(BlockMatcher):
 
 @dataclass
 class TgBTCNewKeyData:
-    teleport_contract: AccountId
     coordinator_contract: AccountId
-    pubkey: int
+    pubkey: str
     pegout_address: AccountId
-    timestamp: int
     amount: int
+    teleport_contract: AccountId | None
+    timestamp: int | None
+    crippled: bool = False
 
 
 class TgBTCNewKeyBlock(Block):
@@ -308,13 +311,135 @@ class TgBTCNewKeyBlockMatcher(BlockMatcher):
         data = TgBTCNewKeyData(
             teleport_contract=AccountId(dkg_completed_log_msg.source),
             coordinator_contract=AccountId(new_key_log_msg.source),
-            pubkey=new_key_log_data.new_internal_pubkey,
+            pubkey=hex(new_key_log_data.new_internal_pubkey)[2:],
             pegout_address=new_key_log_data.pegout_address,
             timestamp=dkg_completed_log_data.timestamp,
             amount=new_key_log_data.amount,
         )
-        print(data)
 
         new_block = TgBTCNewKeyBlock(data=data)
         new_block.merge_blocks(other_blocks + [block])
         return [new_block]
+
+
+
+# --- Fallback Matchers for Log-Only Events ---
+
+class TgBTCMintLogOnlyMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == TgBTCMintEvent.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        log_data = TgBTCMintEvent(block.get_body())
+        sender_of_log_tx = AccountId(block.get_message().source)
+        
+        bitcoin_txid_bytes = log_data.bitcoin_txid.to_bytes(32, byteorder='little')
+        bitcoin_txid_hex = bitcoin_txid_bytes.hex()
+
+        mint_data = TgBTCMintData(
+            crippled=True,
+            sender=sender_of_log_tx,
+            recipient=log_data.recipient_address,
+            amount=log_data.amount,
+            asset=None,
+            bitcoin_txid=bitcoin_txid_hex,
+            success=True,
+            recipient_wallet=None,
+            teleport_contract=sender_of_log_tx
+        )
+        new_mint_block = TgBTCMintBlock(data=mint_data)
+        new_mint_block.merge_blocks([block])
+        return [new_mint_block]
+
+class TgBTCBurnLogOnlyMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == TgBTCBurnEvent.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        log_data = TgBTCBurnEvent(block.get_body())
+        burn_data = TgBTCBurnData(
+            crippled=True,
+            sender=log_data.sender_address, 
+            jetton_wallet=None, 
+            asset=None,
+            amount=Amount(log_data.amount),
+            pegout_address=log_data.pegout_address
+        )
+        new_burn_block = TgBTCBurnBlock(data=burn_data)
+        new_burn_block.merge_blocks([block])
+        return [new_burn_block]
+
+class TgBTCNewKeyLogOnlyMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == TgBTCNewKeyEvent.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        log_data = TgBTCNewKeyEvent(block.get_body())
+        
+        coordinator_contract_id = AccountId(block.get_message().source)
+
+        new_key_data = TgBTCNewKeyData(
+            crippled=True,
+            coordinator_contract=coordinator_contract_id,
+            pubkey=hex(log_data.new_internal_pubkey)[2:],
+            pegout_address=log_data.pegout_address,
+            amount=log_data.amount,
+            teleport_contract=None, 
+            timestamp=None          
+        )
+        new_key_block = TgBTCNewKeyBlock(data=new_key_data)
+        new_key_block.merge_blocks([block])
+        return [new_key_block]
+
+@dataclass
+class TgBTCDkgLogData:
+    coordinator_contract: AccountId
+    timestamp: int
+    internal_pubkey: str
+
+
+class TgBTCDkgLogBlock(Block):
+    data: TgBTCDkgLogData
+    def __init__(self, data: TgBTCDkgLogData):
+        super().__init__("tgbtc_dkg_log", [], data)
+    def __repr__(self):
+        return f"tgbtc_dkg_log {self.data.__dict__}"
+
+class TgBTCDkgLogOnlyMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == TgBTCDkgCompletedEvent.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        log_data = TgBTCDkgCompletedEvent(block.get_body())
+        dkg_data = TgBTCDkgLogData(
+            coordinator_contract=AccountId(block.get_message().source),
+            timestamp=log_data.timestamp,
+            internal_pubkey=hex(log_data.internal_pubkey)[2:]
+        )
+        new_dkg_block = TgBTCDkgLogBlock(data=dkg_data)
+        new_dkg_block.merge_blocks([block])
+        return [new_dkg_block]

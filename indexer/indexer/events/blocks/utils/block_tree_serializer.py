@@ -26,7 +26,7 @@ from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBl
 from indexer.events.blocks.swaps import JettonSwapBlock
 from indexer.events.blocks.utils import AccountId, Asset
 from indexer.events.blocks.vesting import VestingSendMessageBlock, VestingAddWhiteListBlock
-from indexer.events.blocks.tgbtc import TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
+from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
 
 logger = logging.getLogger(__name__)
 
@@ -621,10 +621,15 @@ def _fill_tgbtc_burn_action(block: TgBTCBurnBlock, action: Action):
 
 def _fill_tgbtc_new_key_action(block: TgBTCNewKeyBlock, action: Action):
     action.source = _addr(block.data.teleport_contract)
-    action.source_secondary = hex(block.data.pubkey)[2:]
+    action.source_secondary = block.data.pubkey
     action.destination = _addr(block.data.coordinator_contract)
     action.destination_secondary = _addr(block.data.pegout_address)
     action.amount = block.data.amount
+    action.value = block.data.timestamp
+
+def _fill_tgbtc_dkg_log_action(block: TgBTCDkgLogBlock, action: Action):
+    action.source = _addr(block.data.coordinator_contract)
+    action.asset = block.data.internal_pubkey
     action.value = block.data.timestamp
 
 
@@ -717,6 +722,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_tgbtc_burn_action(block, action)
         case 'tgbtc_new_key':
             _fill_tgbtc_new_key_action(block, action)
+        case 'tgbtc_dkg_log':
+            _fill_tgbtc_dkg_log_action(block, action)
         case 'tick_tock':
             _fill_tick_tock_action(block, action)
         case _:
