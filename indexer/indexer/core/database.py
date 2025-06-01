@@ -348,7 +348,6 @@ class Action(Base):
         Column("tick_upper", Numeric),
         Column("nft_index", Numeric),
         Column("nft_address", String),
-        Column("is_complete", Boolean),
     ]))
     dex_withdraw_liquidity_data = Column(CompositeType("dex_withdraw_liquidity_details", [
         Column("dex", String),

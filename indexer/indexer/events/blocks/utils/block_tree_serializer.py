@@ -699,7 +699,6 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
         "tick_upper": block.data.tick_upper,
         "nft_index": block.data.nft_index,
         "nft_address": _addr(block.data.nft_address),
-        "is_complete": block.data.is_complete,
         "target_amount_1": block.data.position_amount_1.value,
         "target_amount_2": block.data.position_amount_2.value,
         "target_asset_1": _addr(block.data.asset_1),

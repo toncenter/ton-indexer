@@ -529,6 +529,7 @@ type RawAction struct {
 	JettonSwapDexOutgoingTransferSourceJettonWallet      *AccountAddress
 	JettonSwapDexOutgoingTransferDestinationJettonWallet *AccountAddress
 	JettonSwapPeerSwaps                                  []RawActionJettonSwapPeerSwap
+	JettonSwapMinOutAmount                               *string
 	ChangeDNSRecordKey                                   *string
 	ChangeDNSRecordValueSchema                           *string
 	ChangeDNSRecordValue                                 *string
@@ -544,6 +545,10 @@ type RawAction struct {
 	DexWithdrawLiquidityDataDexJettonWallet1             *AccountAddress
 	DexWithdrawLiquidityDataDexJettonWallet2             *AccountAddress
 	DexWithdrawLiquidityDataLpTokensBurnt                *string
+	DexWithdrawLiquidityDataBurnedNFTIndex               *string
+	DexWithdrawLiquidityDataBurnedNFTAddress             *AccountAddress
+	DexWithdrawLiquidityDataTickLower                    *string
+	DexWithdrawLiquidityDataTickUpper                    *string
 	DexDepositLiquidityDataDex                           *string
 	DexDepositLiquidityDataAmount1                       *string
 	DexDepositLiquidityDataAmount2                       *string
@@ -557,6 +562,10 @@ type RawAction struct {
 	DexDepositLiquidityDataTargetAmount1                 *string
 	DexDepositLiquidityDataTargetAmount2                 *string
 	DexDepositLiquidityDataVaultExcesses                 []RawActionVaultExcessEntry
+	DexDepositLiquidityDataTickLower                     *string
+	DexDepositLiquidityDataTickUpper                     *string
+	DexDepositLiquidityDataNFTIndex                      *string
+	DexDepositLiquidityDataNFTAddress                    *AccountAddress
 	StakingDataProvider                                  *string
 	StakingDataTsNft                                     *AccountAddress
 	StakingDataTokensBurnt                               *string
@@ -602,6 +611,16 @@ type RawAction struct {
 	JvaultStakePeriod                                    *int64
 	JvaultStakeMintedStakeJettons                        *string
 	JvaultStakeStakeWallet                               *AccountAddress
+	ToncoDeployPoolJetton0RouterWallet                   *AccountAddress
+	ToncoDeployPoolJetton1RouterWallet                   *AccountAddress
+	ToncoDeployPoolJetton0Minter                         *AccountAddress
+	ToncoDeployPoolJetton1Minter                         *AccountAddress
+	ToncoDeployPoolTickSpacing                           *int64
+	ToncoDeployPoolInitialPriceX96                       *string
+	ToncoDeployPoolProtocolFee                           *int64
+	ToncoDeployPoolLpFeeBase                             *int64
+	ToncoDeployPoolLpFeeCurrent                          *int64
+	ToncoDeployPoolPoolActive                            *bool
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
@@ -709,6 +728,17 @@ type ActionDetailsJettonSwap struct {
 	DexIncomingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_incoming_transfer"`
 	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_outgoing_transfer"`
 	PeerSwaps           []ActionDetailsJettonSwapPeerSwap `json:"peer_swaps"`
+}
+
+type ActionDetailsToncoJettonSwap struct {
+	Dex                 *string                           `json:"dex"`
+	Sender              *AccountAddress                   `json:"sender"`
+	AssetIn             *AccountAddress                   `json:"asset_in"`
+	AssetOut            *AccountAddress                   `json:"asset_out"`
+	DexIncomingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_incoming_transfer"`
+	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_outgoing_transfer"`
+	PeerSwaps           []ActionDetailsJettonSwapPeerSwap `json:"peer_swaps"`
+	MinAmount           *string                           `json:"min_amount"`
 }
 
 type ActionDetailsJettonTransfer struct {

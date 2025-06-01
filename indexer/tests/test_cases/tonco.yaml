@@ -206,7 +206,7 @@ cases:
     trace-id: 0GW2kNF4nRhw5xA3b5E35-EhF9H25H3Nvm5MJJo2VD0=
     expected-actions:
       - type: dex_deposit_liquidity
-        selector: "{{ value.dex_deposit_liquidity_data.is_complete == false }}"
+        selector: "{{ value.dex_deposit_liquidity_data.lp_tokens_minted == None }}"
         values:
           source: 0:400FC42F5A69D0B901DCDF210E4FC03D6FB6DF4DF785EF76D997E3A0DDE9511C
           source_secondary: null
@@ -224,7 +224,6 @@ cases:
             tick_upper: -52980
             nft_index: null
             nft_address: null
-            is_complete: false
             amount1: 3029999999827
             asset1: null # TON
             user_jetton_wallet_1: null
@@ -233,7 +232,7 @@ cases:
             user_jetton_wallet_2: null
 
       - type: dex_deposit_liquidity
-        selector: "{{ value.dex_deposit_liquidity_data.is_complete == true }}"
+        selector: "{{ value.dex_deposit_liquidity_data.lp_tokens_minted != None }}"
         values:
           source: 0:400FC42F5A69D0B901DCDF210E4FC03D6FB6DF4DF785EF76D997E3A0DDE9511C
           source_secondary: 0:2BC21F6C2C85ECCF0DFC7FC5CAEC8A124799E6BB47E37206D014322F0DE33EFA
@@ -254,7 +253,6 @@ cases:
             tick_upper: -52980
             nft_index: 3086
             nft_address: 0:A74CC446A0805F61AF677B3754167DFC5CBB37D94488F9B3D9FA04C91262A06F
-            is_complete: true
             amount1: null
             asset1: null # TON
             user_jetton_wallet_1: null
@@ -286,8 +284,6 @@ cases:
             nft_index: 23
             nft_address: 0:A797F301E9EC010C88765AE955DA0530C5C95B3A6F553FEE9CB5C89008ED29A0
 
-            is_complete: true
-
             amount1: 200000000000
             asset1: 0:AE3E6D351E576276E439E7168117FD64696FD6014CB90C77B2F2CBAACD4FCC00
             user_jetton_wallet_1: 0:5B2E06C2F9983FD9CC8AC7F92462C20EB53AD9EFD3CF017394D571DBBDF6F6DC
@@ -300,7 +296,7 @@ cases:
     trace-id: 0_JGy9zypUz4Br8zqCwx12YnRM-WxcP2MDeYHHDkdwI=
     expected-actions:
       - type: dex_deposit_liquidity
-        selector: "{{ value.dex_deposit_liquidity_data.is_complete == false }}"
+        selector: "{{ value.dex_deposit_liquidity_data.lp_tokens_minted == None }}"
         values:
           source: 0:D0BE5B9AC15B195A8514ACF29518A5D3C85D376238EB208FACA60B747FFA6CFA
           source_secondary: 0:A92F898C29B1E36A52E526A7AD2EF7D41B16F45B1ACA603F8F68A5143AABB536
@@ -315,7 +311,6 @@ cases:
             tick_upper: 887200
             nft_index: null
             nft_address: null
-            is_complete: false
             amount1: null
             asset1: 0:D754F98F4442B360E76309D22D1617E1FDDEE3713AE9518AEB634ABB86C1B533
             user_jetton_wallet_1: null
@@ -324,7 +319,7 @@ cases:
             user_jetton_wallet_2: 0:A92F898C29B1E36A52E526A7AD2EF7D41B16F45B1ACA603F8F68A5143AABB536
 
       - type: dex_deposit_liquidity
-        selector: "{{ value.dex_deposit_liquidity_data.is_complete == true }}"
+        selector: "{{ value.dex_deposit_liquidity_data.lp_tokens_minted != None }}"
         values:
           source: 0:D0BE5B9AC15B195A8514ACF29518A5D3C85D376238EB208FACA60B747FFA6CFA
           source_secondary: 0:2158838C4F08DC12B612381B27D2AA083DF41D030D9788476B7D332B3597470F
@@ -347,7 +342,6 @@ cases:
             tick_upper: 887200
             nft_index: 7
             nft_address: 0:F5BCCDBC2797808A175849A8F4B5C274BDAF39D3C852DEBF462D91C5F09A39C6
-            is_complete: true
             amount1: 145446049900
             asset1: 0:D754F98F4442B360E76309D22D1617E1FDDEE3713AE9518AEB634ABB86C1B533
             user_jetton_wallet_1: 0:2158838C4F08DC12B612381B27D2AA083DF41D030D9788476B7D332B3597470F

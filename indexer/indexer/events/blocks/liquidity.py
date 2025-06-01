@@ -879,7 +879,6 @@ class ToncoDepositLiquidityData:
     tick_upper: int
     nft_index: int | None
     nft_address: AccountId | None
-    is_complete: bool
     amount_1: Amount | None
     asset_1: Asset | None
     sender_wallet_1: AccountId | None
@@ -896,7 +895,7 @@ class ToncoDepositLiquidityBlock(Block):
         super().__init__("tonco_deposit_liquidity", [], data)
 
     def __repr__(self):
-        return f"tonco_deposit_liquidity pool={self.data.pool.address} sender={self.data.sender.address} complete={self.data.is_complete}"
+        return f"tonco_deposit_liquidity pool={self.data.pool.address} sender={self.data.sender.address} complete={self.data.lp_tokens_minted is not None}"
 
 
 class ToncoDepositLiquidityMatcher(BlockMatcher):
@@ -1137,7 +1136,6 @@ class ToncoDepositLiquidityMatcher(BlockMatcher):
             tick_upper=add_liquidity_msg.tick_upper,
             nft_index=nft_index,
             nft_address=nft_address,
-            is_complete=is_complete,
             amount_1=amount_1,
             asset_1=asset_1,
             sender_wallet_1=sender_wallet_1,
