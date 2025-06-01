@@ -242,13 +242,15 @@ def _fill_jetton_swap_action(block: JettonSwapBlock, action: Action):
         action.destination_secondary = _addr(block.data['destination_wallet'])
     if 'destination_asset' in block.data and block.data['destination_asset'] is not None:
         action.asset2 = _addr(block.data['destination_asset'])
-
+    min_out_amount = None
+    if 'min_out_amount' in block.data:
+        min_out_amount = block.data['min_out_amount'].value if block.data['min_out_amount'] is not None else None
     action.jetton_swap_data = {
         'dex': block.data['dex'],
         'sender': _addr(block.data['sender']),
         'dex_incoming_transfer': dex_incoming_transfer,
         'dex_outgoing_transfer': dex_outgoing_transfer,
-        'min_out_amount': block.data['min_out_amount'] if 'min_out_amount' in block.data else None
+        'min_out_amount': min_out_amount
     }
     if 'peer_swaps' in block.data and block.data['peer_swaps'] is not None:
         action.jetton_swap_data['peer_swaps'] = [_convert_peer_swap(swap) for swap in block.data['peer_swaps']]
