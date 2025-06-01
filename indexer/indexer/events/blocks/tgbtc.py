@@ -218,6 +218,7 @@ class TgBTCBurnBlockMatcher(BlockMatcher):
         sender = jetton_burn_block.data["owner"]
         jetton_wallet_addr = jetton_burn_block.data["jetton_wallet"]
         asset = jetton_burn_block.data["asset"]
+        amount = jetton_burn_block.data["amount"].value
 
         tgbtc_burn_log_block = get_labeled(
             "tgbtc_burn_log", other_blocks, CallContractBlock
@@ -227,12 +228,16 @@ class TgBTCBurnBlockMatcher(BlockMatcher):
             return []
 
         log_data = TgBTCBurnEvent(tgbtc_burn_log_block.get_body())
+        if not amount or amount == 0:
+            amount = log_data.amount
+        else:
+            amount = min(amount, log_data.amount)
 
         data = TgBTCBurnData(
             sender=sender,
             jetton_wallet=jetton_wallet_addr,
             asset=asset,
-            amount=Amount(log_data.amount),
+            amount=Amount(amount),
             pegout_address=log_data.pegout_address,
         )
 
@@ -323,7 +328,9 @@ class TgBTCNewKeyBlockMatcher(BlockMatcher):
 
 
 
-# --- Fallback Matchers for Log-Only Events ---
+# Fallback matchers for log-only events
+# They're used when normal matchers fail, but there's 
+# still a log indicating success of the event
 
 class TgBTCMintLogOnlyMatcher(BlockMatcher):
     def __init__(self):

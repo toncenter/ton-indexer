@@ -601,6 +601,9 @@ def _fill_vesting_add_whitelist(block: VestingAddWhiteListBlock, action: Action)
 
 
 def _fill_tgbtc_mint_action(block: TgBTCMintBlock, action: Action):
+    action.type = 'tgbtc_mint'
+    if block.data.crippled:
+        action.type += '_fallback'
     action.source = _addr(block.data.sender)
     action.destination = _addr(block.data.recipient)
     action.amount = block.data.amount
@@ -612,6 +615,9 @@ def _fill_tgbtc_mint_action(block: TgBTCMintBlock, action: Action):
 
 
 def _fill_tgbtc_burn_action(block: TgBTCBurnBlock, action: Action):
+    action.type = 'tgbtc_burn'
+    if block.data.crippled:
+        action.type += '_fallback'
     action.source = _addr(block.data.sender)
     action.source_secondary = _addr(block.data.jetton_wallet)
     action.destination = _addr(block.data.pegout_address)
@@ -620,6 +626,9 @@ def _fill_tgbtc_burn_action(block: TgBTCBurnBlock, action: Action):
 
 
 def _fill_tgbtc_new_key_action(block: TgBTCNewKeyBlock, action: Action):
+    action.type = 'tgbtc_new_key'
+    if block.data.crippled:
+        action.type += '_fallback'
     action.source = _addr(block.data.teleport_contract)
     action.source_secondary = block.data.pubkey
     action.destination = _addr(block.data.coordinator_contract)
@@ -628,6 +637,7 @@ def _fill_tgbtc_new_key_action(block: TgBTCNewKeyBlock, action: Action):
     action.value = block.data.timestamp
 
 def _fill_tgbtc_dkg_log_action(block: TgBTCDkgLogBlock, action: Action):
+    action.type = 'tgbtc_dkg_log_fallback'
     action.source = _addr(block.data.coordinator_contract)
     action.asset = block.data.internal_pubkey
     action.value = block.data.timestamp

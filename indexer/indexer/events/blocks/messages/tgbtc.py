@@ -42,8 +42,13 @@ class TgBTCBurnEvent:
     def __init__(self, slice: Slice):
         slice.load_uint(32)
         self.amount = slice.load_coins() or 0
-        sender = slice.load_address()
-        pegout = slice.load_address()
+        sender = None
+        pegout = None
+        try:
+            sender = slice.load_address()
+            pegout = slice.load_address()
+        except:
+            pass
         self.sender_address = (
             AccountId(sender) if isinstance(sender, Address) else AccountId(None)
         )

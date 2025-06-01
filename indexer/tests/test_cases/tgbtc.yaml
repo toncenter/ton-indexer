@@ -109,5 +109,36 @@ cases:
           source: 0:EB8AC5A8906F394640F99245B2850677FA736F080BAFD85D657CDCD3846D87FE
           source_secondary: 0:E2711224A693851A223A3E8E81000DF7125F0AC60684CEA767C8FB0B6CD46A0C
           asset: 0:5A3F2ADA0F96F67087BCADE7DE560CE29957DA0A803E63B4232FFD09E4B1BBBE
-          amount: 67738024653408789
+          amount: 1000
           destination: 15:8A69F1E2976384167B2E961654237028CBE86C211FE4555BB6D2E0075C562D44  # idk why it's wc 15
+
+  tgBTC dkg log (fallback):
+    trace-id: _6GHAnnp8ZMqUy6G6ZbAjcwO4WD2xp_yms84bK9wsmE=
+    expected-actions:
+      - type: tgbtc_dkg_log_fallback
+        values:
+          source: 0:E7C197C6B8DC54C88B7BF0FB86E8834E97EE740CEB47254E4A154E7EE023848F
+          asset: bb3a21df270dd0e6dc1169f4afb93be5eb2945df81c011f2b29f648daf64d150
+          value: 1744132682
+
+  tgBTC burn (wierd schema):
+    trace-id: 2yH8U5KFpFp_okVlTrth4pBuiIr8p7QKjJSImz2DTrI=
+    expected-actions:
+      - type: tgbtc_burn
+        values:
+          source: 0:E8A31DB182F93354C0BDE7800D0D200027D027B0DFEB478F2F4D0B0C2E1DC059
+          source_secondary: 0:A42315002B88C23D17A24AAA8B65205810C4D08D237DA3CA4D976A2D1E04E801
+          asset: 0:7D858A3DEF200FDA2B18C22485C66D4139B42B698F11985374D8943222CED4AA
+          amount: 93066 # from burn msg
+          destination: null # and no address
+
+  tgBTC burn (very old wierd and crippled):
+    trace-id: 35MtsOa0weeyUpH8_9pk58WhIrOuyB6ycEH9lY-KhUY=
+    expected-actions:
+      - type: tgbtc_burn_fallback
+        values:
+          source: null
+          source_secondary: null
+          asset: null
+          amount: 2108539095393251256237182
+          destination: null
