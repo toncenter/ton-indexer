@@ -408,6 +408,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.TargetAsset1 = raw.DexDepositLiquidityDataTargetAsset1
 		details.TargetAmount2 = raw.DexDepositLiquidityDataTargetAmount2
 		details.TargetAsset2 = raw.DexDepositLiquidityDataTargetAsset2
+		details.TickLower = raw.DexDepositLiquidityDataTickLower
+		details.TickUpper = raw.DexDepositLiquidityDataTickUpper
+		details.NftIndex = raw.DexDepositLiquidityDataNFTIndex
+		details.NftAddress = raw.DexDepositLiquidityDataNFTAddress
 		details.VaultExcesses = []ActionDetailsLiquidityVaultExcess{}
 		for _, excess := range raw.DexDepositLiquidityDataVaultExcesses {
 			details.VaultExcesses = append(details.VaultExcesses, ActionDetailsLiquidityVaultExcess(excess))
@@ -426,6 +430,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.UserJettonWallet1 = raw.DexWithdrawLiquidityDataUserJettonWallet1
 		details.UserJettonWallet2 = raw.DexWithdrawLiquidityDataUserJettonWallet2
 		details.LpTokensBurnt = raw.DexWithdrawLiquidityDataLpTokensBurnt
+		details.BurntNftIndex = raw.DexWithdrawLiquidityDataBurnedNFTIndex
+		details.BurntNftAddress = raw.DexWithdrawLiquidityDataBurnedNFTAddress
+		details.TickUpper = raw.DexWithdrawLiquidityDataTickUpper
+		details.TickLower = raw.DexWithdrawLiquidityDataTickLower
 		act.Details = &details
 	case "delete_dns":
 		var details ActionDetailsDeleteDns
@@ -482,8 +490,21 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		for _, peer := range raw.JettonSwapPeerSwaps {
 			details.PeerSwaps = append(details.PeerSwaps, ActionDetailsJettonSwapPeerSwap(peer))
 		}
-
-		act.Details = &details
+		// MinOutAmount common field in swaps but for now supported only in tonco swaps, thats why it should appear only for tonco for now
+		if details.Dex != nil && *details.Dex == "tonco" {
+			act.Details = &ActionDetailsToncoJettonSwap{
+				Dex:                 details.Dex,
+				Sender:              details.Sender,
+				AssetIn:             details.AssetIn,
+				AssetOut:            details.AssetOut,
+				DexIncomingTransfer: details.DexIncomingTransfer,
+				DexOutgoingTransfer: details.DexOutgoingTransfer,
+				PeerSwaps:           details.PeerSwaps,
+				MinOutAmount:        raw.JettonSwapMinOutAmount,
+			}
+		} else {
+			act.Details = &details
+		}
 	case "jetton_transfer":
 		var details ActionDetailsJettonTransfer
 		details.Asset = raw.Asset
@@ -732,6 +753,22 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			NftItem:       raw.AssetSecondary,
 			NftCollection: raw.Asset,
 			NftItemIndex:  raw.NFTTransferNFTItemIndex,
+		}
+	case "tonco_deploy_pool":
+		act.Details = ActionDetailsToncoDeployPool{
+			Source:              raw.Source,
+			Pool:                raw.DestinationSecondary,
+			Router:              raw.Destination,
+			RouterJettonWallet1: raw.ToncoDeployPoolJetton0RouterWallet,
+			RouterJettonWallet2: raw.ToncoDeployPoolJetton1RouterWallet,
+			JettonMinter1:       raw.ToncoDeployPoolJetton0Minter,
+			JettonMinter2:       raw.ToncoDeployPoolJetton1Minter,
+			TickSpacing:         raw.ToncoDeployPoolTickSpacing,
+			InitialPriceX96:     raw.ToncoDeployPoolInitialPriceX96,
+			ProtocolFee:         raw.ToncoDeployPoolProtocolFee,
+			LpFeeBase:           raw.ToncoDeployPoolLpFeeBase,
+			LpFeeCurrent:        raw.ToncoDeployPoolLpFeeCurrent,
+			PoolActive:          raw.ToncoDeployPoolPoolActive,
 		}
 	default:
 		details := map[string]string{}

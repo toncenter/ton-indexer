@@ -2007,6 +2007,19 @@ func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawActio
 			(*addr_list)[(string)(*master)] = true
 		}
 	}
+	// Tonco fields
+	if v := raw_action.DexDepositLiquidityDataNFTAddress; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.DexWithdrawLiquidityDataBurnedNFTAddress; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.ToncoDeployPoolJetton1Minter; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.ToncoDeployPoolJetton0Minter; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
 
 	// Vesting fields
 	for _, v := range raw_action.VestingAddWhitelistAccountsAdded {

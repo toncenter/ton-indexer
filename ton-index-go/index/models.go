@@ -615,11 +615,11 @@ type RawAction struct {
 	ToncoDeployPoolJetton1RouterWallet                   *AccountAddress
 	ToncoDeployPoolJetton0Minter                         *AccountAddress
 	ToncoDeployPoolJetton1Minter                         *AccountAddress
-	ToncoDeployPoolTickSpacing                           *int64
+	ToncoDeployPoolTickSpacing                           *string
 	ToncoDeployPoolInitialPriceX96                       *string
-	ToncoDeployPoolProtocolFee                           *int64
-	ToncoDeployPoolLpFeeBase                             *int64
-	ToncoDeployPoolLpFeeCurrent                          *int64
+	ToncoDeployPoolProtocolFee                           *string
+	ToncoDeployPoolLpFeeBase                             *string
+	ToncoDeployPoolLpFeeCurrent                          *string
 	ToncoDeployPoolPoolActive                            *bool
 } // @name RawAction
 
@@ -738,7 +738,7 @@ type ActionDetailsToncoJettonSwap struct {
 	DexIncomingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_incoming_transfer"`
 	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_outgoing_transfer"`
 	PeerSwaps           []ActionDetailsJettonSwapPeerSwap `json:"peer_swaps"`
-	MinAmount           *string                           `json:"min_amount"`
+	MinOutAmount        *string                           `json:"min_out_amount"`
 }
 
 type ActionDetailsJettonTransfer struct {
@@ -832,6 +832,10 @@ type ActionDetailsDexDepositLiquidity struct {
 	TargetAmount1        *string                             `json:"target_amount_1"`
 	TargetAmount2        *string                             `json:"target_amount_2"`
 	VaultExcesses        []ActionDetailsLiquidityVaultExcess `json:"vault_excesses"`
+	TickLower            *string                             `json:"tick_lower"`
+	TickUpper            *string                             `json:"tick_upper"`
+	NftIndex             *string                             `json:"nft_index"`
+	NftAddress           *AccountAddress                     `json:"nft_address"`
 }
 
 type ActionDetailsDexWithdrawLiquidity struct {
@@ -847,6 +851,26 @@ type ActionDetailsDexWithdrawLiquidity struct {
 	Source               *AccountAddress `json:"source"`
 	Pool                 *AccountAddress `json:"pool"`
 	DestinationLiquidity *AccountAddress `json:"destination_liquidity"`
+	BurntNftIndex        *string         `json:"burnt_nft_index"`
+	BurntNftAddress      *AccountAddress `json:"burnt_nft_address"`
+	TickLower            *string         `json:"tick_lower"`
+	TickUpper            *string         `json:"tick_upper"`
+}
+
+type ActionDetailsToncoDeployPool struct {
+	Source              *AccountAddress `json:"source"`
+	Pool                *AccountAddress `json:"pool"`
+	Router              *AccountAddress `json:"router"`
+	RouterJettonWallet1 *AccountAddress `json:"router_jetton_wallet_1"`
+	RouterJettonWallet2 *AccountAddress `json:"router_jetton_wallet_2"`
+	JettonMinter1       *AccountAddress `json:"jetton_minter_1"`
+	JettonMinter2       *AccountAddress `json:"jetton_minter_2"`
+	TickSpacing         *string         `json:"tick_spacing"`
+	InitialPriceX96     *string         `json:"initial_price_x96"`
+	ProtocolFee         *string         `json:"protocol_fee"`
+	LpFeeBase           *string         `json:"lp_fee_base"`
+	LpFeeCurrent        *string         `json:"lp_fee_current"`
+	PoolActive          *bool           `json:"pool_active"`
 }
 
 type ActionDetailsStakeDeposit struct {
