@@ -688,12 +688,25 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
                 'asset': _addr(excess[0]),
                 'amount': excess[1].value,
             })
+    actual_asset_1 = None
+    actual_amount_1 = None
+    actual_asset_2 = None
+    actual_amount_2 = None
+    for (amt, asset) in [(block.data.amount_1, block.data.asset_1), (block.data.amount_2, block.data.asset_2)]:
+        if amt is None:
+            continue
+        if actual_amount_1 is None:
+            actual_amount_1 = amt
+            actual_asset_1 = asset
+        else:
+            actual_amount_2 = amt
+            actual_asset_2 = asset
     action.dex_deposit_liquidity_data = {
         "dex": "tonco",
-        "amount1": block.data.amount_1.value if block.data.amount_1 else None,
-        "amount2": block.data.amount_2.value if block.data.amount_2 else None,
-        "asset1": _addr(block.data.asset_1),
-        "asset2": _addr(block.data.asset_2),
+        "amount1": actual_amount_1.value if actual_amount_1 else None,
+        "amount2": actual_amount_2.value if actual_amount_2 else None,
+        "asset1": _addr(actual_asset_1),
+        "asset2": _addr(actual_asset_2),
         "user_jetton_wallet_1": _addr(block.data.sender_wallet_1),
         "user_jetton_wallet_2": _addr(block.data.sender_wallet_2),
         "lp_tokens_minted": block.data.lp_tokens_minted.value if block.data.lp_tokens_minted else None,
@@ -853,6 +866,8 @@ v1_ops = [
     'tonstakers_deposit',
     'tonstakers_withdraw_request',
     'tonstakers_withdraw',
+    'tonco_deposit_liquidity',
+    'tonco_withdraw_liquidity',
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:

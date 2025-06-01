@@ -228,7 +228,7 @@ cases:
             asset1: null # TON
             user_jetton_wallet_1: null
             amount2: null
-            asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            asset2: null
             user_jetton_wallet_2: null
 
       - type: dex_deposit_liquidity
@@ -253,11 +253,11 @@ cases:
             tick_upper: -52980
             nft_index: 3086
             nft_address: 0:A74CC446A0805F61AF677B3754167DFC5CBB37D94488F9B3D9FA04C91262A06F
-            amount1: null
-            asset1: null # TON
+            amount1: 5765664447
+            asset1: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
             user_jetton_wallet_1: null
-            amount2: 5765664447
-            asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            amount2: null
+            asset2: null
             user_jetton_wallet_2: 0:2BC21F6C2C85ECCF0DFC7FC5CAEC8A124799E6BB47E37206D014322F0DE33EFA
 
   Tonco deposit liquidity one side TON (strange case):
@@ -311,11 +311,11 @@ cases:
             tick_upper: 887200
             nft_index: null
             nft_address: null
-            amount1: null
-            asset1: 0:D754F98F4442B360E76309D22D1617E1FDDEE3713AE9518AEB634ABB86C1B533
+            amount1: 14544604
+            asset1: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
             user_jetton_wallet_1: null
-            amount2: 14544604
-            asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            amount2: null
+            asset2: null
             user_jetton_wallet_2: 0:A92F898C29B1E36A52E526A7AD2EF7D41B16F45B1ACA603F8F68A5143AABB536
 
       - type: dex_deposit_liquidity
@@ -346,8 +346,10 @@ cases:
             asset1: 0:D754F98F4442B360E76309D22D1617E1FDDEE3713AE9518AEB634ABB86C1B533
             user_jetton_wallet_1: 0:2158838C4F08DC12B612381B27D2AA083DF41D030D9788476B7D332B3597470F
             amount2: null
-            asset2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            asset2: null
             user_jetton_wallet_2: null
+            target_asset_1: 0:D754F98F4442B360E76309D22D1617E1FDDEE3713AE9518AEB634ABB86C1B533
+            target_asset_2: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
 
   Tonco withdraw liquidity:
     trace-id: 0JSRYHwEQ6P5aTAh8p8_YgJS5LZlapbc_W4VTjSrshk=

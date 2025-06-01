@@ -1074,6 +1074,7 @@ class ToncoDepositLiquidityMatcher(BlockMatcher):
                 first_asset = Asset(is_ton=True, jetton_address=None)
         except Exception as e:
             logger.warning(f"Failed to determine first asset: {e}")
+            return []
 
         second_asset = None
         try:
@@ -1089,6 +1090,7 @@ class ToncoDepositLiquidityMatcher(BlockMatcher):
                     )
         except Exception as e:
             logger.warning(f"Error determining second asset for liquidity: {e}")
+            return []
 
         if is_first_asset_deposited:
             amount_1 = sent_amount
