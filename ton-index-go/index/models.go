@@ -330,16 +330,19 @@ type NFTCollectionNullable struct {
 }
 
 type NFTItem struct {
-	Address           AccountAddress         `json:"address"`
-	Init              bool                   `json:"init"`
-	Index             string                 `json:"index"`
-	CollectionAddress *AccountAddress        `json:"collection_address"`
-	OwnerAddress      *AccountAddress        `json:"owner_address"`
-	Content           map[string]interface{} `json:"content"`
-	LastTransactionLt int64                  `json:"last_transaction_lt,string"`
-	CodeHash          HashType               `json:"code_hash"`
-	DataHash          HashType               `json:"data_hash"`
-	Collection        *NFTCollection         `json:"collection"`
+	Address                AccountAddress         `json:"address"`
+	Init                   bool                   `json:"init"`
+	Index                  string                 `json:"index"`
+	CollectionAddress      *AccountAddress        `json:"collection_address"`
+	OwnerAddress           *AccountAddress        `json:"owner_address"`
+	Content                map[string]interface{} `json:"content"`
+	LastTransactionLt      int64                  `json:"last_transaction_lt,string"`
+	CodeHash               HashType               `json:"code_hash"`
+	DataHash               HashType               `json:"data_hash"`
+	Collection             *NFTCollection         `json:"collection"`
+	OnSale                 bool                   `json:"on_sale"`
+	SaleContractAddress    *AccountAddress        `json:"sale_contract_address,omitempty"`
+	AuctionContractAddress *AccountAddress        `json:"auction_contract_address,omitempty"`
 } // @name NFTItem
 
 type NFTTransfer struct {
