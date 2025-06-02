@@ -64,6 +64,7 @@ type TokenInfo struct {
 	Symbol      *string                `json:"symbol,omitempty"`
 	Description *string                `json:"description,omitempty"`
 	Image       *string                `json:"image,omitempty"`
+	NftIndex    *string                `json:"nft_index,omitempty"`
 	Extra       map[string]interface{} `json:"extra,omitempty"`
 } // @name TokenInfo
 
