@@ -978,13 +978,13 @@ func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
 		res.OnSale = true
 		res.SaleContractAddress = saleAddress
 		if saleOwner != nil {
-			res.OwnerAddress = saleOwner
+			res.RealOwner = saleOwner
 		}
 	} else if auctionAddress != nil {
 		res.OnSale = true
 		res.AuctionContractAddress = auctionAddress
 		if auctionOwner != nil {
-			res.OwnerAddress = auctionOwner
+			res.RealOwner = auctionOwner
 		}
 	}
 

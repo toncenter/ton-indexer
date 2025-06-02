@@ -344,6 +344,7 @@ type NFTItem struct {
 	OnSale                 bool                   `json:"on_sale"`
 	SaleContractAddress    *AccountAddress        `json:"sale_contract_address,omitempty"`
 	AuctionContractAddress *AccountAddress        `json:"auction_contract_address,omitempty"`
+	RealOwner              *AccountAddress        `json:"real_owner,omitempty"`
 } // @name NFTItem
 
 type NFTTransfer struct {

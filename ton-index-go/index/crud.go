@@ -434,8 +434,8 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
                 A.address, A.nft_owner`
 	from_query := ` nft_items as N 
                 left join nft_collections as C on N.collection_address = C.address
-                left join getgems_nft_sales as S on N.owner_address = S.address and S.is_complete = false
-                left join getgems_nft_auctions as A on N.owner_address = A.address and A.end_flag = false`
+                left join getgems_nft_sales as S on N.owner_address = S.address and N.address = S.nft_address
+                left join getgems_nft_auctions as A on N.owner_address = A.address and N.address = A.nft_addr`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ` order by N.id asc`
