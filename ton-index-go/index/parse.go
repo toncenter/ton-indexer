@@ -989,11 +989,16 @@ func ScanNFTItem(row pgx.Row) (*NFTItem, error) {
 func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
 	var res NFTItem
 	var col NFTCollectionNullable
+	var saleAddress, saleOwner *AccountAddress
+	var auctionAddress, auctionOwner *AccountAddress
 
 	err := row.Scan(&res.Address, &res.Init, &res.Index, &res.CollectionAddress,
 		&res.OwnerAddress, &res.Content, &res.LastTransactionLt, &res.CodeHash, &res.DataHash,
 		&col.Address, &col.NextItemIndex, &col.OwnerAddress, &col.CollectionContent,
-		&col.DataHash, &col.CodeHash, &col.LastTransactionLt)
+		&col.DataHash, &col.CodeHash, &col.LastTransactionLt,
+		&saleAddress, &saleOwner,
+		&auctionAddress, &auctionOwner)
+
 	if col.Address != nil {
 		res.Collection = new(NFTCollection)
 		res.Collection.Address = *col.Address
@@ -1004,6 +1009,22 @@ func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
 		res.Collection.CodeHash = *col.CodeHash
 		res.Collection.LastTransactionLt = *col.LastTransactionLt
 	}
+
+	// Handle sale/auction data
+	if saleAddress != nil {
+		res.OnSale = true
+		res.SaleContractAddress = saleAddress
+		if saleOwner != nil {
+			res.RealOwner = saleOwner
+		}
+	} else if auctionAddress != nil {
+		res.OnSale = true
+		res.AuctionContractAddress = auctionAddress
+		if auctionOwner != nil {
+			res.RealOwner = auctionOwner
+		}
+	}
+
 	if err != nil {
 		return nil, err
 	}

@@ -427,10 +427,15 @@ func buildNFTCollectionsQuery(nft_req NFTCollectionRequest, lim_req LimitRequest
 
 func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := ` N.address, N.init, N.index, N.collection_address, N.owner_address, N.content, 
-					N.last_transaction_lt, N.code_hash, N.data_hash,
-					C.address, C.next_item_index, C.owner_address, C.collection_content, 
-				    C.data_hash, C.code_hash, C.last_transaction_lt`
-	from_query := ` nft_items as N left join nft_collections as C on N.collection_address = C.address`
+                N.last_transaction_lt, N.code_hash, N.data_hash,
+                C.address, C.next_item_index, C.owner_address, C.collection_content, 
+                C.data_hash, C.code_hash, C.last_transaction_lt,
+                S.address, S.nft_owner_address,
+                A.address, A.nft_owner`
+	from_query := ` nft_items as N 
+                left join nft_collections as C on N.collection_address = C.address
+                left join getgems_nft_sales as S on N.owner_address = S.address and N.address = S.nft_address
+                left join getgems_nft_auctions as A on N.owner_address = A.address and N.address = A.nft_addr`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ` order by N.id asc`
@@ -456,7 +461,7 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 	if v := nft_req.CollectionAddress; v != nil {
 		if len(nft_req.CollectionAddress) == 1 {
 			filter_list = append(filter_list, fmt.Sprintf("N.collection_address = '%s'", v[0]))
-			orderby_query = ` order by collection_address, index`
+			orderby_query = ` order by N.collection_address, N.index`
 		} else if len(nft_req.CollectionAddress) > 1 {
 			filter_str := filterByArray("N.collection_address", v)
 			if len(filter_str) > 0 {
@@ -1392,11 +1397,11 @@ func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool
 }
 
 func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
-	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1)" +
+	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra, n.index from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1)" +
 		" union all " +
-		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra  from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1)" +
+		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1)" +
 		" union all " +
-		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra  from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1)"
+		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1)"
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
@@ -1412,7 +1417,7 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 
 	for rows.Next() {
 		var row TokenInfo
-		err := rows.Scan(&row.Address, &row.Valid, &row.Type, &row.Name, &row.Symbol, &row.Description, &row.Image, &row.Extra)
+		err := rows.Scan(&row.Address, &row.Valid, &row.Type, &row.Name, &row.Symbol, &row.Description, &row.Image, &row.Extra, &row.NftIndex)
 		if err != nil {
 			return nil, IndexError{Code: 500, Message: err.Error()}
 		}
@@ -1423,9 +1428,10 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 			}
 			tasks = append(tasks, BackgroundTask{Type: "fetch_metadata", Data: data})
 			token_info_map[row.Address] = append(token_info_map[row.Address], TokenInfo{
-				Address: row.Address,
-				Type:    row.Type,
-				Indexed: false,
+				Address:  row.Address,
+				Type:     row.Type,
+				NftIndex: row.NftIndex,
+				Indexed:  false,
 			})
 		} else {
 			row.Indexed = true
@@ -1437,10 +1443,11 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 				token_info_map[row.Address] = append(token_info_map[row.Address], row)
 			} else {
 				token_info_map[row.Address] = append(token_info_map[row.Address], TokenInfo{
-					Address: row.Address,
-					Indexed: true,
-					Valid:   row.Valid,
-					Type:    row.Type,
+					Address:  row.Address,
+					Indexed:  true,
+					Valid:    row.Valid,
+					Type:     row.Type,
+					NftIndex: row.NftIndex,
 				})
 			}
 		}
