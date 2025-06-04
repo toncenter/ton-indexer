@@ -93,8 +93,17 @@ def check_value(actual_value: Any, expected_value: Any, path: str) -> None:
         result = evaluate_jinja_expression(expected_value, actual_value)
         assert result, f"Failed condition at '{path}': {expected_value}\nActual value: {actual_value}"
     elif isinstance(expected_value, list) and isinstance(actual_value, list):
-        assert set(actual_value) == set(
-            expected_value), f"Lists don't match at '{path}':\nExpected: {expected_value}\nActual: {actual_value}"
+        assert len(actual_value) == len(expected_value), f"Lists don't match in length at '{path}':\nExpected: {expected_value}\nActual: {actual_value}"
+        for exp_item in expected_value:
+            found = False
+            for act_item in actual_value:
+                try:
+                    check_value(act_item, exp_item, path)
+                    found = True
+                    break
+                except AssertionError:
+                    continue
+            assert found, f"Item '{exp_item}' not found in actual list at '{path}'"
     elif isinstance(expected_value, dict) and (isinstance(actual_value, dict) or hasattr(actual_value, "__dict__")):
         # Handle nested dictionary comparison or dataclass
         actual_dict = actual_value if isinstance(actual_value, dict) else vars(actual_value)

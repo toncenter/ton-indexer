@@ -108,6 +108,29 @@ class JettonInternalTransfer:
 
 class JettonNotify:
     opcode = 0x7362d09c
+    """
+    Opcode: 0x7362d09c
+    TL-B:
+    jetton_transfer_notification#7362d09c 
+        query_id:uint64
+        jetton_amount:(VarUInteger 16)
+        from_user:MsgAddress
+        forward_payload:(Either ^Cell Cell)
+    = InternalMsgBody;
+    """
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.query_id = body.load_uint(64)
+        self.jetton_amount = body.load_coins()
+        self.from_user = body.load_address()
+        self.forward_payload_cell = body.load_maybe_ref() # Either ^Cell Cell
+        if self.forward_payload_cell is None:
+            # if it's not a reference, it's inline in the current slice
+            if body.remaining_bits > 0:
+                self.forward_payload_cell = body
+            else:
+                self.forward_payload_cell = None
+
 
 
 # mint#642b7d07

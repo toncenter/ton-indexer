@@ -1599,14 +1599,14 @@ void InsertManagerPostgres::start_up() {
     exec_query("create type trace_state as enum ('complete', 'pending', 'broken');");
     exec_query("create type change_dns_record_details as (key varchar, value_schema varchar, value varchar, flags integer);");
     exec_query("create type liquidity_vault_excess_details as (asset varchar, amount NUMERIC);");
-    exec_query("create type dex_deposit_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1 varchar, asset2 varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, lp_tokens_minted numeric, target_asset_1 varchar, target_asset_2 varchar, target_amount_1 numeric, target_amount_2 numeric, vault_excesses liquidity_vault_excess_details[]);");
+    exec_query("create type dex_deposit_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1 varchar, asset2 varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, lp_tokens_minted numeric, target_asset_1 varchar, target_asset_2 varchar, target_amount_1 numeric, target_amount_2 numeric, vault_excesses liquidity_vault_excess_details[], tick_lower numeric, tick_upper numeric, nft_index numeric, nft_address varchar);");
     exec_query("create type dex_transfer_details as (amount numeric, asset tonaddr, source tonaddr, destination tonaddr, source_jetton_wallet tonaddr, destination_jetton_wallet tonaddr);");
-    exec_query("create type dex_withdraw_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1_out varchar, asset2_out varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, dex_jetton_wallet_1 varchar, dex_jetton_wallet_2 varchar, lp_tokens_burnt numeric, dex_wallet_1 varchar, dex_wallet_2 varchar);");
+    exec_query("create type dex_withdraw_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1_out varchar, asset2_out varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, dex_jetton_wallet_1 varchar, dex_jetton_wallet_2 varchar, lp_tokens_burnt numeric, dex_wallet_1 varchar, dex_wallet_2 varchar, burned_nft_index numeric, burned_nft_address varchar, tick_lower numeric, tick_upper numeric);");
     exec_query("create type jetton_transfer_details as(response_destination tonaddr, forward_amount numeric, query_id numeric, custom_payload text, forward_payload text, comment text, is_encrypted_comment boolean);");
     exec_query("create type nft_mint_details as (nft_item_index numeric);");
     exec_query("create type nft_transfer_details as(is_purchase boolean, price numeric, query_id numeric, custom_payload text, forward_payload text, forward_amount numeric, response_destination tonaddr, nft_item_index numeric);");
     exec_query("create type peer_swap_details as(asset_in tonaddr, amount_in numeric, asset_out tonaddr, amount_out numeric);");
-    exec_query("create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[]);");
+    exec_query("create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[], min_out_amount numeric);");
     exec_query("create type staking_details as (provider varchar, ts_nft varchar, tokens_burnt numeric, tokens_minted numeric);");
     exec_query("create type ton_transfer_details as (content text, encrypted boolean);");
     exec_query("create type multisig_create_order_details as (query_id numeric, order_seqno numeric, is_created_by_signer boolean, is_signed_by_creator boolean, creator_index numeric, expiration_date numeric, order_boc varchar);");
@@ -1619,6 +1619,7 @@ void InsertManagerPostgres::start_up() {
     exec_query("create type evaa_liquidate_details as (fail_reason text, debt_amount numeric, asset_id varchar);");
     exec_query("create type jvault_claim_details as (claimed_jettons varchar[], claimed_amounts numeric[]);");
     exec_query("create type jvault_stake_details as (period numeric, minted_stake_jettons numeric, stake_wallet varchar);");
+    exec_query("create type tonco_deploy_pool_details as (jetton0_router_wallet varchar, jetton1_router_wallet varchar, jetton0_minter varchar, jetton1_minter varchar, tick_spacing integer, initial_price_x96 numeric, protocol_fee integer, lp_fee_base integer, lp_fee_current integer, pool_active boolean);");
   }
   catch (const std::exception &e) {
     LOG(ERROR) << "Failed to run some of initial scripts: " << e.what();
