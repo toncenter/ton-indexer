@@ -1,7 +1,7 @@
 FROM ubuntu:22.04 as builder
-RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
-RUN apt update -y \
-    && apt install -y build-essential cmake clang openssl libssl-dev zlib1g-dev \
+RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
+RUN apt-get update -y \
+    && apt-get install -y build-essential cmake clang openssl libssl-dev zlib1g-dev \
                    gperf wget git curl ccache libmicrohttpd-dev liblz4-dev \
                    pkg-config libsecp256k1-dev libsodium-dev libhiredis-dev python3-dev libpq-dev \
                    automake libjemalloc-dev lsb-release software-properties-common gnupg \
@@ -26,14 +26,12 @@ RUN cmake -DCMAKE_BUILD_TYPE=Release ..
 RUN make -j$(nproc) ton-index-postgres ton-index-clickhouse ton-smc-scanner ton-integrity-checker ton-trace-emulator
 
 FROM ubuntu:22.04
-RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
-RUN apt update -y \
+RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
+RUN apt-get update -y \
     && apt install -y dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 COPY scripts/entrypoint.sh /entrypoint.sh
-COPY --from=builder /app/build/external/libpqxx/src/libpqxx.so /usr/lib/libpqxx.so
-COPY --from=builder /app/build/external/libpqxx/src/libpqxx-*.so /usr/lib/
 COPY --from=builder /app/build/ton-index-postgres/ton-index-postgres /usr/bin/ton-index-postgres
 COPY --from=builder /app/build/ton-index-clickhouse/ton-index-clickhouse /usr/bin/ton-index-clickhouse
 COPY --from=builder /app/build/ton-smc-scanner/ton-smc-scanner /usr/bin/ton-smc-scanner
