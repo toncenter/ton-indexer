@@ -154,16 +154,13 @@ const int TRACE_BACKTRACK_LIMIT = 50;
 
 void IndexScheduler::handle_missing_ta_state(ton::BlockSeqno next_seqno) {
     LOG(WARNING) << "Trace assembler state missing for seqno " << (next_seqno - 1);
-    
-    const ton::BlockSeqno backtrack_point = std::max(
-        from_seqno_,
-        static_cast<int32_t>(next_seqno) - TRACE_BACKTRACK_LIMIT
-    );
 
-    CHECK(backtrack_point >= from_seqno_);
-
-    if (backtrack_point != from_seqno_) {
-        LOG(WARNING) << "Backtracking " << (from_seqno_ - backtrack_point) 
+    ton::BlockSeqno backtrack_point;
+    if (from_seqno_ >= static_cast<int32_t>(next_seqno) - TRACE_BACKTRACK_LIMIT) {
+        backtrack_point = from_seqno_;
+    } else {
+        backtrack_point = static_cast<int32_t>(next_seqno) - TRACE_BACKTRACK_LIMIT;
+        LOG(WARNING) << "Backtracking " << TRACE_BACKTRACK_LIMIT 
                      << " blocks to capture potential ongoing traces";
     }
 
