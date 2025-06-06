@@ -501,6 +501,8 @@ func (t *ActionRow) getAssigns() []assign {
 		assignIntPtr(t.ToncoDeployPoolLpFeeBase),
 		assignIntPtr(t.ToncoDeployPoolLpFeeCurrent),
 		assignBoolPtr(t.ToncoDeployPoolPoolActive),
+
+		assignStrCompatibleSlice(t.AncestorType),
 	}
 }
 func (t *TransactionRow) getAssigns() []assign {
