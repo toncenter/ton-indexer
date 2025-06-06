@@ -3638,6 +3638,9 @@ const docTemplate = `{
                 "address": {
                     "type": "string"
                 },
+                "auction_contract_address": {
+                    "type": "string"
+                },
                 "code_hash": {
                     "type": "string"
                 },
@@ -3664,7 +3667,16 @@ const docTemplate = `{
                     "type": "string",
                     "example": "0"
                 },
+                "on_sale": {
+                    "type": "boolean"
+                },
                 "owner_address": {
+                    "type": "string"
+                },
+                "real_owner": {
+                    "type": "string"
+                },
+                "sale_contract_address": {
                     "type": "string"
                 }
             }
@@ -3809,6 +3821,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "nft_index": {
                     "type": "string"
                 },
                 "symbol": {
