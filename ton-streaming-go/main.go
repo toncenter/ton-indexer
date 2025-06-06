@@ -98,7 +98,7 @@ func (rl *RateLimiter) RegisterConnection(limitingKey string, clientID string, c
 	defer clientLimit.mu.Unlock()
 
 	// Check if we've reached the connection limit
-	if config.MaxParallelConnections > 0 && len(clientLimit.activeConnections) >= config.MaxParallelConnections {
+	if config.MaxParallelConnections != -1 && len(clientLimit.activeConnections) >= config.MaxParallelConnections {
 		return fmt.Errorf("connection limit reached: %d active connections", config.MaxParallelConnections)
 	}
 
@@ -1111,7 +1111,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			}
 
 			// Check address limit
-			if rateLimitConfig.MaxSubscribedAddresses > 0 && len(addrMap) > rateLimitConfig.MaxSubscribedAddresses {
+			if rateLimitConfig.MaxSubscribedAddresses != -1 && len(addrMap) > rateLimitConfig.MaxSubscribedAddresses {
 				manager.rateLimiter.UnregisterConnection(limitingKey, clientID)
 				return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
 					Id:    req.Id,
