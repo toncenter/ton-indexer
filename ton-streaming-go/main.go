@@ -9,6 +9,7 @@ import (
 	"log"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,101 @@ const (
 	PendingTransactions EventType = "pending_transactions"
 	PendingActions      EventType = "pending_actions"
 )
+
+// RateLimitConfig holds rate limiting configuration for a client
+type RateLimitConfig struct {
+	MaxParallelConnections int
+	MaxSubscribedAddresses int
+}
+
+// RateLimiter manages rate limiting for clients
+type RateLimiter struct {
+	mu      sync.RWMutex
+	clients map[string]*ClientRateLimit
+}
+
+// ClientRateLimit tracks rate limiting for a specific client
+type ClientRateLimit struct {
+	limitingKey       string
+	activeConnections map[string]bool // clientID -> true
+	config            RateLimitConfig
+	mu                sync.Mutex
+}
+
+// NewRateLimiter creates a new rate limiter
+func NewRateLimiter() *RateLimiter {
+	return &RateLimiter{
+		clients: make(map[string]*ClientRateLimit),
+	}
+}
+
+// RegisterConnection registers a new connection for rate limiting
+func (rl *RateLimiter) RegisterConnection(limitingKey string, clientID string, config RateLimitConfig) error {
+	if limitingKey == "" {
+		// No rate limiting if no key provided
+		return nil
+	}
+
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	clientLimit, exists := rl.clients[limitingKey]
+	if !exists {
+		clientLimit = &ClientRateLimit{
+			limitingKey:       limitingKey,
+			activeConnections: make(map[string]bool),
+			config:            config,
+		}
+		rl.clients[limitingKey] = clientLimit
+	}
+
+	clientLimit.mu.Lock()
+	defer clientLimit.mu.Unlock()
+
+	// Check if we've reached the connection limit
+	if config.MaxParallelConnections > 0 && len(clientLimit.activeConnections) >= config.MaxParallelConnections {
+		return fmt.Errorf("connection limit reached: %d active connections", config.MaxParallelConnections)
+	}
+
+	clientLimit.activeConnections[clientID] = true
+	return nil
+}
+
+// UnregisterConnection removes a connection from rate limiting
+func (rl *RateLimiter) UnregisterConnection(limitingKey string, clientID string) {
+	if limitingKey == "" {
+		return
+	}
+
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if clientLimit, exists := rl.clients[limitingKey]; exists {
+		clientLimit.mu.Lock()
+		delete(clientLimit.activeConnections, clientID)
+
+		// Clean up if no active connections
+		if len(clientLimit.activeConnections) == 0 {
+			delete(rl.clients, limitingKey)
+		}
+		clientLimit.mu.Unlock()
+	}
+}
+
+// GetAddressLimit returns the maximum number of addresses for a client
+func (rl *RateLimiter) GetAddressLimit(limitingKey string) int {
+	if limitingKey == "" {
+		return 0 // No limit
+	}
+
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
+
+	if clientLimit, exists := rl.clients[limitingKey]; exists {
+		return clientLimit.config.MaxSubscribedAddresses
+	}
+	return 0
+}
 
 // Subscription represents a client's subscription to blockchain events
 type Subscription struct {
@@ -106,6 +202,7 @@ type BlockchainEvent struct {
 // Client represents a connected client
 type Client struct {
 	ID           string
+	LimitingKey  string // Added for rate limiting
 	Connected    bool
 	Subscription Subscription
 	SendEvent    func([]byte) error
@@ -133,20 +230,22 @@ func (c *Client) startSender(manager *ClientManager) {
 
 // ClientManager manages all connected clients
 type ClientManager struct {
-	clients    map[string]*Client
-	register   chan *Client
-	unregister chan *Client
-	broadcast  chan Notification
-	mu         sync.RWMutex
+	clients     map[string]*Client
+	register    chan *Client
+	unregister  chan *Client
+	broadcast   chan Notification
+	rateLimiter *RateLimiter // Added for rate limiting
+	mu          sync.RWMutex
 }
 
 // NewClientManager creates a new client manager
 func NewClientManager() *ClientManager {
 	return &ClientManager{
-		clients:    make(map[string]*Client),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan Notification),
+		clients:     make(map[string]*Client),
+		register:    make(chan *Client),
+		unregister:  make(chan *Client),
+		broadcast:   make(chan Notification),
+		rateLimiter: NewRateLimiter(),
 	}
 }
 
@@ -186,6 +285,8 @@ func (manager *ClientManager) Run() {
 			manager.mu.Lock()
 			if _, ok := manager.clients[client.ID]; ok {
 				delete(manager.clients, client.ID)
+				// Unregister from rate limiter
+				manager.rateLimiter.UnregisterConnection(client.LimitingKey, client.ID)
 				log.Printf("Client %s disconnected", client.ID)
 			}
 			manager.mu.Unlock()
@@ -806,6 +907,33 @@ var validEventTypes = map[EventType]struct{}{
 	Transactions:        {},
 }
 
+// ParseRateLimitHeaders extracts rate limiting configuration from headers map
+func ParseRateLimitHeaders(headers map[string][]string) (string, RateLimitConfig) {
+	var limitingKey string
+	config := RateLimitConfig{}
+
+	// Get limiting key
+	if values, ok := headers["X-Limiting-Key"]; ok && len(values) > 0 {
+		limitingKey = values[0]
+	}
+
+	// Get max parallel connections
+	if values, ok := headers["X-Max-Parallel-Connections"]; ok && len(values) > 0 {
+		if maxConn, err := strconv.Atoi(values[0]); err == nil {
+			config.MaxParallelConnections = maxConn
+		}
+	}
+
+	// Get max subscribed addresses
+	if values, ok := headers["X-Max-Subscribed-Addr"]; ok && len(values) > 0 {
+		if maxAddr, err := strconv.Atoi(values[0]); err == nil {
+			config.MaxSubscribedAddresses = maxAddr
+		}
+	}
+
+	return limitingKey, config
+}
+
 func ValidateSSERequest(req *GenericRequest) (map[string][]EventType, error) {
 	if req.Addresses == nil || len(*req.Addresses) == 0 {
 		return nil, fmt.Errorf("addresses are required for subscribe operation")
@@ -932,6 +1060,26 @@ func sendWSJSONErr(c *websocket.Conn, id *string, err error) {
 	}
 }
 
+// checkAddressLimit checks if adding new addresses would exceed the limit
+func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimiter) error {
+	if client.LimitingKey == "" {
+		return nil // No rate limiting
+	}
+
+	maxAddresses := rateLimiter.GetAddressLimit(client.LimitingKey)
+	if maxAddresses <= 0 {
+		return nil // No limit
+	}
+
+	currentCount := len(client.Subscription.SubscribedAddresses)
+	if currentCount+newAddresses > maxAddresses {
+		return fmt.Errorf("address limit exceeded: current %d + new %d > max %d",
+			currentCount, newAddresses, maxAddresses)
+	}
+
+	return nil
+}
+
 // ────────────────────────────────────────────────────────────────────────────────
 // HTTP‑SSE handler
 // ────────────────────────────────────────────────────────────────────────────────
@@ -947,12 +1095,37 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Id: req.Id, Error: err.Error()})
 		}
 
+		// Parse rate limiting headers
+		limitingKey, rateLimitConfig := ParseRateLimitHeaders(c.GetReqHeaders())
+
 		clientID := fmt.Sprintf("%s-%s", c.IP(), time.Now().Format(time.RFC3339Nano))
+
+		// Check rate limits before creating client
+		if limitingKey != "" {
+			// Check connection limit
+			if err := manager.rateLimiter.RegisterConnection(limitingKey, clientID, rateLimitConfig); err != nil {
+				return c.Status(fiber.StatusTooManyRequests).JSON(ErrorResponse{
+					Id:    req.Id,
+					Error: err.Error(),
+				})
+			}
+
+			// Check address limit
+			if rateLimitConfig.MaxSubscribedAddresses > 0 && len(addrMap) > rateLimitConfig.MaxSubscribedAddresses {
+				manager.rateLimiter.UnregisterConnection(limitingKey, clientID)
+				return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+					Id:    req.Id,
+					Error: fmt.Sprintf("too many addresses: %d > max %d", len(addrMap), rateLimitConfig.MaxSubscribedAddresses),
+				})
+			}
+		}
+
 		eventCh := make(chan []byte, 16)
 
 		client := &Client{
-			ID:        clientID,
-			Connected: true,
+			ID:          clientID,
+			LimitingKey: limitingKey,
+			Connected:   true,
 			Subscription: Subscription{
 				SubscribedAddresses:  addrMap,
 				IncludeAddressBook:   req.IncludeAddressBook != nil && *req.IncludeAddressBook,
@@ -1016,10 +1189,28 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 
 func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 	return func(c *websocket.Conn) {
+		// Get rate limiting info from headers (passed through websocket upgrade)
+		headers := make(map[string][]string)
+		headers["X-Limiting-Key"] = []string{c.Headers("X-Limiting-Key")}
+		headers["X-Max-Parallel-Connections"] = []string{c.Headers("X-Max-Parallel-Connections")}
+		headers["X-Max-Subscribed-Addr"] = []string{c.Headers("X-Max-Subscribed-Addr")}
+		limitingKey, rateLimitConfig := ParseRateLimitHeaders(headers)
+
 		clientID := fmt.Sprintf("%s-%s", c.RemoteAddr(), time.Now().Format(time.RFC3339Nano))
+
+		// Check connection limit
+		if limitingKey != "" {
+			if err := manager.rateLimiter.RegisterConnection(limitingKey, clientID, rateLimitConfig); err != nil {
+				sendWSJSONErr(c, nil, err)
+				c.Close()
+				return
+			}
+		}
+
 		client := &Client{
-			ID:        clientID,
-			Connected: true,
+			ID:          clientID,
+			LimitingKey: limitingKey,
+			Connected:   true,
 			Subscription: Subscription{
 				SubscribedAddresses:  make(map[string][]EventType),
 				SupportedActionTypes: index.ExpandActionTypeShortcuts([]string{}),
@@ -1091,7 +1282,14 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					continue
 				}
 
+				// Check address limit
 				client.mu.Lock()
+				err = checkAddressLimit(client, len(addrMap), manager.rateLimiter)
+				if err != nil {
+					client.mu.Unlock()
+					sendWSJSONErr(c, req.Id, err)
+					continue
+				}
 				client.Subscription.AddSubscribedAddresses(addrMap)
 				client.mu.Unlock()
 
