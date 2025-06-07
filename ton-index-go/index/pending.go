@@ -7,11 +7,12 @@ import (
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"sort"
+	"strconv"
 )
 
 type EmulatedTracesContext struct {
 	emulatedTransactionsRaw   map[string]map[string]string
-	emulatedTraces            map[string]*emulated.TraceRow
+	emulatedTraces            map[string]*models.Trace
 	emulatedActions           map[string][]*models.RawAction
 	emulatedTransactions      map[string][]*emulated.TransactionRow
 	emulatedMessageContents   map[string]*emulated.MessageContentRow
@@ -24,7 +25,7 @@ type EmulatedTracesContext struct {
 
 func NewEmptyContext(emulated_only bool) *EmulatedTracesContext {
 	return &EmulatedTracesContext{
-		emulatedTraces:            make(map[string]*emulated.TraceRow),
+		emulatedTraces:            make(map[string]*models.Trace),
 		emulatedActions:           make(map[string][]*models.RawAction),
 		emulatedTransactionsRaw:   make(map[string]map[string]string),
 		emulatedTransactions:      make(map[string][]*emulated.TransactionRow),
@@ -111,12 +112,12 @@ func (c *EmulatedTracesContext) GetTransactions() []pgx.Row {
 	return rows
 }
 
-func (c *EmulatedTracesContext) GetTraces() []pgx.Row {
-	rows := make([]pgx.Row, 0)
+func (c *EmulatedTracesContext) GetTraces() []*models.Trace {
+	traces := make([]*models.Trace, 0)
 	for _, trace := range c.emulatedTraces {
-		rows = append(rows, emulated.NewRow(trace))
+		traces = append(traces, trace)
 	}
-	return rows
+	return traces
 }
 
 func (c *EmulatedTracesContext) GetRawActions(supportedActions []string) []*models.RawAction {
@@ -180,18 +181,19 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 			continue
 		}
 		c.traceKeys = append(c.traceKeys, traceKey)
-
-		trace_row := emulated.TraceRow{
-			TraceId:      trace.TraceId,
-			TraceKey:     traceKey,
-			ExternalHash: &trace.ExternalHash,
-			McSeqnoStart: 0,
-			TraceState:   "pending",
+		externalHash := models.HashType(trace.ExternalHash)
+		traceModel := models.Trace{
+			TraceId:      (*models.HashType)(trace.TraceId),
+			ExternalHash: &externalHash,
+			TraceMeta: models.TraceMeta{
+				TraceState: "pending",
+			},
 		}
+
 		if trace.Classified {
-			trace_row.ClassificationState = "ok"
+			traceModel.TraceMeta.ClassificationState = "ok"
 		} else {
-			trace_row.ClassificationState = "unclassified"
+			traceModel.TraceMeta.ClassificationState = "unclassified"
 		}
 
 		var maxLt uint64 = 0
@@ -209,9 +211,9 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 			}
 
 			if node.Key == trace.ExternalHash {
-				trace_row.StartLt = transactionRow.Lt
-				trace_row.StartUtime = *transactionRow.Now
-				trace_row.McSeqnoStart = *transactionRow.McBlockSeqno
+				traceModel.StartLt = transactionRow.Lt
+				traceModel.StartUtime = *transactionRow.Now
+				traceModel.McSeqnoStart = models.HashType(strconv.Itoa(int(*transactionRow.McBlockSeqno)))
 			}
 
 			maxLt = max(maxLt, transactionRow.Lt)
@@ -228,7 +230,7 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 			}
 			for _, msg := range messages {
 				if node.Key == traceKey && msg.Source == nil {
-					trace_row.ExternalHash = &msg.MsgHash
+					traceModel.ExternalHash = (*models.HashType)(&msg.MsgHash)
 				}
 				if should_save {
 					c.emulatedMessages[transactionRow.Hash] = append(c.emulatedMessages[transactionRow.Hash], &msg)
@@ -251,13 +253,13 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 			}
 			transaction_count++
 		}
-		trace_row.EndLt = maxLt
-		trace_row.EndUtime = maxUtime
-		trace_row.McSeqnoEnd = maxMcSeqno
-		trace_row.Transactions = transaction_count
-		trace_row.Messages = message_count
-		trace_row.PendingMessages = pending_messages
-		c.emulatedTraces[traceKey] = &trace_row
+		traceModel.EndLt = &maxLt
+		traceModel.EndUtime = &maxUtime
+		traceModel.McSeqnoEnd = models.HashType(strconv.Itoa(int(maxMcSeqno)))
+		traceModel.TraceMeta.Transactions = int64(transaction_count)
+		traceModel.TraceMeta.Messages = int64(message_count)
+		traceModel.TraceMeta.PendingMessages = int64(pending_messages)
+		c.emulatedTraces[traceKey] = &traceModel
 		for _, a := range trace.Actions {
 			row, err := a.ToRawAction()
 			if err != nil {
@@ -269,8 +271,8 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 	sort.Slice(c.traceKeys, func(i, j int) bool {
 		trace1, trace1Exists := c.emulatedTraces[c.traceKeys[i]]
 		trace2, trace2Exists := c.emulatedTraces[c.traceKeys[j]]
-		if trace1Exists && trace2Exists {
-			return trace1.EndLt > trace2.EndLt
+		if trace1Exists && trace2Exists && trace1.EndLt != nil && trace2.EndLt != nil {
+			return *trace1.EndLt > *trace2.EndLt
 		} else {
 			return true
 		}

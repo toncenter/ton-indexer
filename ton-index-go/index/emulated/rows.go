@@ -110,23 +110,6 @@ type MessageContentRow struct {
 	Body *string
 }
 
-type TraceRow struct {
-	TraceKey            string
-	TraceId             *string
-	ExternalHash        *string
-	McSeqnoStart        uint32
-	McSeqnoEnd          uint32
-	StartLt             uint64
-	StartUtime          uint32
-	EndLt               uint64
-	EndUtime            uint32
-	TraceState          string
-	Messages            uint16
-	Transactions        uint16
-	PendingMessages     uint16
-	ClassificationState string
-}
-
 type assign func(dest any) error
 type assignable interface {
 	getAssigns() []assign
@@ -165,24 +148,6 @@ func (r genericRow) Scan(dest ...any) error {
 		}
 	}
 	return nil
-}
-
-func (t *TraceRow) getAssigns() []assign {
-	return []assign{
-		assignStringPtr(t.TraceId),
-		assignStringPtr(t.ExternalHash),
-		assignInt(t.McSeqnoStart),
-		assignInt(t.McSeqnoEnd),
-		assignInt(t.StartLt),
-		assignInt(t.StartUtime),
-		assignInt(t.EndLt),
-		assignInt(t.EndUtime),
-		assignString(t.TraceState),
-		assignInt(t.Messages),
-		assignInt(t.Transactions),
-		assignInt(t.PendingMessages),
-		assignString(t.ClassificationState),
-	}
 }
 
 func (t *TransactionRow) getAssigns() []assign {

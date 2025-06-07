@@ -133,11 +133,11 @@ func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
 	conn *pgxpool.Conn, settings RequestSettings, classified_only bool) ([]string, error) {
 	external_hash_map := make(map[string]string)
 	trace_external_hashes := make([]string, 0)
-	for _, trace := range emulatedContext.emulatedTraces {
+	for traceKey, trace := range emulatedContext.emulatedTraces {
 		if trace.ExternalHash == nil {
 			continue
 		}
-		external_hash_map[*trace.ExternalHash] = trace.TraceKey
+		external_hash_map[string(*trace.ExternalHash)] = traceKey
 		trace_external_hashes = append(trace_external_hashes, fmt.Sprintf("'%s'", *trace.ExternalHash))
 	}
 	if len(trace_external_hashes) > 0 {
@@ -273,15 +273,11 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	emulatedContext.RemoveTraces(completed_traces)
 	traceRows := emulatedContext.GetTraces()
-	for _, row := range traceRows {
-		if loc, err := ScanTrace(row); err == nil {
-			loc.Transactions = make(map[models.HashType]*models.Transaction)
-			actions := make([]*models.Action, 0)
-			loc.Actions = &actions
-			traces = append(traces, *loc)
-		} else {
-			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
+	for _, trace := range traceRows {
+		trace.Transactions = make(map[models.HashType]*models.Transaction)
+		actions := make([]*models.Action, 0)
+		trace.Actions = &actions
+		traces = append(traces, *trace)
 	}
 	events_map := map[models.HashType]int{}
 	var trace_id_list []models.HashType
