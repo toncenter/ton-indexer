@@ -2,7 +2,6 @@ package index
 
 import (
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/jackc/pgx/v5"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
@@ -14,10 +13,10 @@ type EmulatedTracesContext struct {
 	emulatedTransactionsRaw   map[string]map[string]string
 	emulatedTraces            map[string]*models.Trace
 	emulatedActions           map[string][]*models.RawAction
-	emulatedTransactions      map[string][]*emulated.TransactionRow
-	emulatedMessageContents   map[string]*emulated.MessageContentRow
-	emulatedMessageInitStates map[string]*emulated.MessageContentRow
-	emulatedMessages          map[string][]*emulated.MessageRow
+	emulatedTransactions      map[string][]*models.Transaction
+	emulatedMessageContents   map[string]*models.MessageContent
+	emulatedMessageInitStates map[string]*models.MessageContent
+	emulatedMessages          map[string][]*models.Message
 	traceKeys                 []string
 	txHashTraceExternalHash   map[string]string
 	emulatedOnly              bool
@@ -28,10 +27,10 @@ func NewEmptyContext(emulated_only bool) *EmulatedTracesContext {
 		emulatedTraces:            make(map[string]*models.Trace),
 		emulatedActions:           make(map[string][]*models.RawAction),
 		emulatedTransactionsRaw:   make(map[string]map[string]string),
-		emulatedTransactions:      make(map[string][]*emulated.TransactionRow),
-		emulatedMessageContents:   make(map[string]*emulated.MessageContentRow),
-		emulatedMessageInitStates: make(map[string]*emulated.MessageContentRow),
-		emulatedMessages:          make(map[string][]*emulated.MessageRow),
+		emulatedTransactions:      make(map[string][]*models.Transaction),
+		emulatedMessageContents:   make(map[string]*models.MessageContent),
+		emulatedMessageInitStates: make(map[string]*models.MessageContent),
+		emulatedMessages:          make(map[string][]*models.Message),
 		traceKeys:                 make([]string, 0),
 		txHashTraceExternalHash:   make(map[string]string),
 		emulatedOnly:              emulated_only,
@@ -57,11 +56,11 @@ func (c *EmulatedTracesContext) RemoveTraces(trace_keys []string) {
 	}
 }
 
-func (c *EmulatedTracesContext) GetTransactionsByTraceIdAndHash(trace_id models.HashType, tx_hashes []*models.HashType) []*emulated.TransactionRow {
-	txs := make([]*emulated.TransactionRow, 0)
+func (c *EmulatedTracesContext) GetTransactionsByTraceIdAndHash(trace_id models.HashType, tx_hashes []*models.HashType) []*models.Transaction {
+	txs := make([]*models.Transaction, 0)
 	for _, tx_hash := range tx_hashes {
 		for _, tx := range c.emulatedTransactions[string(trace_id)] {
-			if tx.Hash == string(*tx_hash) {
+			if tx.Hash == *tx_hash {
 				txs = append(txs, tx)
 			}
 		}
@@ -86,9 +85,9 @@ func (c *EmulatedTracesContext) FilterTraceActions(trace_action_map map[string][
 func (c *EmulatedTracesContext) RemoveTransactions(transaction_hashes []string) {
 	for _, tx_hash := range transaction_hashes {
 		for trace_id, txs := range c.emulatedTransactions {
-			filtered_txs := make([]*emulated.TransactionRow, 0)
+			filtered_txs := make([]*models.Transaction, 0)
 			for _, tx := range txs {
-				if tx.Hash != tx_hash {
+				if tx.Hash != models.HashType(tx_hash) {
 					filtered_txs = append(filtered_txs, tx)
 				}
 			}
@@ -102,14 +101,12 @@ func (c *EmulatedTracesContext) RemoveTransactions(transaction_hashes []string) 
 	}
 }
 
-func (c *EmulatedTracesContext) GetTransactions() []pgx.Row {
-	rows := make([]pgx.Row, 0)
-	for _, txs := range c.emulatedTransactions {
-		for _, tx := range txs {
-			rows = append(rows, emulated.NewRow(tx))
-		}
+func (c *EmulatedTracesContext) GetTransactions() []*models.Transaction {
+	txs := make([]*models.Transaction, 0)
+	for _, etxs := range c.emulatedTransactions {
+		txs = append(txs, etxs...)
 	}
-	return rows
+	return txs
 }
 
 func (c *EmulatedTracesContext) GetTraces() []*models.Trace {
@@ -143,25 +140,11 @@ func (c *EmulatedTracesContext) GetRawActions(supportedActions []string) []*mode
 	return rows
 }
 
-func (c *EmulatedTracesContext) GetMessages(transaction_hashes []string) []pgx.Row {
-	rows := make([]pgx.Row, 0)
+func (c *EmulatedTracesContext) GetMessages(transaction_hashes []string) []*models.Message {
+	rows := make([]*models.Message, 0)
 	for _, tx_hash := range transaction_hashes {
 		for _, msg := range c.emulatedMessages[tx_hash] {
-			var init_state *emulated.MessageContentRow
-			var message_content *emulated.MessageContentRow
-			if msg.InitStateHash != nil {
-				if state, ok := c.emulatedMessageInitStates[*msg.InitStateHash]; ok {
-					init_state = state
-				}
-			}
-			if content, ok := c.emulatedMessageContents[msg.MsgHash]; ok {
-				message_content = content
-			}
-			if init_state == nil {
-				rows = append(rows, emulated.NewRow(msg, message_content))
-			} else {
-				rows = append(rows, emulated.NewRow(msg, message_content, init_state))
-			}
+			rows = append(rows, msg)
 		}
 	}
 	return rows
@@ -205,24 +188,24 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 			if c.emulatedOnly && !node.Emulated {
 				should_save = false
 			}
-			transactionRow, err := node.GetTransactionRow()
+			transaction, err := node.GetTransaction()
 			if err != nil {
 				return err
 			}
 
 			if node.Key == trace.ExternalHash {
-				traceModel.StartLt = transactionRow.Lt
-				traceModel.StartUtime = *transactionRow.Now
-				traceModel.McSeqnoStart = models.HashType(strconv.Itoa(int(*transactionRow.McBlockSeqno)))
+				traceModel.StartLt = uint64(transaction.Lt)
+				traceModel.StartUtime = uint32(transaction.Now)
+				traceModel.McSeqnoStart = models.HashType(strconv.Itoa(int(transaction.McSeqno)))
 			}
 
-			maxLt = max(maxLt, transactionRow.Lt)
-			maxUtime = max(maxUtime, *transactionRow.Now)
-			maxMcSeqno = max(maxMcSeqno, *transactionRow.McBlockSeqno)
+			maxLt = max(maxLt, uint64(transaction.Lt))
+			maxUtime = max(maxUtime, uint32(transaction.Now))
+			maxMcSeqno = max(maxMcSeqno, uint32(transaction.McSeqno))
 
 			if should_save {
-				c.emulatedTransactions[traceKey] = append(c.emulatedTransactions[traceKey], &transactionRow)
-				c.txHashTraceExternalHash[transactionRow.Hash] = trace.ExternalHash
+				c.emulatedTransactions[traceKey] = append(c.emulatedTransactions[traceKey], &transaction)
+				c.txHashTraceExternalHash[string(transaction.Hash)] = trace.ExternalHash
 			}
 			messages, contents, initStates, err := node.GetMessages()
 			if err != nil {
@@ -233,7 +216,7 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 					traceModel.ExternalHash = (*models.HashType)(&msg.MsgHash)
 				}
 				if should_save {
-					c.emulatedMessages[transactionRow.Hash] = append(c.emulatedMessages[transactionRow.Hash], &msg)
+					c.emulatedMessages[string(transaction.Hash)] = append(c.emulatedMessages[string(transaction.Hash)], &msg)
 				}
 				// count all out messages + external in
 				if msg.Source == nil || msg.Direction == "out" {
@@ -282,12 +265,12 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 
 func (c *EmulatedTracesContext) FilterTransactionsByAccounts(accounts []models.AccountAddress) error {
 	for k, txs := range c.emulatedTransactions {
-		filtered_txs := make([]*emulated.TransactionRow, 0)
+		filtered_txs := make([]*models.Transaction, 0)
 		for _, tx := range txs {
 			is_requested_account := false
 
 			for _, account := range accounts {
-				if tx.Account == account.String() {
+				if tx.Account == account {
 					is_requested_account = true
 					break
 				}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"log"
 	"sort"
 	"strings"
 
@@ -182,7 +183,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 		msg_hash_to_tx := make(map[string]string)
 		for _, msgs := range emulatedContext.emulatedMessages {
 			for _, msg := range msgs {
-				msg_hash_to_tx[msg.MsgHash] = msg.TxHash
+				msg_hash_to_tx[string(msg.MsgHash)] = string(msg.TxHash)
 				msg_hashes = append(msg_hashes, fmt.Sprintf("'%s'", msg.MsgHash))
 			}
 		}
@@ -214,17 +215,13 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 	txs_map := map[models.HashType]int{}
 	{
 		rows := emulatedContext.GetTransactions()
-		for _, row := range rows {
-			if tx, err := ScanTransaction(row); err == nil {
-				if external_hash, ok := emulatedContext.txHashTraceExternalHash[string(tx.Hash)]; ok {
-					hash := models.HashType(external_hash)
-					tx.TraceExternalHash = &hash
-				}
-				txs = append(txs, *tx)
-				txs_map[tx.Hash] = len(txs) - 1
-			} else {
-				return nil, models.IndexError{Code: 500, Message: err.Error()}
+		for _, tx := range rows {
+			if external_hash, ok := emulatedContext.txHashTraceExternalHash[string(tx.Hash)]; ok {
+				hash := models.HashType(external_hash)
+				tx.TraceExternalHash = &hash
 			}
+			txs = append(txs, *tx)
+			txs_map[tx.Hash] = len(txs) - 1
 		}
 	}
 
@@ -236,12 +233,8 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 		return txs, nil
 	}
 	if len(hash_list) > 0 {
-		rows := emulatedContext.GetMessages(hash_list)
-		for _, row := range rows {
-			msg, err := ScanMessageWithContent(row)
-			if err != nil {
-				return nil, models.IndexError{Code: 500, Message: err.Error()}
-			}
+		msgs := emulatedContext.GetMessages(hash_list)
+		for _, msg := range msgs {
 			if msg.Direction == "in" {
 				txs[txs_map[msg.TxHash]].InMsg = msg
 			} else {
@@ -289,6 +282,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	fully_emulated_traces := make(map[models.HashType]bool)
 
 	if len(trace_id_list) > 0 {
+		log.Printf("Emulated traansacitons: %d", len(emulatedContext.emulatedTransactions))
 		txs, err := QueryPendingTransactionsImpl(emulatedContext, conn, settings, false)
 		if err != nil {
 			return nil, nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}

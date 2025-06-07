@@ -113,8 +113,8 @@ type trComputePhaseVm struct {
 }
 
 type storageUsedShort struct {
-	Cells uint64 `msgpack:"cells" json:"cells"`
-	Bits  uint64 `msgpack:"bits" json:"bits"`
+	Cells int64 `msgpack:"cells" json:"cells"`
+	Bits  int64 `msgpack:"bits" json:"bits"`
 }
 
 type trActionPhase struct {
@@ -122,14 +122,14 @@ type trActionPhase struct {
 	Valid           bool             `msgpack:"valid" json:"valid"`
 	NoFunds         bool             `msgpack:"no_funds" json:"no_funds"`
 	StatusChange    AccStatusChange  `msgpack:"status_change" json:"status_change"`
-	TotalFwdFees    *uint64          `msgpack:"total_fwd_fees" json:"total_fwd_fees"`
-	TotalActionFees *uint64          `msgpack:"total_action_fees" json:"total_action_fees"`
+	TotalFwdFees    *int64           `msgpack:"total_fwd_fees" json:"total_fwd_fees"`
+	TotalActionFees *int64           `msgpack:"total_action_fees" json:"total_action_fees"`
 	ResultCode      *int32           `msgpack:"result_code" json:"result_code"`
 	ResultArg       *int32           `msgpack:"result_arg" json:"result_arg"`
-	TotActions      *uint16          `msgpack:"tot_actions" json:"tot_actions"`
-	SpecActions     *uint16          `msgpack:"spec_actions" json:"spec_actions"`
-	SkippedActions  *uint16          `msgpack:"skipped_actions" json:"skipped_actions"`
-	MsgsCreated     *uint16          `msgpack:"msgs_created" json:"msgs_created"`
+	TotActions      *int32           `msgpack:"tot_actions" json:"tot_actions"`
+	SpecActions     *int32           `msgpack:"spec_actions" json:"spec_actions"`
+	SkippedActions  *int32           `msgpack:"skipped_actions" json:"skipped_actions"`
+	MsgsCreated     *int32           `msgpack:"msgs_created" json:"msgs_created"`
 	ActionListHash  hash             `msgpack:"action_list_hash" json:"action_list_hash"`
 	TotMsgSize      storageUsedShort `msgpack:"tot_msg_size" json:"tot_msg_size"`
 }
@@ -664,139 +664,211 @@ func (h hash) Base64Ptr() *string {
 	return &str
 }
 
-func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
+func (n *traceNode) GetTransaction() (models.Transaction, error) {
 	origStatus, err := n.Transaction.OrigStatus.Str()
 	if err != nil {
-		return TransactionRow{}, err
+		return models.Transaction{}, err
 	}
 	endStatus, err := n.Transaction.EndStatus.Str()
 	if err != nil {
-		return TransactionRow{}, err
-	}
-	ord_val := "ord"
-	is_tock := false
-	storageStatusChange, err := n.Transaction.Description.StoragePh.StatusChange.Str()
-	if err != nil {
-		return TransactionRow{}, err
+		return models.Transaction{}, err
 	}
 
-	var storageFeesCollected *uint64 = nil
-	var storageFeesDue *uint64 = nil
+	// Convert hash to HashType
+	hash := models.HashType(base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
+	prevTransHash := models.HashType(base64.StdEncoding.EncodeToString(n.Transaction.PrevTransHash[:]))
+	accountStateHashBefore := models.HashType(base64.StdEncoding.EncodeToString(n.Transaction.AccountStateHashBefore[:]))
+	accountStateHashAfter := models.HashType(base64.StdEncoding.EncodeToString(n.Transaction.AccountStateHashAfter[:]))
+
+	// Convert TraceId
+	var traceId *models.HashType
+	if n.TraceId != nil {
+		t := models.HashType(*n.TraceId)
+		traceId = &t
+	}
+
+	// Build transaction description
+	descr := models.TransactionDescr{
+		Type:        "ord",
+		Aborted:     &n.Transaction.Description.Aborted,
+		Destroyed:   &n.Transaction.Description.Destroyed,
+		CreditFirst: &n.Transaction.Description.CreditFirst,
+	}
+
+	isTock := false
+	descr.IsTock = &isTock
+	descr.Installed = &isTock
+
+	// Storage phase
 	if n.Transaction.Description.StoragePh != nil {
-		storageFeesCollected = &n.Transaction.Description.StoragePh.StorageFeesCollected
-		storageFeesDue = n.Transaction.Description.StoragePh.StorageFeesDue
-	}
-	var creditDueFeesCollected *uint64 = nil
-	var credit *uint64 = nil
-	if n.Transaction.Description.CreditPh != nil {
-		creditDueFeesCollected = n.Transaction.Description.CreditPh.DueFeesCollected
-		credit = &n.Transaction.Description.CreditPh.Credit
+		storageStatusChange, err := n.Transaction.Description.StoragePh.StatusChange.Str()
+		if err != nil {
+			return models.Transaction{}, err
+		}
+		storageFeesCollected := int64(n.Transaction.Description.StoragePh.StorageFeesCollected)
+		var storageFeesDue *int64
+		if n.Transaction.Description.StoragePh.StorageFeesDue != nil {
+			val := int64(*n.Transaction.Description.StoragePh.StorageFeesDue)
+			storageFeesDue = &val
+		}
+		descr.StoragePh = &models.StoragePhase{
+			StorageFeesCollected: &storageFeesCollected,
+			StorageFeesDue:       storageFeesDue,
+			StatusChange:         &storageStatusChange,
+		}
 	}
 
-	txRow := TransactionRow{
-		Account:                  n.Transaction.Account,
-		Hash:                     *n.Transaction.Hash.Base64Ptr(),
-		Lt:                       n.Transaction.Lt,
-		BlockWorkchain:           &n.BlockId.Workchain,
-		BlockShard:               &n.BlockId.Shard,
-		BlockSeqno:               &n.BlockId.Seqno,
-		McBlockSeqno:             &n.McBlockSeqno,
-		TraceID:                  n.TraceId,
-		PrevTransHash:            n.Transaction.PrevTransHash.Base64Ptr(),
-		PrevTransLt:              &n.Transaction.PrevTransLt,
-		Now:                      &n.Transaction.Now,
-		OrigStatus:               &origStatus,
-		EndStatus:                &endStatus,
-		TotalFees:                &n.Transaction.TotalFees,
-		TotalFeesExtraCurrencies: map[string]string{},
-		AccountStateHashBefore:   n.Transaction.AccountStateHashBefore.Base64Ptr(),
-		AccountStateHashAfter:    n.Transaction.AccountStateHashAfter.Base64Ptr(),
-		Descr:                    &ord_val,
-		Aborted:                  &n.Transaction.Description.Aborted,
-		Destroyed:                &n.Transaction.Description.Destroyed,
-		CreditFirst:              &n.Transaction.Description.CreditFirst,
-		IsTock:                   &is_tock,
-		Installed:                &is_tock,
-		StorageFeesCollected:     storageFeesCollected,
-		StorageFeesDue:           storageFeesDue,
-		StorageStatusChange:      &storageStatusChange,
-		CreditDueFeesCollected:   creditDueFeesCollected,
-		Credit:                   credit,
-		CreditExtraCurrencies:    map[string]string{},
-		Emulated:                 n.Emulated,
+	// Credit phase
+	if n.Transaction.Description.CreditPh != nil {
+		var dueFeesCollected *int64
+		if n.Transaction.Description.CreditPh.DueFeesCollected != nil {
+			val := int64(*n.Transaction.Description.CreditPh.DueFeesCollected)
+			dueFeesCollected = &val
+		}
+		credit := int64(n.Transaction.Description.CreditPh.Credit)
+		descr.CreditPh = &models.CreditPhase{
+			DueFeesCollected:      dueFeesCollected,
+			Credit:                &credit,
+			CreditExtraCurrencies: map[string]string{},
+		}
 	}
+
+	// Compute phase
+	descr.ComputePh = &models.ComputePhase{}
 	if n.Transaction.Description.ComputePh.Type == 0 {
-		txRow.ComputeSkipped = new(bool)
-		*txRow.ComputeSkipped = true
+		// Skipped
+		isSkipped := true
+		descr.ComputePh.IsSkipped = &isSkipped
 		reason, err := n.Transaction.Description.ComputePh.Data.(trComputePhaseSkipped).Reason.Str()
 		if err != nil {
-			return TransactionRow{}, err
+			return models.Transaction{}, err
 		}
-		txRow.SkippedReason = &reason
+		descr.ComputePh.Reason = &reason
 	} else {
-		txRow.ComputeSkipped = new(bool)
-		*txRow.ComputeSkipped = false
+		// VM phase
+		isSkipped := false
+		descr.ComputePh.IsSkipped = &isSkipped
 		vm := n.Transaction.Description.ComputePh.Data.(trComputePhaseVm)
-		txRow.ComputeSuccess = &vm.Success
-		txRow.ComputeMsgStateUsed = &vm.MsgStateUsed
-		txRow.ComputeAccountActivated = &vm.AccountActivated
-		txRow.ComputeGasFees = &vm.GasFees
-		txRow.ComputeGasUsed = &vm.GasUsed
-		txRow.ComputeGasLimit = &vm.GasLimit
-		txRow.ComputeGasCredit = vm.GasCredit
-		txRow.ComputeMode = &vm.Mode
-		txRow.ComputeExitCode = &vm.ExitCode
-		txRow.ComputeExitArg = vm.ExitArg
-		txRow.ComputeVmSteps = &vm.VmSteps
-		txRow.ComputeVmInitStateHash = vm.VmInitStateHash.Base64Ptr()
-		txRow.ComputeVmFinalStateHash = vm.VmFinalStateHash.Base64Ptr()
+		descr.ComputePh.Success = &vm.Success
+		descr.ComputePh.MsgStateUsed = &vm.MsgStateUsed
+		descr.ComputePh.AccountActivated = &vm.AccountActivated
+		gasFees := int64(vm.GasFees)
+		gasUsed := int64(vm.GasUsed)
+		gasLimit := int64(vm.GasLimit)
+		descr.ComputePh.GasFees = &gasFees
+		descr.ComputePh.GasUsed = &gasUsed
+		descr.ComputePh.GasLimit = &gasLimit
+		if vm.GasCredit != nil {
+			gasCredit := int64(*vm.GasCredit)
+			descr.ComputePh.GasCredit = &gasCredit
+		}
+		mode := int32(vm.Mode)
+		descr.ComputePh.Mode = &mode
+		descr.ComputePh.ExitCode = &vm.ExitCode
+		descr.ComputePh.ExitArg = vm.ExitArg
+		descr.ComputePh.VmSteps = &vm.VmSteps
+		vmInitStateHash := models.HashType(base64.StdEncoding.EncodeToString(vm.VmInitStateHash[:]))
+		vmFinalStateHash := models.HashType(base64.StdEncoding.EncodeToString(vm.VmFinalStateHash[:]))
+		descr.ComputePh.VmInitStateHash = &vmInitStateHash
+		descr.ComputePh.VmFinalStateHash = &vmFinalStateHash
 	}
 
+	// Action phase
 	if n.Transaction.Description.Action != nil {
 		actionStatusChange, err := n.Transaction.Description.Action.StatusChange.Str()
 		if err != nil {
-			return TransactionRow{}, err
+			return models.Transaction{}, err
 		}
-		txRow.ActionSuccess = &n.Transaction.Description.Action.Success
-		txRow.ActionValid = &n.Transaction.Description.Action.Valid
-		txRow.ActionNoFunds = &n.Transaction.Description.Action.NoFunds
-		txRow.ActionStatusChange = &actionStatusChange
-		txRow.ActionTotalFwdFees = n.Transaction.Description.Action.TotalFwdFees
-		txRow.ActionTotalActionFees = n.Transaction.Description.Action.TotalActionFees
-		txRow.ActionResultCode = n.Transaction.Description.Action.ResultCode
-		txRow.ActionResultArg = n.Transaction.Description.Action.ResultArg
-		txRow.ActionTotActions = n.Transaction.Description.Action.TotActions
-		txRow.ActionSpecActions = n.Transaction.Description.Action.SpecActions
-		txRow.ActionSkippedActions = n.Transaction.Description.Action.SkippedActions
-		txRow.ActionMsgsCreated = n.Transaction.Description.Action.MsgsCreated
-		txRow.ActionActionListHash = n.Transaction.Description.Action.ActionListHash.Base64Ptr()
-		txRow.ActionTotMsgSizeCells = &n.Transaction.Description.Action.TotMsgSize.Cells
-		txRow.ActionTotMsgSizeBits = &n.Transaction.Description.Action.TotMsgSize.Bits
+		actionListHash := models.HashType(base64.StdEncoding.EncodeToString(n.Transaction.Description.Action.ActionListHash[:]))
+
+		descr.Action = &models.ActionPhase{
+			Success:         &n.Transaction.Description.Action.Success,
+			Valid:           &n.Transaction.Description.Action.Valid,
+			NoFunds:         &n.Transaction.Description.Action.NoFunds,
+			StatusChange:    &actionStatusChange,
+			TotalFwdFees:    n.Transaction.Description.Action.TotalFwdFees,
+			TotalActionFees: n.Transaction.Description.Action.TotalActionFees,
+			ResultCode:      n.Transaction.Description.Action.ResultCode,
+			ResultArg:       n.Transaction.Description.Action.ResultArg,
+			TotActions:      n.Transaction.Description.Action.TotActions,
+			SpecActions:     n.Transaction.Description.Action.SpecActions,
+			SkippedActions:  n.Transaction.Description.Action.SkippedActions,
+			MsgsCreated:     n.Transaction.Description.Action.MsgsCreated,
+			ActionListHash:  &actionListHash,
+			TotMsgSize: &models.MsgSize{
+				Cells: &n.Transaction.Description.Action.TotMsgSize.Cells,
+				Bits:  &n.Transaction.Description.Action.TotMsgSize.Bits,
+			},
+		}
 	}
 
+	// Bounce phase
 	if n.Transaction.Description.Bounce != nil {
+		descr.Bounce = &models.BouncePhase{}
 		if n.Transaction.Description.Bounce.Type == 0 {
-			txRow.Bounce = new(string)
-			*txRow.Bounce = "negfunds"
+			bounceType := "negfunds"
+			descr.Bounce.Type = &bounceType
 		} else if n.Transaction.Description.Bounce.Type == 1 {
-			txRow.Bounce = new(string)
-			*txRow.Bounce = "nofunds"
+			bounceType := "nofunds"
+			descr.Bounce.Type = &bounceType
 			phase := n.Transaction.Description.Bounce.Data.(trBouncePhaseNofunds)
-			txRow.BounceMsgSizeCells = &phase.MsgSize.Cells
-			txRow.BounceMsgSizeBits = &phase.MsgSize.Bits
-			txRow.BounceReqFwdFees = &phase.ReqFwdFees
+			msgSizeCells := int64(phase.MsgSize.Cells)
+			msgSizeBits := int64(phase.MsgSize.Bits)
+			reqFwdFees := int64(phase.ReqFwdFees)
+			descr.Bounce.MsgSize = &models.MsgSize{
+				Cells: &msgSizeCells,
+				Bits:  &msgSizeBits,
+			}
+			descr.Bounce.ReqFwdFees = &reqFwdFees
 		} else {
-			txRow.Bounce = new(string)
-			*txRow.Bounce = "ok"
+			bounceType := "ok"
+			descr.Bounce.Type = &bounceType
 			phase := n.Transaction.Description.Bounce.Data.(trBouncePhaseOk)
-			txRow.BounceMsgSizeCells = &phase.MsgSize.Cells
-			txRow.BounceMsgSizeBits = &phase.MsgSize.Bits
-			txRow.BounceMsgFees = &phase.MsgFees
-			txRow.BounceFwdFees = &phase.FwdFees
+			msgSizeCells := int64(phase.MsgSize.Cells)
+			msgSizeBits := int64(phase.MsgSize.Bits)
+			msgFees := int64(phase.MsgFees)
+			fwdFees := int64(phase.FwdFees)
+			descr.Bounce.MsgSize = &models.MsgSize{
+				Cells: &msgSizeCells,
+				Bits:  &msgSizeBits,
+			}
+			descr.Bounce.MsgFees = &msgFees
+			descr.Bounce.FwdFees = &fwdFees
 		}
 	}
-	return txRow, nil
+
+	transaction := models.Transaction{
+		Account:                  models.AccountAddress(n.Transaction.Account),
+		Hash:                     hash,
+		Lt:                       int64(n.Transaction.Lt),
+		Now:                      int32(n.Transaction.Now),
+		Workchain:                n.BlockId.Workchain,
+		Shard:                    models.ShardId(n.BlockId.Shard),
+		Seqno:                    int32(n.BlockId.Seqno),
+		McSeqno:                  int32(n.McBlockSeqno),
+		TraceId:                  traceId,
+		PrevTransHash:            prevTransHash,
+		PrevTransLt:              int64(n.Transaction.PrevTransLt),
+		OrigStatus:               origStatus,
+		EndStatus:                endStatus,
+		TotalFees:                int64(n.Transaction.TotalFees),
+		TotalFeesExtraCurrencies: map[string]string{},
+		AccountStateHashBefore:   accountStateHashBefore,
+		AccountStateHashAfter:    accountStateHashAfter,
+		Descr:                    descr,
+		BlockRef: models.BlockId{
+			Workchain: n.BlockId.Workchain,
+			Shard:     models.ShardId(n.BlockId.Shard),
+			Seqno:     int32(n.BlockId.Seqno),
+		},
+		InMsg:    nil,
+		OutMsgs:  nil,
+		Emulated: n.Emulated,
+	}
+
+	return transaction, nil
 }
+
 func calcHash(boc string) (string, error) {
 	decodedBody, err := base64.StdEncoding.DecodeString(boc)
 	if err != nil {
@@ -812,88 +884,128 @@ func calcHash(boc string) (string, error) {
 	return hash_b64, nil
 }
 
-func (m *trMessage) GetMessageRow(traceId string, direction string, txLt uint64, txHash string) (row MessageRow, body *MessageContentRow, initState *MessageContentRow, err error) {
+func (m *trMessage) GetMessage(traceId string, direction string, txLt uint64, txHash string) (row models.Message, body *models.MessageContent, initState *models.MessageContent, err error) {
 	bodyHash, err := calcHash(m.BodyBoc)
 	if err != nil {
-		return MessageRow{}, nil, nil, err
+		return models.Message{}, nil, nil, err
 	}
-	body = &MessageContentRow{
-		Hash: bodyHash,
+
+	body = &models.MessageContent{
+		Hash: (*models.HashType)(&bodyHash),
 		Body: &m.BodyBoc,
 	}
-	var initStateHash *string = nil
+
+	var initStateHashPtr *models.HashType
 	if m.InitStateBoc != nil {
-		h, err := calcHash(*m.InitStateBoc)
-		initStateHash = &h
+		initStateHashStr, err := calcHash(*m.InitStateBoc)
 		if err != nil {
-			return MessageRow{}, nil, nil, err
+			return models.Message{}, nil, nil, err
 		}
-		initState = &MessageContentRow{
-			Hash: bodyHash,
+		initStateHash := models.HashType(initStateHashStr)
+		initStateHashPtr = &initStateHash
+		initState = &models.MessageContent{
+			Hash: &initStateHash,
 			Body: m.InitStateBoc,
 		}
 	}
-	var hashNorm *string = nil
-	if m.HashNorm != nil {
-		n := base64.StdEncoding.EncodeToString((*m.HashNorm)[:])
-		hashNorm = &n
+
+	var value *int64
+	if m.Value != nil {
+		val := int64(*m.Value)
+		value = &val
 	}
-	msgRow := MessageRow{
-		TxHash:               txHash,
-		TxLt:                 txLt,
-		MsgHash:              base64.StdEncoding.EncodeToString(m.Hash[:]),
+
+	var opcode *models.OpcodeType
+	if m.Opcode != nil {
+		val := models.OpcodeType(*m.Opcode)
+		opcode = &val
+	}
+
+	var hashNorm *models.HashType
+	if m.HashNorm != nil {
+		hashNormStr := base64.StdEncoding.EncodeToString((*m.HashNorm)[:])
+		hashNormType := models.HashType(hashNormStr)
+		hashNorm = &hashNormType
+	}
+
+	var traceIdPtr *models.HashType
+	if traceId != "" {
+		traceIdType := models.HashType(traceId)
+		traceIdPtr = &traceIdType
+	}
+
+	txHashType := models.HashType(txHash)
+
+	msgHashStr := base64.StdEncoding.EncodeToString(m.Hash[:])
+	msgHash := models.HashType(msgHashStr)
+
+	bodyHashType := models.HashType(bodyHash)
+
+	message := models.Message{
+		TxHash:               txHashType,
+		TxLt:                 int64(txLt),
+		MsgHash:              msgHash,
 		Direction:            direction,
-		TraceID:              &traceId,
-		Source:               m.Source,
-		Destination:          m.Destination,
-		Value:                m.Value,
+		TraceId:              traceIdPtr,
+		Source:               (*models.AccountAddress)(m.Source),
+		Destination:          (*models.AccountAddress)(m.Destination),
+		Value:                value,
 		ValueExtraCurrencies: map[string]string{},
 		FwdFee:               m.FwdFee,
 		IhrFee:               m.IhrFee,
 		CreatedLt:            m.CreatedLt,
 		CreatedAt:            m.CreatedAt,
-		Opcode:               m.Opcode,
+		Opcode:               opcode,
 		IhrDisabled:          m.IhrDisabled,
 		Bounce:               m.Bounce,
 		Bounced:              m.Bounced,
 		ImportFee:            m.ImportFee,
-		BodyHash:             &bodyHash,
-		InitStateHash:        initStateHash,
+		BodyHash:             &bodyHashType,
+		InitStateHash:        initStateHashPtr,
+		MessageContent:       body,
+		InitState:            initState,
 		MsgHashNorm:          hashNorm,
 	}
-	return msgRow, body, initState, nil
+
+	if direction == "in" {
+		message.InMsgTxHash = &txHashType
+	} else {
+		message.OutMsgTxHash = &txHashType
+	}
+
+	return message, body, initState, nil
 }
 
-func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, map[string]MessageContentRow, error) {
-	messageContents := make(map[string]MessageContentRow)
-	initStates := make(map[string]MessageContentRow)
-	messages := make([]MessageRow, 0)
+func (n *traceNode) GetMessages() ([]models.Message, map[string]models.MessageContent, map[string]models.MessageContent, error) {
+	messageContents := make(map[string]models.MessageContent)
+	initStates := make(map[string]models.MessageContent)
+	messages := make([]models.Message, 0)
 
 	for _, outMsg := range n.Transaction.OutMsgs {
-		msgRow, body, initState, err := outMsg.GetMessageRow(n.Key, "out", n.Transaction.Lt,
+		msgRow, body, initState, err := outMsg.GetMessage(n.Key, "out", n.Transaction.Lt,
 			base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
 		if err != nil {
 			return nil, nil, nil, err
 		}
 		messages = append(messages, msgRow)
 		if body != nil {
-			messageContents[msgRow.MsgHash] = *body
+			messageContents[string(msgRow.MsgHash)] = *body
 		}
 		if initState != nil {
-			initStates[*msgRow.InitStateHash] = *initState
+			initStates[string(*msgRow.InitStateHash)] = *initState
 		}
 	}
-	inMsgRow, body, initState, err := n.Transaction.InMsg.GetMessageRow(n.Key, "in", n.Transaction.Lt,
+	inMsgRow, body, initState, err := n.Transaction.InMsg.GetMessage(n.Key, "in", n.Transaction.Lt,
 		base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	messages = append(messages, inMsgRow)
 	if body != nil {
-		messageContents[inMsgRow.MsgHash] = *body
+		messageContents[string(inMsgRow.MsgHash)] = *body
 	}
 	if initState != nil {
-		initStates[*inMsgRow.InitStateHash] = *initState
+		initStates[string(*inMsgRow.InitStateHash)] = *initState
 	}
 	return messages, messageContents, nil, nil
 }
