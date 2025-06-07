@@ -4,6 +4,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"sort"
 )
@@ -11,7 +12,7 @@ import (
 type EmulatedTracesContext struct {
 	emulatedTransactionsRaw   map[string]map[string]string
 	emulatedTraces            map[string]*emulated.TraceRow
-	emulatedActions           map[string][]*emulated.ActionRow
+	emulatedActions           map[string][]*models.RawAction
 	emulatedTransactions      map[string][]*emulated.TransactionRow
 	emulatedMessageContents   map[string]*emulated.MessageContentRow
 	emulatedMessageInitStates map[string]*emulated.MessageContentRow
@@ -24,7 +25,7 @@ type EmulatedTracesContext struct {
 func NewEmptyContext(emulated_only bool) *EmulatedTracesContext {
 	return &EmulatedTracesContext{
 		emulatedTraces:            make(map[string]*emulated.TraceRow),
-		emulatedActions:           make(map[string][]*emulated.ActionRow),
+		emulatedActions:           make(map[string][]*models.RawAction),
 		emulatedTransactionsRaw:   make(map[string]map[string]string),
 		emulatedTransactions:      make(map[string][]*emulated.TransactionRow),
 		emulatedMessageContents:   make(map[string]*emulated.MessageContentRow),
@@ -55,7 +56,7 @@ func (c *EmulatedTracesContext) RemoveTraces(trace_keys []string) {
 	}
 }
 
-func (c *EmulatedTracesContext) GetTransactionsByTraceIdAndHash(trace_id HashType, tx_hashes []*HashType) []*emulated.TransactionRow {
+func (c *EmulatedTracesContext) GetTransactionsByTraceIdAndHash(trace_id models.HashType, tx_hashes []*models.HashType) []*emulated.TransactionRow {
 	txs := make([]*emulated.TransactionRow, 0)
 	for _, tx_hash := range tx_hashes {
 		for _, tx := range c.emulatedTransactions[string(trace_id)] {
@@ -69,10 +70,10 @@ func (c *EmulatedTracesContext) GetTransactionsByTraceIdAndHash(trace_id HashTyp
 
 func (c *EmulatedTracesContext) FilterTraceActions(trace_action_map map[string][]string) {
 	for trace_id, action_ids := range trace_action_map {
-		filtered_actions := make([]*emulated.ActionRow, 0)
+		filtered_actions := make([]*models.RawAction, 0)
 		for _, action_id := range action_ids {
 			for _, action := range c.emulatedActions[trace_id] {
-				if action.ActionId == action_id {
+				if action.ActionId == models.HashType(action_id) {
 					filtered_actions = append(filtered_actions, action)
 				}
 			}
@@ -118,8 +119,8 @@ func (c *EmulatedTracesContext) GetTraces() []pgx.Row {
 	return rows
 }
 
-func (c *EmulatedTracesContext) GetActions(supportedActions []string) []pgx.Row {
-	rows := make([]pgx.Row, 0)
+func (c *EmulatedTracesContext) GetRawActions(supportedActions []string) []*models.RawAction {
+	rows := make([]*models.RawAction, 0)
 	supportedActionsSet := mapset.NewSet(supportedActions...)
 	for _, traceKey := range c.traceKeys {
 		if actions, ok := c.emulatedActions[traceKey]; ok {
@@ -133,7 +134,8 @@ func (c *EmulatedTracesContext) GetActions(supportedActions []string) []pgx.Row 
 				if !supportedActionsSet.ContainsAny(action.Type) {
 					continue
 				}
-				rows = append(rows, emulated.NewRow(action))
+
+				rows = append(rows, action)
 			}
 		}
 	}
@@ -257,11 +259,11 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 		trace_row.PendingMessages = pending_messages
 		c.emulatedTraces[traceKey] = &trace_row
 		for _, a := range trace.Actions {
-			row, err := a.GetActionRow()
+			row, err := a.ToRawAction()
 			if err != nil {
 				return err
 			}
-			c.emulatedActions[traceKey] = append(c.emulatedActions[traceKey], &row)
+			c.emulatedActions[traceKey] = append(c.emulatedActions[traceKey], row)
 		}
 	}
 	sort.Slice(c.traceKeys, func(i, j int) bool {
@@ -276,7 +278,7 @@ func (c *EmulatedTracesContext) FillFromRawData(rawData map[string]map[string]st
 	return nil
 }
 
-func (c *EmulatedTracesContext) FilterTransactionsByAccounts(accounts []AccountAddress) error {
+func (c *EmulatedTracesContext) FilterTransactionsByAccounts(accounts []models.AccountAddress) error {
 	for k, txs := range c.emulatedTransactions {
 		filtered_txs := make([]*emulated.TransactionRow, 0)
 		for _, tx := range txs {

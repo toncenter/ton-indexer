@@ -3,8 +3,8 @@ package index
 import (
 	b64 "encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"reflect"
 	"strconv"
@@ -45,54 +45,21 @@ var EVAA_ASSET_ID_MAP_TESTNET = map[string]string{
 
 var IsTestnet bool = false
 
-// json marshaling and unmarshaling
-func (v *ShardId) String() string {
-	return fmt.Sprintf("%X", uint64(*v))
-}
-
-func (v *ShardId) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
-}
-
-func (v *AccountAddress) String() string {
-	return strings.Trim(string(*v), " ")
-}
-
-func (v *AccountAddress) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
-}
-
-func (v *HexInt) String() string {
-	return fmt.Sprintf("0x%x", uint32(*v))
-}
-
-func (v *HexInt) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
-}
-
-func (v *OpcodeType) String() string {
-	return fmt.Sprintf("0x%08x", uint32(*v))
-}
-
-func (v *OpcodeType) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
-}
-
 // converters
 func HashConverter(value string) reflect.Value {
 	if len(value) == 64 || len(value) == 66 && strings.HasPrefix(value, "0x") {
 		value = strings.TrimPrefix(value, "0x")
 		if res, err := hex.DecodeString(value); err == nil {
-			return reflect.ValueOf(HashType(b64.StdEncoding.EncodeToString(res)))
+			return reflect.ValueOf(models.HashType(b64.StdEncoding.EncodeToString(res)))
 		} else {
 			return reflect.Value{}
 		}
 	}
 	if len(value) == 44 {
 		if res, err := b64.StdEncoding.DecodeString(value); err == nil {
-			return reflect.ValueOf(HashType(b64.StdEncoding.EncodeToString(res)))
+			return reflect.ValueOf(models.HashType(b64.StdEncoding.EncodeToString(res)))
 		} else if res, err := b64.URLEncoding.DecodeString(value); err == nil {
-			return reflect.ValueOf(HashType(b64.StdEncoding.EncodeToString(res)))
+			return reflect.ValueOf(models.HashType(b64.StdEncoding.EncodeToString(res)))
 		} else {
 			return reflect.Value{}
 		}
@@ -114,7 +81,7 @@ func AccountAddressConverter(value string) reflect.Value {
 		return reflect.Value{}
 	}
 	addr_str := fmt.Sprintf("%d:%s", addr.Workchain(), strings.ToUpper(hex.EncodeToString(addr.Data())))
-	return reflect.ValueOf(AccountAddress(addr_str))
+	return reflect.ValueOf(models.AccountAddress(addr_str))
 }
 
 func AccountAddressNullableConverter(value string) reflect.Value {
@@ -127,10 +94,10 @@ func AccountAddressNullableConverter(value string) reflect.Value {
 func ShardIdConverter(value string) reflect.Value {
 	value = strings.TrimPrefix(value, "0x")
 	if shard, err := strconv.ParseUint(value, 16, 64); err == nil {
-		return reflect.ValueOf(ShardId(shard))
+		return reflect.ValueOf(models.ShardId(shard))
 	}
 	if shard, err := strconv.ParseInt(value, 10, 64); err == nil {
-		return reflect.ValueOf(ShardId(shard))
+		return reflect.ValueOf(models.ShardId(shard))
 	}
 	return reflect.Value{}
 }
@@ -148,16 +115,16 @@ func UtimeTypeConverter(value string) reflect.Value {
 func OpcodeTypeConverter(value string) reflect.Value {
 	value = strings.TrimPrefix(value, "0x")
 	if res, err := strconv.ParseUint(value, 16, 32); err == nil {
-		return reflect.ValueOf(OpcodeType(res))
+		return reflect.ValueOf(models.OpcodeType(res))
 	}
 	if res, err := strconv.ParseInt(value, 10, 32); err == nil {
-		return reflect.ValueOf(OpcodeType(res))
+		return reflect.ValueOf(models.OpcodeType(res))
 	}
 	return reflect.Value{}
 }
 
 // Parsing
-func ParseBlockId(str string) (*BlockId, error) {
+func ParseBlockId(str string) (*models.BlockId, error) {
 	str = strings.Trim(str, "()")
 	parts := strings.Split(str, ",")
 	var workchain int64
@@ -173,13 +140,13 @@ func ParseBlockId(str string) (*BlockId, error) {
 	if seqno, err = strconv.ParseInt(parts[2], 10, 32); err != nil {
 		return nil, err
 	}
-	return &BlockId{int32(workchain), ShardId(shard), int32(seqno)}, nil
+	return &models.BlockId{int32(workchain), models.ShardId(shard), int32(seqno)}, nil
 }
 
-func ParseBlockIdList(str string) ([]BlockId, error) {
+func ParseBlockIdList(str string) ([]models.BlockId, error) {
 	str = strings.Trim(str, "{}")
 
-	var result []BlockId
+	var result []models.BlockId
 	var start int
 	for i, r := range str {
 		switch r {
@@ -197,13 +164,13 @@ func ParseBlockIdList(str string) ([]BlockId, error) {
 }
 
 // Parse wallet info
-type walletInfoParserFunc func(string, *WalletState) error
+type walletInfoParserFunc func(string, *models.WalletState) error
 type walletInfoParser struct {
 	Name      string
 	ParseFunc walletInfoParserFunc
 }
 
-func ParseWalletSeqno(data string, state *WalletState) error {
+func ParseWalletSeqno(data string, state *models.WalletState) error {
 	boc, err := b64.StdEncoding.DecodeString(data)
 	if err != nil {
 		return err
@@ -218,7 +185,7 @@ func ParseWalletSeqno(data string, state *WalletState) error {
 	return nil
 }
 
-func ParseWalletV3(data string, state *WalletState) error {
+func ParseWalletV3(data string, state *models.WalletState) error {
 	boc, err := b64.StdEncoding.DecodeString(data)
 	if err != nil {
 		return err
@@ -235,7 +202,7 @@ func ParseWalletV3(data string, state *WalletState) error {
 	return nil
 }
 
-func ParseWalletV5(data string, state *WalletState) error {
+func ParseWalletV5(data string, state *models.WalletState) error {
 	boc, err := b64.StdEncoding.DecodeString(data)
 	if err != nil {
 		return err
@@ -254,7 +221,7 @@ func ParseWalletV5(data string, state *WalletState) error {
 	return nil
 }
 
-func (parser *walletInfoParser) Parse(data string, state *WalletState) error {
+func (parser *walletInfoParser) Parse(data string, state *models.WalletState) error {
 	state.IsWallet = true
 	state.WalletType = &parser.Name
 	err := parser.ParseFunc(data, state)
@@ -278,8 +245,8 @@ var walletParsersMap = map[string]walletInfoParser{
 	"IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8=": {Name: "wallet v5 r1", ParseFunc: ParseWalletV5},
 }
 
-func ParseWalletState(state AccountStateFull) (*WalletState, error) {
-	var info WalletState
+func ParseWalletState(state models.AccountStateFull) (*models.WalletState, error) {
+	var info models.WalletState
 	if state.AccountAddress != nil && state.DataBoc != nil {
 		if parser, ok := walletParsersMap[string(*state.CodeHash)]; ok {
 			if err := parser.Parse(*state.DataBoc, &info); err != nil {
@@ -302,8 +269,8 @@ func ParseWalletState(state AccountStateFull) (*WalletState, error) {
 	return &info, nil
 }
 
-func ParseRawAction(raw *RawAction) (*Action, error) {
-	var act Action
+func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
+	var act models.Action
 
 	act.TraceId = raw.TraceId
 	act.ActionId = raw.ActionId
@@ -321,7 +288,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 
 	switch act.Type {
 	case "call_contract":
-		var details ActionDetailsCallContract
+		var details models.ActionDetailsCallContract
 		details.OpCode = raw.Opcode
 		details.Source = raw.Source
 		details.Destination = raw.Destination
@@ -332,14 +299,14 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		}
 		act.Details = &details
 	case "contract_deploy":
-		var details ActionDetailsContractDeploy
+		var details models.ActionDetailsContractDeploy
 		details.OpCode = raw.Opcode
 		details.Source = raw.Source
 		details.Destination = raw.Destination
 		details.Value = raw.Value
 		act.Details = &details
 	case "ton_transfer":
-		var details ActionDetailsTonTransfer
+		var details models.ActionDetailsTonTransfer
 		details.Source = raw.Source
 		details.Destination = raw.Destination
 		details.Value = raw.Value
@@ -351,7 +318,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		}
 		act.Details = &details
 	case "auction_bid":
-		var details ActionDetailsAuctionBid
+		var details models.ActionDetailsAuctionBid
 		details.Bidder = raw.Source
 		details.Auction = raw.Destination
 		details.Amount = raw.Value
@@ -360,7 +327,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.NftItemIndex = raw.NFTTransferNFTItemIndex
 		act.Details = &details
 	case "change_dns":
-		var details ActionDetailsChangeDns
+		var details models.ActionDetailsChangeDns
 		details.Key = raw.ChangeDNSRecordKey
 		details.Value.SumType = raw.ChangeDNSRecordValueSchema
 		details.NFTCollection = raw.Asset
@@ -388,7 +355,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Source = raw.Source
 		act.Details = &details
 	case "dex_deposit_liquidity":
-		var details ActionDetailsDexDepositLiquidity
+		var details models.ActionDetailsDexDepositLiquidity
 		details.Source = raw.Source
 		details.Dex = raw.DexDepositLiquidityDataDex
 		details.Pool = raw.Destination
@@ -412,13 +379,13 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.TickUpper = raw.DexDepositLiquidityDataTickUpper
 		details.NftIndex = raw.DexDepositLiquidityDataNFTIndex
 		details.NftAddress = raw.DexDepositLiquidityDataNFTAddress
-		details.VaultExcesses = []ActionDetailsLiquidityVaultExcess{}
+		details.VaultExcesses = []models.ActionDetailsLiquidityVaultExcess{}
 		for _, excess := range raw.DexDepositLiquidityDataVaultExcesses {
-			details.VaultExcesses = append(details.VaultExcesses, ActionDetailsLiquidityVaultExcess(excess))
+			details.VaultExcesses = append(details.VaultExcesses, models.ActionDetailsLiquidityVaultExcess(excess))
 		}
 		act.Details = &details
 	case "dex_withdraw_liquidity":
-		var details ActionDetailsDexWithdrawLiquidity
+		var details models.ActionDetailsDexWithdrawLiquidity
 		details.Source = raw.Source
 		details.Dex = raw.DexWithdrawLiquidityDataDex
 		details.Pool = raw.Destination
@@ -436,43 +403,43 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.TickLower = raw.DexWithdrawLiquidityDataTickLower
 		act.Details = &details
 	case "delete_dns":
-		var details ActionDetailsDeleteDns
+		var details models.ActionDetailsDeleteDns
 		details.Key = raw.ChangeDNSRecordKey
 		details.Asset = raw.Destination
 		details.Source = raw.Source
 		details.NFTCollection = raw.Asset
 		act.Details = &details
 	case "renew_dns":
-		var details ActionDetailsRenewDns
+		var details models.ActionDetailsRenewDns
 		details.Asset = raw.Destination
 		details.Source = raw.Source
 		details.NFTCollection = raw.Asset
 		act.Details = &details
 	case "election_deposit":
-		var details ActionDetailsElectionDeposit
+		var details models.ActionDetailsElectionDeposit
 		details.StakeHolder = raw.Source
 		details.Amount = raw.Amount
 		act.Details = &details
 	case "election_recover":
-		var details ActionDetailsElectionRecover
+		var details models.ActionDetailsElectionRecover
 		details.StakeHolder = raw.Source
 		details.Amount = raw.Amount
 		act.Details = &details
 	case "jetton_burn":
-		var details ActionDetailsJettonBurn
+		var details models.ActionDetailsJettonBurn
 		details.Owner = raw.Source
 		details.OwnerJettonWallet = raw.SourceSecondary
 		details.Asset = raw.Asset
 		details.Amount = raw.Amount
 		act.Details = &details
 	case "jetton_swap":
-		var details ActionDetailsJettonSwap
+		var details models.ActionDetailsJettonSwap
 		details.Dex = raw.JettonSwapDex
 		details.Sender = raw.Source
 		details.AssetIn = raw.Asset
 		details.AssetOut = raw.Asset2
-		details.DexIncomingTransfer = &ActionDetailsJettonSwapTransfer{}
-		details.DexOutgoingTransfer = &ActionDetailsJettonSwapTransfer{}
+		details.DexIncomingTransfer = &models.ActionDetailsJettonSwapTransfer{}
+		details.DexOutgoingTransfer = &models.ActionDetailsJettonSwapTransfer{}
 		details.DexIncomingTransfer.Asset = raw.JettonSwapDexIncomingTransferAsset
 		details.DexIncomingTransfer.Source = raw.JettonSwapDexIncomingTransferSource
 		details.DexIncomingTransfer.Destination = raw.JettonSwapDexIncomingTransferDestination
@@ -486,13 +453,13 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.DexOutgoingTransfer.DestinationJettonWallet = raw.JettonSwapDexOutgoingTransferDestinationJettonWallet
 		details.DexOutgoingTransfer.Amount = raw.JettonSwapDexOutgoingTransferAmount
 
-		details.PeerSwaps = []ActionDetailsJettonSwapPeerSwap{}
+		details.PeerSwaps = []models.ActionDetailsJettonSwapPeerSwap{}
 		for _, peer := range raw.JettonSwapPeerSwaps {
-			details.PeerSwaps = append(details.PeerSwaps, ActionDetailsJettonSwapPeerSwap(peer))
+			details.PeerSwaps = append(details.PeerSwaps, models.ActionDetailsJettonSwapPeerSwap(peer))
 		}
 		// MinOutAmount common field in swaps but for now supported only in tonco swaps, thats why it should appear only for tonco for now
 		if details.Dex != nil && *details.Dex == "tonco" {
-			act.Details = &ActionDetailsToncoJettonSwap{
+			act.Details = &models.ActionDetailsToncoJettonSwap{
 				Dex:                 details.Dex,
 				Sender:              details.Sender,
 				AssetIn:             details.AssetIn,
@@ -506,7 +473,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			act.Details = &details
 		}
 	case "jetton_transfer":
-		var details ActionDetailsJettonTransfer
+		var details models.ActionDetailsJettonTransfer
 		details.Asset = raw.Asset
 		details.Sender = raw.Source
 		details.SenderJettonWallet = raw.SourceSecondary
@@ -522,7 +489,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.ForwardAmount = raw.JettonTransferForwardAmount
 		act.Details = &details
 	case "jetton_mint":
-		var details ActionDetailsJettonMint
+		var details models.ActionDetailsJettonMint
 		details.Asset = raw.Asset
 		details.Amount = raw.Amount
 		details.TonAmount = raw.Value
@@ -531,7 +498,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		act.Details = &details
 
 	case "nft_mint":
-		var details ActionDetailsNftMint
+		var details models.ActionDetailsNftMint
 		details.Owner = raw.Source
 		details.NftCollection = raw.Asset
 		details.NftItem = raw.AssetSecondary
@@ -539,7 +506,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		act.Details = &details
 	case "nft_transfer":
 		// TODO: asset = collection, asset_secondary = item, payload, forward_amount, response_dest
-		var details ActionDetailsNftTransfer
+		var details models.ActionDetailsNftTransfer
 		details.NftCollection = raw.Asset
 		details.NftItem = raw.AssetSecondary
 		details.NftItemIndex = raw.NFTTransferNFTItemIndex
@@ -561,10 +528,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		}
 		act.Details = &details
 	case "tick_tock":
-		var details ActionDetailsTickTock
+		var details models.ActionDetailsTickTock
 		act.Details = &details
 	case "stake_deposit":
-		var details ActionDetailsStakeDeposit
+		var details models.ActionDetailsStakeDeposit
 		details.StakeHolder = raw.Source
 		details.Amount = raw.Amount
 		details.Pool = raw.Destination
@@ -573,7 +540,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Asset = raw.Asset
 		act.Details = &details
 	case "stake_withdrawal":
-		var details ActionDetailsWithdrawStake
+		var details models.ActionDetailsWithdrawStake
 		details.StakeHolder = raw.Source
 		details.Amount = raw.Amount
 		details.Pool = raw.Destination
@@ -583,7 +550,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Asset = raw.Asset
 		act.Details = &details
 	case "stake_withdrawal_request":
-		var details ActionDetailsWithdrawStakeRequest
+		var details models.ActionDetailsWithdrawStakeRequest
 		details.StakeHolder = raw.Source
 		details.Pool = raw.Destination
 		details.Provider = raw.StakingDataProvider
@@ -594,21 +561,21 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		}
 		act.Details = &details
 	case "subscribe":
-		var details ActionDetailsSubscribe
+		var details models.ActionDetailsSubscribe
 		details.Subscriber = raw.Source
 		details.Beneficiary = raw.Destination
 		details.Subscription = raw.DestinationSecondary
 		details.Amount = raw.Amount
 		act.Details = &details
 	case "unsubscribe":
-		var details ActionDetailsUnsubscribe
+		var details models.ActionDetailsUnsubscribe
 		details.Subscriber = raw.Source
 		details.Beneficiary = raw.Destination
 		details.Subscription = raw.DestinationSecondary
 		details.Amount = raw.Amount
 		act.Details = &details
 	case "multisig_create_order":
-		act.Details = ActionDetailsMultisigCreateOrder{
+		act.Details = models.ActionDetailsMultisigCreateOrder{
 			QueryId:           raw.MultisigCreateOrderQueryId,
 			OrderSeqno:        raw.MultisigCreateOrderOrderSeqno,
 			IsCreatedBySigner: raw.MultisigCreateOrderIsCreatedBySigner,
@@ -621,14 +588,14 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			DestinationOrder:  raw.DestinationSecondary,
 		}
 	case "multisig_approve":
-		act.Details = ActionDetailsMultisigApprove{
+		act.Details = models.ActionDetailsMultisigApprove{
 			SignerIndex: raw.MultisigApproveSignerIndex,
 			ExitCode:    raw.MultisigApproveExitCode,
 			Source:      raw.Source,
 			Destination: raw.Destination,
 		}
 	case "multisig_execute":
-		act.Details = ActionDetailsMultisigExecute{
+		act.Details = models.ActionDetailsMultisigExecute{
 			QueryId:        raw.MultisigExecuteQueryId,
 			OrderSeqno:     raw.MultisigExecuteOrderSeqno,
 			ExpirationDate: raw.MultisigExecuteExpirationDate,
@@ -639,7 +606,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			Destination:    raw.Destination,
 		}
 	case "vesting_send_message":
-		act.Details = ActionDetailsVestingSendMessage{
+		act.Details = models.ActionDetailsVestingSendMessage{
 			QueryId:     raw.VestingSendMessageQueryId,
 			MessageBoc:  raw.VestingSendMessageMessageBoc,
 			Source:      raw.Source,
@@ -648,14 +615,14 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			Amount:      raw.Amount,
 		}
 	case "vesting_add_whitelist":
-		act.Details = ActionDetailsVestingAddWhitelist{
+		act.Details = models.ActionDetailsVestingAddWhitelist{
 			QueryId:       raw.VestingAddWhitelistQueryId,
 			AccountsAdded: raw.VestingAddWhitelistAccountsAdded,
 			Source:        raw.Source,
 			Vesting:       raw.Destination,
 		}
 	case "evaa_supply":
-		act.Details = ActionDetailsEvaaSupply{
+		act.Details = models.ActionDetailsEvaaSupply{
 			SenderJettonWallet:    raw.EvaaSupplySenderJettonWallet,
 			RecipientJettonWallet: raw.EvaaSupplyRecipientJettonWallet,
 			MasterJettonWallet:    raw.EvaaSupplyMasterJettonWallet,
@@ -670,7 +637,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			Amount:                raw.Amount,
 		}
 	case "evaa_withdraw":
-		act.Details = ActionDetailsEvaaWithdraw{
+		act.Details = models.ActionDetailsEvaaWithdraw{
 			RecipientJettonWallet: raw.EvaaWithdrawRecipientJettonWallet,
 			MasterJettonWallet:    raw.EvaaWithdrawMasterJettonWallet,
 			Master:                raw.EvaaWithdrawMaster,
@@ -688,7 +655,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		if raw.EvaaLiquidateAssetId != nil {
 			asset, knownAsset = ParseEvaaAssetId(*raw.EvaaLiquidateAssetId)
 		}
-		act.Details = ActionDetailsEvaaLiquidate{
+		act.Details = models.ActionDetailsEvaaLiquidate{
 			FailReason:       raw.EvaaLiquidateFailReason,
 			DebtAmount:       raw.EvaaLiquidateDebtAmount,
 			Source:           raw.Source,
@@ -697,27 +664,27 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			Collateral:       raw.Asset,
 			AssetId:          raw.EvaaLiquidateAssetId,
 			Amount:           raw.Amount,
-			Asset:            (*AccountAddress)(asset),
+			Asset:            (*models.AccountAddress)(asset),
 			IsKnownAsset:     knownAsset,
 		}
 	case "jvault_claim":
-		claimedRewards := make([]JettonAmountPair, 0)
+		claimedRewards := make([]models.JettonAmountPair, 0)
 		if len(raw.JvaultClaimClaimedJettons) == len(raw.JvaultClaimClaimedAmounts) {
 			for i := range raw.JvaultClaimClaimedJettons {
-				claimedRewards = append(claimedRewards, JettonAmountPair{
+				claimedRewards = append(claimedRewards, models.JettonAmountPair{
 					Jetton: &raw.JvaultClaimClaimedJettons[i],
 					Amount: &raw.JvaultClaimClaimedAmounts[i],
 				})
 			}
 		}
-		act.Details = ActionDetailsJvaultClaim{
+		act.Details = models.ActionDetailsJvaultClaim{
 			ClaimedRewards: claimedRewards,
 			Source:         raw.Source,
 			StakeWallet:    raw.SourceSecondary,
 			Pool:           raw.Destination,
 		}
 	case "jvault_stake":
-		act.Details = ActionDetailsJvaultStake{
+		act.Details = models.ActionDetailsJvaultStake{
 			Period:             raw.JvaultStakePeriod,
 			MintedStakeJettons: raw.JvaultStakeMintedStakeJettons,
 			StakeWallet:        raw.JvaultStakeStakeWallet,
@@ -728,7 +695,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			Amount:             raw.Amount,
 		}
 	case "jvault_unstake":
-		act.Details = ActionDetailsJvaultUnstake{
+		act.Details = models.ActionDetailsJvaultUnstake{
 			Source:       raw.Source,
 			StakeWallet:  raw.SourceSecondary,
 			Pool:         raw.Destination,
@@ -738,7 +705,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			StakingAsset: raw.Asset2,
 		}
 	case "jvault_unstake_request":
-		act.Details = ActionDetailsJvaultUnstakeRequest{
+		act.Details = models.ActionDetailsJvaultUnstakeRequest{
 			Source:       raw.Source,
 			StakeWallet:  raw.SourceSecondary,
 			Pool:         raw.Destination,
@@ -748,14 +715,14 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			StakingAsset: raw.Asset2,
 		}
 	case "nft_discovery":
-		act.Details = ActionDetailsNftDiscovery{
+		act.Details = models.ActionDetailsNftDiscovery{
 			Source:        raw.Source,
 			NftItem:       raw.AssetSecondary,
 			NftCollection: raw.Asset,
 			NftItemIndex:  raw.NFTTransferNFTItemIndex,
 		}
 	case "tonco_deploy_pool":
-		act.Details = ActionDetailsToncoDeployPool{
+		act.Details = models.ActionDetailsToncoDeployPool{
 			Source:              raw.Source,
 			Pool:                raw.DestinationSecondary,
 			Router:              raw.Destination,
@@ -780,8 +747,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 }
 
 // query to model
-func ScanBlock(row pgx.Row) (*Block, error) {
-	var blk Block
+func ScanBlock(row pgx.Row) (*models.Block, error) {
+	var blk models.Block
 	var prev_blocks_str string
 	err := row.Scan(&blk.Workchain, &blk.Shard, &blk.Seqno, &blk.RootHash,
 		&blk.FileHash, &blk.MasterchainBlockRef.Workchain,
@@ -805,18 +772,18 @@ func ScanBlock(row pgx.Row) (*Block, error) {
 	return &blk, nil
 }
 
-func ScanTransaction(row pgx.Row) (*Transaction, error) {
-	var t Transaction
-	t.OutMsgs = []*Message{}
+func ScanTransaction(row pgx.Row) (*models.Transaction, error) {
+	var t models.Transaction
+	t.OutMsgs = []*models.Message{}
 
-	var st StoragePhase
-	var cr CreditPhase
-	var co ComputePhase
-	var ac ActionPhase
-	var bo BouncePhase
-	var sp SplitInfo
-	var ms1 MsgSize
-	var ms2 MsgSize
+	var st models.StoragePhase
+	var cr models.CreditPhase
+	var co models.ComputePhase
+	var ac models.ActionPhase
+	var bo models.BouncePhase
+	var sp models.SplitInfo
+	var ms1 models.MsgSize
+	var ms2 models.MsgSize
 
 	err := row.Scan(&t.Account, &t.Hash, &t.Lt, &t.Workchain, &t.Shard, &t.Seqno,
 		&t.McSeqno, &t.TraceId, &t.PrevTransHash, &t.PrevTransLt, &t.Now,
@@ -846,9 +813,9 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 		co.GasFees, co.GasUsed = co.GasUsed, co.GasFees
 	}
 
-	t.BlockRef = BlockId{t.Workchain, t.Shard, t.Seqno}
-	t.AccountStateAfter = &AccountState{Hash: t.AccountStateHashAfter}
-	t.AccountStateBefore = &AccountState{Hash: t.AccountStateHashBefore}
+	t.BlockRef = models.BlockId{t.Workchain, t.Shard, t.Seqno}
+	t.AccountStateAfter = &models.AccountState{Hash: t.AccountStateHashAfter}
+	t.AccountStateBefore = &models.AccountState{Hash: t.AccountStateHashBefore}
 
 	if ms1.Cells != nil {
 		ac.TotMsgSize = &ms1
@@ -880,26 +847,10 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 	return &t, nil
 }
 
-func (mc *MessageContent) TryDecodeBody() error {
-	if mc.Body == nil {
-		return errors.New("empty MessageContent")
-	}
-	if boc, err := b64.StdEncoding.DecodeString(*mc.Body); err == nil {
-		if c, err := cell.FromBOC(boc); err == nil {
-			l := c.BeginParse()
-			if val, err := l.LoadUInt(32); err == nil && val == 0 {
-				str, _ := l.LoadStringSnake()
-				mc.Decoded = &DecodedContent{Type: "text_comment", Comment: str}
-			}
-		}
-	}
-	return nil
-}
-
-func ScanMessageWithContent(row pgx.Row) (*Message, error) {
-	var m Message
-	var body MessageContent
-	var init_state MessageContent
+func ScanMessageWithContent(row pgx.Row) (*models.Message, error) {
+	var m models.Message
+	var body models.MessageContent
+	var init_state models.MessageContent
 
 	err := row.Scan(&m.TxHash, &m.TxLt, &m.MsgHash, &m.Direction, &m.TraceId, &m.Source, &m.Destination,
 		&m.Value, &m.ValueExtraCurrencies, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
@@ -918,8 +869,8 @@ func ScanMessageWithContent(row pgx.Row) (*Message, error) {
 	return &m, nil
 }
 
-func ScanMessageContent(row pgx.Row) (*MessageContent, error) {
-	var mc MessageContent
+func ScanMessageContent(row pgx.Row) (*models.MessageContent, error) {
+	var mc models.MessageContent
 	err := row.Scan(&mc.Hash, &mc.Body)
 	mc.TryDecodeBody()
 	if err != nil {
@@ -928,8 +879,8 @@ func ScanMessageContent(row pgx.Row) (*MessageContent, error) {
 	return &mc, nil
 }
 
-func ScanAccountState(row pgx.Row) (*AccountState, error) {
-	var acst AccountState
+func ScanAccountState(row pgx.Row) (*models.AccountState, error) {
+	var acst models.AccountState
 	err := row.Scan(&acst.Hash, &acst.Account, &acst.Balance, &acst.BalanceExtraCurrencies,
 		&acst.AccountStatus, &acst.FrozenHash, &acst.DataHash, &acst.CodeHash)
 	if err != nil {
@@ -938,8 +889,8 @@ func ScanAccountState(row pgx.Row) (*AccountState, error) {
 	return &acst, nil
 }
 
-func ScanAccountStateFull(row pgx.Row) (*AccountStateFull, error) {
-	var acst AccountStateFull
+func ScanAccountStateFull(row pgx.Row) (*models.AccountStateFull, error) {
+	var acst models.AccountStateFull
 	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.BalanceExtraCurrencies,
 		&acst.AccountStatus, &acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt,
 		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
@@ -957,8 +908,8 @@ func trimQuotes(s *string) {
 	}
 }
 
-func ScanAccountBalance(row pgx.Row) (*AccountBalance, error) {
-	var acst AccountBalance
+func ScanAccountBalance(row pgx.Row) (*models.AccountBalance, error) {
+	var acst models.AccountBalance
 	err := row.Scan(&acst.Account, &acst.Balance)
 	if err != nil {
 		return nil, err
@@ -966,8 +917,8 @@ func ScanAccountBalance(row pgx.Row) (*AccountBalance, error) {
 	return &acst, nil
 }
 
-func ScanNFTCollection(row pgx.Row) (*NFTCollection, error) {
-	var res NFTCollection
+func ScanNFTCollection(row pgx.Row) (*models.NFTCollection, error) {
+	var res models.NFTCollection
 	err := row.Scan(&res.Address, &res.NextItemIndex, &res.OwnerAddress, &res.CollectionContent,
 		&res.DataHash, &res.CodeHash, &res.LastTransactionLt)
 	if err != nil {
@@ -976,8 +927,8 @@ func ScanNFTCollection(row pgx.Row) (*NFTCollection, error) {
 	return &res, nil
 }
 
-func ScanNFTItem(row pgx.Row) (*NFTItem, error) {
-	var res NFTItem
+func ScanNFTItem(row pgx.Row) (*models.NFTItem, error) {
+	var res models.NFTItem
 	err := row.Scan(&res.Address, &res.Init, &res.Index, &res.CollectionAddress,
 		&res.OwnerAddress, &res.Content, &res.LastTransactionLt, &res.CodeHash, &res.DataHash)
 	if err != nil {
@@ -986,11 +937,11 @@ func ScanNFTItem(row pgx.Row) (*NFTItem, error) {
 	return &res, nil
 }
 
-func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
-	var res NFTItem
-	var col NFTCollectionNullable
-	var saleAddress, saleOwner *AccountAddress
-	var auctionAddress, auctionOwner *AccountAddress
+func ScanNFTItemWithCollection(row pgx.Row) (*models.NFTItem, error) {
+	var res models.NFTItem
+	var col models.NFTCollectionNullable
+	var saleAddress, saleOwner *models.AccountAddress
+	var auctionAddress, auctionOwner *models.AccountAddress
 
 	err := row.Scan(&res.Address, &res.Init, &res.Index, &res.CollectionAddress,
 		&res.OwnerAddress, &res.Content, &res.LastTransactionLt, &res.CodeHash, &res.DataHash,
@@ -1000,7 +951,7 @@ func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
 		&auctionAddress, &auctionOwner)
 
 	if col.Address != nil {
-		res.Collection = new(NFTCollection)
+		res.Collection = new(models.NFTCollection)
 		res.Collection.Address = *col.Address
 		res.Collection.NextItemIndex = *col.NextItemIndex
 		res.Collection.OwnerAddress = col.OwnerAddress
@@ -1031,8 +982,8 @@ func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
 	return &res, nil
 }
 
-func ScanNFTTransfer(row pgx.Row) (*NFTTransfer, error) {
-	var res NFTTransfer
+func ScanNFTTransfer(row pgx.Row) (*models.NFTTransfer, error) {
+	var res models.NFTTransfer
 	err := row.Scan(&res.TransactionHash, &res.TransactionLt, &res.TransactionNow, &res.TransactionAborted,
 		&res.QueryId, &res.NftItemAddress, &res.NftItemIndex, &res.NftCollectionAddress,
 		&res.OldOwner, &res.NewOwner, &res.ResponseDestination, &res.CustomPayload,
@@ -1043,8 +994,8 @@ func ScanNFTTransfer(row pgx.Row) (*NFTTransfer, error) {
 	return &res, nil
 }
 
-func ScanJettonMaster(row pgx.Row) (*JettonMaster, error) {
-	var res JettonMaster
+func ScanJettonMaster(row pgx.Row) (*models.JettonMaster, error) {
+	var res models.JettonMaster
 	err := row.Scan(&res.Address, &res.TotalSupply, &res.Mintable, &res.AdminAddress,
 		&res.JettonContent, &res.JettonWalletCodeHash, &res.CodeHash, &res.DataHash,
 		&res.LastTransactionLt)
@@ -1054,9 +1005,9 @@ func ScanJettonMaster(row pgx.Row) (*JettonMaster, error) {
 	return &res, nil
 }
 
-func ScanJettonWallet(row pgx.Row) (*JettonWallet, error) {
-	var res JettonWallet
-	var mintless_into JettonWalletMintlessInfo
+func ScanJettonWallet(row pgx.Row) (*models.JettonWallet, error) {
+	var res models.JettonWallet
+	var mintless_into models.JettonWalletMintlessInfo
 	err := row.Scan(&res.Address, &res.Balance, &res.Owner, &res.Jetton, &res.LastTransactionLt,
 		&res.CodeHash, &res.DataHash, &mintless_into.IsClaimed, &mintless_into.Amount,
 		&mintless_into.StartFrom, &mintless_into.ExpireAt, &mintless_into.CustomPayloadApiUri)
@@ -1069,8 +1020,8 @@ func ScanJettonWallet(row pgx.Row) (*JettonWallet, error) {
 	return &res, nil
 }
 
-func ScanJettonTransfer(row pgx.Row) (*JettonTransfer, error) {
-	var res JettonTransfer
+func ScanJettonTransfer(row pgx.Row) (*models.JettonTransfer, error) {
+	var res models.JettonTransfer
 	err := row.Scan(&res.TransactionHash, &res.TransactionLt, &res.TransactionNow, &res.TransactionAborted,
 		&res.QueryId, &res.Amount, &res.Source, &res.Destination, &res.SourceWallet, &res.JettonMaster,
 		&res.ResponseDestination, &res.CustomPayload, &res.ForwardTonAmount, &res.ForwardPayload, &res.TraceId)
@@ -1080,8 +1031,8 @@ func ScanJettonTransfer(row pgx.Row) (*JettonTransfer, error) {
 	return &res, nil
 }
 
-func ScanJettonBurn(row pgx.Row) (*JettonBurn, error) {
-	var res JettonBurn
+func ScanJettonBurn(row pgx.Row) (*models.JettonBurn, error) {
+	var res models.JettonBurn
 	err := row.Scan(&res.TransactionHash, &res.TransactionLt, &res.TransactionNow, &res.TransactionAborted,
 		&res.QueryId, &res.Owner, &res.JettonWallet, &res.JettonMaster, &res.Amount,
 		&res.ResponseDestination, &res.CustomPayload, &res.TraceId)
@@ -1091,8 +1042,8 @@ func ScanJettonBurn(row pgx.Row) (*JettonBurn, error) {
 	return &res, nil
 }
 
-func ScanRawAction(row pgx.Row) (*RawAction, error) {
-	var act RawAction
+func ScanRawAction(row pgx.Row) (*models.RawAction, error) {
+	var act models.RawAction
 	err := row.Scan(&act.TraceId, &act.ActionId, &act.StartLt, &act.EndLt, &act.StartUtime, &act.EndUtime,
 		&act.TraceEndLt, &act.TraceEndUtime, &act.TraceMcSeqnoEnd,
 		&act.Source,
@@ -1239,8 +1190,8 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 	return &act, nil
 }
 
-func ScanTrace(row pgx.Row) (*Trace, error) {
-	var trace Trace
+func ScanTrace(row pgx.Row) (*models.Trace, error) {
+	var trace models.Trace
 	err := row.Scan(&trace.TraceId, &trace.ExternalHash, &trace.McSeqnoStart, &trace.McSeqnoEnd,
 		&trace.StartLt, &trace.StartUtime, &trace.EndLt, &trace.EndUtime,
 		&trace.TraceMeta.TraceState, &trace.TraceMeta.Messages, &trace.TraceMeta.Transactions,

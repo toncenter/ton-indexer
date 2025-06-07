@@ -3,6 +3,7 @@ package index
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"math/big"
 	"net/url"
@@ -11,14 +12,14 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func GetV2AddressInformation(state_req V2AccountRequest, settings RequestSettings) (*V2AddressInformation, error) {
+func GetV2AddressInformation(state_req V2AccountRequest, settings RequestSettings) (*models.V2AddressInformation, error) {
 	if len(settings.V2Endpoint) == 0 {
-		return nil, IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
+		return nil, models.IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
 	}
 
 	baseUrl, err := url.Parse(settings.V2Endpoint)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	baseUrl.Path += "/getAddressInformation"
 	params := url.Values{}
@@ -31,28 +32,28 @@ func GetV2AddressInformation(state_req V2AccountRequest, settings RequestSetting
 	agent.Timeout(settings.Timeout)
 	_, body, errs := agent.Bytes()
 	if len(errs) > 0 {
-		return nil, IndexError{Code: 500, Message: errs[0].Error()}
+		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
 	}
 
 	var jsn map[string]interface{}
 	if err = json.Unmarshal(body, &jsn); err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	if jsn["ok"] != true {
-		return nil, IndexError{Code: 500, Message: fmt.Sprintf("%v", jsn["error"])}
+		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("%v", jsn["error"])}
 	}
 
 	res := jsn["result"].(map[string]interface{})
 
-	var acc V2AddressInformation
+	var acc models.V2AddressInformation
 	switch v := res["balance"].(type) {
 	case float64:
 		acc.Balance = fmt.Sprintf("%d", int64(v))
 	case string:
 		acc.Balance = v
 	default:
-		return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse balance of type: %v", v)}
+		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to parse balance of type: %v", v)}
 	}
 	if v := res["code"].(string); len(v) > 0 {
 		acc.Code = new(string)
@@ -81,14 +82,14 @@ func GetV2AddressInformation(state_req V2AccountRequest, settings RequestSetting
 	return &acc, nil
 }
 
-func GetV2WalletInformation(state_req V2AccountRequest, settings RequestSettings) (*V2WalletInformation, error) {
+func GetV2WalletInformation(state_req V2AccountRequest, settings RequestSettings) (*models.V2WalletInformation, error) {
 	if len(settings.V2Endpoint) == 0 {
-		return nil, IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
+		return nil, models.IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
 	}
 
 	baseUrl, err := url.Parse(settings.V2Endpoint)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	baseUrl.Path += "/getWalletInformation"
 	params := url.Values{}
@@ -101,32 +102,32 @@ func GetV2WalletInformation(state_req V2AccountRequest, settings RequestSettings
 	agent.Timeout(settings.Timeout)
 	_, body, errs := agent.Bytes()
 	if len(errs) > 0 {
-		return nil, IndexError{Code: 500, Message: errs[0].Error()}
+		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
 	}
 
 	var jsn map[string]interface{}
 	if err = json.Unmarshal(body, &jsn); err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	if jsn["ok"] != true {
-		return nil, IndexError{Code: 500, Message: fmt.Sprintf("%v", jsn["error"])}
+		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("%v", jsn["error"])}
 	}
 
 	res := jsn["result"].(map[string]interface{})
 
 	if res["wallet"] != true && res["account_state"].(string) != "uninitialized" {
-		return nil, IndexError{Code: 409, Message: "not a wallet"}
+		return nil, models.IndexError{Code: 409, Message: "not a wallet"}
 	}
 
-	var acc V2WalletInformation
+	var acc models.V2WalletInformation
 	switch v := res["balance"].(type) {
 	case string:
 		acc.Balance = res["balance"].(string)
 	case float64:
 		acc.Balance = fmt.Sprintf("%d", int64(res["balance"].(float64)))
 	default:
-		return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse balance of type %v", v)}
+		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to parse balance of type %v", v)}
 	}
 
 	if v, ok := res["wallet_type"]; ok && len(v.(string)) > 0 {
@@ -154,14 +155,14 @@ func GetV2WalletInformation(state_req V2AccountRequest, settings RequestSettings
 	return &acc, nil
 }
 
-func PostMessage(req V2SendMessageRequest, settings RequestSettings) (*V2SendMessageResult, error) {
+func PostMessage(req V2SendMessageRequest, settings RequestSettings) (*models.V2SendMessageResult, error) {
 	if len(settings.V2Endpoint) == 0 {
-		return nil, IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
+		return nil, models.IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
 	}
 
 	baseUrl, err := url.Parse(settings.V2Endpoint)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	baseUrl.Path += "/sendBocReturnHash"
 	params := url.Values{}
@@ -173,17 +174,17 @@ func PostMessage(req V2SendMessageRequest, settings RequestSettings) (*V2SendMes
 	agent.Timeout(settings.Timeout)
 	var req_body []byte
 	if req_body, err = json.Marshal(req); err != nil {
-		return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
+		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
 	}
 	agent.Add("Content-Type", "application/json")
 	agent.Body(req_body)
 	_, body, errs := agent.Bytes()
 	if len(errs) > 0 {
-		return nil, IndexError{Code: 500, Message: errs[0].Error()}
+		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
 	}
 	var jsn map[string]interface{}
 	if err = json.Unmarshal(body, &jsn); err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	if jsn["ok"] != true {
@@ -196,29 +197,29 @@ func PostMessage(req V2SendMessageRequest, settings RequestSettings) (*V2SendMes
 		default:
 			log.Printf("unexpected type: '%v' value: '%v'", reflect.TypeOf(jsn["code"]), jsn["code"])
 		}
-		return nil, IndexError{Code: code, Message: fmt.Sprintf("%v", jsn["error"])}
+		return nil, models.IndexError{Code: code, Message: fmt.Sprintf("%v", jsn["error"])}
 	}
 	res := jsn["result"].(map[string]interface{})
 
-	var result V2SendMessageResult
+	var result models.V2SendMessageResult
 
-	result.MessageHash = new(HashType)
-	*result.MessageHash = HashType(res["hash"].(string))
+	result.MessageHash = new(models.HashType)
+	*result.MessageHash = models.HashType(res["hash"].(string))
 	if v, ok := res["hash_norm"]; ok {
-		result.MessageHashNorm = new(HashType)
-		*result.MessageHashNorm = HashType(v.(string))
+		result.MessageHashNorm = new(models.HashType)
+		*result.MessageHashNorm = models.HashType(v.(string))
 	}
 	return &result, nil
 }
 
-func PostEstimateFee(req V2EstimateFeeRequest, settings RequestSettings) (*V2EstimateFeeResult, error) {
+func PostEstimateFee(req V2EstimateFeeRequest, settings RequestSettings) (*models.V2EstimateFeeResult, error) {
 	if len(settings.V2Endpoint) == 0 {
-		return nil, IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
+		return nil, models.IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
 	}
 
 	baseUrl, err := url.Parse(settings.V2Endpoint)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	baseUrl.Path += "/estimateFee"
 	params := url.Values{}
@@ -230,37 +231,37 @@ func PostEstimateFee(req V2EstimateFeeRequest, settings RequestSettings) (*V2Est
 	agent.Timeout(settings.Timeout)
 	var req_body []byte
 	if req_body, err = json.Marshal(req); err != nil {
-		return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
+		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
 	}
 	agent.Add("Content-Type", "application/json")
 	agent.Body(req_body)
 	_, body, errs := agent.Bytes()
 	if len(errs) > 0 {
-		return nil, IndexError{Code: 500, Message: errs[0].Error()}
+		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
 	}
 	var resp_full struct {
-		Ok     bool                `json:"ok"`
-		Result V2EstimateFeeResult `json:"result"`
-		Error  string              `json:"error"`
-		Code   int                 `json:"code"`
+		Ok     bool                       `json:"ok"`
+		Result models.V2EstimateFeeResult `json:"result"`
+		Error  string                     `json:"error"`
+		Code   int                        `json:"code"`
 	}
 	if err = json.Unmarshal(body, &resp_full); err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	if !resp_full.Ok {
-		return nil, IndexError{Code: resp_full.Code, Message: resp_full.Error}
+		return nil, models.IndexError{Code: resp_full.Code, Message: resp_full.Error}
 	}
 	return &resp_full.Result, nil
 }
 
-func PostRunGetMethod(req V2RunGetMethodRequest, settings RequestSettings) (*V2RunGetMethodResult, error) {
+func PostRunGetMethod(req V2RunGetMethodRequest, settings RequestSettings) (*models.V2RunGetMethodResult, error) {
 	if len(settings.V2Endpoint) == 0 {
-		return nil, IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
+		return nil, models.IndexError{Code: 500, Message: "ton-http-api endpoint is not specified"}
 	}
 
 	baseUrl, err := url.Parse(settings.V2Endpoint)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	baseUrl.Path += "/runGetMethod"
 	params := url.Values{}
@@ -287,7 +288,7 @@ func PostRunGetMethod(req V2RunGetMethodRequest, settings RequestSettings) (*V2R
 			case "slice":
 				vv = append(vv, "tvm.Slice")
 			default:
-				return nil, IndexError{Code: 500, Message: fmt.Sprintf("unsupported stack parameter type: %s", v.Type)}
+				return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("unsupported stack parameter type: %s", v.Type)}
 			}
 			vv = append(vv, v.Value)
 			stack = append(stack, vv)
@@ -296,33 +297,33 @@ func PostRunGetMethod(req V2RunGetMethodRequest, settings RequestSettings) (*V2R
 
 		var body_json []byte
 		if body_json, err = json.Marshal(body); err != nil {
-			return nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
+			return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
 		}
 		agent.Body(body_json)
 	}
 	_, body, errs := agent.Bytes()
 	if len(errs) > 0 {
-		return nil, IndexError{Code: 500, Message: errs[0].Error()}
+		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
 	}
 	var jsn map[string]interface{}
 	if err = json.Unmarshal(body, &jsn); err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	if jsn["ok"] != true {
-		return nil, IndexError{Code: 500, Message: fmt.Sprintf("%v", jsn["error"])}
+		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("%v", jsn["error"])}
 	}
 	res := jsn["result"].(map[string]interface{})
 
 	// log.Println(res)
-	var result V2RunGetMethodResult
+	var result models.V2RunGetMethodResult
 	switch v := res["gas_used"].(type) {
 	case float64:
 		result.GasUsed = int64(v)
 	case int64:
 		result.GasUsed = v
 	default:
-		return nil, IndexError{Code: 501, Message: fmt.Sprintf("Unknown type of gas_used: %s", v)}
+		return nil, models.IndexError{Code: 501, Message: fmt.Sprintf("Unknown type of gas_used: %s", v)}
 	}
 	switch v := res["exit_code"].(type) {
 	case float64:
@@ -330,12 +331,12 @@ func PostRunGetMethod(req V2RunGetMethodRequest, settings RequestSettings) (*V2R
 	case int64:
 		result.ExitCode = v
 	default:
-		return nil, IndexError{Code: 501, Message: fmt.Sprintf("Unknown type of exit_code: %s", v)}
+		return nil, models.IndexError{Code: 501, Message: fmt.Sprintf("Unknown type of exit_code: %s", v)}
 	}
 	{
 		stack, err := DecodeStack(res["stack"])
 		if err != nil {
-			return nil, IndexError{Code: 501, Message: fmt.Sprintf("failed to decode api/v2 stack: %s", err.Error())}
+			return nil, models.IndexError{Code: 501, Message: fmt.Sprintf("failed to decode api/v2 stack: %s", err.Error())}
 		}
 		result.Stack = stack
 	}
@@ -343,7 +344,7 @@ func PostRunGetMethod(req V2RunGetMethodRequest, settings RequestSettings) (*V2R
 }
 
 func DecodeStackEntry(stack interface{}) (interface{}, error) {
-	var stack_row V2StackEntity
+	var stack_row models.V2StackEntity
 	switch val := stack.(type) {
 	case []interface{}:
 		switch val[0].(string) {

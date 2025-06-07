@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"strings"
 
@@ -15,7 +16,7 @@ func (db *DbClient) QueryActionsV2(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Action, AddressBook, Metadata, error) {
+) ([]models.Action, models.AddressBook, models.Metadata, error) {
 	if len(act_req.SupportedActionTypes) == 0 {
 		act_req.SupportedActionTypes = []string{"v1"}
 	}
@@ -25,13 +26,13 @@ func (db *DbClient) QueryActionsV2(
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
@@ -42,23 +43,23 @@ func (db *DbClient) QueryActionsV2(
 			return nil, nil, nil, err
 		}
 		if !exists {
-			return nil, nil, nil, IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+			return nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
 		}
 	}
 
 	raw_actions, err := queryRawActionsImplV2(query, args, conn, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	actions := []Action{}
-	book := AddressBook{}
-	metadata := Metadata{}
+	actions := []models.Action{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_map := map[string]bool{}
 	for idx := range raw_actions {
 		CollectAddressesFromAction(&addr_map, &raw_actions[idx])
 		action, err := ParseRawAction(&raw_actions[idx])
 		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		actions = append(actions, *action)
 	}
@@ -69,12 +70,12 @@ func (db *DbClient) QueryActionsV2(
 		}
 		book, err = QueryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 
 		metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	return actions, book, metadata, nil
@@ -345,12 +346,12 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 	return query, args, nil
 }
 
-func queryRawActionsImplV2(query string, args []any, conn *pgxpool.Conn, settings RequestSettings) ([]RawAction, error) {
+func queryRawActionsImplV2(query string, args []any, conn *pgxpool.Conn, settings RequestSettings) ([]models.RawAction, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	// select {
 	// case <-ctx.Done():
@@ -359,16 +360,16 @@ func queryRawActionsImplV2(query string, args []any, conn *pgxpool.Conn, setting
 	// }
 	defer rows.Close()
 
-	res := []RawAction{}
+	res := []models.RawAction{}
 	for rows.Next() {
 		if loc, err := ScanRawAction(rows); err == nil {
 			res = append(res, *loc)
 		} else {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if rows.Err() != nil {
-		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 	return res, nil
 }

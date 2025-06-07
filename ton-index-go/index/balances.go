@@ -7,6 +7,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/gofiber/fiber/v2/log"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/xssnick/tonutils-go/tlb"
 	"github.com/xssnick/tonutils-go/ton/jetton"
 	"github.com/xssnick/tonutils-go/tvm/cell"
@@ -19,11 +20,11 @@ import (
 var timings = make([]time.Duration, 0)
 
 type ShortMessage struct {
-	Hash            *HashType
-	TransactionHash *HashType
-	Source          *AccountAddress
-	Destination     *AccountAddress
-	Opcode          *OpcodeType
+	Hash            *models.HashType
+	TransactionHash *models.HashType
+	Source          *models.AccountAddress
+	Destination     *models.AccountAddress
+	Opcode          *models.OpcodeType
 	Value           *int64
 	Direction       *string
 	FwdFee          *uint64
@@ -32,8 +33,8 @@ type ShortMessage struct {
 }
 
 type ShortTransaction struct {
-	Hash      HashType
-	Account   AccountAddress
+	Hash      models.HashType
+	Account   models.AccountAddress
 	TotalFees *int64
 	Lt        int64
 
@@ -43,7 +44,7 @@ type ShortTransaction struct {
 
 type Node struct {
 	Msg            *ShortMessage
-	TxHash         HashType
+	TxHash         models.HashType
 	NextNodes      []*Node
 	PreviousNode   *Node
 	BalanceChanges *BalanceChanges
@@ -59,19 +60,19 @@ func (n *Node) SetPreviousNode(node *Node) {
 }
 
 type BalanceChanges struct {
-	Value   map[AccountAddress]int64
-	Fees    map[AccountAddress]int64
-	Jettons map[AccountAddress]map[AccountAddress]*big.Int
+	Value   map[models.AccountAddress]int64
+	Fees    map[models.AccountAddress]int64
+	Jettons map[models.AccountAddress]map[models.AccountAddress]*big.Int
 }
 
-func (v *BalanceChanges) add_value(addr AccountAddress, value int64) {
+func (v *BalanceChanges) add_value(addr models.AccountAddress, value int64) {
 	if _, ok := v.Value[addr]; !ok {
 		v.Value[addr] = 0
 	}
 	v.Value[addr] += value
 }
 
-func (v *BalanceChanges) add_fees(addr AccountAddress, value int64) {
+func (v *BalanceChanges) add_fees(addr models.AccountAddress, value int64) {
 	if _, ok := v.Fees[addr]; !ok {
 		v.Fees[addr] = 0
 	}
@@ -93,7 +94,7 @@ func (v *BalanceChanges) merge(other_changes *BalanceChanges) {
 	}
 	for addr, jettons := range other_changes.Jettons {
 		if _, ok := v.Jettons[addr]; !ok {
-			v.Jettons[addr] = make(map[AccountAddress]*big.Int)
+			v.Jettons[addr] = make(map[models.AccountAddress]*big.Int)
 		}
 		for jetton, value := range jettons {
 			if _, ok := v.Jettons[addr][jetton]; !ok {
@@ -105,9 +106,9 @@ func (v *BalanceChanges) merge(other_changes *BalanceChanges) {
 	}
 }
 
-func (v *BalanceChanges) add_jetton(addr AccountAddress, jetton AccountAddress, value *big.Int, negate bool) {
+func (v *BalanceChanges) add_jetton(addr models.AccountAddress, jetton models.AccountAddress, value *big.Int, negate bool) {
 	if _, ok := v.Jettons[addr]; !ok {
-		v.Jettons[addr] = make(map[AccountAddress]*big.Int)
+		v.Jettons[addr] = make(map[models.AccountAddress]*big.Int)
 	}
 	if _, ok := v.Jettons[addr][jetton]; !ok {
 		v.Jettons[addr][jetton] = big.NewInt(0)
@@ -119,8 +120,8 @@ func (v *BalanceChanges) add_jetton(addr AccountAddress, jetton AccountAddress, 
 	}
 }
 
-func (v *BalanceChanges) get_summarized_balance_changes() map[AccountAddress]int64 {
-	balances := make(map[AccountAddress]int64)
+func (v *BalanceChanges) get_summarized_balance_changes() map[models.AccountAddress]int64 {
+	balances := make(map[models.AccountAddress]int64)
 	for addr, value := range v.Value {
 		balances[addr] = value
 	}
@@ -143,7 +144,7 @@ func compare(t1 *ShortTransaction, t2 *ShortTransaction) int {
 	return 0
 }
 
-func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChanges, map[HashType]*BalanceChanges, error) {
+func CalculateBalanceChanges(traceId models.HashType, conn *pgxpool.Conn) (*BalanceChanges, map[models.HashType]*BalanceChanges, error) {
 	tx_map, err := fetchTrace(traceId, conn)
 	if err != nil {
 		return nil, nil, err
@@ -151,8 +152,8 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 	if len(tx_map) == 0 {
 		return nil, nil, fmt.Errorf("trace not found")
 	}
-	msg_tx_map := make(map[HashType]HashType)
-	nodes := make(map[HashType]*Node)
+	msg_tx_map := make(map[models.HashType]models.HashType)
+	nodes := make(map[models.HashType]*Node)
 	txs := make([]*ShortTransaction, 0)
 	for _, tx := range tx_map {
 		txs = append(txs, tx)
@@ -160,7 +161,7 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 	slices.SortFunc(txs, compare)
 
 	var maxInt int32 = math.MaxInt32
-	actionsQuery, err := buildActionsQuery(ActionRequest{TraceId: []HashType{traceId}}, UtimeRequest{}, LtRequest{}, LimitRequest{
+	actionsQuery, err := buildActionsQuery(ActionRequest{TraceId: []models.HashType{traceId}}, UtimeRequest{}, LtRequest{}, LimitRequest{
 		Limit: &maxInt,
 	}, RequestSettings{
 		MaxLimit: int(maxInt),
@@ -197,11 +198,11 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 
 	queue := make([]*Node, 0)
 	queue = append(queue, root)
-	jetton_wallet_candidates := mapset.NewSet[AccountAddress]()
+	jetton_wallet_candidates := mapset.NewSet[models.AccountAddress]()
 	trace_balance_changes := &BalanceChanges{
-		Value:   make(map[AccountAddress]int64),
-		Fees:    make(map[AccountAddress]int64),
-		Jettons: make(map[AccountAddress]map[AccountAddress]*big.Int),
+		Value:   make(map[models.AccountAddress]int64),
+		Fees:    make(map[models.AccountAddress]int64),
+		Jettons: make(map[models.AccountAddress]map[models.AccountAddress]*big.Int),
 	}
 	for len(queue) > 0 {
 		node := queue[0]
@@ -209,9 +210,9 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 		if node.Msg != nil {
 			if node.BalanceChanges == nil {
 				node.BalanceChanges = &BalanceChanges{
-					Value:   make(map[AccountAddress]int64),
-					Fees:    make(map[AccountAddress]int64),
-					Jettons: make(map[AccountAddress]map[AccountAddress]*big.Int),
+					Value:   make(map[models.AccountAddress]int64),
+					Fees:    make(map[models.AccountAddress]int64),
+					Jettons: make(map[models.AccountAddress]map[models.AccountAddress]*big.Int),
 				}
 			}
 			if node.PreviousNode != nil && node.PreviousNode.Msg != nil {
@@ -255,10 +256,10 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 	if err != nil {
 		return nil, nil, err
 	}
-	owner_wallets := map[AccountAddress]map[AccountAddress]walletInfo{}
+	owner_wallets := map[models.AccountAddress]map[models.AccountAddress]walletInfo{}
 	for w := range wallet_infos.Iter() {
 		if _, ok := owner_wallets[w.jettonMaster]; !ok {
-			owner_wallets[w.jettonMaster] = make(map[AccountAddress]walletInfo)
+			owner_wallets[w.jettonMaster] = make(map[models.AccountAddress]walletInfo)
 		}
 		owner_wallets[w.jettonMaster][w.owner] = w
 	}
@@ -282,15 +283,15 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 				var transfer jetton.TransferPayload
 				err = tlb.LoadFromCell(&transfer, c.BeginParse())
 				destination_raw := transfer.Destination.String()
-				var destination AccountAddress
+				var destination models.AccountAddress
 				addr_loc := AccountAddressConverter(destination_raw)
 				if addr_loc.IsValid() {
-					if v, ok := addr_loc.Interface().(AccountAddress); ok {
+					if v, ok := addr_loc.Interface().(models.AccountAddress); ok {
 						destination = v
 					}
 				}
 				source := *node.Msg.Source
-				var jetton_master AccountAddress
+				var jetton_master models.AccountAddress
 				source_jetton_wallet := *node.Msg.Destination
 				for v := range wallet_infos.Iter() {
 					if v.address == source_jetton_wallet {
@@ -317,7 +318,7 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 		}
 	}
 
-	action_balance_changes := make(map[HashType]*BalanceChanges)
+	action_balance_changes := make(map[models.HashType]*BalanceChanges)
 	for _, action := range actions {
 		if action.Type == "contract_deploy" {
 			continue
@@ -332,9 +333,9 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 			transactions = transactions[0 : len(transactions)-1]
 		}
 		balance_changes := &BalanceChanges{
-			Value:   make(map[AccountAddress]int64),
-			Fees:    make(map[AccountAddress]int64),
-			Jettons: make(map[AccountAddress]map[AccountAddress]*big.Int),
+			Value:   make(map[models.AccountAddress]int64),
+			Fees:    make(map[models.AccountAddress]int64),
+			Jettons: make(map[models.AccountAddress]map[models.AccountAddress]*big.Int),
 		}
 		for _, node := range nodes {
 			for _, tx := range transactions {
@@ -349,16 +350,16 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 }
 
 type walletInfo struct {
-	address      AccountAddress
-	owner        AccountAddress
-	jettonMaster AccountAddress
+	address      models.AccountAddress
+	owner        models.AccountAddress
+	jettonMaster models.AccountAddress
 }
 
 func (v *walletInfo) Equals(other *walletInfo) bool {
 	return v.address == other.address && v.owner == other.owner && v.jettonMaster == other.jettonMaster
 }
 
-func checkJettonWallets(jetton_wallet_candidates mapset.Set[AccountAddress], conn *pgxpool.Conn) (mapset.Set[walletInfo], error) {
+func checkJettonWallets(jetton_wallet_candidates mapset.Set[models.AccountAddress], conn *pgxpool.Conn) (mapset.Set[walletInfo], error) {
 	var query = `
 		SELECT address, owner, jetton
 		FROM jetton_wallets
@@ -371,9 +372,9 @@ func checkJettonWallets(jetton_wallet_candidates mapset.Set[AccountAddress], con
 
 	jetton_wallets := mapset.NewSet[walletInfo]()
 	for rows.Next() {
-		var addr AccountAddress
-		var owner AccountAddress
-		var jetton_master AccountAddress
+		var addr models.AccountAddress
+		var owner models.AccountAddress
+		var jetton_master models.AccountAddress
 		if err := rows.Scan(&addr, &owner, &jetton_master); err != nil {
 			return nil, err
 		}
@@ -386,7 +387,7 @@ func checkJettonWallets(jetton_wallet_candidates mapset.Set[AccountAddress], con
 	return jetton_wallets, nil
 }
 
-func fetchTrace(trace_id HashType, conn *pgxpool.Conn) (map[HashType]*ShortTransaction, error) {
+func fetchTrace(trace_id models.HashType, conn *pgxpool.Conn) (map[models.HashType]*ShortTransaction, error) {
 	var query = `
 		SELECT T.trace_id, Tx.hash, Tx.account, Tx.lt, Tx.total_fees, M.msg_hash, M.tx_hash,
 		M.source, M.destination, M.opcode, M.value, M.direction, M.fwd_fee, MC.body
@@ -402,8 +403,8 @@ func fetchTrace(trace_id HashType, conn *pgxpool.Conn) (map[HashType]*ShortTrans
 	defer rows.Close()
 
 	var (
-		txs  = make(map[HashType]*ShortTransaction)
-		msgs = make(map[HashType]*ShortMessage)
+		txs  = make(map[models.HashType]*ShortTransaction)
+		msgs = make(map[models.HashType]*ShortMessage)
 	)
 	for rows.Next() {
 		var (

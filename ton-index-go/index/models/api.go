@@ -1,7 +1,11 @@
-package index
+package models
 
 import (
+	b64 "encoding/base64"
+	"errors"
 	"fmt"
+	"github.com/xssnick/tonutils-go/tvm/cell"
+	"strings"
 )
 
 type ShardId int64                 // @name ShardId
@@ -626,6 +630,8 @@ type RawAction struct {
 	ToncoDeployPoolLpFeeBase                             *string
 	ToncoDeployPoolLpFeeCurrent                          *string
 	ToncoDeployPoolPoolActive                            *bool
+	AncestorType                                         []string
+	ParentActionId                                       *string
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
@@ -1215,4 +1221,53 @@ type ActionDetailsNftDiscovery struct {
 	NftItem       *AccountAddress `json:"nft_item"`
 	NftCollection *AccountAddress `json:"nft_collection"`
 	NftItemIndex  *string         `json:"nft_item_index"`
+}
+
+func (mc *MessageContent) TryDecodeBody() error {
+	if mc.Body == nil {
+		return errors.New("empty MessageContent")
+	}
+	if boc, err := b64.StdEncoding.DecodeString(*mc.Body); err == nil {
+		if c, err := cell.FromBOC(boc); err == nil {
+			l := c.BeginParse()
+			if val, err := l.LoadUInt(32); err == nil && val == 0 {
+				str, _ := l.LoadStringSnake()
+				mc.Decoded = &DecodedContent{Type: "text_comment", Comment: str}
+			}
+		}
+	}
+	return nil
+}
+
+// json marshaling and unmarshaling
+func (v *ShardId) String() string {
+	return fmt.Sprintf("%X", uint64(*v))
+}
+
+func (v *ShardId) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
+}
+
+func (v *AccountAddress) String() string {
+	return strings.Trim(string(*v), " ")
+}
+
+func (v *AccountAddress) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
+}
+
+func (v *HexInt) String() string {
+	return fmt.Sprintf("0x%x", uint32(*v))
+}
+
+func (v *HexInt) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
+}
+
+func (v *OpcodeType) String() string {
+	return fmt.Sprintf("0x%08x", uint32(*v))
+}
+
+func (v *OpcodeType) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
 }

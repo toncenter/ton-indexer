@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
@@ -247,6 +249,7 @@ type actionJettonSwapDetails struct {
 	DexIncomingTransfer actionDexTransferDetails `msgpack:"dex_incoming_transfer"`
 	DexOutgoingTransfer actionDexTransferDetails `msgpack:"dex_outgoing_transfer"`
 	PeerSwaps           []actionPeerSwapDetails  `msgpack:"peer_swaps"`
+	MinOutAmount        *string                  `msgpack:"min_out_amount"`
 }
 
 type actionChangeDnsRecordDetails struct {
@@ -274,6 +277,10 @@ type actionDexDepositLiquidityData struct {
 	TargetAmount1     *string             `msgpack:"target_amount_1"`
 	TargetAmount2     *string             `msgpack:"target_amount_2"`
 	VaultExcesses     []actionVaultExcess `msgpack:"vault_excesses"`
+	TickLower         *string             `msgpack:"tick_lower"`
+	TickUpper         *string             `msgpack:"tick_upper"`
+	NFTIndex          *string             `msgpack:"nft_index"`
+	NFTAddress        *string             `msgpack:"nft_address"`
 }
 
 type actionDexWithdrawLiquidityData struct {
@@ -287,6 +294,10 @@ type actionDexWithdrawLiquidityData struct {
 	DexJettonWallet1  *string `msgpack:"dex_jetton_wallet_1"`
 	DexJettonWallet2  *string `msgpack:"dex_jetton_wallet_2"`
 	LpTokensBurnt     *string `msgpack:"lp_tokens_burnt"`
+	BurnedNFTIndex    *string `msgpack:"burned_nft_index"`
+	BurnedNFTAddress  *string `msgpack:"burned_nft_address"`
+	TickLower         *string `msgpack:"tick_lower"`
+	TickUpper         *string `msgpack:"tick_upper"`
 }
 
 type actionStakingData struct {
@@ -296,43 +307,135 @@ type actionStakingData struct {
 	TokensMinted *string `msgpack:"tokens_minted"`
 }
 
+type actionToncoDeployPoolDetails struct {
+	Jetton0RouterWallet *string `msgpack:"jetton0_router_wallet"`
+	Jetton1RouterWallet *string `msgpack:"jetton1_router_wallet"`
+	Jetton0Minter       *string `msgpack:"jetton0_minter"`
+	Jetton1Minter       *string `msgpack:"jetton1_minter"`
+	TickSpacing         *string `msgpack:"tick_spacing"`
+	InitialPriceX96     *string `msgpack:"initial_price_x96"`
+	ProtocolFee         *string `msgpack:"protocol_fee"`
+	LpFeeBase           *string `msgpack:"lp_fee_base"`
+	LpFeeCurrent        *string `msgpack:"lp_fee_current"`
+	PoolActive          *bool   `msgpack:"pool_active"`
+}
+
+type actionMultisigCreateOrderDetails struct {
+	QueryId           *string `msgpack:"query_id"`
+	OrderSeqno        *string `msgpack:"order_seqno"`
+	IsCreatedBySigner *bool   `msgpack:"is_created_by_signer"`
+	IsSignedByCreator *bool   `msgpack:"is_signed_by_creator"`
+	CreatorIndex      *int64  `msgpack:"creator_index"`
+	ExpirationDate    *int64  `msgpack:"expiration_date"`
+	OrderBoc          *string `msgpack:"order_boc"`
+}
+
+type actionMultisigApproveDetails struct {
+	SignerIndex *int64 `msgpack:"signer_index"`
+	ExitCode    *int32 `msgpack:"exit_code"`
+}
+
+type actionMultisigExecuteDetails struct {
+	QueryId        *string `msgpack:"query_id"`
+	OrderSeqno     *string `msgpack:"order_seqno"`
+	ExpirationDate *int64  `msgpack:"expiration_date"`
+	ApprovalsNum   *int64  `msgpack:"approvals_num"`
+	SignersHash    *string `msgpack:"signers_hash"`
+	OrderBoc       *string `msgpack:"order_boc"`
+}
+
+type actionVestingSendMessageDetails struct {
+	QueryId    *string `msgpack:"query_id"`
+	MessageBoc *string `msgpack:"message_boc"`
+}
+
+type actionVestingAddWhitelistDetails struct {
+	QueryId       *string  `msgpack:"query_id"`
+	AccountsAdded []string `msgpack:"accounts_added"`
+}
+
+type actionEvaaSupplyDetails struct {
+	SenderJettonWallet    *string `msgpack:"sender_jetton_wallet"`
+	RecipientJettonWallet *string `msgpack:"recipient_jetton_wallet"`
+	MasterJettonWallet    *string `msgpack:"master_jetton_wallet"`
+	Master                *string `msgpack:"master"`
+	AssetId               *string `msgpack:"asset_id"`
+	IsTon                 *bool   `msgpack:"is_ton"`
+}
+
+type actionEvaaWithdrawDetails struct {
+	RecipientJettonWallet *string `msgpack:"recipient_jetton_wallet"`
+	MasterJettonWallet    *string `msgpack:"master_jetton_wallet"`
+	Master                *string `msgpack:"master"`
+	FailReason            *string `msgpack:"fail_reason"`
+	AssetId               *string `msgpack:"asset_id"`
+}
+
+type actionEvaaLiquidateDetails struct {
+	FailReason *string `msgpack:"fail_reason"`
+	DebtAmount *string `msgpack:"debt_amount"`
+	AssetId    *string `msgpack:"asset_id"`
+}
+
+type actionJvaultClaimDetails struct {
+	ClaimedJettons []string `msgpack:"claimed_jettons"`
+	ClaimedAmounts []string `msgpack:"claimed_amounts"`
+}
+
+type actionJvaultStakeDetails struct {
+	Period             *int64  `msgpack:"period"`
+	MintedStakeJettons *string `msgpack:"minted_stake_jettons"`
+	StakeWallet        *string `msgpack:"stake_wallet"`
+}
+
 type Action struct {
-	ActionId                 string                          `msgpack:"action_id"`
-	Type                     string                          `msgpack:"type"`
-	TraceId                  *string                         `msgpack:"trace_id"`
-	TraceExternalHash        string                          `msgpack:"trace_external_hash"`
-	TxHashes                 []string                        `msgpack:"tx_hashes"`
-	Value                    *string                         `msgpack:"value"`
-	Amount                   *string                         `msgpack:"amount"`
-	StartLt                  *uint64                         `msgpack:"start_lt"`
-	EndLt                    *uint64                         `msgpack:"end_lt"`
-	StartUtime               *uint32                         `msgpack:"start_utime"`
-	EndUtime                 *uint32                         `msgpack:"end_utime"`
-	TraceEndLt               *uint64                         `msgpack:"trace_end_lt"`
-	TraceEndUtime            *uint32                         `msgpack:"trace_end_utime"`
-	TraceStartLt             *uint64                         `msgpack:"trace_start_lt"`
-	TraceMcSeqnoEnd          *uint32                         `msgpack:"trace_mc_seqno_end"`
-	Source                   *string                         `msgpack:"source"`
-	SourceSecondary          *string                         `msgpack:"source_secondary"`
-	Destination              *string                         `msgpack:"destination"`
-	DestinationSecondary     *string                         `msgpack:"destination_secondary"`
-	Asset                    *string                         `msgpack:"asset"`
-	AssetSecondary           *string                         `msgpack:"asset_secondary"`
-	Asset2                   *string                         `msgpack:"asset2"`
-	Asset2Secondary          *string                         `msgpack:"asset2_secondary"`
-	Opcode                   *uint32                         `msgpack:"opcode"`
-	Success                  bool                            `msgpack:"success"`
-	TonTransferData          *actionTonTransferDetails       `msgpack:"ton_transfer_data"`
-	AncestorType             []string                        `msgpack:"ancestor_type"`
-	ParentActionId           *string                         `msgpack:"parent_action_id"`
-	JettonTransferData       *actionJettonTransferDetails    `msgpack:"jetton_transfer_data"`
-	NftTransferData          *actionNftTransferDetails       `msgpack:"nft_transfer_data"`
-	JettonSwapData           *actionJettonSwapDetails        `msgpack:"jetton_swap_data"`
-	ChangeDnsRecordData      *actionChangeDnsRecordDetails   `msgpack:"change_dns_record_data"`
-	NftMintData              *actionNftMintDetails           `msgpack:"nft_mint_data"`
-	DexDepositLiquidityData  *actionDexDepositLiquidityData  `msgpack:"dex_deposit_liquidity_data"`
-	DexWithdrawLiquidityData *actionDexWithdrawLiquidityData `msgpack:"dex_withdraw_liquidity_data"`
-	StakingData              *actionStakingData              `msgpack:"staking_data"`
+	ActionId                 string                            `msgpack:"action_id"`
+	Type                     string                            `msgpack:"type"`
+	TraceId                  *string                           `msgpack:"trace_id"`
+	TraceExternalHash        string                            `msgpack:"trace_external_hash"`
+	TxHashes                 []string                          `msgpack:"tx_hashes"`
+	Value                    *string                           `msgpack:"value"`
+	Amount                   *string                           `msgpack:"amount"`
+	StartLt                  *uint64                           `msgpack:"start_lt"`
+	EndLt                    *uint64                           `msgpack:"end_lt"`
+	StartUtime               *uint32                           `msgpack:"start_utime"`
+	EndUtime                 *uint32                           `msgpack:"end_utime"`
+	TraceEndLt               *uint64                           `msgpack:"trace_end_lt"`
+	TraceEndUtime            *uint32                           `msgpack:"trace_end_utime"`
+	TraceStartLt             *uint64                           `msgpack:"trace_start_lt"`
+	TraceMcSeqnoEnd          *uint32                           `msgpack:"trace_mc_seqno_end"`
+	Source                   *string                           `msgpack:"source"`
+	SourceSecondary          *string                           `msgpack:"source_secondary"`
+	Destination              *string                           `msgpack:"destination"`
+	DestinationSecondary     *string                           `msgpack:"destination_secondary"`
+	Asset                    *string                           `msgpack:"asset"`
+	AssetSecondary           *string                           `msgpack:"asset_secondary"`
+	Asset2                   *string                           `msgpack:"asset2"`
+	Asset2Secondary          *string                           `msgpack:"asset2_secondary"`
+	Opcode                   *uint32                           `msgpack:"opcode"`
+	Success                  bool                              `msgpack:"success"`
+	TonTransferData          *actionTonTransferDetails         `msgpack:"ton_transfer_data"`
+	AncestorType             []string                          `msgpack:"ancestor_type"`
+	ParentActionId           *string                           `msgpack:"parent_action_id"`
+	JettonTransferData       *actionJettonTransferDetails      `msgpack:"jetton_transfer_data"`
+	NftTransferData          *actionNftTransferDetails         `msgpack:"nft_transfer_data"`
+	JettonSwapData           *actionJettonSwapDetails          `msgpack:"jetton_swap_data"`
+	ChangeDnsRecordData      *actionChangeDnsRecordDetails     `msgpack:"change_dns_record_data"`
+	NftMintData              *actionNftMintDetails             `msgpack:"nft_mint_data"`
+	DexDepositLiquidityData  *actionDexDepositLiquidityData    `msgpack:"dex_deposit_liquidity_data"`
+	DexWithdrawLiquidityData *actionDexWithdrawLiquidityData   `msgpack:"dex_withdraw_liquidity_data"`
+	StakingData              *actionStakingData                `msgpack:"staking_data"`
+	ToncoDeployPoolData      *actionToncoDeployPoolDetails     `msgpack:"tonco_deploy_pool_data"`
+	MultisigCreateOrderData  *actionMultisigCreateOrderDetails `msgpack:"multisig_create_order_data"`
+	MultisigApproveData      *actionMultisigApproveDetails     `msgpack:"multisig_approve_data"`
+	MultisigExecuteData      *actionMultisigExecuteDetails     `msgpack:"multisig_execute_data"`
+	VestingSendMessageData   *actionVestingSendMessageDetails  `msgpack:"vesting_send_message_data"`
+	VestingAddWhitelistData  *actionVestingAddWhitelistDetails `msgpack:"vesting_add_whitelist_data"`
+	EvaaSupplyData           *actionEvaaSupplyDetails          `msgpack:"evaa_supply_data"`
+	EvaaWithdrawData         *actionEvaaWithdrawDetails        `msgpack:"evaa_withdraw_data"`
+	EvaaLiquidateData        *actionEvaaLiquidateDetails       `msgpack:"evaa_liquidate_data"`
+	JvaultClaimData          *actionJvaultClaimDetails         `msgpack:"jvault_claim_data"`
+	JvaultStakeData          *actionJvaultStakeDetails         `msgpack:"jvault_stake_data"`
 }
 
 type blockId struct {
@@ -795,125 +898,299 @@ func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 	return messages, messageContents, nil, nil
 }
 
-func (a *Action) GetActionRow() (ActionRow, error) {
-	row := ActionRow{
-		ActionId:             a.ActionId,
-		Type:                 a.Type,
-		TraceId:              a.TraceId,
-		TxHashes:             a.TxHashes,
-		Value:                a.Value,
-		Amount:               a.Amount,
-		StartLt:              *a.StartLt,
-		EndLt:                *a.EndLt,
-		TraceEndLt:           a.TraceEndLt,
-		TraceMcSeqnoEnd:      a.TraceMcSeqnoEnd,
-		TraceEndUtime:        a.TraceEndUtime,
-		StartUtime:           *a.StartUtime,
-		EndUtime:             *a.EndUtime,
-		Source:               a.Source,
-		SourceSecondary:      a.SourceSecondary,
-		Destination:          a.Destination,
-		DestinationSecondary: a.DestinationSecondary,
-		Asset:                a.Asset,
-		AssetSecondary:       a.AssetSecondary,
-		Asset2:               a.Asset2,
-		Asset2Secondary:      a.Asset2Secondary,
-		Opcode:               a.Opcode,
-		Success:              a.Success,
-		TraceExternalHash:    &a.TraceExternalHash,
-		ParentActionId:       a.ParentActionId,
-		AncestorType:         a.AncestorType,
+func (a *Action) ToRawAction() (*models.RawAction, error) {
+	rawAction := &models.RawAction{
+		ActionId:          models.HashType(a.ActionId),
+		Type:              a.Type,
+		TraceId:           (*models.HashType)(a.TraceId),
+		TxHashes:          make([]models.HashType, len(a.TxHashes)),
+		Value:             a.Value,
+		Amount:            a.Amount,
+		TraceExternalHash: (*models.HashType)(&a.TraceExternalHash),
+		Success:           &a.Success,
+		AncestorType:      a.AncestorType,
+		ParentActionId:    a.ParentActionId,
 	}
-	if a.TonTransferData != nil {
-		row.TonTransferContent = a.TonTransferData.Content
-		row.TonTransferEncrypted = &a.TonTransferData.Encrypted
-	}
-	if a.JettonTransferData != nil {
-		row.JettonTransferResponseDestination = a.JettonTransferData.ResponseDestination
-		row.JettonTransferForwardAmount = a.JettonTransferData.ForwardAmount
-		row.JettonTransferQueryId = a.JettonTransferData.QueryId
-		row.JettonTransferCustomPayload = a.JettonTransferData.CustomPayload
-		row.JettonTransferForwardPayload = a.JettonTransferData.ForwardPayload
-		row.JettonTransferComment = a.JettonTransferData.Comment
-		row.JettonTransferIsEncryptedComment = a.JettonTransferData.IsEncryptedComment
-	}
-	if a.NftTransferData != nil {
-		row.NFTTransferIsPurchase = &a.NftTransferData.IsPurchase
-		row.NFTTransferPrice = a.NftTransferData.Price
-		row.NFTTransferQueryId = a.NftTransferData.QueryId
-		row.NFTTransferCustomPayload = a.NftTransferData.CustomPayload
-		row.NFTTransferForwardPayload = a.NftTransferData.ForwardPayload
-		row.NFTTransferForwardAmount = a.NftTransferData.ForwardAmount
-		row.NFTTransferResponseDestination = a.NftTransferData.ResponseDestination
-		row.NFTTransferNFTItemIndex = a.NftTransferData.NftItemIndex
-	}
-	if a.JettonSwapData != nil {
-		row.JettonSwapDex = a.JettonSwapData.Dex
-		row.JettonSwapSender = a.JettonSwapData.Sender
-		row.JettonSwapDexIncomingTransferAmount = a.JettonSwapData.DexIncomingTransfer.Amount
-		row.JettonSwapDexIncomingTransferAsset = a.JettonSwapData.DexIncomingTransfer.Asset
-		row.JettonSwapDexIncomingTransferSource = a.JettonSwapData.DexIncomingTransfer.Source
-		row.JettonSwapDexIncomingTransferDestination = a.JettonSwapData.DexIncomingTransfer.Destination
-		row.JettonSwapDexIncomingTransferSourceJettonWallet = a.JettonSwapData.DexIncomingTransfer.SourceJettonWallet
-		row.JettonSwapDexIncomingTransferDestinationJettonWallet = a.JettonSwapData.DexIncomingTransfer.DestinationJettonWallet
-		row.JettonSwapDexOutgoingTransferAmount = a.JettonSwapData.DexOutgoingTransfer.Amount
-		row.JettonSwapDexOutgoingTransferAsset = a.JettonSwapData.DexOutgoingTransfer.Asset
-		row.JettonSwapDexOutgoingTransferSource = a.JettonSwapData.DexOutgoingTransfer.Source
-		row.JettonSwapDexOutgoingTransferDestination = a.JettonSwapData.DexOutgoingTransfer.Destination
-		row.JettonSwapDexOutgoingTransferSourceJettonWallet = a.JettonSwapData.DexOutgoingTransfer.SourceJettonWallet
-		row.JettonSwapDexOutgoingTransferDestinationJettonWallet = a.JettonSwapData.DexOutgoingTransfer.DestinationJettonWallet
 
-		row.JettonSwapPeerSwaps = a.JettonSwapData.PeerSwaps
+	// Convert TxHashes
+	for i, hash := range a.TxHashes {
+		rawAction.TxHashes[i] = models.HashType(hash)
 	}
+
+	// Handle pointer conversions with nil checks
+	if a.StartLt != nil {
+		rawAction.StartLt = int64(*a.StartLt)
+	}
+	if a.EndLt != nil {
+		rawAction.EndLt = int64(*a.EndLt)
+	}
+	if a.StartUtime != nil {
+		rawAction.StartUtime = int64(*a.StartUtime)
+	}
+	if a.EndUtime != nil {
+		rawAction.EndUtime = int64(*a.EndUtime)
+	}
+	if a.TraceEndLt != nil {
+		rawAction.TraceEndLt = int64(*a.TraceEndLt)
+	}
+	if a.TraceEndUtime != nil {
+		rawAction.TraceEndUtime = int64(*a.TraceEndUtime)
+	}
+	if a.TraceMcSeqnoEnd != nil {
+		rawAction.TraceMcSeqnoEnd = int32(*a.TraceMcSeqnoEnd)
+	}
+	if a.Opcode != nil {
+		opcode := models.OpcodeType(*a.Opcode)
+		rawAction.Opcode = &opcode
+	}
+
+	// Convert address fields
+	rawAction.Source = (*models.AccountAddress)(a.Source)
+	rawAction.SourceSecondary = (*models.AccountAddress)(a.SourceSecondary)
+	rawAction.Destination = (*models.AccountAddress)(a.Destination)
+	rawAction.DestinationSecondary = (*models.AccountAddress)(a.DestinationSecondary)
+	rawAction.Asset = (*models.AccountAddress)(a.Asset)
+	rawAction.AssetSecondary = (*models.AccountAddress)(a.AssetSecondary)
+	rawAction.Asset2 = (*models.AccountAddress)(a.Asset2)
+	rawAction.Asset2Secondary = (*models.AccountAddress)(a.Asset2Secondary)
+
+	// Convert TonTransferData
+	if a.TonTransferData != nil {
+		rawAction.TonTransferContent = a.TonTransferData.Content
+		rawAction.TonTransferEncrypted = &a.TonTransferData.Encrypted
+	}
+
+	// Convert JettonTransferData
+	if a.JettonTransferData != nil {
+		rawAction.JettonTransferResponseDestination = (*models.AccountAddress)(a.JettonTransferData.ResponseDestination)
+		rawAction.JettonTransferForwardAmount = a.JettonTransferData.ForwardAmount
+		rawAction.JettonTransferQueryId = a.JettonTransferData.QueryId
+		rawAction.JettonTransferCustomPayload = a.JettonTransferData.CustomPayload
+		rawAction.JettonTransferForwardPayload = a.JettonTransferData.ForwardPayload
+		rawAction.JettonTransferComment = a.JettonTransferData.Comment
+		rawAction.JettonTransferIsEncryptedComment = a.JettonTransferData.IsEncryptedComment
+	}
+
+	// Convert NftTransferData
+	if a.NftTransferData != nil {
+		rawAction.NFTTransferIsPurchase = &a.NftTransferData.IsPurchase
+		rawAction.NFTTransferPrice = a.NftTransferData.Price
+		rawAction.NFTTransferQueryId = a.NftTransferData.QueryId
+		rawAction.NFTTransferCustomPayload = a.NftTransferData.CustomPayload
+		rawAction.NFTTransferForwardPayload = a.NftTransferData.ForwardPayload
+		rawAction.NFTTransferForwardAmount = a.NftTransferData.ForwardAmount
+		rawAction.NFTTransferResponseDestination = (*models.AccountAddress)(a.NftTransferData.ResponseDestination)
+		rawAction.NFTTransferNFTItemIndex = a.NftTransferData.NftItemIndex
+	}
+
+	// Convert JettonSwapData
+	if a.JettonSwapData != nil {
+		rawAction.JettonSwapDex = a.JettonSwapData.Dex
+		rawAction.JettonSwapSender = (*models.AccountAddress)(a.JettonSwapData.Sender)
+
+		// Convert DexIncomingTransfer
+		rawAction.JettonSwapDexIncomingTransferAmount = a.JettonSwapData.DexIncomingTransfer.Amount
+		rawAction.JettonSwapDexIncomingTransferAsset = (*models.AccountAddress)(a.JettonSwapData.DexIncomingTransfer.Asset)
+		rawAction.JettonSwapDexIncomingTransferSource = (*models.AccountAddress)(a.JettonSwapData.DexIncomingTransfer.Source)
+		rawAction.JettonSwapDexIncomingTransferDestination = (*models.AccountAddress)(a.JettonSwapData.DexIncomingTransfer.Destination)
+		rawAction.JettonSwapDexIncomingTransferSourceJettonWallet = (*models.AccountAddress)(a.JettonSwapData.DexIncomingTransfer.SourceJettonWallet)
+		rawAction.JettonSwapDexIncomingTransferDestinationJettonWallet = (*models.AccountAddress)(a.JettonSwapData.DexIncomingTransfer.DestinationJettonWallet)
+
+		// Convert DexOutgoingTransfer
+		rawAction.JettonSwapDexOutgoingTransferAmount = a.JettonSwapData.DexOutgoingTransfer.Amount
+		rawAction.JettonSwapDexOutgoingTransferAsset = (*models.AccountAddress)(a.JettonSwapData.DexOutgoingTransfer.Asset)
+		rawAction.JettonSwapDexOutgoingTransferSource = (*models.AccountAddress)(a.JettonSwapData.DexOutgoingTransfer.Source)
+		rawAction.JettonSwapDexOutgoingTransferDestination = (*models.AccountAddress)(a.JettonSwapData.DexOutgoingTransfer.Destination)
+		rawAction.JettonSwapDexOutgoingTransferSourceJettonWallet = (*models.AccountAddress)(a.JettonSwapData.DexOutgoingTransfer.SourceJettonWallet)
+		rawAction.JettonSwapDexOutgoingTransferDestinationJettonWallet = (*models.AccountAddress)(a.JettonSwapData.DexOutgoingTransfer.DestinationJettonWallet)
+
+		rawAction.JettonSwapMinOutAmount = a.JettonSwapData.MinOutAmount
+
+		// Convert PeerSwaps
+		rawAction.JettonSwapPeerSwaps = make([]models.RawActionJettonSwapPeerSwap, len(a.JettonSwapData.PeerSwaps))
+		for i, peerSwap := range a.JettonSwapData.PeerSwaps {
+			rawAction.JettonSwapPeerSwaps[i] = models.RawActionJettonSwapPeerSwap{
+				AssetIn:   (*models.AccountAddress)(peerSwap.AssetIn),
+				AssetOut:  (*models.AccountAddress)(peerSwap.AssetOut),
+				AmountIn:  peerSwap.AmountIn,
+				AmountOut: peerSwap.AmountOut,
+			}
+		}
+	}
+
+	// Convert ChangeDnsRecordData
 	if a.ChangeDnsRecordData != nil {
 		var dnsRecordsFlag *int64
 		if a.ChangeDnsRecordData.Flags != nil {
 			v, err := strconv.ParseInt(*a.ChangeDnsRecordData.Flags, 10, 64)
 			if err != nil {
-				return ActionRow{}, err
+				return nil, fmt.Errorf("failed to parse DNS record flags: %w", err)
 			}
 			dnsRecordsFlag = &v
 		}
-		row.ChangeDNSRecordKey = a.ChangeDnsRecordData.Key
-		row.ChangeDNSRecordValueSchema = a.ChangeDnsRecordData.ValueSchema
-		row.ChangeDNSRecordValue = a.ChangeDnsRecordData.Value
-		row.ChangeDNSRecordFlags = dnsRecordsFlag
+		rawAction.ChangeDNSRecordKey = a.ChangeDnsRecordData.Key
+		rawAction.ChangeDNSRecordValueSchema = a.ChangeDnsRecordData.ValueSchema
+		rawAction.ChangeDNSRecordValue = a.ChangeDnsRecordData.Value
+		rawAction.ChangeDNSRecordFlags = dnsRecordsFlag
 	}
+
+	// Convert NftMintData
 	if a.NftMintData != nil {
-		row.NFTMintNFTItemIndex = a.NftMintData.NftItemIndex
+		rawAction.NFTMintNFTItemIndex = a.NftMintData.NftItemIndex
 	}
+
+	// Convert DexDepositLiquidityData
 	if a.DexDepositLiquidityData != nil {
-		row.DexDepositLiquidityDataDex = a.DexDepositLiquidityData.Dex
-		row.DexDepositLiquidityDataAmount1 = a.DexDepositLiquidityData.Amount1
-		row.DexDepositLiquidityDataAmount2 = a.DexDepositLiquidityData.Amount2
-		row.DexDepositLiquidityDataAsset1 = a.DexDepositLiquidityData.Asset1
-		row.DexDepositLiquidityDataAsset2 = a.DexDepositLiquidityData.Asset2
-		row.DexDepositLiquidityDataUserJettonWallet1 = a.DexDepositLiquidityData.UserJettonWallet1
-		row.DexDepositLiquidityDataUserJettonWallet2 = a.DexDepositLiquidityData.UserJettonWallet2
-		row.DexDepositLiquidityDataLpTokensMinted = a.DexDepositLiquidityData.LpTokensMinted
-		row.DexDepositLiquidityDataTargetAsset1 = a.DexDepositLiquidityData.TargetAsset1
-		row.DexDepositLiquidityDataTargetAsset2 = a.DexDepositLiquidityData.TargetAsset2
-		row.DexDepositLiquidityDataTargetAmount1 = a.DexDepositLiquidityData.TargetAmount1
-		row.DexDepositLiquidityDataTargetAmount2 = a.DexDepositLiquidityData.TargetAmount2
-		row.DexDepositLiquidityDataVaultExcesses = a.DexDepositLiquidityData.VaultExcesses
+		rawAction.DexDepositLiquidityDataDex = a.DexDepositLiquidityData.Dex
+		rawAction.DexDepositLiquidityDataAmount1 = a.DexDepositLiquidityData.Amount1
+		rawAction.DexDepositLiquidityDataAmount2 = a.DexDepositLiquidityData.Amount2
+		rawAction.DexDepositLiquidityDataAsset1 = (*models.AccountAddress)(a.DexDepositLiquidityData.Asset1)
+		rawAction.DexDepositLiquidityDataAsset2 = (*models.AccountAddress)(a.DexDepositLiquidityData.Asset2)
+		rawAction.DexDepositLiquidityDataUserJettonWallet1 = (*models.AccountAddress)(a.DexDepositLiquidityData.UserJettonWallet1)
+		rawAction.DexDepositLiquidityDataUserJettonWallet2 = (*models.AccountAddress)(a.DexDepositLiquidityData.UserJettonWallet2)
+		rawAction.DexDepositLiquidityDataLpTokensMinted = a.DexDepositLiquidityData.LpTokensMinted
+		rawAction.DexDepositLiquidityDataTargetAsset1 = (*models.AccountAddress)(a.DexDepositLiquidityData.TargetAsset1)
+		rawAction.DexDepositLiquidityDataTargetAsset2 = (*models.AccountAddress)(a.DexDepositLiquidityData.TargetAsset2)
+		rawAction.DexDepositLiquidityDataTargetAmount1 = a.DexDepositLiquidityData.TargetAmount1
+		rawAction.DexDepositLiquidityDataTargetAmount2 = a.DexDepositLiquidityData.TargetAmount2
+		rawAction.DexDepositLiquidityDataTickLower = a.DexDepositLiquidityData.TickLower
+		rawAction.DexDepositLiquidityDataTickUpper = a.DexDepositLiquidityData.TickUpper
+		rawAction.DexDepositLiquidityDataNFTIndex = a.DexDepositLiquidityData.NFTIndex
+		rawAction.DexDepositLiquidityDataNFTAddress = (*models.AccountAddress)(a.DexDepositLiquidityData.NFTAddress)
+
+		// Convert VaultExcesses
+		rawAction.DexDepositLiquidityDataVaultExcesses = make([]models.RawActionVaultExcessEntry, len(a.DexDepositLiquidityData.VaultExcesses))
+		for i, excess := range a.DexDepositLiquidityData.VaultExcesses {
+			rawAction.DexDepositLiquidityDataVaultExcesses[i] = models.RawActionVaultExcessEntry{
+				Asset:  (*models.AccountAddress)(excess.Asset),
+				Amount: excess.Amount,
+			}
+		}
 	}
+
+	// Convert DexWithdrawLiquidityData
 	if a.DexWithdrawLiquidityData != nil {
-		row.DexWithdrawLiquidityDataDex = a.DexWithdrawLiquidityData.Dex
-		row.DexWithdrawLiquidityDataAmount1 = a.DexWithdrawLiquidityData.Amount1
-		row.DexWithdrawLiquidityDataAmount2 = a.DexWithdrawLiquidityData.Amount2
-		row.DexWithdrawLiquidityDataAsset1Out = a.DexWithdrawLiquidityData.Asset1Out
-		row.DexWithdrawLiquidityDataAsset2Out = a.DexWithdrawLiquidityData.Asset2Out
-		row.DexWithdrawLiquidityDataUserJettonWallet1 = a.DexWithdrawLiquidityData.UserJettonWallet1
-		row.DexWithdrawLiquidityDataUserJettonWallet2 = a.DexWithdrawLiquidityData.UserJettonWallet2
-		row.DexWithdrawLiquidityDataDexJettonWallet1 = a.DexWithdrawLiquidityData.DexJettonWallet1
-		row.DexWithdrawLiquidityDataDexJettonWallet2 = a.DexWithdrawLiquidityData.DexJettonWallet2
-		row.DexWithdrawLiquidityDataLpTokensBurnt = a.DexWithdrawLiquidityData.LpTokensBurnt
+		rawAction.DexWithdrawLiquidityDataDex = a.DexWithdrawLiquidityData.Dex
+		rawAction.DexWithdrawLiquidityDataAmount1 = a.DexWithdrawLiquidityData.Amount1
+		rawAction.DexWithdrawLiquidityDataAmount2 = a.DexWithdrawLiquidityData.Amount2
+		rawAction.DexWithdrawLiquidityDataAsset1Out = (*models.AccountAddress)(a.DexWithdrawLiquidityData.Asset1Out)
+		rawAction.DexWithdrawLiquidityDataAsset2Out = (*models.AccountAddress)(a.DexWithdrawLiquidityData.Asset2Out)
+		rawAction.DexWithdrawLiquidityDataUserJettonWallet1 = (*models.AccountAddress)(a.DexWithdrawLiquidityData.UserJettonWallet1)
+		rawAction.DexWithdrawLiquidityDataUserJettonWallet2 = (*models.AccountAddress)(a.DexWithdrawLiquidityData.UserJettonWallet2)
+		rawAction.DexWithdrawLiquidityDataDexJettonWallet1 = (*models.AccountAddress)(a.DexWithdrawLiquidityData.DexJettonWallet1)
+		rawAction.DexWithdrawLiquidityDataDexJettonWallet2 = (*models.AccountAddress)(a.DexWithdrawLiquidityData.DexJettonWallet2)
+		rawAction.DexWithdrawLiquidityDataLpTokensBurnt = a.DexWithdrawLiquidityData.LpTokensBurnt
+		rawAction.DexWithdrawLiquidityDataBurnedNFTIndex = a.DexWithdrawLiquidityData.BurnedNFTIndex
+		rawAction.DexWithdrawLiquidityDataBurnedNFTAddress = (*models.AccountAddress)(a.DexWithdrawLiquidityData.BurnedNFTAddress)
+		rawAction.DexWithdrawLiquidityDataTickLower = a.DexWithdrawLiquidityData.TickLower
+		rawAction.DexWithdrawLiquidityDataTickUpper = a.DexWithdrawLiquidityData.TickUpper
 	}
+
+	// Convert StakingData
 	if a.StakingData != nil {
-		row.StakingDataProvider = a.StakingData.Provider
-		row.StakingDataTsNft = a.StakingData.TsNft
-		row.StakingTokensBurnt = a.StakingData.TokensBurnt
-		row.StakingTokensMinted = a.StakingData.TokensMinted
+		rawAction.StakingDataProvider = a.StakingData.Provider
+		rawAction.StakingDataTsNft = (*models.AccountAddress)(a.StakingData.TsNft)
+		rawAction.StakingDataTokensBurnt = a.StakingData.TokensBurnt
+		rawAction.StakingDataTokensMinted = a.StakingData.TokensMinted
 	}
-	return row, nil
+
+	// Convert ToncoDeployPoolData
+	if a.ToncoDeployPoolData != nil {
+		rawAction.ToncoDeployPoolJetton0RouterWallet = (*models.AccountAddress)(a.ToncoDeployPoolData.Jetton0RouterWallet)
+		rawAction.ToncoDeployPoolJetton1RouterWallet = (*models.AccountAddress)(a.ToncoDeployPoolData.Jetton1RouterWallet)
+		rawAction.ToncoDeployPoolJetton0Minter = (*models.AccountAddress)(a.ToncoDeployPoolData.Jetton0Minter)
+		rawAction.ToncoDeployPoolJetton1Minter = (*models.AccountAddress)(a.ToncoDeployPoolData.Jetton1Minter)
+		rawAction.ToncoDeployPoolTickSpacing = a.ToncoDeployPoolData.TickSpacing
+		rawAction.ToncoDeployPoolInitialPriceX96 = a.ToncoDeployPoolData.InitialPriceX96
+		rawAction.ToncoDeployPoolProtocolFee = a.ToncoDeployPoolData.ProtocolFee
+		rawAction.ToncoDeployPoolLpFeeBase = a.ToncoDeployPoolData.LpFeeBase
+		rawAction.ToncoDeployPoolLpFeeCurrent = a.ToncoDeployPoolData.LpFeeCurrent
+		rawAction.ToncoDeployPoolPoolActive = a.ToncoDeployPoolData.PoolActive
+	}
+
+	// Convert MultisigCreateOrderData
+	if a.MultisigCreateOrderData != nil {
+		rawAction.MultisigCreateOrderQueryId = a.MultisigCreateOrderData.QueryId
+		rawAction.MultisigCreateOrderOrderSeqno = a.MultisigCreateOrderData.OrderSeqno
+		rawAction.MultisigCreateOrderIsCreatedBySigner = a.MultisigCreateOrderData.IsCreatedBySigner
+		rawAction.MultisigCreateOrderIsSignedByCreator = a.MultisigCreateOrderData.IsSignedByCreator
+		rawAction.MultisigCreateOrderCreatorIndex = a.MultisigCreateOrderData.CreatorIndex
+		rawAction.MultisigCreateOrderExpirationDate = a.MultisigCreateOrderData.ExpirationDate
+		rawAction.MultisigCreateOrderOrderBoc = a.MultisigCreateOrderData.OrderBoc
+	}
+
+	// Convert MultisigApproveData
+	if a.MultisigApproveData != nil {
+		rawAction.MultisigApproveSignerIndex = a.MultisigApproveData.SignerIndex
+		rawAction.MultisigApproveExitCode = a.MultisigApproveData.ExitCode
+	}
+
+	// Convert MultisigExecuteData
+	if a.MultisigExecuteData != nil {
+		rawAction.MultisigExecuteQueryId = a.MultisigExecuteData.QueryId
+		rawAction.MultisigExecuteOrderSeqno = a.MultisigExecuteData.OrderSeqno
+		rawAction.MultisigExecuteExpirationDate = a.MultisigExecuteData.ExpirationDate
+		rawAction.MultisigExecuteApprovalsNum = a.MultisigExecuteData.ApprovalsNum
+		rawAction.MultisigExecuteSignersHash = a.MultisigExecuteData.SignersHash
+		rawAction.MultisigExecuteOrderBoc = a.MultisigExecuteData.OrderBoc
+	}
+
+	// Convert VestingSendMessageData
+	if a.VestingSendMessageData != nil {
+		rawAction.VestingSendMessageQueryId = a.VestingSendMessageData.QueryId
+		rawAction.VestingSendMessageMessageBoc = a.VestingSendMessageData.MessageBoc
+	}
+
+	// Convert VestingAddWhitelistData
+	if a.VestingAddWhitelistData != nil {
+		rawAction.VestingAddWhitelistQueryId = a.VestingAddWhitelistData.QueryId
+		rawAction.VestingAddWhitelistAccountsAdded = make([]models.AccountAddress, len(a.VestingAddWhitelistData.AccountsAdded))
+		for i, addr := range a.VestingAddWhitelistData.AccountsAdded {
+			rawAction.VestingAddWhitelistAccountsAdded[i] = models.AccountAddress(addr)
+		}
+	}
+
+	// Convert EvaaSupplyData
+	if a.EvaaSupplyData != nil {
+		rawAction.EvaaSupplySenderJettonWallet = (*models.AccountAddress)(a.EvaaSupplyData.SenderJettonWallet)
+		rawAction.EvaaSupplyRecipientJettonWallet = (*models.AccountAddress)(a.EvaaSupplyData.RecipientJettonWallet)
+		rawAction.EvaaSupplyMasterJettonWallet = (*models.AccountAddress)(a.EvaaSupplyData.MasterJettonWallet)
+		rawAction.EvaaSupplyMaster = (*models.AccountAddress)(a.EvaaSupplyData.Master)
+		rawAction.EvaaSupplyAssetId = a.EvaaSupplyData.AssetId
+		rawAction.EvaaSupplyIsTon = a.EvaaSupplyData.IsTon
+	}
+
+	// Convert EvaaWithdrawData
+	if a.EvaaWithdrawData != nil {
+		rawAction.EvaaWithdrawRecipientJettonWallet = (*models.AccountAddress)(a.EvaaWithdrawData.RecipientJettonWallet)
+		rawAction.EvaaWithdrawMasterJettonWallet = (*models.AccountAddress)(a.EvaaWithdrawData.MasterJettonWallet)
+		rawAction.EvaaWithdrawMaster = (*models.AccountAddress)(a.EvaaWithdrawData.Master)
+		rawAction.EvaaWithdrawFailReason = a.EvaaWithdrawData.FailReason
+		rawAction.EvaaWithdrawAssetId = a.EvaaWithdrawData.AssetId
+	}
+
+	// Convert EvaaLiquidateData
+	if a.EvaaLiquidateData != nil {
+		rawAction.EvaaLiquidateFailReason = a.EvaaLiquidateData.FailReason
+		rawAction.EvaaLiquidateDebtAmount = a.EvaaLiquidateData.DebtAmount
+		rawAction.EvaaLiquidateAssetId = a.EvaaLiquidateData.AssetId
+	}
+
+	// Convert JvaultClaimData
+	if a.JvaultClaimData != nil {
+		rawAction.JvaultClaimClaimedJettons = make([]models.AccountAddress, len(a.JvaultClaimData.ClaimedJettons))
+		for i, jetton := range a.JvaultClaimData.ClaimedJettons {
+			rawAction.JvaultClaimClaimedJettons[i] = models.AccountAddress(jetton)
+		}
+		rawAction.JvaultClaimClaimedAmounts = a.JvaultClaimData.ClaimedAmounts
+	}
+
+	// Convert JvaultStakeData
+	if a.JvaultStakeData != nil {
+		rawAction.JvaultStakePeriod = a.JvaultStakeData.Period
+		rawAction.JvaultStakeMintedStakeJettons = a.JvaultStakeData.MintedStakeJettons
+		rawAction.JvaultStakeStakeWallet = (*models.AccountAddress)(a.JvaultStakeData.StakeWallet)
+	}
+
+	return rawAction, nil
 }

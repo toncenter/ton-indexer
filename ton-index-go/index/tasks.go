@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"errors"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 )
 
@@ -10,7 +11,7 @@ var BackgroundTaskManager *TaskManager
 
 type TaskManager struct {
 	dbClient    *DbClient
-	taskChannel chan []BackgroundTask
+	taskChannel chan []models.BackgroundTask
 }
 
 func NewBackgroundTaskManager(pg_dsn string, channel_size int, min_conns int, max_conns int) (*TaskManager, error) {
@@ -37,7 +38,7 @@ func NewBackgroundTaskManager(pg_dsn string, channel_size int, min_conns int, ma
 	}
 	return &TaskManager{
 		dbClient:    client,
-		taskChannel: make(chan []BackgroundTask, channel_size),
+		taskChannel: make(chan []models.BackgroundTask, channel_size),
 	}, nil
 }
 func (manager *TaskManager) Start(ctx context.Context) {
@@ -84,7 +85,7 @@ func (manager *TaskManager) run(ctx context.Context) {
 	}
 }
 
-func (manager *TaskManager) EnqueueTasksIfPossible(tasks []BackgroundTask) bool {
+func (manager *TaskManager) EnqueueTasksIfPossible(tasks []models.BackgroundTask) bool {
 	select {
 	case manager.taskChannel <- tasks:
 		return true

@@ -1,103 +1,106 @@
 package index
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+)
 
 // responses
 type MasterchainInfo struct {
-	Last  *Block `json:"last"`
-	First *Block `json:"first"`
+	Last  *models.Block `json:"last"`
+	First *models.Block `json:"first"`
 } // @name MasterchainInfo
 
 type BlocksResponse struct {
-	Blocks []Block `json:"blocks"`
+	Blocks []models.Block `json:"blocks"`
 } // @name BlocksResponse
 
 type TransactionsResponse struct {
-	Transactions []Transaction `json:"transactions"`
-	AddressBook  AddressBook   `json:"address_book"`
+	Transactions []models.Transaction `json:"transactions"`
+	AddressBook  models.AddressBook   `json:"address_book"`
 } // @name TransactionsResponse
 
 type MessagesResponse struct {
-	Messages    []Message   `json:"messages"`
-	AddressBook AddressBook `json:"address_book"`
-	Metadata    Metadata    `json:"metadata"`
+	Messages    []models.Message   `json:"messages"`
+	AddressBook models.AddressBook `json:"address_book"`
+	Metadata    models.Metadata    `json:"metadata"`
 } // @name MessagesResponse
 
 type AccountStatesResponse struct {
-	Accounts    []AccountStateFull `json:"accounts"`
-	AddressBook AddressBook        `json:"address_book"`
-	Metadata    Metadata           `json:"metadata"`
+	Accounts    []models.AccountStateFull `json:"accounts"`
+	AddressBook models.AddressBook        `json:"address_book"`
+	Metadata    models.Metadata           `json:"metadata"`
 } // @name AccountStatesResponse
 
 type WalletStatesResponse struct {
-	Wallets     []WalletState `json:"wallets"`
-	AddressBook AddressBook   `json:"address_book"`
-	Metadata    Metadata      `json:"metadata"`
+	Wallets     []models.WalletState `json:"wallets"`
+	AddressBook models.AddressBook   `json:"address_book"`
+	Metadata    models.Metadata      `json:"metadata"`
 } // @name WalletStatesResponse
 
 type NFTCollectionsResponse struct {
-	Collections []NFTCollection `json:"nft_collections"`
-	AddressBook AddressBook     `json:"address_book"`
-	Metadata    Metadata        `json:"metadata"`
+	Collections []models.NFTCollection `json:"nft_collections"`
+	AddressBook models.AddressBook     `json:"address_book"`
+	Metadata    models.Metadata        `json:"metadata"`
 } // @name NFTCollectionsResponse
 
 type NFTItemsResponse struct {
-	Items       []NFTItem   `json:"nft_items"`
-	AddressBook AddressBook `json:"address_book"`
-	Metadata    Metadata    `json:"metadata"`
+	Items       []models.NFTItem   `json:"nft_items"`
+	AddressBook models.AddressBook `json:"address_book"`
+	Metadata    models.Metadata    `json:"metadata"`
 } // @name NFTItemsResponse
 
 type NFTTransfersResponse struct {
-	Transfers   []NFTTransfer `json:"nft_transfers"`
-	AddressBook AddressBook   `json:"address_book"`
-	Metadata    Metadata      `json:"metadata"`
+	Transfers   []models.NFTTransfer `json:"nft_transfers"`
+	AddressBook models.AddressBook   `json:"address_book"`
+	Metadata    models.Metadata      `json:"metadata"`
 } // @name NFTTransfersResponse
 
 type JettonMastersResponse struct {
-	Masters     []JettonMaster `json:"jetton_masters"`
-	AddressBook AddressBook    `json:"address_book"`
-	Metadata    Metadata       `json:"metadata"`
+	Masters     []models.JettonMaster `json:"jetton_masters"`
+	AddressBook models.AddressBook    `json:"address_book"`
+	Metadata    models.Metadata       `json:"metadata"`
 } // @name JettonMastersResponse
 
 type JettonWalletsResponse struct {
-	Wallets     []JettonWallet `json:"jetton_wallets"`
-	AddressBook AddressBook    `json:"address_book"`
-	Metadata    Metadata       `json:"metadata"`
+	Wallets     []models.JettonWallet `json:"jetton_wallets"`
+	AddressBook models.AddressBook    `json:"address_book"`
+	Metadata    models.Metadata       `json:"metadata"`
 } // @name JettonWalletsResponse
 
 type JettonTransfersResponse struct {
-	Transfers   []JettonTransfer `json:"jetton_transfers"`
-	AddressBook AddressBook      `json:"address_book"`
-	Metadata    Metadata         `json:"metadata"`
+	Transfers   []models.JettonTransfer `json:"jetton_transfers"`
+	AddressBook models.AddressBook      `json:"address_book"`
+	Metadata    models.Metadata         `json:"metadata"`
 } // @name JettonTransfersResponse
 
 type JettonBurnsResponse struct {
-	Burns       []JettonBurn `json:"jetton_burns"`
-	AddressBook AddressBook  `json:"address_book"`
-	Metadata    Metadata     `json:"metadata"`
+	Burns       []models.JettonBurn `json:"jetton_burns"`
+	AddressBook models.AddressBook  `json:"address_book"`
+	Metadata    models.Metadata     `json:"metadata"`
 } // @name JettonBurnsResponse
 
 type TracesResponse struct {
-	Traces      []Trace     `json:"traces"`
-	AddressBook AddressBook `json:"address_book"`
-	Metadata    Metadata    `json:"metadata"`
+	Traces      []models.Trace     `json:"traces"`
+	AddressBook models.AddressBook `json:"address_book"`
+	Metadata    models.Metadata    `json:"metadata"`
 } // @name TracesResponse
 
 type DeprecatedEventsResponse struct {
-	Events      []Trace     `json:"events"`
-	AddressBook AddressBook `json:"address_book"`
-	Metadata    Metadata    `json:"metadata"`
+	Events      []models.Trace     `json:"events"`
+	AddressBook models.AddressBook `json:"address_book"`
+	Metadata    models.Metadata    `json:"metadata"`
 } // @name DeprecatedEventsResponse
 
 type ActionsResponse struct {
-	Actions     []Action    `json:"actions"`
-	AddressBook AddressBook `json:"address_book"`
-	Metadata    Metadata    `json:"metadata"`
+	Actions     []models.Action    `json:"actions"`
+	AddressBook models.AddressBook `json:"address_book"`
+	Metadata    models.Metadata    `json:"metadata"`
 } // @name ActionsResponse
 
 type DNSRecordsResponse struct {
-	Records     []DNSRecord `json:"records"`
-	AddressBook AddressBook `json:"address_book"`
+	Records     []models.DNSRecord `json:"records"`
+	AddressBook models.AddressBook `json:"address_book"`
 } // @name DNSRecordsResponse
 
 // errors

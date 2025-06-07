@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"net/url"
 	"reflect"
@@ -22,7 +23,7 @@ func getAccountAddressFriendly(account string, code_hash *string, is_testnet boo
 		return "addr_none"
 	}
 	bouncable := true
-	if code_hash == nil || WalletsHashMap[*code_hash] {
+	if code_hash == nil || models.WalletsHashMap[*code_hash] {
 		bouncable = false
 	}
 	addr.SetBounce(bouncable)
@@ -37,7 +38,7 @@ func getSortOrder(order SortType) (string, error) {
 	case "asc", "a":
 		return "asc", nil
 	}
-	return "", IndexError{Code: 422, Message: "wrong value for sort parameter"}
+	return "", models.IndexError{Code: 422, Message: "wrong value for sort parameter"}
 }
 
 // query builders
@@ -51,7 +52,7 @@ func limitQuery(lim LimitRequest, settings RequestSettings) (string, error) {
 	if lim.Limit != nil {
 		limit := max(1, *lim.Limit)
 		if limit > int32(settings.MaxLimit) {
-			return "", IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
+			return "", models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
 		}
 		query += fmt.Sprintf(" limit %d", limit)
 	}
@@ -471,7 +472,7 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 	}
 	if v := nft_req.Index; v != nil {
 		if nft_req.CollectionAddress == nil {
-			return ``, IndexError{Code: 422, Message: "index parameter is not allowed without the collection_address"}
+			return ``, models.IndexError{Code: 422, Message: "index parameter is not allowed without the collection_address"}
 		}
 		filter_str := filterByArray("N.index", v)
 		if len(filter_str) > 0 {
@@ -1174,15 +1175,15 @@ func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, s
 }
 
 // query implementation functions
-func queryBlocksImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Block, error) {
+func queryBlocksImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.Block, error) {
 	// blocks
-	blks := []Block{}
+	blks := []models.Block{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		select {
 		case <-ctx.Done():
@@ -1195,21 +1196,21 @@ func queryBlocksImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 			if blk, err := ScanBlock(rows); err == nil {
 				blks = append(blks, *blk)
 			} else {
-				return nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
 	return blks, nil
 }
 
-func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Message, error) {
-	msgs := []Message{}
+func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.Message, error) {
+	msgs := []models.Message{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		// select {
 		// case <-ctx.Done():
@@ -1221,12 +1222,12 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSetting
 		for rows.Next() {
 			msg, err := ScanMessageWithContent(rows)
 			if err != nil {
-				return nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 			msgs = append(msgs, *msg)
 		}
 		if rows.Err() != nil {
-			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
 	return msgs, nil
@@ -1238,7 +1239,7 @@ func queryBlockExists(seqno int32, conn *pgxpool.Conn, settings RequestSettings)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
-		return false, IndexError{Code: 500, Message: err.Error()}
+		return false, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	seqnos := []int32{}
@@ -1250,21 +1251,21 @@ func queryBlockExists(seqno int32, conn *pgxpool.Conn, settings RequestSettings)
 		seqnos = append(seqnos, s)
 	}
 	if rows.Err() != nil {
-		return false, IndexError{Code: 500, Message: rows.Err().Error()}
+		return false, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 	return len(seqnos) > 0, nil
 }
 
-func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Transaction, error) {
+func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.Transaction, error) {
 	// transactions
-	txs := []Transaction{}
-	txs_map := map[HashType]int{}
+	txs := []models.Transaction{}
+	txs_map := map[models.HashType]int{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		// select {
 		// case <-ctx.Done():
@@ -1278,11 +1279,11 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 				txs = append(txs, *tx)
 				txs_map[tx.Hash] = len(txs) - 1
 			} else {
-				return nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if rows.Err() != nil {
-			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
 
@@ -1305,9 +1306,9 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 
 		acsts, err := queryAccountStatesImpl(query, conn, settings)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
-		acsts_map := make(map[HashType]*AccountState)
+		acsts_map := make(map[models.HashType]*models.AccountState)
 		for _, a := range acsts {
 			acsts_map[a.Hash] = &a
 		}
@@ -1333,7 +1334,7 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 
 		msgs, err := queryMessagesImpl(query, conn, settings)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 
 		for _, msg := range msgs {
@@ -1372,7 +1373,7 @@ func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		// select {
 		// case <-ctx.Done():
@@ -1390,13 +1391,13 @@ func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool
 			txs = append(txs, tx)
 		}
 		if rows.Err() != nil {
-			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
 	return txs, nil
 }
 
-func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
+func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (models.Metadata, error) {
 	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra, n.index from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1)" +
 		" union all " +
 		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1)" +
@@ -1407,27 +1408,27 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	defer rows.Close()
 
-	tasks := []BackgroundTask{}
-	token_info_map := map[string][]TokenInfo{}
+	tasks := []models.BackgroundTask{}
+	token_info_map := map[string][]models.TokenInfo{}
 
 	for rows.Next() {
-		var row TokenInfo
+		var row models.TokenInfo
 		err := rows.Scan(&row.Address, &row.Valid, &row.Type, &row.Name, &row.Symbol, &row.Description, &row.Image, &row.Extra, &row.NftIndex)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		if row.Valid == nil {
 			data := map[string]interface{}{
 				"address": row.Address,
 				"type":    row.Type,
 			}
-			tasks = append(tasks, BackgroundTask{Type: "fetch_metadata", Data: data})
-			token_info_map[row.Address] = append(token_info_map[row.Address], TokenInfo{
+			tasks = append(tasks, models.BackgroundTask{Type: "fetch_metadata", Data: data})
+			token_info_map[row.Address] = append(token_info_map[row.Address], models.TokenInfo{
 				Address:  row.Address,
 				Type:     row.Type,
 				NftIndex: row.NftIndex,
@@ -1437,12 +1438,12 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 			row.Indexed = true
 
 			if _, ok := token_info_map[*row.Type]; !ok {
-				token_info_map[row.Address] = []TokenInfo{}
+				token_info_map[row.Address] = []models.TokenInfo{}
 			}
 			if *row.Valid {
 				token_info_map[row.Address] = append(token_info_map[row.Address], row)
 			} else {
-				token_info_map[row.Address] = append(token_info_map[row.Address], TokenInfo{
+				token_info_map[row.Address] = append(token_info_map[row.Address], models.TokenInfo{
 					Address:  row.Address,
 					Indexed:  true,
 					Valid:    row.Valid,
@@ -1452,13 +1453,13 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 			}
 		}
 	}
-	metadata := Metadata{}
+	metadata := models.Metadata{}
 	for addr, infos := range token_info_map {
 		indexed := true
 		for _, info := range infos {
 			indexed = indexed && info.Indexed
 		}
-		metadata[addr] = AddressMetadata{
+		metadata[addr] = models.AddressMetadata{
 			TokenInfo: infos,
 			IsIndexed: indexed,
 		}
@@ -1470,7 +1471,7 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 	return metadata, nil
 }
 
-func SubstituteImgproxyBaseUrl(metadata *Metadata, base_url string) {
+func SubstituteImgproxyBaseUrl(metadata *models.Metadata, base_url string) {
 	proxied_fields := []string{"_image_small", "_image_medium", "_image_big"}
 
 	for _, addr_meta := range *metadata {
@@ -1494,15 +1495,15 @@ func SubstituteImgproxyBaseUrl(metadata *Metadata, base_url string) {
 	}
 }
 
-func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
-	book := AddressBook{}
+func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (models.AddressBook, error) {
+	book := models.AddressBook{}
 	quote_addr_list := []string{}
 	for _, item := range addr_list {
 		quote_addr_list = append(quote_addr_list, fmt.Sprintf("'%s'", item))
 	}
 
 	// read address book first
-	book_tmp := AddressBook{}
+	book_tmp := models.AddressBook{}
 	addr_list_str := strings.Join(quote_addr_list, ",")
 	{
 		query := fmt.Sprintf(`SELECT account, code_hash FROM latest_account_states las
@@ -1511,7 +1512,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		defer rows.Close()
 
@@ -1520,13 +1521,13 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 			var code_hash *string
 			if err := rows.Scan(&account, &code_hash); err == nil {
 				addr_str := getAccountAddressFriendly(account, code_hash, settings.IsTestnet)
-				book_tmp[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: &addr_str, Domain: nil}
+				book_tmp[strings.Trim(account, " ")] = models.AddressBookRow{UserFriendly: &addr_str, Domain: nil}
 			} else {
-				return nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if rows.Err() != nil {
-			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
 
@@ -1540,7 +1541,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		defer rows.Close()
 
@@ -1553,18 +1554,18 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 					book_tmp[account] = book_rec
 				}
 			} else {
-				return nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if rows.Err() != nil {
-			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
 
 	for _, addr := range addr_list {
 		account := ``
 		if addr_val := AccountAddressConverter(addr); addr_val.IsValid() {
-			if addr_str, ok := addr_val.Interface().(AccountAddress); ok {
+			if addr_str, ok := addr_val.Interface().(models.AccountAddress); ok {
 				account = string(addr_str)
 			}
 		}
@@ -1572,20 +1573,20 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 			book[addr] = rec
 		} else {
 			addr_str := getAccountAddressFriendly(account, nil, settings.IsTestnet)
-			book[addr] = AddressBookRow{UserFriendly: &addr_str, Domain: nil}
+			book[addr] = models.AddressBookRow{UserFriendly: &addr_str, Domain: nil}
 		}
 	}
 	return book, nil
 }
 
-func queryAccountStatesImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]AccountState, error) {
-	acsts := []AccountState{}
+func queryAccountStatesImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.AccountState, error) {
+	acsts := []models.AccountState{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		// select {
 		// case <-ctx.Done():
@@ -1598,24 +1599,24 @@ func queryAccountStatesImpl(query string, conn *pgxpool.Conn, settings RequestSe
 			if acst, err := ScanAccountState(rows); err == nil {
 				acsts = append(acsts, *acst)
 			} else {
-				return nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if rows.Err() != nil {
-			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
 	return acsts, nil
 }
 
-func queryAccountStateFullImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]AccountStateFull, error) {
-	acsts := []AccountStateFull{}
+func queryAccountStateFullImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.AccountStateFull, error) {
+	acsts := []models.AccountStateFull{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		// select {
 		// case <-ctx.Done():
@@ -1628,24 +1629,24 @@ func queryAccountStateFullImpl(query string, conn *pgxpool.Conn, settings Reques
 			if acst, err := ScanAccountStateFull(rows); err == nil {
 				acsts = append(acsts, *acst)
 			} else {
-				return nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if rows.Err() != nil {
-			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
 	return acsts, nil
 }
 
-func queryTopAccountBalancesImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]AccountBalance, error) {
-	acsts := []AccountBalance{}
+func queryTopAccountBalancesImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.AccountBalance, error) {
+	acsts := []models.AccountBalance{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		defer rows.Close()
 
@@ -1653,22 +1654,22 @@ func queryTopAccountBalancesImpl(query string, conn *pgxpool.Conn, settings Requ
 			if acst, err := ScanAccountBalance(rows); err == nil {
 				acsts = append(acsts, *acst)
 			} else {
-				return nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if rows.Err() != nil {
-			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
 	return acsts, nil
 }
 
-func queryNFTCollectionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]NFTCollection, error) {
+func queryNFTCollectionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.NFTCollection, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	// select {
 	// case <-ctx.Done():
@@ -1677,27 +1678,27 @@ func queryNFTCollectionsImpl(query string, conn *pgxpool.Conn, settings RequestS
 	// }
 	defer rows.Close()
 
-	nfts := []NFTCollection{}
+	nfts := []models.NFTCollection{}
 	for rows.Next() {
 		if nft, err := ScanNFTCollection(rows); err == nil {
 			nfts = append(nfts, *nft)
 		} else {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if rows.Err() != nil {
-		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 
 	return nfts, nil
 }
 
-func queryNFTItemsWithCollectionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]NFTItem, error) {
+func queryNFTItemsWithCollectionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.NFTItem, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	// select {
 	// case <-ctx.Done():
@@ -1706,26 +1707,26 @@ func queryNFTItemsWithCollectionsImpl(query string, conn *pgxpool.Conn, settings
 	// }
 	defer rows.Close()
 
-	nfts := []NFTItem{}
+	nfts := []models.NFTItem{}
 	for rows.Next() {
 		if nft, err := ScanNFTItemWithCollection(rows); err == nil {
 			nfts = append(nfts, *nft)
 		} else {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if rows.Err() != nil {
-		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 	return nfts, nil
 }
 
-func queryNFTTransfersImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]NFTTransfer, error) {
+func queryNFTTransfersImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.NFTTransfer, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	// select {
 	// case <-ctx.Done():
@@ -1734,26 +1735,26 @@ func queryNFTTransfersImpl(query string, conn *pgxpool.Conn, settings RequestSet
 	// }
 	defer rows.Close()
 
-	res := []NFTTransfer{}
+	res := []models.NFTTransfer{}
 	for rows.Next() {
 		if loc, err := ScanNFTTransfer(rows); err == nil {
 			res = append(res, *loc)
 		} else {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if rows.Err() != nil {
-		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 	return res, nil
 }
 
-func queryJettonMastersImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]JettonMaster, error) {
+func queryJettonMastersImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.JettonMaster, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	// select {
 	// case <-ctx.Done():
@@ -1762,26 +1763,26 @@ func queryJettonMastersImpl(query string, conn *pgxpool.Conn, settings RequestSe
 	// }
 	defer rows.Close()
 
-	res := []JettonMaster{}
+	res := []models.JettonMaster{}
 	for rows.Next() {
 		if loc, err := ScanJettonMaster(rows); err == nil {
 			res = append(res, *loc)
 		} else {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if rows.Err() != nil {
-		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 	return res, nil
 }
 
-func queryJettonWalletsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]JettonWallet, error) {
+func queryJettonWalletsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.JettonWallet, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	// select {
 	// case <-ctx.Done():
@@ -1790,26 +1791,26 @@ func queryJettonWalletsImpl(query string, conn *pgxpool.Conn, settings RequestSe
 	// }
 	defer rows.Close()
 
-	res := []JettonWallet{}
+	res := []models.JettonWallet{}
 	for rows.Next() {
 		if loc, err := ScanJettonWallet(rows); err == nil {
 			res = append(res, *loc)
 		} else {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if rows.Err() != nil {
-		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 	return res, nil
 }
 
-func queryJettonTransfersImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]JettonTransfer, error) {
+func queryJettonTransfersImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.JettonTransfer, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	// select {
 	// case <-ctx.Done():
@@ -1818,26 +1819,26 @@ func queryJettonTransfersImpl(query string, conn *pgxpool.Conn, settings Request
 	// }
 	defer rows.Close()
 
-	res := []JettonTransfer{}
+	res := []models.JettonTransfer{}
 	for rows.Next() {
 		if loc, err := ScanJettonTransfer(rows); err == nil {
 			res = append(res, *loc)
 		} else {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if rows.Err() != nil {
-		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 	return res, nil
 }
 
-func queryJettonBurnsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]JettonBurn, error) {
+func queryJettonBurnsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]models.JettonBurn, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	// select {
 	// case <-ctx.Done():
@@ -1846,26 +1847,26 @@ func queryJettonBurnsImpl(query string, conn *pgxpool.Conn, settings RequestSett
 	// }
 	defer rows.Close()
 
-	res := []JettonBurn{}
+	res := []models.JettonBurn{}
 	for rows.Next() {
 		if loc, err := ScanJettonBurn(rows); err == nil {
 			res = append(res, *loc)
 		} else {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if rows.Err() != nil {
-		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 	return res, nil
 }
 
-func queryRawActionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings, args ...any) ([]RawAction, error) {
+func queryRawActionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings, args ...any) ([]models.RawAction, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	// select {
 	// case <-ctx.Done():
@@ -1874,21 +1875,21 @@ func queryRawActionsImpl(query string, conn *pgxpool.Conn, settings RequestSetti
 	// }
 	defer rows.Close()
 
-	res := []RawAction{}
+	res := []models.RawAction{}
 	for rows.Next() {
 		if loc, err := ScanRawAction(rows); err == nil {
 			res = append(res, *loc)
 		} else {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if rows.Err() != nil {
-		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 	return res, nil
 }
 
-func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawAction) bool {
+func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *models.RawAction) bool {
 	success := true
 
 	if v := raw_action.Source; v != nil {
@@ -2036,7 +2037,7 @@ func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawActio
 	return success
 }
 
-func collectAddressesFromTransactions(addr_list *map[string]bool, tx *Transaction) bool {
+func collectAddressesFromTransactions(addr_list *map[string]bool, tx *models.Transaction) bool {
 	success := true
 
 	(*addr_list)[(string)(tx.Account)] = true
@@ -2053,31 +2054,31 @@ func collectAddressesFromTransactions(addr_list *map[string]bool, tx *Transactio
 	return success
 }
 
-func queryTracesImpl(query string, includeActions bool, supportedActionTypes []string, conn *pgxpool.Conn, settings RequestSettings) ([]Trace, []string, error) {
-	traces := []Trace{}
+func queryTracesImpl(query string, includeActions bool, supportedActionTypes []string, conn *pgxpool.Conn, settings RequestSettings) ([]models.Trace, []string, error) {
+	traces := []models.Trace{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
 		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		defer rows.Close()
 
 		for rows.Next() {
 			if loc, err := ScanTrace(rows); err == nil {
-				loc.Transactions = make(map[HashType]*Transaction)
+				loc.Transactions = make(map[models.HashType]*models.Transaction)
 				traces = append(traces, *loc)
 			} else {
-				return nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if rows.Err() != nil {
-			return nil, nil, IndexError{Code: 500, Message: rows.Err().Error()}
+			return nil, nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
-	traces_map := map[HashType]int{}
-	trace_id_list := []HashType{}
+	traces_map := map[models.HashType]int{}
+	trace_id_list := []models.HashType{}
 	addr_map := map[string]bool{}
 	for idx := range traces {
 		traces_map[*traces[idx].TraceId] = idx
@@ -2203,11 +2204,11 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				arrayFilter + typeFilter + `order by trace_id, start_lt, end_lt`
 			actions, err := queryRawActionsImpl(query, conn, settings, supportedActionTypes)
 			if err != nil {
-				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query actions: %s", err.Error())}
+				return nil, nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed query actions: %s", err.Error())}
 			}
 			for idx := range traces {
 				if traces[idx].Actions == nil {
-					new_actions := make([]*Action, 0)
+					new_actions := make([]*models.Action, 0)
 					traces[idx].Actions = &new_actions
 				}
 			}
@@ -2218,7 +2219,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 
 				action, err := ParseRawAction(raw_action)
 				if err != nil {
-					return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
+					return nil, nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to parse action: %s", err.Error())}
 				}
 				*traces[traces_map[*action.TraceId]].Actions = append(*traces[traces_map[*action.TraceId]].Actions, action)
 			}
@@ -2238,7 +2239,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				T.split_info_this_addr, T.split_info_sibling_addr, false as emulated from transactions as T where ` + filterByArray("T.trace_id", trace_id_list) + ` order by T.trace_id, T.lt, T.account`
 			txs, err := queryTransactionsImpl(query, conn, settings)
 			if err != nil {
-				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
+				return nil, nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
 			}
 			for idx := range txs {
 				tx := &txs[idx]
@@ -2278,19 +2279,19 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 	return traces, addr_list, nil
 }
 
-func AssembleTraceTxsFromMap(tx_order *[]HashType, txs *map[HashType]*Transaction) (*TraceNode, error) {
-	nodes := map[HashType]*TraceNode{}
+func AssembleTraceTxsFromMap(tx_order *[]models.HashType, txs *map[models.HashType]*models.Transaction) (*models.TraceNode, error) {
+	nodes := map[models.HashType]*models.TraceNode{}
 	warning := ``
-	var root *TraceNode = nil
+	var root *models.TraceNode = nil
 	for _, tx_hash := range *tx_order {
 		tx := (*txs)[tx_hash]
-		var in_msg_hash HashType
+		var in_msg_hash models.HashType
 		if in_msg := tx.InMsg; in_msg != nil {
 			in_msg_hash = in_msg.MsgHash
 		}
-		node := TraceNode{TransactionHash: tx_hash, InMsgHash: in_msg_hash}
+		node := models.TraceNode{TransactionHash: tx_hash, InMsgHash: in_msg_hash}
 		if len(tx.OutMsgs) == 0 {
-			node.Children = make([]*TraceNode, 0)
+			node.Children = make([]*models.TraceNode, 0)
 		}
 		for _, msg := range tx.OutMsgs {
 			nodes[msg.MsgHash] = &node
@@ -2314,7 +2315,7 @@ func AssembleTraceTxsFromMap(tx_order *[]HashType, txs *map[HashType]*Transactio
 func (db *DbClient) QueryMasterchainInfo(settings RequestSettings) (*MasterchainInfo, error) {
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
@@ -2323,13 +2324,13 @@ func (db *DbClient) QueryMasterchainInfo(settings RequestSettings) (*Masterchain
 	res := conn.QueryRow(ctx, "select * from blocks where workchain = -1 order by seqno desc limit 1")
 	last, err := ScanBlock(res)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	res = conn.QueryRow(ctx, "select * from blocks where workchain = -1 order by seqno asc limit 1")
 	first, err := ScanBlock(res)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	info := MasterchainInfo{last, first}
@@ -2342,19 +2343,19 @@ func (db *DbClient) QueryBlocks(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Block, error) {
+) ([]models.Block, error) {
 	query, err := buildBlocksQuery(blk_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 	return queryBlocksImpl(query, conn, settings)
@@ -2363,7 +2364,7 @@ func (db *DbClient) QueryBlocks(
 func (db *DbClient) QueryShards(
 	seqno int,
 	settings RequestSettings,
-) ([]Block, error) {
+) ([]models.Block, error) {
 	query := fmt.Sprintf(`select B.* from shard_state as S join blocks as B 
 		on S.workchain = B.workchain and S.shard = B.shard and S.seqno = B.seqno 
 		where mc_seqno = %d 
@@ -2371,7 +2372,7 @@ func (db *DbClient) QueryShards(
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 	return queryBlocksImpl(query, conn, settings)
@@ -2380,19 +2381,19 @@ func (db *DbClient) QueryShards(
 func (db *DbClient) QueryMetadata(
 	addr_list []string,
 	settings RequestSettings,
-) (Metadata, error) {
+) (models.Metadata, error) {
 	raw_addr_list := []string{}
 	for _, addr := range addr_list {
 		addr_loc := AccountAddressConverter(addr)
 		if addr_loc.IsValid() {
-			if v, ok := addr_loc.Interface().(AccountAddress); ok {
+			if v, ok := addr_loc.Interface().(models.AccountAddress); ok {
 				raw_addr_list = append(raw_addr_list, string(v))
 			}
 		}
 	}
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 	return QueryMetadataImpl(raw_addr_list, conn, settings)
@@ -2401,13 +2402,13 @@ func (db *DbClient) QueryMetadata(
 func (db *DbClient) QueryAddressBook(
 	addr_list []string,
 	settings RequestSettings,
-) (AddressBook, error) {
+) (models.AddressBook, error) {
 	raw_addr_list := []string{}
 	raw_addr_map := map[string]string{}
 	for _, addr := range addr_list {
 		addr_loc := AccountAddressConverter(addr)
 		if addr_loc.IsValid() {
-			if v, ok := addr_loc.Interface().(AccountAddress); ok {
+			if v, ok := addr_loc.Interface().(models.AccountAddress); ok {
 				raw_addr_list = append(raw_addr_list, string(v))
 				raw_addr_map[addr] = string(v)
 			}
@@ -2417,20 +2418,20 @@ func (db *DbClient) QueryAddressBook(
 	}
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 	book, err := QueryAddressBookImpl(raw_addr_list, conn, settings)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	new_addr_book := AddressBook{}
+	new_addr_book := models.AddressBook{}
 	for k, v := range raw_addr_map {
 		if vv, ok := book[v]; ok {
 			new_addr_book[k] = vv
 		} else {
-			new_addr_book[k] = AddressBookRow{UserFriendly: nil, Domain: nil}
+			new_addr_book[k] = models.AddressBookRow{UserFriendly: nil, Domain: nil}
 		}
 	}
 	return new_addr_book, nil
@@ -2444,19 +2445,19 @@ func (db *DbClient) QueryTransactions(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Transaction, AddressBook, error) {
+) ([]models.Transaction, models.AddressBook, error) {
 	query, err := buildTransactionsQuery(blk_req, tx_req, msg_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
@@ -2467,16 +2468,16 @@ func (db *DbClient) QueryTransactions(
 			return nil, nil, err
 		}
 		if !exists {
-			return nil, nil, IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+			return nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
 		}
 	}
 
 	txs, err := queryTransactionsImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
+	book := models.AddressBook{}
 	if !settings.NoAddressBook {
 		addr_list := []string{}
 		for _, t := range txs {
@@ -2495,7 +2496,7 @@ func (db *DbClient) QueryTransactions(
 		if len(addr_list) > 0 {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -2505,20 +2506,20 @@ func (db *DbClient) QueryTransactions(
 func (db *DbClient) QueryAdjacentTransactions(
 	req AdjacentTransactionRequest,
 	settings RequestSettings,
-) ([]Transaction, AddressBook, error) {
+) ([]models.Transaction, models.AddressBook, error) {
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	tx_hash_list, err := queryAdjacentTransactionsImpl(req, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	if len(tx_hash_list) == 0 {
-		return nil, nil, IndexError{Code: 404, Message: "adjacent transactions not found"}
+		return nil, nil, models.IndexError{Code: 404, Message: "adjacent transactions not found"}
 	}
 
 	for idx := range tx_hash_list {
@@ -2539,10 +2540,10 @@ func (db *DbClient) QueryAdjacentTransactions(
 		T.split_info_this_addr, T.split_info_sibling_addr, false as emulated from transactions as T where hash in (%s) order by lt asc`, tx_hash_str)
 	txs, err := queryTransactionsImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
+	book := models.AddressBook{}
 	if !settings.NoAddressBook {
 		addr_list := []string{}
 		for _, t := range txs {
@@ -2561,7 +2562,7 @@ func (db *DbClient) QueryAdjacentTransactions(
 		if len(addr_list) > 0 {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -2574,29 +2575,29 @@ func (db *DbClient) QueryMessages(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Message, AddressBook, Metadata, error) {
+) ([]models.Message, models.AddressBook, models.Metadata, error) {
 	query, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	msgs, err := queryMessagesImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
-	metadata := Metadata{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_list := []string{}
 	for _, m := range msgs {
 		if m.Source != nil {
@@ -2610,14 +2611,14 @@ func (db *DbClient) QueryMessages(
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 
 		if !settings.NoMetadata {
 			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -2628,29 +2629,29 @@ func (db *DbClient) QueryNFTCollections(
 	nft_req NFTCollectionRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]NFTCollection, AddressBook, Metadata, error) {
+) ([]models.NFTCollection, models.AddressBook, models.Metadata, error) {
 	query, err := buildNFTCollectionsQuery(nft_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryNFTCollectionsImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
-	metadata := Metadata{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2662,13 +2663,13 @@ func (db *DbClient) QueryNFTCollections(
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
 			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -2679,29 +2680,29 @@ func (db *DbClient) QueryNFTItems(
 	nft_req NFTItemRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]NFTItem, AddressBook, Metadata, error) {
+) ([]models.NFTItem, models.AddressBook, models.Metadata, error) {
 	query, err := buildNFTItemsQuery(nft_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryNFTItemsWithCollectionsImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
-	metadata := Metadata{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2716,13 +2717,13 @@ func (db *DbClient) QueryNFTItems(
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
 			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -2735,29 +2736,29 @@ func (db *DbClient) QueryNFTTransfers(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]NFTTransfer, AddressBook, Metadata, error) {
+) ([]models.NFTTransfer, models.AddressBook, models.Metadata, error) {
 	query, err := buildNFTTransfersQuery(transfer_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryNFTTransfersImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
-	metadata := Metadata{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.NftItemAddress))
@@ -2772,13 +2773,13 @@ func (db *DbClient) QueryNFTTransfers(
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
 			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -2789,29 +2790,29 @@ func (db *DbClient) QueryJettonMasters(
 	jetton_req JettonMasterRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]JettonMaster, AddressBook, Metadata, error) {
+) ([]models.JettonMaster, models.AddressBook, models.Metadata, error) {
 	query, err := buildJettonMastersQuery(jetton_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryJettonMastersImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
-	metadata := Metadata{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2823,13 +2824,13 @@ func (db *DbClient) QueryJettonMasters(
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
 			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -2840,30 +2841,30 @@ func (db *DbClient) QueryJettonWallets(
 	jetton_req JettonWalletRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]JettonWallet, AddressBook, Metadata, error) {
+) ([]models.JettonWallet, models.AddressBook, models.Metadata, error) {
 	query, err := buildJettonWalletsQuery(jetton_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryJettonWalletsImpl(query, conn, settings)
 	if err != nil {
 		log.Println(query)
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
-	metadata := Metadata{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Address))
@@ -2874,13 +2875,13 @@ func (db *DbClient) QueryJettonWallets(
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
 			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -2893,29 +2894,29 @@ func (db *DbClient) QueryJettonTransfers(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]JettonTransfer, AddressBook, Metadata, error) {
+) ([]models.JettonTransfer, models.AddressBook, models.Metadata, error) {
 	query, err := buildJettonTransfersQuery(transfer_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryJettonTransfersImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
-	metadata := Metadata{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Source))
@@ -2930,13 +2931,13 @@ func (db *DbClient) QueryJettonTransfers(
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
 			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -2949,29 +2950,29 @@ func (db *DbClient) QueryJettonBurns(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]JettonBurn, AddressBook, Metadata, error) {
+) ([]models.JettonBurn, models.AddressBook, models.Metadata, error) {
 	query, err := buildJettonBurnsQuery(transfer_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryJettonBurnsImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
-	metadata := Metadata{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		addr_list = append(addr_list, string(t.Owner))
@@ -2985,13 +2986,13 @@ func (db *DbClient) QueryJettonBurns(
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
 			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -3002,29 +3003,29 @@ func (db *DbClient) QueryAccountStates(
 	account_req AccountRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]AccountStateFull, AddressBook, Metadata, error) {
+) ([]models.AccountStateFull, models.AddressBook, models.Metadata, error) {
 	query, err := buildAccountStatesQuery(account_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryAccountStateFullImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
-	metadata := Metadata{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_list := []string{}
 	for _, t := range res {
 		if t.AccountAddress != nil {
@@ -3035,13 +3036,13 @@ func (db *DbClient) QueryAccountStates(
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		if !settings.NoMetadata {
 			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
@@ -3053,23 +3054,23 @@ func (db *DbClient) QueryWalletStates(
 	account_req AccountRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]WalletState, AddressBook, Metadata, error) {
+) ([]models.WalletState, models.AddressBook, models.Metadata, error) {
 	states, book, metadata, err := db.QueryAccountStates(account_req, lim_req, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	res := []WalletState{}
+	res := []models.WalletState{}
 	for _, state := range states {
 		loc, err := ParseWalletState(state)
 		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		res = append(res, *loc)
 	}
 	return res, book, metadata, nil
 }
 
-func (db *DbClient) QueryTopAccountBalances(lim_req LimitRequest, settings RequestSettings) ([]AccountBalance, error) {
+func (db *DbClient) QueryTopAccountBalances(lim_req LimitRequest, settings RequestSettings) ([]models.AccountBalance, error) {
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return nil, err
@@ -3079,13 +3080,13 @@ func (db *DbClient) QueryTopAccountBalances(lim_req LimitRequest, settings Reque
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	res, err := queryTopAccountBalancesImpl(query, conn, settings)
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	return res, nil
 }
@@ -3096,19 +3097,19 @@ func (db *DbClient) QueryActions(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Action, AddressBook, Metadata, error) {
+) ([]models.Action, models.AddressBook, models.Metadata, error) {
 	query, err := buildActionsQuery(act_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
@@ -3119,23 +3120,23 @@ func (db *DbClient) QueryActions(
 			return nil, nil, nil, err
 		}
 		if !exists {
-			return nil, nil, nil, IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+			return nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
 		}
 	}
 
 	raw_actions, err := queryRawActionsImpl(query, conn, settings)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-	actions := []Action{}
-	book := AddressBook{}
-	metadata := Metadata{}
+	actions := []models.Action{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	addr_map := map[string]bool{}
 	for idx := range raw_actions {
 		CollectAddressesFromAction(&addr_map, &raw_actions[idx])
 		action, err := ParseRawAction(&raw_actions[idx])
 		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		actions = append(actions, *action)
 	}
@@ -3146,12 +3147,12 @@ func (db *DbClient) QueryActions(
 		}
 		book, err = QueryAddressBookImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 
 		metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	return actions, book, metadata, nil
@@ -3163,20 +3164,20 @@ func (db *DbClient) QueryTraces(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]Trace, AddressBook, Metadata, error) {
+) ([]models.Trace, models.AddressBook, models.Metadata, error) {
 	query, err := buildTracesQuery(trace_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
 	// log.Println(query)
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
@@ -3187,28 +3188,28 @@ func (db *DbClient) QueryTraces(
 			return nil, nil, nil, err
 		}
 		if !exists {
-			return nil, nil, nil, IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
+			return nil, nil, nil, models.IndexError{Code: 404, Message: fmt.Sprintf("masterchain block %d not found", *seqno)}
 		}
 	}
 
 	res, addr_list, err := queryTracesImpl(query, trace_req.IncludeActions, trace_req.SupportedActionTypes, conn, settings)
 	if err != nil {
 		log.Println(query)
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	book := AddressBook{}
-	metadata := Metadata{}
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 		metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 
@@ -3218,15 +3219,15 @@ func (db *DbClient) QueryTraces(
 func (db *DbClient) QueryBalanceChanges(
 	req BalanceChangesRequest,
 	settings RequestSettings,
-) (BalanceChangesResult, error) {
+) (models.BalanceChangesResult, error) {
 	trace_id := req.TraceId
 	if trace_id == nil && req.ActionId == nil {
-		return BalanceChangesResult{}, IndexError{Code: 400, Message: "trace_id or action_id is required"}
+		return models.BalanceChangesResult{}, models.IndexError{Code: 400, Message: "trace_id or action_id is required"}
 	}
 
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return BalanceChangesResult{}, IndexError{Code: 500, Message: err.Error()}
+		return models.BalanceChangesResult{}, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
@@ -3237,42 +3238,42 @@ func (db *DbClient) QueryBalanceChanges(
 		query := "SELECT trace_id FROM actions WHERE action_id = $1"
 		err := conn.QueryRow(ctx, query, *req.ActionId).Scan(&trace_id)
 		if err != nil {
-			return BalanceChangesResult{}, IndexError{Code: 404, Message: "action_id not found"}
+			return models.BalanceChangesResult{}, models.IndexError{Code: 404, Message: "action_id not found"}
 		}
 	}
 
 	if trace_id == nil {
-		return BalanceChangesResult{}, IndexError{Code: 400, Message: "trace_id is required"}
+		return models.BalanceChangesResult{}, models.IndexError{Code: 400, Message: "trace_id is required"}
 	}
 
-	trace_changes, actions_changes, err := CalculateBalanceChanges(HashType(*trace_id), conn)
+	trace_changes, actions_changes, err := CalculateBalanceChanges(models.HashType(*trace_id), conn)
 	if err != nil {
-		return BalanceChangesResult{}, IndexError{Code: 500, Message: err.Error()}
+		return models.BalanceChangesResult{}, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	var targetChanges *BalanceChanges = trace_changes
 	if req.ActionId != nil {
-		if v, ok := actions_changes[HashType(*req.ActionId)]; ok {
+		if v, ok := actions_changes[models.HashType(*req.ActionId)]; ok {
 			targetChanges = v
 		} else {
-			return BalanceChangesResult{}, nil
+			return models.BalanceChangesResult{}, nil
 		}
 	}
-	jetton_changes := make(map[AccountAddress]map[AccountAddress]string)
+	jetton_changes := make(map[models.AccountAddress]map[models.AccountAddress]string)
 	for accountAddress, jettons := range targetChanges.Jettons {
-		jetton_changes[accountAddress] = make(map[AccountAddress]string)
+		jetton_changes[accountAddress] = make(map[models.AccountAddress]string)
 		for jetton, balance := range jettons {
 			jetton_changes[accountAddress][jetton] = balance.String()
 		}
 	}
-	return BalanceChangesResult{
+	return models.BalanceChangesResult{
 		Ton:     targetChanges.get_summarized_balance_changes(),
 		Fees:    targetChanges.Fees,
 		Jettons: jetton_changes,
 	}, nil
 }
 
-func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs []HashType,
-	settings RequestSettings) ([]HashType, error) {
+func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs []models.HashType,
+	settings RequestSettings) ([]models.HashType, error) {
 
 	if len(txIDs) == 0 {
 		return nil, nil
@@ -3280,7 +3281,7 @@ func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs [
 
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
@@ -3301,38 +3302,38 @@ func (db *DbClient) QueryTransactionsExternalHashes(ctx context.Context, txIDs [
 
 	rows, err := conn.Query(ctx, query, pq.Array(stringTxIDs))
 	if err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer rows.Close()
 
-	var externalHashes []HashType
+	var externalHashes []models.HashType
 	for rows.Next() {
 		var hash string
 		if err := rows.Scan(&hash); err != nil {
-			return nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
-		externalHashes = append(externalHashes, HashType(hash))
+		externalHashes = append(externalHashes, models.HashType(hash))
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	return externalHashes, nil
 }
 
-func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest, settings RequestSettings) ([]DNSRecord, AddressBook, error) {
+func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest, settings RequestSettings) ([]models.DNSRecord, models.AddressBook, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
 
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	query := `
@@ -3343,20 +3344,20 @@ func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest,
 
 	rows, err := conn.Query(ctx, query, req.WalletAddress)
 	if err != nil {
-		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer rows.Close()
 
-	records := []DNSRecord{}
+	records := []models.DNSRecord{}
 	for rows.Next() {
-		var record DNSRecord
+		var record models.DNSRecord
 		if err := rows.Scan(&record.NftItemAddress, &record.NftItemOwner, &record.Domain,
 			&record.NextResolver, &record.Wallet, &record.SiteAdnl, &record.StorageBagID); err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 		records = append(records, record)
 	}
-	book := AddressBook{}
+	book := models.AddressBook{}
 	if !settings.NoAddressBook {
 		addr_list := []string{}
 		for _, r := range records {
@@ -3371,7 +3372,7 @@ func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest,
 		if len(addr_list) > 0 {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
-				return nil, nil, IndexError{Code: 500, Message: err.Error()}
+				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
 		}
 	}
