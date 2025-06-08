@@ -1132,8 +1132,8 @@ func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
 
 func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query_default := `A.account, A.hash, A.balance, A.balance_extra_currencies, A.account_status, A.frozen_hash, A.last_trans_hash, A.last_trans_lt, A.data_hash, A.code_hash, `
-	clmn_query := clmn_query_default + `A.data_boc, A.code_boc`
-	from_query := `latest_account_states as A`
+	clmn_query := clmn_query_default + `A.data_boc, A.code_boc, C.methods`
+	from_query := `latest_account_states as A left join contract_methods as C on A.code_hash = C.code_hash`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
@@ -1158,7 +1158,7 @@ func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, s
 		}
 	}
 	if v := account_req.IncludeBOC; v != nil && !*v {
-		clmn_query = clmn_query_default + `NULL, NULL`
+		clmn_query = clmn_query_default + `NULL, NULL, C.methods`
 	}
 
 	if len(filter_list) > 0 {

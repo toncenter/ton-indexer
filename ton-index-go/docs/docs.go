@@ -2746,6 +2746,12 @@ const docTemplate = `{
                 "code_hash": {
                     "type": "string"
                 },
+                "contract_methods": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "data_boc": {
                     "type": "string"
                 },
