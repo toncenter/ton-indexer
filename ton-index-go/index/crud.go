@@ -2199,7 +2199,9 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.tonco_deploy_pool_data).protocol_fee,
 				(A.tonco_deploy_pool_data).lp_fee_base,
 				(A.tonco_deploy_pool_data).lp_fee_current,
-				(A.tonco_deploy_pool_data).pool_active from actions as A where ` +
+				(A.tonco_deploy_pool_data).pool_active,
+				
+				A.ancestor_type from actions as A where ` +
 				arrayFilter + typeFilter + `order by trace_id, start_lt, end_lt`
 			actions, err := queryRawActionsImpl(query, conn, settings, supportedActionTypes)
 			if err != nil {
