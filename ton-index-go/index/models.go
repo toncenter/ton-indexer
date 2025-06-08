@@ -105,6 +105,7 @@ type AccountStateFull struct {
 	CodeHash               *HashType         `json:"code_hash,omitempty"`
 	DataBoc                *string           `json:"data_boc,omitempty"`
 	CodeBoc                *string           `json:"code_boc,omitempty"`
+	ContractMethods        *[]uint32         `json:"contract_methods"`
 } // @name AccountStateFull
 
 type WalletState struct {

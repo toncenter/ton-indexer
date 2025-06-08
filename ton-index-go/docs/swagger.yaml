@@ -41,6 +41,10 @@ definitions:
         type: string
       code_hash:
         type: string
+      contract_methods:
+        items:
+          type: integer
+        type: array
       data_boc:
         type: string
       data_hash:

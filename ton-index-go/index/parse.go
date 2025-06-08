@@ -942,7 +942,7 @@ func ScanAccountStateFull(row pgx.Row) (*AccountStateFull, error) {
 	var acst AccountStateFull
 	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.BalanceExtraCurrencies,
 		&acst.AccountStatus, &acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt,
-		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
+		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc, &acst.ContractMethods)
 	if err != nil {
 		return nil, err
 	}
