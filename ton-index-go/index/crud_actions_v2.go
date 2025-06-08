@@ -185,7 +185,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.tonco_deploy_pool_data).protocol_fee,
 		(A.tonco_deploy_pool_data).lp_fee_base,
 		(A.tonco_deploy_pool_data).lp_fee_current,
-		(A.tonco_deploy_pool_data).pool_active
+		(A.tonco_deploy_pool_data).pool_active,
 
 		A.ancestor_type`
 	clmn_query := clmn_query_default
