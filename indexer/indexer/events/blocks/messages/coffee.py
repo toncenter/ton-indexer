@@ -216,21 +216,12 @@ class DepositLiquidityParamsTrimmed:
     """
     deposit_liquidity_params_trimmed recipient:MsgAddressInt
                                      use_recipient_on_failure:int1
-                                     notification_data:(Maybe ^NotificationData)
-                                     condition:^DepositLiquidityCondition
     = DepositLiquidityParamsTrimmed;
     """
 
     def __init__(self, cell_slice: Slice):
         self.recipient = cell_slice.load_address()
         self.use_recipient_on_failure = cell_slice.load_bit()
-        self.notification_data = None
-        notification_data_ref = cell_slice.load_maybe_ref()
-        if notification_data_ref:
-            self.notification_data = NotificationData(notification_data_ref.to_slice())
-
-        condition_ref = cell_slice.load_ref()
-        self.condition = DepositLiquidityCondition(condition_ref.to_slice())
 
 
 class DepositLiquidityParams:
@@ -810,9 +801,10 @@ class CoffeeCreateLiquidityDepositoryRequest:
     """
     TL-B:
     create_liquidity_depository_request#c0ffee27 query_id:uint64 amount:Coins
-                                                params:DepositLiquidityParams
-                                                sender:MsgAddressInt
-                                                proof:^Cell
+                                                 params:^DepositLiquidityParamsTrimmed
+                                                 pool_params:^PoolParams
+                                                 sender:MsgAddressInt
+                                                 proof:^Cell
     = CreateLiquidityDepositoryRequest;
     """
 
@@ -822,7 +814,8 @@ class CoffeeCreateLiquidityDepositoryRequest:
         body.load_uint(32)
         self.query_id = body.load_uint(64)
         self.amount = body.load_coins()
-        self.params = DepositLiquidityParams(body)
+        self.params = DepositLiquidityParamsTrimmed(body.load_ref().to_slice())
+        self.pool_params = PoolParams(body.load_ref().to_slice())
         self.sender = body.load_address()
         self.proof = body.load_ref()
 

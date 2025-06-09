@@ -39,6 +39,7 @@ from indexer.events.blocks.jvault import (
     JVaultUnstakeBlockMatcher, JVaultUnstakeRequestBlockMatcher,
 )
 from indexer.events.blocks.liquidity import (
+    CoffeeDepositLiquidityMatcher,
     DedustDepositBlockMatcher,
     DedustDepositFirstAssetBlockMatcher,
     DedustWithdrawBlockMatcher,
@@ -208,6 +209,7 @@ matchers = [
     ToncoDepositLiquidityMatcher(),
     ToncoDeployPoolBlockMatcher(),
     ToncoWithdrawLiquidityMatcher(),
+    CoffeeDepositLiquidityMatcher(),
     CoffeeSwapBlockMatcher(),
 ]
 

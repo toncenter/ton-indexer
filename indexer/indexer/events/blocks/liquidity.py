@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ast import Call
 from dataclasses import dataclass
 
 from collections import defaultdict
@@ -57,6 +58,16 @@ from indexer.events.blocks.messages.liquidity import (
     StonfiV2ProvideLiquidity,
     ToncoPoolV3Init,
     ToncoRouterV3CreatePool,
+)
+from indexer.events.blocks.messages.coffee import (
+    CoffeeCreateLiquidityDepositoryRequest,
+    CoffeeDeploy,
+    CoffeeDepositLiquidityInternal,
+    CoffeeDepositLiquidityNative,
+    CoffeeDepositLiquiditySuccessfulEvent,
+    CoffeeNotification,
+    CoffeePayout,
+    CoffeePayoutInternal,
 )
 from indexer.events.blocks.utils import AccountId, Amount, Asset
 from indexer.events.blocks.utils.block_utils import find_call_contract, get_labeled, \
@@ -804,7 +815,7 @@ class StonfiV2WithdrawLiquidityMatcher(BlockMatcher):
                 if pton_transfer is not None:
                     pton_msg = PTonTransfer(pton_transfer.get_body())
                     amount = Amount(pton_msg.ton_amount or 0)
-                    additional_blocks.append(pton_transfer)
+                    additional_blocks.append(pton_transfer_block)
                     asset = Asset(is_ton=True, jetton_address=None)
                 else:
                     amount = transfer.data['amount']
@@ -1116,7 +1127,7 @@ class ToncoDepositLiquidityMatcher(BlockMatcher):
                     pton_transfer = find_call_contract(
                         excess_transfer.next_blocks, PTonTransfer.opcode
                     )
-                    if pton_transfer:
+                    if pton_transfer is not None:
                         pton_msg = PTonTransfer(pton_transfer.get_body())
                         excess_amount = Amount(pton_msg.ton_amount or 0)
                         excess_asset = Asset(is_ton=True, jetton_address=None)
@@ -1587,4 +1598,217 @@ class ToncoDeployPoolBlockMatcher(BlockMatcher):
         if excesses_block:
             blocks_to_merge.append(excesses_block)
         new_block.merge_blocks(blocks_to_merge)
+        return [new_block]
+
+
+@dataclass
+class DepositLiquidityData: # fully compatible with dex_deposit_liquidity_data
+    dex: str
+    sender: AccountId
+    pool_address: AccountId | None
+    deposit_contract: AccountId | None
+    vault_excesses: list[tuple[Asset, Amount]]
+    asset_1: Asset | None
+    amount_1: Amount | None
+    user_jetton_wallet_1: AccountId | None
+    asset_2: Asset | None
+    amount_2: Amount | None
+    user_jetton_wallet_2: AccountId | None
+    target_asset_1: Asset | None
+    target_amount_1: Amount | None
+    target_asset_2: Asset | None
+    target_amount_2: Amount | None
+    lp_tokens_minted: Amount | None
+
+
+# def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action: Action):
+#     action.type='dex_deposit_liquidity'
+#     action.source = _addr(block.data["sender"])
+#     action.destination = _addr(block.data["pool_address"])
+#     action.destination_secondary = _addr(block.data["deposit_contract"])
+#     vault_excesses = []
+#     for excess in block.data["vault_excesses"]:
+#         vault_excesses.append({
+#             'asset': _addr(excess[0]),
+#             'amount': excess[1].value,
+#         })
+#     action.dex_deposit_liquidity_data = {
+#         "dex": block.data["dex"],
+#         "asset1": _addr(block.data["asset_1"]),
+#         "amount1": block.data["amount_1"].value if block.data["amount_1"] is not None else None,
+#         "asset2": _addr(block.data["asset_2"]),
+#         "amount2": block.data["amount_2"].value if block.data["amount_2"] is not None else None,
+#         "user_jetton_wallet_1": _addr(block.data["user_jetton_wallet_1"]),
+#         "user_jetton_wallet_2": _addr(block.data["user_jetton_wallet_2"]),
+#         "lp_tokens_minted": block.data["lp_tokens_minted"].value if block.data["lp_tokens_minted"] is not None else None,
+#         "target_asset_1": _addr(block.data["target_asset_1"]),
+#         "target_amount_1": block.data["target_amount_1"].value if block.data["target_amount_1"] is not None else None,
+#         "target_asset_2": _addr(block.data["target_asset_2"]),
+#         "target_amount_2": block.data["target_amount_2"].value if block.data["target_amount_2"] is not None else None,
+#         "vault_excesses": vault_excesses
+#     }
+
+
+class CoffeeDepositLiquidityMatcher(BlockMatcher):
+    def __init__(self):
+        out_transfer_matcher = labeled(
+            "out_transfer",
+            OrMatcher(
+                [
+                    BlockTypeMatcher(block_type="jetton_transfer"),
+                    ContractMatcher(opcode=CoffeePayout.opcode),
+                    ContractMatcher(opcode=CoffeeNotification.opcode),
+                ]
+            ),
+        )
+
+        payout = labeled(
+            "payout",
+            ContractMatcher(
+                opcode=CoffeePayoutInternal.opcode,
+                optional=True,
+                child_matcher=out_transfer_matcher
+            ),
+        )
+
+        lp_transfer = labeled(
+            "lp_transfer",
+            ContractMatcher(
+                opcode=JettonInternalTransfer.opcode, 
+                child_matcher=ContractMatcher(opcode=ExcessMessage.opcode, optional=True)
+            ),
+        )
+
+        success_event = labeled(
+            "success_event",
+            ContractMatcher(opcode=CoffeeDepositLiquiditySuccessfulEvent.opcode),
+        )
+
+        deposit_internal = labeled(
+            "deposit_internal",
+            ContractMatcher(
+                opcode=CoffeeDepositLiquidityInternal.opcode,
+                optional=True,
+                children_matchers=[lp_transfer, success_event, payout],
+            ),
+        )
+
+        deploy = labeled(
+            "deploy",
+            ContractMatcher(
+                opcode=CoffeeDeploy.opcode,
+                optional=False,
+                child_matcher=deposit_internal
+            ),
+        )
+
+        in_transfer_native = ContractMatcher(opcode=CoffeeDepositLiquidityNative.opcode)
+        in_transfer_jetton = BlockTypeMatcher("jetton_transfer")
+        parent_matcher = labeled("in_transfer", OrMatcher([in_transfer_native, in_transfer_jetton]))
+
+        super().__init__(parent_matcher=parent_matcher, child_matcher=deploy)
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == CoffeeCreateLiquidityDepositoryRequest.opcode
+        )
+
+    @logger.catch()
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        in_transfer = get_labeled("in_transfer", other_blocks)
+        if not in_transfer:
+            return []
+
+        in_sender_wallet = None
+        in_asset = Asset(is_ton=True)
+        if isinstance(in_transfer, JettonTransferBlock):
+            in_sender_wallet = in_transfer.data.get("sender_wallet")
+            in_asset = in_transfer.data.get("asset")
+        # else - ton
+
+        req_msg = CoffeeCreateLiquidityDepositoryRequest(block.get_body())
+
+        sender = AccountId(req_msg.sender)
+
+        asset_1 = None
+        amount_1 = None
+        sender_wallet_1 = None
+        target_asset_1 = None
+        asset_2 = None
+        amount_2 = None
+        sender_wallet_2 = None
+        target_asset_2 = None
+        if str(in_asset) == str(req_msg.pool_params.first):
+            amount_1 = Amount(req_msg.amount or 0)
+            asset_1 = in_asset
+            sender_wallet_1 = in_sender_wallet
+            target_asset_1 = req_msg.pool_params.first
+            target_asset_2 = req_msg.pool_params.second
+        elif str(in_asset) == str(req_msg.pool_params.second):
+            amount_2 = Amount(req_msg.amount or 0)
+            asset_2 = in_asset
+            sender_wallet_2 = in_sender_wallet
+            target_asset_1 = req_msg.pool_params.second
+            target_asset_2 = req_msg.pool_params.first
+        else:
+            logger.warning(f"In transfer asset {in_asset} is not in pool params {req_msg.pool_params}")
+            return []
+
+        deploy_block = get_labeled("deploy", other_blocks, CallContractBlock)
+        if not deploy_block:
+            return []
+
+        lp_tokens_minted = None
+        pool_address = None
+
+        success_event_block = get_labeled("success_event", other_blocks, CallContractBlock)
+        if success_event_block:
+            success_msg = CoffeeDepositLiquiditySuccessfulEvent(success_event_block.get_body())
+            lp_tokens_minted = Amount(success_msg.lp_amount or 0)
+            pool_address = AccountId(success_event_block.get_message().source)
+
+        lp_transfer_block = get_labeled("lp_transfer", other_blocks, CallContractBlock)
+        if lp_transfer_block:
+            if lp_tokens_minted is None or pool_address is None:
+                info = JettonInternalTransfer(lp_transfer_block.get_body())
+                lp_tokens_minted = Amount(info.amount or 0)
+                pool_address = AccountId(lp_transfer_block.get_message().source)
+
+        vault_excesses = []
+        vault_excesses_block = get_labeled("out_transfer", other_blocks)
+        if vault_excesses_block:
+            if isinstance(vault_excesses_block, JettonTransferBlock):
+                asset = vault_excesses_block.data.get("asset")
+                if not isinstance(asset, Asset):
+                    asset = Asset(False, asset.jetton_address)
+                vault_excesses = [
+                    (asset, Amount(vault_excesses_block.data.get("amount") or 0))
+                ]
+            elif isinstance(vault_excesses_block, CallContractBlock):
+                vault_excesses = [
+                    (Asset(is_ton=True), Amount(vault_excesses_block.get_message().value or 0))
+                ]
+
+        data = DepositLiquidityData(
+            dex="coffee",
+            sender=sender,
+            pool_address=pool_address,
+            deposit_contract=AccountId(deploy_block.get_message().destination),
+            asset_1=asset_1,
+            amount_1=amount_1,
+            user_jetton_wallet_1=sender_wallet_1,
+            asset_2=asset_2,
+            amount_2=amount_2,
+            user_jetton_wallet_2=sender_wallet_2,
+            target_asset_1=target_asset_1,
+            target_amount_1=None,  # user may deposit any amount after depositary deploy
+            target_asset_2=target_asset_2,
+            target_amount_2=None,  # user may deposit any amount after depositary deploy
+            lp_tokens_minted=lp_tokens_minted,
+            vault_excesses=vault_excesses,
+        )
+
+        new_block = Block('coffee_deposit_liquidity', [], data.__dict__)
+        new_block.merge_blocks([block] + other_blocks)
         return [new_block]

@@ -739,6 +739,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_nominator_pool_withdraw_request_action(block, action)
         case "dedust_deposit_liquidity":
             _fill_dedust_deposit_liquidity_action(block, action)
+        case "coffee_deposit_liquidity":
+            _fill_dedust_deposit_liquidity_action(block, action)  # use dedust's filler
         case "dedust_deposit_liquidity_partial":
             _fill_dedust_deposit_liquidity_partial_action(block, action)
         case "tonco_deposit_liquidity":

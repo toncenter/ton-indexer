@@ -345,3 +345,93 @@ cases:
               destination: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
               destination_jetton_wallet: 0:7465BD849284B25E8D95E4C300DA4DD9BA36570B6D7DF1DE6BF055A8D6C22C52
             peer_swaps: []
+
+  Coffee deposit liquidity TON + CES:
+    trace-id: NVBb_A--g2M72byFHECct41iFyC7T53sbr6R11CltLw=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        selector: "{{ value.destination == None }}" # first part
+        values:
+          source: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+          destination: null
+          destination_secondary: 0:66D21112F25EDD14BBD3E21E6F3539550CBB537B15CE6F96C5F8C3832FD34E47
+          dex_deposit_liquidity_data:
+            dex: coffee
+            vault_excesses: []
+            asset1: null
+            amount1: 3129892658
+            user_jetton_wallet_1: null
+            asset2: null
+            amount2: null
+            user_jetton_wallet_2: null
+            target_asset_1: null
+            target_amount_1: null
+            target_asset_2: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+            target_amount_2: null
+            lp_tokens_minted: null
+      - type: dex_deposit_liquidity
+        selector: "{{ value.destination != None }}" # last part
+        values:
+          source: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+          destination: 0:3935D9DA614B3283413B319B8845DBDD0857ECB5D06BEC2428A697EF86AA8691
+          destination_secondary: 0:66D21112F25EDD14BBD3E21E6F3539550CBB537B15CE6F96C5F8C3832FD34E47
+          dex_deposit_liquidity_data:
+            dex: coffee
+            vault_excesses: []
+            asset1: null
+            amount1: null
+            user_jetton_wallet_1: null
+            asset2: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+            amount2: 13876673279
+            user_jetton_wallet_2: 0:8EA33875123015261EF940102531A1E0B760216E9C0B295A399524475A3D1082
+            target_asset_1: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+            target_amount_1: null
+            target_asset_2: null
+            target_amount_2: null
+            lp_tokens_minted: 6589203740
+
+  Coffee deposit liquidity TON + ARBUZ (with vault excess):
+    trace-id: 1KbovH9MSuusbYQaA8IFllpelQVkRcrcC9A8MUVnZ3w=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        selector: "{{ value.destination == None }}" # first part
+        values:
+            source: 0:89A01AC795880D80A300313E61A3056388E5D66D4EC57B0CC64B3CCDE78AEFC5
+            destination: null
+            destination_secondary: 0:8159322BC546328552BAD70CA6123ABAE60EF9F9B6F08649E796D4B3F517DD6A
+            dex_deposit_liquidity_data:
+              dex: coffee
+              vault_excesses: []
+              asset1: null # TON
+              amount1: 12738437786
+              user_jetton_wallet_1: null
+              asset2: null
+              amount2: null
+              user_jetton_wallet_2: null
+              target_asset_1: null # TON
+              target_amount_1: null
+              target_asset_2: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+              target_amount_2: null
+              lp_tokens_minted: null
+      - type: dex_deposit_liquidity
+        selector: "{{ value.destination != None }}" # last part
+        values:
+            source: 0:89A01AC795880D80A300313E61A3056388E5D66D4EC57B0CC64B3CCDE78AEFC5
+            destination: 0:9B44E061DDDC313D829236E9816341A20CAA65D751980E12C800D3CC4D188D14
+            destination_secondary: 0:8159322BC546328552BAD70CA6123ABAE60EF9F9B6F08649E796D4B3F517DD6A
+            dex_deposit_liquidity_data:
+              dex: coffee
+              vault_excesses:
+                - asset: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+                  amount: 24
+              asset1: null
+              amount1: null
+              user_jetton_wallet_1: null
+              asset2: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+              amount2: 1209191166682
+              user_jetton_wallet_2: 0:DDB51A80436CC2207722AAADEBC2A575464EE167DF06D33D07571113C6361ECB
+              target_asset_1: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+              target_amount_1: null
+              target_asset_2: null # TON
+              target_amount_2: null
+              lp_tokens_minted: 124109654933
