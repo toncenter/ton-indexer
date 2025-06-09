@@ -55,10 +55,9 @@ from indexer.events.blocks.utils.block_utils import (
     find_messages,
     get_labeled,
 )
-from loguru import logger # DEBUG
 
 
-# logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 stonfi_swap_ok_exit_code = 0xc64370e5
 stonfi_swap_ok_ref_exit_code = 0x45078540
@@ -1273,7 +1272,6 @@ class CoffeeSwapBlockMatcher(BlockMatcher):
             and block.opcode == CoffeeSwapInternal.opcode
         )
 
-    @logger.catch()
     async def build_block(
         self, block: Block, other_blocks: list[Block]
     ) -> list[Block]:
