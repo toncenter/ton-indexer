@@ -115,14 +115,14 @@ def init_from_external(node: EventNode) -> Block:
     body = node.message.message_content.body
 
     payloads, _ = extract_payload_from_wallet_message(body)
-
-    for payload in payloads:
+    for idx, payload in enumerate(payloads):
         if payload.info is None:
             continue
         if payload.body is not None:
             body_hash = base64.b64encode(payload.body.hash).decode()
+            msg_hash = base64.b64encode((payload.hash + str(idx)).encode()).decode()
             msg = Message(
-                msg_hash = payload.hash,
+                msg_hash = msg_hash,
                 tx_hash = node.get_tx().hash,
                 tx_lt = node.get_tx().lt,
                 direction = 'in',
