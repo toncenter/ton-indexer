@@ -80,6 +80,7 @@ from indexer.events.blocks.subscriptions import (
     UnsubscribeBlockMatcher,
 )
 from indexer.events.blocks.swaps import (
+    CoffeeSwapBlockMatcher,
     DedustSwapBlockMatcher,
     StonfiSwapBlockMatcher,
     StonfiV2SwapBlockMatcher,
@@ -207,6 +208,7 @@ matchers = [
     ToncoDepositLiquidityMatcher(),
     ToncoDeployPoolBlockMatcher(),
     ToncoWithdrawLiquidityMatcher(),
+    CoffeeSwapBlockMatcher(),
 ]
 
 trace_post_processors = [

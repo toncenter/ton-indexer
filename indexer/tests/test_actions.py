@@ -41,6 +41,10 @@ class TestDedustLiquiditiesActions(BaseGenericActionTest):
 class TestToncoActions(BaseGenericActionTest):
     yaml_file = "tonco.yaml"
 
+class TestCoffeeActions(BaseGenericActionTest):
+    yaml_file = "coffee.yaml"
+
+
 class TestUnknownAction:
 
     @pytest.mark.asyncio
