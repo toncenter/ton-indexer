@@ -1621,34 +1621,6 @@ class DepositLiquidityData: # fully compatible with dex_deposit_liquidity_data
     lp_tokens_minted: Amount | None
 
 
-# def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action: Action):
-#     action.type='dex_deposit_liquidity'
-#     action.source = _addr(block.data["sender"])
-#     action.destination = _addr(block.data["pool_address"])
-#     action.destination_secondary = _addr(block.data["deposit_contract"])
-#     vault_excesses = []
-#     for excess in block.data["vault_excesses"]:
-#         vault_excesses.append({
-#             'asset': _addr(excess[0]),
-#             'amount': excess[1].value,
-#         })
-#     action.dex_deposit_liquidity_data = {
-#         "dex": block.data["dex"],
-#         "asset1": _addr(block.data["asset_1"]),
-#         "amount1": block.data["amount_1"].value if block.data["amount_1"] is not None else None,
-#         "asset2": _addr(block.data["asset_2"]),
-#         "amount2": block.data["amount_2"].value if block.data["amount_2"] is not None else None,
-#         "user_jetton_wallet_1": _addr(block.data["user_jetton_wallet_1"]),
-#         "user_jetton_wallet_2": _addr(block.data["user_jetton_wallet_2"]),
-#         "lp_tokens_minted": block.data["lp_tokens_minted"].value if block.data["lp_tokens_minted"] is not None else None,
-#         "target_asset_1": _addr(block.data["target_asset_1"]),
-#         "target_amount_1": block.data["target_amount_1"].value if block.data["target_amount_1"] is not None else None,
-#         "target_asset_2": _addr(block.data["target_asset_2"]),
-#         "target_amount_2": block.data["target_amount_2"].value if block.data["target_amount_2"] is not None else None,
-#         "vault_excesses": vault_excesses
-#     }
-
-
 class CoffeeDepositLiquidityMatcher(BlockMatcher):
     def __init__(self):
         out_transfer_matcher = labeled(
@@ -1714,7 +1686,6 @@ class CoffeeDepositLiquidityMatcher(BlockMatcher):
             and block.opcode == CoffeeCreateLiquidityDepositoryRequest.opcode
         )
 
-    @logger.catch()
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         in_transfer = get_labeled("in_transfer", other_blocks)
         if not in_transfer:
