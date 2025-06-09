@@ -446,11 +446,11 @@ type blockId struct {
 type Trace struct {
 	TraceId      *string
 	ExternalHash string
-	Nodes        []traceNode
+	Nodes        []TraceNode
 	Classified   bool
 	Actions      []Action
 }
-type traceNode struct {
+type TraceNode struct {
 	Transaction  transaction `msgpack:"transaction"`
 	Emulated     bool        `msgpack:"emulated"`
 	BlockId      blockId     `msgpack:"block_id"`
@@ -591,7 +591,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 		return Trace{}, fmt.Errorf("root_node not found in trace %s", traceKey)
 	}
 	queue = append(queue, rootNodeId)
-	txs := make([]traceNode, 0)
+	txs := make([]TraceNode, 0)
 	actions := make([]Action, 0)
 	var endLt uint64 = 0
 	var endUtime uint32 = 0
@@ -600,7 +600,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 	for len(queue) > 0 {
 		key := queue[0]
 		queue = queue[1:]
-		var node traceNode
+		var node TraceNode
 		nodeData, exists := traceHash[key]
 		if !exists {
 			return Trace{}, fmt.Errorf("key %s not found in trace", key)
@@ -664,7 +664,7 @@ func (h hash) Base64Ptr() *string {
 	return &str
 }
 
-func (n *traceNode) GetTransaction() (models.Transaction, error) {
+func (n *TraceNode) GetTransaction() (models.Transaction, error) {
 	origStatus, err := n.Transaction.OrigStatus.Str()
 	if err != nil {
 		return models.Transaction{}, err
@@ -976,7 +976,7 @@ func (m *trMessage) GetMessage(traceId string, direction string, txLt uint64, tx
 	return message, body, initState, nil
 }
 
-func (n *traceNode) GetMessages() ([]models.Message, map[string]models.MessageContent, map[string]models.MessageContent, error) {
+func (n *TraceNode) GetMessages() ([]models.Message, map[string]models.MessageContent, map[string]models.MessageContent, error) {
 	messageContents := make(map[string]models.MessageContent)
 	initStates := make(map[string]models.MessageContent)
 	messages := make([]models.Message, 0)

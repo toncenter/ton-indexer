@@ -1,11 +1,13 @@
 package index
 
 import (
+	"log"
+
+	"sort"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"log"
-	"sort"
 	"strconv"
 )
 
@@ -56,11 +58,11 @@ func (c *EmulatedTracesContext) RemoveTraces(trace_keys []string) {
 	}
 }
 
-func (c *EmulatedTracesContext) GetTransactionsByTraceIdAndHash(trace_id models.HashType, tx_hashes []*models.HashType) []*models.Transaction {
+func (c *EmulatedTracesContext) GetTransactionsByTraceIdAndHash(trace_id string, tx_hashes []string) []*models.Transaction {
 	txs := make([]*models.Transaction, 0)
 	for _, tx_hash := range tx_hashes {
-		for _, tx := range c.emulatedTransactions[string(trace_id)] {
-			if tx.Hash == *tx_hash {
+		for _, tx := range c.emulatedTransactions[trace_id] {
+			if tx.Hash == models.HashType(tx_hash) {
 				txs = append(txs, tx)
 			}
 		}
@@ -109,6 +111,10 @@ func (c *EmulatedTracesContext) GetTransactions() []*models.Transaction {
 	return txs
 }
 
+func (c *EmulatedTracesContext) GetTraceCount() int {
+	return len(c.emulatedTraces)
+}
+
 func (c *EmulatedTracesContext) GetTraces() []*models.Trace {
 	traces := make([]*models.Trace, 0)
 	for _, trace := range c.emulatedTraces {
@@ -117,12 +123,33 @@ func (c *EmulatedTracesContext) GetTraces() []*models.Trace {
 	return traces
 }
 
+func (c *EmulatedTracesContext) GetAllActions() []*models.RawAction {
+	rows := make([]*models.RawAction, 0)
+	for _, traceKey := range c.traceKeys {
+		if actions, ok := c.emulatedActions[traceKey]; ok {
+			sort.Slice(actions, func(i, j int) bool {
+				if actions[i].EndLt == actions[j].EndLt {
+					return actions[i].StartLt > actions[j].StartLt
+				}
+				return actions[i].EndLt > actions[j].EndLt
+			})
+			for _, action := range actions {
+				rows = append(rows, action)
+			}
+		}
+	}
+	return rows
+}
+
 func (c *EmulatedTracesContext) GetRawActions(supportedActions []string) []*models.RawAction {
 	rows := make([]*models.RawAction, 0)
 	supportedActionsSet := mapset.NewSet(supportedActions...)
 	for _, traceKey := range c.traceKeys {
 		if actions, ok := c.emulatedActions[traceKey]; ok {
 			sort.Slice(actions, func(i, j int) bool {
+				if actions[i].EndLt == actions[j].EndLt {
+					return actions[i].StartLt > actions[j].StartLt
+				}
 				return actions[i].EndLt > actions[j].EndLt
 			})
 			for _, action := range actions {

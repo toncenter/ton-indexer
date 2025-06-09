@@ -109,6 +109,7 @@ type AccountStateFull struct {
 	CodeHash               *HashType         `json:"code_hash,omitempty"`
 	DataBoc                *string           `json:"data_boc,omitempty"`
 	CodeBoc                *string           `json:"code_boc,omitempty"`
+	ContractMethods        *[]uint32         `json:"contract_methods"`
 } // @name AccountStateFull
 
 type WalletState struct {
@@ -928,6 +929,7 @@ type Action struct {
 	Details           interface{} `json:"details"`
 	RawAction         *RawAction  `json:"raw_action,omitempty" swaggerignore:"true"`
 	TraceExternalHash *HashType   `json:"trace_external_hash,omitempty"`
+	AncestorType      []string    `json:"-"`
 } // @name Action
 
 type TraceMeta struct {

@@ -743,6 +743,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		act.Details = &details
 		act.RawAction = raw
 	}
+	act.AncestorType = raw.AncestorType
 	return &act, nil
 }
 
@@ -893,7 +894,7 @@ func ScanAccountStateFull(row pgx.Row) (*models.AccountStateFull, error) {
 	var acst models.AccountStateFull
 	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.BalanceExtraCurrencies,
 		&acst.AccountStatus, &acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt,
-		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
+		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc, &acst.ContractMethods)
 	if err != nil {
 		return nil, err
 	}
@@ -1182,6 +1183,8 @@ func ScanRawAction(row pgx.Row) (*models.RawAction, error) {
 		&act.ToncoDeployPoolLpFeeBase,
 		&act.ToncoDeployPoolLpFeeCurrent,
 		&act.ToncoDeployPoolPoolActive,
+
+		&act.AncestorType,
 	)
 
 	if err != nil {
