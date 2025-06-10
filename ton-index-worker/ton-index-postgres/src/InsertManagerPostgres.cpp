@@ -381,11 +381,11 @@ void InsertBatchPostgres::start_up() {
 }
 
 std::string get_worker_id() {
-  std::string hostname(HOST_NAME_MAX, '\0');
-  if (gethostname(hostname.data(), HOST_NAME_MAX) != 0) {
+  char hostname[HOST_NAME_MAX];
+  if (gethostname(hostname, HOST_NAME_MAX) != 0) {
     throw std::runtime_error("Failed to get hostname");
   }
-  std::string worker_id = hostname + "-" + std::to_string(getpid());
+  std::string worker_id = std::string{hostname} + "_" + std::to_string(getpid());
   return worker_id;
 }
 
@@ -413,7 +413,7 @@ bool InsertBatchPostgres::try_acquire_leader_lock() {
     td::Timer timer;
     pqxx::connection c(connection_string_);
     pqxx::work txn(c);
-    auto [won] = txn.exec(query, pqxx::params{get_worker_id(), }).one_row().as<int>();
+    auto [won] = txn.exec(query, pqxx::params{get_worker_id()}).one_row().as<int>();
     txn.commit();
 
     if (won != is_leader) {
