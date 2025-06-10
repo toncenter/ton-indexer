@@ -79,4 +79,8 @@ private:
   std::string insert_getgems_nft_sales(pqxx::work &txn);
   void insert_contract_methods(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
+
+  bool try_acquire_leader_lock();
+  void do_insert();
+  void ensure_inserted();
 };

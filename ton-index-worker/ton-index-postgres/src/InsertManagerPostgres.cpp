@@ -380,7 +380,92 @@ void InsertBatchPostgres::start_up() {
   alarm();
 }
 
+std::string get_worker_id() {
+  std::string hostname(HOST_NAME_MAX, '\0');
+  if (gethostname(hostname.data(), HOST_NAME_MAX) != 0) {
+    throw std::runtime_error("Failed to get hostname");
+  }
+  std::string worker_id = hostname + "-" + std::to_string(getpid());
+  return worker_id;
+}
+
+bool InsertBatchPostgres::try_acquire_leader_lock() {
+  auto query = R"(
+  WITH grab AS (
+      UPDATE ton_indexer_leader
+        SET leader_worker_id = $1,
+            last_heartbeat   = NOW(),
+            started_at       = CASE
+                                  WHEN leader_worker_id = $1
+                                  THEN started_at
+                                  ELSE NOW()
+                                END
+      WHERE id = 1
+        AND ( last_heartbeat < NOW() - INTERVAL '20 seconds'
+            OR leader_worker_id = $1 )
+      RETURNING 1                        -- any column; we only need the row count
+  )
+  SELECT
+      (SELECT COUNT(*) FROM grab) AS won_the_lock;
+  )";
+  try {
+    static std::atomic_bool is_leader = false;
+    td::Timer timer;
+    pqxx::connection c(connection_string_);
+    pqxx::work txn(c);
+    auto [won] = txn.exec(query, pqxx::params{get_worker_id(), }).one_row().as<int>();
+    txn.commit();
+
+    if (won != is_leader) {
+      LOG(WARNING) << "Worker " << get_worker_id() << (won ? " ACQUIRED" : " LOST") << " leader role.";
+    }
+    is_leader = won == 1;
+    return is_leader;
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error trying to acquire SQL leader lock: " << e.what();
+    return false;
+  }
+}
+
 void InsertBatchPostgres::alarm() {
+  if (try_acquire_leader_lock()) {
+    do_insert();
+  } else {
+    ensure_inserted();
+  }
+}
+
+void InsertBatchPostgres::ensure_inserted() {
+  std::string seqnos = "(";
+  for(auto& task : insert_tasks_) {
+    auto mc_seqno = task.mc_seqno_;
+    if (seqnos.size() > 1) {
+      seqnos += ", ";
+    }
+    seqnos += std::to_string(mc_seqno);
+  }
+  seqnos += ")";
+  auto query = "select count(*) from blocks where workchain = -1 and seqno in " + seqnos + ";";
+  try {
+    td::Timer timer;
+    pqxx::connection c(connection_string_);
+    pqxx::work txn(c);
+    auto [inserted_cnt] = txn.query1<int>(query);
+    if (inserted_cnt != insert_tasks_.size()) {
+      alarm_timestamp() = td::Timestamp::in(1.0);
+    } else {
+      for(auto& task : insert_tasks_) {
+        task.promise_.set_value(td::Unit());
+      }
+      promise_.set_value(td::Unit());
+    }
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error ensuring that leader inserted blocks batch: " << e.what();
+    alarm_timestamp() = td::Timestamp::in(1.0);
+  }
+}
+
+void InsertBatchPostgres::do_insert() {
   try {
     td::Timer connect_timer;
     pqxx::connection c(connection_string_);
@@ -2135,6 +2220,17 @@ void InsertManagerPostgres::start_up() {
 			"updated_at bigint, "
 			"expires_at bigint, "
 			"constraint address_metadata_pk primary key (address, type));\n"
+    );
+
+    query += (
+      "create unlogged table if not exists ton_indexer_leader ("
+      "id                INTEGER PRIMARY KEY CHECK (id = 1),"
+      "leader_worker_id  TEXT        NOT NULL, "
+      "last_heartbeat    TIMESTAMPTZ NOT NULL, "
+      "started_at        TIMESTAMPTZ NOT NULL);\n"
+
+      "INSERT INTO ton_indexer_leader (id, leader_worker_id, last_heartbeat, started_at)"
+      "VALUES (1, 'none', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour') ON CONFLICT DO NOTHING;\n"
     );
 
     LOG(DEBUG) << query;
