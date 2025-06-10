@@ -525,7 +525,7 @@ func GetMessages(c *fiber.Ctx) error {
 // @tags accounts
 // @Accept json
 // @Produce json
-// @success 200 {object} index.AddressBook
+// @success 200 {object} models.AddressBook
 // @failure 400 {object} index.RequestError
 // @param address query []string true "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
 // @router /api/v3/addressBook [get]
@@ -555,7 +555,7 @@ func GetAddressBook(c *fiber.Ctx) error {
 // @tags accounts
 // @Accept json
 // @Produce json
-// @success 200 {object} index.Metadata
+// @success 200 {object} models.Metadata
 // @failure 400 {object} index.RequestError
 // @param address query []string true "List of addresses in any form to get address metadata. Max: 1024." collectionFormat(multi)
 // @router /api/v3/metadata [get]
@@ -870,7 +870,7 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 // @tags stats
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	[]index.AccountBalance
+// @success		200	{object}	[]models.AccountBalance
 // @failure		400	{object}	index.RequestError
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -1376,7 +1376,7 @@ func GetPendingActions(c *fiber.Ctx) error {
 // @tags api/v2
 // @Accept json
 // @Produce json
-// @success 200 {object} index.V2WalletInformation
+// @success 200 {object} models.V2WalletInformation
 // @failure 400 {object} index.RequestError
 // @param address query string true "Account address in any form."
 // @param use_v2 query bool false "Use method from api/v2. Not recommended" default(true)
@@ -1449,7 +1449,7 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 // @tags api/v2
 // @Accept json
 // @Produce json
-// @success 200 {object} index.V2AddressInformation
+// @success 200 {object} models.V2AddressInformation
 // @failure 400 {object} index.RequestError
 // @param address query string true "Account address in any form."
 // @param use_v2 query bool false "Use method from api/v2. Not recommended" default(true)
@@ -1511,7 +1511,7 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 // @tags api/v2
 // @Accept json
 // @Produce json
-// @success 200 {object} index.V2SendMessageResult
+// @success 200 {object} models.V2SendMessageResult
 // @failure 400 {object} index.RequestError
 // @param boc body index.V2SendMessageRequest true "Message in boc base64 format."
 // @router /api/v3/message [post]
@@ -1543,7 +1543,7 @@ func PostV2SendMessage(c *fiber.Ctx) error {
 // @tags api/v2
 // @Accept json
 // @Produce json
-// @success 200 {object} index.V2EstimateFeeResult
+// @success 200 {object} models.V2EstimateFeeResult
 // @failure 400 {object} index.RequestError
 // @param request body index.V2EstimateFeeRequest true "Estimate fee request."
 // @router /api/v3/estimateFee [post]
