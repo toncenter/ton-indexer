@@ -4280,13 +4280,13 @@ const docTemplate = `{
                 }
             }
         },
-        "index.TraceNode": {
+        "models.TraceNode": {
             "type": "object",
             "properties": {
                 "children": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/index.TraceNode"
+                        "$ref": "#/definitions/models.TraceNode"
                     }
                 },
                 "in_msg": {

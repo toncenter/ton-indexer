@@ -1061,11 +1061,11 @@ definitions:
           $ref: '#/definitions/WalletState'
         type: array
     type: object
-  index.TraceNode:
+  models.TraceNode:
     properties:
       children:
         items:
-          $ref: '#/definitions/index.TraceNode'
+          $ref: '#/definitions/models.TraceNode'
         type: array
       in_msg:
         $ref: '#/definitions/Message'

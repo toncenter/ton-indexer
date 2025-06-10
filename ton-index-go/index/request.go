@@ -1,6 +1,7 @@
 package index
 
 import (
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"time"
 )
 
@@ -22,10 +23,10 @@ type RequestSettings struct {
 
 // requests
 type BlockRequest struct {
-	Workchain *int32   `query:"workchain"`
-	Shard     *ShardId `query:"shard"`
-	Seqno     *int32   `query:"seqno"`
-	McSeqno   *int32   `query:"mc_seqno"`
+	Workchain *int32          `query:"workchain"`
+	Shard     *models.ShardId `query:"shard"`
+	Seqno     *int32          `query:"seqno"`
+	McSeqno   *int32          `query:"mc_seqno"`
 }
 
 type AddressBookRequest struct {
@@ -33,75 +34,75 @@ type AddressBookRequest struct {
 }
 
 type TransactionRequest struct {
-	Account        []AccountAddress `query:"account"`
-	ExcludeAccount []AccountAddress `query:"exclude_account"`
-	Hash           *HashType        `query:"hash"`
-	Lt             *uint64          `query:"lt"`
+	Account        []models.AccountAddress `query:"account"`
+	ExcludeAccount []models.AccountAddress `query:"exclude_account"`
+	Hash           *models.HashType        `query:"hash"`
+	Lt             *uint64                 `query:"lt"`
 }
 
 type PendingTransactionRequest struct {
-	Account []AccountAddress `query:"account"`
-	TraceId []HashType       `query:"trace_id"`
+	Account []models.AccountAddress `query:"account"`
+	TraceId []models.HashType       `query:"trace_id"`
 }
 
 type AdjacentTransactionRequest struct {
-	Hash      HashType `query:"hash"`
-	Direction *string  `query:"direction"`
+	Hash      models.HashType `query:"hash"`
+	Direction *string         `query:"direction"`
 }
 
 type MessageRequest struct {
-	Direction        *string                 `query:"direction"`
-	ExcludeExternals *bool                   `query:"exclude_externals"`
-	OnlyExternals    *bool                   `query:"only_externals"`
-	MessageHash      []HashType              `query:"msg_hash"`
-	Source           *AccountAddressNullable `query:"source"`
-	Destination      *AccountAddressNullable `query:"destination"`
-	BodyHash         *HashType               `query:"body_hash"`
-	Opcode           *OpcodeType             `query:"opcode"`
+	Direction        *string                        `query:"direction"`
+	ExcludeExternals *bool                          `query:"exclude_externals"`
+	OnlyExternals    *bool                          `query:"only_externals"`
+	MessageHash      []models.HashType              `query:"msg_hash"`
+	Source           *models.AccountAddressNullable `query:"source"`
+	Destination      *models.AccountAddressNullable `query:"destination"`
+	BodyHash         *models.HashType               `query:"body_hash"`
+	Opcode           *models.OpcodeType             `query:"opcode"`
 }
 
 type NFTCollectionRequest struct {
-	CollectionAddress []AccountAddress `query:"collection_address"`
-	OwnerAddress      []AccountAddress `query:"owner_address"`
+	CollectionAddress []models.AccountAddress `query:"collection_address"`
+	OwnerAddress      []models.AccountAddress `query:"owner_address"`
 }
 
 type NFTItemRequest struct {
-	Address           []AccountAddress `query:"address"`
-	OwnerAddress      []AccountAddress `query:"owner_address"`
-	CollectionAddress []AccountAddress `query:"collection_address"`
-	Index             []string         `query:"index"`
+	Address           []models.AccountAddress `query:"address"`
+	OwnerAddress      []models.AccountAddress `query:"owner_address"`
+	CollectionAddress []models.AccountAddress `query:"collection_address"`
+	Index             []string                `query:"index"`
 }
 
 type NFTTransferRequest struct {
-	OwnerAddress      []AccountAddress `query:"owner_address"`
-	ItemAddress       []AccountAddress `query:"item_address"`
-	CollectionAddress *AccountAddress  `query:"collection_address"`
-	Direction         *string          `query:"direction"`
+	OwnerAddress      []models.AccountAddress `query:"owner_address"`
+	ItemAddress       []models.AccountAddress `query:"item_address"`
+	CollectionAddress *models.AccountAddress  `query:"collection_address"`
+	Direction         *string                 `query:"direction"`
 }
 
 type JettonMasterRequest struct {
-	MasterAddress []AccountAddress `query:"address"`
-	AdminAddress  []AccountAddress `query:"admin_address"`
+	MasterAddress []models.AccountAddress `query:"address"`
+	AdminAddress  []models.AccountAddress `query:"admin_address"`
 }
 
 type JettonWalletRequest struct {
-	Address            []AccountAddress `query:"address"`
-	OwnerAddress       []AccountAddress `query:"owner_address"`
-	JettonAddress      []AccountAddress `query:"jetton_address"`
-	ExcludeZeroBalance *bool            `query:"exclude_zero_balance"`
+	Address            []models.AccountAddress `query:"address"`
+	OwnerAddress       []models.AccountAddress `query:"owner_address"`
+	JettonAddress      []models.AccountAddress `query:"jetton_address"`
+	ExcludeZeroBalance *bool                   `query:"exclude_zero_balance"`
 }
 
 type JettonTransferRequest struct {
-	OwnerAddress []AccountAddress `query:"owner_address"`
-	JettonWallet []AccountAddress `query:"jetton_wallet"`
-	JettonMaster *AccountAddress  `query:"jetton_master"`
-	Direction    *string          `query:"direction"`
+	OwnerAddress []models.AccountAddress `query:"owner_address"`
+	JettonWallet []models.AccountAddress `query:"jetton_wallet"`
+	JettonMaster *models.AccountAddress  `query:"jetton_master"`
+	Direction    *string                 `query:"direction"`
 }
 
 type JettonBurnRequest struct {
-	OwnerAddress []AccountAddress `query:"owner_address"`
-	JettonWallet []AccountAddress `query:"jetton_wallet"`
-	JettonMaster *AccountAddress  `query:"jetton_master"`
+	OwnerAddress []models.AccountAddress `query:"owner_address"`
+	JettonWallet []models.AccountAddress `query:"jetton_wallet"`
+	JettonMaster *models.AccountAddress  `query:"jetton_master"`
 }
 
 type UtimeRequest struct {
@@ -115,21 +116,21 @@ type LtRequest struct {
 }
 
 type AccountRequest struct {
-	AccountAddress []AccountAddress `query:"address"`
-	CodeHash       []HashType       `query:"code_hash"`
-	IncludeBOC     *bool            `query:"include_boc"`
+	AccountAddress []models.AccountAddress `query:"address"`
+	CodeHash       []models.HashType       `query:"code_hash"`
+	IncludeBOC     *bool                   `query:"include_boc"`
 }
 
 type ActionRequest struct {
-	AccountAddress       *AccountAddress `query:"account"`
-	TransactionHash      []HashType      `query:"tx_hash"`
-	MessageHash          []HashType      `query:"msg_hash"`
-	TraceId              []HashType      `query:"trace_id"`
-	ActionId             []HashType      `query:"action_id"`
-	McSeqno              *int32          `query:"mc_seqno"`
-	IncludeActionTypes   []string        `query:"action_type"`
-	ExcludeActionTypes   []string        `query:"exclude_action_type"`
-	SupportedActionTypes []string        `query:"supported_action_types"`
+	AccountAddress       *models.AccountAddress `query:"account"`
+	TransactionHash      []models.HashType      `query:"tx_hash"`
+	MessageHash          []models.HashType      `query:"msg_hash"`
+	TraceId              []models.HashType      `query:"trace_id"`
+	ActionId             []models.HashType      `query:"action_id"`
+	McSeqno              *int32                 `query:"mc_seqno"`
+	IncludeActionTypes   []string               `query:"action_type"`
+	ExcludeActionTypes   []string               `query:"exclude_action_type"`
+	SupportedActionTypes []string               `query:"supported_action_types"`
 }
 
 type BalanceChangesRequest struct {
@@ -138,29 +139,29 @@ type BalanceChangesRequest struct {
 }
 
 type TracesRequest struct {
-	IncludeActions       bool            `query:"include_actions"`
-	AccountAddress       *AccountAddress `query:"account"`
-	TraceId              []HashType      `query:"trace_id"`
-	TransactionHash      []HashType      `query:"tx_hash"`
-	MessageHash          []HashType      `query:"msg_hash"`
-	McSeqno              *int32          `query:"mc_seqno"`
-	SupportedActionTypes []string        `query:"supported_action_types"`
+	IncludeActions       bool                   `query:"include_actions"`
+	AccountAddress       *models.AccountAddress `query:"account"`
+	TraceId              []models.HashType      `query:"trace_id"`
+	TransactionHash      []models.HashType      `query:"tx_hash"`
+	MessageHash          []models.HashType      `query:"msg_hash"`
+	McSeqno              *int32                 `query:"mc_seqno"`
+	SupportedActionTypes []string               `query:"supported_action_types"`
 }
 
 type PendingTracesRequest struct {
-	AccountAddress       *AccountAddress `query:"account"`
-	ExtMsgHash           []HashType      `query:"ext_msg_hash"`
-	SupportedActionTypes []string        `query:"supported_action_types"`
+	AccountAddress       *models.AccountAddress `query:"account"`
+	ExtMsgHash           []models.HashType      `query:"ext_msg_hash"`
+	SupportedActionTypes []string               `query:"supported_action_types"`
 }
 
 type PendingActionsRequest struct {
-	AccountAddress       *AccountAddress `query:"account"`
-	ExtMsgHash           []HashType      `query:"ext_msg_hash"`
-	SupportedActionTypes []string        `query:"supported_action_types"`
+	AccountAddress       *models.AccountAddress `query:"account"`
+	ExtMsgHash           []models.HashType      `query:"ext_msg_hash"`
+	SupportedActionTypes []string               `query:"supported_action_types"`
 }
 
 type DNSRecordsRequest struct {
-	WalletAddress *AccountAddress `query:"wallet"`
+	WalletAddress *models.AccountAddress `query:"wallet"`
 }
 
 type SortType string
@@ -177,15 +178,15 @@ type LimitRequest struct {
 }
 
 type TestRequest struct {
-	Hash  []HashType       `query:"my_hash"`
-	Addr  []AccountAddress `query:"my_addr"`
-	Shard []ShardId        `query:"my_shard"`
+	Hash  []models.HashType       `query:"my_hash"`
+	Addr  []models.AccountAddress `query:"my_addr"`
+	Shard []models.ShardId        `query:"my_shard"`
 }
 
 // api/v2 requests
 type V2AccountRequest struct {
-	AccountAddress AccountAddress `query:"address"`
-	UseV2          *bool          `query:"use_v2"`
+	AccountAddress models.AccountAddress `query:"address"`
+	UseV2          *bool                 `query:"use_v2"`
 }
 
 type V2SendMessageRequest struct {
@@ -193,15 +194,15 @@ type V2SendMessageRequest struct {
 } // @name V2SendMessageRequest
 
 type V2RunGetMethodRequest struct {
-	Address AccountAddress  `json:"address"`
-	Method  string          `json:"method"`
-	Stack   []V2StackEntity `json:"stack"`
+	Address models.AccountAddress  `json:"address"`
+	Method  string                 `json:"method"`
+	Stack   []models.V2StackEntity `json:"stack"`
 } // @name V2RunGetMethodRequest
 
 type V2EstimateFeeRequest struct {
-	Address      AccountAddress `json:"address"`
-	Body         string         `json:"body"`
-	InitCode     string         `json:"init_code"`
-	InitData     string         `json:"init_data"`
-	IgnoreChksig bool           `json:"ignore_chksig"`
+	Address      models.AccountAddress `json:"address"`
+	Body         string                `json:"body"`
+	InitCode     string                `json:"init_code"`
+	InitData     string                `json:"init_data"`
+	IgnoreChksig bool                  `json:"ignore_chksig"`
 } // @name V2EstimateFeeRequest
