@@ -66,7 +66,11 @@ int main(int argc, char *argv[]) {
   p.add_option('W', "working-dir", "Path to index working dir for secondary rocksdb logs", [&](td::Slice fname) { 
     working_dir = fname.str();
   });
-  p.add_option('h', "host", "PostgreSQL host address",  [&](td::Slice value) { 
+  p.add_option('\0', "pg", "PostgreSQL connection string", [&](td::Slice value) { 
+    credential.conn_str = value.str();
+  });
+  p.add_option('h', "host", "PostgreSQL host address", [&](td::Slice value) { 
+    LOG(WARNING) << "Using --host option is deprecated, use --pg with connection string instead";
     credential.host = value.str();
   });
   p.add_checked_option('p', "port", "PostgreSQL port", [&](td::Slice value) {
@@ -78,16 +82,20 @@ int main(int argc, char *argv[]) {
     } catch(...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --port: not a number");
     }
+    LOG(WARNING) << "Using --port option is deprecated, use --pg with connection string instead";
     credential.port = port;
     return td::Status::OK();
   });
   p.add_option('u', "user", "PostgreSQL username", [&](td::Slice value) { 
+    LOG(WARNING) << "Using --user option is deprecated, use --pg with connection string instead";
     credential.user = value.str();
   });
-  p.add_option('P', "password", "PostgreSQL password", [&](td::Slice value) { 
+  p.add_option('P', "password", "PostgreSQL password", [&](td::Slice value) {
+    LOG(WARNING) << "Using --password option is deprecated, use --pg with connection string instead";
     credential.password = value.str();
   });
-  p.add_option('d', "dbname", "PostgreSQL database name", [&](td::Slice value) { 
+  p.add_option('d', "dbname", "PostgreSQL database name", [&](td::Slice value) {
+    LOG(WARNING) << "Using --dbname option is deprecated, use --pg with connection string instead";
     credential.dbname = value.str();
   });
   p.add_option('\0', "custom-types", "Use pgton extension with custom types", [&]() {
