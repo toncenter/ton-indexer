@@ -15,7 +15,9 @@ public:
     std::string password;
     std::string dbname = "ton_index";
 
-    std::string get_connection_string(std::string dbname = "") const;
+    std::string conn_str;
+
+    std::string get_connection_string() const;
   };
 private:
   InsertManagerPostgres::Credential credential_;
