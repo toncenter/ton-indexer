@@ -36,8 +36,11 @@ from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_additional_addresses, \
     extract_extra_accounts_data_requests, extract_accounts_from_trace
-from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action
-from indexer.events.blocks.utils.dedust_pools import init_pools_data
+from indexer.events.blocks.utils.block_tree_serializer import (
+    block_to_action,
+    create_unknown_action
+)
+from indexer.events.blocks.utils.dedust_pools import init_pools_data, start_pools_background_updater, get_pools_manager
 from indexer.events.blocks.utils.block_tree_serializer import block_to_action, serialize_blocks
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing, \
@@ -291,7 +294,7 @@ class EventClassifierWorker(mp.Process):
                     accs, req = extract_accounts_from_trace(trace)
                     accounts.update(accs)
                     extra_data_requests.update(req)
-
+                await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
                 interfaces = await gather_interfaces(accounts, session, extra_requests=extra_data_requests)
                 repository = RedisInterfaceRepository(redis.sync_client)
                 await repository.put_interfaces(interfaces)
@@ -396,6 +399,8 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
     else:
         logger.info(f"Total unclassified traces number is given: {total_traces}")
 
+    await start_pools_background_updater(redis.client)
+
     task_queue = mp.Queue(args.prefetch_size)
     result_queue = mp.Queue()
     stats_queue = mp.Queue()
@@ -460,6 +465,7 @@ async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_
 
     pubsub = redis.client.pubsub()
     await pubsub.subscribe(settings.emulated_traces_redis_channel)
+    await start_pools_background_updater(redis.client)
 
     pending_traces = []
     last_process_time = time.time()
@@ -489,6 +495,7 @@ async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_
 
             # Process batch if window elapsed or max size reached
             if (window_elapsed >= batch_window and pending_traces) or len(pending_traces) >= max_batch_size:
+                await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
                 if pending_traces:
                     batch = pending_traces.copy()
                     pending_traces.clear()
@@ -664,10 +671,12 @@ async def process_emulated_trace_batch(
 
 async def start_emulated_task_traces_processing():
     pubsub = redis.client.pubsub()
+    await start_pools_background_updater(redis.client)
     await pubsub.subscribe(settings.emulated_traces_redis_channel)
     while True:
         message = await pubsub.get_message(timeout=1)
         if message is not None and message['type'] == 'message':
+            await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
             task_id = message['data'].decode('utf-8')
             try:
                 start = time.time()
@@ -734,11 +743,6 @@ if __name__ == '__main__':
     manager = Manager()
     shared_namespace = manager.Namespace()
 
-    # Initialize pools data and store in shared namespace
-    init_pools_data()
-    # Save pools data from context to shared namespace
-    shared_namespace.dedust_pools = context.dedust_pools.get()
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--prefetch-size',
                         help='Number of prefetched tasks',
@@ -787,6 +791,11 @@ if __name__ == '__main__':
     if redis.client is None:
         logger.error("Redis client not initialized. Aborting...")
         sys.exit(1)
+
+    # Initialize pools data and store in shared namespace
+    init_pools_data(redis.sync_client)
+    # Save pools data from context to shared namespace
+    shared_namespace.dedust_pools = context.dedust_pools.get()
 
     if args.emulated_trace_tasks:
         logger.info("Starting processing emulated trace tasks")
