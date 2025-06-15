@@ -56,6 +56,12 @@ var ActionTypeShortcuts = map[string][]string{
 	"jvault": {
 		"jvault_stake", "jvault_unstake", "jvault_claim", "jvault_unstake_request",
 	},
+	"tgbtc": {
+		"tgbtc_dkg_log_fallback",
+		"tgbtc_new_key", "tgbtc_new_key_fallback",
+		"tgbtc_burn", "tgbtc_burn_fallback",
+		"tgbtc_mint", "tgbtc_mint_fallback",
+	},
 }
 
 func ExpandActionTypeShortcuts(shortcuts []string) []string {

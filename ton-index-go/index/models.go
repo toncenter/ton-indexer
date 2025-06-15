@@ -1157,3 +1157,35 @@ type ActionDetailsNftDiscovery struct {
 	NftCollection *AccountAddress `json:"nft_collection"`
 	NftItemIndex  *string         `json:"nft_item_index"`
 }
+
+type ActionDetailsTgbtcMint struct {
+	Source            *AccountAddress `json:"source"`
+	Destination       *AccountAddress `json:"destination"`
+	Amount            *string         `json:"amount"`
+	Asset             *AccountAddress `json:"asset"`
+	BitcoinTxId       *string         `json:"bitcoin_tx_id"`
+	DestinationWallet *AccountAddress `json:"destination_wallet"`
+}
+
+type ActionDetailsTgbtcBurn struct {
+	Source       *AccountAddress `json:"source"`
+	SourceWallet *AccountAddress `json:"source_wallet"`
+	Destination  *AccountAddress `json:"destination"`
+	Amount       *string         `json:"amount"`
+	Asset        *AccountAddress `json:"asset"`
+}
+
+type ActionDetailsTgbtcNewKey struct {
+	Source      *AccountAddress `json:"source"`
+	Pubkey      *string         `json:"pubkey"`
+	Coordinator *AccountAddress `json:"coordinator"`
+	Pegout      *AccountAddress `json:"pegout"`
+	Amount      *string         `json:"amount"`
+	Asset       *AccountAddress `json:"asset"`
+}
+
+type ActionDetailsDkgLogFallback struct {
+	Coordinator *AccountAddress `json:"coordinator"`
+	Pubkey      *string         `json:"pubkey"`
+	Timestamp   *string         `json:"timestamp"`
+}

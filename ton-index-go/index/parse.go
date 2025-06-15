@@ -733,6 +733,37 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			NftCollection: raw.Asset,
 			NftItemIndex:  raw.NFTTransferNFTItemIndex,
 		}
+	case "tgbtc_mint", "tgbtc_mint_fallback":
+		var details ActionDetailsTgbtcMint
+		details.Source = raw.Source
+		details.Destination = raw.Destination
+		details.Amount = raw.Amount
+		details.Asset = raw.Asset
+		details.BitcoinTxId = (*string)(raw.AssetSecondary)
+		details.DestinationWallet = raw.DestinationSecondary
+		act.Details = &details
+	case "tgbtc_burn", "tgbtc_burn_fallback":
+		var details ActionDetailsTgbtcBurn
+		details.Source = raw.Source
+		details.SourceWallet = raw.SourceSecondary
+		details.Destination = raw.Destination
+		details.Amount = raw.Amount
+		details.Asset = raw.Asset
+		act.Details = &details
+	case "tgbtc_new_key", "tgbtc_new_key_fallback":
+		var details ActionDetailsTgbtcNewKey
+		details.Source = raw.Source
+		details.Pubkey = (*string)(raw.SourceSecondary)
+		details.Coordinator = raw.Destination
+		details.Pegout = raw.DestinationSecondary
+		details.Amount = raw.Amount
+		act.Details = &details
+	case "tgbtc_dkg_log_fallback":
+		var details ActionDetailsDkgLogFallback
+		details.Coordinator = raw.Source
+		details.Pubkey = (*string)(raw.Asset)
+		details.Timestamp = raw.Value
+		act.Details = &details
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
