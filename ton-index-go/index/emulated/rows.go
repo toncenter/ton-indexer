@@ -182,6 +182,7 @@ type ActionRow struct {
 	JettonSwapDexOutgoingTransferSourceJettonWallet      *string
 	JettonSwapDexOutgoingTransferDestinationJettonWallet *string
 	JettonSwapPeerSwaps                                  []actionPeerSwapDetails
+	JettonSwapMinOutAmount                               *string
 	ChangeDNSRecordKey                                   *string
 	ChangeDNSRecordValueSchema                           *string
 	ChangeDNSRecordValue                                 *string
@@ -197,6 +198,10 @@ type ActionRow struct {
 	DexWithdrawLiquidityDataDexJettonWallet1             *string
 	DexWithdrawLiquidityDataDexJettonWallet2             *string
 	DexWithdrawLiquidityDataLpTokensBurnt                *string
+	DexWithdrawLiquidityDataBurnedNFTIndex               *string
+	DexWithdrawLiquidityDataBurnedNFTAddress             *string
+	DexWithdrawLiquidityDataTickLower                    *string
+	DexWithdrawLiquidityDataTickUpper                    *string
 	DexDepositLiquidityDataDex                           *string
 	DexDepositLiquidityDataAmount1                       *string
 	DexDepositLiquidityDataAmount2                       *string
@@ -210,6 +215,10 @@ type ActionRow struct {
 	DexDepositLiquidityDataTargetAmount1                 *string
 	DexDepositLiquidityDataTargetAmount2                 *string
 	DexDepositLiquidityDataVaultExcesses                 []actionVaultExcess
+	DexDepositLiquidityDataTickLower                     *string
+	DexDepositLiquidityDataTickUpper                     *string
+	DexDepositLiquidityDataNFTIndex                      *string
+	DexDepositLiquidityDataNFTAddress                    *string
 	StakingDataProvider                                  *string
 	StakingDataTsNft                                     *string
 	StakingTokensBurnt                                   *string
@@ -273,8 +282,19 @@ type ActionRow struct {
 
 	AncestorType   []string
 	ParentActionId *string
-}
 
+	// Tonco deploy fields
+	ToncoDeployPoolJetton0RouterWallet *string
+	ToncoDeployPoolJetton1RouterWallet *string
+	ToncoDeployPoolJetton0Minter       *string
+	ToncoDeployPoolJetton1Minter       *string
+	ToncoDeployPoolTickSpacing         *int64
+	ToncoDeployPoolInitialPriceX96     *string
+	ToncoDeployPoolProtocolFee         *int64
+	ToncoDeployPoolLpFeeBase           *int64
+	ToncoDeployPoolLpFeeCurrent        *int64
+	ToncoDeployPoolPoolActive          *bool
+}
 type assign func(dest any) error
 type assignable interface {
 	getAssigns() []assign
@@ -389,6 +409,7 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.JettonSwapDexOutgoingTransferSourceJettonWallet),
 		assignStringPtr(t.JettonSwapDexOutgoingTransferDestinationJettonWallet),
 		assignSlice(t.JettonSwapPeerSwaps),
+		assignStringPtr(t.JettonSwapMinOutAmount),
 		assignStringPtr(t.ChangeDNSRecordKey),
 		assignStringPtr(t.ChangeDNSRecordValueSchema),
 		assignStringPtr(t.ChangeDNSRecordValue),
@@ -404,6 +425,10 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.DexWithdrawLiquidityDataDexJettonWallet1),
 		assignStringPtr(t.DexWithdrawLiquidityDataDexJettonWallet2),
 		assignStringPtr(t.DexWithdrawLiquidityDataLpTokensBurnt),
+		assignStringPtr(t.DexWithdrawLiquidityDataBurnedNFTIndex),
+		assignStringPtr(t.DexWithdrawLiquidityDataBurnedNFTAddress),
+		assignStringPtr(t.DexWithdrawLiquidityDataTickLower),
+		assignStringPtr(t.DexWithdrawLiquidityDataTickUpper),
 		assignStringPtr(t.DexDepositLiquidityDataDex),
 		assignStringPtr(t.DexDepositLiquidityDataAmount1),
 		assignStringPtr(t.DexDepositLiquidityDataAmount2),
@@ -417,6 +442,10 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.DexDepositLiquidityDataTargetAmount1),
 		assignStringPtr(t.DexDepositLiquidityDataTargetAmount2),
 		assignSlice(t.DexDepositLiquidityDataVaultExcesses),
+		assignStringPtr(t.DexDepositLiquidityDataTickLower),
+		assignStringPtr(t.DexDepositLiquidityDataTickUpper),
+		assignStringPtr(t.DexDepositLiquidityDataNFTIndex),
+		assignStringPtr(t.DexDepositLiquidityDataNFTAddress),
 		assignStringPtr(t.StakingDataProvider),
 		assignStringPtr(t.StakingDataTsNft),
 		assignStringPtr(t.StakingTokensBurnt),
@@ -462,9 +491,20 @@ func (t *ActionRow) getAssigns() []assign {
 		assignIntPtr(t.JvaultStakePeriod),
 		assignStringPtr(t.JvaultStakeMintedStakeJettons),
 		assignStringPtr(t.JvaultStakeStakeWallet),
+		assignStringPtr(t.ToncoDeployPoolJetton0RouterWallet),
+		assignStringPtr(t.ToncoDeployPoolJetton1RouterWallet),
+		assignStringPtr(t.ToncoDeployPoolJetton0Minter),
+		assignStringPtr(t.ToncoDeployPoolJetton1Minter),
+		assignIntPtr(t.ToncoDeployPoolTickSpacing),
+		assignStringPtr(t.ToncoDeployPoolInitialPriceX96),
+		assignIntPtr(t.ToncoDeployPoolProtocolFee),
+		assignIntPtr(t.ToncoDeployPoolLpFeeBase),
+		assignIntPtr(t.ToncoDeployPoolLpFeeCurrent),
+		assignBoolPtr(t.ToncoDeployPoolPoolActive),
+
+		assignStrCompatibleSlice(t.AncestorType),
 	}
 }
-
 func (t *TransactionRow) getAssigns() []assign {
 	return []assign{
 		assignString(t.Account),

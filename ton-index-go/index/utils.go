@@ -29,6 +29,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"evaa_supply", "evaa_withdraw", "evaa_liquidate",
 		"jvault_stake", "jvault_unstake", "jvault_claim", "jvault_unstake_request",
 		"nft_discovery",
+		"tonco_deploy_pool",
 		"unknown",
 	},
 	"latest": {"v2"},

@@ -293,7 +293,9 @@ class Action(Base):
             Column("amount_in", Numeric),
             Column("asset_out", String),
             Column("amount_out", Numeric),
-        ])))]))
+        ]))),
+        Column("min_out_amount", Numeric)
+    ]))
     change_dns_record_data = Column(CompositeType("change_dns_record_details", [
         Column("key", String),
         Column("value_schema", String),
@@ -326,21 +328,26 @@ class Action(Base):
     ]))
     dex_deposit_liquidity_data = Column(CompositeType("dex_deposit_liquidity_details", [
         Column("dex", String),
-        Column("amount1", Numeric),
-        Column("amount2", Numeric),
+        Column("amount1", Numeric),  # actual amount deposited
+        Column("amount2", Numeric),  # actual amount deposited
         Column("asset1", String),
         Column("asset2", String),
         Column('user_jetton_wallet_1', String),
         Column('user_jetton_wallet_2', String),
-        Column("lp_tokens_minted", Numeric),
+        Column("lp_tokens_minted", Numeric),  # or `liquidity` points credited (if it's an NFT)
         Column("target_asset_1", String),
-        Column("target_asset_2", String),
-        Column("target_amount_1", Numeric),
-        Column("target_amount_2", Numeric),
+        Column("target_asset_2", String),  # these should be the same as asset_(1,2)
+        Column("target_amount_1", Numeric),  # desired amount to be deposited
+        Column("target_amount_2", Numeric),  # desired amount to be deposited
         Column("vault_excesses", ARRAY(CompositeType("liquidity_vault_excess_details", [
             Column("asset", String),
-            Column("amount", Numeric),
-        ])))
+            Column("amount", Numeric),  # usually amount_(1,2) - target_amount_(1,2)
+        ]))),
+        # fields for tonco (concentrated liquidity):
+        Column("tick_lower", Numeric),
+        Column("tick_upper", Numeric),
+        Column("nft_index", Numeric),
+        Column("nft_address", String),
     ]))
     dex_withdraw_liquidity_data = Column(CompositeType("dex_withdraw_liquidity_details", [
         Column("dex", String),
@@ -354,7 +361,12 @@ class Action(Base):
         Column('dex_jetton_wallet_2', String),
         Column("lp_tokens_burnt", Numeric),
         Column('dex_wallet_1', String),
-        Column('dex_wallet_2', String)
+        Column('dex_wallet_2', String),
+        # new fields for tonco (concentrated liquidity):
+        Column('burned_nft_index', Numeric),
+        Column('burned_nft_address', String),
+        Column('tick_lower', Numeric),
+        Column('tick_upper', Numeric)
     ]))
     jvault_claim_data = Column(CompositeType("jvault_claim_details", [
         Column("claimed_jettons", ARRAY(String())),
@@ -399,6 +411,18 @@ class Action(Base):
         Column("ts_nft", String),
         Column("tokens_burnt", Numeric),
         Column("tokens_minted", Numeric),
+    ]))
+    tonco_deploy_pool_data = Column(CompositeType("tonco_deploy_pool_details", [
+        Column("jetton0_router_wallet", String),
+        Column("jetton1_router_wallet", String),
+        Column("jetton0_minter", String),
+        Column("jetton1_minter", String),
+        Column("tick_spacing", Integer),
+        Column("initial_price_x96", Numeric),
+        Column("protocol_fee", Integer),
+        Column("lp_fee_base", Integer),
+        Column("lp_fee_current", Integer),
+        Column("pool_active", Boolean),
     ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)

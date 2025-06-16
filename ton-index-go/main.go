@@ -693,7 +693,7 @@ func GetDNSRecords(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if len(*req.WalletAddress) == 0 {
+	if req.WalletAddress == nil || len(*req.WalletAddress) == 0 {
 		return index.IndexError{Code: 422, Message: "wallet address is required"}
 	}
 

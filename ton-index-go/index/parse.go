@@ -408,6 +408,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.TargetAsset1 = raw.DexDepositLiquidityDataTargetAsset1
 		details.TargetAmount2 = raw.DexDepositLiquidityDataTargetAmount2
 		details.TargetAsset2 = raw.DexDepositLiquidityDataTargetAsset2
+		details.TickLower = raw.DexDepositLiquidityDataTickLower
+		details.TickUpper = raw.DexDepositLiquidityDataTickUpper
+		details.NftIndex = raw.DexDepositLiquidityDataNFTIndex
+		details.NftAddress = raw.DexDepositLiquidityDataNFTAddress
 		details.VaultExcesses = []ActionDetailsLiquidityVaultExcess{}
 		for _, excess := range raw.DexDepositLiquidityDataVaultExcesses {
 			details.VaultExcesses = append(details.VaultExcesses, ActionDetailsLiquidityVaultExcess(excess))
@@ -426,6 +430,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.UserJettonWallet1 = raw.DexWithdrawLiquidityDataUserJettonWallet1
 		details.UserJettonWallet2 = raw.DexWithdrawLiquidityDataUserJettonWallet2
 		details.LpTokensBurnt = raw.DexWithdrawLiquidityDataLpTokensBurnt
+		details.BurntNftIndex = raw.DexWithdrawLiquidityDataBurnedNFTIndex
+		details.BurntNftAddress = raw.DexWithdrawLiquidityDataBurnedNFTAddress
+		details.TickUpper = raw.DexWithdrawLiquidityDataTickUpper
+		details.TickLower = raw.DexWithdrawLiquidityDataTickLower
 		act.Details = &details
 	case "delete_dns":
 		var details ActionDetailsDeleteDns
@@ -482,8 +490,21 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		for _, peer := range raw.JettonSwapPeerSwaps {
 			details.PeerSwaps = append(details.PeerSwaps, ActionDetailsJettonSwapPeerSwap(peer))
 		}
-
-		act.Details = &details
+		// MinOutAmount common field in swaps but for now supported only in tonco swaps, thats why it should appear only for tonco for now
+		if details.Dex != nil && *details.Dex == "tonco" {
+			act.Details = &ActionDetailsToncoJettonSwap{
+				Dex:                 details.Dex,
+				Sender:              details.Sender,
+				AssetIn:             details.AssetIn,
+				AssetOut:            details.AssetOut,
+				DexIncomingTransfer: details.DexIncomingTransfer,
+				DexOutgoingTransfer: details.DexOutgoingTransfer,
+				PeerSwaps:           details.PeerSwaps,
+				MinOutAmount:        raw.JettonSwapMinOutAmount,
+			}
+		} else {
+			act.Details = &details
+		}
 	case "jetton_transfer":
 		var details ActionDetailsJettonTransfer
 		details.Asset = raw.Asset
@@ -764,12 +785,29 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Pubkey = (*string)(raw.Asset)
 		details.Timestamp = raw.Value
 		act.Details = &details
+	case "tonco_deploy_pool":
+		act.Details = ActionDetailsToncoDeployPool{
+			Source:              raw.Source,
+			Pool:                raw.DestinationSecondary,
+			Router:              raw.Destination,
+			RouterJettonWallet1: raw.ToncoDeployPoolJetton0RouterWallet,
+			RouterJettonWallet2: raw.ToncoDeployPoolJetton1RouterWallet,
+			JettonMinter1:       raw.ToncoDeployPoolJetton0Minter,
+			JettonMinter2:       raw.ToncoDeployPoolJetton1Minter,
+			TickSpacing:         raw.ToncoDeployPoolTickSpacing,
+			InitialPriceX96:     raw.ToncoDeployPoolInitialPriceX96,
+			ProtocolFee:         raw.ToncoDeployPoolProtocolFee,
+			LpFeeBase:           raw.ToncoDeployPoolLpFeeBase,
+			LpFeeCurrent:        raw.ToncoDeployPoolLpFeeCurrent,
+			PoolActive:          raw.ToncoDeployPoolPoolActive,
+		}
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
 		act.Details = &details
 		act.RawAction = raw
 	}
+	act.AncestorType = raw.AncestorType
 	return &act, nil
 }
 
@@ -936,7 +974,7 @@ func ScanAccountStateFull(row pgx.Row) (*AccountStateFull, error) {
 	var acst AccountStateFull
 	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.BalanceExtraCurrencies,
 		&acst.AccountStatus, &acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt,
-		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
+		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc, &acst.ContractMethods)
 	if err != nil {
 		return nil, err
 	}
@@ -983,11 +1021,16 @@ func ScanNFTItem(row pgx.Row) (*NFTItem, error) {
 func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
 	var res NFTItem
 	var col NFTCollectionNullable
+	var saleAddress, saleOwner *AccountAddress
+	var auctionAddress, auctionOwner *AccountAddress
 
 	err := row.Scan(&res.Address, &res.Init, &res.Index, &res.CollectionAddress,
 		&res.OwnerAddress, &res.Content, &res.LastTransactionLt, &res.CodeHash, &res.DataHash,
 		&col.Address, &col.NextItemIndex, &col.OwnerAddress, &col.CollectionContent,
-		&col.DataHash, &col.CodeHash, &col.LastTransactionLt)
+		&col.DataHash, &col.CodeHash, &col.LastTransactionLt,
+		&saleAddress, &saleOwner,
+		&auctionAddress, &auctionOwner)
+
 	if col.Address != nil {
 		res.Collection = new(NFTCollection)
 		res.Collection.Address = *col.Address
@@ -998,6 +1041,22 @@ func ScanNFTItemWithCollection(row pgx.Row) (*NFTItem, error) {
 		res.Collection.CodeHash = *col.CodeHash
 		res.Collection.LastTransactionLt = *col.LastTransactionLt
 	}
+
+	// Handle sale/auction data
+	if saleAddress != nil {
+		res.OnSale = true
+		res.SaleContractAddress = saleAddress
+		if saleOwner != nil {
+			res.RealOwner = saleOwner
+		}
+	} else if auctionAddress != nil {
+		res.OnSale = true
+		res.AuctionContractAddress = auctionAddress
+		if auctionOwner != nil {
+			res.RealOwner = auctionOwner
+		}
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -1068,18 +1127,56 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 	var act RawAction
 	err := row.Scan(&act.TraceId, &act.ActionId, &act.StartLt, &act.EndLt, &act.StartUtime, &act.EndUtime,
 		&act.TraceEndLt, &act.TraceEndUtime, &act.TraceMcSeqnoEnd,
-		&act.Source, &act.SourceSecondary, &act.Destination, &act.DestinationSecondary, &act.Asset, &act.AssetSecondary,
-		&act.Asset2, &act.Asset2Secondary, &act.Opcode, &act.TxHashes, &act.Type, &act.TonTransferContent,
-		&act.TonTransferEncrypted, &act.Value, &act.Amount, &act.JettonTransferResponseDestination, &act.JettonTransferForwardAmount,
-		&act.JettonTransferQueryId, &act.JettonTransferCustomPayload, &act.JettonTransferForwardPayload,
-		&act.JettonTransferComment, &act.JettonTransferIsEncryptedComment, &act.NFTTransferIsPurchase, &act.NFTTransferPrice,
-		&act.NFTTransferQueryId, &act.NFTTransferCustomPayload, &act.NFTTransferForwardPayload, &act.NFTTransferForwardAmount, &act.NFTTransferResponseDestination,
-		&act.NFTTransferNFTItemIndex, &act.JettonSwapDex, &act.JettonSwapSender, &act.JettonSwapDexIncomingTransferAmount, &act.JettonSwapDexIncomingTransferAsset,
-		&act.JettonSwapDexIncomingTransferSource, &act.JettonSwapDexIncomingTransferDestination, &act.JettonSwapDexIncomingTransferSourceJettonWallet,
-		&act.JettonSwapDexIncomingTransferDestinationJettonWallet, &act.JettonSwapDexOutgoingTransferAmount, &act.JettonSwapDexOutgoingTransferAsset,
-		&act.JettonSwapDexOutgoingTransferSource, &act.JettonSwapDexOutgoingTransferDestination, &act.JettonSwapDexOutgoingTransferSourceJettonWallet,
-		&act.JettonSwapDexOutgoingTransferDestinationJettonWallet, &act.JettonSwapPeerSwaps, &act.ChangeDNSRecordKey, &act.ChangeDNSRecordValueSchema,
-		&act.ChangeDNSRecordValue, &act.ChangeDNSRecordFlags, &act.NFTMintNFTItemIndex,
+		&act.Source,
+		&act.SourceSecondary,
+		&act.Destination,
+		&act.DestinationSecondary,
+		&act.Asset,
+		&act.AssetSecondary,
+		&act.Asset2,
+		&act.Asset2Secondary,
+		&act.Opcode,
+		&act.TxHashes,
+		&act.Type,
+		&act.TonTransferContent,
+		&act.TonTransferEncrypted,
+		&act.Value, &act.Amount,
+		&act.JettonTransferResponseDestination,
+		&act.JettonTransferForwardAmount,
+		&act.JettonTransferQueryId,
+		&act.JettonTransferCustomPayload,
+		&act.JettonTransferForwardPayload,
+		&act.JettonTransferComment,
+		&act.JettonTransferIsEncryptedComment,
+		&act.NFTTransferIsPurchase,
+		&act.NFTTransferPrice,
+		&act.NFTTransferQueryId,
+		&act.NFTTransferCustomPayload,
+		&act.NFTTransferForwardPayload,
+		&act.NFTTransferForwardAmount,
+		&act.NFTTransferResponseDestination,
+		&act.NFTTransferNFTItemIndex,
+		&act.JettonSwapDex,
+		&act.JettonSwapSender,
+		&act.JettonSwapDexIncomingTransferAmount,
+		&act.JettonSwapDexIncomingTransferAsset,
+		&act.JettonSwapDexIncomingTransferSource,
+		&act.JettonSwapDexIncomingTransferDestination,
+		&act.JettonSwapDexIncomingTransferSourceJettonWallet,
+		&act.JettonSwapDexIncomingTransferDestinationJettonWallet,
+		&act.JettonSwapDexOutgoingTransferAmount,
+		&act.JettonSwapDexOutgoingTransferAsset,
+		&act.JettonSwapDexOutgoingTransferSource,
+		&act.JettonSwapDexOutgoingTransferDestination,
+		&act.JettonSwapDexOutgoingTransferSourceJettonWallet,
+		&act.JettonSwapDexOutgoingTransferDestinationJettonWallet,
+		&act.JettonSwapPeerSwaps,
+		&act.JettonSwapMinOutAmount,
+		&act.ChangeDNSRecordKey,
+		&act.ChangeDNSRecordValueSchema,
+		&act.ChangeDNSRecordValue,
+		&act.ChangeDNSRecordFlags,
+		&act.NFTMintNFTItemIndex,
 		&act.DexWithdrawLiquidityDataDex,
 		&act.DexWithdrawLiquidityDataAmount1,
 		&act.DexWithdrawLiquidityDataAmount2,
@@ -1090,6 +1187,10 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.DexWithdrawLiquidityDataDexJettonWallet1,
 		&act.DexWithdrawLiquidityDataDexJettonWallet2,
 		&act.DexWithdrawLiquidityDataLpTokensBurnt,
+		&act.DexWithdrawLiquidityDataBurnedNFTIndex,
+		&act.DexWithdrawLiquidityDataBurnedNFTAddress,
+		&act.DexWithdrawLiquidityDataTickLower,
+		&act.DexWithdrawLiquidityDataTickUpper,
 		&act.DexDepositLiquidityDataDex,
 		&act.DexDepositLiquidityDataAmount1,
 		&act.DexDepositLiquidityDataAmount2,
@@ -1099,10 +1200,14 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.DexDepositLiquidityDataUserJettonWallet2,
 		&act.DexDepositLiquidityDataLpTokensMinted,
 		&act.DexDepositLiquidityDataTargetAsset1,
-		&act.DexDepositLiquidityDataTargetAsset1,
+		&act.DexDepositLiquidityDataTargetAsset2,
 		&act.DexDepositLiquidityDataTargetAmount1,
 		&act.DexDepositLiquidityDataTargetAmount2,
 		&act.DexDepositLiquidityDataVaultExcesses,
+		&act.DexDepositLiquidityDataTickLower,
+		&act.DexDepositLiquidityDataTickUpper,
+		&act.DexDepositLiquidityDataNFTIndex,
+		&act.DexDepositLiquidityDataNFTAddress,
 		&act.StakingDataProvider,
 		&act.StakingDataTsNft,
 		&act.StakingDataTokensBurnt,
@@ -1147,7 +1252,20 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.JvaultClaimClaimedAmounts,
 		&act.JvaultStakePeriod,
 		&act.JvaultStakeMintedStakeJettons,
-		&act.JvaultStakeStakeWallet)
+		&act.JvaultStakeStakeWallet,
+		&act.ToncoDeployPoolJetton0RouterWallet,
+		&act.ToncoDeployPoolJetton1RouterWallet,
+		&act.ToncoDeployPoolJetton0Minter,
+		&act.ToncoDeployPoolJetton1Minter,
+		&act.ToncoDeployPoolTickSpacing,
+		&act.ToncoDeployPoolInitialPriceX96,
+		&act.ToncoDeployPoolProtocolFee,
+		&act.ToncoDeployPoolLpFeeBase,
+		&act.ToncoDeployPoolLpFeeCurrent,
+		&act.ToncoDeployPoolPoolActive,
+
+		&act.AncestorType,
+	)
 
 	if err != nil {
 		return nil, err

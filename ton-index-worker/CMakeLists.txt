@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 
 project(ton-index-cpp)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 option(PGTON "Enable adding the pgton subdirectory" OFF)
 option(TON_USE_JEMALLOC "Use \"ON\" to enable JeMalloc." OFF)
 

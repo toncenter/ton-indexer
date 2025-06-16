@@ -38,6 +38,9 @@ class TestVestingActions(BaseGenericActionTest):
 class TestDedustLiquiditiesActions(BaseGenericActionTest):
     yaml_file = "dedust-liquidities.yaml"
 
+class TestToncoActions(BaseGenericActionTest):
+    yaml_file = "tonco.yaml"
+
 class TestTgBTCActions(BaseGenericActionTest):
     yaml_file = "tgbtc.yaml"
 

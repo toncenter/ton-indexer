@@ -97,6 +97,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		((A.jetton_swap_data).dex_outgoing_transfer).asset, ((A.jetton_swap_data).dex_outgoing_transfer).source,
 		((A.jetton_swap_data).dex_outgoing_transfer).destination, ((A.jetton_swap_data).dex_outgoing_transfer).source_jetton_wallet,
 		((A.jetton_swap_data).dex_outgoing_transfer).destination_jetton_wallet, (A.jetton_swap_data).peer_swaps,
+		(A.jetton_swap_data).min_out_amount,
 		(A.change_dns_record_data).key, (A.change_dns_record_data).value_schema, (A.change_dns_record_data).value,
 		(A.change_dns_record_data).flags, (A.nft_mint_data).nft_item_index,
 		(A.dex_withdraw_liquidity_data).dex,
@@ -109,6 +110,10 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.dex_withdraw_liquidity_data).dex_jetton_wallet_1,
 		(A.dex_withdraw_liquidity_data).dex_jetton_wallet_2,
 		(A.dex_withdraw_liquidity_data).lp_tokens_burnt,
+		(A.dex_withdraw_liquidity_data).burned_nft_index,
+		(A.dex_withdraw_liquidity_data).burned_nft_address,
+		(A.dex_withdraw_liquidity_data).tick_lower,
+		(A.dex_withdraw_liquidity_data).tick_upper,
 		(A.dex_deposit_liquidity_data).dex,
 		(A.dex_deposit_liquidity_data).amount1,
 		(A.dex_deposit_liquidity_data).amount2,
@@ -122,6 +127,10 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.dex_deposit_liquidity_data).target_amount_1,
 		(A.dex_deposit_liquidity_data).target_amount_2,
 		(A.dex_deposit_liquidity_data).vault_excesses,
+		(A.dex_deposit_liquidity_data).tick_lower,
+		(A.dex_deposit_liquidity_data).tick_upper,
+		(A.dex_deposit_liquidity_data).nft_index,
+		(A.dex_deposit_liquidity_data).nft_address,
 		(A.staking_data).provider,
 		(A.staking_data).ts_nft,
 		(A.staking_data).tokens_burnt,
@@ -166,7 +175,19 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.jvault_claim_data).claimed_amounts,
 		(A.jvault_stake_data).period,
 		(A.jvault_stake_data).minted_stake_jettons,
-		(A.jvault_stake_data).stake_wallet`
+		(A.jvault_stake_data).stake_wallet,
+		(A.tonco_deploy_pool_data).jetton0_router_wallet,
+		(A.tonco_deploy_pool_data).jetton1_router_wallet,
+		(A.tonco_deploy_pool_data).jetton0_minter,
+		(A.tonco_deploy_pool_data).jetton1_minter,
+		(A.tonco_deploy_pool_data).tick_spacing,
+		(A.tonco_deploy_pool_data).initial_price_x96,
+		(A.tonco_deploy_pool_data).protocol_fee,
+		(A.tonco_deploy_pool_data).lp_fee_base,
+		(A.tonco_deploy_pool_data).lp_fee_current,
+		(A.tonco_deploy_pool_data).pool_active,
+
+		A.ancestor_type`
 	clmn_query := clmn_query_default
 	from_query := `actions as A`
 	filter_list := []string{}

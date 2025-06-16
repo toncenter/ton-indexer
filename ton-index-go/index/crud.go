@@ -427,10 +427,15 @@ func buildNFTCollectionsQuery(nft_req NFTCollectionRequest, lim_req LimitRequest
 
 func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query := ` N.address, N.init, N.index, N.collection_address, N.owner_address, N.content, 
-					N.last_transaction_lt, N.code_hash, N.data_hash,
-					C.address, C.next_item_index, C.owner_address, C.collection_content, 
-				    C.data_hash, C.code_hash, C.last_transaction_lt`
-	from_query := ` nft_items as N left join nft_collections as C on N.collection_address = C.address`
+                N.last_transaction_lt, N.code_hash, N.data_hash,
+                C.address, C.next_item_index, C.owner_address, C.collection_content, 
+                C.data_hash, C.code_hash, C.last_transaction_lt,
+                S.address, S.nft_owner_address,
+                A.address, A.nft_owner`
+	from_query := ` nft_items as N 
+                left join nft_collections as C on N.collection_address = C.address
+                left join getgems_nft_sales as S on N.owner_address = S.address and N.address = S.nft_address
+                left join getgems_nft_auctions as A on N.owner_address = A.address and N.address = A.nft_addr`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ` order by N.id asc`
@@ -456,7 +461,7 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 	if v := nft_req.CollectionAddress; v != nil {
 		if len(nft_req.CollectionAddress) == 1 {
 			filter_list = append(filter_list, fmt.Sprintf("N.collection_address = '%s'", v[0]))
-			orderby_query = ` order by collection_address, index`
+			orderby_query = ` order by N.collection_address, N.index`
 		} else if len(nft_req.CollectionAddress) > 1 {
 			filter_str := filterByArray("N.collection_address", v)
 			if len(filter_str) > 0 {
@@ -1127,8 +1132,8 @@ func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
 
 func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
 	clmn_query_default := `A.account, A.hash, A.balance, A.balance_extra_currencies, A.account_status, A.frozen_hash, A.last_trans_hash, A.last_trans_lt, A.data_hash, A.code_hash, `
-	clmn_query := clmn_query_default + `A.data_boc, A.code_boc`
-	from_query := `latest_account_states as A`
+	clmn_query := clmn_query_default + `A.data_boc, A.code_boc, C.methods`
+	from_query := `latest_account_states as A left join contract_methods as C on A.code_hash = C.code_hash`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
@@ -1153,7 +1158,7 @@ func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, s
 		}
 	}
 	if v := account_req.IncludeBOC; v != nil && !*v {
-		clmn_query = clmn_query_default + `NULL, NULL`
+		clmn_query = clmn_query_default + `NULL, NULL, C.methods`
 	}
 
 	if len(filter_list) > 0 {
@@ -1391,15 +1396,100 @@ func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool
 	return txs, nil
 }
 
+func queryJettonWalletsTokenInfo(addr_list []string, conn *pgxpool.Conn, ctx context.Context) (map[string]TokenInfo, []string, error) {
+	if len(addr_list) == 0 {
+		return map[string]TokenInfo{}, []string{}, nil
+	}
+
+	query := `SELECT jw.address, jw.owner, jw.balance, jw.jetton 
+			  FROM jetton_wallets jw 
+			  WHERE jw.address = ANY($1)`
+
+	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	token_info_map := make(map[string]TokenInfo)
+	additional_addresses := make(map[string]bool) // Use map to avoid duplicates
+	addr_set := make(map[string]bool)
+
+	// Convert addr_list to set for quick lookup
+	for _, addr := range addr_list {
+		addr_set[addr] = true
+	}
+	valid := true
+	token_type := "jetton_wallets"
+	for rows.Next() {
+		var jetton_wallet_address, jetton_wallet_owner, jetton_walet_jetton string
+		var balance *string
+
+		err := rows.Scan(&jetton_wallet_address, &jetton_wallet_owner, &balance, &jetton_walet_jetton)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+
+		extra := map[string]interface{}{
+			"owner":  jetton_wallet_owner,
+			"jetton": jetton_walet_jetton,
+		}
+		if balance != nil {
+			extra["balance"] = *balance
+		}
+
+		token_info := TokenInfo{
+			Address: jetton_wallet_address,
+			Type:    &token_type,
+			Extra:   extra,
+			Indexed: true,
+			Valid:   &valid,
+		}
+
+		token_info_map[jetton_wallet_address] = token_info
+
+		// Add jetton address to additional addresses if not already in addr_list
+		if !addr_set[jetton_walet_jetton] {
+			additional_addresses[jetton_walet_jetton] = true
+		}
+	}
+
+	if rows.Err() != nil {
+		return nil, nil, IndexError{Code: 500, Message: rows.Err().Error()}
+	}
+
+	additional_addr_slice := make([]string, 0, len(additional_addresses))
+	for addr := range additional_addresses {
+		additional_addr_slice = append(additional_addr_slice, addr)
+	}
+
+	return token_info_map, additional_addr_slice, nil
+}
+
 func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
-	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1)" +
-		" union all " +
-		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra  from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1)" +
-		" union all " +
-		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra  from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1)"
+	token_info_map := map[string][]TokenInfo{}
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
+
+	// Query jetton wallet information and get additional addresses to scan
+	jetton_wallet_infos, additional_addrs, err := queryJettonWalletsTokenInfo(addr_list, conn, ctx)
+	if err != nil {
+		return nil, err
+	}
+	for addr, info := range jetton_wallet_infos {
+		token_info_map[addr] = append(token_info_map[addr], info)
+	}
+	if len(additional_addrs) > 0 {
+		addr_list = append(addr_list, additional_addrs...)
+	}
+
+	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra, n.index from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1)" +
+		" union all " +
+		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1)" +
+		" union all " +
+		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1)"
+
 	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
@@ -1408,11 +1498,10 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 	defer rows.Close()
 
 	tasks := []BackgroundTask{}
-	token_info_map := map[string][]TokenInfo{}
 
 	for rows.Next() {
 		var row TokenInfo
-		err := rows.Scan(&row.Address, &row.Valid, &row.Type, &row.Name, &row.Symbol, &row.Description, &row.Image, &row.Extra)
+		err := rows.Scan(&row.Address, &row.Valid, &row.Type, &row.Name, &row.Symbol, &row.Description, &row.Image, &row.Extra, &row.NftIndex)
 		if err != nil {
 			return nil, IndexError{Code: 500, Message: err.Error()}
 		}
@@ -1423,9 +1512,10 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 			}
 			tasks = append(tasks, BackgroundTask{Type: "fetch_metadata", Data: data})
 			token_info_map[row.Address] = append(token_info_map[row.Address], TokenInfo{
-				Address: row.Address,
-				Type:    row.Type,
-				Indexed: false,
+				Address:  row.Address,
+				Type:     row.Type,
+				NftIndex: row.NftIndex,
+				Indexed:  false,
 			})
 		} else {
 			row.Indexed = true
@@ -1437,14 +1527,16 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 				token_info_map[row.Address] = append(token_info_map[row.Address], row)
 			} else {
 				token_info_map[row.Address] = append(token_info_map[row.Address], TokenInfo{
-					Address: row.Address,
-					Indexed: true,
-					Valid:   row.Valid,
-					Type:    row.Type,
+					Address:  row.Address,
+					Indexed:  true,
+					Valid:    row.Valid,
+					Type:     row.Type,
+					NftIndex: row.NftIndex,
 				})
 			}
 		}
 	}
+
 	metadata := Metadata{}
 	for addr, infos := range token_info_map {
 		indexed := true
@@ -2007,6 +2099,19 @@ func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawActio
 			(*addr_list)[(string)(*master)] = true
 		}
 	}
+	// Tonco fields
+	if v := raw_action.DexDepositLiquidityDataNFTAddress; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.DexWithdrawLiquidityDataBurnedNFTAddress; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.ToncoDeployPoolJetton1Minter; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
+	if v := raw_action.ToncoDeployPoolJetton0Minter; v != nil {
+		(*addr_list)[(string)(*v)] = true
+	}
 
 	// Vesting fields
 	for _, v := range raw_action.VestingAddWhitelistAccountsAdded {
@@ -2091,6 +2196,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				((A.jetton_swap_data).dex_outgoing_transfer).asset, ((A.jetton_swap_data).dex_outgoing_transfer).source,
 				((A.jetton_swap_data).dex_outgoing_transfer).destination, ((A.jetton_swap_data).dex_outgoing_transfer).source_jetton_wallet,
 				((A.jetton_swap_data).dex_outgoing_transfer).destination_jetton_wallet, (A.jetton_swap_data).peer_swaps,
+				(A.jetton_swap_data).min_out_amount,
 				(A.change_dns_record_data).key, (A.change_dns_record_data).value_schema, (A.change_dns_record_data).value,
 				(A.change_dns_record_data).flags, (A.nft_mint_data).nft_item_index,
 				(A.dex_withdraw_liquidity_data).dex,
@@ -2103,6 +2209,10 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.dex_withdraw_liquidity_data).dex_jetton_wallet_1,
 				(A.dex_withdraw_liquidity_data).dex_jetton_wallet_2,
 				(A.dex_withdraw_liquidity_data).lp_tokens_burnt,
+				(A.dex_withdraw_liquidity_data).burned_nft_index,
+				(A.dex_withdraw_liquidity_data).burned_nft_address,
+				(A.dex_withdraw_liquidity_data).tick_lower,
+				(A.dex_withdraw_liquidity_data).tick_upper,
 				(A.dex_deposit_liquidity_data).dex,
 				(A.dex_deposit_liquidity_data).amount1,
 				(A.dex_deposit_liquidity_data).amount2,
@@ -2116,11 +2226,17 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.dex_deposit_liquidity_data).target_amount_1,
 				(A.dex_deposit_liquidity_data).target_amount_2,
 				(A.dex_deposit_liquidity_data).vault_excesses,
+				(A.dex_deposit_liquidity_data).tick_lower,
+				(A.dex_deposit_liquidity_data).tick_upper,
+				(A.dex_deposit_liquidity_data).nft_index,
+				(A.dex_deposit_liquidity_data).nft_address,
 				(A.staking_data).provider,
 				(A.staking_data).ts_nft,
 				(A.staking_data).tokens_burnt,
 				(A.staking_data).tokens_minted,
-				A.success, A.trace_external_hash, A.value_extra_currencies,
+				A.success,
+				A.trace_external_hash,
+				A.value_extra_currencies,
 				(A.multisig_create_order_data).query_id,
 				(A.multisig_create_order_data).order_seqno,
 				(A.multisig_create_order_data).is_created_by_signer,
@@ -2158,7 +2274,19 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.jvault_claim_data).claimed_amounts,
 				(A.jvault_stake_data).period,
 				(A.jvault_stake_data).minted_stake_jettons,
-				(A.jvault_stake_data).stake_wallet from actions as A where ` +
+				(A.jvault_stake_data).stake_wallet,
+				(A.tonco_deploy_pool_data).jetton0_router_wallet,
+				(A.tonco_deploy_pool_data).jetton1_router_wallet,
+				(A.tonco_deploy_pool_data).jetton0_minter,
+				(A.tonco_deploy_pool_data).jetton1_minter,
+				(A.tonco_deploy_pool_data).tick_spacing,
+				(A.tonco_deploy_pool_data).initial_price_x96,
+				(A.tonco_deploy_pool_data).protocol_fee,
+				(A.tonco_deploy_pool_data).lp_fee_base,
+				(A.tonco_deploy_pool_data).lp_fee_current,
+				(A.tonco_deploy_pool_data).pool_active,
+				
+				A.ancestor_type from actions as A where ` +
 				arrayFilter + typeFilter + `order by trace_id, start_lt, end_lt`
 			actions, err := queryRawActionsImpl(query, conn, settings, supportedActionTypes)
 			if err != nil {
