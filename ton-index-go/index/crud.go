@@ -1396,15 +1396,100 @@ func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool
 	return txs, nil
 }
 
+func queryJettonWalletsTokenInfo(addr_list []string, conn *pgxpool.Conn, ctx context.Context) (map[string]TokenInfo, []string, error) {
+	if len(addr_list) == 0 {
+		return map[string]TokenInfo{}, []string{}, nil
+	}
+
+	query := `SELECT jw.address, jw.owner, jw.balance, jw.jetton 
+			  FROM jetton_wallets jw 
+			  WHERE jw.address = ANY($1)`
+
+	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	token_info_map := make(map[string]TokenInfo)
+	additional_addresses := make(map[string]bool) // Use map to avoid duplicates
+	addr_set := make(map[string]bool)
+
+	// Convert addr_list to set for quick lookup
+	for _, addr := range addr_list {
+		addr_set[addr] = true
+	}
+	valid := true
+	token_type := "jetton_wallets"
+	for rows.Next() {
+		var jetton_wallet_address, jetton_wallet_owner, jetton_walet_jetton string
+		var balance *string
+
+		err := rows.Scan(&jetton_wallet_address, &jetton_wallet_owner, &balance, &jetton_walet_jetton)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+
+		extra := map[string]interface{}{
+			"owner":  jetton_wallet_owner,
+			"jetton": jetton_walet_jetton,
+		}
+		if balance != nil {
+			extra["balance"] = *balance
+		}
+
+		token_info := TokenInfo{
+			Address: jetton_wallet_address,
+			Type:    &token_type,
+			Extra:   extra,
+			Indexed: true,
+			Valid:   &valid,
+		}
+
+		token_info_map[jetton_wallet_address] = token_info
+
+		// Add jetton address to additional addresses if not already in addr_list
+		if !addr_set[jetton_walet_jetton] {
+			additional_addresses[jetton_walet_jetton] = true
+		}
+	}
+
+	if rows.Err() != nil {
+		return nil, nil, IndexError{Code: 500, Message: rows.Err().Error()}
+	}
+
+	additional_addr_slice := make([]string, 0, len(additional_addresses))
+	for addr := range additional_addresses {
+		additional_addr_slice = append(additional_addr_slice, addr)
+	}
+
+	return token_info_map, additional_addr_slice, nil
+}
+
 func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
+	token_info_map := map[string][]TokenInfo{}
+
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+
+	// Query jetton wallet information and get additional addresses to scan
+	jetton_wallet_infos, additional_addrs, err := queryJettonWalletsTokenInfo(addr_list, conn, ctx)
+	if err != nil {
+		return nil, err
+	}
+	for addr, info := range jetton_wallet_infos {
+		token_info_map[addr] = append(token_info_map[addr], info)
+	}
+	if len(additional_addrs) > 0 {
+		addr_list = append(addr_list, additional_addrs...)
+	}
+
 	query := "select n.address, m.valid, 'nft_items' as type, m.name, m.symbol, m.description, m.image, m.extra, n.index from nft_items n left join address_metadata m on n.address = m.address and m.type = 'nft_items' where n.address = ANY($1)" +
 		" union all " +
 		"select c.address, m.valid, 'nft_collections' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from nft_collections c left join address_metadata m on c.address = m.address and m.type = 'nft_collections' where c.address = ANY($1)" +
 		" union all " +
 		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1)"
 
-	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
-	defer cancel_ctx()
 	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
@@ -1413,7 +1498,6 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 	defer rows.Close()
 
 	tasks := []BackgroundTask{}
-	token_info_map := map[string][]TokenInfo{}
 
 	for rows.Next() {
 		var row TokenInfo
@@ -1452,6 +1536,7 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 			}
 		}
 	}
+
 	metadata := Metadata{}
 	for addr, infos := range token_info_map {
 		indexed := true
