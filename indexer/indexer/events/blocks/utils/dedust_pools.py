@@ -17,10 +17,7 @@ POOLS_URL = 'https://api.dedust.io/v2/pools'
 AGENT = 'Chrome'
 FALLBACK_FILENAME = 'dedust_pools.json'
 
-# Redis keys and channels
 POOLS_DATA_KEY = 'I_dedust_pools:data'
-
-# Update interval in seconds (5 minutes)
 UPDATE_INTERVAL = 120
 
 class DedustPoolsManager:
