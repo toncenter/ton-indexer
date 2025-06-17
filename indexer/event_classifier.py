@@ -501,7 +501,6 @@ async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_
 
     try:
         while True:
-            # Get message with a short timeout to check batch window frequently
             message = await pubsub.get_message(timeout=0.01)
 
             current_time = time.time()
@@ -512,19 +511,18 @@ async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_
                 pending_traces.append(trace_id)
                 logger.debug(f"Added trace {trace_id} to batch (size: {len(pending_traces)})")
 
-            # Process batch if window elapsed or max size reached
-            if (window_elapsed >= batch_window and pending_traces) or len(pending_traces) >= max_batch_size:
-                if pending_traces:
-                    batch = pending_traces.copy()
-                    pending_traces.clear()
-                    last_process_time = current_time
+            if not pending_traces:
+                continue
 
-                    logger.info("Launching batch of %s traces (in-flight: %s)",
-                                len(batch), len(in_flight_tasks))
-                    await launch_batch(batch)
-            else:
-                # Sleep a bit to avoid busy waiting
-                await asyncio.sleep(0.01)
+            # Process batch if window elapsed or max size reached
+            if window_elapsed >= batch_window or len(pending_traces) >= max_batch_size:
+                batch = pending_traces.copy()
+                pending_traces.clear()
+                last_process_time = current_time
+
+                logger.info("Launching batch of %s traces (in-flight: %s)",
+                            len(batch), len(in_flight_tasks))
+                await launch_batch(batch)
 
             done = {t for t in in_flight_tasks if t.done()}
             in_flight_tasks.difference_update(done)
