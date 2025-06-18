@@ -452,6 +452,19 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
     return
 # end def
 
+async def _run_batch(batch, use_combined):
+    """Process one batch and swallow/log any exception so the parent task lives on."""
+    try:
+        async with async_session() as session:
+            results = await process_emulated_trace_batch(batch, session, use_combined)
+
+        success_count = sum(1 for _, success in results if success)
+        logger.info("Batch completed: %s/%s traces processed successfully",
+                    success_count, len(batch))
+
+    except Exception as exc:             # never let an exception kill the loop
+        logger.error("Batch FAILED: %s", exc, exc_info=True)
+
 async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_size: int = 50):
     global interface_cache
 
@@ -474,9 +487,20 @@ async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_
     logger.info(f"  Interface cache size: {interface_cache.max_size} entries")
     logger.info(f"  Interface cache TTL: {interface_cache.ttl} seconds")
 
+    pending_traces   : list[str] = []
+    last_process_time: float     = time.time()
+    in_flight_tasks  : set[asyncio.Task] = set()
+    sem              = asyncio.Semaphore(20)  # Limit concurrency to 20 tasks
+
+    async def launch_batch(batch):
+        """Wrapper that enforces the concurrency limit."""
+        async with sem:
+            task = asyncio.create_task(_run_batch(batch, use_combined))
+            in_flight_tasks.add(task)
+            task.add_done_callback(in_flight_tasks.discard)
+
     try:
         while True:
-            # Get message with a short timeout to check batch window frequently
             message = await pubsub.get_message(timeout=0.01)
 
             current_time = time.time()
@@ -487,28 +511,21 @@ async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_
                 pending_traces.append(trace_id)
                 logger.debug(f"Added trace {trace_id} to batch (size: {len(pending_traces)})")
 
+            if not pending_traces:
+                continue
+
             # Process batch if window elapsed or max size reached
-            if (window_elapsed >= batch_window and pending_traces) or len(pending_traces) >= max_batch_size:
-                if pending_traces:
-                    batch = pending_traces.copy()
-                    pending_traces.clear()
-                    last_process_time = current_time
+            if window_elapsed >= batch_window or len(pending_traces) >= max_batch_size:
+                batch = pending_traces.copy()
+                pending_traces.clear()
+                last_process_time = current_time
 
-                    logger.info(f"Processing batch of {len(batch)} traces")
-                    try:
-                        async with async_session() as session:
-                            # Process the batch
-                            results = await process_emulated_trace_batch(batch, session, use_combined)
+                logger.info("Launching batch of %s traces (in-flight: %s)",
+                            len(batch), len(in_flight_tasks))
+                await launch_batch(batch)
 
-                            # Log results
-                            success_count = sum(1 for _, success in results if success)
-                            logger.info(f"Batch completed: {success_count}/{len(batch)} traces processed successfully")
-                    except Exception as e:
-                        logger.error(f"Failed to process emulated trace batch: {e}")
-                        logger.exception(e)
-            else:
-                # Sleep a bit to avoid busy waiting
-                await asyncio.sleep(0.01)
+            done = {t for t in in_flight_tasks if t.done()}
+            in_flight_tasks.difference_update(done)
     except asyncio.CancelledError:
         logger.info("Emulated trace processing cancelled")
     except Exception as e:
