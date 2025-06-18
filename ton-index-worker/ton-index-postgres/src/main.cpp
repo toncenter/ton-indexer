@@ -98,20 +98,6 @@ int main(int argc, char *argv[]) {
     LOG(WARNING) << "Using --dbname option is deprecated, use --pg with connection string instead";
     credential.dbname = value.str();
   });
-  p.add_option('\0', "custom-types", "Use pgton extension with custom types", [&]() {
-    custom_types = true;
-    LOG(WARNING) << "Using pgton extension!";
-  });
-  
-  p.add_option('\0', "no-create-indexes", "Do not create indexes in database", [&]() {
-    create_indexes = false;
-    LOG(WARNING) << "Indexes will not be created on launch.";
-  });
-
-  p.add_option('\0', "no-migrations", "Do not run migrations", [&]() {
-    run_migrations = false;
-    LOG(WARNING) << "Migrations will not be executed on launch.";
-  });
 
   p.add_option('\0', "testnet", "Use for testnet. It is used for correct indexing of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
     testnet = true;
@@ -326,7 +312,7 @@ int main(int argc, char *argv[]) {
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
-  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential, custom_types, create_indexes, run_migrations); });
+  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir + "/secondary_logs"); });
 
