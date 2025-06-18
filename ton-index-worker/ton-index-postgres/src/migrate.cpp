@@ -777,7 +777,13 @@ int main(int argc, char *argv[]) {
     LOG(WARNING) << "Parameter `--pg` is not present, environment variables (PGHOST, PGPORT, PGUSER, etc.) are used.";
   }
 
-  auto current_version = get_current_db_version(pg_connection_string);
+  std::optional<Version> current_version{};
+  try {
+    current_version = get_current_db_version(pg_connection_string);
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error getting database version: " << e.what();
+    std::_Exit(2);
+  }
 
   if (current_version.has_value()) {
     if (current_version->major != latest_version.major || current_version->minor != latest_version.minor) {

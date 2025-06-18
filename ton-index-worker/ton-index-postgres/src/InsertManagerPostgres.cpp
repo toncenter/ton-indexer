@@ -1623,7 +1623,14 @@ void InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
 //
 
 void InsertManagerPostgres::start_up() {
-  auto db_version = get_current_db_version(credential_.get_connection_string());
+  std::optional<Version> db_version{};
+  try {
+    db_version = get_current_db_version(credential_.get_connection_string());
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error getting database version: " << e.what();
+    std::_Exit(2);
+  }
+
   if (!db_version.has_value()) {
     LOG(ERROR) << "Database version is not set, run `ton-index-postgres-migrate` to prepare the database";
     std::_Exit(2);

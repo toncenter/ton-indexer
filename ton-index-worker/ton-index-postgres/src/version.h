@@ -37,8 +37,5 @@ std::optional<Version> get_current_db_version(const std::string& connection_stri
   } catch (const pqxx::undefined_table &e) {
     LOG(INFO) << "Database version table does not exist, assuming it is new database.";
     return std::nullopt;
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Failed to get current database version: " << e.what();
-    std::_Exit(1);
   }
 }
