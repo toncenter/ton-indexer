@@ -91,6 +91,9 @@ from indexer.events.blocks.vesting import (
     VestingSendMessageBlockMatcher,
 )
 
+from indexer.events.blocks.tgbtc import TgBTCBurnBlockMatcher, TgBTCMintBlockMatcher, TgBTCNewKeyBlockMatcher
+from indexer.events.blocks.tgbtc import TgBTCMintLogOnlyMatcher, TgBTCBurnLogOnlyMatcher, TgBTCNewKeyLogOnlyMatcher, TgBTCDkgLogOnlyMatcher
+
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
 
@@ -204,6 +207,13 @@ matchers = [
     EvaaSupplyBlockMatcher(),
     EvaaWithdrawBlockMatcher(),
     EvaaLiquidateBlockMatcher(),
+    TgBTCMintBlockMatcher(),
+    TgBTCBurnBlockMatcher(),
+    TgBTCNewKeyBlockMatcher(),
+    TgBTCMintLogOnlyMatcher(),
+    TgBTCBurnLogOnlyMatcher(),
+    TgBTCNewKeyLogOnlyMatcher(),
+    TgBTCDkgLogOnlyMatcher(),
     ToncoDepositLiquidityMatcher(),
     ToncoDeployPoolBlockMatcher(),
     ToncoWithdrawLiquidityMatcher(),

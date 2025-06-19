@@ -1,0 +1,144 @@
+cases:
+  tgBTC new key:
+    trace-id: XbaXJMw3ssABoaIXul2iIN_kYfu-HoPsD0NZFLyMRxA=
+    expected-actions:
+      - type: tgbtc_new_key
+        values:
+            source: 0:F8DD1B5D010FD8F2797CE92AB3C6394BFFEAC0BDD66204393FB3B39317EA11C6
+            destination: 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+            source_secondary: 382e9d762046f4bb5cde2ce1b7780cb499b5394972163930cf88bc55463acb70
+            destination_secondary: 0:8772FC3544750A35733D5E0EB1A1FE0E5986495614451B00B73943F9F55F8B7F
+            value: 1748633438
+            amount: 425489053588
+
+  tgBTC new key (just another):
+    trace-id: SSUQR8t_fRnph032XDanjuRYexTLHTmAWQG5qBrBgtM=
+    expected-actions:
+      - type: tgbtc_new_key
+        values:
+          source: 0:F8DD1B5D010FD8F2797CE92AB3C6394BFFEAC0BDD66204393FB3B39317EA11C6
+          source_secondary: bca58e7898026854a2f14ef0beffbf7e9fa7efa2f38deae30c1ac729247c6d3b
+          destination: 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C
+          destination_secondary: 0:20B8CE7C5DDFC263FCFF2AA752C4F2D4590BF31C4DABF1FB4D034DE605E62260
+          value: 1748619032
+          amount: 425489053700
+
+  tgBTC mint:
+    trace-id: iqIHDlbalqobuAMgJOC_T_9L6nLiwdOOr7BNKBtqIyA=
+    expected-actions:
+      - type: tgbtc_mint
+        values:
+            source: 0:219F19946DDAA7ED0923267A89FA39A82BA5D9B631ABB0F15BA61241830C92EA # caller
+            destination: 0:219F19946DDAA7ED0923267A89FA39A82BA5D9B631ABB0F15BA61241830C92EA # destination specified (may differ from recipient)
+            source_secondary: 0:E1177970B722A9422D8EF674B85CDCB2C88295EE397D7150A4A382F91921409C # teleport contract
+            destination_secondary: 0:AE519BA51E0D8FB640308A7BD0FB398FEE0C5151426DB6423B11BF15D3A0E39F # recipient wallet
+            amount: 9850
+            asset: 0:AD9E0A84E13EFB6D37634044F7B49820FD121E900057BF6E71DED212378D7C05
+            asset_secondary: 29473eb71be95904599a5cecd24f602f07942b1da2b4c5eb3c5551367c2e4023 # bitcoin txid
+            success: true
+
+  tgBTC mint (another):
+    trace-id: 1OrxQbhicqml435pt0GPrXePkkdTGXRMlNJ4q67UZ-M=
+    expected-actions:
+      - type: tgbtc_mint
+        values:
+          source: 0:22FC2803EA3937A8392ED47B03CAA604377875B13435193AD316FD35DE458289
+          destination: 0:22FC2803EA3937A8392ED47B03CAA604377875B13435193AD316FD35DE458289
+          amount: 8800
+          asset: 0:E8CB571401B1AADB9DEFC1FA0F72A4A5A0E0D5016903067891D763C91541E72B
+          asset_secondary: c8254c7852b5e94c78f1667c29784a760e27c23c3cbf389705184944b4fa0716
+          success: true
+          destination_secondary: 0:6E62CDCC324B37B0FA201A2483E588E57E30333784BF277BECFB66E0126CAA9D
+          source_secondary: 0:B5AC556F935CA7040850A404A5E0ECDC14CD75575C420C9C2327787E1698480A
+
+  tgBTC mint (very long):
+    trace-id: 1rMRvEYh8TtCNox3P4VG6wcGLWX4YrU7jc55iqxzo6c=
+    expected-actions:
+      - type: tgbtc_mint
+        values:
+          source: 0:BD900698AAD9C3C04CFA064F790BA4EE68605FEA2791D178A6CCE3D053421E86
+          destination: 0:BD900698AAD9C3C04CFA064F790BA4EE68605FEA2791D178A6CCE3D053421E86
+          amount: 1660350
+          asset: 0:7D858A3DEF200FDA2B18C22485C66D4139B42B698F11985374D8943222CED4AA
+          asset_secondary: e74d6db9342378bd2a5f09dac1aa7f4b035389c4ca92b8c112a500477009e0bf
+          success: true
+          destination_secondary: 0:9C574128B2A865BAD06015BBFF4E4196FF8AAA3C92174043DBAF84C0035B34F0
+          source_secondary: 0:C74F5D8CA19533BF30AE00DA6882DCEB478631A153CB50BF7707194194DFEBDF
+
+  tgBTC mint (another very long):
+    trace-id: 1qD3P7k62Wscr4J92DXfRmsFUoXsd631PVCjJDuZPi0=
+    expected-actions:
+      - type: tgbtc_mint
+        values:
+          source: 0:D9A97AA483963CDD0A30E68DAD76E3C5DF5580855039BAF63A5407568EFD3867
+          destination: 0:D9A97AA483963CDD0A30E68DAD76E3C5DF5580855039BAF63A5407568EFD3867
+          amount: 9700
+          asset: 0:7D858A3DEF200FDA2B18C22485C66D4139B42B698F11985374D8943222CED4AA
+          asset_secondary: b07fabef458e0b003895840ebba391d21e340fbb07b3ec95bc737f1b8d188219
+          success: true
+          destination_secondary: 0:46FA4686C18DC6E6190E7BA106AD136A49F1052A01383566C14D3081A7282B14
+          source_secondary: 0:C74F5D8CA19533BF30AE00DA6882DCEB478631A153CB50BF7707194194DFEBDF
+
+  tgBTC burn:
+    trace-id: xBl_8BTUqSv52IWAzrmg54-V0YR_WQsV1buJxKBq4vE=
+    expected-actions:
+      - type: tgbtc_burn
+        values:
+          source: 0:219F19946DDAA7ED0923267A89FA39A82BA5D9B631ABB0F15BA61241830C92EA
+          source_secondary: 0:AE519BA51E0D8FB640308A7BD0FB398FEE0C5151426DB6423B11BF15D3A0E39F
+          asset: 0:AD9E0A84E13EFB6D37634044F7B49820FD121E900057BF6E71DED212378D7C05
+          amount: 9637
+          destination: 0:AFCEC6CCE463D696DDBDF9469CE1CEDEEA02CA47F665BCEB99A8A2F2C5D45731
+
+  tgBTC burn (another):
+    trace-id: Ez03fWgLT3VrlFzKfKQ-N-c2_rNBSZtPwrTz_1kB_yw=
+    expected-actions:
+      - type: tgbtc_burn
+        values:
+          source: 0:E19288C47188B9C9E11224CEFF74BA390C6B85CE07F69575BC3C4636DA57EE2E
+          source_secondary: 0:3774F40F75E0B5287298A203F855B5F28F42ADB561E74BAD90A3D0C4BD78BA3C
+          asset: 0:AD9E0A84E13EFB6D37634044F7B49820FD121E900057BF6E71DED212378D7C05
+          amount: 1100000
+          destination: 0:6CC7F43A68A9FE1909C196C0A163DB65987640EBAE6DD338ED638A5EA0D287E3
+
+  tgBTC burn (with strange burn notification):
+    trace-id: TDsLHsBMnAQGQ0nLSoy5wfUXjMjc28aCc241U9U9D2M=
+    expected-actions:
+      - type: tgbtc_burn
+        values:
+          source: 0:EB8AC5A8906F394640F99245B2850677FA736F080BAFD85D657CDCD3846D87FE
+          source_secondary: 0:E2711224A693851A223A3E8E81000DF7125F0AC60684CEA767C8FB0B6CD46A0C
+          asset: 0:5A3F2ADA0F96F67087BCADE7DE560CE29957DA0A803E63B4232FFD09E4B1BBBE
+          amount: 1000
+          destination: 15:8A69F1E2976384167B2E961654237028CBE86C211FE4555BB6D2E0075C562D44  # idk why it's wc 15
+
+  tgBTC dkg log (fallback):
+    trace-id: _6GHAnnp8ZMqUy6G6ZbAjcwO4WD2xp_yms84bK9wsmE=
+    expected-actions:
+      - type: tgbtc_dkg_log_fallback
+        values:
+          source: 0:E7C197C6B8DC54C88B7BF0FB86E8834E97EE740CEB47254E4A154E7EE023848F
+          asset: bb3a21df270dd0e6dc1169f4afb93be5eb2945df81c011f2b29f648daf64d150
+          value: 1744132682
+
+  tgBTC burn (wierd schema):
+    trace-id: 2yH8U5KFpFp_okVlTrth4pBuiIr8p7QKjJSImz2DTrI=
+    expected-actions:
+      - type: tgbtc_burn
+        values:
+          source: 0:E8A31DB182F93354C0BDE7800D0D200027D027B0DFEB478F2F4D0B0C2E1DC059
+          source_secondary: 0:A42315002B88C23D17A24AAA8B65205810C4D08D237DA3CA4D976A2D1E04E801
+          asset: 0:7D858A3DEF200FDA2B18C22485C66D4139B42B698F11985374D8943222CED4AA
+          amount: 93066 # from burn msg
+          destination: null # and no address
+
+  tgBTC burn (very old wierd and crippled):
+    trace-id: 35MtsOa0weeyUpH8_9pk58WhIrOuyB6ycEH9lY-KhUY=
+    expected-actions:
+      - type: tgbtc_burn_fallback
+        values:
+          source: null
+          source_secondary: null
+          asset: null
+          amount: 2108539095393251256237182
+          destination: null
