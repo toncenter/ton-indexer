@@ -778,6 +778,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Coordinator = raw.Destination
 		details.Pegout = raw.DestinationSecondary
 		details.Amount = raw.Amount
+		details.Asset = raw.Asset
 		act.Details = &details
 	case "tgbtc_dkg_log_fallback":
 		var details ActionDetailsDkgLogFallback
