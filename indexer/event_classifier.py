@@ -5,45 +5,41 @@ import argparse
 import asyncio
 import logging
 import multiprocessing as mp
-from multiprocessing import Manager
 import sys
 import time
 import traceback
-import codecs
-from datetime import datetime, timedelta
-from typing import Optional, List, Tuple, Set, Dict
-from dataclasses import asdict
-import json
-from collections import defaultdict
-
-from sqlalchemy import Column, Integer, String, Boolean, event, delete
-from collections import defaultdict
+from datetime import datetime
 from datetime import timedelta
+from multiprocessing import Manager
+from typing import List, Tuple
 from typing import Optional
 
 import msgpack
-from sqlalchemy import update, select, and_, or_
+from sqlalchemy import Column, Integer, String, Boolean, event, delete
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker, contains_eager, selectinload
+from sqlalchemy.orm import sessionmaker, selectinload
 from sqlalchemy.sql import text
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm.attributes import instance_state
 
 from indexer.core import redis
-from indexer.core.database import engine, SyncSessionMaker, Base, Trace, Transaction, Message, Action, ActionAccount
+from indexer.core.database import Base, ActionAccount
 from indexer.core.database import engine, Trace, Transaction, Message, Action, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
-from indexer.events.blocks.utils.address_selectors import extract_additional_addresses, \
-    extract_extra_accounts_data_requests, extract_accounts_from_trace
-from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action
+from indexer.events.blocks.utils.address_selectors import extract_accounts_from_trace
+from indexer.events.blocks.utils.block_tree_serializer import create_unknown_action
+from indexer.events.blocks.utils.block_tree_serializer import serialize_blocks
 from indexer.events.blocks.utils.dedust_pools import init_pools_data
-from indexer.events.blocks.utils.block_tree_serializer import block_to_action, serialize_blocks
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
-from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing, \
-    try_process_unknown_event
-from indexer.events.interface_repository import EmulatedTransactionsInterfaceRepository, gather_interfaces, \
-    RedisInterfaceRepository, EmulatedRepositoryWithDbFallback, ExtraAccountRequest
+from indexer.events.event_processing import (
+    process_event_async_with_postprocessing,
+    try_classify_unknown_trace
+)
+from indexer.events.interface_repository import (
+    EmulatedTransactionsInterfaceRepository, gather_interfaces,
+    RedisInterfaceRepository
+)
+from indexer.events.pendings import start_emulated_traces_processing
 from indexer.events.utils.lru_cache import LRUCache
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -452,232 +448,7 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
     return
 # end def
 
-async def _run_batch(batch, use_combined):
-    """Process one batch and swallow/log any exception so the parent task lives on."""
-    try:
-        async with async_session() as session:
-            results = await process_emulated_trace_batch(batch, session, use_combined)
 
-        success_count = sum(1 for _, success in results if success)
-        logger.info("Batch completed: %s/%s traces processed successfully",
-                    success_count, len(batch))
-
-    except Exception as exc:             # never let an exception kill the loop
-        logger.error("Batch FAILED: %s", exc, exc_info=True)
-
-async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_size: int = 50):
-    global interface_cache
-
-    # Initialize the global interface cache
-    interface_cache = LRUCache(max_size=settings.interfaces_cache_size, ttl=settings.interfaces_cache_ttl)
-
-    pubsub = redis.client.pubsub()
-    await pubsub.subscribe(settings.emulated_traces_redis_channel)
-
-    pending_traces = []
-    last_process_time = time.time()
-
-    use_combined = settings.use_combined_repository
-    if use_combined:
-        logger.info("Combined repository mode enabled")
-
-    logger.info(f"Starting emulated trace processing with time-window batching")
-    logger.info(f"  Batch window: {batch_window} seconds")
-    logger.info(f"  Max batch size: {max_batch_size} traces")
-    logger.info(f"  Interface cache size: {interface_cache.max_size} entries")
-    logger.info(f"  Interface cache TTL: {interface_cache.ttl} seconds")
-
-    pending_traces   : list[str] = []
-    last_process_time: float     = time.time()
-    in_flight_tasks  : set[asyncio.Task] = set()
-    sem              = asyncio.Semaphore(20)  # Limit concurrency to 20 tasks
-
-    async def launch_batch(batch):
-        """Wrapper that enforces the concurrency limit."""
-        async with sem:
-            task = asyncio.create_task(_run_batch(batch, use_combined))
-            in_flight_tasks.add(task)
-            task.add_done_callback(in_flight_tasks.discard)
-
-    try:
-        while True:
-            message = await pubsub.get_message(timeout=0.01)
-
-            current_time = time.time()
-            window_elapsed = current_time - last_process_time
-
-            if message is not None and message['type'] == 'message':
-                trace_id = message['data'].decode('utf-8')
-                pending_traces.append(trace_id)
-                logger.debug(f"Added trace {trace_id} to batch (size: {len(pending_traces)})")
-
-            if not pending_traces:
-                continue
-
-            # Process batch if window elapsed or max size reached
-            if window_elapsed >= batch_window or len(pending_traces) >= max_batch_size:
-                batch = pending_traces.copy()
-                pending_traces.clear()
-                last_process_time = current_time
-
-                logger.info("Launching batch of %s traces (in-flight: %s)",
-                            len(batch), len(in_flight_tasks))
-                await launch_batch(batch)
-
-            done = {t for t in in_flight_tasks if t.done()}
-            in_flight_tasks.difference_update(done)
-    except asyncio.CancelledError:
-        logger.info("Emulated trace processing cancelled")
-    except Exception as e:
-        logger.error(f"Error in emulated trace processing: {e}")
-        logger.exception(e)
-    finally:
-        await pubsub.unsubscribe()
-        logger.info("Emulated trace processing stopped")
-
-
-async def get_interfaces_with_cache(accounts: Set[str], session: AsyncSession, extra_requests: Set[ExtraAccountRequest]) -> Dict[str, Dict[str, Dict]]:
-    if not accounts:
-        return {}
-
-    # Check which accounts are in cache
-    cached_accounts = {}
-    accounts_to_fetch = set()
-
-    for account in accounts:
-        cached = interface_cache.get(account)
-        if cached is not None:
-            cached_accounts[account] = cached
-        else:
-            accounts_to_fetch.add(account)
-
-    # Fetch interfaces for accounts not in cache
-    if accounts_to_fetch:
-        logger.debug(f"Fetching interfaces for {len(accounts_to_fetch)} accounts from DB")
-        db_interfaces = await gather_interfaces(accounts_to_fetch, session, extra_requests=extra_requests)
-
-        # Update cache with new interfaces
-        for account, interfaces in db_interfaces.items():
-            interface_cache.put(account, interfaces)
-
-        # Merge with cached accounts
-        db_interfaces.update(cached_accounts)
-        return db_interfaces
-    else:
-        logger.debug(f"All {len(accounts)} accounts found in cache")
-        return cached_accounts
-
-
-async def process_emulated_trace_batch(
-        trace_keys: List[str],
-        session: AsyncSession,
-        use_combined: bool = False
-) -> List[Tuple[str, bool]]:
-    results = []
-
-    all_accounts = set()
-    traces_data = {}
-
-    for trace_key in trace_keys:
-        try:
-            trace_map = await redis.client.hgetall(trace_key)
-            trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
-
-            if not trace_map:
-                logger.warning(f"No data found in Redis for trace {trace_key}")
-                results.append((trace_key, False))
-                continue
-
-            trace = deserialize_event(trace_key, trace_map)
-            traces_data[trace_key] = (trace, trace_map)
-
-            all_accounts, extra_data_requests = extract_accounts_from_trace(trace)
-
-        except Exception as e:
-            logger.error(f"Failed to extract accounts from trace {trace_key}: {e}")
-            results.append((trace_key, False))
-
-    # Gather interfaces
-    db_interfaces = {}
-    if use_combined and all_accounts:
-        try:
-            logger.debug(f"Getting interfaces for {len(all_accounts)} accounts")
-            # Use our cached interface function that uses the global cache
-            db_interfaces = await get_interfaces_with_cache(all_accounts, session, extra_requests=extra_data_requests)
-            logger.debug(f"Got interfaces for {len(db_interfaces)} accounts")
-        except Exception as e:
-            logger.error(f"Failed to gather interfaces: {e}")
-            # Continue with empty db_interfaces
-
-    # Process traces
-    for trace_key, (trace, trace_map) in traces_data.items():
-        try:
-            start = time.time()
-
-            # Setup repositories
-            emulated_repository = EmulatedTransactionsInterfaceRepository(trace_map)
-            if use_combined:
-                repository = EmulatedRepositoryWithDbFallback(
-                    emulated_repository=emulated_repository,
-                    db_interfaces=db_interfaces,
-                )
-            else:
-                repository = emulated_repository
-            context.interface_repository.set(repository)
-
-            # Process trace
-            blocks = await process_event_async_with_postprocessing(trace)
-            actions, _ = serialize_blocks(blocks, trace.trace_id)
-            if len(actions) == 0:
-                actions = await try_classify_unknown_trace(trace)
-            if trace.transactions[0].emulated:
-                for action in actions:
-                    action.trace_id = None
-                    action.trace_external_hash = trace.external_hash
-
-
-            # Store results in Redis
-            action_data = msgpack.packb([a.to_dict() for a in actions])
-            await redis.client.hset(trace_key, 'actions', action_data)
-
-            processing_time = time.time() - start
-            logger.info(f"Processed trace {trace_key} in {processing_time:.3f} seconds")
-
-            # Publish completion if configured
-            if settings.emulated_traces_redis_response_channel:
-                await redis.client.publish(
-                    settings.emulated_traces_redis_response_channel,
-                    trace_key
-                )
-
-            # Build index
-            index = defaultdict(set)
-            for action in actions:
-                for account in action.get_action_accounts():
-                    k = f"{trace_key}:{action.action_id}"
-                    v = trace.start_lt
-                    index[account.account].add((k, v))
-
-            # Store referenced accounts
-            transaction_accounts = set(t.account for t in trace.transactions)
-            referenced_accounts = set(index.keys()) - transaction_accounts
-
-            # Add indices to Redis
-            for account, values in index.items():
-                await redis.client.zadd(f"_aai:{account}", dict(values))
-
-            # Publish referenced accounts
-            for r in referenced_accounts:
-                await redis.client.publish('referenced_accounts', f"{r};{trace_key}")
-
-            results.append((trace_key, True))
-
-        except Exception as e:
-            logger.error(f"Failed to process emulated trace {trace_key}: {e}")
-            logger.exception(e)
-            results.append((trace_key, False))
-
-    return results
 
 async def start_emulated_task_traces_processing():
     pubsub = redis.client.pubsub()
@@ -723,28 +494,13 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
         return trace.trace_id, state, actions, None
     except Exception as e:
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
+        logger.exception(e, exc_info=True)
         try:
             return trace.trace_id, 'failed', [create_unknown_action(trace)], e
         except:
             return trace.trace_id, 'failed', [], e
 
-async def try_classify_unknown_trace(trace):
-    actions = []
-    blocks = await try_process_unknown_event(trace)
-    for block in blocks:
-        if block.btype in ('root', 'empty'):
-            continue
-        if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
-            continue
-        if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
-            continue
-        action = block_to_action(block, trace.trace_id, trace)
-        assert len(action._accounts) > 0, f"Action {action} has no accounts"
-        actions.append(action)
-    if len(actions) == 0:
-        unknown_action = create_unknown_action(trace)
-        actions.append(unknown_action)
-    return actions
+
 
 if __name__ == '__main__':
     # Create a shared namespace for cross-process data sharing
@@ -794,6 +550,10 @@ if __name__ == '__main__':
                         help='Batch time window in seconds. Used to batch emulated traces',
                         default=0.1,
                         type=float)
+    parser.add_argument('--emulated-traces-queue-size',
+                        help='Maximum number of enqueued emulated traces for processing',
+                        default=100,
+                        type=int)
     args = parser.parse_args()
 
     settings.emulated_traces_redis_channel = args.emulated_traces_redis_channel
@@ -811,7 +571,9 @@ if __name__ == '__main__':
     elif settings.emulated_traces:
         logger.info("Starting processing emulated traces")
         asyncio.run(start_emulated_traces_processing(batch_window=args.batch_time_window,
-                                                     max_batch_size=args.batch_size))
+                                                     max_batch_size=args.batch_size,
+                                                     pool_size=args.pool_size,
+                                                     max_queue_size=args.emulated_traces_queue_size))
     else:
         logger.info("Starting processing events from db")
         asyncio.run(start_processing_events_from_db(args, shared_namespace))
