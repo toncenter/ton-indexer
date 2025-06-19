@@ -18,6 +18,7 @@ x-index-api: &index-api
 
 x-index-worker: &index-worker
   TON_WORKER_FROM:
+  TON_WORKER_DBROOT: ${TON_WORKER_DBROOT:-/var/ton-work/db}
   TON_WORKER_BINARY: ton-index-postgres
   <<: *index-common
 
