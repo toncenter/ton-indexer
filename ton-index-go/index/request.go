@@ -163,6 +163,12 @@ type DNSRecordsRequest struct {
 	WalletAddress *AccountAddress `query:"wallet"`
 }
 
+type VestingContractsRequest struct {
+	ContractAddress []AccountAddress `query:"contract_address"`
+	WalletAddress   []AccountAddress `query:"wallet_address"`
+	CheckWhitelist  *bool            `query:"check_whitelist"`
+}
+
 type SortType string
 
 const (
