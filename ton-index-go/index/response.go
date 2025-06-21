@@ -100,6 +100,11 @@ type DNSRecordsResponse struct {
 	AddressBook AddressBook `json:"address_book"`
 } // @name DNSRecordsResponse
 
+type VestingContractsResponse struct {
+	VestingContracts []VestingInfo `json:"vesting_contracts"`
+	AddressBook      AddressBook   `json:"address_book"`
+} // @name VestingContractsResponse
+
 // errors
 type RequestError struct {
 	Message string `json:"error"`

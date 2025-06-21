@@ -2575,6 +2575,90 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v3/vesting": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get vesting contracts by specified filters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vesting"
+                ],
+                "summary": "Get Vesting Contracts",
+                "operationId": "api_v3_get_vesting_contracts",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Vesting contract address in any form. Max: 1000.",
+                        "name": "contract_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Wallet address to filter by owner or sender. Max: 1000.",
+                        "name": "wallet_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Check if wallet address is in whitelist.",
+                        "name": "check_whitelist",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/VestingContractsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/walletInformation": {
             "get": {
                 "security": [
@@ -4218,6 +4302,20 @@ const docTemplate = `{
                 }
             }
         },
+        "VestingContractsResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "vesting_contracts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/index.VestingInfo"
+                    }
+                }
+            }
+        },
         "WalletState": {
             "type": "object",
             "properties": {
@@ -4300,6 +4398,41 @@ const docTemplate = `{
                 },
                 "tx_hash": {
                     "type": "string"
+                }
+            }
+        },
+        "index.VestingInfo": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "cliff_duration": {
+                    "type": "integer"
+                },
+                "owner_address": {
+                    "type": "string"
+                },
+                "sender_address": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "integer"
+                },
+                "total_amount": {
+                    "type": "string"
+                },
+                "total_duration": {
+                    "type": "integer"
+                },
+                "unlock_period": {
+                    "type": "integer"
+                },
+                "whitelist": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         }
