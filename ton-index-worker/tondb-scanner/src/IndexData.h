@@ -409,6 +409,23 @@ struct JettonWalletDataV2 {
   td::Bits256 data_hash;
 };
 
+struct VestingData
+{
+  block::StdAddress address;
+  uint32_t vesting_start_time;
+  uint32_t vesting_total_duration;
+  uint32_t unlock_period;
+  uint32_t cliff_duration;
+  td::RefInt256 vesting_total_amount;
+  block::StdAddress vesting_sender_address;
+  block::StdAddress owner_address;
+  std::vector<block::StdAddress> whitelist;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
 struct JettonTransfer {
   td::Bits256 trace_id;
   td::Bits256 transaction_hash;
@@ -591,12 +608,13 @@ using BlockchainInterface = std::variant<JettonMasterData,
                                          NFTItemData>;
 
 
-using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2, 
-                                           JettonMasterDataV2, 
-                                           NFTCollectionDataV2, 
+using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
+                                           JettonMasterDataV2,
+                                           NFTCollectionDataV2,
                                            NFTItemDataV2,
                                            GetGemsNftFixPriceSaleData,
-                                           GetGemsNftAuctionData>;
+                                           GetGemsNftAuctionData,
+                                           VestingData>;
 
 namespace std {
 template <>
