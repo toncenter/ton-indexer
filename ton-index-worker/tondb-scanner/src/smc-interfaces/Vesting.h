@@ -6,6 +6,8 @@
 
 using AllShardStates = std::vector<td::Ref<vm::Cell>>;
 
+const std::string VESTING_CONTRACT_CODE_HASH = "B48B531ABEC3B714638291F7D77ED6DC9F6A2729EFCA20477137374D4AE8B590";
+
 class VestingContract: public td::actor::Actor {
 public:
     struct Result {

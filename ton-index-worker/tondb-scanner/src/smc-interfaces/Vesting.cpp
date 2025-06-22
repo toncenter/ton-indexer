@@ -16,8 +16,14 @@ VestingContract::VestingContract(block::StdAddress address,
 
 void VestingContract::start_up()
 {
+
   if (code_cell_.is_null() || data_cell_.is_null()) {
     promise_.set_error(td::Status::Error("Code or data null"));
+    stop();
+    return;
+  }
+  if (code_cell_->get_hash().to_hex() != VESTING_CONTRACT_CODE_HASH) {
+    promise_.set_error(td::Status::Error("Code hash mismatch"));
     stop();
     return;
   }
