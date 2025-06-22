@@ -570,7 +570,8 @@ if __name__ == '__main__':
         asyncio.run(start_emulated_task_traces_processing())
     elif settings.emulated_traces:
         logger.info("Starting processing emulated traces")
-        asyncio.run(start_emulated_traces_processing(batch_window=args.batch_time_window,
+        asyncio.run(start_emulated_traces_processing(settings=settings,
+                                                     batch_window=args.batch_time_window,
                                                      max_batch_size=args.batch_size,
                                                      pool_size=args.pool_size,
                                                      max_queue_size=args.emulated_traces_queue_size))

@@ -14,9 +14,7 @@ import multiprocessing as mp
 
 from indexer.core import redis
 from indexer.core.database import engine
-from indexer.core.database import (
-    settings
-)
+from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_accounts_from_trace
 from indexer.events.blocks.utils.block_tree_serializer import serialize_blocks
@@ -40,6 +38,7 @@ class PendingTraceClassifierWorker(mp.Process):
                  id,
                  task_queue: mp.Queue,
                  use_combined_repository: bool,
+                 emulated_traces_redis_response_channel,
                  interface_cache_size: int = 1000,
                  interface_cache_ttl: int = 300):
         super().__init__()
@@ -48,6 +47,8 @@ class PendingTraceClassifierWorker(mp.Process):
         self.use_combined_repository = use_combined_repository
         self.interface_cache_size = interface_cache_size
         self.interface_cache_ttl = interface_cache_ttl
+        self.emulated_traces_redis_response_channel = emulated_traces_redis_response_channel
+
 
     def run(self):
         logger.info(f'Thread PendingTraceClassifierWorker #{self.id} started')
@@ -76,7 +77,7 @@ class PendingTraceClassifierWorker(mp.Process):
             start = time.time()
 
             async with async_session() as session:
-                results = await process_emulated_trace_batch(batch, session, self.use_combined_repository)
+                results = await self.process_emulated_trace_batch(batch, session, self.use_combined_repository)
 
             success_count = sum(1 for _, success in results if success)
             processing_time = time.time() - start
@@ -89,7 +90,148 @@ class PendingTraceClassifierWorker(mp.Process):
             logger.error("Batch FAILED: %s", exc, exc_info=True)
 
 
-async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_size: int = 50, pool_size=5,
+    async def process_emulated_trace_batch(
+            self,
+            trace_keys: List[str],
+            session: AsyncSession,
+            use_combined: bool = False
+    ) -> List[Tuple[str, bool]]:
+        results = []
+
+        all_accounts = set()
+        traces_data = {}
+
+        for trace_key in trace_keys:
+            try:
+                trace_map = await redis.client.hgetall(trace_key)
+                trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
+
+                if not trace_map:
+                    logger.warning(f"No data found in Redis for trace {trace_key}")
+                    results.append((trace_key, False))
+                    continue
+
+                trace = deserialize_event(trace_key, trace_map)
+                traces_data[trace_key] = (trace, trace_map)
+
+                all_accounts, extra_data_requests = extract_accounts_from_trace(trace)
+
+            except Exception as e:
+                logger.error(f"Failed to extract accounts from trace {trace_key}: {e}")
+                results.append((trace_key, False))
+
+        # Gather interfaces
+        db_interfaces = {}
+        if use_combined and all_accounts:
+            try:
+                logger.debug(f"Getting interfaces for {len(all_accounts)} accounts")
+                # Use our cached interface function that uses the global cache
+                db_interfaces = await self.get_interfaces_with_cache(all_accounts, session,
+                                                                extra_requests=extra_data_requests)
+                logger.debug(f"Got interfaces for {len(db_interfaces)} accounts")
+            except Exception as e:
+                logger.error(f"Failed to gather interfaces: {e}")
+                # Continue with empty db_interfaces
+
+        # Process traces
+        for trace_key, (trace, trace_map) in traces_data.items():
+            try:
+                # Setup repositories
+                emulated_repository = EmulatedTransactionsInterfaceRepository(trace_map)
+                if use_combined:
+                    repository = EmulatedRepositoryWithDbFallback(
+                        emulated_repository=emulated_repository,
+                        db_interfaces=db_interfaces,
+                    )
+                else:
+                    repository = emulated_repository
+                context.interface_repository.set(repository)
+
+                # Process trace
+                blocks = await process_event_async_with_postprocessing(trace)
+                actions, _ = serialize_blocks(blocks, trace.trace_id)
+                if len(actions) == 0:
+                    actions = await try_classify_unknown_trace(trace)
+                if trace.transactions[0].emulated:
+                    for action in actions:
+                        action.trace_id = None
+                        action.trace_external_hash = trace.external_hash
+
+                # Store results in Redis
+                action_data = msgpack.packb([a.to_dict() for a in actions])
+                await redis.client.hset(trace_key, 'actions', action_data)
+
+                # Publish completion if configured
+                if self.emulated_traces_redis_response_channel:
+                    await redis.client.publish(
+                        self.emulated_traces_redis_response_channel,
+                        trace_key
+                    )
+
+                # Build index
+                index = defaultdict(set)
+                for action in actions:
+                    for account in action.get_action_accounts():
+                        k = f"{trace_key}:{action.action_id}"
+                        v = trace.start_lt
+                        index[account.account].add((k, v))
+
+                # Store referenced accounts
+                transaction_accounts = set(t.account for t in trace.transactions)
+                referenced_accounts = set(index.keys()) - transaction_accounts
+
+                # Add indices to Redis
+                for account, values in index.items():
+                    await redis.client.zadd(f"_aai:{account}", dict(values))
+
+                # Publish referenced accounts
+                for r in referenced_accounts:
+                    await redis.client.publish('referenced_accounts', f"{r};{trace_key}")
+
+                results.append((trace_key, True))
+
+            except Exception as e:
+                logger.error(f"Failed to process emulated trace {trace_key}: {e}")
+                logger.exception(e)
+                results.append((trace_key, False))
+
+        return results
+
+    async def get_interfaces_with_cache(self, accounts: Set[str], session: AsyncSession,
+                                        extra_requests: Set[ExtraAccountRequest]) -> Dict[str, Dict[str, Dict]]:
+        if not accounts:
+            return {}
+
+        # Check which accounts are in cache
+        cached_accounts = {}
+        accounts_to_fetch = set()
+
+        for account in accounts:
+            cached = interface_cache.get(account)
+            if cached is not None:
+                cached_accounts[account] = cached
+            else:
+                accounts_to_fetch.add(account)
+
+        # Fetch interfaces for accounts not in cache
+        if accounts_to_fetch:
+            logger.debug(f"Fetching interfaces for {len(accounts_to_fetch)} accounts from DB")
+            db_interfaces = await gather_interfaces(accounts_to_fetch, session, extra_requests=extra_requests)
+
+            # Update cache with new interfaces
+            for account, interfaces in db_interfaces.items():
+                interface_cache.put(account, interfaces)
+
+            # Merge with cached accounts
+            db_interfaces.update(cached_accounts)
+            return db_interfaces
+        else:
+            logger.debug(f"All {len(accounts)} accounts found in cache")
+            return cached_accounts
+
+
+async def start_emulated_traces_processing(settings: Settings,
+                                           batch_window: float = 0.1, max_batch_size: int = 50, pool_size=5,
                                            max_queue_size=10):
     pubsub = redis.client.pubsub()
     await pubsub.subscribe(settings.emulated_traces_redis_channel)
@@ -100,8 +242,12 @@ async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_
     batch_queue: mp.Queue[list[str]] = mp.Queue(maxsize=max_queue_size)
     workers: List[PendingTraceClassifierWorker] = []
     for id in range(pool_size):
-        worker = PendingTraceClassifierWorker(id, batch_queue, use_combined, settings.interfaces_cache_size,
-                                              settings.interfaces_cache_ttl)
+        worker = PendingTraceClassifierWorker(id=id,
+                                              task_queue=batch_queue,
+                                              use_combined_repository=use_combined,
+                                              emulated_traces_redis_response_channel=settings.emulated_traces_redis_response_channel,
+                                              interface_cache_size=settings.interfaces_cache_size,
+                                              interface_cache_ttl=settings.interfaces_cache_ttl)
         worker.start()
         workers.append(worker)
 
@@ -153,140 +299,3 @@ async def start_emulated_traces_processing(batch_window: float = 0.1, max_batch_
         logger.info("Emulated trace processing stopped")
 
 
-async def process_emulated_trace_batch(
-        trace_keys: List[str],
-        session: AsyncSession,
-        use_combined: bool = False
-) -> List[Tuple[str, bool]]:
-    results = []
-
-    all_accounts = set()
-    traces_data = {}
-
-    for trace_key in trace_keys:
-        try:
-            trace_map = await redis.client.hgetall(trace_key)
-            trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
-
-            if not trace_map:
-                logger.warning(f"No data found in Redis for trace {trace_key}")
-                results.append((trace_key, False))
-                continue
-
-            trace = deserialize_event(trace_key, trace_map)
-            traces_data[trace_key] = (trace, trace_map)
-
-            all_accounts, extra_data_requests = extract_accounts_from_trace(trace)
-
-        except Exception as e:
-            logger.error(f"Failed to extract accounts from trace {trace_key}: {e}")
-            results.append((trace_key, False))
-
-    # Gather interfaces
-    db_interfaces = {}
-    if use_combined and all_accounts:
-        try:
-            logger.debug(f"Getting interfaces for {len(all_accounts)} accounts")
-            # Use our cached interface function that uses the global cache
-            db_interfaces = await get_interfaces_with_cache(all_accounts, session, extra_requests=extra_data_requests)
-            logger.debug(f"Got interfaces for {len(db_interfaces)} accounts")
-        except Exception as e:
-            logger.error(f"Failed to gather interfaces: {e}")
-            # Continue with empty db_interfaces
-
-    # Process traces
-    for trace_key, (trace, trace_map) in traces_data.items():
-        try:
-            # Setup repositories
-            emulated_repository = EmulatedTransactionsInterfaceRepository(trace_map)
-            if use_combined:
-                repository = EmulatedRepositoryWithDbFallback(
-                    emulated_repository=emulated_repository,
-                    db_interfaces=db_interfaces,
-                )
-            else:
-                repository = emulated_repository
-            context.interface_repository.set(repository)
-
-            # Process trace
-            blocks = await process_event_async_with_postprocessing(trace)
-            actions, _ = serialize_blocks(blocks, trace.trace_id)
-            if len(actions) == 0:
-                actions = await try_classify_unknown_trace(trace)
-            if trace.transactions[0].emulated:
-                for action in actions:
-                    action.trace_id = None
-                    action.trace_external_hash = trace.external_hash
-
-            # Store results in Redis
-            action_data = msgpack.packb([a.to_dict() for a in actions])
-            await redis.client.hset(trace_key, 'actions', action_data)
-
-            # Publish completion if configured
-            if settings.emulated_traces_redis_response_channel:
-                await redis.client.publish(
-                    settings.emulated_traces_redis_response_channel,
-                    trace_key
-                )
-
-            # Build index
-            index = defaultdict(set)
-            for action in actions:
-                for account in action.get_action_accounts():
-                    k = f"{trace_key}:{action.action_id}"
-                    v = trace.start_lt
-                    index[account.account].add((k, v))
-
-            # Store referenced accounts
-            transaction_accounts = set(t.account for t in trace.transactions)
-            referenced_accounts = set(index.keys()) - transaction_accounts
-
-            # Add indices to Redis
-            for account, values in index.items():
-                await redis.client.zadd(f"_aai:{account}", dict(values))
-
-            # Publish referenced accounts
-            for r in referenced_accounts:
-                await redis.client.publish('referenced_accounts', f"{r};{trace_key}")
-
-            results.append((trace_key, True))
-
-        except Exception as e:
-            logger.error(f"Failed to process emulated trace {trace_key}: {e}")
-            logger.exception(e)
-            results.append((trace_key, False))
-
-    return results
-
-
-async def get_interfaces_with_cache(accounts: Set[str], session: AsyncSession,
-                                    extra_requests: Set[ExtraAccountRequest]) -> Dict[str, Dict[str, Dict]]:
-    if not accounts:
-        return {}
-
-    # Check which accounts are in cache
-    cached_accounts = {}
-    accounts_to_fetch = set()
-
-    for account in accounts:
-        cached = interface_cache.get(account)
-        if cached is not None:
-            cached_accounts[account] = cached
-        else:
-            accounts_to_fetch.add(account)
-
-    # Fetch interfaces for accounts not in cache
-    if accounts_to_fetch:
-        logger.debug(f"Fetching interfaces for {len(accounts_to_fetch)} accounts from DB")
-        db_interfaces = await gather_interfaces(accounts_to_fetch, session, extra_requests=extra_requests)
-
-        # Update cache with new interfaces
-        for account, interfaces in db_interfaces.items():
-            interface_cache.put(account, interfaces)
-
-        # Merge with cached accounts
-        db_interfaces.update(cached_accounts)
-        return db_interfaces
-    else:
-        logger.debug(f"All {len(accounts)} accounts found in cache")
-        return cached_accounts
