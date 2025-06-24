@@ -555,12 +555,21 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
     );
 
     query += (
+     "create index if not exists vesting_contracts_sender_start_time_idx on vesting_contracts (vesting_sender_address, vesting_start_time);\n"
+     "create index if not exists vesting_contracts_owner_start_time_idx on vesting_contracts (owner_address, vesting_start_time);\n"
+     "create index if not exists vesting_contracts_start_time_idx on vesting_contracts (vesting_start_time);\n"
+   );
+
+    query += (
       "create table if not exists vesting_whitelist ("
       "vesting_contract_address tonaddr not null, "
       "wallet_address           tonaddr not null, "
       "primary key (vesting_contract_address, wallet_address));\n"
     );
 
+    query += (
+     "create index if not exists vesting_whitelist_wallet_address_idx on vesting_whitelist (wallet_address);\n"
+    );
 
     query += "create table if not exists blocks_classified (mc_seqno integer not null primary key);\n";
 
