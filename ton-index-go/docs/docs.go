@@ -2799,6 +2799,12 @@ const docTemplate = `{
         "Action": {
             "type": "object",
             "properties": {
+                "accounts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "action_id": {
                     "type": "string"
                 },
