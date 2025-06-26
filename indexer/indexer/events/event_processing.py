@@ -284,7 +284,7 @@ async def try_classify_unknown_trace(trace):
         if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
             continue
         action = block_to_action(block, trace.trace_id, trace)
-        assert len(action._accounts) > 0, f"Action {action} has no accounts"
+        assert len(action.accounts) > 0, f"Action {action} has no accounts"
         actions.append(action)
     if len(actions) == 0:
         unknown_action = create_unknown_action(trace)
