@@ -318,6 +318,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 	act.Success = raw.Success
 	act.Type = raw.Type
 	act.TraceExternalHash = raw.TraceExternalHash
+	act.Accounts = raw.Accounts
 
 	switch act.Type {
 	case "call_contract":
@@ -1234,6 +1235,7 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.ToncoDeployPoolPoolActive,
 
 		&act.AncestorType,
+		&act.Accounts,
 	)
 
 	if err != nil {

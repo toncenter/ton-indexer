@@ -433,7 +433,7 @@ class Action(Base):
     parent_action_id: str = Column(String)
     ancestor_type: list[str] = Column(ARRAY(String), default=[])
 
-    _accounts: list[str]
+    accounts: list[str]
 
     def __repr__(self):
         full_repr = ""
@@ -445,7 +445,7 @@ class Action(Base):
 
     def get_action_accounts(self):
         accounts = []
-        for account in self._accounts:
+        for account in self.accounts:
             accounts.append(ActionAccount(action_id=self.action_id,
                                           trace_id=self.trace_id,
                                           account=account,

@@ -187,7 +187,8 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.tonco_deploy_pool_data).lp_fee_current,
 		(A.tonco_deploy_pool_data).pool_active,
 
-		A.ancestor_type`
+		A.ancestor_type,
+		ARRAY[]::text[]`
 	clmn_query := clmn_query_default
 	from_query := `actions as A`
 	filter_list := []string{}

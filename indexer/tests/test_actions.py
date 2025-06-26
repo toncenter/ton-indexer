@@ -56,5 +56,5 @@ class TestUnknownAction:
         _, _, actions, _ = await process_trace(trace)
         assert len(actions) == 1
         assert actions[0].type == "unknown"
-        assert set(actions[0]._accounts) == {"0:9E53B9A59CC76005E9B00D571D4933D8548361F87608D58BC1A0029FACCEF345"}
+        assert set(actions[0].accounts) == {"0:9E53B9A59CC76005E9B00D571D4933D8548361F87608D58BC1A0029FACCEF345"}
         assert set(actions[0].tx_hashes) == {"Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ++D+3E="}
