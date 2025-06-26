@@ -76,6 +76,10 @@ definitions:
     type: object
   Action:
     properties:
+      accounts:
+        items:
+          type: string
+        type: array
       action_id:
         type: string
       details: {}

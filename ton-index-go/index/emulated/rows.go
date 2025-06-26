@@ -283,6 +283,8 @@ type ActionRow struct {
 	AncestorType   []string
 	ParentActionId *string
 
+	Accounts []string
+
 	// Tonco deploy fields
 	ToncoDeployPoolJetton0RouterWallet *string
 	ToncoDeployPoolJetton1RouterWallet *string
@@ -503,6 +505,7 @@ func (t *ActionRow) getAssigns() []assign {
 		assignBoolPtr(t.ToncoDeployPoolPoolActive),
 
 		assignStrCompatibleSlice(t.AncestorType),
+		assignStrCompatibleSlice(t.Accounts),
 	}
 }
 func (t *TransactionRow) getAssigns() []assign {

@@ -370,7 +370,7 @@ type ActionsNotification struct {
 	Type                  EventType          `json:"type"`
 	TraceExternalHashNorm string             `json:"trace_external_hash_norm"`
 	Actions               []*index.Action    `json:"actions"`
-	ActionAddresses       [][]string         `json:"-"`
+	ActionAddresses       [][]string         `json:"-"` // contains all addresses mentioned in actions for addressbook, it's not same as index.Action.Accounts
 	AddressBook           *index.AddressBook `json:"address_book,omitempty"`
 	Metadata              *index.Metadata    `json:"metadata,omitempty"`
 }
@@ -392,9 +392,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	supportedActionsSet := mapset.NewSet(client.Subscription.SupportedActionTypes...)
 	filterActionsSet := mapset.NewSet(client.Subscription.ActionTypes...)
 	for idx, action := range n.Actions {
-		actionAddresses := n.ActionAddresses[idx]
-
-		if client.Subscription.InterestedIn(n.Type, actionAddresses) {
+		if client.Subscription.InterestedIn(n.Type, action.Accounts) {
 			if !filterActionsSet.IsEmpty() && !filterActionsSet.ContainsAny(action.Type) {
 				continue
 			}
@@ -407,9 +405,9 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 			}
 
 			adjustedActions = append(adjustedActions, action)
-			adjustedActionAddresses = append(adjustedActionAddresses, actionAddresses)
+			adjustedActionAddresses = append(adjustedActionAddresses, n.ActionAddresses[idx])
 
-			for _, addr := range actionAddresses {
+			for _, addr := range n.ActionAddresses[idx] {
 				allAddresses[addr] = true
 				if adjustedAddressBook != nil {
 					if addrBookEntry, ok := (*n.AddressBook)[addr]; ok {

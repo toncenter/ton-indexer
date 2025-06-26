@@ -629,6 +629,7 @@ type RawAction struct {
 	ToncoDeployPoolPoolActive                            *bool
 
 	AncestorType []string
+	Accounts     []string
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
@@ -926,6 +927,7 @@ type Action struct {
 	RawAction         *RawAction  `json:"raw_action,omitempty" swaggerignore:"true"`
 	TraceExternalHash *HashType   `json:"trace_external_hash,omitempty"`
 	AncestorType      []string    `json:"-"`
+	Accounts          []string    `json:"accounts,omitempty"`
 } // @name Action
 
 type TraceMeta struct {

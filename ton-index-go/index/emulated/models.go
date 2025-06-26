@@ -415,6 +415,7 @@ type Action struct {
 	TonTransferData          *actionTonTransferDetails         `msgpack:"ton_transfer_data"`
 	AncestorType             []string                          `msgpack:"ancestor_type"`
 	ParentActionId           *string                           `msgpack:"parent_action_id"`
+	Accounts                 []string                          `msgpack:"accounts"`
 	JettonTransferData       *actionJettonTransferDetails      `msgpack:"jetton_transfer_data"`
 	NftTransferData          *actionNftTransferDetails         `msgpack:"nft_transfer_data"`
 	JettonSwapData           *actionJettonSwapDetails          `msgpack:"jetton_swap_data"`
@@ -924,6 +925,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		TraceExternalHash:    &a.TraceExternalHash,
 		ParentActionId:       a.ParentActionId,
 		AncestorType:         a.AncestorType,
+		Accounts:             a.Accounts,
 	}
 	if a.TonTransferData != nil {
 		row.TonTransferContent = a.TonTransferData.Content
