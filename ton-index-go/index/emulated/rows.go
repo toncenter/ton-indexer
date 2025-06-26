@@ -167,6 +167,7 @@ type ActionRow struct {
 	NFTTransferForwardAmount                             *string
 	NFTTransferResponseDestination                       *string
 	NFTTransferNFTItemIndex                              *string
+	NFTTransferMarketplace                               *string
 	JettonSwapDex                                        *string
 	JettonSwapSender                                     *string
 	JettonSwapDexIncomingTransferAmount                  *string
@@ -394,6 +395,7 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.NFTTransferForwardAmount),
 		assignStringPtr(t.NFTTransferResponseDestination),
 		assignStringPtr(t.NFTTransferNFTItemIndex),
+		assignStringPtr(t.NFTTransferMarketplace),
 		assignStringPtr(t.JettonSwapDex),
 		assignStringPtr(t.JettonSwapSender),
 		assignStringPtr(t.JettonSwapDexIncomingTransferAmount),

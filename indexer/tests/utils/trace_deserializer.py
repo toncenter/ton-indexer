@@ -6,7 +6,7 @@ import pathlib
 import lz4.frame
 import msgpack
 
-from indexer.core.database import MessageContent, Transaction, Message, Trace, NFTItem, JettonWallet
+from indexer.core.database import MessageContent, Transaction, Message, Trace, NFTItem, JettonWallet, NftSale
 from typing import Dict, Any, List, Tuple
 
 from indexer.events.interface_repository import DedustPool
@@ -150,6 +150,18 @@ def deserialize_nft_item(data: Dict[str, Any]) -> NFTItem:
         collection_address=data['collection_address'],
         owner_address=data['owner_address'],
         content=data['content'],
+    )
+
+
+def deserialize_nft_sale(data: Dict[str, Any]) -> NftSale:
+    """Deserialize dictionary to NFTItem."""
+    return NftSale(
+        address=data['address'],
+        is_complete=data['is_complete'],
+        marketplace_address=data['marketplace_address'],
+        nft_address=data['nft_address'],
+        nft_owner_address=data['nft_owner_address'],
+        full_price=data['full_price'],
     )
 
 def deserialize_dedust_pool(account, data: Dict[str, Any]) -> DedustPool:
