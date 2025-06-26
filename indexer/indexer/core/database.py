@@ -268,6 +268,7 @@ class Action(Base):
         Column("forward_amount", Numeric),
         Column("response_destination", String),
         Column("nft_item_index", Numeric),
+        Column("marketplace", String)
     ]))
     jetton_swap_data = Column(CompositeType("jetton_swap_details", [
         Column("dex", String),

@@ -41,6 +41,9 @@ class TestDedustLiquiditiesActions(BaseGenericActionTest):
 class TestToncoActions(BaseGenericActionTest):
     yaml_file = "tonco.yaml"
 
+class TestNftActions(BaseGenericActionTest):
+    yaml_file = "nft.yaml"
+
 class TestUnknownAction:
 
     @pytest.mark.asyncio

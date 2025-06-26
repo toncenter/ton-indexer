@@ -125,6 +125,7 @@ class NftTransferBlockMatcher(BlockMatcher):
             if nft_purchase_data is not None:
                 block_to_include, price = nft_purchase_data
                 data['is_purchase'] = True
+                data['marketplace'] = 'getgems'
                 data['price'] = Amount(price)
                 if isinstance(block.previous_block, TonTransferBlock):
                     include.append(block.previous_block)
@@ -212,6 +213,7 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         if payload is not None and isinstance(payload.value, TeleitemBidInfo):
             data['is_purchase'] = True
             data['price'] = Amount(payload.value.bid)
+            data['marketplace'] = 'fragment'
             prev_block = block.previous_block
             if (isinstance(prev_block, TonTransferBlock) or
                     (isinstance(prev_block, CallContractBlock) and prev_block.get_message().source is None)):
