@@ -4,7 +4,7 @@ cases:
     expected-actions:
       - type: vesting_add_whitelist
         values:
-          _accounts:
+          accounts:
             - 0:E9D864419C6A77FBC1D2EC7AFE840C1C349FCC1D2E19520FC73F547DD1721E9E
             - 0:FD8B2FC26CB0FE2D27B911FD0409D72DEDA2089C1EA7722D2910EA5354900B2D
           vesting_add_whitelist_data:
@@ -23,7 +23,7 @@ cases:
     expected-actions:
       - type: vesting_send_message
         values:
-          _accounts:
+          accounts:
             - 0:335908D9CDA99C650695253FAD22BE00E0B1005634133589DFA8BDF522B367BA
             - 0:0F956925D8E1E32E5189E35100ADEF828BE779D079C6D8B966B2209FCCE213D4
             - 0:A8A697ABD5448BB35EBBD414E4C9D8F621F53B67B54551560645B8EC25F87D39
