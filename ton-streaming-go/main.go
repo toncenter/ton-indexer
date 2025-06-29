@@ -1186,6 +1186,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				ActionTypes:          req.ActionTypes,
 				SupportedActionTypes: index.ExpandActionTypeShortcuts(req.SupportedActionTypes),
 			},
+			TracesForPotentialInvalidation: make(map[string]bool),
 			SendEvent: func(b []byte) error {
 				select {
 				case eventCh <- b:
@@ -1270,7 +1271,8 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				IncludeAddressBook:   false,
 				IncludeMetadata:      false,
 			},
-			SendEvent: func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
+			TracesForPotentialInvalidation: make(map[string]bool),
+			SendEvent:                      func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
 		}
 		manager.register <- client
 		defer func() {
