@@ -933,7 +933,6 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 		}
 
 		traceExternalHashNorm := msg.Payload
-		log.Printf("Invalidated trace: %s", traceExternalHashNorm)
 
 		// Notify clients about the invalidated trace
 		manager.broadcast <- &TraceInvalidatedNotification{
