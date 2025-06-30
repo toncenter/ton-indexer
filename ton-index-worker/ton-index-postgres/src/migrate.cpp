@@ -462,7 +462,7 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "address tonaddr not null primary key, "
       "order_seqno bigint, "
       "threshold bigint, "
-      "sent_for_execution bigint, "
+      "sent_for_execution boolean, "
       "approvals_mask bigint, "
       "approvals_num bigint, "
       "expiration_date bigint, "

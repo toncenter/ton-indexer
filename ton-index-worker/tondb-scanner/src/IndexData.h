@@ -581,7 +581,7 @@ struct MultisigOrderData {
   block::StdAddress address;
   uint32_t order_seqno;
   uint32_t threshold;
-  uint32_t sent_for_execution;
+  bool sent_for_execution;
   uint32_t approvals_mask;
   uint32_t approvals_num;
   uint32_t expiration_date;
