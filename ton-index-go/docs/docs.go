@@ -3792,8 +3792,7 @@ const docTemplate = `{
                     "example": "0"
                 },
                 "next_order_seqno": {
-                    "type": "string",
-                    "example": "0"
+                    "type": "integer"
                 },
                 "orders": {
                     "type": "array",
@@ -3814,8 +3813,7 @@ const docTemplate = `{
                     }
                 },
                 "threshold": {
-                    "type": "string",
-                    "example": "0"
+                    "type": "integer"
                 }
             }
         },
@@ -3826,12 +3824,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "approvals_mask": {
-                    "type": "string",
-                    "example": "0"
+                    "type": "integer"
                 },
                 "approvals_num": {
-                    "type": "string",
-                    "example": "0"
+                    "type": "integer"
                 },
                 "code_hash": {
                     "type": "string"
@@ -3840,8 +3836,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "expiration_date": {
-                    "type": "string",
-                    "example": "0"
+                    "type": "integer"
                 },
                 "last_transaction_lt": {
                     "type": "string",
@@ -3854,12 +3849,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "order_seqno": {
-                    "type": "string",
-                    "example": "0"
+                    "type": "integer"
                 },
                 "sent_for_execution": {
-                    "type": "string",
-                    "example": "false"
+                    "type": "boolean"
                 },
                 "signers": {
                     "type": "array",
@@ -3868,8 +3861,7 @@ const docTemplate = `{
                     }
                 },
                 "threshold": {
-                    "type": "string",
-                    "example": "0"
+                    "type": "integer"
                 }
             }
         },

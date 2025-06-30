@@ -623,8 +623,7 @@ definitions:
         example: "0"
         type: string
       next_order_seqno:
-        example: "0"
-        type: string
+        type: integer
       orders:
         items:
           $ref: '#/definitions/MultisigOrder'
@@ -638,26 +637,22 @@ definitions:
           type: string
         type: array
       threshold:
-        example: "0"
-        type: string
+        type: integer
     type: object
   MultisigOrder:
     properties:
       address:
         type: string
       approvals_mask:
-        example: "0"
-        type: string
+        type: integer
       approvals_num:
-        example: "0"
-        type: string
+        type: integer
       code_hash:
         type: string
       data_hash:
         type: string
       expiration_date:
-        example: "0"
-        type: string
+        type: integer
       last_transaction_lt:
         example: "0"
         type: string
@@ -666,18 +661,15 @@ definitions:
       order_boc:
         type: string
       order_seqno:
-        example: "0"
-        type: string
+        type: integer
       sent_for_execution:
-        example: "false"
-        type: string
+        type: boolean
       signers:
         items:
           type: string
         type: array
       threshold:
-        example: "0"
-        type: string
+        type: integer
     type: object
   MultisigOrderResponse:
     properties:
