@@ -135,6 +135,7 @@ void MultisigOrder::start_up() {
     stop();
     return;
   }
+  data.multisig_address = multisig_addr.move_as_ok();
   data.order_seqno = stack[1].as_int()->to_long();
   data.threshold = stack[2].as_int()->to_long();
   data.sent_for_execution = stack[3].as_int()->to_long();

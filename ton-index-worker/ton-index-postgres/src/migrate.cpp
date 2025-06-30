@@ -460,6 +460,7 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "create table if not exists multisig_orders ("
       "id bigserial not null, "
       "address tonaddr not null primary key, "
+      "multisig_address tonaddr, "
       "order_seqno bigint, "
       "threshold bigint, "
       "sent_for_execution boolean, "
@@ -750,6 +751,12 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists action_accounts_index_1 on action_accounts (action_id);\n"
       "create index if not exists action_accounts_index_2 on action_accounts (trace_id, action_id);\n"
       "create index if not exists action_accounts_index_3 on action_accounts (account, trace_end_utime, trace_id, action_end_utime, action_id);\n"
+      "create index if not exists multisig_index_1 on multisig (id);\n"
+      "create index if not exists multisig_index_2 on multisig using gin(signers);\n"
+      "create index if not exists multisig_index_3 on multisig using gin(proposers);\n"
+      "create index if not exists multisig_orders_index_1 on multisig_orders (id);\n"
+      "create index if not exists multisig_orders_index_2 on multisig_orders (multisig_address);\n"
+      "create index if not exists multisig_orders_index_3 on multisig_orders using gin(signers);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;

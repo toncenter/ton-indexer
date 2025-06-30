@@ -579,6 +579,7 @@ struct MultisigContractData {
 
 struct MultisigOrderData {
   block::StdAddress address;
+  block::StdAddress multisig_address;
   uint32_t order_seqno;
   uint32_t threshold;
   bool sent_for_execution;

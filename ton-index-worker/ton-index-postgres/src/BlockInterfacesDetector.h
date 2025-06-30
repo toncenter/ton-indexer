@@ -196,6 +196,7 @@ public:
                 } else if constexpr (std::is_same_v<T, MultisigOrder::Result>) {
                     MultisigOrderData multisig_order_data;
                     multisig_order_data.address = address;
+                    multisig_order_data.multisig_address = arg.multisig_address;
                     multisig_order_data.order_seqno = arg.order_seqno;
                     multisig_order_data.threshold = arg.threshold;
                     multisig_order_data.sent_for_execution = arg.sent_for_execution;

@@ -1438,23 +1438,14 @@ std::string InsertBatchPostgres::insert_multisig_contracts(pqxx::work &txn) {
   PopulateTableStream stream(txn, "multisig", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "multisig.last_transaction_lt < EXCLUDED.last_transaction_lt");
 
-  std::vector<std::string> signers, proposers;
-
-  for (const auto& [addr, multisig_contract] : multisig_contracts) {
-    for (size_t i = 0; i < multisig_contract.signers.size(); ++i) {
-      signers.push_back(convert::to_raw_address(multisig_contract.signers[i]));
-    }
-
-    for (size_t i = 0; i < multisig_contract.proposers.size(); ++i) {
-      proposers.push_back(convert::to_raw_address(multisig_contract.signers[i]));
-    }
-
+  for (const auto& [addr, multisig_contract] : multisig_contracts)
+  {
     auto tuple = std::make_tuple(
       multisig_contract.address,
       multisig_contract.next_order_seqno,
       multisig_contract.threshold,
-      signers,
-      proposers,
+      multisig_contract.signers,
+      multisig_contract.proposers,
       multisig_contract.last_transaction_lt,
       multisig_contract.code_hash,
       multisig_contract.data_hash
@@ -1480,18 +1471,15 @@ std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
   }
 
   std::initializer_list<std::string_view> columns = {
-    "address", "order_seqno", "threshold", "sent_for_execution", "approvals_mask", "approvals_num", 
+    "address", "multisig_address", "order_seqno", "threshold", "sent_for_execution", "approvals_mask", "approvals_num",
     "expiration_date", "order_boc", "signers", "last_transaction_lt", "code_hash", "data_hash"
   };
 
   PopulateTableStream stream(txn, "multisig_orders", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "multisig_orders.last_transaction_lt < EXCLUDED.last_transaction_lt");
 
+
   for (const auto& [addr, multisig_order] : multisig_orders) {
-    std::vector<std::string> signers;
-    for (size_t i = 0; i < multisig_order.signers.size(); ++i) {
-      signers.push_back(convert::to_raw_address(multisig_order.signers[i]));
-    }
 
     std::optional<std::string> order_boc_str = std::nullopt;
     if (multisig_order.order.not_null()) {
@@ -1503,6 +1491,7 @@ std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
 
     auto tuple = std::make_tuple(
       multisig_order.address,
+      multisig_order.multisig_address,
       multisig_order.order_seqno,
       multisig_order.threshold,
       multisig_order.sent_for_execution,
@@ -1510,7 +1499,7 @@ std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
       multisig_order.approvals_num,
       multisig_order.expiration_date,
       order_boc_str,
-      signers,
+      multisig_order.signers,
       multisig_order.last_transaction_lt,
       multisig_order.code_hash,
       multisig_order.data_hash
