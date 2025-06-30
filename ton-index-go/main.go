@@ -706,6 +706,45 @@ func GetDNSRecords(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+// @summary Get Vesting Contracts
+//
+// @description Get vesting contracts by specified filters
+//
+// @id api_v3_get_vesting_contracts
+// @tags vesting
+// @Accept json
+// @Produce json
+// @success 200 {object} index.VestingContractsResponse
+// @failure 400 {object} index.RequestError
+// @param contract_address query []string false "Vesting contract address in any form. Max: 1000." collectionFormat(multi)
+// @param wallet_address query []string false "Wallet address to filter by owner or sender. Max: 1000." collectionFormat(multi)
+// @param check_whitelist query bool false "Check if wallet address is in whitelist." default(false)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @router /api/v3/vesting [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetVestingContracts(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	var vesting_req index.VestingContractsRequest
+	var lim_req index.LimitRequest
+
+	if err := c.QueryParser(&vesting_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	res, book, err := pool.QueryVestingContracts(vesting_req, lim_req, request_settings)
+	if err != nil {
+		return err
+	}
+
+	resp := index.VestingContractsResponse{VestingContracts: res, AddressBook: book}
+	return c.JSON(resp)
+}
+
 // @summary Get NFT collections
 //
 // @description Get NFT collections by specified filters
@@ -1962,6 +2001,9 @@ func main() {
 	app.Get("/api/v3/walletStates", GetWalletStates)
 
 	app.Get("/api/v3/dns/records", GetDNSRecords)
+
+	// vesting
+	app.Get("/api/v3/vesting", GetVestingContracts)
 
 	// nfts
 	app.Get("/api/v3/nft/collections", GetNFTCollections)

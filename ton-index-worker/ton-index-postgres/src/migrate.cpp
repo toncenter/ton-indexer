@@ -539,6 +539,28 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "last_transaction_lt bigint);\n"
     );
 
+    query += (
+    "create table if not exists vesting_contracts ("
+      "address                tonaddr not null primary key, "
+      "vesting_start_time     integer, "
+      "vesting_total_duration integer, "
+      "unlock_period          integer, "
+      "cliff_duration         integer, "
+      "vesting_total_amount   numeric, "
+      "vesting_sender_address tonaddr, "
+      "owner_address          tonaddr, "
+      "last_transaction_lt    bigint, "
+      "code_hash              tonhash, "
+      "data_hash              tonhash);\n"
+    );
+
+    query += (
+      "create table if not exists vesting_whitelist ("
+      "vesting_contract_address tonaddr not null, "
+      "wallet_address           tonaddr not null, "
+      "primary key (vesting_contract_address, wallet_address));\n"
+    );
+
     query += "create table if not exists blocks_classified (mc_seqno integer not null primary key);\n";
 
     query += (
@@ -720,6 +742,10 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists action_accounts_index_1 on action_accounts (action_id);\n"
       "create index if not exists action_accounts_index_2 on action_accounts (trace_id, action_id);\n"
       "create index if not exists action_accounts_index_3 on action_accounts (account, trace_end_utime, trace_id, action_end_utime, action_id);\n"
+      "create index if not exists vesting_whitelist_wallet_address_idx on vesting_whitelist (wallet_address);\n"
+      "create index if not exists vesting_contracts_sender_start_time_idx on vesting_contracts (vesting_sender_address, vesting_start_time);\n"
+      "create index if not exists vesting_contracts_owner_start_time_idx on vesting_contracts (owner_address, vesting_start_time);\n"
+      "create index if not exists vesting_contracts_start_time_idx on vesting_contracts (vesting_start_time);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;
