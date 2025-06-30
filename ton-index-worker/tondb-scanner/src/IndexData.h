@@ -565,6 +565,34 @@ struct GetGemsNftFixPriceSaleData {
   td::Bits256 data_hash;
 };
 
+struct MultisigContractData {
+  block::StdAddress address;
+  uint32_t next_order_seqno;
+  uint32_t threshold;
+  std::vector<block::StdAddress> signers;
+  std::vector<block::StdAddress> proposers;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
+struct MultisigOrderData {
+  block::StdAddress address;
+  uint32_t order_seqno;
+  uint32_t threshold;
+  uint32_t sent_for_execution;
+  uint32_t approvals_mask;
+  uint32_t approvals_num;
+  uint32_t expiration_date;
+  td::Ref<vm::Cell> order;
+  std::vector<block::StdAddress> signers;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
 //
 // Containers
 //
@@ -596,7 +624,9 @@ using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
                                            NFTCollectionDataV2, 
                                            NFTItemDataV2,
                                            GetGemsNftFixPriceSaleData,
-                                           GetGemsNftAuctionData>;
+                                           GetGemsNftAuctionData,
+                                           MultisigContractData,
+                                           MultisigOrderData>;
 
 namespace std {
 template <>

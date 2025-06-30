@@ -444,6 +444,36 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
     );
 
     query += (
+      "create table if not exists multisig ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "next_order_seqno bigint, "
+      "threshold bigint, "
+      "signers tonaddr[], "
+      "proposers tonaddr[], "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash);\n"
+    );
+
+    query += (
+      "create table if not exists multisig_orders ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "order_seqno bigint, "
+      "threshold bigint, "
+      "sent_for_execution bigint, "
+      "approvals_mask bigint, "
+      "approvals_num bigint, "
+      "expiration_date bigint, "
+      "order_boc text, "
+      "signers tonaddr[], "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash);\n"
+    );
+
+    query += (
       "create table if not exists traces ("
       "trace_id tonhash not null primary key, "
       "external_hash tonhash, "
