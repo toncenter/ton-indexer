@@ -1031,6 +1031,34 @@ type BalanceChangesResult struct {
 	Jettons map[AccountAddress]map[AccountAddress]string `json:"jettons"`
 }
 
+type MultisigOrder struct {
+	Address           AccountAddress   `json:"address"`
+	MultisigAddress   AccountAddress   `json:"multisig_address"`
+	OrderSeqno        *int64           `json:"order_seqno,string"`
+	Threshold         *int64           `json:"threshold,string"`
+	SentForExecution  *bool            `json:"sent_for_execution,string"`
+	ApprovalsMask     *int64           `json:"approvals_mask,string"`
+	ApprovalsNum      *int64           `json:"approvals_num,string"`
+	ExpirationDate    *int64           `json:"expiration_date,string"`
+	OrderBoc          *string          `json:"order_boc"`
+	Signers           []AccountAddress `json:"signers"`
+	LastTransactionLt *int64           `json:"last_transaction_lt,string"`
+	CodeHash          *HashType        `json:"code_hash"`
+	DataHash          *HashType        `json:"data_hash"`
+} // @name MultisigOrder
+
+type Multisig struct {
+	Address           AccountAddress   `json:"address"`
+	NextOrderSeqno    *int64           `json:"next_order_seqno,string"`
+	Threshold         *int64           `json:"threshold,string"`
+	Signers           []AccountAddress `json:"signers"`
+	Proposers         []AccountAddress `json:"proposers"`
+	LastTransactionLt *int64           `json:"last_transaction_lt,string"`
+	CodeHash          *HashType        `json:"code_hash"`
+	DataHash          *HashType        `json:"data_hash"`
+	Orders            []MultisigOrder  `json:"orders"`
+} // @name Multisig
+
 // converters
 func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, error) {
 	var info V2AddressInformation
