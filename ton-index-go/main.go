@@ -1397,7 +1397,7 @@ func GetMultisigs(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if len(multisig_req.Address) == 0 && len(multisig_req.WalletAddress) != 0 {
+	if len(multisig_req.Address) == 0 && len(multisig_req.WalletAddress) == 0 {
 		return index.IndexError{Code: 422, Message: "At least one of address or wallet_address should be specified"}
 	}
 
@@ -1440,7 +1440,7 @@ func GetMultisigOrders(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if len(order_req.Address) == 0 && len(order_req.WalletAddress) != 0 {
+	if len(order_req.Address) == 0 && len(order_req.WalletAddress) == 0 {
 		return index.IndexError{Code: 422, Message: "At least one of address or wallet_address should be specified"}
 	}
 
