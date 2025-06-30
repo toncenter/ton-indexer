@@ -1034,23 +1034,23 @@ type BalanceChangesResult struct {
 type MultisigOrder struct {
 	Address           AccountAddress   `json:"address"`
 	MultisigAddress   AccountAddress   `json:"multisig_address"`
-	OrderSeqno        *int64           `json:"order_seqno"`
-	Threshold         *int64           `json:"threshold"`
+	OrderSeqno        *string          `json:"order_seqno"`
+	Threshold         *int32           `json:"threshold"`
 	SentForExecution  *bool            `json:"sent_for_execution"`
-	ApprovalsMask     *int64           `json:"approvals_mask"`
-	ApprovalsNum      *int64           `json:"approvals_num"`
-	ExpirationDate    *int64           `json:"expiration_date"`
+	ApprovalsMask     *string          `json:"approvals_mask"`
+	ApprovalsNum      *int32           `json:"approvals_num"`
+	ExpirationDate    *string          `json:"expiration_date"`
 	OrderBoc          *string          `json:"order_boc"`
 	Signers           []AccountAddress `json:"signers"`
-	LastTransactionLt *int64           `json:"last_transaction_lt,string"`
+	LastTransactionLt int64            `json:"last_transaction_lt,string"`
 	CodeHash          *HashType        `json:"code_hash"`
 	DataHash          *HashType        `json:"data_hash"`
 } // @name MultisigOrder
 
 type Multisig struct {
 	Address           AccountAddress   `json:"address"`
-	NextOrderSeqno    *int64           `json:"next_order_seqno"`
-	Threshold         *int64           `json:"threshold"`
+	NextOrderSeqno    *string          `json:"next_order_seqno"`
+	Threshold         *int32           `json:"threshold"`
 	Signers           []AccountAddress `json:"signers"`
 	Proposers         []AccountAddress `json:"proposers"`
 	LastTransactionLt int64            `json:"last_transaction_lt,string"`

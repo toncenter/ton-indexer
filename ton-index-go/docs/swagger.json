@@ -3784,7 +3784,7 @@
                     "example": "0"
                 },
                 "next_order_seqno": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "orders": {
                     "type": "array",
@@ -3816,7 +3816,7 @@
                     "type": "string"
                 },
                 "approvals_mask": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "approvals_num": {
                     "type": "integer"
@@ -3828,7 +3828,7 @@
                     "type": "string"
                 },
                 "expiration_date": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "last_transaction_lt": {
                     "type": "string",
@@ -3841,7 +3841,7 @@
                     "type": "string"
                 },
                 "order_seqno": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "sent_for_execution": {
                     "type": "boolean"

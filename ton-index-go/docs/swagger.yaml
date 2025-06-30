@@ -623,7 +623,7 @@ definitions:
         example: "0"
         type: string
       next_order_seqno:
-        type: integer
+        type: string
       orders:
         items:
           $ref: '#/definitions/MultisigOrder'
@@ -644,7 +644,7 @@ definitions:
       address:
         type: string
       approvals_mask:
-        type: integer
+        type: string
       approvals_num:
         type: integer
       code_hash:
@@ -652,7 +652,7 @@ definitions:
       data_hash:
         type: string
       expiration_date:
-        type: integer
+        type: string
       last_transaction_lt:
         example: "0"
         type: string
@@ -661,7 +661,7 @@ definitions:
       order_boc:
         type: string
       order_seqno:
-        type: integer
+        type: string
       sent_for_execution:
         type: boolean
       signers:

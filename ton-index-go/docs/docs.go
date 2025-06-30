@@ -3792,7 +3792,7 @@ const docTemplate = `{
                     "example": "0"
                 },
                 "next_order_seqno": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "orders": {
                     "type": "array",
@@ -3824,7 +3824,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "approvals_mask": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "approvals_num": {
                     "type": "integer"
@@ -3836,7 +3836,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "expiration_date": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "last_transaction_lt": {
                     "type": "string",
@@ -3849,7 +3849,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "order_seqno": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "sent_for_execution": {
                     "type": "boolean"
