@@ -39,7 +39,7 @@ public:
     struct Result {
         block::StdAddress address;
         block::StdAddress multisig_address;
-        uint32_t order_seqno;
+        td::RefInt256 order_seqno;
         uint32_t threshold;
         bool sent_for_execution;
         std::vector<block::StdAddress> signers;
@@ -57,6 +57,10 @@ public:
                          td::Promise<Result> promise);
 
     void start_up() override;
+
+    void got_multisig(Result item_data, td::Ref<vm::Cell> multisig_code, td::Ref<vm::Cell> multisig_data);
+    td::Status verify_multisig_order(block::StdAddress multisig_address, td::Ref<vm::Cell> multisig_code,
+        td::Ref<vm::Cell> multisig_data, td::RefInt256 order_seqno);
 
 private:
     block::StdAddress address_;
