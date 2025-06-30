@@ -41,7 +41,7 @@ void MultisigContract::start_up() {
 
   Result data;
   data.address = address_;
-  data.next_order_seqno = stack[0].as_int()->to_long();
+  data.next_order_seqno = stack[0].as_int();
   data.threshold = stack[1].as_int()->to_long();
 
   // signers
@@ -139,9 +139,9 @@ void MultisigOrder::start_up() {
   data.order_seqno = stack[1].as_int();
   data.threshold = stack[2].as_int()->to_long();
   data.sent_for_execution = stack[3].as_int()->to_long();
-  data.approvals_mask = stack[5].as_int()->to_long();
+  data.approvals_mask = stack[5].as_int();
   data.approvals_num = stack[6].as_int()->to_long();
-  data.expiration_date = stack[7].as_int()->to_long();
+  data.expiration_date = stack[7].as_int();
   data.order = stack[8].as_cell();
 
   // signers

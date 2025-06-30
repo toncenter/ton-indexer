@@ -567,7 +567,7 @@ struct GetGemsNftFixPriceSaleData {
 
 struct MultisigContractData {
   block::StdAddress address;
-  uint32_t next_order_seqno;
+  td::RefInt256 next_order_seqno;
   uint32_t threshold;
   std::vector<block::StdAddress> signers;
   std::vector<block::StdAddress> proposers;
@@ -580,12 +580,12 @@ struct MultisigContractData {
 struct MultisigOrderData {
   block::StdAddress address;
   block::StdAddress multisig_address;
-  uint32_t order_seqno;
+  td::RefInt256 order_seqno;
   uint32_t threshold;
   bool sent_for_execution;
-  uint32_t approvals_mask;
+  td::RefInt256 approvals_mask;
   uint32_t approvals_num;
-  uint32_t expiration_date;
+  td::RefInt256 expiration_date;
   td::Ref<vm::Cell> order;
   std::vector<block::StdAddress> signers;
   uint64_t last_transaction_lt;

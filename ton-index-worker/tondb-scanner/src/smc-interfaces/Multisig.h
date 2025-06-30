@@ -10,7 +10,7 @@ class MultisigContract: public td::actor::Actor {
 public:
     struct Result {
         block::StdAddress address;
-        uint32_t next_order_seqno;
+        td::RefInt256 next_order_seqno;
         uint32_t threshold;
         std::vector<block::StdAddress> signers;
         std::vector<block::StdAddress> proposers;
@@ -43,9 +43,9 @@ public:
         uint32_t threshold;
         bool sent_for_execution;
         std::vector<block::StdAddress> signers;
-        uint32_t approvals_mask;
+        td::RefInt256 approvals_mask;
         uint32_t approvals_num;
-        uint32_t expiration_date;
+        td::RefInt256 expiration_date;
         td::Ref<vm::Cell> order;
     };
 

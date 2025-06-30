@@ -197,7 +197,7 @@ public:
                     MultisigOrderData multisig_order_data;
                     multisig_order_data.address = address;
                     multisig_order_data.multisig_address = arg.multisig_address;
-                    multisig_order_data.order_seqno = arg.order_seqno->to_long();
+                    multisig_order_data.order_seqno = arg.order_seqno;
                     multisig_order_data.threshold = arg.threshold;
                     multisig_order_data.sent_for_execution = arg.sent_for_execution;
                     multisig_order_data.approvals_mask = arg.approvals_mask;
