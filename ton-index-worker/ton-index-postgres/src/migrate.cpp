@@ -466,7 +466,7 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "sent_for_execution boolean, "
       "approvals_mask numeric, "
       "approvals_num bigint, "
-      "expiration_date numeric, "
+      "expiration_date bigint, "
       "order_boc text, "
       "signers tonaddr[], "
       "last_transaction_lt bigint, "
