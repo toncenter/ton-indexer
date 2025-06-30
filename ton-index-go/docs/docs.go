@@ -3836,7 +3836,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "expiration_date": {
-                    "type": "string"
+                    "type": "integer"
                 },
                 "last_transaction_lt": {
                     "type": "string",

@@ -652,7 +652,7 @@ definitions:
       data_hash:
         type: string
       expiration_date:
-        type: string
+        type: integer
       last_transaction_lt:
         example: "0"
         type: string

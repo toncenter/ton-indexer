@@ -1039,7 +1039,7 @@ type MultisigOrder struct {
 	SentForExecution  *bool            `json:"sent_for_execution"`
 	ApprovalsMask     *string          `json:"approvals_mask"`
 	ApprovalsNum      *int32           `json:"approvals_num"`
-	ExpirationDate    *string          `json:"expiration_date"`
+	ExpirationDate    *uint64          `json:"expiration_date"`
 	OrderBoc          *string          `json:"order_boc"`
 	Signers           []AccountAddress `json:"signers"`
 	LastTransactionLt int64            `json:"last_transaction_lt,string"`
