@@ -3505,7 +3505,7 @@ func buildMultisigQuery(multisig_req MultisigRequest, lim_req LimitRequest, sett
 		       m.last_transaction_lt, m.code_hash, m.data_hash
 		FROM multisig m
 		%s
-		ORDER BY m.last_transaction_lt %s %s`,
+		ORDER BY m.id %s %s`,
 		whereClause, sort_order, limit_query)
 
 	return query, nil
@@ -3549,7 +3549,7 @@ func buildMultisigOrderQuery(order_req MultisigOrderRequest, lim_req LimitReques
 		       code_hash, data_hash
 		FROM multisig_orders
 		%s
-		ORDER BY last_transaction_lt %s %s`,
+		ORDER BY id %s %s`,
 		whereClause, sort_order, limit_query)
 
 	return query, nil
@@ -3628,7 +3628,7 @@ func (db *DbClient) QueryMultisigs(
 			"order_boc, signers, last_transaction_lt, code_hash, data_hash "+
 			"FROM multisig_orders "+
 			"WHERE multisig_address = '%s' "+
-			"ORDER BY last_transaction_lt DESC", multisigs[i].Address)
+			"ORDER BY id ", multisigs[i].Address)
 		orders, err := queryMultisigOrderImpl(ordersQuery, conn, settings)
 		if err != nil {
 			return nil, nil, IndexError{Code: 500, Message: err.Error()}
