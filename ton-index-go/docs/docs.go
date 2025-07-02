@@ -2836,6 +2836,9 @@ const docTemplate = `{
                 "trace_external_hash": {
                     "type": "string"
                 },
+                "trace_external_hash_norm": {
+                    "type": "string"
+                },
                 "trace_id": {
                     "type": "string"
                 },

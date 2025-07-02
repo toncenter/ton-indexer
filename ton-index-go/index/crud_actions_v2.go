@@ -137,6 +137,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.staking_data).tokens_minted,
 		A.success,
 		A.trace_external_hash,
+		NULL,
 		A.value_extra_currencies,
 		(A.multisig_create_order_data).query_id,
 		(A.multisig_create_order_data).order_seqno,

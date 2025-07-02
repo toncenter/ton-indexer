@@ -318,6 +318,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 	act.Success = raw.Success
 	act.Type = raw.Type
 	act.TraceExternalHash = raw.TraceExternalHash
+	act.TraceExternalHashNorm = raw.TraceExternalHashNorm
 	act.Accounts = raw.Accounts
 
 	switch act.Type {
@@ -1186,6 +1187,7 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.StakingDataTokensMinted,
 		&act.Success,
 		&act.TraceExternalHash,
+		&act.TraceExternalHashNorm,
 		&act.ExtraCurrencies,
 		&act.MultisigCreateOrderQueryId,
 		&act.MultisigCreateOrderOrderSeqno,
