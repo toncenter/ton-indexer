@@ -29,7 +29,8 @@ void MultisigContract::start_up() {
   }
 
   auto stack = stack_r.move_as_ok();
-  if (!stack[0].is_int()
+  if (stack.size() < 4
+    || !stack[0].is_int()
     || !stack[1].is_int()
     || !(stack[2].is_cell() || stack[2].is_null())
     || !(stack[3].is_cell() || stack[3].is_null()))
