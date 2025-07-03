@@ -6,6 +6,7 @@
 #include "Tokens.h"
 #include "NftSale.h"
 #include "Multisig.h"
+#include "Vesting.h"
 
 template<typename... Detectors>
 class InterfacesDetector: public td::actor::Actor {

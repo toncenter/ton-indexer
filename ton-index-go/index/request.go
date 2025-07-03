@@ -173,6 +173,12 @@ type MultisigOrderRequest struct {
 	WalletAddress []AccountAddress `query:"wallet_address"`
 }
 
+type VestingContractsRequest struct {
+	ContractAddress []AccountAddress `query:"contract_address"`
+	WalletAddress   []AccountAddress `query:"wallet_address"`
+	CheckWhitelist  *bool            `query:"check_whitelist"`
+}
+
 type SortType string
 
 const (

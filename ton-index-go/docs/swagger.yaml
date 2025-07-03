@@ -1104,6 +1104,15 @@ definitions:
       wallet_type:
         type: string
     type: object
+  VestingContractsResponse:
+    properties:
+      address_book:
+        $ref: '#/definitions/AddressBook'
+      vesting_contracts:
+        items:
+          $ref: '#/definitions/index.VestingInfo'
+        type: array
+    type: object
   WalletState:
     properties:
       address:
@@ -1159,6 +1168,29 @@ definitions:
         $ref: '#/definitions/Transaction'
       tx_hash:
         type: string
+    type: object
+  index.VestingInfo:
+    properties:
+      address:
+        type: string
+      cliff_duration:
+        type: integer
+      owner_address:
+        type: string
+      sender_address:
+        type: string
+      start_time:
+        type: integer
+      total_amount:
+        type: string
+      total_duration:
+        type: integer
+      unlock_period:
+        type: integer
+      whitelist:
+        items:
+          type: string
+        type: array
     type: object
 info:
   contact: {}
@@ -3030,6 +3062,62 @@ paths:
       summary: Get transactions by message
       tags:
       - blockchain
+  /api/v3/vesting:
+    get:
+      consumes:
+      - application/json
+      description: Get vesting contracts by specified filters
+      operationId: api_v3_get_vesting_contracts
+      parameters:
+      - collectionFormat: multi
+        description: 'Vesting contract address in any form. Max: 1000.'
+        in: query
+        items:
+          type: string
+        name: contract_address
+        type: array
+      - collectionFormat: multi
+        description: 'Wallet address to filter by owner or sender. Max: 1000.'
+        in: query
+        items:
+          type: string
+        name: wallet_address
+        type: array
+      - default: false
+        description: Check if wallet address is in whitelist.
+        in: query
+        name: check_whitelist
+        type: boolean
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 1000
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/VestingContractsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Vesting Contracts
+      tags:
+      - vesting
   /api/v3/walletInformation:
     get:
       consumes:

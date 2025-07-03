@@ -10,7 +10,8 @@ using AllShardStates = std::vector<td::Ref<vm::Cell>>;
 using FullDetector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR, 
                                      NftItemDetectorR, NftCollectionDetectorR,
                                      GetGemsNftAuction, GetGemsNftFixPriceSale,
-                                     MultisigContract, MultisigOrder>;
+                                     MultisigContract, MultisigOrder,
+                                     VestingContract>;
 
 class BlockInterfaceProcessor: public td::actor::Actor {
 private:
@@ -210,6 +211,23 @@ public:
                     multisig_order_data.code_hash = code_hash;
                     multisig_order_data.data_hash = data_hash;
                     interfaces_[address].push_back(multisig_order_data);
+                } else if constexpr (std::is_same_v<T, VestingContract::Result>)
+                {
+                    VestingData vesting_data;
+                    vesting_data.address = address;
+                    vesting_data.vesting_start_time = arg.vesting_start_time;
+                    vesting_data.vesting_total_duration = arg.vesting_total_duration;
+                    vesting_data.unlock_period = arg.unlock_period;
+                    vesting_data.cliff_duration = arg.cliff_duration;
+                    vesting_data.vesting_total_amount = arg.vesting_total_amount;
+                    vesting_data.vesting_sender_address = arg.vesting_sender_address;
+                    vesting_data.owner_address = arg.owner_address;
+                    vesting_data.whitelist = arg.whitelist;
+                    vesting_data.last_transaction_lt = last_trans_lt;
+                    vesting_data.last_transaction_now = last_trans_now;
+                    vesting_data.code_hash = code_hash;
+                    vesting_data.data_hash = data_hash;
+                    interfaces_[address].push_back(vesting_data);
                 }
             }, interface);
         }

@@ -496,7 +496,8 @@ void InsertBatchPostgres::do_insert() {
     insert_under_mutex_query += insert_multisig_contracts(txn);
     insert_under_mutex_query += insert_multisig_orders(txn);
     insert_under_mutex_query += insert_latest_account_states(txn);
-    
+    insert_under_mutex_query += insert_vesting(txn);
+
     td::Timer commit_timer{true};
     {
       std::lock_guard<std::mutex> guard(latest_account_states_update_mutex);
@@ -1361,6 +1362,67 @@ std::string InsertBatchPostgres::insert_getgems_nft_sales(pqxx::work &txn) {
     stream.insert_row(std::move(tuple));
   }
   return stream.get_str();
+}
+
+std::string InsertBatchPostgres::insert_vesting(pqxx::work &txn) {
+    std::unordered_map<block::StdAddress, VestingData> vesting_contracts;
+    for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+        const auto& task = *i;
+        for (const auto& vesting : task.parsed_block_->get_accounts_v2<VestingData>()) {
+            if (vesting_contracts.find(vesting.address) == vesting_contracts.end()) {
+                vesting_contracts[vesting.address] = vesting;
+            } else {
+                if (vesting_contracts[vesting.address].last_transaction_lt < vesting.last_transaction_lt) {
+                    vesting_contracts[vesting.address] = vesting;
+                }
+            }
+        }
+    }
+
+    // Insert vesting contracts
+    std::initializer_list<std::string_view> vesting_columns = {
+        "address", "vesting_start_time", "vesting_total_duration", "unlock_period", 
+        "cliff_duration", "vesting_total_amount", "vesting_sender_address", "owner_address",
+        "last_transaction_lt", "code_hash", "data_hash"
+    };
+    PopulateTableStream vesting_stream(txn, "vesting_contracts", vesting_columns, 1000, false);
+    vesting_stream.setConflictDoUpdate({"address"}, "vesting_contracts.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+    for (const auto& [addr, vesting] : vesting_contracts) {
+        auto tuple = std::make_tuple(
+          vesting.address,
+          vesting.vesting_start_time,
+          vesting.vesting_total_duration,
+          vesting.unlock_period,
+          vesting.cliff_duration,
+          vesting.vesting_total_amount,
+          vesting.vesting_sender_address,
+          vesting.owner_address,
+          vesting.last_transaction_lt,
+          vesting.code_hash,
+          vesting.data_hash
+        );
+        vesting_stream.insert_row(std::move(tuple));
+    }
+
+    // Insert whitelist entries
+    std::initializer_list<std::string_view> whitelist_columns = {
+        "vesting_contract_address", "wallet_address"
+    };
+    PopulateTableStream whitelist_stream(txn, "vesting_whitelist", whitelist_columns, 1000, false);
+    whitelist_stream.setConflictDoNothing();
+
+    for (const auto& [addr, vesting] : vesting_contracts) {
+        for (const auto& wallet_addr : vesting.whitelist) {
+            auto tuple = std::make_tuple(
+              vesting.address,
+              wallet_addr
+            );
+            whitelist_stream.insert_row(std::move(tuple));
+        }
+    }
+
+    return vesting_stream.get_str() + whitelist_stream.get_str();
 }
 
 std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
