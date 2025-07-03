@@ -3787,7 +3787,7 @@ func buildVestingContractsQuery(vesting_req VestingContractsRequest, lim_req Lim
 	from_query := `vesting_contracts V`
 	filter_list := []string{}
 	filter_query := ``
-	orderby_query := ` ORDER BY V.vesting_start_time DESC`
+	orderby_query := ` ORDER BY V.id ASC`
 
 	if len(vesting_req.ContractAddress) > 0 {
 		f_str := filterByArray("V.address", vesting_req.ContractAddress)
