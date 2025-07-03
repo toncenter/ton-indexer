@@ -900,6 +900,10 @@ func (n *TraceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 }
 
 func (a *Action) GetActionRow() (ActionRow, error) {
+	var traceExternalHashNorm *string = nil
+	if a.TraceExternalHashNorm != nil && *a.TraceExternalHashNorm != a.TraceExternalHash {
+		traceExternalHashNorm = a.TraceExternalHashNorm
+	}
 	row := ActionRow{
 		ActionId:              a.ActionId,
 		Type:                  a.Type,
@@ -925,7 +929,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		Opcode:                a.Opcode,
 		Success:               a.Success,
 		TraceExternalHash:     &a.TraceExternalHash,
-		TraceExternalHashNorm: a.TraceExternalHashNorm,
+		TraceExternalHashNorm: traceExternalHashNorm,
 		ParentActionId:        a.ParentActionId,
 		AncestorType:          a.AncestorType,
 		Accounts:              a.Accounts,
