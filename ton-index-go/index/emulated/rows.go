@@ -226,6 +226,7 @@ type ActionRow struct {
 	StakingTokensMinted                                  *string
 	Success                                              bool
 	TraceExternalHash                                    *string
+	TraceExternalHashNorm                                *string
 	ExtraCurrencies                                      map[string]string
 	// Multisig action fields
 	MultisigCreateOrderQueryId           *string
@@ -456,6 +457,7 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.StakingTokensMinted),
 		assignBool(t.Success),
 		assignStringPtr(t.TraceExternalHash),
+		assignStringPtr(t.TraceExternalHashNorm),
 		assignMap(t.ExtraCurrencies),
 		assignStringPtr(t.MultisigCreateOrderQueryId),
 		assignStringPtr(t.MultisigCreateOrderOrderSeqno),

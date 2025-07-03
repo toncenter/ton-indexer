@@ -428,6 +428,7 @@ class Action(Base):
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)
+    trace_external_hash_norm: str
     mc_seqno_end: int = Column(Numeric)
     trace_mc_seqno_end: int = Column(Numeric)
     value_extra_currencies: dict = Column(JSONB)

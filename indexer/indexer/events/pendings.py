@@ -152,10 +152,11 @@ class PendingTraceClassifierWorker(mp.Process):
                 actions, _ = serialize_blocks(blocks, trace.trace_id)
                 if len(actions) == 0:
                     actions = await try_classify_unknown_trace(trace)
-                if trace.transactions[0].emulated:
-                    for action in actions:
+                for action in actions:
+                    if trace.transactions[0].emulated:
                         action.trace_id = None
                         action.trace_external_hash = trace.external_hash
+                    action.trace_external_hash_norm = trace_key
 
                 # Store results in Redis
                 action_data = msgpack.packb([a.to_dict() for a in actions])
