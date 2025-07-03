@@ -102,7 +102,7 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
         mc_seqno_end=mc_seqno_end,
         value_extra_currencies=dict(),
     )
-    action._accounts = accounts
+    action.accounts = accounts
     return action
 
 
@@ -169,6 +169,9 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
     action.asset_secondary = block.data['nft']['address'].as_str()
     if block.data['nft']['collection'] is not None:
         action.asset = block.data['nft']['collection']['address'].as_str()
+    marketplace = None
+    if 'marketplace' in block.data and block.data['marketplace'] is not None:
+        marketplace = block.data['marketplace']
     action.nft_transfer_data = {
         'query_id': block.data['query_id'],
         'is_purchase': block.data['is_purchase'],
@@ -178,6 +181,7 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'custom_payload': block.data['custom_payload'],
         'forward_payload': block.data['forward_payload'],
         'response_destination': block.data['response_destination'].as_str() if block.data['response_destination'] else None,
+        'marketplace': marketplace
     }
 
 def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):
@@ -814,11 +818,11 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
-    action._accounts.append(action.source)
-    action._accounts.append(action.source_secondary)
+    action.accounts.append(action.source)
+    action.accounts.append(action.source_secondary)
     if not block.is_ghost_block:
-        action._accounts.append(action.destination)
-        action._accounts.append(action.destination_secondary)
+        action.accounts.append(action.destination)
+        action.accounts.append(action.destination_secondary)
 
     # Fill extended tx hashes
     extended_tx_hashes = set(action.tx_hashes)
@@ -826,12 +830,12 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
         extended_tx_hashes.add(block.initiating_event_node.get_tx_hash())
         if not block.initiating_event_node.is_tick_tock:
             acc = block.initiating_event_node.message.transaction.account
-            if acc not in action._accounts:
+            if acc not in action.accounts:
                 logging.debug(f"Initiating transaction ({block.initiating_event_node.get_tx_hash()}) account not in accounts. Trace id: {trace_id}. Action id: {action.action_id}")
-            action._accounts.append(acc)
+            action.accounts.append(acc)
     action.tx_hashes = list(extended_tx_hashes)
 
-    action._accounts = list(set(a for a in action._accounts if a is not None))
+    action.accounts = list(set(a for a in action.accounts if a is not None))
     return action
 
 
@@ -930,5 +934,5 @@ def create_unknown_action(trace: Trace) -> Action:
         trace_external_hash=trace.external_hash,
         trace_mc_seqno_end=trace.mc_seqno_end
     )
-    action._accounts = list(set([n.account for n in trace.transactions]))
+    action.accounts = list(set([n.account for n in trace.transactions]))
     return action

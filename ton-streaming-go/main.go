@@ -45,6 +45,7 @@ const (
 	Actions             EventType = "actions"
 	PendingTransactions EventType = "pending_transactions"
 	PendingActions      EventType = "pending_actions"
+	TraceInvalidated    EventType = "trace_invalidated"
 )
 
 // RateLimitConfig holds rate limiting configuration for a client
@@ -201,13 +202,14 @@ type BlockchainEvent struct {
 
 // Client represents a connected client
 type Client struct {
-	ID           string
-	LimitingKey  string // Added for rate limiting
-	Connected    bool
-	Subscription Subscription
-	SendEvent    func([]byte) error
-	sendChan     chan []byte
-	mu           sync.Mutex
+	ID                             string
+	LimitingKey                    string // Added for rate limiting
+	Connected                      bool
+	Subscription                   Subscription
+	TracesForPotentialInvalidation map[string]bool // traceExternalHashNorm -> true
+	SendEvent                      func([]byte) error
+	sendChan                       chan []byte
+	mu                             sync.Mutex
 }
 
 func (c *Client) startSender(manager *ClientManager) {
@@ -366,11 +368,26 @@ type Notification interface {
 	AdjustForClient(client *Client) any
 }
 
+type TraceInvalidatedNotification struct {
+	Type                  EventType `json:"type"`
+	TraceExternalHashNorm string    `json:"trace_external_hash_norm"`
+}
+
+var _ Notification = (*TraceInvalidatedNotification)(nil)
+
+func (n *TraceInvalidatedNotification) AdjustForClient(client *Client) any {
+	if subscribed := client.TracesForPotentialInvalidation[n.TraceExternalHashNorm]; subscribed {
+		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
+		return n
+	}
+	return nil
+}
+
 type ActionsNotification struct {
 	Type                  EventType          `json:"type"`
 	TraceExternalHashNorm string             `json:"trace_external_hash_norm"`
 	Actions               []*index.Action    `json:"actions"`
-	ActionAddresses       [][]string         `json:"-"`
+	ActionAddresses       [][]string         `json:"-"` // contains all addresses mentioned in actions for addressbook, it's not same as index.Action.Accounts
 	AddressBook           *index.AddressBook `json:"address_book,omitempty"`
 	Metadata              *index.Metadata    `json:"metadata,omitempty"`
 }
@@ -392,9 +409,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	supportedActionsSet := mapset.NewSet(client.Subscription.SupportedActionTypes...)
 	filterActionsSet := mapset.NewSet(client.Subscription.ActionTypes...)
 	for idx, action := range n.Actions {
-		actionAddresses := n.ActionAddresses[idx]
-
-		if client.Subscription.InterestedIn(n.Type, actionAddresses) {
+		if client.Subscription.InterestedIn(n.Type, action.Accounts) {
 			if !filterActionsSet.IsEmpty() && !filterActionsSet.ContainsAny(action.Type) {
 				continue
 			}
@@ -407,9 +422,9 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 			}
 
 			adjustedActions = append(adjustedActions, action)
-			adjustedActionAddresses = append(adjustedActionAddresses, actionAddresses)
+			adjustedActionAddresses = append(adjustedActionAddresses, n.ActionAddresses[idx])
 
-			for _, addr := range actionAddresses {
+			for _, addr := range n.ActionAddresses[idx] {
 				allAddresses[addr] = true
 				if adjustedAddressBook != nil {
 					if addrBookEntry, ok := (*n.AddressBook)[addr]; ok {
@@ -426,6 +441,13 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	}
 	if len(adjustedActions) == 0 {
 		return nil
+	}
+
+	switch n.Type {
+	case PendingActions:
+		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
+	case Actions:
+		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
 	}
 
 	return &ActionsNotification{
@@ -634,6 +656,13 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 				(*adjustedMetadata)[addr] = metaEntry
 			}
 		}
+	}
+
+	switch n.Type {
+	case PendingTransactions:
+		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
+	case Transactions:
+		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
 	}
 
 	return &TransactionsNotification{
@@ -890,6 +919,29 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 	}
 }
 
+func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manager *ClientManager) {
+	pubsub := rdb.Subscribe(ctx, "invalidated_traces")
+	defer pubsub.Close()
+
+	log.Printf("Subscribed to Redis channel: invalidated_traces")
+
+	for {
+		msg, err := pubsub.ReceiveMessage(ctx)
+		if err != nil {
+			log.Printf("Error receiving message from Redis: %v", err)
+			continue
+		}
+
+		traceExternalHashNorm := msg.Payload
+
+		// Notify clients about the invalidated trace
+		manager.broadcast <- &TraceInvalidatedNotification{
+			Type:                  TraceInvalidated,
+			TraceExternalHashNorm: traceExternalHashNorm,
+		}
+	}
+}
+
 type ErrorResponse struct {
 	Id    *string `json:"id,omitempty"`
 	Error string  `json:"error"`
@@ -1133,6 +1185,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				ActionTypes:          req.ActionTypes,
 				SupportedActionTypes: index.ExpandActionTypeShortcuts(req.SupportedActionTypes),
 			},
+			TracesForPotentialInvalidation: make(map[string]bool),
 			SendEvent: func(b []byte) error {
 				select {
 				case eventCh <- b:
@@ -1217,7 +1270,8 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				IncludeAddressBook:   false,
 				IncludeMetadata:      false,
 			},
-			SendEvent: func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
+			TracesForPotentialInvalidation: make(map[string]bool),
+			SendEvent:                      func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
 		}
 		manager.register <- client
 		defer func() {
@@ -1367,6 +1421,7 @@ func main() {
 	go SubscribeToTraces(ctx, rdb, manager)
 	go SubscribeToCommittedTransactions(ctx, rdb, manager)
 	go SubscribeToClassifiedTraces(ctx, rdb, manager)
+	go SubscribeToInvalidatedTraces(ctx, rdb, manager)
 
 	// Initialize Fiber app
 	app := fiber.New(fiber.Config{

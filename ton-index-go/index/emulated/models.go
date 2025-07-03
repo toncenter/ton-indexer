@@ -218,6 +218,7 @@ type actionNftTransferDetails struct {
 	ForwardAmount       *string `msgpack:"forward_amount"`
 	ResponseDestination *string `msgpack:"response_destination"`
 	NftItemIndex        *string `msgpack:"nft_item_index"`
+	Marketplace         *string `msgpack:"marketplace"`
 }
 
 type actionDexTransferDetails struct {
@@ -391,6 +392,7 @@ type Action struct {
 	Type                     string                            `msgpack:"type"`
 	TraceId                  *string                           `msgpack:"trace_id"`
 	TraceExternalHash        string                            `msgpack:"trace_external_hash"`
+	TraceExternalHashNorm    *string                           `msgpack:"trace_external_hash_norm"`
 	TxHashes                 []string                          `msgpack:"tx_hashes"`
 	Value                    *string                           `msgpack:"value"`
 	Amount                   *string                           `msgpack:"amount"`
@@ -415,6 +417,7 @@ type Action struct {
 	TonTransferData          *actionTonTransferDetails         `msgpack:"ton_transfer_data"`
 	AncestorType             []string                          `msgpack:"ancestor_type"`
 	ParentActionId           *string                           `msgpack:"parent_action_id"`
+	Accounts                 []string                          `msgpack:"accounts"`
 	JettonTransferData       *actionJettonTransferDetails      `msgpack:"jetton_transfer_data"`
 	NftTransferData          *actionNftTransferDetails         `msgpack:"nft_transfer_data"`
 	JettonSwapData           *actionJettonSwapDetails          `msgpack:"jetton_swap_data"`
@@ -897,33 +900,39 @@ func (n *TraceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 }
 
 func (a *Action) GetActionRow() (ActionRow, error) {
+	var traceExternalHashNorm *string = nil
+	if a.TraceExternalHashNorm != nil && *a.TraceExternalHashNorm != a.TraceExternalHash {
+		traceExternalHashNorm = a.TraceExternalHashNorm
+	}
 	row := ActionRow{
-		ActionId:             a.ActionId,
-		Type:                 a.Type,
-		TraceId:              a.TraceId,
-		TxHashes:             a.TxHashes,
-		Value:                a.Value,
-		Amount:               a.Amount,
-		StartLt:              *a.StartLt,
-		EndLt:                *a.EndLt,
-		TraceEndLt:           a.TraceEndLt,
-		TraceMcSeqnoEnd:      a.TraceMcSeqnoEnd,
-		TraceEndUtime:        a.TraceEndUtime,
-		StartUtime:           *a.StartUtime,
-		EndUtime:             *a.EndUtime,
-		Source:               a.Source,
-		SourceSecondary:      a.SourceSecondary,
-		Destination:          a.Destination,
-		DestinationSecondary: a.DestinationSecondary,
-		Asset:                a.Asset,
-		AssetSecondary:       a.AssetSecondary,
-		Asset2:               a.Asset2,
-		Asset2Secondary:      a.Asset2Secondary,
-		Opcode:               a.Opcode,
-		Success:              a.Success,
-		TraceExternalHash:    &a.TraceExternalHash,
-		ParentActionId:       a.ParentActionId,
-		AncestorType:         a.AncestorType,
+		ActionId:              a.ActionId,
+		Type:                  a.Type,
+		TraceId:               a.TraceId,
+		TxHashes:              a.TxHashes,
+		Value:                 a.Value,
+		Amount:                a.Amount,
+		StartLt:               *a.StartLt,
+		EndLt:                 *a.EndLt,
+		TraceEndLt:            a.TraceEndLt,
+		TraceMcSeqnoEnd:       a.TraceMcSeqnoEnd,
+		TraceEndUtime:         a.TraceEndUtime,
+		StartUtime:            *a.StartUtime,
+		EndUtime:              *a.EndUtime,
+		Source:                a.Source,
+		SourceSecondary:       a.SourceSecondary,
+		Destination:           a.Destination,
+		DestinationSecondary:  a.DestinationSecondary,
+		Asset:                 a.Asset,
+		AssetSecondary:        a.AssetSecondary,
+		Asset2:                a.Asset2,
+		Asset2Secondary:       a.Asset2Secondary,
+		Opcode:                a.Opcode,
+		Success:               a.Success,
+		TraceExternalHash:     &a.TraceExternalHash,
+		TraceExternalHashNorm: traceExternalHashNorm,
+		ParentActionId:        a.ParentActionId,
+		AncestorType:          a.AncestorType,
+		Accounts:              a.Accounts,
 	}
 	if a.TonTransferData != nil {
 		row.TonTransferContent = a.TonTransferData.Content
@@ -947,6 +956,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.NFTTransferForwardAmount = a.NftTransferData.ForwardAmount
 		row.NFTTransferResponseDestination = a.NftTransferData.ResponseDestination
 		row.NFTTransferNFTItemIndex = a.NftTransferData.NftItemIndex
+		row.NFTTransferMarketplace = a.NftTransferData.Marketplace
 	}
 	if a.JettonSwapData != nil {
 		row.JettonSwapDex = a.JettonSwapData.Dex

@@ -493,6 +493,8 @@ void InsertBatchPostgres::do_insert() {
     insert_under_mutex_query += insert_nft_items(txn);
     insert_under_mutex_query += insert_getgems_nft_auctions(txn);
     insert_under_mutex_query += insert_getgems_nft_sales(txn);
+    insert_under_mutex_query += insert_multisig_contracts(txn);
+    insert_under_mutex_query += insert_multisig_orders(txn);
     insert_under_mutex_query += insert_latest_account_states(txn);
     insert_under_mutex_query += insert_vesting(txn);
 
@@ -1470,6 +1472,99 @@ std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
       nft_auction.last_transaction_lt,
       nft_auction.code_hash,
       nft_auction.data_hash
+    );
+    stream.insert_row(std::move(tuple));
+  }
+  return stream.get_str();
+}
+
+std::string InsertBatchPostgres::insert_multisig_contracts(pqxx::work &txn) {
+  std::unordered_map<block::StdAddress, MultisigContractData> multisig_contracts;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& multisig_contract : task.parsed_block_->get_accounts_v2<MultisigContractData>()) {
+      if (multisig_contracts.find(multisig_contract.address) == multisig_contracts.end()) {
+        multisig_contracts[multisig_contract.address] = multisig_contract;
+      } else {
+        if (multisig_contracts[multisig_contract.address].last_transaction_lt < multisig_contract.last_transaction_lt) {
+          multisig_contracts[multisig_contract.address] = multisig_contract;
+        }
+      }
+    }
+  }
+
+  std::initializer_list<std::string_view> columns = {
+    "address", "next_order_seqno", "threshold", "signers", "proposers", "last_transaction_lt", "code_hash", "data_hash"
+  };
+
+  PopulateTableStream stream(txn, "multisig", columns, 1000, false);
+  stream.setConflictDoUpdate({"address"}, "multisig.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+  for (const auto& [addr, multisig_contract] : multisig_contracts)
+  {
+    auto tuple = std::make_tuple(
+      multisig_contract.address,
+      multisig_contract.next_order_seqno,
+      multisig_contract.threshold,
+      multisig_contract.signers,
+      multisig_contract.proposers,
+      multisig_contract.last_transaction_lt,
+      multisig_contract.code_hash,
+      multisig_contract.data_hash
+    );
+    stream.insert_row(std::move(tuple));
+  }
+  return stream.get_str();
+}
+
+std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
+  std::unordered_map<block::StdAddress, MultisigOrderData> multisig_orders;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& multisig_order : task.parsed_block_->get_accounts_v2<MultisigOrderData>()) {
+      if (multisig_orders.find(multisig_order.address) == multisig_orders.end()) {
+        multisig_orders[multisig_order.address] = multisig_order;
+      } else {
+        if (multisig_orders[multisig_order.address].last_transaction_lt < multisig_order.last_transaction_lt) {
+          multisig_orders[multisig_order.address] = multisig_order;
+        }
+      }
+    }
+  }
+
+  std::initializer_list<std::string_view> columns = {
+    "address", "multisig_address", "order_seqno", "threshold", "sent_for_execution", "approvals_mask", "approvals_num",
+    "expiration_date", "order_boc", "signers", "last_transaction_lt", "code_hash", "data_hash"
+  };
+
+  PopulateTableStream stream(txn, "multisig_orders", columns, 1000, false);
+  stream.setConflictDoUpdate({"address"}, "multisig_orders.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+
+  for (const auto& [addr, multisig_order] : multisig_orders) {
+
+    std::optional<std::string> order_boc_str = std::nullopt;
+    if (multisig_order.order.not_null()) {
+      auto order_res = vm::std_boc_serialize(multisig_order.order);
+      if (order_res.is_ok()) {
+        order_boc_str = td::base64_encode(order_res.move_as_ok());
+      }
+    }
+
+    auto tuple = std::make_tuple(
+      multisig_order.address,
+      multisig_order.multisig_address,
+      multisig_order.order_seqno,
+      multisig_order.threshold,
+      multisig_order.sent_for_execution,
+      multisig_order.approvals_mask,
+      multisig_order.approvals_num,
+      multisig_order.expiration_date,
+      order_boc_str,
+      multisig_order.signers,
+      multisig_order.last_transaction_lt,
+      multisig_order.code_hash,
+      multisig_order.data_hash
     );
     stream.insert_row(std::move(tuple));
   }

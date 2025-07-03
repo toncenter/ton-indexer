@@ -51,7 +51,7 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
     exec_query("create type dex_withdraw_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1_out varchar, asset2_out varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, dex_jetton_wallet_1 varchar, dex_jetton_wallet_2 varchar, lp_tokens_burnt numeric, dex_wallet_1 varchar, dex_wallet_2 varchar, burned_nft_index numeric, burned_nft_address varchar, tick_lower numeric, tick_upper numeric);");
     exec_query("create type jetton_transfer_details as(response_destination tonaddr, forward_amount numeric, query_id numeric, custom_payload text, forward_payload text, comment text, is_encrypted_comment boolean);");
     exec_query("create type nft_mint_details as (nft_item_index numeric);");
-    exec_query("create type nft_transfer_details as(is_purchase boolean, price numeric, query_id numeric, custom_payload text, forward_payload text, forward_amount numeric, response_destination tonaddr, nft_item_index numeric);");
+    exec_query("create type nft_transfer_details as(is_purchase boolean, price numeric, query_id numeric, custom_payload text, forward_payload text, forward_amount numeric, response_destination tonaddr, nft_item_index numeric, marketplace varchar);");
     exec_query("create type peer_swap_details as(asset_in tonaddr, amount_in numeric, asset_out tonaddr, amount_out numeric);");
     exec_query("create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[], min_out_amount numeric);");
     exec_query("create type staking_details as (provider varchar, ts_nft varchar, tokens_burnt numeric, tokens_minted numeric);");
@@ -444,6 +444,37 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
     );
 
     query += (
+      "create table if not exists multisig ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "next_order_seqno numeric, "
+      "threshold bigint, "
+      "signers tonaddr[], "
+      "proposers tonaddr[], "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash);\n"
+    );
+
+    query += (
+      "create table if not exists multisig_orders ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "multisig_address tonaddr, "
+      "order_seqno numeric, "
+      "threshold bigint, "
+      "sent_for_execution boolean, "
+      "approvals_mask numeric, "
+      "approvals_num bigint, "
+      "expiration_date bigint, "
+      "order_boc text, "
+      "signers tonaddr[], "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash);\n"
+    );
+
+    query += (
       "create table if not exists traces ("
       "trace_id tonhash not null primary key, "
       "external_hash tonhash, "
@@ -742,6 +773,12 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists action_accounts_index_1 on action_accounts (action_id);\n"
       "create index if not exists action_accounts_index_2 on action_accounts (trace_id, action_id);\n"
       "create index if not exists action_accounts_index_3 on action_accounts (account, trace_end_utime, trace_id, action_end_utime, action_id);\n"
+      "create index if not exists multisig_index_1 on multisig (id);\n"
+      "create index if not exists multisig_index_2 on multisig using gin(signers);\n"
+      "create index if not exists multisig_index_3 on multisig using gin(proposers);\n"
+      "create index if not exists multisig_orders_index_1 on multisig_orders (id);\n"
+      "create index if not exists multisig_orders_index_2 on multisig_orders (multisig_address);\n"
+      "create index if not exists multisig_orders_index_3 on multisig_orders using gin(signers);\n"
       "create index if not exists vesting_whitelist_wallet_address_idx on vesting_whitelist (wallet_address);\n"
       "create index if not exists vesting_contracts_sender_start_time_idx on vesting_contracts (vesting_sender_address, vesting_start_time);\n"
       "create index if not exists vesting_contracts_owner_start_time_idx on vesting_contracts (owner_address, vesting_start_time);\n"
