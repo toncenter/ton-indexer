@@ -100,6 +100,16 @@ type DNSRecordsResponse struct {
 	AddressBook AddressBook `json:"address_book"`
 } // @name DNSRecordsResponse
 
+type MultisigResponse struct {
+	Multisigs   []Multisig  `json:"multisigs"`
+	AddressBook AddressBook `json:"address_book"`
+} // @name MultisigResponse
+
+type MultisigOrderResponse struct {
+	Orders      []MultisigOrder `json:"orders"`
+	AddressBook AddressBook     `json:"address_book"`
+} // @name MultisigOrderResponse
+
 // errors
 type RequestError struct {
 	Message string `json:"error"`

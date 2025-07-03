@@ -16,6 +16,10 @@ add_library(tondb-scanner STATIC
     src/smc-interfaces/Tokens.cpp
     src/smc-interfaces/NftSale.cpp
     src/smc-interfaces/execute-smc.cpp
+    src/smc-interfaces/Multisig.cpp
+    src/smc-interfaces/Multisig.h
+    src/smc-interfaces/FetchAccountFromShard.cpp
+    src/smc-interfaces/FetchAccountFromShard.h
 )
 
 target_include_directories(tondb-scanner 

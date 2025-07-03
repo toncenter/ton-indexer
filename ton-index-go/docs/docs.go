@@ -1511,6 +1511,182 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v3/multisig/orders": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get multisig orders by specified filters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "multisig"
+                ],
+                "summary": "Get Multisig Orders",
+                "operationId": "api_v3_get_multisig_orders",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Order address in any form. Max: 1024.",
+                        "name": "address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of signer wallet in any form. Max: 1024.",
+                        "name": "wallet_address",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1024,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort orders by last_transaction_lt.",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/MultisigOrderResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/multisig/wallets": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get multisig contracts by specified filters with associated orders",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "multisig"
+                ],
+                "summary": "Get Multisigs",
+                "operationId": "api_v3_get_multisig_wallets",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Multisig contract address in any form. Max: 1024.",
+                        "name": "address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of signer or proposer wallet in any form. Max: 1024.",
+                        "name": "wallet_address",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1024,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort multisigs by last_transaction_lt.",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/MultisigResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v3/nft/collections": {
             "get": {
                 "security": [
@@ -3599,6 +3775,124 @@ const docTemplate = `{
                 "cells": {
                     "type": "string",
                     "example": "0"
+                }
+            }
+        },
+        "Multisig": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "code_hash": {
+                    "type": "string"
+                },
+                "data_hash": {
+                    "type": "string"
+                },
+                "last_transaction_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "next_order_seqno": {
+                    "type": "string"
+                },
+                "orders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MultisigOrder"
+                    }
+                },
+                "proposers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "signers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "threshold": {
+                    "type": "integer"
+                }
+            }
+        },
+        "MultisigOrder": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "approvals_mask": {
+                    "type": "string"
+                },
+                "approvals_num": {
+                    "type": "integer"
+                },
+                "code_hash": {
+                    "type": "string"
+                },
+                "data_hash": {
+                    "type": "string"
+                },
+                "expiration_date": {
+                    "type": "integer"
+                },
+                "last_transaction_lt": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "multisig_address": {
+                    "type": "string"
+                },
+                "order_boc": {
+                    "type": "string"
+                },
+                "order_seqno": {
+                    "type": "string"
+                },
+                "sent_for_execution": {
+                    "type": "boolean"
+                },
+                "signers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "threshold": {
+                    "type": "integer"
+                }
+            }
+        },
+        "MultisigOrderResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "orders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MultisigOrder"
+                    }
+                }
+            }
+        },
+        "MultisigResponse": {
+            "type": "object",
+            "properties": {
+                "address_book": {
+                    "$ref": "#/definitions/AddressBook"
+                },
+                "multisigs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Multisig"
+                    }
                 }
             }
         },
