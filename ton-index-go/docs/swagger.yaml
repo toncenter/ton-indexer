@@ -2177,65 +2177,6 @@ paths:
       summary: Metadata
       tags:
       - accounts
-  /api/v3/multisig/multisigs:
-    get:
-      consumes:
-      - application/json
-      description: Get multisig contracts by specified filters with associated orders
-      operationId: api_v3_get_multisigs
-      parameters:
-      - collectionFormat: multi
-        description: 'Multisig contract address in any form. Max: 1024.'
-        in: query
-        items:
-          type: string
-        name: address
-        type: array
-      - collectionFormat: multi
-        description: 'Address of signer or proposer wallet in any form. Max: 1024.'
-        in: query
-        items:
-          type: string
-        name: wallet_address
-        type: array
-      - default: 10
-        description: Limit number of queried rows. Use with *offset* to batch read.
-        in: query
-        maximum: 1024
-        minimum: 1
-        name: limit
-        type: integer
-      - default: 0
-        description: Skip first N rows. Use with *limit* to batch read.
-        in: query
-        minimum: 0
-        name: offset
-        type: integer
-      - default: desc
-        description: Sort multisigs by last_transaction_lt.
-        enum:
-        - asc
-        - desc
-        in: query
-        name: sort
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/MultisigResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/RequestError'
-      security:
-      - APIKeyHeader: []
-      - APIKeyQuery: []
-      summary: Get Multisigs
-      tags:
-      - multisig
   /api/v3/multisig/orders:
     get:
       consumes:
@@ -2293,6 +2234,65 @@ paths:
       - APIKeyHeader: []
       - APIKeyQuery: []
       summary: Get Multisig Orders
+      tags:
+      - multisig
+  /api/v3/multisig/wallets:
+    get:
+      consumes:
+      - application/json
+      description: Get multisig contracts by specified filters with associated orders
+      operationId: api_v3_get_multisig_wallets
+      parameters:
+      - collectionFormat: multi
+        description: 'Multisig contract address in any form. Max: 1024.'
+        in: query
+        items:
+          type: string
+        name: address
+        type: array
+      - collectionFormat: multi
+        description: 'Address of signer or proposer wallet in any form. Max: 1024.'
+        in: query
+        items:
+          type: string
+        name: wallet_address
+        type: array
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 1024
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort multisigs by last_transaction_lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/MultisigResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Multisigs
       tags:
       - multisig
   /api/v3/nft/collections:

@@ -1503,94 +1503,6 @@
                 }
             }
         },
-        "/api/v3/multisig/multisigs": {
-            "get": {
-                "security": [
-                    {
-                        "APIKeyHeader": []
-                    },
-                    {
-                        "APIKeyQuery": []
-                    }
-                ],
-                "description": "Get multisig contracts by specified filters with associated orders",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "multisig"
-                ],
-                "summary": "Get Multisigs",
-                "operationId": "api_v3_get_multisigs",
-                "parameters": [
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Multisig contract address in any form. Max: 1024.",
-                        "name": "address",
-                        "in": "query"
-                    },
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Address of signer or proposer wallet in any form. Max: 1024.",
-                        "name": "wallet_address",
-                        "in": "query"
-                    },
-                    {
-                        "maximum": 1024,
-                        "minimum": 1,
-                        "type": "integer",
-                        "default": 10,
-                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "default": 0,
-                        "description": "Skip first N rows. Use with *limit* to batch read.",
-                        "name": "offset",
-                        "in": "query"
-                    },
-                    {
-                        "enum": [
-                            "asc",
-                            "desc"
-                        ],
-                        "type": "string",
-                        "default": "desc",
-                        "description": "Sort multisigs by last_transaction_lt.",
-                        "name": "sort",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/MultisigResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/RequestError"
-                        }
-                    }
-                }
-            }
-        },
         "/api/v3/multisig/orders": {
             "get": {
                 "security": [
@@ -1668,6 +1580,94 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/MultisigOrderResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/RequestError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v3/multisig/wallets": {
+            "get": {
+                "security": [
+                    {
+                        "APIKeyHeader": []
+                    },
+                    {
+                        "APIKeyQuery": []
+                    }
+                ],
+                "description": "Get multisig contracts by specified filters with associated orders",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "multisig"
+                ],
+                "summary": "Get Multisigs",
+                "operationId": "api_v3_get_multisig_wallets",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Multisig contract address in any form. Max: 1024.",
+                        "name": "address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Address of signer or proposer wallet in any form. Max: 1024.",
+                        "name": "wallet_address",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1024,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort multisigs by last_transaction_lt.",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/MultisigResponse"
                         }
                     },
                     "400": {

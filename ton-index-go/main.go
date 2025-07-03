@@ -1371,7 +1371,7 @@ func GetPendingActions(c *fiber.Ctx) error {
 //
 // @description Get multisig contracts by specified filters with associated orders
 //
-// @id api_v3_get_multisigs
+// @id api_v3_get_multisig_wallets
 // @tags multisig
 // @Accept json
 // @Produce json
@@ -1382,7 +1382,7 @@ func GetPendingActions(c *fiber.Ctx) error {
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1024) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort multisigs by last_transaction_lt." Enums(asc, desc) default(desc)
-// @router /api/v3/multisig/multisigs [get]
+// @router /api/v3/multisig/wallets [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetMultisigs(c *fiber.Ctx) error {
@@ -2061,7 +2061,7 @@ func main() {
 	app.Get("/api/v3/jetton/burns", GetJettonBurns)
 
 	// multisig
-	app.Get("/api/v3/multisig/multisigs", GetMultisigs)
+	app.Get("/api/v3/multisig/wallets", GetMultisigs)
 	app.Get("/api/v3/multisig/orders", GetMultisigOrders)
 
 	// actions
