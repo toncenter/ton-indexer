@@ -180,6 +180,53 @@ void StateBatchParser::interfaces_detected(block::StdAddress address, std::vecto
                                                                       arg.dns_entry->storage_bag_id};
                 }
                 interfaces_[address].push_back(nft_item_data);
+            } else if constexpr (std::is_same_v<T, MultisigContract::Result>) {
+                MultisigContractData multisig_contract_data;
+                multisig_contract_data.address = address;
+                multisig_contract_data.next_order_seqno = arg.next_order_seqno;
+                multisig_contract_data.threshold = arg.threshold;
+                multisig_contract_data.signers = arg.signers;
+                multisig_contract_data.proposers = arg.proposers;
+                multisig_contract_data.last_transaction_lt = last_trans_lt;
+                multisig_contract_data.last_transaction_now = last_trans_now;
+                multisig_contract_data.code_hash = code_hash;
+                multisig_contract_data.data_hash = data_hash;
+                interfaces_[address].push_back(multisig_contract_data);
+            } else if constexpr (std::is_same_v<T, MultisigOrder::Result>) {
+                MultisigOrderData multisig_order_data;
+                multisig_order_data.address = address;
+                multisig_order_data.multisig_address = arg.multisig_address;
+                multisig_order_data.order_seqno = arg.order_seqno;
+                multisig_order_data.threshold = arg.threshold;
+                multisig_order_data.sent_for_execution = arg.sent_for_execution;
+                multisig_order_data.approvals_mask = arg.approvals_mask;
+                multisig_order_data.approvals_num = arg.approvals_num;
+                multisig_order_data.expiration_date = arg.expiration_date;
+                multisig_order_data.order = arg.order;
+                multisig_order_data.signers = arg.signers;
+                multisig_order_data.last_transaction_lt = last_trans_lt;
+                multisig_order_data.last_transaction_now = last_trans_now;
+                multisig_order_data.code_hash = code_hash;
+                multisig_order_data.data_hash = data_hash;
+                interfaces_[address].push_back(multisig_order_data);
+            } else if constexpr (std::is_same_v<T, VestingContract::Result>) {
+                VestingData vesting_data;
+                vesting_data.address = address;
+                vesting_data.vesting_start_time = arg.vesting_start_time;
+                vesting_data.vesting_total_duration = arg.vesting_total_duration;
+                vesting_data.unlock_period = arg.unlock_period;
+                vesting_data.cliff_duration = arg.cliff_duration;
+                vesting_data.vesting_total_amount = arg.vesting_total_amount;
+                vesting_data.vesting_sender_address = arg.vesting_sender_address;
+                vesting_data.owner_address = arg.owner_address;
+                vesting_data.whitelist = arg.whitelist;
+                vesting_data.last_transaction_lt = last_trans_lt;
+                vesting_data.last_transaction_now = last_trans_now;
+                vesting_data.code_hash = code_hash;
+                vesting_data.data_hash = data_hash;
+                interfaces_[address].push_back(vesting_data);
+            } else {
+                LOG(ERROR) << "Unknown interface type detected: " << typeid(T).name();
             }
         }, interface);
     }
@@ -236,7 +283,9 @@ void StateBatchParser::start_up() {
         }
     }
     
-    std::copy(state_list.begin(), state_list.end(), std::back_inserter(result_));
+    if (options_.index_account_states_) {
+        std::copy(state_list.begin(), state_list.end(), std::back_inserter(result_));
+    }
 
     if (options_.index_interfaces_) {
         process_account_states(state_list);
@@ -249,7 +298,10 @@ void StateBatchParser::processing_finished() {
     for (auto& [addr, ifaces] : interfaces_ ) {
         std::copy(ifaces.begin(), ifaces.end(), std::back_inserter(result_));
     }
-    td::actor::send_closure(options_.insert_manager_, &PostgreSQLInsertManager::insert_data, std::move(result_));
-    td::actor::send_closure(shard_state_scanner_, &ShardStateScanner::batch_inserted);
+    if (!result_.empty()) {
+        LOG(INFO) << "Found " << result_.size() << " interfaces in batch";
+        td::actor::send_closure(options_.insert_manager_, &PostgreSQLInsertManager::insert_data, std::move(result_));
+        td::actor::send_closure(shard_state_scanner_, &ShardStateScanner::batch_inserted);
+    } 
     stop();
 }
