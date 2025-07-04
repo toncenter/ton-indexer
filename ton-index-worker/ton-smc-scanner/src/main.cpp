@@ -17,8 +17,8 @@ int main(int argc, char *argv[]) {
   CHECK(vm::init_op_cp0());
 
   td::uint32 threads = 7;
-  std::string db_root = "/var/lib/ton-work/db";
-  std::string pg_dsn = "postgresql://localhost:5432/ton_index";
+  std::string db_root;
+  std::string pg_dsn;
   Options options_;
   bool is_testnet = false;
   
@@ -67,8 +67,11 @@ int main(int argc, char *argv[]) {
   p.add_option('d', "pg", "PostgreSQL connection string", [&](td::Slice value) {
     pg_dsn = value.str();
   });
-  p.add_option('i', "interfaces", "Detect interfaces", [&] {
+  p.add_option('\0', "interfaces", "Detect interfaces", [&] {
     options_.index_interfaces_ = true;
+  });
+  p.add_option('\0', "account-states", "Detect interfaces", [&] {
+    options_.index_account_states_ = true;
   });
   p.add_option('f', "force", "Reset checkpoints", [&]() {
     options_.from_checkpoint = false;
@@ -81,6 +84,21 @@ int main(int argc, char *argv[]) {
   if (S.is_error()) {
     LOG(ERROR) << "failed to parse options: " << S.move_as_error();
     std::_Exit(2);
+  }
+
+  if (db_root.empty()) {
+    LOG(ERROR) << "You must specify --db option";
+    std::exit(2);
+  }
+
+  if (!options_.index_account_states_ && !options_.index_interfaces_) {
+    LOG(ERROR) << "You must specify at least one of --interfaces or --account-states options";
+    std::exit(2);
+  }
+
+  if (options_.seqno_ == 0) {
+    LOG(ERROR) << "You must specify --seqno option";
+    std::exit(2);
   }
 
   NftItemDetectorR::is_testnet = is_testnet;

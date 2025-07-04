@@ -4,9 +4,15 @@
 #include "smc-interfaces/InterfacesDetector.h"
 #include <PostgreSQLInserter.h>
 
+#ifndef INTERFACES_DETECTOR_TYPES
+#   define INTERFACES_DETECTOR_TYPES                                  \
+        JettonWalletDetectorR, JettonMasterDetectorR,                 \
+        NftItemDetectorR,  NftCollectionDetectorR,                    \
+        MultisigContract,  MultisigOrder,  VestingContract
+#endif
 
-using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR, 
-                                    NftItemDetectorR, NftCollectionDetectorR>;
+
+using Detector = InterfacesDetector<INTERFACES_DETECTOR_TYPES>;
 
 struct ShardStateData {
   AllShardStates shard_states_;
@@ -17,10 +23,11 @@ struct ShardStateData {
 using ShardStateDataPtr = std::shared_ptr<ShardStateData>;
 
 struct Options {
-  std::uint32_t seqno_;
+  std::uint32_t seqno_{0};
   td::actor::ActorId<PostgreSQLInsertManager> insert_manager_;
   std::int32_t batch_size_{5000};
   bool index_interfaces_{false};
+  bool index_account_states_{false};
   bool from_checkpoint{true};
 };
 
