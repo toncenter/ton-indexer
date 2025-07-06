@@ -139,13 +139,6 @@ void ShardStateScanner::start_up() {
         next_batch_start_ = td::Bits256::zero();
     }
     schedule_next();
-
-    alarm_timestamp() = td::Timestamp::in(10);
-}
-
-void ShardStateScanner::alarm() {
-    LOG(DEBUG) << "Dummy";
-    alarm_timestamp() = td::Timestamp::in(10);
 }
 
 void ShardStateScanner::schedule_next() {

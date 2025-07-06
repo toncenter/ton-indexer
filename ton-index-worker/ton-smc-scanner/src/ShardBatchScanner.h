@@ -52,7 +52,6 @@ public:
 
   void schedule_next();
   void start_up() override;
-  void alarm() override;
 
   std::string get_checkpoint_file_path();
   
