@@ -435,3 +435,27 @@ cases:
               target_asset_2: null # TON
               target_amount_2: null
               lp_tokens_minted: 124109654933
+
+  Coffee withdraw liquidity (jetton - jetton):
+    trace-id: b0QdK2TPX7Pv7NiXvpJxf_0PEumbW1FMewsnbFi-nqs=
+    expected-actions:
+      - type: dex_withdraw_liquidity
+        values:
+          source: 0:7BDD8723C306E017B2A51FE0395C883B8EB8866314C9C17FDA61DE4043F369F1 # sender
+          source_secondary: 0:7B37FF1C46D31224706A3DD1085F43CD935ADF2EA38B0C9C43643AC23946FB70 # sender_wallet
+          destination: 0:BCAB8EFC2C80EA4FADB497EE47A697D7E215F9F18061519C94CFAC0B32D19427 # pool
+          asset: 0:BCAB8EFC2C80EA4FADB497EE47A697D7E215F9F18061519C94CFAC0B32D19427 # lp_asset
+          dex_withdraw_liquidity_data:
+            dex: coffee
+            lp_tokens_burnt: 3162270
+            is_refund: false
+            amount1: 100000 # amount1_out
+            asset1_out: 0:F6EB371DE82AA9CFB5B22CA547F31FDC0FA0FBB41AE89BA84A73272FF0BF2157
+            dex_wallet_1: 0:BCAB8EFC2C80EA4FADB497EE47A697D7E215F9F18061519C94CFAC0B32D19427
+            dex_jetton_wallet_1: 0:63DC8B1CED015DEB1A4AE8117C007B7C506E18B6C72376656397D4AAF07EC695
+            user_jetton_wallet_1: 0:CEE323B428B1596AD895999C811C2A29292A0993C5BEBCDE4738F9FCBAC8A7EB # wallet1
+            amount2: 100000000 # amount2_out
+            asset2_out: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            dex_wallet_2: 0:BCAB8EFC2C80EA4FADB497EE47A697D7E215F9F18061519C94CFAC0B32D19427
+            dex_jetton_wallet_2: 0:FD6256C33C2C5EEB4463B1CAAA3F2997F4F4A98EFE116D97B125611597D62D59
+            user_jetton_wallet_2: 0:A7603C058477E5D9E86E07DAC673CE6D073BD976A80C75ADEA3198EAC7085C8D # wallet2

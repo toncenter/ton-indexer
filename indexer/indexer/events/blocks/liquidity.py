@@ -65,6 +65,7 @@ from indexer.events.blocks.messages.coffee import (
     CoffeeDepositLiquidityInternal,
     CoffeeDepositLiquidityNative,
     CoffeeDepositLiquiditySuccessfulEvent,
+    CoffeeLiquidityWithdrawalEvent,
     CoffeeNotification,
     CoffeePayout,
     CoffeePayoutInternal,
@@ -1781,5 +1782,150 @@ class CoffeeDepositLiquidityMatcher(BlockMatcher):
         )
 
         new_block = Block('coffee_deposit_liquidity', [], data.__dict__)
+        new_block.merge_blocks([block] + other_blocks)
+        return [new_block]
+
+
+@dataclass
+class CoffeeWithdrawLiquidityData:
+    dex: str
+    sender: AccountId
+    sender_wallet: AccountId
+    pool: AccountId
+    asset: Asset
+    lp_tokens_burnt: Amount
+    is_refund: bool
+    amount1_out: Amount
+    asset1_out: Asset
+    dex_wallet_1: AccountId
+    dex_jetton_wallet_1: AccountId | None
+    wallet1: AccountId | None
+    amount2_out: Amount
+    asset2_out: Asset
+    dex_wallet_2: AccountId
+    dex_jetton_wallet_2: AccountId | None
+    wallet2: AccountId | None
+
+
+class CoffeeWithdrawLiquidityMatcher(BlockMatcher):
+    def __init__(self):
+        # start at JettonBurn
+        out_transfer_matcher = OrMatcher(
+                [
+                    BlockTypeMatcher(block_type="jetton_transfer"),
+                    ContractMatcher(opcode=CoffeePayout.opcode),
+                    ContractMatcher(opcode=CoffeeNotification.opcode),
+                ]
+            )
+        payout = ContractMatcher(
+            opcode=CoffeePayoutInternal.opcode,
+            optional=False,
+            child_matcher=out_transfer_matcher,
+        )
+        success_event = labeled(
+            "success_event",
+            ContractMatcher(opcode=CoffeeLiquidityWithdrawalEvent.opcode, optional=False),
+        )
+        super().__init__(
+            optional=False,
+            children_matchers=[
+                # two payouts - each either ton or jetton
+                labeled("payout_1", payout),
+                labeled("payout_2", payout),
+                # log message
+                success_event,
+            ]
+        )
+
+    def test_self(self, block: Block):
+        return isinstance(block, JettonBurnBlock)
+        
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        # block is JettonBurnBlock
+        burn_block = block
+        sender = burn_block.data['owner']
+        sender_wallet = burn_block.data['jetton_wallet']
+        lp_tokens_burnt = burn_block.data['amount']
+        lp_asset = burn_block.data['asset']
+
+        success_event_block = get_labeled("success_event", other_blocks, CallContractBlock)
+        if not success_event_block:
+            return []
+
+        success_msg = CoffeeLiquidityWithdrawalEvent(success_event_block.get_body())
+        pool = AccountId(success_event_block.get_message().source)
+
+        # extract amounts from success event
+        amount1_out = Amount(success_msg.amount1 or 0)
+        amount2_out = Amount(success_msg.amount2 or 0)
+
+        # get payout blocks to determine assets and wallets
+        payout_1_block = get_labeled('payout_1', other_blocks, CallContractBlock)
+        payout_2_block = get_labeled('payout_2', other_blocks, CallContractBlock)
+
+        # initialize default values
+        asset1_out = Asset(is_ton=True)
+        asset2_out = Asset(is_ton=True)
+        dex_wallet_1 = pool
+        dex_wallet_2 = pool
+        dex_jetton_wallet_1 = None
+        dex_jetton_wallet_2 = None
+        wallet1 = None
+        wallet2 = None
+
+        # process first payout
+        if payout_1_block:
+            dex_wallet_1 = AccountId(payout_1_block.get_message().source)
+            
+            # find the actual transfer block
+            for next_block in payout_1_block.next_blocks:
+                if isinstance(next_block, JettonTransferBlock):
+                    asset1_out = next_block.data['asset']
+                    dex_jetton_wallet_1 = next_block.data['sender_wallet']
+                    wallet1 = next_block.data['receiver_wallet']
+                    break
+                elif isinstance(next_block, CallContractBlock) and next_block.opcode == CoffeePayout.opcode:
+                    asset1_out = Asset(is_ton=True)
+                    wallet1 = AccountId(next_block.get_message().destination)
+                    break
+
+        # process second payout
+        if payout_2_block:
+            dex_wallet_2 = AccountId(payout_2_block.get_message().source)
+            
+            # find the actual transfer block
+            for next_block in payout_2_block.next_blocks:
+                if isinstance(next_block, JettonTransferBlock):
+                    asset2_out = next_block.data['asset']
+                    dex_jetton_wallet_2 = next_block.data['sender_wallet']
+                    wallet2 = next_block.data['receiver_wallet']
+                    break
+                elif isinstance(next_block, CallContractBlock) and next_block.opcode == CoffeePayout.opcode:
+                    asset2_out = Asset(is_ton=True)
+                    wallet2 = AccountId(next_block.get_message().destination)
+                    break
+        
+        # use dataclass to validate data
+        data = CoffeeWithdrawLiquidityData(
+            dex="coffee",
+            sender=sender,
+            sender_wallet=sender_wallet,
+            pool=pool,
+            asset=lp_asset,
+            lp_tokens_burnt=lp_tokens_burnt,
+            is_refund=False,
+            amount1_out=amount1_out,
+            asset1_out=asset1_out,
+            dex_wallet_1=dex_wallet_1,
+            dex_jetton_wallet_1=dex_jetton_wallet_1,
+            wallet1=wallet1,
+            amount2_out=amount2_out,
+            asset2_out=asset2_out,
+            dex_wallet_2=dex_wallet_2,
+            dex_jetton_wallet_2=dex_jetton_wallet_2,
+            wallet2=wallet2
+        )
+
+        new_block = Block('dex_withdraw_liquidity', [], data.__dict__)
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

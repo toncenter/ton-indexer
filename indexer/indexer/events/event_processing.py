@@ -40,6 +40,7 @@ from indexer.events.blocks.jvault import (
 )
 from indexer.events.blocks.liquidity import (
     CoffeeDepositLiquidityMatcher,
+    CoffeeWithdrawLiquidityMatcher,
     DedustDepositBlockMatcher,
     DedustDepositFirstAssetBlockMatcher,
     DedustWithdrawBlockMatcher,
@@ -211,6 +212,7 @@ matchers = [
     ToncoWithdrawLiquidityMatcher(),
     CoffeeDepositLiquidityMatcher(),
     CoffeeSwapBlockMatcher(),
+    CoffeeWithdrawLiquidityMatcher(),
 ]
 
 trace_post_processors = [
