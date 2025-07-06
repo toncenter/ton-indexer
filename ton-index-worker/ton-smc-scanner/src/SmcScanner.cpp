@@ -19,7 +19,8 @@ void SmcScanner::got_block(MasterchainBlockDataState block) {
     LOG(INFO) << "Got block data state";
     for (const auto &shard_ds : block.shard_blocks_) {
         auto& shard_state = shard_ds.block_state;
-        td::actor::create_actor<ShardStateScanner>("ShardStateScanner", shard_state, block, options_).release();
+        std::string actor_name = "SScanner:" + shard_ds.handle->id().shard_full().to_str();
+        td::actor::create_actor<ShardStateScanner>(actor_name, shard_state, block, options_).release();
     }
 }
 

@@ -737,46 +737,11 @@ void PostgreSQLInserter::insert_vesting_contracts(pqxx::work &txn) {
   whitelist_stream.finish();
 }
 
-void PostgreSQLInsertManager::start_up() {
-  queue_.reserve(batch_size_ * 2);
-  alarm_timestamp() = td::Timestamp::in(10.0);
-}
-
-void PostgreSQLInsertManager::alarm() {
-  alarm_timestamp() = td::Timestamp::in(10.0);
-  LOG(INFO) << "Inserted: " << inserted_count_ << ". Batches in progress: " << in_progress_;
-  check_queue(true);
-}
-
-void PostgreSQLInsertManager::check_queue(bool force) {
-  if (force || (queue_.size() > batch_size_)) {
-    std::vector<InsertData> to_insert;
-    std::copy(queue_.begin(), queue_.end(), std::back_inserter(to_insert));
-    queue_.clear();
-
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), len = to_insert.size()](td::Result<td::Unit> R) {
-      if (R.is_error()) {
-        LOG(ERROR) << "Failed to insert batch of " << len << " states: " << R.move_as_error();
-      } else {
-        // LOG(INFO) << "Inserted " << len << " states";
-      }
-      td::actor::send_closure(SelfId, &PostgreSQLInsertManager::insert_done, len);
-    });
-
-    ++in_progress_;
-    td::actor::create_actor<PostgreSQLInserter>("PostgresInserter", connection_string_, to_insert, std::move(P)).release();
-  }
-}
-
 void PostgreSQLInsertManager::insert_done(size_t cnt) {
   --in_progress_;
   inserted_count_ += cnt;
 }
 
-void PostgreSQLInsertManager::insert_data(std::vector<InsertData> data) {
-  for(auto &&row : data) {
-    queue_.push_back(std::move(row));
-  }
-
-  check_queue();
+void PostgreSQLInsertManager::insert_data(std::vector<InsertData> data, td::Promise<td::Unit> promise) {
+  td::actor::create_actor<PostgreSQLInserter>("PostgresInserter", connection_string_, data, std::move(promise)).release();
 }

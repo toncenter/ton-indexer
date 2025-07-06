@@ -19,12 +19,13 @@ struct ShardStateData {
   std::shared_ptr<block::ConfigInfo> config_;
 };
 
-
-
 struct Options {
   std::uint32_t seqno_{0};
   td::actor::ActorId<PostgreSQLInsertManager> insert_manager_;
-  std::int32_t batch_size_{5000};
+  std::uint64_t basechain_batch_step_ = 0x0001'0000'0000'0000ULL;
+  std::uint64_t masterchain_batch_step_ = 0x1000'0000'0000'0000ULL;
+  std::uint32_t batch_size_{1000};
+  int max_parallel_batches_{8};
   bool index_interfaces_{false};
   bool index_account_states_{false};
   std::string working_dir_;

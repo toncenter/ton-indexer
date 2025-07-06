@@ -7,14 +7,21 @@ class StateBatchParser: public td::actor::Actor {
 private:
   std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> data_;
   ShardStateDataPtr shard_state_data_;
-  td::actor::ActorId<ShardStateScanner> shard_state_scanner_;
   Options options_;
+  td::Promise<std::vector<InsertData>> promise_;
   
   std::unordered_map<block::StdAddress, std::vector<InsertData>> interfaces_;
   std::vector<InsertData> result_;
 public:
-  StateBatchParser(std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> data, ShardStateDataPtr shard_state_data, td::actor::ActorId<ShardStateScanner> shard_state_scanner, Options options)
-    : data_(std::move(data)), shard_state_data_(std::move(shard_state_data)), shard_state_scanner_(shard_state_scanner), options_(options) {}
+  StateBatchParser(std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> data, 
+    ShardStateDataPtr shard_state_data, Options options, td::Promise<std::vector<InsertData>> promise)
+    : data_(std::move(data)), shard_state_data_(std::move(shard_state_data)), 
+      options_(options), promise_(std::move(promise)) {}
+  
+  StateBatchParser(std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> data, 
+    ShardStateDataPtr shard_state_data,
+    Options options)
+    : data_(std::move(data)), shard_state_data_(std::move(shard_state_data)), options_(options) {}
   void start_up() override;
   void processing_finished();
 private:
@@ -204,10 +211,6 @@ void StateBatchParser::processing_finished() {
     for (auto& [addr, ifaces] : interfaces_ ) {
         std::copy(ifaces.begin(), ifaces.end(), std::back_inserter(result_));
     }
-    if (!result_.empty()) {
-        LOG(INFO) << "Found " << result_.size() << " interfaces in batch";
-        td::actor::send_closure(options_.insert_manager_, &PostgreSQLInsertManager::insert_data, std::move(result_));
-        td::actor::send_closure(shard_state_scanner_, &ShardStateScanner::batch_inserted);
-    } 
+    promise_.set_value(std::move(result_));
     stop();
 }
