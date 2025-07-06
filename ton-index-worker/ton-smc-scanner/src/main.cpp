@@ -4,7 +4,7 @@
 #include "td/utils/logging.h"
 #include "td/utils/check.h"
 #include "td/actor/actor.h"
-
+#include "td/utils/port/path.h"
 #include "crypto/vm/cp0.h"
 #include "DbScanner.h"
 #include "SmcScanner.h"
@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
     std::cout << sb.as_cslice().c_str();
     std::exit(2);
   });
-  p.add_checked_option('S', "seqno", "Masterchain seqno to start indexing from", [&](td::Slice fname) { 
+  p.add_checked_option('S', "seqno", "Masterchain seqno on which moment all account states will be scanned", [&](td::Slice fname) { 
     int v;
     try {
       v = std::stoi(fname.str());
@@ -67,14 +67,14 @@ int main(int argc, char *argv[]) {
   p.add_option('d', "pg", "PostgreSQL connection string", [&](td::Slice value) {
     pg_dsn = value.str();
   });
+  p.add_option('W', "working-dir", "Path for working directory, for storing checkpoints", [&](td::Slice fname) {
+    options_.working_dir_ = fname.str();
+  });
   p.add_option('\0', "interfaces", "Detect interfaces", [&] {
     options_.index_interfaces_ = true;
   });
   p.add_option('\0', "account-states", "Detect interfaces", [&] {
     options_.index_account_states_ = true;
-  });
-  p.add_option('f', "force", "Reset checkpoints", [&]() {
-    options_.from_checkpoint = false;
   });
   p.add_option('\0', "testnet", "Use for testnet. It is used for correct indexing of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
     is_testnet = true;
@@ -99,6 +99,16 @@ int main(int argc, char *argv[]) {
   if (options_.seqno_ == 0) {
     LOG(ERROR) << "You must specify --seqno option";
     std::exit(2);
+  }
+
+  if (options_.working_dir_.empty()) {
+    LOG(WARNING) << "You did not specify --working-dir option, checkpoints will not be saved and the process will start from scratch in case of crash";
+  } else {
+    auto S = td::mkdir(options_.working_dir_);
+    if (S.is_error()) {
+      LOG(ERROR) << "Failed to create working directory " << options_.working_dir_ << ": " << S.move_as_error();
+      std::exit(2);
+    }
   }
 
   NftItemDetectorR::is_testnet = is_testnet;

@@ -4,6 +4,7 @@ add_executable(ton-smc-scanner
     src/main.cpp
     src/SmcScanner.cpp
     src/PostgreSQLInserter.cpp
+    src/ShardBatchScanner.cpp
 )
 target_include_directories(ton-smc-scanner
     PUBLIC src

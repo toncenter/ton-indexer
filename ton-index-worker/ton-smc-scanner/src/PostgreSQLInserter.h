@@ -42,9 +42,6 @@ public:
   void alarm() override;
   void insert_data(std::vector<InsertData> data);
   void insert_done(size_t cnt);
-  void checkpoint(ton::ShardIdFull shard, td::Bits256 cur_addr_);
-  void checkpoint_read(ton::ShardIdFull shard, td::Promise<td::Bits256> promise);
-  void checkpoint_reset(ton::ShardIdFull shard);
 private:
   void check_queue(bool force = false);
 
