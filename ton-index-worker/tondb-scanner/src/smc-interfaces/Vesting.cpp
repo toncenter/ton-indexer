@@ -16,7 +16,6 @@ VestingContract::VestingContract(block::StdAddress address,
 
 void VestingContract::start_up()
 {
-
   if (code_cell_.is_null() || data_cell_.is_null()) {
     promise_.set_error(td::Status::Error("Code or data null"));
     stop();
@@ -64,24 +63,26 @@ void VestingContract::start_up()
   data.owner_address = owner_address.move_as_ok();
 
   // Parse whitelist from the cell
-  auto whitelist = stack[7].as_cell();
-  vm::Dictionary whitelist_dict {whitelist, 264};
-  auto it = whitelist_dict.begin();
-  while (!it.eof()) {
-    // Dictionary key is 264 bits: 8 bits for workchain + 256 bits for hash part
-    auto key_data = it.cur_pos();
+  try {
+    auto whitelist = stack[7].as_cell();
+    vm::Dictionary whitelist_dict {whitelist, 264};
+    auto it = whitelist_dict.begin();
+    while (!it.eof()) {
+      // Dictionary key is 264 bits: 8 bits for workchain + 256 bits for hash part
+      auto key_data = it.cur_pos();
 
-    ton::WorkchainId workchain_id = (ton::WorkchainId)key_data.get_int(8);
+      ton::WorkchainId workchain_id = (ton::WorkchainId)key_data.get_int(8);
+      td::ConstBitPtr addr_ptr = key_data + 8;
+      ton::StdSmcAddress addr_bytes{addr_ptr};
 
-    td::ConstBitPtr addr_ptr = key_data + 8;
-    ton::StdSmcAddress addr_bytes{addr_ptr};
-
-    auto addr = block::StdAddress(workchain_id, addr_bytes);
-
-    data.whitelist.push_back(addr);
-
-
-    ++it;
+      auto addr = block::StdAddress(workchain_id, addr_bytes);
+      data.whitelist.push_back(addr);
+      ++it;
+    }
+  } catch (vm::VmError& e) {
+    promise_.set_error(td::Status::Error(PSLICE() << "Failed to parse whitelist: " << e.get_msg()));
+    stop();
+    return;
   }
 
   promise_.set_value(std::move(data));
