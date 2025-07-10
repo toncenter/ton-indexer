@@ -268,7 +268,8 @@ class Action(Base):
         Column("forward_amount", Numeric),
         Column("response_destination", String),
         Column("nft_item_index", Numeric),
-        Column("marketplace", String)
+        Column("marketplace", String),
+        Column("real_prev_owner", String)
     ]))
     jetton_swap_data = Column(CompositeType("jetton_swap_details", [
         Column("dex", String),
@@ -794,6 +795,7 @@ class NftAuction(Base):
     address = Column(String, primary_key=True)
     nft_addr = Column(String)
     nft_owner = Column(String)
+    last_bid = Column(Numeric)
 
 
 

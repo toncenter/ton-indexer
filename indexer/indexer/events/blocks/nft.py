@@ -70,17 +70,28 @@ async def _get_nft_data(nft_address: AccountId):
     return data
 
 
-async def _try_get_nft_purchase_data(block: Block, owner: str) -> tuple[list[Block], float] | None:
+async def _try_get_nft_purchase_data(block: Block, owner: str) -> dict | None:
     prev_block = block.previous_block
     event_node = block.previous_block.event_nodes[0]
-    if not isinstance(prev_block, TonTransferBlock) or event_node.message.source.upper() != owner.upper():
-        return None
-    nft_sale = await context.interface_repository.get().get_nft_sale(event_node.message.transaction.account)
+    if isinstance(prev_block, TonTransferBlock) and event_node.message.source.upper() == owner.upper():
+        nft_sale = await context.interface_repository.get().get_nft_sale(event_node.message.transaction.account)
+        if nft_sale is not None:
+            return {
+                'nft_address': nft_sale.nft_address,
+                'block': block.previous_block,
+                'price': nft_sale.full_price,
+                'real_prev_owner': nft_sale.nft_owner_address,
+            }
 
-    price = 0
-    block_to_include = [block.previous_block]
-    if nft_sale is not None:
-        return [block.previous_block], nft_sale.full_price
+    nft_auction = await context.interface_repository.get().get_nft_auction(event_node.message.transaction.account)
+    if nft_auction is not None:
+        return {
+            'nft_address': nft_auction.nft_addr,
+            'block': block.previous_block,
+            'price': nft_auction.last_bid,
+            'real_prev_owner': nft_auction.nft_owner,
+        }
+
     return None
 
 
@@ -120,15 +131,19 @@ class NftTransferBlockMatcher(BlockMatcher):
                 nft_transfer_message.forward_payload is not None) else None
         data['new_owner'] = AccountId(nft_transfer_message.new_owner)
         data['nft'] = await _get_nft_data(AccountId(block.event_nodes[0].message.transaction.account))
-        if block.previous_block is not None and isinstance(block.previous_block, TonTransferBlock):
+        if block.previous_block is not None:
             nft_purchase_data = await _try_get_nft_purchase_data(block, nft_transfer_message.new_owner.to_str(False))
-            if nft_purchase_data is not None:
-                block_to_include, price = nft_purchase_data
-                data['is_purchase'] = True
-                data['marketplace'] = 'getgems'
-                data['price'] = Amount(price)
-                if isinstance(block.previous_block, TonTransferBlock):
-                    include.append(block.previous_block)
+            if nft_purchase_data is not None and AccountId(nft_purchase_data['nft_address']) == data['nft']['address']:
+                real_owner = AccountId(nft_purchase_data['real_prev_owner'])
+                if real_owner != data['new_owner']:
+                    data['is_purchase'] = True
+                    data['marketplace'] = 'getgems'
+                    data['price'] = Amount(nft_purchase_data['price'])
+                    data['real_prev_owner'] = AccountId(nft_purchase_data['real_prev_owner'])
+                    if isinstance(block.previous_block, TonTransferBlock):
+                        include.append(block.previous_block)
+                    elif isinstance(block.previous_block, CallContractBlock) and block.previous_block.get_message().source is None:
+                        include.append(block.previous_block)
 
         include.extend(other_blocks)
         new_block.merge_blocks(include)
@@ -214,6 +229,7 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
             data['is_purchase'] = True
             data['price'] = Amount(payload.value.bid)
             data['marketplace'] = 'fragment'
+            data['real_prev_owner'] = None
             prev_block = block.previous_block
             if (isinstance(prev_block, TonTransferBlock) or
                     (isinstance(prev_block, CallContractBlock) and prev_block.get_message().source is None)):
