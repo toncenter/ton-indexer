@@ -555,6 +555,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.ForwardPayload = raw.NFTTransferForwardPayload
 		details.ForwardAmount = raw.NFTTransferForwardAmount
 		details.Marketplace = raw.NFTTransferMarketplace
+		details.RealOldOwner = raw.NFTTransferRealPrevOwner
 		if raw.NFTTransferForwardPayload != nil {
 			comment, isEncrypted, err := ParseCommentFromPayload(*raw.NFTTransferForwardPayload)
 			if err == nil {
@@ -1129,6 +1130,7 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.NFTTransferResponseDestination,
 		&act.NFTTransferNFTItemIndex,
 		&act.NFTTransferMarketplace,
+		&act.NFTTransferRealPrevOwner,
 		&act.JettonSwapDex,
 		&act.JettonSwapSender,
 		&act.JettonSwapDexIncomingTransferAmount,
