@@ -28,6 +28,7 @@ cases:
             forward_payload: te6cckEBAQEAAgAAAEysuc0=
             response_destination: 0:B9A7DCE19431B56044254C69858E8DC11FEC5C0761DED415E386FBE4B4E116F5
             marketplace: getgems
+            real_prev_owner: 0:0D57780F9ABF651ACF690E6F37B2F8F9C61C4131A3968C5A555A18811CD2E7E4
   Fragment purchase:
     trace-id: aMUaDa0Ml9lnk7KzHKpkW1UK6FPyYod2qotieVVWMd8=
     expected-actions:
@@ -52,3 +53,37 @@ cases:
             forward_payload: te6cckEBAQEAEAAAGzgSfeFRnYHZYAZWIktoiLLaZw==
             response_destination: null
             marketplace: fragment
+            real_prev_owner: null
+  Getgems auction purchase:
+    trace-id: Mk9O4OZz5p1IH604tukwy07EHSY9Tdvwme1kH5iZqek=
+    expected-actions:
+      - type: nft_transfer
+        values:
+          tx_hashes:
+            - 9UrRPiXX3/YguB6CJKw8L1UqZaZKc2TjlAxScI8F0Vo=
+            - dF945FFmPocdOxgDhHu/jGSXBn0+mhd2NFjRWvLrGnE=
+            - Mk9O4OZz5p1IH604tukwy07EHSY9Tdvwme1kH5iZqek=
+            - ogeCdREbeJXdwJ0MKIU/2zOEurghG4q/gsVpeWiI4EY=
+          success: true
+          source: 0:41AA56531632822511CB32D2E75E685524D5163A4F441406D775DEE697AE6B37
+          destination: 0:35F782D3A9B8B1C15B369EE0F66E24830576D61ACFA0D3FD4A43F133AC705643
+          asset_secondary: 0:14C131277FBCC4043058D8344AD6D5736AA2E139B98E73ECC0A472AADB73BFE6
+          asset: 0:5AC82636C19C2B54113135F2CBF2FF4AD261CD9AB4139ED665760A58891C01FD
+          nft_transfer_data:
+            query_id: 59258595000001
+            is_purchase: true
+            price: 37970000000
+            forward_amount: 1
+            custom_payload: null
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            response_destination: 0:CF5F6816FF80E52B61BDFCA071F7FB5D061ECF46211DD8A627166050D126D5BA
+            marketplace: getgems
+            real_prev_owner: 0:CF5F6816FF80E52B61BDFCA071F7FB5D061ECF46211DD8A627166050D126D5BA
+      - type: ton_transfer
+        values:
+          value: 37469600000
+          destination: 0:CF5F6816FF80E52B61BDFCA071F7FB5D061ECF46211DD8A627166050D126D5BA
+          source: 0:41AA56531632822511CB32D2E75E685524D5163A4F441406D775DEE697AE6B37
+          ton_transfer_data:
+            content: Profit
+            encrypted: false

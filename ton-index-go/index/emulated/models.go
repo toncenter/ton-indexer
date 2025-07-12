@@ -219,6 +219,7 @@ type actionNftTransferDetails struct {
 	ResponseDestination *string `msgpack:"response_destination"`
 	NftItemIndex        *string `msgpack:"nft_item_index"`
 	Marketplace         *string `msgpack:"marketplace"`
+	RealPrevOwner       *string `msgpack:"real_prev_owner"`
 }
 
 type actionDexTransferDetails struct {
@@ -957,6 +958,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.NFTTransferResponseDestination = a.NftTransferData.ResponseDestination
 		row.NFTTransferNFTItemIndex = a.NftTransferData.NftItemIndex
 		row.NFTTransferMarketplace = a.NftTransferData.Marketplace
+		row.NFTTransferRealPrevOwner = a.NftTransferData.RealPrevOwner
 	}
 	if a.JettonSwapData != nil {
 		row.JettonSwapDex = a.JettonSwapData.Dex

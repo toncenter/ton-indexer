@@ -170,8 +170,11 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
     if block.data['nft']['collection'] is not None:
         action.asset = block.data['nft']['collection']['address'].as_str()
     marketplace = None
+    real_prev_owner = None
     if 'marketplace' in block.data and block.data['marketplace'] is not None:
         marketplace = block.data['marketplace']
+    if 'real_prev_owner' in block.data and block.data['real_prev_owner'] is not None:
+        real_prev_owner = block.data['real_prev_owner']
     action.nft_transfer_data = {
         'query_id': block.data['query_id'],
         'is_purchase': block.data['is_purchase'],
@@ -181,7 +184,8 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'custom_payload': block.data['custom_payload'],
         'forward_payload': block.data['forward_payload'],
         'response_destination': block.data['response_destination'].as_str() if block.data['response_destination'] else None,
-        'marketplace': marketplace
+        'marketplace': marketplace,
+        'real_prev_owner': _addr(real_prev_owner)
     }
 
 def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):

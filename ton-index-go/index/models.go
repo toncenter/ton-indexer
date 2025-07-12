@@ -521,6 +521,7 @@ type RawAction struct {
 	NFTTransferResponseDestination                       *AccountAddress
 	NFTTransferNFTItemIndex                              *string
 	NFTTransferMarketplace                               *string
+	NFTTransferRealPrevOwner                             *AccountAddress
 	JettonSwapDex                                        *string
 	JettonSwapSender                                     *AccountAddress
 	JettonSwapDexIncomingTransferAmount                  *string
@@ -799,6 +800,7 @@ type ActionDetailsNftTransfer struct {
 	Comment             *string         `json:"comment"`
 	IsEncryptedComment  *bool           `json:"is_encrypted_comment"`
 	Marketplace         *string         `json:"marketplace"`
+	RealOldOwner        *AccountAddress `json:"real_old_owner"`
 }
 
 type ActionDetailsTickTock struct {
