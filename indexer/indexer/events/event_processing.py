@@ -39,6 +39,9 @@ from indexer.events.blocks.jvault import (
     JVaultUnstakeBlockMatcher, JVaultUnstakeRequestBlockMatcher,
 )
 from indexer.events.blocks.liquidity import (
+    CoffeeCreatePoolCreatorMatcher,
+    CoffeeCreatePoolMatcher,
+    CoffeeCreateVaultMatcher,
     CoffeeDepositLiquidityMatcher,
     CoffeeWithdrawLiquidityMatcher,
     DedustDepositBlockMatcher,
@@ -213,6 +216,9 @@ matchers = [
     CoffeeDepositLiquidityMatcher(),
     CoffeeSwapBlockMatcher(),
     CoffeeWithdrawLiquidityMatcher(),
+    CoffeeCreateVaultMatcher(),
+    CoffeeCreatePoolCreatorMatcher(),
+    CoffeeCreatePoolMatcher()
 ]
 
 trace_post_processors = [

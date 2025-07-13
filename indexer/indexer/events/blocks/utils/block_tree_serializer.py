@@ -28,6 +28,9 @@ from indexer.events.blocks.jvault import (
     JVaultUnstakeBlock, JVaultUnstakeRequestBlock,
 )
 from indexer.events.blocks.liquidity import (
+    CoffeeCreatePoolBlock,
+    CoffeeCreatePoolCreatorBlock,
+    CoffeeCreateVaultBlock,
     DedustDepositLiquidity,
     DedustDepositLiquidityPartial,
     ToncoDeployPoolBlock,
@@ -720,6 +723,31 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
         "target_asset_2": _addr(block.data.asset_2),
         "vault_excesses": vault_excesses,
     }
+
+def _fill_coffee_create_vault(block: CoffeeCreateVaultBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.vault)
+    action.asset = _addr(block.data.asset)
+
+def _fill_coffee_create_pool_creator(block: CoffeeCreatePoolCreatorBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.deposit_recipient)
+    action.destination_secondary = _addr(block.data.pool_creator_contract)
+    action.asset = _addr(block.data.provided_asset)
+    action.asset2 = _addr(block.data.pool_params.first)
+    action.asset2_secondary = _addr(block.data.pool_params.second)
+
+def _fill_coffee_create_pool(block: CoffeeCreatePoolBlock, action: Action):
+    action.source = _addr(block.data.initiator_1)
+    action.source_secondary = _addr(block.data.initiator_2)
+    action.asset = _addr(block.data.asset_1)
+    action.asset2 = _addr(block.data.asset_2)
+    action.destination = _addr(block.data.pool)
+    action.coffee_create_pool_data = {
+        "amount_1": block.data.amount_1.value if block.data.amount_1 else None,
+        "amount_2": block.data.amount_2.value if block.data.amount_2 else None,
+        "lp_tokens_minted": block.data.lp_tokens_minted.value if block.data.lp_tokens_minted else None,
+    }
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -813,6 +841,12 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_tick_tock_action(block, action)
         case 'tonco_withdraw_liquidity':
             _fill_tonco_withdraw_liquidity(block, action)
+        case 'coffee_create_vault':
+            _fill_coffee_create_vault(block, action)
+        case 'coffee_create_pool_creator':
+            _fill_coffee_create_pool_creator(block, action)
+        case 'coffee_create_pool':
+            _fill_coffee_create_pool(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
@@ -870,6 +904,8 @@ v1_ops = [
     'tonstakers_withdraw',
     'tonco_deposit_liquidity',
     'tonco_withdraw_liquidity',
+    'coffee_create_vault',
+    'coffee_create_pool',
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:

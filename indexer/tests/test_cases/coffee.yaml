@@ -459,3 +459,53 @@ cases:
             dex_wallet_2: 0:BCAB8EFC2C80EA4FADB497EE47A697D7E215F9F18061519C94CFAC0B32D19427
             dex_jetton_wallet_2: 0:FD6256C33C2C5EEB4463B1CAAA3F2997F4F4A98EFE116D97B125611597D62D59
             user_jetton_wallet_2: 0:A7603C058477E5D9E86E07DAC673CE6D073BD976A80C75ADEA3198EAC7085C8D # wallet2
+
+
+# 1TUCte7dcNAyZaScButmzKI1pzRqxafdUDclpanNNe8=
+# just create pool creator 
+  Coffee create pool creator (only create):
+    trace-id: 1TUCte7dcNAyZaScButmzKI1pzRqxafdUDclpanNNe8=
+    expected-actions:
+      - type: coffee_create_pool_creator
+        values:
+          source: 0:3C6A834562BED3830AC71A2BBDB5052B10AEF408DA08FFCD9906FD2980EC064B # sender
+          asset: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD # provided_asset
+          destination_secondary: 0:2BC2842929E9F0ABDE818603B87E9A5257299E4E5B8F19ED5A68BC084799303B # pool_creator_contract
+          destination: 0:F9A7A7967E064596D9A736F046F1079340C6DFF668C00EC879A360D4CD68CEF7 # deposit_recipient
+          asset2: 0:729C13B6DF2C07CBF0A06AB63D34AF454F3D320EC1BCD8FB5C6D24D0806A17C2 # asset1 of pool
+          asset2_secondary: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD # asset2 of pool
+
+  Coffee create pool (full and simple):
+    trace-id: 1VcQkyvd9V-HG0lNytSst83ap9KP46eoVvLvQi7wsx0=
+    expected-actions:
+      - type: coffee_create_pool_creator
+        values:
+          source: 0:D9E74A929EEB0489D364019C38768F935EA68132172BA59E1DDB26BAC54979E6
+          asset: null
+          destination_secondary: 0:DFACB41C10F5747BCFC1724EA210EB2AA2AA50071A2BED3B08B68C615817673B
+          destination: 0:D9E74A929EEB0489D364019C38768F935EA68132172BA59E1DDB26BAC54979E6
+          asset2: null
+          asset2_secondary: 0:44FCFD9B28EF5D1C64B052165B42FEAF6BE611B84594119B82BFF8845E03BEA6
+      - type: coffee_create_pool
+        values:
+          source: 0:D9E74A929EEB0489D364019C38768F935EA68132172BA59E1DDB26BAC54979E6
+          source_secondary: 0:4AC05EB133E70E4EF7A32ABE8ACA6050E4477F6CA4D9025474AB7DDF9AE1F52C
+          destination: 0:57A8CC0F783344B12482EF048831AFC828E95E028F2D443E3560B0F723564F18
+          asset: 0:44FCFD9B28EF5D1C64B052165B42FEAF6BE611B84594119B82BFF8845E03BEA6
+          asset2: null
+          coffee_create_pool_data:
+            amount_1: 1000000000000000
+            amount_2: 2005112716
+            lp_tokens_minted: 1416020025694
+
+  Coffee create vault:
+    trace-id: _7TiwVoy-w5U7lbbF5_RD0yGAauPKFCjMcuYRX4eeoU=
+    expected-actions:
+      - type: coffee_create_vault
+        values:
+          source: 0:89F356BD10B3C8609187C5ABCD7BB1D5840C7F8A88E73DEBFF8E64FFD8F12010
+          destination: 0:A4068454C87EB61120F23AC96E8EFF0DE706967732DBEC237ADAB1270749E51F
+          asset: 0:A93DF3EB3194EABA7997892CB81C6A95BC872078C6B275354FFB55CB674C9600
+
+# 3uecEX5TvThuugPaMO4MqlOxGGHRQpNRErwAP7fL7J4=
+# with notification at the end
