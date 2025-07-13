@@ -4,8 +4,8 @@ from pytoniq_core import Address, Slice
 
 from indexer.events.blocks.utils import Asset
 
-
 # --- Types ---
+
 
 def load_coffee_asset(cell_slice: Slice) -> Asset:
     """
@@ -174,11 +174,11 @@ class PoolParams:
         self.second = load_coffee_asset(cell_slice)
         tag_amm = cell_slice.load_uint(3)
         if tag_amm == 0b000:
-            self.amm = 'constant_product'
+            self.amm = "constant_product"
         elif tag_amm == 0b001:
-            self.amm = 'curve_fi_stable'
+            self.amm = "curve_fi_stable"
         else:
-            self.amm = 'unknown'
+            self.amm = "unknown"
         self.amm_settings = cell_slice.load_maybe_ref()
 
 
@@ -195,17 +195,17 @@ class DepositLiquidityCondition:
     def __init__(self, cell_slice: Slice):
         self.tag = cell_slice.load_uint(2)
         if self.tag == 0b00:  # none
-            self.kind = 'none'
+            self.kind = "none"
         elif self.tag == 0b01:  # lp_quantity
-            self.kind = 'lp_quantity'
+            self.kind = "lp_quantity"
             self.min_lp_amount = cell_slice.load_coins()
         elif self.tag == 0b10:  # reserves_ratio
-            self.kind = 'reserves_ratio'
+            self.kind = "reserves_ratio"
             self.denominator = cell_slice.load_uint(16)
             self.min_nominator = cell_slice.load_uint(16)
             self.max_nominator = cell_slice.load_uint(16)
         elif self.tag == 0b11:  # complex
-            self.kind = 'complex'
+            self.kind = "complex"
             self.min_lp_amount = cell_slice.load_coins()
             self.denominator = cell_slice.load_uint(16)
             self.min_nominator = cell_slice.load_uint(16)
@@ -248,18 +248,18 @@ class WithdrawLiquidityCondition:
     def __init__(self, cell_slice: Slice):
         self.tag = cell_slice.load_uint(2)
         if self.tag == 0b00:  # none
-            self.kind = 'none'
+            self.kind = "none"
         elif self.tag == 0b01:  # assets_quantity
-            self.kind = 'assets_quantity'
+            self.kind = "assets_quantity"
             self.min_first_amount = cell_slice.load_coins()
             self.min_second_amount = cell_slice.load_coins()
         elif self.tag == 0b10:  # reserves_ratio
-            self.kind = 'reserves_ratio'
+            self.kind = "reserves_ratio"
             self.denominator = cell_slice.load_uint(16)
             self.min_nominator = cell_slice.load_uint(16)
             self.max_nominator = cell_slice.load_uint(16)
         elif self.tag == 0b11:  # complex
-            self.kind = 'complex'
+            self.kind = "complex"
             self.min_first_amount = cell_slice.load_coins()
             self.min_second_amount = cell_slice.load_coins()
             self.denominator = cell_slice.load_uint(16)
@@ -327,6 +327,7 @@ class ContractUpdate:
 
 # --- Messages ---
 
+
 class CoffeeSwapNative:
     """
     TL-B:
@@ -334,7 +335,7 @@ class CoffeeSwapNative:
                         params:^SwapParams = SwapNative;
     """
 
-    opcode = 0xc0ffee00
+    opcode = 0xC0FFEE00
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -358,7 +359,7 @@ class CoffeeSwapJetton:
                              payload:^Cell = NotificationDataSingle;
     """
 
-    opcode = 0xc0ffee10
+    opcode = 0xC0FFEE10
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -374,7 +375,7 @@ class CoffeeSwapExtra:
                     params:^SwapParams = SwapExtra;
     """
 
-    opcode = 0xc0ffee01
+    opcode = 0xC0FFEE01
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -391,7 +392,7 @@ class CoffeeSwapSuccessfulEvent:
                                 reserves:^PoolReserves = SwapSuccessfulEvent;
     """
 
-    opcode = 0xc0ffee30
+    opcode = 0xC0FFEE30
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -409,7 +410,7 @@ class CoffeeSwapFailedEvent:
                             reserves:(Maybe ^PoolReserves) = SwapFailedEvent;
     """
 
-    opcode = 0xc0ffee31
+    opcode = 0xC0FFEE31
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -429,7 +430,7 @@ class CoffeeCreatePoolNative:
                                 creation_params:PoolCreationParams = CreatePoolNative;
     """
 
-    opcode = 0xc0ffee02
+    opcode = 0xC0FFEE02
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -446,7 +447,7 @@ class CoffeeCreatePoolJetton:
                                 creation_params:PoolCreationParams = CreatePoolJetton;
     """
 
-    opcode = 0xc0ffee11
+    opcode = 0xC0FFEE11
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -461,7 +462,7 @@ class CoffeeCreatePoolExtra:
                             creation_params:PoolCreationParams = CreatePoolExtra;
     """
 
-    opcode = 0xc0ffee03
+    opcode = 0xC0FFEE03
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -478,7 +479,7 @@ class CoffeeDepositLiquidityNative:
     = DepositLiquidityNative;
     """
 
-    opcode = 0xc0ffee04
+    opcode = 0xC0FFEE04
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -494,7 +495,7 @@ class CoffeeDepositLiquidityJetton:
     = DepositLiquidityJetton;
     """
 
-    opcode = 0xc0ffee12
+    opcode = 0xC0FFEE12
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -508,7 +509,7 @@ class CoffeeDepositLiquidityExtra:
     = DepositLiquidityExtra;
     """
 
-    opcode = 0xc0ffee05
+    opcode = 0xC0FFEE05
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -526,7 +527,7 @@ class CoffeeDepositLiquiditySuccessfulEvent:
     = DepositLiquiditySuccessfulEvent;
     """
 
-    opcode = 0xc0ffee33
+    opcode = 0xC0FFEE33
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -547,7 +548,7 @@ class CoffeeDepositLiquidityFailedEvent:
     = DepositLiquidityFailedEvent;
     """
 
-    opcode = 0xc0ffee34
+    opcode = 0xC0FFEE34
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -565,10 +566,10 @@ class CoffeeLiquidityWithdrawalEvent:
     liquidity_withdrawal_event#c0ffee35 query_id:uint64 amount1:Coins amount2:Coins
                                         lp_amount:Coins total_supply:PoolReserves
                                         reserves:PoolReserves
-    = LiquidityWithdrawalEvent;    
+    = LiquidityWithdrawalEvent;
     """
 
-    opcode = 0xc0ffee35
+    opcode = 0xC0FFEE35
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -586,7 +587,7 @@ class CoffeeWithdrawDeposit:
     withdraw_deposit#c0ffee07 query_id:uint64 = WithdrawDeposit;
     """
 
-    opcode = 0xc0ffee07
+    opcode = 0xC0FFEE07
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -617,7 +618,7 @@ class CoffeePayout:
     payout#c0ffee32 query_id:uint64 = Payout;
     """
 
-    opcode = 0xc0ffee32
+    opcode = 0xC0FFEE32
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -630,7 +631,7 @@ class CoffeeCreateVault:
     create_vault#c0ffee06 query_id:uint64 asset:Asset = CreateVault;
     """
 
-    opcode = 0xc0ffee06
+    opcode = 0xC0FFEE06
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -644,7 +645,7 @@ class CoffeeNotification:
     notification#c0ffee36 query_id:uint64 body:^Cell = Notification;
     """
 
-    opcode = 0xc0ffee36
+    opcode = 0xC0FFEE36
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -687,7 +688,9 @@ class CoffeePayoutInternal:
         self.notification_data = None
         notification_data_ref = body.load_maybe_ref()
         if notification_data_ref:
-            self.notification_data = NotificationDataSingle(notification_data_ref.to_slice())
+            self.notification_data = NotificationDataSingle(
+                notification_data_ref.to_slice()
+            )
         self.proof = body.load_maybe_ref()
 
 
@@ -716,7 +719,7 @@ class CoffeeCreatePoolCreatorRequest:
     = CreatePoolCreatorRequest;
     """
 
-    opcode = 0xc0ffee23
+    opcode = 0xC0FFEE23
 
     def __init__(self, body: Slice):
         body.load_uint(32)
@@ -736,7 +739,7 @@ class CoffeeCreatePoolCreatorInternal:
     = CreatePoolCreatorInternal;
     """
 
-    opcode = 0xc0ffee24
+    opcode = 0xC0FFEE24
 
     def __init__(self, body: Slice):
         body.load_uint(32)
@@ -755,7 +758,7 @@ class CoffeeCreatePoolRequest:
     = CreatePoolRequest;
     """
 
-    opcode = 0xc0ffee25
+    opcode = 0xC0FFEE25
 
     def __init__(self, body: Slice):
         body.load_uint(32)
@@ -946,11 +949,12 @@ class CoffeeMevProtectHoldFunds:
     mev_protect_hold_funds#6bc79e7e query_id:uint64 = MevProtectHoldFunds;
     """
 
-    opcode = 0x6bc79e7e
+    opcode = 0x6BC79E7E
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
         self.query_id = body.load_uint(64)
+
 
 class CoffeeServiceFee:
     """
@@ -958,7 +962,7 @@ class CoffeeServiceFee:
     service_fee#c0ffeea0 = ServiceFee;
     """
 
-    opcode = 0xc0ffeea0
+    opcode = 0xC0FFEEA0
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
@@ -971,7 +975,7 @@ class CoffeeMevProtectFailedSwap:
     = MevProtectFailedSwap;
     """
 
-    opcode = 0xee51ce51
+    opcode = 0xEE51CE51
 
     def __init__(self, body: Slice):
         body.load_uint(32)
@@ -981,11 +985,12 @@ class CoffeeMevProtectFailedSwap:
 
 # Staking helper classes
 
+
 class CoffeeStakingAssetData:
     """
     staking_asset_data#_ wallet:MsgAddressInt amount:Coins = CoffeeStakingAssetData;
     """
-    
+
     def __init__(self, cell_slice: Slice):
         self.wallet = cell_slice.load_address()
         self.amount = cell_slice.load_coins()
@@ -993,10 +998,10 @@ class CoffeeStakingAssetData:
 
 class CoffeeStakingPositionData:
     """
-    staking_position_data#_ user_points:Coins additional_points:Coins start_timestamp:uint64 
+    staking_position_data#_ user_points:Coins additional_points:Coins start_timestamp:uint64
                            end_timestamp:uint64 period_id:uint32 = CoffeeStakingPositionData;
     """
-    
+
     def __init__(self, cell_slice: Slice):
         self.user_points = cell_slice.load_coins()
         self.additional_points = cell_slice.load_coins()
@@ -1009,7 +1014,7 @@ class CoffeeStakingForwardData:
     """
     staking_forward_data#_ gas:Coins payload:^Cell = CoffeeStakingForwardData;
     """
-    
+
     def __init__(self, cell_slice: Slice):
         self.gas = cell_slice.load_coins()
         self.payload = cell_slice.load_ref()
@@ -1017,14 +1022,15 @@ class CoffeeStakingForwardData:
 
 # Staking message parsers
 
+
 class CoffeeStakingLock:
     """
     TL-B:
     staking_lock#c0ffede period_id:uint32 = ForwardPayload;
     """
-    
-    opcode = 0xc0ffede
-    
+
+    opcode = 0xC0FFEDE
+
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
         self.period_id = body.load_uint(32)
@@ -1033,12 +1039,12 @@ class CoffeeStakingLock:
 class CoffeeStakingDeposit:
     """
     TL-B:
-    staking_deposit#f9471134 query_id:uint64 sender:MsgAddressInt jetton_amount:Coins 
+    staking_deposit#f9471134 query_id:uint64 sender:MsgAddressInt jetton_amount:Coins
                              from_user:MsgAddressInt period_id:uint32 = InMsgBody;
     """
-    
-    opcode = 0xf9471134
-    
+
+    opcode = 0xF9471134
+
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
         self.query_id = body.load_uint(64)
@@ -1051,12 +1057,12 @@ class CoffeeStakingDeposit:
 class CoffeeStakingInitialize:
     """
     TL-B:
-    staking_initialize#be5a7595 query_id:uint64 owner:MsgAddressInt jetton_data:^CoffeeStakingAssetData 
+    staking_initialize#be5a7595 query_id:uint64 owner:MsgAddressInt jetton_data:^CoffeeStakingAssetData
                                position_data:^CoffeeStakingPositionData periods:^Cell = InMsgBody;
     """
-    
-    opcode = 0xbe5a7595
-    
+
+    opcode = 0xBE5A7595
+
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
         self.query_id = body.load_uint(64)
@@ -1069,12 +1075,12 @@ class CoffeeStakingInitialize:
 class CoffeeStakingClaimRewards:
     """
     TL-B:
-    staking_claim_rewards#b30c7310 query_id:uint64 jetton_wallet:MsgAddressInt jetton_amount:Coins 
+    staking_claim_rewards#b30c7310 query_id:uint64 jetton_wallet:MsgAddressInt jetton_amount:Coins
                                    receiver:MsgAddressInt payload:(Maybe ^CoffeeStakingForwardData) = InMsgBody;
     """
-    
-    opcode = 0xb30c7310
-    
+
+    opcode = 0xB30C7310
+
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
         self.query_id = body.load_uint(64)
@@ -1092,9 +1098,9 @@ class CoffeeStakingPositionWithdraw1:
     TL-B:
     staking_position_withdraw_1#cb03bfaf query_id:uint64 = InMsgBody;
     """
-    
-    opcode = 0xcb03bfaf
-    
+
+    opcode = 0xCB03BFAF
+
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
         self.query_id = body.load_uint(64)
@@ -1103,12 +1109,12 @@ class CoffeeStakingPositionWithdraw1:
 class CoffeeStakingPositionWithdraw2:
     """
     TL-B:
-    staking_position_withdraw_2#cb03bfaf query_id:uint64 nft_id:uint64 owner:MsgAddressInt 
+    staking_position_withdraw_2#cb03bfaf query_id:uint64 nft_id:uint64 owner:MsgAddressInt
                                          points:Coins jetton_data:^[wallet:MsgAddressInt amount:Coins] = InMsgBody;
     """
-    
-    opcode = 0xcb03bfaf
-    
+
+    opcode = 0xCB03BFAF
+
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
         self.query_id = body.load_uint(64)
@@ -1124,12 +1130,12 @@ class CoffeeStakingPositionWithdraw2:
 class CoffeeStakingPositionWithdraw3:
     """
     TL-B:
-    staking_position_withdraw_3#cb03bfaf query_id:uint64 jetton_wallet:MsgAddressInt 
+    staking_position_withdraw_3#cb03bfaf query_id:uint64 jetton_wallet:MsgAddressInt
                                          jetton_amount:Coins owner:MsgAddressInt = InMsgBody;
     """
-    
-    opcode = 0xcb03bfaf
-    
+
+    opcode = 0xCB03BFAF
+
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
         self.query_id = body.load_uint(64)
@@ -1141,12 +1147,12 @@ class CoffeeStakingPositionWithdraw3:
 class CoffeeStakingUpdateRewards:
     """
     TL-B:
-    staking_update_rewards#0a9577f0 query_id:uint64 jetton_wallet:MsgAddressInt 
+    staking_update_rewards#0a9577f0 query_id:uint64 jetton_wallet:MsgAddressInt
                                     jetton_amount:Coins duration:uint64 = InMsgBody;
     """
-    
-    opcode = 0x0a9577f0
-    
+
+    opcode = 0x0A9577F0
+
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
         self.query_id = body.load_uint(64)
@@ -1158,12 +1164,12 @@ class CoffeeStakingUpdateRewards:
 class CoffeeStakingRewardsUpdated:
     """
     TL-B:
-    staking_rewards_updated#0a9577f0 query_id:uint64 jetton_wallet:MsgAddressInt duration:uint64 
+    staking_rewards_updated#0a9577f0 query_id:uint64 jetton_wallet:MsgAddressInt duration:uint64
                                      finish_at:uint64 rewards_rate:Coins = ExtOutMsgBody;
     """
-    
-    opcode = 0x0a9577f0
-    
+
+    opcode = 0x0A9577F0
+
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
         self.query_id = body.load_uint(64)
@@ -1171,3 +1177,4 @@ class CoffeeStakingRewardsUpdated:
         self.duration = body.load_uint(64)
         self.finish_at = body.load_uint(64)
         self.rewards_rate = body.load_coins()
+

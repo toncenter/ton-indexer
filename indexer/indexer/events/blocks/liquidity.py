@@ -1618,7 +1618,7 @@ class ToncoDeployPoolBlockMatcher(BlockMatcher):
 
 
 @dataclass
-class DepositLiquidityData: # fully compatible with dex_deposit_liquidity_data
+class DepositLiquidityData:  # fully compatible with dex_deposit_liquidity_data
     dex: str
     sender: AccountId
     pool_address: AccountId | None
@@ -1655,15 +1655,17 @@ class CoffeeDepositLiquidityMatcher(BlockMatcher):
             ContractMatcher(
                 opcode=CoffeePayoutInternal.opcode,
                 optional=True,
-                child_matcher=out_transfer_matcher
+                child_matcher=out_transfer_matcher,
             ),
         )
 
         lp_transfer = labeled(
             "lp_transfer",
             ContractMatcher(
-                opcode=JettonInternalTransfer.opcode, 
-                child_matcher=ContractMatcher(opcode=ExcessMessage.opcode, optional=True)
+                opcode=JettonInternalTransfer.opcode,
+                child_matcher=ContractMatcher(
+                    opcode=ExcessMessage.opcode, optional=True
+                ),
             ),
         )
 
@@ -1686,13 +1688,15 @@ class CoffeeDepositLiquidityMatcher(BlockMatcher):
             ContractMatcher(
                 opcode=CoffeeDeploy.opcode,
                 optional=False,
-                child_matcher=deposit_internal
+                child_matcher=deposit_internal,
             ),
         )
 
         in_transfer_native = ContractMatcher(opcode=CoffeeDepositLiquidityNative.opcode)
         in_transfer_jetton = BlockTypeMatcher("jetton_transfer")
-        parent_matcher = labeled("in_transfer", OrMatcher([in_transfer_native, in_transfer_jetton]))
+        parent_matcher = labeled(
+            "in_transfer", OrMatcher([in_transfer_native, in_transfer_jetton])
+        )
 
         super().__init__(parent_matcher=parent_matcher, child_matcher=deploy)
 
@@ -1739,7 +1743,9 @@ class CoffeeDepositLiquidityMatcher(BlockMatcher):
             target_asset_1 = req_msg.pool_params.second
             target_asset_2 = req_msg.pool_params.first
         else:
-            logger.warning(f"In transfer asset {in_asset} is not in pool params {req_msg.pool_params}")
+            logger.warning(
+                f"In transfer asset {in_asset} is not in pool params {req_msg.pool_params}"
+            )
             return []
 
         deploy_block = get_labeled("deploy", other_blocks, CallContractBlock)
@@ -1749,9 +1755,13 @@ class CoffeeDepositLiquidityMatcher(BlockMatcher):
         lp_tokens_minted = None
         pool_address = None
 
-        success_event_block = get_labeled("success_event", other_blocks, CallContractBlock)
+        success_event_block = get_labeled(
+            "success_event", other_blocks, CallContractBlock
+        )
         if success_event_block:
-            success_msg = CoffeeDepositLiquiditySuccessfulEvent(success_event_block.get_body())
+            success_msg = CoffeeDepositLiquiditySuccessfulEvent(
+                success_event_block.get_body()
+            )
             lp_tokens_minted = Amount(success_msg.lp_amount or 0)
             pool_address = AccountId(success_event_block.get_message().source)
 
@@ -1774,7 +1784,10 @@ class CoffeeDepositLiquidityMatcher(BlockMatcher):
                 ]
             elif isinstance(vault_excesses_block, CallContractBlock):
                 vault_excesses = [
-                    (Asset(is_ton=True), Amount(vault_excesses_block.get_message().value or 0))
+                    (
+                        Asset(is_ton=True),
+                        Amount(vault_excesses_block.get_message().value or 0),
+                    )
                 ]
 
         data = DepositLiquidityData(
@@ -1796,7 +1809,7 @@ class CoffeeDepositLiquidityMatcher(BlockMatcher):
             vault_excesses=vault_excesses,
         )
 
-        new_block = Block('coffee_deposit_liquidity', [], data.__dict__)
+        new_block = Block("coffee_deposit_liquidity", [], data.__dict__)
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
 
@@ -1826,12 +1839,12 @@ class CoffeeWithdrawLiquidityMatcher(BlockMatcher):
     def __init__(self):
         # start at JettonBurn
         out_transfer_matcher = OrMatcher(
-                [
-                    BlockTypeMatcher(block_type="jetton_transfer"),
-                    ContractMatcher(opcode=CoffeePayout.opcode),
-                    ContractMatcher(opcode=CoffeeNotification.opcode),
-                ]
-            )
+            [
+                BlockTypeMatcher(block_type="jetton_transfer"),
+                ContractMatcher(opcode=CoffeePayout.opcode),
+                ContractMatcher(opcode=CoffeeNotification.opcode),
+            ]
+        )
         payout = ContractMatcher(
             opcode=CoffeePayoutInternal.opcode,
             optional=False,
@@ -1839,7 +1852,9 @@ class CoffeeWithdrawLiquidityMatcher(BlockMatcher):
         )
         success_event = labeled(
             "success_event",
-            ContractMatcher(opcode=CoffeeLiquidityWithdrawalEvent.opcode, optional=False),
+            ContractMatcher(
+                opcode=CoffeeLiquidityWithdrawalEvent.opcode, optional=False
+            ),
         )
         super().__init__(
             optional=False,
@@ -1849,21 +1864,23 @@ class CoffeeWithdrawLiquidityMatcher(BlockMatcher):
                 labeled("payout_2", payout),
                 # log message
                 success_event,
-            ]
+            ],
         )
 
     def test_self(self, block: Block):
         return isinstance(block, JettonBurnBlock)
-        
+
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         # block is JettonBurnBlock
         burn_block = block
-        sender = burn_block.data['owner']
-        sender_wallet = burn_block.data['jetton_wallet']
-        lp_tokens_burnt = burn_block.data['amount']
-        lp_asset = burn_block.data['asset']
+        sender = burn_block.data["owner"]
+        sender_wallet = burn_block.data["jetton_wallet"]
+        lp_tokens_burnt = burn_block.data["amount"]
+        lp_asset = burn_block.data["asset"]
 
-        success_event_block = get_labeled("success_event", other_blocks, CallContractBlock)
+        success_event_block = get_labeled(
+            "success_event", other_blocks, CallContractBlock
+        )
         if not success_event_block:
             return []
 
@@ -1875,8 +1892,8 @@ class CoffeeWithdrawLiquidityMatcher(BlockMatcher):
         amount2_out = Amount(success_msg.amount2 or 0)
 
         # get payout blocks to determine assets and wallets
-        payout_1_block = get_labeled('payout_1', other_blocks, CallContractBlock)
-        payout_2_block = get_labeled('payout_2', other_blocks, CallContractBlock)
+        payout_1_block = get_labeled("payout_1", other_blocks, CallContractBlock)
+        payout_2_block = get_labeled("payout_2", other_blocks, CallContractBlock)
 
         # initialize default values
         asset1_out = Asset(is_ton=True)
@@ -1891,15 +1908,18 @@ class CoffeeWithdrawLiquidityMatcher(BlockMatcher):
         # process first payout
         if payout_1_block:
             dex_wallet_1 = AccountId(payout_1_block.get_message().source)
-            
+
             # find the actual transfer block
             for next_block in payout_1_block.next_blocks:
                 if isinstance(next_block, JettonTransferBlock):
-                    asset1_out = next_block.data['asset']
-                    dex_jetton_wallet_1 = next_block.data['sender_wallet']
-                    wallet1 = next_block.data['receiver_wallet']
+                    asset1_out = next_block.data["asset"]
+                    dex_jetton_wallet_1 = next_block.data["sender_wallet"]
+                    wallet1 = next_block.data["receiver_wallet"]
                     break
-                elif isinstance(next_block, CallContractBlock) and next_block.opcode == CoffeePayout.opcode:
+                elif (
+                    isinstance(next_block, CallContractBlock)
+                    and next_block.opcode == CoffeePayout.opcode
+                ):
                     asset1_out = Asset(is_ton=True)
                     wallet1 = AccountId(next_block.get_message().destination)
                     break
@@ -1907,19 +1927,22 @@ class CoffeeWithdrawLiquidityMatcher(BlockMatcher):
         # process second payout
         if payout_2_block:
             dex_wallet_2 = AccountId(payout_2_block.get_message().source)
-            
+
             # find the actual transfer block
             for next_block in payout_2_block.next_blocks:
                 if isinstance(next_block, JettonTransferBlock):
-                    asset2_out = next_block.data['asset']
-                    dex_jetton_wallet_2 = next_block.data['sender_wallet']
-                    wallet2 = next_block.data['receiver_wallet']
+                    asset2_out = next_block.data["asset"]
+                    dex_jetton_wallet_2 = next_block.data["sender_wallet"]
+                    wallet2 = next_block.data["receiver_wallet"]
                     break
-                elif isinstance(next_block, CallContractBlock) and next_block.opcode == CoffeePayout.opcode:
+                elif (
+                    isinstance(next_block, CallContractBlock)
+                    and next_block.opcode == CoffeePayout.opcode
+                ):
                     asset2_out = Asset(is_ton=True)
                     wallet2 = AccountId(next_block.get_message().destination)
                     break
-        
+
         # use dataclass to validate data
         data = CoffeeWithdrawLiquidityData(
             dex="coffee",
@@ -1938,12 +1961,13 @@ class CoffeeWithdrawLiquidityMatcher(BlockMatcher):
             asset2_out=asset2_out,
             dex_wallet_2=dex_wallet_2,
             dex_jetton_wallet_2=dex_jetton_wallet_2,
-            wallet2=wallet2
+            wallet2=wallet2,
         )
 
-        new_block = Block('dex_withdraw_liquidity', [], data.__dict__)
+        new_block = Block("dex_withdraw_liquidity", [], data.__dict__)
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
+
 
 @dataclass
 class CoffeeCreateVaultData:
@@ -1951,30 +1975,41 @@ class CoffeeCreateVaultData:
     vault: AccountId
     asset: Asset
 
+
 class CoffeeCreateVaultBlock(Block):
     data: CoffeeCreateVaultData
-    
+
     def __init__(self, data: CoffeeCreateVaultData):
         super().__init__("coffee_create_vault", [], data.__dict__)
         self.data = data
-        
+
     def __repr__(self):
         return f"CoffeeCreateVaultBlock(data={self.data})"
+
 
 class CoffeeCreateVaultMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(
             child_matcher=labeled(
                 "deploy",
-                ContractMatcher(opcode=CoffeeDeploy.opcode, optional=False, 
-                                child_matcher=ContractMatcher(opcode=0x2c76b973, optional=True,
-                                                              child_matcher=ContractMatcher(opcode=0xd1735400, optional=True))),
+                ContractMatcher(
+                    opcode=CoffeeDeploy.opcode,
+                    optional=False,
+                    child_matcher=ContractMatcher(
+                        opcode=0x2C76B973,
+                        optional=True,
+                        child_matcher=ContractMatcher(opcode=0xD1735400, optional=True),
+                    ),
+                ),
             ),
         )
 
     def test_self(self, block: Block):
-        return isinstance(block, CallContractBlock) and block.opcode == CoffeeCreateVault.opcode
-    
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == CoffeeCreateVault.opcode
+        )
+
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         deploy_data = CoffeeCreateVault(block.get_body())
         deploy_block = get_labeled("deploy", other_blocks, CallContractBlock)
@@ -1988,7 +2023,7 @@ class CoffeeCreateVaultMatcher(BlockMatcher):
         new_block = CoffeeCreateVaultBlock(data)
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
-    
+
 
 @dataclass
 class CoffeeCreatePoolCreatorData:
@@ -1999,15 +2034,17 @@ class CoffeeCreatePoolCreatorData:
     pool_params: PoolParams
     pool_creation_params: PublicPoolCreationParams
 
+
 class CoffeeCreatePoolCreatorBlock(Block):
     data: CoffeeCreatePoolCreatorData
-    
+
     def __init__(self, data: CoffeeCreatePoolCreatorData):
         super().__init__("coffee_create_pool_creator", [], data.__dict__)
         self.data = data
-        
+
     def __repr__(self):
         return f"CoffeeCreatePoolCreatorBlock(data={self.data})"
+
 
 # To create pool, user first creates `pool creator`
 # 2 times, for each asset, like with deposit
@@ -2016,16 +2053,22 @@ class CoffeeCreatePoolCreatorMatcher(BlockMatcher):
         in_transfer_jetton = BlockTypeMatcher("jetton_transfer")
         in_transfer_native = ContractMatcher(opcode=CoffeeCreatePoolNative.opcode)
         in_transfer_extra = ContractMatcher(opcode=CoffeeCreatePoolExtra.opcode)
-        parent_matcher = labeled("in_transfer", OrMatcher([in_transfer_jetton, in_transfer_native, in_transfer_extra]))
+        parent_matcher = labeled(
+            "in_transfer",
+            OrMatcher([in_transfer_jetton, in_transfer_native, in_transfer_extra]),
+        )
         super().__init__(
-                parent_matcher=parent_matcher,
-                child_matcher=labeled("deploy",
-                                      ContractMatcher(opcode=CoffeeDeploy.opcode, optional=False)),
+            parent_matcher=parent_matcher,
+            child_matcher=labeled(
+                "deploy", ContractMatcher(opcode=CoffeeDeploy.opcode, optional=False)
+            ),
         )
 
     def test_self(self, block: Block):
-        return isinstance(block, CallContractBlock) and (block.opcode == CoffeeCreatePoolCreatorRequest.opcode)
-        
+        return isinstance(block, CallContractBlock) and (
+            block.opcode == CoffeeCreatePoolCreatorRequest.opcode
+        )
+
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         in_transfer_block = get_labeled("in_transfer", other_blocks)
         asset = None
@@ -2033,12 +2076,16 @@ class CoffeeCreatePoolCreatorMatcher(BlockMatcher):
         pool_creation_params = None
         sender = None
         if isinstance(in_transfer_block, JettonTransferBlock):
-            sender = in_transfer_block.data['sender_wallet']
-            asset = in_transfer_block.data['asset']
-            data = CoffeeCreatePoolJetton(Cell.from_boc(in_transfer_block.data['forward_payload'])[0].begin_parse())
+            sender = in_transfer_block.data["sender_wallet"]
+            asset = in_transfer_block.data["asset"]
+            data = CoffeeCreatePoolJetton(
+                Cell.from_boc(in_transfer_block.data["forward_payload"])[
+                    0
+                ].begin_parse()
+            )
             pool_params = data.params
             pool_creation_params = data.creation_params
-        elif isinstance(in_transfer_block, CallContractBlock):        
+        elif isinstance(in_transfer_block, CallContractBlock):
             if in_transfer_block.opcode == CoffeeCreatePoolNative.opcode:
                 sender = in_transfer_block.get_message().source
                 data = CoffeeCreatePoolNative(in_transfer_block.get_body())
@@ -2048,7 +2095,9 @@ class CoffeeCreatePoolCreatorMatcher(BlockMatcher):
             elif in_transfer_block.opcode == CoffeeCreatePoolExtra.opcode:
                 sender = in_transfer_block.get_message().source
                 data = CoffeeCreatePoolExtra(in_transfer_block.get_body())
-                asset = Asset(is_ton=False, jetton_address=in_transfer_block.get_message().source)
+                asset = Asset(
+                    is_ton=False, jetton_address=in_transfer_block.get_message().source
+                )
                 pool_params = data.params
                 pool_creation_params = data.creation_params
             else:
@@ -2087,11 +2136,11 @@ class CoffeeCreatePoolData:
 
 class CoffeeCreatePoolBlock(Block):
     data: CoffeeCreatePoolData
-    
+
     def __init__(self, data: CoffeeCreatePoolData):
         super().__init__("coffee_create_pool", [], data.__dict__)
         self.data = data
-        
+
     def __repr__(self):
         return f"CoffeeCreatePoolBlock(pool={self.data.pool.address})"
 
@@ -2103,10 +2152,12 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
             "lp_transfer",
             ContractMatcher(
                 opcode=JettonInternalTransfer.opcode,
-                child_matcher=ContractMatcher(opcode=ExcessMessage.opcode, optional=True)
-            )
+                child_matcher=ContractMatcher(
+                    opcode=ExcessMessage.opcode, optional=True
+                ),
+            ),
         )
-        
+
         # pool deployment
         pool_deploy = labeled(
             "pool_deploy",
@@ -2116,31 +2167,32 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
                     lp_transfer,
                     labeled(
                         "success_event",
-                        ContractMatcher(opcode=CoffeeDepositLiquiditySuccessfulEvent.opcode)
+                        ContractMatcher(
+                            opcode=CoffeeDepositLiquiditySuccessfulEvent.opcode
+                        ),
                     ),
-                    ContractMatcher(opcode=CoffeeNotification.opcode, optional=True, 
-                                    child_matcher=ContractMatcher(opcode=0xb216d31f, optional=True))
-                ]
-            )
+                    ContractMatcher(
+                        opcode=CoffeeNotification.opcode,
+                        optional=True,
+                        child_matcher=ContractMatcher(opcode=0xB216D31F, optional=True),
+                    ),
+                ],
+            ),
         )
-        
+
         # pool creation request
         pool_request = labeled(
-            "pool_request", 
+            "pool_request",
             ContractMatcher(
-                opcode=CoffeeCreatePoolRequest.opcode,
-                child_matcher=pool_deploy
-            )
+                opcode=CoffeeCreatePoolRequest.opcode, child_matcher=pool_deploy
+            ),
         )
-        
+
         super().__init__(child_matcher=pool_request)
 
     def test_self(self, block: Block):
-        return (
-            hasattr(block, 'btype') and 
-            block.btype == "coffee_create_pool_creator"
-        )
-        
+        return hasattr(block, "btype") and block.btype == "coffee_create_pool_creator"
+
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         # block is CoffeeCreatePoolCreatorBlock
         creator_block = block
@@ -2148,32 +2200,38 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
         asset_1 = creator_block.data.provided_asset
         pool_params = creator_block.data.pool_params
         pool_creation_params = creator_block.data.pool_creation_params
-        
+
         # find the pool request block
-        pool_request_block = get_labeled("pool_request", other_blocks, CallContractBlock)
+        pool_request_block = get_labeled(
+            "pool_request", other_blocks, CallContractBlock
+        )
         if not pool_request_block:
             return []
-            
+
         pool_request_msg = CoffeeCreatePoolRequest(pool_request_block.get_body())
         amount_1 = Amount(pool_request_msg.amount1 or 0)
         amount_2 = Amount(pool_request_msg.amount2 or 0)
         initiator_2 = AccountId(pool_request_msg.tx_initiator)
-        
+
         # find pool deploy block
         pool_deploy_block = get_labeled("pool_deploy", other_blocks, CallContractBlock)
         if not pool_deploy_block:
             return []
-            
+
         pool = AccountId(pool_deploy_block.get_message().destination)
-        
+
         # find success event to get final amounts and determine asset order
-        success_event_block = get_labeled("success_event", other_blocks, CallContractBlock)
+        success_event_block = get_labeled(
+            "success_event", other_blocks, CallContractBlock
+        )
         if not success_event_block:
             return []
-            
-        success_msg = CoffeeDepositLiquiditySuccessfulEvent(success_event_block.get_body())
+
+        success_msg = CoffeeDepositLiquiditySuccessfulEvent(
+            success_event_block.get_body()
+        )
         lp_tokens_minted = Amount(success_msg.lp_amount or 0)
-        
+
         # determine asset order from pool params
         asset_2 = None
         if str(asset_1) == str(pool_params.first):
@@ -2187,7 +2245,7 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
             # fallback - use pool params order
             asset_1 = pool_params.first
             asset_2 = pool_params.second
-        
+
         data = CoffeeCreatePoolData(
             initiator_1=initiator_1,
             initiator_2=initiator_2,
@@ -2198,9 +2256,9 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
             amount_2=amount_2,
             lp_tokens_minted=lp_tokens_minted,
             pool_params=pool_params,
-            pool_creation_params=pool_creation_params
+            pool_creation_params=pool_creation_params,
         )
-        
+
         new_block = CoffeeCreatePoolBlock(data)
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
@@ -2211,18 +2269,24 @@ class CoffeeMevProtectHoldFundsMatcher(BlockMatcher):
         super().__init__(
             parent_matcher=GenericMatcher(
                 optional=True,
-                test_self_func=lambda b: True, # any opcode, since it's external
-                child_matcher=ContractMatcher(opcode=CoffeeServiceFee.opcode)
+                test_self_func=lambda b: True,  # any opcode, since it's external
+                child_matcher=ContractMatcher(opcode=CoffeeServiceFee.opcode),
             )
         )
 
     def test_self(self, block: Block):
         try:
-            return (isinstance(block, CallContractBlock) and block.opcode == CoffeeMevProtectHoldFunds.opcode) or \
-                (isinstance(block, JettonTransferBlock) and int(block.data['payload_opcode'], 16) == CoffeeMevProtectHoldFunds.opcode)
+            return (
+                isinstance(block, CallContractBlock)
+                and block.opcode == CoffeeMevProtectHoldFunds.opcode
+            ) or (
+                isinstance(block, JettonTransferBlock)
+                and int(block.data["payload_opcode"], 16)
+                == CoffeeMevProtectHoldFunds.opcode
+            )
         except:
             return False
-    
+
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         asset = None
         sender = None
@@ -2237,25 +2301,29 @@ class CoffeeMevProtectHoldFundsMatcher(BlockMatcher):
             asset = Asset(is_ton=True)
             amount = Amount(block.get_message().value)
         elif isinstance(block, JettonTransferBlock):
-            asset = block.data['asset']
-            mev_contract = AccountId(block.data['receiver'])
-            sender = AccountId(block.data['sender'])
-            sender_wallet = AccountId(block.data['sender_wallet'])
-            amount = block.data['amount']
+            asset = block.data["asset"]
+            mev_contract = AccountId(block.data["receiver"])
+            sender = AccountId(block.data["sender"])
+            sender_wallet = AccountId(block.data["sender_wallet"])
+            amount = block.data["amount"]
         else:
             return []
-        
-        new_block = Block('coffee_mev_protect_hold_funds', [], {
-            'sender': sender,
-            'mev_contract': mev_contract,
-            'asset': asset,
-            'sender_wallet': sender_wallet,
-            'mev_contract_wallet': mev_contract_wallet,
-            'amount': amount,
-        })
+
+        new_block = Block(
+            "coffee_mev_protect_hold_funds",
+            [],
+            {
+                "sender": sender,
+                "mev_contract": mev_contract,
+                "asset": asset,
+                "sender_wallet": sender_wallet,
+                "mev_contract_wallet": mev_contract_wallet,
+                "amount": amount,
+            },
+        )
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]
-    
+
 
 class CoffeeMevProtectFailedSwapMatcher(BlockMatcher):
     def __init__(self):
@@ -2263,11 +2331,17 @@ class CoffeeMevProtectFailedSwapMatcher(BlockMatcher):
 
     def test_self(self, block: Block):
         try:
-            return (isinstance(block, CallContractBlock) and block.opcode == CoffeeMevProtectFailedSwap.opcode) or \
-                (isinstance(block, JettonTransferBlock) and int(block.data['payload_opcode'], 16) == CoffeeMevProtectFailedSwap.opcode)
+            return (
+                isinstance(block, CallContractBlock)
+                and block.opcode == CoffeeMevProtectFailedSwap.opcode
+            ) or (
+                isinstance(block, JettonTransferBlock)
+                and int(block.data["payload_opcode"], 16)
+                == CoffeeMevProtectFailedSwap.opcode
+            )
         except:
             return False
-    
+
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         asset = None
         recipient = None
@@ -2276,15 +2350,21 @@ class CoffeeMevProtectFailedSwapMatcher(BlockMatcher):
             data = CoffeeMevProtectFailedSwap(block.get_body())
             recipient = data.recipient
         elif isinstance(block, JettonTransferBlock):
-            asset = block.data['asset']
-            data = CoffeeMevProtectFailedSwap(Cell.from_boc(block.data['forward_payload'])[0].begin_parse())
+            asset = block.data["asset"]
+            data = CoffeeMevProtectFailedSwap(
+                Cell.from_boc(block.data["forward_payload"])[0].begin_parse()
+            )
             recipient = data.recipient
         else:
             return []
-        
-        new_block = Block('coffee_mev_protect_failed_swap', [], {
-            'recipient': recipient,
-            'asset': asset,
-        })
+
+        new_block = Block(
+            "coffee_mev_protect_failed_swap",
+            [],
+            {
+                "recipient": recipient,
+                "asset": asset,
+            },
+        )
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

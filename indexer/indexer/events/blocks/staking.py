@@ -406,11 +406,12 @@ class CoffeeStakingDepositData:
     source: AccountId
     user_jetton_wallet: AccountId
     pool_jetton_wallet: AccountId
-    pool: AccountId # or nft collection
+    pool: AccountId  # or nft collection
     value: Amount
     minted_item_address: AccountId
     minted_item_index: int
     asset: Asset
+
 
 class CoffeeStakingDepositBlock(Block):
     data: CoffeeStakingDepositData
@@ -420,49 +421,55 @@ class CoffeeStakingDepositBlock(Block):
 
     def __repr__(self):
         return f"coffee_staking_deposit {self.data}"
-    
+
 
 class CoffeeStakingDepositMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(
-            child_matcher=labeled('pool_call', ContractMatcher(
-                opcode=CoffeeStakingDeposit.opcode,
-                children_matchers=[
-                    labeled('log',ContractMatcher( # just duplicated log msg
-                        opcode=CoffeeStakingDeposit.opcode,
-                        optional=True,
-                    )),
-                    labeled('nft_mint', BlockTypeMatcher(
-                        block_type='nft_mint',
-                        optional=False
-                    ))
-                ]
-            ))
+            child_matcher=labeled(
+                "pool_call",
+                ContractMatcher(
+                    opcode=CoffeeStakingDeposit.opcode,
+                    children_matchers=[
+                        labeled(
+                            "log",
+                            ContractMatcher(  # just duplicated log msg
+                                opcode=CoffeeStakingDeposit.opcode,
+                                optional=True,
+                            ),
+                        ),
+                        labeled(
+                            "nft_mint",
+                            BlockTypeMatcher(block_type="nft_mint", optional=False),
+                        ),
+                    ],
+                ),
+            )
         )
 
     def test_self(self, block: Block):
         return isinstance(block, JettonTransferBlock)
-    
+
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         jetton_transfer = block
-        pool_call = get_labeled('pool_call', other_blocks, CallContractBlock)
+        pool_call = get_labeled("pool_call", other_blocks, CallContractBlock)
         if pool_call is None:
             return []
-        log_block = get_labeled('log', other_blocks, CallContractBlock)
-        nft_mint_block = get_labeled('nft_mint', other_blocks, NftMintBlock)
+        log_block = get_labeled("log", other_blocks, CallContractBlock)
+        nft_mint_block = get_labeled("nft_mint", other_blocks, NftMintBlock)
         if nft_mint_block is None:
             return []
         nft_mint_data = nft_mint_block.data
         new_block = CoffeeStakingDepositBlock(
             data=CoffeeStakingDepositData(
-                source=AccountId(jetton_transfer.data['sender']),
-                user_jetton_wallet=AccountId(jetton_transfer.data['sender_wallet']),
-                pool_jetton_wallet=AccountId(jetton_transfer.data['receiver_wallet']),
+                source=AccountId(jetton_transfer.data["sender"]),
+                user_jetton_wallet=AccountId(jetton_transfer.data["sender_wallet"]),
+                pool_jetton_wallet=AccountId(jetton_transfer.data["receiver_wallet"]),
                 pool=AccountId(pool_call.get_message().destination),
-                value=Amount(jetton_transfer.data['amount']),
-                minted_item_address=AccountId(nft_mint_data['address']),
-                minted_item_index=nft_mint_data['index'],
-                asset=jetton_transfer.data['asset']
+                value=Amount(jetton_transfer.data["amount"]),
+                minted_item_address=AccountId(nft_mint_data["address"]),
+                minted_item_index=nft_mint_data["index"],
+                asset=jetton_transfer.data["asset"],
             )
         )
         blocks = [jetton_transfer, pool_call, nft_mint_block]
