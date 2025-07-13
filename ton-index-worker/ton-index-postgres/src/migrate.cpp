@@ -6,6 +6,16 @@
 #include "pqxx/pqxx"
 #include "version.h"
 
+bool migration_needed(std::optional<Version> current_version, Version migration_version, bool rerun_last_migration) {
+  if (rerun_last_migration && migration_version == latest_version) {
+    return true;
+  }
+  if (current_version.has_value() && *current_version < migration_version) {
+    return true;
+  }
+  return false;
+}
+
 void run_1_2_0_migrations(const std::string& connection_string, bool custom_types, bool dry_run) {
   LOG(INFO) << "Running migrations to version 1.2.0";
 
@@ -691,6 +701,61 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
   LOG(INFO) << "Migration to version 1.2.0 completed successfully.";
 }
 
+void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.1";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+
+    exec_query("alter type nft_transfer_details add attribute marketplace varchar;");
+    exec_query("alter type nft_transfer_details add attribute real_prev_owner tonaddr;");
+  }
+
+  LOG(INFO) << "Updating version...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += (
+      "INSERT INTO ton_db_version (id, major, minor, patch) "
+      "VALUES (1, 1, 2, 1) ON CONFLICT(id) DO UPDATE "
+      "SET major = 1, minor = 2, patch = 1;\n"
+    );
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.1 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -832,6 +897,12 @@ int main(int argc, char *argv[]) {
     LOG(WARNING) << "Dry run mode enabled. No changes will be applied to the database.";
   });
 
+  bool rerun_last_migration = false;
+  p.add_option('\0', "rerun-last-migration", "Apply last migration regardless current version", [&]() {
+    rerun_last_migration = true;
+    LOG(WARNING) << "Rerun last migration mode enabled.";
+  });
+
   auto S = p.run(argc, argv);
   if (S.is_error()) {
     LOG(ERROR) << "failed to parse options: " << S.move_as_error();
@@ -858,22 +929,26 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (current_version.has_value() && *current_version == latest_version) {
+  if (current_version.has_value() && *current_version == latest_version && !rerun_last_migration) {
     LOG(INFO) << "Database is already at the latest version. No migrations needed.";
   } else {
     if (!current_version.has_value()) {
       run_1_2_0_migrations(pg_connection_string, custom_types, dry_run);
       current_version = Version{1, 2, 0};
     }
+    if (migration_needed(current_version, Version{1, 2, 1}, rerun_last_migration)) {
+      run_1_2_1_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 1};
+    }
 
     // In future, more migrations will be added here
-    // if (current_version.has_value() && *current_version < 1) {
-    //   run_1_2_1_migrations(pg_connection_string);
-    //   current_version = Version{1, 2, 1};
-    // }
-    // if (current_version.has_value() && *current_version < 2) {
+    // if (is_migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
     //   run_1_2_2_migrations(pg_connection_string);
     //   current_version = Version{1, 2, 2};
+    // }
+    // if (is_migration_needed(current_version, Version{1, 2, 3}, rerun_last_migration)) {
+    //   run_1_2_3_migrations(pg_connection_string);
+    //   current_version = Version{1, 2, 3};
     // }
     // and so on...
   }
