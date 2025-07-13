@@ -495,6 +495,27 @@ cases:
             amount_2: 2005112716
             lp_tokens_minted: 1416020025694
 
+  Coffee create pool (full + notification at the end):
+    trace-id: 3uecEX5TvThuugPaMO4MqlOxGGHRQpNRErwAP7fL7J4=
+    expected-actions:
+      - type: coffee_create_pool_creator
+        values:
+          source: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+          asset: null
+          destination_secondary: 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+          destination: 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+      - type: coffee_create_pool
+        values:
+          source: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+          source_secondary: 0:EB174AD0A061F4E97B4FD32A52585061D48AE46A7EBDF6966302C6CA37D8B6DE
+          destination: 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+          asset: 0:67D4C65E197C2FAB68ADBADF4116E82D29200327152B6C8055F265009E8D2A7F
+          asset2: null
+          coffee_create_pool_data:
+            amount_1: 2345368713954
+            amount_2: 171205371318
+            lp_tokens_minted: 633671618650
+
   Coffee create vault:
     trace-id: _7TiwVoy-w5U7lbbF5_RD0yGAauPKFCjMcuYRX4eeoU=
     expected-actions:
@@ -503,6 +524,3 @@ cases:
           source: 0:89F356BD10B3C8609187C5ABCD7BB1D5840C7F8A88E73DEBFF8E64FFD8F12010
           destination: 0:A4068454C87EB61120F23AC96E8EFF0DE706967732DBEC237ADAB1270749E51F
           asset: 0:A93DF3EB3194EABA7997892CB81C6A95BC872078C6B275354FFB55CB674C9600
-
-# 3uecEX5TvThuugPaMO4MqlOxGGHRQpNRErwAP7fL7J4=
-# with notification at the end
