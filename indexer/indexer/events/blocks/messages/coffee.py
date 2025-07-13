@@ -962,3 +962,18 @@ class CoffeeServiceFee:
 
     def __init__(self, body: Slice):
         body.load_uint(32)  # opcode
+
+
+class CoffeeMevProtectFailedSwap:
+    """
+    TL-B:
+    mev_protect_failed_swap#ee51ce51 query_id:uint64 recipient:MsgAddressInt
+    = MevProtectFailedSwap;
+    """
+
+    opcode = 0xee51ce51
+
+    def __init__(self, body: Slice):
+        body.load_uint(32)
+        self.query_id = body.load_uint(64)
+        self.recipient = body.load_address()

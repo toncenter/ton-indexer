@@ -74,6 +74,7 @@ from indexer.events.blocks.messages.coffee import (
     CoffeeDepositLiquidityNative,
     CoffeeDepositLiquiditySuccessfulEvent,
     CoffeeLiquidityWithdrawalEvent,
+    CoffeeMevProtectFailedSwap,
     CoffeeMevProtectHoldFunds,
     CoffeeNotification,
     CoffeePayout,
@@ -2235,8 +2236,8 @@ class CoffeeMevProtectHoldFundsMatcher(BlockMatcher):
         elif isinstance(block, JettonTransferBlock):
             asset = block.data['asset']
             mev_contract = AccountId(block.data['receiver'])
-            sender = AccountId(block.data['sender_wallet'])
-            sender_wallet = AccountId(block.data['sender'])
+            sender = AccountId(block.data['sender'])
+            sender_wallet = AccountId(block.data['sender_wallet'])
             amount = block.data['amount']
         else:
             return []
@@ -2248,6 +2249,36 @@ class CoffeeMevProtectHoldFundsMatcher(BlockMatcher):
             'sender_wallet': sender_wallet,
             'mev_contract_wallet': mev_contract_wallet,
             'amount': amount,
+        })
+        new_block.merge_blocks([block] + other_blocks)
+        return [new_block]
+    
+
+class CoffeeMevProtectFailedSwapMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block):
+        return (isinstance(block, CallContractBlock) and block.opcode == CoffeeMevProtectFailedSwap.opcode) or \
+            (isinstance(block, JettonTransferBlock) and block.data['payload_opcode'] == CoffeeMevProtectFailedSwap.opcode)
+    
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        asset = None
+        recipient = None
+        if isinstance(block, CallContractBlock):
+            asset = Asset(is_ton=True)
+            data = CoffeeMevProtectFailedSwap(block.get_body())
+            recipient = data.recipient
+        elif isinstance(block, JettonTransferBlock):
+            asset = block.data['asset']
+            data = CoffeeMevProtectFailedSwap(Cell.from_boc(block.data['forward_payload'])[0].begin_parse())
+            recipient = data.recipient
+        else:
+            return []
+        
+        new_block = Block('coffee_mev_protect_failed_swap', [], {
+            'recipient': recipient,
+            'asset': asset,
         })
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

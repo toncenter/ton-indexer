@@ -43,6 +43,7 @@ from indexer.events.blocks.liquidity import (
     CoffeeCreatePoolMatcher,
     CoffeeCreateVaultMatcher,
     CoffeeDepositLiquidityMatcher,
+    CoffeeMevProtectFailedSwapMatcher,
     CoffeeMevProtectHoldFundsMatcher,
     CoffeeWithdrawLiquidityMatcher,
     DedustDepositBlockMatcher,
@@ -220,7 +221,8 @@ matchers = [
     CoffeeCreateVaultMatcher(),
     CoffeeCreatePoolCreatorMatcher(),
     CoffeeCreatePoolMatcher(),
-    CoffeeMevProtectHoldFundsMatcher()
+    CoffeeMevProtectHoldFundsMatcher(),
+    CoffeeMevProtectFailedSwapMatcher()
 ]
 
 trace_post_processors = [

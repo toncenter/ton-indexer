@@ -757,6 +757,10 @@ def _fill_coffee_mev_protect_hold_funds(block: Block, action: Action):
     action.asset = _addr(block.data['asset'])
     action.amount = block.data['amount']
 
+def _fill_coffee_mev_protect_failed_swap(block: Block, action: Action):
+    action.destination = _addr(block.data['recipient'])
+    action.asset = _addr(block.data['asset'])
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -858,6 +862,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_create_pool(block, action)
         case 'coffee_mev_protect_hold_funds':
             _fill_coffee_mev_protect_hold_funds(block, action)
+        case 'coffee_mev_protect_failed_swap':
+            _fill_coffee_mev_protect_failed_swap(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
