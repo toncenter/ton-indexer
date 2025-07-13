@@ -434,6 +434,10 @@ class Action(Base):
         Column("amount_2", Numeric),
         Column("lp_tokens_minted", Numeric),
     ]))
+    coffee_staking_deposit_data = Column(CompositeType("coffee_staking_deposit_details", [
+        Column("minted_item_address", String),
+        Column("minted_item_index", Numeric),
+    ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)

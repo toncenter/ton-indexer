@@ -2217,8 +2217,11 @@ class CoffeeMevProtectHoldFundsMatcher(BlockMatcher):
         )
 
     def test_self(self, block: Block):
-        return (isinstance(block, CallContractBlock) and block.opcode == CoffeeMevProtectHoldFunds.opcode) or \
-            (isinstance(block, JettonTransferBlock) and block.data['payload_opcode'] == CoffeeMevProtectHoldFunds.opcode)
+        try:
+            return (isinstance(block, CallContractBlock) and block.opcode == CoffeeMevProtectHoldFunds.opcode) or \
+                (isinstance(block, JettonTransferBlock) and int(block.data['payload_opcode'], 16) == CoffeeMevProtectHoldFunds.opcode)
+        except:
+            return False
     
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         asset = None
@@ -2259,8 +2262,11 @@ class CoffeeMevProtectFailedSwapMatcher(BlockMatcher):
         super().__init__()
 
     def test_self(self, block: Block):
-        return (isinstance(block, CallContractBlock) and block.opcode == CoffeeMevProtectFailedSwap.opcode) or \
-            (isinstance(block, JettonTransferBlock) and block.data['payload_opcode'] == CoffeeMevProtectFailedSwap.opcode)
+        try:
+            return (isinstance(block, CallContractBlock) and block.opcode == CoffeeMevProtectFailedSwap.opcode) or \
+                (isinstance(block, JettonTransferBlock) and int(block.data['payload_opcode'], 16) == CoffeeMevProtectFailedSwap.opcode)
+        except:
+            return False
     
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         asset = None

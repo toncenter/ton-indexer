@@ -44,6 +44,7 @@ from indexer.events.blocks.multisig import (
 )
 from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock
 from indexer.events.blocks.staking import (
+    CoffeeStakingDepositBlock,
     NominatorPoolDepositBlock,
     NominatorPoolWithdrawRequestBlock,
     TONStakersDepositBlock,
@@ -761,6 +762,18 @@ def _fill_coffee_mev_protect_failed_swap(block: Block, action: Action):
     action.destination = _addr(block.data['recipient'])
     action.asset = _addr(block.data['asset'])
 
+def _fill_coffee_staking_deposit(block: CoffeeStakingDepositBlock, action: Action):
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.user_jetton_wallet)
+    action.destination = _addr(block.data.pool)
+    action.destination_secondary = _addr(block.data.pool_jetton_wallet)
+    action.asset = _addr(block.data.asset)
+    action.amount = block.data.value.value
+    action.coffee_staking_deposit_data = {
+        "minted_item_address": _addr(block.data.minted_item_address),
+        "minted_item_index": block.data.minted_item_index,
+    }
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -864,6 +877,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_mev_protect_hold_funds(block, action)
         case 'coffee_mev_protect_failed_swap':
             _fill_coffee_mev_protect_failed_swap(block, action)
+        case 'coffee_staking_deposit':
+            _fill_coffee_staking_deposit(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts

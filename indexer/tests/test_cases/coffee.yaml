@@ -536,3 +536,33 @@ cases:
           source_secondary: null
           destination_secondary: null
           amount: 15590000000
+
+  Coffee staking deposit:
+    trace-id: K_PlZB5RlxrIdSTiEdvKqazSqLUWzQ8PB4NzDTxAHk8=
+    expected-actions:
+      - type: coffee_staking_deposit
+        values:
+          source: 0:626861460C096445C421A86448786B5D6A8339DFAE38406EFE4886ED9B4BC90B
+          source_secondary: 0:E2E7AB152A91B2734CA7DEC18D84089A3271E42166178B9AE96E9068F73D0AB7 # user_jetton_wallet
+          destination_secondary: 0:7C7EDF2883E784E033F37731FEDE9ED600B8B9F8178EAB927B957D8980321546 # pool_jetton_wallet
+          destination: 0:8CB6B9CA84AF36630EB11EB2E6FEB24B90C6317982229617669FA0675466753E # pool
+          amount: 54999439792 # value
+          asset: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+          coffee_staking_deposit_data:
+            minted_item_address: 0:BC36AD7C77A596ABF16AB8BCE9D8B682D40B6EE1873D74114E9C151E63E435AC
+            minted_item_index: 1317
+
+  Coffee staking deposit (just another):
+    trace-id: 00wjHu7i1KD7Rhcr4Rsg7RSJhKtygBOfoJ2eo6B2Rt4=
+    expected-actions:
+      - type: coffee_staking_deposit
+        values:
+          source: 0:CE16553450D8D246D587CB771D494A0FB95FF5EFE6EC1FC34A83B9B3651692BC
+          source_secondary: 0:4A7C130A0B1E8F00FF13B8DA7C8F02439257EC4C5EA26837A0DA4BFF2A8CF54B # user_jetton_wallet
+          destination_secondary: 0:7CDBA40F56DD49345735C81AB9C0359B38BB1CC6E0F386B4640202132057B935 # pool_jetton_wallet
+          destination: 0:B6725D7A23D406ED2008A537236E5F607D084EA9EFEEBFCA53BF3156B491C8CC # pool
+          amount: 200000000000000 # value
+          asset: 0:157C463688A4A91245218052C5580807792CF6347D9757E32F0EE88A179A6549
+          coffee_staking_deposit_data:
+            minted_item_address: 0:65D741B3B8FED84CBE2BCBF2C1A74BE0D989AE36F92F9F8B656E7D1AEC373BBB
+            minted_item_index: 1258

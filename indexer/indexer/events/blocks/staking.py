@@ -6,6 +6,7 @@ from indexer.events import context
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import (
     BlockMatcher,
+    BlockTypeMatcher,
     ContractMatcher, OrMatcher,
 )
 from indexer.events.blocks.core import Block
@@ -28,6 +29,8 @@ from indexer.events.blocks.nft import NftMintBlock
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import find_call_contract, get_labeled
 from indexer.events.blocks.utils.ton_utils import Asset
+from indexer.events.blocks.jettons import JettonTransferBlock
+from indexer.events.blocks.messages.coffee import CoffeeStakingDeposit, CoffeeStakingLock
 
 
 @dataclass
@@ -397,3 +400,73 @@ class NominatorPoolWithdrawMatcher(BlockMatcher):
                 new_block.merge_blocks([transfer_block])
                 new_blocks.append(new_block)
         return new_blocks
+    
+@dataclass
+class CoffeeStakingDepositData:
+    source: AccountId
+    user_jetton_wallet: AccountId
+    pool_jetton_wallet: AccountId
+    pool: AccountId # or nft collection
+    value: Amount
+    minted_item_address: AccountId
+    minted_item_index: int
+    asset: Asset
+
+class CoffeeStakingDepositBlock(Block):
+    data: CoffeeStakingDepositData
+
+    def __init__(self, data):
+        super().__init__("coffee_staking_deposit", [], data)
+
+    def __repr__(self):
+        return f"coffee_staking_deposit {self.data}"
+    
+
+class CoffeeStakingDepositMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(
+            child_matcher=labeled('pool_call', ContractMatcher(
+                opcode=CoffeeStakingDeposit.opcode,
+                children_matchers=[
+                    labeled('log',ContractMatcher( # just duplicated log msg
+                        opcode=CoffeeStakingDeposit.opcode,
+                        optional=True,
+                    )),
+                    labeled('nft_mint', BlockTypeMatcher(
+                        block_type='nft_mint',
+                        optional=False
+                    ))
+                ]
+            ))
+        )
+
+    def test_self(self, block: Block):
+        return isinstance(block, JettonTransferBlock)
+    
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        jetton_transfer = block
+        pool_call = get_labeled('pool_call', other_blocks, CallContractBlock)
+        if pool_call is None:
+            return []
+        log_block = get_labeled('log', other_blocks, CallContractBlock)
+        nft_mint_block = get_labeled('nft_mint', other_blocks, NftMintBlock)
+        if nft_mint_block is None:
+            return []
+        nft_mint_data = nft_mint_block.data
+        new_block = CoffeeStakingDepositBlock(
+            data=CoffeeStakingDepositData(
+                source=AccountId(jetton_transfer.data['sender']),
+                user_jetton_wallet=AccountId(jetton_transfer.data['sender_wallet']),
+                pool_jetton_wallet=AccountId(jetton_transfer.data['receiver_wallet']),
+                pool=AccountId(pool_call.get_message().destination),
+                value=Amount(jetton_transfer.data['amount']),
+                minted_item_address=AccountId(nft_mint_data['address']),
+                minted_item_index=nft_mint_data['index'],
+                asset=jetton_transfer.data['asset']
+            )
+        )
+        blocks = [jetton_transfer, pool_call, nft_mint_block]
+        if log_block is not None:
+            blocks.append(log_block)
+        new_block.merge_blocks(blocks)
+        return [new_block]
