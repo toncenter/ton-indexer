@@ -460,9 +460,6 @@ cases:
             dex_jetton_wallet_2: 0:FD6256C33C2C5EEB4463B1CAAA3F2997F4F4A98EFE116D97B125611597D62D59
             user_jetton_wallet_2: 0:A7603C058477E5D9E86E07DAC673CE6D073BD976A80C75ADEA3198EAC7085C8D # wallet2
 
-
-# 1TUCte7dcNAyZaScButmzKI1pzRqxafdUDclpanNNe8=
-# just create pool creator 
   Coffee create pool creator (only create):
     trace-id: 1TUCte7dcNAyZaScButmzKI1pzRqxafdUDclpanNNe8=
     expected-actions:
