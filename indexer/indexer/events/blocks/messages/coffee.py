@@ -938,3 +938,27 @@ class CoffeeUpdateContractInternal:
         self.query_id = body.load_uint(64)
         self.excesses_receiver = body.load_address()
         self.contract_update = ContractUpdate(body)
+
+
+class CoffeeMevProtectHoldFunds:
+    """
+    TL-B:
+    mev_protect_hold_funds#6bc79e7e query_id:uint64 = MevProtectHoldFunds;
+    """
+
+    opcode = 0x6bc79e7e
+
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.query_id = body.load_uint(64)
+
+class CoffeeServiceFee:
+    """
+    TL-B:
+    service_fee#c0ffeea0 = ServiceFee;
+    """
+
+    opcode = 0xc0ffeea0
+
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode

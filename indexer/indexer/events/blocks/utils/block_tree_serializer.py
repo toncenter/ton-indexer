@@ -748,6 +748,15 @@ def _fill_coffee_create_pool(block: CoffeeCreatePoolBlock, action: Action):
         "amount_2": block.data.amount_2.value if block.data.amount_2 else None,
         "lp_tokens_minted": block.data.lp_tokens_minted.value if block.data.lp_tokens_minted else None,
     }
+
+def _fill_coffee_mev_protect_hold_funds(block: Block, action: Action):
+    action.source = _addr(block.data['sender'])
+    action.source_secondary = _addr(block.data['sender_wallet'])
+    action.destination = _addr(block.data['mev_contract'])
+    action.destination_secondary = _addr(block.data['mev_contract_wallet'])
+    action.asset = _addr(block.data['asset'])
+    action.amount = block.data['amount']
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -847,6 +856,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_create_pool_creator(block, action)
         case 'coffee_create_pool':
             _fill_coffee_create_pool(block, action)
+        case 'coffee_mev_protect_hold_funds':
+            _fill_coffee_mev_protect_hold_funds(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts

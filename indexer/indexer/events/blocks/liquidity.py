@@ -74,9 +74,11 @@ from indexer.events.blocks.messages.coffee import (
     CoffeeDepositLiquidityNative,
     CoffeeDepositLiquiditySuccessfulEvent,
     CoffeeLiquidityWithdrawalEvent,
+    CoffeeMevProtectHoldFunds,
     CoffeeNotification,
     CoffeePayout,
     CoffeePayoutInternal,
+    CoffeeServiceFee,
     PoolCreationParams,
     PoolParams,
     PublicPoolCreationParams,
@@ -2199,5 +2201,53 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
         )
         
         new_block = CoffeeCreatePoolBlock(data)
+        new_block.merge_blocks([block] + other_blocks)
+        return [new_block]
+
+
+class CoffeeMevProtectHoldFundsMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(
+            parent_matcher=GenericMatcher(
+                optional=True,
+                test_self_func=lambda b: True, # any opcode, since it's external
+                child_matcher=ContractMatcher(opcode=CoffeeServiceFee.opcode)
+            )
+        )
+
+    def test_self(self, block: Block):
+        return (isinstance(block, CallContractBlock) and block.opcode == CoffeeMevProtectHoldFunds.opcode) or \
+            (isinstance(block, JettonTransferBlock) and block.data['payload_opcode'] == CoffeeMevProtectHoldFunds.opcode)
+    
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        asset = None
+        sender = None
+        sender_wallet = None
+        mev_contract = None
+        mev_contract_wallet = None
+        amount = None
+        if isinstance(block, CallContractBlock):
+            mev_contract = AccountId(block.get_message().destination)
+            sender = AccountId(block.get_message().source)
+            sender_wallet = AccountId(None)
+            asset = Asset(is_ton=True)
+            amount = Amount(block.get_message().value)
+        elif isinstance(block, JettonTransferBlock):
+            asset = block.data['asset']
+            mev_contract = AccountId(block.data['receiver'])
+            sender = AccountId(block.data['sender_wallet'])
+            sender_wallet = AccountId(block.data['sender'])
+            amount = block.data['amount']
+        else:
+            return []
+        
+        new_block = Block('coffee_mev_protect_hold_funds', [], {
+            'sender': sender,
+            'mev_contract': mev_contract,
+            'asset': asset,
+            'sender_wallet': sender_wallet,
+            'mev_contract_wallet': mev_contract_wallet,
+            'amount': amount,
+        })
         new_block.merge_blocks([block] + other_blocks)
         return [new_block]

@@ -524,3 +524,15 @@ cases:
           source: 0:89F356BD10B3C8609187C5ABCD7BB1D5840C7F8A88E73DEBFF8E64FFD8F12010
           destination: 0:A4068454C87EB61120F23AC96E8EFF0DE706967732DBEC237ADAB1270749E51F
           asset: 0:A93DF3EB3194EABA7997892CB81C6A95BC872078C6B275354FFB55CB674C9600
+
+  Coffee mev protect hold funds (TON):
+    trace-id: 11WhhXiPhXuLm5C85XGw4WYY8BDn6Xnee-nPq-W0tkA=
+    expected-actions:
+      - type: coffee_mev_protect_hold_funds
+        values:
+          source: 0:B73108D2341752AF80BB14C19F4EC8DE8739EB90AC541EE0B91C8DDAC3BA9842
+          destination: 0:055D3E4FB377F6EC27656BC36135DF4ECC8BEC0CAC61D8D3D8CD1C7D346D482C
+          asset: null
+          source_secondary: null
+          destination_secondary: null
+          amount: 15590000000
