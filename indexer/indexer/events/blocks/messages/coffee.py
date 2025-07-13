@@ -977,3 +977,197 @@ class CoffeeMevProtectFailedSwap:
         body.load_uint(32)
         self.query_id = body.load_uint(64)
         self.recipient = body.load_address()
+
+
+# Staking helper classes
+
+class CoffeeStakingAssetData:
+    """
+    staking_asset_data#_ wallet:MsgAddressInt amount:Coins = CoffeeStakingAssetData;
+    """
+    
+    def __init__(self, cell_slice: Slice):
+        self.wallet = cell_slice.load_address()
+        self.amount = cell_slice.load_coins()
+
+
+class CoffeeStakingPositionData:
+    """
+    staking_position_data#_ user_points:Coins additional_points:Coins start_timestamp:uint64 
+                           end_timestamp:uint64 period_id:uint32 = CoffeeStakingPositionData;
+    """
+    
+    def __init__(self, cell_slice: Slice):
+        self.user_points = cell_slice.load_coins()
+        self.additional_points = cell_slice.load_coins()
+        self.start_timestamp = cell_slice.load_uint(64)
+        self.end_timestamp = cell_slice.load_uint(64)
+        self.period_id = cell_slice.load_uint(32)
+
+
+class CoffeeStakingForwardData:
+    """
+    staking_forward_data#_ gas:Coins payload:^Cell = CoffeeStakingForwardData;
+    """
+    
+    def __init__(self, cell_slice: Slice):
+        self.gas = cell_slice.load_coins()
+        self.payload = cell_slice.load_ref()
+
+
+# Staking message parsers
+
+class CoffeeStakingLock:
+    """
+    TL-B:
+    staking_lock#c0ffede period_id:uint32 = ForwardPayload;
+    """
+    
+    opcode = 0xc0ffede
+    
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.period_id = body.load_uint(32)
+
+
+class CoffeeStakingDeposit:
+    """
+    TL-B:
+    staking_deposit#f9471134 query_id:uint64 sender:MsgAddressInt jetton_amount:Coins 
+                             from_user:MsgAddressInt period_id:uint32 = InMsgBody;
+    """
+    
+    opcode = 0xf9471134
+    
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.query_id = body.load_uint(64)
+        self.sender = body.load_address()
+        self.jetton_amount = body.load_coins()
+        self.from_user = body.load_address()
+        self.period_id = body.load_uint(32)
+
+
+class CoffeeStakingInitialize:
+    """
+    TL-B:
+    staking_initialize#be5a7595 query_id:uint64 owner:MsgAddressInt jetton_data:^CoffeeStakingAssetData 
+                               position_data:^CoffeeStakingPositionData periods:^Cell = InMsgBody;
+    """
+    
+    opcode = 0xbe5a7595
+    
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.query_id = body.load_uint(64)
+        self.owner = body.load_address()
+        self.jetton_data = CoffeeStakingAssetData(body.load_ref().begin_parse())
+        self.position_data = CoffeeStakingPositionData(body.load_ref().begin_parse())
+        self.periods = body.load_ref()
+
+
+class CoffeeStakingClaimRewards:
+    """
+    TL-B:
+    staking_claim_rewards#b30c7310 query_id:uint64 jetton_wallet:MsgAddressInt jetton_amount:Coins 
+                                   receiver:MsgAddressInt payload:(Maybe ^CoffeeStakingForwardData) = InMsgBody;
+    """
+    
+    opcode = 0xb30c7310
+    
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.query_id = body.load_uint(64)
+        self.jetton_wallet = body.load_address()
+        self.jetton_amount = body.load_coins()
+        self.receiver = body.load_address()
+        self.payload = None
+        payload_ref = body.load_maybe_ref()
+        if payload_ref:
+            self.payload = CoffeeStakingForwardData(payload_ref.begin_parse())
+
+
+class CoffeeStakingPositionWithdraw1:
+    """
+    TL-B:
+    staking_position_withdraw_1#cb03bfaf query_id:uint64 = InMsgBody;
+    """
+    
+    opcode = 0xcb03bfaf
+    
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.query_id = body.load_uint(64)
+
+
+class CoffeeStakingPositionWithdraw2:
+    """
+    TL-B:
+    staking_position_withdraw_2#cb03bfaf query_id:uint64 nft_id:uint64 owner:MsgAddressInt 
+                                         points:Coins jetton_data:^[wallet:MsgAddressInt amount:Coins] = InMsgBody;
+    """
+    
+    opcode = 0xcb03bfaf
+    
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.query_id = body.load_uint(64)
+        self.nft_id = body.load_uint(64)
+        self.owner = body.load_address()
+        self.points = body.load_coins()
+        jetton_data_ref = body.load_ref()
+        jetton_data_slice = jetton_data_ref.begin_parse()
+        self.jetton_wallet = jetton_data_slice.load_address()
+        self.jetton_amount = jetton_data_slice.load_coins()
+
+
+class CoffeeStakingPositionWithdraw3:
+    """
+    TL-B:
+    staking_position_withdraw_3#cb03bfaf query_id:uint64 jetton_wallet:MsgAddressInt 
+                                         jetton_amount:Coins owner:MsgAddressInt = InMsgBody;
+    """
+    
+    opcode = 0xcb03bfaf
+    
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.query_id = body.load_uint(64)
+        self.jetton_wallet = body.load_address()
+        self.jetton_amount = body.load_coins()
+        self.owner = body.load_address()
+
+
+class CoffeeStakingUpdateRewards:
+    """
+    TL-B:
+    staking_update_rewards#0a9577f0 query_id:uint64 jetton_wallet:MsgAddressInt 
+                                    jetton_amount:Coins duration:uint64 = InMsgBody;
+    """
+    
+    opcode = 0x0a9577f0
+    
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.query_id = body.load_uint(64)
+        self.jetton_wallet = body.load_address()
+        self.jetton_amount = body.load_coins()
+        self.duration = body.load_uint(64)
+
+
+class CoffeeStakingRewardsUpdated:
+    """
+    TL-B:
+    staking_rewards_updated#0a9577f0 query_id:uint64 jetton_wallet:MsgAddressInt duration:uint64 
+                                     finish_at:uint64 rewards_rate:Coins = ExtOutMsgBody;
+    """
+    
+    opcode = 0x0a9577f0
+    
+    def __init__(self, body: Slice):
+        body.load_uint(32)  # opcode
+        self.query_id = body.load_uint(64)
+        self.jetton_wallet = body.load_address()
+        self.duration = body.load_uint(64)
+        self.finish_at = body.load_uint(64)
+        self.rewards_rate = body.load_coins()
