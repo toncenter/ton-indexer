@@ -1,0 +1,54 @@
+cases:
+  Getgems purchase:
+    trace-id: mG5NGg-37hpz1Vgs5KvDo0HKgtQKCnMbmGEpdApY5Ls=
+    expected-actions:
+      - type: nft_transfer
+        values:
+          tx_hashes:
+            - mG5NGg+37hpz1Vgs5KvDo0HKgtQKCnMbmGEpdApY5Ls=
+            - a8gHu9/EqRvUidjXnssqLvZJPvCKUFJ7tTFYCmrMAqs=
+            - 2LbITkVPWvxuzZH6JNJc4UfA7/FMsjXvNgKs5HfQ5mE=
+            - agYtrxL6Nuc8F+Y5bE2xf2NLNOEKzgOLDaBxaRSI/bc=
+            - rIPmbaxEuVdBGJSdLs2jBTSJczrhLpypLLo5OnM1bkM=
+          accounts:
+            - 0:CE0F98F6992B7CABE64489E9A9F0CDDDA848F1D9223E5C1B4EF0A1FDE5605C4F
+            - 0:5B305583F6F4C1ADCA54FD9EE6ADB8F065819F4A1D5D054B2E4B3677D90F5095
+            - 0:B9A7DCE19431B56044254C69858E8DC11FEC5C0761DED415E386FBE4B4E116F5
+          success: true
+          source: 0:CE0F98F6992B7CABE64489E9A9F0CDDDA848F1D9223E5C1B4EF0A1FDE5605C4F
+          destination: 0:B9A7DCE19431B56044254C69858E8DC11FEC5C0761DED415E386FBE4B4E116F5
+          asset_secondary: 0:5B305583F6F4C1ADCA54FD9EE6ADB8F065819F4A1D5D054B2E4B3677D90F5095
+          asset: 0:BACE389DF2F24D116A9C5E4D745E3B1D0CB44A6DC3D9CDB1EEB2E116E85A2439
+          nft_transfer_data:
+            query_id: 0
+            is_purchase: true
+            price: 1350000000
+            forward_amount: 30000000
+            custom_payload: null
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            response_destination: 0:B9A7DCE19431B56044254C69858E8DC11FEC5C0761DED415E386FBE4B4E116F5
+            marketplace: getgems
+  Fragment purchase:
+    trace-id: aMUaDa0Ml9lnk7KzHKpkW1UK6FPyYod2qotieVVWMd8=
+    expected-actions:
+      - type: nft_transfer
+        values:
+          tx_hashes:
+            - /DxT30y8udLmGkcLVuQC4wOL6Zds9yKJWlnW87uSx+g=
+            - EqqzoIAbK3LZQmLGBtLQ2OMiwqJo+AR1c6ZVUp8oncE=
+            - pW/aZUtZof5D6t883xgS3VETuo+p+Qt6ZI6FfZ5IO8U=
+            - O1/d/vg5gMIQCLstnFj0n9fUCKDTGyQ4+uO6ctpY1XE=
+            - aMUaDa0Ml9lnk7KzHKpkW1UK6FPyYod2qotieVVWMd8=
+          source: 0:C21FABD3D0CBD5A746C160D8E838DA6481BE7534C3CD3895C54161B9E17A0802
+          destination: 0:DED65AF00FB7799ED490B803ED436914A7F0526BC6B8B4D30C35A936D734173D
+          asset_secondary: 0:64E8AD529A81CB4149955482CEFDD50C53A8280A8FF202CCDA074BFC9B91E623
+          asset: 0:80D78A35F955A14B679FAA887FF4CD5BFC0F43B4A4EEA2A7E6927F3701B273C2
+          nft_transfer_data:
+            query_id: 42799341000003
+            is_purchase: true
+            price: 111000000000
+            forward_amount: null
+            custom_payload: null
+            forward_payload: te6cckEBAQEAEAAAGzgSfeFRnYHZYAZWIktoiLLaZw==
+            response_destination: null
+            marketplace: fragment

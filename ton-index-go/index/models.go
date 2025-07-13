@@ -105,6 +105,7 @@ type AccountStateFull struct {
 	CodeHash               *HashType         `json:"code_hash,omitempty"`
 	DataBoc                *string           `json:"data_boc,omitempty"`
 	CodeBoc                *string           `json:"code_boc,omitempty"`
+	ContractMethods        *[]uint32         `json:"contract_methods"`
 } // @name AccountStateFull
 
 type WalletState struct {
@@ -519,6 +520,7 @@ type RawAction struct {
 	NFTTransferForwardAmount                             *string
 	NFTTransferResponseDestination                       *AccountAddress
 	NFTTransferNFTItemIndex                              *string
+	NFTTransferMarketplace                               *string
 	JettonSwapDex                                        *string
 	JettonSwapSender                                     *AccountAddress
 	JettonSwapDexIncomingTransferAmount                  *string
@@ -577,6 +579,7 @@ type RawAction struct {
 	StakingDataTokensMinted                              *string
 	Success                                              *bool
 	TraceExternalHash                                    *HashType
+	TraceExternalHashNorm                                *HashType
 	ExtraCurrencies                                      map[string]string
 	MultisigCreateOrderQueryId                           *string
 	MultisigCreateOrderOrderSeqno                        *string
@@ -626,6 +629,9 @@ type RawAction struct {
 	ToncoDeployPoolLpFeeBase                             *string
 	ToncoDeployPoolLpFeeCurrent                          *string
 	ToncoDeployPoolPoolActive                            *bool
+
+	AncestorType []string
+	Accounts     []string
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
@@ -792,6 +798,7 @@ type ActionDetailsNftTransfer struct {
 	ForwardAmount       *string         `json:"forward_amount"`
 	Comment             *string         `json:"comment"`
 	IsEncryptedComment  *bool           `json:"is_encrypted_comment"`
+	Marketplace         *string         `json:"marketplace"`
 }
 
 type ActionDetailsTickTock struct {
@@ -907,21 +914,24 @@ type ActionDetailsWithdrawStakeRequest struct {
 }
 
 type Action struct {
-	TraceId           *HashType   `json:"trace_id"`
-	ActionId          HashType    `json:"action_id"`
-	StartLt           int64       `json:"start_lt,string"`
-	EndLt             int64       `json:"end_lt,string"`
-	StartUtime        int64       `json:"start_utime"`
-	EndUtime          int64       `json:"end_utime"`
-	TraceEndLt        int64       `json:"trace_end_lt,string"`
-	TraceEndUtime     int64       `json:"trace_end_utime"`
-	TraceMcSeqnoEnd   int32       `json:"trace_mc_seqno_end"`
-	TxHashes          []HashType  `json:"transactions"`
-	Success           *bool       `json:"success"`
-	Type              string      `json:"type"`
-	Details           interface{} `json:"details"`
-	RawAction         *RawAction  `json:"raw_action,omitempty" swaggerignore:"true"`
-	TraceExternalHash *HashType   `json:"trace_external_hash,omitempty"`
+	TraceId               *HashType   `json:"trace_id"`
+	ActionId              HashType    `json:"action_id"`
+	StartLt               int64       `json:"start_lt,string"`
+	EndLt                 int64       `json:"end_lt,string"`
+	StartUtime            int64       `json:"start_utime"`
+	EndUtime              int64       `json:"end_utime"`
+	TraceEndLt            int64       `json:"trace_end_lt,string"`
+	TraceEndUtime         int64       `json:"trace_end_utime"`
+	TraceMcSeqnoEnd       int32       `json:"trace_mc_seqno_end"`
+	TxHashes              []HashType  `json:"transactions"`
+	Success               *bool       `json:"success"`
+	Type                  string      `json:"type"`
+	Details               interface{} `json:"details"`
+	RawAction             *RawAction  `json:"raw_action,omitempty" swaggerignore:"true"`
+	TraceExternalHash     *HashType   `json:"trace_external_hash,omitempty"`
+	TraceExternalHashNorm *HashType   `json:"trace_external_hash_norm,omitempty"`
+	AncestorType          []string    `json:"-"`
+	Accounts              []string    `json:"accounts,omitempty"`
 } // @name Action
 
 type TraceMeta struct {
@@ -1022,6 +1032,34 @@ type BalanceChangesResult struct {
 	Fees    map[AccountAddress]int64                     `json:"fees"`
 	Jettons map[AccountAddress]map[AccountAddress]string `json:"jettons"`
 }
+
+type MultisigOrder struct {
+	Address           AccountAddress   `json:"address"`
+	MultisigAddress   AccountAddress   `json:"multisig_address"`
+	OrderSeqno        *string          `json:"order_seqno"`
+	Threshold         *int32           `json:"threshold"`
+	SentForExecution  *bool            `json:"sent_for_execution"`
+	ApprovalsMask     *string          `json:"approvals_mask"`
+	ApprovalsNum      *int32           `json:"approvals_num"`
+	ExpirationDate    *uint64          `json:"expiration_date"`
+	OrderBoc          *string          `json:"order_boc"`
+	Signers           []AccountAddress `json:"signers"`
+	LastTransactionLt int64            `json:"last_transaction_lt,string"`
+	CodeHash          *HashType        `json:"code_hash"`
+	DataHash          *HashType        `json:"data_hash"`
+} // @name MultisigOrder
+
+type Multisig struct {
+	Address           AccountAddress   `json:"address"`
+	NextOrderSeqno    *string          `json:"next_order_seqno"`
+	Threshold         *int32           `json:"threshold"`
+	Signers           []AccountAddress `json:"signers"`
+	Proposers         []AccountAddress `json:"proposers"`
+	LastTransactionLt int64            `json:"last_transaction_lt,string"`
+	CodeHash          *HashType        `json:"code_hash"`
+	DataHash          *HashType        `json:"data_hash"`
+	Orders            []MultisigOrder  `json:"orders"`
+} // @name Multisig
 
 // converters
 func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, error) {
@@ -1215,4 +1253,16 @@ type ActionDetailsNftDiscovery struct {
 	NftItem       *AccountAddress `json:"nft_item"`
 	NftCollection *AccountAddress `json:"nft_collection"`
 	NftItemIndex  *string         `json:"nft_item_index"`
+}
+
+type VestingInfo struct {
+	Address       *AccountAddress  `json:"address"`
+	StartTime     *int64           `json:"start_time"`
+	TotalDuration *int64           `json:"total_duration"`
+	UnlockPeriod  *int64           `json:"unlock_period"`
+	CliffDuration *int64           `json:"cliff_duration"`
+	SenderAddress *AccountAddress  `json:"sender_address"`
+	OwnerAddress  *AccountAddress  `json:"owner_address"`
+	TotalAmount   *string          `json:"total_amount"`
+	Whitelist     []AccountAddress `json:"whitelist"`
 }

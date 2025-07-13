@@ -218,6 +218,7 @@ type actionNftTransferDetails struct {
 	ForwardAmount       *string `msgpack:"forward_amount"`
 	ResponseDestination *string `msgpack:"response_destination"`
 	NftItemIndex        *string `msgpack:"nft_item_index"`
+	Marketplace         *string `msgpack:"marketplace"`
 }
 
 type actionDexTransferDetails struct {
@@ -247,6 +248,7 @@ type actionJettonSwapDetails struct {
 	DexIncomingTransfer actionDexTransferDetails `msgpack:"dex_incoming_transfer"`
 	DexOutgoingTransfer actionDexTransferDetails `msgpack:"dex_outgoing_transfer"`
 	PeerSwaps           []actionPeerSwapDetails  `msgpack:"peer_swaps"`
+	MinOutAmount        *string                  `msgpack:"min_out_amount"`
 }
 
 type actionChangeDnsRecordDetails struct {
@@ -274,6 +276,10 @@ type actionDexDepositLiquidityData struct {
 	TargetAmount1     *string             `msgpack:"target_amount_1"`
 	TargetAmount2     *string             `msgpack:"target_amount_2"`
 	VaultExcesses     []actionVaultExcess `msgpack:"vault_excesses"`
+	TickLower         *string             `msgpack:"tick_lower"`
+	TickUpper         *string             `msgpack:"tick_upper"`
+	NFTIndex          *string             `msgpack:"nft_index"`
+	NFTAddress        *string             `msgpack:"nft_address"`
 }
 
 type actionDexWithdrawLiquidityData struct {
@@ -287,6 +293,10 @@ type actionDexWithdrawLiquidityData struct {
 	DexJettonWallet1  *string `msgpack:"dex_jetton_wallet_1"`
 	DexJettonWallet2  *string `msgpack:"dex_jetton_wallet_2"`
 	LpTokensBurnt     *string `msgpack:"lp_tokens_burnt"`
+	BurnedNFTIndex    *string `msgpack:"burned_nft_index"`
+	BurnedNFTAddress  *string `msgpack:"burned_nft_address"`
+	TickLower         *string `msgpack:"tick_lower"`
+	TickUpper         *string `msgpack:"tick_upper"`
 }
 
 type actionStakingData struct {
@@ -296,43 +306,137 @@ type actionStakingData struct {
 	TokensMinted *string `msgpack:"tokens_minted"`
 }
 
+type actionToncoDeployPoolDetails struct {
+	Jetton0RouterWallet *string `msgpack:"jetton0_router_wallet"`
+	Jetton1RouterWallet *string `msgpack:"jetton1_router_wallet"`
+	Jetton0Minter       *string `msgpack:"jetton0_minter"`
+	Jetton1Minter       *string `msgpack:"jetton1_minter"`
+	TickSpacing         *string `msgpack:"tick_spacing"`
+	InitialPriceX96     *string `msgpack:"initial_price_x96"`
+	ProtocolFee         *string `msgpack:"protocol_fee"`
+	LpFeeBase           *string `msgpack:"lp_fee_base"`
+	LpFeeCurrent        *string `msgpack:"lp_fee_current"`
+	PoolActive          *bool   `msgpack:"pool_active"`
+}
+
+type actionMultisigCreateOrderDetails struct {
+	QueryId           *string `msgpack:"query_id"`
+	OrderSeqno        *string `msgpack:"order_seqno"`
+	IsCreatedBySigner *bool   `msgpack:"is_created_by_signer"`
+	IsSignedByCreator *bool   `msgpack:"is_signed_by_creator"`
+	CreatorIndex      *int64  `msgpack:"creator_index"`
+	ExpirationDate    *int64  `msgpack:"expiration_date"`
+	OrderBoc          *string `msgpack:"order_boc"`
+}
+
+type actionMultisigApproveDetails struct {
+	SignerIndex *int64 `msgpack:"signer_index"`
+	ExitCode    *int32 `msgpack:"exit_code"`
+}
+
+type actionMultisigExecuteDetails struct {
+	QueryId        *string `msgpack:"query_id"`
+	OrderSeqno     *string `msgpack:"order_seqno"`
+	ExpirationDate *int64  `msgpack:"expiration_date"`
+	ApprovalsNum   *int64  `msgpack:"approvals_num"`
+	SignersHash    *string `msgpack:"signers_hash"`
+	OrderBoc       *string `msgpack:"order_boc"`
+}
+
+type actionVestingSendMessageDetails struct {
+	QueryId    *string `msgpack:"query_id"`
+	MessageBoc *string `msgpack:"message_boc"`
+}
+
+type actionVestingAddWhitelistDetails struct {
+	QueryId       *string  `msgpack:"query_id"`
+	AccountsAdded []string `msgpack:"accounts_added"`
+}
+
+type actionEvaaSupplyDetails struct {
+	SenderJettonWallet    *string `msgpack:"sender_jetton_wallet"`
+	RecipientJettonWallet *string `msgpack:"recipient_jetton_wallet"`
+	MasterJettonWallet    *string `msgpack:"master_jetton_wallet"`
+	Master                *string `msgpack:"master"`
+	AssetId               *string `msgpack:"asset_id"`
+	IsTon                 *bool   `msgpack:"is_ton"`
+}
+
+type actionEvaaWithdrawDetails struct {
+	RecipientJettonWallet *string `msgpack:"recipient_jetton_wallet"`
+	MasterJettonWallet    *string `msgpack:"master_jetton_wallet"`
+	Master                *string `msgpack:"master"`
+	FailReason            *string `msgpack:"fail_reason"`
+	AssetId               *string `msgpack:"asset_id"`
+}
+
+type actionEvaaLiquidateDetails struct {
+	FailReason *string `msgpack:"fail_reason"`
+	DebtAmount *string `msgpack:"debt_amount"`
+	AssetId    *string `msgpack:"asset_id"`
+}
+
+type actionJvaultClaimDetails struct {
+	ClaimedJettons []string `msgpack:"claimed_jettons"`
+	ClaimedAmounts []string `msgpack:"claimed_amounts"`
+}
+
+type actionJvaultStakeDetails struct {
+	Period             *int64  `msgpack:"period"`
+	MintedStakeJettons *string `msgpack:"minted_stake_jettons"`
+	StakeWallet        *string `msgpack:"stake_wallet"`
+}
+
 type Action struct {
-	ActionId                 string                          `msgpack:"action_id"`
-	Type                     string                          `msgpack:"type"`
-	TraceId                  *string                         `msgpack:"trace_id"`
-	TraceExternalHash        string                          `msgpack:"trace_external_hash"`
-	TxHashes                 []string                        `msgpack:"tx_hashes"`
-	Value                    *string                         `msgpack:"value"`
-	Amount                   *string                         `msgpack:"amount"`
-	StartLt                  *uint64                         `msgpack:"start_lt"`
-	EndLt                    *uint64                         `msgpack:"end_lt"`
-	StartUtime               *uint32                         `msgpack:"start_utime"`
-	EndUtime                 *uint32                         `msgpack:"end_utime"`
-	TraceEndLt               *uint64                         `msgpack:"trace_end_lt"`
-	TraceEndUtime            *uint32                         `msgpack:"trace_end_utime"`
-	TraceStartLt             *uint64                         `msgpack:"trace_start_lt"`
-	TraceMcSeqnoEnd          *uint32                         `msgpack:"trace_mc_seqno_end"`
-	Source                   *string                         `msgpack:"source"`
-	SourceSecondary          *string                         `msgpack:"source_secondary"`
-	Destination              *string                         `msgpack:"destination"`
-	DestinationSecondary     *string                         `msgpack:"destination_secondary"`
-	Asset                    *string                         `msgpack:"asset"`
-	AssetSecondary           *string                         `msgpack:"asset_secondary"`
-	Asset2                   *string                         `msgpack:"asset2"`
-	Asset2Secondary          *string                         `msgpack:"asset2_secondary"`
-	Opcode                   *uint32                         `msgpack:"opcode"`
-	Success                  bool                            `msgpack:"success"`
-	TonTransferData          *actionTonTransferDetails       `msgpack:"ton_transfer_data"`
-	AncestorType             []string                        `msgpack:"ancestor_type"`
-	ParentActionId           *string                         `msgpack:"parent_action_id"`
-	JettonTransferData       *actionJettonTransferDetails    `msgpack:"jetton_transfer_data"`
-	NftTransferData          *actionNftTransferDetails       `msgpack:"nft_transfer_data"`
-	JettonSwapData           *actionJettonSwapDetails        `msgpack:"jetton_swap_data"`
-	ChangeDnsRecordData      *actionChangeDnsRecordDetails   `msgpack:"change_dns_record_data"`
-	NftMintData              *actionNftMintDetails           `msgpack:"nft_mint_data"`
-	DexDepositLiquidityData  *actionDexDepositLiquidityData  `msgpack:"dex_deposit_liquidity_data"`
-	DexWithdrawLiquidityData *actionDexWithdrawLiquidityData `msgpack:"dex_withdraw_liquidity_data"`
-	StakingData              *actionStakingData              `msgpack:"staking_data"`
+	ActionId                 string                            `msgpack:"action_id"`
+	Type                     string                            `msgpack:"type"`
+	TraceId                  *string                           `msgpack:"trace_id"`
+	TraceExternalHash        string                            `msgpack:"trace_external_hash"`
+	TraceExternalHashNorm    *string                           `msgpack:"trace_external_hash_norm"`
+	TxHashes                 []string                          `msgpack:"tx_hashes"`
+	Value                    *string                           `msgpack:"value"`
+	Amount                   *string                           `msgpack:"amount"`
+	StartLt                  *uint64                           `msgpack:"start_lt"`
+	EndLt                    *uint64                           `msgpack:"end_lt"`
+	StartUtime               *uint32                           `msgpack:"start_utime"`
+	EndUtime                 *uint32                           `msgpack:"end_utime"`
+	TraceEndLt               *uint64                           `msgpack:"trace_end_lt"`
+	TraceEndUtime            *uint32                           `msgpack:"trace_end_utime"`
+	TraceStartLt             *uint64                           `msgpack:"trace_start_lt"`
+	TraceMcSeqnoEnd          *uint32                           `msgpack:"trace_mc_seqno_end"`
+	Source                   *string                           `msgpack:"source"`
+	SourceSecondary          *string                           `msgpack:"source_secondary"`
+	Destination              *string                           `msgpack:"destination"`
+	DestinationSecondary     *string                           `msgpack:"destination_secondary"`
+	Asset                    *string                           `msgpack:"asset"`
+	AssetSecondary           *string                           `msgpack:"asset_secondary"`
+	Asset2                   *string                           `msgpack:"asset2"`
+	Asset2Secondary          *string                           `msgpack:"asset2_secondary"`
+	Opcode                   *uint32                           `msgpack:"opcode"`
+	Success                  bool                              `msgpack:"success"`
+	TonTransferData          *actionTonTransferDetails         `msgpack:"ton_transfer_data"`
+	AncestorType             []string                          `msgpack:"ancestor_type"`
+	ParentActionId           *string                           `msgpack:"parent_action_id"`
+	Accounts                 []string                          `msgpack:"accounts"`
+	JettonTransferData       *actionJettonTransferDetails      `msgpack:"jetton_transfer_data"`
+	NftTransferData          *actionNftTransferDetails         `msgpack:"nft_transfer_data"`
+	JettonSwapData           *actionJettonSwapDetails          `msgpack:"jetton_swap_data"`
+	ChangeDnsRecordData      *actionChangeDnsRecordDetails     `msgpack:"change_dns_record_data"`
+	NftMintData              *actionNftMintDetails             `msgpack:"nft_mint_data"`
+	DexDepositLiquidityData  *actionDexDepositLiquidityData    `msgpack:"dex_deposit_liquidity_data"`
+	DexWithdrawLiquidityData *actionDexWithdrawLiquidityData   `msgpack:"dex_withdraw_liquidity_data"`
+	StakingData              *actionStakingData                `msgpack:"staking_data"`
+	ToncoDeployPoolData      *actionToncoDeployPoolDetails     `msgpack:"tonco_deploy_pool_data"`
+	MultisigCreateOrderData  *actionMultisigCreateOrderDetails `msgpack:"multisig_create_order_data"`
+	MultisigApproveData      *actionMultisigApproveDetails     `msgpack:"multisig_approve_data"`
+	MultisigExecuteData      *actionMultisigExecuteDetails     `msgpack:"multisig_execute_data"`
+	VestingSendMessageData   *actionVestingSendMessageDetails  `msgpack:"vesting_send_message_data"`
+	VestingAddWhitelistData  *actionVestingAddWhitelistDetails `msgpack:"vesting_add_whitelist_data"`
+	EvaaSupplyData           *actionEvaaSupplyDetails          `msgpack:"evaa_supply_data"`
+	EvaaWithdrawData         *actionEvaaWithdrawDetails        `msgpack:"evaa_withdraw_data"`
+	EvaaLiquidateData        *actionEvaaLiquidateDetails       `msgpack:"evaa_liquidate_data"`
+	JvaultClaimData          *actionJvaultClaimDetails         `msgpack:"jvault_claim_data"`
+	JvaultStakeData          *actionJvaultStakeDetails         `msgpack:"jvault_stake_data"`
 }
 
 type blockId struct {
@@ -343,11 +447,11 @@ type blockId struct {
 type Trace struct {
 	TraceId      *string
 	ExternalHash string
-	Nodes        []traceNode
+	Nodes        []TraceNode
 	Classified   bool
 	Actions      []Action
 }
-type traceNode struct {
+type TraceNode struct {
 	Transaction  transaction `msgpack:"transaction"`
 	Emulated     bool        `msgpack:"emulated"`
 	BlockId      blockId     `msgpack:"block_id"`
@@ -488,7 +592,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 		return Trace{}, fmt.Errorf("root_node not found in trace %s", traceKey)
 	}
 	queue = append(queue, rootNodeId)
-	txs := make([]traceNode, 0)
+	txs := make([]TraceNode, 0)
 	actions := make([]Action, 0)
 	var endLt uint64 = 0
 	var endUtime uint32 = 0
@@ -497,7 +601,7 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 	for len(queue) > 0 {
 		key := queue[0]
 		queue = queue[1:]
-		var node traceNode
+		var node TraceNode
 		nodeData, exists := traceHash[key]
 		if !exists {
 			return Trace{}, fmt.Errorf("key %s not found in trace", key)
@@ -561,7 +665,7 @@ func (h hash) Base64Ptr() *string {
 	return &str
 }
 
-func (n *traceNode) GetTransactionRow() (TransactionRow, error) {
+func (n *TraceNode) GetTransactionRow() (TransactionRow, error) {
 	origStatus, err := n.Transaction.OrigStatus.Str()
 	if err != nil {
 		return TransactionRow{}, err
@@ -761,7 +865,7 @@ func (m *trMessage) GetMessageRow(traceId string, direction string, txLt uint64,
 	return msgRow, body, initState, nil
 }
 
-func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, map[string]MessageContentRow, error) {
+func (n *TraceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, map[string]MessageContentRow, error) {
 	messageContents := make(map[string]MessageContentRow)
 	initStates := make(map[string]MessageContentRow)
 	messages := make([]MessageRow, 0)
@@ -796,33 +900,39 @@ func (n *traceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 }
 
 func (a *Action) GetActionRow() (ActionRow, error) {
+	var traceExternalHashNorm *string = nil
+	if a.TraceExternalHashNorm != nil && *a.TraceExternalHashNorm != a.TraceExternalHash {
+		traceExternalHashNorm = a.TraceExternalHashNorm
+	}
 	row := ActionRow{
-		ActionId:             a.ActionId,
-		Type:                 a.Type,
-		TraceId:              a.TraceId,
-		TxHashes:             a.TxHashes,
-		Value:                a.Value,
-		Amount:               a.Amount,
-		StartLt:              *a.StartLt,
-		EndLt:                *a.EndLt,
-		TraceEndLt:           a.TraceEndLt,
-		TraceMcSeqnoEnd:      a.TraceMcSeqnoEnd,
-		TraceEndUtime:        a.TraceEndUtime,
-		StartUtime:           *a.StartUtime,
-		EndUtime:             *a.EndUtime,
-		Source:               a.Source,
-		SourceSecondary:      a.SourceSecondary,
-		Destination:          a.Destination,
-		DestinationSecondary: a.DestinationSecondary,
-		Asset:                a.Asset,
-		AssetSecondary:       a.AssetSecondary,
-		Asset2:               a.Asset2,
-		Asset2Secondary:      a.Asset2Secondary,
-		Opcode:               a.Opcode,
-		Success:              a.Success,
-		TraceExternalHash:    &a.TraceExternalHash,
-		ParentActionId:       a.ParentActionId,
-		AncestorType:         a.AncestorType,
+		ActionId:              a.ActionId,
+		Type:                  a.Type,
+		TraceId:               a.TraceId,
+		TxHashes:              a.TxHashes,
+		Value:                 a.Value,
+		Amount:                a.Amount,
+		StartLt:               *a.StartLt,
+		EndLt:                 *a.EndLt,
+		TraceEndLt:            a.TraceEndLt,
+		TraceMcSeqnoEnd:       a.TraceMcSeqnoEnd,
+		TraceEndUtime:         a.TraceEndUtime,
+		StartUtime:            *a.StartUtime,
+		EndUtime:              *a.EndUtime,
+		Source:                a.Source,
+		SourceSecondary:       a.SourceSecondary,
+		Destination:           a.Destination,
+		DestinationSecondary:  a.DestinationSecondary,
+		Asset:                 a.Asset,
+		AssetSecondary:        a.AssetSecondary,
+		Asset2:                a.Asset2,
+		Asset2Secondary:       a.Asset2Secondary,
+		Opcode:                a.Opcode,
+		Success:               a.Success,
+		TraceExternalHash:     &a.TraceExternalHash,
+		TraceExternalHashNorm: traceExternalHashNorm,
+		ParentActionId:        a.ParentActionId,
+		AncestorType:          a.AncestorType,
+		Accounts:              a.Accounts,
 	}
 	if a.TonTransferData != nil {
 		row.TonTransferContent = a.TonTransferData.Content
@@ -846,6 +956,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.NFTTransferForwardAmount = a.NftTransferData.ForwardAmount
 		row.NFTTransferResponseDestination = a.NftTransferData.ResponseDestination
 		row.NFTTransferNFTItemIndex = a.NftTransferData.NftItemIndex
+		row.NFTTransferMarketplace = a.NftTransferData.Marketplace
 	}
 	if a.JettonSwapData != nil {
 		row.JettonSwapDex = a.JettonSwapData.Dex
@@ -864,6 +975,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.JettonSwapDexOutgoingTransferDestinationJettonWallet = a.JettonSwapData.DexOutgoingTransfer.DestinationJettonWallet
 
 		row.JettonSwapPeerSwaps = a.JettonSwapData.PeerSwaps
+		row.JettonSwapMinOutAmount = a.JettonSwapData.MinOutAmount
 	}
 	if a.ChangeDnsRecordData != nil {
 		var dnsRecordsFlag *int64
@@ -896,6 +1008,10 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.DexDepositLiquidityDataTargetAmount1 = a.DexDepositLiquidityData.TargetAmount1
 		row.DexDepositLiquidityDataTargetAmount2 = a.DexDepositLiquidityData.TargetAmount2
 		row.DexDepositLiquidityDataVaultExcesses = a.DexDepositLiquidityData.VaultExcesses
+		row.DexDepositLiquidityDataTickLower = a.DexDepositLiquidityData.TickLower
+		row.DexDepositLiquidityDataTickUpper = a.DexDepositLiquidityData.TickUpper
+		row.DexDepositLiquidityDataNFTIndex = a.DexDepositLiquidityData.NFTIndex
+		row.DexDepositLiquidityDataNFTAddress = a.DexDepositLiquidityData.NFTAddress
 	}
 	if a.DexWithdrawLiquidityData != nil {
 		row.DexWithdrawLiquidityDataDex = a.DexWithdrawLiquidityData.Dex
@@ -908,12 +1024,112 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.DexWithdrawLiquidityDataDexJettonWallet1 = a.DexWithdrawLiquidityData.DexJettonWallet1
 		row.DexWithdrawLiquidityDataDexJettonWallet2 = a.DexWithdrawLiquidityData.DexJettonWallet2
 		row.DexWithdrawLiquidityDataLpTokensBurnt = a.DexWithdrawLiquidityData.LpTokensBurnt
+		row.DexWithdrawLiquidityDataBurnedNFTIndex = a.DexWithdrawLiquidityData.BurnedNFTIndex
+		row.DexWithdrawLiquidityDataBurnedNFTAddress = a.DexWithdrawLiquidityData.BurnedNFTAddress
+		row.DexWithdrawLiquidityDataTickLower = a.DexWithdrawLiquidityData.TickLower
+		row.DexWithdrawLiquidityDataTickUpper = a.DexWithdrawLiquidityData.TickUpper
 	}
 	if a.StakingData != nil {
 		row.StakingDataProvider = a.StakingData.Provider
 		row.StakingDataTsNft = a.StakingData.TsNft
 		row.StakingTokensBurnt = a.StakingData.TokensBurnt
 		row.StakingTokensMinted = a.StakingData.TokensMinted
+	}
+	if a.ToncoDeployPoolData != nil {
+		row.ToncoDeployPoolJetton0RouterWallet = a.ToncoDeployPoolData.Jetton0RouterWallet
+		row.ToncoDeployPoolJetton1RouterWallet = a.ToncoDeployPoolData.Jetton1RouterWallet
+		row.ToncoDeployPoolJetton0Minter = a.ToncoDeployPoolData.Jetton0Minter
+		row.ToncoDeployPoolJetton1Minter = a.ToncoDeployPoolData.Jetton1Minter
+		row.ToncoDeployPoolInitialPriceX96 = a.ToncoDeployPoolData.InitialPriceX96
+		row.ToncoDeployPoolPoolActive = a.ToncoDeployPoolData.PoolActive
+
+		// Convert string fields to int64 for the row
+		if a.ToncoDeployPoolData.TickSpacing != nil {
+			v, err := strconv.ParseInt(*a.ToncoDeployPoolData.TickSpacing, 10, 64)
+			if err != nil {
+				return ActionRow{}, err
+			}
+			row.ToncoDeployPoolTickSpacing = &v
+		}
+		if a.ToncoDeployPoolData.ProtocolFee != nil {
+			v, err := strconv.ParseInt(*a.ToncoDeployPoolData.ProtocolFee, 10, 64)
+			if err != nil {
+				return ActionRow{}, err
+			}
+			row.ToncoDeployPoolProtocolFee = &v
+		}
+		if a.ToncoDeployPoolData.LpFeeBase != nil {
+			v, err := strconv.ParseInt(*a.ToncoDeployPoolData.LpFeeBase, 10, 64)
+			if err != nil {
+				return ActionRow{}, err
+			}
+			row.ToncoDeployPoolLpFeeBase = &v
+		}
+		if a.ToncoDeployPoolData.LpFeeCurrent != nil {
+			v, err := strconv.ParseInt(*a.ToncoDeployPoolData.LpFeeCurrent, 10, 64)
+			if err != nil {
+				return ActionRow{}, err
+			}
+			row.ToncoDeployPoolLpFeeCurrent = &v
+		}
+	}
+	if a.MultisigCreateOrderData != nil {
+		row.MultisigCreateOrderQueryId = a.MultisigCreateOrderData.QueryId
+		row.MultisigCreateOrderOrderSeqno = a.MultisigCreateOrderData.OrderSeqno
+		row.MultisigCreateOrderIsCreatedBySigner = a.MultisigCreateOrderData.IsCreatedBySigner
+		row.MultisigCreateOrderIsSignedByCreator = a.MultisigCreateOrderData.IsSignedByCreator
+		row.MultisigCreateOrderCreatorIndex = a.MultisigCreateOrderData.CreatorIndex
+		row.MultisigCreateOrderExpirationDate = a.MultisigCreateOrderData.ExpirationDate
+		row.MultisigCreateOrderOrderBoc = a.MultisigCreateOrderData.OrderBoc
+	}
+	if a.MultisigApproveData != nil {
+		row.MultisigApproveSignerIndex = a.MultisigApproveData.SignerIndex
+		row.MultisigApproveExitCode = a.MultisigApproveData.ExitCode
+	}
+	if a.MultisigExecuteData != nil {
+		row.MultisigExecuteQueryId = a.MultisigExecuteData.QueryId
+		row.MultisigExecuteOrderSeqno = a.MultisigExecuteData.OrderSeqno
+		row.MultisigExecuteExpirationDate = a.MultisigExecuteData.ExpirationDate
+		row.MultisigExecuteApprovalsNum = a.MultisigExecuteData.ApprovalsNum
+		row.MultisigExecuteSignersHash = a.MultisigExecuteData.SignersHash
+		row.MultisigExecuteOrderBoc = a.MultisigExecuteData.OrderBoc
+	}
+	if a.VestingSendMessageData != nil {
+		row.VestingSendMessageQueryId = a.VestingSendMessageData.QueryId
+		row.VestingSendMessageMessageBoc = a.VestingSendMessageData.MessageBoc
+	}
+	if a.VestingAddWhitelistData != nil {
+		row.VestingAddWhitelistQueryId = a.VestingAddWhitelistData.QueryId
+		row.VestingAddWhitelistAccountsAdded = a.VestingAddWhitelistData.AccountsAdded
+	}
+	if a.EvaaSupplyData != nil {
+		row.EvaaSupplySenderJettonWallet = a.EvaaSupplyData.SenderJettonWallet
+		row.EvaaSupplyRecipientJettonWallet = a.EvaaSupplyData.RecipientJettonWallet
+		row.EvaaSupplyMasterJettonWallet = a.EvaaSupplyData.MasterJettonWallet
+		row.EvaaSupplyMaster = a.EvaaSupplyData.Master
+		row.EvaaSupplyAssetId = a.EvaaSupplyData.AssetId
+		row.EvaaSupplyIsTon = a.EvaaSupplyData.IsTon
+	}
+	if a.EvaaWithdrawData != nil {
+		row.EvaaWithdrawRecipientJettonWallet = a.EvaaWithdrawData.RecipientJettonWallet
+		row.EvaaWithdrawMasterJettonWallet = a.EvaaWithdrawData.MasterJettonWallet
+		row.EvaaWithdrawMaster = a.EvaaWithdrawData.Master
+		row.EvaaWithdrawFailReason = a.EvaaWithdrawData.FailReason
+		row.EvaaWithdrawAssetId = a.EvaaWithdrawData.AssetId
+	}
+	if a.EvaaLiquidateData != nil {
+		row.EvaaLiquidateFailReason = a.EvaaLiquidateData.FailReason
+		row.EvaaLiquidateDebtAmount = a.EvaaLiquidateData.DebtAmount
+		row.EvaaLiquidateAssetId = a.EvaaLiquidateData.AssetId
+	}
+	if a.JvaultClaimData != nil {
+		row.JvaultClaimClaimedJettons = a.JvaultClaimData.ClaimedJettons
+		row.JvaultClaimClaimedAmounts = a.JvaultClaimData.ClaimedAmounts
+	}
+	if a.JvaultStakeData != nil {
+		row.JvaultStakePeriod = a.JvaultStakeData.Period
+		row.JvaultStakeMintedStakeJettons = a.JvaultStakeData.MintedStakeJettons
+		row.JvaultStakeStakeWallet = a.JvaultStakeData.StakeWallet
 	}
 	return row, nil
 }

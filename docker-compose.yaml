@@ -18,9 +18,12 @@ x-index-api: &index-api
 
 x-index-worker: &index-worker
   TON_WORKER_FROM:
-  TON_WORKER_DBROOT: /tondb
+  TON_WORKER_DBROOT: ${TON_WORKER_DBROOT:-/var/ton-work/db}
   TON_WORKER_BINARY: ton-index-postgres
-  TON_WORKER_ADDITIONAL_ARGS:
+  <<: *index-common
+
+x-index-migrate: &index-migrate
+  TON_WORKER_BINARY: ton-index-postgres-migrate
   <<: *index-common
 
 services:
@@ -29,12 +32,22 @@ services:
     networks:
       - internal
     command: redis-server --maxclients 40000
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   event-classifier:
     image: toncenter/ton-indexer-classifier:${VERSION:-latest}
     build:
       context: indexer
       dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      event-cache:
+        condition: service_healthy
     secrets:
       - postgres_password
     command: --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 10000 --batch-size 1000 --expected-total 720000000
@@ -58,11 +71,32 @@ services:
     networks:
       internal:
 
+  run-migrations:
+    image: toncenter/ton-indexer-worker:${VERSION:-latest}
+    build:
+      context: ton-index-worker
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    secrets:
+      - postgres_password
+    environment: *index-migrate
+    networks:
+      internal:
+    command: --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME}
+    restart: on-failure
+
   index-worker:
     image: toncenter/ton-indexer-worker:${VERSION:-latest}
     build:
       context: ton-index-worker
       dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      run-migrations:
+        condition: service_completed_successfully
     secrets:
       - postgres_password
     volumes:
@@ -71,7 +105,8 @@ services:
     environment: *index-worker
     networks:
       internal:
-    command: --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:-1}
+    command: --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME} \
+             --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:-1}
     restart: unless-stopped
 
   postgres:

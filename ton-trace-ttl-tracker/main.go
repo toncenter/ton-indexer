@@ -105,8 +105,8 @@ func (stt *SyntheticTracesTracker) ClearSyntheticTraces(account string) []string
 	return []string{}
 }
 
-// RemoveTrace removes a specific trace from whatever account it's in
-func (stt *SyntheticTracesTracker) RemoveTrace(traceId string) {
+// RemoveTrace removes a specific trace from whatever account it's in, and returns true if it was found and removed.
+func (stt *SyntheticTracesTracker) RemoveTrace(traceId string) bool {
 	stt.mu.Lock()
 	defer stt.mu.Unlock()
 
@@ -119,9 +119,10 @@ func (stt *SyntheticTracesTracker) RemoveTrace(traceId string) {
 				delete(stt.accountToTraceIds, account)
 			}
 			// We assume the trace ID is only in one account's set
-			break
+			return true
 		}
 	}
+	return false
 }
 
 // AddressCollector holds a concurrency safe map of key -> set of addresses
@@ -454,6 +455,7 @@ func (rtt *RedisTTLTracker) handleTraceEmulationStatus(ctx context.Context, hash
 						continue
 					}
 					rtt.expiryTracker.Add(traceId, time.Now())
+					rtt.publishInvalidated(ctx, traceId)
 
 					rtt.logger.WithFields(logrus.Fields{
 						"clearedTrace": traceId,
@@ -502,7 +504,10 @@ func (rtt *RedisTTLTracker) handleExpiredKeys(ctx context.Context) {
 	// Gather addresses from each hash, delete the hash, and store them in addressToKeys
 	for _, key := range expiredKeys {
 		// Remove from emulated tracker if it exists there
-		rtt.syntheticTracesTracker.RemoveTrace(key)
+		wasSynthetic := rtt.syntheticTracesTracker.RemoveTrace(key)
+		if wasSynthetic {
+			rtt.publishInvalidated(ctx, key)
+		}
 		addresses, err := rtt.collectAddressesAndDeleteHash(ctx, key)
 		if err != nil {
 			// Log the error but continue
@@ -644,9 +649,19 @@ func (rtt *RedisTTLTracker) removeKeysFromSortedSet(ctx context.Context, address
 	return nil
 }
 
-// containsColon checks if a string contains a ':' character
-func containsColon(s string) bool {
-	return strings.Contains(s, ":")
+// Traces are published to this channel in following cases:
+// 1. Synthetic root age-based trace deleted
+// 2. When real trace root appear, all other synthetic traces are deleted
+const invalidatedTraceChannel = "invalidated_traces"
+
+func (rtt *RedisTTLTracker) publishInvalidated(ctx context.Context, traceID string) {
+	if err := rtt.redisClient.Publish(ctx, invalidatedTraceChannel, traceID).Err(); err != nil {
+		rtt.logger.WithError(err).WithField("trace", traceID).
+			Warn("failed to publish invalidated trace")
+	} else {
+		rtt.logger.WithField("trace", traceID).
+			Debug("published invalidated trace")
+	}
 }
 
 // minDuration returns the lesser of two durations.

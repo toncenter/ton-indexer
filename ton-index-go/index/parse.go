@@ -318,6 +318,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 	act.Success = raw.Success
 	act.Type = raw.Type
 	act.TraceExternalHash = raw.TraceExternalHash
+	act.TraceExternalHashNorm = raw.TraceExternalHashNorm
+	act.Accounts = raw.Accounts
 
 	switch act.Type {
 	case "call_contract":
@@ -552,6 +554,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.CustomPayload = raw.NFTTransferCustomPayload
 		details.ForwardPayload = raw.NFTTransferForwardPayload
 		details.ForwardAmount = raw.NFTTransferForwardAmount
+		details.Marketplace = raw.NFTTransferMarketplace
 		if raw.NFTTransferForwardPayload != nil {
 			comment, isEncrypted, err := ParseCommentFromPayload(*raw.NFTTransferForwardPayload)
 			if err == nil {
@@ -776,6 +779,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		act.Details = &details
 		act.RawAction = raw
 	}
+	act.AncestorType = raw.AncestorType
 	return &act, nil
 }
 
@@ -942,7 +946,7 @@ func ScanAccountStateFull(row pgx.Row) (*AccountStateFull, error) {
 	var acst AccountStateFull
 	err := row.Scan(&acst.AccountAddress, &acst.Hash, &acst.Balance, &acst.BalanceExtraCurrencies,
 		&acst.AccountStatus, &acst.FrozenHash, &acst.LastTransactionHash, &acst.LastTransactionLt,
-		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc)
+		&acst.DataHash, &acst.CodeHash, &acst.DataBoc, &acst.CodeBoc, &acst.ContractMethods)
 	if err != nil {
 		return nil, err
 	}
@@ -1124,6 +1128,7 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.NFTTransferForwardAmount,
 		&act.NFTTransferResponseDestination,
 		&act.NFTTransferNFTItemIndex,
+		&act.NFTTransferMarketplace,
 		&act.JettonSwapDex,
 		&act.JettonSwapSender,
 		&act.JettonSwapDexIncomingTransferAmount,
@@ -1182,6 +1187,7 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.StakingDataTokensMinted,
 		&act.Success,
 		&act.TraceExternalHash,
+		&act.TraceExternalHashNorm,
 		&act.ExtraCurrencies,
 		&act.MultisigCreateOrderQueryId,
 		&act.MultisigCreateOrderOrderSeqno,
@@ -1231,6 +1237,9 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.ToncoDeployPoolLpFeeBase,
 		&act.ToncoDeployPoolLpFeeCurrent,
 		&act.ToncoDeployPoolPoolActive,
+
+		&act.AncestorType,
+		&act.Accounts,
 	)
 
 	if err != nil {
@@ -1264,4 +1273,51 @@ func ParseEvaaAssetId(assetId string) (*string, bool) {
 		return &address, true
 	}
 	return nil, false
+}
+
+func ScanMultisigOrder(row pgx.Row) (*MultisigOrder, error) {
+	var order MultisigOrder
+
+	err := row.Scan(
+		&order.Address,
+		&order.MultisigAddress,
+		&order.OrderSeqno,
+		&order.Threshold,
+		&order.SentForExecution,
+		&order.ApprovalsMask,
+		&order.ApprovalsNum,
+		&order.ExpirationDate,
+		&order.OrderBoc,
+		&order.Signers,
+		&order.LastTransactionLt,
+		&order.CodeHash,
+		&order.DataHash,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &order, nil
+}
+
+func ScanMultisig(row pgx.Row) (*Multisig, error) {
+	var multisig Multisig
+
+	err := row.Scan(
+		&multisig.Address,
+		&multisig.NextOrderSeqno,
+		&multisig.Threshold,
+		&multisig.Signers,
+		&multisig.Proposers,
+		&multisig.LastTransactionLt,
+		&multisig.CodeHash,
+		&multisig.DataHash,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	multisig.Orders = []MultisigOrder{}
+
+	return &multisig, nil
 }

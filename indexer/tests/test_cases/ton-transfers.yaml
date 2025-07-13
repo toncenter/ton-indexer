@@ -30,7 +30,7 @@ cases:
       - type: ton_transfer
         values:
           success: False
-          _accounts:
+          accounts:
             - 0:9E53B9A59CC76005E9B00D571D4933D8548361F87608D58BC1A0029FACCEF345
           tx_hashes:
             - Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ++D+3E=

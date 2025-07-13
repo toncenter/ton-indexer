@@ -706,6 +706,45 @@ func GetDNSRecords(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+// @summary Get Vesting Contracts
+//
+// @description Get vesting contracts by specified filters
+//
+// @id api_v3_get_vesting_contracts
+// @tags vesting
+// @Accept json
+// @Produce json
+// @success 200 {object} index.VestingContractsResponse
+// @failure 400 {object} index.RequestError
+// @param contract_address query []string false "Vesting contract address in any form. Max: 1000." collectionFormat(multi)
+// @param wallet_address query []string false "Wallet address to filter by owner or sender. Max: 1000." collectionFormat(multi)
+// @param check_whitelist query bool false "Check if wallet address is in whitelist." default(false)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @router /api/v3/vesting [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetVestingContracts(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	var vesting_req index.VestingContractsRequest
+	var lim_req index.LimitRequest
+
+	if err := c.QueryParser(&vesting_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	res, book, err := pool.QueryVestingContracts(vesting_req, lim_req, request_settings)
+	if err != nil {
+		return err
+	}
+
+	resp := index.VestingContractsResponse{VestingContracts: res, AddressBook: book}
+	return c.JSON(resp)
+}
+
 // @summary Get NFT collections
 //
 // @description Get NFT collections by specified filters
@@ -1367,6 +1406,92 @@ func GetPendingActions(c *fiber.Ctx) error {
 	return c.Status(200).JSON(resp)
 }
 
+// @summary Get Multisigs
+//
+// @description Get multisig contracts by specified filters with associated orders
+//
+// @id api_v3_get_multisig_wallets
+// @tags multisig
+// @Accept json
+// @Produce json
+// @success 200 {object} index.MultisigResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string false "Multisig contract address in any form. Max: 1024." collectionFormat(multi)
+// @param wallet_address query []string false "Address of signer or proposer wallet in any form. Max: 1024." collectionFormat(multi)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1024) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param sort query string false "Sort multisigs by last_transaction_lt." Enums(asc, desc) default(desc)
+// @router /api/v3/multisig/wallets [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetMultisigs(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	var multisig_req index.MultisigRequest
+	var lim_req index.LimitRequest
+
+	if err := c.QueryParser(&multisig_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(multisig_req.Address) == 0 && len(multisig_req.WalletAddress) == 0 {
+		return index.IndexError{Code: 422, Message: "At least one of address or wallet_address should be specified"}
+	}
+
+	res, book, err := pool.QueryMultisigs(multisig_req, lim_req, request_settings)
+	if err != nil {
+		return err
+	}
+
+	resp := index.MultisigResponse{Multisigs: res, AddressBook: book}
+	return c.JSON(resp)
+}
+
+// @summary Get Multisig Orders
+//
+// @description Get multisig orders by specified filters
+//
+// @id api_v3_get_multisig_orders
+// @tags multisig
+// @Accept json
+// @Produce json
+// @success 200 {object} index.MultisigOrderResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string false "Order address in any form. Max: 1024." collectionFormat(multi)
+// @param wallet_address query []string false "Address of signer wallet in any form. Max: 1024." collectionFormat(multi)
+// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1024) default(10)
+// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param sort query string false "Sort orders by last_transaction_lt." Enums(asc, desc) default(desc)
+// @router /api/v3/multisig/orders [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetMultisigOrders(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	var order_req index.MultisigOrderRequest
+	var lim_req index.LimitRequest
+
+	if err := c.QueryParser(&order_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(order_req.Address) == 0 && len(order_req.WalletAddress) == 0 {
+		return index.IndexError{Code: 422, Message: "At least one of address or wallet_address should be specified"}
+	}
+
+	res, book, err := pool.QueryMultisigOrders(order_req, lim_req, request_settings)
+	if err != nil {
+		return err
+	}
+
+	resp := index.MultisigOrderResponse{Orders: res, AddressBook: book}
+	return c.JSON(resp)
+}
+
 // @summary Get Wallet Information
 //
 // @description Get wallet smart contract information. The following wallets are supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`, `v4r2`, `v5beta`, `v5r1`. In case the account is not a wallet error code 409 is returned.
@@ -1963,6 +2088,9 @@ func main() {
 
 	app.Get("/api/v3/dns/records", GetDNSRecords)
 
+	// vesting
+	app.Get("/api/v3/vesting", GetVestingContracts)
+
 	// nfts
 	app.Get("/api/v3/nft/collections", GetNFTCollections)
 	app.Get("/api/v3/nft/items", GetNFTItems)
@@ -1973,6 +2101,10 @@ func main() {
 	app.Get("/api/v3/jetton/wallets", GetJettonWallets)
 	app.Get("/api/v3/jetton/transfers", GetJettonTransfers)
 	app.Get("/api/v3/jetton/burns", GetJettonBurns)
+
+	// multisig
+	app.Get("/api/v3/multisig/wallets", GetMultisigs)
+	app.Get("/api/v3/multisig/orders", GetMultisigOrders)
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)
