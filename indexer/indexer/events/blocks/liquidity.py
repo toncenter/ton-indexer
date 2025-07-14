@@ -816,7 +816,7 @@ class StonfiV2WithdrawLiquidityMatcher(BlockMatcher):
                 if pton_transfer is not None:
                     pton_msg = PTonTransfer(pton_transfer.get_body())
                     amount = Amount(pton_msg.ton_amount or 0)
-                    additional_blocks.append(pton_transfer_block)
+                    additional_blocks.append(pton_transfer)
                     asset = Asset(is_ton=True, jetton_address=None)
                 else:
                     amount = transfer.data['amount']
