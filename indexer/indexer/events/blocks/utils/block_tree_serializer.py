@@ -874,6 +874,7 @@ v1_ops = [
     'tonstakers_withdraw',
     'tonco_deposit_liquidity',
     'tonco_withdraw_liquidity',
+    'coffee_deposit_liquidity'
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:
