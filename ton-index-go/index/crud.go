@@ -3516,7 +3516,7 @@ func buildMultisigOrderQuery(order_req MultisigOrderRequest, lim_req LimitReques
 	var conditions []string
 
 	if len(order_req.Address) > 0 {
-		conditions = append(conditions, filterByArray("m.address", order_req.Address))
+		conditions = append(conditions, filterByArray("address", order_req.Address))
 	}
 
 	if len(order_req.WalletAddress) > 0 {
@@ -3627,7 +3627,7 @@ func (db *DbClient) QueryMultisigs(
 		ordersQuery := fmt.Sprintf("SELECT "+
 			"address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask, approvals_num, expiration_date, "+
 			"order_boc, signers, last_transaction_lt, code_hash, data_hash "+
-			"FROM multisig_orders "+
+			"FROM multisig_orders m "+
 			"WHERE multisig_address = '%s' "+
 			"ORDER BY id ", multisigs[i].Address)
 		orders, err := queryMultisigOrderImpl(ordersQuery, conn, settings)
