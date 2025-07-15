@@ -514,69 +514,79 @@ class CoffeeStakingWithdrawMatcher(BlockMatcher):
         # withdraw_1 -> withdraw_2 -> withdraw_3 -> jetton_transfer
         jetton_transfer = labeled(
             "jetton_transfer",
-            BlockTypeMatcher(block_type="jetton_transfer", optional=False)
+            BlockTypeMatcher(block_type="jetton_transfer", optional=False),
         )
-        
+
         withdraw_3 = labeled(
             "withdraw_3",
             ContractMatcher(
                 opcode=CoffeeStakingPositionWithdraw3.opcode,
-                children_matchers=[jetton_transfer]
-            )
+                children_matchers=[jetton_transfer],
+            ),
         )
-        
+
         withdraw_2 = labeled(
             "withdraw_2",
             ContractMatcher(
                 opcode=CoffeeStakingPositionWithdraw2.opcode,
-                children_matchers=[withdraw_3, labeled("log", ContractMatcher(opcode=CoffeeStakingPositionWithdraw3.opcode, optional=True))]
-            )
+                children_matchers=[
+                    withdraw_3,
+                    labeled(
+                        "log",
+                        ContractMatcher(
+                            opcode=CoffeeStakingPositionWithdraw3.opcode, optional=True
+                        ),
+                    ),
+                ],
+            ),
         )
-        
-        super().__init__(
-            child_matcher=withdraw_2
-        )
+
+        super().__init__(child_matcher=withdraw_2)
 
     def test_self(self, block: Block):
         return (
-            isinstance(block, CallContractBlock) and
-            block.opcode == CoffeeStakingPositionWithdraw1.opcode
+            isinstance(block, CallContractBlock)
+            and block.opcode == CoffeeStakingPositionWithdraw1.opcode
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         # block is withdraw_1
         withdraw_1_block = block
         withdraw_1_msg = CoffeeStakingPositionWithdraw1(withdraw_1_block.get_body())
-        
+
         withdraw_2_block = get_labeled("withdraw_2", other_blocks, CallContractBlock)
         if not withdraw_2_block:
             return []
         withdraw_2_msg = CoffeeStakingPositionWithdraw2(withdraw_2_block.get_body())
-        
+
         withdraw_3_block = get_labeled("withdraw_3", other_blocks, CallContractBlock)
         if not withdraw_3_block:
             return []
         withdraw_3_msg = CoffeeStakingPositionWithdraw3(withdraw_3_block.get_body())
-        
-        jetton_transfer_block = get_labeled("jetton_transfer", other_blocks, JettonTransferBlock)
+
+        jetton_transfer_block = get_labeled(
+            "jetton_transfer", other_blocks, JettonTransferBlock
+        )
         if not jetton_transfer_block:
             return []
-        
+
         # extract data
         source = AccountId(withdraw_2_msg.owner)
-        pool = AccountId(withdraw_2_block.get_message().source)  # master sends withdraw_2
+        pool = AccountId(
+            withdraw_2_block.get_message().source
+        )  # master sends withdraw_2
         nft_address = AccountId(withdraw_1_block.get_message().destination)
         nft_index = withdraw_2_msg.nft_id
         points = withdraw_2_msg.points or 0
-        
+
         # from withdraw_3
         amount = Amount(withdraw_3_msg.jetton_amount or 0)
         pool_jetton_wallet = AccountId(withdraw_3_msg.jetton_wallet)
-        
+
         # from jetton transfer
         asset = jetton_transfer_block.data["asset"]
         user_jetton_wallet = jetton_transfer_block.data["receiver_wallet"]
-        
+
         data = CoffeeStakingWithdrawData(
             source=source,
             pool=pool,
@@ -586,9 +596,14 @@ class CoffeeStakingWithdrawMatcher(BlockMatcher):
             pool_jetton_wallet=pool_jetton_wallet,
             nft_address=nft_address,
             nft_index=nft_index,
-            points=points
+            points=points,
         )
-        blocks = [withdraw_1_block, withdraw_2_block, withdraw_3_block, jetton_transfer_block]
+        blocks = [
+            withdraw_1_block,
+            withdraw_2_block,
+            withdraw_3_block,
+            jetton_transfer_block,
+        ]
         log_block = get_labeled("log", other_blocks, CallContractBlock)
         if log_block is not None:
             blocks.append(log_block)
@@ -623,49 +638,46 @@ class CoffeeStakingClaimRewardsMatcher(BlockMatcher):
         # claim_rewards -> jetton_transfer + log message
         jetton_transfer = labeled(
             "jetton_transfer",
-            BlockTypeMatcher(block_type="jetton_transfer", optional=False)
+            BlockTypeMatcher(block_type="jetton_transfer", optional=False),
         )
-        
+
         log_message = labeled(
             "log",
-            ContractMatcher(
-                opcode=CoffeeStakingClaimRewards.opcode,
-                optional=True
-            )
+            ContractMatcher(opcode=CoffeeStakingClaimRewards.opcode, optional=True),
         )
-        
-        super().__init__(
-            children_matchers=[jetton_transfer, log_message]
-        )
+
+        super().__init__(children_matchers=[jetton_transfer, log_message])
 
     def test_self(self, block: Block):
         return (
-            isinstance(block, CallContractBlock) and
-            block.opcode == CoffeeStakingClaimRewards.opcode and
-            len(block.next_blocks) > 0
+            isinstance(block, CallContractBlock)
+            and block.opcode == CoffeeStakingClaimRewards.opcode
+            and len(block.next_blocks) > 0
         )
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         claim_rewards_block = block
         claim_rewards_msg = CoffeeStakingClaimRewards(claim_rewards_block.get_body())
-        
-        jetton_transfer_block = get_labeled("jetton_transfer", other_blocks, JettonTransferBlock)
+
+        jetton_transfer_block = get_labeled(
+            "jetton_transfer", other_blocks, JettonTransferBlock
+        )
         if not jetton_transfer_block:
             return []
-        
+
         # extract data
         recipient = AccountId(claim_rewards_msg.receiver)
         pool = AccountId(claim_rewards_block.get_message().destination)
         pool_jetton_wallet = AccountId(claim_rewards_msg.jetton_wallet)
         amount = Amount(claim_rewards_msg.jetton_amount or 0)
-        
+
         # from jetton transfer
         asset = jetton_transfer_block.data["asset"]
         recipient_jetton_wallet = jetton_transfer_block.data["receiver_wallet"]
-        
+
         # admin wallet that initiated the claim
         admin = AccountId(claim_rewards_block.get_message().source)
-        
+
         data = CoffeeStakingClaimRewardsData(
             admin=admin,
             recipient=recipient,
@@ -673,14 +685,14 @@ class CoffeeStakingClaimRewardsMatcher(BlockMatcher):
             asset=asset,
             amount=amount,
             pool_jetton_wallet=pool_jetton_wallet,
-            recipient_jetton_wallet=recipient_jetton_wallet
+            recipient_jetton_wallet=recipient_jetton_wallet,
         )
-        
+
         blocks = [claim_rewards_block, jetton_transfer_block]
         log_block = get_labeled("log", other_blocks, CallContractBlock)
         if log_block is not None:
             blocks.append(log_block)
-            
+
         new_block = CoffeeStakingClaimRewardsBlock(data)
         new_block.merge_blocks(blocks)
         return [new_block]

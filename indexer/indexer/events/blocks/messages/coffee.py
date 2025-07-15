@@ -1177,4 +1177,3 @@ class CoffeeStakingRewardsUpdated:
         self.duration = body.load_uint(64)
         self.finish_at = body.load_uint(64)
         self.rewards_rate = body.load_coins()
-
