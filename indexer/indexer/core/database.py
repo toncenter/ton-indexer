@@ -438,6 +438,11 @@ class Action(Base):
         Column("minted_item_address", String),
         Column("minted_item_index", Numeric),
     ]))
+    coffee_staking_withdraw_data = Column(CompositeType("coffee_staking_withdraw_details", [
+        Column("nft_address", String),
+        Column("nft_index", Numeric),
+        Column("points", Numeric),
+    ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)

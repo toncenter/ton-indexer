@@ -566,3 +566,19 @@ cases:
           coffee_staking_deposit_data:
             minted_item_address: 0:65D741B3B8FED84CBE2BCBF2C1A74BE0D989AE36F92F9F8B656E7D1AEC373BBB
             minted_item_index: 1258
+
+  Coffee staking withdraw:
+    trace-id: T-oXSZb9qU9H5js9gaOZIJ8RicZmZ8l9oV4s_f9pV6g=
+    expected-actions:
+      - type: coffee_staking_withdraw
+        values:
+          source: 0:D63BBD8AD1033943D42D0ECFE3E7C89FADC3B91B19FBEA5C9D980C93CA80D14B
+          destination: 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+          asset: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+          amount: 59457793964
+          source_secondary: 0:2E75895D8779D7F7090517D94F092E394894ED803B5F428264FF74C140766EEE
+          destination_secondary: 0:7C7EDF2883E784E033F37731FEDE9ED600B8B9F8178EAB927B957D8980321546
+          coffee_staking_withdraw_data:
+            nft_address: 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+            nft_index: 451
+            points: 5945779396400

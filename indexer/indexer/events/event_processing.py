@@ -76,6 +76,7 @@ from indexer.events.blocks.nft import (
 )
 from indexer.events.blocks.staking import (
     CoffeeStakingDepositMatcher,
+    CoffeeStakingWithdrawMatcher,
     NominatorPoolDepositMatcher,
     NominatorPoolWithdrawMatcher,
     NominatorPoolWithdrawRequestMatcher,
@@ -224,7 +225,8 @@ matchers = [
     CoffeeCreatePoolMatcher(),
     CoffeeMevProtectHoldFundsMatcher(),
     CoffeeMevProtectFailedSwapMatcher(),
-    CoffeeStakingDepositMatcher()
+    CoffeeStakingDepositMatcher(),
+    CoffeeStakingWithdrawMatcher()
 ]
 
 trace_post_processors = [

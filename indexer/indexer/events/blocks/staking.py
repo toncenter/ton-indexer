@@ -30,7 +30,13 @@ from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import find_call_contract, get_labeled
 from indexer.events.blocks.utils.ton_utils import Asset
 from indexer.events.blocks.jettons import JettonTransferBlock
-from indexer.events.blocks.messages.coffee import CoffeeStakingDeposit, CoffeeStakingLock
+from indexer.events.blocks.messages.coffee import (
+    CoffeeStakingDeposit,
+    CoffeeStakingLock,
+    CoffeeStakingPositionWithdraw1,
+    CoffeeStakingPositionWithdraw2,
+    CoffeeStakingPositionWithdraw3
+)
 
 
 @dataclass
@@ -477,3 +483,115 @@ class CoffeeStakingDepositMatcher(BlockMatcher):
             blocks.append(log_block)
         new_block.merge_blocks(blocks)
         return [new_block]
+
+
+@dataclass
+class CoffeeStakingWithdrawData:
+    source: AccountId
+    pool: AccountId
+    asset: Asset
+    amount: Amount
+    user_jetton_wallet: AccountId
+    pool_jetton_wallet: AccountId
+    nft_address: AccountId
+    nft_index: int
+    points: int
+
+
+class CoffeeStakingWithdrawBlock(Block):
+    data: CoffeeStakingWithdrawData
+
+    def __init__(self, data):
+        super().__init__("coffee_staking_withdraw", [], data)
+
+    def __repr__(self):
+        return f"coffee_staking_withdraw {self.data}"
+
+
+class CoffeeStakingWithdrawMatcher(BlockMatcher):
+    def __init__(self):
+        # withdraw_1 -> withdraw_2 -> withdraw_3 -> jetton_transfer
+        jetton_transfer = labeled(
+            "jetton_transfer",
+            BlockTypeMatcher(block_type="jetton_transfer", optional=False)
+        )
+        
+        withdraw_3 = labeled(
+            "withdraw_3",
+            ContractMatcher(
+                opcode=CoffeeStakingPositionWithdraw3.opcode,
+                children_matchers=[jetton_transfer]
+            )
+        )
+        
+        withdraw_2 = labeled(
+            "withdraw_2",
+            ContractMatcher(
+                opcode=CoffeeStakingPositionWithdraw2.opcode,
+                children_matchers=[withdraw_3, labeled("log", ContractMatcher(opcode=CoffeeStakingPositionWithdraw3.opcode, optional=True))]
+            )
+        )
+        
+        super().__init__(
+            child_matcher=withdraw_2
+        )
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock) and
+            block.opcode == CoffeeStakingPositionWithdraw1.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        # block is withdraw_1
+        withdraw_1_block = block
+        withdraw_1_msg = CoffeeStakingPositionWithdraw1(withdraw_1_block.get_body())
+        
+        withdraw_2_block = get_labeled("withdraw_2", other_blocks, CallContractBlock)
+        if not withdraw_2_block:
+            return []
+        withdraw_2_msg = CoffeeStakingPositionWithdraw2(withdraw_2_block.get_body())
+        
+        withdraw_3_block = get_labeled("withdraw_3", other_blocks, CallContractBlock)
+        if not withdraw_3_block:
+            return []
+        withdraw_3_msg = CoffeeStakingPositionWithdraw3(withdraw_3_block.get_body())
+        
+        jetton_transfer_block = get_labeled("jetton_transfer", other_blocks, JettonTransferBlock)
+        if not jetton_transfer_block:
+            return []
+        
+        # extract data
+        source = AccountId(withdraw_2_msg.owner)
+        pool = AccountId(withdraw_2_block.get_message().source)  # master sends withdraw_2
+        nft_address = AccountId(withdraw_1_block.get_message().destination)
+        nft_index = withdraw_2_msg.nft_id
+        points = withdraw_2_msg.points or 0
+        
+        # from withdraw_3
+        amount = Amount(withdraw_3_msg.jetton_amount or 0)
+        pool_jetton_wallet = AccountId(withdraw_3_msg.jetton_wallet)
+        
+        # from jetton transfer
+        asset = jetton_transfer_block.data["asset"]
+        user_jetton_wallet = jetton_transfer_block.data["receiver_wallet"]
+        
+        data = CoffeeStakingWithdrawData(
+            source=source,
+            pool=pool,
+            asset=asset,
+            amount=amount,
+            user_jetton_wallet=user_jetton_wallet,
+            pool_jetton_wallet=pool_jetton_wallet,
+            nft_address=nft_address,
+            nft_index=nft_index,
+            points=points
+        )
+        blocks = [withdraw_1_block, withdraw_2_block, withdraw_3_block, jetton_transfer_block]
+        log_block = get_labeled("log", other_blocks, CallContractBlock)
+        if log_block is not None:
+            blocks.append(log_block)
+        new_block = CoffeeStakingWithdrawBlock(data)
+        new_block.merge_blocks(blocks)
+        return [new_block]
+
