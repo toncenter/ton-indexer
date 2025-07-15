@@ -75,6 +75,7 @@ from indexer.events.blocks.nft import (
     TelegramNftPurchaseBlockMatcher,
 )
 from indexer.events.blocks.staking import (
+    CoffeeStakingClaimRewardsMatcher,
     CoffeeStakingDepositMatcher,
     CoffeeStakingWithdrawMatcher,
     NominatorPoolDepositMatcher,
@@ -226,7 +227,8 @@ matchers = [
     CoffeeMevProtectHoldFundsMatcher(),
     CoffeeMevProtectFailedSwapMatcher(),
     CoffeeStakingDepositMatcher(),
-    CoffeeStakingWithdrawMatcher()
+    CoffeeStakingWithdrawMatcher(),
+    CoffeeStakingClaimRewardsMatcher()
 ]
 
 trace_post_processors = [

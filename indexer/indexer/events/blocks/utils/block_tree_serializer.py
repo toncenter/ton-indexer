@@ -44,6 +44,7 @@ from indexer.events.blocks.multisig import (
 )
 from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock
 from indexer.events.blocks.staking import (
+    CoffeeStakingClaimRewardsBlock,
     CoffeeStakingDepositBlock,
     CoffeeStakingWithdrawBlock,
     NominatorPoolDepositBlock,
@@ -788,6 +789,16 @@ def _fill_coffee_staking_withdraw(block: CoffeeStakingWithdrawBlock, action: Act
         "points": block.data.points,
     }
 
+def _fill_coffee_staking_claim_rewards(block: CoffeeStakingClaimRewardsBlock, action: Action):
+    # don't store admin since it's always the same highload
+    #  and we don't have a basic field for it
+    action.source = _addr(block.data.pool)
+    action.source_secondary = _addr(block.data.pool_jetton_wallet)
+    action.destination = _addr(block.data.recipient)
+    action.destination_secondary = _addr(block.data.recipient_jetton_wallet)
+    action.asset = _addr(block.data.asset)
+    action.amount = block.data.amount.value
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -895,6 +906,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_staking_deposit(block, action)
         case 'coffee_staking_withdraw':
             _fill_coffee_staking_withdraw(block, action)
+        case 'coffee_staking_claim_rewards':
+            _fill_coffee_staking_claim_rewards(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
