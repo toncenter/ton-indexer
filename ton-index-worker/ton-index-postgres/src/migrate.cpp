@@ -537,7 +537,7 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "tonco_deploy_pool_data tonco_deploy_pool_details, "
       "trace_end_lt bigint, "
       "trace_external_hash tonhash, "
-      "trace_external_hash_norm tonhash,"
+      "trace_external_hash_norm tonhash, "
       "trace_end_utime integer, "
       "mc_seqno_end integer, "
       "trace_mc_seqno_end integer, "
