@@ -1368,6 +1368,11 @@ paths:
           type: string
         name: supported_action_types
         type: array
+      - default: false
+        description: Include accounts array for each action in response.
+        in: query
+        name: include_accounts
+        type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query

@@ -727,12 +727,14 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("alter type nft_transfer_details add attribute real_prev_owner tonaddr;");
   }
 
-  LOG(INFO) << "Updating version...";
+  LOG(INFO) << "Updating tables...";
   try {
     pqxx::connection c(connection_string);
     pqxx::work txn(c);
 
     std::string query = "";
+
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS trace_external_hash_norm tonhash;\n";
 
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "

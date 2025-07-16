@@ -255,6 +255,13 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include accounts array for each action in response.",
+                        "name": "include_accounts",
+                        "in": "query"
+                    },
+                    {
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
