@@ -24,7 +24,7 @@ struct Version {
 };
 
 // Defines the latest version of the database schema.
-const Version latest_version{1, 2, 0};
+const Version latest_version{1, 2, 1};
 
 std::optional<Version> get_current_db_version(const std::string& connection_string) {
   try {
