@@ -1693,7 +1693,7 @@ void InsertBatchPostgres::insert_nft_transfers(pqxx::work &txn, bool with_copy) 
 }
 
 void InsertBatchPostgres::insert_traces(pqxx::work &txn, bool with_copy) {
-  std::initializer_list<std::string_view> columns = { "trace_id", "external_hash", "mc_seqno_start", "mc_seqno_end", 
+  std::initializer_list<std::string_view> columns = { "trace_id", "external_hash", "external_hash_norm", "mc_seqno_start", "mc_seqno_end", 
     "start_lt", "start_utime", "end_lt", "end_utime", "state", "pending_edges_", "edges_", "nodes_" };
 
   PopulateTableStream stream(txn, "traces", columns, 1000, with_copy);
@@ -1718,6 +1718,9 @@ void InsertBatchPostgres::insert_traces(pqxx::work &txn, bool with_copy) {
     auto tuple = std::make_tuple(
       trace.trace_id,
       trace.external_hash,
+      (trace.external_hash_norm.has_value() && trace.external_hash_norm != trace.external_hash)
+        ? trace.external_hash_norm 
+        : std::nullopt,
       trace.mc_seqno_start,
       trace.mc_seqno_end,
       trace.start_lt,
