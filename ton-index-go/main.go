@@ -1304,6 +1304,7 @@ func GetPendingTraces(c *fiber.Ctx) error {
 // @param action_type query []string false "Include action types." Enums(call_contract, contract_deploy, ton_transfer, auction_bid, change_dns, dex_deposit_liquidity, dex_withdraw_liquidity, delete_dns, renew_dns, election_deposit, election_recover, jetton_burn, jetton_swap, jetton_transfer, jetton_mint, nft_mint, tick_tock, stake_deposit, stake_withdrawal, stake_withdrawal_request, subscribe, unsubscribe)
 // @param exclude_action_type query []string false "Exclude action types." Enums(call_contract, contract_deploy, ton_transfer, auction_bid, change_dns, dex_deposit_liquidity, dex_withdraw_liquidity, delete_dns, renew_dns, election_deposit, election_recover, jetton_burn, jetton_swap, jetton_transfer, jetton_mint, nft_mint, tick_tock, stake_deposit, stake_withdrawal, stake_withdrawal_request, subscribe, unsubscribe)
 // @param supported_action_types query []string false "Supported action types"
+// @param include_accounts query bool false "Include accounts array for each action in response." default(false)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort actions by lt." Enums(asc, desc) default(desc)

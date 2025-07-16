@@ -182,6 +182,7 @@ class Trace(Base):
     __tablename__ = 'traces'
     trace_id = Column(String(44), primary_key=True)
     external_hash: str = Column(String)
+    external_hash_norm: str = Column(String)
     mc_seqno_start: int = Column(Integer)
     mc_seqno_end: int = Column(Integer)
     start_lt: int = Column(BigInteger)
@@ -429,7 +430,7 @@ class Action(Base):
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)
-    trace_external_hash_norm: str
+    trace_external_hash_norm: str = Column(String)
     mc_seqno_end: int = Column(Numeric)
     trace_mc_seqno_end: int = Column(Numeric)
     value_extra_currencies: dict = Column(JSONB)

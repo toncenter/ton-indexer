@@ -735,6 +735,7 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
         action.trace_end_lt = trace.end_lt
         action.trace_end_utime = trace.end_utime
         action.trace_external_hash = trace.external_hash
+        action.trace_external_hash_norm = trace.external_hash_norm
         action.trace_mc_seqno_end = trace.mc_seqno_end
     match block.btype:
         case 'call_contract' | 'contract_deploy':

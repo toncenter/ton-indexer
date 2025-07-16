@@ -332,6 +332,7 @@ struct TraceEdge {
 struct Trace {
   td::Bits256 trace_id;
   std::optional<td::Bits256> external_hash;
+  std::optional<td::Bits256> external_hash_norm;
   std::int32_t mc_seqno_start;
   std::int32_t mc_seqno_end;
   

@@ -804,6 +804,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		(A.staking_data).tokens_minted,
 		A.success,
 		A.trace_external_hash,
+		A.trace_external_hash_norm,
 		A.value_extra_currencies`
 	clmn_query := clmn_query_default
 	from_query := `actions as A`
@@ -1579,6 +1580,59 @@ func SubstituteImgproxyBaseUrl(metadata *Metadata, base_url string) {
 	}
 }
 
+func queryActionsAccountsImpl(actions []Action, conn *pgxpool.Conn) ([]Action, error) {
+	if len(actions) == 0 {
+		return actions, nil
+	}
+
+	args := make([]any, 0, len(actions)*2)
+	placeholders := make([]string, len(actions))
+	for i, a := range actions {
+		// pgx uses 1-based parameter numbers.
+		// Every action consumes two params: trace_id then action_id.
+		p1, p2 := i*2+1, i*2+2
+		placeholders[i] = fmt.Sprintf("($%d,$%d)", p1, p2)
+
+		args = append(args, a.TraceId, a.ActionId)
+	}
+
+	query := fmt.Sprintf(
+		`SELECT trace_id, action_id, account
+		   FROM action_accounts
+		  WHERE (trace_id, action_id) IN (%s)`,
+		strings.Join(placeholders, ","),
+	)
+
+	rows, err := conn.Query(context.Background(), query, args...)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	type key struct{ trace, action string }
+	idx := make(map[key]*Action, len(actions))
+	for i := range actions {
+		k := key{string(*actions[i].TraceId), string(actions[i].ActionId)}
+		idx[k] = &actions[i]
+	}
+
+	for rows.Next() {
+		var traceID, actionID, account string
+
+		if err := rows.Scan(&traceID, &actionID, &account); err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		if a := idx[key{traceID, actionID}]; a != nil {
+			a.Accounts = append(a.Accounts, account)
+		}
+	}
+	if rows.Err() != nil {
+		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+	}
+
+	return actions, nil
+}
+
 func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
 	book := AddressBook{}
 	quote_addr_list := []string{}
@@ -2236,7 +2290,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.staking_data).tokens_minted,
 				A.success,
 				A.trace_external_hash,
-				NULL,
+				A.trace_external_hash_norm,
 				A.value_extra_currencies,
 				(A.multisig_create_order_data).query_id,
 				(A.multisig_create_order_data).order_seqno,

@@ -62,6 +62,12 @@ func (db *DbClient) QueryActionsV2(
 		}
 		actions = append(actions, *action)
 	}
+	if act_req.IncludeAccounts != nil && *act_req.IncludeAccounts {
+		actions, err = queryActionsAccountsImpl(actions, conn)
+		if err != nil {
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+	}
 	if len(addr_map) > 0 && !settings.NoAddressBook {
 		addr_list := []string{}
 		for k := range addr_map {
@@ -137,7 +143,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.staking_data).tokens_minted,
 		A.success,
 		A.trace_external_hash,
-		NULL,
+		A.trace_external_hash_norm,
 		A.value_extra_currencies,
 		(A.multisig_create_order_data).query_id,
 		(A.multisig_create_order_data).order_seqno,
