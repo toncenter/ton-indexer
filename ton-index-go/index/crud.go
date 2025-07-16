@@ -1588,7 +1588,7 @@ func queryActionsAccountsImpl(actions []Action, conn *pgxpool.Conn) ([]Action, e
 	args := make([]any, 0, len(actions)*2)
 	placeholders := make([]string, len(actions))
 	for i, a := range actions {
-		// pgx uses 1‑based parameter numbers.
+		// pgx uses 1-based parameter numbers.
 		// Every action consumes two params: trace_id then action_id.
 		p1, p2 := i*2+1, i*2+2
 		placeholders[i] = fmt.Sprintf("($%d,$%d)", p1, p2)
