@@ -39,6 +39,8 @@ from indexer.events.blocks.jvault import (
     JVaultUnstakeBlockMatcher, JVaultUnstakeRequestBlockMatcher,
 )
 from indexer.events.blocks.liquidity import (
+    CoffeeDepositLiquidityMatcher,
+    CoffeeWithdrawLiquidityMatcher,
     DedustDepositBlockMatcher,
     DedustDepositFirstAssetBlockMatcher,
     DedustWithdrawBlockMatcher,
@@ -80,6 +82,7 @@ from indexer.events.blocks.subscriptions import (
     UnsubscribeBlockMatcher,
 )
 from indexer.events.blocks.swaps import (
+    CoffeeSwapBlockMatcher,
     DedustSwapBlockMatcher,
     StonfiSwapBlockMatcher,
     StonfiV2SwapBlockMatcher,
@@ -208,6 +211,9 @@ matchers = [
     ToncoDepositLiquidityMatcher(),
     ToncoDeployPoolBlockMatcher(),
     ToncoWithdrawLiquidityMatcher(),
+    CoffeeDepositLiquidityMatcher(),
+    CoffeeSwapBlockMatcher(),
+    CoffeeWithdrawLiquidityMatcher(),
 ]
 
 trace_post_processors = [

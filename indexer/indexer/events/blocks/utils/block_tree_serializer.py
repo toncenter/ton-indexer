@@ -748,6 +748,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_nominator_pool_withdraw_request_action(block, action)
         case "dedust_deposit_liquidity":
             _fill_dedust_deposit_liquidity_action(block, action)
+        case "coffee_deposit_liquidity":
+            _fill_dedust_deposit_liquidity_action(block, action)  # use dedust's filler
         case "dedust_deposit_liquidity_partial":
             _fill_dedust_deposit_liquidity_partial_action(block, action)
         case "tonco_deposit_liquidity":
@@ -877,6 +879,7 @@ v1_ops = [
     'tonstakers_withdraw',
     'tonco_deposit_liquidity',
     'tonco_withdraw_liquidity',
+    'coffee_deposit_liquidity'
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:
