@@ -643,6 +643,10 @@ definitions:
     type: object
   MultisigOrder:
     properties:
+      actions:
+        items:
+          $ref: '#/definitions/index.OrderAction'
+        type: array
       address:
         type: string
       approvals_mask:
@@ -1153,6 +1157,24 @@ definitions:
         items:
           $ref: '#/definitions/WalletState'
         type: array
+    type: object
+  index.OrderAction:
+    properties:
+      body_raw:
+        items:
+          type: integer
+        type: array
+      destination:
+        type: string
+      error:
+        type: string
+      parsed:
+        type: boolean
+      parsed_body: {}
+      parsed_body_type:
+        type: string
+      value:
+        type: string
     type: object
   index.TraceNode:
     properties:
@@ -2231,11 +2253,11 @@ paths:
         name: address
         type: array
       - collectionFormat: multi
-        description: 'Address of signer wallet in any form. Max: 1024.'
+        description: 'Address of corresponding multisig. Max: 1024.'
         in: query
         items:
           type: string
-        name: wallet_address
+        name: multisig_address
         type: array
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.

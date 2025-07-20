@@ -3573,14 +3573,14 @@ func buildMultisigOrderQuery(order_req MultisigOrderRequest, lim_req LimitReques
 		conditions = append(conditions, filterByArray("address", order_req.Address))
 	}
 
-	if len(order_req.WalletAddress) > 0 {
-		var walletAddresses []string
-		for _, addr := range order_req.WalletAddress {
-			walletAddresses = append(walletAddresses, fmt.Sprintf("'%s'", addr))
+	if len(order_req.MultisigAddress) > 0 {
+		var multisigAddresses []string
+		for _, addr := range order_req.MultisigAddress {
+			multisigAddresses = append(multisigAddresses, fmt.Sprintf("'%s'", addr))
 		}
 
-		conditions = append(conditions, fmt.Sprintf("signers && ARRAY[%s]::tonaddr[]",
-			strings.Join(walletAddresses, ",")))
+		conditions = append(conditions, fmt.Sprintf("multisig_address IN (%s)",
+			strings.Join(multisigAddresses, ",")))
 	}
 
 	var whereClause string

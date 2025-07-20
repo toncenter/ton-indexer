@@ -1557,8 +1557,8 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "Address of signer wallet in any form. Max: 1024.",
-                        "name": "wallet_address",
+                        "description": "Address of corresponding multisig. Max: 1024.",
+                        "name": "multisig_address",
                         "in": "query"
                     },
                     {
@@ -3914,6 +3914,12 @@ const docTemplate = `{
         "MultisigOrder": {
             "type": "object",
             "properties": {
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/index.OrderAction"
+                    }
+                },
                 "address": {
                     "type": "string"
                 },
@@ -4685,6 +4691,33 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/WalletState"
                     }
+                }
+            }
+        },
+        "index.OrderAction": {
+            "type": "object",
+            "properties": {
+                "body_raw": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "destination": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "parsed": {
+                    "type": "boolean"
+                },
+                "parsed_body": {},
+                "parsed_body_type": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
                 }
             }
         },
