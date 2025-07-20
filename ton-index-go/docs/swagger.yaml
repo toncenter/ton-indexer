@@ -626,10 +626,6 @@ definitions:
         type: string
       next_order_seqno:
         type: string
-      orders:
-        items:
-          $ref: '#/definitions/MultisigOrder'
-        type: array
       proposers:
         items:
           type: string
@@ -2259,6 +2255,11 @@ paths:
           type: string
         name: multisig_address
         type: array
+      - default: false
+        description: Parser order actions
+        in: query
+        name: parse_actions
+        type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query

@@ -1562,6 +1562,13 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Parser order actions",
+                        "name": "parse_actions",
+                        "in": "query"
+                    },
+                    {
                         "maximum": 1024,
                         "minimum": 1,
                         "type": "integer",
@@ -3887,12 +3894,6 @@ const docTemplate = `{
                 },
                 "next_order_seqno": {
                     "type": "string"
-                },
-                "orders": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/MultisigOrder"
-                    }
                 },
                 "proposers": {
                     "type": "array",
