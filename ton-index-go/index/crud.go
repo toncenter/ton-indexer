@@ -3725,6 +3725,19 @@ func (db *DbClient) QueryMultisigOrders(
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
+	if order_req.ParseActions != nil && *order_req.ParseActions {
+		for i := range orders {
+			if orders[i].OrderBoc != nil {
+				orderActions, err := ParseOrder(*orders[i].OrderBoc)
+				if err != nil {
+					log.Println("Failed to parse multisig order", orders[i].Address, err)
+					orders[i].Actions = nil
+				}
+				orders[i].Actions = orderActions
+			}
+		}
+	}
+
 	// Collect addresses for address book
 	addr_set := make(map[string]bool)
 	for _, order := range orders {

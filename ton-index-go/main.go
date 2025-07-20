@@ -1462,6 +1462,7 @@ func GetMultisigs(c *fiber.Ctx) error {
 // @failure 400 {object} index.RequestError
 // @param address query []string false "Order address in any form. Max: 1024." collectionFormat(multi)
 // @param multisig_address query []string false "Address of corresponding multisig. Max: 1024." collectionFormat(multi)
+// @param parse_actions query bool false "Parser order actions" default(false)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1024) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort orders by last_transaction_lt." Enums(asc, desc) default(desc)

@@ -1298,14 +1298,6 @@ func ScanMultisigOrder(row pgx.Row) (*MultisigOrder, error) {
 	if err != nil {
 		return nil, err
 	}
-	if order.OrderBoc != nil {
-		orderActions, err := ParseOrder(*order.OrderBoc)
-		if err != nil {
-			log.Println("Failed to parse multisig order", order.Address, err)
-			order.Actions = nil
-		}
-		order.Actions = orderActions
-	}
 
 	return &order, nil
 }
