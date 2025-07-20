@@ -170,8 +170,9 @@ type MultisigRequest struct {
 }
 
 type MultisigOrderRequest struct {
-	Address       []AccountAddress `query:"address"`
-	WalletAddress []AccountAddress `query:"wallet_address"`
+	Address         []AccountAddress `query:"address"`
+	MultisigAddress []AccountAddress `query:"multisig_address"`
+	ParseActions    *bool            `query:"parse_actions"`
 }
 
 type VestingContractsRequest struct {
