@@ -1061,7 +1061,6 @@ type Multisig struct {
 	LastTransactionLt int64            `json:"last_transaction_lt,string"`
 	CodeHash          *HashType        `json:"code_hash"`
 	DataHash          *HashType        `json:"data_hash"`
-	Orders            []MultisigOrder  `json:"orders"`
 } // @name Multisig
 
 // converters
