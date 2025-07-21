@@ -14,7 +14,8 @@ from indexer.core.database import (
     NFTItem,
     JettonWallet,
     NftSale,
-    NftAuction
+    NftAuction,
+    MultisigOrder
 )
 from typing import Dict, Any, List, Tuple
 
@@ -183,6 +184,24 @@ def deserialize_nft_auction(account, data: Dict[str, Any]) -> NftAuction:
                       nft_addr=data['nft_addr'],
                       last_bid=data['last_bid'],
                       nft_owner=data['nft_owner'])
+
+def deserialize_multisig_order(data: Dict[str, Any]) -> MultisigOrder:
+    """Deserialize dictionary to MultisigOrder."""
+    return MultisigOrder(
+        address=data['address'],
+        multisig_address=data['multisig_address'],
+        order_seqno=data['order_seqno'],
+        threshold=data['threshold'],
+        sent_for_execution=data['sent_for_execution'],
+        approvals_mask=data['approvals_mask'],
+        approvals_num=data['approvals_num'],
+        expiration_date=data['expiration_date'],
+        order_boc=data['order_boc'],
+        signers=data['signers'],
+        last_transaction_lt=data['last_transaction_lt'],
+        code_hash=data['code_hash'],
+        data_hash=data['data_hash'],
+    )
 
 def load_trace(data: Dict) -> Tuple[Trace, Dict[str, Any]]:
     """

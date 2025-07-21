@@ -11,7 +11,7 @@ import redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from indexer.core.database import JettonWallet, NFTItem, NftSale, NftAuction, LatestAccountState
+from indexer.core.database import JettonWallet, NFTItem, NftSale, NftAuction, LatestAccountState, MultisigOrder
 from indexer.events import context
 
 NOMINATOR_POOL_CODE_HASH = "mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8="
@@ -36,6 +36,10 @@ class InterfaceRepository(abc.ABC):
 
     @abc.abstractmethod
     async def get_nft_auction(self, address: str) -> NftAuction | None:
+        pass
+
+    @abc.abstractmethod
+    async def get_multisig_order(self, address: str) -> MultisigOrder | None:
         pass
 
     @abc.abstractmethod
@@ -139,6 +143,43 @@ class RedisInterfaceRepository(InterfaceRepository):
             )
         return None
 
+    async def get_multisig_order(self, address: str) -> MultisigOrder | None:
+        raw_data = self.connection.get(RedisInterfaceRepository.prefix + address)
+        if raw_data is None:
+            return None
+
+        interfaces = msgpack.unpackb(raw_data, raw=False)
+        interface_data = next((data for (interface_type, data) in interfaces.items() if interface_type == "MultisigOrder"),
+                              None)
+        if interface_data is not None:
+            return MultisigOrder(
+                address=interface_data["address"],
+                multisig_address=interface_data["multisig_address"],
+                order_seqno=interface_data["order_seqno"],
+                threshold=interface_data["threshold"],
+                sent_for_execution=interface_data["sent_for_execution"],
+                approvals_mask=interface_data["approvals_mask"],
+                approvals_num=interface_data["approvals_num"],
+                expiration_date=interface_data["expiration_date"],
+                order_boc=interface_data["order_boc"],
+                signers=interface_data["signers"],
+                last_transaction_lt=interface_data["last_transaction_lt"],
+                code_hash=interface_data["code_hash"],
+                data_hash=interface_data["data_hash"],
+            )
+        return None
+
+    async def get_interfaces(self, address: str) -> dict[str, dict]:
+        result = {}
+        raw_data = self.connection.get(RedisInterfaceRepository.prefix + address)
+        if raw_data is None:
+            return {}
+
+        interfaces = msgpack.unpackb(raw_data, raw=False)
+        if address in context.dedust_pools.get():
+            interfaces['dedust_pool'] = context.dedust_pools.get()[address]
+        return interfaces
+
     async def get_dedust_pool(self, address: str) -> DedustPool | None:
         if address in context.dedust_pools.get():
             return DedustPool(address=address, assets=context.dedust_pools.get()[address]['assets'])
@@ -238,6 +279,10 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
                 )
         return None
 
+    async def get_multisig_order(self, address: str) -> MultisigOrder | None:
+        # Emulated transactions don't have multisig orders
+        return None
+
     async def get_interfaces(self, address: str) -> dict[str, dict]:
         return {}
 
@@ -317,6 +362,30 @@ class EmulatedRepositoryWithDbFallback(InterfaceRepository):
 
         return result
 
+    async def get_multisig_order(self, address: str) -> Optional[MultisigOrder]:
+        result = await self.emulated_repository.get_multisig_order(address)
+
+        if result is None and address in self.db_interfaces:
+            if "MultisigOrder" in self.db_interfaces[address]:
+                data = self.db_interfaces[address]["MultisigOrder"]
+                result = MultisigOrder(
+                    address=data["address"],
+                    multisig_address=data["multisig_address"],
+                    order_seqno=data["order_seqno"],
+                    threshold=data["threshold"],
+                    sent_for_execution=data["sent_for_execution"],
+                    approvals_mask=data["approvals_mask"],
+                    approvals_num=data["approvals_num"],
+                    expiration_date=data["expiration_date"],
+                    order_boc=data["order_boc"],
+                    signers=data["signers"],
+                    last_transaction_lt=data["last_transaction_lt"],
+                    code_hash=data["code_hash"],
+                    data_hash=data["data_hash"],
+                )
+
+        return result
+
     async def get_dedust_pool(self, address: str) -> Optional[DedustPool]:
         result = await self.emulated_repository.get_dedust_pool(address)
         return result
@@ -344,12 +413,13 @@ async def _gather_data_from_db(
         accounts: set[str],
         session: AsyncSession,
         extra_requests: list[ExtraAccountRequest] = None,
-) -> tuple[list[JettonWallet], list[NFTItem], list[NftSale], list[NftAuction], list[LatestAccountState], list[dict]]:
+) -> tuple[list[JettonWallet], list[NFTItem], list[NftSale], list[NftAuction], list[LatestAccountState], list[MultisigOrder], list[dict]]:
     jetton_wallets = []
     nft_items = []
     nft_sales = []
     getgems_auctions = []
     nominator_pools = []
+    multisig_orders = []
     extra = []
     queue = deque(extra_requests or [])
     processed = set()
@@ -403,6 +473,7 @@ async def _gather_data_from_db(
         wallets = await session.execute(select(JettonWallet).filter(JettonWallet.address.in_(batch)))
         nft = await session.execute(select(NFTItem).filter(NFTItem.address.in_(nft_batch)))
         sales = await session.execute(select(NftSale).filter(NftSale.address.in_(batch)))
+        orders = await session.execute(select(MultisigOrder).filter(MultisigOrder.address.in_(batch)))
         pools = await session.execute(select(LatestAccountState)
                                                 .filter(LatestAccountState.account.in_(batch))
                                                 .filter(LatestAccountState.code_hash == NOMINATOR_POOL_CODE_HASH))
@@ -410,10 +481,11 @@ async def _gather_data_from_db(
         nft_items += list(nft.scalars().all())
         nft_sales += list(sales.scalars().all())
         getgems_auctions += auctions
+        multisig_orders += list(orders.scalars().all())
         nominator_pools += list(pools.scalars().all())
 
 
-    return jetton_wallets, nft_items, nft_sales, getgems_auctions, nominator_pools, extra
+    return jetton_wallets, nft_items, nft_sales, getgems_auctions, nominator_pools, multisig_orders, extra
 
 @dataclass(frozen=True, eq=True)
 class ExtraAccountRequest:
@@ -426,7 +498,7 @@ class ExtraAccountRequest:
 async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_requests: set[ExtraAccountRequest] = None)\
         -> dict[str, dict[str, dict]]:
     result = defaultdict(dict)
-    (jetton_wallets, nft_items, nft_sales, nft_auctions, nominator_pools, extra) = await _gather_data_from_db(
+    (jetton_wallets, nft_items, nft_sales, nft_auctions, nominator_pools, multisig_orders, extra) = await _gather_data_from_db(
         accounts, session, extra_requests=extra_requests)
     for wallet in accounts:
         result[wallet] = {}
@@ -465,6 +537,22 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
     for account_state in nominator_pools:
         result[account_state.account]["NominatorPool"] = {
             "address": account_state.account,
+        }
+    for order in multisig_orders:
+        result[order.address]["MultisigOrder"] = {
+            "address": order.address,
+            "multisig_address": order.multisig_address,
+            "order_seqno": float(order.order_seqno),
+            "threshold": float(order.threshold),
+            "sent_for_execution": order.sent_for_execution,
+            "approvals_mask": float(order.approvals_mask),
+            "approvals_num": float(order.approvals_num),
+            "expiration_date": float(order.expiration_date),
+            "order_boc": order.order_boc,
+            "signers": order.signers,
+            "last_transaction_lt": float(order.last_transaction_lt),
+            "code_hash": order.code_hash,
+            "data_hash": order.data_hash,
         }
     for wallet in extra:
         result[wallet['account']][wallet['request']] = wallet
