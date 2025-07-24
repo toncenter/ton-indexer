@@ -32,7 +32,8 @@ void TraceInterfaceDetector::start_up() {
         }
         processed_addresses.insert(address);
         trace_.interfaces[address] = {};
-        auto P = td::PromiseCreator::lambda([&, SelfId=actor_id(this), promise = ig.get_promise()](td::Result<schema::AccountState> res) mutable {
+        auto P = td::PromiseCreator::lambda([SelfId=actor_id(this), address, shard_states=shard_states_, 
+                config=config_, promise = ig.get_promise()](td::Result<schema::AccountState> res) mutable {
             if (res.is_error()) {
                 // probably account is uninit, so we just skip it
                 promise.set_value(td::Unit());
@@ -40,8 +41,8 @@ void TraceInterfaceDetector::start_up() {
             }
             auto account_state = res.move_as_ok();
             td::actor::create_actor<Trace::Detector>
-                ("InterfacesDetector", address, account_state.code, account_state.data, shard_states_, config_,
-                td::PromiseCreator::lambda([SelfId, address = account_state.account, promise = std::move(promise)](std::vector<typename Trace::Detector::DetectedInterface> interfaces) mutable {
+                ("InterfacesDetector", address, account_state.code, account_state.data, shard_states, config,
+                td::PromiseCreator::lambda([SelfId, address, promise = std::move(promise)](std::vector<typename Trace::Detector::DetectedInterface> interfaces) mutable {
                     td::actor::send_closure(SelfId, &TraceInterfaceDetector::got_interfaces, address, std::move(interfaces), std::move(promise));
             })).release();
         });
