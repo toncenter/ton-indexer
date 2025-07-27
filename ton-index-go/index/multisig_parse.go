@@ -4,10 +4,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/gofiber/fiber/v2/log"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tlb"
 	"github.com/xssnick/tonutils-go/tvm/cell"
+	"log"
 	"strings"
 )
 
@@ -159,7 +159,7 @@ func ParseOrder(order string) (actions []OrderAction, err error) {
 	for _, kv := range all {
 		action, err := parseOrderAction(kv)
 		if err != nil {
-			log.Error(err)
+			log.Println("ERROR: failed to parse order action: %w", err)
 
 			parseError := fmt.Errorf("failed to parse order action: %w", err).Error()
 			action = OrderAction{
@@ -348,7 +348,11 @@ func (jt *JettonTransferBody) parseForwardPayload(payloadSlice *cell.Slice) {
 	}
 
 	// Load the opcode
-	actualSumType, _ := payloadSlice.LoadUInt(32)
+	actualSumType, err := payloadSlice.LoadUInt(32)
+	if err != nil {
+		jt.PayloadSumType = "Unknown"
+		return
+	}
 	jt.PayloadSumType = fmt.Sprintf("0x%x", actualSumType)
 
 	switch sumType {
