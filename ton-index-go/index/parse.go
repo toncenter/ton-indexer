@@ -43,7 +43,7 @@ var EVAA_ASSET_ID_MAP_TESTNET = map[string]string{
 	"0xc585bac25948a5feea8f2a9e052eb45995882b15dfb784b37cd271cc163f3aea": "0:5EE20B5240CC4CE51A4C60BAF8C9D358EF617C26463E89C6571B534972C8EEF1",
 }
 
-var IsTestnet bool = false
+var IsTestnet bool
 
 // json marshaling and unmarshaling
 func (v *ShardId) String() string {
