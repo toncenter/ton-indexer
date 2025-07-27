@@ -626,6 +626,14 @@ type RawAction struct {
 	ToncoDeployPoolLpFeeBase                             *string
 	ToncoDeployPoolLpFeeCurrent                          *string
 	ToncoDeployPoolPoolActive                            *bool
+	CoffeeCreatePoolAmount1                              *string
+	CoffeeCreatePoolAmount2                              *string
+	CoffeeCreatePoolLpTokensMinted                       *string
+	CoffeeStakingDepositMintedItemAddress                *AccountAddress
+	CoffeeStakingDepositMintedItemIndex                  *string
+	CoffeeStakingWithdrawNftAddress                      *AccountAddress
+	CoffeeStakingWithdrawNftIndex                        *string
+	CoffeeStakingWithdrawPoints                          *string
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
@@ -1215,4 +1223,47 @@ type ActionDetailsNftDiscovery struct {
 	NftItem       *AccountAddress `json:"nft_item"`
 	NftCollection *AccountAddress `json:"nft_collection"`
 	NftItemIndex  *string         `json:"nft_item_index"`
+}
+
+type ActionDetailsCoffeeCreatePool struct {
+	Creator1           *AccountAddress `json:"creator_1"`
+	Creator2           *AccountAddress `json:"creator_2"`
+	Pool               *AccountAddress `json:"pool"`
+	Asset1             *AccountAddress `json:"asset_1"`
+	Asset2             *AccountAddress `json:"asset_2"`
+	Amount1            *string         `json:"amount_1"`
+	Amount2            *string         `json:"amount_2"`
+	LpTokensMinted     *string         `json:"lp_tokens_minted"`
+}
+
+type ActionDetailsCoffeeStakingDeposit struct {
+	Staker               *AccountAddress `json:"staker"`
+	UserJettonWallet     *AccountAddress `json:"user_jetton_wallet"`
+	Pool                 *AccountAddress `json:"pool"`
+	PoolJettonWallet     *AccountAddress `json:"pool_jetton_wallet"`
+	Asset                *AccountAddress `json:"asset"`
+	Amount               *string         `json:"amount"`
+	MintedItemAddress    *AccountAddress `json:"minted_item_address"`
+	MintedItemIndex      *string         `json:"minted_item_index"`
+}
+
+type ActionDetailsCoffeeStakingWithdraw struct {
+	Staker               *AccountAddress `json:"staker"`
+	UserJettonWallet     *AccountAddress `json:"user_jetton_wallet"`
+	Pool                 *AccountAddress `json:"pool"`
+	PoolJettonWallet     *AccountAddress `json:"pool_jetton_wallet"`
+	Asset                *AccountAddress `json:"asset"`
+	Amount               *string         `json:"amount"`
+	NftAddress           *AccountAddress `json:"nft_address"`
+	NftIndex             *string         `json:"nft_index"`
+	Points               *string         `json:"points"`
+}
+
+type ActionDetailsCoffeeStakingClaimRewards struct {
+	Pool                    *AccountAddress `json:"pool"`
+	PoolJettonWallet        *AccountAddress `json:"pool_jetton_wallet"`
+	Recipient               *AccountAddress `json:"recipient"`
+	RecipientJettonWallet   *AccountAddress `json:"recipient_jetton_wallet"`
+	Asset                   *AccountAddress `json:"asset"`
+	Amount                  *string         `json:"amount"`
 }

@@ -296,6 +296,23 @@ type actionStakingData struct {
 	TokensMinted *string `msgpack:"tokens_minted"`
 }
 
+type actionCoffeeCreatePoolDetails struct {
+	Amount1        *string `msgpack:"amount_1"`
+	Amount2        *string `msgpack:"amount_2"`
+	LpTokensMinted *string `msgpack:"lp_tokens_minted"`
+}
+
+type actionCoffeeStakingDepositDetails struct {
+	MintedItemAddress *string `msgpack:"minted_item_address"`
+	MintedItemIndex   *string `msgpack:"minted_item_index"`
+}
+
+type actionCoffeeStakingWithdrawDetails struct {
+	NftAddress *string `msgpack:"nft_address"`
+	NftIndex   *string `msgpack:"nft_index"`
+	Points     *string `msgpack:"points"`
+}
+
 type Action struct {
 	ActionId                 string                          `msgpack:"action_id"`
 	Type                     string                          `msgpack:"type"`
@@ -325,14 +342,17 @@ type Action struct {
 	TonTransferData          *actionTonTransferDetails       `msgpack:"ton_transfer_data"`
 	AncestorType             []string                        `msgpack:"ancestor_type"`
 	ParentActionId           *string                         `msgpack:"parent_action_id"`
-	JettonTransferData       *actionJettonTransferDetails    `msgpack:"jetton_transfer_data"`
-	NftTransferData          *actionNftTransferDetails       `msgpack:"nft_transfer_data"`
-	JettonSwapData           *actionJettonSwapDetails        `msgpack:"jetton_swap_data"`
-	ChangeDnsRecordData      *actionChangeDnsRecordDetails   `msgpack:"change_dns_record_data"`
-	NftMintData              *actionNftMintDetails           `msgpack:"nft_mint_data"`
-	DexDepositLiquidityData  *actionDexDepositLiquidityData  `msgpack:"dex_deposit_liquidity_data"`
-	DexWithdrawLiquidityData *actionDexWithdrawLiquidityData `msgpack:"dex_withdraw_liquidity_data"`
-	StakingData              *actionStakingData              `msgpack:"staking_data"`
+	JettonTransferData            *actionJettonTransferDetails        `msgpack:"jetton_transfer_data"`
+	NftTransferData               *actionNftTransferDetails           `msgpack:"nft_transfer_data"`
+	JettonSwapData                *actionJettonSwapDetails            `msgpack:"jetton_swap_data"`
+	ChangeDnsRecordData           *actionChangeDnsRecordDetails       `msgpack:"change_dns_record_data"`
+	NftMintData                   *actionNftMintDetails               `msgpack:"nft_mint_data"`
+	DexDepositLiquidityData       *actionDexDepositLiquidityData      `msgpack:"dex_deposit_liquidity_data"`
+	DexWithdrawLiquidityData      *actionDexWithdrawLiquidityData     `msgpack:"dex_withdraw_liquidity_data"`
+	StakingData                   *actionStakingData                  `msgpack:"staking_data"`
+	CoffeeCreatePoolData          *actionCoffeeCreatePoolDetails      `msgpack:"coffee_create_pool_data"`
+	CoffeeStakingDepositData      *actionCoffeeStakingDepositDetails  `msgpack:"coffee_staking_deposit_data"`
+	CoffeeStakingWithdrawData     *actionCoffeeStakingWithdrawDetails `msgpack:"coffee_staking_withdraw_data"`
 }
 
 type blockId struct {
@@ -914,6 +934,20 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.StakingDataTsNft = a.StakingData.TsNft
 		row.StakingTokensBurnt = a.StakingData.TokensBurnt
 		row.StakingTokensMinted = a.StakingData.TokensMinted
+	}
+	if a.CoffeeCreatePoolData != nil {
+		row.CoffeeCreatePoolAmount1 = a.CoffeeCreatePoolData.Amount1
+		row.CoffeeCreatePoolAmount2 = a.CoffeeCreatePoolData.Amount2
+		row.CoffeeCreatePoolLpTokensMinted = a.CoffeeCreatePoolData.LpTokensMinted
+	}
+	if a.CoffeeStakingDepositData != nil {
+		row.CoffeeStakingDepositMintedItemAddress = a.CoffeeStakingDepositData.MintedItemAddress
+		row.CoffeeStakingDepositMintedItemIndex = a.CoffeeStakingDepositData.MintedItemIndex
+	}
+	if a.CoffeeStakingWithdrawData != nil {
+		row.CoffeeStakingWithdrawNftAddress = a.CoffeeStakingWithdrawData.NftAddress
+		row.CoffeeStakingWithdrawNftIndex = a.CoffeeStakingWithdrawData.NftIndex
+		row.CoffeeStakingWithdrawPoints = a.CoffeeStakingWithdrawData.Points
 	}
 	return row, nil
 }

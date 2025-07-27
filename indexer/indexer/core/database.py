@@ -425,11 +425,6 @@ class Action(Base):
         Column("pool_active", Boolean),
     ]))
     coffee_create_pool_data = Column(CompositeType("coffee_create_pool_details", [
-        Column("creator_1", String),
-        Column("creator_2", String),
-        Column("pool", String),
-        Column("asset_1", String),
-        Column("asset_2", String),
         Column("amount_1", Numeric),
         Column("amount_2", Numeric),
         Column("lp_tokens_minted", Numeric),

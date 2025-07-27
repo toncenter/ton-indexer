@@ -770,6 +770,49 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			LpFeeCurrent:        raw.ToncoDeployPoolLpFeeCurrent,
 			PoolActive:          raw.ToncoDeployPoolPoolActive,
 		}
+	case "coffee_create_pool":
+		act.Details = ActionDetailsCoffeeCreatePool{
+			Creator1:       raw.Source,         // source = initiator_1
+			Creator2:       raw.SourceSecondary, // source_secondary = initiator_2
+			Pool:           raw.Destination,    // destination = pool
+			Asset1:         raw.Asset,          // asset = asset_1
+			Asset2:         raw.Asset2,         // asset2 = asset_2
+			Amount1:        raw.CoffeeCreatePoolAmount1,
+			Amount2:        raw.CoffeeCreatePoolAmount2,
+			LpTokensMinted: raw.CoffeeCreatePoolLpTokensMinted,
+		}
+	case "coffee_staking_deposit":
+		act.Details = ActionDetailsCoffeeStakingDeposit{
+			Staker:               raw.Source,                // source = staker
+			UserJettonWallet:     raw.SourceSecondary,       // source_secondary = user_jetton_wallet
+			Pool:                 raw.Destination,           // destination = pool
+			PoolJettonWallet:     raw.DestinationSecondary,  // destination_secondary = pool_jetton_wallet
+			Asset:                raw.Asset,                 // asset = asset
+			Amount:               raw.Amount,                // amount = value
+			MintedItemAddress:    raw.CoffeeStakingDepositMintedItemAddress,
+			MintedItemIndex:      raw.CoffeeStakingDepositMintedItemIndex,
+		}
+	case "coffee_staking_withdraw":
+		act.Details = ActionDetailsCoffeeStakingWithdraw{
+			Staker:               raw.Source,                // source = staker
+			UserJettonWallet:     raw.SourceSecondary,       // source_secondary = user_jetton_wallet
+			Pool:                 raw.Destination,           // destination = pool
+			PoolJettonWallet:     raw.DestinationSecondary,  // destination_secondary = pool_jetton_wallet
+			Asset:                raw.Asset,                 // asset = asset
+			Amount:               raw.Amount,                // amount = amount
+			NftAddress:           raw.CoffeeStakingWithdrawNftAddress,
+			NftIndex:             raw.CoffeeStakingWithdrawNftIndex,
+			Points:               raw.CoffeeStakingWithdrawPoints,
+		}
+	case "coffee_staking_claim_rewards":
+		act.Details = ActionDetailsCoffeeStakingClaimRewards{
+			Pool:                  raw.Source,               // source = pool
+			PoolJettonWallet:      raw.SourceSecondary,      // source_secondary = pool_jetton_wallet
+			Recipient:             raw.Destination,          // destination = recipient
+			RecipientJettonWallet: raw.DestinationSecondary, // destination_secondary = recipient_jetton_wallet
+			Asset:                 raw.Asset,                // asset = asset
+			Amount:                raw.Amount,               // amount = amount
+		}
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
@@ -1231,6 +1274,14 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.ToncoDeployPoolLpFeeBase,
 		&act.ToncoDeployPoolLpFeeCurrent,
 		&act.ToncoDeployPoolPoolActive,
+		&act.CoffeeCreatePoolAmount1,
+		&act.CoffeeCreatePoolAmount2,
+		&act.CoffeeCreatePoolLpTokensMinted,
+		&act.CoffeeStakingDepositMintedItemAddress,
+		&act.CoffeeStakingDepositMintedItemIndex,
+		&act.CoffeeStakingWithdrawNftAddress,
+		&act.CoffeeStakingWithdrawNftIndex,
+		&act.CoffeeStakingWithdrawPoints,
 	)
 
 	if err != nil {
