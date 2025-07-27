@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,11 +21,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Traces where root_account_code_hash mentioned in this list will not be treated as synthetic traces
+var ignoreSyntheticTracesCodeHashes = []string{
+	"EayteVWEQJDyg78ji8FEmHH3g+fMCXlAjT9IWUg+hSU=", // highload v3
+}
+
 type hash [32]byte
 
 type TraceData struct {
-	RootNodeKey string
-	Nodes       map[string]TraceNode
+	RootNodeKey         string
+	Nodes               map[string]TraceNode
+	RootAccountCodeHash *string
 }
 
 type TraceUpdateStats struct {
@@ -412,6 +419,10 @@ func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (*Tra
 	if !exists {
 		return nil, fmt.Errorf("root_node not found in trace %s", hashKey)
 	}
+	var rootAccountCodeHash *string
+	if rootAccountCodeHashStr, exists := traceData["root_account_code_hash"]; exists {
+		rootAccountCodeHash = &rootAccountCodeHashStr
+	}
 	nodes := make(map[string]TraceNode)
 	for key, value := range traceData {
 		if key == "root_node" || key == "depth_limit_exceeded" || strings.Contains(key, ":") || strings.Contains(key, "actions") {
@@ -425,8 +436,9 @@ func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (*Tra
 		nodes[key] = node
 	}
 	return &TraceData{
-		RootNodeKey: rootNodeKey,
-		Nodes:       nodes,
+		RootNodeKey:         rootNodeKey,
+		Nodes:               nodes,
+		RootAccountCodeHash: rootAccountCodeHash,
 	}, nil
 }
 
@@ -438,7 +450,11 @@ func (rtt *RedisTTLTracker) handleTraceEmulationStatus(ctx context.Context, hash
 	rootTxNode, exists := data.Nodes[data.RootNodeKey]
 	if exists {
 		account := rootTxNode.Transaction.Account
-		if rootTxNode.Emulated {
+		var isSyntheticTrace bool = rootTxNode.Emulated
+		if data.RootAccountCodeHash != nil && slices.Contains(ignoreSyntheticTracesCodeHashes, *data.RootAccountCodeHash) {
+			isSyntheticTrace = false
+		}
+		if isSyntheticTrace {
 			rtt.syntheticTracesTracker.AddSyntheticTrace(account, hashKey)
 			rtt.logger.WithFields(logrus.Fields{
 				"trace":   hashKey,
