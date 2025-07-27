@@ -95,9 +95,11 @@ public:
                 auto it = trace_.emulated_accounts.find(trace_.root->address);
                 if (it != trace_.emulated_accounts.end()) {
                     const auto& [address, account] = *it;
-                    transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()),
-                                      "root_account_code_hash",
-                                      td::base64_encode(account.code->get_hash().as_slice()));
+                    if (account.code.not_null()) {
+                        transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()),
+                                          "root_account_code_hash",
+                                          td::base64_encode(account.code->get_hash().as_slice()));
+                    }
                 }
             }
             transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
