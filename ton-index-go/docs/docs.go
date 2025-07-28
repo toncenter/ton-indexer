@@ -4717,6 +4717,9 @@ const docTemplate = `{
                 "parsed_body_type": {
                     "type": "string"
                 },
+                "send_mode": {
+                    "type": "integer"
+                },
                 "value": {
                     "type": "string"
                 }

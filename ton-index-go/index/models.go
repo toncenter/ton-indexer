@@ -1277,6 +1277,7 @@ type OrderAction struct {
 	Error          *string         `json:"error"`
 	ParsedBody     *ParsedBody     `json:"parsed_body"`
 	ParsedBodyType string          `json:"parsed_body_type"`
+	SendMode       uint8           `json:"send_mode"`
 }
 
 // ParsedBody interface for different message body types

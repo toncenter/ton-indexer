@@ -216,6 +216,7 @@ func parseOrderAction(kv cell.DictKV) (OrderAction, error) {
 			BodyRaw:        bodyRaw,
 			ParsedBody:     &parsedBody,
 			ParsedBodyType: parsedBody.GetType(),
+			SendMode:       orderAction.Mode,
 			Parsed:         true,
 			Error:          nil,
 		}, nil
