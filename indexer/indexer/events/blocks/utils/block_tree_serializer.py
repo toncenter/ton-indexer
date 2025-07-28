@@ -739,24 +739,32 @@ def _fill_coffee_create_vault(block: CoffeeCreateVaultBlock, action: Action):
     action.source = _addr(block.data.sender)
     action.destination = _addr(block.data.vault)
     action.asset = _addr(block.data.asset)
+    action.value = block.data.amount.value
 
 def _fill_coffee_create_pool_creator(block: CoffeeCreatePoolCreatorBlock, action: Action):
     action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.sender_jetton_wallet)
     action.destination = _addr(block.data.deposit_recipient)
     action.destination_secondary = _addr(block.data.pool_creator_contract)
     action.asset = _addr(block.data.provided_asset)
     action.asset2 = _addr(block.data.pool_params.first)
     action.asset2_secondary = _addr(block.data.pool_params.second)
+    action.amount = block.data.amount.value
 
 def _fill_coffee_create_pool(block: CoffeeCreatePoolBlock, action: Action):
-    action.source = _addr(block.data.initiator_1)
-    action.source_secondary = _addr(block.data.initiator_2)
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.source_jetton_wallet)
+    action.amount = block.data.amount.value
     action.asset = _addr(block.data.asset_1)
     action.asset2 = _addr(block.data.asset_2)
     action.destination = _addr(block.data.pool)
+    action.destination_secondary = _addr(block.data.pool_creator_contract)
     action.coffee_create_pool_data = {
         "amount_1": block.data.amount_1.value if block.data.amount_1 else None,
         "amount_2": block.data.amount_2.value if block.data.amount_2 else None,
+        "initiator_1": _addr(block.data.initiator_1),
+        "initiator_2": _addr(block.data.initiator_2),
+        "provided_asset": _addr(block.data.provided_asset),
         "lp_tokens_minted": block.data.lp_tokens_minted.value if block.data.lp_tokens_minted else None,
     }
 
@@ -766,7 +774,7 @@ def _fill_coffee_mev_protect_hold_funds(block: Block, action: Action):
     action.destination = _addr(block.data['mev_contract'])
     action.destination_secondary = _addr(block.data['mev_contract_wallet'])
     action.asset = _addr(block.data['asset'])
-    action.amount = block.data['amount']
+    action.amount = block.data['amount'].value
 
 def _fill_coffee_mev_protect_failed_swap(block: Block, action: Action):
     action.destination = _addr(block.data['recipient'])
@@ -909,8 +917,6 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_create_pool(block, action)
         case 'coffee_mev_protect_hold_funds':
             _fill_coffee_mev_protect_hold_funds(block, action)
-        case 'coffee_mev_protect_failed_swap':
-            _fill_coffee_mev_protect_failed_swap(block, action)
         case 'coffee_staking_deposit':
             _fill_coffee_staking_deposit(block, action)
         case 'coffee_staking_withdraw':

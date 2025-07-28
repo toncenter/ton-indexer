@@ -430,7 +430,11 @@ class Action(Base):
     coffee_create_pool_data = Column(CompositeType("coffee_create_pool_details", [
         Column("amount_1", Numeric),
         Column("amount_2", Numeric),
+        Column("initiator_1", String),
+        Column("initiator_2", String),
+        Column("provided_asset", String),
         Column("lp_tokens_minted", Numeric),
+        Column("pool_creator_contract", String)
     ]))
     coffee_staking_deposit_data = Column(CompositeType("coffee_staking_deposit_details", [
         Column("minted_item_address", String),

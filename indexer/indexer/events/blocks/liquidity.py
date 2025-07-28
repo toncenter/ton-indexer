@@ -1974,6 +1974,7 @@ class CoffeeCreateVaultData:
     sender: AccountId
     vault: AccountId
     asset: Asset
+    amount: Amount
 
 
 class CoffeeCreateVaultBlock(Block):
@@ -2019,6 +2020,7 @@ class CoffeeCreateVaultMatcher(BlockMatcher):
             sender=AccountId(block.get_message().source),
             vault=AccountId(deploy_block.get_message().destination),
             asset=deploy_data.asset,
+            amount=Amount(block.get_message().value)
         )
         new_block = CoffeeCreateVaultBlock(data)
         new_block.merge_blocks([block] + other_blocks)
@@ -2028,6 +2030,8 @@ class CoffeeCreateVaultMatcher(BlockMatcher):
 @dataclass
 class CoffeeCreatePoolCreatorData:
     sender: AccountId
+    sender_jetton_wallet: AccountId
+    amount: Amount
     provided_asset: Asset
     pool_creator_contract: AccountId
     deposit_recipient: AccountId
@@ -2075,9 +2079,13 @@ class CoffeeCreatePoolCreatorMatcher(BlockMatcher):
         pool_params = None
         pool_creation_params = None
         sender = None
+        sender_jetton_wallet = None
+        amount = None
         if isinstance(in_transfer_block, JettonTransferBlock):
-            sender = in_transfer_block.data["sender_wallet"]
+            sender = in_transfer_block.data["sender"]
+            sender_jetton_wallet = in_transfer_block.data["sender_wallet"]
             asset = in_transfer_block.data["asset"]
+            amount = in_transfer_block.data["amount"]
             data = CoffeeCreatePoolJetton(
                 Cell.from_boc(in_transfer_block.data["forward_payload"])[
                     0
@@ -2089,15 +2097,8 @@ class CoffeeCreatePoolCreatorMatcher(BlockMatcher):
             if in_transfer_block.opcode == CoffeeCreatePoolNative.opcode:
                 sender = in_transfer_block.get_message().source
                 data = CoffeeCreatePoolNative(in_transfer_block.get_body())
+                amount = Amount(data.amount)
                 asset = Asset(is_ton=True)
-                pool_params = data.params
-                pool_creation_params = data.creation_params
-            elif in_transfer_block.opcode == CoffeeCreatePoolExtra.opcode:
-                sender = in_transfer_block.get_message().source
-                data = CoffeeCreatePoolExtra(in_transfer_block.get_body())
-                asset = Asset(
-                    is_ton=False, jetton_address=in_transfer_block.get_message().source
-                )
                 pool_params = data.params
                 pool_creation_params = data.creation_params
             else:
@@ -2109,7 +2110,9 @@ class CoffeeCreatePoolCreatorMatcher(BlockMatcher):
             return []
         data = CoffeeCreatePoolCreatorData(
             sender=AccountId(sender),
+            sender_jetton_wallet=AccountId(sender_jetton_wallet),
             provided_asset=asset,
+            amount=amount,
             pool_creator_contract=AccountId(deploy_block.get_message().destination),
             deposit_recipient=AccountId(pool_creation_params.public.recipient),
             pool_params=pool_params,
@@ -2122,6 +2125,11 @@ class CoffeeCreatePoolCreatorMatcher(BlockMatcher):
 
 @dataclass
 class CoffeeCreatePoolData:
+
+    source: AccountId
+    source_jetton_wallet: AccountId | None
+    provided_asset: Asset
+    amount: Amount
     initiator_1: AccountId
     initiator_2: AccountId
     pool: AccountId
@@ -2132,6 +2140,7 @@ class CoffeeCreatePoolData:
     lp_tokens_minted: Amount
     pool_params: PoolParams
     pool_creation_params: PublicPoolCreationParams
+    pool_creator_contract: AccountId
 
 
 class CoffeeCreatePoolBlock(Block):
@@ -2247,6 +2256,10 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
             asset_2 = pool_params.second
 
         data = CoffeeCreatePoolData(
+            source=creator_block.data.sender,
+            source_jetton_wallet=creator_block.data.sender_jetton_wallet,
+            provided_asset=creator_block.data.provided_asset,
+            amount=creator_block.data.amount,
             initiator_1=initiator_1,
             initiator_2=initiator_2,
             pool=pool,
@@ -2257,6 +2270,7 @@ class CoffeeCreatePoolMatcher(BlockMatcher):
             lp_tokens_minted=lp_tokens_minted,
             pool_params=pool_params,
             pool_creation_params=pool_creation_params,
+            pool_creator_contract=creator_block.data.pool_creator_contract,
         )
 
         new_block = CoffeeCreatePoolBlock(data)

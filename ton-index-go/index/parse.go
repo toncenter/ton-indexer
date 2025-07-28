@@ -776,37 +776,53 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		}
 	case "coffee_create_pool":
 		act.Details = ActionDetailsCoffeeCreatePool{
-			Creator1:       raw.Source,
-			Creator2:       raw.SourceSecondary,
-			Pool:           raw.Destination,
-			Asset1:         raw.Asset,
-			Asset2:         raw.Asset2,
-			Amount1:        raw.CoffeeCreatePoolAmount1,
-			Amount2:        raw.CoffeeCreatePoolAmount2,
-			LpTokensMinted: raw.CoffeeCreatePoolLpTokensMinted,
+			Source:              raw.Source,
+			SourceJettonWallet:  raw.SourceSecondary,
+			Initiator1:          raw.CoffeeCreatePoolInitiator1,
+			Initiator2:          raw.CoffeeCreatePoolInitiator2,
+			ProvidedAsset:       raw.CoffeeCreatePoolProvidedAsset,
+			Amount:              raw.Amount,
+			Pool:                raw.Destination,
+			Asset1:              raw.Asset,
+			Asset2:              raw.Asset2,
+			Amount1:             raw.CoffeeCreatePoolAmount1,
+			Amount2:             raw.CoffeeCreatePoolAmount2,
+			LpTokensMinted:      raw.CoffeeCreatePoolLpTokensMinted,
+			PoolCreatorContract: raw.CoffeeCreatePoolPoolCreatorContract,
+		}
+	case "coffee_create_pool_creator":
+		act.Details = ActionDetailsCoffeeCreatePoolCreator{
+			Source:              raw.Source,
+			SourceJettonWallet:  raw.SourceSecondary,
+			DepositRecipient:    raw.Destination,
+			PoolCreatorContract: raw.DestinationSecondary,
+			ProvidedAsset:       raw.CoffeeCreatePoolProvidedAsset,
+			Asset1:              raw.Asset,
+			Asset2:              raw.Asset2,
+			Amount:              raw.Amount,
 		}
 	case "coffee_staking_deposit":
 		act.Details = ActionDetailsCoffeeStakingDeposit{
-			Staker:            raw.Source,
-			UserJettonWallet:  raw.SourceSecondary,
-			Pool:              raw.Destination,
-			PoolJettonWallet:  raw.DestinationSecondary,
-			Asset:             raw.Asset,
-			Amount:            raw.Amount,
-			MintedItemAddress: raw.CoffeeStakingDepositMintedItemAddress,
-			MintedItemIndex:   raw.CoffeeStakingDepositMintedItemIndex,
+			Source:             raw.Source,
+			SourceJettonWallet: raw.SourceSecondary,
+			Pool:               raw.Destination,
+			PoolJettonWallet:   raw.DestinationSecondary,
+			Asset:              raw.Asset,
+			Amount:             raw.Amount,
+			MintedItemAddress:  raw.CoffeeStakingDepositMintedItemAddress,
+			MintedItemIndex:    raw.CoffeeStakingDepositMintedItemIndex,
 		}
 	case "coffee_staking_withdraw":
 		act.Details = ActionDetailsCoffeeStakingWithdraw{
-			Staker:           raw.Source,
-			UserJettonWallet: raw.SourceSecondary,
-			Pool:             raw.Destination,
-			PoolJettonWallet: raw.DestinationSecondary,
-			Asset:            raw.Asset,
-			Amount:           raw.Amount,
-			NftAddress:       raw.CoffeeStakingWithdrawNftAddress,
-			NftIndex:         raw.CoffeeStakingWithdrawNftIndex,
-			Points:           raw.CoffeeStakingWithdrawPoints,
+			Source:             raw.Source,
+			SourceJettonWallet: raw.SourceSecondary,
+			Pool:               raw.Destination,
+			PoolJettonWallet:   raw.DestinationSecondary,
+			Asset:              raw.Asset,
+			Amount:             raw.Amount,
+			NftAddress:         raw.CoffeeStakingWithdrawNftAddress,
+			NftIndex:           raw.CoffeeStakingWithdrawNftIndex,
+			Points:             raw.CoffeeStakingWithdrawPoints,
 		}
 	case "coffee_staking_claim_rewards":
 		act.Details = ActionDetailsCoffeeStakingClaimRewards{
@@ -816,6 +832,22 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			RecipientJettonWallet: raw.DestinationSecondary,
 			Asset:                 raw.Asset,
 			Amount:                raw.Amount,
+		}
+	case "coffee_mev_protect_hold_funds":
+		act.Details = ActionDetailsCoffeeMevProtectHoldFunds{
+			Source:                  raw.Source,
+			SourceJettonWallet:      raw.SourceSecondary,
+			MevContract:             raw.Destination,
+			MevContractJettonWallet: raw.DestinationSecondary,
+			Asset:                   raw.Asset,
+			Amount:                  raw.Amount,
+		}
+	case "coffee_create_vault":
+		act.Details = ActionDetailsCoffeeCreateVault{
+			Source: raw.Source,
+			Vault:  raw.Destination,
+			Asset:  raw.Asset,
+			Value:  raw.Value,
 		}
 	default:
 		details := map[string]string{}
@@ -1284,7 +1316,11 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.ToncoDeployPoolPoolActive,
 		&act.CoffeeCreatePoolAmount1,
 		&act.CoffeeCreatePoolAmount2,
+		&act.CoffeeCreatePoolInitiator1,
+		&act.CoffeeCreatePoolInitiator2,
+		&act.CoffeeCreatePoolProvidedAsset,
 		&act.CoffeeCreatePoolLpTokensMinted,
+		&act.CoffeeCreatePoolPoolCreatorContract,
 		&act.CoffeeStakingDepositMintedItemAddress,
 		&act.CoffeeStakingDepositMintedItemIndex,
 		&act.CoffeeStakingWithdrawNftAddress,

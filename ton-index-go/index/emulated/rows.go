@@ -309,6 +309,10 @@ type ActionRow struct {
 	CoffeeStakingWithdrawNftAddress       *string
 	CoffeeStakingWithdrawNftIndex         *string
 	CoffeeStakingWithdrawPoints           *string
+	CoffeeCreatePoolInitiator1            *string
+	CoffeeCreatePoolInitiator2            *string
+	CoffeeCreatePoolProvidedAsset         *string
+	CoffeeCreatePoolPoolCreatorContract   *string
 }
 type assign func(dest any) error
 type assignable interface {
@@ -521,7 +525,11 @@ func (t *ActionRow) getAssigns() []assign {
 		assignBoolPtr(t.ToncoDeployPoolPoolActive),
 		assignStringPtr(t.CoffeeCreatePoolAmount1),
 		assignStringPtr(t.CoffeeCreatePoolAmount2),
+		assignStringPtr(t.CoffeeCreatePoolInitiator1),
+		assignStringPtr(t.CoffeeCreatePoolInitiator2),
+		assignStringPtr(t.CoffeeCreatePoolProvidedAsset),
 		assignStringPtr(t.CoffeeCreatePoolLpTokensMinted),
+		assignStringPtr(t.CoffeeCreatePoolPoolCreatorContract),
 		assignStringPtr(t.CoffeeStakingDepositMintedItemAddress),
 		assignStringPtr(t.CoffeeStakingDepositMintedItemIndex),
 		assignStringPtr(t.CoffeeStakingWithdrawNftAddress),

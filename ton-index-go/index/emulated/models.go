@@ -389,9 +389,13 @@ type actionJvaultStakeDetails struct {
 }
 
 type actionCoffeeCreatePoolDetails struct {
-	Amount1        *string `msgpack:"amount_1"`
-	Amount2        *string `msgpack:"amount_2"`
-	LpTokensMinted *string `msgpack:"lp_tokens_minted"`
+	Amount1             *string `msgpack:"amount_1"`
+	Amount2             *string `msgpack:"amount_2"`
+	Initiator1          *string `msgpack:"initiator_1"`
+	Initiator2          *string `msgpack:"initiator_2"`
+	ProvidedAsset       *string `msgpack:"provided_asset"`
+	LpTokensMinted      *string `msgpack:"lp_tokens_minted"`
+	PoolCreatorContract *string `msgpack:"pool_creator_contract"`
 }
 
 type actionCoffeeStakingDepositDetails struct {
@@ -1156,7 +1160,11 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 	if a.CoffeeCreatePoolData != nil {
 		row.CoffeeCreatePoolAmount1 = a.CoffeeCreatePoolData.Amount1
 		row.CoffeeCreatePoolAmount2 = a.CoffeeCreatePoolData.Amount2
+		row.CoffeeCreatePoolInitiator1 = a.CoffeeCreatePoolData.Initiator1
+		row.CoffeeCreatePoolInitiator2 = a.CoffeeCreatePoolData.Initiator2
+		row.CoffeeCreatePoolProvidedAsset = a.CoffeeCreatePoolData.ProvidedAsset
 		row.CoffeeCreatePoolLpTokensMinted = a.CoffeeCreatePoolData.LpTokensMinted
+		row.CoffeeCreatePoolPoolCreatorContract = a.CoffeeCreatePoolData.PoolCreatorContract
 	}
 	if a.CoffeeStakingDepositData != nil {
 		row.CoffeeStakingDepositMintedItemAddress = a.CoffeeStakingDepositData.MintedItemAddress
