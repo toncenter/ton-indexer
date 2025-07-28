@@ -776,46 +776,46 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		}
 	case "coffee_create_pool":
 		act.Details = ActionDetailsCoffeeCreatePool{
-			Creator1:       raw.Source,         // source = initiator_1
-			Creator2:       raw.SourceSecondary, // source_secondary = initiator_2
-			Pool:           raw.Destination,    // destination = pool
-			Asset1:         raw.Asset,          // asset = asset_1
-			Asset2:         raw.Asset2,         // asset2 = asset_2
+			Creator1:       raw.Source,
+			Creator2:       raw.SourceSecondary,
+			Pool:           raw.Destination,
+			Asset1:         raw.Asset,
+			Asset2:         raw.Asset2,
 			Amount1:        raw.CoffeeCreatePoolAmount1,
 			Amount2:        raw.CoffeeCreatePoolAmount2,
 			LpTokensMinted: raw.CoffeeCreatePoolLpTokensMinted,
 		}
 	case "coffee_staking_deposit":
 		act.Details = ActionDetailsCoffeeStakingDeposit{
-			Staker:               raw.Source,                // source = staker
-			UserJettonWallet:     raw.SourceSecondary,       // source_secondary = user_jetton_wallet
-			Pool:                 raw.Destination,           // destination = pool
-			PoolJettonWallet:     raw.DestinationSecondary,  // destination_secondary = pool_jetton_wallet
-			Asset:                raw.Asset,                 // asset = asset
-			Amount:               raw.Amount,                // amount = value
-			MintedItemAddress:    raw.CoffeeStakingDepositMintedItemAddress,
-			MintedItemIndex:      raw.CoffeeStakingDepositMintedItemIndex,
+			Staker:            raw.Source,
+			UserJettonWallet:  raw.SourceSecondary,
+			Pool:              raw.Destination,
+			PoolJettonWallet:  raw.DestinationSecondary,
+			Asset:             raw.Asset,
+			Amount:            raw.Amount,
+			MintedItemAddress: raw.CoffeeStakingDepositMintedItemAddress,
+			MintedItemIndex:   raw.CoffeeStakingDepositMintedItemIndex,
 		}
 	case "coffee_staking_withdraw":
 		act.Details = ActionDetailsCoffeeStakingWithdraw{
-			Staker:               raw.Source,                // source = staker
-			UserJettonWallet:     raw.SourceSecondary,       // source_secondary = user_jetton_wallet
-			Pool:                 raw.Destination,           // destination = pool
-			PoolJettonWallet:     raw.DestinationSecondary,  // destination_secondary = pool_jetton_wallet
-			Asset:                raw.Asset,                 // asset = asset
-			Amount:               raw.Amount,                // amount = amount
-			NftAddress:           raw.CoffeeStakingWithdrawNftAddress,
-			NftIndex:             raw.CoffeeStakingWithdrawNftIndex,
-			Points:               raw.CoffeeStakingWithdrawPoints,
+			Staker:           raw.Source,
+			UserJettonWallet: raw.SourceSecondary,
+			Pool:             raw.Destination,
+			PoolJettonWallet: raw.DestinationSecondary,
+			Asset:            raw.Asset,
+			Amount:           raw.Amount,
+			NftAddress:       raw.CoffeeStakingWithdrawNftAddress,
+			NftIndex:         raw.CoffeeStakingWithdrawNftIndex,
+			Points:           raw.CoffeeStakingWithdrawPoints,
 		}
 	case "coffee_staking_claim_rewards":
 		act.Details = ActionDetailsCoffeeStakingClaimRewards{
-			Pool:                  raw.Source,               // source = pool
-			PoolJettonWallet:      raw.SourceSecondary,      // source_secondary = pool_jetton_wallet
-			Recipient:             raw.Destination,          // destination = recipient
-			RecipientJettonWallet: raw.DestinationSecondary, // destination_secondary = recipient_jetton_wallet
-			Asset:                 raw.Asset,                // asset = asset
-			Amount:                raw.Amount,               // amount = amount
+			Pool:                  raw.Source,
+			PoolJettonWallet:      raw.SourceSecondary,
+			Recipient:             raw.Destination,
+			RecipientJettonWallet: raw.DestinationSecondary,
+			Asset:                 raw.Asset,
+			Amount:                raw.Amount,
 		}
 	default:
 		details := map[string]string{}
