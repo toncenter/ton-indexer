@@ -135,6 +135,7 @@ class RedisInterfaceRepository(InterfaceRepository):
                 address=interface_data["address"],
                 nft_addr=interface_data["nft_addr"],
                 nft_owner=interface_data["nft_owner"],
+                last_bid=interface_data["last_bid"],
             )
         return None
 
@@ -458,7 +459,8 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
         result[auction.address]["NftAuction"] = {
             "address": auction.address,
             "nft_addr": auction.nft_addr,
-            "nft_owner": auction.nft_owner
+            "nft_owner": auction.nft_owner,
+            "last_bid": float(auction.last_bid)
         }
     for account_state in nominator_pools:
         result[account_state.account]["NominatorPool"] = {

@@ -770,7 +770,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		(A.jetton_transfer_data).custom_payload, (A.jetton_transfer_data).forward_payload, (A.jetton_transfer_data).comment,
 		(A.jetton_transfer_data).is_encrypted_comment, (A.nft_transfer_data).is_purchase, (A.nft_transfer_data).price,
 		(A.nft_transfer_data).query_id, (A.nft_transfer_data).custom_payload, (A.nft_transfer_data).forward_payload,
-		(A.nft_transfer_data).forward_amount, (A.nft_transfer_data).response_destination, (A.nft_transfer_data).nft_item_index,
+		(A.nft_transfer_data).forward_amount, (A.nft_transfer_data).response_destination, (A.nft_transfer_data).nft_item_index, (A.nft_transfer_data).marketplace, (A.nft_transfer_data).real_prev_owner
 		(A.jetton_swap_data).dex, (A.jetton_swap_data).sender, ((A.jetton_swap_data).dex_incoming_transfer).amount,
 		((A.jetton_swap_data).dex_incoming_transfer).asset, ((A.jetton_swap_data).dex_incoming_transfer).source,
 		((A.jetton_swap_data).dex_incoming_transfer).destination, ((A.jetton_swap_data).dex_incoming_transfer).source_jetton_wallet,
@@ -804,6 +804,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		(A.staking_data).tokens_minted,
 		A.success,
 		A.trace_external_hash,
+		A.trace_external_hash_norm,
 		A.value_extra_currencies`
 	clmn_query := clmn_query_default
 	from_query := `actions as A`
@@ -1579,6 +1580,59 @@ func SubstituteImgproxyBaseUrl(metadata *Metadata, base_url string) {
 	}
 }
 
+func queryActionsAccountsImpl(actions []Action, conn *pgxpool.Conn) ([]Action, error) {
+	if len(actions) == 0 {
+		return actions, nil
+	}
+
+	args := make([]any, 0, len(actions)*2)
+	placeholders := make([]string, len(actions))
+	for i, a := range actions {
+		// pgx uses 1-based parameter numbers.
+		// Every action consumes two params: trace_id then action_id.
+		p1, p2 := i*2+1, i*2+2
+		placeholders[i] = fmt.Sprintf("($%d,$%d)", p1, p2)
+
+		args = append(args, a.TraceId, a.ActionId)
+	}
+
+	query := fmt.Sprintf(
+		`SELECT trace_id, action_id, account
+		   FROM action_accounts
+		  WHERE (trace_id, action_id) IN (%s)`,
+		strings.Join(placeholders, ","),
+	)
+
+	rows, err := conn.Query(context.Background(), query, args...)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	type key struct{ trace, action string }
+	idx := make(map[key]*Action, len(actions))
+	for i := range actions {
+		k := key{string(*actions[i].TraceId), string(actions[i].ActionId)}
+		idx[k] = &actions[i]
+	}
+
+	for rows.Next() {
+		var traceID, actionID, account string
+
+		if err := rows.Scan(&traceID, &actionID, &account); err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		if a := idx[key{traceID, actionID}]; a != nil {
+			a.Accounts = append(a.Accounts, account)
+		}
+	}
+	if rows.Err() != nil {
+		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+	}
+
+	return actions, nil
+}
+
 func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
 	book := AddressBook{}
 	quote_addr_list := []string{}
@@ -2188,7 +2242,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.jetton_transfer_data).custom_payload, (A.jetton_transfer_data).forward_payload, (A.jetton_transfer_data).comment,
 				(A.jetton_transfer_data).is_encrypted_comment, (A.nft_transfer_data).is_purchase, (A.nft_transfer_data).price,
 				(A.nft_transfer_data).query_id, (A.nft_transfer_data).custom_payload, (A.nft_transfer_data).forward_payload,
-				(A.nft_transfer_data).forward_amount, (A.nft_transfer_data).response_destination, (A.nft_transfer_data).nft_item_index,
+				(A.nft_transfer_data).forward_amount, (A.nft_transfer_data).response_destination, (A.nft_transfer_data).nft_item_index, (A.nft_transfer_data).marketplace, (A.nft_transfer_data).real_prev_owner,
 				(A.jetton_swap_data).dex, (A.jetton_swap_data).sender, ((A.jetton_swap_data).dex_incoming_transfer).amount,
 				((A.jetton_swap_data).dex_incoming_transfer).asset, ((A.jetton_swap_data).dex_incoming_transfer).source,
 				((A.jetton_swap_data).dex_incoming_transfer).destination, ((A.jetton_swap_data).dex_incoming_transfer).source_jetton_wallet,
@@ -2236,6 +2290,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.staking_data).tokens_minted,
 				A.success,
 				A.trace_external_hash,
+				A.trace_external_hash_norm,
 				A.value_extra_currencies,
 				(A.multisig_create_order_data).query_id,
 				(A.multisig_create_order_data).order_seqno,
@@ -2286,7 +2341,8 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.tonco_deploy_pool_data).lp_fee_current,
 				(A.tonco_deploy_pool_data).pool_active,
 				
-				A.ancestor_type from actions as A where ` +
+				A.ancestor_type,
+				ARRAY[]::text[] from actions as A where ` +
 				arrayFilter + typeFilter + `order by trace_id, start_lt, end_lt`
 			actions, err := queryRawActionsImpl(query, conn, settings, supportedActionTypes)
 			if err != nil {
@@ -3464,4 +3520,468 @@ func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest,
 	}
 
 	return records, book, nil
+}
+
+func buildMultisigQuery(multisig_req MultisigRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+	var conditions []string
+
+	if len(multisig_req.Address) > 0 {
+		conditions = append(conditions, filterByArray("m.address", multisig_req.Address))
+	}
+
+	if len(multisig_req.WalletAddress) > 0 {
+		var walletAddresses []string
+		for _, addr := range multisig_req.WalletAddress {
+			walletAddresses = append(walletAddresses, fmt.Sprintf("'%s'", addr))
+		}
+
+		walletAddressesStr := strings.Join(walletAddresses, ",")
+		conditions = append(conditions, fmt.Sprintf("(m.signers && ARRAY[%s]::tonaddr[] OR m.proposers && ARRAY[%s]::tonaddr[])",
+			walletAddressesStr, walletAddressesStr))
+	}
+
+	var whereClause string
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	sort_order, err := getSortOrder(*lim_req.Sort)
+	if err != nil {
+		return "", err
+	}
+
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
+
+	query := fmt.Sprintf(`
+		SELECT m.address, m.next_order_seqno, m.threshold, m.signers, m.proposers,
+		       m.last_transaction_lt, m.code_hash, m.data_hash
+		FROM multisig m
+		%s
+		ORDER BY m.id %s %s`,
+		whereClause, sort_order, limit_query)
+
+	return query, nil
+}
+
+func buildMultisigOrderQuery(order_req MultisigOrderRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+	var conditions []string
+
+	if len(order_req.Address) > 0 {
+		conditions = append(conditions, filterByArray("address", order_req.Address))
+	}
+
+	if len(order_req.WalletAddress) > 0 {
+		var walletAddresses []string
+		for _, addr := range order_req.WalletAddress {
+			walletAddresses = append(walletAddresses, fmt.Sprintf("'%s'", addr))
+		}
+
+		conditions = append(conditions, fmt.Sprintf("signers && ARRAY[%s]::tonaddr[]",
+			strings.Join(walletAddresses, ",")))
+	}
+
+	var whereClause string
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	sort_order, err := getSortOrder(*lim_req.Sort)
+	if err != nil {
+		return "", err
+	}
+
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
+
+	query := fmt.Sprintf(`
+		SELECT address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask,
+		       approvals_num, expiration_date, order_boc, signers, last_transaction_lt,
+		       code_hash, data_hash
+		FROM multisig_orders
+		%s
+		ORDER BY id %s %s`,
+		whereClause, sort_order, limit_query)
+
+	return query, nil
+}
+
+func queryMultisigImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Multisig, error) {
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	multisigs := []Multisig{}
+	for rows.Next() {
+		multisig, err := ScanMultisig(rows)
+		if err != nil {
+			return nil, err
+		}
+		multisigs = append(multisigs, *multisig)
+	}
+
+	return multisigs, nil
+}
+
+func queryMultisigOrderImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]MultisigOrder, error) {
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	orders := []MultisigOrder{}
+	for rows.Next() {
+		order, err := ScanMultisigOrder(rows)
+		if err != nil {
+			return nil, err
+		}
+		orders = append(orders, *order)
+	}
+
+	return orders, nil
+}
+
+func (db *DbClient) QueryMultisigs(
+	multisig_req MultisigRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]Multisig, AddressBook, error) {
+	query, err := buildMultisigQuery(multisig_req, lim_req, settings)
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	multisigs, err := queryMultisigImpl(query, conn, settings)
+	if err != nil {
+		log.Println(query)
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	// Fetch orders for each multisig
+	for i := range multisigs {
+		ordersQuery := fmt.Sprintf("SELECT "+
+			"address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask, approvals_num, expiration_date, "+
+			"order_boc, signers, last_transaction_lt, code_hash, data_hash "+
+			"FROM multisig_orders m "+
+			"WHERE multisig_address = '%s' "+
+			"ORDER BY id ", multisigs[i].Address)
+		orders, err := queryMultisigOrderImpl(ordersQuery, conn, settings)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		multisigs[i].Orders = orders
+	}
+
+	// Collect addresses for address book
+	addr_set := make(map[string]bool)
+	for _, multisig := range multisigs {
+		addr_set[string(multisig.Address)] = true
+		for _, signer := range multisig.Signers {
+			addr_set[string(signer)] = true
+		}
+		for _, proposer := range multisig.Proposers {
+			addr_set[string(proposer)] = true
+		}
+		for _, order := range multisig.Orders {
+			addr_set[string(order.Address)] = true
+			for _, signer := range order.Signers {
+				addr_set[string(signer)] = true
+			}
+		}
+	}
+
+	book := AddressBook{}
+	if len(addr_set) > 0 && !settings.NoAddressBook {
+		addr_list := make([]string, 0, len(addr_set))
+		for addr := range addr_set {
+			addr_list = append(addr_list, addr)
+		}
+		book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+	}
+
+	return multisigs, book, nil
+}
+
+func (db *DbClient) QueryMultisigOrders(
+	order_req MultisigOrderRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]MultisigOrder, AddressBook, error) {
+	query, err := buildMultisigOrderQuery(order_req, lim_req, settings)
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	orders, err := queryMultisigOrderImpl(query, conn, settings)
+	if err != nil {
+		log.Println(query)
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	// Collect addresses for address book
+	addr_set := make(map[string]bool)
+	for _, order := range orders {
+		addr_set[string(order.Address)] = true
+		for _, signer := range order.Signers {
+			addr_set[string(signer)] = true
+		}
+	}
+
+	book := AddressBook{}
+	if len(addr_set) > 0 && !settings.NoAddressBook {
+		addr_list := make([]string, 0, len(addr_set))
+		for addr := range addr_set {
+			addr_list = append(addr_list, addr)
+		}
+		book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+	}
+
+	return orders, book, nil
+}
+
+func (db *DbClient) QueryVestingContracts(
+	vesting_req VestingContractsRequest,
+	lim_req LimitRequest,
+	settings RequestSettings,
+) ([]VestingInfo, AddressBook, error) {
+
+	if len(vesting_req.ContractAddress) == 0 && len(vesting_req.WalletAddress) == 0 {
+		return nil, nil, IndexError{Code: 422, Message: "at least one of contract_address or wallet_address is required"}
+	}
+
+	if len(vesting_req.ContractAddress) > 0 && len(vesting_req.WalletAddress) > 0 {
+		return nil, nil, IndexError{Code: 422, Message: "only one of contract_address or wallet_address should be specified"}
+	}
+
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	query, err := buildVestingContractsQuery(vesting_req, lim_req, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	vestings, err := queryVestingContractsImpl(query, conn, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	book := AddressBook{}
+	if !settings.NoAddressBook {
+		addr_list := []string{}
+		for _, v := range vestings {
+			if v.Address != nil {
+				addr_list = append(addr_list, string(*v.Address))
+			}
+			if v.SenderAddress != nil {
+				addr_list = append(addr_list, string(*v.SenderAddress))
+			}
+			if v.OwnerAddress != nil {
+				addr_list = append(addr_list, string(*v.OwnerAddress))
+			}
+			for _, addr := range v.Whitelist {
+				addr_list = append(addr_list, string(addr))
+			}
+		}
+
+		if len(addr_list) > 0 {
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
+		}
+	}
+
+	return vestings, book, nil
+}
+
+func buildVestingContractsQuery(vesting_req VestingContractsRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+	limit_query, err := limitQuery(lim_req, settings)
+	if err != nil {
+		return "", err
+	}
+
+	clmn_query := `V.address, V.vesting_start_time, V.vesting_total_duration, V.unlock_period, V.cliff_duration,
+		V.vesting_sender_address, V.owner_address, V.vesting_total_amount`
+
+	from_query := `vesting_contracts V`
+	filter_list := []string{}
+	filter_query := ``
+	orderby_query := ` ORDER BY V.id ASC`
+
+	if len(vesting_req.ContractAddress) > 0 {
+		f_str := filterByArray("V.address", vesting_req.ContractAddress)
+		if len(f_str) > 0 {
+			filter_list = append(filter_list, f_str)
+		}
+	}
+
+	if len(vesting_req.WalletAddress) > 0 {
+		// Build filter conditions
+		wallet_conditions := []string{}
+
+		// Always check owner and sender addresses
+		wallet_owner_filter := filterByArray("V.owner_address", vesting_req.WalletAddress)
+		wallet_sender_filter := filterByArray("V.vesting_sender_address", vesting_req.WalletAddress)
+
+		if len(wallet_owner_filter) > 0 {
+			wallet_conditions = append(wallet_conditions, wallet_owner_filter)
+		}
+		if len(wallet_sender_filter) > 0 {
+			wallet_conditions = append(wallet_conditions, wallet_sender_filter)
+		}
+
+		// If check_whitelist is true, also search in whitelist using EXISTS
+		if vesting_req.CheckWhitelist != nil && *vesting_req.CheckWhitelist {
+			whitelist_filter := filterByArray("W.wallet_address", vesting_req.WalletAddress)
+			if len(whitelist_filter) > 0 {
+				whitelist_exists := fmt.Sprintf("EXISTS (SELECT 1 FROM vesting_whitelist W WHERE W.vesting_contract_address = V.address AND %s)", whitelist_filter)
+				wallet_conditions = append(wallet_conditions, whitelist_exists)
+			}
+		}
+
+		if len(wallet_conditions) > 0 {
+			wallet_filter := "(" + strings.Join(wallet_conditions, " OR ") + ")"
+			filter_list = append(filter_list, wallet_filter)
+		}
+	}
+
+	if len(filter_list) > 0 {
+		filter_query = ` WHERE ` + strings.Join(filter_list, " AND ")
+	}
+
+	query := `SELECT ` + clmn_query
+	query += ` FROM ` + from_query
+	query += filter_query
+	query += orderby_query
+	query += limit_query
+
+	return query, nil
+}
+
+func queryVestingContractsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]VestingInfo, error) {
+	vestings := []VestingInfo{}
+	contractAddresses := []string{}
+
+	{
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		rows, err := conn.Query(ctx, query)
+		if err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			vesting := VestingInfo{}
+
+			err = rows.Scan(
+				&vesting.Address,
+				&vesting.StartTime,
+				&vesting.TotalDuration,
+				&vesting.UnlockPeriod,
+				&vesting.CliffDuration,
+				&vesting.SenderAddress,
+				&vesting.OwnerAddress,
+				&vesting.TotalAmount,
+			)
+
+			if err != nil {
+				return nil, IndexError{Code: 500, Message: err.Error()}
+			}
+
+			vesting.Whitelist = []AccountAddress{}
+			vestings = append(vestings, vesting)
+
+			if vesting.Address != nil {
+				contractAddresses = append(contractAddresses, string(*vesting.Address))
+			}
+		}
+		if rows.Err() != nil {
+			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		}
+	}
+
+	// Fetch whitelist addresses separately if we have contracts
+	if len(contractAddresses) > 0 {
+		whitelistMap := make(map[string][]AccountAddress)
+
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+
+		whitelistQuery := fmt.Sprintf(`SELECT vesting_contract_address, wallet_address
+			FROM vesting_whitelist
+			WHERE vesting_contract_address IN (%s)
+			ORDER BY vesting_contract_address, wallet_address`,
+			strings.Join(func() []string {
+				quoted := make([]string, len(contractAddresses))
+				for i, addr := range contractAddresses {
+					quoted[i] = fmt.Sprintf("'%s'", addr)
+				}
+				return quoted
+			}(), ","))
+
+		rows, err := conn.Query(ctx, whitelistQuery)
+		if err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var contractAddr, walletAddr string
+			if err := rows.Scan(&contractAddr, &walletAddr); err != nil {
+				return nil, IndexError{Code: 500, Message: err.Error()}
+			}
+			whitelistMap[contractAddr] = append(whitelistMap[contractAddr], AccountAddress(walletAddr))
+		}
+
+		if rows.Err() != nil {
+			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+		}
+
+		// Assign whitelist addresses to vesting contracts
+		for i := range vestings {
+			if vestings[i].Address != nil {
+				if whitelist, exists := whitelistMap[string(*vestings[i].Address)]; exists {
+					vestings[i].Whitelist = whitelist
+				}
+			}
+		}
+	}
+
+	return vestings, nil
 }

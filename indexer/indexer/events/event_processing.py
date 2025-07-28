@@ -86,6 +86,7 @@ from indexer.events.blocks.swaps import (
     ToncoSwapBlockMatcher,
 )
 from indexer.events.blocks.utils import EventNode, NoMessageBodyException, to_tree
+from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action
 from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlockMatcher,
     VestingSendMessageBlockMatcher,
@@ -281,3 +282,21 @@ async def try_process_unknown_event(trace: Trace) -> list[Block]:
     except Exception as e:
         logging.error(f"Failed to process {trace.trace_id}")
         raise e
+
+async def try_classify_unknown_trace(trace):
+    actions = []
+    blocks = await try_process_unknown_event(trace)
+    for block in blocks:
+        if block.btype in ('root', 'empty'):
+            continue
+        if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
+            continue
+        if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
+            continue
+        action = block_to_action(block, trace.trace_id, trace)
+        assert len(action.accounts) > 0, f"Action {action} has no accounts"
+        actions.append(action)
+    if len(actions) == 0:
+        unknown_action = create_unknown_action(trace)
+        actions.append(unknown_action)
+    return actions

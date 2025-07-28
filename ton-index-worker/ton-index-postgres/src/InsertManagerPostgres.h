@@ -15,18 +15,16 @@ public:
     std::string password;
     std::string dbname = "ton_index";
 
-    std::string get_connection_string(std::string dbname = "") const;
+    std::string conn_str;
+
+    std::string get_connection_string() const;
   };
 private:
   InsertManagerPostgres::Credential credential_;
-  bool custom_types_{false};
-  bool create_indexes_{false};
-  bool run_migrations_{false};
   std::int32_t max_data_depth_{0};
-  std::int32_t out_of_sync_seqno_{0};
 public:
-  InsertManagerPostgres(InsertManagerPostgres::Credential credential, bool custom_types, bool create_indexes, bool run_migrations) : 
-    credential_(credential), custom_types_(custom_types), create_indexes_(create_indexes), run_migrations_(run_migrations) {}
+  InsertManagerPostgres(InsertManagerPostgres::Credential credential) : 
+    credential_(credential) {}
 
   void start_up() override;
 
@@ -77,6 +75,13 @@ private:
   std::string insert_nft_items(pqxx::work &txn);
   std::string insert_getgems_nft_auctions(pqxx::work &txn);
   std::string insert_getgems_nft_sales(pqxx::work &txn);
+  std::string insert_multisig_contracts(pqxx::work &txn);
+  std::string insert_multisig_orders(pqxx::work &txn);
+  std::string insert_vesting(pqxx::work &txn);
   void insert_contract_methods(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
+
+  bool try_acquire_leader_lock();
+  void do_insert();
+  void ensure_inserted();
 };

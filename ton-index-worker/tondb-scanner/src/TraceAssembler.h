@@ -43,6 +43,7 @@ struct TraceImpl {
 
     // info
     std::optional<td::Bits256> external_hash;
+    std::optional<td::Bits256> external_hash_norm;
     ton::BlockSeqno mc_seqno_start;
     ton::BlockSeqno mc_seqno_end;
 
@@ -62,13 +63,14 @@ struct TraceImpl {
     TraceImpl() {}
     TraceImpl(ton::BlockSeqno seqno, const schema::Transaction &tx) :
         trace_id(tx.hash), external_hash((tx.in_msg.has_value() ? std::optional<td::Bits256>(tx.in_msg.value().hash) : std::nullopt)),
+        external_hash_norm(tx.in_msg.has_value() ? tx.in_msg->hash_norm : std::nullopt),
         mc_seqno_start(seqno), mc_seqno_end(seqno), start_lt(tx.lt), start_utime(tx.now), end_lt(tx.lt), end_utime(tx.now),
         state(State::pending), nodes(1) {}
     
     schema::Trace to_schema() const;
     static TraceImplPtr from_schema(const schema::Trace& trace);
 
-    MSGPACK_DEFINE(trace_id, external_hash, mc_seqno_start, mc_seqno_end, start_lt, start_utime, end_lt, end_utime, state, pending_edges, edges, nodes);
+    MSGPACK_DEFINE(trace_id, external_hash, external_hash_norm, mc_seqno_start, mc_seqno_end, start_lt, start_utime, end_lt, end_utime, state, pending_edges, edges, nodes);
 };
 MSGPACK_ADD_ENUM(TraceImpl::State);
 

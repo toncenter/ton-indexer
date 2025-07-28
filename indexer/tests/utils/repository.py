@@ -1,5 +1,11 @@
 from indexer.events.interface_repository import InterfaceRepository
-from tests.utils.trace_deserializer import deserialize_jetton_wallet, deserialize_dedust_pool, deserialize_nft_item
+from tests.utils.trace_deserializer import (
+    deserialize_jetton_wallet,
+    deserialize_dedust_pool,
+    deserialize_nft_item,
+    deserialize_nft_sale,
+    deserialize_nft_auction
+)
 
 
 class TestInterfaceRepository(InterfaceRepository):
@@ -18,12 +24,12 @@ class TestInterfaceRepository(InterfaceRepository):
 
     async def get_nft_sale(self, address: str):
         if address in self.interfaces and 'NftSale' in self.interfaces[address]:
-            return self.interfaces[address]['NftSale']
+            return deserialize_nft_sale(self.interfaces[address]['NftSale'])
         return None
 
     async def get_nft_auction(self, address: str):
         if address in self.interfaces and 'NftAuction' in self.interfaces[address]:
-            return self.interfaces[address]['NftAuction']
+            return deserialize_nft_auction(address, self.interfaces[address]['NftAuction'])
         return None
 
     async def get_dedust_pool(self, address: str):

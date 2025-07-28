@@ -182,6 +182,7 @@ class Trace(Base):
     __tablename__ = 'traces'
     trace_id = Column(String(44), primary_key=True)
     external_hash: str = Column(String)
+    external_hash_norm: str = Column(String)
     mc_seqno_start: int = Column(Integer)
     mc_seqno_end: int = Column(Integer)
     start_lt: int = Column(BigInteger)
@@ -268,6 +269,8 @@ class Action(Base):
         Column("forward_amount", Numeric),
         Column("response_destination", String),
         Column("nft_item_index", Numeric),
+        Column("marketplace", String),
+        Column("real_prev_owner", String)
     ]))
     jetton_swap_data = Column(CompositeType("jetton_swap_details", [
         Column("dex", String),
@@ -427,13 +430,14 @@ class Action(Base):
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)
+    trace_external_hash_norm: str = Column(String)
     mc_seqno_end: int = Column(Numeric)
     trace_mc_seqno_end: int = Column(Numeric)
     value_extra_currencies: dict = Column(JSONB)
     parent_action_id: str = Column(String)
     ancestor_type: list[str] = Column(ARRAY(String), default=[])
 
-    _accounts: list[str]
+    accounts: list[str]
 
     def __repr__(self):
         full_repr = ""
@@ -445,7 +449,7 @@ class Action(Base):
 
     def get_action_accounts(self):
         accounts = []
-        for account in self._accounts:
+        for account in self.accounts:
             accounts.append(ActionAccount(action_id=self.action_id,
                                           trace_id=self.trace_id,
                                           account=account,
@@ -792,6 +796,7 @@ class NftAuction(Base):
     address = Column(String, primary_key=True)
     nft_addr = Column(String)
     nft_owner = Column(String)
+    last_bid = Column(Numeric)
 
 
 
