@@ -55,6 +55,16 @@ struct TraceNode {
         }
         return ss.str();
     }
+
+    std::unordered_set<block::StdAddress> get_addresses() const {
+        std::unordered_set<block::StdAddress> addresses;
+        addresses.insert(address);
+        for (const auto& child : children) {
+            auto child_addresses = child->get_addresses();
+            addresses.insert(child_addresses.begin(), child_addresses.end());
+        }
+        return addresses;
+    }
 };
 
 struct Trace {
@@ -82,6 +92,10 @@ struct Trace {
 
     std::string to_string() const {
         return root->to_string();
+    }
+
+    std::unordered_set<block::StdAddress> get_addresses() const {
+        return root->get_addresses();
     }
 };
 

@@ -332,6 +332,7 @@ struct TraceEdge {
 struct Trace {
   td::Bits256 trace_id;
   std::optional<td::Bits256> external_hash;
+  std::optional<td::Bits256> external_hash_norm;
   std::int32_t mc_seqno_start;
   std::int32_t mc_seqno_end;
   
@@ -403,6 +404,23 @@ struct JettonWalletDataV2 {
   block::StdAddress owner;
   block::StdAddress jetton;
   std::optional<bool> mintless_is_claimed;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
+struct VestingData
+{
+  block::StdAddress address;
+  uint32_t vesting_start_time;
+  uint32_t vesting_total_duration;
+  uint32_t unlock_period;
+  uint32_t cliff_duration;
+  td::RefInt256 vesting_total_amount;
+  block::StdAddress vesting_sender_address;
+  block::StdAddress owner_address;
+  std::vector<block::StdAddress> whitelist;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
   td::Bits256 code_hash;
@@ -565,6 +583,35 @@ struct GetGemsNftFixPriceSaleData {
   td::Bits256 data_hash;
 };
 
+struct MultisigContractData {
+  block::StdAddress address;
+  td::RefInt256 next_order_seqno;
+  uint32_t threshold;
+  std::vector<block::StdAddress> signers;
+  std::vector<block::StdAddress> proposers;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
+struct MultisigOrderData {
+  block::StdAddress address;
+  block::StdAddress multisig_address;
+  td::RefInt256 order_seqno;
+  uint32_t threshold;
+  bool sent_for_execution;
+  td::RefInt256 approvals_mask;
+  uint32_t approvals_num;
+  td::RefInt256 expiration_date;
+  td::Ref<vm::Cell> order;
+  std::vector<block::StdAddress> signers;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
 //
 // Containers
 //
@@ -596,7 +643,10 @@ using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
                                            NFTCollectionDataV2, 
                                            NFTItemDataV2,
                                            GetGemsNftFixPriceSaleData,
-                                           GetGemsNftAuctionData>;
+                                           GetGemsNftAuctionData,
+                                           MultisigContractData,
+                                           MultisigOrderData,
+                                           VestingData>;
 
 namespace std {
 template <>

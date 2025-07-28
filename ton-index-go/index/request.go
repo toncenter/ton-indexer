@@ -130,6 +130,7 @@ type ActionRequest struct {
 	IncludeActionTypes   []string        `query:"action_type"`
 	ExcludeActionTypes   []string        `query:"exclude_action_type"`
 	SupportedActionTypes []string        `query:"supported_action_types"`
+	IncludeAccounts      *bool           `query:"include_accounts"`
 }
 
 type BalanceChangesRequest struct {
@@ -161,6 +162,22 @@ type PendingActionsRequest struct {
 
 type DNSRecordsRequest struct {
 	WalletAddress *AccountAddress `query:"wallet"`
+}
+
+type MultisigRequest struct {
+	Address       []AccountAddress `query:"address"`
+	WalletAddress []AccountAddress `query:"wallet_address"`
+}
+
+type MultisigOrderRequest struct {
+	Address       []AccountAddress `query:"address"`
+	WalletAddress []AccountAddress `query:"wallet_address"`
+}
+
+type VestingContractsRequest struct {
+	ContractAddress []AccountAddress `query:"contract_address"`
+	WalletAddress   []AccountAddress `query:"wallet_address"`
+	CheckWhitelist  *bool            `query:"check_whitelist"`
 }
 
 type SortType string

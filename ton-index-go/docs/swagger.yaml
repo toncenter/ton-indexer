@@ -41,6 +41,10 @@ definitions:
         type: string
       code_hash:
         type: string
+      contract_methods:
+        items:
+          type: integer
+        type: array
       data_boc:
         type: string
       data_hash:
@@ -72,6 +76,10 @@ definitions:
     type: object
   Action:
     properties:
+      accounts:
+        items:
+          type: string
+        type: array
       action_id:
         type: string
       details: {}
@@ -93,6 +101,8 @@ definitions:
       trace_end_utime:
         type: integer
       trace_external_hash:
+        type: string
+      trace_external_hash_norm:
         type: string
       trace_id:
         type: string
@@ -603,6 +613,84 @@ definitions:
         example: "0"
         type: string
     type: object
+  Multisig:
+    properties:
+      address:
+        type: string
+      code_hash:
+        type: string
+      data_hash:
+        type: string
+      last_transaction_lt:
+        example: "0"
+        type: string
+      next_order_seqno:
+        type: string
+      orders:
+        items:
+          $ref: '#/definitions/MultisigOrder'
+        type: array
+      proposers:
+        items:
+          type: string
+        type: array
+      signers:
+        items:
+          type: string
+        type: array
+      threshold:
+        type: integer
+    type: object
+  MultisigOrder:
+    properties:
+      address:
+        type: string
+      approvals_mask:
+        type: string
+      approvals_num:
+        type: integer
+      code_hash:
+        type: string
+      data_hash:
+        type: string
+      expiration_date:
+        type: integer
+      last_transaction_lt:
+        example: "0"
+        type: string
+      multisig_address:
+        type: string
+      order_boc:
+        type: string
+      order_seqno:
+        type: string
+      sent_for_execution:
+        type: boolean
+      signers:
+        items:
+          type: string
+        type: array
+      threshold:
+        type: integer
+    type: object
+  MultisigOrderResponse:
+    properties:
+      address_book:
+        $ref: '#/definitions/AddressBook'
+      orders:
+        items:
+          $ref: '#/definitions/MultisigOrder'
+        type: array
+    type: object
+  MultisigResponse:
+    properties:
+      address_book:
+        $ref: '#/definitions/AddressBook'
+      multisigs:
+        items:
+          $ref: '#/definitions/Multisig'
+        type: array
+    type: object
   NFTCollection:
     properties:
       address:
@@ -637,6 +725,8 @@ definitions:
     properties:
       address:
         type: string
+      auction_contract_address:
+        type: string
       code_hash:
         type: string
       collection:
@@ -655,7 +745,13 @@ definitions:
       last_transaction_lt:
         example: "0"
         type: string
+      on_sale:
+        type: boolean
       owner_address:
+        type: string
+      real_owner:
+        type: string
+      sale_contract_address:
         type: string
     type: object
   NFTItemsResponse:
@@ -751,6 +847,8 @@ definitions:
       image:
         type: string
       name:
+        type: string
+      nft_index:
         type: string
       symbol:
         type: string
@@ -1006,6 +1104,15 @@ definitions:
       wallet_type:
         type: string
     type: object
+  VestingContractsResponse:
+    properties:
+      address_book:
+        $ref: '#/definitions/AddressBook'
+      vesting_contracts:
+        items:
+          $ref: '#/definitions/index.VestingInfo'
+        type: array
+    type: object
   WalletState:
     properties:
       address:
@@ -1061,6 +1168,29 @@ definitions:
         $ref: '#/definitions/Transaction'
       tx_hash:
         type: string
+    type: object
+  index.VestingInfo:
+    properties:
+      address:
+        type: string
+      cliff_duration:
+        type: integer
+      owner_address:
+        type: string
+      sender_address:
+        type: string
+      start_time:
+        type: integer
+      total_amount:
+        type: string
+      total_duration:
+        type: integer
+      unlock_period:
+        type: integer
+      whitelist:
+        items:
+          type: string
+        type: array
     type: object
 info:
   contact: {}
@@ -1238,6 +1368,11 @@ paths:
           type: string
         name: supported_action_types
         type: array
+      - default: false
+        description: Include accounts array for each action in response.
+        in: query
+        name: include_accounts
+        type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
@@ -2081,6 +2216,124 @@ paths:
       summary: Metadata
       tags:
       - accounts
+  /api/v3/multisig/orders:
+    get:
+      consumes:
+      - application/json
+      description: Get multisig orders by specified filters
+      operationId: api_v3_get_multisig_orders
+      parameters:
+      - collectionFormat: multi
+        description: 'Order address in any form. Max: 1024.'
+        in: query
+        items:
+          type: string
+        name: address
+        type: array
+      - collectionFormat: multi
+        description: 'Address of signer wallet in any form. Max: 1024.'
+        in: query
+        items:
+          type: string
+        name: wallet_address
+        type: array
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 1024
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort orders by last_transaction_lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/MultisigOrderResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Multisig Orders
+      tags:
+      - multisig
+  /api/v3/multisig/wallets:
+    get:
+      consumes:
+      - application/json
+      description: Get multisig contracts by specified filters with associated orders
+      operationId: api_v3_get_multisig_wallets
+      parameters:
+      - collectionFormat: multi
+        description: 'Multisig contract address in any form. Max: 1024.'
+        in: query
+        items:
+          type: string
+        name: address
+        type: array
+      - collectionFormat: multi
+        description: 'Address of signer or proposer wallet in any form. Max: 1024.'
+        in: query
+        items:
+          type: string
+        name: wallet_address
+        type: array
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 1024
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      - default: desc
+        description: Sort multisigs by last_transaction_lt.
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/MultisigResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Multisigs
+      tags:
+      - multisig
   /api/v3/nft/collections:
     get:
       consumes:
@@ -2814,6 +3067,62 @@ paths:
       summary: Get transactions by message
       tags:
       - blockchain
+  /api/v3/vesting:
+    get:
+      consumes:
+      - application/json
+      description: Get vesting contracts by specified filters
+      operationId: api_v3_get_vesting_contracts
+      parameters:
+      - collectionFormat: multi
+        description: 'Vesting contract address in any form. Max: 1000.'
+        in: query
+        items:
+          type: string
+        name: contract_address
+        type: array
+      - collectionFormat: multi
+        description: 'Wallet address to filter by owner or sender. Max: 1000.'
+        in: query
+        items:
+          type: string
+        name: wallet_address
+        type: array
+      - default: false
+        description: Check if wallet address is in whitelist.
+        in: query
+        name: check_whitelist
+        type: boolean
+      - default: 10
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        in: query
+        maximum: 1000
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/VestingContractsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/RequestError'
+      security:
+      - APIKeyHeader: []
+      - APIKeyQuery: []
+      summary: Get Vesting Contracts
+      tags:
+      - vesting
   /api/v3/walletInformation:
     get:
       consumes:

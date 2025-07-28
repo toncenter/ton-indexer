@@ -137,14 +137,14 @@ func emulateTrace(c *fiber.Ctx) error {
 		Addr: *redisAddr, // Redis server address
 	})
 
+	// Subscribe to the result channel
+	pubsub := rdb.Subscribe(ctx, "emulator_channel_"+taskID)
+	defer pubsub.Close()
+
 	// Push the packed task to the Redis queue
 	if err := rdb.LPush(ctx, *emulatorQueueName, buf.Bytes()).Err(); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to push task to emulator queue: "+err.Error())
 	}
-
-	// Subscribe to the result channel
-	pubsub := rdb.Subscribe(ctx, "emulator_channel_"+taskID)
-	defer pubsub.Close()
 
 	// Wait for the result
 	msg, err := pubsub.ReceiveMessage(ctx)
@@ -164,13 +164,15 @@ func emulateTrace(c *fiber.Ctx) error {
 	}
 
 	if req.WithActions {
+		// subscribe to result channel
+		pubsub := rdb.Subscribe(ctx, "classifier_result_channel_"+taskID)
+		defer pubsub.Close()
+
 		// publish task id to classifier channel
 		if err := rdb.Publish(ctx, *classifierChannel, taskID).Err(); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to publish task id to classifier queue: "+err.Error())
 		}
 		// wait for the notification in channel classifier_result_channel_taskID
-		pubsub := rdb.Subscribe(ctx, "classifier_result_channel_"+taskID)
-		defer pubsub.Close()
 		msg, err := pubsub.ReceiveMessage(ctx)
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to receive result from classifier channel: "+err.Error())

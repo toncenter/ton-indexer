@@ -23,7 +23,7 @@ COPY CMakeLists.txt /app/
 
 WORKDIR /app/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release ..
-RUN make -j$(nproc) ton-index-postgres ton-index-clickhouse ton-smc-scanner ton-integrity-checker ton-trace-emulator
+RUN make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner ton-integrity-checker ton-trace-emulator
 
 FROM ubuntu:22.04
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
@@ -33,6 +33,7 @@ RUN apt-get update -y \
 
 COPY scripts/entrypoint.sh /entrypoint.sh
 COPY --from=builder /app/build/ton-index-postgres/ton-index-postgres /usr/bin/ton-index-postgres
+COPY --from=builder /app/build/ton-index-postgres/ton-index-postgres-migrate /usr/bin/ton-index-postgres-migrate
 COPY --from=builder /app/build/ton-index-clickhouse/ton-index-clickhouse /usr/bin/ton-index-clickhouse
 COPY --from=builder /app/build/ton-smc-scanner/ton-smc-scanner /usr/bin/ton-smc-scanner
 COPY --from=builder /app/build/ton-integrity-checker/ton-integrity-checker /usr/bin/ton-integrity-checker

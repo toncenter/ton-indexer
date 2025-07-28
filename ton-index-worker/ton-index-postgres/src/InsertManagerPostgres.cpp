@@ -3,7 +3,7 @@
 #include "InsertManagerPostgres.h"
 #include "convert-utils.h"
 #include "Statistics.h"
-
+#include "version.h"
 
 namespace pqxx
 {
@@ -335,9 +335,9 @@ std::string extra_currencies_to_json_string(const std::map<uint32_t, td::RefInt2
 }
 
 
-std::string InsertManagerPostgres::Credential::get_connection_string(std::string dbname) const {
-  if ((dbname.length() == 0) && this->dbname.length()) {
-    dbname = this->dbname;
+std::string InsertManagerPostgres::Credential::get_connection_string() const {
+  if (conn_str.length()) {
+    return conn_str;
   }
   std::string result = (
     "hostaddr=" + host +
@@ -380,7 +380,92 @@ void InsertBatchPostgres::start_up() {
   alarm();
 }
 
+std::string get_worker_id() {
+  char hostname[HOST_NAME_MAX];
+  if (gethostname(hostname, HOST_NAME_MAX) != 0) {
+    throw std::runtime_error("Failed to get hostname");
+  }
+  std::string worker_id = std::string{hostname} + "_" + std::to_string(getpid());
+  return worker_id;
+}
+
+bool InsertBatchPostgres::try_acquire_leader_lock() {
+  auto query = R"(
+  WITH grab AS (
+      UPDATE ton_indexer_leader
+        SET leader_worker_id = $1,
+            last_heartbeat   = NOW(),
+            started_at       = CASE
+                                  WHEN leader_worker_id = $1
+                                  THEN started_at
+                                  ELSE NOW()
+                                END
+      WHERE id = 1
+        AND ( last_heartbeat < NOW() - INTERVAL '20 seconds'
+            OR leader_worker_id = $1 )
+      RETURNING 1                        -- any column; we only need the row count
+  )
+  SELECT
+      (SELECT COUNT(*) FROM grab) AS won_the_lock;
+  )";
+  try {
+    static std::atomic_bool is_leader = false;
+    td::Timer timer;
+    pqxx::connection c(connection_string_);
+    pqxx::work txn(c);
+    auto [won] = txn.exec(query, pqxx::params{get_worker_id()}).one_row().as<int>();
+    txn.commit();
+
+    if (won != is_leader) {
+      LOG(WARNING) << "Worker " << get_worker_id() << (won ? " ACQUIRED" : " LOST") << " leader role.";
+    }
+    is_leader = won == 1;
+    return is_leader;
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error trying to acquire SQL leader lock: " << e.what();
+    return false;
+  }
+}
+
 void InsertBatchPostgres::alarm() {
+  if (try_acquire_leader_lock()) {
+    do_insert();
+  } else {
+    ensure_inserted();
+  }
+}
+
+void InsertBatchPostgres::ensure_inserted() {
+  std::string seqnos = "(";
+  for(auto& task : insert_tasks_) {
+    auto mc_seqno = task.mc_seqno_;
+    if (seqnos.size() > 1) {
+      seqnos += ", ";
+    }
+    seqnos += std::to_string(mc_seqno);
+  }
+  seqnos += ")";
+  auto query = "select count(*) from blocks where workchain = -1 and seqno in " + seqnos + ";";
+  try {
+    td::Timer timer;
+    pqxx::connection c(connection_string_);
+    pqxx::work txn(c);
+    auto [inserted_cnt] = txn.query1<int>(query);
+    if (inserted_cnt != insert_tasks_.size()) {
+      alarm_timestamp() = td::Timestamp::in(1.0);
+    } else {
+      for(auto& task : insert_tasks_) {
+        task.promise_.set_value(td::Unit());
+      }
+      promise_.set_value(td::Unit());
+    }
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error ensuring that leader inserted blocks batch: " << e.what();
+    alarm_timestamp() = td::Timestamp::in(1.0);
+  }
+}
+
+void InsertBatchPostgres::do_insert() {
   try {
     td::Timer connect_timer;
     pqxx::connection c(connection_string_);
@@ -408,8 +493,11 @@ void InsertBatchPostgres::alarm() {
     insert_under_mutex_query += insert_nft_items(txn);
     insert_under_mutex_query += insert_getgems_nft_auctions(txn);
     insert_under_mutex_query += insert_getgems_nft_sales(txn);
+    insert_under_mutex_query += insert_multisig_contracts(txn);
+    insert_under_mutex_query += insert_multisig_orders(txn);
     insert_under_mutex_query += insert_latest_account_states(txn);
-    
+    insert_under_mutex_query += insert_vesting(txn);
+
     td::Timer commit_timer{true};
     {
       std::lock_guard<std::mutex> guard(latest_account_states_update_mutex);
@@ -1276,6 +1364,67 @@ std::string InsertBatchPostgres::insert_getgems_nft_sales(pqxx::work &txn) {
   return stream.get_str();
 }
 
+std::string InsertBatchPostgres::insert_vesting(pqxx::work &txn) {
+    std::unordered_map<block::StdAddress, VestingData> vesting_contracts;
+    for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+        const auto& task = *i;
+        for (const auto& vesting : task.parsed_block_->get_accounts_v2<VestingData>()) {
+            if (vesting_contracts.find(vesting.address) == vesting_contracts.end()) {
+                vesting_contracts[vesting.address] = vesting;
+            } else {
+                if (vesting_contracts[vesting.address].last_transaction_lt < vesting.last_transaction_lt) {
+                    vesting_contracts[vesting.address] = vesting;
+                }
+            }
+        }
+    }
+
+    // Insert vesting contracts
+    std::initializer_list<std::string_view> vesting_columns = {
+        "address", "vesting_start_time", "vesting_total_duration", "unlock_period", 
+        "cliff_duration", "vesting_total_amount", "vesting_sender_address", "owner_address",
+        "last_transaction_lt", "code_hash", "data_hash"
+    };
+    PopulateTableStream vesting_stream(txn, "vesting_contracts", vesting_columns, 1000, false);
+    vesting_stream.setConflictDoUpdate({"address"}, "vesting_contracts.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+    for (const auto& [addr, vesting] : vesting_contracts) {
+        auto tuple = std::make_tuple(
+          vesting.address,
+          vesting.vesting_start_time,
+          vesting.vesting_total_duration,
+          vesting.unlock_period,
+          vesting.cliff_duration,
+          vesting.vesting_total_amount,
+          vesting.vesting_sender_address,
+          vesting.owner_address,
+          vesting.last_transaction_lt,
+          vesting.code_hash,
+          vesting.data_hash
+        );
+        vesting_stream.insert_row(std::move(tuple));
+    }
+
+    // Insert whitelist entries
+    std::initializer_list<std::string_view> whitelist_columns = {
+        "vesting_contract_address", "wallet_address"
+    };
+    PopulateTableStream whitelist_stream(txn, "vesting_whitelist", whitelist_columns, 1000, false);
+    whitelist_stream.setConflictDoNothing();
+
+    for (const auto& [addr, vesting] : vesting_contracts) {
+        for (const auto& wallet_addr : vesting.whitelist) {
+            auto tuple = std::make_tuple(
+              vesting.address,
+              wallet_addr
+            );
+            whitelist_stream.insert_row(std::move(tuple));
+        }
+    }
+
+    return vesting_stream.get_str() + whitelist_stream.get_str();
+}
+
 std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
   std::unordered_map<block::StdAddress, GetGemsNftAuctionData> nft_auctions;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
@@ -1323,6 +1472,99 @@ std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
       nft_auction.last_transaction_lt,
       nft_auction.code_hash,
       nft_auction.data_hash
+    );
+    stream.insert_row(std::move(tuple));
+  }
+  return stream.get_str();
+}
+
+std::string InsertBatchPostgres::insert_multisig_contracts(pqxx::work &txn) {
+  std::unordered_map<block::StdAddress, MultisigContractData> multisig_contracts;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& multisig_contract : task.parsed_block_->get_accounts_v2<MultisigContractData>()) {
+      if (multisig_contracts.find(multisig_contract.address) == multisig_contracts.end()) {
+        multisig_contracts[multisig_contract.address] = multisig_contract;
+      } else {
+        if (multisig_contracts[multisig_contract.address].last_transaction_lt < multisig_contract.last_transaction_lt) {
+          multisig_contracts[multisig_contract.address] = multisig_contract;
+        }
+      }
+    }
+  }
+
+  std::initializer_list<std::string_view> columns = {
+    "address", "next_order_seqno", "threshold", "signers", "proposers", "last_transaction_lt", "code_hash", "data_hash"
+  };
+
+  PopulateTableStream stream(txn, "multisig", columns, 1000, false);
+  stream.setConflictDoUpdate({"address"}, "multisig.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+  for (const auto& [addr, multisig_contract] : multisig_contracts)
+  {
+    auto tuple = std::make_tuple(
+      multisig_contract.address,
+      multisig_contract.next_order_seqno,
+      multisig_contract.threshold,
+      multisig_contract.signers,
+      multisig_contract.proposers,
+      multisig_contract.last_transaction_lt,
+      multisig_contract.code_hash,
+      multisig_contract.data_hash
+    );
+    stream.insert_row(std::move(tuple));
+  }
+  return stream.get_str();
+}
+
+std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
+  std::unordered_map<block::StdAddress, MultisigOrderData> multisig_orders;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& multisig_order : task.parsed_block_->get_accounts_v2<MultisigOrderData>()) {
+      if (multisig_orders.find(multisig_order.address) == multisig_orders.end()) {
+        multisig_orders[multisig_order.address] = multisig_order;
+      } else {
+        if (multisig_orders[multisig_order.address].last_transaction_lt < multisig_order.last_transaction_lt) {
+          multisig_orders[multisig_order.address] = multisig_order;
+        }
+      }
+    }
+  }
+
+  std::initializer_list<std::string_view> columns = {
+    "address", "multisig_address", "order_seqno", "threshold", "sent_for_execution", "approvals_mask", "approvals_num",
+    "expiration_date", "order_boc", "signers", "last_transaction_lt", "code_hash", "data_hash"
+  };
+
+  PopulateTableStream stream(txn, "multisig_orders", columns, 1000, false);
+  stream.setConflictDoUpdate({"address"}, "multisig_orders.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+
+  for (const auto& [addr, multisig_order] : multisig_orders) {
+
+    std::optional<std::string> order_boc_str = std::nullopt;
+    if (multisig_order.order.not_null()) {
+      auto order_res = vm::std_boc_serialize(multisig_order.order);
+      if (order_res.is_ok()) {
+        order_boc_str = td::base64_encode(order_res.move_as_ok());
+      }
+    }
+
+    auto tuple = std::make_tuple(
+      multisig_order.address,
+      multisig_order.multisig_address,
+      multisig_order.order_seqno,
+      multisig_order.threshold,
+      multisig_order.sent_for_execution,
+      multisig_order.approvals_mask,
+      multisig_order.approvals_num,
+      multisig_order.expiration_date,
+      order_boc_str,
+      multisig_order.signers,
+      multisig_order.last_transaction_lt,
+      multisig_order.code_hash,
+      multisig_order.data_hash
     );
     stream.insert_row(std::move(tuple));
   }
@@ -1451,7 +1693,7 @@ void InsertBatchPostgres::insert_nft_transfers(pqxx::work &txn, bool with_copy) 
 }
 
 void InsertBatchPostgres::insert_traces(pqxx::work &txn, bool with_copy) {
-  std::initializer_list<std::string_view> columns = { "trace_id", "external_hash", "mc_seqno_start", "mc_seqno_end", 
+  std::initializer_list<std::string_view> columns = { "trace_id", "external_hash", "external_hash_norm", "mc_seqno_start", "mc_seqno_end", 
     "start_lt", "start_utime", "end_lt", "end_utime", "state", "pending_edges_", "edges_", "nodes_" };
 
   PopulateTableStream stream(txn, "traces", columns, 1000, with_copy);
@@ -1476,6 +1718,9 @@ void InsertBatchPostgres::insert_traces(pqxx::work &txn, bool with_copy) {
     auto tuple = std::make_tuple(
       trace.trace_id,
       trace.external_hash,
+      (trace.external_hash_norm.has_value() && trace.external_hash_norm != trace.external_hash)
+        ? trace.external_hash_norm 
+        : std::nullopt,
       trace.mc_seqno_start,
       trace.mc_seqno_end,
       trace.start_lt,
@@ -1536,917 +1781,26 @@ void InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
 //
 // InsertManagerPostgres
 //
-bool check_database_exists(const InsertManagerPostgres::Credential& credentials, const std::string& dbname) {
-    try {
-        pqxx::connection C(credentials.get_connection_string("postgres"));
-        pqxx::work W(C);
-        std::string query = "SELECT 1 FROM pg_database WHERE datname = " + W.quote(dbname);
-        pqxx::result R = W.exec(query);
-        return !R.empty();
-    } catch (const std::exception &e) {
-        LOG(ERROR) << "Failed to check database existance: " << e.what();
-        return false;
-    }
-}
-
 
 void InsertManagerPostgres::start_up() {
-  LOG(INFO) << "Creating database...";
-
-  if (!check_database_exists(credential_, credential_.dbname)) {
-    try {
-      {
-        pqxx::connection c(credential_.get_connection_string("postgres"));
-        pqxx::nontransaction N(c);
-        N.exec0("create database " + credential_.dbname + ";");
-      }
-    } catch (const std::exception &e) {
-      LOG(ERROR) << "Failed to create database: " << e.what();
-      std::_Exit(1);
-    }
-  }
-
-  LOG(INFO) << "Creating required types...";
+  std::optional<Version> db_version{};
   try {
-    auto exec_query = [&] (const std::string& query) {
-      try {
-        pqxx::connection c(credential_.get_connection_string());
-        pqxx::work txn(c);
-
-        LOG(DEBUG) << "Executing query '" << query << "'";
-        txn.exec0(query);
-        txn.commit();
-      } catch (const std::exception &e) {
-        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
-      }
-    };
-    if (custom_types_) {
-      exec_query("create extension if not exists pgton;");
-    } else {
-      exec_query("create domain tonhash as char(44);");
-      exec_query("create domain tonaddr as varchar;");
-    }
-
-    exec_query("create type account_status_type as enum ('uninit', 'frozen', 'active', 'nonexist');");
-    exec_query("create type blockid as (workchain integer, shard bigint, seqno integer);");
-    exec_query("create type blockidext as (workchain integer, shard bigint, seqno integer, root_hash tonhash, file_hash tonhash);");
-    exec_query("create type bounce_type as enum ('negfunds', 'nofunds', 'ok');");
-    exec_query("create type descr_type as enum ('ord', 'storage', 'tick_tock', 'split_prepare', 'split_install', 'merge_prepare', 'merge_install');");
-    exec_query("create type msg_direction as enum ('out', 'in');");
-    exec_query("create type skipped_reason_type as enum ('no_state', 'bad_state', 'no_gas', 'suspended');");
-    exec_query("create type status_change_type as enum ('unchanged', 'frozen', 'deleted');");
-    exec_query("create type trace_classification_state as enum ('unclassified', 'failed', 'ok', 'broken');");
-    exec_query("create type trace_state as enum ('complete', 'pending', 'broken');");
-    exec_query("create type change_dns_record_details as (key varchar, value_schema varchar, value varchar, flags integer);");
-    exec_query("create type liquidity_vault_excess_details as (asset varchar, amount NUMERIC);");
-    exec_query("create type dex_deposit_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1 varchar, asset2 varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, lp_tokens_minted numeric, target_asset_1 varchar, target_asset_2 varchar, target_amount_1 numeric, target_amount_2 numeric, vault_excesses liquidity_vault_excess_details[], tick_lower numeric, tick_upper numeric, nft_index numeric, nft_address varchar);");
-    exec_query("create type dex_transfer_details as (amount numeric, asset tonaddr, source tonaddr, destination tonaddr, source_jetton_wallet tonaddr, destination_jetton_wallet tonaddr);");
-    exec_query("create type dex_withdraw_liquidity_details as (dex varchar, amount1 numeric, amount2 numeric, asset1_out varchar, asset2_out varchar, user_jetton_wallet_1 varchar, user_jetton_wallet_2 varchar, dex_jetton_wallet_1 varchar, dex_jetton_wallet_2 varchar, lp_tokens_burnt numeric, dex_wallet_1 varchar, dex_wallet_2 varchar, burned_nft_index numeric, burned_nft_address varchar, tick_lower numeric, tick_upper numeric);");
-    exec_query("create type jetton_transfer_details as(response_destination tonaddr, forward_amount numeric, query_id numeric, custom_payload text, forward_payload text, comment text, is_encrypted_comment boolean);");
-    exec_query("create type nft_mint_details as (nft_item_index numeric);");
-    exec_query("create type nft_transfer_details as(is_purchase boolean, price numeric, query_id numeric, custom_payload text, forward_payload text, forward_amount numeric, response_destination tonaddr, nft_item_index numeric);");
-    exec_query("create type peer_swap_details as(asset_in tonaddr, amount_in numeric, asset_out tonaddr, amount_out numeric);");
-    exec_query("create type jetton_swap_details as (dex varchar, sender tonaddr, dex_incoming_transfer dex_transfer_details, dex_outgoing_transfer dex_transfer_details, peer_swaps peer_swap_details[], min_out_amount numeric);");
-    exec_query("create type staking_details as (provider varchar, ts_nft varchar, tokens_burnt numeric, tokens_minted numeric);");
-    exec_query("create type ton_transfer_details as (content text, encrypted boolean);");
-    exec_query("create type multisig_create_order_details as (query_id numeric, order_seqno numeric, is_created_by_signer boolean, is_signed_by_creator boolean, creator_index numeric, expiration_date numeric, order_boc varchar);");
-    exec_query("create type multisig_approve_details as (signer_index numeric, exit_code numeric);");
-    exec_query("create type multisig_execute_details as (query_id numeric, order_seqno numeric, expiration_date numeric, approvals_num numeric, signers_hash varchar, order_boc varchar);");
-    exec_query("create type vesting_send_message_details as (query_id numeric, message_boc varchar);");
-    exec_query("create type vesting_add_whitelist_details as (query_id numeric, accounts_added varchar[]);");
-    exec_query("create type evaa_supply_details as (sender_jetton_wallet varchar, recipient_jetton_wallet varchar, master_jetton_wallet varchar, master varchar, asset_id varchar, is_ton boolean);");
-    exec_query("create type evaa_withdraw_details as (sender_jetton_wallet varchar, recipient_jetton_wallet varchar, master_jetton_wallet varchar, master varchar, fail_reason varchar, asset_id varchar);");
-    exec_query("create type evaa_liquidate_details as (fail_reason text, debt_amount numeric, asset_id varchar);");
-    exec_query("create type jvault_claim_details as (claimed_jettons varchar[], claimed_amounts numeric[]);");
-    exec_query("create type jvault_stake_details as (period numeric, minted_stake_jettons numeric, stake_wallet varchar);");
-    exec_query("create type tonco_deploy_pool_details as (jetton0_router_wallet varchar, jetton1_router_wallet varchar, jetton0_minter varchar, jetton1_minter varchar, tick_spacing integer, initial_price_x96 numeric, protocol_fee integer, lp_fee_base integer, lp_fee_current integer, pool_active boolean);");
-  }
-  catch (const std::exception &e) {
-    LOG(ERROR) << "Failed to run some of initial scripts: " << e.what();
-    std::_Exit(1);
-  }
-
-  LOG(INFO) << "Creating tables...";
-  try {
-    pqxx::connection c(credential_.get_connection_string());
-    pqxx::work txn(c);
-
-    std::string query = "";
-    query += (
-      "create table if not exists blocks ("
-      "workchain integer not null, "
-      "shard bigint  not null, "
-      "seqno integer not null, "
-      "root_hash tonhash, "
-      "file_hash tonhash, "
-      "mc_block_workchain integer, "
-      "mc_block_shard bigint, "
-      "mc_block_seqno integer, "
-      "global_id integer, "
-      "version integer, "
-      "after_merge boolean, "
-      "before_split boolean, "
-      "after_split boolean, "
-      "want_merge boolean, "
-      "want_split boolean, "
-      "key_block boolean, "
-      "vert_seqno_incr boolean, "
-      "flags integer, "
-      "gen_utime bigint, "
-      "start_lt bigint, "
-      "end_lt bigint, "
-      "validator_list_hash_short integer, "
-      "gen_catchain_seqno integer, "
-      "min_ref_mc_seqno integer, "
-      "prev_key_block_seqno integer, "
-      "vert_seqno integer, "
-      "master_ref_seqno integer, "
-      "rand_seed tonhash, "
-      "created_by tonhash, "
-      "tx_count integer, "
-      "prev_blocks blockid[], "
-      "primary key (workchain, shard, seqno), "
-      "foreign key (mc_block_workchain, mc_block_shard, mc_block_seqno) references blocks);\n"
-    );
-
-    query += (
-      "create table if not exists shard_state ("
-      "mc_seqno integer not null, "
-      "workchain integer not null, "
-      "shard bigint not null, "
-      "seqno integer not null, "
-      "primary key (mc_seqno, workchain, shard, seqno));"
-    );
-
-    query += (
-      "create table if not exists transactions ("
-      "account tonaddr not null, "
-      "hash tonhash not null, "
-      "lt bigint not null, "
-      "block_workchain integer, "
-      "block_shard bigint, "
-      "block_seqno integer, "
-      "mc_block_seqno integer, "
-      "trace_id tonhash, "
-      "prev_trans_hash tonhash, "
-      "prev_trans_lt bigint, "
-      "now integer, "
-      "orig_status account_status_type, "
-      "end_status account_status_type, "
-      "total_fees bigint, "
-      "total_fees_extra_currencies jsonb, "
-      "account_state_hash_before tonhash, "
-      "account_state_hash_after tonhash, "
-      "descr descr_type, "
-      "aborted boolean, "
-      "destroyed boolean, "
-      "credit_first boolean, "
-      "is_tock boolean, "
-      "installed boolean, "
-      "storage_fees_collected bigint, "
-      "storage_fees_due bigint, "
-      "storage_status_change status_change_type, "
-      "credit_due_fees_collected bigint, "
-      "credit bigint, "
-      "credit_extra_currencies jsonb, "
-      "compute_skipped boolean, "
-      "skipped_reason skipped_reason_type, "
-      "compute_success boolean, "
-      "compute_msg_state_used boolean, "
-      "compute_account_activated boolean, "
-      "compute_gas_fees bigint, "
-      "compute_gas_used bigint, "
-      "compute_gas_limit bigint, "
-      "compute_gas_credit bigint, "
-      "compute_mode smallint, "
-      "compute_exit_code integer,"
-      "compute_exit_arg integer,"
-      "compute_vm_steps bigint,"
-      "compute_vm_init_state_hash tonhash,"
-      "compute_vm_final_state_hash tonhash,"
-      "action_success boolean, "
-      "action_valid boolean, "
-      "action_no_funds boolean, "
-      "action_status_change status_change_type, "
-      "action_total_fwd_fees bigint, "
-      "action_total_action_fees bigint, "
-      "action_result_code int, "
-      "action_result_arg int, "
-      "action_tot_actions int, "
-      "action_spec_actions int, "
-      "action_skipped_actions int, "
-      "action_msgs_created int, "
-      "action_action_list_hash tonhash, "
-      "action_tot_msg_size_cells bigint, "
-      "action_tot_msg_size_bits bigint, "
-      "bounce bounce_type, "
-      "bounce_msg_size_cells bigint, "
-      "bounce_msg_size_bits bigint, "
-      "bounce_req_fwd_fees bigint, "
-      "bounce_msg_fees bigint, "
-      "bounce_fwd_fees bigint, "
-      "split_info_cur_shard_pfx_len int, "
-      "split_info_acc_split_depth int, "
-      "split_info_this_addr tonaddr, "
-      "split_info_sibling_addr tonaddr, "
-      "primary key (hash, lt), "
-      "foreign key (block_workchain, block_shard, block_seqno) references blocks);\n"
-    );
-
-    query += (
-      "create table if not exists messages ("
-      "tx_hash tonhash, "
-      "tx_lt bigint, "
-      "mc_seqno integer, "
-      "msg_hash tonhash, "
-      "direction msg_direction, "
-      "trace_id tonhash, "
-      "source tonaddr, "
-      "destination tonaddr, "
-      "value bigint, "
-      "value_extra_currencies jsonb, "
-      "fwd_fee bigint, "
-      "ihr_fee bigint, "
-      "created_lt bigint, "
-      "created_at bigint, "
-      "opcode integer, "
-      "ihr_disabled boolean, "
-      "bounce boolean, "
-      "bounced boolean, "
-      "import_fee bigint, "
-      "body_hash tonhash, "
-      "init_state_hash tonhash, "
-      "primary key (tx_hash, tx_lt, msg_hash, direction), "
-      "foreign key (tx_hash, tx_lt) references transactions);\n"
-    );
-
-    query += (
-      "create table if not exists message_contents ("
-      "hash tonhash not null primary key, "
-      "body text);"
-    );
-
-    query += (
-      "create table if not exists account_states ("
-      "hash tonhash not null primary key, "
-      "account tonaddr, "
-      "balance bigint, "
-      "balance_extra_currencies jsonb, "
-      "account_status account_status_type, "
-      "frozen_hash tonhash, "
-      "data_hash tonhash, "
-      "code_hash tonhash"
-      ");\n"
-    );
-
-    query += (
-      "create table if not exists latest_account_states ("
-      "id bigserial not null, "
-      "account tonaddr not null primary key, "
-      "account_friendly tonaddr, "
-      "hash tonhash not null, "
-      "balance bigint, "
-      "balance_extra_currencies jsonb, "
-      "account_status account_status_type, "
-      "timestamp integer, "
-      "last_trans_hash tonhash, "
-      "last_trans_lt bigint, "
-      "frozen_hash tonhash, "
-      "data_hash tonhash, "
-      "code_hash tonhash, "
-      "data_boc text, "
-      "code_boc text) with (autovacuum_vacuum_scale_factor = 0.03);\n"
-    );
-
-    query += (
-      "create table if not exists address_book ("
-      "address tonaddr not null primary key, "
-      "code_hash tonhash, "
-      "domain varchar);\n"
-    );
-
-    query += (
-      "create table if not exists nft_collections ("
-      "id bigserial not null, "
-      "address tonaddr not null primary key, "
-      "next_item_index numeric, "
-      "owner_address tonaddr, "
-      "collection_content jsonb, "
-      "last_transaction_lt bigint, "
-      "code_hash tonhash, "
-      "data_hash tonhash);\n"
-    );
-
-    query += (
-      "create table if not exists nft_items ("
-      "id bigserial not null, "
-      "address tonaddr not null primary key, "
-      "init boolean, "
-      "index numeric, "
-      "collection_address tonaddr, "
-      "owner_address tonaddr, "
-      "content jsonb, "
-      "last_transaction_lt bigint, "
-      "code_hash tonhash, "
-      "data_hash tonhash);\n"
-    );
-
-    query += (
-      "create table if not exists nft_transfers ("
-      "tx_hash tonhash not null, "
-      "tx_lt bigint not null, "
-      "tx_now integer not null, "
-      "tx_aborted boolean not null, "
-      "mc_seqno integer, "
-      "query_id numeric, "
-      "nft_item_address tonaddr, "
-      "nft_item_index numeric, "
-      "nft_collection_address tonaddr, "
-      "old_owner tonaddr, "
-      "new_owner tonaddr, "
-      "response_destination tonaddr, "
-      "custom_payload text, "
-      "forward_amount numeric, "
-      "forward_payload text, "
-      "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt), "
-      "foreign key (tx_hash, tx_lt) references transactions);\n"
-    );
-
-    query += (
-      "create table if not exists jetton_masters ("
-      "id bigserial not null, "
-      "address tonaddr not null primary key, "
-      "total_supply numeric, "
-      "mintable boolean, "
-      "admin_address tonaddr, "
-      "jetton_content jsonb, "
-      "jetton_wallet_code_hash tonhash, "
-      "last_transaction_lt bigint, "
-      "code_hash tonhash, "
-      "data_hash tonhash);\n"
-    );
-
-    query += (
-      "create table if not exists mintless_jetton_masters ("
-      "id bigserial,"
-      "address tonaddr not null primary key,"
-      "is_indexed boolean,"
-      "custom_payload_api_uri character varying[]);\n"
-    );
-
-    query += (
-      "create table if not exists jetton_wallets ("
-      "id bigserial not null, "
-      "address tonaddr not null primary key, "
-      "balance numeric, "
-      "owner tonaddr, "
-      "jetton tonaddr, "
-      "last_transaction_lt bigint, "
-      "code_hash tonhash, "
-      "data_hash tonhash, "
-      "mintless_is_claimed boolean, "
-      "mintless_amount numeric, "
-      "mintless_start_from bigint, "
-      "mintless_expire_at bigint);\n"
-    );
-
-    query += (
-      "create table if not exists jetton_burns ( "
-      "tx_hash tonhash not null, "
-      "tx_lt bigint not null, "
-      "tx_now integer not null, "
-      "tx_aborted boolean not null, "
-      "mc_seqno integer, "
-      "query_id numeric, "
-      "owner tonaddr, "
-      "jetton_wallet_address tonaddr, "
-      "jetton_master_address tonaddr, "
-      "amount numeric, "
-      "response_destination tonaddr, "
-      "custom_payload text, "
-      "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt), "
-      "foreign key (tx_hash, tx_lt) references transactions);\n"
-    );
-
-    query += (
-      "create table if not exists jetton_transfers ("
-      "tx_hash tonhash not null, "
-      "tx_lt bigint not null, "
-      "tx_now integer not null, "
-      "tx_aborted boolean not null, "
-      "mc_seqno integer, "
-      "query_id numeric, "
-      "amount numeric, "
-      "source tonaddr, "
-      "destination tonaddr, "
-      "jetton_wallet_address tonaddr, "
-      "jetton_master_address tonaddr, "
-      "response_destination tonaddr, "
-      "custom_payload text, "
-      "forward_ton_amount numeric, "
-      "forward_payload text, "
-      "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt), "
-      "foreign key (tx_hash, tx_lt) references transactions);\n"
-    );
-
-    query += (
-      "create table if not exists getgems_nft_sales ("
-      "id bigserial not null, "
-      "address tonaddr not null primary key, "
-      "is_complete boolean, "
-      "created_at bigint, "
-      "marketplace_address tonaddr, "
-      "nft_address tonaddr, "
-      "nft_owner_address tonaddr, "
-      "full_price numeric, "
-      "marketplace_fee_address tonaddr, "
-      "marketplace_fee numeric, "
-      "royalty_address tonaddr, "
-      "royalty_amount numeric, "
-      "last_transaction_lt bigint, "
-      "code_hash tonhash, "
-      "data_hash tonhash);\n"
-    );
-
-    query += (
-      "create table if not exists getgems_nft_auctions ("
-      "id bigserial not null, "
-      "address tonaddr not null primary key, "
-      "end_flag boolean, "
-      "end_time bigint, "
-      "mp_addr tonaddr, "
-      "nft_addr tonaddr, "
-      "nft_owner tonaddr, "
-      "last_bid numeric, "
-      "last_member tonaddr, "
-      "min_step bigint, "
-      "mp_fee_addr tonaddr, "
-      "mp_fee_factor bigint, "
-      "mp_fee_base bigint, "
-      "royalty_fee_addr tonaddr, "
-      "royalty_fee_factor bigint, "
-      "royalty_fee_base bigint, "
-      "max_bid numeric, "
-      "min_bid numeric, "
-      "created_at bigint, "
-      "last_bid_at bigint, "
-      "is_canceled boolean, "
-      "last_transaction_lt bigint, "
-      "code_hash tonhash, "
-      "data_hash tonhash);\n"
-    );
-
-    // traces
-    query += (
-      "create table if not exists traces ("
-      "trace_id tonhash not null primary key, "
-      "external_hash tonhash, "
-      "mc_seqno_start integer, "
-      "mc_seqno_end integer, "
-      "start_lt bigint, "
-      "start_utime integer, "
-      "end_lt bigint, "
-      "end_utime integer, "
-      "state trace_state, "
-      "pending_edges_ bigint, "
-      "edges_ bigint, "
-      "nodes_ bigint, "
-      "classification_state trace_classification_state default 'unclassified'"
-      ");\n"
-    );
-    
-    query += (
-      "create table if not exists actions ("
-      "trace_id tonhash not null, "
-      "action_id tonhash not null, "
-      "start_lt bigint, "
-      "end_lt bigint, "
-      "start_utime bigint, "
-      "end_utime bigint, "
-      "source tonaddr, "
-      "source_secondary tonaddr, "
-      "destination tonaddr, "
-      "destination_secondary tonaddr, "
-      "asset tonaddr, "
-      "asset_secondary tonaddr, "
-      "asset2 tonaddr, "
-      "asset2_secondary tonaddr, "
-      "opcode bigint, "
-      "tx_hashes tonhash[], "
-      "type varchar, "
-      "ton_transfer_data ton_transfer_details, "
-      "value numeric, "
-      "amount numeric, "
-      "jetton_transfer_data jetton_transfer_details, "
-      "nft_transfer_data nft_transfer_details, "
-      "jetton_swap_data jetton_swap_details, "
-      "change_dns_record_data change_dns_record_details, "
-      "nft_mint_data nft_mint_details, "
-      "success boolean default true, "
-      "dex_withdraw_liquidity_data dex_withdraw_liquidity_details, "
-      "dex_deposit_liquidity_data dex_deposit_liquidity_details, "
-      "staking_data staking_details, "
-      "trace_end_lt bigint, "
-      "trace_external_hash tonhash, "
-      "trace_end_utime integer, "
-      "mc_seqno_end integer, "
-      "trace_mc_seqno_end integer, "
-      "multisig_create_order_data multisig_create_order_details, "
-      "multisig_approve_data multisig_approve_details, "
-      "multisig_execute_data multisig_execute_details, "
-      "vesting_send_message_data vesting_send_message_details, "
-      "vesting_add_whitelist_data vesting_add_whitelist_details, "
-      "evaa_supply_data evaa_supply_details, "
-      "evaa_withdraw_data evaa_withdraw_details, "
-      "evaa_liquidate_data evaa_liquidate_details, "
-      "jvault_claim_data jvault_claim_details, "
-      "jvault_stake_data jvault_stake_details, "
-      "parent_action_id varchar, "
-      "ancestor_type varchar[] default '{}', "
-      "value_extra_currencies jsonb default '{}'::jsonb, "
-      "primary key (trace_id, action_id)"
-      ") with (autovacuum_vacuum_scale_factor = 0.03);\n"
-    );
-
-    query += (
-      "create table if not exists action_accounts ("
-      "action_id tonhash not null, "
-      "trace_id tonhash not null, "
-      "account tonaddr not null, "
-      "trace_end_lt bigint not null, "
-      "action_end_lt bigint not null, "
-      "trace_end_utime integer, "
-      "action_end_utime bigint, "
-      "primary key (account, trace_end_lt, trace_id, action_end_lt, action_id)"
-      ") with (autovacuum_vacuum_scale_factor = 0.03);\n"
-    );
-
-    query += (
-      "create table if not exists dns_entries ("
-      "nft_item_address tonaddr not null primary key, "
-      "nft_item_owner tonaddr, "
-      "domain varchar, "
-      "dns_next_resolver tonaddr, "
-      "dns_wallet tonaddr, "
-      "dns_site_adnl varchar(64), "
-      "dns_storage_bag_id varchar(64), "
-      "last_transaction_lt bigint);\n"
-    );
-
-    query += "create table if not exists blocks_classified (mc_seqno integer not null primary key);\n";
-
-    query += (
-      "create unlogged table if not exists _classifier_tasks ("
-      "id serial, "
-      "mc_seqno integer, "
-      "trace_id tonhash, "
-      "pending boolean, "
-      "claimed_at timestamp, "
-      "start_after timestamp);\n"
-    );
-
-    query += (
-      "create unlogged table if not exists _classifier_failed_traces ("
-      "id serial, "
-      "trace_id tonhash, "
-      "broken boolean, "
-      "error varchar);\n"
-    );
-
-    query += (
-      "create table if not exists contract_methods ("
-      "code_hash tonhash not null primary key, "
-      "methods bigint[]);\n"
-    );
-
-    query += (
-      "create table if not exists address_metadata ("
-			"address varchar not null, "
-			"type varchar not null, "
-			"valid boolean default true, "
-			"name varchar, "
-			"description varchar, "
-			"extra jsonb, "
-			"symbol varchar, "
-			"image varchar, "
-			"updated_at bigint, "
-			"expires_at bigint, "
-			"constraint address_metadata_pk primary key (address, type));\n"
-    );
-
-    LOG(DEBUG) << query;
-    txn.exec0(query);
-    txn.commit();
+    db_version = get_current_db_version(credential_.get_connection_string());
   } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while creating database: " << e.what();
-    std::_Exit(1);
+    LOG(ERROR) << "Error getting database version: " << e.what();
+    std::_Exit(2);
   }
 
-  LOG(INFO) << "Creating required indexes...";
-  try {
-    pqxx::connection c(credential_.get_connection_string());
-    pqxx::work txn(c);
-
-    std::string query = "";
-    
-    // some necessary indexes
-    query += (
-      "create index if not exists trace_unclassified_index on traces (state, start_lt) include (trace_id, nodes_) where (classification_state = 'unclassified'::trace_classification_state);\n"
-      "create index if not exists _classifier_tasks_mc_seqno_idx on _classifier_tasks (mc_seqno desc);\n"
-    );
-
-    LOG(DEBUG) << query;
-    txn.exec0(query);
-    txn.commit();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while creating required indexes in database: " << e.what();
-    std::_Exit(1);
+  if (!db_version.has_value()) {
+    LOG(ERROR) << "Database version is not set, run `ton-index-postgres-migrate` to prepare the database";
+    std::_Exit(2);
   }
-
-  // create functions and triggers
-  LOG(INFO) << "Creating SQL functions and triggers...";
-  try {
-    pqxx::connection c(credential_.get_connection_string());
-    pqxx::work txn(c);
-
-    std::string query = "";
-
-    // rebuild broken traces
-    query += (
-      "create or replace function trace_get_root(transaction_hash tonhash)  "
-      "returns tonhash parallel safe language plpgsql as $$ "
-      "declare parent tonhash; current tonhash; msg tonhash; "
-      "begin\n"
-      "    current := transaction_hash;\n"
-      "    parent := transaction_hash;\n"
-      "    while parent is not NULL loop\n"
-      "        select msg_hash into msg from messages where tx_hash = current and direction = 'in';\n"
-      "        select tx_hash into parent from messages where msg_hash = msg and direction = 'out';\n"
-      "        if parent is not null then current := parent; end if;\n"
-      "    end loop;\n"
-      "    return current;\n"
-      "end; $$;\n"
-      "create or replace function rebuild_trace(root_tx_hash tonhash) "
-      "returns tonhash language plpgsql as $$ "
-      "declare "
-      "new_trace_id tonhash; "
-      "flag bool; "
-      "txs tonhash[]; "
-      "new_trace_external_hash tonhash; "
-      "new_trace_start_seqno int; "
-      "new_trace_start_lt bigint; "
-      "new_trace_start_utime int; "
-      "new_trace_end_seqno int; "
-      "new_trace_end_lt bigint; "
-      "new_trace_end_utime int; "
-      "new_trace_nodes int; "
-      "new_trace_edges int; "
-      "new_trace_pending_edges int;\n"
-      "begin\n"
-      "    new_trace_id := root_tx_hash;\n"
-      "    select msg_hash,\n"
-      "        source is null or source = '0:0000000000000000000000000000000000000000000000000000000000000000'\n"
-      "            or source = '-1:0000000000000000000000000000000000000000000000000000000000000000'\n"
-      "    into new_trace_external_hash, flag\n"
-      "    from messages where tx_hash = root_tx_hash and direction = 'in';\n"
-      "    if not flag then\n"
-      "        new_trace_id := trace_get_root(root_tx_hash);\n"
-      "        insert into broken_traces_roots(tx_hash)\n"
-      "        values (new_trace_id)\n"
-      "        on conflict do nothing;\n"
-      "    end if;\n\n"
-      "    -- get transactions\n"
-      "    with recursive cte as (\n"
-      "        select hash as tx_hash from transactions where hash = $1\n"
-      "        union all\n"
-      "        select M2.tx_hash\n"
-      "        from messages M1\n"
-      "            join cte TT on TT.tx_hash = M1.tx_hash\n"
-      "            join messages M2\n"
-      "            on M1.msg_hash = M2.msg_hash and M1.direction = 'out' and\n"
-      "                M2.direction = 'in'\n"
-      "    )\n"
-      "    select array_agg(cte.tx_hash) into txs from cte;\n\n"
-      "    -- get meta and update transactions\n"
-      "    update transactions set trace_id = new_trace_id where hash = any(txs);\n"
-      "    update messages set trace_id = new_trace_id where tx_hash = any(txs);\n\n"
-      "    select\n"
-      "        count(*), min(mc_block_seqno), max(mc_block_seqno), min(lt), max(lt), min(now), max(now)\n"
-      "    into new_trace_nodes, new_trace_start_seqno, new_trace_end_seqno, new_trace_start_lt,\n"
-      "        new_trace_end_lt, new_trace_start_utime, new_trace_end_utime\n"
-      "    from transactions where trace_id = new_trace_id;\n\n"
-      "    -- build edges\n"
-      "    delete from traces where trace_id = new_trace_id;\n\n"
-      "    insert into traces(trace_id) values (new_trace_id) on conflict do nothing;\n\n"
-      "    select count(*), sum((incomplete)::int) into new_trace_edges, new_trace_pending_edges\n"
-      "        from (select\n"
-      "        new_trace_id as trace_id, msg_hash,\n"
-      "        max(case when direction = 'out' then tx_hash end) as left_tx,\n"
-      "        max(case when direction = 'in' then tx_hash end) as right_tx,\n"
-      "        bool_or(source is not NULL and source = '0:0000000000000000000000000000000000000000000000000000000000000000'\n"
-      "            and source = '-1:0000000000000000000000000000000000000000000000000000000000000000')\n"
-      "        and max(case when direction = 'out' then tx_hash end) is null as incomplete,\n"
-      "        bool_or(destination is not NULL) and max(case when direction = 'in' then tx_hash end) is null as broken\n"
-      "    from messages\n"
-      "    where trace_id = new_trace_id\n"
-      "    group by trace_id, msg_hash) as A where A.trace_id = new_trace_id;\n\n"
-      "    update traces set\n"
-      "        external_hash=new_trace_external_hash,\n"
-      "        mc_seqno_start=new_trace_start_seqno,\n"
-      "        mc_seqno_end=new_trace_end_seqno,\n"
-      "        start_lt=new_trace_start_lt,\n"
-      "        start_utime=new_trace_start_utime,\n"
-      "        end_lt=new_trace_end_lt,\n"
-      "        end_utime=new_trace_end_utime,\n"
-      "        state=(case when new_trace_pending_edges = 0 then 'complete' else 'pending' end)::trace_state,\n"
-      "        pending_edges_=new_trace_pending_edges,\n"
-      "        edges_=new_trace_edges,\n"
-      "        nodes_=new_trace_nodes,\n"
-      "        classification_state='unclassified'\n"
-      "    where trace_id = new_trace_id;\n"
-      "    return root_tx_hash;\n"
-      "end $$;\n"
-    );
-
-    // classifier dispatcher trigger
-    query += (
-      "create or replace function on_new_mc_block_func() "
-      "returns trigger language plpgsql as $$ "
-      "begin\n"
-      "insert into _classifier_tasks(mc_seqno, start_after)\n"
-      "values (NEW.seqno, now() + interval '1 seconds');\n"
-      "return null; \n"
-      "end; $$;\n"
-      "create or replace trigger on_new_mc_block "
-      "after insert on blocks for each row when (new.workchain = '-1'::integer) "
-      "execute procedure on_new_mc_block_func();\n"
-    );
-
-    
-    LOG(DEBUG) << query;
-    txn.exec0(query);
-    txn.commit();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while creating SQL functions and triggers in database: " << e.what();
-    std::_Exit(1);
+  if (*db_version != latest_version) {
+    LOG(ERROR) << "Database version mismatch: expected " << latest_version.str() << ", got " << db_version->str();
+    LOG(ERROR) << "Run `ton-index-postgres-migrate` to update the database schema";
+    std::_Exit(2);
   }
-
-  // some migrations
-  if (run_migrations_) {
-    LOG(INFO) << "Running some migrations...";
-    try {
-      pqxx::connection c(credential_.get_connection_string());
-      pqxx::work txn(c);
-
-      std::string query = "";
-      
-      query += (
-        "alter table jetton_wallets add column if not exists mintless_is_claimed boolean;\n"
-        "alter table jetton_wallets add column if not exists mintless_amount numeric;\n"
-        "alter table jetton_wallets add column if not exists mintless_start_from bigint;\n"
-        "alter table jetton_wallets add column if not exists mintless_expire_at bigint;\n"
-        "alter table mintless_jetton_masters add column if not exists custom_payload_api_uri varchar[];\n"
-
-        "alter table transactions add column if not exists total_fees_extra_currencies jsonb;\n"
-        "alter table transactions add column if not exists credit_extra_currencies jsonb;\n"
-        "alter table messages add column if not exists value_extra_currencies jsonb;\n"
-        "alter table account_states add column if not exists balance_extra_currencies jsonb;\n"
-        "alter table latest_account_states add column if not exists balance_extra_currencies jsonb;\n"
-
-        "alter table messages add column if not exists msg_hash_norm tonhash;\n"
-
-        "alter table actions add column if not exists parent_action_id varchar;\n"
-        "alter table actions add column if not exists ancestor_type varchar[] default '{}';\n"
-        "alter table actions add column if not exists multisig_create_order_data multisig_create_order_details;\n"
-        "alter table actions add column if not exists multisig_approve_data multisig_approve_details;\n"
-        "alter table actions add column if not exists multisig_execute_data multisig_execute_details;\n"
-        "alter table actions add column if not exists vesting_send_message_data vesting_send_message_details;\n"
-        "alter table actions add column if not exists vesting_add_whitelist_data vesting_add_whitelist_details;\n"
-        "alter table actions add column if not exists evaa_supply_data evaa_supply_details;\n"
-        "alter table actions add column if not exists evaa_withdraw_data evaa_withdraw_details;\n"
-        "alter table actions add column if not exists evaa_liquidate_data evaa_liquidate_details;\n"
-        "alter table actions add column if not exists jvault_claim_data jvault_claim_details;\n"
-        "alter table actions add column if not exists jvault_stake_data jvault_stake_details;\n"
-      );
-
-      LOG(DEBUG) << query;
-      txn.exec0(query);
-      txn.commit();
-    } catch (const std::exception &e) {
-      LOG(ERROR) << "Error while running some migrations in database: " << e.what();
-      std::_Exit(1);
-    }
-  } else {
-    LOG(WARNING) << "Skipping migrations!";
-  }
-
-  // create all indexes
-  if (create_indexes_) {
-    LOG(INFO) << "Creating all indexes...";
-    try {
-      pqxx::connection c(credential_.get_connection_string());
-      pqxx::work txn(c);
-
-      std::string query = "";
-      
-      // some necessary indexes
-      query += (
-        "create index if not exists blocks_index_1 on blocks (gen_utime);\n"
-        "create index if not exists blocks_index_2 on blocks (mc_block_seqno);\n"
-        "create index if not exists blocks_index_3 on blocks (seqno) where (workchain = '-1'::integer);\n"
-        "create index if not exists blocks_index_4 on blocks (start_lt);\n"
-        "create index if not exists dns_entries_index_3 on dns_entries (dns_wallet, length(domain));\n"
-        "create index if not exists dns_entries_index_4 on dns_entries (nft_item_owner, length(domain)) include (domain) where ((nft_item_owner)::text = (dns_wallet)::text);\n"
-        "create index if not exists jetton_masters_index_1 on jetton_masters (admin_address, id);\n"
-        "create index if not exists jetton_masters_index_2 on jetton_masters (id);\n"
-        "create index if not exists jetton_wallets_index_1 on jetton_wallets (owner, id);\n"
-        "create index if not exists jetton_wallets_index_2 on jetton_wallets (jetton, id);\n"
-        "create index if not exists jetton_wallets_index_3 on jetton_wallets (id);\n"
-        "create index if not exists jetton_wallets_index_4 on jetton_wallets (jetton asc, balance desc);\n"
-        "create index if not exists jetton_wallets_index_5 on jetton_wallets (owner asc, balance desc);\n"
-        "create index if not exists latest_account_states_index_1 on latest_account_states (balance desc);\n"
-        "create index if not exists latest_account_states_address_book_index on latest_account_states (account) include (account_friendly, code_hash, account_status);\n"
-        "create index if not exists latest_account_states_index_2 on latest_account_states (id);\n"
-        "create index if not exists nft_collections_index_1 on nft_collections (owner_address, id);\n"
-        "create index if not exists nft_collections_index_2 on nft_collections (id);\n"
-        "create index if not exists nft_items_index_1 on nft_items (collection_address, index);\n"
-        "create index if not exists nft_items_index_2 on nft_items (owner_address, collection_address, index);\n"
-        "create index if not exists nft_items_index_3 on nft_items (id);\n"
-        "create index if not exists trace_unclassified_index on traces (state, start_lt) include (trace_id, nodes_) where (classification_state = 'unclassified'::trace_classification_state);\n"
-        "create index if not exists traces_index_1 on traces (state);\n"
-        "create index if not exists trace_index_2a on traces (mc_seqno_end);\n"
-        "create index if not exists traces_index_7 on traces (classification_state);\n"
-        "create index if not exists traces_index_3 on traces (end_lt desc, trace_id desc);\n"
-        "create index if not exists traces_index_4 on traces (end_utime desc, trace_id desc);\n"
-        "create index if not exists jetton_burns_index_1 on jetton_burns (owner, tx_now, tx_lt);\n"
-        "create index if not exists jetton_burns_index_2 on jetton_burns (owner, tx_lt);\n"
-        "create index if not exists jetton_burns_index_3 on jetton_burns (jetton_wallet_address, tx_now, tx_lt);\n"
-        "create index if not exists jetton_burns_index_4 on jetton_burns (jetton_wallet_address, tx_lt);\n"
-        "create index if not exists jetton_burns_index_5 on jetton_burns (jetton_master_address, tx_now, tx_lt);\n"
-        "create index if not exists jetton_burns_index_6 on jetton_burns (jetton_master_address, tx_lt);\n"
-        "create index if not exists jetton_burns_index_7 on jetton_burns (tx_now, tx_lt);\n"
-        "create index if not exists jetton_burns_index_8 on jetton_burns (tx_lt);\n"
-        "create index if not exists jetton_transfers_index_1 on jetton_transfers (source, tx_now);\n"
-        "create index if not exists jetton_transfers_index_2 on jetton_transfers (source, tx_lt);\n"
-        "create index if not exists jetton_transfers_index_3 on jetton_transfers (destination, tx_lt);\n"
-        "create index if not exists jetton_transfers_index_4 on jetton_transfers (destination, tx_now);\n"
-        "create index if not exists jetton_transfers_index_6 on jetton_transfers (jetton_wallet_address, tx_lt);\n"
-        "create index if not exists jetton_transfers_index_7 on jetton_transfers (jetton_master_address, tx_now);\n"
-        "create index if not exists jetton_transfers_index_8 on jetton_transfers (jetton_master_address, tx_lt);\n"
-        "create index if not exists jetton_transfers_index_9 on jetton_transfers (tx_now, tx_lt);\n"
-        "create index if not exists jetton_transfers_index_10 on jetton_transfers (tx_lt);\n"
-        "create index if not exists messages_index_1 on messages (msg_hash);\n"
-        "create index if not exists messages_index_5 on messages (trace_id, tx_lt);\n"
-        "create index if not exists messages_index_2 on messages (source, created_lt);\n"
-        "create index if not exists messages_index_6 on messages (opcode, created_lt);\n"
-        "create index if not exists messages_index_8 on messages (created_at, msg_hash);\n"
-        "create index if not exists messages_index_7 on messages (created_lt, msg_hash);\n"
-        "create index if not exists messages_index_3 on messages (destination, created_lt);\n"
-        "create index if not exists messages_index_4 on messages (body_hash);\n"
-        "create index if not exists messages_index_9 on messages (msg_hash_norm) where msg_hash_norm is not null;\n"
-        "create index if not exists nft_transfers_index_2 on nft_transfers (nft_item_address, tx_lt);\n"
-        "create index if not exists nft_transfers_index_3 on nft_transfers (nft_collection_address, tx_now);\n"
-        "create index if not exists nft_transfers_index_4 on nft_transfers (nft_collection_address, tx_lt);\n"
-        "create index if not exists nft_transfers_index_5 on nft_transfers (old_owner, tx_lt);\n"
-        "create index if not exists nft_transfers_index_7 on nft_transfers (new_owner, tx_lt);\n"
-        "create index if not exists nft_transfers_index_9 on nft_transfers (tx_lt);\n"
-        "create index if not exists nft_transfers_index_10 on nft_transfers (tx_now, tx_lt);\n"
-        "create index if not exists transactions_index_1 on transactions (block_workchain, block_shard, block_seqno);\n"
-        "create index if not exists transactions_index_2 on transactions (lt);\n"
-        "create index if not exists transactions_index_3 on transactions (now, lt);\n"
-        "create index if not exists transactions_index_4 on transactions (account, lt);\n"
-        "create index if not exists transactions_index_5 on transactions (account, now, lt);\n"
-        "create index if not exists transactions_index_6 on transactions (hash);\n"
-        "create index if not exists transactions_index_8 on transactions (mc_block_seqno, lt);\n"
-        "create index if not exists transactions_index_7 on transactions (trace_id, lt);\n"
-        "create index if not exists _classifier_tasks_mc_seqno_idx on _classifier_tasks (mc_seqno desc);\n"
-        "create index if not exists actions_index_3 on actions (end_lt);\n"
-        "create index if not exists actions_index_2 on actions (action_id);\n"
-        "create index if not exists actions_index_1 on actions (trace_id, start_lt, end_lt);\n"
-        "create index if not exists actions_index_4 on actions (trace_end_lt);\n"
-        "create index if not exists actions_index_5 on actions (trace_mc_seqno_end);\n"
-        "create index if not exists action_accounts_index_1 on action_accounts (action_id);\n"
-        "create index if not exists action_accounts_index_2 on action_accounts (trace_id, action_id);\n"
-        "create index if not exists action_accounts_index_3 on action_accounts (account, trace_end_utime, trace_id, action_end_utime, action_id);\n"
-      );
-
-      LOG(DEBUG) << query;
-      txn.exec0(query);
-      txn.commit();
-    } catch (const std::exception &e) {
-      LOG(ERROR) << "Error while creating indexes in database: " << e.what();
-      std::_Exit(1);
-    }
-  } else {
-    LOG(WARNING) << "Skipping creation of indexes!";
-  }
-
-  LOG(INFO) << "Database is ready!";
-
-  // if success
+  
   alarm_timestamp() = td::Timestamp::in(1.0);
 }
 

@@ -12,7 +12,7 @@
 
 using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR, 
                                       NftItemDetectorR, NftCollectionDetectorR,
-                                      GetGemsNftFixPriceSale, GetGemsNftAuction>;
+                                      GetGemsNftFixPriceSale, GetGemsNftAuction, VestingContract>;
 
 class IndexScheduler: public td::actor::Actor {
 private:

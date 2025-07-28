@@ -167,6 +167,8 @@ type ActionRow struct {
 	NFTTransferForwardAmount                             *string
 	NFTTransferResponseDestination                       *string
 	NFTTransferNFTItemIndex                              *string
+	NFTTransferMarketplace                               *string
+	NFTTransferRealPrevOwner                             *string
 	JettonSwapDex                                        *string
 	JettonSwapSender                                     *string
 	JettonSwapDexIncomingTransferAmount                  *string
@@ -225,6 +227,7 @@ type ActionRow struct {
 	StakingTokensMinted                                  *string
 	Success                                              bool
 	TraceExternalHash                                    *string
+	TraceExternalHashNorm                                *string
 	ExtraCurrencies                                      map[string]string
 	// Multisig action fields
 	MultisigCreateOrderQueryId           *string
@@ -283,6 +286,8 @@ type ActionRow struct {
 	AncestorType   []string
 	ParentActionId *string
 
+	Accounts []string
+
 	// Tonco deploy fields
 	ToncoDeployPoolJetton0RouterWallet *string
 	ToncoDeployPoolJetton1RouterWallet *string
@@ -296,14 +301,14 @@ type ActionRow struct {
 	ToncoDeployPoolPoolActive          *bool
 
 	// Coffee action fields
-	CoffeeCreatePoolAmount1                   *string
-	CoffeeCreatePoolAmount2                   *string
-	CoffeeCreatePoolLpTokensMinted            *string
-	CoffeeStakingDepositMintedItemAddress     *string
-	CoffeeStakingDepositMintedItemIndex       *string
-	CoffeeStakingWithdrawNftAddress           *string
-	CoffeeStakingWithdrawNftIndex             *string
-	CoffeeStakingWithdrawPoints               *string
+	CoffeeCreatePoolAmount1               *string
+	CoffeeCreatePoolAmount2               *string
+	CoffeeCreatePoolLpTokensMinted        *string
+	CoffeeStakingDepositMintedItemAddress *string
+	CoffeeStakingDepositMintedItemIndex   *string
+	CoffeeStakingWithdrawNftAddress       *string
+	CoffeeStakingWithdrawNftIndex         *string
+	CoffeeStakingWithdrawPoints           *string
 }
 type assign func(dest any) error
 type assignable interface {
@@ -404,6 +409,8 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.NFTTransferForwardAmount),
 		assignStringPtr(t.NFTTransferResponseDestination),
 		assignStringPtr(t.NFTTransferNFTItemIndex),
+		assignStringPtr(t.NFTTransferMarketplace),
+		assignStringPtr(t.NFTTransferRealPrevOwner),
 		assignStringPtr(t.JettonSwapDex),
 		assignStringPtr(t.JettonSwapSender),
 		assignStringPtr(t.JettonSwapDexIncomingTransferAmount),
@@ -462,6 +469,7 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.StakingTokensMinted),
 		assignBool(t.Success),
 		assignStringPtr(t.TraceExternalHash),
+		assignStringPtr(t.TraceExternalHashNorm),
 		assignMap(t.ExtraCurrencies),
 		assignStringPtr(t.MultisigCreateOrderQueryId),
 		assignStringPtr(t.MultisigCreateOrderOrderSeqno),
@@ -519,6 +527,8 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.CoffeeStakingWithdrawNftAddress),
 		assignStringPtr(t.CoffeeStakingWithdrawNftIndex),
 		assignStringPtr(t.CoffeeStakingWithdrawPoints),
+		assignStrCompatibleSlice(t.AncestorType),
+		assignStrCompatibleSlice(t.Accounts),
 	}
 }
 func (t *TransactionRow) getAssigns() []assign {

@@ -62,6 +62,12 @@ func (db *DbClient) QueryActionsV2(
 		}
 		actions = append(actions, *action)
 	}
+	if act_req.IncludeAccounts != nil && *act_req.IncludeAccounts {
+		actions, err = queryActionsAccountsImpl(actions, conn)
+		if err != nil {
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+	}
 	if len(addr_map) > 0 && !settings.NoAddressBook {
 		addr_list := []string{}
 		for k := range addr_map {
@@ -89,7 +95,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.jetton_transfer_data).custom_payload, (A.jetton_transfer_data).forward_payload, (A.jetton_transfer_data).comment,
 		(A.jetton_transfer_data).is_encrypted_comment, (A.nft_transfer_data).is_purchase, (A.nft_transfer_data).price,
 		(A.nft_transfer_data).query_id, (A.nft_transfer_data).custom_payload, (A.nft_transfer_data).forward_payload,
-		(A.nft_transfer_data).forward_amount, (A.nft_transfer_data).response_destination, (A.nft_transfer_data).nft_item_index,
+		(A.nft_transfer_data).forward_amount, (A.nft_transfer_data).response_destination, (A.nft_transfer_data).nft_item_index, (A.nft_transfer_data).marketplace, (A.nft_transfer_data).real_prev_owner,
 		(A.jetton_swap_data).dex, (A.jetton_swap_data).sender, ((A.jetton_swap_data).dex_incoming_transfer).amount,
 		((A.jetton_swap_data).dex_incoming_transfer).asset, ((A.jetton_swap_data).dex_incoming_transfer).source,
 		((A.jetton_swap_data).dex_incoming_transfer).destination, ((A.jetton_swap_data).dex_incoming_transfer).source_jetton_wallet,
@@ -135,16 +141,9 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.staking_data).ts_nft,
 		(A.staking_data).tokens_burnt,
 		(A.staking_data).tokens_minted,
-		(A.coffee_create_pool_data).amount_1,
-		(A.coffee_create_pool_data).amount_2,
-		(A.coffee_create_pool_data).lp_tokens_minted,
-		(A.coffee_staking_deposit_data).minted_item_address,
-		(A.coffee_staking_deposit_data).minted_item_index,
-		(A.coffee_staking_withdraw_data).nft_address,
-		(A.coffee_staking_withdraw_data).nft_index,
-		(A.coffee_staking_withdraw_data).points,
 		A.success,
 		A.trace_external_hash,
+		A.trace_external_hash_norm,
 		A.value_extra_currencies,
 		(A.multisig_create_order_data).query_id,
 		(A.multisig_create_order_data).order_seqno,
@@ -193,7 +192,17 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.tonco_deploy_pool_data).protocol_fee,
 		(A.tonco_deploy_pool_data).lp_fee_base,
 		(A.tonco_deploy_pool_data).lp_fee_current,
-		(A.tonco_deploy_pool_data).pool_active`
+		(A.tonco_deploy_pool_data).pool_active,
+		(A.coffee_create_pool_data).amount_1,
+		(A.coffee_create_pool_data).amount_2,
+		(A.coffee_create_pool_data).lp_tokens_minted,
+		(A.coffee_staking_deposit_data).minted_item_address,
+		(A.coffee_staking_deposit_data).minted_item_index,
+		(A.coffee_staking_withdraw_data).nft_address,
+		(A.coffee_staking_withdraw_data).nft_index,
+		(A.coffee_staking_withdraw_data).points,
+		A.ancestor_type,
+		ARRAY[]::text[]`
 	clmn_query := clmn_query_default
 	from_query := `actions as A`
 	filter_list := []string{}
