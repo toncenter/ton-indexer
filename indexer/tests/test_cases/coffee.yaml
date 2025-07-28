@@ -476,6 +476,7 @@ cases:
     trace-id: 1VcQkyvd9V-HG0lNytSst83ap9KP46eoVvLvQi7wsx0=
     expected-actions:
       - type: coffee_create_pool_creator
+        selector: "{{ value.ancestor_type == None or value.ancestor_type|length == 0 }}"
         values:
           source: 0:D9E74A929EEB0489D364019C38768F935EA68132172BA59E1DDB26BAC54979E6
           asset: null
@@ -499,6 +500,7 @@ cases:
     trace-id: 3uecEX5TvThuugPaMO4MqlOxGGHRQpNRErwAP7fL7J4=
     expected-actions:
       - type: coffee_create_pool_creator
+        selector: "{{ value.ancestor_type == None or value.ancestor_type|length == 0 }}"
         values:
           source: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
           asset: null
