@@ -91,6 +91,17 @@ public:
                 auto addr_raw = std::to_string(addr.workchain) + ":" + addr.addr.to_hex();
                 transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), addr_raw, buffer.str());
             }
+            if (trace_.root) {
+                auto it = trace_.emulated_accounts.find(trace_.root->address);
+                if (it != trace_.emulated_accounts.end()) {
+                    const auto& [address, account] = *it;
+                    if (account.code.not_null()) {
+                        transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()),
+                                          "root_account_code_hash",
+                                          td::base64_encode(account.code->get_hash().as_slice()));
+                    }
+                }
+            }
             transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
             transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "depth_limit_exceeded", trace_.tx_limit_exceeded ? "1" : "0");
             

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,11 +21,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Traces where root_account_code_hash mentioned in this list will not be treated as synthetic traces
+var ignoreSyntheticTracesCodeHashes = []string{
+	"EayteVWEQJDyg78ji8FEmHH3g+fMCXlAjT9IWUg+hSU=", // highload v3
+}
+
 type hash [32]byte
 
 type TraceData struct {
-	RootNodeKey string
-	Nodes       map[string]TraceNode
+	RootNodeKey         string
+	Nodes               map[string]TraceNode
+	RootAccountCodeHash *string
 }
 
 type TraceUpdateStats struct {
@@ -105,8 +112,8 @@ func (stt *SyntheticTracesTracker) ClearSyntheticTraces(account string) []string
 	return []string{}
 }
 
-// RemoveTrace removes a specific trace from whatever account it's in
-func (stt *SyntheticTracesTracker) RemoveTrace(traceId string) {
+// RemoveTrace removes a specific trace from whatever account it's in, and returns true if it was found and removed.
+func (stt *SyntheticTracesTracker) RemoveTrace(traceId string) bool {
 	stt.mu.Lock()
 	defer stt.mu.Unlock()
 
@@ -119,9 +126,10 @@ func (stt *SyntheticTracesTracker) RemoveTrace(traceId string) {
 				delete(stt.accountToTraceIds, account)
 			}
 			// We assume the trace ID is only in one account's set
-			break
+			return true
 		}
 	}
+	return false
 }
 
 // AddressCollector holds a concurrency safe map of key -> set of addresses
@@ -411,9 +419,14 @@ func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (*Tra
 	if !exists {
 		return nil, fmt.Errorf("root_node not found in trace %s", hashKey)
 	}
+	var rootAccountCodeHash *string
+	if rootAccountCodeHashStr, exists := traceData["root_account_code_hash"]; exists {
+		rootAccountCodeHash = &rootAccountCodeHashStr
+	}
 	nodes := make(map[string]TraceNode)
 	for key, value := range traceData {
-		if key == "root_node" || key == "depth_limit_exceeded" || strings.Contains(key, ":") || strings.Contains(key, "actions") {
+		if key == "root_node" || key == "depth_limit_exceeded" || key == "root_account_code_hash" ||
+			strings.Contains(key, ":") || strings.Contains(key, "actions") {
 			continue
 		}
 		var node TraceNode
@@ -424,8 +437,9 @@ func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (*Tra
 		nodes[key] = node
 	}
 	return &TraceData{
-		RootNodeKey: rootNodeKey,
-		Nodes:       nodes,
+		RootNodeKey:         rootNodeKey,
+		Nodes:               nodes,
+		RootAccountCodeHash: rootAccountCodeHash,
 	}, nil
 }
 
@@ -437,7 +451,11 @@ func (rtt *RedisTTLTracker) handleTraceEmulationStatus(ctx context.Context, hash
 	rootTxNode, exists := data.Nodes[data.RootNodeKey]
 	if exists {
 		account := rootTxNode.Transaction.Account
-		if rootTxNode.Emulated {
+		var isSyntheticTrace bool = rootTxNode.Emulated
+		if data.RootAccountCodeHash != nil && slices.Contains(ignoreSyntheticTracesCodeHashes, *data.RootAccountCodeHash) {
+			isSyntheticTrace = false
+		}
+		if isSyntheticTrace {
 			rtt.syntheticTracesTracker.AddSyntheticTrace(account, hashKey)
 			rtt.logger.WithFields(logrus.Fields{
 				"trace":   hashKey,
@@ -454,6 +472,7 @@ func (rtt *RedisTTLTracker) handleTraceEmulationStatus(ctx context.Context, hash
 						continue
 					}
 					rtt.expiryTracker.Add(traceId, time.Now())
+					rtt.publishInvalidated(ctx, traceId)
 
 					rtt.logger.WithFields(logrus.Fields{
 						"clearedTrace": traceId,
@@ -502,7 +521,10 @@ func (rtt *RedisTTLTracker) handleExpiredKeys(ctx context.Context) {
 	// Gather addresses from each hash, delete the hash, and store them in addressToKeys
 	for _, key := range expiredKeys {
 		// Remove from emulated tracker if it exists there
-		rtt.syntheticTracesTracker.RemoveTrace(key)
+		wasSynthetic := rtt.syntheticTracesTracker.RemoveTrace(key)
+		if wasSynthetic {
+			rtt.publishInvalidated(ctx, key)
+		}
 		addresses, err := rtt.collectAddressesAndDeleteHash(ctx, key)
 		if err != nil {
 			// Log the error but continue
@@ -644,9 +666,19 @@ func (rtt *RedisTTLTracker) removeKeysFromSortedSet(ctx context.Context, address
 	return nil
 }
 
-// containsColon checks if a string contains a ':' character
-func containsColon(s string) bool {
-	return strings.Contains(s, ":")
+// Traces are published to this channel in following cases:
+// 1. Synthetic root age-based trace deleted
+// 2. When real trace root appear, all other synthetic traces are deleted
+const invalidatedTraceChannel = "invalidated_traces"
+
+func (rtt *RedisTTLTracker) publishInvalidated(ctx context.Context, traceID string) {
+	if err := rtt.redisClient.Publish(ctx, invalidatedTraceChannel, traceID).Err(); err != nil {
+		rtt.logger.WithError(err).WithField("trace", traceID).
+			Warn("failed to publish invalidated trace")
+	} else {
+		rtt.logger.WithField("trace", traceID).
+			Debug("published invalidated trace")
+	}
 }
 
 // minDuration returns the lesser of two durations.

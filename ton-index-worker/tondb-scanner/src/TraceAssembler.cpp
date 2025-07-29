@@ -27,6 +27,7 @@ schema::Trace TraceImpl::to_schema() const {
     schema::Trace result;
     result.trace_id = trace_id;
     result.external_hash = external_hash;
+    result.external_hash_norm = external_hash_norm;
     result.mc_seqno_start = mc_seqno_start;
     result.mc_seqno_end = mc_seqno_end;
     result.start_lt = start_lt;

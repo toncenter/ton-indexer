@@ -5,48 +5,41 @@ import argparse
 import asyncio
 import logging
 import multiprocessing as mp
-from multiprocessing import Manager
 import sys
 import time
 import traceback
-import codecs
-from datetime import datetime, timedelta
-from typing import Optional, List, Tuple, Set, Dict
-from dataclasses import asdict
-import json
-from collections import defaultdict
-
-from sqlalchemy import Column, Integer, String, Boolean, event, delete
-from collections import defaultdict
+from datetime import datetime
 from datetime import timedelta
+from multiprocessing import Manager
+from typing import List, Tuple
 from typing import Optional
 
 import msgpack
-from sqlalchemy import update, select, and_, or_
+from sqlalchemy import Column, Integer, String, Boolean, event, delete
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker, contains_eager, selectinload
+from sqlalchemy.orm import sessionmaker, selectinload
 from sqlalchemy.sql import text
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm.attributes import instance_state
 
 from indexer.core import redis
-from indexer.core.database import engine, SyncSessionMaker, Base, Trace, Transaction, Message, Action, ActionAccount
+from indexer.core.database import Base, ActionAccount
 from indexer.core.database import engine, Trace, Transaction, Message, Action, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
-from indexer.events.blocks.utils.address_selectors import extract_additional_addresses, \
-    extract_extra_accounts_data_requests, extract_accounts_from_trace
-from indexer.events.blocks.utils.block_tree_serializer import (
-    block_to_action,
-    create_unknown_action
-)
+from indexer.events.blocks.utils.address_selectors import extract_accounts_from_trace
+from indexer.events.blocks.utils.block_tree_serializer import create_unknown_action
+from indexer.events.blocks.utils.block_tree_serializer import serialize_blocks
 from indexer.events.blocks.utils.dedust_pools import init_pools_data, start_pools_background_updater, get_pools_manager
-from indexer.events.blocks.utils.block_tree_serializer import block_to_action, serialize_blocks
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
-from indexer.events.event_processing import process_event_async, process_event_async_with_postprocessing, \
-    try_process_unknown_event
-from indexer.events.interface_repository import EmulatedTransactionsInterfaceRepository, gather_interfaces, \
-    RedisInterfaceRepository, EmulatedRepositoryWithDbFallback, ExtraAccountRequest
+from indexer.events.event_processing import (
+    process_event_async_with_postprocessing,
+    try_classify_unknown_trace
+)
+from indexer.events.interface_repository import (
+    EmulatedTransactionsInterfaceRepository, gather_interfaces,
+    RedisInterfaceRepository
+)
+from indexer.events.pendings import start_emulated_traces_processing
 from indexer.events.utils.lru_cache import LRUCache
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -652,22 +645,6 @@ async def process_emulated_trace_batch(
             transaction_accounts = set(t.account for t in trace.transactions)
             referenced_accounts = set(index.keys()) - transaction_accounts
 
-            # Add indices to Redis
-            for account, values in index.items():
-                await redis.client.zadd(f"_aai:{account}", dict(values))
-
-            # Publish referenced accounts
-            for r in referenced_accounts:
-                await redis.client.publish('referenced_accounts', f"{r};{trace_key}")
-
-            results.append((trace_key, True))
-
-        except Exception as e:
-            logger.error(f"Failed to process emulated trace {trace_key}: {e}")
-            logger.exception(e)
-            results.append((trace_key, False))
-
-    return results
 
 async def start_emulated_task_traces_processing():
     pubsub = redis.client.pubsub()
@@ -715,28 +692,13 @@ async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception
         return trace.trace_id, state, actions, None
     except Exception as e:
         logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
+        logger.exception(e, exc_info=True)
         try:
             return trace.trace_id, 'failed', [create_unknown_action(trace)], e
         except:
             return trace.trace_id, 'failed', [], e
 
-async def try_classify_unknown_trace(trace):
-    actions = []
-    blocks = await try_process_unknown_event(trace)
-    for block in blocks:
-        if block.btype in ('root', 'empty'):
-            continue
-        if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
-            continue
-        if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
-            continue
-        action = block_to_action(block, trace.trace_id, trace)
-        assert len(action._accounts) > 0, f"Action {action} has no accounts"
-        actions.append(action)
-    if len(actions) == 0:
-        unknown_action = create_unknown_action(trace)
-        actions.append(unknown_action)
-    return actions
+
 
 if __name__ == '__main__':
     # Create a shared namespace for cross-process data sharing
@@ -781,6 +743,10 @@ if __name__ == '__main__':
                         help='Batch time window in seconds. Used to batch emulated traces',
                         default=0.1,
                         type=float)
+    parser.add_argument('--emulated-traces-queue-size',
+                        help='Maximum number of enqueued emulated traces for processing',
+                        default=100,
+                        type=int)
     args = parser.parse_args()
 
     settings.emulated_traces_redis_channel = args.emulated_traces_redis_channel
@@ -802,8 +768,11 @@ if __name__ == '__main__':
         asyncio.run(start_emulated_task_traces_processing())
     elif settings.emulated_traces:
         logger.info("Starting processing emulated traces")
-        asyncio.run(start_emulated_traces_processing(batch_window=args.batch_time_window,
-                                                     max_batch_size=args.batch_size))
+        asyncio.run(start_emulated_traces_processing(settings=settings,
+                                                     batch_window=args.batch_time_window,
+                                                     max_batch_size=args.batch_size,
+                                                     pool_size=args.pool_size,
+                                                     max_queue_size=args.emulated_traces_queue_size))
     else:
         logger.info("Starting processing events from db")
         asyncio.run(start_processing_events_from_db(args, shared_namespace))

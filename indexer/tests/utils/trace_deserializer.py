@@ -6,7 +6,16 @@ import pathlib
 import lz4.frame
 import msgpack
 
-from indexer.core.database import MessageContent, Transaction, Message, Trace, NFTItem, JettonWallet
+from indexer.core.database import (
+    MessageContent,
+    Transaction,
+    Message,
+    Trace,
+    NFTItem,
+    JettonWallet,
+    NftSale,
+    NftAuction
+)
 from typing import Dict, Any, List, Tuple
 
 from indexer.events.interface_repository import DedustPool
@@ -152,10 +161,28 @@ def deserialize_nft_item(data: Dict[str, Any]) -> NFTItem:
         content=data['content'],
     )
 
+
+def deserialize_nft_sale(data: Dict[str, Any]) -> NftSale:
+    """Deserialize dictionary to NFTItem."""
+    return NftSale(
+        address=data['address'],
+        is_complete=data['is_complete'],
+        marketplace_address=data['marketplace_address'],
+        nft_address=data['nft_address'],
+        nft_owner_address=data['nft_owner_address'],
+        full_price=data['full_price'],
+    )
+
 def deserialize_dedust_pool(account, data: Dict[str, Any]) -> DedustPool:
     """Deserialize dictionary to DedustPool"""
     return DedustPool(address=account, assets=data['assets'])
 
+def deserialize_nft_auction(account, data: Dict[str, Any]) -> NftAuction:
+    """Deserialize dictionary to NftAuction"""
+    return NftAuction(address=account,
+                      nft_addr=data['nft_addr'],
+                      last_bid=data['last_bid'],
+                      nft_owner=data['nft_owner'])
 
 def load_trace(data: Dict) -> Tuple[Trace, Dict[str, Any]]:
     """

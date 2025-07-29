@@ -4,77 +4,12 @@
 #include "convert-utils.h"
 #include "DataParser.h"
 #include "Tokens.h"
+
+#include "FetchAccountFromShard.h"
 #include "parse_token_data.h"
 #include "smc-interfaces/execute-smc.h"
 #include "tokens-tlb.h"
 #include "common/checksum.h"
-
-
-class FetchAccountFromShardV2: public td::actor::Actor {
-private:
-  AllShardStates shard_states_;
-  block::StdAddress address_;
-  td::Promise<schema::AccountState> promise_;
-public:
-  FetchAccountFromShardV2(AllShardStates shard_states, block::StdAddress address, td::Promise<schema::AccountState> promise) 
-    : shard_states_(shard_states), address_(address), promise_(std::move(promise)) {
-  }
-
-  void start_up() override {
-    for (auto& root : shard_states_) {
-      block::gen::ShardStateUnsplit::Record sstate;
-      if (!tlb::unpack_cell(root, sstate)) {
-        promise_.set_error(td::Status::Error("Failed to unpack ShardStateUnsplit"));
-        stop();
-        return;
-      }
-      if (!ton::shard_contains(ton::ShardIdFull(block::ShardId(sstate.shard_id)), ton::extract_addr_prefix(address_.workchain, address_.addr))) {
-        continue;
-      }
-
-      vm::AugmentedDictionary accounts_dict{vm::load_cell_slice_ref(sstate.accounts), 256, block::tlb::aug_ShardAccounts};
-      
-      auto shard_account_csr = accounts_dict.lookup(address_.addr);
-      if (shard_account_csr.is_null()) {
-        promise_.set_error(td::Status::Error("Account not found in accounts_dict"));
-        stop();
-        return;
-      } 
-      
-      block::gen::ShardAccount::Record acc_info;
-      if(!tlb::csr_unpack(std::move(shard_account_csr), acc_info)) {
-        LOG(ERROR) << "Failed to unpack ShardAccount " << address_.addr;
-        stop();
-        return;
-      }
-      int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(acc_info.account));
-      switch (account_tag) {
-      case block::gen::Account::account_none:
-        promise_.set_error(td::Status::Error("Account is empty"));
-        stop();
-        return;
-      case block::gen::Account::account: {
-        auto account_r = ParseQuery::parse_account(acc_info.account, sstate.gen_utime, acc_info.last_trans_hash, acc_info.last_trans_lt);
-        if (account_r.is_error()) {
-          promise_.set_error(account_r.move_as_error());
-          stop();
-          return;
-        }
-        promise_.set_value(account_r.move_as_ok());
-        stop();
-        return;
-      }
-      default:
-        promise_.set_error(td::Status::Error("Unknown account tag"));
-        stop();
-        return;
-      }
-    }
-    promise_.set_error(td::Status::Error("Account not found in shards"));
-    stop();
-  }
-};
-
 
 
 JettonWalletDetectorR::JettonWalletDetectorR(block::StdAddress address, 
@@ -443,45 +378,49 @@ td::Result<NftItemDetectorR::Result::DNSEntry> NftItemDetectorR::get_dns_entry_d
     }
   }
 
-  // TODO: support SmcCapList
-  auto wallet_cell = records.lookup_ref(td::sha256_bits256("wallet"));
-  if (wallet_cell.not_null()) {
-    tokens::gen::DNSRecord::Record_dns_smc_address wallet_record;
-    if (!tlb::unpack_cell(wallet_cell, wallet_record)) {
-      LOG(ERROR) << "Failed to unpack DNSRecord wallet";
-    } else {
-      auto wallet = convert::to_std_address(wallet_record.smc_addr);
-      if (wallet.is_error()) {
-        LOG(ERROR) << "Failed to parse DNSRecord wallet address";
+  try {
+    // TODO: support SmcCapList
+    auto wallet_cell = records.lookup_ref(td::sha256_bits256("wallet"));
+    if (wallet_cell.not_null()) {
+      tokens::gen::DNSRecord::Record_dns_smc_address wallet_record;
+      if (!tlb::unpack_cell(wallet_cell, wallet_record)) {
+        LOG(ERROR) << "Failed to unpack DNSRecord wallet";
       } else {
-        result.wallet = wallet.move_as_ok();
+        auto wallet = convert::to_std_address(wallet_record.smc_addr);
+        if (wallet.is_error()) {
+          LOG(ERROR) << "Failed to parse DNSRecord wallet address";
+        } else {
+          result.wallet = wallet.move_as_ok();
+        }
       }
     }
-  }
 
-  auto next_resolver_cell = records.lookup_ref(td::sha256_bits256("dns_next_resolver"));
-  if (next_resolver_cell.not_null()) {
-    tokens::gen::DNSRecord::Record_dns_next_resolver next_resolver_record;
-    if (!tlb::unpack_cell(next_resolver_cell, next_resolver_record)) {
-      LOG(ERROR) << "Failed to unpack DNSRecord next_resolver";
-    } else {
-      auto next_resolver = convert::to_std_address(next_resolver_record.resolver);
-      if (next_resolver.is_error()) {
-        LOG(ERROR) << "Failed to parse DNSRecord next_resolver address";
+    auto next_resolver_cell = records.lookup_ref(td::sha256_bits256("dns_next_resolver"));
+    if (next_resolver_cell.not_null()) {
+      tokens::gen::DNSRecord::Record_dns_next_resolver next_resolver_record;
+      if (!tlb::unpack_cell(next_resolver_cell, next_resolver_record)) {
+        LOG(ERROR) << "Failed to unpack DNSRecord next_resolver";
       } else {
-        result.next_resolver = next_resolver.move_as_ok();
+        auto next_resolver = convert::to_std_address(next_resolver_record.resolver);
+        if (next_resolver.is_error()) {
+          LOG(ERROR) << "Failed to parse DNSRecord next_resolver address";
+        } else {
+          result.next_resolver = next_resolver.move_as_ok();
+        }
       }
     }
-  }
 
-  auto storage_bag_id_cell = records.lookup_ref(td::sha256_bits256("storage"));
-  if (storage_bag_id_cell.not_null()) {
-    tokens::gen::DNSRecord::Record_dns_storage_address dns_storage_record;
-    if (!tlb::unpack_cell(storage_bag_id_cell, dns_storage_record)) {
-      LOG(ERROR) << "Failed to unpack DNSRecord storage";
-    } else {
-      result.storage_bag_id = dns_storage_record.bag_id;
+    auto storage_bag_id_cell = records.lookup_ref(td::sha256_bits256("storage"));
+    if (storage_bag_id_cell.not_null()) {
+      tokens::gen::DNSRecord::Record_dns_storage_address dns_storage_record;
+      if (!tlb::unpack_cell(storage_bag_id_cell, dns_storage_record)) {
+        LOG(ERROR) << "Failed to unpack DNSRecord storage";
+      } else {
+        result.storage_bag_id = dns_storage_record.bag_id;
+      }
     }
+  } catch (vm::VmError& e) {
+    return td::Status::Error("Failed to parse DNSRecord: " + std::string(e.get_msg()));
   }
 
   return result;
