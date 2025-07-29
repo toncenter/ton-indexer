@@ -65,6 +65,12 @@ var ActionTypeShortcuts = map[string][]string{
 		"coffee_mev_protect_hold_funds", "coffee_staking_claim_rewards",
 		"coffee_staking_deposit", "coffee_staking_withdraw",
 	},
+	"tgbtc": {
+		"tgbtc_dkg_log_fallback",
+		"tgbtc_new_key", "tgbtc_new_key_fallback",
+		"tgbtc_burn", "tgbtc_burn_fallback",
+		"tgbtc_mint", "tgbtc_mint_fallback",
+	},
 }
 
 func ExpandActionTypeShortcuts(shortcuts []string) []string {

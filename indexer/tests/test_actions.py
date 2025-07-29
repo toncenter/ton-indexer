@@ -47,6 +47,8 @@ class TestNftActions(BaseGenericActionTest):
 class TestCoffeeActions(BaseGenericActionTest):
     yaml_file = "coffee.yaml"
 
+class TestTgBTCActions(BaseGenericActionTest):
+    yaml_file = "tgbtc.yaml"
 
 class TestUnknownAction:
 

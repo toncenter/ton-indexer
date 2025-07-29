@@ -60,6 +60,7 @@ from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlock,
     VestingSendMessageBlock,
 )
+from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
 
 logger = logging.getLogger(__name__)
 
@@ -692,6 +693,49 @@ def _fill_tonco_deploy_pool(block: ToncoDeployPoolBlock, action: Action):
         "pool_active": d.pool_active,
     }
 
+def _fill_tgbtc_mint_action(block: TgBTCMintBlock, action: Action):
+    action.type = 'tgbtc_mint'
+    if block.data.crippled:
+        action.type += '_fallback'
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.recipient)
+    action.amount = block.data.amount
+    action.asset = _addr(block.data.asset)
+    action.success = block.data.success
+    action.asset_secondary = block.data.bitcoin_txid
+    action.source_secondary = _addr(block.data.teleport_contract)
+    action.destination_secondary = _addr(block.data.recipient_wallet)
+
+
+def _fill_tgbtc_burn_action(block: TgBTCBurnBlock, action: Action):
+    action.type = 'tgbtc_burn'
+    if block.data.crippled:
+        action.type += '_fallback'
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.jetton_wallet)
+    action.destination = _addr(block.data.pegout_address)
+    action.amount = block.data.amount.value
+    action.asset = _addr(block.data.asset)
+
+
+def _fill_tgbtc_new_key_action(block: TgBTCNewKeyBlock, action: Action):
+    action.type = 'tgbtc_new_key'
+    if block.data.crippled:
+        action.type += '_fallback'
+    action.source = _addr(block.data.teleport_contract)
+    action.source_secondary = block.data.pubkey
+    action.destination = _addr(block.data.coordinator_contract)
+    action.destination_secondary = _addr(block.data.pegout_address)
+    action.amount = block.data.amount
+    action.value = block.data.timestamp
+
+def _fill_tgbtc_dkg_log_action(block: TgBTCDkgLogBlock, action: Action):
+    action.type = 'tgbtc_dkg_log_fallback'
+    action.source = _addr(block.data.coordinator_contract)
+    action.asset = block.data.internal_pubkey
+    action.value = block.data.timestamp
+
+
 def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, action: Action):
     action.type = 'dex_deposit_liquidity'
     action.source = _addr(block.data.sender)
@@ -908,6 +952,14 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_vesting_add_whitelist(block, action)
         case 'tonco_deploy_pool':
             _fill_tonco_deploy_pool(block, action)
+        case 'tgbtc_mint':
+            _fill_tgbtc_mint_action(block, action)
+        case 'tgbtc_burn':
+            _fill_tgbtc_burn_action(block, action)
+        case 'tgbtc_new_key':
+            _fill_tgbtc_new_key_action(block, action)
+        case 'tgbtc_dkg_log':
+            _fill_tgbtc_dkg_log_action(block, action)
         case 'tick_tock':
             _fill_tick_tock_action(block, action)
         case 'tonco_withdraw_liquidity':
