@@ -1683,6 +1683,13 @@ const docTemplate = `{
                         "description": "Sort multisigs by last_transaction_lt.",
                         "name": "sort",
                         "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Gather multisig orders",
+                        "name": "include_orders",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -3894,6 +3901,12 @@ const docTemplate = `{
                 },
                 "next_order_seqno": {
                     "type": "string"
+                },
+                "orders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MultisigOrder"
+                    }
                 },
                 "proposers": {
                     "type": "array",
