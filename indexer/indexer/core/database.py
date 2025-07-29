@@ -817,6 +817,24 @@ class NftAuction(Base):
     last_bid = Column(Numeric)
 
 
+class MultisigOrder(Base):
+    __tablename__ = 'multisig_orders'
+    
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    address = Column(String, nullable=False, unique=True)
+    multisig_address = Column(String)
+    order_seqno = Column(Numeric)
+    threshold = Column(BigInteger)
+    sent_for_execution = Column(Boolean)
+    approvals_mask = Column(Numeric)
+    approvals_num = Column(BigInteger)
+    expiration_date = Column(BigInteger)
+    order_boc = Column(String)
+    signers = Column(ARRAY(String()))
+    last_transaction_lt = Column(BigInteger)
+    code_hash = Column(String)
+    data_hash = Column(String)
+
 
 class LatestAccountState(Base):
     __tablename__ = 'latest_account_states'

@@ -4,7 +4,8 @@ from tests.utils.trace_deserializer import (
     deserialize_dedust_pool,
     deserialize_nft_item,
     deserialize_nft_sale,
-    deserialize_nft_auction
+    deserialize_nft_auction,
+    deserialize_multisig_order
 )
 
 
@@ -30,6 +31,11 @@ class TestInterfaceRepository(InterfaceRepository):
     async def get_nft_auction(self, address: str):
         if address in self.interfaces and 'NftAuction' in self.interfaces[address]:
             return deserialize_nft_auction(address, self.interfaces[address]['NftAuction'])
+        return None
+
+    async def get_multisig_order(self, address: str):
+        if address in self.interfaces and 'MultisigOrder' in self.interfaces[address]:
+            return deserialize_multisig_order(self.interfaces[address]['MultisigOrder'])
         return None
 
     async def get_dedust_pool(self, address: str):

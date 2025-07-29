@@ -623,6 +623,7 @@ def _fill_multisig_create_order(block: MultisigCreateOrderBlock, action: Action)
         "expiration_date": block.data.expiration_date,
         "order_boc": block.data.order_boc_str,
     }
+    action.accounts.extend(block.data.signers)
 
 
 def _fill_multisig_approve(block: MultisigApproveBlock, action: Action):
@@ -633,6 +634,7 @@ def _fill_multisig_approve(block: MultisigApproveBlock, action: Action):
         "signer_index": block.data.signer_index,
         "exit_code": block.data.exit_code,
     }
+    action.accounts.extend(block.data.signers)
 
 
 def _fill_multisig_execute(block: MultisigExecuteBlock, action: Action):
@@ -647,6 +649,7 @@ def _fill_multisig_execute(block: MultisigExecuteBlock, action: Action):
         "signers_hash": block.data.signers_hash_str,
         "order_boc": block.data.order_boc_str,
     }
+    action.accounts.extend(block.data.signers)
 
 
 def _fill_vesting_send_message(block: VestingSendMessageBlock, action: Action):
