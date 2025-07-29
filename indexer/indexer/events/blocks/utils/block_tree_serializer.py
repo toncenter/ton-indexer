@@ -28,6 +28,9 @@ from indexer.events.blocks.jvault import (
     JVaultUnstakeBlock, JVaultUnstakeRequestBlock,
 )
 from indexer.events.blocks.liquidity import (
+    CoffeeCreatePoolBlock,
+    CoffeeCreatePoolCreatorBlock,
+    CoffeeCreateVaultBlock,
     DedustDepositLiquidity,
     DedustDepositLiquidityPartial,
     ToncoDeployPoolBlock,
@@ -41,6 +44,9 @@ from indexer.events.blocks.multisig import (
 )
 from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock
 from indexer.events.blocks.staking import (
+    CoffeeStakingClaimRewardsBlock,
+    CoffeeStakingDepositBlock,
+    CoffeeStakingWithdrawBlock,
     NominatorPoolDepositBlock,
     NominatorPoolWithdrawRequestBlock,
     TONStakersDepositBlock,
@@ -617,6 +623,7 @@ def _fill_multisig_create_order(block: MultisigCreateOrderBlock, action: Action)
         "expiration_date": block.data.expiration_date,
         "order_boc": block.data.order_boc_str,
     }
+    action.accounts.extend(block.data.signers)
 
 
 def _fill_multisig_approve(block: MultisigApproveBlock, action: Action):
@@ -627,6 +634,7 @@ def _fill_multisig_approve(block: MultisigApproveBlock, action: Action):
         "signer_index": block.data.signer_index,
         "exit_code": block.data.exit_code,
     }
+    action.accounts.extend(block.data.signers)
 
 
 def _fill_multisig_execute(block: MultisigExecuteBlock, action: Action):
@@ -641,6 +649,7 @@ def _fill_multisig_execute(block: MultisigExecuteBlock, action: Action):
         "signers_hash": block.data.signers_hash_str,
         "order_boc": block.data.order_boc_str,
     }
+    action.accounts.extend(block.data.signers)
 
 
 def _fill_vesting_send_message(block: VestingSendMessageBlock, action: Action):
@@ -728,6 +737,87 @@ def _fill_tonco_deposit_liquidity_action(block: ToncoDepositLiquidityBlock, acti
         "target_asset_2": _addr(block.data.asset_2),
         "vault_excesses": vault_excesses,
     }
+
+def _fill_coffee_create_vault(block: CoffeeCreateVaultBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.vault)
+    action.asset = _addr(block.data.asset)
+    action.value = block.data.amount.value
+
+def _fill_coffee_create_pool_creator(block: CoffeeCreatePoolCreatorBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.sender_jetton_wallet)
+    action.destination = _addr(block.data.deposit_recipient)
+    action.destination_secondary = _addr(block.data.pool_creator_contract)
+    action.asset = _addr(block.data.provided_asset)
+    action.asset2 = _addr(block.data.pool_params.first)
+    action.asset2_secondary = _addr(block.data.pool_params.second)
+    action.amount = block.data.amount.value
+
+def _fill_coffee_create_pool(block: CoffeeCreatePoolBlock, action: Action):
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.source_jetton_wallet)
+    action.amount = block.data.amount.value
+    action.asset = _addr(block.data.asset_1)
+    action.asset2 = _addr(block.data.asset_2)
+    action.destination = _addr(block.data.pool)
+    action.destination_secondary = _addr(block.data.pool_creator_contract)
+    action.coffee_create_pool_data = {
+        "amount_1": block.data.amount_1.value if block.data.amount_1 else None,
+        "amount_2": block.data.amount_2.value if block.data.amount_2 else None,
+        "initiator_1": _addr(block.data.initiator_1),
+        "initiator_2": _addr(block.data.initiator_2),
+        "provided_asset": _addr(block.data.provided_asset),
+        "lp_tokens_minted": block.data.lp_tokens_minted.value if block.data.lp_tokens_minted else None,
+    }
+
+def _fill_coffee_mev_protect_hold_funds(block: Block, action: Action):
+    action.source = _addr(block.data['sender'])
+    action.source_secondary = _addr(block.data['sender_wallet'])
+    action.destination = _addr(block.data['mev_contract'])
+    action.destination_secondary = _addr(block.data['mev_contract_wallet'])
+    action.asset = _addr(block.data['asset'])
+    action.amount = block.data['amount'].value
+
+def _fill_coffee_mev_protect_failed_swap(block: Block, action: Action):
+    action.destination = _addr(block.data['recipient'])
+    action.asset = _addr(block.data['asset'])
+
+def _fill_coffee_staking_deposit(block: CoffeeStakingDepositBlock, action: Action):
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.user_jetton_wallet)
+    action.destination = _addr(block.data.pool)
+    action.destination_secondary = _addr(block.data.pool_jetton_wallet)
+    action.asset = _addr(block.data.asset)
+    action.amount = block.data.value.value
+    action.coffee_staking_deposit_data = {
+        "minted_item_address": _addr(block.data.minted_item_address),
+        "minted_item_index": block.data.minted_item_index,
+    }
+
+def _fill_coffee_staking_withdraw(block: CoffeeStakingWithdrawBlock, action: Action):
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.user_jetton_wallet)
+    action.destination = _addr(block.data.pool)
+    action.destination_secondary = _addr(block.data.pool_jetton_wallet)
+    action.asset = _addr(block.data.asset)
+    action.amount = block.data.amount.value
+    action.coffee_staking_withdraw_data = {
+        "nft_address": _addr(block.data.nft_address),
+        "nft_index": block.data.nft_index,
+        "points": block.data.points,
+    }
+
+def _fill_coffee_staking_claim_rewards(block: CoffeeStakingClaimRewardsBlock, action: Action):
+    # don't store admin since it's always the same highload
+    #  and we don't have a basic field for it
+    action.source = _addr(block.data.pool)
+    action.source_secondary = _addr(block.data.pool_jetton_wallet)
+    action.destination = _addr(block.data.recipient)
+    action.destination_secondary = _addr(block.data.recipient_jetton_wallet)
+    action.asset = _addr(block.data.asset)
+    action.amount = block.data.amount.value
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -748,6 +838,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_nominator_pool_withdraw_request_action(block, action)
         case "dedust_deposit_liquidity":
             _fill_dedust_deposit_liquidity_action(block, action)
+        case "coffee_deposit_liquidity":
+            _fill_dedust_deposit_liquidity_action(block, action)  # use dedust's filler
         case "dedust_deposit_liquidity_partial":
             _fill_dedust_deposit_liquidity_partial_action(block, action)
         case "tonco_deposit_liquidity":
@@ -820,6 +912,20 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_tick_tock_action(block, action)
         case 'tonco_withdraw_liquidity':
             _fill_tonco_withdraw_liquidity(block, action)
+        case 'coffee_create_vault':
+            _fill_coffee_create_vault(block, action)
+        case 'coffee_create_pool_creator':
+            _fill_coffee_create_pool_creator(block, action)
+        case 'coffee_create_pool':
+            _fill_coffee_create_pool(block, action)
+        case 'coffee_mev_protect_hold_funds':
+            _fill_coffee_mev_protect_hold_funds(block, action)
+        case 'coffee_staking_deposit':
+            _fill_coffee_staking_deposit(block, action)
+        case 'coffee_staking_withdraw':
+            _fill_coffee_staking_withdraw(block, action)
+        case 'coffee_staking_claim_rewards':
+            _fill_coffee_staking_claim_rewards(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
@@ -877,6 +983,7 @@ v1_ops = [
     'tonstakers_withdraw',
     'tonco_deposit_liquidity',
     'tonco_withdraw_liquidity',
+    'coffee_deposit_liquidity'
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:
