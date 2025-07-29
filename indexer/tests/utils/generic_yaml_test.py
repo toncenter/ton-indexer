@@ -103,7 +103,7 @@ def check_value(actual_value: Any, expected_value: Any, path: str) -> None:
                     break
                 except AssertionError:
                     continue
-            assert found, f"Item '{exp_item}' not found in actual list at '{path}'"
+            assert found, f"Item '{exp_item}' not found in actual list at '{path}' in {actual_value}"
     elif isinstance(expected_value, dict) and (isinstance(actual_value, dict) or hasattr(actual_value, "__dict__")):
         # Handle nested dictionary comparison or dataclass
         actual_dict = actual_value if isinstance(actual_value, dict) else vars(actual_value)

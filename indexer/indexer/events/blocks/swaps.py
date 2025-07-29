@@ -36,6 +36,14 @@ from indexer.events.blocks.messages import (
     ToncoPoolV3SwapPayload,
     ToncoRouterV3PayTo,
 )
+from indexer.events.blocks.messages.coffee import (
+    CoffeeNotification,
+    CoffeePayout,
+    CoffeePayoutInternal,
+    CoffeeSwapInternal,
+    CoffeeSwapNative,
+    CoffeeSwapSuccessfulEvent,
+)
 from indexer.events.blocks.messages.jettons import JettonNotify, JettonTransfer
 from indexer.events.blocks.utils import AccountId, Amount, Asset
 from indexer.events.blocks.utils.address_selectors import (
@@ -45,7 +53,9 @@ from indexer.events.blocks.utils.block_utils import (
     find_call_contract,
     find_call_contracts,
     find_messages,
+    get_labeled,
 )
+
 
 logger = logging.getLogger(__name__)
 
@@ -1186,6 +1196,225 @@ class ToncoSwapBlockMatcher(BlockMatcher):
                 blocks_to_include.append(b)
 
         new_block.merge_blocks(blocks_to_include)
+        new_block.failed = not ok
+
+        return [new_block]
+
+
+class CoffeeSwapBlockMatcher(BlockMatcher):
+    def __init__(self):
+        # 1. incoming transfer: either a jetton transfer or a native swap call
+        in_transfer_matcher = labeled(
+            "in_transfer",
+            OrMatcher(
+                [
+                    BlockTypeMatcher(block_type="jetton_transfer"),
+                    ContractMatcher(opcode=CoffeeSwapNative.opcode),
+                ]
+            ),
+        )
+
+        # 2. outgoing transfer (final step)
+        out_transfer_matcher = labeled(
+            "out_transfer",
+            OrMatcher(
+                [
+                    BlockTypeMatcher(block_type="jetton_transfer"),
+                    ContractMatcher(opcode=CoffeePayout.opcode),
+                    ContractMatcher(opcode=CoffeeNotification.opcode),
+                ]
+            ),
+        )
+
+        # 3. payout from pool (precedes final transfer)
+        payout_matcher = labeled(
+            "payout",
+            ContractMatcher(
+                opcode=CoffeePayoutInternal.opcode, child_matcher=out_transfer_matcher
+            ),
+        )
+
+        # 4. repeating part of the chain: a swap followed by its success event
+        repeating_swap_matcher = ContractMatcher(
+            opcode=CoffeeSwapInternal.opcode,
+            child_matcher=ContractMatcher(opcode=CoffeeSwapSuccessfulEvent.opcode),
+        )
+
+        # 5. the recursive part that finds all intermediate swaps
+        peer_swap_chain_matcher = RecursiveMatcher(
+            repeating_matcher=repeating_swap_matcher,
+            exit_matcher=payout_matcher,
+            optional=True,  # zero intermediate hops is a valid case
+        )
+
+        # 6. the anchor swap must also have a success event,
+        # and it's followed by the rest of the chain
+        anchor_swap_children_matcher = OrMatcher(
+            [
+                peer_swap_chain_matcher,  # case with intermediate hops
+                payout_matcher,  # case with no intermediate hops
+            ]
+        )
+
+        super().__init__(
+            parent_matcher=in_transfer_matcher,
+            optional=False,
+            children_matchers=[
+                ContractMatcher(opcode=CoffeeSwapSuccessfulEvent.opcode),
+                anchor_swap_children_matcher,
+            ],
+        )
+
+    def test_self(self, block: Block):
+        # the anchor is the first CoffeeSwapInternal in the chain
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == CoffeeSwapInternal.opcode
+        )
+
+    async def build_block(
+        self, block: Block, other_blocks: list[Block]
+    ) -> list[Block]:
+        # 1. collect all labeled blocks and other relevant blocks
+        in_transfer_block = get_labeled("in_transfer", other_blocks)
+        payout_block = get_labeled("payout", other_blocks)
+        out_transfer_block = get_labeled("out_transfer", other_blocks)
+
+        if not all((in_transfer_block, payout_block, out_transfer_block)):
+            return []
+
+        # 2. find all swap steps and their corresponding success events
+        swap_internal_blocks = find_call_contracts(
+            other_blocks, CoffeeSwapInternal.opcode
+        )
+        if isinstance(block, CallContractBlock):
+            swap_internal_blocks.append(block)
+
+        ok = True
+        peer_swaps = []
+
+        # sort swaps by lt to process them in order
+        sorted_swap_blocks = sorted(set(swap_internal_blocks), key=lambda b: b.min_lt)
+
+        for swap_block in sorted_swap_blocks:
+            # each swap_internal MUST be followed by a success_event
+            event_block = find_call_contract(swap_block.next_blocks, CoffeeSwapSuccessfulEvent.opcode)
+
+            if not event_block:
+                ok = False
+                continue  # if one hop fails, the whole swap is considered failed
+
+            event_msg = CoffeeSwapSuccessfulEvent(event_block.get_body())
+
+            peer_swaps.append(
+                {
+                    "in": {
+                        "asset": event_msg.input,
+                        "amount": Amount(event_msg.input_amount or 0),
+                    },
+                    "out": {
+                        "asset": None,  # we will determine this from the next hop or final payout
+                        "amount": Amount(event_msg.output_amount or 0),
+                    },
+                }
+            )
+
+        if not peer_swaps:
+            return []
+
+        # 3. parse incoming transfer
+        in_transfer_data = {}
+        sender = None
+        if isinstance(in_transfer_block, JettonTransferBlock):
+            sender = in_transfer_block.data["sender"]
+            in_transfer_data = {
+                "asset": in_transfer_block.data["asset"],
+                "amount": in_transfer_block.data["amount"],
+                "source": in_transfer_block.data["sender"],
+                "source_jetton_wallet": in_transfer_block.data["sender_wallet"],
+                "destination": in_transfer_block.data["receiver"],
+                "destination_jetton_wallet": in_transfer_block.data[
+                    "receiver_wallet"
+                ],
+            }
+        elif (
+            isinstance(in_transfer_block, CallContractBlock)
+            and in_transfer_block.opcode == CoffeeSwapNative.opcode
+        ):
+            msg = CoffeeSwapNative(in_transfer_block.get_body())
+            sender = AccountId(in_transfer_block.get_message().source)
+            in_transfer_data = {
+                "asset": Asset(is_ton=True),
+                "amount": Amount(msg.amount or 0),
+                "source": sender,
+                "source_jetton_wallet": None,
+                "destination": AccountId(in_transfer_block.get_message().destination),
+                "destination_jetton_wallet": None,
+            }
+
+        # 4. parse outgoing transfer
+        out_transfer_data = {}
+        if isinstance(out_transfer_block, JettonTransferBlock):
+            out_transfer_data = {
+                "asset": out_transfer_block.data["asset"],
+                "amount": out_transfer_block.data["amount"],
+                "source": out_transfer_block.data["sender"],
+                "source_jetton_wallet": out_transfer_block.data["sender_wallet"],
+                "destination": out_transfer_block.data["receiver"],
+                "destination_jetton_wallet": out_transfer_block.data.get(
+                    "receiver_wallet"
+                ),
+            }
+        elif (
+            isinstance(out_transfer_block, CallContractBlock)
+            and out_transfer_block.opcode == CoffeePayout.opcode
+            and payout_block
+        ):
+            payout_internal_msg = CoffeePayoutInternal(payout_block.get_body())
+            out_transfer_data = {
+                "asset": Asset(is_ton=True),
+                "amount": Amount(payout_internal_msg.amount or 0),
+                "source": AccountId(payout_block.get_message().source),
+                "source_jetton_wallet": None,
+                "destination": AccountId(payout_internal_msg.recipient),
+                "destination_jetton_wallet": None,
+            }
+        elif (
+            isinstance(out_transfer_block, CallContractBlock)
+            and out_transfer_block.opcode == CoffeeNotification.opcode
+        ):
+            message = out_transfer_block.get_message()
+            out_transfer_data = {
+                "asset": Asset(is_ton=True),
+                "amount": Amount(message.value or 0),
+                "source": AccountId(message.source),
+                "source_jetton_wallet": None,
+                "destination": AccountId(message.destination),
+                "destination_jetton_wallet": None,
+            }
+
+        # fill in the missing 'out' asset info for peer_swaps
+        for i in range(len(peer_swaps) - 1):
+            peer_swaps[i]["out"]["asset"] = peer_swaps[i + 1]["in"]["asset"]
+
+        if out_transfer_data:
+            peer_swaps[-1]["out"]["asset"] = out_transfer_data.get("asset")
+
+        # 5. create the final swap block
+        final_data = {
+            "dex": "coffee",
+            "sender": sender,
+            "source_asset": in_transfer_data.get("asset"),
+            "destination_asset": out_transfer_data.get("asset"),
+            "dex_incoming_transfer": in_transfer_data,
+            "dex_outgoing_transfer": out_transfer_data,
+            "peer_swaps": peer_swaps if len(peer_swaps) > 1 else [],
+            "referral_amount": None,
+            "referral_address": None,
+        }
+
+        new_block = JettonSwapBlock(final_data)
+        new_block.merge_blocks([block] + other_blocks)
         new_block.failed = not ok
 
         return [new_block]

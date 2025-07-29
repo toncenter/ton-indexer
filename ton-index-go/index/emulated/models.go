@@ -388,56 +388,80 @@ type actionJvaultStakeDetails struct {
 	StakeWallet        *string `msgpack:"stake_wallet"`
 }
 
+type actionCoffeeCreatePoolDetails struct {
+	Amount1             *string `msgpack:"amount_1"`
+	Amount2             *string `msgpack:"amount_2"`
+	Initiator1          *string `msgpack:"initiator_1"`
+	Initiator2          *string `msgpack:"initiator_2"`
+	ProvidedAsset       *string `msgpack:"provided_asset"`
+	LpTokensMinted      *string `msgpack:"lp_tokens_minted"`
+	PoolCreatorContract *string `msgpack:"pool_creator_contract"`
+}
+
+type actionCoffeeStakingDepositDetails struct {
+	MintedItemAddress *string `msgpack:"minted_item_address"`
+	MintedItemIndex   *string `msgpack:"minted_item_index"`
+}
+
+type actionCoffeeStakingWithdrawDetails struct {
+	NftAddress *string `msgpack:"nft_address"`
+	NftIndex   *string `msgpack:"nft_index"`
+	Points     *string `msgpack:"points"`
+}
+
 type Action struct {
-	ActionId                 string                            `msgpack:"action_id"`
-	Type                     string                            `msgpack:"type"`
-	TraceId                  *string                           `msgpack:"trace_id"`
-	TraceExternalHash        string                            `msgpack:"trace_external_hash"`
-	TraceExternalHashNorm    *string                           `msgpack:"trace_external_hash_norm"`
-	TxHashes                 []string                          `msgpack:"tx_hashes"`
-	Value                    *string                           `msgpack:"value"`
-	Amount                   *string                           `msgpack:"amount"`
-	StartLt                  *uint64                           `msgpack:"start_lt"`
-	EndLt                    *uint64                           `msgpack:"end_lt"`
-	StartUtime               *uint32                           `msgpack:"start_utime"`
-	EndUtime                 *uint32                           `msgpack:"end_utime"`
-	TraceEndLt               *uint64                           `msgpack:"trace_end_lt"`
-	TraceEndUtime            *uint32                           `msgpack:"trace_end_utime"`
-	TraceStartLt             *uint64                           `msgpack:"trace_start_lt"`
-	TraceMcSeqnoEnd          *uint32                           `msgpack:"trace_mc_seqno_end"`
-	Source                   *string                           `msgpack:"source"`
-	SourceSecondary          *string                           `msgpack:"source_secondary"`
-	Destination              *string                           `msgpack:"destination"`
-	DestinationSecondary     *string                           `msgpack:"destination_secondary"`
-	Asset                    *string                           `msgpack:"asset"`
-	AssetSecondary           *string                           `msgpack:"asset_secondary"`
-	Asset2                   *string                           `msgpack:"asset2"`
-	Asset2Secondary          *string                           `msgpack:"asset2_secondary"`
-	Opcode                   *uint32                           `msgpack:"opcode"`
-	Success                  bool                              `msgpack:"success"`
-	TonTransferData          *actionTonTransferDetails         `msgpack:"ton_transfer_data"`
-	AncestorType             []string                          `msgpack:"ancestor_type"`
-	ParentActionId           *string                           `msgpack:"parent_action_id"`
-	Accounts                 []string                          `msgpack:"accounts"`
-	JettonTransferData       *actionJettonTransferDetails      `msgpack:"jetton_transfer_data"`
-	NftTransferData          *actionNftTransferDetails         `msgpack:"nft_transfer_data"`
-	JettonSwapData           *actionJettonSwapDetails          `msgpack:"jetton_swap_data"`
-	ChangeDnsRecordData      *actionChangeDnsRecordDetails     `msgpack:"change_dns_record_data"`
-	NftMintData              *actionNftMintDetails             `msgpack:"nft_mint_data"`
-	DexDepositLiquidityData  *actionDexDepositLiquidityData    `msgpack:"dex_deposit_liquidity_data"`
-	DexWithdrawLiquidityData *actionDexWithdrawLiquidityData   `msgpack:"dex_withdraw_liquidity_data"`
-	StakingData              *actionStakingData                `msgpack:"staking_data"`
-	ToncoDeployPoolData      *actionToncoDeployPoolDetails     `msgpack:"tonco_deploy_pool_data"`
-	MultisigCreateOrderData  *actionMultisigCreateOrderDetails `msgpack:"multisig_create_order_data"`
-	MultisigApproveData      *actionMultisigApproveDetails     `msgpack:"multisig_approve_data"`
-	MultisigExecuteData      *actionMultisigExecuteDetails     `msgpack:"multisig_execute_data"`
-	VestingSendMessageData   *actionVestingSendMessageDetails  `msgpack:"vesting_send_message_data"`
-	VestingAddWhitelistData  *actionVestingAddWhitelistDetails `msgpack:"vesting_add_whitelist_data"`
-	EvaaSupplyData           *actionEvaaSupplyDetails          `msgpack:"evaa_supply_data"`
-	EvaaWithdrawData         *actionEvaaWithdrawDetails        `msgpack:"evaa_withdraw_data"`
-	EvaaLiquidateData        *actionEvaaLiquidateDetails       `msgpack:"evaa_liquidate_data"`
-	JvaultClaimData          *actionJvaultClaimDetails         `msgpack:"jvault_claim_data"`
-	JvaultStakeData          *actionJvaultStakeDetails         `msgpack:"jvault_stake_data"`
+	ActionId                  string                              `msgpack:"action_id"`
+	Type                      string                              `msgpack:"type"`
+	TraceId                   *string                             `msgpack:"trace_id"`
+	TraceExternalHash         string                              `msgpack:"trace_external_hash"`
+	TraceExternalHashNorm     *string                             `msgpack:"trace_external_hash_norm"`
+	TxHashes                  []string                            `msgpack:"tx_hashes"`
+	Value                     *string                             `msgpack:"value"`
+	Amount                    *string                             `msgpack:"amount"`
+	StartLt                   *uint64                             `msgpack:"start_lt"`
+	EndLt                     *uint64                             `msgpack:"end_lt"`
+	StartUtime                *uint32                             `msgpack:"start_utime"`
+	EndUtime                  *uint32                             `msgpack:"end_utime"`
+	TraceEndLt                *uint64                             `msgpack:"trace_end_lt"`
+	TraceEndUtime             *uint32                             `msgpack:"trace_end_utime"`
+	TraceStartLt              *uint64                             `msgpack:"trace_start_lt"`
+	TraceMcSeqnoEnd           *uint32                             `msgpack:"trace_mc_seqno_end"`
+	Source                    *string                             `msgpack:"source"`
+	SourceSecondary           *string                             `msgpack:"source_secondary"`
+	Destination               *string                             `msgpack:"destination"`
+	DestinationSecondary      *string                             `msgpack:"destination_secondary"`
+	Asset                     *string                             `msgpack:"asset"`
+	AssetSecondary            *string                             `msgpack:"asset_secondary"`
+	Asset2                    *string                             `msgpack:"asset2"`
+	Asset2Secondary           *string                             `msgpack:"asset2_secondary"`
+	Opcode                    *uint32                             `msgpack:"opcode"`
+	Success                   bool                                `msgpack:"success"`
+	TonTransferData           *actionTonTransferDetails           `msgpack:"ton_transfer_data"`
+	AncestorType              []string                            `msgpack:"ancestor_type"`
+	ParentActionId            *string                             `msgpack:"parent_action_id"`
+	Accounts                  []string                            `msgpack:"accounts"`
+	JettonTransferData        *actionJettonTransferDetails        `msgpack:"jetton_transfer_data"`
+	NftTransferData           *actionNftTransferDetails           `msgpack:"nft_transfer_data"`
+	JettonSwapData            *actionJettonSwapDetails            `msgpack:"jetton_swap_data"`
+	ChangeDnsRecordData       *actionChangeDnsRecordDetails       `msgpack:"change_dns_record_data"`
+	NftMintData               *actionNftMintDetails               `msgpack:"nft_mint_data"`
+	DexDepositLiquidityData   *actionDexDepositLiquidityData      `msgpack:"dex_deposit_liquidity_data"`
+	DexWithdrawLiquidityData  *actionDexWithdrawLiquidityData     `msgpack:"dex_withdraw_liquidity_data"`
+	StakingData               *actionStakingData                  `msgpack:"staking_data"`
+	ToncoDeployPoolData       *actionToncoDeployPoolDetails       `msgpack:"tonco_deploy_pool_data"`
+	MultisigCreateOrderData   *actionMultisigCreateOrderDetails   `msgpack:"multisig_create_order_data"`
+	MultisigApproveData       *actionMultisigApproveDetails       `msgpack:"multisig_approve_data"`
+	MultisigExecuteData       *actionMultisigExecuteDetails       `msgpack:"multisig_execute_data"`
+	VestingSendMessageData    *actionVestingSendMessageDetails    `msgpack:"vesting_send_message_data"`
+	VestingAddWhitelistData   *actionVestingAddWhitelistDetails   `msgpack:"vesting_add_whitelist_data"`
+	EvaaSupplyData            *actionEvaaSupplyDetails            `msgpack:"evaa_supply_data"`
+	EvaaWithdrawData          *actionEvaaWithdrawDetails          `msgpack:"evaa_withdraw_data"`
+	EvaaLiquidateData         *actionEvaaLiquidateDetails         `msgpack:"evaa_liquidate_data"`
+	JvaultClaimData           *actionJvaultClaimDetails           `msgpack:"jvault_claim_data"`
+	JvaultStakeData           *actionJvaultStakeDetails           `msgpack:"jvault_stake_data"`
+	CoffeeCreatePoolData      *actionCoffeeCreatePoolDetails      `msgpack:"coffee_create_pool_data"`
+	CoffeeStakingDepositData  *actionCoffeeStakingDepositDetails  `msgpack:"coffee_staking_deposit_data"`
+	CoffeeStakingWithdrawData *actionCoffeeStakingWithdrawDetails `msgpack:"coffee_staking_withdraw_data"`
 }
 
 type blockId struct {
@@ -1132,6 +1156,24 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.JvaultStakePeriod = a.JvaultStakeData.Period
 		row.JvaultStakeMintedStakeJettons = a.JvaultStakeData.MintedStakeJettons
 		row.JvaultStakeStakeWallet = a.JvaultStakeData.StakeWallet
+	}
+	if a.CoffeeCreatePoolData != nil {
+		row.CoffeeCreatePoolAmount1 = a.CoffeeCreatePoolData.Amount1
+		row.CoffeeCreatePoolAmount2 = a.CoffeeCreatePoolData.Amount2
+		row.CoffeeCreatePoolInitiator1 = a.CoffeeCreatePoolData.Initiator1
+		row.CoffeeCreatePoolInitiator2 = a.CoffeeCreatePoolData.Initiator2
+		row.CoffeeCreatePoolProvidedAsset = a.CoffeeCreatePoolData.ProvidedAsset
+		row.CoffeeCreatePoolLpTokensMinted = a.CoffeeCreatePoolData.LpTokensMinted
+		row.CoffeeCreatePoolPoolCreatorContract = a.CoffeeCreatePoolData.PoolCreatorContract
+	}
+	if a.CoffeeStakingDepositData != nil {
+		row.CoffeeStakingDepositMintedItemAddress = a.CoffeeStakingDepositData.MintedItemAddress
+		row.CoffeeStakingDepositMintedItemIndex = a.CoffeeStakingDepositData.MintedItemIndex
+	}
+	if a.CoffeeStakingWithdrawData != nil {
+		row.CoffeeStakingWithdrawNftAddress = a.CoffeeStakingWithdrawData.NftAddress
+		row.CoffeeStakingWithdrawNftIndex = a.CoffeeStakingWithdrawData.NftIndex
+		row.CoffeeStakingWithdrawPoints = a.CoffeeStakingWithdrawData.Points
 	}
 	return row, nil
 }

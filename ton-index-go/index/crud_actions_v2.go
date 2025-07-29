@@ -193,7 +193,18 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.tonco_deploy_pool_data).lp_fee_base,
 		(A.tonco_deploy_pool_data).lp_fee_current,
 		(A.tonco_deploy_pool_data).pool_active,
-
+		(A.coffee_create_pool_data).amount_1,
+		(A.coffee_create_pool_data).amount_2,
+		(A.coffee_create_pool_data).initiator_1,
+		(A.coffee_create_pool_data).initiator_2,
+		(A.coffee_create_pool_data).provided_asset,
+		(A.coffee_create_pool_data).lp_tokens_minted,
+		(A.coffee_create_pool_data).pool_creator_contract,
+		(A.coffee_staking_deposit_data).minted_item_address,
+		(A.coffee_staking_deposit_data).minted_item_index,
+		(A.coffee_staking_withdraw_data).nft_address,
+		(A.coffee_staking_withdraw_data).nft_index,
+		(A.coffee_staking_withdraw_data).points,
 		A.ancestor_type,
 		ARRAY[]::text[]`
 	clmn_query := clmn_query_default

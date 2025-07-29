@@ -1,0 +1,611 @@
+cases:
+  Coffee DEX Swap USDT -> TON (hop) -> CES:
+    trace-id: dp1xdxzIC7tCyZfy80VTW5be7SimpOOTnuf3_8BZjb0=
+    expected-actions:
+      - type: jetton_swap
+        values:
+          jetton_swap_data:
+            dex: coffee
+            sender: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+            dex_incoming_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 10000000
+              source: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+              source_jetton_wallet: 0:66645F72E516B6499286E2847B90D4907408011CFDA4D5753EB8E2AC3C2E12EE
+              destination: 0:FF3C99E6610B0CDE378C00038E896A73D5746B47B1BFE6DC7D66E53A9D84642C
+              destination_jetton_wallet: 0:F7295658AD747E3B371CA758ABE04546BCEBED75B95A7C1099DAE472FC72C566
+            dex_outgoing_transfer:
+              asset: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+              amount: 13876673279
+              source: 0:E9D6A57EAB067C173862FB893BBD1CF706D656BF7392F1A313B9149AB9963117
+              source_jetton_wallet: 0:A2FD1B5E81548267DBABD109E38D31DA9FDC9193A26689C429454E16C25BBBAA
+              destination: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+              destination_jetton_wallet: 0:8EA33875123015261EF940102531A1E0B760216E9C0B295A399524475A3D1082
+            peer_swaps:
+              -
+                asset_in: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+                amount_in: 10000000
+                asset_out: null
+                amount_out: 3110612273
+              -
+                asset_in: null
+                amount_in: 3110612273
+                asset_out: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+                amount_out: 13876673279
+
+  Coffee DEX Swap USDT -> TON:
+    trace-id: p1-SZ1wV7yEe2qf1SQujTW5OMifEPuuX-jPPrPNiKxw=
+    expected-actions:
+      - type: jetton_swap
+        values:
+          jetton_swap_data:
+            dex: coffee
+            sender: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+            dex_incoming_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 5489694
+              source: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+              source_jetton_wallet: 0:66645F72E516B6499286E2847B90D4907408011CFDA4D5753EB8E2AC3C2E12EE
+              destination: 0:FF3C99E6610B0CDE378C00038E896A73D5746B47B1BFE6DC7D66E53A9D84642C
+              destination_jetton_wallet: 0:F7295658AD747E3B371CA758ABE04546BCEBED75B95A7C1099DAE472FC72C566
+            dex_outgoing_transfer:
+              asset: null
+              amount: 1712374663
+              source: 0:C44CF0B64EB9DEDFB010C7B24A508140D86F6E07789F9383BB9B2141EA9C08EA
+              source_jetton_wallet: null
+              destination: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+              destination_jetton_wallet: null
+            peer_swaps: []
+
+
+  Complicated Swap (Dedust, Coffee + Stonfi):
+    trace-id: C7bHOfSrBJPLHXMZkVnIQladzgYZHIlKOiJRvbxRRuI=
+    expected-actions:
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'dedust' }}"
+        values:
+          jetton_swap_data:
+            dex: dedust
+            sender: 0:3225E9C36215BC23875DA06755EC2704F5CCE4F1C2BEB4C595F6F7001603DA47
+            dex_incoming_transfer:
+              asset: 0:78DB4C90B19A1B19CCB45580DF48A1E91B6410970FA3D5FFED3EED49E3CF08FF
+              amount: 3423056355653
+              source: 0:3225E9C36215BC23875DA06755EC2704F5CCE4F1C2BEB4C595F6F7001603DA47
+              source_jetton_wallet: 0:A347D287741B24F74CF9D736B8849DA858776BD521F84008A09CD3D59645D9CB
+              destination: 0:D9E323F038378D8B6DBF423AB1F472A43394AF057E2A1C14F4975F553EA06ECE
+              destination_jetton_wallet: 0:B29819F08843C5E65B6F4C036C79F0B46AB4B92129F85A58E45D022E60FCC4D5
+            dex_outgoing_transfer:
+              asset: 0:2F956143C461769579BAEF2E32CC2D7BC18283F40D20BB03E432CD603AC33FFC
+              amount: 139497569039755
+              source: 0:09C5B9B0870270F85A26165B75458BA475E4E5B620A65A5B2EAD0B1031126165
+              source_jetton_wallet: 0:D10FA4FA26903310E34D971E93DC7388135CA8B8A9E85B11C132445F6CE307A3
+              destination: 0:3225E9C36215BC23875DA06755EC2704F5CCE4F1C2BEB4C595F6F7001603DA47
+              destination_jetton_wallet: 0:D73B1F0B4F9C7D83701B69C9724144D2BC1B2DC07E3780B9EF1EAFDBEDAFC040
+            peer_swaps:
+              -
+                amount_in: 3423056355653
+                asset_in: 0:78DB4C90B19A1B19CCB45580DF48A1E91B6410970FA3D5FFED3EED49E3CF08FF
+                amount_out: 94771943760
+                asset_out: null
+              -
+                amount_in: 94771943760
+                asset_in: null
+                amount_out: 139497569039755
+                asset_out: 0:2F956143C461769579BAEF2E32CC2D7BC18283F40D20BB03E432CD603AC33FFC
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'coffee' }}"
+        values:
+          jetton_swap_data:
+            dex: coffee
+            sender: 0:3225E9C36215BC23875DA06755EC2704F5CCE4F1C2BEB4C595F6F7001603DA47
+            dex_incoming_transfer:
+              asset: 0:78DB4C90B19A1B19CCB45580DF48A1E91B6410970FA3D5FFED3EED49E3CF08FF
+              amount: 1591706048226
+              source: 0:3225E9C36215BC23875DA06755EC2704F5CCE4F1C2BEB4C595F6F7001603DA47
+              source_jetton_wallet: 0:A347D287741B24F74CF9D736B8849DA858776BD521F84008A09CD3D59645D9CB
+              destination: 0:4CBBC2F32D6865100C7EA8960272CA6001733C8633A36B2FF11F08CEEA99E2CD
+              destination_jetton_wallet: 0:61C2FBD581B3CFE5F34D4E9BEBF9DBA0C5CD00A73D7752A2D4D9F8EC24C47B79
+            dex_outgoing_transfer:
+              asset: null
+              amount: 44828407358
+              source: 0:DB2EA4FFCE1C691118F41275C6DA2AABD60EF53836FF5E873BE11F11CD448494
+              source_jetton_wallet: null
+              destination: 0:3D264E3CB401B01DC7D1CFC232470D185A3EBA63D933E738617F9942B9294C4E  # coffee cross dex swap contract
+              destination_jetton_wallet: null
+            peer_swaps: []
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'stonfi_v2' }}"
+        values:
+          jetton_swap_data:
+            dex: stonfi_v2
+            sender: 0:3D264E3CB401B01DC7D1CFC232470D185A3EBA63D933E738617F9942B9294C4E  # coffee cross dex swap contract
+            dex_incoming_transfer:
+              asset: null
+              amount: 44426053349
+              source: 0:3D264E3CB401B01DC7D1CFC232470D185A3EBA63D933E738617F9942B9294C4E
+              source_jetton_wallet: null
+              destination: 0:F1FBE8D453D3D4B4796D3D8657EF0773222D123D8DCA67C9EF3ACD2266F40977
+              destination_jetton_wallet: 0:F03B20E57B01B0F0C91E5E067FA0E98F4C8849225689C212667F87DF20F2AFFB
+            dex_outgoing_transfer:
+              asset: 0:2F956143C461769579BAEF2E32CC2D7BC18283F40D20BB03E432CD603AC33FFC
+              amount: 64948588105456
+              source: 0:F1FBE8D453D3D4B4796D3D8657EF0773222D123D8DCA67C9EF3ACD2266F40977
+              source_jetton_wallet: 0:1931D820A02C0E71254B953FD1CA266D2D23328D81C8B6D503F500557BF36320
+              destination: 0:3225E9C36215BC23875DA06755EC2704F5CCE4F1C2BEB4C595F6F7001603DA47
+              destination_jetton_wallet: 0:D73B1F0B4F9C7D83701B69C9724144D2BC1B2DC07E3780B9EF1EAFDBEDAFC040
+            peer_swaps: []
+
+  Less complicated Swap (Dedust + Coffee):
+    trace-id: c8jOrHqyuJe1hMGx4fm1BTGKXgBQ5O35rbExCkhmRG8=
+    expected-actions:
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'dedust' }}"
+        values:
+          jetton_swap_data:
+            dex: dedust
+            sender: 0:81812A9F5F84C5D3629C62C6BCEFC526CD37966A716F80FD070A301D9DEECEB6
+            dex_incoming_transfer:
+              asset: 0:896E9D240693F03E8046F94E42F9C59F3FF8E792CBE8B467C0ACF179D10F508A
+              amount: 185867644473
+              source: 0:81812A9F5F84C5D3629C62C6BCEFC526CD37966A716F80FD070A301D9DEECEB6
+              source_jetton_wallet: 0:AF1EDD7B6ED89DADCE2C013E73B58AA2708FC1B848DF4B07630296B8EB37DC67
+              destination: 0:E2538871D92E4824541CF4963121EBB7D6EB873E3D0FBEB9491A69BB61B49514
+              destination_jetton_wallet: 0:FA0208087193F59F708B0CA4E4A0A0A15DC5B6A021176B377C1451B4951EDCA1
+            dex_outgoing_transfer:
+              asset: 0:CD0EFE78BFF4C4539B76EAB17293296C74F42CBF99EC499687FEFEC94893ED32
+              amount: 4666275916
+              source: 0:BC8DB25F47B32EECAE687B2888A070B78162E67428EEDA9501B9C5EA9900A507
+              source_jetton_wallet: 0:3EBBD5337967C173CA7497C42BD54FDBF60DFEDF02CE82A1598E737F2508A74C
+              destination: 0:A17D0198E066C9103BDB66A63BF898E6A5141389AA53CBBE936B678445ED99E2
+              destination_jetton_wallet: 0:3E6DC70DB3489E5D8357711CACC46CED25462EF0D585710841EF6B0DB211AB3B
+            peer_swaps:
+              -
+                amount_in: 185867644473
+                asset_in: 0:896E9D240693F03E8046F94E42F9C59F3FF8E792CBE8B467C0ACF179D10F508A
+                amount_out: 14787435
+                asset_out: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              -
+                amount_in: 14787435
+                asset_in: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+                amount_out: 4666275916
+                asset_out: 0:CD0EFE78BFF4C4539B76EAB17293296C74F42CBF99EC499687FEFEC94893ED32
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'coffee' }}"
+        values:
+          jetton_swap_data:
+            dex: coffee
+            sender: 0:A17D0198E066C9103BDB66A63BF898E6A5141389AA53CBBE936B678445ED99E2
+            dex_incoming_transfer:
+              asset: 0:CD0EFE78BFF4C4539B76EAB17293296C74F42CBF99EC499687FEFEC94893ED32
+              amount: 4666275916
+              source: 0:A17D0198E066C9103BDB66A63BF898E6A5141389AA53CBBE936B678445ED99E2
+              source_jetton_wallet: 0:3E6DC70DB3489E5D8357711CACC46CED25462EF0D585710841EF6B0DB211AB3B
+              destination: 0:972B0183856E8D811CCB8DED1A14F3FCFB14843B34B3D930BA664FD10FC30B20
+              destination_jetton_wallet: 0:CAE86ADCCB5C3DE2FC882310F535A6593D5F779C7FA818118F8173AADC1F4F03
+            dex_outgoing_transfer:
+              asset: null
+              amount: 4712371036
+              source: 0:790931BC687EB86BFD92858C32964839DFE1635436EA05E031766986AC770457
+              source_jetton_wallet: null
+              destination: 0:81812A9F5F84C5D3629C62C6BCEFC526CD37966A716F80FD070A301D9DEECEB6
+              destination_jetton_wallet: null
+            peer_swaps: []
+
+  Another less complicated Swap (Stonfi + Coffee):
+    trace-id: CD5IIyWGj3nbuAyIEgmeMGJ28UdC4lMHqRRYcxdLraE=
+    expected-actions:
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'stonfi_v2' }}"
+        values:
+          jetton_swap_data:
+            dex: stonfi_v2
+            sender: 0:F03785B1D4978B1A00133F66A97DDDED84B28C1311C47915167AD63CA9187E56
+            dex_incoming_transfer:
+              asset: 0:78DB4C90B19A1B19CCB45580DF48A1E91B6410970FA3D5FFED3EED49E3CF08FF
+              amount: 208086436190
+              source: 0:F03785B1D4978B1A00133F66A97DDDED84B28C1311C47915167AD63CA9187E56
+              source_jetton_wallet: 0:AD3E62BFF50270426E256977019695C4E5166E8C3994FF53F705FBB69B0F46F4
+              destination: 0:1061B9DBD4418AD166FC9A4DEF116E2F6C74F2BFB70E71F2653D643CEFFEBFA9
+              destination_jetton_wallet: 0:EAD9FFF0D6AE3BA56DC8DDAE5929969F5157611DA56FE18FA7CAE06F41FCAEB1
+            dex_outgoing_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 18984362
+              source: 0:1061B9DBD4418AD166FC9A4DEF116E2F6C74F2BFB70E71F2653D643CEFFEBFA9
+              source_jetton_wallet: 0:1061D1CCE2AB39295EEAC3585CC8C4BA3AFE96CDC2F7F8C063F3558E4FA1D9C1
+              destination: 0:3D264E3CB401B01DC7D1CFC232470D185A3EBA63D933E738617F9942B9294C4E
+              destination_jetton_wallet: 0:27DC8F74439515FB5A7C27651E53BBE3F1EBE2900504CC38845E2065A5F5DB83
+            peer_swaps: []
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'coffee' }}"
+        values:
+          jetton_swap_data:
+            dex: coffee
+            sender: 0:3D264E3CB401B01DC7D1CFC232470D185A3EBA63D933E738617F9942B9294C4E
+            dex_incoming_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 18984362
+              source: 0:3D264E3CB401B01DC7D1CFC232470D185A3EBA63D933E738617F9942B9294C4E
+              source_jetton_wallet: 0:27DC8F74439515FB5A7C27651E53BBE3F1EBE2900504CC38845E2065A5F5DB83
+              destination: 0:FF3C99E6610B0CDE378C00038E896A73D5746B47B1BFE6DC7D66E53A9D84642C
+              destination_jetton_wallet: 0:F7295658AD747E3B371CA758ABE04546BCEBED75B95A7C1099DAE472FC72C566
+            dex_outgoing_transfer:
+              asset: null
+              amount: 6020752322
+              source: 0:C44CF0B64EB9DEDFB010C7B24A508140D86F6E07789F9383BB9B2141EA9C08EA
+              source_jetton_wallet: null
+              destination: 0:F03785B1D4978B1A00133F66A97DDDED84B28C1311C47915167AD63CA9187E56
+              destination_jetton_wallet: null
+            peer_swaps: []
+
+  Terrifying Swap (Stonfi, Coffee + Stonfi V2, Dedust, Stonfi V2):
+    trace-id: cq7UujFWNfSnpHdRKseD41yHqj4Yx3SCWsnkw8IRPoU=
+    expected-actions:
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'stonfi' }}"
+        values:
+          jetton_swap_data:
+            dex: stonfi
+            sender: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+            dex_incoming_transfer:
+              asset: 0:8CDC1D7640AD5EE326527FC1AD0514F468B30DC84B0173F0E155F451B4E11F7C
+              amount: 312740578713
+              source: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+              source_jetton_wallet: null
+              destination: 0:779DCC815138D9500E449C5291E7F12738C23D575B5310000F6A253BD607384E
+              destination_jetton_wallet: 0:1150B518B2626AD51899F98887F8824B70065456455F7FE2813F012699A4061F
+            dex_outgoing_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 1004574363
+              source: 0:779DCC815138D9500E449C5291E7F12738C23D575B5310000F6A253BD607384E
+              source_jetton_wallet: 0:4EEC921B9D4D56A0D94676016D49C26B39B1D7901A7E153E66033F146A0886F4
+              destination_jetton_wallet: 0:7465BD849284B25E8D95E4C300DA4DD9BA36570B6D7DF1DE6BF055A8D6C22C52
+              destination: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+            peer_swaps: []
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'coffee' }}"
+        values:
+          jetton_swap_data:
+            dex: coffee
+            sender: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+            dex_incoming_transfer:
+              asset: null
+              amount: 24925030997
+              source: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+              source_jetton_wallet: null
+              destination: 0:DB2EA4FFCE1C691118F41275C6DA2AABD60EF53836FF5E873BE11F11CD448494
+              destination_jetton_wallet: null
+            dex_outgoing_transfer:
+              asset: 0:78DB4C90B19A1B19CCB45580DF48A1E91B6410970FA3D5FFED3EED49E3CF08FF
+              amount: 872265910360
+              source: 0:4CBBC2F32D6865100C7EA8960272CA6001733C8633A36B2FF11F08CEEA99E2CD
+              source_jetton_wallet: 0:61C2FBD581B3CFE5F34D4E9BEBF9DBA0C5CD00A73D7752A2D4D9F8EC24C47B79
+              destination: 0:59668A4422B4E9A8773228454F846DB2C0C0F8A126D398EBDBF9A14A94B42351
+              destination_jetton_wallet: 0:C80A2A1E0F817255E3AA5CC4AE8F91AAFC2FEE383EF48182B0BA0E34169A89EF
+            peer_swaps: []
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex_incoming_transfer.amount == 334602005628 }}"
+        values:
+          jetton_swap_data:
+            dex: stonfi_v2
+            sender: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+            dex_incoming_transfer:
+              asset: null
+              amount: 334602005628
+              source: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+              source_jetton_wallet: null
+              destination: 0:92E1411AE546892F33B2C8A89EA90390D8FF4CFBB917A643B91E73F706FDB9D1
+              destination_jetton_wallet: 0:9220C181A6CFEACD11B7B8F62138DF1BB9CC82B6ED2661D2F5FAEE204B3EFB20
+            dex_outgoing_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 1074802676
+              source: 0:92E1411AE546892F33B2C8A89EA90390D8FF4CFBB917A643B91E73F706FDB9D1
+              source_jetton_wallet: 0:922D627D7D8EDBD00E4E23BDB0C54A76EE5E1F46573A1AF4417857FA3E23E91F
+              destination: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+              destination_jetton_wallet: 0:7465BD849284B25E8D95E4C300DA4DD9BA36570B6D7DF1DE6BF055A8D6C22C52
+            peer_swaps: []
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex == 'dedust' }}"
+        values:
+          jetton_swap_data:
+            dex: dedust
+            sender: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+            dex_incoming_transfer:
+              asset: null
+              amount: 365112384662
+              source: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+              source_jetton_wallet: null
+              destination: 0:DAE153A74D894BBC32748198CD626E4F5DF4A69AD2FA56CE80FC2644B5708D20
+              destination_jetton_wallet: null
+            dex_outgoing_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 1172977272
+              source: 0:18AA8E2EED51747DAE033C079B93883D941CAD8F65459F2EE9CD7474B6B8ED5D
+              source_jetton_wallet: 0:88DAC67CCEADB9CAE6FAAC7118F05C0FA95DF36C2A92E686AC39D96310D0A387
+              destination: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+              destination_jetton_wallet: 0:7465BD849284B25E8D95E4C300DA4DD9BA36570B6D7DF1DE6BF055A8D6C22C52
+            peer_swaps: []
+      - type: jetton_swap
+        selector: "{{ value.jetton_swap_data.dex_incoming_transfer.amount == 872265910360 }}"
+        values:
+          jetton_swap_data:
+            dex: stonfi_v2
+            sender: 0:59668A4422B4E9A8773228454F846DB2C0C0F8A126D398EBDBF9A14A94B42351
+            dex_incoming_transfer:
+              asset: 0:78DB4C90B19A1B19CCB45580DF48A1E91B6410970FA3D5FFED3EED49E3CF08FF
+              amount: 872265910360
+              source: 0:59668A4422B4E9A8773228454F846DB2C0C0F8A126D398EBDBF9A14A94B42351
+              source_jetton_wallet: 0:C80A2A1E0F817255E3AA5CC4AE8F91AAFC2FEE383EF48182B0BA0E34169A89EF
+              destination: 0:1061B9DBD4418AD166FC9A4DEF116E2F6C74F2BFB70E71F2653D643CEFFEBFA9
+              destination_jetton_wallet: 0:EAD9FFF0D6AE3BA56DC8DDAE5929969F5157611DA56FE18FA7CAE06F41FCAEB1
+            dex_outgoing_transfer:
+              asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+              amount: 80553316
+              source: 0:1061B9DBD4418AD166FC9A4DEF116E2F6C74F2BFB70E71F2653D643CEFFEBFA9
+              source_jetton_wallet: 0:1061D1CCE2AB39295EEAC3585CC8C4BA3AFE96CDC2F7F8C063F3558E4FA1D9C1
+              destination: 0:EFC78159F866BC1756D0ADA37AD9CD20AE6D8105E1F8CF3FBF65CAE01DFE8302
+              destination_jetton_wallet: 0:7465BD849284B25E8D95E4C300DA4DD9BA36570B6D7DF1DE6BF055A8D6C22C52
+            peer_swaps: []
+
+  Coffee deposit liquidity TON + CES:
+    trace-id: NVBb_A--g2M72byFHECct41iFyC7T53sbr6R11CltLw=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        selector: "{{ value.destination == None }}" # first part
+        values:
+          source: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+          destination: null
+          destination_secondary: 0:66D21112F25EDD14BBD3E21E6F3539550CBB537B15CE6F96C5F8C3832FD34E47
+          dex_deposit_liquidity_data:
+            dex: coffee
+            vault_excesses: []
+            asset1: null
+            amount1: 3129892658
+            user_jetton_wallet_1: null
+            asset2: null
+            amount2: null
+            user_jetton_wallet_2: null
+            target_asset_1: null
+            target_amount_1: null
+            target_asset_2: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+            target_amount_2: null
+            lp_tokens_minted: null
+      - type: dex_deposit_liquidity
+        selector: "{{ value.destination != None }}" # last part
+        values:
+          source: 0:E39C30B5790D4AB456435CD2E7DA12C7CDB2043D020DD6C400CE951F78204B5A
+          destination: 0:3935D9DA614B3283413B319B8845DBDD0857ECB5D06BEC2428A697EF86AA8691
+          destination_secondary: 0:66D21112F25EDD14BBD3E21E6F3539550CBB537B15CE6F96C5F8C3832FD34E47
+          dex_deposit_liquidity_data:
+            dex: coffee
+            vault_excesses: []
+            asset1: null
+            amount1: null
+            user_jetton_wallet_1: null
+            asset2: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+            amount2: 13876673279
+            user_jetton_wallet_2: 0:8EA33875123015261EF940102531A1E0B760216E9C0B295A399524475A3D1082
+            target_asset_1: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+            target_amount_1: null
+            target_asset_2: null
+            target_amount_2: null
+            lp_tokens_minted: 6589203740
+
+  Coffee deposit liquidity TON + ARBUZ (with vault excess):
+    trace-id: 1KbovH9MSuusbYQaA8IFllpelQVkRcrcC9A8MUVnZ3w=
+    expected-actions:
+      - type: dex_deposit_liquidity
+        selector: "{{ value.destination == None }}" # first part
+        values:
+            source: 0:89A01AC795880D80A300313E61A3056388E5D66D4EC57B0CC64B3CCDE78AEFC5
+            destination: null
+            destination_secondary: 0:8159322BC546328552BAD70CA6123ABAE60EF9F9B6F08649E796D4B3F517DD6A
+            dex_deposit_liquidity_data:
+              dex: coffee
+              vault_excesses: []
+              asset1: null # TON
+              amount1: 12738437786
+              user_jetton_wallet_1: null
+              asset2: null
+              amount2: null
+              user_jetton_wallet_2: null
+              target_asset_1: null # TON
+              target_amount_1: null
+              target_asset_2: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+              target_amount_2: null
+              lp_tokens_minted: null
+      - type: dex_deposit_liquidity
+        selector: "{{ value.destination != None }}" # last part
+        values:
+            source: 0:89A01AC795880D80A300313E61A3056388E5D66D4EC57B0CC64B3CCDE78AEFC5
+            destination: 0:9B44E061DDDC313D829236E9816341A20CAA65D751980E12C800D3CC4D188D14
+            destination_secondary: 0:8159322BC546328552BAD70CA6123ABAE60EF9F9B6F08649E796D4B3F517DD6A
+            dex_deposit_liquidity_data:
+              dex: coffee
+              vault_excesses:
+                - asset: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+                  amount: 24
+              asset1: null
+              amount1: null
+              user_jetton_wallet_1: null
+              asset2: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+              amount2: 1209191166682
+              user_jetton_wallet_2: 0:DDB51A80436CC2207722AAADEBC2A575464EE167DF06D33D07571113C6361ECB
+              target_asset_1: 0:0CD8A583A7D94DD18BF1BDF49B234AF28C15F033BD2B6A4A4D2076EE1136AD45
+              target_amount_1: null
+              target_asset_2: null # TON
+              target_amount_2: null
+              lp_tokens_minted: 124109654933
+
+  Coffee withdraw liquidity (jetton - jetton):
+    trace-id: b0QdK2TPX7Pv7NiXvpJxf_0PEumbW1FMewsnbFi-nqs=
+    expected-actions:
+      - type: dex_withdraw_liquidity
+        values:
+          source: 0:7BDD8723C306E017B2A51FE0395C883B8EB8866314C9C17FDA61DE4043F369F1 # sender
+          source_secondary: 0:7B37FF1C46D31224706A3DD1085F43CD935ADF2EA38B0C9C43643AC23946FB70 # sender_wallet
+          destination: 0:BCAB8EFC2C80EA4FADB497EE47A697D7E215F9F18061519C94CFAC0B32D19427 # pool
+          asset: 0:BCAB8EFC2C80EA4FADB497EE47A697D7E215F9F18061519C94CFAC0B32D19427 # lp_asset
+          dex_withdraw_liquidity_data:
+            dex: coffee
+            lp_tokens_burnt: 3162270
+            is_refund: false
+            amount1: 100000 # amount1_out
+            asset1_out: 0:F6EB371DE82AA9CFB5B22CA547F31FDC0FA0FBB41AE89BA84A73272FF0BF2157
+            dex_wallet_1: 0:BCAB8EFC2C80EA4FADB497EE47A697D7E215F9F18061519C94CFAC0B32D19427
+            dex_jetton_wallet_1: 0:63DC8B1CED015DEB1A4AE8117C007B7C506E18B6C72376656397D4AAF07EC695
+            user_jetton_wallet_1: 0:CEE323B428B1596AD895999C811C2A29292A0993C5BEBCDE4738F9FCBAC8A7EB # wallet1
+            amount2: 100000000 # amount2_out
+            asset2_out: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+            dex_wallet_2: 0:BCAB8EFC2C80EA4FADB497EE47A697D7E215F9F18061519C94CFAC0B32D19427
+            dex_jetton_wallet_2: 0:FD6256C33C2C5EEB4463B1CAAA3F2997F4F4A98EFE116D97B125611597D62D59
+            user_jetton_wallet_2: 0:A7603C058477E5D9E86E07DAC673CE6D073BD976A80C75ADEA3198EAC7085C8D # wallet2
+
+  Coffee create pool creator (only create):
+    trace-id: 1TUCte7dcNAyZaScButmzKI1pzRqxafdUDclpanNNe8=
+    expected-actions:
+      - type: coffee_create_pool_creator
+        values:
+          source: 0:F9A7A7967E064596D9A736F046F1079340C6DFF668C00EC879A360D4CD68CEF7 # sender
+          source_secondary: 0:3C6A834562BED3830AC71A2BBDB5052B10AEF408DA08FFCD9906FD2980EC064B # sender wallet
+          asset: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD # provided_asset
+          destination_secondary: 0:2BC2842929E9F0ABDE818603B87E9A5257299E4E5B8F19ED5A68BC084799303B # pool_creator_contract
+          destination: 0:F9A7A7967E064596D9A736F046F1079340C6DFF668C00EC879A360D4CD68CEF7 # deposit_recipient
+          asset2: 0:729C13B6DF2C07CBF0A06AB63D34AF454F3D320EC1BCD8FB5C6D24D0806A17C2 # asset1 of pool
+          asset2_secondary: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD # asset2 of pool
+
+  Coffee create pool (full and simple):
+    trace-id: 1VcQkyvd9V-HG0lNytSst83ap9KP46eoVvLvQi7wsx0=
+    expected-actions:
+      - type: coffee_create_pool_creator
+        selector: "{{ value.ancestor_type == None or value.ancestor_type|length == 0 }}"
+        values:
+          source: 0:D9E74A929EEB0489D364019C38768F935EA68132172BA59E1DDB26BAC54979E6
+          asset: null
+          destination_secondary: 0:DFACB41C10F5747BCFC1724EA210EB2AA2AA50071A2BED3B08B68C615817673B
+          destination: 0:D9E74A929EEB0489D364019C38768F935EA68132172BA59E1DDB26BAC54979E6
+          asset2: null
+          asset2_secondary: 0:44FCFD9B28EF5D1C64B052165B42FEAF6BE611B84594119B82BFF8845E03BEA6
+      - type: coffee_create_pool
+        values:
+          source: 0:D9E74A929EEB0489D364019C38768F935EA68132172BA59E1DDB26BAC54979E6
+          source_secondary: 0:4AC05EB133E70E4EF7A32ABE8ACA6050E4477F6CA4D9025474AB7DDF9AE1F52C
+          destination: 0:57A8CC0F783344B12482EF048831AFC828E95E028F2D443E3560B0F723564F18
+          asset: 0:44FCFD9B28EF5D1C64B052165B42FEAF6BE611B84594119B82BFF8845E03BEA6
+          asset2: null
+          coffee_create_pool_data:
+            amount_1: 1000000000000000
+            amount_2: 2005112716
+            lp_tokens_minted: 1416020025694
+
+  Coffee create pool (full + notification at the end):
+    trace-id: 3uecEX5TvThuugPaMO4MqlOxGGHRQpNRErwAP7fL7J4=
+    expected-actions:
+      - type: coffee_create_pool_creator
+        selector: "{{ value.ancestor_type == None or value.ancestor_type|length == 0 }}"
+        values:
+          source: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+          asset: null
+          destination_secondary: 0:EB7B7155CEE154FAB8EAB90E3234D5EB6B3E659F2A2FE86E4B88516D261EDF7A
+          destination: 0:3E4650563C85FEE7F2D676DADBF2715B363EEDF4E0E1A5D2E76B7480278E4685
+      - type: coffee_create_pool
+        values:
+          source: 0:A15CA5461477CC4B92CF5BCCC137097270CADC692B5443DB7D74C0BF7E285363
+          source_secondary: 0:EB174AD0A061F4E97B4FD32A52585061D48AE46A7EBDF6966302C6CA37D8B6DE
+          destination: 0:8FE5F74378278AB42C80772AF2551A0ECE02C599DACB115BA1C1F2F9678521ED
+          asset: 0:67D4C65E197C2FAB68ADBADF4116E82D29200327152B6C8055F265009E8D2A7F
+          asset2: null
+          coffee_create_pool_data:
+            amount_1: 2345368713954
+            amount_2: 171205371318
+            lp_tokens_minted: 633671618650
+
+  Coffee create vault:
+    trace-id: _7TiwVoy-w5U7lbbF5_RD0yGAauPKFCjMcuYRX4eeoU=
+    expected-actions:
+      - type: coffee_create_vault
+        values:
+          source: 0:89F356BD10B3C8609187C5ABCD7BB1D5840C7F8A88E73DEBFF8E64FFD8F12010
+          destination: 0:A4068454C87EB61120F23AC96E8EFF0DE706967732DBEC237ADAB1270749E51F
+          asset: 0:A93DF3EB3194EABA7997892CB81C6A95BC872078C6B275354FFB55CB674C9600
+
+  Coffee mev protect hold funds (TON):
+    trace-id: 11WhhXiPhXuLm5C85XGw4WYY8BDn6Xnee-nPq-W0tkA=
+    expected-actions:
+      - type: coffee_mev_protect_hold_funds
+        values:
+          source: 0:B73108D2341752AF80BB14C19F4EC8DE8739EB90AC541EE0B91C8DDAC3BA9842
+          destination: 0:055D3E4FB377F6EC27656BC36135DF4ECC8BEC0CAC61D8D3D8CD1C7D346D482C
+          asset: null
+          source_secondary: null
+          destination_secondary: null
+          amount: 15590000000
+
+  Coffee staking deposit:
+    trace-id: K_PlZB5RlxrIdSTiEdvKqazSqLUWzQ8PB4NzDTxAHk8=
+    expected-actions:
+      - type: coffee_staking_deposit
+        values:
+          source: 0:626861460C096445C421A86448786B5D6A8339DFAE38406EFE4886ED9B4BC90B
+          source_secondary: 0:E2E7AB152A91B2734CA7DEC18D84089A3271E42166178B9AE96E9068F73D0AB7 # user_jetton_wallet
+          destination_secondary: 0:7C7EDF2883E784E033F37731FEDE9ED600B8B9F8178EAB927B957D8980321546 # pool_jetton_wallet
+          destination: 0:8CB6B9CA84AF36630EB11EB2E6FEB24B90C6317982229617669FA0675466753E # pool
+          amount: 54999439792 # value
+          asset: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+          coffee_staking_deposit_data:
+            minted_item_address: 0:BC36AD7C77A596ABF16AB8BCE9D8B682D40B6EE1873D74114E9C151E63E435AC
+            minted_item_index: 1317
+
+  Coffee staking deposit (just another):
+    trace-id: 00wjHu7i1KD7Rhcr4Rsg7RSJhKtygBOfoJ2eo6B2Rt4=
+    expected-actions:
+      - type: coffee_staking_deposit
+        values:
+          source: 0:CE16553450D8D246D587CB771D494A0FB95FF5EFE6EC1FC34A83B9B3651692BC
+          source_secondary: 0:4A7C130A0B1E8F00FF13B8DA7C8F02439257EC4C5EA26837A0DA4BFF2A8CF54B # user_jetton_wallet
+          destination_secondary: 0:7CDBA40F56DD49345735C81AB9C0359B38BB1CC6E0F386B4640202132057B935 # pool_jetton_wallet
+          destination: 0:B6725D7A23D406ED2008A537236E5F607D084EA9EFEEBFCA53BF3156B491C8CC # pool
+          amount: 200000000000000 # value
+          asset: 0:157C463688A4A91245218052C5580807792CF6347D9757E32F0EE88A179A6549
+          coffee_staking_deposit_data:
+            minted_item_address: 0:65D741B3B8FED84CBE2BCBF2C1A74BE0D989AE36F92F9F8B656E7D1AEC373BBB
+            minted_item_index: 1258
+
+  Coffee staking withdraw:
+    trace-id: T-oXSZb9qU9H5js9gaOZIJ8RicZmZ8l9oV4s_f9pV6g=
+    expected-actions:
+      - type: coffee_staking_withdraw
+        values:
+          source: 0:D63BBD8AD1033943D42D0ECFE3E7C89FADC3B91B19FBEA5C9D980C93CA80D14B
+          destination: 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+          asset: 0:A5D12E31BE87867851A28D3CE271203C8FA1A28AE826256E73C506D94D49EDAD
+          amount: 59457793964
+          source_secondary: 0:2E75895D8779D7F7090517D94F092E394894ED803B5F428264FF74C140766EEE
+          destination_secondary: 0:7C7EDF2883E784E033F37731FEDE9ED600B8B9F8178EAB927B957D8980321546
+          coffee_staking_withdraw_data:
+            nft_address: 0:BB67010D1C015506693316E50176B9BBBE95E87D178FEC3D52C6D00FC0564E3B
+            nft_index: 451
+            points: 5945779396400
+
+  Coffee staking claim rewards:
+    trace-id: 013-itRDy37A4DNurC-pFIfagpvLEqH3q_7NU5IGDic=
+    expected-actions:
+      - type: coffee_staking_claim_rewards
+        values:
+          destination: 0:712CB2B613EDEAFCAC9E7B79B188E3D387EA21C415D6E4E4C0CFBFFA6AB7031D
+          source: 0:B6725D7A23D406ED2008A537236E5F607D084EA9EFEEBFCA53BF3156B491C8CC
+          asset: 0:157C463688A4A91245218052C5580807792CF6347D9757E32F0EE88A179A6549
+          amount: 3998849373083
+          source_secondary: 0:0E1F5140AAA6F35F147432FA2AAB8C0FFB66572FDC3B2249A824BD5EEBA8ED7A
+          destination_secondary: 0:C33F0AA6D3646D9BE133FCA3B716192309BC0D825CD720D1B5E4F34A4D528247
+
+  Coffee staking claim rewards (another):
+    trace-id: 0HIS6vA7Hk0SdwNB5P2i0zovRDZLpWyQBzpBsJAX1sg=
+    expected-actions:
+      - type: coffee_staking_claim_rewards
+        values:
+          destination: 0:29F6EEFA7E5F4B1F3B69A1F68C60FDDEAECBFBC9ACC2C0EBE5E7207D090C862F
+          source: 0:8CB6B9CA84AF36630EB11EB2E6FEB24B90C6317982229617669FA0675466753E
+          asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE
+          amount: 17686745
+          source_secondary: 0:61CC8648CB903208BBADC77305DFB8F894C08F073E0824D38441BB046373FA74
+          destination_secondary: 0:376B64B1CC048F04344B93B43A9B7BB509C2FD2B0294DAABFB178CAD224555B9
