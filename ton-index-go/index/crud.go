@@ -3593,14 +3593,14 @@ func buildMultisigOrderQuery(order_req MultisigOrderRequest, lim_req LimitReques
 		conditions = append(conditions, filterByArray("address", order_req.Address))
 	}
 
-	if len(order_req.WalletAddress) > 0 {
-		var walletAddresses []string
-		for _, addr := range order_req.WalletAddress {
-			walletAddresses = append(walletAddresses, fmt.Sprintf("'%s'", addr))
+	if len(order_req.MultisigAddress) > 0 {
+		var multisigAddresses []string
+		for _, addr := range order_req.MultisigAddress {
+			multisigAddresses = append(multisigAddresses, fmt.Sprintf("'%s'", addr))
 		}
 
-		conditions = append(conditions, fmt.Sprintf("signers && ARRAY[%s]::tonaddr[]",
-			strings.Join(walletAddresses, ",")))
+		conditions = append(conditions, fmt.Sprintf("multisig_address IN (%s)",
+			strings.Join(multisigAddresses, ",")))
 	}
 
 	var whereClause string
@@ -3696,21 +3696,6 @@ func (db *DbClient) QueryMultisigs(
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
-	// Fetch orders for each multisig
-	for i := range multisigs {
-		ordersQuery := fmt.Sprintf("SELECT "+
-			"address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask, approvals_num, expiration_date, "+
-			"order_boc, signers, last_transaction_lt, code_hash, data_hash "+
-			"FROM multisig_orders m "+
-			"WHERE multisig_address = '%s' "+
-			"ORDER BY id ", multisigs[i].Address)
-		orders, err := queryMultisigOrderImpl(ordersQuery, conn, settings)
-		if err != nil {
-			return nil, nil, IndexError{Code: 500, Message: err.Error()}
-		}
-		multisigs[i].Orders = orders
-	}
-
 	// Collect addresses for address book
 	addr_set := make(map[string]bool)
 	for _, multisig := range multisigs {
@@ -3720,12 +3705,6 @@ func (db *DbClient) QueryMultisigs(
 		}
 		for _, proposer := range multisig.Proposers {
 			addr_set[string(proposer)] = true
-		}
-		for _, order := range multisig.Orders {
-			addr_set[string(order.Address)] = true
-			for _, signer := range order.Signers {
-				addr_set[string(signer)] = true
-			}
 		}
 	}
 
@@ -3764,6 +3743,19 @@ func (db *DbClient) QueryMultisigOrders(
 	if err != nil {
 		log.Println(query)
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	if order_req.ParseActions != nil && *order_req.ParseActions {
+		for i := range orders {
+			if orders[i].OrderBoc != nil {
+				orderActions, err := ParseOrder(*orders[i].OrderBoc)
+				if err != nil {
+					log.Println("Failed to parse multisig order", orders[i].Address, err)
+					orders[i].Actions = nil
+				}
+				orders[i].Actions = orderActions
+			}
+		}
 	}
 
 	// Collect addresses for address book
