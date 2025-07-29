@@ -427,6 +427,24 @@ class Action(Base):
         Column("lp_fee_current", Integer),
         Column("pool_active", Boolean),
     ]))
+    coffee_create_pool_data = Column(CompositeType("coffee_create_pool_details", [
+        Column("amount_1", Numeric),
+        Column("amount_2", Numeric),
+        Column("initiator_1", String),
+        Column("initiator_2", String),
+        Column("provided_asset", String),
+        Column("lp_tokens_minted", Numeric),
+        Column("pool_creator_contract", String)
+    ]))
+    coffee_staking_deposit_data = Column(CompositeType("coffee_staking_deposit_details", [
+        Column("minted_item_address", String),
+        Column("minted_item_index", Numeric),
+    ]))
+    coffee_staking_withdraw_data = Column(CompositeType("coffee_staking_withdraw_details", [
+        Column("nft_address", String),
+        Column("nft_index", Numeric),
+        Column("points", Numeric),
+    ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)

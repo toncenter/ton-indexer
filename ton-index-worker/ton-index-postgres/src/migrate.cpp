@@ -728,6 +728,9 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
 
     exec_query("alter type nft_transfer_details add attribute marketplace varchar;");
     exec_query("alter type nft_transfer_details add attribute real_prev_owner tonaddr;");
+    exec_query("create type coffee_create_pool_details as (amount_1 numeric, amount_2 numeric, initiator_1 tonaddr, initiator_2 tonaddr, provided_asset tonaddr, lp_tokens_minted numeric, pool_creator_contract tonaddr);");
+    exec_query("create type coffee_staking_deposit_details as (minted_item_address tonaddr, minted_item_index numeric);");
+    exec_query("create type coffee_staking_withdraw_details as (nft_address tonaddr, nft_index numeric, points numeric);");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -739,6 +742,9 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
 
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS trace_external_hash_norm tonhash;\n";
     query += "ALTER TABLE traces ADD COLUMN IF NOT EXISTS external_hash_norm tonhash;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_create_pool_data coffee_create_pool_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_deposit_data coffee_staking_deposit_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_withdraw_data coffee_staking_withdraw_details;\n";
 
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
