@@ -1438,5 +1438,7 @@ func ScanMultisig(row pgx.Row) (*Multisig, error) {
 		return nil, err
 	}
 
+	multisig.Orders = []MultisigOrder{}
+
 	return &multisig, nil
 }

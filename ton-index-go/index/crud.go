@@ -3696,6 +3696,21 @@ func (db *DbClient) QueryMultisigs(
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
+	// Fetch orders for each multisig
+	for i := range multisigs {
+		ordersQuery := fmt.Sprintf("SELECT "+
+			"address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask, approvals_num, expiration_date, "+
+			"order_boc, signers, last_transaction_lt, code_hash, data_hash "+
+			"FROM multisig_orders m "+
+			"WHERE multisig_address = '%s' "+
+			"ORDER BY id ", multisigs[i].Address)
+		orders, err := queryMultisigOrderImpl(ordersQuery, conn, settings)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		multisigs[i].Orders = orders
+	}
+
 	// Collect addresses for address book
 	addr_set := make(map[string]bool)
 	for _, multisig := range multisigs {
@@ -3705,6 +3720,12 @@ func (db *DbClient) QueryMultisigs(
 		}
 		for _, proposer := range multisig.Proposers {
 			addr_set[string(proposer)] = true
+		}
+		for _, order := range multisig.Orders {
+			addr_set[string(order.Address)] = true
+			for _, signer := range order.Signers {
+				addr_set[string(signer)] = true
+			}
 		}
 	}
 
