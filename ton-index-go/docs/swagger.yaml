@@ -626,6 +626,10 @@ definitions:
         type: string
       next_order_seqno:
         type: string
+      orders:
+        items:
+          $ref: '#/definitions/MultisigOrder'
+        type: array
       proposers:
         items:
           type: string
@@ -2342,6 +2346,11 @@ paths:
         in: query
         name: sort
         type: string
+      - default: true
+        description: Gather multisig orders
+        in: query
+        name: include_orders
+        type: boolean
       produces:
       - application/json
       responses:

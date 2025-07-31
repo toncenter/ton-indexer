@@ -167,6 +167,7 @@ type DNSRecordsRequest struct {
 type MultisigRequest struct {
 	Address       []AccountAddress `query:"address"`
 	WalletAddress []AccountAddress `query:"wallet_address"`
+	IncludeOrders *bool            `query:"include_orders"`
 }
 
 type MultisigOrderRequest struct {

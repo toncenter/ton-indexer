@@ -1422,6 +1422,7 @@ func GetPendingActions(c *fiber.Ctx) error {
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1024) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort multisigs by last_transaction_lt." Enums(asc, desc) default(desc)
+// @param include_orders query bool false "Gather multisig orders" default(true)
 // @router /api/v3/multisig/wallets [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery

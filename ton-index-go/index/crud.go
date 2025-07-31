@@ -3652,11 +3652,11 @@ func queryMultisigImpl(query string, conn *pgxpool.Conn, settings RequestSetting
 	return multisigs, nil
 }
 
-func queryMultisigOrderImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]MultisigOrder, error) {
+func queryMultisigOrderImpl(query string, conn *pgxpool.Conn, settings RequestSettings, args ...any) ([]MultisigOrder, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 
-	rows, err := conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -3696,6 +3696,31 @@ func (db *DbClient) QueryMultisigs(
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
+	if multisig_req.IncludeOrders == nil || *multisig_req.IncludeOrders {
+		// Fetch orders for each multisig
+		addresses := make([]string, len(multisigs))
+		for i, multisig := range multisigs {
+			addresses[i] = string(multisig.Address)
+		}
+		ordersQuery := fmt.Sprintf("SELECT " +
+			"address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask, approvals_num, expiration_date, " +
+			"order_boc, signers, last_transaction_lt, code_hash, data_hash " +
+			"FROM multisig_orders m " +
+			"WHERE multisig_address = ANY($1) " +
+			"ORDER BY id")
+		orders, err := queryMultisigOrderImpl(ordersQuery, conn, settings, addresses)
+		if err != nil {
+			return nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		ordersByAddress := make(map[AccountAddress][]MultisigOrder)
+		for _, order := range orders {
+			ordersByAddress[order.MultisigAddress] = append(ordersByAddress[order.MultisigAddress], order)
+		}
+		for i := range multisigs {
+			multisigs[i].Orders = ordersByAddress[multisigs[i].Address]
+		}
+	}
+
 	// Collect addresses for address book
 	addr_set := make(map[string]bool)
 	for _, multisig := range multisigs {
@@ -3705,6 +3730,12 @@ func (db *DbClient) QueryMultisigs(
 		}
 		for _, proposer := range multisig.Proposers {
 			addr_set[string(proposer)] = true
+		}
+		for _, order := range multisig.Orders {
+			addr_set[string(order.Address)] = true
+			for _, signer := range order.Signers {
+				addr_set[string(signer)] = true
+			}
 		}
 	}
 
