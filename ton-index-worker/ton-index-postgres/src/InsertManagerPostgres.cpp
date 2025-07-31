@@ -959,7 +959,6 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
     auto [_, inserted] = msg_bodies_in_progress.insert(body_hash);
     if (inserted) {
       msg_bodies.emplace_back(body_hash, body_boc);
-      msg_bodies_in_progress.insert(body_hash);
     }
   };
 
