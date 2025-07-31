@@ -945,13 +945,20 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
     );
     stream.insert_row(std::move(tuple));
   };
-
-  std::vector<std::tuple<td::Bits256, std::string_view>> msg_bodies;
+  
   // we lock the message bodies to prevent multiple parallel queries for the same message
   // otherwise it causes deadlocks
+  std::vector<std::tuple<td::Bits256, std::string>> msg_bodies;
+  SCOPE_EXIT {
+    std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
+    for (const auto& [body_hash, body] : msg_bodies) {
+      msg_bodies_in_progress.erase(body_hash);
+    }
+  };
   auto lock_msg_body = [&](const td::Bits256& body_hash, const std::string& body_boc) {
-    if (msg_bodies_in_progress.find(body_hash) == msg_bodies_in_progress.end()) {
-      msg_bodies.push_back({body_hash, body_boc});
+    auto [_, inserted] = msg_bodies_in_progress.insert(body_hash);
+    if (inserted) {
+      msg_bodies.emplace_back(body_hash, body_boc);
       msg_bodies_in_progress.insert(body_hash);
     }
   };
@@ -1000,14 +1007,6 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
     bodies_stream.insert_row(std::move(tuple));
   }
   bodies_stream.finish();
-
-  // unlock message bodies
-  {
-    std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
-    for (const auto& [body_hash, body] : msg_bodies) {
-      msg_bodies_in_progress.erase(body_hash);
-    }
-  }
 }
 
 void InsertBatchPostgres::insert_account_states(pqxx::work &txn, bool with_copy) {
