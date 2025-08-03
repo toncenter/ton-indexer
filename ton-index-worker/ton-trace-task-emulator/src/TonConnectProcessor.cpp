@@ -48,7 +48,6 @@ void TonConnectProcessor::got_account_state(schema::AccountState account_state) 
     error(td::Status::Error("Account is not a known wallet"));
     return;
   }
-  LOG(INFO) << "Detected wallet type: " << wallet_type << " for address " << tonconnect_task_.from;
 
   auto external_message_body = td::Result<td::Ref<vm::Cell>>();
   switch (wallet_type) {
@@ -322,65 +321,50 @@ td::Result<td::Ref<vm::Cell>> TonConnectProcessor::compose_message_body_v5(const
   auto seqno     = static_cast<td::uint32>(cs.fetch_ulong(32));
   auto wallet_id = static_cast<td::uint32>(cs.fetch_ulong(32));
 
-  const uint32_t EXTERNAL_SIGNED = 0x7369676e; // 'sign'
-  const uint32_t ACTION_SEND_MSG = 0x0ec3c86d;
-  const int32_t  SEND_MODE       = 3;          // +1 pay fees, +2 ignore errors
-  
+  const uint32_t EXTERNAL_SIGNED = 0x7369676E; // 'sign'
+  const uint32_t ACTION_SEND_MSG = 0x0ec3c86d; // action_send_msg
+  const uint8_t  SEND_MODE       = 3;
   auto valid_until = tonconnect_task_.valid_until.value_or(td::Timestamp::now().at_unix() + 300);
   valid_until = to_seconds(valid_until);
 
   if (tonconnect_task_.messages.empty())
     return td::Status::Error("No messages to send");
   if (tonconnect_task_.messages.size() > 255)
-    return td::Status::Error("V5 supports at most 255 messages");
+    return td::Status::Error("Too many messages for v5 (>255)");
 
-  // Build OutList chain (cells)
-  vm::CellBuilder empty_cb;                      // out_list_empty$_
-  auto outlist_prev = empty_cb.finalize();       // ^(OutList 0)
+  // Build OutList (root = last node). Each node layout must be:
+  // bits: [action_send_msg prefix (32)] [mode (8)]
+  // refs: [0]=prev OutList, [1]=out_msg
+  vm::CellBuilder empty_cb;
+  auto outlist_prev = empty_cb.finalize(); // out_list_empty
 
-  td::Ref<vm::Cell> outlist_root;
-  td::Ref<vm::Cell> root_prev_for_inline;
-  td::Ref<vm::Cell> last_out_msg_cell;
-
-  for (size_t i = 0; i < tonconnect_task_.messages.size(); ++i) {
-    TRY_RESULT_PREFIX(int_msg, message_to_cell(tonconnect_task_.messages[i]), "Failed to compose out message cell: ");
-    auto prev_before = outlist_prev;
+  for (const auto& out_msg : tonconnect_task_.messages) {
+    TRY_RESULT(int_msg, message_to_cell(out_msg));
+    const int32_t send_mode = 3;
 
     vm::CellBuilder node;
-    node.store_ref(prev_before);                 // prev:^(OutList n)
-    node.store_long(ACTION_SEND_MSG, 32);        // action_send_msg
-    node.store_long(SEND_MODE, 8);               // mode
-    node.store_ref(int_msg);                     // out_msg:^(MessageRelaxed Any)
-    outlist_prev = node.finalize();              // new root
-
-    if (i + 1 == tonconnect_task_.messages.size()) {
-      root_prev_for_inline = prev_before;
-      last_out_msg_cell    = int_msg;
-      outlist_root         = outlist_prev;
-    }
+    node.store_long(ACTION_SEND_MSG, 32); // 0x0ec3c86d
+    node.store_long(SEND_MODE, 8);        // mode:(##8)
+    node.store_ref(outlist_prev);         // prev:^(OutList n) — FIRST ref (verify_c5_actions walks this)
+    node.store_ref(int_msg);         // out_msg:^(MessageRelaxed Any)
+    outlist_prev = node.finalize();       // new root
   }
+  auto outlist_root = outlist_prev;
 
-  // Compose External message body (v5)
+  // Compose ExternalMsg body (v5)
   vm::CellBuilder cb;
-  cb.store_long(EXTERNAL_SIGNED, 32);            // external_signed#7369676e
+  cb.store_long(EXTERNAL_SIGNED, 32);  // external_signed
   cb.store_long(wallet_id, 32);
   cb.store_long(valid_until, 32);
   cb.store_long(seqno, 32);
 
-  // inner: InnerRequest
-  cb.store_long(1, 1);                           // out_actions present
-  // encode the LAST OutList node inline:
-  cb.store_ref(root_prev_for_inline);            // prev:^(OutList n)
-  cb.store_long(ACTION_SEND_MSG, 32);
-  cb.store_long(SEND_MODE, 8);
-  cb.store_ref(last_out_msg_cell);
+  // inner: out_actions:(Maybe OutList), has_other_actions:(##1)=0
+  cb.store_long(1, 1);                 // out_actions present
+  cb.store_ref(outlist_root);          // ^OutList
+  cb.store_long(0, 1);                 // has_other_actions = 0 (no extended actions)
 
-  cb.store_long(0, 1);                           // has_other_actions = 0
-  cb.store_ref(outlist_root);                    // ActionList basic: actions:^(OutList n)
-
-  // signature: bits512 (placeholder; signer will replace)
-  auto dummy_signature = std::string(64, '\0');
-  cb.store_bytes(td::Slice(dummy_signature));
+  // signature: bits512 (placeholder; to be replaced with real Ed25519 signature)
+  cb.store_bytes(td::Slice(std::string(64, '\0')));
 
   return cb.finalize();
 }
