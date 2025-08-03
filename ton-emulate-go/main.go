@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -119,9 +119,9 @@ func (req TonConnectEmulateRequest) Validate() error {
 		if msg.Amount == "" {
 			return fmt.Errorf("amount in message at index %d cannot be empty", i)
 		}
-		var reDigits = regexp.MustCompile(`^[0-9]+$`)
-		if !reDigits.MatchString(msg.Amount) {
-			return fmt.Errorf("amount in message at index %d must be a valid number", i)
+		_, err := strconv.ParseUint(msg.Amount, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid amount in message at index %d: %v", i, err)
 		}
 
 		if payload := msg.Payload; payload != nil {
