@@ -63,7 +63,7 @@ void TonConnectProcessor::got_account_state(schema::AccountState account_state) 
       external_message_body = compose_message_body_v5(account_state);
       break;
     default:
-      error(td::Status::Error("Unsupported wallet type "));
+      error(td::Status::Error("Unsupported wallet type: " + std::to_string(wallet_type)));
       return;
   }
 
@@ -165,7 +165,7 @@ td::Result<td::Ref<vm::Cell>> TonConnectProcessor::message_to_cell(const TonConn
     msg_info.bounce = dest_addr.bounceable;
   }
   {
-    auto amount = std::stoi(out_msg.amount);
+    auto amount = std::stoull(out_msg.amount);
     block::CurrencyCollection cc{amount};
     if (!cc.pack_to(msg_info.value)) {
       return td::Status::Error("Failed to pack CurrencyCollection for value");
@@ -229,7 +229,7 @@ td::Result<td::Ref<vm::Cell>> TonConnectProcessor::compose_message_body_v3(const
     .store_long(wallet_id, 32)
     .store_long(valid_until, 32)
     .store_long(seqno, 32);
-  for (auto out_msg : tonconnect_task_.messages) {
+  for (const auto &out_msg : tonconnect_task_.messages) {
     TRY_RESULT(int_msg, message_to_cell(out_msg));
     const int32_t send_mode = 3;
     cb.store_long(send_mode, 8).store_ref(int_msg);
@@ -262,17 +262,7 @@ td::Result<td::Ref<vm::Cell>> TonConnectProcessor::compose_external_message(td::
     tlb::csr_pack(message.info, info);
   }
   /* init */ {
-    if (false ) { // TODO
-      // Just(Left(new_state))
-      // message.init = vm::CellBuilder()
-      //                    .store_ones(1)
-      //                    .store_zeroes(1)
-      //                    .append_cellslice(vm::load_cell_slice(new_state))
-      //                    .as_cellslice_ref();
-    } else {
-      message.init = vm::CellBuilder().store_zeroes(1).as_cellslice_ref();
-      CHECK(message.init.not_null());
-    }
+    message.init = vm::CellBuilder().store_zeroes(1).as_cellslice_ref();
   }
   /* body */ {
     message.body = vm::CellBuilder().store_zeroes(1).append_cellslice(vm::load_cell_slice_ref(body)).as_cellslice_ref();
@@ -305,7 +295,7 @@ td::Result<td::Ref<vm::Cell>> TonConnectProcessor::compose_message_body_v4(const
     .store_long(valid_until, 32)
     .store_long(seqno, 32)
     .store_long(0, 8); // The only difference with wallet-v3
-  for (auto out_msg : tonconnect_task_.messages) {
+  for (const auto &out_msg : tonconnect_task_.messages) {
     TRY_RESULT(int_msg, message_to_cell(out_msg));
     const int32_t send_mode = 3;
     cb.store_long(send_mode, 8).store_ref(int_msg);
