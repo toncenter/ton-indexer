@@ -186,7 +186,7 @@ void RedisListener::process_tonconnect_task(TonConnectTraceTask tonconnect_task)
 
   auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), task_id = tonconnect_task.id](td::Result<TraceTask> R) {
     if (R.is_error()) {
-      LOG(ERROR) << "Failed to convert TonConnect task: " << R.move_as_error();
+      LOG(ERROR) << "Failed to convert TonConnect task: " << R.error();
       td::actor::send_closure(SelfId, &RedisListener::trace_error, task_id, std::nullopt, R.move_as_error());
       return;
     }

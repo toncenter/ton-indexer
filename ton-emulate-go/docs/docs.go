@@ -142,13 +142,7 @@ const docTemplate = `{
                             },
                             "stateInit": {
                                 "type": "string",
-                                "example": "te6ccgEBAQEAAgAAAA=="
-                            },
-                            "extra_currency": {
-                                "type": "object",
-                                "example": {
-                                    "228": "1337"
-                                }
+                                "example": null
                             }
                         }
                     }
