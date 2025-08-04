@@ -15,6 +15,7 @@ from indexer.events.blocks.basic_blocks import (
     TickTockBlock,
     TonTransferBlock,
 )
+
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import (
@@ -91,6 +92,7 @@ from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlockMatcher,
     VestingSendMessageBlockMatcher,
 )
+from indexer.events.blocks.layerzero import LayerZeroSendMatcher, LayerZeroSendTokensMatcher
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
@@ -206,8 +208,10 @@ matchers = [
     EvaaWithdrawBlockMatcher(),
     EvaaLiquidateBlockMatcher(),
     ToncoDepositLiquidityMatcher(),
-    ToncoDeployPoolBlockMatcher(),
+    ToncoDeployPoolBlockMatcher(), 
     ToncoWithdrawLiquidityMatcher(),
+    LayerZeroSendMatcher(),
+    LayerZeroSendTokensMatcher(),
 ]
 
 trace_post_processors = [

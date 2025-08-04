@@ -1,0 +1,75 @@
+cases:
+  LayerZero msg to tron:
+    trace-id: 01yfeTlzIHDqWZwz-PJTRADD3nDv5LWynHMGsnPZGJU=
+    expected-actions:
+      - type: layerzero_send
+        values:
+          source: 0:170725394AA56136FBD27D0CE31D8A98E0F8AE72A4D2379B5DDE83E211A2D5FA # initiator
+          layerzero_send_data:
+            src_oapp: "0x170725394aa56136fbd27d0ce31d8a98e0f8ae72a4d2379b5dde83e211a2d5fa"
+            dst_oapp: "0x8925c1dd3e5d8011946a3430d91be742ba8ee930"
+            src_eid: 30343
+            dst_eid: 30420 # tron
+            nonce: 90
+            guid: "0x46c71599bf21b54d59bd078d0bae22878154b16c1216fb6b83b0edf3a1167476"
+            send_request_id: 90
+            message: "0x000300000000000000000000000000000000000000e1320ab3ea00000000000000000000000000000000"
+            native_fee: 14835102020
+            zro_fee: 0
+            endpoint: 0:02A7E49D90DF81A1944DAC9241F477DBB17CB0C87313EAF2C58A13D85EF942D3
+            channel: 0:1348A0E6846379668D3AFB785299609F3930EE80A177F4C88263E3741DB3D90F
+            uln: 0:063BDFBF347F883DDBA72A200563570AF2DC72695B2B2FCCAAECD113688AC570
+            msglib_manager: "0x150645746e25be5486eb3b2f5d98b44c6b324697c48d495d059f96fc9d3ec368"
+            msglib: "0x63bdfbf347f883ddba72a200563570af2dc72695b2b2fccaaecd113688ac570"
+
+  LayerZero send usdt to eth:
+    trace-id: KEbatIe0U3ZHIx6sYTg4O1tgYP9L6hMiHJ8nNnZdyBE=
+    expected-actoins:
+      - type: layerzero_send_tokens
+        values:
+          source: 0:4884FB969A34FB7CFF95A26B935AC784F09356BF6ABB4187EC550D486709CC93 # sender 
+          source_secondary: 0:8CABD31233D389C6B739F6572944E713D135AA18EC00FE37592033E099C0A9A6 # sender wallet
+          destination: 0:170725394AA56136FBD27D0CE31D8A98E0F8AE72A4D2379B5DDE83E211A2D5FA # oapp
+          destination_secondary: 0:11AED1BF5C0388791EEA499DB0A40033E34A5E7C86DE1A0A9400204795596856 # oapp wallet
+          asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE # asset
+          amount: 10000 # amount
+          layerzero_send_data:
+            src_oapp: "0x170725394aa56136fbd27d0ce31d8a98e0f8ae72a4d2379b5dde83e211a2d5fa"
+            dst_oapp: "0x811ed79db9d34e83bdb73df6c3e07961cfb0d5c0"
+            src_eid: 30343
+            dst_eid: 30101 # eth
+            nonce: 517
+            guid: "0xa0b6fa1485a8e904d1bf5c702f99936ceb8ab32730b2cd501071dc92456da7cb"
+            send_request_id: 531
+            message: "0x00020000000000000000000000000378cca455f3befef687f9f7668b13eaa03f007c000000000000270d"
+            native_fee: 170162108
+            zro_fee: 0
+            endpoint: 0:0B0C4E7F053C490B93640B75945F70D8477758D562A0B64E295C7587B34A231C
+            channel: 0:25EC9F03589F3DDD170A9AD8B8C85213F7D12489A9B260C537499AAFA8A0E309
+            uln: 0:0F59D60C2B3724C1662C9AF5223D532D540E2214462424A85AAA4E841844A1BC
+            msglib_manager: "0x150645746e25be5486eb3b2f5d98b44c6b324697c48d495d059f96fc9d3ec368"
+            msglib: "0xf59d60c2b3724c1662c9af5223d532d540e2214462424a85aaa4e841844a1bc"
+
+  LayerZero send msg to tron:
+    trace-id: 0_AQj88LwG2cEpyjulN9yyJWzx8_ymJMizzoR_FfDzU=
+    expected-actions:
+      - type: layerzero_send
+        values:
+          source: 0:AD526844E8E484DEA2F30053D5A0515FB86F00E0BE0C835C0E7B4AC98D4F38E8 # initiator
+          layerzero_send_data:
+              src_oapp: "0xad526844e8e484dea2f30053d5a0515fb86f00e0be0c835c0e7b4ac98d4f38e8"
+              dst_oapp: "0xad526844e8e484dea2f30053d5a0515fb86f00e0be0c835c0e7b4ac98d4f38e8"
+              src_eid: 30343
+              dst_eid: 30343
+              nonce: 5
+              guid: "0x37c20f4f7e4ad59fbd9c5b22dc6c73c595da305612cbf02fab8adc606693d0e5"
+              send_request_id: 5
+              message: "0x010000768700000000"
+              native_fee: 904980038
+              zro_fee: 0
+              endpoint: 0:BA92D918248098831404784B68FB2FF4B7CF6567146C8FC34004236C98D6A2A4
+              channel: 0:971A687BBCBCF874C1C51839C0D1E13E8D3062E9ECCD41BA01DB199EA17CE0BD
+              uln: 0:D67E3C609E47F56EA336FA897A61283E26316A7729362C149B282DBC6C8331B5
+              msglib_manager: "0x150645746e25be5486eb3b2f5d98b44c6b324697c48d495d059f96fc9d3ec368"
+              msglib: "0xd67e3c609e47f56ea336fa897a61283e26316a7729362c149b282dbc6c8331b5"
+
