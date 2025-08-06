@@ -1422,6 +1422,7 @@ func GetPendingActions(c *fiber.Ctx) error {
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1024) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort multisigs by last_transaction_lt." Enums(asc, desc) default(desc)
+// @param include_orders query bool false "Gather multisig orders" default(true)
 // @router /api/v3/multisig/wallets [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -1461,7 +1462,8 @@ func GetMultisigs(c *fiber.Ctx) error {
 // @success 200 {object} index.MultisigOrderResponse
 // @failure 400 {object} index.RequestError
 // @param address query []string false "Order address in any form. Max: 1024." collectionFormat(multi)
-// @param wallet_address query []string false "Address of signer wallet in any form. Max: 1024." collectionFormat(multi)
+// @param multisig_address query []string false "Address of corresponding multisig. Max: 1024." collectionFormat(multi)
+// @param parse_actions query bool false "Parser order actions" default(false)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1024) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @param sort query string false "Sort orders by last_transaction_lt." Enums(asc, desc) default(desc)
@@ -1480,8 +1482,8 @@ func GetMultisigOrders(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if len(order_req.Address) == 0 && len(order_req.WalletAddress) == 0 {
-		return index.IndexError{Code: 422, Message: "At least one of address or wallet_address should be specified"}
+	if len(order_req.Address) == 0 && len(order_req.MultisigAddress) == 0 {
+		return index.IndexError{Code: 422, Message: "At least one of address or multisig_address should be specified"}
 	}
 
 	res, book, err := pool.QueryMultisigOrders(order_req, lim_req, request_settings)

@@ -85,7 +85,7 @@ class EvaaContractWithHeaderMatcher(ContractMatcher):
             else:
                 return False
         except Exception as e:
-            logger.error(e, exc_info=True)
+            # logger.error(e, exc_info=True)
             return False
 
 # ------------------------- Supply (ton and jetton) -------------------------

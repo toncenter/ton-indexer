@@ -43,7 +43,7 @@ var EVAA_ASSET_ID_MAP_TESTNET = map[string]string{
 	"0xc585bac25948a5feea8f2a9e052eb45995882b15dfb784b37cd271cc163f3aea": "0:5EE20B5240CC4CE51A4C60BAF8C9D358EF617C26463E89C6571B534972C8EEF1",
 }
 
-var IsTestnet bool = false
+var IsTestnet bool
 
 // json marshaling and unmarshaling
 func (v *ShardId) String() string {
@@ -758,6 +758,38 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			NftCollection: raw.Asset,
 			NftItemIndex:  raw.NFTTransferNFTItemIndex,
 		}
+	case "tgbtc_mint", "tgbtc_mint_fallback":
+		var details ActionDetailsTgbtcMint
+		details.Source = raw.Source
+		details.Destination = raw.Destination
+		details.Amount = raw.Amount
+		details.Asset = raw.Asset
+		details.BitcoinTxId = (*string)(raw.AssetSecondary)
+		details.DestinationWallet = raw.DestinationSecondary
+		act.Details = &details
+	case "tgbtc_burn", "tgbtc_burn_fallback":
+		var details ActionDetailsTgbtcBurn
+		details.Source = raw.Source
+		details.SourceWallet = raw.SourceSecondary
+		details.Destination = raw.Destination
+		details.Amount = raw.Amount
+		details.Asset = raw.Asset
+		act.Details = &details
+	case "tgbtc_new_key", "tgbtc_new_key_fallback":
+		var details ActionDetailsTgbtcNewKey
+		details.Source = raw.Source
+		details.Pubkey = (*string)(raw.SourceSecondary)
+		details.Coordinator = raw.Destination
+		details.Pegout = raw.DestinationSecondary
+		details.Amount = raw.Amount
+		details.Asset = raw.Asset
+		act.Details = &details
+	case "tgbtc_dkg_log_fallback":
+		var details ActionDetailsDkgLogFallback
+		details.Coordinator = raw.Source
+		details.Pubkey = (*string)(raw.Asset)
+		details.Timestamp = raw.Value
+		act.Details = &details
 	case "tonco_deploy_pool":
 		act.Details = ActionDetailsToncoDeployPool{
 			Source:              raw.Source,
@@ -773,6 +805,81 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			LpFeeBase:           raw.ToncoDeployPoolLpFeeBase,
 			LpFeeCurrent:        raw.ToncoDeployPoolLpFeeCurrent,
 			PoolActive:          raw.ToncoDeployPoolPoolActive,
+		}
+	case "coffee_create_pool":
+		act.Details = ActionDetailsCoffeeCreatePool{
+			Source:              raw.Source,
+			SourceJettonWallet:  raw.SourceSecondary,
+			Initiator1:          raw.CoffeeCreatePoolInitiator1,
+			Initiator2:          raw.CoffeeCreatePoolInitiator2,
+			ProvidedAsset:       raw.CoffeeCreatePoolProvidedAsset,
+			Amount:              raw.Amount,
+			Pool:                raw.Destination,
+			Asset1:              raw.Asset,
+			Asset2:              raw.Asset2,
+			Amount1:             raw.CoffeeCreatePoolAmount1,
+			Amount2:             raw.CoffeeCreatePoolAmount2,
+			LpTokensMinted:      raw.CoffeeCreatePoolLpTokensMinted,
+			PoolCreatorContract: raw.CoffeeCreatePoolPoolCreatorContract,
+		}
+	case "coffee_create_pool_creator":
+		act.Details = ActionDetailsCoffeeCreatePoolCreator{
+			Source:              raw.Source,
+			SourceJettonWallet:  raw.SourceSecondary,
+			DepositRecipient:    raw.Destination,
+			PoolCreatorContract: raw.DestinationSecondary,
+			ProvidedAsset:       raw.CoffeeCreatePoolProvidedAsset,
+			Asset1:              raw.Asset,
+			Asset2:              raw.Asset2,
+			Amount:              raw.Amount,
+		}
+	case "coffee_staking_deposit":
+		act.Details = ActionDetailsCoffeeStakingDeposit{
+			Source:             raw.Source,
+			SourceJettonWallet: raw.SourceSecondary,
+			Pool:               raw.Destination,
+			PoolJettonWallet:   raw.DestinationSecondary,
+			Asset:              raw.Asset,
+			Amount:             raw.Amount,
+			MintedItemAddress:  raw.CoffeeStakingDepositMintedItemAddress,
+			MintedItemIndex:    raw.CoffeeStakingDepositMintedItemIndex,
+		}
+	case "coffee_staking_withdraw":
+		act.Details = ActionDetailsCoffeeStakingWithdraw{
+			Source:             raw.Source,
+			SourceJettonWallet: raw.SourceSecondary,
+			Pool:               raw.Destination,
+			PoolJettonWallet:   raw.DestinationSecondary,
+			Asset:              raw.Asset,
+			Amount:             raw.Amount,
+			NftAddress:         raw.CoffeeStakingWithdrawNftAddress,
+			NftIndex:           raw.CoffeeStakingWithdrawNftIndex,
+			Points:             raw.CoffeeStakingWithdrawPoints,
+		}
+	case "coffee_staking_claim_rewards":
+		act.Details = ActionDetailsCoffeeStakingClaimRewards{
+			Pool:                  raw.Source,
+			PoolJettonWallet:      raw.SourceSecondary,
+			Recipient:             raw.Destination,
+			RecipientJettonWallet: raw.DestinationSecondary,
+			Asset:                 raw.Asset,
+			Amount:                raw.Amount,
+		}
+	case "coffee_mev_protect_hold_funds":
+		act.Details = ActionDetailsCoffeeMevProtectHoldFunds{
+			Source:                  raw.Source,
+			SourceJettonWallet:      raw.SourceSecondary,
+			MevContract:             raw.Destination,
+			MevContractJettonWallet: raw.DestinationSecondary,
+			Asset:                   raw.Asset,
+			Amount:                  raw.Amount,
+		}
+	case "coffee_create_vault":
+		act.Details = ActionDetailsCoffeeCreateVault{
+			Source: raw.Source,
+			Vault:  raw.Destination,
+			Asset:  raw.Asset,
+			Value:  raw.Value,
 		}
 	default:
 		details := map[string]string{}
@@ -1239,6 +1346,18 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.ToncoDeployPoolLpFeeBase,
 		&act.ToncoDeployPoolLpFeeCurrent,
 		&act.ToncoDeployPoolPoolActive,
+		&act.CoffeeCreatePoolAmount1,
+		&act.CoffeeCreatePoolAmount2,
+		&act.CoffeeCreatePoolInitiator1,
+		&act.CoffeeCreatePoolInitiator2,
+		&act.CoffeeCreatePoolProvidedAsset,
+		&act.CoffeeCreatePoolLpTokensMinted,
+		&act.CoffeeCreatePoolPoolCreatorContract,
+		&act.CoffeeStakingDepositMintedItemAddress,
+		&act.CoffeeStakingDepositMintedItemIndex,
+		&act.CoffeeStakingWithdrawNftAddress,
+		&act.CoffeeStakingWithdrawNftIndex,
+		&act.CoffeeStakingWithdrawPoints,
 
 		&act.AncestorType,
 		&act.Accounts,

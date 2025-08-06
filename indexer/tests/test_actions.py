@@ -44,6 +44,12 @@ class TestToncoActions(BaseGenericActionTest):
 class TestNftActions(BaseGenericActionTest):
     yaml_file = "nft.yaml"
 
+class TestCoffeeActions(BaseGenericActionTest):
+    yaml_file = "coffee.yaml"
+
+class TestTgBTCActions(BaseGenericActionTest):
+    yaml_file = "tgbtc.yaml"
+
 class TestUnknownAction:
 
     @pytest.mark.asyncio

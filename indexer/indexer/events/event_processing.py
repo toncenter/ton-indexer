@@ -39,6 +39,13 @@ from indexer.events.blocks.jvault import (
     JVaultUnstakeBlockMatcher, JVaultUnstakeRequestBlockMatcher,
 )
 from indexer.events.blocks.liquidity import (
+    CoffeeCreatePoolCreatorMatcher,
+    CoffeeCreatePoolMatcher,
+    CoffeeCreateVaultMatcher,
+    CoffeeDepositLiquidityMatcher,
+    CoffeeMevProtectFailedSwapMatcher,
+    CoffeeMevProtectHoldFundsMatcher,
+    CoffeeWithdrawLiquidityMatcher,
     DedustDepositBlockMatcher,
     DedustDepositFirstAssetBlockMatcher,
     DedustWithdrawBlockMatcher,
@@ -68,6 +75,9 @@ from indexer.events.blocks.nft import (
     TelegramNftPurchaseBlockMatcher,
 )
 from indexer.events.blocks.staking import (
+    CoffeeStakingClaimRewardsMatcher,
+    CoffeeStakingDepositMatcher,
+    CoffeeStakingWithdrawMatcher,
     NominatorPoolDepositMatcher,
     NominatorPoolWithdrawMatcher,
     NominatorPoolWithdrawRequestMatcher,
@@ -80,6 +90,7 @@ from indexer.events.blocks.subscriptions import (
     UnsubscribeBlockMatcher,
 )
 from indexer.events.blocks.swaps import (
+    CoffeeSwapBlockMatcher,
     DedustSwapBlockMatcher,
     StonfiSwapBlockMatcher,
     StonfiV2SwapBlockMatcher,
@@ -91,6 +102,9 @@ from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlockMatcher,
     VestingSendMessageBlockMatcher,
 )
+
+from indexer.events.blocks.tgbtc import TgBTCBurnBlockMatcher, TgBTCMintBlockMatcher, TgBTCNewKeyBlockMatcher
+from indexer.events.blocks.tgbtc import TgBTCMintLogOnlyMatcher, TgBTCBurnLogOnlyMatcher, TgBTCNewKeyLogOnlyMatcher, TgBTCDkgLogOnlyMatcher
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
@@ -205,9 +219,27 @@ matchers = [
     EvaaSupplyBlockMatcher(),
     EvaaWithdrawBlockMatcher(),
     EvaaLiquidateBlockMatcher(),
+    TgBTCMintBlockMatcher(),
+    TgBTCBurnBlockMatcher(),
+    TgBTCNewKeyBlockMatcher(),
+    TgBTCMintLogOnlyMatcher(),
+    TgBTCBurnLogOnlyMatcher(),
+    TgBTCNewKeyLogOnlyMatcher(),
+    TgBTCDkgLogOnlyMatcher(),
     ToncoDepositLiquidityMatcher(),
     ToncoDeployPoolBlockMatcher(),
     ToncoWithdrawLiquidityMatcher(),
+    CoffeeDepositLiquidityMatcher(),
+    CoffeeSwapBlockMatcher(),
+    CoffeeWithdrawLiquidityMatcher(),
+    CoffeeCreateVaultMatcher(),
+    CoffeeCreatePoolCreatorMatcher(),
+    CoffeeCreatePoolMatcher(),
+    CoffeeMevProtectHoldFundsMatcher(),
+    CoffeeMevProtectFailedSwapMatcher(),
+    CoffeeStakingDepositMatcher(),
+    CoffeeStakingWithdrawMatcher(),
+    CoffeeStakingClaimRewardsMatcher()
 ]
 
 trace_post_processors = [

@@ -802,6 +802,14 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		(A.staking_data).ts_nft,
 		(A.staking_data).tokens_burnt,
 		(A.staking_data).tokens_minted,
+		(A.coffee_create_pool_data).amount_1,
+		(A.coffee_create_pool_data).amount_2,
+		(A.coffee_create_pool_data).lp_tokens_minted,
+		(A.coffee_staking_deposit_data).minted_item_address,
+		(A.coffee_staking_deposit_data).minted_item_index,
+		(A.coffee_staking_withdraw_data).nft_address,
+		(A.coffee_staking_withdraw_data).nft_index,
+		(A.coffee_staking_withdraw_data).points,
 		A.success,
 		A.trace_external_hash,
 		A.trace_external_hash_norm,
@@ -2340,7 +2348,19 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.tonco_deploy_pool_data).lp_fee_base,
 				(A.tonco_deploy_pool_data).lp_fee_current,
 				(A.tonco_deploy_pool_data).pool_active,
-				
+				(A.coffee_create_pool_data).amount_1,
+				(A.coffee_create_pool_data).amount_2,
+				(A.coffee_create_pool_data).initiator_1,
+				(A.coffee_create_pool_data).initiator_2,
+				(A.coffee_create_pool_data).provided_asset,
+				(A.coffee_create_pool_data).lp_tokens_minted,
+				(A.coffee_create_pool_data).pool_creator_contract,
+				(A.coffee_staking_deposit_data).minted_item_address,
+				(A.coffee_staking_deposit_data).minted_item_index,
+				(A.coffee_staking_withdraw_data).nft_address,
+				(A.coffee_staking_withdraw_data).nft_index,
+				(A.coffee_staking_withdraw_data).points,
+
 				A.ancestor_type,
 				ARRAY[]::text[] from actions as A where ` +
 				arrayFilter + typeFilter + `order by trace_id, start_lt, end_lt`
@@ -3573,14 +3593,14 @@ func buildMultisigOrderQuery(order_req MultisigOrderRequest, lim_req LimitReques
 		conditions = append(conditions, filterByArray("address", order_req.Address))
 	}
 
-	if len(order_req.WalletAddress) > 0 {
-		var walletAddresses []string
-		for _, addr := range order_req.WalletAddress {
-			walletAddresses = append(walletAddresses, fmt.Sprintf("'%s'", addr))
+	if len(order_req.MultisigAddress) > 0 {
+		var multisigAddresses []string
+		for _, addr := range order_req.MultisigAddress {
+			multisigAddresses = append(multisigAddresses, fmt.Sprintf("'%s'", addr))
 		}
 
-		conditions = append(conditions, fmt.Sprintf("signers && ARRAY[%s]::tonaddr[]",
-			strings.Join(walletAddresses, ",")))
+		conditions = append(conditions, fmt.Sprintf("multisig_address IN (%s)",
+			strings.Join(multisigAddresses, ",")))
 	}
 
 	var whereClause string
@@ -3632,11 +3652,11 @@ func queryMultisigImpl(query string, conn *pgxpool.Conn, settings RequestSetting
 	return multisigs, nil
 }
 
-func queryMultisigOrderImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]MultisigOrder, error) {
+func queryMultisigOrderImpl(query string, conn *pgxpool.Conn, settings RequestSettings, args ...any) ([]MultisigOrder, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 
-	rows, err := conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -3676,19 +3696,29 @@ func (db *DbClient) QueryMultisigs(
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
-	// Fetch orders for each multisig
-	for i := range multisigs {
-		ordersQuery := fmt.Sprintf("SELECT "+
-			"address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask, approvals_num, expiration_date, "+
-			"order_boc, signers, last_transaction_lt, code_hash, data_hash "+
-			"FROM multisig_orders m "+
-			"WHERE multisig_address = '%s' "+
-			"ORDER BY id ", multisigs[i].Address)
-		orders, err := queryMultisigOrderImpl(ordersQuery, conn, settings)
+	if multisig_req.IncludeOrders == nil || *multisig_req.IncludeOrders {
+		// Fetch orders for each multisig
+		addresses := make([]string, len(multisigs))
+		for i, multisig := range multisigs {
+			addresses[i] = string(multisig.Address)
+		}
+		ordersQuery := fmt.Sprintf("SELECT " +
+			"address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask, approvals_num, expiration_date, " +
+			"order_boc, signers, last_transaction_lt, code_hash, data_hash " +
+			"FROM multisig_orders m " +
+			"WHERE multisig_address = ANY($1) " +
+			"ORDER BY id")
+		orders, err := queryMultisigOrderImpl(ordersQuery, conn, settings, addresses)
 		if err != nil {
 			return nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
-		multisigs[i].Orders = orders
+		ordersByAddress := make(map[AccountAddress][]MultisigOrder)
+		for _, order := range orders {
+			ordersByAddress[order.MultisigAddress] = append(ordersByAddress[order.MultisigAddress], order)
+		}
+		for i := range multisigs {
+			multisigs[i].Orders = ordersByAddress[multisigs[i].Address]
+		}
 	}
 
 	// Collect addresses for address book
@@ -3744,6 +3774,19 @@ func (db *DbClient) QueryMultisigOrders(
 	if err != nil {
 		log.Println(query)
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	if order_req.ParseActions != nil && *order_req.ParseActions {
+		for i := range orders {
+			if orders[i].OrderBoc != nil {
+				orderActions, err := ParseOrder(*orders[i].OrderBoc)
+				if err != nil {
+					log.Println("Failed to parse multisig order", orders[i].Address, err)
+					orders[i].Actions = nil
+				}
+				orders[i].Actions = orderActions
+			}
+		}
 	}
 
 	// Collect addresses for address book

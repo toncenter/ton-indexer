@@ -30,6 +30,9 @@ var ActionTypeShortcuts = map[string][]string{
 		"jvault_stake", "jvault_unstake", "jvault_claim", "jvault_unstake_request",
 		"nft_discovery",
 		"tonco_deploy_pool",
+		"coffee_create_vault", "coffee_create_pool_creator", "coffee_create_pool",
+		"coffee_mev_protect_hold_funds", "coffee_mev_protect_failed_swap", "coffee_staking_claim_rewards",
+		"coffee_staking_deposit", "coffee_staking_withdraw",
 		"unknown",
 	},
 	"latest": {"v2"},
@@ -56,6 +59,17 @@ var ActionTypeShortcuts = map[string][]string{
 	},
 	"jvault": {
 		"jvault_stake", "jvault_unstake", "jvault_claim", "jvault_unstake_request",
+	},
+	"coffee": {
+		"coffee_create_vault", "coffee_create_pool_creator", "coffee_create_pool",
+		"coffee_mev_protect_hold_funds", "coffee_staking_claim_rewards",
+		"coffee_staking_deposit", "coffee_staking_withdraw",
+	},
+	"tgbtc": {
+		"tgbtc_dkg_log_fallback",
+		"tgbtc_new_key", "tgbtc_new_key_fallback",
+		"tgbtc_burn", "tgbtc_burn_fallback",
+		"tgbtc_mint", "tgbtc_mint_fallback",
 	},
 }
 
