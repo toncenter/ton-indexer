@@ -18,6 +18,7 @@ from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_accounts_from_trace
 from indexer.events.blocks.utils.block_tree_serializer import serialize_blocks
+from indexer.events.blocks.utils.dedust_pools import get_pools_manager, start_pools_background_updater
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async_with_postprocessing, try_classify_unknown_trace
 from indexer.events.interface_repository import (
@@ -100,6 +101,8 @@ class PendingTraceClassifierWorker(mp.Process):
 
         all_accounts = set()
         traces_data = {}
+
+        await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
 
         for trace_key in trace_keys:
             try:
@@ -239,7 +242,7 @@ async def start_emulated_traces_processing(settings: Settings,
     use_combined = settings.use_combined_repository
     if use_combined:
         logger.info("Combined repository mode enabled")
-
+    await start_pools_background_updater(redis.client)
     batch_queue: mp.Queue[list[str]] = mp.Queue(maxsize=max_queue_size)
     workers: List[PendingTraceClassifierWorker] = []
     for id in range(pool_size):
