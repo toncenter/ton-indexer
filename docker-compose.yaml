@@ -1,5 +1,4 @@
 x-indexer-environment: &index-common
-  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
   POSTGRES_HOST:
   POSTGRES_PORT:
   POSTGRES_USER:
@@ -19,11 +18,9 @@ x-index-api: &index-api
 x-index-worker: &index-worker
   TON_WORKER_FROM:
   TON_WORKER_DBROOT: ${TON_WORKER_DBROOT:-/var/ton-work/db}
-  TON_WORKER_BINARY: ton-index-postgres
   <<: *index-common
 
 x-index-migrate: &index-migrate
-  TON_WORKER_BINARY: ton-index-postgres-migrate
   <<: *index-common
 
 services:
@@ -33,7 +30,7 @@ services:
       - internal
     command: redis-server --maxclients 40000
     healthcheck:
-      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -84,7 +81,7 @@ services:
     environment: *index-migrate
     networks:
       internal:
-    command: --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME}
+    command: ton-index-postgres-migrate --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME}
     restart: on-failure
 
   index-worker:
@@ -105,8 +102,8 @@ services:
     environment: *index-worker
     networks:
       internal:
-    command: --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME} \
-             --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:-1}
+    command: ton-index-postgres --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME} \
+             --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:?} ${TON_WORKER_ADDITIONAL_ARGS:-}
     restart: unless-stopped
 
   postgres:
@@ -124,7 +121,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    shm_size: 2G
     restart: always
     volumes:
       - postgres_data:/var/lib/postgresql/data
