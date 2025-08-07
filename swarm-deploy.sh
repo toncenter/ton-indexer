@@ -3,6 +3,7 @@ set -e
 
 # parse args
 DEPLOY_DATABASE=0
+MIGRATE=0
 BUILD=1
 DEPLOY_API=0
 DEPLOY_EVENTS=0
@@ -15,6 +16,7 @@ POSITIONAL_ARGS=()
 function usage() {
     echo 'Supported argumets:'
     echo ' -d --deploy-db           Deploy docker database'
+    echo ' -m --migrate             Run database migration'
     echo '    --no-build            Do not build docker images'
     echo '    --no-build-cache      No build cache'
     echo '    --api                 Deploy API'
@@ -32,6 +34,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -d|--db)
             DEPLOY_DATABASE=1
+            shift
+            ;;
+        -m|--migrate)
+            MIGRATE=1
             shift
             ;;
         --no-build)
@@ -116,6 +122,11 @@ fi
 if [[ $UPDATE_POOLS -eq "1" ]]; then
     echo "updating DeDust pools"
     curl -s https://api.dedust.io/v2/pools -o indexer/files/dedust_pools.json
+fi
+
+if [[ $MIGRATE -eq "1" ]]; then
+    echo "Running migrations"
+    docker stack deploy --with-registry-auth -c docker-compose.alembic.yaml ${STACK_NAME}
 fi
 
 if [[ $DEPLOY_API -eq "1" ]]; then
