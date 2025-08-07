@@ -2,7 +2,6 @@ x-indexer-environment: &index-common
   POSTGRES_HOST:
   POSTGRES_PORT:
   POSTGRES_USER:
-  POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
   POSTGRES_DBNAME:
   POSTGRES_DBROOT:
   POSTGRES_PUBLISH_PORT:
@@ -102,15 +101,15 @@ services:
     environment: *index-worker
     networks:
       internal:
-    command: ton-index-postgres --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME} \
-             --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:?} ${TON_WORKER_ADDITIONAL_ARGS:-}
+    command: ton-index-postgres --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME} --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:?} ${TON_WORKER_ADDITIONAL_ARGS:-}
     restart: unless-stopped
 
   postgres:
     image: postgres:17
     environment: 
-      <<: *index-common
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_DB: ${POSTGRES_DBNAME}
+      POSTGRES_USER: ${POSTGRES_USER}
     ports:
       - ${POSTGRES_PUBLISH_PORT:-5432}:5432
     secrets:
@@ -121,6 +120,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    shm_size: 2G
     restart: always
     volumes:
       - postgres_data:/var/lib/postgresql/data
