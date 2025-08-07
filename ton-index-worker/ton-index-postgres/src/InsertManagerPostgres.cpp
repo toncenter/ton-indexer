@@ -392,21 +392,20 @@ std::string get_worker_id() {
 bool InsertBatchPostgres::try_acquire_leader_lock() {
   auto query = R"(
   WITH grab AS (
-      UPDATE ton_indexer_leader
-        SET leader_worker_id = $1,
-            last_heartbeat   = NOW(),
-            started_at       = CASE
-                                  WHEN leader_worker_id = $1
-                                  THEN started_at
-                                  ELSE NOW()
-                                END
-      WHERE id = 1
-        AND ( last_heartbeat < NOW() - INTERVAL '20 seconds'
-            OR leader_worker_id = $1 )
-      RETURNING 1                        -- any column; we only need the row count
+    INSERT INTO ton_indexer_leader(id, leader_worker_id, last_heartbeat, started_at)
+    VALUES (1, $1, now(), now())
+    ON CONFLICT(id) DO UPDATE SET
+      leader_worker_id = excluded.leader_worker_id,
+      last_heartbeat = excluded.last_heartbeat,
+      started_at = CASE
+        WHEN excluded.leader_worker_id = $1 THEN ton_indexer_leader.started_at
+        ELSE now()
+      END
+    WHERE ton_indexer_leader.id = 1 AND (ton_indexer_leader.last_heartbeat < NOW() - INTERVAL '20 seconds'
+      OR ton_indexer_leader.leader_worker_id = $1)
+    RETURNING 1
   )
-  SELECT
-      (SELECT COUNT(*) FROM grab) AS won_the_lock;
+  SELECT (SELECT COUNT(*) FROM grab) AS won_the_lock;
   )";
   try {
     static std::atomic_bool is_leader = false;
@@ -414,7 +413,9 @@ bool InsertBatchPostgres::try_acquire_leader_lock() {
     pqxx::connection c(connection_string_);
     pqxx::work txn(c);
     auto [won] = txn.exec(query, pqxx::params{get_worker_id()}).one_row().as<int>();
+    LOG(INFO) << "Acquiring leader role";
     txn.commit();
+    LOG(INFO) << "Transaction done. is_leader: " << is_leader.load() << " won: " << won;
 
     if (won != is_leader) {
       LOG(WARNING) << "Worker " << get_worker_id() << (won ? " ACQUIRED" : " LOST") << " leader role.";
