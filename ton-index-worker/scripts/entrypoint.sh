@@ -1,17 +1,23 @@
 #!/bin/bash
 set -e
 
-# prepare pgpass file
-if [ ! -r /run/secrets/postgres_password ]; then
-    echo "Error: /run/secrets/postgres_password does not exist or is not readable." >&2  
-    exit 1          
+# postgres password
+if [ ! -z "$POSTGRES_PASSWORD_FILE" ]; then
+    echo "Postgres password file: ${POSTGRES_PASSWORD_FILE}"
+    if [ ! -f "${POSTGRES_PASSWORD_FILE}" ]; then
+        echo "Password file specified, but not found"
+        exit 1
+    fi
+    POSTGRES_PASSWORD=$(cat ${POSTGRES_PASSWORD_FILE})
+elif [ ! -z "$POSTGRES_PASSWORD" ]; then
+    echo "Postgres password specified"
+else
+    echo "Warning: postgres password file not specified!"
 fi
-PW="$(tr -d '\r\n' < /run/secrets/postgres_password)"
-tmp="$(mktemp)"
-printf '*:*:*:*:%s\n' "$PW" > "$tmp"
-chmod 0600 "$tmp"
-export PGPASSFILE="$tmp"
+
+export PGPASSWORD=$POSTGRES_PASSWORD
 
 ulimit -n 1000000
-echo "Running command: $@"
-exec "$@"
+printenv
+echo "Running binary ${TON_WORKER_BINARY}"
+${TON_WORKER_BINARY} $@

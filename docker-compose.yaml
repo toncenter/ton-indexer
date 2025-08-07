@@ -1,7 +1,9 @@
 x-indexer-environment: &index-common
+  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
   POSTGRES_HOST:
   POSTGRES_PORT:
   POSTGRES_USER:
+  POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
   POSTGRES_DBNAME:
   POSTGRES_DBROOT:
   POSTGRES_PUBLISH_PORT:
@@ -17,9 +19,11 @@ x-index-api: &index-api
 x-index-worker: &index-worker
   TON_WORKER_FROM:
   TON_WORKER_DBROOT: ${TON_WORKER_DBROOT:-/var/ton-work/db}
+  TON_WORKER_BINARY: ton-index-postgres
   <<: *index-common
 
 x-index-migrate: &index-migrate
+  TON_WORKER_BINARY: ton-index-postgres-migrate
   <<: *index-common
 
 services:
@@ -29,7 +33,7 @@ services:
       - internal
     command: redis-server --maxclients 40000
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -80,7 +84,7 @@ services:
     environment: *index-migrate
     networks:
       internal:
-    command: ton-index-postgres-migrate --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME}
+    command: --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME}
     restart: on-failure
 
   index-worker:
@@ -101,15 +105,15 @@ services:
     environment: *index-worker
     networks:
       internal:
-    command: ton-index-postgres --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME} --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:?} ${TON_WORKER_ADDITIONAL_ARGS:-}
+    command: --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME} \
+             --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:-1}
     restart: unless-stopped
 
   postgres:
     image: postgres:17
     environment: 
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      <<: *index-common
       POSTGRES_DB: ${POSTGRES_DBNAME}
-      POSTGRES_USER: ${POSTGRES_USER}
     ports:
       - ${POSTGRES_PUBLISH_PORT:-5432}:5432
     secrets:
