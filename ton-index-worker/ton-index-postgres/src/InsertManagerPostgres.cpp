@@ -413,9 +413,7 @@ bool InsertBatchPostgres::try_acquire_leader_lock() {
     pqxx::connection c(connection_string_);
     pqxx::work txn(c);
     auto [won] = txn.exec(query, pqxx::params{get_worker_id()}).one_row().as<int>();
-    LOG(INFO) << "Acquiring leader role";
     txn.commit();
-    LOG(INFO) << "Transaction done. is_leader: " << is_leader.load() << " won: " << won;
 
     if (won != is_leader) {
       LOG(WARNING) << "Worker " << get_worker_id() << (won ? " ACQUIRED" : " LOST") << " leader role.";
