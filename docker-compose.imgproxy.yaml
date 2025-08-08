@@ -1,14 +1,12 @@
 version: '3.9'
 
-x-imgproxy-environment: &imgproxy-environment
-  IMGPROXY_PRESETS:
-  IMGPROXY_KEY:
-  IMGPROXY_SALT:
-
 services:
   imgproxy:
     image: ghcr.io/imgproxy/imgproxy:latest
-    environment: *imgproxy-environment
+    environment: 
+      IMGPROXY_PRESETS:
+      IMGPROXY_KEY:
+      IMGPROXY_SALT:
     ports:
       - ${IMGPROXY_PORT:-8201}:8080
     deploy:
@@ -28,8 +26,3 @@ networks:
       com.docker.network.driver.mtu: 1350
   toncenter-global:
     external: true
-
-secrets:
-  postgres_password:
-    file: private/postgres_password
-  

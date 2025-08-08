@@ -1,30 +1,9 @@
-x-indexer-environment: &index-common
-  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql+asyncpg}
-  POSTGRES_HOST:
-  POSTGRES_PORT:
-  POSTGRES_USER:
+x-index-pg-access: &index-pg-access
+  POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
   POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-  POSTGRES_DBNAME:
-  POSTGRES_DBROOT:
-  POSTGRES_PUBLISH_PORT:
-
-x-index-api: &index-api
-  TON_INDEXER_API_ROOT_PATH:
-  TON_INDEXER_API_PORT:
-  TON_INDEXER_TON_HTTP_API_ENDPOINT:
-  TON_INDEXER_IS_TESTNET:
-  TON_INDEXER_REDIS_DSN: redis://event-cache:6379
-  <<: *index-common
-
-x-index-worker: &index-worker
-  TON_WORKER_FROM:
-  TON_WORKER_DBROOT: ${TON_WORKER_DBROOT:-/var/ton-work/db}
-  TON_WORKER_BINARY: ton-index-postgres
-  <<: *index-common
-
-x-index-migrate: &index-migrate
-  TON_WORKER_BINARY: ton-index-postgres-migrate
-  <<: *index-common
+  POSTGRES_DB: ${POSTGRES_DB:-ton_index}
 
 services:
   event-cache:
@@ -33,13 +12,14 @@ services:
       - internal
     command: redis-server --maxclients 40000
     healthcheck:
-      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   event-classifier:
-    image: toncenter/ton-indexer-classifier:${VERSION:-latest}
+    image: toncenter/ton-indexer-classifier:1.2.1
     build:
       context: indexer
       dockerfile: Dockerfile
@@ -50,29 +30,43 @@ services:
         condition: service_healthy
     secrets:
       - postgres_password
-    command: --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 10000 --batch-size 1000 --expected-total 720000000
-    environment: *index-api 
+    command: --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 10000 --batch-size 1000
+    environment: 
+      <<: *index-pg-access
+      TON_INDEXER_REDIS_DSN: redis://event-cache:6379
+      TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
+    restart: unless-stopped
     networks:
       internal:
 
   index-api:
-    image: toncenter/ton-indexer-api:${VERSION:-latest}
+    image: toncenter/ton-indexer-api:1.2.1
     build:
       context: ton-index-go
       dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      run-migrations:
+        condition: service_completed_successfully
     secrets:
       - postgres_password
     command: -prefork -threads ${TON_INDEXER_WORKERS:-1}
     ports:
       - target: 8081
         published: ${TON_INDEXER_API_PORT:-8081}
-    environment: *index-api
+    environment:
+      <<: *index-pg-access
+      TON_INDEXER_API_ROOT_PATH: ${TON_INDEXER_API_ROOT_PATH:-/}
+      TON_INDEXER_API_PORT: ${TON_INDEXER_API_PORT:-8081}
+      TON_INDEXER_TON_HTTP_API_ENDPOINT: ${TON_INDEXER_TON_HTTP_API_ENDPOINT:-}
+      TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
     restart: always
     networks:
       internal:
 
   run-migrations:
-    image: toncenter/ton-indexer-worker:${VERSION:-latest}
+    image: toncenter/ton-indexer-worker:1.2.1
     build:
       context: ton-index-worker
       dockerfile: Dockerfile
@@ -81,14 +75,16 @@ services:
         condition: service_healthy
     secrets:
       - postgres_password
-    environment: *index-migrate
+    environment: 
+      <<: *index-pg-access
+      TON_WORKER_BINARY: ton-index-postgres-migrate
     networks:
       internal:
-    command: --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME}
+    command: ton-index-postgres-migrate --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
     restart: on-failure
 
   index-worker:
-    image: toncenter/ton-indexer-worker:${VERSION:-latest}
+    image: toncenter/ton-indexer-worker:1.2.1
     build:
       context: ton-index-worker
       dockerfile: Dockerfile
@@ -100,32 +96,33 @@ services:
     secrets:
       - postgres_password
     volumes:
-      - ${TON_WORKER_DBROOT:-./}:/tondb
+      - ${TON_WORKER_DBROOT:-/var/ton-work/db}:/tondb:ro
       - ton_index_workdir:/ton_index_workdir
-    environment: *index-worker
+    environment:
+      <<: *index-pg-access
+      TON_WORKER_BINARY: ton-index-postgres
+      TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
     networks:
       internal:
-    command: --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DBNAME} \
-             --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:-1}
+    command: ton-index-postgres --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DB} --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:?} ${TON_WORKER_ADDITIONAL_ARGS:-}
     restart: unless-stopped
 
   postgres:
     image: postgres:17
     environment: 
-      <<: *index-common
-      POSTGRES_DB: ${POSTGRES_DBNAME}
+      <<: *index-pg-access
     ports:
       - ${POSTGRES_PUBLISH_PORT:-5432}:5432
     secrets:
       - postgres_password
-    command: postgres -c max_connections=1024 -c shared_buffers=4GB -c work_mem=64MB -c max_wal_size=1GB -c tcp_keepalives_idle=60 -c tcp_keepalives_interval=60 -c tcp_keepalives_count=60
+    command: postgres ${POSTGRES_ADDITIONAL_ARGS:-}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
     shm_size: 2G
-    restart: always
+    restart: unless-stopped    
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
