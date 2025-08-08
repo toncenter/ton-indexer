@@ -43,7 +43,7 @@ def schedule_coffee_actions_reclassification():
             query = session.query(Trace.trace_id, Trace.mc_seqno_end).filter(Trace.trace_id.in_(batch))
             batch_results = query.all()
             all_results.extend(batch_results)
-            tasks = [ClassifierTask(trace_id=t[0], mc_seqno=t[1]) for t in all_results]
+            tasks = [ClassifierTask(trace_id=t[0], mc_seqno=t[1]) for t in batch_results]
             session.add_all(tasks)
             session.commit()
             logger.info(f"Processed {batch_end} of {len(trace_ids)} trace_ids")
