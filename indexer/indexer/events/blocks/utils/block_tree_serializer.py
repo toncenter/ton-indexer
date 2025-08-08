@@ -55,11 +55,11 @@ from indexer.events.blocks.vesting import (
     VestingSendMessageBlock,
 )
 from indexer.events.blocks.layerzero import (
+    LayerZeroCommitPacketBlock,
     LayerZeroSendBlock,
     LayerZeroReceiveBlock,
     LayerZeroSendData,
-    LayerZeroPacketManagementBlock,
-    LayerZeroConfigurationBlock,
+    LayerZeroDvnVerifyBlock,
     LayerZeroSendTokensBlock,
 )
 
@@ -743,12 +743,6 @@ def _fill_layerzero_send_action(data: LayerZeroSendData, action: Action):
     action.source = _addr(data.initiator)  # initiator goes to source
     action.type = 'layerzero_send'
     action.layerzero_send_data = {
-        "src_oapp": data.src_oapp,
-        "dst_oapp": data.dst_oapp,
-        "src_eid": data.src_eid,
-        "dst_eid": data.dst_eid,
-        "nonce": data.nonce,
-        "guid": data.guid,
         "send_request_id": data.send_request_id,
         "msglib_manager": data.msglib_manager,
         "msglib": data.msglib,
@@ -756,9 +750,9 @@ def _fill_layerzero_send_action(data: LayerZeroSendData, action: Action):
         "native_fee": data.native_fee,
         "zro_fee": data.zro_fee,
         "endpoint": _addr(data.endpoint),
-        "channel": _addr(data.channel),
-        "message": data.message
+        "channel": _addr(data.channel)
     }
+    action.layerzero_packet_data = data.packet_data.__dict__ # fields names are identical and no _addr() needed
 
 def _fill_layerzero_send_tokens_action(block: LayerZeroSendTokensBlock, action: Action):
     # fill basic transfer data
@@ -767,55 +761,30 @@ def _fill_layerzero_send_tokens_action(block: LayerZeroSendTokensBlock, action: 
     action.destination_secondary = _addr(block.data.oapp_wallet)
     action.amount = block.data.amount.value
     action.asset = _addr(block.data.asset)
-
-    # it'll fill only `action.layerzero_send_data` and the type
+    # fill data related to basic send
     _fill_layerzero_send_action(block.data.layerzero_send_data, action)
+    # overwrite some fields
     action.type = 'layerzero_send_tokens'
     action.source = _addr(block.data.sender)
 
-
-
 def _fill_layerzero_receive_action(block: LayerZeroReceiveBlock, action: Action):
-    """Fill action data for LayerZero cross-chain receive"""
-    action.source = _addr(block.data.sender)  # this is on source chain
-    action.destination = _addr(block.data.receiver)
-    action.source_secondary = _addr(block.data.executor)
-    action.amount = block.data.verification_fees + block.data.execution_fees
-    action.layerzero_receive_data = {
-        "sender": _addr(block.data.sender),
-        "src_eid": block.data.src_eid,
-        "dst_eid": block.data.dst_eid,
-        "nonce": block.data.nonce,
-        "guid": block.data.guid,
-        "executor": _addr(block.data.executor),
-        "verification_fees": block.data.verification_fees,
-        "execution_fees": block.data.execution_fees,
-    }
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.oapp)
+    action.destination_secondary = _addr(block.data.channel)
+    action.layerzero_packet_data = block.data.packet_data.__dict__
 
-def _fill_layerzero_packet_management_action(block: LayerZeroPacketManagementBlock, action: Action):
-    """Fill action data for LayerZero packet management (burn/nilify)"""
-    action.source = _addr(block.data.executor)
-    action.destination = None  # packet operations don't have specific destination
-    action.layerzero_packet_management_data = {
-        "src_eid": block.data.src_eid,
-        "dst_eid": block.data.dst_eid,
-        "nonce": block.data.nonce,
-        "packet_hash": block.data.packet_hash,
-        "operation": block.data.operation,
-        "executor": _addr(block.data.executor),
-    }
+def _fill_layerzero_commit_packet_action(block: LayerZeroCommitPacketBlock, action: Action):
+    action.layerzero_packet_data = block.data.packet_data.__dict__
 
-def _fill_layerzero_configuration_action(block: LayerZeroConfigurationBlock, action: Action):
-    """Fill action data for LayerZero configuration changes"""
-    action.source = _addr(block.data.admin)
-    action.destination = None  # config changes don't have specific destination
-    action.layerzero_configuration_data = {
-        "config_type": block.data.config_type,
-        "src_eid": block.data.src_eid,
-        "dst_eid": block.data.dst_eid,
-        "old_value": block.data.old_value,
-        "new_value": block.data.new_value,
-        "admin": _addr(block.data.admin),
+def _fill_layerzero_dvn_verify_action(block: LayerZeroDvnVerifyBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.layerzero_dvn_verify_data = {
+        "nonce": block.data.nonce,
+        "status": block.data.status,
+        "dvn": _addr(block.data.dvn),
+        "proxy": _addr(block.data.proxy),
+        "uln": _addr(block.data.uln),
+        "uln_connection": _addr(block.data.uln_connection),
     }
 
 # noinspection PyCompatibility,PyTypeChecker
@@ -916,10 +885,10 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_layerzero_send_tokens_action(block, action)
         case 'layerzero_receive':
             _fill_layerzero_receive_action(block, action)
-        case 'layerzero_packet_management':
-            _fill_layerzero_packet_management_action(block, action)
-        case 'layerzero_configuration':
-            _fill_layerzero_configuration_action(block, action)
+        case 'layerzero_commit_packet':
+            _fill_layerzero_commit_packet_action(block, action)
+        case 'layerzero_dvn_verify':
+            _fill_layerzero_dvn_verify_action(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts
@@ -979,8 +948,8 @@ v1_ops = [
     'tonco_withdraw_liquidity',
     'layerzero_send',
     'layerzero_receive',
-    'layerzero_packet_management',
-    'layerzero_configuration',
+    'layerzero_commit_packet',
+    'layerzero_dvn_verify',
 ]
 
 def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:

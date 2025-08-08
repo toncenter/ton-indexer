@@ -9,9 +9,6 @@ from indexer.events.blocks.basic_matchers import (
     BlockMatcher,
     BlockTypeMatcher,
     ContractMatcher,
-    OrMatcher,
-    GenericMatcher,
-    child_sequence_matcher,
 )
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.jettons import JettonTransferBlock
@@ -20,48 +17,48 @@ from indexer.events.blocks.utils import AccountId, Asset, Amount
 from indexer.events.blocks.utils.block_utils import get_labeled
 from indexer.events.blocks.messages.layerzero import (
     # Import LayerZero opcode classes
+    DvnVerify,
     EndpointEndpointSend,
-    ChannelChannelSend,
-    ChannelMsglibSendCallback,
-    ChannelChannelCommitPacket,
-    ChannelLzReceivePrepare,
-    ChannelLzReceiveLock,
-    ChannelLzReceiveExecuteCallback,
-    ChannelBurn,
-    ChannelNilify,
-    BaseinterfaceEvent,
+    ProxyCallContract,
+    UlnUlnCommitPacket,
+    UlnUlnVerify,
+    UlnconnectionUlnConnectionCommitPacket,
+    EndpointEndpointCommitPacket,
+    MsglibconnectionMsglibConnectionCommitPacketCallback,
     LayerZeroEventMsgBody,
+    LayerzeroLzReceiveExecute,
+    LayerzeroLzReceivePrepare,
     MsglibconnectionMsglibConnectionSend,
     LayerzeroChannelSendCallback,
-    # Import message parsers
     ChannelSendMessageParser,
     MsglibSendCallbackParser,
-    ChannelCommitPacketParser,
+    ChannelCommitPacket,
     LzReceivePrepareParser,
     LzReceiveLockParser,
-    LzReceiveExecuteCallbackParser,
-    PacketBurnParser,
-    PacketNilifyParser,
-    LayerZeroPacketIdParser,
-    LayerZeroDvnFeesPaidEventParser,
-    LayerZeroExecutorFeePaidEventParser,
+    LayerZeroOappExecuteCallback,
     UlnUlnSend,
+    UlnconnectionUlnConnectionVerify,
+    UlnConnectionVerifyCallbackParser,
 )
+from loguru import logger as loguru_logger
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
-class LayerZeroSendData:
-    initiator: AccountId           # who initiated
+class LayerZeroPacketData:
     src_oapp: str                  # source OApp
     dst_oapp: str                  # destination OApp (on another blockchain)
     src_eid: int                   # source endpoint ID (TON = 30343)
     dst_eid: int                   # destination endpoint ID (ETH = 30101)
     nonce: int                     # packet sequence number
     guid: str                      # global unique ID
-    send_request_id: int           # request id
     message: str                   # message
+
+@dataclass
+class LayerZeroSendData:
+    initiator: AccountId           # who initiated
+    packet_data: LayerZeroPacketData
+    send_request_id: int           # request id
     native_fee: int                # fee in nanoTON
     zro_fee: int                   # fee in ZRO
     endpoint: AccountId            # endpoint contract address
@@ -82,28 +79,25 @@ class LayerZeroSendTokensData:
 
 @dataclass  
 class LayerZeroReceiveData:
-    receiver: AccountId            # OApp recipient
-    sender: AccountId              # OApp sender (from another blockchain)
-    src_eid: int                   # source endpoint ID
-    dst_eid: int                   # destination endpoint ID (TON)
-    nonce: int                     # packet number
-    message_hash: str              # message hash
-    execution_status: str          # committed/executed/failed
-    decoded_message: str | None    # decoded message
+    sender: AccountId
+    channel: AccountId
+    oapp: AccountId
+    packet_data: LayerZeroPacketData
 
 @dataclass
-class LayerZeroPacketManagementData:
-    operator: AccountId            # who initiated
-    nonce: int                     # packet number
-    action_type: str               # "burn" / "nilify"
-    reason: str | None             # action reason
+class LayerZeroDvnVerifyData:
+    sender: AccountId
+    nonce: int
+    status: str  # "succeeded" | "nonce_out_of_range" | "dvn_not_configured" | "unknown_<code>"
+    dvn: AccountId
+    proxy: AccountId
+    uln: AccountId
+    uln_connection: AccountId
+
 
 @dataclass
-class LayerZeroConfigurationData:
-    actor: AccountId               # who configures
-    config_type: str               # "endpoint" / "channel" / "msglib"
-    changes: dict                  # config changes
-
+class LayerZeroCommitPacketData:
+    packet_data: LayerZeroPacketData
 
 class LayerZeroSendBlock(Block):
     data: LayerZeroSendData
@@ -112,7 +106,7 @@ class LayerZeroSendBlock(Block):
         super().__init__('layerzero_send', [], data)
     
     def __repr__(self):
-        return f"layerzero_send({self.data.src_oapp} → {self.data.dst_oapp}, nonce={self.data.nonce}, guid={self.data.guid}, msg={self.data.message})"
+        return f"layerzero_send({self.data.packet_data.src_oapp} → {self.data.packet_data.dst_oapp}, nonce={self.data.packet_data.nonce}, guid={self.data.packet_data.guid}, msg={self.data.packet_data.message})"
 
 class LayerZeroReceiveBlock(Block):
     data: LayerZeroReceiveData
@@ -120,17 +114,6 @@ class LayerZeroReceiveBlock(Block):
     def __init__(self, data: LayerZeroReceiveData):
         super().__init__('layerzero_receive', [], data)
         
-class LayerZeroPacketManagementBlock(Block):
-    data: LayerZeroPacketManagementData
-
-    def __init__(self, data: LayerZeroPacketManagementData):
-        super().__init__('layerzero_packet_management', [], data)
-
-class LayerZeroConfigurationBlock(Block):
-    data: LayerZeroConfigurationData
-
-    def __init__(self, data: LayerZeroConfigurationData):
-        super().__init__('layerzero_configuration', [], data)
 
 class LayerZeroSendTokensBlock(Block):
     data: LayerZeroSendTokensData
@@ -142,9 +125,44 @@ class LayerZeroSendTokensBlock(Block):
         return f"layerzero_send_tokens({self.data.sender} → {self.data.oapp}, {self.data.amount} {self.data.asset})"
 
 
+class LayerZeroCommitPacketBlock(Block):
+    data: LayerZeroCommitPacketData
+
+    def __init__(self, data: LayerZeroCommitPacketData):
+        super().__init__('layerzero_commit_packet', [], data)
+
+
+class LayerZeroDvnVerifyBlock(Block):
+    data: LayerZeroDvnVerifyData
+
+    def __init__(self, data: LayerZeroDvnVerifyData):
+        super().__init__('layerzero_dvn_verify', [], data)
+
+
 
 class LayerZeroSendMatcher(BlockMatcher):
-    """Matcher for cross-chain send operations TON → other blockchains"""
+    """
+    A user calls the ‘lzSend’
+    method inside the Sender OApp
+    Contract, specifying a message,
+    a destination LayerZero Endpoint,
+    the destination OApp address, and
+    other protocol handling options.
+
+    The source Endpoint generates a
+    packet based on the Sender
+    OApp’s message data, assigning
+    each packet a unique, sequentially
+    increasing number (i.e. nonce).
+
+    The Endpoint encodes the packet
+    using the OApp’s specified MessageLib
+    to emit the message to
+    the selected Security Stack
+    and Executor, completing the
+    send transaction with a
+    PacketSent event.
+"""
     
     def __init__(self):
         super().__init__(
@@ -219,15 +237,17 @@ class LayerZeroSendMatcher(BlockMatcher):
             # Create structured data  
             data = LayerZeroSendData(
                 initiator=sender,
-                src_oapp=packet.path.src_oapp,
-                dst_oapp=packet.path.dst_oapp,
-                src_eid=packet.path.src_eid,
-                dst_eid=packet.path.dst_eid,
-                nonce=packet.nonce,
-                guid=packet.guid,
+                packet_data=LayerZeroPacketData(
+                    src_oapp=packet.path.src_oapp,
+                    dst_oapp=packet.path.dst_oapp,
+                    src_eid=packet.path.src_eid,
+                    dst_eid=packet.path.dst_eid,
+                    nonce=packet.nonce,
+                    guid=packet.guid,
+                    message=packet.message
+                ),
                 send_request_id=lz_send.send_request_id,
                 msglib_manager=lz_send.send_msglib_manager,
-                message=packet.message,
                 native_fee=lz_send.native_fee,
                 zro_fee=lz_send.zro_fee,
                 endpoint=endpoint,
@@ -247,7 +267,8 @@ class LayerZeroSendMatcher(BlockMatcher):
             return []
 
 class LayerZeroSendTokensMatcher(BlockMatcher):
-    """Matcher for LayerZero token sends (jetton_transfer + layerzero_send)"""
+    """Just a combination of jetton_transfer + layerzero_send.
+    Better to show user that he sent tokens via LayerZero."""
     
     def __init__(self):
         super().__init__(
@@ -309,166 +330,234 @@ class LayerZeroSendTokensMatcher(BlockMatcher):
             return []
 
 class LayerZeroReceiveMatcher(BlockMatcher):
-    """Matcher for cross-chain receive operations other blockchains → TON"""
-    
+    """
+    The Destination Endpoint enforces that
+    the packet being delivered by the
+    Executor matches the message verified
+    by the DVNs.
+
+    An Executor calls the ‘lzReceive’
+    function on the committed message to
+    process the packet using the Receiver
+    OApp's logic.
+
+    The message is received by the
+    Receiver OApp Contract on the
+    destination chain.
+    """
     def __init__(self):
         super().__init__(
-            child_matcher=child_sequence_matcher([
-                # 1. Channel commits packet
-                labeled("channel_commit",
-                    ContractMatcher(ChannelChannelCommitPacket.opcode)),
-                
-                # 2. Someone prepares receive
+            children_matchers=
+            [
+                labeled("excesses_transfer", BlockTypeMatcher('ton_transfer', optional=True)),
                 labeled("receive_prepare", 
-                    ContractMatcher(ChannelLzReceivePrepare.opcode)),
-                
-                # 3. OApp locks for execution
-                labeled("receive_lock",
-                    ContractMatcher(ChannelLzReceiveLock.opcode)),
-                
-                # 4. OApp execution callback
-                labeled("execute_callback",
-                    ContractMatcher(ChannelLzReceiveExecuteCallback.opcode)),
-                
-                # 5. Optional: DELIVERED event
-                labeled("delivered_event",
-                    GenericMatcher(lambda b: isinstance(b, CallContractBlock)
-                                  and b.opcode == BaseinterfaceEvent.opcode, optional=True)),
-            ])
+                    ContractMatcher(LayerzeroLzReceivePrepare.opcode, 
+                        child_matcher=labeled("receive_lock", 
+                            ContractMatcher(LzReceiveLockParser.opcode,
+                                child_matcher=labeled("execute_callback", 
+                                    ContractMatcher(LayerzeroLzReceiveExecute.opcode,
+                                        children_matchers=[
+                                            labeled("even_1",
+                                                    ContractMatcher(LayerZeroEventMsgBody.opcode, optional=True)),
+                                            labeled("execute_callback",
+                                                    ContractMatcher(LayerZeroOappExecuteCallback.opcode, optional=False,
+                                                        children_matchers=[
+                                                            labeled("event_2", ContractMatcher(LayerZeroEventMsgBody.opcode, optional=True)),
+                                                            labeled("excess_transfer_2", BlockTypeMatcher('ton_transfer', optional=True)),
+                                                        ]
+                                                    )
+                                                ),
+                                            ]
+                                        )
+                                    )
+                                )
+                            )
+                    )
+                ),
+            ]
         )
     
     def test_self(self, block: Block) -> bool:
-        # Start with endpoint committing a packet
         return (isinstance(block, CallContractBlock)
-                and block.opcode == ChannelChannelCommitPacket.opcode)
+                and block.opcode == LzReceivePrepareParser.opcode)
     
+    @loguru_logger.catch()
     async def build_block(self, block: Block, other_blocks: list[Block]):
-        try:
-            # Extract labeled blocks
-            receive_prepare_block = get_labeled("receive_prepare", other_blocks, CallContractBlock)
-            execute_callback_block = get_labeled("execute_callback", other_blocks, CallContractBlock)
-            
-            # Check if required blocks are found
-            if not receive_prepare_block or not execute_callback_block:
-                return []
-            
-            # Parse messages
-            commit_msg = ChannelCommitPacketParser(block.get_body())
-            prepare_msg = LzReceivePrepareParser(receive_prepare_block.get_body())
-            execute_msg = LzReceiveExecuteCallbackParser(execute_callback_block.get_body())
-            
-            # Determine execution status
-            if execute_msg.success:
-                execution_status = "executed"
-            else:
-                execution_status = "failed"
-            
-            # Create structured data
-            data = LayerZeroReceiveData(
-                receiver=receive_prepare_block.data['destination'],
-                sender=AccountId(f"0:{commit_msg.packet.path.src_oapp:064x}"),
-                src_eid=commit_msg.packet.path.src_eid,
-                dst_eid=commit_msg.packet.path.dst_eid,
-                nonce=commit_msg.packet.nonce,
-                message_hash=base64.b64encode(commit_msg.packet.message.encode()).decode(),
-                execution_status=execution_status,
-                decoded_message=None  # Could decode message payload if needed
-            )
-            
-            # Create block and link with originals
-            new_block = LayerZeroReceiveBlock(data)
-            new_block.merge_blocks([block] + other_blocks)
-            
-            return [new_block]
-            
-        except Exception as e:
-            logger.error(f"Failed to build LayerZero receive block: {e}")
+        execute_callback_block = get_labeled("execute_callback", other_blocks, CallContractBlock)
+        
+        if not execute_callback_block:
             return []
+        execute_callback_msg = execute_callback_block.get_message()
+        
+        execute_msg_data = LayerZeroOappExecuteCallback(execute_callback_block.get_body())
+        packet = execute_msg_data.packet
+        if execute_callback_msg.destination[2:].lower() != packet.path.dst_oapp[2:].lower():
+            logger.warning(f"address from execute_callback doesn't match dst_oapp in packet")
+            return []
+        
+        data = LayerZeroReceiveData(
+            sender=AccountId(block.get_message().source),
+            channel=AccountId(execute_callback_msg.source),
+            oapp=AccountId(execute_callback_msg.destination),
+            packet_data=LayerZeroPacketData(
+                src_oapp=packet.path.src_oapp,
+                dst_oapp=packet.path.dst_oapp,
+                src_eid=packet.path.src_eid,
+                dst_eid=packet.path.dst_eid,
+                nonce=packet.nonce,
+                guid=packet.guid,
+                message=packet.message
+            )
+        )
+        
+        new_block = LayerZeroReceiveBlock(data)
+        new_block.merge_blocks([block] + other_blocks)
+        
+        return [new_block]
 
-class LayerZeroPacketManagementMatcher(BlockMatcher):
-    """Matcher for packet management operations (burn/nilify)"""
-    
+class LayerZeroCommitPacketMatcher(BlockMatcher):
+    """
+    Once all of the DVNs in the OApp’s Security Stack
+    have verified the message, the destination MessageLib
+    marks the message as verifiable.
+
+    The Executor commits this packet’s verification to the
+    Endpoint, staging the packet for execution in 
+    the Destination Endpoint.
+    """
+
     def __init__(self):
         super().__init__(
-            child_matcher=OrMatcher([
-                labeled("burn_action", ContractMatcher(ChannelBurn.opcode)),
-                labeled("nilify_action", ContractMatcher(ChannelNilify.opcode))
-            ])
+            child_matcher=labeled('uln_connection_commit',
+                ContractMatcher(UlnconnectionUlnConnectionCommitPacket.opcode,
+                    child_matcher=labeled('endpoint_commit',
+                        ContractMatcher(EndpointEndpointCommitPacket.opcode,
+                            child_matcher=labeled('channel_commit',
+                                ContractMatcher(ChannelCommitPacket.opcode,
+                                    children_matchers=[
+                                        labeled('lz_event',
+                                            ContractMatcher(LayerZeroEventMsgBody.opcode, optional=True)),
+                                        labeled('msglib_callback',
+                                            ContractMatcher(MsglibconnectionMsglibConnectionCommitPacketCallback.opcode, optional=True,
+                                                child_matcher=labeled("excesses", 
+                                                    BlockTypeMatcher('ton_transfer', optional=True)))),
+                                    ]
+                                )
+                            )
+                        )
+                    )
+                )
+            )
         )
-    
+
     def test_self(self, block: Block) -> bool:
-        return (isinstance(block, CallContractBlock) 
-                and block.opcode in [ChannelBurn.opcode, ChannelNilify.opcode])
-    
+        return (isinstance(block, CallContractBlock)
+                and block.opcode == UlnUlnCommitPacket.opcode)
+
     async def build_block(self, block: Block, other_blocks: list[Block]):
         try:
-            # Cast to CallContractBlock to access attributes
-            if not isinstance(block, CallContractBlock):
+            uln_connection_commit_block = get_labeled("uln_connection_commit", other_blocks, CallContractBlock)
+            endpoint_commit_block = get_labeled("endpoint_commit", other_blocks, CallContractBlock)
+            channel_commit_block = get_labeled("channel_commit", other_blocks, CallContractBlock)
+
+            if not uln_connection_commit_block or not endpoint_commit_block or not channel_commit_block:
                 return []
-            
-            # Determine action type
-            if block.opcode == ChannelBurn.opcode:
-                action_type = "burn"
-                parser = PacketBurnParser(block.get_body())
-            else:  # ChannelNilify.opcode
-                action_type = "nilify"
-                parser = PacketNilifyParser(block.get_body())
-            
-            # Create structured data
-            data = LayerZeroPacketManagementData(
-                operator=block.data['source'],
-                nonce=parser.nonce,
-                action_type=action_type,
-                reason=f"Packet {action_type} for nonce {parser.nonce}"
+
+            commit_msg = ChannelCommitPacket(channel_commit_block.get_body())
+            packet = commit_msg.packet
+
+            data = LayerZeroCommitPacketData(
+                packet_data=LayerZeroPacketData(
+                    src_oapp=packet.path.src_oapp,
+                    dst_oapp=packet.path.dst_oapp,
+                    src_eid=packet.path.src_eid,
+                    dst_eid=packet.path.dst_eid,
+                    nonce=packet.nonce,
+                    guid=packet.guid,
+                    message=packet.message
+                )
             )
-            
-            # Create block and link with originals
-            new_block = LayerZeroPacketManagementBlock(data)
+
+            new_block = LayerZeroCommitPacketBlock(data)
             new_block.merge_blocks([block] + other_blocks)
-            
+
             return [new_block]
-            
         except Exception as e:
-            logger.error(f"Failed to build LayerZero packet management block: {e}")
+            logger.error(f"Failed to build LayerZero commit packet block: {e}", exc_info=True)
             return []
 
-class LayerZeroConfigurationMatcher(BlockMatcher):
-    """Matcher for configuration changes"""
-    
+class LayerZeroDvnVerifyMatcher(BlockMatcher):
+    """
+    The configured DVNs, each
+    using unique verification methods,
+    independently verify the message.
+    The destination MessageLib enforces
+    that only the DVNs
+    configured by the OApp
+    can submit a verification.
+    """
+
     def __init__(self):
-        super().__init__()
-    
+        super().__init__(
+            child_matcher=labeled('proxy_call',
+                ContractMatcher(ProxyCallContract.opcode,
+                    child_matcher=labeled('uln_verify',
+                        ContractMatcher(UlnUlnVerify.opcode,
+                            child_matcher=labeled('uln_connection_verify',
+                                ContractMatcher(UlnconnectionUlnConnectionVerify.opcode,
+                                    children_matchers=[
+                                        labeled('lz_event',
+                                            ContractMatcher(LayerZeroEventMsgBody.opcode, optional=True)),
+                                        labeled('uln_verify_callback',
+                                            ContractMatcher(UlnConnectionVerifyCallbackParser.opcode, optional=True,
+                                                child_matcher=labeled("excesses", 
+                                                    BlockTypeMatcher('ton_transfer', optional=True)))),
+                                    ]
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
     def test_self(self, block: Block) -> bool:
-        # Match various configuration opcodes
-        config_opcodes = [
-            EndpointEndpointSend.opcode,  # Example - add more as needed
-            # Add other configuration opcodes here
-        ]
-        return (isinstance(block, CallContractBlock) 
-                and block.opcode in config_opcodes)
-    
+        return (isinstance(block, CallContractBlock)
+                and block.opcode == DvnVerify.opcode)
+
     async def build_block(self, block: Block, other_blocks: list[Block]):
         try:
-            # Cast to CallContractBlock to access attributes
-            if not isinstance(block, CallContractBlock):
+            dvn_verify_block = block
+            uln_verify_block = get_labeled("uln_verify", other_blocks, CallContractBlock)
+            uln_connection_verify_block = get_labeled("uln_connection_verify", other_blocks, CallContractBlock)
+            proxy_call_block = get_labeled("proxy_call", other_blocks, CallContractBlock)
+            uln_verify_callback_block = get_labeled("uln_verify_callback", other_blocks, CallContractBlock)
+            if not uln_verify_callback_block or not dvn_verify_block or not uln_verify_block or not uln_connection_verify_block or not proxy_call_block:
                 return []
-            
-            # For now, create basic configuration data
-            # This can be expanded to parse specific configuration changes
-            data = LayerZeroConfigurationData(
-                actor=block.data['source'],
-                config_type="unknown",
-                changes={"opcode": hex(block.opcode)}
+
+            parser = UlnConnectionVerifyCallbackParser(uln_verify_callback_block.get_body())
+            dvn_verify_msg = dvn_verify_block.get_message()
+            dvn = AccountId(dvn_verify_msg.destination)
+            proxy_call_msg = proxy_call_block.get_message()
+            proxy = AccountId(proxy_call_msg.destination)
+            uln_verify_msg = uln_verify_block.get_message()
+            uln = AccountId(uln_verify_msg.destination)
+            uln_connection_verify_msg = uln_connection_verify_block.get_message()
+            uln_connection = AccountId(uln_connection_verify_msg.destination)
+            data = LayerZeroDvnVerifyData(
+                sender=AccountId(block.get_message().source),
+                nonce=parser.nonce,
+                status=parser.status,
+                dvn=dvn,
+                proxy=proxy,
+                uln=uln,
+                uln_connection=uln_connection,
             )
-            
-            # Create block and link with originals
-            new_block = LayerZeroConfigurationBlock(data)
+
+            new_block = LayerZeroDvnVerifyBlock(data)
             new_block.merge_blocks([block] + other_blocks)
-            
+
             return [new_block]
-            
         except Exception as e:
-            logger.error(f"Failed to build LayerZero configuration block: {e}")
+            logger.error(f"Failed to build LayerZero dvn verify block: {e}", exc_info=True)
             return []
-
-

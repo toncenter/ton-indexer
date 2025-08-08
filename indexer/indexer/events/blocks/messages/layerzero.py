@@ -380,6 +380,15 @@ class LayerZeroEventActionBodyOFTSentSucceed:
             topic={self.topic},
             mdguid={self.mdguid})"""
 
+class ChannelCommitPacket:
+    opcode = 0x5388cd88 # Channel::OP::CHANNEL_COMMIT_PACKET
+    
+    def __init__(self, slice: Slice):
+        self.extended_md_cell = slice.load_ref()
+        md_slice = self.extended_md_cell.begin_parse()
+        self.packet_cell = md_slice.load_ref()        
+        self.packet = LayerZeroPacket(self.packet_cell)
+
 
 # --- Here are just opcodes without parsers (parsed with script from *.fc): ---
 
@@ -503,13 +512,6 @@ class ChannelBurn:
     """
     opcode = 0x349d9aa5
 
-class ChannelChannelCommitPacket:
-    """
-    Original: Channel::OP::CHANNEL_COMMIT_PACKET
-    String: "Channel::OP::CHANNEL_COMMIT_PACKET"
-    """
-    opcode = 0x5388cd88
-
 class ChannelChannelSend:
     """
     Original: Channel::OP::CHANNEL_SEND
@@ -537,13 +539,6 @@ class ChannelForceAbort:
     String: "Channel::OP::FORCE_ABORT"
     """
     opcode = 0x59a58cc2
-
-class ChannelLzReceiveExecuteCallback:
-    """
-    Original: Channel::OP::LZ_RECEIVE_EXECUTE_CALLBACK
-    String: "Channel::OP::LZ_RECEIVE_EXECUTE_CALLBACK"
-    """
-    opcode = 0xcaae25a1
 
 class ChannelLzReceiveLock:
     """
@@ -914,12 +909,41 @@ class UlnmanagerTransferOwnership:
     """
     opcode = 0xd9b3d2c3
 
-class UltralightnodeUlnConnectionVerifyCallback:
-    """
-    Original: UltraLightNode::OP::ULN_CONNECTION_VERIFY_CALLBACK
-    String: "UltraLightNode::OP::ULN_CONNECTION_VERIFY_CALLBACK"
+class UlnConnectionVerifyCallbackParser:
+    """Parser for UltraLightNode::OP::ULN_CONNECTION_VERIFY_CALLBACK
+    reads md::MdObj(ref0 = md::VerificationStatus(nonce:uint64, status:uint32), ref1 = initialStorage)
     """
     opcode = 0x3cb38090
+
+    def __init__(self, slice: Slice):
+        # layout: [opcode already stripped by framework] then md::MdObj cell
+        self.md_obj_cell = slice.load_ref()
+        # ref[0] is md::VerificationStatus
+        self.verification_status_cell = self.md_obj_cell.to_slice().load_ref()
+        s = self.verification_status_cell.to_slice()
+        # md::VerificationStatus has header (116 bits + 234 bits filler), then nonce:uint64, status:uint32
+        header_info = s.load_uint(116)
+        header_filler = s.load_int(234)
+        if ~header_filler != 0:
+            raise ValueError("Header filler is not 0")
+        if header_info != 38421788582694199859296615363593851:
+            raise ValueError("Header info is not 38421788582694199859296615363593851")
+        self.nonce = s.load_uint(64)
+        self.status_code = s.load_uint(32)
+
+        # status mapping placeholders; fill concrete constants later
+        ULN_CONNECTION_VERIFY_SUCCEEDED = 0x3bbc306b
+        ULN_CONNECTION_VERIFY_FAILED_NONCE_OUT_OF_RANGE = 0x7fcbb4ac
+        ULN_CONNECTION_VERIFY_FAILED_DVN_NOT_CONFIGURED = 0x29c53fab
+
+        if self.status_code == ULN_CONNECTION_VERIFY_SUCCEEDED:
+            self.status = "succeeded"
+        elif self.status_code == ULN_CONNECTION_VERIFY_FAILED_NONCE_OUT_OF_RANGE:
+            self.status = "nonce_out_of_range"
+        elif self.status_code == ULN_CONNECTION_VERIFY_FAILED_DVN_NOT_CONFIGURED:
+            self.status = "dvn_not_configured"
+        else:
+            self.status = f"unknown_{self.status_code}"
 
 
 # SML Operations
@@ -1331,24 +1355,6 @@ class MsglibSendCallbackParser:
         self.lz_send = parse_md_obj_in_lz_send(self.lz_send_cell)
 
 
-class ChannelCommitPacketParser:
-    """Parser for Channel::OP::CHANNEL_COMMIT_PACKET message"""
-    opcode = ChannelChannelCommitPacket.opcode
-    
-    def __init__(self, slice: Slice):
-        # Based on channelCommitPacket handler
-        # Receives ExtendedMd(packet, defaultEpConfig, callerMsglibConnection)
-        self.extended_md_cell = slice.load_ref()
-        
-        # Parse ExtendedMd structure
-        md_slice = self.extended_md_cell.begin_parse()
-        self.packet_cell = md_slice.load_ref()
-        self.default_config_cell = md_slice.load_ref()
-        self.caller_msglib = md_slice.load_uint(256)  # Forwarding address
-        
-        # Parse packet
-        self.packet = LayerZeroPacket(self.packet_cell)
-
 class LzReceivePrepareParser:
     """Parser for Channel::OP::LZ_RECEIVE_PREPARE message"""
     opcode = ChannelLzReceivePrepare.opcode
@@ -1368,18 +1374,13 @@ class LzReceiveLockParser:
         # Receives Nonce(nonce)
         self.nonce = slice.load_uint(64)
 
-class LzReceiveExecuteCallbackParser:
+class LayerZeroOappExecuteCallback:
     """Parser for Channel::OP::LZ_RECEIVE_EXECUTE_CALLBACK message"""
-    opcode = ChannelLzReceiveExecuteCallback.opcode
+    opcode = 0xcaae25a1
     
     def __init__(self, slice: Slice):
-        # Based on lzReceiveExecuteCallback handler
-        # Receives LzReceiveStatus(success, nonce, value, extraData, reason)
-        self.success = slice.load_bool()
-        self.nonce = slice.load_uint(64)
-        self.value = slice.load_coins()
-        self.extra_data_cell = slice.load_maybe_ref()
-        self.reason_cell = slice.load_maybe_ref()
+        self.cell = slice.to_cell()
+        self.packet = LayerZeroPacket(self.cell.refs[0].refs[0])
 
 class PacketBurnParser:
     """Parser for Channel::OP::BURN message"""

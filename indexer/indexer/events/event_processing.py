@@ -92,7 +92,7 @@ from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlockMatcher,
     VestingSendMessageBlockMatcher,
 )
-from indexer.events.blocks.layerzero import LayerZeroSendMatcher, LayerZeroSendTokensMatcher
+from indexer.events.blocks.layerzero import LayerZeroCommitPacketMatcher, LayerZeroDvnVerifyMatcher, LayerZeroReceiveMatcher, LayerZeroSendMatcher, LayerZeroSendTokensMatcher
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
@@ -212,6 +212,9 @@ matchers = [
     ToncoWithdrawLiquidityMatcher(),
     LayerZeroSendMatcher(),
     LayerZeroSendTokensMatcher(),
+    LayerZeroReceiveMatcher(),
+    LayerZeroCommitPacketMatcher(),
+    LayerZeroDvnVerifyMatcher()
 ]
 
 trace_post_processors = [

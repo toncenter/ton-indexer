@@ -428,44 +428,31 @@ class Action(Base):
         Column("pool_active", Boolean),
     ]))
     layerzero_send_data = Column(CompositeType("layerzero_send_details", [
-        Column("src_oapp", String),
-        Column("dst_oapp", String),
-        Column("src_eid", Integer),
-        Column("dst_eid", Integer),
-        Column("nonce", Numeric),
-        Column("guid", String),
         Column("send_request_id", Numeric),
         Column("msglib_manager", String),
         Column("msglib", String),
         Column("uln", String),
         Column("native_fee", Numeric),
         Column("zro_fee", Numeric),
+        Column("endpoint", String),
+        Column("channel", String),
     ]))
-    layerzero_receive_data = Column(CompositeType("layerzero_receive_details", [
-        Column("sender", String),
+    layerzero_packet_data = Column(CompositeType("layerzero_packet_details", [
+        Column("src_oapp", String),
+        Column("dst_oapp", String),
         Column("src_eid", Integer),
         Column("dst_eid", Integer),
         Column("nonce", Numeric),
         Column("guid", String),
-        Column("executor", String),
-        Column("verification_fees", Numeric),
-        Column("execution_fees", Numeric),
+        Column("message", String),
     ]))
-    layerzero_packet_management_data = Column(CompositeType("layerzero_packet_management_details", [
-        Column("src_eid", Integer),
-        Column("dst_eid", Integer),
-        Column("nonce", Numeric),
-        Column("packet_hash", String),
-        Column("operation", String),
-        Column("executor", String),
-    ]))
-    layerzero_configuration_data = Column(CompositeType("layerzero_configuration_details", [
-        Column("config_type", String),
-        Column("src_eid", Integer),
-        Column("dst_eid", Integer),
-        Column("old_value", String),
-        Column("new_value", String),
-        Column("admin", String),
+    layerzero_dvn_verify_data = Column(CompositeType("layerzero_dvn_verify_details", [
+        Column("nonce", Numeric),  # "succeeded" | "nonce_out_of_range" | "dvn_not_configured" | "unknown_<code>"
+        Column("status", String),
+        Column("dvn", String),
+        Column("proxy", String),
+        Column("uln", String),
+        Column("uln_connection", String),
     ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
