@@ -122,7 +122,7 @@ services:
       timeout: 5s
       retries: 5
     shm_size: 2G
-    restart: unless-stopped    
+    restart: unless-stopped
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:

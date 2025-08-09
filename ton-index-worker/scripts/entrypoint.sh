@@ -8,7 +8,7 @@ if [ -n "$POSTGRES_PASSWORD_FILE" ]; then
         echo "ERROR: POSTGRES_PASSWORD_FILE does not exist: $POSTGRES_PASSWORD_FILE" >&2
         exit 1
     fi
-    PW="$(tr -d '\r\n' < /run/secrets/postgres_password)"
+    PW="$(tr -d '\r\n' < "$POSTGRES_PASSWORD_FILE")"
 elif [ -n "$POSTGRES_PASSWORD" ]; then
     echo "Using postgres password from POSTGRES_PASSWORD env variable"
     PW="$POSTGRES_PASSWORD"
@@ -34,4 +34,4 @@ fi
 
 ulimit -n 1000000
 echo "Running binary: $TON_WORKER_BINARY"
-exec "$TON_WORKER_BINARY" "$INDEX_ARGS" "$@"
+exec "$TON_WORKER_BINARY" $INDEX_ARGS "$@"
