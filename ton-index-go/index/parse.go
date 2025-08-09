@@ -1334,7 +1334,6 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.ToncoDeployPoolLpFeeBase,
 		&act.ToncoDeployPoolLpFeeCurrent,
 		&act.ToncoDeployPoolPoolActive,
-		// layerzero
 		&act.LayerzeroSendSendRequestId,
 		&act.LayerzeroSendMsglibManager,
 		&act.LayerzeroSendMsglib,
