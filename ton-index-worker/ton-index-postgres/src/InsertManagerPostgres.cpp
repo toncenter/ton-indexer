@@ -1739,9 +1739,20 @@ void InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
   std::unordered_set<td::Bits256> unique_code_hashes;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& [code_hash, method_id] : task.parsed_block_->contract_methods_) {
-      contract_methods.emplace(code_hash, method_id);
-      unique_code_hashes.insert(code_hash);
+    for (auto it = task.parsed_block_->contract_methods_.begin(); it != task.parsed_block_->contract_methods_.end(); ) {
+        const auto &code_hash = it->first;
+        if (unique_code_hashes.find(code_hash) != unique_code_hashes.end()) {
+          ++it;
+          continue;
+        }
+        unique_code_hashes.insert(code_hash);
+
+        auto range = task.parsed_block_->contract_methods_.equal_range(code_hash);
+        for (auto vit = range.first; vit != range.second; ++vit) {
+            contract_methods.emplace(code_hash, vit->second);
+        }
+
+        it = range.second;
     }
   }
 
