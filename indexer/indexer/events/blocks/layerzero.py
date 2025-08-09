@@ -97,6 +97,12 @@ class LayerZeroDvnVerifyData:
 
 @dataclass
 class LayerZeroCommitPacketData:
+    sender: AccountId
+    uln: AccountId
+    uln_connection: AccountId
+    endpoint: AccountId
+    channel: AccountId
+    msglib_connection: AccountId
     packet_data: LayerZeroPacketData
 
 class LayerZeroSendBlock(Block):
@@ -455,36 +461,49 @@ class LayerZeroCommitPacketMatcher(BlockMatcher):
                 and block.opcode == UlnUlnCommitPacket.opcode)
 
     async def build_block(self, block: Block, other_blocks: list[Block]):
-        try:
-            uln_connection_commit_block = get_labeled("uln_connection_commit", other_blocks, CallContractBlock)
-            endpoint_commit_block = get_labeled("endpoint_commit", other_blocks, CallContractBlock)
-            channel_commit_block = get_labeled("channel_commit", other_blocks, CallContractBlock)
+        uln_connection_commit_block = get_labeled("uln_connection_commit", other_blocks, CallContractBlock)
+        endpoint_commit_block = get_labeled("endpoint_commit", other_blocks, CallContractBlock)
+        channel_commit_block = get_labeled("channel_commit", other_blocks, CallContractBlock)
+        msglib_callback_block = get_labeled("msglib_callback", other_blocks, CallContractBlock)
 
-            if not uln_connection_commit_block or not endpoint_commit_block or not channel_commit_block:
-                return []
-
-            commit_msg = ChannelCommitPacket(channel_commit_block.get_body())
-            packet = commit_msg.packet
-
-            data = LayerZeroCommitPacketData(
-                packet_data=LayerZeroPacketData(
-                    src_oapp=packet.path.src_oapp,
-                    dst_oapp=packet.path.dst_oapp,
-                    src_eid=packet.path.src_eid,
-                    dst_eid=packet.path.dst_eid,
-                    nonce=packet.nonce,
-                    guid=packet.guid,
-                    message=packet.message
-                )
-            )
-
-            new_block = LayerZeroCommitPacketBlock(data)
-            new_block.merge_blocks([block] + other_blocks)
-
-            return [new_block]
-        except Exception as e:
-            logger.error(f"Failed to build LayerZero commit packet block: {e}", exc_info=True)
+        if not uln_connection_commit_block or not endpoint_commit_block or not channel_commit_block or not msglib_callback_block:
             return []
+
+        commit_msg_data = ChannelCommitPacket(channel_commit_block.get_body())
+        packet = commit_msg_data.packet
+
+        uln_connection_commit_msg = uln_connection_commit_block.get_message()
+        uln_connection = AccountId(uln_connection_commit_msg.destination)
+        endpoint_commit_msg = endpoint_commit_block.get_message()
+        endpoint = AccountId(endpoint_commit_msg.destination)
+        sender = AccountId(block.get_message().source)
+        channel_commit_msg = channel_commit_block.get_message()
+        channel = AccountId(channel_commit_msg.destination)
+        msglib_callback_msg = msglib_callback_block.get_message()
+        msglib_connection = AccountId(msglib_callback_msg.destination)
+
+        data = LayerZeroCommitPacketData(
+            sender=sender,
+            uln=uln_connection,
+            uln_connection=uln_connection,
+            endpoint=endpoint,
+            channel=channel,
+            msglib_connection=msglib_connection,
+            packet_data=LayerZeroPacketData(
+                src_oapp=packet.path.src_oapp,
+                dst_oapp=packet.path.dst_oapp,
+                src_eid=packet.path.src_eid,
+                dst_eid=packet.path.dst_eid,
+                nonce=packet.nonce,
+                guid=packet.guid,
+                message=packet.message
+            )
+        )
+
+        new_block = LayerZeroCommitPacketBlock(data)
+        new_block.merge_blocks([block] + other_blocks)
+
+        return [new_block]
 
 class LayerZeroDvnVerifyMatcher(BlockMatcher):
     """

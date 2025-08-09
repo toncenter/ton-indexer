@@ -774,6 +774,12 @@ def _fill_layerzero_receive_action(block: LayerZeroReceiveBlock, action: Action)
     action.layerzero_packet_data = block.data.packet_data.__dict__
 
 def _fill_layerzero_commit_packet_action(block: LayerZeroCommitPacketBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.endpoint)
+    action.destination = _addr(block.data.uln)
+    action.destination_secondary = _addr(block.data.uln_connection)
+    action.asset = _addr(block.data.channel)
+    action.asset_secondary = _addr(block.data.msglib_connection)
     action.layerzero_packet_data = block.data.packet_data.__dict__
 
 def _fill_layerzero_dvn_verify_action(block: LayerZeroDvnVerifyBlock, action: Action):
@@ -947,6 +953,7 @@ v1_ops = [
     'tonco_deposit_liquidity',
     'tonco_withdraw_liquidity',
     'layerzero_send',
+    'layerzero_send_tokens',
     'layerzero_receive',
     'layerzero_commit_packet',
     'layerzero_dvn_verify',

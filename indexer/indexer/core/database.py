@@ -447,8 +447,8 @@ class Action(Base):
         Column("message", String),
     ]))
     layerzero_dvn_verify_data = Column(CompositeType("layerzero_dvn_verify_details", [
-        Column("nonce", Numeric),  # "succeeded" | "nonce_out_of_range" | "dvn_not_configured" | "unknown_<code>"
-        Column("status", String),
+        Column("nonce", Numeric),
+        Column("status", String), # "succeeded" | "nonce_out_of_range" | "dvn_not_configured" | "unknown_<code>"
         Column("dvn", String),
         Column("proxy", String),
         Column("uln", String),
