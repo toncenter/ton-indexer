@@ -1743,6 +1743,7 @@ void InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
     for (auto it = task.parsed_block_->contract_methods_.begin(); it != task.parsed_block_->contract_methods_.end(); ) {
         const auto &code_hash = it->first;
         if (unique_code_hashes.find(code_hash) != unique_code_hashes.end()) {
+          ++it;
           continue;
         }
         unique_code_hashes.insert(code_hash);
