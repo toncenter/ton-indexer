@@ -222,7 +222,6 @@ Vagrantfile
 .DS_Store
 settings.json
 
-.env*
 env
 sandbox.ipynb
 Session.vim
@@ -234,7 +233,6 @@ some.txt
 /logs
 build/
 
-.env.*
 .env
 .dmypy.json
 dmypy.json

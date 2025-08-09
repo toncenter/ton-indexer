@@ -1,16 +1,11 @@
 version: '3.9'
 
-x-indexer-environment: &indexer-environment
-  POSTGRES_DIALECT: ${POSTGRES_DIALECT:-postgresql}
-  POSTGRES_HOST:
-  POSTGRES_PORT:
-  POSTGRES_USER:
+x-index-pg-access: &index-pg-access
+  POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
   POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-  POSTGRES_DBNAME:
-  TON_INDEXER_API_ROOT_PATH:
-  TON_INDEXER_API_TITLE:
-  TON_INDEXER_TON_HTTP_API_ENDPOINT:
-  TON_INDEXER_IS_TESTNET:
+  POSTGRES_DB: ${POSTGRES_DB:-ton_index}
 
 services:
   index-api-go:
@@ -27,7 +22,12 @@ services:
         published: ${TON_INDEXER_API_PORT:-8081}
         protocol: tcp
         mode: host
-    environment: *indexer-environment
+    environment: 
+      <<: *index-pg-access
+      TON_INDEXER_API_ROOT_PATH: ${TON_INDEXER_API_ROOT_PATH:-/}
+      TON_INDEXER_API_PORT: ${TON_INDEXER_API_PORT:-8081}
+      TON_INDEXER_TON_HTTP_API_ENDPOINT: ${TON_INDEXER_TON_HTTP_API_ENDPOINT:-}
+      TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
     deploy:
       mode: replicated
       replicas: ${SWARM_REPLICAS:-1}
