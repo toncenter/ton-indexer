@@ -58,6 +58,9 @@ var ActionTypeShortcuts = map[string][]string{
 	"jvault": {
 		"jvault_stake", "jvault_unstake", "jvault_claim", "jvault_unstake_request",
 	},
+	"layerzero": {
+		"layerzero_send", "layerzero_send_tokens", "layerzero_receive", "layerzero_commit_packet", "layerzero_dvn_verify",
+	},
 }
 
 func ExpandActionTypeShortcuts(shortcuts []string) []string {
