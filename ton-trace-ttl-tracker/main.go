@@ -841,6 +841,9 @@ func (rct *RedisCleanupTool) cleanup(ctx context.Context, oldSnapshot, newSnapsh
 	// Find stalled keys (present in both snapshots)
 	stalledKeys := make([]string, 0)
 	for key := range oldSnapshot.Keys {
+		if strings.HasPrefix(key, "I_dedust_pools") {
+			continue
+		}
 		if _, exists := newSnapshot.Keys[key]; exists {
 			// Verify it's not currently tracked
 			if !rct.isKeyBeingTracked(ctx, key) {
