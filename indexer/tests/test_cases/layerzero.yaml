@@ -25,7 +25,7 @@ cases:
 
   LayerZero send usdt to eth:
     trace-id: KEbatIe0U3ZHIx6sYTg4O1tgYP9L6hMiHJ8nNnZdyBE=
-    expected-actoins:
+    expected-actions:
       - type: layerzero_send_tokens
         values:
           source: 0:4884FB969A34FB7CFF95A26B935AC784F09356BF6ABB4187EC550D486709CC93 # sender 
