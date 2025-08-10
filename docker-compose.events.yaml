@@ -1,16 +1,11 @@
 version: '3.9'
 
-x-indexer-environment: &indexer-environment
-  POSTGRES_DIALECT:
-  POSTGRES_HOST:
-  POSTGRES_PORT:
-  POSTGRES_USER:
+x-index-pg-access: &index-pg-access
+  POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
   POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-  POSTGRES_DBNAME:
-  TON_INDEXER_API_ROOT_PATH:
-  TON_INDEXER_API_TITLE:
-  TON_INDEXER_TON_HTTP_API_ENDPOINT:
-  TON_INDEXER_REDIS_DSN: redis://event-cache:6379
+  POSTGRES_DB: ${POSTGRES_DB:-ton_index}
 
 services:
   event-cache:
@@ -32,7 +27,10 @@ services:
     secrets:
       - postgres_password
     command: --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 1000 --batch-size 100 --expected-total 720000000
-    environment: *indexer-environment 
+    environment: 
+      <<: *index-pg-access
+      TON_INDEXER_REDIS_DSN: redis://event-cache:6379
+      TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
     deploy:
       mode: replicated
       replicas: 1
