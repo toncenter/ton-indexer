@@ -620,6 +620,16 @@ type RawAction struct {
 	JvaultStakePeriod                                    *int64
 	JvaultStakeMintedStakeJettons                        *string
 	JvaultStakeStakeWallet                               *AccountAddress
+	ToncoDeployPoolJetton0RouterWallet                   *AccountAddress
+	ToncoDeployPoolJetton1RouterWallet                   *AccountAddress
+	ToncoDeployPoolJetton0Minter                         *AccountAddress
+	ToncoDeployPoolJetton1Minter                         *AccountAddress
+	ToncoDeployPoolTickSpacing                           *string
+	ToncoDeployPoolInitialPriceX96                       *string
+	ToncoDeployPoolProtocolFee                           *string
+	ToncoDeployPoolLpFeeBase                             *string
+	ToncoDeployPoolLpFeeCurrent                          *string
+	ToncoDeployPoolPoolActive                            *bool
 	LayerzeroSendSendRequestId                           *uint64
 	LayerzeroSendMsglibManager                           *string
 	LayerzeroSendMsglib                                  *string
@@ -641,16 +651,6 @@ type RawAction struct {
 	LayerzeroDvnVerifyProxy                              *AccountAddress
 	LayerzeroDvnVerifyUln                                *AccountAddress
 	LayerzeroDvnVerifyUlnConnection                      *AccountAddress
-	ToncoDeployPoolJetton0RouterWallet                   *AccountAddress
-	ToncoDeployPoolJetton1RouterWallet                   *AccountAddress
-	ToncoDeployPoolJetton0Minter                         *AccountAddress
-	ToncoDeployPoolJetton1Minter                         *AccountAddress
-	ToncoDeployPoolTickSpacing                           *string
-	ToncoDeployPoolInitialPriceX96                       *string
-	ToncoDeployPoolProtocolFee                           *string
-	ToncoDeployPoolLpFeeBase                             *string
-	ToncoDeployPoolLpFeeCurrent                          *string
-	ToncoDeployPoolPoolActive                            *bool
 
 	AncestorType []string
 	Accounts     []string
