@@ -229,28 +229,7 @@ type ActionRow struct {
 	TraceExternalHash                                    *string
 	TraceExternalHashNorm                                *string
 	ExtraCurrencies                                      map[string]string
-	// LayerZero fields
-	LayerzeroSendSendRequestId      *uint64
-	LayerzeroSendMsglibManager      *string
-	LayerzeroSendMsglib             *string
-	LayerzeroSendUln                *string
-	LayerzeroSendNativeFee          *uint64
-	LayerzeroSendZroFee             *uint64
-	LayerzeroSendEndpoint           *string
-	LayerzeroSendChannel            *string
-	LayerzeroPacketSrcOapp          *string
-	LayerzeroPacketDstOapp          *string
-	LayerzeroPacketSrcEid           *int32
-	LayerzeroPacketDstEid           *int32
-	LayerzeroPacketNonce            *int64
-	LayerzeroPacketGuid             *string
-	LayerzeroPacketMessage          *string
-	LayerzeroDvnVerifyNonce         *int64
-	LayerzeroDvnVerifyStatus        *string
-	LayerzeroDvnVerifyDvn           *string
-	LayerzeroDvnVerifyProxy         *string
-	LayerzeroDvnVerifyUln           *string
-	LayerzeroDvnVerifyUlnConnection *string
+
 	// Multisig action fields
 	MultisigCreateOrderQueryId           *string
 	MultisigCreateOrderOrderSeqno        *string
@@ -321,6 +300,29 @@ type ActionRow struct {
 	ToncoDeployPoolLpFeeBase           *int64
 	ToncoDeployPoolLpFeeCurrent        *int64
 	ToncoDeployPoolPoolActive          *bool
+
+	// LayerZero fields
+	LayerzeroSendSendRequestId      *uint64
+	LayerzeroSendMsglibManager      *string
+	LayerzeroSendMsglib             *string
+	LayerzeroSendUln                *string
+	LayerzeroSendNativeFee          *uint64
+	LayerzeroSendZroFee             *uint64
+	LayerzeroSendEndpoint           *string
+	LayerzeroSendChannel            *string
+	LayerzeroPacketSrcOapp          *string
+	LayerzeroPacketDstOapp          *string
+	LayerzeroPacketSrcEid           *int32
+	LayerzeroPacketDstEid           *int32
+	LayerzeroPacketNonce            *int64
+	LayerzeroPacketGuid             *string
+	LayerzeroPacketMessage          *string
+	LayerzeroDvnVerifyNonce         *int64
+	LayerzeroDvnVerifyStatus        *string
+	LayerzeroDvnVerifyDvn           *string
+	LayerzeroDvnVerifyProxy         *string
+	LayerzeroDvnVerifyUln           *string
+	LayerzeroDvnVerifyUlnConnection *string
 }
 type assign func(dest any) error
 type assignable interface {
