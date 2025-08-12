@@ -265,8 +265,8 @@ class TONStakersDelayedWithdrawalMatcher(BlockMatcher):
                 stake_holder=AccountId(notification_msg.owner),
                 burnt_nft=AccountId(notification.get_message().source),
                 pool=self._try_find_pool_addr(notification),
-                amount=Amount(notification_msg.amount),
-                tokens_burnt=None,
+                amount=Amount(block.get_message().value),
+                tokens_burnt=Amount(notification_msg.amount),
                 asset=None
             )
         )

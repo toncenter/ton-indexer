@@ -106,8 +106,8 @@ cases:
             stake_holder: 0:454E01198AFFB8A7D37AA7156816BC0F1FA8AE02BD5CDD6327CFA2BF133AE921
             burnt_nft: 0:30A867E3D5D69284A96CFF30B742316CD5B514C55FCC2E9564F42D65A9A3D252
             pool: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
-            tokens_burnt: null
-            amount: 4170935
+            tokens_burnt: 4170935
+            amount: 85961295
     expected-actions:
       - type: stake_withdrawal
         selector: "{{ value.start_lt == 49329360000002 }}"
@@ -123,14 +123,14 @@ cases:
             - wQi2OgTPNC22kZS/T1XN+mtjO7/OAI2ALTjCwhKVwYU=
             - 2Wo0GlurbVmJADBUZ5eovSImVH82RHov3x2bTDTjfx8=
             - lZWrnFBu0t4NGPLydB5SXZ5witbDu+hu8pvA7jZjNHU=
-          amount: 4170935
+          amount: 85961295
           source: 0:454E01198AFFB8A7D37AA7156816BC0F1FA8AE02BD5CDD6327CFA2BF133AE921
           destination: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
           asset: null
           staking_data:
             provider: tonstakers
             ts_nft: 0:30A867E3D5D69284A96CFF30B742316CD5B514C55FCC2E9564F42D65A9A3D252
-            tokens_burnt: null
+            tokens_burnt: 4170935
   "TS Immediate Withdrawal":
     trace-id: oND3Z5gMq1cKAe6TOJ5QAsqt-8_6wtG6X1hgkHP_Yhk=
     expected-blocks:
