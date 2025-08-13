@@ -55,7 +55,7 @@ class TraceProcessor:
 
             # Try to create unknown action as fallback
             try:
-                fallback_actions = try_classify_basic_actions(trace)
+                fallback_actions = await try_classify_basic_actions(trace)
             except:
                 fallback_actions = []
 
