@@ -7,7 +7,7 @@ from pytoniq_core import Slice
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from indexer.core.database import Trace, Message, engine, MessageContent
+from indexer.core.database import Trace, Message, engine, MessageContent, Action
 from indexer.events.blocks.auction import AuctionBidMatcher
 from indexer.events.blocks.basic_blocks import (
     CallContractBlock,
@@ -97,7 +97,7 @@ from indexer.events.blocks.swaps import (
     ToncoSwapBlockMatcher,
 )
 from indexer.events.blocks.utils import EventNode, NoMessageBodyException, to_tree
-from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action
+from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action, serialize_blocks
 from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlockMatcher,
     VestingSendMessageBlockMatcher,
@@ -322,3 +322,23 @@ async def try_classify_unknown_trace(trace):
         unknown_action = create_unknown_action(trace)
         actions.append(unknown_action)
     return actions
+
+async def try_classify_basic_actions(trace: Trace) -> list[Action]:
+    """
+    Tries to classify trace only to basic actions like call_contract, ton_transfer, deployments
+    """
+    try:
+        node = to_tree(trace.transactions)
+        if len(node.children) == 0:
+            return [create_unknown_action(trace)]
+
+        root = Block('root', [])
+        root.connect(init_block(node))
+        blocks = [root] + list(root.bfs_iter())
+        for post_processor in trace_post_processors:
+            blocks = await post_processor(blocks)
+        actions, _ = serialize_blocks(blocks, trace_id=trace.trace_id, trace=trace)
+        return actions
+    except Exception as e:
+        logging.error(f"Failed trace classification fallback for {trace.trace_id}:", e)
+        return []

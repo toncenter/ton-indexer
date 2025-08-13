@@ -25,6 +25,7 @@ from indexer.events.interface_repository import (
     EmulatedTransactionsInterfaceRepository, gather_interfaces,
     EmulatedRepositoryWithDbFallback, ExtraAccountRequest
 )
+from indexer.events.trace_processor import TraceProcessor
 from indexer.events.utils.lru_cache import LRUCache
 from queue import Full
 
@@ -151,18 +152,18 @@ class PendingTraceClassifierWorker(mp.Process):
                 context.interface_repository.set(repository)
 
                 # Process trace
-                blocks = await process_event_async_with_postprocessing(trace)
-                actions, _ = serialize_blocks(blocks, trace.trace_id)
-                if len(actions) == 0:
-                    actions = await try_classify_unknown_trace(trace)
-                for action in actions:
+                processor = TraceProcessor()
+                result = await processor.process_trace(trace)
+
+                # Fill trace external hash if needed
+                for action in result.actions:
                     if trace.transactions[0].emulated:
                         action.trace_id = None
                         action.trace_external_hash = trace.external_hash
                     action.trace_external_hash_norm = trace_key
 
                 # Store results in Redis
-                action_data = msgpack.packb([a.to_dict() for a in actions])
+                action_data = msgpack.packb([a.to_dict() for a in result.actions])
                 await redis.client.hset(trace_key, 'actions', action_data)
 
                 # Publish completion if configured
@@ -174,7 +175,7 @@ class PendingTraceClassifierWorker(mp.Process):
 
                 # Build index
                 index = defaultdict(set)
-                for action in actions:
+                for action in result.actions:
                     for account in action.get_action_accounts():
                         k = f"{trace_key}:{action.action_id}"
                         v = trace.start_lt

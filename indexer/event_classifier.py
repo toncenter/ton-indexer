@@ -40,6 +40,7 @@ from indexer.events.interface_repository import (
     RedisInterfaceRepository
 )
 from indexer.events.pendings import start_emulated_traces_processing
+from indexer.events.trace_processor import TraceProcessor
 from indexer.events.utils.lru_cache import LRUCache
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -301,45 +302,43 @@ class EventClassifierWorker(mp.Process):
                 inserted_actions = set()
                 inserted_action_accounts = set()
                 for trace_id, state, actions, exc in results:
-                    if state == 'ok' or state == 'broken':
-                        # # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
-                        # if len(actions) > 0:
-                        #     # for action in actions:
-                        #     #     logger.warning(f"action: {action.__dict__}")
-                        #     for action in actions:
-                        #         await session.execute(insert(Action).values({k: v for k, v in action.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
-                        # session.add_all(actions)
-                        # for action in actions:
-                        #     for aa in action.get_action_accounts():
-                        #         await session.execute(insert(ActionAccount).values({k: v for k, v in aa.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
-                        #     # session.add_all(action.get_action_accounts())
-                        session.add_all(actions)
-                        for action in actions:
-                            concat_key = action.action_id + '_' + action.trace_id
-                            if concat_key in inserted_actions:
-                                raise Exception(f"Duplicate action: {concat_key}")
-                            else:
-                                inserted_actions.add(concat_key)
-                            for action_account in action.get_action_accounts():
-                                account_concat_key = action_account.account + '_' + action_account.action_id + '_' + action.trace_id
-                                if account_concat_key in inserted_action_accounts:
-                                    raise Exception(f"Duplicate action account: {account_concat_key}")
-                                else:
-                                    inserted_action_accounts.add(account_concat_key)
-                            session.add_all(action.get_action_accounts())
-
-                        if state == 'ok':
-                            ok_traces.append(trace_id)
+                    # # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
+                    # if len(actions) > 0:
+                    #     # for action in actions:
+                    #     #     logger.warning(f"action: {action.__dict__}")
+                    #     for action in actions:
+                    #         await session.execute(insert(Action).values({k: v for k, v in action.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
+                    # session.add_all(actions)
+                    # for action in actions:
+                    #     for aa in action.get_action_accounts():
+                    #         await session.execute(insert(ActionAccount).values({k: v for k, v in aa.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
+                    #     # session.add_all(action.get_action_accounts())
+                    session.add_all(actions)
+                    for action in actions:
+                        concat_key = action.action_id + '_' + action.trace_id
+                        if concat_key in inserted_actions:
+                            raise Exception(f"Duplicate action: {concat_key}")
                         else:
-                            sql = text(f"""insert into _classifier_failed_traces(trace_id, broken) 
-                            values (:tid, true) on conflict do nothing;""")
-                            await session.execute(sql.bindparams(tid=trace_id))
-                            broken_traces.append(trace_id)
+                            inserted_actions.add(concat_key)
+                        for action_account in action.get_action_accounts():
+                            account_concat_key = action_account.account + '_' + action_account.action_id + '_' + action.trace_id
+                            if account_concat_key in inserted_action_accounts:
+                                raise Exception(f"Duplicate action account: {account_concat_key}")
+                            else:
+                                inserted_action_accounts.add(account_concat_key)
+                        session.add_all(action.get_action_accounts())
+
+                    if state == 'ok':
+                        ok_traces.append(trace_id)
                     else:
+                        err = f'{exc}' if exc is not None else None
                         sql = text(f"""insert into _classifier_failed_traces(trace_id, broken, error) 
-                        values (:tid, false, :err) on conflict do nothing;""")
-                        await session.execute(sql.bindparams(tid=trace_id, err=f'{exc}'))
-                        failed_traces.append(trace_id)
+                                                values (:tid, false, :err) on conflict do nothing;""")
+                        await session.execute(sql.bindparams(tid=trace_id, err=err))
+                        if state == 'broken':
+                            broken_traces.append(trace_id)
+                        elif state == 'failed':
+                            failed_traces.append(trace_id)
                 failed = len(failed_traces)
                 broken = len(broken_traces)
                 # finish task
@@ -479,32 +478,14 @@ async def process_emulated_task_trace(task_id):
     trace_id = str(trace_map['root_node'], encoding='utf-8')
     trace = deserialize_event(trace_id, trace_map)
     context.interface_repository.set(EmulatedTransactionsInterfaceRepository(trace_map))
-    blocks = await process_event_async_with_postprocessing(trace)
-    actions, _ = serialize_blocks(blocks, trace_id)
-    if trace.transactions[0].emulated:
-        for action in actions:
-            action.trace_id = None
-            action.trace_external_hash = trace.external_hash
-    return actions
+    processor = TraceProcessor()
+    result = await processor.process_trace(trace)
+    return result.actions
 
 async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception]:
-    if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock':
-        return trace.trace_id, 'ok', [], None
-    try:
-        result = await process_event_async_with_postprocessing(trace)
-        actions, state = serialize_blocks(result, trace.trace_id, trace)
-        if len(actions) == 0 and len(trace.transactions) > 0:
-            actions = await try_classify_unknown_trace(trace)
-        return trace.trace_id, state, actions, None
-    except Exception as e:
-        logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
-        logger.exception(e, exc_info=True)
-        try:
-            return trace.trace_id, 'failed', [create_unknown_action(trace)], e
-        except:
-            return trace.trace_id, 'failed', [], e
-
-
+    processor = TraceProcessor()
+    result = await processor.process_trace(trace)
+    return result.trace_id, result.state, result.actions, result.exception
 
 if __name__ == '__main__':
     # Create a shared namespace for cross-process data sharing
