@@ -50,8 +50,8 @@ class TraceProcessor:
             )
 
         except Exception as e:
-            logger.error(f"Failed to process trace {trace.trace_id}: {e}")
-            logger.exception(e)
+            logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
+            logger.exception(e, exc_info=True)
 
             # Try to create unknown action as fallback
             try:
