@@ -44,7 +44,7 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "List of addresses in any form to get address book. Max: 1000.",
+                        "description": "List of addresses in any form. Maximum 1000 addresses allowed.",
                         "name": "address",
                         "in": "query",
                         "required": true
@@ -54,25 +54,6 @@ const docTemplate = `{
                         "default": true,
                         "description": "Include code and data BOCs. Default: true",
                         "name": "include_boc",
-                        "in": "query"
-                    },
-                    {
-                        "maximum": 1000,
-                        "minimum": 1,
-                        "type": "integer",
-                        "format": "int32",
-                        "default": 100,
-                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "format": "int32",
-                        "default": 0,
-                        "description": "Skip first N rows. Use with *limit* to batch read.",
-                        "name": "offset",
                         "in": "query"
                     }
                 ],
@@ -3059,29 +3040,10 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "List of addresses in any form to get address book. Max: 1000.",
+                        "description": "List of addresses in any form. Maximum 1000 addresses allowed.",
                         "name": "address",
                         "in": "query",
                         "required": true
-                    },
-                    {
-                        "maximum": 1000,
-                        "minimum": 1,
-                        "type": "integer",
-                        "format": "int32",
-                        "default": 100,
-                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "minimum": 0,
-                        "type": "integer",
-                        "format": "int32",
-                        "default": 0,
-                        "description": "Skip first N rows. Use with *limit* to batch read.",
-                        "name": "offset",
-                        "in": "query"
                     }
                 ],
                 "responses": {

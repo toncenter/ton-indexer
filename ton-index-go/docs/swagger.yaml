@@ -1231,7 +1231,7 @@ paths:
       operationId: api_v3_get_account_states
       parameters:
       - collectionFormat: multi
-        description: 'List of addresses in any form to get address book. Max: 1000.'
+        description: List of addresses in any form. Maximum 1000 addresses allowed.
         in: query
         items:
           type: string
@@ -1243,21 +1243,6 @@ paths:
         in: query
         name: include_boc
         type: boolean
-      - default: 100
-        description: Limit number of queried rows. Use with *offset* to batch read.
-        format: int32
-        in: query
-        maximum: 1000
-        minimum: 1
-        name: limit
-        type: integer
-      - default: 0
-        description: Skip first N rows. Use with *limit* to batch read.
-        format: int32
-        in: query
-        minimum: 0
-        name: offset
-        type: integer
       produces:
       - application/json
       responses:
@@ -3314,28 +3299,13 @@ paths:
       operationId: api_v3_get_wallet_states
       parameters:
       - collectionFormat: multi
-        description: 'List of addresses in any form to get address book. Max: 1000.'
+        description: List of addresses in any form. Maximum 1000 addresses allowed.
         in: query
         items:
           type: string
         name: address
         required: true
         type: array
-      - default: 100
-        description: Limit number of queried rows. Use with *offset* to batch read.
-        format: int32
-        in: query
-        maximum: 1000
-        minimum: 1
-        name: limit
-        type: integer
-      - default: 0
-        description: Skip first N rows. Use with *limit* to batch read.
-        format: int32
-        in: query
-        minimum: 0
-        name: offset
-        type: integer
       produces:
       - application/json
       responses:

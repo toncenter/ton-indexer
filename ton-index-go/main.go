@@ -587,22 +587,16 @@ func GetMetadata(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.AccountStatesResponse
 // @failure 400 {object} index.RequestError
-// @param address query []string true "List of addresses in any form to get address book. Max: 1000." collectionFormat(multi)
+// @param address query []string true "List of addresses in any form. Maximum 1000 addresses allowed." collectionFormat(multi)
 // @param include_boc query bool false "Include code and data BOCs. Default: true" default(true)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(100)
-// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router /api/v3/accountStates [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetAccountStates(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
 	var account_req index.AccountRequest
-	var lim_req index.LimitRequest
 
 	if err := c.QueryParser(&account_req); err != nil {
-		return index.IndexError{Code: 422, Message: err.Error()}
-	}
-	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
@@ -613,6 +607,12 @@ func GetAccountStates(c *fiber.Ctx) error {
 		account_req.IncludeBOC = new(bool)
 		*account_req.IncludeBOC = true
 	}
+
+	// use limit 1000 for account states
+	lim_req := index.LimitRequest{
+		Limit: new(int32),
+	}
+	*lim_req.Limit = 1000
 
 	res, book, metadata, err := pool.QueryAccountStates(account_req, lim_req, request_settings)
 	if err != nil {
@@ -637,26 +637,25 @@ func GetAccountStates(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.WalletStatesResponse
 // @failure 400 {object} index.RequestError
-// @param address query []string true "List of addresses in any form to get address book. Max: 1000." collectionFormat(multi)
-// @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(100)
-// @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
+// @param address query []string true "List of addresses in any form. Maximum 1000 addresses allowed." collectionFormat(multi)
 // @router /api/v3/walletStates [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
 func GetWalletStates(c *fiber.Ctx) error {
 	request_settings := GetRequestSettings(c, &settings)
 	var account_req index.AccountRequest
-	var lim_req index.LimitRequest
 	if err := c.QueryParser(&account_req); err != nil {
-		return index.IndexError{Code: 422, Message: err.Error()}
-	}
-	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
 	if len(account_req.AccountAddress) == 0 {
 		return index.IndexError{Code: 422, Message: "address of account is required"}
 	}
+
+	lim_req := index.LimitRequest{
+		Limit: new(int32),
+	}
+	*lim_req.Limit = 1000
 
 	res, book, metadata, err := pool.QueryWalletStates(account_req, lim_req, request_settings)
 	if err != nil {
