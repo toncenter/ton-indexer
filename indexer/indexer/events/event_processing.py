@@ -337,7 +337,7 @@ async def try_classify_basic_actions(trace: Trace) -> list[Action]:
         blocks = [root] + list(root.bfs_iter())
         for post_processor in trace_post_processors:
             blocks = await post_processor(blocks)
-        actions, _ = serialize_blocks(blocks, trace_id=trace, trace=trace)
+        actions, _ = serialize_blocks(blocks, trace_id=trace.trace_id, trace=trace)
         return actions
     except Exception as e:
         logging.error(f"Failed trace classification fallback for {trace.trace_id}:", e)
