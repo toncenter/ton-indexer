@@ -44,7 +44,7 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "List of addresses in any form to get address book. Max: 1024.",
+                        "description": "List of addresses in any form to get address book. Max: 1000.",
                         "name": "address",
                         "in": "query",
                         "required": true
@@ -3059,17 +3059,10 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "List of addresses in any form to get address book. Max: 1024.",
+                        "description": "List of addresses in any form to get address book. Max: 1000.",
                         "name": "address",
                         "in": "query",
                         "required": true
-                    },
-                    {
-                        "type": "boolean",
-                        "default": true,
-                        "description": "Include code and data BOCs. Default: true",
-                        "name": "include_boc",
-                        "in": "query"
                     },
                     {
                         "maximum": 1000,
@@ -4877,7 +4870,6 @@ const docTemplate = `{
                 }
             }
         },
-<<<<<<< HEAD
         "index.OrderAction": {
             "type": "object",
             "properties": {
@@ -4908,31 +4900,6 @@ const docTemplate = `{
                 }
             }
         },
-        "index.TraceNode": {
-            "type": "object",
-            "properties": {
-                "children": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/index.TraceNode"
-                    }
-                },
-                "in_msg": {
-                    "$ref": "#/definitions/Message"
-                },
-                "in_msg_hash": {
-                    "type": "string"
-                },
-                "transaction": {
-                    "$ref": "#/definitions/Transaction"
-                },
-                "tx_hash": {
-                    "type": "string"
-                }
-            }
-        },
-=======
->>>>>>> 036e36e (Reveal limit and offset params)
         "index.VestingInfo": {
             "type": "object",
             "properties": {

@@ -1193,21 +1193,6 @@ definitions:
       value:
         type: string
     type: object
-  index.TraceNode:
-    properties:
-      children:
-        items:
-          $ref: '#/definitions/index.TraceNode'
-        type: array
-      in_msg:
-        $ref: '#/definitions/Message'
-      in_msg_hash:
-        type: string
-      transaction:
-        $ref: '#/definitions/Transaction'
-      tx_hash:
-        type: string
-    type: object
   index.VestingInfo:
     properties:
       address:
@@ -1246,7 +1231,7 @@ paths:
       operationId: api_v3_get_account_states
       parameters:
       - collectionFormat: multi
-        description: 'List of addresses in any form to get address book. Max: 1024.'
+        description: 'List of addresses in any form to get address book. Max: 1000.'
         in: query
         items:
           type: string
@@ -3329,18 +3314,13 @@ paths:
       operationId: api_v3_get_wallet_states
       parameters:
       - collectionFormat: multi
-        description: 'List of addresses in any form to get address book. Max: 1024.'
+        description: 'List of addresses in any form to get address book. Max: 1000.'
         in: query
         items:
           type: string
         name: address
         required: true
         type: array
-      - default: true
-        description: 'Include code and data BOCs. Default: true'
-        in: query
-        name: include_boc
-        type: boolean
       - default: 100
         description: Limit number of queried rows. Use with *offset* to batch read.
         format: int32
