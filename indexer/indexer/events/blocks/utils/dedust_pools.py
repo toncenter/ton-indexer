@@ -116,7 +116,7 @@ class DedustPoolsManager:
     async def fetch_and_update_context_pools_from_redis(self):
         """Fetch and update context.dedust_pools from Redis (if needed)"""
         try:
-            if self.last_context_update + datetime.timedelta(seconds=self.update_interval) > datetime.datetime.now():
+            if self.last_context_update + datetime.timedelta(seconds=self.update_interval) < datetime.datetime.now():
                 data = await self.redis_client.get(POOLS_DATA_KEY)
                 logger.debug(f"Updating context pools from Redis (last update: {self.last_context_update})")
                 if data:
