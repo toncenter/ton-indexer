@@ -458,7 +458,6 @@ async def start_emulated_task_traces_processing():
     while True:
         message = await pubsub.get_message(timeout=1)
         if message is not None and message['type'] == 'message':
-            await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
             task_id = message['data'].decode('utf-8')
             try:
                 start = time.time()
@@ -471,6 +470,7 @@ async def start_emulated_task_traces_processing():
                 await redis.client.publish("classifier_result_channel_" + task_id, "error")
                 logger.error(f"Failed to process emulated task {task_id}: {e}")
                 logger.exception(e, exc_info=True)
+            await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
 
 async def process_emulated_task_trace(task_id):
     trace_map = await redis.client.hgetall("result_" + task_id)
