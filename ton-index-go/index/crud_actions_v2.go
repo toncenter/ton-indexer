@@ -17,7 +17,7 @@ func (db *DbClient) QueryActionsV2(
 	settings RequestSettings,
 ) ([]Action, AddressBook, Metadata, error) {
 	if len(act_req.SupportedActionTypes) == 0 {
-		act_req.SupportedActionTypes = []string{"v1"}
+		act_req.SupportedActionTypes = []string{"latest"}
 	}
 	act_req.SupportedActionTypes = ExpandActionTypeShortcuts(act_req.SupportedActionTypes)
 	query, args, err := buildActionsQueryV2(act_req, utime_req, lt_req, lim_req, settings)

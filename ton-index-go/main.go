@@ -1200,6 +1200,9 @@ func GetTraces(c *fiber.Ctx) error {
 	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
 		traces_req.SupportedActionTypes = []string{value_str}
 	}
+	if len(traces_req.SupportedActionTypes) == 0 {
+		traces_req.SupportedActionTypes = []string{"latest"}
+	}
 
 	if !onlyOneOf(traces_req.AccountAddress != nil, traces_req.TraceId != nil, len(traces_req.TransactionHash) > 0, len(traces_req.MessageHash) > 0) {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
@@ -1254,6 +1257,9 @@ func GetPendingTraces(c *fiber.Ctx) error {
 
 	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
 		event_req.SupportedActionTypes = []string{value_str}
+	}
+	if len(event_req.SupportedActionTypes) == 0 {
+		event_req.SupportedActionTypes = []string{"latest"}
 	}
 
 	if emulatedTracesRepository == nil {
@@ -1375,6 +1381,10 @@ func GetPendingActions(c *fiber.Ctx) error {
 
 	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
 		act_req.SupportedActionTypes = []string{value_str}
+	}
+
+	if len(act_req.SupportedActionTypes) == 0 {
+		act_req.SupportedActionTypes = []string{"latest"}
 	}
 
 	if emulatedTracesRepository == nil {
