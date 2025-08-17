@@ -5,6 +5,7 @@ add_executable(ton-trace-task-emulator
     src/TraceTaskScheduler.cpp
     src/TaskResultInserter.cpp
     src/RedisListener.cpp
+    src/TonConnectProcessor.cpp
 )
 target_include_directories(ton-trace-task-emulator
     PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/../external/redis-plus-plus/src

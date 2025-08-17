@@ -14,6 +14,39 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/v1/emulateTonConnect": {
+            "post": {
+                "description": "Emulate trace by composing external message from internal messages for TON Connect.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "emulate"
+                ],
+                "summary": "Emulate trace for TON Connect format",
+                "parameters": [
+                    {
+                        "description": "TON Connect Emulate Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.TonConnectEmulateRequest"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Supported actions version",
+                        "name": "X-Actions-Version",
+                        "in": "header"
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/v1/emulateTrace": {
             "post": {
                 "description": "Emulate trace by external message.",
@@ -59,6 +92,65 @@ const docTemplate = `{
                 "ignore_chksig": {
                     "type": "boolean",
                     "example": false
+                },
+                "include_code_data": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "include_address_book": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "include_metadata": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "with_actions": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "mc_block_seqno": {
+                    "type": "integer",
+                    "example": null,
+                    "nullable": true
+                }
+            }
+        },
+        "main.TonConnectEmulateRequest": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string",
+                    "example": "EQB3..."
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "address": {
+                                "type": "string",
+                                "example": "EQB3..."
+                            },
+                            "amount": {
+                                "type": "string",
+                                "example": "1000000000"
+                            },
+                            "payload": {
+                                "type": "string",
+                                "example": "te6ccgEBAQEAAgAAAA=="
+                            },
+                            "stateInit": {
+                                "type": "string",
+                                "example": null
+                            }
+                        }
+                    }
+                },
+                "valid_until": {
+                    "type": "integer",
+                    "example": null,
+                    "nullable": true
                 },
                 "include_code_data": {
                     "type": "boolean",

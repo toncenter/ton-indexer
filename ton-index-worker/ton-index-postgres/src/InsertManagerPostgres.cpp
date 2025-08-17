@@ -392,21 +392,20 @@ std::string get_worker_id() {
 bool InsertBatchPostgres::try_acquire_leader_lock() {
   auto query = R"(
   WITH grab AS (
-      UPDATE ton_indexer_leader
-        SET leader_worker_id = $1,
-            last_heartbeat   = NOW(),
-            started_at       = CASE
-                                  WHEN leader_worker_id = $1
-                                  THEN started_at
-                                  ELSE NOW()
-                                END
-      WHERE id = 1
-        AND ( last_heartbeat < NOW() - INTERVAL '20 seconds'
-            OR leader_worker_id = $1 )
-      RETURNING 1                        -- any column; we only need the row count
+    INSERT INTO ton_indexer_leader(id, leader_worker_id, last_heartbeat, started_at)
+    VALUES (1, $1, now(), now())
+    ON CONFLICT(id) DO UPDATE SET
+      leader_worker_id = excluded.leader_worker_id,
+      last_heartbeat = excluded.last_heartbeat,
+      started_at = CASE
+        WHEN excluded.leader_worker_id = $1 THEN ton_indexer_leader.started_at
+        ELSE now()
+      END
+    WHERE ton_indexer_leader.id = 1 AND (ton_indexer_leader.last_heartbeat < NOW() - INTERVAL '20 seconds'
+      OR ton_indexer_leader.leader_worker_id = $1)
+    RETURNING 1
   )
-  SELECT
-      (SELECT COUNT(*) FROM grab) AS won_the_lock;
+  SELECT (SELECT COUNT(*) FROM grab) AS won_the_lock;
   )";
   try {
     static std::atomic_bool is_leader = false;
@@ -945,14 +944,20 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
     );
     stream.insert_row(std::move(tuple));
   };
-
-  std::vector<std::tuple<td::Bits256, std::string_view>> msg_bodies;
+  
   // we lock the message bodies to prevent multiple parallel queries for the same message
   // otherwise it causes deadlocks
+  std::vector<std::tuple<td::Bits256, std::string>> msg_bodies;
+  SCOPE_EXIT {
+    std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
+    for (const auto& [body_hash, body] : msg_bodies) {
+      msg_bodies_in_progress.erase(body_hash);
+    }
+  };
   auto lock_msg_body = [&](const td::Bits256& body_hash, const std::string& body_boc) {
-    if (msg_bodies_in_progress.find(body_hash) == msg_bodies_in_progress.end()) {
-      msg_bodies.push_back({body_hash, body_boc});
-      msg_bodies_in_progress.insert(body_hash);
+    auto [_, inserted] = msg_bodies_in_progress.insert(body_hash);
+    if (inserted) {
+      msg_bodies.emplace_back(body_hash, body_boc);
     }
   };
 
@@ -1000,14 +1005,6 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
     bodies_stream.insert_row(std::move(tuple));
   }
   bodies_stream.finish();
-
-  // unlock message bodies
-  {
-    std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
-    for (const auto& [body_hash, body] : msg_bodies) {
-      msg_bodies_in_progress.erase(body_hash);
-    }
-  }
 }
 
 void InsertBatchPostgres::insert_account_states(pqxx::work &txn, bool with_copy) {
@@ -1742,9 +1739,20 @@ void InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
   std::unordered_set<td::Bits256> unique_code_hashes;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& [code_hash, method_id] : task.parsed_block_->contract_methods_) {
-      contract_methods.emplace(code_hash, method_id);
-      unique_code_hashes.insert(code_hash);
+    for (auto it = task.parsed_block_->contract_methods_.begin(); it != task.parsed_block_->contract_methods_.end(); ) {
+        const auto &code_hash = it->first;
+        if (unique_code_hashes.find(code_hash) != unique_code_hashes.end()) {
+          ++it;
+          continue;
+        }
+        unique_code_hashes.insert(code_hash);
+
+        auto range = task.parsed_block_->contract_methods_.equal_range(code_hash);
+        for (auto vit = range.first; vit != range.second; ++vit) {
+            contract_methods.emplace(code_hash, vit->second);
+        }
+
+        it = range.second;
     }
   }
 

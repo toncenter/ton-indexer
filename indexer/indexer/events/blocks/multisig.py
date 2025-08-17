@@ -21,6 +21,7 @@ from indexer.events.blocks.messages.multisig import (
 )
 from indexer.events.blocks.utils import AccountId
 from indexer.events.blocks.utils.block_utils import get_labeled
+from indexer.events import context
 
 
 @dataclass
@@ -35,6 +36,7 @@ class MultisigCreateOrderData:
     creator_approved: bool
     expiration_date: int
     order_boc_str: str
+    signers: list[str]
 
 
 class MultisigCreateOrderBlock(Block):
@@ -54,6 +56,7 @@ class MultisigApproveData:
     success: bool
     signer_index: int
     exit_code: int
+    signers: list[str]
 
 
 class MultisigApproveBlock(Block):
@@ -77,6 +80,7 @@ class MultisigExecuteData:
     approvals_num: int
     signers_hash_str: str
     order_boc_str: str
+    signers: list[str]
 
 
 class MultisigExecuteBlock(Block):
@@ -115,6 +119,9 @@ class MultisigCreateOrderBlockMatcher(BlockMatcher):
         deploy_msg = deploy_block.get_message()
         deploy_data = MultisigInitOrder(deploy_block.get_body())
 
+        order = await context.interface_repository.get().get_multisig_order(deploy_block.get_message().destination)
+        if order is None:
+            return []
         new_block = MultisigCreateOrderBlock(
             data=MultisigCreateOrderData(
                 query_id=init_data.query_id,
@@ -129,6 +136,7 @@ class MultisigCreateOrderBlockMatcher(BlockMatcher):
                 order_boc_str=base64.b64encode(deploy_data.order.to_boc()).decode(
                     "utf-8"
                 ),
+                signers=order.signers,
             )
         )
         new_block.merge_blocks(included)
@@ -192,6 +200,12 @@ class MultisigApproveBlockMatcher(BlockMatcher):
             pass
 
         msg = block.get_message()
+        order_address = msg.destination
+
+        order = await context.interface_repository.get().get_multisig_order(order_address)
+        if order is None:
+            return []
+
         new_block = MultisigApproveBlock(
             data=MultisigApproveData(
                 signer=AccountId(msg.source),
@@ -199,6 +213,7 @@ class MultisigApproveBlockMatcher(BlockMatcher):
                 success=(accepted is not None),
                 signer_index=signer_index,
                 exit_code=exit_code,
+                signers=order.signers or [],
             )
         )
         new_block.merge_blocks(included)
@@ -219,6 +234,10 @@ class MultisigExecuteBlockMatcher(BlockMatcher):
         execute_data = MultisigExecute(block.get_body())
 
         msg = block.get_message()
+        order_address = msg.source
+        order = await context.interface_repository.get().get_multisig_order(order_address)
+        if order is None:
+            return []
 
         new_block = MultisigExecuteBlock(
             data=MultisigExecuteData(
@@ -235,6 +254,7 @@ class MultisigExecuteBlockMatcher(BlockMatcher):
                 order_boc_str=base64.b64encode(execute_data.order.to_boc()).decode(
                     "utf-8"
                 ),
+                signers=order.signers or [],
             )
         )
         new_block.merge_blocks([block])

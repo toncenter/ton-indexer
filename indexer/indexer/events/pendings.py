@@ -18,12 +18,14 @@ from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_accounts_from_trace
 from indexer.events.blocks.utils.block_tree_serializer import serialize_blocks
+from indexer.events.blocks.utils.dedust_pools import get_pools_manager, start_pools_background_updater
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async_with_postprocessing, try_classify_unknown_trace
 from indexer.events.interface_repository import (
     EmulatedTransactionsInterfaceRepository, gather_interfaces,
     EmulatedRepositoryWithDbFallback, ExtraAccountRequest
 )
+from indexer.events.trace_processor import TraceProcessor
 from indexer.events.utils.lru_cache import LRUCache
 from queue import Full
 
@@ -101,6 +103,8 @@ class PendingTraceClassifierWorker(mp.Process):
         all_accounts = set()
         traces_data = {}
 
+        await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
+
         for trace_key in trace_keys:
             try:
                 trace_map = await redis.client.hgetall(trace_key)
@@ -148,18 +152,18 @@ class PendingTraceClassifierWorker(mp.Process):
                 context.interface_repository.set(repository)
 
                 # Process trace
-                blocks = await process_event_async_with_postprocessing(trace)
-                actions, _ = serialize_blocks(blocks, trace.trace_id)
-                if len(actions) == 0:
-                    actions = await try_classify_unknown_trace(trace)
-                for action in actions:
+                processor = TraceProcessor()
+                result = await processor.process_trace(trace)
+
+                # Fill trace external hash if needed
+                for action in result.actions:
                     if trace.transactions[0].emulated:
                         action.trace_id = None
                         action.trace_external_hash = trace.external_hash
                     action.trace_external_hash_norm = trace_key
 
                 # Store results in Redis
-                action_data = msgpack.packb([a.to_dict() for a in actions])
+                action_data = msgpack.packb([a.to_dict() for a in result.actions])
                 await redis.client.hset(trace_key, 'actions', action_data)
 
                 # Publish completion if configured
@@ -171,7 +175,7 @@ class PendingTraceClassifierWorker(mp.Process):
 
                 # Build index
                 index = defaultdict(set)
-                for action in actions:
+                for action in result.actions:
                     for account in action.get_action_accounts():
                         k = f"{trace_key}:{action.action_id}"
                         v = trace.start_lt
@@ -239,7 +243,7 @@ async def start_emulated_traces_processing(settings: Settings,
     use_combined = settings.use_combined_repository
     if use_combined:
         logger.info("Combined repository mode enabled")
-
+    await start_pools_background_updater(redis.client)
     batch_queue: mp.Queue[list[str]] = mp.Queue(maxsize=max_queue_size)
     workers: List[PendingTraceClassifierWorker] = []
     for id in range(pool_size):

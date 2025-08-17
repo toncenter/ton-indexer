@@ -7,7 +7,7 @@ from pytoniq_core import Slice
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from indexer.core.database import Trace, Message, engine, MessageContent
+from indexer.core.database import Trace, Message, engine, MessageContent, Action
 from indexer.events.blocks.auction import AuctionBidMatcher
 from indexer.events.blocks.basic_blocks import (
     CallContractBlock,
@@ -40,6 +40,13 @@ from indexer.events.blocks.jvault import (
     JVaultUnstakeBlockMatcher, JVaultUnstakeRequestBlockMatcher,
 )
 from indexer.events.blocks.liquidity import (
+    CoffeeCreatePoolCreatorMatcher,
+    CoffeeCreatePoolMatcher,
+    CoffeeCreateVaultMatcher,
+    CoffeeDepositLiquidityMatcher,
+    CoffeeMevProtectFailedSwapMatcher,
+    CoffeeMevProtectHoldFundsMatcher,
+    CoffeeWithdrawLiquidityMatcher,
     DedustDepositBlockMatcher,
     DedustDepositFirstAssetBlockMatcher,
     DedustWithdrawBlockMatcher,
@@ -69,6 +76,9 @@ from indexer.events.blocks.nft import (
     TelegramNftPurchaseBlockMatcher,
 )
 from indexer.events.blocks.staking import (
+    CoffeeStakingClaimRewardsMatcher,
+    CoffeeStakingDepositMatcher,
+    CoffeeStakingWithdrawMatcher,
     NominatorPoolDepositMatcher,
     NominatorPoolWithdrawMatcher,
     NominatorPoolWithdrawRequestMatcher,
@@ -81,18 +91,22 @@ from indexer.events.blocks.subscriptions import (
     UnsubscribeBlockMatcher,
 )
 from indexer.events.blocks.swaps import (
+    CoffeeSwapBlockMatcher,
     DedustSwapBlockMatcher,
     StonfiSwapBlockMatcher,
     StonfiV2SwapBlockMatcher,
     ToncoSwapBlockMatcher,
 )
 from indexer.events.blocks.utils import EventNode, NoMessageBodyException, to_tree
-from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action
+from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action, serialize_blocks
 from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlockMatcher,
     VestingSendMessageBlockMatcher,
 )
 from indexer.events.blocks.layerzero import LayerZeroCommitPacketMatcher, LayerZeroDvnVerifyMatcher, LayerZeroReceiveMatcher, LayerZeroSendMatcher, LayerZeroSendTokensMatcher
+
+from indexer.events.blocks.tgbtc import TgBTCBurnBlockMatcher, TgBTCMintBlockMatcher, TgBTCNewKeyBlockMatcher
+from indexer.events.blocks.tgbtc import TgBTCMintLogOnlyMatcher, TgBTCBurnLogOnlyMatcher, TgBTCNewKeyLogOnlyMatcher, TgBTCDkgLogOnlyMatcher
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
@@ -207,9 +221,27 @@ matchers = [
     EvaaSupplyBlockMatcher(),
     EvaaWithdrawBlockMatcher(),
     EvaaLiquidateBlockMatcher(),
+    TgBTCMintBlockMatcher(),
+    TgBTCBurnBlockMatcher(),
+    TgBTCNewKeyBlockMatcher(),
+    TgBTCMintLogOnlyMatcher(),
+    TgBTCBurnLogOnlyMatcher(),
+    TgBTCNewKeyLogOnlyMatcher(),
+    TgBTCDkgLogOnlyMatcher(),
     ToncoDepositLiquidityMatcher(),
-    ToncoDeployPoolBlockMatcher(), 
+    ToncoDeployPoolBlockMatcher(),
     ToncoWithdrawLiquidityMatcher(),
+    CoffeeDepositLiquidityMatcher(),
+    CoffeeSwapBlockMatcher(),
+    CoffeeWithdrawLiquidityMatcher(),
+    CoffeeCreateVaultMatcher(),
+    CoffeeCreatePoolCreatorMatcher(),
+    CoffeeCreatePoolMatcher(),
+    CoffeeMevProtectHoldFundsMatcher(),
+    CoffeeMevProtectFailedSwapMatcher(),
+    CoffeeStakingDepositMatcher(),
+    CoffeeStakingWithdrawMatcher(),
+    CoffeeStakingClaimRewardsMatcher(),
     LayerZeroSendMatcher(),
     LayerZeroSendTokensMatcher(),
     LayerZeroReceiveMatcher(),
@@ -297,3 +329,23 @@ async def try_classify_unknown_trace(trace):
         unknown_action = create_unknown_action(trace)
         actions.append(unknown_action)
     return actions
+
+async def try_classify_basic_actions(trace: Trace) -> list[Action]:
+    """
+    Tries to classify trace only to basic actions like call_contract, ton_transfer, deployments
+    """
+    try:
+        node = to_tree(trace.transactions)
+        if len(node.children) == 0:
+            return [create_unknown_action(trace)]
+
+        root = Block('root', [])
+        root.connect(init_block(node))
+        blocks = [root] + list(root.bfs_iter())
+        for post_processor in trace_post_processors:
+            blocks = await post_processor(blocks)
+        actions, _ = serialize_blocks(blocks, trace_id=trace.trace_id, trace=trace)
+        return actions
+    except Exception as e:
+        logging.error(f"Failed trace classification fallback for {trace.trace_id}:", e)
+        return []
