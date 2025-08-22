@@ -266,7 +266,7 @@ func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []Eve
 		client.mu.Lock()
 		if client.Connected {
 			for _, eventType := range eventTypes {
-				if client.Connected && client.Subscription.InterestedIn(eventType, addressesToNotify) {
+				if client.Subscription.InterestedIn(eventType, addressesToNotify) {
 					shouldFetchAddressBook = shouldFetchAddressBook || client.Subscription.IncludeAddressBook
 					shouldFetchMetadata = shouldFetchMetadata || client.Subscription.IncludeMetadata
 				}
