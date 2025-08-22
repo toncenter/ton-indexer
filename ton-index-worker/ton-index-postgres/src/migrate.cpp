@@ -861,6 +861,7 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists vesting_index_2 on vesting_contracts (vesting_sender_address, id);\n"
       "create index if not exists vesting_index_3 on vesting_contracts (owner_address, id);\n"
       "create index if not exists vesting_index_4 on vesting_contracts (id);\n"
+      "create index if not exists nft_items_index_4 on nft_items (last_transaction_lt);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;
