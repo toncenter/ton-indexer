@@ -478,6 +478,9 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 			filter_list = append(filter_list, filter_str)
 		}
 	}
+	if v := nft_req.SortByLastTransactionLt; v != nil && *v {
+		orderby_query = ` order by N.last_transaction_lt desc`
+	}
 
 	// build query
 	if len(filter_list) > 0 {
