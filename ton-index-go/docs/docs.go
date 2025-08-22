@@ -1849,6 +1849,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "description": "Sort NFT items by last transaction lt descending. **Warning:** results may be inconsistent during pagination with limit and offset.",
+                        "name": "sort_by_last_transaction_lt",
+                        "in": "query"
+                    },
+                    {
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
