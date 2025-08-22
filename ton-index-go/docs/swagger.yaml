@@ -2454,6 +2454,11 @@ paths:
           type: string
         name: index
         type: array
+      - description: Sort NFT items by last transaction lt descending. **Warning:**
+          results may be inconsistent during pagination with limit and offset.
+        in: query
+        name: sort_by_last_transaction_lt
+        type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
         in: query
