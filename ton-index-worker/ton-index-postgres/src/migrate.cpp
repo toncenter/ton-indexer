@@ -731,6 +731,11 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("create type coffee_create_pool_details as (amount_1 numeric, amount_2 numeric, initiator_1 tonaddr, initiator_2 tonaddr, provided_asset tonaddr, lp_tokens_minted numeric, pool_creator_contract tonaddr);");
     exec_query("create type coffee_staking_deposit_details as (minted_item_address tonaddr, minted_item_index numeric);");
     exec_query("create type coffee_staking_withdraw_details as (nft_address tonaddr, nft_index numeric, points numeric);");
+    exec_query("alter type nft_transfer_details add attribute marketplace_address tonaddr;");
+    exec_query("alter type nft_transfer_details add attribute payout_amount numeric;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment_encrypted boolean;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment_encoded boolean;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment text;");
   }
 
   LOG(INFO) << "Updating tables...";

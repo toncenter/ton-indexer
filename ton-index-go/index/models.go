@@ -522,6 +522,11 @@ type RawAction struct {
 	NFTTransferNFTItemIndex                              *string
 	NFTTransferMarketplace                               *string
 	NFTTransferRealPrevOwner                             *AccountAddress
+	NFTTransferMarketplaceAddress                        *AccountAddress
+	NFTTransferPayoutAmount                              *string
+	NFTTransferPayoutCommentEncrypted                    *bool
+	NFTTransferPayoutCommentEncoded                      *bool
+	NFTTransferPayoutComment                             *string
 	JettonSwapDex                                        *string
 	JettonSwapSender                                     *AccountAddress
 	JettonSwapDexIncomingTransferAmount                  *string
@@ -796,22 +801,27 @@ type ActionDetailsNftMint struct {
 }
 
 type ActionDetailsNftTransfer struct {
-	NftCollection       *AccountAddress `json:"nft_collection"`
-	NftItem             *AccountAddress `json:"nft_item"`
-	NftItemIndex        *string         `json:"nft_item_index"`
-	OldOwner            *AccountAddress `json:"old_owner,omitempty"`
-	NewOwner            *AccountAddress `json:"new_owner"`
-	IsPurchase          *bool           `json:"is_purchase"`
-	Price               *string         `json:"price,omitempty"`
-	QueryId             *string         `json:"query_id"`
-	ResponseDestination *AccountAddress `json:"response_destination"`
-	CustomPayload       *string         `json:"custom_payload"`
-	ForwardPayload      *string         `json:"forward_payload"`
-	ForwardAmount       *string         `json:"forward_amount"`
-	Comment             *string         `json:"comment"`
-	IsEncryptedComment  *bool           `json:"is_encrypted_comment"`
-	Marketplace         *string         `json:"marketplace"`
-	RealOldOwner        *AccountAddress `json:"real_old_owner"`
+	NftCollection          *AccountAddress `json:"nft_collection"`
+	NftItem                *AccountAddress `json:"nft_item"`
+	NftItemIndex           *string         `json:"nft_item_index"`
+	OldOwner               *AccountAddress `json:"old_owner,omitempty"`
+	NewOwner               *AccountAddress `json:"new_owner"`
+	IsPurchase             *bool           `json:"is_purchase"`
+	Price                  *string         `json:"price,omitempty"`
+	QueryId                *string         `json:"query_id"`
+	ResponseDestination    *AccountAddress `json:"response_destination"`
+	CustomPayload          *string         `json:"custom_payload"`
+	ForwardPayload         *string         `json:"forward_payload"`
+	ForwardAmount          *string         `json:"forward_amount"`
+	Comment                *string         `json:"comment"`
+	IsEncryptedComment     *bool           `json:"is_encrypted_comment"`
+	Marketplace            *string         `json:"marketplace"`
+	RealOldOwner           *AccountAddress `json:"real_old_owner"`
+	MarketplaceAddress     *AccountAddress `json:"marketplace_address"`
+	PayoutAmount           *string         `json:"payout_amount"`
+	PayoutComment          *string         `json:"payout_comment"`
+	PayoutCommentEncrypted *bool           `json:"payout_comment_encrypted"`
+	PayoutCommentEncoded   *bool           `json:"payout_comment_encoded"`
 }
 
 type ActionDetailsTickTock struct {

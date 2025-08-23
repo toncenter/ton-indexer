@@ -140,6 +140,7 @@ class RedisInterfaceRepository(InterfaceRepository):
                 nft_addr=interface_data["nft_addr"],
                 nft_owner=interface_data["nft_owner"],
                 last_bid=interface_data["last_bid"],
+                mp_addr=interface_data['mp_addr'],
             )
         return None
 
@@ -276,6 +277,7 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
                     address=interface_data['address'],
                     nft_addr=interface_data['nft_addr'],
                     nft_owner=interface_data['nft_owner'],
+                    mp_addr=interface_data['mp_addr'],
                 )
         return None
 
@@ -358,6 +360,7 @@ class EmulatedRepositoryWithDbFallback(InterfaceRepository):
                     address=data["address"],
                     nft_addr=data["nft_addr"],
                     nft_owner=data["nft_owner"],
+                    mp_addr=data["mp_addr"],
                 )
 
         return result
@@ -530,6 +533,7 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
     for auction in nft_auctions:
         result[auction.address]["NftAuction"] = {
             "address": auction.address,
+            "mp_addr": auction.mp_addr,
             "nft_addr": auction.nft_addr,
             "nft_owner": auction.nft_owner,
             "last_bid": float(auction.last_bid)

@@ -270,7 +270,12 @@ class Action(Base):
         Column("response_destination", String),
         Column("nft_item_index", Numeric),
         Column("marketplace", String),
-        Column("real_prev_owner", String)
+        Column("real_prev_owner", String),
+        Column("marketplace_address", String),
+        Column("payout_amount", Numeric),
+        Column("payout_comment_encrypted", Boolean),
+        Column("payout_comment_encoded", Boolean),
+        Column("payout_comment", String),
     ]))
     jetton_swap_data = Column(CompositeType("jetton_swap_details", [
         Column("dex", String),
@@ -815,6 +820,7 @@ class NftAuction(Base):
     nft_addr = Column(String)
     nft_owner = Column(String)
     last_bid = Column(Numeric)
+    mp_addr = Column(String)
 
 
 class MultisigOrder(Base):

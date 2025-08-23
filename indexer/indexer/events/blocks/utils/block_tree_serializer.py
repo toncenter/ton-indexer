@@ -55,7 +55,7 @@ from indexer.events.blocks.staking import (
 )
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
-from indexer.events.blocks.utils import AccountId, Asset
+from indexer.events.blocks.utils import AccountId, Asset, Amount
 from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlock,
     VestingSendMessageBlock,
@@ -71,6 +71,11 @@ def _addr(addr: AccountId | Asset | None) -> str | None:
         return addr.jetton_address.as_str() if addr.jetton_address is not None else None
     else:
         return addr.as_str()
+
+def _value(amount: Amount | None):
+    if amount is None:
+        return None
+    return amount.value
 
 
 def _calc_action_id(block: Block) -> str:
@@ -178,10 +183,13 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         action.asset = block.data['nft']['collection']['address'].as_str()
     marketplace = None
     real_prev_owner = None
+    marketplace_address = None
     if 'marketplace' in block.data and block.data['marketplace'] is not None:
         marketplace = block.data['marketplace']
     if 'real_prev_owner' in block.data and block.data['real_prev_owner'] is not None:
         real_prev_owner = block.data['real_prev_owner']
+    if 'marketplace_address' in block.data and block.data['marketplace_address'] is not None:
+        marketplace_address = block.data['marketplace_address']
     action.nft_transfer_data = {
         'query_id': block.data['query_id'],
         'is_purchase': block.data['is_purchase'],
@@ -192,7 +200,12 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'forward_payload': block.data['forward_payload'],
         'response_destination': block.data['response_destination'].as_str() if block.data['response_destination'] else None,
         'marketplace': marketplace,
-        'real_prev_owner': _addr(real_prev_owner)
+        'marketplace_address': _addr(marketplace_address),
+        'real_prev_owner': _addr(real_prev_owner),
+        'payout_amount': _value(block.data['payout_amount']) if 'payout_amount' in block.data else None,
+        'payout_comment_encrypted': block.data.get('payout_comment_encrypted', None),
+        'payout_comment_encoded': block.data.get('payout_comment_encoded', None),
+        'payout_comment': block.data.get('payout_comment', None),
     }
 
 def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):

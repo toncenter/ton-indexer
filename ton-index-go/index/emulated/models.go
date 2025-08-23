@@ -210,16 +210,21 @@ type actionJettonTransferDetails struct {
 }
 
 type actionNftTransferDetails struct {
-	IsPurchase          bool    `msgpack:"is_purchase"`
-	Price               *string `msgpack:"price"`
-	QueryId             *string `msgpack:"query_id"`
-	CustomPayload       *string `msgpack:"custom_payload"`
-	ForwardPayload      *string `msgpack:"forward_payload"`
-	ForwardAmount       *string `msgpack:"forward_amount"`
-	ResponseDestination *string `msgpack:"response_destination"`
-	NftItemIndex        *string `msgpack:"nft_item_index"`
-	Marketplace         *string `msgpack:"marketplace"`
-	RealPrevOwner       *string `msgpack:"real_prev_owner"`
+	IsPurchase             bool    `msgpack:"is_purchase"`
+	Price                  *string `msgpack:"price"`
+	QueryId                *string `msgpack:"query_id"`
+	CustomPayload          *string `msgpack:"custom_payload"`
+	ForwardPayload         *string `msgpack:"forward_payload"`
+	ForwardAmount          *string `msgpack:"forward_amount"`
+	ResponseDestination    *string `msgpack:"response_destination"`
+	NftItemIndex           *string `msgpack:"nft_item_index"`
+	Marketplace            *string `msgpack:"marketplace"`
+	RealPrevOwner          *string `msgpack:"real_prev_owner"`
+	MarketplaceAddress     *string `msgpack:"marketplace_address"`
+	PayoutAmount           *string `msgpack:"payout_amount"`
+	PayoutCommentEncrypted *bool   `msgpack:"payout_comment_encrypted"`
+	PayoutCommentEncoded   *bool   `msgpack:"payout_comment_encoded"`
+	PayoutComment          *string `msgpack:"payout_comment"`
 }
 
 type actionDexTransferDetails struct {
@@ -983,6 +988,11 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.NFTTransferNFTItemIndex = a.NftTransferData.NftItemIndex
 		row.NFTTransferMarketplace = a.NftTransferData.Marketplace
 		row.NFTTransferRealPrevOwner = a.NftTransferData.RealPrevOwner
+		row.NFTTransferMarketplaceAddress = a.NftTransferData.MarketplaceAddress
+		row.NFTTransferPayoutAmount = a.NftTransferData.PayoutAmount
+		row.NFTTransferPayoutCommentEncrypted = a.NftTransferData.PayoutCommentEncrypted
+		row.NFTTransferPayoutCommentEncoded = a.NftTransferData.PayoutCommentEncoded
+		row.NFTTransferPayoutComment = a.NftTransferData.PayoutComment
 	}
 	if a.JettonSwapData != nil {
 		row.JettonSwapDex = a.JettonSwapData.Dex

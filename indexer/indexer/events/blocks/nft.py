@@ -77,6 +77,7 @@ async def _try_get_nft_purchase_data(block: Block, owner: str) -> dict | None:
         nft_sale = await context.interface_repository.get().get_nft_sale(event_node.message.transaction.account)
         if nft_sale is not None:
             return {
+                'marketplace_address': nft_sale.marketplace_address,
                 'nft_address': nft_sale.nft_address,
                 'block': block.previous_block,
                 'price': nft_sale.full_price,
@@ -86,6 +87,7 @@ async def _try_get_nft_purchase_data(block: Block, owner: str) -> dict | None:
     nft_auction = await context.interface_repository.get().get_nft_auction(event_node.message.transaction.account)
     if nft_auction is not None:
         return {
+            'marketplace_address': nft_auction.mp_addr,
             'nft_address': nft_auction.nft_addr,
             'block': block.previous_block,
             'price': nft_auction.last_bid,
@@ -138,12 +140,24 @@ class NftTransferBlockMatcher(BlockMatcher):
                 if real_owner != data['new_owner']:
                     data['is_purchase'] = True
                     data['marketplace'] = 'getgems'
+                    data['marketplace_address'] = AccountId(nft_purchase_data['marketplace_address'])
                     data['price'] = Amount(nft_purchase_data['price'])
                     data['real_prev_owner'] = AccountId(nft_purchase_data['real_prev_owner'])
                     if isinstance(block.previous_block, TonTransferBlock):
                         include.append(block.previous_block)
                     elif isinstance(block.previous_block, CallContractBlock) and block.previous_block.get_message().source is None:
                         include.append(block.previous_block)
+
+                    siblings = block.previous_block.next_blocks
+                    for sibling in siblings:
+                        if sibling is not block:
+                            if isinstance(sibling, TonTransferBlock) and sibling.get_message().destination == real_owner:
+                                data['payout_amount'] = Amount(sibling.get_message().value)
+                                data['payout_comment_encrypted'] = sibling.encrypted
+                                data['payout_comment_encoded'] = sibling.comment_encoded
+                                data['payout_comment'] = sibling.comment
+                                include.append(sibling)
+                                break
 
         include.extend(other_blocks)
         new_block.merge_blocks(include)
