@@ -527,6 +527,17 @@ type RawAction struct {
 	NFTTransferPayoutCommentEncrypted                    *bool
 	NFTTransferPayoutCommentEncoded                      *bool
 	NFTTransferPayoutComment                             *string
+	NFTListingNFTItemIndex                               *string
+	NFTListingFullPrice                                  *string
+	NFTListingMarketplaceFee                             *string
+	NFTListingRoyaltyAmount                              *string
+	NFTListingMarketplaceFeeFactor                       *string
+	NFTListingMarketplaceFeeBase                         *string
+	NFTListingRoyaltyFeeBase                             *string
+	NFTListingMaxBid                                     *string
+	NFTListingMinBid                                     *string
+	NFTListingMarketplaceFeeAddress                      *AccountAddress
+	NFTListingRoyaltyAddress                             *AccountAddress
 	JettonSwapDex                                        *string
 	JettonSwapSender                                     *AccountAddress
 	JettonSwapDexIncomingTransferAmount                  *string
@@ -822,6 +833,38 @@ type ActionDetailsNftTransfer struct {
 	PayoutComment          *string         `json:"payout_comment"`
 	PayoutCommentEncrypted *bool           `json:"payout_comment_encrypted"`
 	PayoutCommentEncoded   *bool           `json:"payout_comment_encoded"`
+}
+
+type ActionDetailsNftPutOnSale struct {
+	NftCollection         *AccountAddress `json:"nft_collection"`
+	NftItem               *AccountAddress `json:"nft_item"`
+	NftItemIndex          *string         `json:"nft_item_index"`
+	Owner                 *AccountAddress `json:"owner"`
+	ListingAddress        *AccountAddress `json:"listing_address"`
+	SaleAddress           *AccountAddress `json:"sale_address"`
+	Marketplace           *AccountAddress `json:"marketplace"`
+	FullPrice             *string         `json:"full_price"`
+	MarketplaceFee        *string         `json:"marketplace_fee"`
+	RoyaltyAmount         *string         `json:"royalty_amount"`
+	MarketplaceFeeAddress *AccountAddress `json:"marketplace_fee_address"`
+	RoyaltyAddress        *AccountAddress `json:"royalty_address"`
+}
+
+type ActionDetailsNftPutOnAuction struct {
+	NftCollection         *AccountAddress `json:"nft_collection"`
+	NftItem               *AccountAddress `json:"nft_item"`
+	NftItemIndex          *string         `json:"nft_item_index"`
+	Owner                 *AccountAddress `json:"owner"`
+	ListingAddress        *AccountAddress `json:"listing_address"`
+	AuctionAddress        *AccountAddress `json:"auction_address"`
+	Marketplace           *AccountAddress `json:"marketplace"`
+	MarketplaceFeeFactor  *string         `json:"marketplace_fee_factor"`
+	MarketplaceFeeBase    *string         `json:"marketplace_fee_base"`
+	RoyaltyFeeBase        *string         `json:"royalty_fee_base"`
+	MaxBid                *string         `json:"max_bid"`
+	MinBid                *string         `json:"min_bid"`
+	MarketplaceFeeAddress *AccountAddress `json:"marketplace_fee_address"`
+	RoyaltyAddress        *AccountAddress `json:"royalty_address"`
 }
 
 type ActionDetailsTickTock struct {

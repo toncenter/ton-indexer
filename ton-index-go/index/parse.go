@@ -569,6 +569,38 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			}
 		}
 		act.Details = &details
+	case "nft_put_on_sale":
+		var details ActionDetailsNftPutOnSale
+		details.NftCollection = raw.Asset
+		details.NftItem = raw.AssetSecondary
+		details.NftItemIndex = raw.NFTListingNFTItemIndex
+		details.Owner = raw.Source
+		details.ListingAddress = raw.SourceSecondary
+		details.SaleAddress = raw.Destination
+		details.Marketplace = raw.DestinationSecondary
+		details.FullPrice = raw.NFTListingFullPrice
+		details.MarketplaceFee = raw.NFTListingMarketplaceFee
+		details.RoyaltyAmount = raw.NFTListingRoyaltyAmount
+		details.MarketplaceFeeAddress = raw.NFTListingMarketplaceFeeAddress
+		details.RoyaltyAddress = raw.NFTListingRoyaltyAddress
+		act.Details = &details
+	case "nft_put_on_auction":
+		var details ActionDetailsNftPutOnAuction
+		details.NftCollection = raw.Asset
+		details.NftItem = raw.AssetSecondary
+		details.NftItemIndex = raw.NFTListingNFTItemIndex
+		details.Owner = raw.Source
+		details.ListingAddress = raw.SourceSecondary
+		details.AuctionAddress = raw.Destination
+		details.Marketplace = raw.DestinationSecondary
+		details.MarketplaceFeeFactor = raw.NFTListingMarketplaceFeeFactor
+		details.MarketplaceFeeBase = raw.NFTListingMarketplaceFeeBase
+		details.RoyaltyFeeBase = raw.NFTListingRoyaltyFeeBase
+		details.MaxBid = raw.NFTListingMaxBid
+		details.MinBid = raw.NFTListingMinBid
+		details.MarketplaceFeeAddress = raw.NFTListingMarketplaceFeeAddress
+		details.RoyaltyAddress = raw.NFTListingRoyaltyAddress
+		act.Details = &details
 	case "tick_tock":
 		var details ActionDetailsTickTock
 		act.Details = &details
@@ -1248,6 +1280,17 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.NFTTransferPayoutCommentEncrypted,
 		&act.NFTTransferPayoutCommentEncoded,
 		&act.NFTTransferPayoutComment,
+		&act.NFTListingNFTItemIndex,
+		&act.NFTListingFullPrice,
+		&act.NFTListingMarketplaceFee,
+		&act.NFTListingRoyaltyAmount,
+		&act.NFTListingMarketplaceFeeFactor,
+		&act.NFTListingMarketplaceFeeBase,
+		&act.NFTListingRoyaltyFeeBase,
+		&act.NFTListingMaxBid,
+		&act.NFTListingMinBid,
+		&act.NFTListingMarketplaceFeeAddress,
+		&act.NFTListingRoyaltyAddress,
 		&act.JettonSwapDex,
 		&act.JettonSwapSender,
 		&act.JettonSwapDexIncomingTransferAmount,

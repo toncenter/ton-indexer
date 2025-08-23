@@ -174,6 +174,17 @@ type ActionRow struct {
 	NFTTransferPayoutCommentEncrypted                    *bool
 	NFTTransferPayoutCommentEncoded                      *bool
 	NFTTransferPayoutComment                             *string
+	NFTListingNFTItemIndex                               *string
+	NFTListingFullPrice                                  *string
+	NFTListingMarketplaceFee                             *string
+	NFTListingRoyaltyAmount                              *string
+	NFTListingMarketplaceFeeFactor                       *string
+	NFTListingMarketplaceFeeBase                         *string
+	NFTListingRoyaltyFeeBase                             *string
+	NFTListingMaxBid                                     *string
+	NFTListingMinBid                                     *string
+	NFTListingMarketplaceFeeAddress                      *string
+	NFTListingRoyaltyAddress                             *string
 	JettonSwapDex                                        *string
 	JettonSwapSender                                     *string
 	JettonSwapDexIncomingTransferAmount                  *string
@@ -425,6 +436,17 @@ func (t *ActionRow) getAssigns() []assign {
 		assignBoolPtr(t.NFTTransferPayoutCommentEncrypted),
 		assignBoolPtr(t.NFTTransferPayoutCommentEncoded),
 		assignStringPtr(t.NFTTransferPayoutComment),
+		assignStringPtr(t.NFTListingNFTItemIndex),
+		assignStringPtr(t.NFTListingFullPrice),
+		assignStringPtr(t.NFTListingMarketplaceFee),
+		assignStringPtr(t.NFTListingRoyaltyAmount),
+		assignStringPtr(t.NFTListingMarketplaceFeeFactor),
+		assignStringPtr(t.NFTListingMarketplaceFeeBase),
+		assignStringPtr(t.NFTListingRoyaltyFeeBase),
+		assignStringPtr(t.NFTListingMaxBid),
+		assignStringPtr(t.NFTListingMinBid),
+		assignStringPtr(t.NFTListingMarketplaceFeeAddress),
+		assignStringPtr(t.NFTListingRoyaltyAddress),
 		assignStringPtr(t.JettonSwapDex),
 		assignStringPtr(t.JettonSwapSender),
 		assignStringPtr(t.JettonSwapDexIncomingTransferAmount),

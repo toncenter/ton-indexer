@@ -312,6 +312,19 @@ class Action(Base):
     ]))
     nft_mint_data = Column(CompositeType("nft_mint_details", [
         Column("nft_item_index", Numeric)]))
+    nft_listing_data = Column(CompositeType("nft_listing_details", [
+        Column("nft_item_index", Numeric),
+        Column("full_price", Numeric),
+        Column("marketplace_fee", Numeric),
+        Column("royalty_amount", Numeric),
+        Column("mp_fee_factor", Numeric),
+        Column("mp_fee_base", Numeric),
+        Column("royalty_fee_base", Numeric),
+        Column("max_bid", Numeric),
+        Column("min_bid", Numeric),
+        Column("marketplace_fee_address", String),
+        Column("royalty_address", String),
+    ]))
     evaa_supply_data = Column(CompositeType("evaa_supply_details", [
         Column("sender_jetton_wallet", String),
         Column("recipient_jetton_wallet", String),
@@ -811,6 +824,10 @@ class NftSale(Base):
     nft_address = Column(String)
     nft_owner_address = Column(String)
     full_price = Column(Numeric)
+    marketplace_fee_address = Column(String)
+    marketplace_fee = Column(Numeric)
+    royalty_address = Column(String)
+    royalty_amount = Column(Numeric)
 
 
 class NftAuction(Base):
@@ -821,6 +838,13 @@ class NftAuction(Base):
     nft_owner = Column(String)
     last_bid = Column(Numeric)
     mp_addr = Column(String)
+    mp_fee_addr = Column(String)
+    mp_fee_factor = Column(Numeric)
+    mp_fee_base = Column(Numeric)
+    royalty_fee_addr = Column(String)
+    royalty_fee_base = Column(Numeric)
+    max_bid = Column(Numeric)
+    min_bid = Column(Numeric)
 
 
 class MultisigOrder(Base):

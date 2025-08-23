@@ -42,6 +42,7 @@ from indexer.events.blocks.multisig import (
     MultisigCreateOrderBlock,
     MultisigExecuteBlock,
 )
+from indexer.events.blocks.auction import NftPutOnSaleBlock, NftPutOnAuctionBlock
 from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock
 from indexer.events.blocks.staking import (
     CoffeeStakingClaimRewardsBlock,
@@ -226,6 +227,52 @@ def _fill_nft_mint_action(block: NftMintBlock, action: Action):
         action.asset = block.data["collection"].as_str()
     action.nft_mint_data = {
         'nft_item_index': block.data["index"],
+    }
+
+
+def _fill_nft_put_on_sale_action(block: NftPutOnSaleBlock, action: Action):
+    action.source = _addr(block.data.owner)
+    action.source_secondary = _addr(block.data.listing_address)
+    action.destination = _addr(block.data.sale_address)
+    action.destination_secondary = _addr(block.data.marketplace)
+    action.asset = _addr(block.data.nft_collection)
+    action.asset_secondary = _addr(block.data.nft_address)
+    action.nft_listing_data = {
+        'nft_item_index': block.data.nft_index,
+        'full_price': _value(block.data.full_price),
+        'marketplace_fee': _value(block.data.marketplace_fee),
+        'royalty_amount': _value(block.data.royalty_amount),
+        'marketplace_fee_address': _addr(block.data.marketplace_fee_address),
+        'royalty_address': _addr(block.data.royalty_address),
+        # Auction fields set to null
+        'mp_fee_factor': None,
+        'mp_fee_base': None,
+        'royalty_fee_base': None,
+        'max_bid': None,
+        'min_bid': None,
+    }
+
+
+def _fill_nft_put_on_auction_action(block: NftPutOnAuctionBlock, action: Action):
+    action.source = _addr(block.data.owner)
+    action.source_secondary = _addr(block.data.listing_address)
+    action.destination = _addr(block.data.auction_address)
+    action.destination_secondary = _addr(block.data.marketplace)
+    action.asset = _addr(block.data.nft_collection)
+    action.asset_secondary = _addr(block.data.nft_address)
+    action.nft_listing_data = {
+        'nft_item_index': block.data.nft_index,
+        'mp_fee_factor': _value(block.data.mp_fee_factor),
+        'mp_fee_base': _value(block.data.mp_fee_base),
+        'royalty_fee_base': _value(block.data.royalty_fee_base),
+        'max_bid': _value(block.data.max_bid),
+        'min_bid': _value(block.data.min_bid),
+        'marketplace_fee_address': _addr(block.data.mp_fee_address),  # unified field
+        'royalty_address': _addr(block.data.royalty_fee_addr),  # unified field
+        # Sale fields set to null
+        'full_price': None,
+        'marketplace_fee': None,
+        'royalty_amount': None,
     }
 
 
@@ -907,6 +954,10 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_nft_transfer_action(block, action)
         case 'nft_mint':
             _fill_nft_mint_action(block, action)
+        case 'nft_put_on_sale':
+            _fill_nft_put_on_sale_action(block, action)
+        case 'nft_put_on_auction':
+            _fill_nft_put_on_auction_action(block, action)
         case 'jetton_burn':
             _fill_jetton_burn_action(block, action)
         case "jetton_mint":

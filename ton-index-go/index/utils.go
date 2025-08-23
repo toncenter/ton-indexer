@@ -33,6 +33,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"coffee_create_vault", "coffee_create_pool_creator", "coffee_create_pool",
 		"coffee_mev_protect_hold_funds", "coffee_mev_protect_failed_swap", "coffee_staking_claim_rewards",
 		"coffee_staking_deposit", "coffee_staking_withdraw",
+		"nft_put_on_sale", "nft_put_on_auction",
 		"unknown",
 	},
 	"latest": {"v2"},

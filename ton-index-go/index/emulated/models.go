@@ -227,6 +227,20 @@ type actionNftTransferDetails struct {
 	PayoutComment          *string `msgpack:"payout_comment"`
 }
 
+type actionNftListingDetails struct {
+	NftItemIndex          *string `msgpack:"nft_item_index"`
+	FullPrice             *string `msgpack:"full_price"`
+	MarketplaceFee        *string `msgpack:"marketplace_fee"`
+	RoyaltyAmount         *string `msgpack:"royalty_amount"`
+	MarketplaceFeeFactor  *string `msgpack:"mp_fee_factor"`
+	MarketplaceFeeBase    *string `msgpack:"mp_fee_base"`
+	RoyaltyFeeBase        *string `msgpack:"royalty_fee_base"`
+	MaxBid                *string `msgpack:"max_bid"`
+	MinBid                *string `msgpack:"min_bid"`
+	MarketplaceFeeAddress *string `msgpack:"marketplace_fee_address"`
+	RoyaltyAddress        *string `msgpack:"royalty_address"`
+}
+
 type actionDexTransferDetails struct {
 	Amount                  *string `msgpack:"amount"`
 	Asset                   *string `msgpack:"asset"`
@@ -447,6 +461,7 @@ type Action struct {
 	Accounts                  []string                            `msgpack:"accounts"`
 	JettonTransferData        *actionJettonTransferDetails        `msgpack:"jetton_transfer_data"`
 	NftTransferData           *actionNftTransferDetails           `msgpack:"nft_transfer_data"`
+	NftListingData            *actionNftListingDetails            `msgpack:"nft_listing_data"`
 	JettonSwapData            *actionJettonSwapDetails            `msgpack:"jetton_swap_data"`
 	ChangeDnsRecordData       *actionChangeDnsRecordDetails       `msgpack:"change_dns_record_data"`
 	NftMintData               *actionNftMintDetails               `msgpack:"nft_mint_data"`
@@ -993,6 +1008,19 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.NFTTransferPayoutCommentEncrypted = a.NftTransferData.PayoutCommentEncrypted
 		row.NFTTransferPayoutCommentEncoded = a.NftTransferData.PayoutCommentEncoded
 		row.NFTTransferPayoutComment = a.NftTransferData.PayoutComment
+	}
+	if a.NftListingData != nil {
+		row.NFTListingNFTItemIndex = a.NftListingData.NftItemIndex
+		row.NFTListingFullPrice = a.NftListingData.FullPrice
+		row.NFTListingMarketplaceFee = a.NftListingData.MarketplaceFee
+		row.NFTListingRoyaltyAmount = a.NftListingData.RoyaltyAmount
+		row.NFTListingMarketplaceFeeFactor = a.NftListingData.MarketplaceFeeFactor
+		row.NFTListingMarketplaceFeeBase = a.NftListingData.MarketplaceFeeBase
+		row.NFTListingRoyaltyFeeBase = a.NftListingData.RoyaltyFeeBase
+		row.NFTListingMaxBid = a.NftListingData.MaxBid
+		row.NFTListingMinBid = a.NftListingData.MinBid
+		row.NFTListingMarketplaceFeeAddress = a.NftListingData.MarketplaceFeeAddress
+		row.NFTListingRoyaltyAddress = a.NftListingData.RoyaltyAddress
 	}
 	if a.JettonSwapData != nil {
 		row.JettonSwapDex = a.JettonSwapData.Dex
