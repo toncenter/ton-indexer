@@ -148,17 +148,6 @@ class NftTransferBlockMatcher(BlockMatcher):
                     elif isinstance(block.previous_block, CallContractBlock) and block.previous_block.get_message().source is None:
                         include.append(block.previous_block)
 
-                    siblings = block.previous_block.next_blocks
-                    for sibling in siblings:
-                        if sibling is not block:
-                            if isinstance(sibling, TonTransferBlock) and sibling.get_message().destination == real_owner:
-                                data['payout_amount'] = Amount(sibling.get_message().value)
-                                data['payout_comment_encrypted'] = sibling.encrypted
-                                data['payout_comment_encoded'] = sibling.comment_encoded
-                                data['payout_comment'] = sibling.comment
-                                include.append(sibling)
-                                break
-
         include.extend(other_blocks)
         new_block.merge_blocks(include)
         new_block.data = data
@@ -166,6 +155,81 @@ class NftTransferBlockMatcher(BlockMatcher):
             new_block.broken = True
         new_block.failed = block.failed
         return [new_block]
+
+@dataclass()
+class NftPurchaseData:
+    nft_address: AccountId
+    collection_address: AccountId | None
+    nft_index: int
+    prev_owner: AccountId
+    new_owner: AccountId
+    query_id: int
+    forward_amount: Amount
+    response_destination: AccountId | None
+    custom_payload: str | None
+    forward_payload: str | None
+    payout_amount: Amount | None
+    payout_comment_encrypted: bool | None
+    payout_comment_encoded: bool | None
+    payout_comment: str | None
+    price: Amount | None
+    real_prev_owner: AccountId | None
+    marketplace: str | None
+    marketplace_address: AccountId | None
+
+class NftPurchaseBlock(Block):
+    data: NftPurchaseData
+    def __init__(self, data: NftPurchaseData):
+        super().__init__("nft_purchase", [], data)
+
+class GetgemsNftPurchaseBlockMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block) -> bool:
+        return (block.btype == 'nft_transfer' and block.data['is_purchase'] == True
+                and block.data.get('marketplace') == 'getgems')
+
+    def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        if block.data.get('real_prev_owner') is None:
+            return []
+
+        include = [block]
+
+        # Find ton transfer to seller
+        ton_transfer: TonTransferBlock|None = None
+        for n in block.next_blocks:
+            if n.btype == 'ton_transfer' and n.get_message().destination == block.data['real_prev_owner']:
+                ton_transfer = n
+                include.append(n)
+                break
+
+        if ton_transfer is None: # Ton transfer to seller not found
+            return []
+
+        new_block = NftPurchaseBlock(NftPurchaseData(
+            nft_address=block.data['nft']['address'],
+            collection_address=block.data['nft']['collection']['address'] if block.data['nft']['collection'] else None,
+            nft_index = block.data['nft']['index'],
+            prev_owner=block.data['prev_owner'],
+            new_owner=block.data['new_owner'],
+            query_id=block.data['query_id'],
+            forward_amount=block.data['forward_amount'],
+            response_destination=block.data['response_destination'],
+            custom_payload=block.data['custom_payload'],
+            forward_payload=block.data['forward_payload'],
+            payout_amount=Amount(ton_transfer.value),
+            payout_comment_encrypted=ton_transfer.encrypted,
+            payout_comment_encoded=ton_transfer.comment_encoded,
+            payout_comment=ton_transfer.comment,
+            price=block.data['price'],
+            real_prev_owner=block.data['real_prev_owner'],
+            marketplace=block.data['marketplace'],
+            marketplace_address=block.data['marketplace_address'],
+        ))
+        new_block.merge_blocks(include)
+        return [new_block]
+
 
 class NftDiscoveryBlockMatcher(BlockMatcher):
     def __init__(self):
@@ -209,6 +273,8 @@ class NftDiscoveryBlockMatcher(BlockMatcher):
         new_block.merge_blocks(include)
 
         return [new_block]
+
+
 
 
 class TelegramNftPurchaseBlockMatcher(BlockMatcher):

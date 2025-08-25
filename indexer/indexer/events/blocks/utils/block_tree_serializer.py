@@ -43,7 +43,7 @@ from indexer.events.blocks.multisig import (
     MultisigExecuteBlock,
 )
 from indexer.events.blocks.auction import NftPutOnSaleBlock, NftPutOnAuctionBlock
-from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock
+from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock, NftPurchaseBlock
 from indexer.events.blocks.staking import (
     CoffeeStakingClaimRewardsBlock,
     CoffeeStakingDepositBlock,
@@ -207,6 +207,30 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'payout_comment_encrypted': block.data.get('payout_comment_encrypted', None),
         'payout_comment_encoded': block.data.get('payout_comment_encoded', None),
         'payout_comment': block.data.get('payout_comment', None),
+    }
+
+def _fill_nft_purchase_action(block: NftPurchaseBlock, action: Action):
+    if block.data.prev_owner is not None:
+        action.source = _addr(block.data.prev_owner)
+    action.destination = _addr(block.data.new_owner)
+    action.asset_secondary = _addr(block.data.nft_address)
+    action.asset = _addr(block.data.collection_address)
+    action.nft_transfer_data = {
+        'query_id': block.data.query_id,
+        'is_purchase': True,
+        'price': _value(block.data.price),
+        'nft_item_index': block.data.nft_index,
+        'forward_amount':  _value(block.data.forward_amount),
+        'custom_payload': block.data.custom_payload,
+        'forward_payload': block.data.forward_payload,
+        'response_destination': _addr(block.data.response_destination),
+        'marketplace': block.data.marketplace,
+        'marketplace_address': _addr(block.data.marketplace_address),
+        'real_prev_owner': _addr(block.data.real_prev_owner),
+        'payout_amount': _value(block.data.payout_amount),
+        'payout_comment_encrypted': block.data.payout_comment_encrypted,
+        'payout_comment_encoded': block.data.payout_comment_encoded,
+        'payout_comment': block.data.payout_comment,
     }
 
 def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):
@@ -1042,6 +1066,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_staking_withdraw(block, action)
         case 'coffee_staking_claim_rewards':
             _fill_coffee_staking_claim_rewards(block, action)
+        case 'nft_purchase':
+            _fill_nft_purchase_action(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts

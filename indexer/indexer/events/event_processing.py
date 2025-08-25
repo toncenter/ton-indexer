@@ -72,7 +72,7 @@ from indexer.events.blocks.nft import (
     NftDiscoveryBlockMatcher,
     NftMintBlockMatcher,
     NftTransferBlockMatcher,
-    TelegramNftPurchaseBlockMatcher,
+    TelegramNftPurchaseBlockMatcher, GetgemsNftPurchaseBlockMatcher,
 )
 from indexer.events.blocks.staking import (
     CoffeeStakingClaimRewardsMatcher,
@@ -202,6 +202,7 @@ matchers = [
     ToncoSwapBlockMatcher(),
     NftTransferBlockMatcher(),
     TelegramNftPurchaseBlockMatcher(),
+    GetgemsNftPurchaseBlockMatcher(),
     NftPutOnSaleBlockMatcher(),
     NftDiscoveryBlockMatcher(),
     ChangeDnsRecordMatcher(),

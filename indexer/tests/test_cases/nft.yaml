@@ -7,10 +7,41 @@ cases:
           tx_hashes:
             - a8gHu9/EqRvUidjXnssqLvZJPvCKUFJ7tTFYCmrMAqs=
             - 2LbITkVPWvxuzZH6JNJc4UfA7/FMsjXvNgKs5HfQ5mE=
-            - SwmPRBHEjm5pMkrzZL6gWhRYTtrsumIrWCNAG4p7vBI=
             - mG5NGg+37hpz1Vgs5KvDo0HKgtQKCnMbmGEpdApY5Ls=
             - rIPmbaxEuVdBGJSdLs2jBTSJczrhLpypLLo5OnM1bkM=
             - agYtrxL6Nuc8F+Y5bE2xf2NLNOEKzgOLDaBxaRSI/bc=
+          accounts:
+            - 0:CE0F98F6992B7CABE64489E9A9F0CDDDA848F1D9223E5C1B4EF0A1FDE5605C4F
+            - 0:B9A7DCE19431B56044254C69858E8DC11FEC5C0761DED415E386FBE4B4E116F5
+            - 0:5B305583F6F4C1ADCA54FD9EE6ADB8F065819F4A1D5D054B2E4B3677D90F5095
+          success: true
+          source: 0:CE0F98F6992B7CABE64489E9A9F0CDDDA848F1D9223E5C1B4EF0A1FDE5605C4F
+          destination: 0:B9A7DCE19431B56044254C69858E8DC11FEC5C0761DED415E386FBE4B4E116F5
+          asset_secondary: 0:5B305583F6F4C1ADCA54FD9EE6ADB8F065819F4A1D5D054B2E4B3677D90F5095
+          asset: 0:BACE389DF2F24D116A9C5E4D745E3B1D0CB44A6DC3D9CDB1EEB2E116E85A2439
+          nft_transfer_data:
+            query_id: 0
+            is_purchase: true
+            price: 1350000000
+            forward_amount: 30000000
+            custom_payload: null
+            forward_payload: te6cckEBAQEAAgAAAEysuc0=
+            response_destination: 0:B9A7DCE19431B56044254C69858E8DC11FEC5C0761DED415E386FBE4B4E116F5
+            marketplace: getgems
+            real_prev_owner: 0:0D57780F9ABF651ACF690E6F37B2F8F9C61C4131A3968C5A555A18811CD2E7E4
+            payout_comment: null
+            marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+      - type: nft_purchase
+        success: true
+        values:
+          tx_hashes:
+            - a8gHu9/EqRvUidjXnssqLvZJPvCKUFJ7tTFYCmrMAqs=
+            - 2LbITkVPWvxuzZH6JNJc4UfA7/FMsjXvNgKs5HfQ5mE=
+            - mG5NGg+37hpz1Vgs5KvDo0HKgtQKCnMbmGEpdApY5Ls=
+            - rIPmbaxEuVdBGJSdLs2jBTSJczrhLpypLLo5OnM1bkM=
+            - agYtrxL6Nuc8F+Y5bE2xf2NLNOEKzgOLDaBxaRSI/bc=
+            - SwmPRBHEjm5pMkrzZL6gWhRYTtrsumIrWCNAG4p7vBI=
+
           accounts:
             - 0:CE0F98F6992B7CABE64489E9A9F0CDDDA848F1D9223E5C1B4EF0A1FDE5605C4F
             - 0:B9A7DCE19431B56044254C69858E8DC11FEC5C0761DED415E386FBE4B4E116F5
@@ -71,7 +102,6 @@ cases:
             - dF945FFmPocdOxgDhHu/jGSXBn0+mhd2NFjRWvLrGnE=
             - Mk9O4OZz5p1IH604tukwy07EHSY9Tdvwme1kH5iZqek=
             - ogeCdREbeJXdwJ0MKIU/2zOEurghG4q/gsVpeWiI4EY=
-            - AwzinIG3UzDr+oLyVkJTW+R/5r5w36ZbiunbCh5xr4I=
           success: true
           source: 0:41AA56531632822511CB32D2E75E685524D5163A4F441406D775DEE697AE6B37
           destination: 0:35F782D3A9B8B1C15B369EE0F66E24830576D61ACFA0D3FD4A43F133AC705643
@@ -87,10 +117,6 @@ cases:
             response_destination: 0:CF5F6816FF80E52B61BDFCA071F7FB5D061ECF46211DD8A627166050D126D5BA
             marketplace: getgems
             real_prev_owner: 0:CF5F6816FF80E52B61BDFCA071F7FB5D061ECF46211DD8A627166050D126D5BA
-            payout_amount: 37469600000
-            payout_comment: Profit
-            payout_comment_encoded: false
-            payout_comment_encrypted: false
             marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
   Getgems auction purchase 2:
     trace-id: F73aJsg-E-RHh3nJel9-KZ23sQ80dLMqt26gbUEXHIs=
@@ -101,7 +127,6 @@ cases:
               - nvWkCVyYqRlqQvY6xQ2KYzW9igZKKN80FRxzUOux3Bk=
               - C4IgQhVFqHsoM8RMZIRxygkpZ8Hf+zGgYPBUYmlsFvk=
               - 0Ugv7At3r+quXTtpWVrG4Fy2WISX/m8b3+UzIi9NKTs=
-              - HDcM0YWBHi25xylL2WkqtzuxykJjzhkeQbiYAQqBMWM=
               - F73aJsg+E+RHh3nJel9+KZ23sQ80dLMqt26gbUEXHIs=
             accounts:
               - 0:884D0E57173A92741438C8C53C082EDB31C2C1547EDCD9E654539BFE3A0E3191
@@ -122,7 +147,3 @@ cases:
               marketplace: getgems
               marketplace_address: 0:9A9CB80ADFBD1662F5108766D73355AC2C03304FDA1D25A479670E34EFCD72B3
               real_prev_owner: 0:C002333C4C4873FB77E57A00A6B8E4F4874FCF76E9C73A09EB837E6990440A34
-              payout_amount: 101469600000
-              payout_comment_encrypted: false
-              payout_comment_encoded: false
-              payout_comment: Profit
