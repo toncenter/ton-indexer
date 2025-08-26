@@ -81,7 +81,8 @@ class NftPutOnSaleBlockData:
     listing_address: AccountId
     sale_address: AccountId
     full_price: Amount
-    marketplace: AccountId
+    marketplace_address: AccountId
+    marketplace: str
     marketplace_fee_address: AccountId
     marketplace_fee: Amount
     royalty_address: AccountId
@@ -99,7 +100,8 @@ class NftPutOnAuctionBlockData:
     owner: AccountId
     listing_address: AccountId
     auction_address: AccountId
-    marketplace: AccountId
+    marketplace_address: AccountId
+    marketplace: str
     mp_fee_address: AccountId
     mp_fee_factor: Amount
     mp_fee_base: Amount
@@ -154,7 +156,8 @@ class NftPutOnSaleBlockMatcher(BlockMatcher):
                 listing_address=AccountId(transfer_to_listing.data['new_owner']),
                 sale_address=AccountId(sale_init.get_message().destination),
                 full_price=full_price,
-                marketplace=marketplace,
+                marketplace_address=marketplace,
+                marketplace='getgems',
                 marketplace_fee_address=marketplace_fee_address,
                 marketplace_fee=marketplace_fee,
                 royalty_address=royalty_address,
@@ -178,7 +181,8 @@ class NftPutOnSaleBlockMatcher(BlockMatcher):
                     owner=AccountId(getgems_auction.nft_owner),
                     listing_address=AccountId(transfer_to_listing.data['new_owner']),
                     auction_address=AccountId(sale_init.get_message().destination),
-                    marketplace=AccountId(getgems_auction.mp_addr),
+                    marketplace_address=AccountId(getgems_auction.mp_addr),
+                    marketplace='getgems',
                     mp_fee_address=AccountId(getgems_auction.mp_fee_addr) if getgems_auction.mp_fee_addr else None,
                     mp_fee_factor=Amount(int(getgems_auction.mp_fee_factor)) if getgems_auction.mp_fee_factor else None,
                     mp_fee_base=Amount(int(getgems_auction.mp_fee_base)) if getgems_auction.mp_fee_base else None,

@@ -239,6 +239,7 @@ type actionNftListingDetails struct {
 	MinBid                *string `msgpack:"min_bid"`
 	MarketplaceFeeAddress *string `msgpack:"marketplace_fee_address"`
 	RoyaltyAddress        *string `msgpack:"royalty_address"`
+	Marketplace           *string `msgpack:"marketplace"`
 }
 
 type actionDexTransferDetails struct {
@@ -1021,6 +1022,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.NFTListingMinBid = a.NftListingData.MinBid
 		row.NFTListingMarketplaceFeeAddress = a.NftListingData.MarketplaceFeeAddress
 		row.NFTListingRoyaltyAddress = a.NftListingData.RoyaltyAddress
+		row.NFTListingMarketplace = a.NftListingData.Marketplace
 	}
 	if a.JettonSwapData != nil {
 		row.JettonSwapDex = a.JettonSwapData.Dex

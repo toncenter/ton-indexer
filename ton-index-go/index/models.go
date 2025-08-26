@@ -538,6 +538,7 @@ type RawAction struct {
 	NFTListingMinBid                                     *string
 	NFTListingMarketplaceFeeAddress                      *AccountAddress
 	NFTListingRoyaltyAddress                             *AccountAddress
+	NFTListingMarketplace                                *string
 	JettonSwapDex                                        *string
 	JettonSwapSender                                     *AccountAddress
 	JettonSwapDexIncomingTransferAmount                  *string
@@ -842,12 +843,13 @@ type ActionDetailsNftPutOnSale struct {
 	Owner                 *AccountAddress `json:"owner"`
 	ListingAddress        *AccountAddress `json:"listing_address"`
 	SaleAddress           *AccountAddress `json:"sale_address"`
-	Marketplace           *AccountAddress `json:"marketplace"`
+	MarketplaceAddress    *AccountAddress `json:"marketplace_address"`
 	FullPrice             *string         `json:"full_price"`
 	MarketplaceFee        *string         `json:"marketplace_fee"`
 	RoyaltyAmount         *string         `json:"royalty_amount"`
 	MarketplaceFeeAddress *AccountAddress `json:"marketplace_fee_address"`
 	RoyaltyAddress        *AccountAddress `json:"royalty_address"`
+	Marketplace           *string         `json:"marketplace"`
 }
 
 type ActionDetailsNftPutOnAuction struct {
@@ -857,7 +859,7 @@ type ActionDetailsNftPutOnAuction struct {
 	Owner                 *AccountAddress `json:"owner"`
 	ListingAddress        *AccountAddress `json:"listing_address"`
 	AuctionAddress        *AccountAddress `json:"auction_address"`
-	Marketplace           *AccountAddress `json:"marketplace"`
+	MarketplaceAddress    *AccountAddress `json:"marketplace_address"`
 	MarketplaceFeeFactor  *string         `json:"marketplace_fee_factor"`
 	MarketplaceFeeBase    *string         `json:"marketplace_fee_base"`
 	RoyaltyFeeBase        *string         `json:"royalty_fee_base"`
@@ -865,6 +867,7 @@ type ActionDetailsNftPutOnAuction struct {
 	MinBid                *string         `json:"min_bid"`
 	MarketplaceFeeAddress *AccountAddress `json:"marketplace_fee_address"`
 	RoyaltyAddress        *AccountAddress `json:"royalty_address"`
+	Marketplace           *string         `json:"marketplace"`
 }
 
 type ActionDetailsTickTock struct {

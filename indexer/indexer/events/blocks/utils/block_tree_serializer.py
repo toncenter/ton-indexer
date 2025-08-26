@@ -258,7 +258,7 @@ def _fill_nft_put_on_sale_action(block: NftPutOnSaleBlock, action: Action):
     action.source = _addr(block.data.owner)
     action.source_secondary = _addr(block.data.listing_address)
     action.destination = _addr(block.data.sale_address)
-    action.destination_secondary = _addr(block.data.marketplace)
+    action.destination_secondary = _addr(block.data.marketplace_address)
     action.asset = _addr(block.data.nft_collection)
     action.asset_secondary = _addr(block.data.nft_address)
     action.nft_listing_data = {
@@ -267,6 +267,7 @@ def _fill_nft_put_on_sale_action(block: NftPutOnSaleBlock, action: Action):
         'marketplace_fee': _value(block.data.marketplace_fee),
         'royalty_amount': _value(block.data.royalty_amount),
         'marketplace_fee_address': _addr(block.data.marketplace_fee_address),
+        'marketplace': block.data.marketplace,
         'royalty_address': _addr(block.data.royalty_address),
         # Auction fields set to null
         'mp_fee_factor': None,
@@ -281,7 +282,7 @@ def _fill_nft_put_on_auction_action(block: NftPutOnAuctionBlock, action: Action)
     action.source = _addr(block.data.owner)
     action.source_secondary = _addr(block.data.listing_address)
     action.destination = _addr(block.data.auction_address)
-    action.destination_secondary = _addr(block.data.marketplace)
+    action.destination_secondary = _addr(block.data.marketplace_address)
     action.asset = _addr(block.data.nft_collection)
     action.asset_secondary = _addr(block.data.nft_address)
     action.nft_listing_data = {
@@ -292,6 +293,7 @@ def _fill_nft_put_on_auction_action(block: NftPutOnAuctionBlock, action: Action)
         'max_bid': _value(block.data.max_bid),
         'min_bid': _value(block.data.min_bid),
         'marketplace_fee_address': _addr(block.data.mp_fee_address),  # unified field
+        'marketplace': block.data.marketplace,
         'royalty_address': _addr(block.data.royalty_fee_addr),  # unified field
         # Sale fields set to null
         'full_price': None,

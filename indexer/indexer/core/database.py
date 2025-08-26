@@ -324,6 +324,7 @@ class Action(Base):
         Column("min_bid", Numeric),
         Column("marketplace_fee_address", String),
         Column("royalty_address", String),
+        Column("marketplace", String)
     ]))
     evaa_supply_data = Column(CompositeType("evaa_supply_details", [
         Column("sender_jetton_wallet", String),

@@ -112,6 +112,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.nft_listing_data).min_bid,
 		(A.nft_listing_data).marketplace_fee_address,
 		(A.nft_listing_data).royalty_address,
+		(A.nft_listing_data).marketplace,
 		(A.jetton_swap_data).dex, (A.jetton_swap_data).sender, ((A.jetton_swap_data).dex_incoming_transfer).amount,
 		((A.jetton_swap_data).dex_incoming_transfer).asset, ((A.jetton_swap_data).dex_incoming_transfer).source,
 		((A.jetton_swap_data).dex_incoming_transfer).destination, ((A.jetton_swap_data).dex_incoming_transfer).source_jetton_wallet,

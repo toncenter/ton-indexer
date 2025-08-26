@@ -577,7 +577,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Owner = raw.Source
 		details.ListingAddress = raw.SourceSecondary
 		details.SaleAddress = raw.Destination
-		details.Marketplace = raw.DestinationSecondary
+		details.MarketplaceAddress = raw.DestinationSecondary
+		details.Marketplace = raw.NFTListingMarketplace
 		details.FullPrice = raw.NFTListingFullPrice
 		details.MarketplaceFee = raw.NFTListingMarketplaceFee
 		details.RoyaltyAmount = raw.NFTListingRoyaltyAmount
@@ -592,7 +593,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Owner = raw.Source
 		details.ListingAddress = raw.SourceSecondary
 		details.AuctionAddress = raw.Destination
-		details.Marketplace = raw.DestinationSecondary
+		details.MarketplaceAddress = raw.DestinationSecondary
+		details.Marketplace = raw.NFTListingMarketplace
 		details.MarketplaceFeeFactor = raw.NFTListingMarketplaceFeeFactor
 		details.MarketplaceFeeBase = raw.NFTListingMarketplaceFeeBase
 		details.RoyaltyFeeBase = raw.NFTListingRoyaltyFeeBase
@@ -1291,6 +1293,7 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.NFTListingMinBid,
 		&act.NFTListingMarketplaceFeeAddress,
 		&act.NFTListingRoyaltyAddress,
+		&act.NFTListingMarketplace,
 		&act.JettonSwapDex,
 		&act.JettonSwapSender,
 		&act.JettonSwapDexIncomingTransferAmount,
