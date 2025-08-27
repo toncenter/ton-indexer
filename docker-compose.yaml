@@ -137,34 +137,34 @@ services:
       options:
         max-size: 4G
 
-  metadata-fetcher:
-    image: toncenter/ton-indexer-metadata-fetcher:1.2.1
-    build:
-      context: ton-metadata-fetcher
-      dockerfile: Dockerfile
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    secrets:
-      - postgres_password
-    networks:
-      internal:
-    environment:
-      <<: [*index-pg-access, *imgproxy-params]
-    command: -imgproxy-salt ${IMGPROXY_SALT?} -imgproxy-key ${IMGPROXY_KEY?} -processes 8
+  # metadata-fetcher:
+  #   image: toncenter/ton-indexer-metadata-fetcher:1.2.1
+  #   build:
+  #     context: ton-metadata-fetcher
+  #     dockerfile: Dockerfile
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   secrets:
+  #     - postgres_password
+  #   networks:
+  #     internal:
+  #   environment:
+  #     <<: [*index-pg-access, *imgproxy-params]
+  #   command: -imgproxy-salt ${IMGPROXY_SALT?} -imgproxy-key ${IMGPROXY_KEY?} -processes 8
 
-  imgproxy:
-    image: ghcr.io/imgproxy/imgproxy:latest
-    environment: 
-      <<: *imgproxy-params
-      IMGPROXY_PRESETS: "small=rt:auto/w:128/h:128,medium=rt:auto/w:300/h:300,big=rt:auto/w:512/h:512"
-      IMGPROXY_USER_AGENT:
-    restart: unless-stopped
-    ports:
-      - ${IMGPROXY_PORT:-8201}:8080
-    networks:
-      internal:
+  # imgproxy:
+  #   image: ghcr.io/imgproxy/imgproxy:latest
+  #   environment: 
+  #     <<: *imgproxy-params
+  #     IMGPROXY_PRESETS: "small=rt:auto/w:128/h:128,medium=rt:auto/w:300/h:300,big=rt:auto/w:512/h:512"
+  #     IMGPROXY_USER_AGENT:
+  #   restart: unless-stopped
+  #   ports:
+  #     - ${IMGPROXY_PORT:-8201}:8080
+  #   networks:
+  #     internal:
 
 volumes:
   postgres_data:
