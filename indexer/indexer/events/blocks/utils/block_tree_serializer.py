@@ -527,6 +527,7 @@ def _fill_auction_bid_action(block: Block, action: Action):
     action.nft_transfer_data = {
         'nft_item_index': block.data['nft_item_index'],
     }
+    action.accounts.append(action.asset_secondary)
     action.value = block.data['amount'].value
 
 def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action: Action):
