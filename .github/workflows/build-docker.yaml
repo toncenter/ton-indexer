@@ -36,6 +36,9 @@ jobs:
           - image-name: ton-indexer-worker
             context: ton-index-worker
             dockerfile: Dockerfile
+          - image-name: ton-indexer-metadata-fetcher
+            context: ton-metadata-fetcher
+            dockerfile: Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4
