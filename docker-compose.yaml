@@ -5,6 +5,10 @@ x-index-pg-access: &index-pg-access
   POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
   POSTGRES_DB: ${POSTGRES_DB:-ton_index}
 
+x-imgproxy-params: &imgproxy-params
+  IMGPROXY_KEY:
+  IMGPROXY_SALT:
+
 services:
   event-cache:
     image: redis:latest
@@ -61,7 +65,8 @@ services:
       TON_INDEXER_API_PORT: ${TON_INDEXER_API_PORT:-8081}
       TON_INDEXER_TON_HTTP_API_ENDPOINT: ${TON_INDEXER_TON_HTTP_API_ENDPOINT:-}
       TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
-    restart: always
+      TON_INDEXER_IMGPROXY_BASEURL: ${TON_INDEXER_IMGPROXY_BASEURL:-}
+    restart: unless-stopped
     networks:
       internal:
 
@@ -131,6 +136,35 @@ services:
       driver: local
       options:
         max-size: 4G
+
+  metadata-fetcher:
+    image: toncenter/ton-indexer-metadata-fetcher:1.2.1
+    build:
+      context: ton-metadata-fetcher
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    secrets:
+      - postgres_password
+    networks:
+      internal:
+    environment:
+      <<: [*index-pg-access, *imgproxy-params]
+    command: -imgproxy-salt ${IMGPROXY_SALT?} -imgproxy-key ${IMGPROXY_KEY?} -processes 8
+
+  imgproxy:
+    image: ghcr.io/imgproxy/imgproxy:latest
+    environment: 
+      <<: *imgproxy-params
+      IMGPROXY_PRESETS: "small=rt:auto/w:128/h:128,medium=rt:auto/w:300/h:300,big=rt:auto/w:512/h:512"
+      IMGPROXY_USER_AGENT:
+    restart: unless-stopped
+    ports:
+      - ${IMGPROXY_PORT:-8201}:8080
+    networks:
+      internal:
 
 volumes:
   postgres_data:

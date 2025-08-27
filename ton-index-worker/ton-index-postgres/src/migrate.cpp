@@ -633,6 +633,19 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
     );
 
     query += (
+      "create unlogged table if not exists background_tasks ("
+			"id bigint generated always as identity constraint background_tasks_pk primary key, "
+			"type varchar, "
+			"status varchar, "
+			"retries integer default 0 not null, "
+			"retry_at bigint, "
+			"started_at bigint, "
+			"data jsonb, "
+			"error varchar"
+		");\n"
+    );
+
+    query += (
       "create table if not exists address_metadata ("
 			"address varchar not null, "
 			"type varchar not null, "

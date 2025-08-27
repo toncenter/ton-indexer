@@ -19,6 +19,11 @@ TON Indexer stack consists of following services:
 3. `event-classifier` - Actions classification service.
 4. `index-worker` - TON Index worker to read and parse data from TON node database. Must run on the same machine as a functioning TON full node.
 5. `run-migrations` -  Initializes the database schema and runs all required migrations.
+6. `metadata-fetcher` - Indexes offchain metadata for Jettons and NFTs, optional service.
+7. `imgproxy` - Proxies images from Jetton and NFT metadata, optional service.
+
+> [!IMPORTANT]
+> Metadata fetcher and imgproxy services are performing requests to external links, such requests may expose your IP, strongly recommended to run this services on a separate machine.
 
 ## Getting started
 
