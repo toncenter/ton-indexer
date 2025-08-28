@@ -52,6 +52,10 @@ echo -n "My53curePwD" > private/postgres_password
 # Pull images and start the stack
 docker compose pull
 docker compose up -d
+
+# To run ton-indexer with metadata services
+docker compose --profile metadata pull
+docker compose --profile metadata up -d
 ```
 
 Once the stack is running, the REST API and interactive Swagger are available at `localhost:8081/`.
