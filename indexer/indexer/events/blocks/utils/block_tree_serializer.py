@@ -42,7 +42,7 @@ from indexer.events.blocks.multisig import (
     MultisigCreateOrderBlock,
     MultisigExecuteBlock,
 )
-from indexer.events.blocks.auction import NftPutOnSaleBlock, NftPutOnAuctionBlock
+from indexer.events.blocks.auction import NftPutOnSaleBlock, NftPutOnAuctionBlock, AuctionOutbidBlock
 from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock, NftPurchaseBlock
 from indexer.events.blocks.staking import (
     CoffeeStakingClaimRewardsBlock,
@@ -526,9 +526,25 @@ def _fill_auction_bid_action(block: Block, action: Action):
     action.asset = _addr(block.data['nft_collection'])
     action.nft_transfer_data = {
         'nft_item_index': block.data['nft_item_index'],
+        'marketplace': block.data.get('auction_type')
     }
     action.accounts.append(action.asset_secondary)
     action.value = block.data['amount'].value
+
+def _fill_auction_outbid_action(block: AuctionOutbidBlock, action: Action):
+    action.source = _addr(block.data.auction_address)
+    action.destination = _addr(block.data.bidder)
+    action.source_secondary = _addr(block.data.new_bidder)
+    action.asset_secondary = _addr(block.data.nft)
+    action.asset = _addr(block.data.nft_collection)
+    action.nft_transfer_data = {
+        'marketplace': block.data.auction_type
+    }
+    action.amount = _value(block.data.amount)
+    action.ton_transfer_data = {
+        'comment': block.data.comment
+    }
+    action.accounts.append(action.asset_secondary)
 
 def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action: Action):
     action.type='dex_deposit_liquidity'
@@ -1071,6 +1087,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_staking_claim_rewards(block, action)
         case 'nft_purchase':
             _fill_nft_purchase_action(block, action)
+        case 'auction_outbid':
+            _fill_auction_outbid_action(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts

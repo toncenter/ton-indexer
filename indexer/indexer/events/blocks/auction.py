@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from indexer.events import context
-from indexer.events.blocks.basic_blocks import Block, TonTransferBlock
+from indexer.events.blocks.basic_blocks import Block, TonTransferBlock, CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, GenericMatcher, BlockTypeMatcher
 from indexer.events.blocks.labels import labeled
 from indexer.events.blocks.nft import NftTransferBlock
@@ -15,7 +17,6 @@ class AuctionBid(Block):
 
     def __repr__(self):
         return f"Auction bid {self.event_nodes[0].message.transaction.hash}"
-
 
 def _is_teleitem(data: dict):
     if 'content' not in data:
@@ -51,7 +52,8 @@ class AuctionBidMatcher(BlockMatcher):
                 'auction': AccountId(block.event_nodes[0].message.destination),
                 'nft_address': AccountId(nft_address),
                 'nft_item_index': None,
-                'nft_collection': None
+                'nft_collection': None,
+                'auction_type': 'getgems'
             }
             if nft_item:
                 data['nft_item_index'] = nft_item.index
@@ -65,12 +67,92 @@ class AuctionBidMatcher(BlockMatcher):
                 'auction': AccountId(block.event_nodes[0].message.destination),
                 'nft_address': AccountId(block.event_nodes[0].message.destination),
                 'nft_collection': AccountId(nft_data['collection_address']) if nft_data['collection_address'] is not None else None,
-                'nft_item_index': nft_data['index'] if nft_data['index'] is not None else None
+                'nft_item_index': nft_data['index'] if nft_data['index'] is not None else None,
+                'auction_type': 'fragment'
             }
         else:
             return []
         bid_block.merge_blocks([block])
         return [block]
+
+@dataclass
+class AuctionOutbidData:
+    auction_address: AccountId
+    nft: AccountId
+    nft_collection: AccountId
+    bidder: AccountId
+    new_bidder: AccountId
+    amount: Amount
+    comment: str|None
+    auction_type: str
+
+class AuctionOutbidBlock(Block):
+    data: AuctionOutbidData
+    def __init__(self, data):
+        super().__init__('auction_outbid', [], data)
+
+    def __repr__(self):
+        return f"Auction outbid {self.event_nodes[0].message.transaction.hash}"
+
+class AuctionOutbidMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(child_matcher=None, include_excess=False)
+
+    def test_self(self, block: Block) -> bool:
+        return isinstance(block, AuctionBid)
+
+    def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        data: AuctionOutbidData = None
+        include: list[Block] = []
+        if block.data['auction_type'] == 'getgems':
+            outbid_transfer: TonTransferBlock = None
+            for b in block.next_blocks:
+                if (isinstance(b, TonTransferBlock) and block.data['auction'] == b.get_message().source
+                        and "Your bid has been outbid by another user" in b.comment):
+                    if outbid_transfer is not None: # To avoid false positives only one ton transfer allowed
+                        return []
+                    outbid_transfer = b
+
+            if outbid_transfer is None:
+                return []
+
+            include = [outbid_transfer]
+
+            data = AuctionOutbidData(
+                auction_address=block.data['auction'],
+                nft=block.data['nft_address'],
+                nft_collection=block.data['nft_collection'],
+                bidder=AccountId(outbid_transfer.get_message().destination),
+                new_bidder=block.data['bidder'],
+                amount=Amount(outbid_transfer.value),
+                comment=outbid_transfer.comment,
+                auction_type='getgems'
+            )
+        elif block.data['auction_type'] == 'fragment':
+            outbid_transfer: CallContractBlock = None
+            for b in block.next_blocks:
+                if (isinstance(b, CallContractBlock) and block.data['auction'] == b.get_message().source
+                        and b.opcode == 0x557cea20):
+                    if outbid_transfer is not None:  # To avoid false positives only one ton transfer allowed
+                        return []
+                    outbid_transfer = b
+            if outbid_transfer is None:
+                return []
+            include = [outbid_transfer]
+
+            data = AuctionOutbidData(
+                auction_address=block.data['auction'],
+                nft=block.data['nft_address'],
+                nft_collection=block.data['nft_collection'],
+                bidder=AccountId(outbid_transfer.get_message().destination),
+                new_bidder=block.data['bidder'],
+                amount=Amount(outbid_transfer.get_message().value),
+                comment=None,
+                auction_type='fragment'
+            )
+        new_block = AuctionOutbidBlock(data)
+        new_block.merge_blocks(include)
+        return [new_block]
 
 @dataclass
 class NftPutOnSaleBlockData:

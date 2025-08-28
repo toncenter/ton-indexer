@@ -372,6 +372,7 @@ class EmulatedRepositoryWithDbFallback(InterfaceRepository):
                     marketplace_fee=data.get("marketplace_fee"),
                     royalty_address=data.get("royalty_address"),
                     royalty_amount=data.get("royalty_amount"),
+                    code_hash=data.get("code_hash"),
                 )
 
         return result
@@ -394,6 +395,7 @@ class EmulatedRepositoryWithDbFallback(InterfaceRepository):
                     royalty_fee_base=data.get("royalty_fee_base"),
                     max_bid=data.get("max_bid"),
                     min_bid=data.get("min_bid"),
+                    code_hash=data.get("code_hash"),
                 )
 
         return result
@@ -566,6 +568,7 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
             "marketplace_fee": float(sale.marketplace_fee) if sale.marketplace_fee is not None else None,
             "royalty_address": sale.royalty_address,
             "royalty_amount": float(sale.royalty_amount) if sale.royalty_amount is not None else None,
+            "code_hash": sale.code_hash,
         }
     for auction in nft_auctions:
         result[auction.address]["NftAuction"] = {
@@ -581,6 +584,7 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
             "royalty_fee_base": float(auction.royalty_fee_base) if auction.royalty_fee_base is not None else None,
             "max_bid": float(auction.max_bid) if auction.max_bid is not None else None,
             "min_bid": float(auction.min_bid) if auction.min_bid is not None else None,
+            "code_hash": auction.code_hash,
         }
     for account_state in nominator_pools:
         result[account_state.account]["NominatorPool"] = {

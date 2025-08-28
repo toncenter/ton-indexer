@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from indexer.core.database import Trace, Message, engine, MessageContent, Action
-from indexer.events.blocks.auction import AuctionBidMatcher, NftPutOnSaleBlockMatcher
+from indexer.events.blocks.auction import AuctionBidMatcher, NftPutOnSaleBlockMatcher, AuctionOutbidMatcher
 from indexer.events.blocks.basic_blocks import (
     CallContractBlock,
     ContractDeploy,
@@ -211,6 +211,7 @@ matchers = [
     SubscriptionBlockMatcher(),
     UnsubscribeBlockMatcher(),
     AuctionBidMatcher(),
+    AuctionOutbidMatcher(),
     JettonMintBlockMatcher(),
     StonfiV2ProvideLiquidityMatcher(),
     StonfiV2WithdrawLiquidityMatcher(),

@@ -829,6 +829,7 @@ class NftSale(Base):
     marketplace_fee = Column(Numeric)
     royalty_address = Column(String)
     royalty_amount = Column(Numeric)
+    code_hash = Column(String)
 
 
 class NftAuction(Base):
@@ -846,6 +847,7 @@ class NftAuction(Base):
     royalty_fee_base = Column(Numeric)
     max_bid = Column(Numeric)
     min_bid = Column(Numeric)
+    code_hash = Column(String)
 
 
 class MultisigOrder(Base):
