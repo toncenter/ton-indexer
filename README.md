@@ -27,7 +27,7 @@ TON Indexer stack consists of following services:
 - **Docker & Docker Compose v2** - [Installation guide](https://docs.docker.com/engine/install/)
 - **Running TON Full Node** - Follow the [official TON documentation](https://docs.ton.org/participate/run-nodes/full-node)
 - **Recommended hardware:** 
-  * Database: 8 cores CPU, 64 GB RAM, 1 TB NVME SSD
+  * Database: 8 cores CPU, 64 GB RAM, 4 TB NVME SSD
   * Worker: 16 cores CPU, 128 GB RAM, 1 TB NVME SSD
 
 ### Setup Instructions
