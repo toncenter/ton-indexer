@@ -94,8 +94,4 @@ Once the stack is running, the REST API and interactive Swagger are available at
 
 # License
 
-TON Indexer is licensed under the **Server Side Public License v1 (SSPL)**.
-
-You are free to use, modify, and redistribute this project under the SSPL terms. If you plan to offer it as a paid service, you must comply with SSPL’s requirement to open-source all infrastructure code used to host the service.
-
-To use the software **without** open-sourcing your infrastructure, please [contact us](https://t.me/toncenter_support) for a commercial license.
+TON Indexer is licensed under the **MIT License**.
