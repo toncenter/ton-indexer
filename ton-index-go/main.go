@@ -608,13 +608,7 @@ func GetAccountStates(c *fiber.Ctx) error {
 		*account_req.IncludeBOC = true
 	}
 
-	// use limit 1000 for account states
-	lim_req := index.LimitRequest{
-		Limit: new(int32),
-	}
-	*lim_req.Limit = 1000
-
-	res, book, metadata, err := pool.QueryAccountStates(account_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryAccountStates(account_req, request_settings)
 	if err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
@@ -652,12 +646,7 @@ func GetWalletStates(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "address of account is required"}
 	}
 
-	lim_req := index.LimitRequest{
-		Limit: new(int32),
-	}
-	*lim_req.Limit = 1000
-
-	res, book, metadata, err := pool.QueryWalletStates(account_req, lim_req, request_settings)
+	res, book, metadata, err := pool.QueryWalletStates(account_req, request_settings)
 	if err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
@@ -1534,7 +1523,7 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 	var res *index.V2WalletInformation
 	if !use_v2 {
 		account_req := index.AccountRequest{AccountAddress: []index.AccountAddress{acc_req.AccountAddress}}
-		loc, _, _, err := pool.QueryWalletStates(account_req, index.LimitRequest{}, request_settings)
+		loc, _, _, err := pool.QueryWalletStates(account_req, request_settings)
 		if err != nil {
 			return err
 		}
@@ -1607,7 +1596,7 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 		res = loc
 	} else {
 		account_req := index.AccountRequest{AccountAddress: []index.AccountAddress{acc_req.AccountAddress}}
-		loc, _, _, err := pool.QueryAccountStates(account_req, index.LimitRequest{}, request_settings)
+		loc, _, _, err := pool.QueryAccountStates(account_req, request_settings)
 		if err != nil {
 			return err
 		}
