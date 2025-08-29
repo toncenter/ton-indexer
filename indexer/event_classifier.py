@@ -29,7 +29,7 @@ from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_accounts_from_trace
 from indexer.events.blocks.utils.block_tree_serializer import create_unknown_action
 from indexer.events.blocks.utils.block_tree_serializer import serialize_blocks
-from indexer.events.blocks.utils.dedust_pools import init_pools_data
+from indexer.events.blocks.utils.dedust_pools import init_pools_data, start_pools_background_updater, get_pools_manager
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import (
     process_event_async_with_postprocessing,
@@ -40,6 +40,7 @@ from indexer.events.interface_repository import (
     RedisInterfaceRepository
 )
 from indexer.events.pendings import start_emulated_traces_processing
+from indexer.events.trace_processor import TraceProcessor
 from indexer.events.utils.lru_cache import LRUCache
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -287,7 +288,7 @@ class EventClassifierWorker(mp.Process):
                     accs, req = extract_accounts_from_trace(trace)
                     accounts.update(accs)
                     extra_data_requests.update(req)
-
+                await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
                 interfaces = await gather_interfaces(accounts, session, extra_requests=extra_data_requests)
                 repository = RedisInterfaceRepository(redis.sync_client)
                 await repository.put_interfaces(interfaces)
@@ -301,45 +302,43 @@ class EventClassifierWorker(mp.Process):
                 inserted_actions = set()
                 inserted_action_accounts = set()
                 for trace_id, state, actions, exc in results:
-                    if state == 'ok' or state == 'broken':
-                        # # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
-                        # if len(actions) > 0:
-                        #     # for action in actions:
-                        #     #     logger.warning(f"action: {action.__dict__}")
-                        #     for action in actions:
-                        #         await session.execute(insert(Action).values({k: v for k, v in action.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
-                        # session.add_all(actions)
-                        # for action in actions:
-                        #     for aa in action.get_action_accounts():
-                        #         await session.execute(insert(ActionAccount).values({k: v for k, v in aa.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
-                        #     # session.add_all(action.get_action_accounts())
-                        session.add_all(actions)
-                        for action in actions:
-                            concat_key = action.action_id + '_' + action.trace_id
-                            if concat_key in inserted_actions:
-                                raise Exception(f"Duplicate action: {concat_key}")
-                            else:
-                                inserted_actions.add(concat_key)
-                            for action_account in action.get_action_accounts():
-                                account_concat_key = action_account.account + '_' + action_account.action_id + '_' + action.trace_id
-                                if account_concat_key in inserted_action_accounts:
-                                    raise Exception(f"Duplicate action account: {account_concat_key}")
-                                else:
-                                    inserted_action_accounts.add(account_concat_key)
-                            session.add_all(action.get_action_accounts())
-
-                        if state == 'ok':
-                            ok_traces.append(trace_id)
+                    # # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
+                    # if len(actions) > 0:
+                    #     # for action in actions:
+                    #     #     logger.warning(f"action: {action.__dict__}")
+                    #     for action in actions:
+                    #         await session.execute(insert(Action).values({k: v for k, v in action.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
+                    # session.add_all(actions)
+                    # for action in actions:
+                    #     for aa in action.get_action_accounts():
+                    #         await session.execute(insert(ActionAccount).values({k: v for k, v in aa.__dict__.items() if not k.startswith('_')}).on_conflict_do_nothing())
+                    #     # session.add_all(action.get_action_accounts())
+                    session.add_all(actions)
+                    for action in actions:
+                        concat_key = action.action_id + '_' + action.trace_id
+                        if concat_key in inserted_actions:
+                            raise Exception(f"Duplicate action: {concat_key}")
                         else:
-                            sql = text(f"""insert into _classifier_failed_traces(trace_id, broken) 
-                            values (:tid, true) on conflict do nothing;""")
-                            await session.execute(sql.bindparams(tid=trace_id))
-                            broken_traces.append(trace_id)
+                            inserted_actions.add(concat_key)
+                        for action_account in action.get_action_accounts():
+                            account_concat_key = action_account.account + '_' + action_account.action_id + '_' + action.trace_id
+                            if account_concat_key in inserted_action_accounts:
+                                raise Exception(f"Duplicate action account: {account_concat_key}")
+                            else:
+                                inserted_action_accounts.add(account_concat_key)
+                        session.add_all(action.get_action_accounts())
+
+                    if state == 'ok':
+                        ok_traces.append(trace_id)
                     else:
+                        err = f'{exc}' if exc is not None else None
                         sql = text(f"""insert into _classifier_failed_traces(trace_id, broken, error) 
-                        values (:tid, false, :err) on conflict do nothing;""")
-                        await session.execute(sql.bindparams(tid=trace_id, err=f'{exc}'))
-                        failed_traces.append(trace_id)
+                                                values (:tid, false, :err) on conflict do nothing;""")
+                        await session.execute(sql.bindparams(tid=trace_id, err=err))
+                        if state == 'broken':
+                            broken_traces.append(trace_id)
+                        elif state == 'failed':
+                            failed_traces.append(trace_id)
                 failed = len(failed_traces)
                 broken = len(broken_traces)
                 # finish task
@@ -379,6 +378,8 @@ class EventClassifierWorker(mp.Process):
 async def start_processing_events_from_db(args: argparse.Namespace, shared_namespace):
     logger.info(f"Creating pool of {args.pool_size} workers")
 
+    await start_pools_background_updater(redis.client)
+
     # counting traces
     logger.info("Counting traces")
     total_traces = args.expected_total
@@ -391,6 +392,8 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
         logger.info(f"Total unclassified traces from database: {total_traces}")
     else:
         logger.info(f"Total unclassified traces number is given: {total_traces}")
+
+    await start_pools_background_updater(redis.client)
 
     task_queue = mp.Queue(args.prefetch_size)
     result_queue = mp.Queue()
@@ -448,10 +451,9 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
     return
 # end def
 
-
-
 async def start_emulated_task_traces_processing():
     pubsub = redis.client.pubsub()
+    await start_pools_background_updater(redis.client)
     await pubsub.subscribe(settings.emulated_traces_redis_channel)
     while True:
         message = await pubsub.get_message(timeout=1)
@@ -468,6 +470,7 @@ async def start_emulated_task_traces_processing():
                 await redis.client.publish("classifier_result_channel_" + task_id, "error")
                 logger.error(f"Failed to process emulated task {task_id}: {e}")
                 logger.exception(e, exc_info=True)
+            await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
 
 async def process_emulated_task_trace(task_id):
     trace_map = await redis.client.hgetall("result_" + task_id)
@@ -475,42 +478,19 @@ async def process_emulated_task_trace(task_id):
     trace_id = str(trace_map['root_node'], encoding='utf-8')
     trace = deserialize_event(trace_id, trace_map)
     context.interface_repository.set(EmulatedTransactionsInterfaceRepository(trace_map))
-    blocks = await process_event_async_with_postprocessing(trace)
-    actions, _ = serialize_blocks(blocks, trace_id)
-    if trace.transactions[0].emulated:
-        for action in actions:
-            action.trace_id = None
-            action.trace_external_hash = trace.external_hash
-    return actions
+    processor = TraceProcessor()
+    result = await processor.process_trace(trace)
+    return result.actions
 
 async def process_trace(trace: Trace) -> tuple[str, str, list[Action], Exception]:
-    if len(trace.transactions) == 1 and trace.transactions[0].descr == 'tick_tock':
-        return trace.trace_id, 'ok', [], None
-    try:
-        result = await process_event_async_with_postprocessing(trace)
-        actions, state = serialize_blocks(result, trace.trace_id, trace)
-        if len(actions) == 0 and len(trace.transactions) > 0:
-            actions = await try_classify_unknown_trace(trace)
-        return trace.trace_id, state, actions, None
-    except Exception as e:
-        logger.error("Marking trace as failed " + trace.trace_id + " - " + str(e))
-        logger.exception(e, exc_info=True)
-        try:
-            return trace.trace_id, 'failed', [create_unknown_action(trace)], e
-        except:
-            return trace.trace_id, 'failed', [], e
-
-
+    processor = TraceProcessor()
+    result = await processor.process_trace(trace)
+    return result.trace_id, result.state, result.actions, result.exception
 
 if __name__ == '__main__':
     # Create a shared namespace for cross-process data sharing
     manager = Manager()
     shared_namespace = manager.Namespace()
-
-    # Initialize pools data and store in shared namespace
-    init_pools_data()
-    # Save pools data from context to shared namespace
-    shared_namespace.dedust_pools = context.dedust_pools.get()
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--prefetch-size',
@@ -564,6 +544,11 @@ if __name__ == '__main__':
     if redis.client is None:
         logger.error("Redis client not initialized. Aborting...")
         sys.exit(1)
+
+    # Initialize pools data and store in shared namespace
+    init_pools_data(redis.sync_client)
+    # Save pools data from context to shared namespace
+    shared_namespace.dedust_pools = context.dedust_pools.get()
 
     if args.emulated_trace_tasks:
         logger.info("Starting processing emulated trace tasks")

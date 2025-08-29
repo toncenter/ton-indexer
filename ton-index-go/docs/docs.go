@@ -1557,8 +1557,15 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "Address of signer wallet in any form. Max: 1024.",
-                        "name": "wallet_address",
+                        "description": "Address of corresponding multisig. Max: 1024.",
+                        "name": "multisig_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Parser order actions",
+                        "name": "parse_actions",
                         "in": "query"
                     },
                     {
@@ -1675,6 +1682,13 @@ const docTemplate = `{
                         "default": "desc",
                         "description": "Sort multisigs by last_transaction_lt.",
                         "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Gather multisig orders",
+                        "name": "include_orders",
                         "in": "query"
                     }
                 ],
@@ -3914,6 +3928,12 @@ const docTemplate = `{
         "MultisigOrder": {
             "type": "object",
             "properties": {
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/index.OrderAction"
+                    }
+                },
                 "address": {
                     "type": "string"
                 },
@@ -4685,6 +4705,36 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/WalletState"
                     }
+                }
+            }
+        },
+        "index.OrderAction": {
+            "type": "object",
+            "properties": {
+                "body_raw": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "destination": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "parsed": {
+                    "type": "boolean"
+                },
+                "parsed_body": {},
+                "parsed_body_type": {
+                    "type": "string"
+                },
+                "send_mode": {
+                    "type": "integer"
+                },
+                "value": {
+                    "type": "string"
                 }
             }
         },

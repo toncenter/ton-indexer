@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -29,6 +30,52 @@ type TraceTask struct {
 	DetectInterfaces bool    `msgpack:"detect_interfaces"`
 	IncludeCodeData  bool    `msgpack:"include_code_data"`
 	McBlockSeqno     *uint32 `msgpack:"mc_block_seqno"`
+}
+
+type TonConnectMessage struct {
+	Address   string  `json:"address" msgpack:"address" example:"EQB3ncyBUTjZUA5EnFKR5_EnOMI9V1tTEAAPaiU71gc4TiUt"`
+	Amount    string  `json:"amount" msgpack:"amount" example:"1000000000"`
+	Payload   *string `json:"payload" msgpack:"payload" example:"te6ccgEBAQEAAgAAAA=="`
+	StateInit *string `json:"stateInit" msgpack:"state_init" example:"te6ccgEBAQEAAgAAAA=="`
+	// ExtraCurrency *map[string]string `json:"extra_currency" msgpack:"extra_currency"`
+}
+
+type TonConnectTraceTask struct {
+	ID               string              `msgpack:"id"`
+	From             string              `msgpack:"from"`
+	ValidUntil       *uint64             `msgpack:"valid_until"`
+	Messages         []TonConnectMessage `msgpack:"messages"`
+	DetectInterfaces bool                `msgpack:"detect_interfaces"`
+	IncludeCodeData  bool                `msgpack:"include_code_data"`
+	McBlockSeqno     *uint32             `msgpack:"mc_block_seqno"`
+}
+
+type TaskEnvelope struct {
+	Type string `msgpack:"type"` // "trace" | "tonconnect"
+	Task any    `msgpack:"task"` // TraceTask or TonConnectTraceTask
+}
+
+func encodeTraceTask(enc *msgpack.Encoder, t TraceTask) error {
+	enc.UseArrayEncodedStructs(false) // map-encoding
+	env := TaskEnvelope{Type: "trace", Task: t}
+	return enc.Encode(env)
+}
+
+func encodeTonconnectTask(enc *msgpack.Encoder, t TonConnectTraceTask) error {
+	enc.UseArrayEncodedStructs(false) // map-encoding
+	env := TaskEnvelope{Type: "tonconnect", Task: t}
+	return enc.Encode(env)
+}
+
+type TonConnectEmulateRequest struct {
+	From               string              `json:"from" example:"EQD1..."`
+	Messages           []TonConnectMessage `json:"messages"`
+	ValidUntil         *uint64             `json:"valid_until" example:"null"`
+	WithActions        bool                `json:"with_actions" example:"false"`
+	IncludeCodeData    bool                `json:"include_code_data" example:"false"`
+	IncludeAddressBook bool                `json:"include_address_book" example:"false"`
+	IncludeMetadata    bool                `json:"include_metadata" example:"false"`
+	McBlockSeqno       *uint32             `json:"mc_block_seqno" example:"null"`
 }
 
 type EmulateRequest struct {
@@ -55,6 +102,46 @@ func (req EmulateRequest) Validate() error {
 	}
 
 	return err
+}
+
+// validate function for TonConnectEmulateRequest
+func (req TonConnectEmulateRequest) Validate() error {
+	if req.From == "" {
+		return fmt.Errorf("from address is required for emulation")
+	}
+	if len(req.Messages) == 0 {
+		return fmt.Errorf("messages array cannot be empty")
+	}
+	for i, msg := range req.Messages {
+		if msg.Address == "" {
+			return fmt.Errorf("message at index %d cannot be empty", i)
+		}
+		if msg.Amount == "" {
+			return fmt.Errorf("amount in message at index %d cannot be empty", i)
+		}
+		_, err := strconv.ParseUint(msg.Amount, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid amount in message at index %d: %v", i, err)
+		}
+
+		if payload := msg.Payload; payload != nil {
+			_, err := base64.StdEncoding.Strict().DecodeString(*payload)
+			if err != nil {
+				return fmt.Errorf("invalid message payload at index %d: %v", i, err)
+			}
+		}
+		if stateInit := msg.StateInit; stateInit != nil {
+			_, err := base64.StdEncoding.Strict().DecodeString(*stateInit)
+			if err != nil {
+				return fmt.Errorf("invalid message stateInit at index %d: %v", i, err)
+			}
+		}
+	}
+	if pool == nil && (req.IncludeAddressBook || req.IncludeMetadata) {
+		return fmt.Errorf("address book and metadata are not available")
+	}
+
+	return nil
 }
 
 // Command-line flags
@@ -96,7 +183,7 @@ func generateTaskID() string {
 // @Param	X-Actions-Version	header	string	false	"Supported actions version"
 // @Router /v1/emulateTrace [post]
 func emulateTrace(c *fiber.Ctx) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	var req EmulateRequest
@@ -128,7 +215,129 @@ func emulateTrace(c *fiber.Ctx) error {
 	enc := msgpack.NewEncoder(&buf)
 	enc.UseArrayEncodedStructs(false)
 
-	if err := enc.Encode(task); err != nil {
+	if err := encodeTraceTask(enc, task); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "failed to serialize task: "+err.Error())
+	}
+
+	// Initialize Redis client
+	rdb := redis.NewClient(&redis.Options{
+		Addr: *redisAddr, // Redis server address
+	})
+
+	// Subscribe to the result channel
+	pubsub := rdb.Subscribe(ctx, "emulator_channel_"+taskID)
+	defer pubsub.Close()
+
+	// Push the packed task to the Redis queue
+	if err := rdb.LPush(ctx, *emulatorQueueName, buf.Bytes()).Err(); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to push task to emulator queue: "+err.Error())
+	}
+
+	// Wait for the result
+	msg, err := pubsub.ReceiveMessage(ctx)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to receive result from emulator channel: "+err.Error())
+	}
+
+	if msg.Payload == "error" {
+		error_msg, err := rdb.Get(ctx, "emulator_error_"+taskID).Result()
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to receive error from emulator error: "+err.Error())
+		}
+		return fiber.NewError(fiber.StatusInternalServerError, error_msg)
+	}
+	if msg.Payload != "success" {
+		return fiber.NewError(fiber.StatusInternalServerError, "unexpected message from emulator channel: "+msg.Payload)
+	}
+
+	if req.WithActions {
+		// subscribe to result channel
+		pubsub := rdb.Subscribe(ctx, "classifier_result_channel_"+taskID)
+		defer pubsub.Close()
+
+		// publish task id to classifier channel
+		if err := rdb.Publish(ctx, *classifierChannel, taskID).Err(); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to publish task id to classifier queue: "+err.Error())
+		}
+		// wait for the notification in channel classifier_result_channel_taskID
+		msg, err := pubsub.ReceiveMessage(ctx)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to receive result from classifier channel: "+err.Error())
+		}
+		if msg.Payload == "error" {
+			error_msg, err := rdb.Get(ctx, "classifier_error_"+taskID).Result()
+			if err != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, "failed to receive error from classifier error: "+err.Error())
+			}
+			return fiber.NewError(fiber.StatusInternalServerError, error_msg)
+		}
+		if msg.Payload != "success" {
+			return fiber.NewError(fiber.StatusInternalServerError, "unexpected message from classifier result channel: "+msg.Payload)
+		}
+	}
+
+	hset, err := rdb.HGetAll(ctx, "result_"+taskID).Result()
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to get result from Redis: "+err.Error())
+	}
+
+	result, err := models.TransformToAPIResponse(hset, pool, *testnet, req.IncludeAddressBook, req.IncludeMetadata,
+		supportedActionTypes)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to transform result: "+err.Error())
+	}
+	if *imgProxyBaseUrl != "" && result.Metadata != nil {
+		index.SubstituteImgproxyBaseUrl(result.Metadata, *imgProxyBaseUrl)
+	}
+
+	return c.Status(200).JSON(result)
+}
+
+// EmulateTonConnect godoc
+// @Summary Emulate trace for TON Connect format
+// @Schemes
+// @Description Emulate trace by composing external message from internal messages for TON Connect.
+// @Tags emulate
+// @Accept json
+// @Produce json
+// @Param   request     body    TonConnectEmulateRequest     true        "TON Connect Emulate Request"
+// @Param	X-Actions-Version	header	string	false	"Supported actions version"
+// @Router /v1/emulateTonConnect [post]
+func emulateTonConnect(c *fiber.Ctx) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	var req TonConnectEmulateRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request: "+err.Error())
+	}
+	if err := req.Validate(); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request: "+err.Error())
+	}
+
+	var supportedActionTypes []string
+	if valueStr, ok := ExtractHeader(c, "X-Actions-Version"); ok {
+		supportedActionTypes = []string{valueStr}
+	}
+	supportedActionTypes = index.ExpandActionTypeShortcuts(supportedActionTypes)
+
+	taskID := generateTaskID()
+	task := TonConnectTraceTask{
+		ID:               taskID,
+		From:             req.From,
+		ValidUntil:       req.ValidUntil,
+		Messages:         req.Messages,
+		DetectInterfaces: req.WithActions || req.IncludeMetadata,
+		IncludeCodeData:  req.IncludeCodeData,
+		McBlockSeqno:     req.McBlockSeqno,
+	}
+
+	// Serialize the task using msgpack
+	var buf bytes.Buffer
+	enc := msgpack.NewEncoder(&buf)
+	enc.UseArrayEncodedStructs(false)
+
+	if err := encodeTonconnectTask(enc, task); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "failed to serialize task: "+err.Error())
 	}
 
@@ -265,6 +474,7 @@ func main() {
 	})
 
 	app.Post("/api/emulate/v1/emulateTrace", emulateTrace)
+	app.Post("/api/emulate/v1/emulateTonConnect", emulateTonConnect)
 
 	var swagger_config = swagger.Config{
 		Title:           "TON Emulate API - Swagger UI",

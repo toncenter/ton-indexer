@@ -42,6 +42,9 @@ int main(int argc, char *argv[]) {
   p.add_option('W', "working-dir", "Path to index working dir for secondary rocksdb logs", [&](td::Slice fname) { 
     working_dir = fname.str();
   });
+  p.add_option('\0', "testnet", "Use for testnet. It is used for correct detecting of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
+    NftItemDetectorR::is_testnet = true;
+  });
 
   p.add_checked_option('t', "threads", "Scheduler threads (default: 7)", [&](td::Slice fname) { 
     int v;

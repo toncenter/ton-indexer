@@ -301,6 +301,20 @@ type ActionRow struct {
 	ToncoDeployPoolLpFeeCurrent        *int64
 	ToncoDeployPoolPoolActive          *bool
 
+	// Coffee action fields
+	CoffeeCreatePoolAmount1               *string
+	CoffeeCreatePoolAmount2               *string
+	CoffeeCreatePoolLpTokensMinted        *string
+	CoffeeStakingDepositMintedItemAddress *string
+	CoffeeStakingDepositMintedItemIndex   *string
+	CoffeeStakingWithdrawNftAddress       *string
+	CoffeeStakingWithdrawNftIndex         *string
+	CoffeeStakingWithdrawPoints           *string
+	CoffeeCreatePoolInitiator1            *string
+	CoffeeCreatePoolInitiator2            *string
+	CoffeeCreatePoolProvidedAsset         *string
+	CoffeeCreatePoolPoolCreatorContract   *string
+
 	// LayerZero fields
 	LayerzeroSendSendRequestId      *uint64
 	LayerzeroSendMsglibManager      *string
@@ -533,6 +547,18 @@ func (t *ActionRow) getAssigns() []assign {
 		assignIntPtr(t.ToncoDeployPoolLpFeeBase),
 		assignIntPtr(t.ToncoDeployPoolLpFeeCurrent),
 		assignBoolPtr(t.ToncoDeployPoolPoolActive),
+		assignStringPtr(t.CoffeeCreatePoolAmount1),
+		assignStringPtr(t.CoffeeCreatePoolAmount2),
+		assignStringPtr(t.CoffeeCreatePoolInitiator1),
+		assignStringPtr(t.CoffeeCreatePoolInitiator2),
+		assignStringPtr(t.CoffeeCreatePoolProvidedAsset),
+		assignStringPtr(t.CoffeeCreatePoolLpTokensMinted),
+		assignStringPtr(t.CoffeeCreatePoolPoolCreatorContract),
+		assignStringPtr(t.CoffeeStakingDepositMintedItemAddress),
+		assignStringPtr(t.CoffeeStakingDepositMintedItemIndex),
+		assignStringPtr(t.CoffeeStakingWithdrawNftAddress),
+		assignStringPtr(t.CoffeeStakingWithdrawNftIndex),
+		assignStringPtr(t.CoffeeStakingWithdrawPoints),
 		assignIntPtr(t.LayerzeroSendSendRequestId),
 		assignStringPtr(t.LayerzeroSendMsglibManager),
 		assignStringPtr(t.LayerzeroSendMsglib),

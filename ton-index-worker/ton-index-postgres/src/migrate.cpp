@@ -728,6 +728,9 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
 
     exec_query("alter type nft_transfer_details add attribute marketplace varchar;");
     exec_query("alter type nft_transfer_details add attribute real_prev_owner tonaddr;");
+    exec_query("create type coffee_create_pool_details as (amount_1 numeric, amount_2 numeric, initiator_1 tonaddr, initiator_2 tonaddr, provided_asset tonaddr, lp_tokens_minted numeric, pool_creator_contract tonaddr);");
+    exec_query("create type coffee_staking_deposit_details as (minted_item_address tonaddr, minted_item_index numeric);");
+    exec_query("create type coffee_staking_withdraw_details as (nft_address tonaddr, nft_index numeric, points numeric);");
     exec_query("create type layerzero_send_details as (send_request_id numeric, msglib_manager varchar, msglib varchar, uln tonaddr, native_fee numeric, zro_fee numeric, endpoint tonaddr, channel tonaddr);");
     exec_query("create type layerzero_packet_details as (src_oapp varchar, dst_oapp varchar, src_eid integer, dst_eid integer, nonce numeric, guid varchar, message varchar);");
     exec_query("create type layerzero_dvn_verify_details as (nonce numeric, status varchar, dvn tonaddr, proxy tonaddr, uln tonaddr, uln_connection tonaddr);");
@@ -742,10 +745,14 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
 
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS trace_external_hash_norm tonhash;\n";
     query += "ALTER TABLE traces ADD COLUMN IF NOT EXISTS external_hash_norm tonhash;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_create_pool_data coffee_create_pool_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_deposit_data coffee_staking_deposit_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_withdraw_data coffee_staking_withdraw_details;\n";
+
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_send_data layerzero_send_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_packet_data layerzero_packet_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_dvn_verify_data layerzero_dvn_verify_details;\n";
-  
+
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
       "VALUES (1, 1, 2, 1) ON CONFLICT(id) DO UPDATE "

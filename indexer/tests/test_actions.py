@@ -1,7 +1,9 @@
 import pytest
 
 from event_classifier import process_trace
+from indexer.core.database import Trace
 from indexer.events import context
+from indexer.events.event_processing import trace_post_processors
 from tests.utils.generic_yaml_test import BaseGenericActionTest
 from tests.utils.repository import TestInterfaceRepository
 from tests.utils.trace_deserializer import load_trace_from_file
@@ -44,23 +46,53 @@ class TestToncoActions(BaseGenericActionTest):
 class TestNftActions(BaseGenericActionTest):
     yaml_file = "nft.yaml"
 
+class TestCoffeeActions(BaseGenericActionTest):
+    yaml_file = "coffee.yaml"
+
+class TestTgBTCActions(BaseGenericActionTest):
+    yaml_file = "tgbtc.yaml"
+
 class TestLayerZeroActions(BaseGenericActionTest):
     yaml_file = "layerzero.yaml"
 
-class TestUnknownAction:
+class TestClassificationCommon:
 
-    @pytest.mark.asyncio
-    async def test_unknown_action(self, traces_dir):
-        trace_id = "Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ--D-3E="
+    def load_trace(self, trace_id, traces_dir) -> Trace:
         filename = traces_dir / f"{trace_id}.lz4"
         assert filename.exists(), f"Trace file not found: {filename}"
         trace, interfaces = load_trace_from_file(filename)
         trace.transactions[0].messages[0].message_content.body = ""
         repository = TestInterfaceRepository(interfaces)
         context.interface_repository.set(repository)
+        return trace
+
+    @pytest.mark.asyncio
+    async def test_unknown_action(self, traces_dir):
+        trace_id = "Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ--D-3E="
+        trace = self.load_trace(trace_id, traces_dir)
 
         _, _, actions, _ = await process_trace(trace)
         assert len(actions) == 1
         assert actions[0].type == "unknown"
         assert set(actions[0].accounts) == {"0:9E53B9A59CC76005E9B00D571D4933D8548361F87608D58BC1A0029FACCEF345"}
         assert set(actions[0].tx_hashes) == {"Ugmymow0mpGDSuNUKC1YHkd28o7qceVvYtokZ++D+3E="}
+
+    @pytest.mark.asyncio
+    async def test_fallback_classification(self, traces_dir):
+        trace_id = "utNOlIUjzWv7MRoSUfkjHkBaIg40RkYMLOy9ljAaykQ="
+        trace = self.load_trace(trace_id, traces_dir)
+        _, state, actions, _ = await process_trace(trace)
+        assert len(actions) > 0 and state == 'ok'
+
+        # Simulate some unexpected error that fires once
+        async def unexpected_error(x):
+            trace_post_processors.remove(unexpected_error)
+            raise Exception("Unexpected error")
+        trace_post_processors.append(unexpected_error)
+
+        _, state, actions, _ = await process_trace(trace)
+        assert state == 'failed'
+        assert len(actions) > 0
+        basic_actions = ['ton_transfer', 'call_contract', 'contract_deploy', 'tick_tock']
+        for action in actions:
+            assert action.type in basic_actions

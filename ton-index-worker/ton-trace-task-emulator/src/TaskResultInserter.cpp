@@ -16,11 +16,11 @@ public:
 
     void start_up() override {
         td::Timer timer;
-        auto result_channel = "emulator_channel_" + result_.task.id;
+        auto result_channel = "emulator_channel_" + result_.task_id;
         try {
             if (result_.trace.is_error()) {
-                transaction_.set("emulator_error_" + result_.task.id, result_.trace.error().message().str());
-                transaction_.expire("emulator_error_" + result_.task.id, 60);
+                transaction_.set("emulator_error_" + result_.task_id, result_.trace.error().message().str());
+                transaction_.expire("emulator_error_" + result_.task_id, 60);
                 transaction_.publish(result_channel, "error");
                 transaction_.exec();
                 promise_.set_value(td::Unit());
@@ -61,12 +61,12 @@ public:
                 std::stringstream buffer;
                 msgpack::pack(buffer, std::move(node));
 
-                transaction_.hset("result_" + result_.task.id, td::base64_encode(node.transaction.in_msg.value().hash.as_slice()), buffer.str());
+                transaction_.hset("result_" + result_.task_id, td::base64_encode(node.transaction.in_msg.value().hash.as_slice()), buffer.str());
             }
-            transaction_.hset("result_" + result_.task.id, "root_node", td::base64_encode(result_.trace.ok().root->node_id.as_slice()));
-            transaction_.hset("result_" + result_.task.id, "mc_block_seqno", std::to_string(result_.mc_block_id.value().seqno));
-            transaction_.hset("result_" + result_.task.id, "rand_seed", td::base64_encode(result_.trace.ok().rand_seed.as_slice()));
-            transaction_.hset("result_" + result_.task.id, "depth_limit_exceeded", result_.trace.ok().tx_limit_exceeded ? "1" : "0");
+            transaction_.hset("result_" + result_.task_id, "root_node", td::base64_encode(result_.trace.ok().root->node_id.as_slice()));
+            transaction_.hset("result_" + result_.task_id, "mc_block_seqno", std::to_string(result_.mc_block_id.value().seqno));
+            transaction_.hset("result_" + result_.task_id, "rand_seed", td::base64_encode(result_.trace.ok().rand_seed.as_slice()));
+            transaction_.hset("result_" + result_.task_id, "depth_limit_exceeded", result_.trace.ok().tx_limit_exceeded ? "1" : "0");
 
             std::unordered_map<td::Bits256, AccountState> account_states;
             std::unordered_map<td::Bits256, std::string> code_cells;
@@ -101,17 +101,17 @@ public:
             {
                 std::stringstream buffer;
                 msgpack::pack(buffer, account_states);
-                transaction_.hset("result_" + result_.task.id, "account_states", buffer.str());
+                transaction_.hset("result_" + result_.task_id, "account_states", buffer.str());
             }
             
-            if (result_.task.include_code_data) {
+            {
                 std::stringstream code_cells_buffer;
                 msgpack::pack(code_cells_buffer, code_cells);
-                transaction_.hset("result_" + result_.task.id, "code_cells", code_cells_buffer.str());
+                transaction_.hset("result_" + result_.task_id, "code_cells", code_cells_buffer.str());
 
                 std::stringstream data_cells_buffer;
                 msgpack::pack(data_cells_buffer, data_cells);
-                transaction_.hset("result_" + result_.task.id, "data_cells", data_cells_buffer.str());
+                transaction_.hset("result_" + result_.task_id, "data_cells", data_cells_buffer.str());
             }
 
             for (const auto& [addr, interfaces] : trace.interfaces) {
@@ -119,10 +119,10 @@ public:
                 std::stringstream buffer;
                 msgpack::pack(buffer, interfaces_redis);
                 auto addr_raw = std::to_string(addr.workchain) + ":" + addr.addr.to_hex();
-                transaction_.hset("result_" + result_.task.id, addr_raw, buffer.str());
+                transaction_.hset("result_" + result_.task_id, addr_raw, buffer.str());
             }
 
-            transaction_.expire("result_" + result_.task.id, 60);
+            transaction_.expire("result_" + result_.task_id, 60);
 
             transaction_.publish(result_channel, "success");
             transaction_.exec();

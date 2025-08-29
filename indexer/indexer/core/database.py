@@ -427,6 +427,24 @@ class Action(Base):
         Column("lp_fee_current", Integer),
         Column("pool_active", Boolean),
     ]))
+    coffee_create_pool_data = Column(CompositeType("coffee_create_pool_details", [
+        Column("amount_1", Numeric),
+        Column("amount_2", Numeric),
+        Column("initiator_1", String),
+        Column("initiator_2", String),
+        Column("provided_asset", String),
+        Column("lp_tokens_minted", Numeric),
+        Column("pool_creator_contract", String)
+    ]))
+    coffee_staking_deposit_data = Column(CompositeType("coffee_staking_deposit_details", [
+        Column("minted_item_address", String),
+        Column("minted_item_index", Numeric),
+    ]))
+    coffee_staking_withdraw_data = Column(CompositeType("coffee_staking_withdraw_details", [
+        Column("nft_address", String),
+        Column("nft_index", Numeric),
+        Column("points", Numeric),
+    ]))
     layerzero_send_data = Column(CompositeType("layerzero_send_details", [
         Column("send_request_id", Numeric),
         Column("msglib_manager", String),
@@ -825,6 +843,24 @@ class NftAuction(Base):
     nft_owner = Column(String)
     last_bid = Column(Numeric)
 
+
+class MultisigOrder(Base):
+    __tablename__ = 'multisig_orders'
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    address = Column(String, nullable=False, unique=True)
+    multisig_address = Column(String)
+    order_seqno = Column(Numeric)
+    threshold = Column(BigInteger)
+    sent_for_execution = Column(Boolean)
+    approvals_mask = Column(Numeric)
+    approvals_num = Column(BigInteger)
+    expiration_date = Column(BigInteger)
+    order_boc = Column(String)
+    signers = Column(ARRAY(String()))
+    last_transaction_lt = Column(BigInteger)
+    code_hash = Column(String)
+    data_hash = Column(String)
 
 
 class LatestAccountState(Base):
