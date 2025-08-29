@@ -1,4 +1,4 @@
-FROM golang:bookworm as builder
+FROM golang:bookworm AS builder
 
 RUN go install github.com/swaggo/swag/cmd/swag@latest
 

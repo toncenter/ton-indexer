@@ -801,6 +801,7 @@ func GetNFTCollections(c *fiber.Ctx) error {
 // @param owner_address query []string false "Address of NFT item owner in any form. Max: 1000." collectionFormat(multi)
 // @param collection_address query []string false "Collection address in any form."
 // @param index query []string false "Index of item for given collection. Max: 1000." collectionFormat(multi)
+// @param sort_by_last_transaction_lt query bool false "Sort NFT items by last transaction lt descending. **Warning:** results may be inconsistent during pagination with limit and offset."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router /api/v3/nft/items [get]
@@ -1200,6 +1201,9 @@ func GetTraces(c *fiber.Ctx) error {
 	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
 		traces_req.SupportedActionTypes = []string{value_str}
 	}
+	if len(traces_req.SupportedActionTypes) == 0 {
+		traces_req.SupportedActionTypes = []string{"latest"}
+	}
 
 	if !onlyOneOf(traces_req.AccountAddress != nil, traces_req.TraceId != nil, len(traces_req.TransactionHash) > 0, len(traces_req.MessageHash) > 0) {
 		return index.IndexError{Code: 422, Message: "only one of account, trace_id, tx_hash, msg_hash should be specified"}
@@ -1254,6 +1258,9 @@ func GetPendingTraces(c *fiber.Ctx) error {
 
 	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
 		event_req.SupportedActionTypes = []string{value_str}
+	}
+	if len(event_req.SupportedActionTypes) == 0 {
+		event_req.SupportedActionTypes = []string{"latest"}
 	}
 
 	if emulatedTracesRepository == nil {
@@ -1375,6 +1382,10 @@ func GetPendingActions(c *fiber.Ctx) error {
 
 	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
 		act_req.SupportedActionTypes = []string{value_str}
+	}
+
+	if len(act_req.SupportedActionTypes) == 0 {
+		act_req.SupportedActionTypes = []string{"latest"}
 	}
 
 	if emulatedTracesRepository == nil {

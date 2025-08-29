@@ -309,23 +309,28 @@ async def try_process_unknown_event(trace: Trace) -> list[Block]:
             blocks = await post_processor(blocks)
         return blocks
     except Exception as e:
-        logging.error(f"Failed to process {trace.trace_id}")
+        logging.error(f"Failed to process {trace.trace_id}: {e}" )
         raise e
 
 async def try_classify_unknown_trace(trace):
     actions = []
-    blocks = await try_process_unknown_event(trace)
-    for block in blocks:
-        if block.btype in ('root', 'empty'):
-            continue
-        if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
-            continue
-        if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
-            continue
-        action = block_to_action(block, trace.trace_id, trace)
-        assert len(action.accounts) > 0, f"Action {action} has no accounts"
-        actions.append(action)
-    if len(actions) == 0:
+    try:
+        blocks = await try_process_unknown_event(trace)
+        for block in blocks:
+            if block.btype in ('root', 'empty'):
+                continue
+            if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
+                continue
+            if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
+                continue
+            action = block_to_action(block, trace.trace_id, trace)
+            assert len(action.accounts) > 0, f"Action {action} has no accounts"
+            actions.append(action)
+        if len(actions) == 0:
+            unknown_action = create_unknown_action(trace)
+            actions.append(unknown_action)
+    except Exception as e:
+        logging.error(f"Failed to classify trace {trace.trace_id}. Falling back to unknown action")
         unknown_action = create_unknown_action(trace)
         actions.append(unknown_action)
     return actions

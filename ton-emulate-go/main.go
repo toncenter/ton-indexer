@@ -197,6 +197,8 @@ func emulateTrace(c *fiber.Ctx) error {
 	var supportedActionTypes []string
 	if valueStr, ok := ExtractHeader(c, "X-Actions-Version"); ok {
 		supportedActionTypes = []string{valueStr}
+	} else {
+	    supportedActionTypes = []string{"latest"}
 	}
 	supportedActionTypes = index.ExpandActionTypeShortcuts(supportedActionTypes)
 

@@ -633,6 +633,19 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
     );
 
     query += (
+      "create unlogged table if not exists background_tasks ("
+			"id bigint generated always as identity constraint background_tasks_pk primary key, "
+			"type varchar, "
+			"status varchar, "
+			"retries integer default 0 not null, "
+			"retry_at bigint, "
+			"started_at bigint, "
+			"data jsonb, "
+			"error varchar"
+		");\n"
+    );
+
+    query += (
       "create table if not exists address_metadata ("
 			"address varchar not null, "
 			"type varchar not null, "
@@ -868,6 +881,9 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists vesting_index_2 on vesting_contracts (vesting_sender_address, id);\n"
       "create index if not exists vesting_index_3 on vesting_contracts (owner_address, id);\n"
       "create index if not exists vesting_index_4 on vesting_contracts (id);\n"
+      "create index if not exists nft_items_index_4 on nft_items (last_transaction_lt);\n"
+      "create index if not exists nft_items_index_5 on nft_items (owner_address, last_transaction_lt);\n"
+      "create index if not exists nft_items_index_6 on nft_items (collection_address, last_transaction_lt);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;

@@ -255,17 +255,27 @@ func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []Eve
 	shouldFetchAddressBook := false
 	shouldFetchMetadata := false
 
-	for _, client := range manager.clients {
-		for _, eventType := range eventTypes {
-			client.mu.Lock()
-			if client.Connected && client.Subscription.InterestedIn(eventType, addressesToNotify) {
-				shouldFetchAddressBook = shouldFetchAddressBook || client.Subscription.IncludeAddressBook
-				shouldFetchMetadata = shouldFetchMetadata || client.Subscription.IncludeMetadata
+	manager.mu.RLock()
+	clients := make([]*Client, 0, len(manager.clients))
+	for _, c := range manager.clients {
+		clients = append(clients, c)
+	}
+	manager.mu.RUnlock()
+
+	for _, client := range clients {
+		client.mu.Lock()
+		if client.Connected {
+			for _, eventType := range eventTypes {
+				if client.Subscription.InterestedIn(eventType, addressesToNotify) {
+					shouldFetchAddressBook = shouldFetchAddressBook || client.Subscription.IncludeAddressBook
+					shouldFetchMetadata = shouldFetchMetadata || client.Subscription.IncludeMetadata
+				}
 			}
-			client.mu.Unlock()
-			if shouldFetchAddressBook && shouldFetchMetadata {
-				break
-			}
+		}
+		client.mu.Unlock()
+
+		if shouldFetchAddressBook && shouldFetchMetadata {
+			break
 		}
 	}
 
@@ -1217,14 +1227,18 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				select {
 				case data := <-eventCh:
 					if err := writeSSEBytes(w, "event", data); err != nil {
+						client.mu.Lock()
 						client.Connected = false
+						client.mu.Unlock()
 						manager.unregister <- client
 						return
 					}
 					_ = w.Flush()
 				case <-keepAlive.C:
 					if _, err := w.WriteString(": keepalive\n\n"); err != nil {
+						client.mu.Lock()
 						client.Connected = false
+						client.mu.Unlock()
 						manager.unregister <- client
 						return
 					}
@@ -1275,7 +1289,9 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 		}
 		manager.register <- client
 		defer func() {
+			client.mu.Lock()
 			client.Connected = false
+			client.mu.Unlock()
 			manager.unregister <- client
 		}()
 

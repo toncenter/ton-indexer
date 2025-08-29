@@ -7,7 +7,7 @@ x-index-pg-access: &index-pg-access
 
 services:
   event-cache:
-    image: redis:latest
+    image: redis:8-alpine
     networks:
       - internal
     command: redis-server --maxclients 40000
@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
 
   event-classifier:
-    image: toncenter/ton-indexer-classifier:1.2.1
+    image: toncenter/ton-indexer-classifier:v1.2.1
     build:
       context: indexer
       dockerfile: Dockerfile
@@ -40,7 +40,7 @@ services:
       internal:
 
   index-api:
-    image: toncenter/ton-indexer-api:1.2.1
+    image: toncenter/ton-indexer-api:v1.2.1
     build:
       context: ton-index-go
       dockerfile: Dockerfile
@@ -61,12 +61,13 @@ services:
       TON_INDEXER_API_PORT: ${TON_INDEXER_API_PORT:-8081}
       TON_INDEXER_TON_HTTP_API_ENDPOINT: ${TON_INDEXER_TON_HTTP_API_ENDPOINT:-}
       TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
-    restart: always
+      TON_INDEXER_IMGPROXY_BASEURL: ${TON_INDEXER_IMGPROXY_BASEURL:-}
+    restart: unless-stopped
     networks:
       internal:
 
   run-migrations:
-    image: toncenter/ton-indexer-worker:1.2.1
+    image: toncenter/ton-indexer-worker:v1.2.1
     build:
       context: ton-index-worker
       dockerfile: Dockerfile
@@ -84,7 +85,7 @@ services:
     restart: on-failure
 
   index-worker:
-    image: toncenter/ton-indexer-worker:1.2.1
+    image: toncenter/ton-indexer-worker:v1.2.1
     build:
       context: ton-index-worker
       dockerfile: Dockerfile
@@ -131,6 +132,40 @@ services:
       driver: local
       options:
         max-size: 4G
+
+  metadata-fetcher:
+    profiles: [metadata]
+    image: toncenter/ton-indexer-metadata-fetcher:v1.2.1
+    build:
+      context: ton-metadata-fetcher
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      run-migrations:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    secrets:
+      - postgres_password
+    networks:
+      internal:
+    environment:
+      <<: *index-pg-access
+    command: -imgproxy-salt ${IMGPROXY_SALT?} -imgproxy-key ${IMGPROXY_KEY?} -processes 8
+
+  imgproxy:
+    profiles: [metadata]
+    image: ghcr.io/imgproxy/imgproxy:v3.29
+    environment: 
+      IMGPROXY_SALT: ${IMGPROXY_SALT?}
+      IMGPROXY_KEY: ${IMGPROXY_KEY?}
+      IMGPROXY_PRESETS: "small=rt:auto/w:128/h:128,medium=rt:auto/w:300/h:300,big=rt:auto/w:512/h:512"
+      IMGPROXY_USER_AGENT:
+    restart: unless-stopped
+    ports:
+      - ${IMGPROXY_PORT:-8201}:8080
+    networks:
+      internal:
 
 volumes:
   postgres_data:
