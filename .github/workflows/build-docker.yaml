@@ -70,6 +70,7 @@ jobs:
           - ton-indexer-classifier
           - ton-indexer-api
           - ton-indexer-worker
+          - ton-indexer-metadata-fetcher
     steps:
       - name: Login to DockerHub
         uses: docker/login-action@v3
