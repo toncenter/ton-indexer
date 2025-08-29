@@ -66,10 +66,11 @@ type NFTCollectionRequest struct {
 }
 
 type NFTItemRequest struct {
-	Address           []AccountAddress `query:"address"`
-	OwnerAddress      []AccountAddress `query:"owner_address"`
-	CollectionAddress []AccountAddress `query:"collection_address"`
-	Index             []string         `query:"index"`
+	Address                 []AccountAddress `query:"address"`
+	OwnerAddress            []AccountAddress `query:"owner_address"`
+	CollectionAddress       []AccountAddress `query:"collection_address"`
+	Index                   []string         `query:"index"`
+	SortByLastTransactionLt *bool            `query:"sort_by_last_transaction_lt"`
 }
 
 type NFTTransferRequest struct {
