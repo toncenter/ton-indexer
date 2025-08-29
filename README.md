@@ -23,7 +23,7 @@ TON Indexer stack consists of following services:
 7. `imgproxy` - Proxies images from Jetton and NFT metadata, optional service.
 
 > [!IMPORTANT]
-> Metadata fetcher and imgproxy services are performing requests to external links, such requests may expose your IP, strongly recommended to run this services on a separate machine.
+> Metadata fetcher and imgproxy services perform requests to external links, such requests may expose your IP, strongly recommended to run this services on a separate machine and set up `IMGPROXY_KEY` and `IMGPROXY_SALT` variables.
 
 ## Getting started
 
