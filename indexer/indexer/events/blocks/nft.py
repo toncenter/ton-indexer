@@ -10,7 +10,7 @@ from indexer.events import context
 from indexer.events.blocks.labels import labeled
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher
-from indexer.events.blocks.core import Block
+from indexer.events.blocks.core import Block, EmptyBlock
 from indexer.events.blocks.messages import NftOwnershipAssigned, ExcessMessage
 from indexer.events.blocks.messages.nft import NftDiscovery, NftReportStaticData, NftTransfer, TeleitemBidInfo, AuctionFillUp
 from indexer.events.blocks.utils import AccountId, Amount
@@ -26,6 +26,11 @@ class NftMintBlock(Block):
 class NftTransferBlock(Block):
     def __init__(self):
         super().__init__('nft_transfer', [],  None)
+
+    def get_nft_collection(self):
+        if self.data is not None and 'nft' in self.data and 'collection' in self.data['nft']:
+            return self.data['nft']['collection']['address']
+        return None
 
 
 @dataclass
@@ -144,7 +149,8 @@ class NftTransferBlockMatcher(BlockMatcher):
                     data['price'] = Amount(nft_purchase_data['price'])
                     data['real_prev_owner'] = AccountId(nft_purchase_data['real_prev_owner'])
                     if isinstance(block.previous_block, TonTransferBlock):
-                        include.append(block.previous_block)
+                        if block.previous_block.comment not in ['finish', 'stop']:
+                            include.append(block.previous_block)
                     elif isinstance(block.previous_block, CallContractBlock) and block.previous_block.get_message().source is None:
                         include.append(block.previous_block)
 
@@ -195,10 +201,15 @@ class GetgemsNftPurchaseBlockMatcher(BlockMatcher):
             return []
 
         include = [block]
+        candidates = block.next_blocks
+        need_proxy = False
+        if isinstance(block.previous_block, TonTransferBlock) and block.previous_block.comment in ['finish', 'stop']:
+            candidates = block.previous_block.next_blocks
+            need_proxy = True
 
         # Find ton transfer to seller
         ton_transfer: TonTransferBlock|None = None
-        for n in block.next_blocks:
+        for n in candidates:
             if n.btype == 'ton_transfer' and n.get_message().destination == block.data['real_prev_owner']:
                 ton_transfer = n
                 include.append(n)
@@ -206,8 +217,7 @@ class GetgemsNftPurchaseBlockMatcher(BlockMatcher):
 
         if ton_transfer is None: # Ton transfer to seller not found
             return []
-
-        new_block = NftPurchaseBlock(NftPurchaseData(
+        data = NftPurchaseData(
             nft_address=block.data['nft']['address'],
             collection_address=block.data['nft']['collection']['address'] if block.data['nft']['collection'] else None,
             nft_index = block.data['nft']['index'],
@@ -226,7 +236,14 @@ class GetgemsNftPurchaseBlockMatcher(BlockMatcher):
             real_prev_owner=block.data['real_prev_owner'],
             marketplace=block.data['marketplace'],
             marketplace_address=block.data['marketplace_address'],
-        ))
+        )
+
+        if need_proxy:
+            proxy = EmptyBlock()
+            block.previous_block.insert_between([block, ton_transfer], proxy)
+            include.append(proxy)
+
+        new_block = NftPurchaseBlock(data)
         new_block.merge_blocks(include)
         return [new_block]
 

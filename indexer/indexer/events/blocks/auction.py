@@ -6,7 +6,7 @@ from indexer.events import context
 from indexer.events.blocks.basic_blocks import Block, TonTransferBlock, CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, GenericMatcher, BlockTypeMatcher
 from indexer.events.blocks.labels import labeled
-from indexer.events.blocks.nft import NftTransferBlock
+from indexer.events.blocks.nft import NftTransferBlock, NftPurchaseBlock
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import get_labeled
 
@@ -39,6 +39,9 @@ class AuctionBidMatcher(BlockMatcher):
             return []
 
         if len(block.contract_deployments) > 0:
+            return []
+
+        if block.comment in ['cancel', 'finish', 'stop']:
             return []
 
         bid_block = AuctionBid({})
@@ -277,3 +280,131 @@ class NftPutOnSaleBlockMatcher(BlockMatcher):
                 return [new_block]
             else:
                 return []
+
+@dataclass
+class NftCancelTradeData:
+    nft_address: AccountId
+    nft_collection: AccountId
+    owner: AccountId
+    trace_contract: AccountId
+
+async def get_cancel_trade_data(block: Block, return_nft: NftTransferBlock, is_sale = True) -> NftCancelTradeData|None:
+    contract_address = block.get_message().destination
+
+    if is_sale:
+        sale_info = await context.interface_repository.get().get_nft_sale(contract_address)
+        if sale_info is None:
+            return None
+        if return_nft.data['nft']['address'] != sale_info.nft_address:
+            return None
+    else:
+        auction_info = await context.interface_repository.get().get_nft_auction(contract_address)
+        if auction_info is None:
+            return None
+        if return_nft.data['nft']['address'] != auction_info.nft_addr:
+            return None
+
+
+    return NftCancelTradeData(
+        nft_address=return_nft.data['nft']['address'],
+        nft_collection=return_nft.get_nft_collection(),
+        owner=return_nft.data['new_owner'],
+        trace_contract=AccountId(contract_address),
+    )
+
+class NftCancelSaleBlock(Block):
+    data: NftCancelTradeData
+    def __init__(self, data: NftCancelTradeData):
+        super().__init__('nft_cancel_sale', [], data)
+
+class NftCancelSaleMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(
+            child_matcher=labeled('nft_transfer', BlockTypeMatcher('nft_transfer'))
+        )
+
+    def test_self(self, block: Block) -> bool:
+        return isinstance(block, CallContractBlock) and block.opcode == 0x3
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        return_nft: NftTransferBlock = get_labeled('nft_transfer', other_blocks, NftTransferBlock)
+        data = await get_cancel_trade_data(block, return_nft)
+        if data is None:
+            return []
+
+        new_block = NftCancelSaleBlock(data)
+        new_block.merge_blocks([block])
+        return [new_block]
+
+class NftCancelAuctionBlock(Block):
+    data: NftCancelTradeData
+    def __init__(self, data: NftCancelTradeData):
+        super().__init__('nft_cancel_auction', [], data)
+
+class NftFinishAuctionBlock(Block):
+    data: NftCancelTradeData
+    def __init__(self, data: NftCancelTradeData):
+        super().__init__('nft_finish_auction', [], data)
+
+class NftCancelAuctionMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(
+            child_matcher=labeled('nft_transfer', BlockTypeMatcher('nft_transfer'))
+        )
+    def test_self(self, block: Block) -> bool:
+        if isinstance(block, TonTransferBlock) and block.comment in ['cancel', 'finish', 'stop']:
+            return True
+        elif isinstance(block, CallContractBlock):
+            if block.opcode in [0x5616c572, 0x20c9eb18, 0xb95616b6]: #[cancel, finish, stop]
+                return True
+        return False
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        return_nft: NftTransferBlock = get_labeled('nft_transfer', other_blocks, NftTransferBlock)
+        data = await get_cancel_trade_data(block, return_nft, is_sale=False)
+        if data is None:
+            return []
+
+        is_finish = False
+        if isinstance(block, CallContractBlock) and block.opcode in [0xb95616b6, 0x20c9eb18]:
+            is_finish = True
+        elif isinstance(block, TonTransferBlock) in ['finish', 'stop']:
+            is_finish = True
+        if is_finish:
+            new_block = NftFinishAuctionBlock(data)
+        else:
+            new_block = NftCancelAuctionBlock(data)
+        new_block.merge_blocks([block])
+        return [new_block]
+
+class NftFinishAuctionMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(
+            child_matcher=labeled('nft_purchase', BlockTypeMatcher('nft_purchase'))
+        )
+    def test_self(self, block: Block) -> bool:
+        if isinstance(block, TonTransferBlock) and block.comment in ['finish', 'stop']:
+            return True
+        elif isinstance(block, CallContractBlock):
+            if block.opcode in [0xb95616b6, 0x20c9eb18]: #[stop, finish]
+                return True
+        return False
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        return_nft: NftPurchaseBlock = get_labeled('nft_purchase', other_blocks, NftPurchaseBlock)
+        contract_address = block.get_message().destination
+        auction_info = await context.interface_repository.get().get_nft_auction(contract_address)
+        if auction_info is None:
+            return []
+        if return_nft.data.nft_address != auction_info.nft_addr:
+            return []
+
+        data = NftCancelTradeData(
+            nft_address=return_nft.data.nft_address,
+            nft_collection=return_nft.data.collection_address,
+            owner=return_nft.data.new_owner,
+            trace_contract=AccountId(contract_address),
+        )
+        new_block = NftFinishAuctionBlock(data)
+        new_block.merge_blocks([block])
+        return [new_block]
