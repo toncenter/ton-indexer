@@ -1173,7 +1173,7 @@ func buildAccountStatesQuery(account_req AccountRequest, settings RequestSetting
 	query += ` from ` + from_query
 	query += filter_query
 	query += orderby_query
-	query += " limit 1000"
+	query += ` limit 1000`
 	// log.Println(query)
 	return query, nil
 }
