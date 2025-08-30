@@ -33,6 +33,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"coffee_create_vault", "coffee_create_pool_creator", "coffee_create_pool",
 		"coffee_mev_protect_hold_funds", "coffee_mev_protect_failed_swap", "coffee_staking_claim_rewards",
 		"coffee_staking_deposit", "coffee_staking_withdraw",
+		"layerzero_send", "layerzero_send_tokens", "layerzero_receive", "layerzero_commit_packet", "layerzero_dvn_verify",
 		"unknown",
 	},
 	"latest": {"v2"},
@@ -70,6 +71,9 @@ var ActionTypeShortcuts = map[string][]string{
 		"tgbtc_new_key", "tgbtc_new_key_fallback",
 		"tgbtc_burn", "tgbtc_burn_fallback",
 		"tgbtc_mint", "tgbtc_mint_fallback",
+	},
+	"layerzero": {
+		"layerzero_send", "layerzero_send_tokens", "layerzero_receive", "layerzero_commit_packet", "layerzero_dvn_verify",
 	},
 }
 
