@@ -1142,17 +1142,13 @@ func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
 	return query, nil
 }
 
-func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+func buildAccountStatesQuery(account_req AccountRequest, settings RequestSettings) (string, error) {
 	clmn_query_default := `A.account, A.hash, A.balance, A.balance_extra_currencies, A.account_status, A.frozen_hash, A.last_trans_hash, A.last_trans_lt, A.data_hash, A.code_hash, `
 	clmn_query := clmn_query_default + `A.data_boc, A.code_boc, C.methods`
 	from_query := `latest_account_states as A left join contract_methods as C on A.code_hash = C.code_hash`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	limit_query, err := limitQuery(lim_req, settings)
-	if err != nil {
-		return "", err
-	}
 
 	// build query
 	if v := account_req.AccountAddress; v != nil {
@@ -1180,7 +1176,7 @@ func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, s
 	query += ` from ` + from_query
 	query += filter_query
 	query += orderby_query
-	query += limit_query
+	query += ` limit 1000`
 	// log.Println(query)
 	return query, nil
 }
@@ -3166,10 +3162,9 @@ func (db *DbClient) QueryJettonBurns(
 
 func (db *DbClient) QueryAccountStates(
 	account_req AccountRequest,
-	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]AccountStateFull, AddressBook, Metadata, error) {
-	query, err := buildAccountStatesQuery(account_req, lim_req, settings)
+	query, err := buildAccountStatesQuery(account_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -3217,10 +3212,9 @@ func (db *DbClient) QueryAccountStates(
 
 func (db *DbClient) QueryWalletStates(
 	account_req AccountRequest,
-	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]WalletState, AddressBook, Metadata, error) {
-	states, book, metadata, err := db.QueryAccountStates(account_req, lim_req, settings)
+	states, book, metadata, err := db.QueryAccountStates(account_req, settings)
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}

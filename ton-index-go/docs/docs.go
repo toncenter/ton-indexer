@@ -44,7 +44,7 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "List of addresses in any form to get address book. Max: 1024.",
+                        "description": "List of addresses in any form. Maximum 1000 addresses allowed.",
                         "name": "address",
                         "in": "query",
                         "required": true
@@ -144,6 +144,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query actions of traces which was completed in masterchain block with given seqno",
                         "name": "mc_seqno",
                         "in": "query"
@@ -151,6 +152,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query actions for traces with ` + "`" + `trace_end_utime \u003e= start_utime` + "`" + `.",
                         "name": "start_utime",
                         "in": "query"
@@ -158,6 +160,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query actions for traces with ` + "`" + `trace_end_utime \u003c= end_utime` + "`" + `.",
                         "name": "end_utime",
                         "in": "query"
@@ -165,6 +168,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query actions for traces with ` + "`" + `trace_end_lt \u003e= start_lt` + "`" + `.",
                         "name": "start_lt",
                         "in": "query"
@@ -172,6 +176,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query actions for traces with ` + "`" + `trace_end_lt \u003c= end_lt` + "`" + `.",
                         "name": "end_lt",
                         "in": "query"
@@ -265,6 +270,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -273,6 +279,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -492,6 +499,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Block workchain.",
                         "name": "workchain",
                         "in": "query"
@@ -504,12 +512,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Block block seqno. Must be sent with *workchain* and *shard*.",
                         "name": "seqno",
                         "in": "query"
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Masterchain block seqno",
                         "name": "mc_seqno",
                         "in": "query"
@@ -517,6 +527,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query blocks with generation UTC timestamp **after** given timestamp.",
                         "name": "start_utime",
                         "in": "query"
@@ -524,6 +535,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query blocks with generation UTC timestamp **before** given timestamp.",
                         "name": "end_utime",
                         "in": "query"
@@ -531,6 +543,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query blocks with ` + "`" + `lt \u003e= start_lt` + "`" + `.",
                         "name": "start_lt",
                         "in": "query"
@@ -538,6 +551,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query blocks with ` + "`" + `lt \u003c= end_lt` + "`" + `.",
                         "name": "end_lt",
                         "in": "query"
@@ -546,6 +560,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -554,6 +569,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -616,6 +632,25 @@ const docTemplate = `{
                         "name": "wallet",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "format": "int32",
+                        "default": 100,
+                        "description": "Limit number of queried rows. Use with *offset* to batch read.",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "format": "int32",
+                        "default": 0,
+                        "description": "Skip first N rows. Use with *limit* to batch read.",
+                        "name": "offset",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -735,6 +770,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query transactions with generation UTC timestamp **after** given timestamp.",
                         "name": "start_utime",
                         "in": "query"
@@ -742,6 +778,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query transactions with generation UTC timestamp **before** given timestamp.",
                         "name": "end_utime",
                         "in": "query"
@@ -749,6 +786,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query transactions with ` + "`" + `lt \u003e= start_lt` + "`" + `.",
                         "name": "start_lt",
                         "in": "query"
@@ -756,6 +794,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query transactions with ` + "`" + `lt \u003c= end_lt` + "`" + `.",
                         "name": "end_lt",
                         "in": "query"
@@ -764,6 +803,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -772,6 +812,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -852,6 +893,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -860,6 +902,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -944,6 +987,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query transactions with generation UTC timestamp **after** given timestamp.",
                         "name": "start_utime",
                         "in": "query"
@@ -951,6 +995,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query transactions with generation UTC timestamp **before** given timestamp.",
                         "name": "end_utime",
                         "in": "query"
@@ -958,6 +1003,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query transactions with ` + "`" + `lt \u003e= start_lt` + "`" + `.",
                         "name": "start_lt",
                         "in": "query"
@@ -965,6 +1011,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query transactions with ` + "`" + `lt \u003c= end_lt` + "`" + `.",
                         "name": "end_lt",
                         "in": "query"
@@ -973,6 +1020,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -981,6 +1029,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -1077,6 +1126,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -1085,6 +1135,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -1142,6 +1193,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Masterchain block seqno.",
                         "name": "seqno",
                         "in": "query",
@@ -1189,6 +1241,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Masterchain block seqno.",
                         "name": "seqno",
                         "in": "query",
@@ -1198,6 +1251,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -1206,6 +1260,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -1375,6 +1430,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query messages with ` + "`" + `created_at \u003e= start_utime` + "`" + `.",
                         "name": "start_utime",
                         "in": "query"
@@ -1382,6 +1438,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query messages with ` + "`" + `created_at \u003e= start_utime` + "`" + `.",
                         "name": "end_utime",
                         "in": "query"
@@ -1389,6 +1446,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query messages with ` + "`" + `created_lt \u003e= start_lt` + "`" + `.",
                         "name": "start_lt",
                         "in": "query"
@@ -1396,6 +1454,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query messages with ` + "`" + `created_lt \u003c= end_lt` + "`" + `.",
                         "name": "end_lt",
                         "in": "query"
@@ -1426,6 +1485,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -1434,6 +1494,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -1572,6 +1633,7 @@ const docTemplate = `{
                         "maximum": 1024,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -1580,6 +1642,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -1660,6 +1723,7 @@ const docTemplate = `{
                         "maximum": 1024,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -1668,6 +1732,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -1755,6 +1820,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -1763,6 +1829,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -1858,6 +1925,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -1866,6 +1934,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -1950,6 +2019,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query transactions with generation UTC timestamp **after** given timestamp.",
                         "name": "start_utime",
                         "in": "query"
@@ -1957,6 +2027,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query transactions with generation UTC timestamp **before** given timestamp.",
                         "name": "end_utime",
                         "in": "query"
@@ -1964,6 +2035,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query transactions with ` + "`" + `lt \u003e= start_lt` + "`" + `.",
                         "name": "start_lt",
                         "in": "query"
@@ -1971,6 +2043,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query transactions with ` + "`" + `lt \u003c= end_lt` + "`" + `.",
                         "name": "end_lt",
                         "in": "query"
@@ -1979,6 +2052,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -1987,6 +2061,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -2278,6 +2353,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -2286,6 +2362,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -2372,6 +2449,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query traces that was completed in masterchain block with given seqno",
                         "name": "mc_seqno",
                         "in": "query"
@@ -2379,6 +2457,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query traces, which was finished **after** given timestamp.",
                         "name": "start_utime",
                         "in": "query"
@@ -2386,6 +2465,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query traces, which was finished **before** given timestamp.",
                         "name": "end_utime",
                         "in": "query"
@@ -2393,6 +2473,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query traces with ` + "`" + `end_lt \u003e= start_lt` + "`" + `.",
                         "name": "start_lt",
                         "in": "query"
@@ -2400,6 +2481,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query traces with ` + "`" + `end_lt \u003c= end_lt` + "`" + `.",
                         "name": "end_lt",
                         "in": "query"
@@ -2425,6 +2507,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -2433,6 +2516,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -2491,6 +2575,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Block workchain.",
                         "name": "workchain",
                         "in": "query"
@@ -2503,12 +2588,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Block block seqno. Must be sent with *workchain* and *shard*.",
                         "name": "seqno",
                         "in": "query"
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Masterchain block seqno.",
                         "name": "mc_seqno",
                         "in": "query"
@@ -2541,6 +2628,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "format": "int64",
                         "description": "Transaction lt.",
                         "name": "lt",
                         "in": "query"
@@ -2548,6 +2636,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query transactions with generation UTC timestamp **after** given timestamp.",
                         "name": "start_utime",
                         "in": "query"
@@ -2555,6 +2644,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "description": "Query transactions with generation UTC timestamp **before** given timestamp.",
                         "name": "end_utime",
                         "in": "query"
@@ -2562,6 +2652,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query transactions with ` + "`" + `lt \u003e= start_lt` + "`" + `.",
                         "name": "start_lt",
                         "in": "query"
@@ -2569,6 +2660,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int64",
                         "description": "Query transactions with ` + "`" + `lt \u003c= end_lt` + "`" + `.",
                         "name": "end_lt",
                         "in": "query"
@@ -2577,6 +2669,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -2585,6 +2678,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -2643,6 +2737,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Masterchain block seqno.",
                         "name": "seqno",
                         "in": "query",
@@ -2652,6 +2747,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -2660,6 +2756,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -2748,6 +2845,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -2756,6 +2854,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -2832,6 +2931,7 @@ const docTemplate = `{
                         "maximum": 1000,
                         "minimum": 1,
                         "type": "integer",
+                        "format": "int32",
                         "default": 10,
                         "description": "Limit number of queried rows. Use with *offset* to batch read.",
                         "name": "limit",
@@ -2840,6 +2940,7 @@ const docTemplate = `{
                     {
                         "minimum": 0,
                         "type": "integer",
+                        "format": "int32",
                         "default": 0,
                         "description": "Skip first N rows. Use with *limit* to batch read.",
                         "name": "offset",
@@ -2945,7 +3046,7 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "collectionFormat": "multi",
-                        "description": "List of addresses in any form to get address book. Max: 1024.",
+                        "description": "List of addresses in any form. Maximum 1000 addresses allowed.",
                         "name": "address",
                         "in": "query",
                         "required": true
@@ -4344,6 +4445,29 @@ const docTemplate = `{
                 }
             }
         },
+        "TraceNode": {
+            "type": "object",
+            "properties": {
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/TraceNode"
+                    }
+                },
+                "in_msg": {
+                    "$ref": "#/definitions/Message"
+                },
+                "in_msg_hash": {
+                    "type": "string"
+                },
+                "transaction": {
+                    "$ref": "#/definitions/Transaction"
+                },
+                "tx_hash": {
+                    "type": "string"
+                }
+            }
+        },
         "TracesResponse": {
             "type": "object",
             "properties": {
@@ -4740,29 +4864,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "index.TraceNode": {
-            "type": "object",
-            "properties": {
-                "children": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/index.TraceNode"
-                    }
-                },
-                "in_msg": {
-                    "$ref": "#/definitions/Message"
-                },
-                "in_msg_hash": {
-                    "type": "string"
-                },
-                "transaction": {
-                    "$ref": "#/definitions/Transaction"
-                },
-                "tx_hash": {
                     "type": "string"
                 }
             }

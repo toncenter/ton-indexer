@@ -915,6 +915,21 @@ definitions:
       transactions:
         type: integer
     type: object
+  TraceNode:
+    properties:
+      children:
+        items:
+          $ref: '#/definitions/TraceNode'
+        type: array
+      in_msg:
+        $ref: '#/definitions/Message'
+      in_msg_hash:
+        type: string
+      transaction:
+        $ref: '#/definitions/Transaction'
+      tx_hash:
+        type: string
+    type: object
   TracesResponse:
     properties:
       address_book:
@@ -1178,21 +1193,6 @@ definitions:
       value:
         type: string
     type: object
-  index.TraceNode:
-    properties:
-      children:
-        items:
-          $ref: '#/definitions/index.TraceNode'
-        type: array
-      in_msg:
-        $ref: '#/definitions/Message'
-      in_msg_hash:
-        type: string
-      transaction:
-        $ref: '#/definitions/Transaction'
-      tx_hash:
-        type: string
-    type: object
   index.VestingInfo:
     properties:
       address:
@@ -1231,7 +1231,7 @@ paths:
       operationId: api_v3_get_account_states
       parameters:
       - collectionFormat: multi
-        description: 'List of addresses in any form to get address book. Max: 1024.'
+        description: List of addresses in any form. Maximum 1000 addresses allowed.
         in: query
         items:
           type: string
@@ -1302,25 +1302,30 @@ paths:
         type: array
       - description: Query actions of traces which was completed in masterchain block
           with given seqno
+        format: int32
         in: query
         name: mc_seqno
         type: integer
       - description: Query actions for traces with `trace_end_utime >= start_utime`.
+        format: int32
         in: query
         minimum: 0
         name: start_utime
         type: integer
       - description: Query actions for traces with `trace_end_utime <= end_utime`.
+        format: int32
         in: query
         minimum: 0
         name: end_utime
         type: integer
       - description: Query actions for traces with `trace_end_lt >= start_lt`.
+        format: int64
         in: query
         minimum: 0
         name: start_lt
         type: integer
       - description: Query actions for traces with `trace_end_lt <= end_lt`.
+        format: int64
         in: query
         minimum: 0
         name: end_lt
@@ -1399,6 +1404,7 @@ paths:
         type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -1406,6 +1412,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -1544,6 +1551,7 @@ paths:
       operationId: api_v3_get_blocks
       parameters:
       - description: Block workchain.
+        format: int32
         in: query
         name: workchain
         type: integer
@@ -1552,35 +1560,42 @@ paths:
         name: shard
         type: string
       - description: Block block seqno. Must be sent with *workchain* and *shard*.
+        format: int32
         in: query
         name: seqno
         type: integer
       - description: Masterchain block seqno
+        format: int32
         in: query
         name: mc_seqno
         type: integer
       - description: Query blocks with generation UTC timestamp **after** given timestamp.
+        format: int32
         in: query
         minimum: 0
         name: start_utime
         type: integer
       - description: Query blocks with generation UTC timestamp **before** given timestamp.
+        format: int32
         in: query
         minimum: 0
         name: end_utime
         type: integer
       - description: Query blocks with `lt >= start_lt`.
+        format: int64
         in: query
         minimum: 0
         name: start_lt
         type: integer
       - description: Query blocks with `lt <= end_lt`.
+        format: int64
         in: query
         minimum: 0
         name: end_lt
         type: integer
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -1588,6 +1603,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -1631,6 +1647,21 @@ paths:
         name: wallet
         required: true
         type: string
+      - default: 100
+        description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
+        in: query
+        maximum: 1000
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
@@ -1706,28 +1737,33 @@ paths:
         type: string
       - description: Query transactions with generation UTC timestamp **after** given
           timestamp.
+        format: int32
         in: query
         minimum: 0
         name: start_utime
         type: integer
       - description: Query transactions with generation UTC timestamp **before** given
           timestamp.
+        format: int32
         in: query
         minimum: 0
         name: end_utime
         type: integer
       - description: Query transactions with `lt >= start_lt`.
+        format: int64
         in: query
         minimum: 0
         name: start_lt
         type: integer
       - description: Query transactions with `lt <= end_lt`.
+        format: int64
         in: query
         minimum: 0
         name: end_lt
         type: integer
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -1735,6 +1771,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -1787,6 +1824,7 @@ paths:
         type: array
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -1794,6 +1832,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -1849,28 +1888,33 @@ paths:
         type: string
       - description: Query transactions with generation UTC timestamp **after** given
           timestamp.
+        format: int32
         in: query
         minimum: 0
         name: start_utime
         type: integer
       - description: Query transactions with generation UTC timestamp **before** given
           timestamp.
+        format: int32
         in: query
         minimum: 0
         name: end_utime
         type: integer
       - description: Query transactions with `lt >= start_lt`.
+        format: int64
         in: query
         minimum: 0
         name: start_lt
         type: integer
       - description: Query transactions with `lt <= end_lt`.
+        format: int64
         in: query
         minimum: 0
         name: end_lt
         type: integer
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -1878,6 +1922,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -1941,6 +1986,7 @@ paths:
         type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -1948,6 +1994,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -1985,6 +2032,7 @@ paths:
       operationId: api_v3_get_masterchainBlockShardState
       parameters:
       - description: Masterchain block seqno.
+        format: int32
         in: query
         name: seqno
         required: true
@@ -2015,12 +2063,14 @@ paths:
       operationId: api_v3_get_masterchainBlockShards
       parameters:
       - description: Masterchain block seqno.
+        format: int32
         in: query
         name: seqno
         required: true
         type: integer
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -2028,6 +2078,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -2135,21 +2186,25 @@ paths:
         name: opcode
         type: string
       - description: Query messages with `created_at >= start_utime`.
+        format: int32
         in: query
         minimum: 0
         name: start_utime
         type: integer
       - description: Query messages with `created_at >= start_utime`.
+        format: int32
         in: query
         minimum: 0
         name: end_utime
         type: integer
       - description: Query messages with `created_lt >= start_lt`.
+        format: int64
         in: query
         minimum: 0
         name: start_lt
         type: integer
       - description: Query messages with `created_lt <= end_lt`.
+        format: int64
         in: query
         minimum: 0
         name: end_lt
@@ -2171,6 +2226,7 @@ paths:
         type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -2178,6 +2234,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -2268,6 +2325,7 @@ paths:
         type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1024
         minimum: 1
@@ -2275,6 +2333,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -2327,6 +2386,7 @@ paths:
         type: array
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1024
         minimum: 1
@@ -2334,6 +2394,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -2391,6 +2452,7 @@ paths:
         type: array
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -2398,6 +2460,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -2461,6 +2524,7 @@ paths:
         type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -2468,6 +2532,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -2523,28 +2588,33 @@ paths:
         type: string
       - description: Query transactions with generation UTC timestamp **after** given
           timestamp.
+        format: int32
         in: query
         minimum: 0
         name: start_utime
         type: integer
       - description: Query transactions with generation UTC timestamp **before** given
           timestamp.
+        format: int32
         in: query
         minimum: 0
         name: end_utime
         type: integer
       - description: Query transactions with `lt >= start_lt`.
+        format: int64
         in: query
         minimum: 0
         name: start_lt
         type: integer
       - description: Query transactions with `lt <= end_lt`.
+        format: int64
         in: query
         minimum: 0
         name: end_lt
         type: integer
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -2552,6 +2622,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -2755,6 +2826,7 @@ paths:
       parameters:
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -2762,6 +2834,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -2820,25 +2893,30 @@ paths:
         type: array
       - description: Query traces that was completed in masterchain block with given
           seqno
+        format: int32
         in: query
         name: mc_seqno
         type: integer
       - description: Query traces, which was finished **after** given timestamp.
+        format: int32
         in: query
         minimum: 0
         name: start_utime
         type: integer
       - description: Query traces, which was finished **before** given timestamp.
+        format: int32
         in: query
         minimum: 0
         name: end_utime
         type: integer
       - description: Query traces with `end_lt >= start_lt`.
+        format: int64
         in: query
         minimum: 0
         name: start_lt
         type: integer
       - description: Query traces with `end_lt <= end_lt`.
+        format: int64
         in: query
         minimum: 0
         name: end_lt
@@ -2857,6 +2935,7 @@ paths:
         type: array
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -2864,6 +2943,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -2901,6 +2981,7 @@ paths:
       operationId: api_v3_get_transactions
       parameters:
       - description: Block workchain.
+        format: int32
         in: query
         name: workchain
         type: integer
@@ -2909,10 +2990,12 @@ paths:
         name: shard
         type: string
       - description: Block block seqno. Must be sent with *workchain* and *shard*.
+        format: int32
         in: query
         name: seqno
         type: integer
       - description: Masterchain block seqno.
+        format: int32
         in: query
         name: mc_seqno
         type: integer
@@ -2936,33 +3019,39 @@ paths:
         name: hash
         type: string
       - description: Transaction lt.
+        format: int64
         in: query
         name: lt
         type: integer
       - description: Query transactions with generation UTC timestamp **after** given
           timestamp.
+        format: int32
         in: query
         minimum: 0
         name: start_utime
         type: integer
       - description: Query transactions with generation UTC timestamp **before** given
           timestamp.
+        format: int32
         in: query
         minimum: 0
         name: end_utime
         type: integer
       - description: Query transactions with `lt >= start_lt`.
+        format: int64
         in: query
         minimum: 0
         name: start_lt
         type: integer
       - description: Query transactions with `lt <= end_lt`.
+        format: int64
         in: query
         minimum: 0
         name: end_lt
         type: integer
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -2970,6 +3059,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -3007,12 +3097,14 @@ paths:
       operationId: api_v3_get_transactions_by_masterchain_block
       parameters:
       - description: Masterchain block seqno.
+        format: int32
         in: query
         name: seqno
         required: true
         type: integer
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -3020,6 +3112,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -3078,6 +3171,7 @@ paths:
         type: string
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -3085,6 +3179,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -3134,6 +3229,7 @@ paths:
         type: boolean
       - default: 10
         description: Limit number of queried rows. Use with *offset* to batch read.
+        format: int32
         in: query
         maximum: 1000
         minimum: 1
@@ -3141,6 +3237,7 @@ paths:
         type: integer
       - default: 0
         description: Skip first N rows. Use with *limit* to batch read.
+        format: int32
         in: query
         minimum: 0
         name: offset
@@ -3207,7 +3304,7 @@ paths:
       operationId: api_v3_get_wallet_states
       parameters:
       - collectionFormat: multi
-        description: 'List of addresses in any form to get address book. Max: 1024.'
+        description: List of addresses in any form. Maximum 1000 addresses allowed.
         in: query
         items:
           type: string
