@@ -21,25 +21,8 @@ printf '*:*:*:*:%s\n' "$PW" > "$tmp"
 chmod 0600 "$tmp"
 export PGPASSFILE="$tmp"
 
-INDEX_ARGS=""
-case $TON_INDEXER_IS_TESTNET in 
-    y|yes|t|true|on|1)
-        echo "Using testnet"
-        INDEX_ARGS="$INDEX_ARGS -testnet"
-        ;;
-    *) ;;
-esac
+FETCHER_ARGS="-overrides-file /app/metadata_overrides.json"
 
-if [ ! -z "$TON_INDEXER_TON_HTTP_API_ENDPOINT" ]; then
-    echo "http-api endpoint is specified"
-    INDEX_ARGS="$INDEX_ARGS -v2 ${TON_INDEXER_TON_HTTP_API_ENDPOINT}"
-fi
+echo "pghost: ${POSTGRES_HOST}"
 
-if [ ! -z "$TON_INDEXER_IMGPROXY_BASEURL" ]; then
-    echo "imgproxy baseurl is specified"
-    INDEX_ARGS="$INDEX_ARGS -imgproxy-baseurl ${TON_INDEXER_IMGPROXY_BASEURL}"
-fi
-
-echo "Args: $INDEX_ARGS"
-
-ton-index-go -pg "postgresql://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}" -bind ":8081" $INDEX_ARGS $@
+ton-metadata-fetcher -pg "postgresql://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}" $FETCHER_ARGS $@

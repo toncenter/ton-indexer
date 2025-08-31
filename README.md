@@ -19,6 +19,11 @@ TON Indexer stack consists of following services:
 3. `event-classifier` - Actions classification service.
 4. `index-worker` - TON Index worker to read and parse data from TON node database. Must run on the same machine as a functioning TON full node.
 5. `run-migrations` -  Initializes the database schema and runs all required migrations.
+6. `metadata-fetcher` - Indexes offchain metadata for Jettons and NFTs, optional service.
+7. `imgproxy` - Proxies images from Jetton and NFT metadata, optional service.
+
+> [!IMPORTANT]
+> Metadata fetcher and imgproxy services perform requests to external links, such requests may expose your IP, strongly recommended to run this services on a separate machine and set up `IMGPROXY_KEY` and `IMGPROXY_SALT` variables.
 
 ## Getting started
 
@@ -27,7 +32,7 @@ TON Indexer stack consists of following services:
 - **Docker & Docker Compose v2** - [Installation guide](https://docs.docker.com/engine/install/)
 - **Running TON Full Node** - Follow the [official TON documentation](https://docs.ton.org/participate/run-nodes/full-node)
 - **Recommended hardware:** 
-  * Database: 8 cores CPU, 64 GB RAM, 1 TB NVME SSD
+  * Database: 8 cores CPU, 64 GB RAM, 4 TB NVME SSD
   * Worker: 16 cores CPU, 128 GB RAM, 1 TB NVME SSD
 
 ### Setup Instructions
@@ -47,6 +52,10 @@ echo -n "My53curePwD" > private/postgres_password
 # Pull images and start the stack
 docker compose pull
 docker compose up -d
+
+# To run ton-indexer with metadata services
+docker compose --profile metadata pull
+docker compose --profile metadata up -d
 ```
 
 Once the stack is running, the REST API and interactive Swagger are available at `localhost:8081/`.
@@ -94,8 +103,4 @@ Once the stack is running, the REST API and interactive Swagger are available at
 
 # License
 
-TON Indexer is licensed under the **Server Side Public License v1 (SSPL)**.
-
-You are free to use, modify, and redistribute this project under the SSPL terms. If you plan to offer it as a paid service, you must comply with SSPL’s requirement to open-source all infrastructure code used to host the service.
-
-To use the software **without** open-sourcing your infrastructure, please [contact us](https://t.me/toncenter_support) for a commercial license.
+TON Indexer is licensed under the **MIT License**.
