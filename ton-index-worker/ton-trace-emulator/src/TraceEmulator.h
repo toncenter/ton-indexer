@@ -81,6 +81,13 @@ struct Trace {
 
     std::multimap<block::StdAddress, block::Account, AddrCmp> emulated_accounts;
     std::unordered_map<block::StdAddress, std::vector<typename Detector::DetectedInterface>> interfaces;
+    std::unordered_map<
+        block::StdAddress, 
+        std::pair<
+            block::Account, 
+            std::vector<typename Detector::DetectedInterface>
+        >
+    > committed_accounts;
 
     int depth() const {
         return root->depth();
@@ -153,6 +160,12 @@ private:
     void child_emulated(std::unique_ptr<TraceNode> node, size_t child_ind);
 };
 
+struct ShardIdHash {
+  size_t operator()(const block::ShardId& s) const noexcept {
+    return std::hash<int32_t>{}(s.workchain_id) ^ (std::hash<uint64_t>{}(s.shard_pfx) << 1);
+  }
+};
+
 class MasterchainBlockEmulator: public td::actor::Actor {
 private:
     std::shared_ptr<emulator::TransactionEmulator> emulator_;
@@ -160,6 +173,9 @@ private:
     std::vector<td::Ref<vm::Cell>> in_msgs_;
     td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise_;
     std::vector<std::unique_ptr<TraceNode>> result_{};
+    
+    std::unordered_map<td::Bits256, size_t> input_index_;
+    std::unordered_map<block::ShardId, std::vector<std::unique_ptr<TraceNode>>, ShardIdHash> shard_results_;
 
 public:
     MasterchainBlockEmulator(EmulationContext& context, std::vector<td::Ref<vm::Cell>> in_msgs,
