@@ -81,13 +81,6 @@ struct Trace {
 
     std::multimap<block::StdAddress, block::Account, AddrCmp> emulated_accounts;
     std::unordered_map<block::StdAddress, std::vector<typename Detector::DetectedInterface>> interfaces;
-    std::unordered_map<
-        block::StdAddress, 
-        std::pair<
-            block::Account, 
-            std::vector<typename Detector::DetectedInterface>
-        >
-    > committed_accounts;
 
     int depth() const {
         return root->depth();
