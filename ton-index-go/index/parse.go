@@ -920,6 +920,38 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			Asset:  raw.Asset,
 			Value:  raw.Value,
 		}
+	case "auction_outbid":
+		var details ActionDetailsAuctionOutbid
+		details.AuctionAddress = raw.Source
+		details.Bidder = raw.Destination
+		details.NewBidder = raw.SourceSecondary
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.Amount = raw.Amount
+		details.Comment = raw.TonTransferContent
+		details.Marketplace = raw.NFTTransferMarketplace
+		act.Details = &details
+	case "nft_cancel_sale":
+		var details ActionDetailsNftCancelSale
+		details.Owner = raw.Source
+		details.SaleAddress = raw.Destination
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		act.Details = &details
+	case "nft_cancel_auction":
+		var details ActionDetailsNftCancelAuction
+		details.Owner = raw.Source
+		details.AuctionAddress = raw.Destination
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		act.Details = &details
+	case "nft_finish_auction":
+		var details ActionDetailsNftFinishAuction
+		details.Owner = raw.Source
+		details.AuctionAddress = raw.Destination
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		act.Details = &details
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)

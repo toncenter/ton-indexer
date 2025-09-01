@@ -1444,6 +1444,38 @@ type ActionDetailsCoffeeCreateVault struct {
 	Value  *string         `json:"value"`
 }
 
+type ActionDetailsAuctionOutbid struct {
+	AuctionAddress *AccountAddress `json:"auction_address"`
+	Bidder         *AccountAddress `json:"bidder"`
+	NewBidder      *AccountAddress `json:"new_bidder"`
+	NftItem        *AccountAddress `json:"nft_item"`
+	NftCollection  *AccountAddress `json:"nft_collection"`
+	Amount         *string         `json:"amount"`
+	Comment        *string         `json:"comment,omitempty"`
+	Marketplace    *string         `json:"marketplace,omitempty"`
+}
+
+type ActionDetailsNftCancelSale struct {
+	Owner         *AccountAddress `json:"owner"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	SaleAddress   *AccountAddress `json:"sale_address"`
+}
+
+type ActionDetailsNftCancelAuction struct {
+	Owner          *AccountAddress `json:"owner"`
+	NftItem        *AccountAddress `json:"nft_item"`
+	NftCollection  *AccountAddress `json:"nft_collection"`
+	AuctionAddress *AccountAddress `json:"auction_address"`
+}
+
+type ActionDetailsNftFinishAuction struct {
+	Owner          *AccountAddress `json:"owner"`
+	NftItem        *AccountAddress `json:"nft_item"`
+	NftCollection  *AccountAddress `json:"nft_collection"`
+	AuctionAddress *AccountAddress `json:"auction_address"`
+}
+
 type OrderAction struct {
 	Destination    *AccountAddress `json:"destination"`
 	Value          *string         `json:"value"`
