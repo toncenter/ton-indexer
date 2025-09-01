@@ -264,7 +264,7 @@ def _fill_nft_mint_action(block: NftMintBlock, action: Action):
 def _fill_nft_put_on_sale_action(block: NftPutOnSaleBlock, action: Action):
     action.source = _addr(block.data.owner)
     action.source_secondary = _addr(block.data.listing_address)
-    action.destination = _addr(block.data.trace_contract)
+    action.destination = _addr(block.data.sale_address)
     action.destination_secondary = _addr(block.data.marketplace_address)
     action.asset = _addr(block.data.nft_collection)
     action.asset_secondary = _addr(block.data.nft_address)
@@ -555,7 +555,7 @@ def _fill_auction_outbid_action(block: AuctionOutbidBlock, action: Action):
 
 def _fill_cancel_nft_trade_action(block: NftCancelSaleBlock|NftFinishAuctionBlock|NftCancelAuctionBlock, action: Action):
     action.source = _addr(block.data.owner)
-    action.destination = _addr(block.data.trace_contract)
+    action.destination = _addr(block.data.trade_contract)
     action.asset_secondary = _addr(block.data.nft_address)
     action.asset = _addr(block.data.nft_collection)
     action.accounts.append(action.asset_secondary)
@@ -1013,7 +1013,7 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_nft_mint_action(block, action)
         case 'nft_put_on_sale':
             _fill_nft_put_on_sale_action(block, action)
-        case 'nft_put_on_auction':
+        case 'nft_put_on_auction' | 'teleitem_start_auction':
             _fill_nft_put_on_auction_action(block, action)
         case 'jetton_burn':
             _fill_jetton_burn_action(block, action)
@@ -1103,7 +1103,7 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_nft_purchase_action(block, action)
         case 'auction_outbid':
             _fill_auction_outbid_action(block, action)
-        case 'nft_cancel_sale' | 'nft_cancel_auction' | 'nft_finish_auction':
+        case 'nft_cancel_sale' | 'nft_cancel_auction' | 'nft_finish_auction' | 'teleitem_cancel_auction':
             _fill_cancel_nft_trade_action(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")

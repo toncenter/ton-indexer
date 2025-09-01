@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from indexer.core.database import NFTItem
 from indexer.events import context
 from indexer.events.blocks.basic_blocks import Block, TonTransferBlock, CallContractBlock
-from indexer.events.blocks.basic_matchers import BlockMatcher, GenericMatcher, BlockTypeMatcher
+from indexer.events.blocks.basic_matchers import BlockMatcher, GenericMatcher, BlockTypeMatcher, ContractMatcher
 from indexer.events.blocks.labels import labeled
 from indexer.events.blocks.nft import NftTransferBlock, NftPurchaseBlock
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import get_labeled
+from indexer.events.blocks.messages.nft import TeleitemStartAuction
 
 
 class AuctionBid(Block):
@@ -18,10 +20,15 @@ class AuctionBid(Block):
     def __repr__(self):
         return f"Auction bid {self.event_nodes[0].message.transaction.hash}"
 
-def _is_teleitem(data: dict):
-    if 'content' not in data:
+def _is_teleitem(data: dict|NFTItem):
+    content = None
+    if isinstance(data, NFTItem):
+        content = data.content
+    elif isinstance(data, dict):
+        content = data.get('content')
+    if content is None:
         return False
-    if 'uri' in data['content'] and 'https://nft.fragment.com' in data['content']['uri']:
+    if 'uri' in content and 'https://nft.fragment.com' in content['uri']:
         return True
     return False
 
@@ -183,14 +190,14 @@ class NftPutOnAuctionBlockData:
     nft_index: int
     nft_collection: AccountId
     owner: AccountId
-    listing_address: AccountId
+    listing_address: AccountId | None
     auction_address: AccountId
-    marketplace_address: AccountId
+    marketplace_address: AccountId | None
     marketplace: str
     mp_fee_address: AccountId
     mp_fee_factor: Amount
     mp_fee_base: Amount
-    royalty_fee_addr: AccountId
+    royalty_fee_addr: AccountId | None
     royalty_fee_base: Amount
     max_bid: Amount
     min_bid: Amount
@@ -286,7 +293,7 @@ class NftCancelTradeData:
     nft_address: AccountId
     nft_collection: AccountId
     owner: AccountId
-    trace_contract: AccountId
+    trade_contract: AccountId
 
 async def get_cancel_trade_data(block: Block, return_nft: NftTransferBlock, is_sale = True) -> NftCancelTradeData|None:
     contract_address = block.get_message().destination
@@ -309,7 +316,7 @@ async def get_cancel_trade_data(block: Block, return_nft: NftTransferBlock, is_s
         nft_address=return_nft.data['nft']['address'],
         nft_collection=return_nft.get_nft_collection(),
         owner=return_nft.data['new_owner'],
-        trace_contract=AccountId(contract_address),
+        trade_contract=AccountId(contract_address),
     )
 
 class NftCancelSaleBlock(Block):
@@ -403,8 +410,94 @@ class NftFinishAuctionMatcher(BlockMatcher):
             nft_address=return_nft.data.nft_address,
             nft_collection=return_nft.data.collection_address,
             owner=return_nft.data.new_owner,
-            trace_contract=AccountId(contract_address),
+            trade_contract=AccountId(contract_address),
         )
         new_block = NftFinishAuctionBlock(data)
         new_block.merge_blocks([block])
+        return [new_block]
+
+class TeleitemStartAuctionBlock(Block):
+    def __init__(self, data: NftPutOnAuctionBlockData):
+        super().__init__('teleitem_start_auction', [], data)
+
+class TeleitemCancelAuctionBlock(Block):
+    def __init__(self, data: NftCancelTradeData):
+        super().__init__('teleitem_cancel_auction', [], data)
+
+
+class TeleitemStartAuctionMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(
+            child_matcher=labeled('teleitem_ok', ContractMatcher(0xa37a0983, optional=True)),
+            include_excess=False
+        )
+
+    def test_self(self, block: Block) -> bool:
+        return (isinstance(block, CallContractBlock) and
+                block.opcode == TeleitemStartAuction.opcode)
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        nft_data = await context.interface_repository.get().get_nft_item(block.event_nodes[0].message.destination)
+
+        if nft_data is None:
+            return []
+
+        if not _is_teleitem(nft_data):
+            return []
+
+        start_auction = TeleitemStartAuction(block.get_body())
+
+        data = NftPutOnAuctionBlockData(
+            nft_address=AccountId(block.get_message().destination),
+            nft_index=nft_data.index,
+            nft_collection=AccountId(nft_data.collection_address) if nft_data.collection_address else None,
+            owner=AccountId(block.get_message().source),
+            listing_address=None,
+            auction_address=AccountId(block.get_message().destination),
+            marketplace_address=None,
+            marketplace='fragment',
+            mp_fee_address=AccountId(start_auction.beneficiary_address) if start_auction.beneficiary_address else None,
+            mp_fee_factor=Amount(0),
+            mp_fee_base=Amount(0),
+            royalty_fee_addr=None,    # TODO
+            royalty_fee_base=Amount(0),
+            max_bid=Amount(start_auction.max_bid),
+            min_bid=Amount(start_auction.initial_min_bid),
+        )
+
+        new_block = TeleitemStartAuctionBlock(data)
+
+        new_block.failed = block.get_message().transaction.aborted
+        new_block.merge_blocks([block] + other_blocks)
+        return [new_block]
+
+class TeleitemCancelAuctionMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__(
+            child_matcher=labeled('teleitem_ok', ContractMatcher(0xa37a0983, optional=True)),
+            include_excess=False
+        )
+
+    def test_self(self, block: Block) -> bool:
+        return (isinstance(block, CallContractBlock) and 
+                block.opcode == 0x371638ae)  # teleitem_cancel_auction
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        nft = await context.interface_repository.get().get_nft_item(block.get_message().destination)
+        if nft is None:
+            return []
+
+        if not _is_teleitem(nft):
+            return []
+        data = NftCancelTradeData(
+            nft_address=AccountId(block.get_message().destination),
+            nft_collection=AccountId(nft.collection_address),
+            owner=AccountId(block.get_message().source),
+            trade_contract=AccountId(block.get_message().destination),
+        )
+
+        new_block = TeleitemCancelAuctionBlock(data)
+
+        new_block.merge_blocks([block] + other_blocks)
+        new_block.failed = block.get_message().transaction.aborted
         return [new_block]

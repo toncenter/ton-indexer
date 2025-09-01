@@ -34,7 +34,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"coffee_mev_protect_hold_funds", "coffee_mev_protect_failed_swap", "coffee_staking_claim_rewards",
 		"coffee_staking_deposit", "coffee_staking_withdraw",
 		"nft_put_on_sale", "nft_put_on_auction", "auction_outbid", "nft_cancel_sale",
-		"nft_cancel_auction", "nft_finish_auction",
+		"nft_cancel_auction", "nft_finish_auction", "teleitem_start_auction", "teleitem_cancel_auction",
 		"unknown",
 	},
 	"latest": {"v2"},

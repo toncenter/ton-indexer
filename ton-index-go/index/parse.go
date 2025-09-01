@@ -585,7 +585,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.MarketplaceFeeAddress = raw.NFTListingMarketplaceFeeAddress
 		details.RoyaltyAddress = raw.NFTListingRoyaltyAddress
 		act.Details = &details
-	case "nft_put_on_auction":
+	case "nft_put_on_auction", "teleitem_start_auction":
 		var details ActionDetailsNftPutOnAuction
 		details.NftCollection = raw.Asset
 		details.NftItem = raw.AssetSecondary
@@ -938,7 +938,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.NftItem = raw.AssetSecondary
 		details.NftCollection = raw.Asset
 		act.Details = &details
-	case "nft_cancel_auction":
+	case "nft_cancel_auction", "teleitem_cancel_auction":
 		var details ActionDetailsNftCancelAuction
 		details.Owner = raw.Source
 		details.AuctionAddress = raw.Destination
