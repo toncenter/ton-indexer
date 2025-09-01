@@ -55,7 +55,7 @@ var settings Settings
 var emulatedTracesRepository *emulated.EmulatedTracesRepository
 
 //	@title			TON Index (Go)
-//	@version		1.1.0
+//	@version		1.2.1
 //	@description	TON Index collects data from a full node to PostgreSQL database and provides convenient API to an indexed blockchain.
 //  @query.collection.format multi
 
