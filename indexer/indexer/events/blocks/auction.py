@@ -111,7 +111,7 @@ class AuctionOutbidMatcher(BlockMatcher):
     def test_self(self, block: Block) -> bool:
         return isinstance(block, AuctionBid)
 
-    def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         data: AuctionOutbidData = None
         include: list[Block] = []
         if block.data['auction_type'] == 'getgems':

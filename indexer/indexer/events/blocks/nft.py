@@ -196,7 +196,7 @@ class GetgemsNftPurchaseBlockMatcher(BlockMatcher):
         return (block.btype == 'nft_transfer' and block.data['is_purchase'] == True
                 and block.data.get('marketplace') == 'getgems')
 
-    def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         if block.data.get('real_prev_owner') is None:
             return []
 
