@@ -539,7 +539,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.NftItem = raw.AssetSecondary
 		details.NftItemIndex = raw.NFTMintNFTItemIndex
 		act.Details = &details
-	case "nft_transfer":
+	case "nft_transfer", "nft_purchase":
 		// TODO: asset = collection, asset_secondary = item, payload, forward_amount, response_dest
 		var details ActionDetailsNftTransfer
 		details.NftCollection = raw.Asset
