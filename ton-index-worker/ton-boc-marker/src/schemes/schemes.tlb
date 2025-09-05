@@ -1,0 +1,212 @@
+// =======================================================================
+
+bool_false$0 = Bool;
+bool_true$1 = Bool;
+
+nothing_from_maybe$0 {X:Type} = Maybe X;
+something_from_maybe$1 {X:Type} value:X = Maybe X;
+
+first_from_either$0 {X:Type} {Y:Type} value:X = Either X Y;
+second_from_either$1 {X:Type} {Y:Type} value:Y = Either X Y;
+
+addr_none$00 = MsgAddressExt;
+addr_external$01 len:(## 9) external_address:(bits len)
+             = MsgAddressExt;
+anycast_info$_ depth:(#<= 30) { depth >= 1 }
+   rewrite_pfx:(bits depth) = Anycast;
+addr_std$10 anycast:(Maybe Anycast)
+   workchain_id:int8 address:bits256  = MsgAddressInt;
+addr_var$11 anycast:(Maybe Anycast) addr_len:(## 9)
+   workchain_id:int32 address:(bits addr_len) = MsgAddressInt;
+_ internal_address:MsgAddressInt = MsgAddress;
+_ external_address:MsgAddressExt = MsgAddress;
+
+var_uint$_ {n:#} len:(#< n) value:(uint (len * 8))
+         = VarUInteger n;
+var_int$_ {n:#} len:(#< n) value:(int (len * 8))
+        = VarInteger n;
+nanograms$_ amount:(VarUInteger 16) = Grams;
+
+nanocoins$_ amount:(VarUInteger 16) = Coins;
+
+bit$_ (## 1) = Bit;
+
+hashmap_edge#_ {n:#} {X:Type} {l:#} {m:#} label:(HmLabel ~l n)
+          {n = (~m) + l} node:(HashmapNode m X) = Hashmap n X;
+
+hashmap_node_leaf#_ {X:Type} value:X = HashmapNode 0 X;
+hashmap_node_fork#_ {n:#} {X:Type} left:^(Hashmap n X)
+           right:^(Hashmap n X) = HashmapNode (n + 1) X;
+
+hashmap_label_short$0 {m:#} {n:#} len:(Unary ~n) {n <= m} s:(n * Bit) = HmLabel ~n m;
+hashmap_label_long$10 {m:#} n:(#<= m) s:(n * Bit) = HmLabel ~n m;
+hashmap_label_same$11 {m:#} v:Bit n:(#<= m) = HmLabel ~n m;
+
+unary_zero$0 = Unary ~0;
+unary_succ$1 {n:#} x:(Unary ~n) = Unary ~(n + 1);
+
+hashmap_empty$0 {n:#} {X:Type} = HashmapE n X;
+hashmap_root$1 {n:#} {X:Type} root:^(Hashmap n X) = HashmapE n X;
+
+// =======================================================================
+
+// TEP 74
+
+transfer#0f8a7ea5
+  query_id:uint64
+  amount:Coins
+  destination:MsgAddress
+  response_destination:MsgAddress
+  custom_payload:(Maybe ^Cell)
+  forward_ton_amount:Coins
+  forward_payload:(Either Cell ^Cell)
+  = InternalMessageBody;
+
+burn#595f07bc
+  query_id:uint64
+  amount:Coins
+  response_destination:MsgAddress
+  custom_payload:(Maybe ^Cell)
+  = InternalMessageBody;
+
+transfer_notification#7362d09c
+  query_id:uint64
+  amount:Coins
+  sender:MsgAddress
+  forward_payload:(Either Cell ^Cell)
+  = InternalMessageBody;
+
+excesses#d53276db query_id:uint64 = InternalMessageBody;
+
+internal_transfer#178d4519
+  query_id:uint64
+  amount:Coins
+  from:MsgAddress
+  response_address:MsgAddress
+  forward_ton_amount:Coins
+  forward_payload:(Either Cell ^Cell)
+  = InternalMessageBody;
+
+burn_notification#7bdd97de
+  query_id:uint64
+  amount:Coins
+  sender:MsgAddress
+  response_destination:MsgAddress
+  = InternalMessageBody;
+
+// TEP 89
+
+provide_wallet_address#2c76b973
+  query_id:uint64
+  owner_address:MsgAddress
+  include_address:Bool
+  = InternalMessageBody;
+
+take_wallet_address#d1735400
+  query_id:uint64
+  wallet_address:MsgAddress
+  owner_address:(Maybe ^MsgAddress)
+  = InternalMessageBody;
+
+// some dead project
+
+top_up#d372158c
+  query_id:uint64
+  = InternalMessageBody;
+
+set_status#eed236d3
+  query_id:uint64
+  status:uint4
+  = InternalMessageBody;
+
+mint#642b7d07
+  query_id:uint64
+  to_address:MsgAddress
+  ton_amount:Coins
+  master_msg:^InternalMessageBody
+  = InternalMessageBody;
+
+change_admin#6501f354
+  query_id:uint64
+  new_admin_address:MsgAddress
+  = InternalMessageBody;
+
+claim_admin#fb88e119
+  query_id:uint64
+  = InternalMessageBody;
+
+call_to#235caf52
+  query_id:uint64
+  to_address:MsgAddress
+  ton_amount:Coins
+  master_msg:^InternalMessageBody
+  = InternalMessageBody;
+
+upgrade#2508d66a
+  query_id:uint64
+  new_data:^Cell
+  new_code:^Cell
+  = InternalMessageBody;
+
+change_metadata_uri#cb862902
+  query_id:uint64
+  metadata:Cell
+  = InternalMessageBody;
+
+trend#_ reserve_nerd:Coins
+          reserve_ton:Coins
+          = TrendData;
+
+tap#805a3244 query_id:uint64 friend_address:(Maybe ^MsgAddress) = InternalMessageBody;
+
+request_update#d37cf683 query_id:uint64 action:ActionData
+                 owner_address:MsgAddress
+                 mined_since_report:Coins
+             = InternalMessageBody;
+
+action_do_nothing#0 _:Bool = ActionData;
+action_tap#1 is_first_tap:Bool = ActionData;
+action_buy_level#2 is_speed_level:Bool = ActionData;
+
+update_wallet#fbaf2b07 query_id:uint64 action:ActionData
+                 new_trend_time:uint32 new_trend_data:^TrendData
+            = InternalMessageBody;
+
+friend_fees#3ae91d8c query_id:uint64 from_address:MsgAddress nerd_to_add:Coins = InternalMessageBody;
+
+buy_level#a8cc36ac query_id:uint64 is_speed_level:Bool = InternalMessageBody;
+
+set_public_key#1d10a968 query_id:uint64 new_public_key:bits256 = InternalMessageBody;
+
+deploy_council#cae5d236 query_id:uint64 trend_time:uint32 trend_data:^TrendData
+                 jetton_minter_address:MsgAddress jetton_wallet_code_hash:bits256
+             = InternalMessageBody;
+
+fees_to_governor#81e9fa0c query_id:uint64 trend_time:uint32 mined_balance:Coins = InternalMessageBody;
+
+deploy_governor#10b0b72f query_id:uint64
+                  stonfi_pool_address:MsgAddress
+                  jetton_minter_address:MsgAddress
+                  jetton_wallet_code_hash:bits256
+                  price_gap_for_update:uint16
+                  trend_data:^TrendData
+                  councils_dict:(HashmapE 2 MsgAddress)
+                  councils_state_inits:(HashmapE 2 ^Cell)
+              = InternalMessageBody;
+
+update_council#9d1a0c0d query_id:uint64 enterance_fee:Coins trend_time:uint32 trend_data:^TrendData = InternalMessageBody;
+
+liquidity_fee#25524fe3 query_id:uint64 = InternalMessageBody;
+service_fee#b41917c2 query_id:uint64 = InternalMessageBody;
+update_supply#d1cf1262 query_id:uint64 to_add:Coins = InternalMessageBody;
+
+call_pool#9810ceda new_price_gap_for_update:(Maybe Coins) = InternalMessageBody;
+
+// stonfi
+
+getter_pool_response#26df39fc query_id:uint64
+  is_locked:uint1
+  reserve0:Coins reserve1:Coins
+  token0_address:MsgAddress token1_address:MsgAddress
+  additional_data:Cell
+  = InternalMessageBody;
