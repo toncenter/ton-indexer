@@ -1,7 +1,7 @@
 [submodule "external/ton"]
 	path = ton-index-worker/external/ton
-	url = https://github.com/dungeon-master-666/ton
-	branch = db_secondary
+	url = https://github.com/1ixi1/ton
+	branch = tlbc-json
 [submodule "external/libpqxx"]
 	path = ton-index-worker/external/libpqxx
 	url = https://github.com/jtv/libpqxx.git
