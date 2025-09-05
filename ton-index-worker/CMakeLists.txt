@@ -31,6 +31,7 @@ set(MSGPACK_USE_STD_VARIANT_ADAPTOR ON CACHE BOOL "enable std::variant" FORCE)
 add_subdirectory(external/msgpack-c EXCLUDE_FROM_ALL)
 
 add_subdirectory(tondb-scanner)
+add_subdirectory(ton-boc-marker)
 add_subdirectory(ton-index-postgres)
 add_subdirectory(ton-index-clickhouse)
 add_subdirectory(ton-integrity-checker)
