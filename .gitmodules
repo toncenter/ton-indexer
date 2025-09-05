@@ -15,3 +15,7 @@
 [submodule "external/msgpack-c"]
 	path = ton-index-worker/external/msgpack-c
 	url = https://github.com/msgpack/msgpack-c
+[submodule "ton-index-worker/external/ton"]
+	path = ton-index-worker/external/ton
+	url = https://github.com/1ixi1/ton.git
+	branch = tlbc-json
