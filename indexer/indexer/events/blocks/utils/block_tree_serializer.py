@@ -214,6 +214,7 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'payout_comment_encrypted': block.data.get('payout_comment_encrypted', None),
         'payout_comment_encoded': block.data.get('payout_comment_encoded', None),
         'payout_comment': block.data.get('payout_comment', None),
+        'royalty_amount': _value(block.data['royalty_amount']) if 'royalty_amount' in block.data else None,
     }
 
 def _fill_nft_purchase_action(block: NftPurchaseBlock, action: Action):

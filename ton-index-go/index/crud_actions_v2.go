@@ -101,6 +101,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.nft_transfer_data).payout_comment_encrypted,
 		(A.nft_transfer_data).payout_comment_encoded,
 		(A.nft_transfer_data).payout_comment,
+		(A.nft_transfer_data).royalty_amount,
 		(A.nft_listing_data).nft_item_index,
 		(A.nft_listing_data).full_price,
 		(A.nft_listing_data).marketplace_fee,

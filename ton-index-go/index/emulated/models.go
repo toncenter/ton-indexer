@@ -225,6 +225,7 @@ type actionNftTransferDetails struct {
 	PayoutCommentEncrypted *bool   `msgpack:"payout_comment_encrypted"`
 	PayoutCommentEncoded   *bool   `msgpack:"payout_comment_encoded"`
 	PayoutComment          *string `msgpack:"payout_comment"`
+	RoyaltyAmount          *string `msgpack:"royalty_amount"`
 }
 
 type actionNftListingDetails struct {
@@ -1009,6 +1010,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.NFTTransferPayoutCommentEncrypted = a.NftTransferData.PayoutCommentEncrypted
 		row.NFTTransferPayoutCommentEncoded = a.NftTransferData.PayoutCommentEncoded
 		row.NFTTransferPayoutComment = a.NftTransferData.PayoutComment
+		row.NFTTransferRoyaltyAmount = a.NftTransferData.RoyaltyAmount
 	}
 	if a.NftListingData != nil {
 		row.NFTListingNFTItemIndex = a.NftListingData.NftItemIndex

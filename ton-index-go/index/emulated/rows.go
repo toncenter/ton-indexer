@@ -174,6 +174,7 @@ type ActionRow struct {
 	NFTTransferPayoutCommentEncrypted                    *bool
 	NFTTransferPayoutCommentEncoded                      *bool
 	NFTTransferPayoutComment                             *string
+	NFTTransferRoyaltyAmount                             *string
 	NFTListingNFTItemIndex                               *string
 	NFTListingFullPrice                                  *string
 	NFTListingMarketplaceFee                             *string
@@ -437,6 +438,7 @@ func (t *ActionRow) getAssigns() []assign {
 		assignBoolPtr(t.NFTTransferPayoutCommentEncrypted),
 		assignBoolPtr(t.NFTTransferPayoutCommentEncoded),
 		assignStringPtr(t.NFTTransferPayoutComment),
+		assignStringPtr(t.NFTTransferRoyaltyAmount),
 		assignStringPtr(t.NFTListingNFTItemIndex),
 		assignStringPtr(t.NFTListingFullPrice),
 		assignStringPtr(t.NFTListingMarketplaceFee),

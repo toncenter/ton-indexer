@@ -736,6 +736,7 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("alter type nft_transfer_details add attribute payout_comment_encrypted boolean;");
     exec_query("alter type nft_transfer_details add attribute payout_comment_encoded boolean;");
     exec_query("alter type nft_transfer_details add attribute payout_comment text;");
+    exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
     exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
   }
 

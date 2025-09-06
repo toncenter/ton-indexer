@@ -561,6 +561,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.PayoutComment = raw.NFTTransferPayoutComment
 		details.PayoutCommentEncoded = raw.NFTTransferPayoutCommentEncoded
 		details.PayoutCommentEncrypted = raw.NFTTransferPayoutCommentEncrypted
+		details.RoyaltyAmount = raw.NFTTransferRoyaltyAmount
 		if raw.NFTTransferForwardPayload != nil {
 			comment, isEncrypted, err := ParseCommentFromPayload(*raw.NFTTransferForwardPayload)
 			if err == nil {
@@ -1314,6 +1315,7 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.NFTTransferPayoutCommentEncrypted,
 		&act.NFTTransferPayoutCommentEncoded,
 		&act.NFTTransferPayoutComment,
+		&act.NFTTransferRoyaltyAmount,
 		&act.NFTListingNFTItemIndex,
 		&act.NFTListingFullPrice,
 		&act.NFTListingMarketplaceFee,

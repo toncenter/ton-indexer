@@ -527,6 +527,7 @@ type RawAction struct {
 	NFTTransferPayoutCommentEncrypted                    *bool
 	NFTTransferPayoutCommentEncoded                      *bool
 	NFTTransferPayoutComment                             *string
+	NFTTransferRoyaltyAmount                             *string
 	NFTListingNFTItemIndex                               *string
 	NFTListingFullPrice                                  *string
 	NFTListingMarketplaceFee                             *string
@@ -834,6 +835,7 @@ type ActionDetailsNftTransfer struct {
 	PayoutComment          *string         `json:"payout_comment"`
 	PayoutCommentEncrypted *bool           `json:"payout_comment_encrypted"`
 	PayoutCommentEncoded   *bool           `json:"payout_comment_encoded"`
+	RoyaltyAmount          *string         `json:"royalty_amount"`
 }
 
 type ActionDetailsNftPutOnSale struct {

@@ -312,7 +312,8 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         message = block.get_message()
         nft_ownership_message = NftOwnershipAssigned(Slice.one_from_boc(message.message_content.body))
         data['new_owner'] = AccountId(message.destination)
-        data['prev_owner'] = AccountId(nft_ownership_message.prev_owner) if nft_ownership_message.prev_owner is not None else None
+        prev_owner = AccountId(nft_ownership_message.prev_owner) if nft_ownership_message.prev_owner is not None else None
+        data['prev_owner'] = prev_owner
         data['query_id'] = nft_ownership_message.query_id
         data['forward_amount'] = None
         data['response_destination'] = None
@@ -330,7 +331,13 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
             prev_block = block.previous_block
             if (isinstance(prev_block, TonTransferBlock) or
                     (isinstance(prev_block, CallContractBlock) and prev_block.get_message().source is None)):
-                include.extend(find_call_contracts(prev_block.next_blocks, AuctionFillUp.opcode))
+                payouts = find_call_contracts(prev_block.next_blocks, AuctionFillUp.opcode)
+                include.extend(payouts)
+                for payout in payouts:
+                    if payout.get_message().destination == prev_owner:
+                        data['payout_amount'] = Amount(payout.get_message().value)
+                    else:
+                        data['royalty_amount'] = Amount(payout.get_message().value)
                 include.append(prev_block)
 
         include.extend(other_blocks)
