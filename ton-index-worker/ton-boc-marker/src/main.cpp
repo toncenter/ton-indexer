@@ -8,7 +8,7 @@
 #include "crypto/tl/tlblib.hpp"
 
 std::string get_opcode_name(unsigned opcode) {
-    const schemes::InternalMessageBody parser;
+    const schemes::InternalMsgBody0 parser;
     for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
         if (parser.cons_tag[i] == opcode) {
             return parser.cons_name[i];
@@ -35,7 +35,7 @@ std::string process_decode_boc(const std::string& hex_boc) {
     }
 
     auto cell = cell_result.move_as_ok();
-    schemes::InternalMessageBody parser;
+    schemes::InternalMsgBody0 parser;
 
     try {
         auto cs = vm::load_cell_slice(cell);
