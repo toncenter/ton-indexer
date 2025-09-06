@@ -6,14 +6,34 @@
 #include "vm/boc.h"
 #include "td/utils/misc.h"
 #include "crypto/tl/tlblib.hpp"
+#include <optional>
 
 std::string get_opcode_name(unsigned opcode) {
-    const schemes::InternalMsgBody0 parser;
-    for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
-        if (parser.cons_tag[i] == opcode) {
-            return parser.cons_name[i];
+    // try all message body types
+    const schemes::InternalMsgBody0 parser0;
+    const schemes::InternalMsgBody1 parser1;
+    const schemes::InternalMsgBody2 parser2;
+    const schemes::InternalMsgBody3 parser3;
+    const schemes::InternalMsgBody4 parser4;
+    const schemes::InternalMsgBody5 parser5;
+
+    // check each parser's tags
+    const auto check_parser = [opcode](const auto& parser) -> std::optional<std::string> {
+        for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
+            if (parser.cons_tag[i] == opcode) {
+                return parser.cons_name[i];
+            }
         }
-    }
+        return std::nullopt;
+    };
+
+    if (auto name = check_parser(parser0)) return *name;
+    if (auto name = check_parser(parser1)) return *name;
+    if (auto name = check_parser(parser2)) return *name;
+    if (auto name = check_parser(parser3)) return *name;
+    if (auto name = check_parser(parser4)) return *name;
+    if (auto name = check_parser(parser5)) return *name;
+
     return "unknown";
 }
 
@@ -35,20 +55,63 @@ std::string process_decode_boc(const std::string& hex_boc) {
     }
 
     auto cell = cell_result.move_as_ok();
-    schemes::InternalMsgBody0 parser;
 
     try {
         auto cs = vm::load_cell_slice(cell);
         if (cs.size() < 32) {
             return "Error: Cell is too short";
         }
+
+        // get opcode first
+        unsigned opcode = cs.prefetch_ulong(32);
+
+        // try all message body types
+        const schemes::InternalMsgBody0 parser0;
+        const schemes::InternalMsgBody1 parser1;
+        const schemes::InternalMsgBody2 parser2;
+        const schemes::InternalMsgBody3 parser3;
+        const schemes::InternalMsgBody4 parser4;
+        const schemes::InternalMsgBody5 parser5;
+
+        // try to parse with each parser
         std::string json_output;
         tlb::JsonPrinter pp(&json_output);
-        if (!parser.print_skip(pp, cs)) {
-            return "Error: Failed to parse message body";
-        } else {
-            return json_output;
+
+        // helper to try parsing with a specific parser
+        const auto try_parse = [&cs, &pp](const auto& parser) -> bool {
+            auto cs_copy = cs; // make a copy since parsing modifies the slice
+            return parser.print_skip(pp, cs_copy);
+        };
+
+        // find matching parser by opcode and try to parse
+        bool parsed = false;
+        const auto check_and_parse = [&](const auto& parser) -> bool {
+            for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
+                if (parser.cons_tag[i] == opcode) {
+                    return try_parse(parser);
+                }
+            }
+            return false;
+        };
+
+        if (check_and_parse(parser0)) parsed = true;
+        else if (check_and_parse(parser1)) parsed = true;
+        else if (check_and_parse(parser2)) parsed = true;
+        else if (check_and_parse(parser3)) parsed = true;
+        else if (check_and_parse(parser4)) parsed = true;
+        else if (check_and_parse(parser5)) parsed = true;
+
+        if (!parsed) {
+            return "unknown";
         }
+
+        // format output with opcode info
+        char hex_buffer[16];
+        snprintf(hex_buffer, sizeof(hex_buffer), "%08x", opcode);
+        std::string result = "Opcode: 0x" + std::string(hex_buffer) + " -> " + get_opcode_name(opcode) + "\n";
+        result += json_output;
+        return result;
+
     } catch (const std::exception& e) {
         return "Error parsing message body: " + std::string(e.what());
     }
