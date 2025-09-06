@@ -570,6 +570,16 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			}
 		}
 		act.Details = &details
+	case "dns_purchase":
+		var details ActionDetailsDnsPurchase
+		details.NftCollection = raw.Asset
+		details.NftItem = raw.AssetSecondary
+		details.NftItemIndex = raw.NFTTransferNFTItemIndex
+		details.NewOwner = raw.Destination
+		details.Price = raw.NFTTransferPrice
+		details.QueryId = raw.NFTTransferQueryId
+		details.PayoutAmount = raw.NFTTransferPayoutAmount
+		act.Details = &details
 	case "nft_put_on_sale":
 		var details ActionDetailsNftPutOnSale
 		details.NftCollection = raw.Asset

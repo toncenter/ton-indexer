@@ -167,10 +167,10 @@ class NftPurchaseData:
     nft_address: AccountId
     collection_address: AccountId | None
     nft_index: int
-    prev_owner: AccountId
+    prev_owner: AccountId | None
     new_owner: AccountId
     query_id: int
-    forward_amount: Amount
+    forward_amount: Amount | None
     response_destination: AccountId | None
     custom_payload: str | None
     forward_payload: str | None

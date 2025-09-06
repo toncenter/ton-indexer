@@ -838,6 +838,16 @@ type ActionDetailsNftTransfer struct {
 	RoyaltyAmount          *string         `json:"royalty_amount"`
 }
 
+type ActionDetailsDnsPurchase struct {
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+	NewOwner      *AccountAddress `json:"new_owner"`
+	Price         *string         `json:"price"`
+	QueryId       *string         `json:"query_id"`
+	PayoutAmount  *string         `json:"payout_amount"`
+}
+
 type ActionDetailsNftPutOnSale struct {
 	NftCollection         *AccountAddress `json:"nft_collection"`
 	NftItem               *AccountAddress `json:"nft_item"`

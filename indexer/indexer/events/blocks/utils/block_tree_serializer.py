@@ -1100,7 +1100,7 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_staking_withdraw(block, action)
         case 'coffee_staking_claim_rewards':
             _fill_coffee_staking_claim_rewards(block, action)
-        case 'nft_purchase':
+        case 'nft_purchase' | 'dns_purchase':
             _fill_nft_purchase_action(block, action)
         case 'auction_outbid':
             _fill_auction_outbid_action(block, action)

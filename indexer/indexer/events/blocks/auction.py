@@ -7,7 +7,8 @@ from indexer.events import context
 from indexer.events.blocks.basic_blocks import Block, TonTransferBlock, CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, GenericMatcher, BlockTypeMatcher, ContractMatcher
 from indexer.events.blocks.labels import labeled
-from indexer.events.blocks.nft import NftTransferBlock, NftPurchaseBlock
+from indexer.events.blocks.messages import AuctionFillUp
+from indexer.events.blocks.nft import NftTransferBlock, NftPurchaseBlock, NftPurchaseData
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import get_labeled
 from indexer.events.blocks.messages.nft import TeleitemStartAuction
@@ -479,7 +480,7 @@ class TeleitemCancelAuctionMatcher(BlockMatcher):
         )
 
     def test_self(self, block: Block) -> bool:
-        return (isinstance(block, CallContractBlock) and 
+        return (isinstance(block, CallContractBlock) and
                 block.opcode == 0x371638ae)  # teleitem_cancel_auction
 
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
@@ -499,5 +500,57 @@ class TeleitemCancelAuctionMatcher(BlockMatcher):
         new_block = TeleitemCancelAuctionBlock(data)
 
         new_block.merge_blocks([block] + other_blocks)
+        new_block.failed = block.get_message().transaction.aborted
+        return [new_block]
+
+class DnsPurchaseBlock(Block):
+
+    data: NftPurchaseData
+
+    def __init__(self, data: NftPurchaseData):
+        super().__init__('dns_purchase', [], data)
+
+
+class DnsPurchaseMatcher(BlockMatcher):
+
+    CODE_HASH = 'i1/8nr/TkGTY1fVuRlnIJrt1k5I/XKSHKL5NYK9vUfk='
+    COLLECTION = '0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF'
+
+    def __init__(self):
+        super().__init__(parent_matcher=BlockTypeMatcher('call_contract'))
+
+    def test_self(self, block: Block) -> bool:
+        return isinstance(block, CallContractBlock) and block.opcode == AuctionFillUp.opcode
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        call_contract_block = other_blocks[0]
+        nft = await context.interface_repository.get().get_nft_item(block.get_message().source)
+        if nft is None or (nft.code_hash != self.CODE_HASH and nft.collection_address != self.COLLECTION):
+            return []
+        fill_up = AuctionFillUp(block.get_body())
+
+
+        new_block = DnsPurchaseBlock(NftPurchaseData(
+            nft_address = AccountId(block.get_message().source),
+            collection_address = AccountId(nft.collection_address),
+            nft_index = nft.index,
+            prev_owner = None,
+            new_owner = AccountId(call_contract_block.get_message().source),
+            query_id = fill_up.query_id,
+            forward_amount = None,
+            response_destination = None,
+            custom_payload = None,
+            forward_payload = None,
+            payout_amount = Amount(block.get_message().value),
+            payout_comment_encrypted = None,
+            payout_comment_encoded = None,
+            payout_comment = None,
+            price = Amount(block.get_message().value),
+            real_prev_owner = None,
+            marketplace = None,
+            marketplace_address = None,
+        ))
+
+        new_block.merge_blocks([block])
         new_block.failed = block.get_message().transaction.aborted
         return [new_block]

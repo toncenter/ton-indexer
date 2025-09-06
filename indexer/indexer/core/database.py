@@ -276,6 +276,7 @@ class Action(Base):
         Column("payout_comment_encrypted", Boolean),
         Column("payout_comment_encoded", Boolean),
         Column("payout_comment", String),
+        Column("royalty_amount", Numeric),
     ]))
     jetton_swap_data = Column(CompositeType("jetton_swap_details", [
         Column("dex", String),

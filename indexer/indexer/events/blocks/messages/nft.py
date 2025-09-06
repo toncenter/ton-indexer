@@ -135,3 +135,11 @@ class TeleitemStartAuction:
 
 class AuctionFillUp:
     opcode = 0x370FEC51
+
+    query_id: int | None
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        if slice.remaining_bits >= 64:
+            self.query_id = slice.load_uint(64)
+        else:
+            self.query_id = None
