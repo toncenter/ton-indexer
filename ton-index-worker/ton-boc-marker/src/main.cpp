@@ -1,44 +1,29 @@
 #include "schemes.h"
 #include <iostream>
 #include <string>
+#include <vector>
+#include <cstdio>
 #include "vm/boc.h"
 #include "td/utils/misc.h"
 #include "crypto/tl/tlblib.hpp"
 
-int print_message_body(const schemes::InternalMessageBody& parser, td::Ref<vm::Cell> cell) {
-    auto debug_cs = vm::load_cell_slice(cell);
-    if (debug_cs.size() < 32) {
-        std::cerr << "Cell is too short" << std::endl;
-        return 1;
+std::string get_opcode_name(unsigned opcode) {
+    const schemes::InternalMessageBody parser;
+    for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
+        if (parser.cons_tag[i] == opcode) {
+            return parser.cons_name[i];
+        }
     }
-    auto cs = vm::load_cell_slice(cell);
-    std::string json_output;
-    tlb::JsonPrinter pp(&json_output);
-    if (!parser.print_skip(pp, cs)) {
-        std::cerr << "Failed to parse message body" << std::endl;
-        return 1;
-    } else {
-        std::cout << json_output << std::endl;
-        return 0;
-    }
+    return "unknown";
 }
 
-int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <hex_boc>" << std::endl;
-        std::cerr << "Example: " << argv[0] << " b5ee9c724101030100b200015f642b7d070000000000000000800015dcfb67ea144d8dad9d9d9d017a297e0b8e9cdb6988e68723b5b39f70a791c409b70101a7178d45190000000000000000204d9800015dcfb67ea144d8dad9d9d9d017a297e0b8e9cdb6988e68723b5b39f70a791d00002bb9f6cfd4289b1b5b3b3b3a02f452fc171d39b6d311cd0e476b673ee14f2388136b02004b12345678800015dcfb67ea144d8" << std::endl;
-        return 1;
-    }
-
-    std::string input = argv[1];
+std::string process_decode_boc(const std::string& hex_boc) {
     std::string boc_data;
 
-    // decode
-    auto hex_result = td::hex_decode(td::Slice(input));
+    // decode hex
+    auto hex_result = td::hex_decode(td::Slice(hex_boc));
     if (hex_result.is_error()) {
-        std::cerr << "Error: Cannot decode input as Hex" << std::endl;
-        std::cerr << "Hex error: " << hex_result.error().message().str() << std::endl;
-        return 1;
+        return "Error: Cannot decode input as Hex - " + hex_result.error().message().str();
     }
 
     boc_data = hex_result.move_as_ok();
@@ -46,16 +31,116 @@ int main(int argc, char* argv[]) {
     // deserialize
     auto cell_result = vm::std_boc_deserialize(td::Slice(boc_data));
     if (cell_result.is_error()) {
-        std::cerr << "Error: Cannot deserialize BOC: " << cell_result.error().message().str() << std::endl;
-        return 1;
+        return "Error: Cannot deserialize BOC - " + cell_result.error().message().str();
     }
-    
+
     auto cell = cell_result.move_as_ok();
     schemes::InternalMessageBody parser;
+
     try {
-        return print_message_body(parser, cell);
+        auto cs = vm::load_cell_slice(cell);
+        if (cs.size() < 32) {
+            return "Error: Cell is too short";
+        }
+        std::string json_output;
+        tlb::JsonPrinter pp(&json_output);
+        if (!parser.print_skip(pp, cs)) {
+            return "Error: Failed to parse message body";
+        } else {
+            return json_output;
+        }
     } catch (const std::exception& e) {
-        std::cerr << "Error parsing message body: " << e.what() << std::endl;
+        return "Error parsing message body: " + std::string(e.what());
+    }
+}
+
+std::string process_decode_opcode(const std::string& hex_opcode) {
+    if (hex_opcode.size() < 3 || hex_opcode.substr(0, 2) != "0x") {
+        return "Error: Invalid opcode format, expected 0x...";
+    }
+
+    std::string hex_value = hex_opcode.substr(2);
+
+    // pad with leading zeros if necessary
+    while (hex_value.size() < 8) {
+        hex_value = "0" + hex_value;
+    }
+
+    if (hex_value.size() != 8) {
+        return "Error: Opcode must be exactly 8 hex characters (32 bits)";
+    }
+
+    try {
+        unsigned opcode = std::stoul(hex_value, nullptr, 16);
+        return get_opcode_name(opcode);
+    } catch (const std::exception& e) {
+        return "Error: Cannot decode opcode as Hex - " + std::string(e.what());
+    }
+}
+
+enum RequestType {
+    DECODE_BOC,
+    DECODE_OPCODE
+};
+
+struct Request {
+    RequestType type;
+    std::string value;
+};
+
+int main(int argc, char* argv[]) {
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " [-o <hex_opcode> | -b <hex_boc>]..." << std::endl;
+        std::cerr << "Examples:" << std::endl;
+        std::cerr << "  " << argv[0] << " -o 0xf8a7ea5" << std::endl;
+        std::cerr << "  " << argv[0] << " -b b5ee9c724101030100b200015f642b7d070000000000000000800015dcfb67ea144d8dad9d9d9d017a297e0b8e9cdb6988e68723b5b39f70a791c409b70101a7178d45190000000000000000204d9800015dcfb67ea144d8dad9d9d9d017a297e0b8e9cdb6988e68723b5b39f70a791d00002bb9f6cfd4289b1b5b3b3b3a02f452fc171d39b6d311cd0e476b673ee14f2388136b02004b12345678800015dcfb67ea144d8" << std::endl;
+        std::cerr << "  " << argv[0] << " -o 0xf8a7ea5 -b b5ee9c72... -o 0x595f07bc" << std::endl;
         return 1;
     }
+
+    std::vector<Request> requests;
+
+    // parse arguments
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        if (arg == "-o" && i + 1 < argc) {
+            requests.push_back({DECODE_OPCODE, argv[i + 1]});
+            ++i; // skip next argument as it's the value
+        } else if (arg == "-b" && i + 1 < argc) {
+            requests.push_back({DECODE_BOC, argv[i + 1]});
+            ++i; // skip next argument as it's the value
+        } else {
+            std::cerr << "Error: Invalid argument '" << arg << "'" << std::endl;
+            return 1;
+        }
+    }
+
+    if (requests.empty()) {
+        std::cerr << "Error: No valid requests found" << std::endl;
+        return 1;
+    }
+
+    // process requests in order
+    bool has_errors = false;
+    for (const auto& request : requests) {
+        std::string result;
+        try {
+            if (request.type == DECODE_BOC) {
+                result = process_decode_boc(request.value);
+            } else if (request.type == DECODE_OPCODE) {
+                result = process_decode_opcode(request.value);
+            }
+        } catch (const std::exception& e) {
+            result = "Error: Unexpected exception - " + std::string(e.what());
+            has_errors = true;
+        } catch (...) {
+            result = "Error: Unknown exception occurred";
+            has_errors = true;
+        }
+
+        std::cout << result << std::endl;
+    }
+
+    return has_errors ? 1 : 0;
 }
