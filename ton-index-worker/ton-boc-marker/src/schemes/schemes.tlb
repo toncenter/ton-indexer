@@ -107,6 +107,36 @@ action_change_library#26fa1dd4 mode:(## 7)
 
 out_list_node$_ prev:^Cell action:OutAction = OutListNode;
 
+_ (HashmapE 256 ^DNSRecord) = DNS_RecordSet;
+
+chunk_ref$_ {n:#} ref:^(TextChunks (n + 1)) = TextChunkRef (n + 1);
+chunk_ref_empty$_ = TextChunkRef 0;
+text_chunk$_ {n:#} len:(## 8) data:(bits (len * 8)) next:(TextChunkRef n) = TextChunks (n + 1);
+text_chunk_empty$_ = TextChunks 0;
+text$_ chunks:(## 8) rest:(TextChunks chunks) = Text;
+dns_text#1eda _:Text = DNSRecord;
+
+dns_next_resolver#ba93 resolver:MsgAddressInt = DNSRecord;  // usually in record #-1
+
+dns_adnl_address#ad01 adnl_addr:bits256 flags:(## 8) { flags <= 1 }
+  proto_list:flags . 0?ProtoList = DNSRecord;  // often in record #2
+proto_list_nil$0 = ProtoList;
+proto_list_next$1 head:Protocol tail:ProtoList = ProtoList;
+proto_http#4854 = Protocol;
+
+dns_smc_address#9fd3 smc_addr:MsgAddressInt flags:(## 8) { flags <= 1 }
+  cap_list:flags . 0?SmcCapList = DNSRecord;   // often in record #1
+cap_list_nil$0 = SmcCapList;
+cap_list_next$1 head:SmcCapability tail:SmcCapList = SmcCapList;
+cap_method_seqno#5371 = SmcCapability;
+cap_method_pubkey#71f4 = SmcCapability;
+cap_is_wallet#2177 = SmcCapability;
+cap_name#ff name:Text = SmcCapability;
+
+dns_storage_address#7473 bag_id:bits256 = DNSRecord;
+
+_ _:Cell = Bytes;
+
 // =======================================================================
 
 
@@ -228,6 +258,16 @@ bidask_liquidity_added_notify#0dc8bb28 query_id:uint64 forward_payload:(Maybe ^C
 bidask_native_transfer_notification#6edd65f0 query_id:uint64 native_amount:Coins forward_payload:(Maybe ^Cell) = InternalMsgBody0;
 
 
+// bidask_swap
+bidask_swap_forward_payload#f2ef6c1b to_address:MsgAddress slippage:(Either Coins uint256) exact_out:Coins
+        ref_address:MsgAddress additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = ForwardPayload;
+
+// bidask_provide
+bidask_provide_forward_payload#96feef7b deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = ForwardPayload;
+
+// bidask_provide_both
+bidask_provide_both_forward_payload#3ea0bafc ton_amount:Coins deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = ForwardPayload;
+
 
 // cron.xml
 
@@ -286,6 +326,9 @@ dedust_payout#474f86cf query_id:uint64 payload:(Maybe ^Cell) = InternalMsgBody0;
 // dedust_swap
 dedust_swap#ea06185d query_id:uint64 amount:Coins step:DedustSwapStep swap_params:^DedustSwapParams = InternalMsgBody0;
 
+// dedust_swap
+dedust_swap_second_opcode#e3a0d482 query_id:uint64 amount:Coins step:DedustSwapStep swap_params:^DedustSwapParams = InternalMsgBody0;
+
 // // dedust_deposit_liquidity TODO
 // dedust_deposit_liquidity#d55e4686 query_id:uint64 amount:Coins pool_params:DedustPoolParams
 //         params:^[ min_lp_amount:Coins
@@ -316,6 +359,14 @@ dedust_withdrawal#3aa870a6 sender_addr:MsgAddressInt liquidity:Coins
         amount0:Coins amount1:Coins
         reserve0:Coins reserve1:Coins = ExtOutMsgBody;
 
+// dedust_swap
+dedust_swap_forward_payload#e3a0d482 step:DedustSwapStep swap_params:^DedustSwapParams = ForwardPayload;
+
+// dedust_deposit_liquidity
+dedust_deposit_liquidity_forward_payload#40e108d6 pool_params:DedustPoolParams min_lp_amount:Coins
+        asset0_target_balance:Coins asset1_target_balance:Coins
+        fulfill_payload:(Maybe ^Cell)
+        reject_payload:(Maybe ^Cell) = ForwardPayload;
 
 
 // dns.xml
@@ -387,6 +438,8 @@ tonsite#01 address:bits256 = PaymentProviderUrl;
 // invoice_payload
 invoice_payload#7aa23eb5 id:bits128 url:PaymentProviderUrl = InternalMsgBody0;
 
+// invoice_payload
+invoice_payload_forward_payload#7aa23eb5 id:bits128 url:PaymentProviderUrl = ForwardPayload;
 
 
 // jettons.xml
@@ -407,14 +460,14 @@ forward_ton_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell)
 // jetton_transfer
 jetton_transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress
         response_destination:MsgAddress custom_payload:(Maybe ^Cell)
-        forward_ton_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell) 
+        forward_ton_amount:(VarUInteger 16) forward_payload:(Either InternalMsgBody ^InternalMsgBody) 
         = InternalMsgBody0;
 
 // jetton_internal_transfer
 jetton_internal_transfer#178d4519 query_id:uint64 amount:(VarUInteger 16) from:MsgAddress
         response_address:MsgAddress
         forward_ton_amount:(VarUInteger 16)
-        forward_payload:(Either Cell ^Cell)
+        forward_payload:(Either ForwardPayload ^ForwardPayload)
         = InternalMsgBody0;
 
 // jetton_burn
@@ -484,11 +537,11 @@ jetton_change_metadata#cb862902
 // bounce
 bounce#ffffffff payload:Cell = InternalMsgBody1;
 
-// // text_comment TODO
-// text_comment#00000000 text:Text = InternalMsgBody1;
+// text_comment
+text_comment#00000000 text:Text = InternalMsgBody1;
 
-// // encrypted_text_comment TODO
-// encrypted_text_comment#2167da4b cipher_text:Bytes = InternalMsgBody1;
+// encrypted_text_comment
+encrypted_text_comment#2167da4b cipher_text:Bytes = InternalMsgBody1;
 
 // excess
 excess#d53276db query_id:uint64 = InternalMsgBody1;
@@ -517,6 +570,12 @@ elector_recover_stake_request#47657424 query_id:uint64 = InternalMsgBody1;
 
 // elector_recover_stake_response
 elector_recover_stake_response#f96f7324 query_id:uint64 = InternalMsgBody1;
+
+// text_comment
+text_comment_forward_payload#00000000 text:Text = ForwardPayload;
+
+// encrypted_text_comment
+encrypted_text_comment_forward_payload#2167da4b cipher_text:Bytes = ForwardPayload;
 
 
 
@@ -700,6 +759,27 @@ moon_cancel_order#1e8d79c4 query_id:uint64 = InternalMsgBody2;
 // moon_order_cancelled
 moon_order_cancelled#49f48ee9 query_id:uint64 = InternalMsgBody2;
 
+// moon_swap
+moon_swap_forward_payload#b37a900b swap_params:MoonSwapParams = ForwardPayload;
+
+// moon_swap_succeed
+moon_swap_succeed_forward_payload#cb7f38d6 = ForwardPayload;
+
+// moon_swap_failed
+moon_swap_failed_forward_payload#c47c1f57 = ForwardPayload;
+
+// moon_deposit_liquidity
+moon_deposit_liquidity_forward_payload#b31db781 min_lp_out:(VarUInteger 16) = ForwardPayload;
+
+// moon_boost_pool
+moon_boost_pool_forward_payload#96aa1586 = ForwardPayload;
+
+// moon_create_order
+moon_create_order_forward_payload#da067c19 asset1_id:MsgAddress asset2_id:MsgAddress order_data:MoonOrderParams = ForwardPayload;
+
+// moon_fill_order
+moon_fill_order_forward_payload#99b49842 recipient:MsgAddress recipient_payload:(Maybe ^Cell)
+        reject_address:MsgAddress = ForwardPayload;
 
 
 // // multisig.xml TODO
@@ -904,25 +984,29 @@ pton_deploy_wallet#4f5f4313 query_id:uint64 owner_address:MsgAddress excesses_ad
 // pton_internal_deploy
 pton_internal_deploy#6540cf85 query_id:uint64 excesses_address:MsgAddress = InternalMsgBody3;
 
-// // stonfi_cb_add_liquidity_v2 TODO
-// stonfi_cb_add_liquidity_v2#06ecd527 query_id:uint64 tot_am0:(VarUInteger 16) tot_am1:(VarUInteger 16) user_address:MsgAddress min_lp_out:(VarUInteger 16)
-//         fwd_amount:Coins custom_payload_cs:(Maybe ^Cell) additional_fields:^[to_user_address:MsgAddress refund_address:MsgAddress excess_address:MsgAddress] = InternalMsgBody3;
+// stonfi_cb_add_liquidity_v2
+additional_fields#_ to_user_address:MsgAddress refund_address:MsgAddress excess_address:MsgAddress = AdditionalFields;
+stonfi_cb_add_liquidity_v2#06ecd527 query_id:uint64 tot_am0:(VarUInteger 16) tot_am1:(VarUInteger 16) user_address:MsgAddress min_lp_out:(VarUInteger 16)
+        fwd_amount:Coins custom_payload_cs:(Maybe ^Cell) _:^AdditionalFields = InternalMsgBody3;
 
-// // stonfi_provide_lp_v2 TODO
-// stonfi_provide_lp_v2#37c096df query_id:uint64 from_user:MsgAddress left_amount:(VarUInteger 16) right_amount:(VarUInteger 16) dex_payload:^[transferred_op:uint32 token_wallet1:MsgAddress refund_address:MsgAddress excesses_address:MsgAddress tx_deadline:uint64 provide_lp_body:^[min_lp_out:(VarUInteger 16) to_address:MsgAddress both_positive:uint1 fwd_amount:Coins custom_payload:(Maybe ^Cell)]] = InternalMsgBody3;
+// stonfi_provide_lp_v2
+provide_lp_body_v2#_ min_lp_out:(VarUInteger 16) to_address:MsgAddress both_positive:uint1 fwd_amount:Coins custom_payload:(Maybe ^Cell) = ProvideLpBodyV2;
+dex_payload_provide_lp_v2#_ transferred_op:uint32 token_wallet1:MsgAddress refund_address:MsgAddress excesses_address:MsgAddress tx_deadline:uint64 _:^ProvideLpBodyV2 = DexPayloadProvideLpV2;
+stonfi_provide_lp_v2#37c096df query_id:uint64 from_user:MsgAddress left_amount:(VarUInteger 16) right_amount:(VarUInteger 16) _:^DexPayloadProvideLpV2 = InternalMsgBody3;
 
-// // stonfi_add_liquidity_v2
-// stonfi_add_liquidity_v2#50c6a654 query_id:uint64 new_amount0:(VarUInteger 16) new_amount1:(VarUInteger 16) min_lp_out:(VarUInteger 16) fwd_amount:Coins
-//         both_positive:uint1 to_user:MsgAddress custom_payload_cs:(Maybe ^Cell) additional_fields:^[refund_address:MsgAddress excess_address:MsgAddress] = InternalMsgBody3;
+// stonfi_add_liquidity_v2
+additional_fields_add_liquidity_v2#_ refund_address:MsgAddress excess_address:MsgAddress = AdditionalFieldsAddLiquidityV2;
+stonfi_add_liquidity_v2#50c6a654 query_id:uint64 new_amount0:(VarUInteger 16) new_amount1:(VarUInteger 16) min_lp_out:(VarUInteger 16) fwd_amount:Coins
+        both_positive:uint1 to_user:MsgAddress custom_payload_cs:(Maybe ^Cell) _:^AdditionalFieldsAddLiquidityV2 = InternalMsgBody3;
 
-// // stonfi_pay_to_v2
-// stonfi_pay_to_v2#657b54f5 query_id:uint64 to_address:MsgAddress excesses_address:MsgAddress original_caller:MsgAddress exit_code:uint32 custom_payload:(Maybe ^Cell)
-//         additional_info:^[fwd_ton_amount:Coins amount0_out:(VarUInteger 16) token0_address:MsgAddress amount1_out:(VarUInteger 16) token1_address:MsgAddress] = InternalMsgBody3;
+// stonfi_pay_to_v2
+additional_info_pay_to_v2#_ fwd_ton_amount:Coins amount0_out:(VarUInteger 16) token0_address:MsgAddress amount1_out:(VarUInteger 16) token1_address:MsgAddress = AdditionalInfoPayToV2;
+stonfi_pay_to_v2#657b54f5 query_id:uint64 to_address:MsgAddress excesses_address:MsgAddress original_caller:MsgAddress exit_code:uint32 custom_payload:(Maybe ^Cell) _:^AdditionalInfoPayToV2 = InternalMsgBody3;
 
-// // stonfi_swap_v2
-// stonfi_swap_v2#6664de2a query_id:uint64 from_user:MsgAddress left_amount:(VarUInteger 16) right_amount:(VarUInteger 16)
-//         dex_payload:^[transferred_op:uint32 token_wallet1:MsgAddress refund_address:MsgAddress excesses_address:MsgAddress tx_deadline:uint64
-//         swap_body:^[min_out:(VarUInteger 16) receiver:MsgAddress fwd_gas:Coins custom_payload:(Maybe ^Cell) refund_fwd_gas:Coins refund_payload:(Maybe ^Cell) ref_fee:uint16 ref_address:MsgAddress]] = InternalMsgBody3;
+// stonfi_swap_v2
+swap_body#_ min_out:(VarUInteger 16) receiver:MsgAddress fwd_gas:Coins custom_payload:(Maybe ^Cell) refund_fwd_gas:Coins refund_payload:(Maybe ^Cell) ref_fee:uint16 ref_address:MsgAddress = SwapBody;
+dex_payload#_ transferred_op:uint32 token_wallet1:MsgAddress refund_address:MsgAddress excesses_address:MsgAddress tx_deadline:uint64 _:^SwapBody = DexPayload;
+stonfi_swap_v2#6664de2a query_id:uint64 from_user:MsgAddress left_amount:(VarUInteger 16) right_amount:(VarUInteger 16) _:^DexPayload = InternalMsgBody3;
 
 // stonfi_withdraw_fee_v2
 stonfi_withdraw_fee_v2#354bcdf4 query_id:uint64 = InternalMsgBody3;
@@ -933,11 +1017,32 @@ stonfi_deposit_ref_fee_v2#0490f09b query_id:uint64 jetton_amount:(VarUInteger 16
 // stonfi_vault_pay_to_v2
 stonfi_vault_pay_to_v2#2100c922 query_id:uint64 amount_out:(VarUInteger 16) token_address:MsgAddress to_address:MsgAddress = InternalMsgBody3;
 
-// // stonfi_pay_vault_v2
-// stonfi_pay_vault_v2#63381632 query_id:uint64 owner:MsgAddress excesses_address:MsgAddress additional_info:^[amount0_out:(VarUInteger 16) token0_address:MsgAddress amount1_out:(VarUInteger 16) token1_address:MsgAddress] = InternalMsgBody3;
+// stonfi_pay_vault_v2
+additional_info_pay_vault_v2#_ amount0_out:(VarUInteger 16) token0_address:MsgAddress amount1_out:(VarUInteger 16) token1_address:MsgAddress = AdditionalInfoPayVaultV2;
+stonfi_pay_vault_v2#63381632 query_id:uint64 owner:MsgAddress excesses_address:MsgAddress _:^AdditionalInfoPayVaultV2 = InternalMsgBody3;
 
 // stonfi_burn_notification_ext_v2
 stonfi_burn_notification_ext_v2#297437cf query_id:uint64 jetton_amount:(VarUInteger 16) from_address:MsgAddress response_address:MsgAddress maybe_custom_payload:(Maybe ^Cell) = InternalMsgBody3;
+
+// stonfi_swap
+stonfi_swap_forward_payload#25938561 token_wallet:MsgAddress min_out:(VarUInteger 16) to_address:MsgAddress referral_address:(Maybe MsgAddress) = ForwardPayload;
+
+// stonfi_provide_liquidity
+stonfi_provide_liquidity_forward_payload#fcf9e58f token_wallet:MsgAddress min_lp_out:(VarUInteger 16) = ForwardPayload;
+
+// stonfi_swap_ok
+stonfi_swap_ok_forward_payload#c64370e5 = ForwardPayload;
+
+// stonfi_swap_ok_ref
+stonfi_swap_ok_ref_forward_payload#45078540 = ForwardPayload;
+
+// stonfi_swap_v2
+cross_swap_body#_ min_out:(VarUInteger 16) receiver:MsgAddress fwd_gas:Coins custom_payload:(Maybe ^Cell) refund_fwd_gas:Coins refund_payload:(Maybe ^Cell) ref_fee:uint16 ref_address:MsgAddress = CrossSwapBody;
+stonfi_swap_v2_forward_payload#6664de2a token_wallet1:MsgAddress refund_address:MsgAddress excesses_address:MsgAddress tx_deadline:uint64 _:^CrossSwapBody = ForwardPayload;
+
+// stonfi_provide_lp_v2
+cross_provide_lp_body#_ min_lp_out:(VarUInteger 16) to_address:MsgAddress both_positive:uint1 fwd_amount:Coins custom_payload:(Maybe ^Cell) = CrossProvideLpBody;
+stonfi_provide_lp_v2_forward_payload#37c096df token_wallet1:MsgAddress refund_address:MsgAddress excesses_address:MsgAddress tx_deadline:uint64 _:^CrossProvideLpBody = ForwardPayload;
 
 
 
@@ -1326,6 +1431,30 @@ coffee_deposit_liquidity_failed#c0ffee34 query_id:uint64 amount1:Coins amount2:C
 coffee_withdraw_liquidity_succeeded#c0ffee35 query_id:uint64 amount1:Coins amount2:Coins lp_amount:Coins
         total_supply:CoffeePoolReserves reserves:CoffeePoolReserves = ExtOutMsgBody;
 
+// coffee_mev_protect_failed_swap
+coffee_mev_protect_failed_swap_forward_payload#ee51ce51 query_id:uint64 recipient:MsgAddressInt = ForwardPayload;
+
+// coffee_cross_dex_resend
+coffee_cross_dex_resend_forward_payload#4ee9b106 next:^Cell = ForwardPayload;
+
+// coffee_cross_dex_failure
+coffee_cross_dex_failure_forward_payload#b902e61a query_id:uint64 recipient:MsgAddressInt = ForwardPayload;
+
+// coffee_staking_lock
+coffee_staking_lock_forward_payload#c0ffede period_id:uint32 = ForwardPayload;
+
+// coffee_swap
+coffee_swap_forward_payload#c0ffee10 _:CoffeeSwapStepParams params:^CoffeeSwapParams = ForwardPayload;
+
+// coffee_create_pool
+coffee_create_pool_forward_payload#c0ffee11 params:CoffeePoolParams creation_params:CoffeePoolCreationParams = ForwardPayload;
+
+// coffee_deposit_liquidity
+coffee_deposit_liquidity_forward_payload#c0ffee12 params:CoffeeDepositLiquidityParams = ForwardPayload;
+
+// coffee_notification
+coffee_notification_forward_payload#c0ffee36 query_id:uint64 body:^Cell = ForwardPayload;
+
 
 
 // tegro.xml
@@ -1334,6 +1463,11 @@ coffee_withdraw_liquidity_succeeded#c0ffee35 query_id:uint64 amount1:Coins amoun
 tegro_swap_ton#600c00fd query_id:uint64 extract:Bool max_in:Coins min_out:Coins
         destination:MsgAddress error_destination:MsgAddress ref:(Maybe ^MsgAddress) = InternalMsgBody5;
 
+// tegro_add_liquidity
+tegro_add_liquidity_forward_payload#287e167a amount_a:(VarUInteger 16) abount_b:(VarUInteger 16) = ForwardPayload;
+
+// tegro_jetton_swap
+tegro_jetton_swap_forward_payload#01fb7a25 extract:Bool max_in:(VarUInteger 16) min_out:(VarUInteger 16) destination:MsgAddress error_destination:MsgAddress payload:(Maybe ^Cell) = ForwardPayload;
 
 
 // telegram.xml
@@ -1594,6 +1728,10 @@ whales_nominators_accept_stake#99a811fb query_id:uint64 members:Cell = InternalM
 
 // whales_nominators_accept_withdraws
 whales_nominators_accept_withdraws#a19fd934 query_id:uint64 members:Cell = InternalMsgBody5;
+
+// tonkeeper_relayer_fee
+tonkeeper_relayer_fee_forward_payload#878da6e3 = ForwardPayload;
+
 
 _ _:InternalMsgBody0 = InternalMsgBody;
 _ _:InternalMsgBody1 = InternalMsgBody;

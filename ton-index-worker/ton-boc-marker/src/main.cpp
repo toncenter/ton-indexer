@@ -104,13 +104,7 @@ std::string process_decode_boc(const std::string& hex_boc) {
         if (!parsed) {
             return "unknown";
         }
-
-        // format output with opcode info
-        char hex_buffer[16];
-        snprintf(hex_buffer, sizeof(hex_buffer), "%08x", opcode);
-        std::string result = "Opcode: 0x" + std::string(hex_buffer) + " -> " + get_opcode_name(opcode) + "\n";
-        result += json_output;
-        return result;
+        return json_output;
 
     } catch (const std::exception& e) {
         return "Error parsing message body: " + std::string(e.what());
