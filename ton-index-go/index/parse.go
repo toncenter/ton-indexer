@@ -963,6 +963,15 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.NftItem = raw.AssetSecondary
 		details.NftCollection = raw.Asset
 		act.Details = &details
+	case "dns_release":
+		var details ActionDetailsDnsRelease
+		details.QueryId = raw.NFTTransferQueryId
+		details.Source = raw.Source
+		details.NftItem = raw.Destination
+		details.NftCollection = raw.Asset
+		details.NftItemIndex = raw.NFTTransferNFTItemIndex
+		details.Value = raw.Value
+		act.Details = &details
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)

@@ -35,7 +35,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"coffee_staking_deposit", "coffee_staking_withdraw",
 		"nft_put_on_sale", "nft_put_on_auction", "auction_outbid", "nft_cancel_sale", "nft_purchase",
 		"nft_cancel_auction", "nft_finish_auction", "teleitem_start_auction", "teleitem_cancel_auction",
-		"dns_purchase",
+		"dns_purchase", "dns_release",
 		"unknown",
 	},
 	"latest": {"v2"},
@@ -49,7 +49,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"nft_transfer", "nft_mint", "auction_bid",
 	},
 	"dns": {
-		"change_dns", "delete_dns", "renew_dns", "dns_purchase",
+		"change_dns", "delete_dns", "renew_dns", "dns_purchase", "dns_release",
 	},
 	"multisig": {
 		"multisig_create_order", "multisig_approve", "multisig_execute",

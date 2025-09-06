@@ -48,7 +48,8 @@ from indexer.events.blocks.auction import (
     AuctionOutbidBlock,
     NftCancelSaleBlock,
     NftFinishAuctionBlock,
-    NftCancelAuctionBlock
+    NftCancelAuctionBlock,
+    DnsReleaseBlock
 )
 from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock, NftPurchaseBlock
 from indexer.events.blocks.staking import (
@@ -980,6 +981,17 @@ def _fill_coffee_staking_claim_rewards(block: CoffeeStakingClaimRewardsBlock, ac
     action.asset = _addr(block.data.asset)
     action.amount = block.data.amount.value
 
+def _fill_dns_release(block: DnsReleaseBlock, action: Action):
+    action.source = _addr(block.data.source)
+    action.destination = _addr(block.data.nft_address)
+    action.asset = _addr(block.data.nft_collection)
+    action.nft_transfer_data = {
+        'query_id': block.data.query_id,
+        'nft_item_index': block.data.nft_index,
+    }
+    action.value = _value(block.data.value)
+
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -1106,6 +1118,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_auction_outbid_action(block, action)
         case 'nft_cancel_sale' | 'nft_cancel_auction' | 'nft_finish_auction' | 'teleitem_cancel_auction':
             _fill_cancel_nft_trade_action(block, action)
+        case 'dns_release':
+            _fill_dns_release(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts

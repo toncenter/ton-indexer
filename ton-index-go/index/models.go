@@ -1488,6 +1488,15 @@ type ActionDetailsNftFinishAuction struct {
 	AuctionAddress *AccountAddress `json:"auction_address"`
 }
 
+type ActionDetailsDnsRelease struct {
+	QueryId       *string         `json:"query_id"`
+	Source        *AccountAddress `json:"source"`
+	NftItem       *AccountAddress `json:"nft_item"`
+	NftCollection *AccountAddress `json:"nft_collection"`
+	NftItemIndex  *string         `json:"nft_item_index"`
+	Value         *string         `json:"value"`
+}
+
 type OrderAction struct {
 	Destination    *AccountAddress `json:"destination"`
 	Value          *string         `json:"value"`

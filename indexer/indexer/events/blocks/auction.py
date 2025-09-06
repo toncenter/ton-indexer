@@ -7,7 +7,7 @@ from indexer.events import context
 from indexer.events.blocks.basic_blocks import Block, TonTransferBlock, CallContractBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, GenericMatcher, BlockTypeMatcher, ContractMatcher
 from indexer.events.blocks.labels import labeled
-from indexer.events.blocks.messages import AuctionFillUp
+from indexer.events.blocks.messages import AuctionFillUp, DnsReleaseBalance
 from indexer.events.blocks.nft import NftTransferBlock, NftPurchaseBlock, NftPurchaseData
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import get_labeled
@@ -511,10 +511,11 @@ class DnsPurchaseBlock(Block):
         super().__init__('dns_purchase', [], data)
 
 
+DNS_CODE_HASH = 'i1/8nr/TkGTY1fVuRlnIJrt1k5I/XKSHKL5NYK9vUfk='
+DNS_COLLECTION = '0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF'
+
 class DnsPurchaseMatcher(BlockMatcher):
 
-    CODE_HASH = 'i1/8nr/TkGTY1fVuRlnIJrt1k5I/XKSHKL5NYK9vUfk='
-    COLLECTION = '0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF'
 
     def __init__(self):
         super().__init__(parent_matcher=BlockTypeMatcher('call_contract'))
@@ -525,7 +526,7 @@ class DnsPurchaseMatcher(BlockMatcher):
     async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
         call_contract_block = other_blocks[0]
         nft = await context.interface_repository.get().get_nft_item(block.get_message().source)
-        if nft is None or (nft.code_hash != self.CODE_HASH and nft.collection_address != self.COLLECTION):
+        if nft is None or (nft.code_hash != DNS_CODE_HASH and nft.collection_address != DNS_COLLECTION):
             return []
         fill_up = AuctionFillUp(block.get_body())
 
@@ -551,6 +552,46 @@ class DnsPurchaseMatcher(BlockMatcher):
             marketplace_address = None,
         ))
 
+        new_block.merge_blocks([block])
+        new_block.failed = block.get_message().transaction.aborted
+        return [new_block]
+
+@dataclass
+class DnsReleaseData:
+    query_id: int
+    nft_address: AccountId
+    nft_collection: AccountId
+    nft_index: int
+    source: AccountId
+    value: Amount
+
+class DnsReleaseBlock(Block):
+    data: DnsReleaseData
+    def __init__(self, data: DnsReleaseData):
+        super().__init__('dns_release', [], data)
+
+
+class DnsReleaseMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block) -> bool:
+        return isinstance(block, CallContractBlock) and block.opcode == DnsReleaseBalance.opcode
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        nft = await context.interface_repository.get().get_nft_item(block.get_message().destination)
+        if nft is None or (nft.code_hash != DNS_CODE_HASH and nft.collection_address != DNS_COLLECTION):
+            return []
+
+        release_balance = DnsReleaseBalance(block.get_body())
+        new_block = DnsReleaseBlock(DnsReleaseData(
+            nft_address=AccountId(block.get_message().destination),
+            nft_collection=AccountId(nft.collection_address),
+            nft_index=nft.index,
+            query_id=release_balance.query_id,
+            source=AccountId(block.get_message().source),
+            value=Amount(block.get_message().value),
+        ))
         new_block.merge_blocks([block])
         new_block.failed = block.get_message().transaction.aborted
         return [new_block]

@@ -143,3 +143,16 @@ class AuctionFillUp:
             self.query_id = slice.load_uint(64)
         else:
             self.query_id = None
+
+class DnsReleaseBalance:
+    opcode = 0x4ed14b65
+
+    query_id: int | None
+
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        if slice.remaining_bits >= 64:
+            self.query_id = slice.load_uint(64)
+        else:
+            self.query_id = None
+
