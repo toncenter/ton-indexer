@@ -753,6 +753,11 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_deposit_data coffee_staking_deposit_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_withdraw_data coffee_staking_withdraw_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS nft_listing_data nft_listing_details;\n";
+    query += (
+      "CREATE TABLE IF NOT EXISTS marketplace_names ("
+      "address tonaddr NOT NULL PRIMARY KEY, "
+      "name varchar NOT NULL);\n"
+    );
 
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "

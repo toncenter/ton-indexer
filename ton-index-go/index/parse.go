@@ -554,7 +554,9 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.CustomPayload = raw.NFTTransferCustomPayload
 		details.ForwardPayload = raw.NFTTransferForwardPayload
 		details.ForwardAmount = raw.NFTTransferForwardAmount
-		details.Marketplace = raw.NFTTransferMarketplace
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
 		details.RealOldOwner = raw.NFTTransferRealPrevOwner
 		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
 		details.PayoutAmount = raw.NFTTransferPayoutAmount
@@ -589,7 +591,9 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.ListingAddress = raw.SourceSecondary
 		details.SaleAddress = raw.Destination
 		details.MarketplaceAddress = raw.DestinationSecondary
-		details.Marketplace = raw.NFTListingMarketplace
+		if found, marketplaceName := GetMarketplaceName(raw.DestinationSecondary, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
 		details.FullPrice = raw.NFTListingFullPrice
 		details.MarketplaceFee = raw.NFTListingMarketplaceFee
 		details.RoyaltyAmount = raw.NFTListingRoyaltyAmount
@@ -605,7 +609,9 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.ListingAddress = raw.SourceSecondary
 		details.AuctionAddress = raw.Destination
 		details.MarketplaceAddress = raw.DestinationSecondary
-		details.Marketplace = raw.NFTListingMarketplace
+		if found, marketplaceName := GetMarketplaceName(raw.DestinationSecondary, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
 		details.MarketplaceFeeFactor = raw.NFTListingMarketplaceFeeFactor
 		details.MarketplaceFeeBase = raw.NFTListingMarketplaceFeeBase
 		details.RoyaltyFeeBase = raw.NFTListingRoyaltyFeeBase
@@ -940,7 +946,9 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.NftCollection = raw.Asset
 		details.Amount = raw.Amount
 		details.Comment = raw.TonTransferContent
-		details.Marketplace = raw.NFTTransferMarketplace
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
 		act.Details = &details
 	case "nft_cancel_sale":
 		var details ActionDetailsNftCancelSale

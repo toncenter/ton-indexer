@@ -2018,6 +2018,11 @@ func main() {
 		log.Fatal(err)
 		os.Exit(63)
 	}
+
+	// Load marketplace cache on startup
+	if err = index.LoadMarketplaceCache(pool.Pool); err != nil {
+		log.Printf("Warning: Failed to load marketplace cache: %v", err)
+	}
 	emulatedTracesRepository, err = emulated.NewRepository(redis_dsn)
 	if err != nil {
 		log.Printf("Error creating emulated traces repository: %s", err.Error())
