@@ -17,7 +17,8 @@ from indexer.events.blocks.auction import (
     NftFinishAuctionMatcher,
     TeleitemStartAuctionMatcher,
     TeleitemCancelAuctionMatcher,
-    DnsPurchaseMatcher
+    DnsPurchaseMatcher,
+    DnsReleaseMatcher
 )
 from indexer.events.blocks.basic_blocks import (
     CallContractBlock,
@@ -210,6 +211,7 @@ matchers = [
     StonfiSwapBlockMatcher(),
     StonfiV2SwapBlockMatcher(),
     ToncoSwapBlockMatcher(),
+    DnsReleaseMatcher(),
     DnsPurchaseMatcher(),
     NftTransferBlockMatcher(),
     TelegramNftPurchaseBlockMatcher(),
