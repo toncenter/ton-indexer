@@ -1,12 +1,15 @@
 #include "schemes.h"
+#include "interfaces.h"
 #include <iostream>
 #include <string>
 #include <vector>
 #include <cstdio>
+#include <sstream>
 #include "vm/boc.h"
 #include "td/utils/misc.h"
 #include "crypto/tl/tlblib.hpp"
 #include <optional>
+#include <set>
 
 std::string get_opcode_name(unsigned opcode) {
     // try all message body types
@@ -113,6 +116,36 @@ std::string process_decode_boc(const std::string& hex_boc) {
     }
 }
 
+std::string process_detect_interface(const std::string& methods_list) {
+    // split by comma
+    std::set<unsigned> method_ids;
+    std::stringstream ss(methods_list);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        try {
+            method_ids.insert(std::stoul(item));
+        } catch (const std::exception& e) {
+            return "Error: Invalid method id - " + std::string(e.what());
+        }
+    }
+    
+    // find matching interfaces
+    std::vector<std::string> matching;
+    for (const auto& interface : g_interfaces) {
+        if (std::includes(method_ids.begin(), method_ids.end(),
+                          interface.methods.begin(), interface.methods.end())) {
+            matching.push_back(interface.name);
+        }
+    }
+    // join with commas
+    std::string result;
+    for (size_t i = 0; i < matching.size(); ++i) {
+        if (i > 0) result += ",";
+        result += matching[i];
+    }
+    return result.empty() ? "unknown" : result;
+}
+
 std::string process_decode_opcode(const std::string& hex_opcode) {
     if (hex_opcode.size() < 3 || hex_opcode.substr(0, 2) != "0x") {
         return "Error: Invalid opcode format, expected 0x...";
@@ -139,7 +172,8 @@ std::string process_decode_opcode(const std::string& hex_opcode) {
 
 enum RequestType {
     DECODE_BOC,
-    DECODE_OPCODE
+    DECODE_OPCODE,
+    DETECT_INTERFACE
 };
 
 struct Request {
@@ -149,11 +183,12 @@ struct Request {
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " [-o <hex_opcode> | -b <hex_boc>]..." << std::endl;
+        std::cerr << "Usage: " << argv[0] << " [-o <hex_opcode> | -b <hex_boc> | -m <method_ids>]..." << std::endl;
         std::cerr << "Examples:" << std::endl;
         std::cerr << "  " << argv[0] << " -o 0xf8a7ea5" << std::endl;
         std::cerr << "  " << argv[0] << " -b b5ee9c724101030100b200015f642b7d070000000000000000800015dcfb67ea144d8dad9d9d9d017a297e0b8e9cdb6988e68723b5b39f70a791c409b70101a7178d45190000000000000000204d9800015dcfb67ea144d8dad9d9d9d017a297e0b8e9cdb6988e68723b5b39f70a791d00002bb9f6cfd4289b1b5b3b3b3a02f452fc171d39b6d311cd0e476b673ee14f2388136b02004b12345678800015dcfb67ea144d8" << std::endl;
         std::cerr << "  " << argv[0] << " -o 0xf8a7ea5 -b b5ee9c72... -o 0x595f07bc" << std::endl;
+        std::cerr << "  " << argv[0] << " -m 0,1,2,81689,83575,84246,111161,112473,113789,130309" << std::endl;
         return 1;
     }
 
@@ -168,6 +203,9 @@ int main(int argc, char* argv[]) {
             ++i; // skip next argument as it's the value
         } else if (arg == "-b" && i + 1 < argc) {
             requests.push_back({DECODE_BOC, argv[i + 1]});
+            ++i; // skip next argument as it's the value
+        } else if (arg == "-m" && i + 1 < argc) {
+            requests.push_back({DETECT_INTERFACE, argv[i + 1]});
             ++i; // skip next argument as it's the value
         } else {
             std::cerr << "Error: Invalid argument '" << arg << "'" << std::endl;
@@ -189,6 +227,8 @@ int main(int argc, char* argv[]) {
                 result = process_decode_boc(request.value);
             } else if (request.type == DECODE_OPCODE) {
                 result = process_decode_opcode(request.value);
+            } else if (request.type == DETECT_INTERFACE) {
+                result = process_detect_interface(request.value);
             }
         } catch (const std::exception& e) {
             result = "Error: Unexpected exception - " + std::string(e.what());

@@ -16,6 +16,7 @@ add_custom_command(
 
 add_executable(ton-boc-marker
     src/main.cpp
+    src/interfaces.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.h
     ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.cpp
     # src/BocMarker.cpp
