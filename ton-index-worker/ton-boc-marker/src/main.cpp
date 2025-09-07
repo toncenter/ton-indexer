@@ -75,9 +75,9 @@ std::string process_decode_boc(const std::string& hex_boc) {
 
         // try to parse with each parser
         std::string json_output;
-        tlb::JsonPrinter pp(&json_output);
+        tlb::JsonPrinter pp1(&json_output);
 
-        tlb::PrettyPrinter pp1(std::cout, 2, 1);  // indent=2, mode=1 for better formatting
+        tlb::PrettyPrinter pp(std::cout, 2, 1);  // indent=2, mode=1 for better formatting
 
         // helper to try parsing with a specific parser
         const auto try_parse = [&cs, &pp1](const auto& parser) -> bool {
