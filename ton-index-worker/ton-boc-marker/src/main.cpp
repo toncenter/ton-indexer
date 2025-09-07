@@ -77,10 +77,12 @@ std::string process_decode_boc(const std::string& hex_boc) {
         std::string json_output;
         tlb::JsonPrinter pp(&json_output);
 
+        tlb::PrettyPrinter pp1(std::cout, 2, 1);  // indent=2, mode=1 for better formatting
+
         // helper to try parsing with a specific parser
-        const auto try_parse = [&cs, &pp](const auto& parser) -> bool {
+        const auto try_parse = [&cs, &pp1](const auto& parser) -> bool {
             auto cs_copy = cs; // make a copy since parsing modifies the slice
-            return parser.print_skip(pp, cs_copy);
+            return parser.print_skip(pp1, cs_copy);
         };
 
         // find matching parser by opcode and try to parse
