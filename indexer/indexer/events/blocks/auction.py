@@ -8,6 +8,7 @@ from indexer.events.blocks.basic_blocks import Block, TonTransferBlock, CallCont
 from indexer.events.blocks.basic_matchers import BlockMatcher, GenericMatcher, BlockTypeMatcher, ContractMatcher
 from indexer.events.blocks.labels import labeled
 from indexer.events.blocks.messages import AuctionFillUp, DnsReleaseBalance
+from indexer.events.blocks.messages.getgems import get_sale_data, get_auction_data
 from indexer.events.blocks.nft import NftTransferBlock, NftPurchaseBlock, NftPurchaseData
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import get_labeled
@@ -229,17 +230,19 @@ class NftPutOnSaleBlockMatcher(BlockMatcher):
             return []
 
         getgems_sale = await context.interface_repository.get().get_nft_sale(sale_init.get_message().destination)
+
         if getgems_sale is not None:
             assert transfer_to_sale.data['nft']['address'] == getgems_sale.nft_address
             assert transfer_to_listing.data['prev_owner'] == getgems_sale.nft_owner_address
+            sale_data = get_sale_data(sale_init.get_message().init_state.body, getgems_sale.code_hash)
+            assert sale_data is not None, "Unable to parse sale state init"
 
-            full_price = Amount(int(getgems_sale.full_price))
-            marketplace = AccountId(getgems_sale.marketplace_address)
-            marketplace_fee_address = AccountId(
-                getgems_sale.marketplace_fee_address) if getgems_sale.marketplace_fee_address else None
-            marketplace_fee = Amount(int(getgems_sale.marketplace_fee)) if getgems_sale.marketplace_fee else None
-            royalty_address = AccountId(getgems_sale.royalty_address) if getgems_sale.royalty_address else None
-            royalty_amount = Amount(int(getgems_sale.royalty_amount)) if getgems_sale.royalty_amount else None
+            full_price = Amount(sale_data.full_price)
+            marketplace = AccountId(sale_data.marketplace_address)
+            marketplace_fee_address = AccountId(sale_data.marketplace_fee_address)
+            marketplace_fee = Amount(int(sale_data.marketplace_fee)) if sale_data.marketplace_fee is not None else None
+            royalty_address = AccountId(sale_data.royalty_address)
+            royalty_amount = Amount(int(sale_data.royalty_amount)) if getgems_sale.royalty_amount is not None else None
 
             new_block = NftPutOnSaleBlock(NftPutOnSaleBlockData(
                 nft_address=AccountId(transfer_to_sale.data['nft']['address']),
@@ -264,7 +267,8 @@ class NftPutOnSaleBlockMatcher(BlockMatcher):
             if getgems_auction is not None:
                 assert transfer_to_sale.data['nft']['address'] == getgems_auction.nft_addr
                 assert transfer_to_listing.data['prev_owner'] == getgems_auction.nft_owner
-
+                auction_data = get_auction_data(sale_init.get_message().init_state.body, getgems_auction.code_hash)
+                assert auction_data is not None, "Unable to parse auction state init"
                 new_block = NftPutOnAuctionBlock(NftPutOnAuctionBlockData(
                     nft_address=AccountId(transfer_to_sale.data['nft']['address']),
                     nft_index=transfer_to_sale.data['nft']['index'],
@@ -276,13 +280,13 @@ class NftPutOnSaleBlockMatcher(BlockMatcher):
                     auction_address=AccountId(sale_init.get_message().destination),
                     marketplace_address=AccountId(getgems_auction.mp_addr),
                     marketplace='getgems',
-                    mp_fee_address=AccountId(getgems_auction.mp_fee_addr) if getgems_auction.mp_fee_addr else None,
-                    mp_fee_factor=Amount(int(getgems_auction.mp_fee_factor)) if getgems_auction.mp_fee_factor else None,
-                    mp_fee_base=Amount(int(getgems_auction.mp_fee_base)) if getgems_auction.mp_fee_base else None,
-                    royalty_fee_addr=AccountId(getgems_auction.royalty_fee_addr) if getgems_auction.royalty_fee_addr else None,
-                    royalty_fee_base=Amount(int(getgems_auction.royalty_fee_base)) if getgems_auction.royalty_fee_base else None,
-                    max_bid=Amount(int(getgems_auction.max_bid)) if getgems_auction.max_bid else None,
-                    min_bid=Amount(int(getgems_auction.min_bid)) if getgems_auction.min_bid else None,
+                    mp_fee_address=AccountId(auction_data.mp_fee_addr) if auction_data.mp_fee_addr else None,
+                    mp_fee_factor=Amount(int(auction_data.mp_fee_factor)) if auction_data.mp_fee_factor is not None else None,
+                    mp_fee_base=Amount(int(auction_data.mp_fee_base)) if auction_data.mp_fee_base is not None else None,
+                    royalty_fee_addr=AccountId(auction_data.royalty_fee_addr) if auction_data.royalty_fee_addr else None,
+                    royalty_fee_base=Amount(int(auction_data.royalty_fee_base)) if auction_data.royalty_fee_base is not None else None,
+                    max_bid=Amount(int(auction_data.max_bid)) if auction_data.max_bid is not None else None,
+                    min_bid=Amount(int(auction_data.min_bid)) if auction_data.min_bid is not None else None,
                 ))
                 new_block.merge_blocks([block] + other_blocks)
                 return [new_block]
