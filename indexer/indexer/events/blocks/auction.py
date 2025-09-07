@@ -8,7 +8,7 @@ from indexer.events.blocks.basic_blocks import Block, TonTransferBlock, CallCont
 from indexer.events.blocks.basic_matchers import BlockMatcher, GenericMatcher, BlockTypeMatcher, ContractMatcher
 from indexer.events.blocks.labels import labeled
 from indexer.events.blocks.messages import AuctionFillUp, DnsReleaseBalance
-from indexer.events.blocks.messages.getgems import get_sale_data, get_auction_data
+from indexer.events.blocks.messages.getgems import get_sale_data, get_auction_data, SaleUpdateMessage
 from indexer.events.blocks.nft import NftTransferBlock, NftPurchaseBlock, NftPurchaseData
 from indexer.events.blocks.utils import AccountId, Amount
 from indexer.events.blocks.utils.block_utils import get_labeled
@@ -595,6 +595,48 @@ class DnsReleaseMatcher(BlockMatcher):
             query_id=release_balance.query_id,
             source=AccountId(block.get_message().source),
             value=Amount(block.get_message().value),
+        ))
+        new_block.merge_blocks([block])
+        new_block.failed = block.get_message().transaction.aborted
+        return [new_block]
+
+@dataclass
+class UpdateSaleData:
+    sender: AccountId
+    sale_contract: AccountId
+    nft_address: AccountId
+    marketplace_address: AccountId
+    new_full_price: Amount
+    new_marketplace_fee: Amount
+    new_royalty_amount: Amount
+
+class UpdateSaleBlock(Block):
+    data: UpdateSaleData
+    def __init__(self, data: UpdateSaleData):
+        super().__init__('nft_update_sale', [], data)
+
+class UpdateSaleMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block) -> bool:
+        return isinstance(block, CallContractBlock) and block.opcode == SaleUpdateMessage.opcode
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        sale_contract = block.get_message().destination
+        update = SaleUpdateMessage(block.get_body())
+
+        sale = await context.interface_repository.get().get_nft_sale(sale_contract)
+        if sale is None:
+            return []
+        new_block = UpdateSaleBlock(UpdateSaleData(
+            sender=AccountId(block.get_message().source),
+            sale_contract=AccountId(sale_contract),
+            nft_address=AccountId(sale.nft_address),
+            new_full_price=Amount(update.new_full_price),
+            new_marketplace_fee=Amount(update.new_mp_fee),
+            new_royalty_amount=Amount(update.new_royalty_amount),
+            marketplace_address=AccountId(sale.marketplace_address)
         ))
         new_block.merge_blocks([block])
         new_block.failed = block.get_message().transaction.aborted

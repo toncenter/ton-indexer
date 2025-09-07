@@ -116,6 +116,7 @@ class RedisInterfaceRepository(InterfaceRepository):
                 marketplace_fee=interface_data.get("marketplace_fee"),
                 royalty_address=interface_data.get("royalty_address"),
                 royalty_amount=interface_data.get("royalty_amount"),
+                code_hash=interface_data.get("code_hash"),
             )
         return None
 
@@ -152,6 +153,7 @@ class RedisInterfaceRepository(InterfaceRepository):
                 royalty_fee_base=interface_data.get("royalty_fee_base"),
                 max_bid=interface_data.get("max_bid"),
                 min_bid=interface_data.get("min_bid"),
+                code_hash=interface_data.get("code_hash"),
             )
         return None
 
@@ -274,6 +276,7 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
                     marketplace_fee=interface_data.get('marketplace_fee'),
                     royalty_address=interface_data.get('royalty_address'),
                     royalty_amount=interface_data.get('royalty_amount'),
+                    code_hash=interface_data.get('code_hash'),
                 )
         return None
 
@@ -300,6 +303,7 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
                     royalty_fee_base=interface_data.get('royalty_fee_base'),
                     max_bid=interface_data.get('max_bid'),
                     min_bid=interface_data.get('min_bid'),
+                    code_hash=interface_data.get('code_hash'),
                 )
         return None
 

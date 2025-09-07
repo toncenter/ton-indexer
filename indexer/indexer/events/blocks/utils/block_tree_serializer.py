@@ -49,7 +49,7 @@ from indexer.events.blocks.auction import (
     NftCancelSaleBlock,
     NftFinishAuctionBlock,
     NftCancelAuctionBlock,
-    DnsReleaseBlock
+    DnsReleaseBlock, UpdateSaleBlock
 )
 from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock, NftPurchaseBlock
 from indexer.events.blocks.staking import (
@@ -267,7 +267,9 @@ def _fill_nft_put_on_sale_action(block: NftPutOnSaleBlock, action: Action):
     action.source = _addr(block.data.owner)
     action.source_secondary = _addr(block.data.listing_address)
     action.destination = _addr(block.data.sale_address)
-    action.destination_secondary = _addr(block.data.marketplace_address)
+    action.nft_transfer_data = {
+        'marketplace_address': _addr(block.data.marketplace_address),
+    }
     action.asset = _addr(block.data.nft_collection)
     action.asset_secondary = _addr(block.data.nft_address)
     action.nft_listing_data = {
@@ -286,14 +288,30 @@ def _fill_nft_put_on_sale_action(block: NftPutOnSaleBlock, action: Action):
         'min_bid': None,
     }
 
+def _fill_sale_update_action(block: UpdateSaleBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.sale_contract)
+    action.asset_secondary = _addr(block.data.nft_address)
+    action.nft_listing_data = {
+        'full_price': _value(block.data.new_full_price),
+        'royalty_amount': _value(block.data.new_royalty_amount),
+        'marketplace_fee': _value(block.data.new_marketplace_fee),
+    }
+    action.nft_transfer_data = {
+        'marketplace_address': _addr(block.data.marketplace_address),
+    }
+    action.accounts.append(action.asset_secondary)
+
 
 def _fill_nft_put_on_auction_action(block: NftPutOnAuctionBlock, action: Action):
     action.source = _addr(block.data.owner)
     action.source_secondary = _addr(block.data.listing_address)
     action.destination = _addr(block.data.auction_address)
-    action.destination_secondary = _addr(block.data.marketplace_address)
     action.asset = _addr(block.data.nft_collection)
     action.asset_secondary = _addr(block.data.nft_address)
+    action.nft_transfer_data = {
+        'marketplace_address': _addr(block.data.marketplace_address),
+    }
     action.nft_listing_data = {
         'nft_item_index': block.data.nft_index,
         'mp_fee_factor': _value(block.data.mp_fee_factor),
@@ -1120,6 +1138,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_cancel_nft_trade_action(block, action)
         case 'dns_release':
             _fill_dns_release(block, action)
+        case 'nft_update_sale':
+            _fill_sale_update_action(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts

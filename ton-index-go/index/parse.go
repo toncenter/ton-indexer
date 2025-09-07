@@ -980,6 +980,19 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.NftItemIndex = raw.NFTTransferNFTItemIndex
 		details.Value = raw.Value
 		act.Details = &details
+	case "nft_update_sale":
+		var details ActionDetailsNftUpdateSale
+		details.Source = raw.Source
+		details.SaleContract = raw.Destination
+		details.NftAddress = raw.AssetSecondary
+		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
+		details.FullPrice = raw.NFTListingFullPrice
+		details.MarketplaceFee = raw.NFTListingMarketplaceFee
+		details.RoyaltyAmount = raw.NFTListingRoyaltyAmount
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
+		act.Details = &details
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)

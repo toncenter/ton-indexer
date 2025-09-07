@@ -215,3 +215,18 @@ def parse_auction_v3r3(cs: Slice) -> NftAuctionData:
     data.step_time = constant_cell.load_uint(32)
 
     return data
+
+class SaleUpdateMessage:
+    opcode = 0x6c6c2080
+
+    query_id: int
+    new_full_price: int
+    new_mp_fee: int
+    new_royalty_amount: int
+
+    def __init__(self, slice: Slice):
+        slice.load_uint(32) # opcode
+        self.query_id = slice.load_uint(64)
+        self.new_full_price = slice.load_coins()
+        self.new_mp_fee = slice.load_coins()
+        self.new_royalty_amount = slice.load_coins()

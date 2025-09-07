@@ -1497,6 +1497,17 @@ type ActionDetailsDnsRelease struct {
 	Value         *string         `json:"value"`
 }
 
+type ActionDetailsNftUpdateSale struct {
+	Source             *AccountAddress `json:"source"`
+	SaleContract       *AccountAddress `json:"sale_contract"`
+	NftAddress         *AccountAddress `json:"nft_address"`
+	MarketplaceAddress *AccountAddress `json:"marketplace_address"`
+	Marketplace        *string         `json:"marketplace"`
+	FullPrice          *string         `json:"full_price"`
+	MarketplaceFee     *string         `json:"marketplace_fee"`
+	RoyaltyAmount      *string         `json:"royalty_amount"`
+}
+
 type OrderAction struct {
 	Destination    *AccountAddress `json:"destination"`
 	Value          *string         `json:"value"`
