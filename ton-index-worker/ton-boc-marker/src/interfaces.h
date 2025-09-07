@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 #include <set>
-#include <cstdint>
 #include "td/utils/crypto.h"
 
 struct Interface {
