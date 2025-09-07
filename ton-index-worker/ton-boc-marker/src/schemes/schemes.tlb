@@ -3,8 +3,8 @@
 unit$_ = Unit;
 true$_ = True;
 // EMPTY False;
-bool_false$0 = Bool;
-bool_true$1 = Bool;
+false$0 = Bool;
+true$1 = Bool;
 bool_false$0 = BoolFalse;
 bool_true$1 = BoolTrue;
 
