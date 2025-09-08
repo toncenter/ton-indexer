@@ -1,152 +1,39 @@
-#include "schemes.h"
-#include "interfaces.h"
+#include "logic.h"
 #include <iostream>
 #include <string>
 #include <vector>
-#include <cstdio>
 #include <sstream>
-#include "vm/boc.h"
 #include "td/utils/misc.h"
-#include "crypto/tl/tlblib.hpp"
-#include <optional>
-#include <set>
 
-std::string get_opcode_name(unsigned opcode) {
-    // try all message body types
-    const schemes::InternalMsgBody0 parser0;
-    const schemes::InternalMsgBody1 parser1;
-    const schemes::InternalMsgBody2 parser2;
-    const schemes::InternalMsgBody3 parser3;
-    const schemes::InternalMsgBody4 parser4;
-    const schemes::InternalMsgBody5 parser5;
+// cli request types
+enum RequestType {
+    DECODE_BOC,
+    DECODE_OPCODE,
+    DETECT_INTERFACE
+};
 
-    // check each parser's tags
-    const auto check_parser = [opcode](const auto& parser) -> std::optional<std::string> {
-        for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
-            if (parser.cons_tag[i] == opcode) {
-                return parser.cons_name[i];
-            }
-        }
-        return std::nullopt;
-    };
+struct Request {
+    RequestType type;
+    std::string value;
+};
 
-    if (auto name = check_parser(parser0)) return *name;
-    if (auto name = check_parser(parser1)) return *name;
-    if (auto name = check_parser(parser2)) return *name;
-    if (auto name = check_parser(parser3)) return *name;
-    if (auto name = check_parser(parser4)) return *name;
-    if (auto name = check_parser(parser5)) return *name;
-
-    return "unknown";
-}
-
-std::string process_decode_boc(const std::string& hex_boc) {
-    std::string boc_data;
-
+// process cli boc request
+std::string process_cli_boc(const std::string& hex_boc) {
     // decode hex
     auto hex_result = td::hex_decode(td::Slice(hex_boc));
     if (hex_result.is_error()) {
         return "Error: Cannot decode input as Hex - " + hex_result.error().message().str();
     }
 
-    boc_data = hex_result.move_as_ok();
-
-    // deserialize
-    auto cell_result = vm::std_boc_deserialize(td::Slice(boc_data));
-    if (cell_result.is_error()) {
-        return "Error: Cannot deserialize BOC - " + cell_result.error().message().str();
-    }
-
-    auto cell = cell_result.move_as_ok();
-
-    try {
-        auto cs = vm::load_cell_slice(cell);
-        if (cs.size() < 32) {
-            return "Error: Cell is too short";
-        }
-
-        // get opcode first
-        unsigned opcode = cs.prefetch_ulong(32);
-
-        // try all message body types
-        const schemes::InternalMsgBody0 parser0;
-        const schemes::InternalMsgBody1 parser1;
-        const schemes::InternalMsgBody2 parser2;
-        const schemes::InternalMsgBody3 parser3;
-        const schemes::InternalMsgBody4 parser4;
-        const schemes::InternalMsgBody5 parser5;
-
-        // try to parse with each parser
-        std::string json_output;
-        tlb::JsonPrinter pp1(&json_output);
-
-        tlb::PrettyPrinter pp(std::cout, 2, 1);  // indent=2, mode=1 for better formatting
-
-        // helper to try parsing with a specific parser
-        const auto try_parse = [&cs, &pp1](const auto& parser) -> bool {
-            auto cs_copy = cs; // make a copy since parsing modifies the slice
-            return parser.print_skip(pp1, cs_copy);
-        };
-
-        // find matching parser by opcode and try to parse
-        bool parsed = false;
-        const auto check_and_parse = [&](const auto& parser) -> bool {
-            for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
-                if (parser.cons_tag[i] == opcode) {
-                    return try_parse(parser);
-                }
-            }
-            return false;
-        };
-
-        if (check_and_parse(parser0)) parsed = true;
-        else if (check_and_parse(parser1)) parsed = true;
-        else if (check_and_parse(parser2)) parsed = true;
-        else if (check_and_parse(parser3)) parsed = true;
-        else if (check_and_parse(parser4)) parsed = true;
-        else if (check_and_parse(parser5)) parsed = true;
-
-        if (!parsed) {
-            return "unknown";
-        }
-        return json_output;
-
-    } catch (const std::exception& e) {
-        return "Error parsing message body: " + std::string(e.what());
-    }
-}
-
-std::string process_detect_interface(const std::string& methods_list) {
-    // split by comma
-    std::set<unsigned> method_ids;
-    std::stringstream ss(methods_list);
-    std::string item;
-    while (std::getline(ss, item, ',')) {
-        try {
-            method_ids.insert(std::stoul(item));
-        } catch (const std::exception& e) {
-            return "Error: Invalid method id - " + std::string(e.what());
-        }
-    }
+    auto boc_data = hex_result.move_as_ok();
+    std::vector<unsigned char> boc_vec(boc_data.begin(), boc_data.end());
     
-    // find matching interfaces
-    std::vector<std::string> matching;
-    for (const auto& interface : g_interfaces) {
-        if (std::includes(method_ids.begin(), method_ids.end(),
-                          interface.methods.begin(), interface.methods.end())) {
-            matching.push_back(interface.name);
-        }
-    }
-    // join with commas
-    std::string result;
-    for (size_t i = 0; i < matching.size(); ++i) {
-        if (i > 0) result += ",";
-        result += matching[i];
-    }
-    return result.empty() ? "unknown" : result;
+    auto result = ton_marker::decode_boc(boc_vec);
+    return result ? *result : "Error: Failed to decode BOC";
 }
 
-std::string process_decode_opcode(const std::string& hex_opcode) {
+// process cli opcode request
+std::string process_cli_opcode(const std::string& hex_opcode) {
     if (hex_opcode.size() < 3 || hex_opcode.substr(0, 2) != "0x") {
         return "Error: Invalid opcode format, expected 0x...";
     }
@@ -164,22 +51,30 @@ std::string process_decode_opcode(const std::string& hex_opcode) {
 
     try {
         unsigned opcode = std::stoul(hex_value, nullptr, 16);
-        return get_opcode_name(opcode);
+        auto result = ton_marker::decode_opcode(opcode);
+        return result ? *result : "unknown";
     } catch (const std::exception& e) {
         return "Error: Cannot decode opcode as Hex - " + std::string(e.what());
     }
 }
 
-enum RequestType {
-    DECODE_BOC,
-    DECODE_OPCODE,
-    DETECT_INTERFACE
-};
-
-struct Request {
-    RequestType type;
-    std::string value;
-};
+// process cli interface request
+std::string process_cli_interface(const std::string& methods_list) {
+    std::vector<unsigned int> method_ids;
+    std::stringstream ss(methods_list);
+    std::string item;
+    
+    while (std::getline(ss, item, ',')) {
+        try {
+            method_ids.push_back(std::stoul(item));
+        } catch (const std::exception& e) {
+            return "Error: Invalid method id - " + std::string(e.what());
+        }
+    }
+    
+    auto result = ton_marker::detect_interface(method_ids);
+    return result ? *result : "unknown";
+}
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
@@ -224,11 +119,11 @@ int main(int argc, char* argv[]) {
         std::string result;
         try {
             if (request.type == DECODE_BOC) {
-                result = process_decode_boc(request.value);
+                result = process_cli_boc(request.value);
             } else if (request.type == DECODE_OPCODE) {
-                result = process_decode_opcode(request.value);
+                result = process_cli_opcode(request.value);
             } else if (request.type == DETECT_INTERFACE) {
-                result = process_detect_interface(request.value);
+                result = process_cli_interface(request.value);
             }
         } catch (const std::exception& e) {
             result = "Error: Unexpected exception - " + std::string(e.what());
