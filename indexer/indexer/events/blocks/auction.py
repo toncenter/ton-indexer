@@ -87,6 +87,14 @@ class AuctionBidMatcher(BlockMatcher):
             bid_block.data = data
         elif 'NftItem' in interfaces and (_is_teleitem(interfaces['NftItem']) or _is_dns_item(interfaces['NftItem'])):
             nft_data = interfaces['NftItem']
+            if _is_dns_item(interfaces['NftItem']):
+                has_outbid = False
+                for b in block.next_blocks:
+                    if isinstance(b, CallContractBlock) and b.opcode == 0x557cea20:
+                        has_outbid = True
+                        break
+                if not has_outbid:
+                    return []
             bid_block.data = {
                 'amount': Amount(block.event_nodes[0].message.value),
                 'bidder': AccountId(block.event_nodes[0].message.source),
