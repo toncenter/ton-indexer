@@ -14,20 +14,47 @@ add_custom_command(
     VERBATIM
 )
 
-add_executable(ton-boc-marker
-    src/main.cpp
+# core library
+add_library(ton-marker-core STATIC
+    src/logic.cpp
     src/interfaces.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.h
     ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.cpp
-    # src/BocMarker.cpp
 )
 
-target_compile_features(ton-boc-marker PRIVATE cxx_std_20)
-target_link_libraries(ton-boc-marker tondb-scanner)
-
-target_include_directories(ton-boc-marker PRIVATE 
+target_compile_features(ton-marker-core PUBLIC cxx_std_20)
+target_link_libraries(ton-marker-core PUBLIC tondb-scanner)
+target_include_directories(ton-marker-core PUBLIC 
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_BINARY_DIR}/auto
     external/ton
 )
 
-install(TARGETS ton-boc-marker RUNTIME DESTINATION bin)
+# c-api library for go
+add_library(ton-marker SHARED
+    src/wrapper.cpp
+)
+
+target_compile_features(ton-marker PRIVATE cxx_std_20)
+target_link_libraries(ton-marker PRIVATE ton-marker-core)
+
+# cli executable
+add_executable(ton-marker-cli
+    src/main.cpp
+)
+
+target_compile_features(ton-marker-cli PRIVATE cxx_std_20)
+target_link_libraries(ton-marker-cli PRIVATE ton-marker-core)
+
+# install targets
+install(TARGETS ton-marker-core ton-marker ton-marker-cli
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+install(FILES 
+    src/logic.h
+    src/wrapper.h
+    DESTINATION include/ton-marker
+)
