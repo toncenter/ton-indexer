@@ -731,13 +731,6 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("create type coffee_create_pool_details as (amount_1 numeric, amount_2 numeric, initiator_1 tonaddr, initiator_2 tonaddr, provided_asset tonaddr, lp_tokens_minted numeric, pool_creator_contract tonaddr);");
     exec_query("create type coffee_staking_deposit_details as (minted_item_address tonaddr, minted_item_index numeric);");
     exec_query("create type coffee_staking_withdraw_details as (nft_address tonaddr, nft_index numeric, points numeric);");
-    exec_query("alter type nft_transfer_details add attribute marketplace_address tonaddr;");
-    exec_query("alter type nft_transfer_details add attribute payout_amount numeric;");
-    exec_query("alter type nft_transfer_details add attribute payout_comment_encrypted boolean;");
-    exec_query("alter type nft_transfer_details add attribute payout_comment_encoded boolean;");
-    exec_query("alter type nft_transfer_details add attribute payout_comment text;");
-    exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
-    exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -752,12 +745,6 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_create_pool_data coffee_create_pool_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_deposit_data coffee_staking_deposit_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_withdraw_data coffee_staking_withdraw_details;\n";
-    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS nft_listing_data nft_listing_details;\n";
-    query += (
-      "CREATE TABLE IF NOT EXISTS marketplace_names ("
-      "address tonaddr NOT NULL PRIMARY KEY, "
-      "name varchar NOT NULL);\n"
-    );
 
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
@@ -779,6 +766,73 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
   }
 
   LOG(INFO) << "Migration to version 1.2.1 completed successfully.";
+}
+
+void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.2";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+
+    exec_query("alter type nft_transfer_details add attribute marketplace_address tonaddr;");
+    exec_query("alter type nft_transfer_details add attribute payout_amount numeric;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment_encrypted boolean;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment_encoded boolean;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment text;");
+    exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
+    exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
+  }
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS nft_listing_data nft_listing_details;\n";
+    query += (
+      "CREATE TABLE IF NOT EXISTS marketplace_names ("
+      "address tonaddr NOT NULL PRIMARY KEY, "
+      "name varchar NOT NULL);\n"
+    );
+
+    query += (
+      "INSERT INTO ton_db_version (id, major, minor, patch) "
+      "VALUES (1, 1, 2, 1) ON CONFLICT(id) DO UPDATE "
+      "SET major = 1, minor = 2, patch = 2;\n"
+    );
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.2 completed successfully.";
 }
 
 void create_indexes(std::string connection_string, bool dry_run) {
@@ -965,6 +1019,11 @@ int main(int argc, char *argv[]) {
       run_1_2_1_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 1};
     }
+      if (migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
+      run_1_2_2_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 2};
+    }
+
 
     // In future, more migrations will be added here
     // if (is_migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
