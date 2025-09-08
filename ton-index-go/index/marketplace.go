@@ -8,10 +8,6 @@ import (
 
 var MarketplaceCache = make(map[string]string)
 
-var FragmentCollections = map[string]bool{
-	"EQCA14o1-VWhS2efqoh_9M1b_A9DtKTuoqfmkn83AbJzwnPi": true,
-}
-
 func LoadMarketplaceCache(pool *pgxpool.Pool) error {
 	ctx := context.Background()
 	query := `SELECT address, name FROM marketplace_names`
@@ -47,8 +43,8 @@ func GetMarketplaceName(marketplaceAddress *AccountAddress, collectionAddress *A
 
 	if collectionAddress != nil {
 		collectionAddr := string(*collectionAddress)
-		if FragmentCollections[collectionAddr] {
-			return true, "fragment"
+		if name, exists := MarketplaceCache[collectionAddr]; exists {
+			return true, name
 		}
 	}
 
