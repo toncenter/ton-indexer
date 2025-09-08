@@ -15,6 +15,10 @@ from indexer.events.blocks.utils.block_utils import get_labeled
 from indexer.events.blocks.messages.nft import TeleitemStartAuction
 
 
+DNS_CODE_HASH = 'i1/8nr/TkGTY1fVuRlnIJrt1k5I/XKSHKL5NYK9vUfk='
+DNS_COLLECTION = '0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF'
+
+
 class AuctionBid(Block):
     def __init__(self, data):
         super().__init__('auction_bid', [], data)
@@ -34,6 +38,16 @@ def _is_teleitem(data: dict|NFTItem):
         return True
     return False
 
+def _is_dns_item(data: dict|NFTItem):
+    if isinstance(data, NFTItem):
+        code_hash = data.code_hash
+        collection_address = data.collection_address
+    else:
+        code_hash = data.get('code_hash')
+        collection_address = data.get('collection_address')
+    if code_hash == DNS_CODE_HASH or collection_address == DNS_COLLECTION:
+        return True
+    return False
 
 class AuctionBidMatcher(BlockMatcher):
     def __init__(self):
@@ -71,7 +85,7 @@ class AuctionBidMatcher(BlockMatcher):
                 data['nft_item_index'] = nft_item.index
                 data['nft_collection'] = AccountId(nft_item.collection_address)
             bid_block.data = data
-        elif 'NftItem' in interfaces and _is_teleitem(interfaces['NftItem']):
+        elif 'NftItem' in interfaces and (_is_teleitem(interfaces['NftItem']) or _is_dns_item(interfaces['NftItem'])):
             nft_data = interfaces['NftItem']
             bid_block.data = {
                 'amount': Amount(block.event_nodes[0].message.value),
@@ -514,9 +528,6 @@ class DnsPurchaseBlock(Block):
     def __init__(self, data: NftPurchaseData):
         super().__init__('dns_purchase', [], data)
 
-
-DNS_CODE_HASH = 'i1/8nr/TkGTY1fVuRlnIJrt1k5I/XKSHKL5NYK9vUfk='
-DNS_COLLECTION = '0:B774D95EB20543F186C06B371AB88AD704F7E256130CAF96189368A7D0CB6CCF'
 
 class DnsPurchaseMatcher(BlockMatcher):
 

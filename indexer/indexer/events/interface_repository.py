@@ -94,6 +94,7 @@ class RedisInterfaceRepository(InterfaceRepository):
                 collection_address=interface_data["collection_address"],
                 owner_address=interface_data["owner_address"],
                 content=interface_data["content"],
+                code_hash=interface_data.get("code_hash"),
             )
         return None
 
@@ -251,6 +252,7 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
                     collection_address=interface_data['collection_address'],
                     owner_address=interface_data['owner_address'],
                     content=interface_data['content'],
+                    code_hash=interface_data.get('code_hash'),
                 )
         return None
 
@@ -355,6 +357,7 @@ class EmulatedRepositoryWithDbFallback(InterfaceRepository):
                     collection_address=data["collection_address"],
                     owner_address=data["owner_address"],
                     content=data["content"],
+                    code_hash=data.get("code_hash"),
                 )
 
         return result
@@ -559,6 +562,7 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
             "collection_address": item.collection_address,
             "owner_address": item.owner_address,
             "content": item.content,
+            "code_hash": item.code_hash,
         }
     for sale in nft_sales:
         result[sale.address]["NftSale"] = {
