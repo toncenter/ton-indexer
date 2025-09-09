@@ -341,7 +341,7 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
                     data['payout_address'] = AccountId(payouts[1].get_message().destination)
                 elif len(payouts) == 1:
                     data['payout_address'] = AccountId(payouts[0].get_message().destination)
-                    data['payout_amount'] = payouts[0].get_message().value
+                    data['payout_amount'] = Amount(payouts[0].get_message().value)
                 include.extend(payouts)
                 include.append(prev_block)
 
