@@ -402,7 +402,7 @@ class NftCancelAuctionMatcher(BlockMatcher):
         is_finish = False
         if isinstance(block, CallContractBlock) and block.opcode in [0xb95616b6, 0x20c9eb18]:
             is_finish = True
-        elif isinstance(block, TonTransferBlock) in ['finish', 'stop']:
+        elif isinstance(block, TonTransferBlock) and block.comment in ['finish', 'stop']:
             is_finish = True
         if is_finish:
             new_block = NftFinishAuctionBlock(data)
