@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 from indexer.core.database import NFTItem
 from indexer.events import context
@@ -321,29 +322,32 @@ class NftCancelTradeData:
     nft_collection: AccountId
     owner: AccountId
     trade_contract: AccountId
+    marketplace_address: Optional[AccountId] = None
 
 async def get_cancel_trade_data(block: Block, return_nft: NftTransferBlock, is_sale = True) -> NftCancelTradeData|None:
     contract_address = block.get_message().destination
-
+    marketplace_address = None
     if is_sale:
         sale_info = await context.interface_repository.get().get_nft_sale(contract_address)
         if sale_info is None:
             return None
         if return_nft.data['nft']['address'] != sale_info.nft_address:
             return None
+        marketplace_address = sale_info.marketplace_address
     else:
         auction_info = await context.interface_repository.get().get_nft_auction(contract_address)
         if auction_info is None:
             return None
         if return_nft.data['nft']['address'] != auction_info.nft_addr:
             return None
-
+        marketplace_address = auction_info.mp_addr
 
     return NftCancelTradeData(
         nft_address=return_nft.data['nft']['address'],
         nft_collection=return_nft.get_nft_collection(),
         owner=return_nft.data['new_owner'],
         trade_contract=AccountId(contract_address),
+        marketplace_address=AccountId(marketplace_address),
     )
 
 class NftCancelSaleBlock(Block):

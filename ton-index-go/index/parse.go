@@ -598,7 +598,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.ListingAddress = raw.SourceSecondary
 		details.SaleAddress = raw.Destination
 		details.MarketplaceAddress = raw.DestinationSecondary
-		if found, marketplaceName := GetMarketplaceName(raw.DestinationSecondary, raw.Asset); found {
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
 			details.Marketplace = &marketplaceName
 		}
 		details.FullPrice = raw.NFTListingFullPrice
@@ -963,6 +963,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.SaleAddress = raw.Destination
 		details.NftItem = raw.AssetSecondary
 		details.NftCollection = raw.Asset
+		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
 		act.Details = &details
 	case "nft_cancel_auction", "teleitem_cancel_auction":
 		var details ActionDetailsNftCancelAuction
@@ -970,6 +974,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.AuctionAddress = raw.Destination
 		details.NftItem = raw.AssetSecondary
 		details.NftCollection = raw.Asset
+		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
 		act.Details = &details
 	case "nft_finish_auction":
 		var details ActionDetailsNftFinishAuction
@@ -977,6 +985,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.AuctionAddress = raw.Destination
 		details.NftItem = raw.AssetSecondary
 		details.NftCollection = raw.Asset
+		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
 		act.Details = &details
 	case "dns_release":
 		var details ActionDetailsDnsRelease

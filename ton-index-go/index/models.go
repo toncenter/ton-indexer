@@ -1470,24 +1470,30 @@ type ActionDetailsAuctionOutbid struct {
 }
 
 type ActionDetailsNftCancelSale struct {
-	Owner         *AccountAddress `json:"owner"`
-	NftItem       *AccountAddress `json:"nft_item"`
-	NftCollection *AccountAddress `json:"nft_collection"`
-	SaleAddress   *AccountAddress `json:"sale_address"`
+	Owner              *AccountAddress `json:"owner"`
+	NftItem            *AccountAddress `json:"nft_item"`
+	NftCollection      *AccountAddress `json:"nft_collection"`
+	SaleAddress        *AccountAddress `json:"sale_address"`
+	MarketplaceAddress *AccountAddress `json:"marketplace_address"`
+	Marketplace        *string         `json:"marketplace"`
 }
 
 type ActionDetailsNftCancelAuction struct {
-	Owner          *AccountAddress `json:"owner"`
-	NftItem        *AccountAddress `json:"nft_item"`
-	NftCollection  *AccountAddress `json:"nft_collection"`
-	AuctionAddress *AccountAddress `json:"auction_address"`
+	Owner              *AccountAddress `json:"owner"`
+	NftItem            *AccountAddress `json:"nft_item"`
+	NftCollection      *AccountAddress `json:"nft_collection"`
+	AuctionAddress     *AccountAddress `json:"auction_address"`
+	MarketplaceAddress *AccountAddress `json:"marketplace_address"`
+	Marketplace        *string         `json:"marketplace"`
 }
 
 type ActionDetailsNftFinishAuction struct {
-	Owner          *AccountAddress `json:"owner"`
-	NftItem        *AccountAddress `json:"nft_item"`
-	NftCollection  *AccountAddress `json:"nft_collection"`
-	AuctionAddress *AccountAddress `json:"auction_address"`
+	Owner              *AccountAddress `json:"owner"`
+	NftItem            *AccountAddress `json:"nft_item"`
+	NftCollection      *AccountAddress `json:"nft_collection"`
+	AuctionAddress     *AccountAddress `json:"auction_address"`
+	MarketplaceAddress *AccountAddress `json:"marketplace_address"`
+	Marketplace        *string         `json:"marketplace"`
 }
 
 type ActionDetailsDnsRelease struct {

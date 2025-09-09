@@ -582,6 +582,9 @@ def _fill_cancel_nft_trade_action(block: NftCancelSaleBlock|NftFinishAuctionBloc
     action.destination = _addr(block.data.trade_contract)
     action.asset_secondary = _addr(block.data.nft_address)
     action.asset = _addr(block.data.nft_collection)
+    action.nft_transfer_data = {
+        'marketplace_address': block.data.marketplace_address,
+    }
     action.accounts.append(action.asset_secondary)
 
 def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action: Action):
