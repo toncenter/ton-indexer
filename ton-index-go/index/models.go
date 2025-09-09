@@ -832,10 +832,12 @@ type ActionDetailsNftTransfer struct {
 	RealOldOwner           *AccountAddress `json:"real_old_owner"`
 	MarketplaceAddress     *AccountAddress `json:"marketplace_address"`
 	PayoutAmount           *string         `json:"payout_amount"`
+	PayoutAddress          *AccountAddress `json:"payout_address"`
 	PayoutComment          *string         `json:"payout_comment"`
 	PayoutCommentEncrypted *bool           `json:"payout_comment_encrypted"`
 	PayoutCommentEncoded   *bool           `json:"payout_comment_encoded"`
 	RoyaltyAmount          *string         `json:"royalty_amount"`
+	RoyaltyAddress         *AccountAddress `json:"royalty_address"`
 }
 
 type ActionDetailsDnsPurchase struct {

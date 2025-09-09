@@ -571,6 +571,13 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 				details.IsEncryptedComment = &isEncrypted
 			}
 		}
+		if raw.Type == "nft_purchase" {
+			details.PayoutAddress = details.RealOldOwner
+		} else {
+			details.PayoutAddress = raw.NFTListingMarketplaceFeeAddress
+			details.RoyaltyAddress = raw.NFTListingRoyaltyAddress
+		}
+
 		act.Details = &details
 	case "dns_purchase":
 		var details ActionDetailsDnsPurchase

@@ -332,12 +332,17 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
             if (isinstance(prev_block, TonTransferBlock) or
                     (isinstance(prev_block, CallContractBlock) and prev_block.get_message().source is None)):
                 payouts = find_call_contracts(prev_block.next_blocks, AuctionFillUp.opcode)
+                payouts.sort(key=lambda p: p.get_message().created_lt)
+                # Sending fee is always first fill up message for teleitems
+                if len(payouts) > 1:
+                    data['royalty_amount'] = Amount(payouts[0].get_message().value)
+                    data['payout_amount'] = Amount(payouts[1].get_message().value)
+                    data['royalty_address'] = AccountId(payouts[0].get_message().destination)
+                    data['payout_address'] = AccountId(payouts[1].get_message().destination)
+                elif len(payouts) == 1:
+                    data['payout_address'] = AccountId(payouts[0].get_message().destination)
+                    data['payout_amount'] = payouts[0].get_message().value
                 include.extend(payouts)
-                for payout in payouts:
-                    if payout.get_message().destination == prev_owner:
-                        data['payout_amount'] = Amount(payout.get_message().value)
-                    else:
-                        data['royalty_amount'] = Amount(payout.get_message().value)
                 include.append(prev_block)
 
         include.extend(other_blocks)

@@ -217,6 +217,10 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'payout_comment': block.data.get('payout_comment', None),
         'royalty_amount': _value(block.data['royalty_amount']) if 'royalty_amount' in block.data else None,
     }
+    action.nft_listing_data = {
+        'marketplace_fee_address': block.data['payout_address'].as_str() if 'payout_address' in block.data else None,
+        'royalty_address': block.data['royalty_address'].as_str() if 'royalty_address' in block.data else None,
+    }
 
 def _fill_nft_purchase_action(block: NftPurchaseBlock, action: Action):
     if block.data.prev_owner is not None:
