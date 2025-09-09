@@ -35,7 +35,14 @@ var ActionTypeShortcuts = map[string][]string{
 		"coffee_staking_deposit", "coffee_staking_withdraw",
 		"unknown",
 	},
-	"latest": {"v2"},
+	"v3": {
+		"v2",
+		"nft_put_on_sale", "nft_put_on_auction", "auction_outbid", "nft_cancel_sale", "nft_purchase",
+		"nft_cancel_auction", "nft_finish_auction", "teleitem_start_auction", "teleitem_cancel_auction",
+		"nft_update_sale",
+		"dns_purchase", "dns_release",
+	},
+	"latest": {"v3"},
 	"staking": {
 		"stake_deposit", "stake_withdrawal", "stake_withdrawal_request",
 	},
@@ -45,8 +52,17 @@ var ActionTypeShortcuts = map[string][]string{
 	"nft": {
 		"nft_transfer", "nft_mint", "auction_bid",
 	},
+	"nft.v3": {
+		"nft", "nft_put_on_sale", "nft_put_on_auction", "auction_outbid", "nft_cancel_sale", "nft_purchase",
+		"nft_cancel_auction", "nft_finish_auction", "teleitem_start_auction", "teleitem_cancel_auction",
+		"nft_update_sale",
+		"dns_purchase", "dns_release",
+	},
 	"dns": {
-		"change_dns", "delete_dns", "renew_dns",
+		"change_dns", "delete_dns", "renew_dns", "dns_purchase", "dns_release",
+	},
+	"dns.v2": {
+		"dns", "dns_purchase", "dns_release",
 	},
 	"multisig": {
 		"multisig_create_order", "multisig_approve", "multisig_execute",

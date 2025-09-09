@@ -101,5 +101,58 @@ class NftReportStaticData:
         self.collection = slice.load_address()
 
 
+class TeleitemStartAuction:
+    opcode = 0x487a8e81
+    query_id: int
+    beneficiary_address: Address | None
+    initial_min_bid: int
+    max_bid: int
+    min_bid_step: int
+    min_extend_time: int
+    duration: int
+    
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)  # opcode
+        self.query_id = slice.load_uint(64)
+        auction_config_cell = slice.load_ref()
+        self._parse_auction_config(auction_config_cell.to_slice())
+    
+    def _parse_auction_config(self, config_slice: Slice):
+        try:
+            self.beneficiary_address = config_slice.load_address()
+            self.initial_min_bid = config_slice.load_coins()
+            self.max_bid = config_slice.load_coins()
+            self.min_bid_step = config_slice.load_uint(8)  # uint8 according to common.fc:381
+            self.min_extend_time = config_slice.load_uint(32)
+            self.duration = config_slice.load_uint(32)
+        except:
+            self.beneficiary_address = None
+            self.initial_min_bid = 0
+            self.max_bid = 0
+            self.min_bid_step = 0
+            self.min_extend_time = 0
+            self.duration = 0
+
 class AuctionFillUp:
     opcode = 0x370FEC51
+
+    query_id: int | None
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        if slice.remaining_bits >= 64:
+            self.query_id = slice.load_uint(64)
+        else:
+            self.query_id = None
+
+class DnsReleaseBalance:
+    opcode = 0x4ed14b65
+
+    query_id: int | None
+
+    def __init__(self, slice: Slice):
+        slice.load_uint(32)
+        if slice.remaining_bits >= 64:
+            self.query_id = slice.load_uint(64)
+        else:
+            self.query_id = None
+

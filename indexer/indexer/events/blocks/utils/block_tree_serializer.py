@@ -42,7 +42,16 @@ from indexer.events.blocks.multisig import (
     MultisigCreateOrderBlock,
     MultisigExecuteBlock,
 )
-from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock
+from indexer.events.blocks.auction import (
+    NftPutOnSaleBlock,
+    NftPutOnAuctionBlock,
+    AuctionOutbidBlock,
+    NftCancelSaleBlock,
+    NftFinishAuctionBlock,
+    NftCancelAuctionBlock,
+    DnsReleaseBlock, UpdateSaleBlock
+)
+from indexer.events.blocks.nft import NftDiscoveryBlock, NftMintBlock, NftTransferBlock, NftPurchaseBlock
 from indexer.events.blocks.staking import (
     CoffeeStakingClaimRewardsBlock,
     CoffeeStakingDepositBlock,
@@ -55,7 +64,7 @@ from indexer.events.blocks.staking import (
 )
 from indexer.events.blocks.subscriptions import SubscriptionBlock, UnsubscribeBlock
 from indexer.events.blocks.swaps import JettonSwapBlock
-from indexer.events.blocks.utils import AccountId, Asset
+from indexer.events.blocks.utils import AccountId, Asset, Amount
 from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlock,
     VestingSendMessageBlock,
@@ -71,6 +80,11 @@ def _addr(addr: AccountId | Asset | None) -> str | None:
         return addr.jetton_address.as_str() if addr.jetton_address is not None else None
     else:
         return addr.as_str()
+
+def _value(amount: Amount | None):
+    if amount is None:
+        return None
+    return amount.value
 
 
 def _calc_action_id(block: Block) -> str:
@@ -178,10 +192,13 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         action.asset = block.data['nft']['collection']['address'].as_str()
     marketplace = None
     real_prev_owner = None
+    marketplace_address = None
     if 'marketplace' in block.data and block.data['marketplace'] is not None:
         marketplace = block.data['marketplace']
     if 'real_prev_owner' in block.data and block.data['real_prev_owner'] is not None:
         real_prev_owner = block.data['real_prev_owner']
+    if 'marketplace_address' in block.data and block.data['marketplace_address'] is not None:
+        marketplace_address = block.data['marketplace_address']
     action.nft_transfer_data = {
         'query_id': block.data['query_id'],
         'is_purchase': block.data['is_purchase'],
@@ -192,7 +209,41 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'forward_payload': block.data['forward_payload'],
         'response_destination': block.data['response_destination'].as_str() if block.data['response_destination'] else None,
         'marketplace': marketplace,
-        'real_prev_owner': _addr(real_prev_owner)
+        'marketplace_address': _addr(marketplace_address),
+        'real_prev_owner': _addr(real_prev_owner),
+        'payout_amount': _value(block.data['payout_amount']) if 'payout_amount' in block.data else None,
+        'payout_comment_encrypted': block.data.get('payout_comment_encrypted', None),
+        'payout_comment_encoded': block.data.get('payout_comment_encoded', None),
+        'payout_comment': block.data.get('payout_comment', None),
+        'royalty_amount': _value(block.data['royalty_amount']) if 'royalty_amount' in block.data else None,
+    }
+    action.nft_listing_data = {
+        'marketplace_fee_address': block.data['payout_address'].as_str() if 'payout_address' in block.data else None,
+        'royalty_address': block.data['royalty_address'].as_str() if 'royalty_address' in block.data else None,
+    }
+
+def _fill_nft_purchase_action(block: NftPurchaseBlock, action: Action):
+    if block.data.prev_owner is not None:
+        action.source = _addr(block.data.prev_owner)
+    action.destination = _addr(block.data.new_owner)
+    action.asset_secondary = _addr(block.data.nft_address)
+    action.asset = _addr(block.data.collection_address)
+    action.nft_transfer_data = {
+        'query_id': block.data.query_id,
+        'is_purchase': True,
+        'price': _value(block.data.price),
+        'nft_item_index': block.data.nft_index,
+        'forward_amount':  _value(block.data.forward_amount),
+        'custom_payload': block.data.custom_payload,
+        'forward_payload': block.data.forward_payload,
+        'response_destination': _addr(block.data.response_destination),
+        'marketplace': block.data.marketplace,
+        'marketplace_address': _addr(block.data.marketplace_address),
+        'real_prev_owner': _addr(block.data.real_prev_owner),
+        'payout_amount': _value(block.data.payout_amount),
+        'payout_comment_encrypted': block.data.payout_comment_encrypted,
+        'payout_comment_encoded': block.data.payout_comment_encoded,
+        'payout_comment': block.data.payout_comment,
     }
 
 def _fill_nft_discovery_action(block: NftDiscoveryBlock, action: Action):
@@ -213,6 +264,72 @@ def _fill_nft_mint_action(block: NftMintBlock, action: Action):
         action.asset = block.data["collection"].as_str()
     action.nft_mint_data = {
         'nft_item_index': block.data["index"],
+    }
+
+
+def _fill_nft_put_on_sale_action(block: NftPutOnSaleBlock, action: Action):
+    action.source = _addr(block.data.owner)
+    action.source_secondary = _addr(block.data.listing_address)
+    action.destination = _addr(block.data.sale_address)
+    action.nft_transfer_data = {
+        'marketplace_address': _addr(block.data.marketplace_address),
+    }
+    action.asset = _addr(block.data.nft_collection)
+    action.asset_secondary = _addr(block.data.nft_address)
+    action.nft_listing_data = {
+        'nft_item_index': block.data.nft_index,
+        'full_price': _value(block.data.full_price),
+        'marketplace_fee': _value(block.data.marketplace_fee),
+        'royalty_amount': _value(block.data.royalty_amount),
+        'marketplace_fee_address': _addr(block.data.marketplace_fee_address),
+        'marketplace': block.data.marketplace,
+        'royalty_address': _addr(block.data.royalty_address),
+        # Auction fields set to null
+        'mp_fee_factor': None,
+        'mp_fee_base': None,
+        'royalty_fee_base': None,
+        'max_bid': None,
+        'min_bid': None,
+    }
+
+def _fill_sale_update_action(block: UpdateSaleBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.sale_contract)
+    action.asset_secondary = _addr(block.data.nft_address)
+    action.nft_listing_data = {
+        'full_price': _value(block.data.new_full_price),
+        'royalty_amount': _value(block.data.new_royalty_amount),
+        'marketplace_fee': _value(block.data.new_marketplace_fee),
+    }
+    action.nft_transfer_data = {
+        'marketplace_address': _addr(block.data.marketplace_address),
+    }
+    action.accounts.append(action.asset_secondary)
+
+
+def _fill_nft_put_on_auction_action(block: NftPutOnAuctionBlock, action: Action):
+    action.source = _addr(block.data.owner)
+    action.source_secondary = _addr(block.data.listing_address)
+    action.destination = _addr(block.data.auction_address)
+    action.asset = _addr(block.data.nft_collection)
+    action.asset_secondary = _addr(block.data.nft_address)
+    action.nft_transfer_data = {
+        'marketplace_address': _addr(block.data.marketplace_address),
+    }
+    action.nft_listing_data = {
+        'nft_item_index': block.data.nft_index,
+        'mp_fee_factor': _value(block.data.mp_fee_factor),
+        'mp_fee_base': _value(block.data.mp_fee_base),
+        'royalty_fee_base': _value(block.data.royalty_fee_base),
+        'max_bid': _value(block.data.max_bid),
+        'min_bid': _value(block.data.min_bid),
+        'marketplace_fee_address': _addr(block.data.mp_fee_address),  # unified field
+        'marketplace': block.data.marketplace,
+        'royalty_address': _addr(block.data.royalty_fee_addr),  # unified field
+        # Sale fields set to null
+        'full_price': None,
+        'marketplace_fee': None,
+        'royalty_amount': None,
     }
 
 
@@ -440,8 +557,35 @@ def _fill_auction_bid_action(block: Block, action: Action):
     action.asset = _addr(block.data['nft_collection'])
     action.nft_transfer_data = {
         'nft_item_index': block.data['nft_item_index'],
+        'marketplace': block.data.get('auction_type')
     }
+    action.accounts.append(action.asset_secondary)
     action.value = block.data['amount'].value
+
+def _fill_auction_outbid_action(block: AuctionOutbidBlock, action: Action):
+    action.source = _addr(block.data.auction_address)
+    action.destination = _addr(block.data.bidder)
+    action.source_secondary = _addr(block.data.new_bidder)
+    action.asset_secondary = _addr(block.data.nft)
+    action.asset = _addr(block.data.nft_collection)
+    action.nft_transfer_data = {
+        'marketplace': block.data.auction_type
+    }
+    action.amount = _value(block.data.amount)
+    action.ton_transfer_data = {
+        'comment': block.data.comment
+    }
+    action.accounts.append(action.asset_secondary)
+
+def _fill_cancel_nft_trade_action(block: NftCancelSaleBlock|NftFinishAuctionBlock|NftCancelAuctionBlock, action: Action):
+    action.source = _addr(block.data.owner)
+    action.destination = _addr(block.data.trade_contract)
+    action.asset_secondary = _addr(block.data.nft_address)
+    action.asset = _addr(block.data.nft_collection)
+    action.nft_transfer_data = {
+        'marketplace_address': block.data.marketplace_address,
+    }
+    action.accounts.append(action.asset_secondary)
 
 def _fill_dedust_deposit_liquidity_action(block: DedustDepositLiquidity, action: Action):
     action.type='dex_deposit_liquidity'
@@ -862,6 +1006,17 @@ def _fill_coffee_staking_claim_rewards(block: CoffeeStakingClaimRewardsBlock, ac
     action.asset = _addr(block.data.asset)
     action.amount = block.data.amount.value
 
+def _fill_dns_release(block: DnsReleaseBlock, action: Action):
+    action.source = _addr(block.data.source)
+    action.destination = _addr(block.data.nft_address)
+    action.asset = _addr(block.data.nft_collection)
+    action.nft_transfer_data = {
+        'query_id': block.data.query_id,
+        'nft_item_index': block.data.nft_index,
+    }
+    action.value = _value(block.data.value)
+
+
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
     action = _base_block_to_action(block, trace_id)
@@ -894,6 +1049,10 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_nft_transfer_action(block, action)
         case 'nft_mint':
             _fill_nft_mint_action(block, action)
+        case 'nft_put_on_sale':
+            _fill_nft_put_on_sale_action(block, action)
+        case 'nft_put_on_auction' | 'teleitem_start_auction':
+            _fill_nft_put_on_auction_action(block, action)
         case 'jetton_burn':
             _fill_jetton_burn_action(block, action)
         case "jetton_mint":
@@ -978,6 +1137,16 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_staking_withdraw(block, action)
         case 'coffee_staking_claim_rewards':
             _fill_coffee_staking_claim_rewards(block, action)
+        case 'nft_purchase' | 'dns_purchase':
+            _fill_nft_purchase_action(block, action)
+        case 'auction_outbid':
+            _fill_auction_outbid_action(block, action)
+        case 'nft_cancel_sale' | 'nft_cancel_auction' | 'nft_finish_auction' | 'teleitem_cancel_auction':
+            _fill_cancel_nft_trade_action(block, action)
+        case 'dns_release':
+            _fill_dns_release(block, action)
+        case 'nft_update_sale':
+            _fill_sale_update_action(block, action)
         case _:
             logger.warning(f"Unknown block type {block.btype} for trace {trace_id}")
     # Fill accounts

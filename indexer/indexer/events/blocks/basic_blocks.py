@@ -57,6 +57,8 @@ class TonTransferBlock(Block):
                 self.failed = True
             elif node.get_tx() is not None and node.get_tx().end_status == 'uninit':
                 self.failed = False
+            elif node.message.source is not None and node.get_tx() is not None and node.get_tx().skipped_reason == 'no_gas':
+                self.failed = False # ignore no gas errors on incoming ton transfers
             else:
                 self.failed = True
         self.value = node.message.value

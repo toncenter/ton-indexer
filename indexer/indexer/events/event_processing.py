@@ -8,7 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from indexer.core.database import Trace, Message, engine, MessageContent, Action
-from indexer.events.blocks.auction import AuctionBidMatcher
+from indexer.events.blocks.auction import (
+    AuctionBidMatcher,
+    NftPutOnSaleBlockMatcher,
+    AuctionOutbidMatcher,
+    NftCancelSaleMatcher,
+    NftCancelAuctionMatcher,
+    NftFinishAuctionMatcher,
+    TeleitemStartAuctionMatcher,
+    TeleitemCancelAuctionMatcher,
+    DnsPurchaseMatcher,
+    DnsReleaseMatcher,
+    UpdateSaleMatcher
+)
 from indexer.events.blocks.basic_blocks import (
     CallContractBlock,
     ContractDeploy,
@@ -72,7 +84,7 @@ from indexer.events.blocks.nft import (
     NftDiscoveryBlockMatcher,
     NftMintBlockMatcher,
     NftTransferBlockMatcher,
-    TelegramNftPurchaseBlockMatcher,
+    TelegramNftPurchaseBlockMatcher, GetgemsNftPurchaseBlockMatcher,
 )
 from indexer.events.blocks.staking import (
     CoffeeStakingClaimRewardsMatcher,
@@ -200,8 +212,15 @@ matchers = [
     StonfiSwapBlockMatcher(),
     StonfiV2SwapBlockMatcher(),
     ToncoSwapBlockMatcher(),
+    DnsReleaseMatcher(),
+    DnsPurchaseMatcher(),
+    UpdateSaleMatcher(),
     NftTransferBlockMatcher(),
     TelegramNftPurchaseBlockMatcher(),
+    GetgemsNftPurchaseBlockMatcher(),
+    NftPutOnSaleBlockMatcher(),
+    TeleitemStartAuctionMatcher(),
+    TeleitemCancelAuctionMatcher(),
     NftDiscoveryBlockMatcher(),
     ChangeDnsRecordMatcher(),
     ElectionDepositStakeBlockMatcher(),
@@ -209,6 +228,10 @@ matchers = [
     SubscriptionBlockMatcher(),
     UnsubscribeBlockMatcher(),
     AuctionBidMatcher(),
+    AuctionOutbidMatcher(),
+    NftCancelSaleMatcher(),
+    NftFinishAuctionMatcher(),
+    NftCancelAuctionMatcher(),
     JettonMintBlockMatcher(),
     StonfiV2ProvideLiquidityMatcher(),
     StonfiV2WithdrawLiquidityMatcher(),
