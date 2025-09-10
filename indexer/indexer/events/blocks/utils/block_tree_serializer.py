@@ -218,8 +218,8 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
         'royalty_amount': _value(block.data['royalty_amount']) if 'royalty_amount' in block.data else None,
     }
     action.nft_listing_data = {
-        'marketplace_fee_address': block.data['payout_address'].as_str() if 'payout_address' in block.data else None,
-        'royalty_address': block.data['royalty_address'].as_str() if 'royalty_address' in block.data else None,
+        'marketplace_fee_address': _addr(block.data['payout_address']) if 'payout_address' in block.data else None,
+        'royalty_address': _addr(block.data['royalty_address']) if 'royalty_address' in block.data else None,
     }
 
 def _fill_nft_purchase_action(block: NftPurchaseBlock, action: Action):
@@ -583,7 +583,7 @@ def _fill_cancel_nft_trade_action(block: NftCancelSaleBlock|NftFinishAuctionBloc
     action.asset_secondary = _addr(block.data.nft_address)
     action.asset = _addr(block.data.nft_collection)
     action.nft_transfer_data = {
-        'marketplace_address': block.data.marketplace_address,
+        'marketplace_address': _addr(block.data.marketplace_address),
     }
     action.accounts.append(action.asset_secondary)
 
