@@ -107,6 +107,7 @@ class AuctionBidMatcher(BlockMatcher):
             }
         else:
             return []
+        bid_block.failed = block.failed
         bid_block.merge_blocks([block])
         return [block]
 
