@@ -38,6 +38,8 @@ func GetMarketplaceName(marketplaceAddress *AccountAddress, collectionAddress *A
 		marketplaceAddr := string(*marketplaceAddress)
 		if name, exists := MarketplaceCache[marketplaceAddr]; exists {
 			return true, name
+		} else {
+			return false, ""
 		}
 	}
 
