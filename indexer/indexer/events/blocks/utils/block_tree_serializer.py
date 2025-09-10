@@ -198,7 +198,7 @@ def _fill_nft_transfer_action(block: NftTransferBlock, action: Action):
     if 'real_prev_owner' in block.data and block.data['real_prev_owner'] is not None:
         real_prev_owner = block.data['real_prev_owner']
     if 'marketplace_address' in block.data and block.data['marketplace_address'] is not None:
-        marketplace_address = block.data['marketplace_address']
+        marketplace_address = _addr(block.data['marketplace_address'])
     action.nft_transfer_data = {
         'query_id': block.data['query_id'],
         'is_purchase': block.data['is_purchase'],
