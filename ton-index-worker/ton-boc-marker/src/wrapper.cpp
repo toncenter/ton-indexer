@@ -70,21 +70,24 @@ TonMarkerBatchResponse* ton_marker_process_batch(const TonMarkerBatchRequest* re
     response->boc_count = cpp_response.boc_responses.size();
     response->boc_results = new char*[response->boc_count];
     for (int i = 0; i < response->boc_count; ++i) {
-        response->boc_results[i] = to_c_str(cpp_response.boc_responses[i].json_output);
+        const auto& json_output = cpp_response.boc_responses[i].json_output;
+        response->boc_results[i] = to_c_str(json_output.has_value() ? json_output : std::optional<std::string>("unknown"));
     }
     
     // convert opcode responses
     response->opcode_count = cpp_response.opcode_responses.size();
     response->opcode_results = new char*[response->opcode_count];
     for (int i = 0; i < response->opcode_count; ++i) {
-        response->opcode_results[i] = to_c_str(cpp_response.opcode_responses[i].name);
+        const auto& name = cpp_response.opcode_responses[i].name;
+        response->opcode_results[i] = to_c_str(name.has_value() ? name : std::optional<std::string>("unknown"));
     }
     
     // convert interface responses
     response->interface_count = cpp_response.interface_responses.size();
     response->interface_results = new char*[response->interface_count];
     for (int i = 0; i < response->interface_count; ++i) {
-        response->interface_results[i] = to_c_str(cpp_response.interface_responses[i].interfaces);
+        const auto& interfaces = cpp_response.interface_responses[i].interfaces;
+        response->interface_results[i] = to_c_str(interfaces.has_value() ? interfaces : std::optional<std::string>("unknown"));
     }
     
     return response;
