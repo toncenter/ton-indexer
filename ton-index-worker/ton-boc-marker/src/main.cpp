@@ -19,14 +19,21 @@ struct Request {
 };
 
 // process cli boc request
-std::string process_cli_boc(const std::string& hex_boc) {
-    // decode hex
-    auto hex_result = td::hex_decode(td::Slice(hex_boc));
+std::string process_cli_boc(const std::string& input_boc) {
+    // check if input is base64 (starts with te6cckEB)
+    if (input_boc.substr(0, 8) == "te6cckEB") {
+        // already in base64, use directly
+        auto result = ton_marker::decode_boc(input_boc);
+        return result ? *result : "Error: Failed to decode BOC";
+    }
+
+    // try as hex
+    auto hex_result = td::hex_decode(td::Slice(input_boc));
     if (hex_result.is_error()) {
         return "Error: Cannot decode input as Hex - " + hex_result.error().message().str();
     }
 
-    // convert to base64
+    // convert hex to base64
     auto boc_data = hex_result.move_as_ok();
     auto base64 = td::base64_encode(boc_data);
     
@@ -80,7 +87,7 @@ std::string process_cli_interface(const std::string& methods_list) {
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " [-o <hex_opcode> | -b <hex_boc> | -m <method_ids>]..." << std::endl;
+        std::cerr << "Usage: " << argv[0] << " [-o <hex_opcode> | -b <hex_or_base64_boc> | -m <method_ids>]..." << std::endl;
         std::cerr << "Examples:" << std::endl;
         std::cerr << "  " << argv[0] << " -o 0xf8a7ea5" << std::endl;
         std::cerr << "  " << argv[0] << " -b b5ee9c724101030100b200015f642b7d070000000000000000800015dcfb67ea144d8dad9d9d9d017a297e0b8e9cdb6988e68723b5b39f70a791c409b70101a7178d45190000000000000000204d9800015dcfb67ea144d8dad9d9d9d017a297e0b8e9cdb6988e68723b5b39f70a791d00002bb9f6cfd4289b1b5b3b3b3a02f452fc171d39b6d311cd0e476b673ee14f2388136b02004b12345678800015dcfb67ea144d8" << std::endl;
