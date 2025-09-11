@@ -8,7 +8,7 @@ namespace ton_marker {
 
 // core types for library
 struct DecodeBocRequest {
-    std::vector<unsigned char> boc_data;
+    std::string boc_base64;
 };
 
 struct DecodeBocResponse {
@@ -46,7 +46,7 @@ struct BatchResponse {
 };
 
 // core functions
-std::optional<std::string> decode_boc(const std::vector<unsigned char>& boc_data);
+std::optional<std::string> decode_boc(const std::string& boc_base64);
 std::optional<std::string> decode_opcode(unsigned int opcode);
 std::optional<std::string> detect_interface(const std::vector<unsigned int>& method_ids);
 

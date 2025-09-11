@@ -36,9 +36,9 @@ const std::vector<Interface> g_interfaces = {
         Interface::calc_method_id("get_cron_info")
     }},
 
-    {"daolama_vault", {
-        Interface::calc_method_id("get_pool_data")
-    }},
+    // {"daolama_vault", {
+    //     Interface::calc_method_id("get_pool_data")
+    // }},
 
     {"dedust_factory", {
         Interface::calc_method_id("get_vault_address"),
@@ -191,9 +191,9 @@ const std::vector<Interface> g_interfaces = {
         Interface::calc_method_id("get_channel_data")
     }},
 
-    {"stonfi_pool", {
-        Interface::calc_method_id("get_pool_data")
-    }},
+    // {"stonfi_pool", {
+    //     Interface::calc_method_id("get_pool_data")
+    // }},
 
     {"stonfi_pool_v2", {
         Interface::calc_method_id("get_pool_data"),
