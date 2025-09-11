@@ -172,6 +172,11 @@ def deserialize_nft_sale(data: Dict[str, Any]) -> NftSale:
         nft_address=data['nft_address'],
         nft_owner_address=data['nft_owner_address'],
         full_price=data['full_price'],
+        marketplace_fee_address=data.get('marketplace_fee_address'),
+        marketplace_fee=data.get('marketplace_fee'),
+        royalty_address=data.get('royalty_address'),
+        royalty_amount=data.get('royalty_amount'),
+        code_hash=data.get('code_hash'),
     )
 
 def deserialize_dedust_pool(account, data: Dict[str, Any]) -> DedustPool:
@@ -183,7 +188,17 @@ def deserialize_nft_auction(account, data: Dict[str, Any]) -> NftAuction:
     return NftAuction(address=account,
                       nft_addr=data['nft_addr'],
                       last_bid=data['last_bid'],
-                      nft_owner=data['nft_owner'])
+                      nft_owner=data['nft_owner'],
+                      mp_addr=data['mp_addr'],
+                      mp_fee_addr=data.get('mp_fee_addr'),
+                      mp_fee_factor=data.get('mp_fee_factor'),
+                      mp_fee_base=data.get('mp_fee_base'),
+                      royalty_fee_addr=data.get('royalty_fee_addr'),
+                      royalty_fee_base=data.get('royalty_fee_base'),
+                      max_bid=data.get('max_bid'),
+                      min_bid=data.get('min_bid'),
+                      code_hash=data.get('code_hash'),
+                      )
 
 def deserialize_multisig_order(data: Dict[str, Any]) -> MultisigOrder:
     """Deserialize dictionary to MultisigOrder."""

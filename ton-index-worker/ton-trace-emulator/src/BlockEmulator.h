@@ -28,6 +28,13 @@ struct TransactionInfo {
     std::optional<TraceIds> trace_ids{};
 };
 
+struct EmuRequest {
+  TraceNode* parent;             // attach under this node
+  size_t     insert_index;       // position among parent's children
+  td::Ref<vm::Cell> msg;         // message to emulate
+  td::Bits256 out_msg_hash;      // for optional sanity checks
+};
+
 class McBlockEmulator: public td::actor::Actor {
 private:
     MasterchainBlockDataState mc_data_state_;
@@ -56,11 +63,14 @@ private:
     void block_parsed(ton::BlockId blkid, std::vector<TransactionInfo> txs);
     void process_txs();
     void emulate_traces();
-    std::unique_ptr<TraceNode> construct_commited_trace(const TransactionInfo& tx, std::vector<td::Ref<vm::Cell>>& msgs_to_emulate);
+    std::unique_ptr<TraceNode> construct_commited_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs);
     void emulated_nodes_received(std::vector<std::unique_ptr<TraceNode>> commited_nodes,
         std::vector<std::unique_ptr<TraceNode>> emulated_nodes, std::unique_ptr<EmulationContext> context);
-    void children_emulated(std::unique_ptr<TraceNode> parent_node, std::vector<std::unique_ptr<TraceNode>> child_nodes, 
-        TraceIds trace_ids, std::unique_ptr<EmulationContext> context);
+    void children_emulated(std::unique_ptr<TraceNode> parent_node,
+                            std::vector<std::unique_ptr<TraceNode>> child_nodes,
+                            TraceIds trace_ids,
+                            std::vector<EmuRequest> reqs,
+                            std::unique_ptr<EmulationContext> context);
     void trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error);
     void trace_received(td::Bits256 tx_hash, Trace trace);
     void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error);

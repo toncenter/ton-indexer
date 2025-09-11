@@ -169,6 +169,24 @@ type ActionRow struct {
 	NFTTransferNFTItemIndex                              *string
 	NFTTransferMarketplace                               *string
 	NFTTransferRealPrevOwner                             *string
+	NFTTransferMarketplaceAddress                        *string
+	NFTTransferPayoutAmount                              *string
+	NFTTransferPayoutCommentEncrypted                    *bool
+	NFTTransferPayoutCommentEncoded                      *bool
+	NFTTransferPayoutComment                             *string
+	NFTTransferRoyaltyAmount                             *string
+	NFTListingNFTItemIndex                               *string
+	NFTListingFullPrice                                  *string
+	NFTListingMarketplaceFee                             *string
+	NFTListingRoyaltyAmount                              *string
+	NFTListingMarketplaceFeeFactor                       *string
+	NFTListingMarketplaceFeeBase                         *string
+	NFTListingRoyaltyFeeBase                             *string
+	NFTListingMaxBid                                     *string
+	NFTListingMinBid                                     *string
+	NFTListingMarketplaceFeeAddress                      *string
+	NFTListingRoyaltyAddress                             *string
+	NFTListingMarketplace                                *string
 	JettonSwapDex                                        *string
 	JettonSwapSender                                     *string
 	JettonSwapDexIncomingTransferAmount                  *string
@@ -415,6 +433,24 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.NFTTransferNFTItemIndex),
 		assignStringPtr(t.NFTTransferMarketplace),
 		assignStringPtr(t.NFTTransferRealPrevOwner),
+		assignStringPtr(t.NFTTransferMarketplaceAddress),
+		assignStringPtr(t.NFTTransferPayoutAmount),
+		assignBoolPtr(t.NFTTransferPayoutCommentEncrypted),
+		assignBoolPtr(t.NFTTransferPayoutCommentEncoded),
+		assignStringPtr(t.NFTTransferPayoutComment),
+		assignStringPtr(t.NFTTransferRoyaltyAmount),
+		assignStringPtr(t.NFTListingNFTItemIndex),
+		assignStringPtr(t.NFTListingFullPrice),
+		assignStringPtr(t.NFTListingMarketplaceFee),
+		assignStringPtr(t.NFTListingRoyaltyAmount),
+		assignStringPtr(t.NFTListingMarketplaceFeeFactor),
+		assignStringPtr(t.NFTListingMarketplaceFeeBase),
+		assignStringPtr(t.NFTListingRoyaltyFeeBase),
+		assignStringPtr(t.NFTListingMaxBid),
+		assignStringPtr(t.NFTListingMinBid),
+		assignStringPtr(t.NFTListingMarketplaceFeeAddress),
+		assignStringPtr(t.NFTListingRoyaltyAddress),
+		assignStringPtr(t.NFTListingMarketplace),
 		assignStringPtr(t.JettonSwapDex),
 		assignStringPtr(t.JettonSwapSender),
 		assignStringPtr(t.JettonSwapDexIncomingTransferAmount),

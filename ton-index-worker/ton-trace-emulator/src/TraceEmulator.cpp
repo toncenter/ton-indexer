@@ -225,61 +225,77 @@ void ShardBlockEmulator::child_emulated(std::unique_ptr<TraceNode> node, size_t 
 }
 
 void MasterchainBlockEmulator::start_up() {
-    std::map<ton::BlockId, std::vector<td::Ref<vm::Cell>>> msgs_by_shards;
-    for (const auto& shard_state : context_.get_shard_states()) {        
-        std::vector<td::Ref<vm::Cell>> cur_shard_msgs;
-        for (auto& msg : in_msgs_) {
-            int type;
-            auto msg_dest_r = fetch_msg_dest_address(msg, type);
-            if (msg_dest_r.is_error()) {
-                promise_.set_error(msg_dest_r.move_as_error_prefix("in msg found with no destination: "));
-                stop();
-                return;
-            }
-            auto msg_dest = msg_dest_r.move_as_ok();
-            if (ton::shard_contains(shard_state.blkid.shard_full(), ton::extract_addr_prefix(msg_dest.workchain, msg_dest.addr))) {
-                cur_shard_msgs.emplace_back(msg);
+    // remember input message order by hash
+    for (int i = 0; i < in_msgs_.size(); i++) {
+        auto h = in_msgs_[i]->get_hash().bits();
+        input_index_[h] = i;
+    }
+
+    struct Bucket { ton::BlockId blkid; std::vector<td::Ref<vm::Cell>> msgs; };
+    std::vector<Bucket> buckets;
+    std::unordered_map<block::ShardId, size_t, ShardIdHash> bucket_idx;
+
+    for (auto& msg : in_msgs_) {
+        int type;
+        auto msg_dest_r = fetch_msg_dest_address(msg, type);
+        if (msg_dest_r.is_error()) {
+            promise_.set_error(msg_dest_r.move_as_error_prefix("in msg found with no destination: "));
+            stop();
+            return;
+        }
+        auto msg_dest = msg_dest_r.move_as_ok();
+
+        // find containing shard
+        bool placed = false;
+        for (const auto& shard_state : context_.get_shard_states()) {
+            if (ton::shard_contains(shard_state.blkid.shard_full(),
+                                    ton::extract_addr_prefix(msg_dest.workchain, msg_dest.addr))) {
+                auto sid = shard_state.blkid.shard;
+                auto it = bucket_idx.find(sid);
+                if (it == bucket_idx.end()) {
+                    bucket_idx[sid] = buckets.size();
+                    buckets.push_back({shard_state.blkid, {}});
+                }
+                buckets[bucket_idx[sid]].msgs.emplace_back(msg);
+                placed = true;
+                break;
             }
         }
-        if (cur_shard_msgs.empty()) {
-            continue;
+        if (!placed) {
+            promise_.set_error(td::Status::Error("no shard found for message"));
+            stop();
+            return;
         }
-        msgs_by_shards[shard_state.blkid] = std::move(cur_shard_msgs);
     }
 
     td::MultiPromise mp;
     auto ig = mp.init_guard();
-
-    auto ret_promise = td::PromiseCreator::lambda(
-        [SelfId = actor_id(this)](td::Result<td::Unit> R) mutable {
-          if (R.is_error()) {
+    auto ret_promise = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Unit> R) mutable {
+        if (R.is_error()) {
             td::actor::send_closure(SelfId, &MasterchainBlockEmulator::error, R.move_as_error());
-          } else {
+        } else {
             td::actor::send_closure(SelfId, &MasterchainBlockEmulator::all_shards_emulated);
-          }
-        });
+        }
+    });
     ig.add_promise(std::move(ret_promise));
 
-    for (auto& [shard_blkid, shard_msgs] : msgs_by_shards) {
-        auto P = td::PromiseCreator::lambda(
-                [SelfId = actor_id(this), shard = shard_blkid.shard, promise = ig.get_promise()]
+    for (auto& b : buckets) {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), shard = b.blkid.shard, promise = ig.get_promise()]
                 (td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
             if (R.is_error()) {
                 promise.set_error(R.move_as_error_prefix("failed to emulate shard block: "));
             } else {
-                td::actor::send_closure(SelfId, &MasterchainBlockEmulator::shard_emulated, shard, R.move_as_ok(), std::move(promise));
+                td::actor::send_closure(SelfId, &MasterchainBlockEmulator::shard_emulated,
+                                        shard, R.move_as_ok(), std::move(promise));
             }
         });
-
-        td::actor::create_actor<ShardBlockEmulator>("ShardBlockEmulator", shard_blkid, context_, shard_msgs, std::move(P)).release();
+        td::actor::create_actor<ShardBlockEmulator>("ShardBlockEmulator", b.blkid, context_, b.msgs, std::move(P)).release();
     }
 }
 
-void MasterchainBlockEmulator::shard_emulated(block::ShardId shard, std::vector<std::unique_ptr<TraceNode>> shard_traces, td::Promise<> promise) {
-    result_.insert(result_.end(),
-        std::make_move_iterator(shard_traces.begin()),
-        std::make_move_iterator(shard_traces.end()));
-
+void MasterchainBlockEmulator::shard_emulated(block::ShardId shard,
+        std::vector<std::unique_ptr<TraceNode>> shard_traces, td::Promise<> promise) {
+    shard_results_[shard] = std::move(shard_traces);
     promise.set_result(td::Unit());
 }
 
@@ -315,16 +331,47 @@ td::Status find_out_msgs_to_emulate_next(const std::unique_ptr<TraceNode>& node,
 }
 
 void MasterchainBlockEmulator::all_shards_emulated() {
+    // Reorder to exact input order
+    std::vector<std::unique_ptr<TraceNode>> ordered;
+    ordered.resize(in_msgs_.size());
+
+    for (auto& kv : shard_results_) {
+        auto& vec = kv.second;
+        for (auto& node : vec) {
+            auto key = node->node_id; // root in_msg_hash
+            auto it = input_index_.find(key);
+            if (it != input_index_.end()) {
+                ordered[it->second] = std::move(node);
+            } else {
+                LOG(ERROR) << "Emulated trace node not in input set: " << td::base64_encode(key.as_slice());
+                error(td::Status::Error("Emulated trace node not in input set"));
+                return;
+            }
+        }
+    }
+
+    result_.reserve(ordered.size());
+    for (auto& n : ordered) {
+        if (n) {
+            result_.push_back(std::move(n));
+        } else {
+            LOG(ERROR) << "Emulated trace node is null";
+            error(td::Status::Error("Emulated trace node not in input set"));
+            return;
+        }
+    }
+
     if (context_.is_limit_exceeded()) {
         promise_.set_result(std::move(result_));
         stop();
         return;
     }
+
     std::vector<td::Ref<vm::Cell>> to_emulate_in_next_mc_block;
-    for (const auto& node : result_) {       
+    for (const auto& node : result_) {
         auto r = find_out_msgs_to_emulate_next(node, to_emulate_in_next_mc_block);
         if (r.is_error()) {
-            error(r.move_as_ok());
+            error(r.move_as_error());
             return;
         }
     }

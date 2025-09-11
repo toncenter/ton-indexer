@@ -1157,6 +1157,14 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Id: req.Id, Error: err.Error()})
 		}
 
+		if len(req.SupportedActionTypes) == 0 {
+			if val, ok := c.GetReqHeaders()["X-Actions-Version"]; ok && len(val) > 0 {
+				req.SupportedActionTypes = val
+			} else {
+				req.SupportedActionTypes = []string{"latest"}
+			}
+		}
+
 		// Parse rate limiting headers
 		limitingKey, rateLimitConfig := ParseRateLimitHeaders(c.GetReqHeaders())
 
@@ -1261,6 +1269,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 		headers["X-Limiting-Key"] = []string{c.Headers("X-Limiting-Key")}
 		headers["X-Max-Parallel-Connections"] = []string{c.Headers("X-Max-Parallel-Connections")}
 		headers["X-Max-Subscribed-Addr"] = []string{c.Headers("X-Max-Subscribed-Addr")}
+		headers["X-Actions-Version"] = []string{c.Headers("X-Actions-Version", "latest")}
 		limitingKey, rateLimitConfig := ParseRateLimitHeaders(headers)
 
 		clientID := fmt.Sprintf("%s-%s", c.RemoteAddr(), time.Now().Format(time.RFC3339Nano))
@@ -1280,7 +1289,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			Connected:   true,
 			Subscription: Subscription{
 				SubscribedAddresses:  make(map[string][]EventType),
-				SupportedActionTypes: index.ExpandActionTypeShortcuts([]string{}),
+				SupportedActionTypes: index.ExpandActionTypeShortcuts(headers["X-Actions-Version"]),
 				IncludeAddressBook:   false,
 				IncludeMetadata:      false,
 			},

@@ -539,7 +539,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.NftItem = raw.AssetSecondary
 		details.NftItemIndex = raw.NFTMintNFTItemIndex
 		act.Details = &details
-	case "nft_transfer":
+	case "nft_transfer", "nft_purchase":
 		// TODO: asset = collection, asset_secondary = item, payload, forward_amount, response_dest
 		var details ActionDetailsNftTransfer
 		details.NftCollection = raw.Asset
@@ -554,8 +554,16 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.CustomPayload = raw.NFTTransferCustomPayload
 		details.ForwardPayload = raw.NFTTransferForwardPayload
 		details.ForwardAmount = raw.NFTTransferForwardAmount
-		details.Marketplace = raw.NFTTransferMarketplace
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
 		details.RealOldOwner = raw.NFTTransferRealPrevOwner
+		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
+		details.PayoutAmount = raw.NFTTransferPayoutAmount
+		details.PayoutComment = raw.NFTTransferPayoutComment
+		details.PayoutCommentEncoded = raw.NFTTransferPayoutCommentEncoded
+		details.PayoutCommentEncrypted = raw.NFTTransferPayoutCommentEncrypted
+		details.RoyaltyAmount = raw.NFTTransferRoyaltyAmount
 		if raw.NFTTransferForwardPayload != nil {
 			comment, isEncrypted, err := ParseCommentFromPayload(*raw.NFTTransferForwardPayload)
 			if err == nil {
@@ -563,6 +571,61 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 				details.IsEncryptedComment = &isEncrypted
 			}
 		}
+		if raw.Type == "nft_purchase" {
+			details.PayoutAddress = details.RealOldOwner
+		} else {
+			details.PayoutAddress = raw.NFTListingMarketplaceFeeAddress
+			details.RoyaltyAddress = raw.NFTListingRoyaltyAddress
+		}
+
+		act.Details = &details
+	case "dns_purchase":
+		var details ActionDetailsDnsPurchase
+		details.NftCollection = raw.Asset
+		details.NftItem = raw.AssetSecondary
+		details.NftItemIndex = raw.NFTTransferNFTItemIndex
+		details.NewOwner = raw.Destination
+		details.Price = raw.NFTTransferPrice
+		details.QueryId = raw.NFTTransferQueryId
+		details.PayoutAmount = raw.NFTTransferPayoutAmount
+		act.Details = &details
+	case "nft_put_on_sale":
+		var details ActionDetailsNftPutOnSale
+		details.NftCollection = raw.Asset
+		details.NftItem = raw.AssetSecondary
+		details.NftItemIndex = raw.NFTListingNFTItemIndex
+		details.Owner = raw.Source
+		details.ListingAddress = raw.SourceSecondary
+		details.SaleAddress = raw.Destination
+		details.MarketplaceAddress = raw.DestinationSecondary
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
+		details.FullPrice = raw.NFTListingFullPrice
+		details.MarketplaceFee = raw.NFTListingMarketplaceFee
+		details.RoyaltyAmount = raw.NFTListingRoyaltyAmount
+		details.MarketplaceFeeAddress = raw.NFTListingMarketplaceFeeAddress
+		details.RoyaltyAddress = raw.NFTListingRoyaltyAddress
+		act.Details = &details
+	case "nft_put_on_auction", "teleitem_start_auction":
+		var details ActionDetailsNftPutOnAuction
+		details.NftCollection = raw.Asset
+		details.NftItem = raw.AssetSecondary
+		details.NftItemIndex = raw.NFTListingNFTItemIndex
+		details.Owner = raw.Source
+		details.ListingAddress = raw.SourceSecondary
+		details.AuctionAddress = raw.Destination
+		details.MarketplaceAddress = raw.DestinationSecondary
+		if found, marketplaceName := GetMarketplaceName(raw.DestinationSecondary, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
+		details.MarketplaceFeeFactor = raw.NFTListingMarketplaceFeeFactor
+		details.MarketplaceFeeBase = raw.NFTListingMarketplaceFeeBase
+		details.RoyaltyFeeBase = raw.NFTListingRoyaltyFeeBase
+		details.MaxBid = raw.NFTListingMaxBid
+		details.MinBid = raw.NFTListingMinBid
+		details.MarketplaceFeeAddress = raw.NFTListingMarketplaceFeeAddress
+		details.RoyaltyAddress = raw.NFTListingRoyaltyAddress
 		act.Details = &details
 	case "tick_tock":
 		var details ActionDetailsTickTock
@@ -881,6 +944,74 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			Asset:  raw.Asset,
 			Value:  raw.Value,
 		}
+	case "auction_outbid":
+		var details ActionDetailsAuctionOutbid
+		details.AuctionAddress = raw.Source
+		details.Bidder = raw.Destination
+		details.NewBidder = raw.SourceSecondary
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.Amount = raw.Amount
+		details.Comment = raw.TonTransferContent
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
+		act.Details = &details
+	case "nft_cancel_sale":
+		var details ActionDetailsNftCancelSale
+		details.Owner = raw.Source
+		details.SaleAddress = raw.Destination
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
+		act.Details = &details
+	case "nft_cancel_auction", "teleitem_cancel_auction":
+		var details ActionDetailsNftCancelAuction
+		details.Owner = raw.Source
+		details.AuctionAddress = raw.Destination
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
+		act.Details = &details
+	case "nft_finish_auction":
+		var details ActionDetailsNftFinishAuction
+		details.Owner = raw.Source
+		details.AuctionAddress = raw.Destination
+		details.NftItem = raw.AssetSecondary
+		details.NftCollection = raw.Asset
+		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
+		act.Details = &details
+	case "dns_release":
+		var details ActionDetailsDnsRelease
+		details.QueryId = raw.NFTTransferQueryId
+		details.Source = raw.Source
+		details.NftItem = raw.Destination
+		details.NftCollection = raw.Asset
+		details.NftItemIndex = raw.NFTTransferNFTItemIndex
+		details.Value = raw.Value
+		act.Details = &details
+	case "nft_update_sale":
+		var details ActionDetailsNftUpdateSale
+		details.Source = raw.Source
+		details.SaleContract = raw.Destination
+		details.NftAddress = raw.AssetSecondary
+		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
+		details.FullPrice = raw.NFTListingFullPrice
+		details.MarketplaceFee = raw.NFTListingMarketplaceFee
+		details.RoyaltyAmount = raw.NFTListingRoyaltyAmount
+		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+			details.Marketplace = &marketplaceName
+		}
+		act.Details = &details
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
@@ -1238,6 +1369,24 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.NFTTransferNFTItemIndex,
 		&act.NFTTransferMarketplace,
 		&act.NFTTransferRealPrevOwner,
+		&act.NFTTransferMarketplaceAddress,
+		&act.NFTTransferPayoutAmount,
+		&act.NFTTransferPayoutCommentEncrypted,
+		&act.NFTTransferPayoutCommentEncoded,
+		&act.NFTTransferPayoutComment,
+		&act.NFTTransferRoyaltyAmount,
+		&act.NFTListingNFTItemIndex,
+		&act.NFTListingFullPrice,
+		&act.NFTListingMarketplaceFee,
+		&act.NFTListingRoyaltyAmount,
+		&act.NFTListingMarketplaceFeeFactor,
+		&act.NFTListingMarketplaceFeeBase,
+		&act.NFTListingRoyaltyFeeBase,
+		&act.NFTListingMaxBid,
+		&act.NFTListingMinBid,
+		&act.NFTListingMarketplaceFeeAddress,
+		&act.NFTListingRoyaltyAddress,
+		&act.NFTListingMarketplace,
 		&act.JettonSwapDex,
 		&act.JettonSwapSender,
 		&act.JettonSwapDexIncomingTransferAmount,

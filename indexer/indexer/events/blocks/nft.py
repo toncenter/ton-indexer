@@ -10,7 +10,7 @@ from indexer.events import context
 from indexer.events.blocks.labels import labeled
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.basic_matchers import BlockMatcher, OrMatcher, ContractMatcher
-from indexer.events.blocks.core import Block
+from indexer.events.blocks.core import Block, EmptyBlock
 from indexer.events.blocks.messages import NftOwnershipAssigned, ExcessMessage
 from indexer.events.blocks.messages.nft import NftDiscovery, NftReportStaticData, NftTransfer, TeleitemBidInfo, AuctionFillUp
 from indexer.events.blocks.utils import AccountId, Amount
@@ -26,6 +26,11 @@ class NftMintBlock(Block):
 class NftTransferBlock(Block):
     def __init__(self):
         super().__init__('nft_transfer', [],  None)
+
+    def get_nft_collection(self):
+        if self.data is not None and 'nft' in self.data and 'collection' in self.data['nft']:
+            return self.data['nft']['collection']['address']
+        return None
 
 
 @dataclass
@@ -77,6 +82,7 @@ async def _try_get_nft_purchase_data(block: Block, owner: str) -> dict | None:
         nft_sale = await context.interface_repository.get().get_nft_sale(event_node.message.transaction.account)
         if nft_sale is not None:
             return {
+                'marketplace_address': nft_sale.marketplace_address,
                 'nft_address': nft_sale.nft_address,
                 'block': block.previous_block,
                 'price': nft_sale.full_price,
@@ -86,6 +92,7 @@ async def _try_get_nft_purchase_data(block: Block, owner: str) -> dict | None:
     nft_auction = await context.interface_repository.get().get_nft_auction(event_node.message.transaction.account)
     if nft_auction is not None:
         return {
+            'marketplace_address': nft_auction.mp_addr,
             'nft_address': nft_auction.nft_addr,
             'block': block.previous_block,
             'price': nft_auction.last_bid,
@@ -138,10 +145,12 @@ class NftTransferBlockMatcher(BlockMatcher):
                 if real_owner != data['new_owner']:
                     data['is_purchase'] = True
                     data['marketplace'] = 'getgems'
+                    data['marketplace_address'] = AccountId(nft_purchase_data['marketplace_address'])
                     data['price'] = Amount(nft_purchase_data['price'])
                     data['real_prev_owner'] = AccountId(nft_purchase_data['real_prev_owner'])
                     if isinstance(block.previous_block, TonTransferBlock):
-                        include.append(block.previous_block)
+                        if block.previous_block.comment not in ['finish', 'stop']:
+                            include.append(block.previous_block)
                     elif isinstance(block.previous_block, CallContractBlock) and block.previous_block.get_message().source is None:
                         include.append(block.previous_block)
 
@@ -152,6 +161,92 @@ class NftTransferBlockMatcher(BlockMatcher):
             new_block.broken = True
         new_block.failed = block.failed
         return [new_block]
+
+@dataclass()
+class NftPurchaseData:
+    nft_address: AccountId
+    collection_address: AccountId | None
+    nft_index: int
+    prev_owner: AccountId | None
+    new_owner: AccountId
+    query_id: int
+    forward_amount: Amount | None
+    response_destination: AccountId | None
+    custom_payload: str | None
+    forward_payload: str | None
+    payout_amount: Amount | None
+    payout_comment_encrypted: bool | None
+    payout_comment_encoded: bool | None
+    payout_comment: str | None
+    price: Amount | None
+    real_prev_owner: AccountId | None
+    marketplace: str | None
+    marketplace_address: AccountId | None
+
+class NftPurchaseBlock(Block):
+    data: NftPurchaseData
+    def __init__(self, data: NftPurchaseData):
+        super().__init__("nft_purchase", [], data)
+
+class GetgemsNftPurchaseBlockMatcher(BlockMatcher):
+    def __init__(self):
+        super().__init__()
+
+    def test_self(self, block: Block) -> bool:
+        return (block.btype == 'nft_transfer' and block.data['is_purchase'] == True
+                and block.data.get('marketplace') == 'getgems')
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        if block.data.get('real_prev_owner') is None:
+            return []
+
+        include = [block]
+        candidates = block.next_blocks
+        need_proxy = False
+        if isinstance(block.previous_block, TonTransferBlock) and block.previous_block.comment in ['finish', 'stop']:
+            candidates = block.previous_block.next_blocks
+            need_proxy = True
+
+        # Find ton transfer to seller
+        ton_transfer: TonTransferBlock|None = None
+        for n in candidates:
+            if n.btype == 'ton_transfer' and n.get_message().destination == block.data['real_prev_owner']:
+                ton_transfer = n
+                include.append(n)
+                break
+
+        if ton_transfer is None: # Ton transfer to seller not found
+            return []
+        data = NftPurchaseData(
+            nft_address=block.data['nft']['address'],
+            collection_address=block.data['nft']['collection']['address'] if block.data['nft']['collection'] else None,
+            nft_index = block.data['nft']['index'],
+            prev_owner=block.data['prev_owner'],
+            new_owner=block.data['new_owner'],
+            query_id=block.data['query_id'],
+            forward_amount=block.data['forward_amount'],
+            response_destination=block.data['response_destination'],
+            custom_payload=block.data['custom_payload'],
+            forward_payload=block.data['forward_payload'],
+            payout_amount=Amount(ton_transfer.value),
+            payout_comment_encrypted=ton_transfer.encrypted,
+            payout_comment_encoded=ton_transfer.comment_encoded,
+            payout_comment=ton_transfer.comment,
+            price=block.data['price'],
+            real_prev_owner=block.data['real_prev_owner'],
+            marketplace=block.data['marketplace'],
+            marketplace_address=block.data['marketplace_address'],
+        )
+
+        if need_proxy:
+            proxy = EmptyBlock()
+            block.previous_block.insert_between([block, ton_transfer], proxy)
+            include.append(proxy)
+
+        new_block = NftPurchaseBlock(data)
+        new_block.merge_blocks(include)
+        return [new_block]
+
 
 class NftDiscoveryBlockMatcher(BlockMatcher):
     def __init__(self):
@@ -197,6 +292,8 @@ class NftDiscoveryBlockMatcher(BlockMatcher):
         return [new_block]
 
 
+
+
 class TelegramNftPurchaseBlockMatcher(BlockMatcher):
     def __init__(self):
         super().__init__(child_matcher=None,
@@ -215,7 +312,8 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         message = block.get_message()
         nft_ownership_message = NftOwnershipAssigned(Slice.one_from_boc(message.message_content.body))
         data['new_owner'] = AccountId(message.destination)
-        data['prev_owner'] = AccountId(nft_ownership_message.prev_owner) if nft_ownership_message.prev_owner is not None else None
+        prev_owner = AccountId(nft_ownership_message.prev_owner) if nft_ownership_message.prev_owner is not None else None
+        data['prev_owner'] = prev_owner
         data['query_id'] = nft_ownership_message.query_id
         data['forward_amount'] = None
         data['response_destination'] = None
@@ -233,7 +331,18 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
             prev_block = block.previous_block
             if (isinstance(prev_block, TonTransferBlock) or
                     (isinstance(prev_block, CallContractBlock) and prev_block.get_message().source is None)):
-                include.extend(find_call_contracts(prev_block.next_blocks, AuctionFillUp.opcode))
+                payouts = find_call_contracts(prev_block.next_blocks, AuctionFillUp.opcode)
+                payouts.sort(key=lambda p: p.get_message().created_lt)
+                # Sending fee is always first fill up message for teleitems
+                if len(payouts) > 1:
+                    data['royalty_amount'] = Amount(payouts[0].get_message().value)
+                    data['payout_amount'] = Amount(payouts[1].get_message().value)
+                    data['royalty_address'] = AccountId(payouts[0].get_message().destination)
+                    data['payout_address'] = AccountId(payouts[1].get_message().destination)
+                elif len(payouts) == 1:
+                    data['payout_address'] = AccountId(payouts[0].get_message().destination)
+                    data['payout_amount'] = Amount(payouts[0].get_message().value)
+                include.extend(payouts)
                 include.append(prev_block)
 
         include.extend(other_blocks)

@@ -94,6 +94,7 @@ class RedisInterfaceRepository(InterfaceRepository):
                 collection_address=interface_data["collection_address"],
                 owner_address=interface_data["owner_address"],
                 content=interface_data["content"],
+                code_hash=interface_data.get("code_hash"),
             )
         return None
 
@@ -112,6 +113,11 @@ class RedisInterfaceRepository(InterfaceRepository):
                 nft_address=interface_data["nft_address"],
                 nft_owner_address=interface_data["nft_owner_address"],
                 full_price=interface_data["full_price"],
+                marketplace_fee_address=interface_data.get("marketplace_fee_address"),
+                marketplace_fee=interface_data.get("marketplace_fee"),
+                royalty_address=interface_data.get("royalty_address"),
+                royalty_amount=interface_data.get("royalty_amount"),
+                code_hash=interface_data.get("code_hash"),
             )
         return None
 
@@ -140,6 +146,15 @@ class RedisInterfaceRepository(InterfaceRepository):
                 nft_addr=interface_data["nft_addr"],
                 nft_owner=interface_data["nft_owner"],
                 last_bid=interface_data["last_bid"],
+                mp_addr=interface_data['mp_addr'],
+                mp_fee_addr=interface_data.get("mp_fee_addr"),
+                mp_fee_factor=interface_data.get("mp_fee_factor"),
+                mp_fee_base=interface_data.get("mp_fee_base"),
+                royalty_fee_addr=interface_data.get("royalty_fee_addr"),
+                royalty_fee_base=interface_data.get("royalty_fee_base"),
+                max_bid=interface_data.get("max_bid"),
+                min_bid=interface_data.get("min_bid"),
+                code_hash=interface_data.get("code_hash"),
             )
         return None
 
@@ -237,6 +252,7 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
                     collection_address=interface_data['collection_address'],
                     owner_address=interface_data['owner_address'],
                     content=interface_data['content'],
+                    code_hash=interface_data.get('code_hash'),
                 )
         return None
 
@@ -258,6 +274,11 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
                     nft_address=interface_data['nft_address'],
                     nft_owner_address=interface_data['nft_owner_address'],
                     full_price=interface_data['full_price'],
+                    marketplace_fee_address=interface_data.get('marketplace_fee_address'),
+                    marketplace_fee=interface_data.get('marketplace_fee'),
+                    royalty_address=interface_data.get('royalty_address'),
+                    royalty_amount=interface_data.get('royalty_amount'),
+                    code_hash=interface_data.get('code_hash'),
                 )
         return None
 
@@ -276,6 +297,15 @@ class EmulatedTransactionsInterfaceRepository(InterfaceRepository):
                     address=interface_data['address'],
                     nft_addr=interface_data['nft_addr'],
                     nft_owner=interface_data['nft_owner'],
+                    mp_addr=interface_data['mp_addr'],
+                    mp_fee_addr=interface_data.get('mp_fee_addr'),
+                    mp_fee_factor=interface_data.get('mp_fee_factor'),
+                    mp_fee_base=interface_data.get('mp_fee_base'),
+                    royalty_fee_addr=interface_data.get('royalty_fee_addr'),
+                    royalty_fee_base=interface_data.get('royalty_fee_base'),
+                    max_bid=interface_data.get('max_bid'),
+                    min_bid=interface_data.get('min_bid'),
+                    code_hash=interface_data.get('code_hash'),
                 )
         return None
 
@@ -327,6 +357,7 @@ class EmulatedRepositoryWithDbFallback(InterfaceRepository):
                     collection_address=data["collection_address"],
                     owner_address=data["owner_address"],
                     content=data["content"],
+                    code_hash=data.get("code_hash"),
                 )
 
         return result
@@ -344,6 +375,11 @@ class EmulatedRepositoryWithDbFallback(InterfaceRepository):
                     nft_address=data["nft_address"],
                     nft_owner_address=data["nft_owner_address"],
                     full_price=data["full_price"],
+                    marketplace_fee_address=data.get("marketplace_fee_address"),
+                    marketplace_fee=data.get("marketplace_fee"),
+                    royalty_address=data.get("royalty_address"),
+                    royalty_amount=data.get("royalty_amount"),
+                    code_hash=data.get("code_hash"),
                 )
 
         return result
@@ -358,6 +394,15 @@ class EmulatedRepositoryWithDbFallback(InterfaceRepository):
                     address=data["address"],
                     nft_addr=data["nft_addr"],
                     nft_owner=data["nft_owner"],
+                    mp_addr=data["mp_addr"],
+                    mp_fee_addr=data.get("mp_fee_addr"),
+                    mp_fee_factor=data.get("mp_fee_factor"),
+                    mp_fee_base=data.get("mp_fee_base"),
+                    royalty_fee_addr=data.get("royalty_fee_addr"),
+                    royalty_fee_base=data.get("royalty_fee_base"),
+                    max_bid=data.get("max_bid"),
+                    min_bid=data.get("min_bid"),
+                    code_hash=data.get("code_hash"),
                 )
 
         return result
@@ -517,6 +562,7 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
             "collection_address": item.collection_address,
             "owner_address": item.owner_address,
             "content": item.content,
+            "code_hash": item.code_hash,
         }
     for sale in nft_sales:
         result[sale.address]["NftSale"] = {
@@ -526,13 +572,27 @@ async def gather_interfaces(accounts: set[str], session: AsyncSession, extra_req
             "nft_address": sale.nft_address,
             "nft_owner_address": sale.nft_owner_address,
             "full_price": float(sale.full_price),
+            "marketplace_fee_address": sale.marketplace_fee_address,
+            "marketplace_fee": float(sale.marketplace_fee) if sale.marketplace_fee is not None else None,
+            "royalty_address": sale.royalty_address,
+            "royalty_amount": float(sale.royalty_amount) if sale.royalty_amount is not None else None,
+            "code_hash": sale.code_hash,
         }
     for auction in nft_auctions:
         result[auction.address]["NftAuction"] = {
             "address": auction.address,
+            "mp_addr": auction.mp_addr,
             "nft_addr": auction.nft_addr,
             "nft_owner": auction.nft_owner,
-            "last_bid": float(auction.last_bid)
+            "last_bid": float(auction.last_bid),
+            "mp_fee_addr": auction.mp_fee_addr,
+            "mp_fee_factor": float(auction.mp_fee_factor) if auction.mp_fee_factor is not None else None,
+            "mp_fee_base": float(auction.mp_fee_base) if auction.mp_fee_base is not None else None,
+            "royalty_fee_addr": auction.royalty_fee_addr,
+            "royalty_fee_base": float(auction.royalty_fee_base) if auction.royalty_fee_base is not None else None,
+            "max_bid": float(auction.max_bid) if auction.max_bid is not None else None,
+            "min_bid": float(auction.min_bid) if auction.min_bid is not None else None,
+            "code_hash": auction.code_hash,
         }
     for account_state in nominator_pools:
         result[account_state.account]["NominatorPool"] = {
