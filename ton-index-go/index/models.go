@@ -156,8 +156,9 @@ type Block struct {
 } // @name Block
 
 type DecodedContent struct {
-	Type    string `json:"type"`
-	Comment string `json:"comment"`
+	Type    string      `json:"type"`
+	Comment string      `json:"comment,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
 } // @name DecodedContent
 
 type MessageContent struct {
@@ -181,6 +182,7 @@ type Message struct {
 	CreatedLt            *uint64           `json:"created_lt,string"`
 	CreatedAt            *uint32           `json:"created_at,string"`
 	Opcode               *OpcodeType       `json:"opcode"`
+	DecodedOpcode        *string           `json:"decoded_opcode"`
 	IhrDisabled          *bool             `json:"ihr_disabled"`
 	Bounce               *bool             `json:"bounce"`
 	Bounced              *bool             `json:"bounced"`

@@ -3,6 +3,7 @@ package index
 import (
 	b64 "encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/marker"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
@@ -1129,15 +1131,42 @@ func (mc *MessageContent) TryDecodeBody() error {
 	if mc.Body == nil {
 		return errors.New("empty MessageContent")
 	}
+
+	// try to decode as text comment first
 	if boc, err := b64.StdEncoding.DecodeString(*mc.Body); err == nil {
 		if c, err := cell.FromBOC(boc); err == nil {
 			l := c.BeginParse()
 			if val, err := l.LoadUInt(32); err == nil && val == 0 {
 				str, _ := l.LoadStringSnake()
 				mc.Decoded = &DecodedContent{Type: "text_comment", Comment: str}
+				return nil
 			}
 		}
 	}
+	fmt.Println(*mc.Body)
+	bocs := []string{*mc.Body}
+	_, bocResults, _, err := marker.MarkerRequest([]uint32{}, bocs, [][]uint32{})
+	if err != nil || len(bocResults) == 0 {
+		return nil // not an error, just couldn't decode
+	}
+
+	// parse the first result as json
+	var data interface{}
+	if err := json.Unmarshal([]byte(bocResults[0]), &data); err != nil {
+		return nil // not an error, just couldn't parse json
+	}
+
+	// get the type from the first key in the json object
+	if m, ok := data.(map[string]interface{}); ok && len(m) > 0 {
+		for k := range m {
+			mc.Decoded = &DecodedContent{
+				Type: k,
+				Data: m[k],
+			}
+			break
+		}
+	}
+
 	return nil
 }
 
