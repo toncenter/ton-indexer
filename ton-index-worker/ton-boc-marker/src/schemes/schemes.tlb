@@ -158,7 +158,7 @@ lock_and_claim#3a86f1a0 query_id:uint64 proof:(Maybe ^Cell) = InternalMsgBody0;
 bemo_stake#4253c4d5
         query_id:uint64
         forward_ton_amount:(VarUInteger 16)
-        forward_payload:(Maybe ^ForwardPayload)
+        forward_payload:(Maybe ^Cell)
         = InternalMsgBody0;
 
 // bemo_unstake
@@ -167,7 +167,7 @@ bemo_unstake#492ab1b3
         owner:MsgAddress
         ton_amount:(VarUInteger 16) 
         jetton_amount:(VarUInteger 16)
-        forward_payload:(Maybe ^ForwardPayload) 
+        forward_payload:(Maybe ^Cell) 
         = InternalMsgBody0;
 
 // bemo_deploy_unstake_request
@@ -176,14 +176,14 @@ bemo_deploy_unstake_request#10a1ce75
         owner_address:MsgAddress 
         withdraw_ton_amount:(VarUInteger 16)
         withdraw_jetton_amount:(VarUInteger 16)
-        forward_payload:(Maybe ^ForwardPayload) 
+        forward_payload:(Maybe ^Cell) 
         lockup_timestamp:uint32 
         = InternalMsgBody0;
 
 // bemo_unstake_notification
 bemo_unstake_notification#90c80a07 
         query_id:uint64 
-        forward_payload:(Maybe ^ForwardPayload)
+        forward_payload:(Maybe ^Cell)
         = InternalMsgBody0;
 
 // bemo_return_unstake_request
@@ -197,14 +197,14 @@ bemo_return_unstake_request#38633538
 
 // bidask_swap
 bidask_swap#f2ef6c1b query_id:uint64 native_amount:Coins to_address:MsgAddress slippage:(Either Coins uint256) exact_out:Coins
-        ref_address:MsgAddress additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+        ref_address:MsgAddress additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_provide
-bidask_provide#96feef7b query_id:uint64 deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+bidask_provide#96feef7b query_id:uint64 deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_swap_success
 bidask_swap_success#520e4831 query_id:uint64 new_current_bin:int32 new_sqrt_price:uint256 order:Bool amount_x:Coins amount_y:Coins 
-        is_x:Bool user_address:MsgAddress ref_cell:(Maybe ^Cell) additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+        is_x:Bool user_address:MsgAddress ref_cell:(Maybe ^Cell) additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_swap_fallback
 bidask_swap_fallback#1bba3896 query_id:uint64 first_range_bin:int32 order:Bool user_address:MsgAddress is_x:Bool 
@@ -216,15 +216,15 @@ bidask_provide_refund#02422cbe query_id:uint64 first_range_bin:int32 x_excess:Co
 
 // bidask_burn_payout
 bidask_burn_payout#42062d62 query_id:uint64 first_range_bin:int32 amount_x:Coins amount_y:Coins user_address:MsgAddress 
-        forward_payload:(Maybe ^ForwardPayload) = InternalMsgBody0;
+        forward_payload:(Maybe ^Cell) = InternalMsgBody0;
 
 // bidask_internal_swap
 bidask_internal_swap#66210c65 query_id:uint64 to_address:MsgAddress order:Bool is_x:Bool amount_in:Coins amount_out:Coins exact_out:Coins 
-        slippage:(Either Coins uint256) ref_cell:(Maybe ^Cell) additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+        slippage:(Either Coins uint256) ref_cell:(Maybe ^Cell) additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_internal_continue_swap
 bidask_internal_continue_swap#59699475 query_id:uint64 to_address:MsgAddress order:Bool is_x:Bool amount_in:Coins amount_out:Coins exact_out:Coins 
-        slippage:(Either Coins uint256) ref_cell:(Maybe ^Cell) additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+        slippage:(Either Coins uint256) ref_cell:(Maybe ^Cell) additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // // bidask_internal_provide TODO
 // bidask_internal_provide#d1b02ea5 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) _:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
@@ -232,46 +232,46 @@ bidask_internal_continue_swap#59699475 query_id:uint64 to_address:MsgAddress ord
 
 // bidask_internal_continue_provide
 bidask_internal_continue_provide#0c09445a query_id:uint64 amount_x:Coins amount_y:Coins excess_x:Coins excess_y:Coins user_address:MsgAddress
-        first_bin:int32 number_of_bins:uint32 liquidity_dict:(HashmapE 32 int32) lp_tokens:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload) order:Bool = InternalMsgBody0;
+        first_bin:int32 number_of_bins:uint32 liquidity_dict:(HashmapE 32 int32) lp_tokens:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell) order:Bool = InternalMsgBody0;
 
 // bidask_save_liquidity_info
 bidask_save_liquidity_info#214ad1d2 query_id:uint64 amount_x:Coins amount_y:Coins deposit_type:uint3 
-        liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+        liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_adding_liquidity_notify
 bidask_adding_liquidity_notify#af31d23f query_id:uint64 user_address:MsgAddress amount_x:Coins amount_y:Coins deposit_type:uint3 
-        liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+        liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_internal_burn
 bidask_internal_burn#16e09400 query_id:uint64 owner_address:MsgAddress amount_x:Coins amount_y:Coins first_bin:int32 
-        tokens_to_burn:(HashmapE 32 int32) forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+        tokens_to_burn:(HashmapE 32 int32) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_multitoken_mint
 bidask_multitoken_mint#250ad226 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) liquidity_dict:(HashmapE 32 int32) 
-        number_of_bins:uint32 forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+        number_of_bins:uint32 forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_burn
-bidask_burn#73403c43 query_id:uint64 tokens_to_burn:(HashmapE 32 int32) forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+bidask_burn#73403c43 query_id:uint64 tokens_to_burn:(HashmapE 32 int32) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_burn_all
-bidask_burn_all#ebd6ec83 query_id:uint64 forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+bidask_burn_all#ebd6ec83 query_id:uint64 forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_liquidity_added_notify
-bidask_liquidity_added_notify#0dc8bb28 query_id:uint64 forward_payload:(Maybe ^ForwardPayload)  = InternalMsgBody0;
+bidask_liquidity_added_notify#0dc8bb28 query_id:uint64 forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_native_transfer_notification
-bidask_native_transfer_notification#6edd65f0 query_id:uint64 native_amount:Coins forward_payload:(Maybe ^ForwardPayload) = InternalMsgBody0;
+bidask_native_transfer_notification#6edd65f0 query_id:uint64 native_amount:Coins forward_payload:(Maybe ^Cell) = InternalMsgBody0;
 
 
 // bidask_swap
 bidask_swap_forward_payload#f2ef6c1b to_address:MsgAddress slippage:(Either Coins uint256) exact_out:Coins
-        ref_address:MsgAddress additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload)  = ForwardPayload;
+        ref_address:MsgAddress additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell) = ForwardPayload;
 
 // bidask_provide
-bidask_provide_forward_payload#96feef7b deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload)  = ForwardPayload;
+bidask_provide_forward_payload#96feef7b deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell) = ForwardPayload;
 
 // bidask_provide_both
-bidask_provide_both_forward_payload#3ea0bafc ton_amount:Coins deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^ForwardPayload)  = ForwardPayload;
+bidask_provide_both_forward_payload#3ea0bafc ton_amount:Coins deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell) = ForwardPayload;
 
 
 // cron.xml
@@ -459,20 +459,20 @@ response_destination:MsgAddress custom_payload:(Maybe ^Cell)
 = JettonForceAction;
 transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress
 response_destination:MsgAddress custom_payload:(Maybe ^Cell)
-forward_ton_amount:(VarUInteger 16) forward_payload:(Either ForwardPayload ^ForwardPayload)
+forward_ton_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell)
 = JettonForceAction;
 
 // jetton_transfer
 jetton_transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress
         response_destination:MsgAddress custom_payload:(Maybe ^Cell)
-        forward_ton_amount:(VarUInteger 16) forward_payload:(Either ForwardPayload ^ForwardPayload) 
+        forward_ton_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell) 
         = InternalMsgBody0;
 
 // jetton_internal_transfer
 jetton_internal_transfer#178d4519 query_id:uint64 amount:(VarUInteger 16) from:MsgAddress
         response_address:MsgAddress
         forward_ton_amount:(VarUInteger 16)
-        forward_payload:(Either ForwardPayload ^ForwardPayload)
+        forward_payload:(Either Cell ^Cell)
         = InternalMsgBody0;
 
 // jetton_burn
@@ -486,7 +486,7 @@ jetton_burn_notification#7bdd97de query_id:uint64 amount:(VarUInteger 16)
 
 // jetton_notify
 jetton_notify#7362d09c query_id:uint64 amount:(VarUInteger 16)
-        sender:MsgAddress forward_payload:(Either ForwardPayload ^ForwardPayload)
+        sender:MsgAddress forward_payload:(Either Cell ^Cell)
         = InternalMsgBody1;
 
 // jetton_set_status
@@ -844,11 +844,11 @@ moon_fill_order_forward_payload#99b49842 recipient:MsgAddress recipient_payload:
 
 // nft_transfer
 nft_transfer#5fcc3d14 query_id:uint64 new_owner:MsgAddress response_destination:MsgAddress
-        custom_payload:(Maybe ^Cell) forward_amount:(VarUInteger 16) forward_payload:(Either ForwardPayload ^ForwardPayload) =
+        custom_payload:(Maybe ^Cell) forward_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell) =
         InternalMsgBody2;
 
 // nft_ownership_assigned
-nft_ownership_assigned#05138d91 query_id:uint64 prev_owner:MsgAddress forward_payload:(Either ForwardPayload ^ForwardPayload) =
+nft_ownership_assigned#05138d91 query_id:uint64 prev_owner:MsgAddress forward_payload:(Either Cell ^Cell) =
         InternalMsgBody2;
 
 // get_static_data
@@ -866,7 +866,7 @@ report_royalty_params#a8cb00ad query_id:uint64 numerator:uint16 denominator:uint
 
 // prove_ownership
 prove_ownership#04ded148 query_id:uint64 dest:MsgAddress
-        forward_payload:^ForwardPayload with_content:Bool = InternalMsgBody2;
+        forward_payload:^Cell with_content:Bool = InternalMsgBody2;
 
 // ownership_proof
 ownership_proof#0524c7ae query_id:uint64 item_id:uint256 owner:MsgAddress
@@ -874,7 +874,7 @@ ownership_proof#0524c7ae query_id:uint64 item_id:uint256 owner:MsgAddress
 
 // sbt_request_owner
 sbt_request_owner#d0c3bfea query_id:uint64 dest:MsgAddress
-        forward_payload:^ForwardPayload with_content:Bool = InternalMsgBody2;
+        forward_payload:^Cell with_content:Bool = InternalMsgBody2;
 
 // sbt_owner_info
 sbt_owner_info#0dd607e3 query_id:uint64 item_id:uint256 initiator:MsgAddress owner:MsgAddress
@@ -975,7 +975,7 @@ stonfi_payment_request#f93bb43f query_id:uint64 owner:MsgAddress exit_code:uint3
         params:(Either StonfiPayToParams ^StonfiPayToParams) = InternalMsgBody3;
 
 // pton_ton_transfer
-pton_ton_transfer#01f3835d query_id:uint64 ton_amount:Coins refund_address:MsgAddress forward_payload:(Either ForwardPayload ^ForwardPayload) = InternalMsgBody3;
+pton_ton_transfer#01f3835d query_id:uint64 ton_amount:Coins refund_address:MsgAddress forward_payload:(Either Cell ^Cell) = InternalMsgBody3;
 
 // pton_ton_refund
 pton_ton_refund#ae25d79e query_id:uint64 = InternalMsgBody3;
@@ -1580,9 +1580,9 @@ teleitem_return_bid#a43227e1 cur_lt:int64 = InternalMsgBody5;
 //         payloads_cell:^[
 //             target_address:MsgAddress
 //             ok_forward_amount:(VarUInteger 16)
-//             ok_forward_payload:(Maybe ^ForwardPayload)
+//             ok_forward_payload:(Maybe ^Cell)
 //             ret_forward_amount:(VarUInteger 16)
-//             ret_forward_payload:(Maybe ^ForwardPayload)
+//             ret_forward_payload:(Maybe ^Cell)
 //         ] = InternalMsgBody5;
 
 // // pay_to TODO
@@ -1736,6 +1736,8 @@ whales_nominators_accept_withdraws#a19fd934 query_id:uint64 members:Cell = Inter
 
 // tonkeeper_relayer_fee
 tonkeeper_relayer_fee_forward_payload#878da6e3 = ForwardPayload;
+
+// none_forward_payload#_ any:Any = ForwardPayload;
 
 
 _ _:InternalMsgBody0 = InternalMsgBody;
