@@ -3,6 +3,7 @@
 #include "interfaces.h"
 #include "vm/boc.h"
 #include "crypto/tl/tlblib.hpp"
+#include "td/utils/base64.h"
 #include <set>
 
 namespace ton_marker {
@@ -39,10 +40,16 @@ std::string get_opcode_name(unsigned opcode) {
 }
 } // namespace
 
-std::optional<std::string> decode_boc(const std::vector<unsigned char>& boc_data) {
+std::optional<std::string> decode_boc(const std::string& boc_base64) {
     try {
+        // decode base64
+        auto boc_data = td::base64_decode(boc_base64);
+        if (boc_data.is_error()) {
+            return std::nullopt;
+        }
+        
         // deserialize
-        auto cell_result = vm::std_boc_deserialize(td::Slice(boc_data.data(), boc_data.size()));
+        auto cell_result = vm::std_boc_deserialize(boc_data.move_as_ok());
         if (cell_result.is_error()) {
             return std::nullopt;
         }
@@ -144,7 +151,7 @@ BatchResponse process_batch(const BatchRequest& request) {
     response.boc_responses.reserve(request.boc_requests.size());
     for (const auto& req : request.boc_requests) {
         DecodeBocResponse resp;
-        resp.json_output = decode_boc(req.boc_data);
+        resp.json_output = decode_boc(req.boc_base64);
         response.boc_responses.push_back(std::move(resp));
     }
 

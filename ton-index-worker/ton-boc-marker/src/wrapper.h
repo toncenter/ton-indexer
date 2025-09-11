@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstddef>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -10,7 +8,7 @@ extern "C" {
 const char* ton_marker_decode_opcode(unsigned int opcode);
 
 // decode boc
-const char* ton_marker_decode_boc(const unsigned char* data, size_t length);
+const char* ton_marker_decode_boc(const char* boc_base64);
 
 // detect interface
 const char* ton_marker_detect_interface(const unsigned int* method_ids, int count);
@@ -18,8 +16,7 @@ const char* ton_marker_detect_interface(const unsigned int* method_ids, int coun
 // batch processing
 struct TonMarkerBatchRequest {
     // decode boc requests
-    const unsigned char** boc_data;
-    const size_t* boc_lengths;
+    const char** boc_base64_list;
     int boc_count;
     
     // decode opcode requests
@@ -34,23 +31,23 @@ struct TonMarkerBatchRequest {
 
 struct TonMarkerBatchResponse {
     // decode boc responses
-    const char** boc_results;
+    char** boc_results;
     int boc_count;
     
     // decode opcode responses
-    const char** opcode_results;
+    char** opcode_results;
     int opcode_count;
     
     // detect interface responses
-    const char** interface_results;
+    char** interface_results;
     int interface_count;
 };
 
 // batch processing function
-TonMarkerBatchResponse* ton_marker_process_batch(const TonMarkerBatchRequest* request);
+struct TonMarkerBatchResponse* ton_marker_process_batch(const struct TonMarkerBatchRequest* request);
 
 // free batch response
-void ton_marker_free_batch_response(TonMarkerBatchResponse* response);
+void ton_marker_free_batch_response(struct TonMarkerBatchResponse* response);
 
 #ifdef __cplusplus
 }

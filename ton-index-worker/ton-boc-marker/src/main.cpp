@@ -4,6 +4,7 @@
 #include <vector>
 #include <sstream>
 #include "td/utils/misc.h"
+#include "td/utils/base64.h"
 
 // cli request types
 enum RequestType {
@@ -25,10 +26,11 @@ std::string process_cli_boc(const std::string& hex_boc) {
         return "Error: Cannot decode input as Hex - " + hex_result.error().message().str();
     }
 
+    // convert to base64
     auto boc_data = hex_result.move_as_ok();
-    std::vector<unsigned char> boc_vec(boc_data.begin(), boc_data.end());
+    auto base64 = td::base64_encode(boc_data);
     
-    auto result = ton_marker::decode_boc(boc_vec);
+    auto result = ton_marker::decode_boc(base64);
     return result ? *result : "Error: Failed to decode BOC";
 }
 
