@@ -1,14 +1,15 @@
-package marker
+package index
 
 /*
-#cgo CXXFLAGS: -I${SRCDIR}
-#cgo LDFLAGS: -L${SRCDIR} -lton-marker-core -lton-marker -Wl,-rpath,${SRCDIR}
+#cgo CXXFLAGS: -I${SRCDIR}/../../ton-index-worker/ton-marker/src
+#cgo LDFLAGS: -L${SRCDIR}/../../ton-index-worker/build/ton-marker -lton-marker-core -lton-marker -Wl,-rpath,${SRCDIR}/../../ton-index-worker/build/ton-marker
 
 #include "wrapper.h"
 #include <stdlib.h>
 */
 import "C"
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"unsafe"
@@ -163,6 +164,133 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 	return opcodeResults, bocResults, interfaceResults, nil
 }
 
-func EnrichResponseWithMarker() {
+// holds references to fields that need to be decoded
+type messageRefs struct {
+	opcodeRefs map[uint32][]*string         // key: opcode value, value: slice of pointers where to write decoded opcode
+	bodyRefs   map[string][]*DecodedContent // key: body content, value: slice of pointers where to write decoded body
+}
 
+// processes all messages in the slice and decodes their opcodes and bodies
+func MarkMessages(messages []*Message) error {
+	refs := collectMessageRefs(messages)
+	return markWithRefs(refs)
+}
+
+// processes all messages in all transactions and decodes their opcodes and bodies
+func MarkTransactions(transactions []*Transaction) error {
+	refs := collectTransactionRefs(transactions)
+	return markWithRefs(refs)
+}
+
+// collects all references from messages that need to be decoded
+func collectMessageRefs(messages []*Message) *messageRefs {
+	refs := &messageRefs{
+		opcodeRefs: make(map[uint32][]*string),
+		bodyRefs:   make(map[string][]*DecodedContent),
+	}
+
+	for _, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		collectSingleMessageRefs(msg, refs)
+	}
+	return refs
+}
+
+// collects references from a single message
+func collectSingleMessageRefs(msg *Message, refs *messageRefs) {
+	if msg == nil {
+		return
+	}
+	// collect opcodes
+	if msg.Opcode != nil {
+		if msg.DecodedOpcode == nil {
+			msg.DecodedOpcode = new(string)
+		}
+		refs.opcodeRefs[uint32(*msg.Opcode)] = append(refs.opcodeRefs[uint32(*msg.Opcode)], msg.DecodedOpcode)
+	}
+	// collect message bodies
+	if msg.MessageContent != nil && msg.MessageContent.Body != nil {
+		if msg.MessageContent.Decoded == nil {
+			msg.MessageContent.Decoded = new(DecodedContent)
+		}
+		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], msg.MessageContent.Decoded)
+	}
+}
+
+// collects all references from messages in transactions
+func collectTransactionRefs(transactions []*Transaction) *messageRefs {
+	refs := &messageRefs{
+		opcodeRefs: make(map[uint32][]*string),
+		bodyRefs:   make(map[string][]*DecodedContent),
+	}
+
+	for _, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+		// process InMsg
+		if tx.InMsg != nil {
+			collectSingleMessageRefs(tx.InMsg, refs)
+		}
+		// process OutMsgs
+		for _, msg := range tx.OutMsgs {
+			collectSingleMessageRefs(msg, refs)
+		}
+	}
+	return refs
+}
+
+// makes a batch request to decode collected references
+func markWithRefs(refs *messageRefs) error {
+	// Prepare slices for batch request
+	opcodes := make([]uint32, 0, len(refs.opcodeRefs))
+	bodies := make([]string, 0, len(refs.bodyRefs))
+
+	for opcode := range refs.opcodeRefs {
+		opcodes = append(opcodes, opcode)
+	}
+	for body := range refs.bodyRefs {
+		bodies = append(bodies, body)
+	}
+
+	// skip if nothing to decode
+	if len(opcodes) == 0 && len(bodies) == 0 {
+		return nil
+	}
+
+	// make batch request
+	decodedOpcodes, decodedBodies, _, err := MarkerRequest(opcodes, bodies, nil)
+	if err != nil {
+		return err
+	}
+
+	// process opcode results
+	for i, opcode := range opcodes {
+		if decodedValue := decodedOpcodes[i]; decodedValue != "" {
+			for _, ref := range refs.opcodeRefs[opcode] {
+				*ref = decodedValue
+			}
+		}
+	}
+
+	// process message body results
+	for i, body := range bodies {
+		if decodedValue := decodedBodies[i]; decodedValue != "" {
+			for _, ref := range refs.bodyRefs[body] {
+				if decodedValue == "unknown" {
+					if ref.Type != "text_comment" {
+						ref = nil
+					} // else - already parsed as text_comment
+					continue
+				}
+				if err := json.Unmarshal([]byte(decodedValue), ref); err != nil {
+					return fmt.Errorf("failed to decode message body: %w", err)
+				}
+			}
+		}
+	}
+
+	return nil
 }
