@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/marker"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
@@ -1139,7 +1138,7 @@ func (mc *MessageContent) TryDecodeBody() error {
 		}
 	}
 	bocs := []string{*mc.Body}
-	_, bocResults, _, err := marker.MarkerRequest([]uint32{}, bocs, [][]uint32{})
+	_, bocResults, _, err := MarkerRequest([]uint32{}, bocs, [][]uint32{})
 	if err != nil || len(bocResults) == 0 {
 		fmt.Println("error running marker request", err)
 		return nil // not an error, just couldn't decode

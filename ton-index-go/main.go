@@ -267,6 +267,15 @@ func GetTransactions(c *fiber.Ctx) error {
 		return err
 	}
 
+	txPointers := make([]*index.Transaction, len(txs))
+	for i := range txs {
+		txPointers[i] = &txs[i]
+	}
+
+	if err := index.MarkTransactions(txPointers); err != nil {
+		return err
+	}
+
 	// marker.EnrichResponseWithMarker(txs);
 
 	// var bocResults []string
