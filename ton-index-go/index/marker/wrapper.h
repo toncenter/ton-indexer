@@ -49,6 +49,8 @@ struct TonMarkerBatchResponse* ton_marker_process_batch(const struct TonMarkerBa
 // free batch response
 void ton_marker_free_batch_response(struct TonMarkerBatchResponse* response);
 
+int test_funct();
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,4 +1,5 @@
 #include "wrapper.h"
+#include "interfaces.h"
 #include "logic.h"
 #include <cstring>
 #include <vector>
@@ -114,6 +115,10 @@ void ton_marker_free_batch_response(TonMarkerBatchResponse* response) {
     
     // free response struct
     delete response;
+}
+
+int test_funct() {
+    return g_interfaces[0].methods.size();
 }
 
 } // extern "C"

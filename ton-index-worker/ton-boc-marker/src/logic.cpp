@@ -100,7 +100,7 @@ std::optional<std::string> decode_boc(const std::string& boc_base64) {
         else if (check_and_parse(parser5)) parsed = true;
 
         if (!parsed) {
-            return std::nullopt;
+            return "unknown";
         }
         return json_output;
 
