@@ -494,7 +494,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @param only_externals query bool false "Return only external messages."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
-// @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
+// @param sort query string false "Sort transactions by lt. If set to `desc`, you better set `start_lt = 1` to get latest messages." Enums(asc, desc) default(desc)
 // @router			/api/v3/messages [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -536,6 +536,13 @@ func GetMessages(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "messages not found"}
 	// }
 
+	msgsPointers := make([]*index.Message, len(msgs))
+	for i := range msgs {
+		msgsPointers[i] = &msgs[i]
+	}
+	if err := index.MarkMessages(msgsPointers); err != nil {
+		return err
+	}
 	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book, Metadata: metadata}
 	return c.JSON(msgs_resp)
 }

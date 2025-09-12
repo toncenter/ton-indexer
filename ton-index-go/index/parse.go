@@ -3,7 +3,6 @@ package index
 import (
 	b64 "encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -1133,38 +1132,9 @@ func (mc *MessageContent) TryDecodeBody() error {
 			if val, err := l.LoadUInt(32); err == nil && val == 0 {
 				str, _ := l.LoadStringSnake()
 				mc.Decoded = &DecodedContent{Type: "text_comment", Comment: str}
-				return nil
 			}
 		}
 	}
-	bocs := []string{*mc.Body}
-	_, bocResults, _, err := MarkerRequest([]uint32{}, bocs, [][]uint32{})
-	if err != nil || len(bocResults) == 0 {
-		fmt.Println("error running marker request", err)
-		return nil // not an error, just couldn't decode
-	}
-
-	// parse the first result as json
-	if bocResults[0] == "unknown" {
-		return nil
-	}
-	var data interface{}
-	if err := json.Unmarshal([]byte(bocResults[0]), &data); err != nil {
-		fmt.Println("error unmarshalling json", bocResults[0], err)
-		return nil // not an error, just couldn't parse json
-	}
-
-	// get the type from the first key in the json object
-	if m, ok := data.(map[string]interface{}); ok && len(m) > 0 {
-		for k := range m {
-			mc.Decoded = &DecodedContent{
-				Type: k,
-				Data: m[k],
-			}
-			break
-		}
-	}
-
 	return nil
 }
 

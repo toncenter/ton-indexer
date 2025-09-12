@@ -2,7 +2,7 @@ package index
 
 /*
 #cgo CXXFLAGS: -I${SRCDIR}/../../ton-index-worker/ton-marker/src
-#cgo LDFLAGS: -L${SRCDIR}/../../ton-index-worker/build/ton-marker -lton-marker-core -lton-marker -Wl,-rpath,${SRCDIR}/../../ton-index-worker/build/ton-marker
+#cgo LDFLAGS: -L${SRCDIR}/../../build/ton-index-worker/ton-marker -lton-marker-core -lton-marker -Wl,-rpath,${SRCDIR}/../../build/ton-index-worker/ton-marker
 
 #include "wrapper.h"
 #include <stdlib.h>
@@ -195,6 +195,7 @@ func collectMessageRefs(messages []*Message) *messageRefs {
 		}
 		collectSingleMessageRefs(msg, refs)
 	}
+	fmt.Println("refs", refs)
 	return refs
 }
 
@@ -279,9 +280,10 @@ func markWithRefs(refs *messageRefs) error {
 	for i, body := range bodies {
 		if decodedValue := decodedBodies[i]; decodedValue != "" {
 			for _, ref := range refs.bodyRefs[body] {
+				fmt.Println("decodedValue", decodedValue)
 				if decodedValue == "unknown" {
 					if ref.Type != "text_comment" {
-						ref = nil
+						ref = nil // TODO: its stupid
 					} // else - already parsed as text_comment
 					continue
 				}
