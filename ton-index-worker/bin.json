@@ -1,0 +1,57 @@
+{
+  "jetton_notify": {
+    "query_id": "7475621869127518063",
+    "amount": { "type": "var_uint", "len": "5", "value": "129583791797" },
+    "sender": {
+      "internal_address": {
+        "type": "addr_std",
+        "anycast": "nothing_from_maybe",
+        "workchain_id": "0",
+        "address": "6C5A5D62CF333796E8C4E6D756EAEC2F671D073B279606116F99F4EE631E71D2"
+      }
+    },
+    "forward_payload": {
+      "type": "second_from_either",
+      "value": {
+        "cell_reference": {
+          "type": "dedust_swap_forward_payload",
+          "step": {
+            "type": "step",
+            "pool_addr": {
+              "internal_address": {
+                "type": "addr_std",
+                "anycast": "nothing_from_maybe",
+                "workchain_id": "0",
+                "address": "2FB467BC35EA7F5E772641826BAB35A38DDB136B28332F5EDBBC7FFC463AF2CF"
+              }
+            },
+            "params": {
+              "type": "step_params",
+              "kind_out": "0",
+              "limit": {
+                "type": "var_uint",
+                "len": "5",
+                "value": "49875687097"
+              },
+              "next": "nothing_from_maybe"
+            }
+          },
+          "swap_params": {
+            "type": "swap_params",
+            "deadline": "1757091325",
+            "recipient_addr": { "external_address": "addr_none" },
+            "referral_addr": { "external_address": "addr_none" },
+            "fulfill_payload": {
+              "type": "something_from_maybe",
+              "value": "B5EE9C7201010201000F00020968BB15FD0E010100082E1CFA82"
+            },
+            "reject_payload": {
+              "type": "something_from_maybe",
+              "value": "B5EE9C7201010201000F00020968BB15FD0E010100082E1CFA82"
+            }
+          }
+        }
+      }
+    }
+  }
+}

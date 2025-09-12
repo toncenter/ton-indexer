@@ -19,7 +19,6 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/pprof"
 	"github.com/gofiber/fiber/v2/middleware/redirect"
 	"github.com/gofiber/swagger"
-	_ "github.com/toncenter/ton-indexer/ton-index-go/docs"
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
 )
 
@@ -267,6 +266,20 @@ func GetTransactions(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+
+	// marker.EnrichResponseWithMarker(txs);
+
+	// var bocResults []string
+	// if txs[1].InMsg != nil {
+	// 	fmt.Println(*txs[1].InMsg.MessageContent.Body)
+	// 	_, bocResults, _, err = MarkerRequest([]uint32{}, []string{*txs[1].InMsg.MessageContent.Body}, [][]uint32{})
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	fmt.Println(bocResults[0])
+	// 	txs[1].InMsg.MessageContent.Decoded = &index.DecodedContent{Type: "tlb_decoded", Data: bocResults[0]}
+	// }
+
 	// if len(txs) == 0 {
 	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
 	// }

@@ -1,10 +1,10 @@
 package marker
 
 /*
-#cgo CXXFLAGS: -I/Users/victor/Projects/dimin-indexer/ton-index-worker/ton-boc-marker/src
-#cgo LDFLAGS: -L/Users/victor/Projects/dimin-indexer/ton-index-worker/build/ton-boc-marker -lton-marker-core -lton-marker -Wl,-rpath,/Users/victor/Projects/dimin-indexer/ton-index-worker/build/ton-boc-marker
+#cgo CXXFLAGS: -I${SRCDIR}
+#cgo LDFLAGS: -L${SRCDIR} -lton-marker-core -lton-marker -Wl,-rpath,${SRCDIR}
 
-#include "wrapper_cgo.h"
+#include "wrapper.h"
 #include <stdlib.h>
 */
 import "C"
@@ -14,7 +14,26 @@ import (
 	"unsafe"
 )
 
+// check if library is loaded and initialized
+var isLibraryInitialized bool
+
+func init() {
+	fmt.Println("initializing ton-marker library...")
+	// try to call a simple function to check if library is loaded
+	result := C.ton_marker_decode_opcode(C.uint(0))
+	if result != nil {
+		isLibraryInitialized = true
+		C.free(unsafe.Pointer(result))
+		fmt.Println("ton-marker library initialized successfully")
+	} else {
+		fmt.Println("warning: ton-marker library initialization failed")
+	}
+}
+
 func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [][]uint32) ([]string, []string, []string, error) {
+	if !isLibraryInitialized {
+		return nil, nil, nil, errors.New("ton-marker library is not initialized")
+	}
 	// allocate memory for opcodes array
 	opcodesPtr := C.malloc(C.size_t(len(opcodesList) * int(unsafe.Sizeof(C.uint(0)))))
 	if opcodesPtr == nil {
@@ -106,9 +125,14 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 	// call batch function
 	response := C.ton_marker_process_batch(&request)
 	if response == nil {
-		return nil, nil, nil, errors.New("ton_marker_process_batch returned a nil response")
+		return nil, nil, nil, errors.New("ton_marker_process_batch failed or returned nil")
 	}
-	defer C.ton_marker_free_batch_response(response)
+
+	defer func() {
+		if response != nil {
+			C.ton_marker_free_batch_response(response)
+		}
+	}()
 
 	// get opcode results
 	var opcodeResults []string = make([]string, 0)
@@ -123,10 +147,6 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 	var bocResults []string = make([]string, 0)
 	if response.boc_count > 0 && response.boc_results != nil {
 		results := unsafe.Slice(response.boc_results, response.boc_count)
-		fmt.Println("boc length")
-		fmt.Println(len(results))
-		fmt.Println(response.boc_count)
-		fmt.Println(response.boc_results)
 		for _, res := range results {
 			bocResults = append(bocResults, C.GoString(res))
 		}
@@ -135,14 +155,14 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 	// get interface results
 	var interfaceResults []string = make([]string, 0)
 	if response.interface_count > 0 && response.interface_results != nil {
-		results := unsafe.Slice(response.interface_results, 0)
-		fmt.Println("interface length")
-		fmt.Println(len(results))
-		fmt.Println(response.interface_count)
-		fmt.Println(response.interface_results)
+		results := unsafe.Slice(response.interface_results, response.interface_count)
 		for _, res := range results {
 			interfaceResults = append(interfaceResults, C.GoString(res))
 		}
 	}
 	return opcodeResults, bocResults, interfaceResults, nil
+}
+
+func EnrichResponseWithMarker() {
+
 }

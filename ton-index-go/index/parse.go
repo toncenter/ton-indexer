@@ -372,19 +372,14 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			switch *raw.ChangeDNSRecordValueSchema {
 			case "DNSNextResolver":
 				details.Value.DnsNextResolverAddress = raw.ChangeDNSRecordValue
-				break
 			case "DNSAdnlAddress":
 				details.Value.DnsAdnlAddress = raw.ChangeDNSRecordValue
-				break
 			case "DNSSmcAddress":
 				details.Value.DnsSmcAddress = raw.ChangeDNSRecordValue
-				break
 			case "DNSStorageAddress":
 				details.Value.DnsStorageAddress = raw.ChangeDNSRecordValue
-				break
 			case "DNSText":
 				details.Value.DnsStorageAddress = raw.ChangeDNSRecordValue
-				break
 			}
 		}
 		details.Value.Flags = raw.ChangeDNSRecordFlags
@@ -1143,16 +1138,20 @@ func (mc *MessageContent) TryDecodeBody() error {
 			}
 		}
 	}
-	fmt.Println(*mc.Body)
 	bocs := []string{*mc.Body}
 	_, bocResults, _, err := marker.MarkerRequest([]uint32{}, bocs, [][]uint32{})
 	if err != nil || len(bocResults) == 0 {
+		fmt.Println("error running marker request", err)
 		return nil // not an error, just couldn't decode
 	}
 
 	// parse the first result as json
+	if bocResults[0] == "unknown" {
+		return nil
+	}
 	var data interface{}
 	if err := json.Unmarshal([]byte(bocResults[0]), &data); err != nil {
+		fmt.Println("error unmarshalling json", bocResults[0], err)
 		return nil // not an error, just couldn't parse json
 	}
 
