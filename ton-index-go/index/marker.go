@@ -167,10 +167,8 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 }
 
 type messagesRefs struct {
-	opcodeRefs map[uint32][]*string         // key: opcode, value: list of pointers where to write decoded opcode
-	bodyRefs   map[string][]*MessageContent // key: body, value: list of pointers where to write decoded body
-	opcodes    []uint32
-	bodies     []string
+	opcodeRefs map[uint32][]*string            // key: opcode, value: list of pointers where to write decoded opcode
+	bodyRefs   map[string][]*(*DecodedContent) // key: body, value: list of pointers where to write decoded body
 }
 
 func MarkMessages(messages []Message) error {
@@ -178,17 +176,25 @@ func MarkMessages(messages []Message) error {
 	return markWithRefs(refs)
 }
 
-func MarkTransactions(transactions []Transaction) error {
-	refs := collectTransactionRefs(transactions)
+func MarkJettonTransfers(transfers []JettonTransfer) error {
+	refs := collectJettonTransfersRefs(transfers)
+	return markWithRefs(refs)
+}
+
+func MarkJettonBurns(burns []JettonBurn) error {
+	refs := collectJettonBurnsRefs(burns)
+	return markWithRefs(refs)
+}
+
+func MarkNFTTransfers(transfers []NFTTransfer) error {
+	refs := collectNFTTransfersRefs(transfers)
 	return markWithRefs(refs)
 }
 
 func collectMessagesRefs(messages []Message) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*string),
-		bodyRefs:   make(map[string][]*MessageContent),
-		opcodes:    make([]uint32, 0, len(messages)),
-		bodies:     make([]string, 0, len(messages)),
+		bodyRefs:   make(map[string][]*(*DecodedContent)),
 	}
 	for i := range messages {
 		collectSingleMessageRefs(&messages[i], refs)
@@ -196,20 +202,54 @@ func collectMessagesRefs(messages []Message) *messagesRefs {
 	return refs
 }
 
-func collectTransactionRefs(transactions []Transaction) *messagesRefs {
+func collectJettonTransfersRefs(transfers []JettonTransfer) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*string),
-		bodyRefs:   make(map[string][]*MessageContent),
-		opcodes:    make([]uint32, 0, len(transactions)*3), // rough approx capacity (1 in_msg + 2 out_msgs)
-		bodies:     make([]string, 0, len(transactions)*3), // both in sum gotta be 0.42 mb on limit=1k request
+		bodyRefs:   make(map[string][]*(*DecodedContent)),
 	}
-
-	for _, tx := range transactions {
-		if tx.InMsg != nil {
-			collectSingleMessageRefs(tx.InMsg, refs)
+	for i := range transfers {
+		transfer := &transfers[i]
+		customPayload := transfer.CustomPayload
+		if customPayload != nil && transfer.DecodedCustomPayload == nil { // skip if already decoded (as text comment)
+			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &transfer.DecodedCustomPayload)
 		}
-		for _, msg := range tx.OutMsgs {
-			collectSingleMessageRefs(msg, refs)
+		forwardPayload := transfer.ForwardPayload
+		if forwardPayload != nil && transfer.DecodedForwardPayload == nil {
+			refs.bodyRefs[*forwardPayload] = append(refs.bodyRefs[*forwardPayload], &transfer.DecodedForwardPayload)
+		}
+	}
+	return refs
+}
+
+func collectJettonBurnsRefs(burns []JettonBurn) *messagesRefs {
+	refs := &messagesRefs{
+		opcodeRefs: make(map[uint32][]*string),
+		bodyRefs:   make(map[string][]*(*DecodedContent)),
+	}
+	for i := range burns {
+		burn := &burns[i]
+		customPayload := burn.CustomPayload
+		if customPayload != nil && burn.DecodedCustomPayload == nil {
+			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &burn.DecodedCustomPayload)
+		}
+	}
+	return refs
+}
+
+func collectNFTTransfersRefs(transfers []NFTTransfer) *messagesRefs {
+	refs := &messagesRefs{
+		opcodeRefs: make(map[uint32][]*string),
+		bodyRefs:   make(map[string][]*(*DecodedContent)),
+	}
+	for i := range transfers {
+		transfer := &transfers[i]
+		customPayload := transfer.CustomPayload
+		if customPayload != nil && transfer.DecodedCustomPayload == nil {
+			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &transfer.DecodedCustomPayload)
+		}
+		forwardPayload := transfer.ForwardPayload
+		if forwardPayload != nil && transfer.DecodedForwardPayload == nil {
+			refs.bodyRefs[*forwardPayload] = append(refs.bodyRefs[*forwardPayload], &transfer.DecodedForwardPayload)
 		}
 	}
 	return refs
@@ -225,21 +265,23 @@ func collectSingleMessageRefs(msg *Message, refs *messagesRefs) {
 			msg.DecodedOpcode = new(string)
 		}
 		refs.opcodeRefs[uint32(*msg.Opcode)] = append(refs.opcodeRefs[uint32(*msg.Opcode)], msg.DecodedOpcode)
-		refs.opcodes = append(refs.opcodes, uint32(*msg.Opcode))
 	}
 	// collect message bodies
-	if msg.MessageContent != nil && msg.MessageContent.Body != nil {
-		if msg.MessageContent.Decoded == nil {
-			msg.MessageContent.Decoded = new(DecodedContent)
-		}
-		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], msg.MessageContent)
-		refs.bodies = append(refs.bodies, *msg.MessageContent.Body)
+	if msg.MessageContent != nil && msg.MessageContent.Body != nil && msg.MessageContent.Decoded == nil {
+		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], &msg.MessageContent.Decoded)
 	}
 }
 
 func markWithRefs(refs *messagesRefs) error {
-	opcodes := refs.opcodes
-	bodies := refs.bodies
+	opcodes := make([]uint32, 0, len(refs.opcodeRefs))
+	for opcode := range refs.opcodeRefs {
+		opcodes = append(opcodes, opcode)
+	}
+
+	bodies := make([]string, 0, len(refs.bodyRefs))
+	for body := range refs.bodyRefs {
+		bodies = append(bodies, body)
+	}
 
 	if len(opcodes) == 0 && len(bodies) == 0 {
 		return nil
@@ -264,7 +306,7 @@ func markWithRefs(refs *messagesRefs) error {
 		decodedValue := decodedBodies[i]
 		if strings.HasPrefix(decodedValue, "unknown") {
 			for _, ref := range refs.bodyRefs[body] {
-				ref.Decoded = nil
+				(*ref) = nil
 			}
 			continue
 		}
@@ -274,8 +316,7 @@ func markWithRefs(refs *messagesRefs) error {
 				return fmt.Errorf("failed to decode message body: %w", err)
 			}
 			for msgType, msgData := range tmpResult {
-				ref.Decoded.Type = msgType
-				ref.Decoded.Data = msgData
+				*ref = &DecodedContent{Type: msgType, Data: msgData}
 				// there's only one key in the map
 				break
 			}

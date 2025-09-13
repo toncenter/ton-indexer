@@ -1237,6 +1237,16 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSetting
 			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
+
+	// decode opcodes and bodies
+	if err := MarkMessages(msgs); err != nil {
+		hashes := make([]string, len(msgs))
+		for i, msg := range msgs {
+			hashes[i] = string(msg.MsgHash)
+		}
+		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
+	}
+
 	return msgs, nil
 }
 
@@ -1365,6 +1375,7 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
 		})
 	}
+
 	return txs, nil
 }
 
@@ -1891,6 +1902,14 @@ func queryNFTTransfersImpl(query string, conn *pgxpool.Conn, settings RequestSet
 	if rows.Err() != nil {
 		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
 	}
+	if err := MarkNFTTransfers(res); err != nil {
+		hashes := make([]string, len(res))
+		for i, t := range res {
+			hashes[i] = string(t.TransactionHash)
+		}
+		log.Printf("Error marking nft transfers with hashes %v: %v", hashes, err)
+	}
+
 	return res, nil
 }
 
@@ -1975,6 +1994,14 @@ func queryJettonTransfersImpl(query string, conn *pgxpool.Conn, settings Request
 	if rows.Err() != nil {
 		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
 	}
+
+	if err := MarkJettonTransfers(res); err != nil {
+		hashes := make([]string, len(res))
+		for i, t := range res {
+			hashes[i] = string(t.TransactionHash)
+		}
+		log.Printf("Error marking jetton transfers with hashes %v: %v", hashes, err)
+	}
 	return res, nil
 }
 
@@ -2002,6 +2029,13 @@ func queryJettonBurnsImpl(query string, conn *pgxpool.Conn, settings RequestSett
 	}
 	if rows.Err() != nil {
 		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
+	}
+	if err := MarkJettonBurns(res); err != nil {
+		hashes := make([]string, len(res))
+		for i, t := range res {
+			hashes[i] = string(t.TransactionHash)
+		}
+		log.Printf("Error marking jetton burns with hashes %v: %v", hashes, err)
 	}
 	return res, nil
 }
@@ -2801,6 +2835,7 @@ func (db *DbClient) QueryMessages(
 			}
 		}
 	}
+
 	return msgs, book, metadata, nil
 }
 
