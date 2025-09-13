@@ -536,11 +536,7 @@ func GetMessages(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "messages not found"}
 	// }
 
-	msgsPointers := make([]*index.Message, len(msgs))
-	for i := range msgs {
-		msgsPointers[i] = &msgs[i]
-	}
-	if err := index.MarkMessages(msgsPointers); err != nil {
+	if err := index.MarkMessages(msgs); err != nil {
 		return err
 	}
 	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book, Metadata: metadata}
