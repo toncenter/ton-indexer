@@ -73,12 +73,12 @@ std::optional<std::string> decode_boc(const std::string& boc_base64) {
 
         // try to parse with each parser
         std::string json_output;
-        tlb::JsonPrinter pp1(&json_output);
+        tlb::JsonPrinter pp(&json_output);
 
         // helper to try parsing with a specific parser
-        const auto try_parse = [&cs, &pp1](const auto& parser) -> bool {
+        const auto try_parse = [&cs, &pp](const auto& parser) -> bool {
             auto cs_copy = cs; // make a copy since parsing modifies the slice
-            return parser.print_skip(pp1, cs_copy);
+            return parser.print_skip(pp, cs_copy);
         };
 
         // find matching parser by opcode and try to parse

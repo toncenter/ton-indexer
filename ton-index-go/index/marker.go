@@ -18,9 +18,9 @@ import (
 // check if library is loaded and initialized
 var isLibraryInitialized bool
 
+// just a simple check
 func init() {
 	fmt.Println("initializing ton-marker library...")
-	// try to call a simple function to check if library is loaded
 	result := C.ton_marker_decode_opcode(C.uint(0))
 	if result != nil {
 		isLibraryInitialized = true
@@ -31,6 +31,7 @@ func init() {
 	}
 }
 
+// batch request to a c++ library
 func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [][]uint32) ([]string, []string, []string, error) {
 	if !isLibraryInitialized {
 		return nil, nil, nil, errors.New("ton-marker library is not initialized")
@@ -62,7 +63,7 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 		bocStrPtrs[i] = C.CString(boc)
 		bocPtrSlice[i] = bocStrPtrs[i]
 	}
-	// defer cleanup of strings
+	// run cleanup of strings after return
 	defer func() {
 		for _, ptr := range bocStrPtrs {
 			C.free(unsafe.Pointer(ptr))
@@ -164,43 +165,38 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 	return opcodeResults, bocResults, interfaceResults, nil
 }
 
-// holds references to fields that need to be decoded
-type messageRefs struct {
-	opcodeRefs map[uint32][]*string         // key: opcode value, value: slice of pointers where to write decoded opcode
-	bodyRefs   map[string][]*DecodedContent // key: body content, value: slice of pointers where to write decoded body
+type messagesRefs struct {
+	opcodeRefs map[uint32][]*string         // key: opcode, value: list of pointers where to write decoded opcode
+	bodyRefs   map[string][]*DecodedContent // key: body, value: list of pointers where to write decoded body
+	opcodes    []uint32
+	bodies     []string
 }
 
-// processes all messages in the slice and decodes their opcodes and bodies
-func MarkMessages(messages []*Message) error {
-	refs := collectMessageRefs(messages)
+func MarkMessages(messages []Message) error {
+	refs := collectMessagesRefs(messages)
 	return markWithRefs(refs)
 }
 
-// processes all messages in all transactions and decodes their opcodes and bodies
 func MarkTransactions(transactions []*Transaction) error {
 	refs := collectTransactionRefs(transactions)
 	return markWithRefs(refs)
 }
 
-// collects all references from messages that need to be decoded
-func collectMessageRefs(messages []*Message) *messageRefs {
-	refs := &messageRefs{
+func collectMessagesRefs(messages []Message) *messagesRefs {
+	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*string),
 		bodyRefs:   make(map[string][]*DecodedContent),
+		opcodes:    make([]uint32, 0, len(messages)),
+		bodies:     make([]string, 0, len(messages)),
 	}
-
-	for _, msg := range messages {
-		if msg == nil {
-			continue
-		}
-		collectSingleMessageRefs(msg, refs)
+	for i := range messages {
+		collectSingleMessageRefs(&messages[i], refs)
 	}
-	fmt.Println("refs", refs)
 	return refs
 }
 
 // collects references from a single message
-func collectSingleMessageRefs(msg *Message, refs *messageRefs) {
+func collectSingleMessageRefs(msg *Message, refs *messagesRefs) {
 	if msg == nil {
 		return
 	}
@@ -210,6 +206,7 @@ func collectSingleMessageRefs(msg *Message, refs *messageRefs) {
 			msg.DecodedOpcode = new(string)
 		}
 		refs.opcodeRefs[uint32(*msg.Opcode)] = append(refs.opcodeRefs[uint32(*msg.Opcode)], msg.DecodedOpcode)
+		refs.opcodes = append(refs.opcodes, uint32(*msg.Opcode))
 	}
 	// collect message bodies
 	if msg.MessageContent != nil && msg.MessageContent.Body != nil {
@@ -217,12 +214,13 @@ func collectSingleMessageRefs(msg *Message, refs *messageRefs) {
 			msg.MessageContent.Decoded = new(DecodedContent)
 		}
 		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], msg.MessageContent.Decoded)
+		refs.bodies = append(refs.bodies, *msg.MessageContent.Body)
 	}
 }
 
 // collects all references from messages in transactions
-func collectTransactionRefs(transactions []*Transaction) *messageRefs {
-	refs := &messageRefs{
+func collectTransactionRefs(transactions []*Transaction) *messagesRefs {
+	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*string),
 		bodyRefs:   make(map[string][]*DecodedContent),
 	}
@@ -243,52 +241,41 @@ func collectTransactionRefs(transactions []*Transaction) *messageRefs {
 	return refs
 }
 
-// makes a batch request to decode collected references
-func markWithRefs(refs *messageRefs) error {
-	// Prepare slices for batch request
-	opcodes := make([]uint32, 0, len(refs.opcodeRefs))
-	bodies := make([]string, 0, len(refs.bodyRefs))
+func markWithRefs(refs *messagesRefs) error {
+	opcodes := refs.opcodes
+	bodies := refs.bodies
 
-	for opcode := range refs.opcodeRefs {
-		opcodes = append(opcodes, opcode)
-	}
-	for body := range refs.bodyRefs {
-		bodies = append(bodies, body)
-	}
-
-	// skip if nothing to decode
 	if len(opcodes) == 0 && len(bodies) == 0 {
 		return nil
 	}
 
-	// make batch request
 	decodedOpcodes, decodedBodies, _, err := MarkerRequest(opcodes, bodies, nil)
 	if err != nil {
 		return err
 	}
 
-	// process opcode results
+	// fill in opcode results
 	for i, opcode := range opcodes {
-		if decodedValue := decodedOpcodes[i]; decodedValue != "" {
+		if decodedValue := decodedOpcodes[i]; decodedValue != "unknown" {
 			for _, ref := range refs.opcodeRefs[opcode] {
 				*ref = decodedValue
 			}
 		}
 	}
 
-	// process message body results
+	// fill in message body results
 	for i, body := range bodies {
-		if decodedValue := decodedBodies[i]; decodedValue != "" {
+		if decodedValue := decodedBodies[i]; decodedValue != "unknown" {
 			for _, ref := range refs.bodyRefs[body] {
-				fmt.Println("decodedValue", decodedValue)
-				if decodedValue == "unknown" {
-					if ref.Type != "text_comment" {
-						ref = nil // TODO: its stupid
-					} // else - already parsed as text_comment
-					continue
-				}
-				if err := json.Unmarshal([]byte(decodedValue), ref); err != nil {
+				var tmpResult map[string]interface{}
+				if err := json.Unmarshal([]byte(decodedValue), &tmpResult); err != nil {
 					return fmt.Errorf("failed to decode message body: %w", err)
+				}
+				for msgType, msgData := range tmpResult {
+					ref.Type = msgType
+					ref.Data = msgData
+					// there's only one key in the map
+					break
 				}
 			}
 		}
