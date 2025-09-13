@@ -2,7 +2,6 @@
 
 #include <string>
 #include <vector>
-#include <optional>
 
 namespace ton_marker {
 
@@ -12,7 +11,7 @@ struct DecodeBocRequest {
 };
 
 struct DecodeBocResponse {
-    std::optional<std::string> json_output;
+    std::string json_output;
 };
 
 struct DecodeOpcodeRequest {
@@ -20,7 +19,7 @@ struct DecodeOpcodeRequest {
 };
 
 struct DecodeOpcodeResponse {
-    std::optional<std::string> name;
+    std::string name;
 };
 
 struct DetectInterfaceRequest {
@@ -28,7 +27,7 @@ struct DetectInterfaceRequest {
 };
 
 struct DetectInterfaceResponse {
-    std::optional<std::string> interfaces;
+    std::string interfaces;
 };
 
 // batch request container
