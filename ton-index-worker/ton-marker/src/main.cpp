@@ -24,7 +24,7 @@ std::string process_cli_boc(const std::string& input_boc) {
     if (input_boc.substr(0, 7) == "te6cckE") {
         // already in base64, use directly
         auto result = ton_marker::decode_boc(input_boc);
-        return result ? *result : "Error: Failed to decode BOC";
+        return result;
     }
 
     // try as hex
@@ -38,7 +38,7 @@ std::string process_cli_boc(const std::string& input_boc) {
     auto base64 = td::base64_encode(boc_data);
     
     auto result = ton_marker::decode_boc(base64);
-    return result ? *result : "Error: Failed to decode BOC";
+    return result;
 }
 
 // process cli opcode request
@@ -61,7 +61,7 @@ std::string process_cli_opcode(const std::string& hex_opcode) {
     try {
         unsigned opcode = std::stoul(hex_value, nullptr, 16);
         auto result = ton_marker::decode_opcode(opcode);
-        return result ? *result : "unknown";
+        return result;
     } catch (const std::exception& e) {
         return "Error: Cannot decode opcode as Hex - " + std::string(e.what());
     }
@@ -82,7 +82,7 @@ std::string process_cli_interface(const std::string& methods_list) {
     }
     
     auto result = ton_marker::detect_interface(method_ids);
-    return result ? *result : "unknown";
+    return result;
 }
 
 int main(int argc, char* argv[]) {

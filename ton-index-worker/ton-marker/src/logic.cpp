@@ -4,6 +4,7 @@
 #include "vm/boc.h"
 #include "crypto/tl/tlblib.hpp"
 #include "td/utils/base64.h"
+#include "vm/excno.hpp"
 #include <set>
 
 namespace ton_marker {
@@ -40,24 +41,24 @@ std::string get_opcode_name(unsigned opcode) {
 }
 } // namespace
 
-std::optional<std::string> decode_boc(const std::string& boc_base64) {
+std::string decode_boc(const std::string& boc_base64) {
     try {
         // decode base64
         auto boc_data = td::base64_decode(boc_base64);
         if (boc_data.is_error()) {
-            return std::nullopt;
+            return "unknown: failed to decode base64";
         }
         
         // deserialize
         auto cell_result = vm::std_boc_deserialize(boc_data.move_as_ok());
         if (cell_result.is_error()) {
-            return std::nullopt;
+            return "unknown: failed to deserialize boc";
         }
 
         auto cell = cell_result.move_as_ok();
         auto cs = vm::load_cell_slice(cell);
         if (cs.size() < 32) {
-            return std::nullopt;
+            return "unknown: boc is too small";
         }
 
         // get opcode first
@@ -100,25 +101,31 @@ std::optional<std::string> decode_boc(const std::string& boc_base64) {
         else if (check_and_parse(parser5)) parsed = true;
 
         if (!parsed) {
-            return "unknown";
+            return "unknown: no parser succeeded";
         }
         return json_output;
 
+    } catch (const vm::VmError& e) {
+        return "unknown: vm error - " + std::string(e.get_msg());
+    } catch (const td::Status& s) {
+        return "unknown: status error - " + s.to_string();
+    } catch (const std::exception& e) {
+        return "unknown: std error - " + std::string(e.what());
     } catch (...) {
-        return std::nullopt;
+        return "unknown: unhandled error";
     }
 }
 
-std::optional<std::string> decode_opcode(unsigned int opcode) {
+std::string decode_opcode(unsigned int opcode) {
     try {
         std::string name = get_opcode_name(opcode);
-        return name == "unknown" ? std::nullopt : std::optional<std::string>(name);
+        return name;
     } catch (...) {
-        return std::nullopt;
+        return "unknown: unhandled error";
     }
 }
 
-std::optional<std::string> detect_interface(const std::vector<unsigned int>& method_ids) {
+std::string detect_interface(const std::vector<unsigned int>& method_ids) {
     try {
         // convert to set for easier lookup
         std::set<unsigned> method_set(method_ids.begin(), method_ids.end());
@@ -138,9 +145,11 @@ std::optional<std::string> detect_interface(const std::vector<unsigned int>& met
             if (i > 0) result += ",";
             result += matching[i];
         }
-        return result.empty() ? std::nullopt : std::optional<std::string>(result);
+        return result;
+    } catch (const std::exception& e) {
+        return "unknown: std error - " + std::string(e.what());
     } catch (...) {
-        return std::nullopt;
+        return "unknown: unhandled error";
     }
 }
 
