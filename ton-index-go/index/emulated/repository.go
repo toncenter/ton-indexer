@@ -2,9 +2,10 @@ package emulated
 
 import (
 	"context"
-	"github.com/redis/go-redis/v9"
 	"log"
 	"strings"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type EmulatedTracesRepository struct {
@@ -30,6 +31,19 @@ func (receiver *EmulatedTracesRepository) LoadRawTraces(trace_ids []string) (map
 		if len(trace_query_result) > 0 {
 			result[trace_id] = trace_query_result
 		}
+	}
+	return result, nil
+}
+
+func (receiver *EmulatedTracesRepository) LoadCommittedTxs(hashes []string) (map[string]string, error) {
+	result := make(map[string]string)
+	for _, hash := range hashes {
+		tx, err := receiver.Rdb.Get(context.Background(), "comm:tx:"+hash).Result()
+		if err != nil {
+			log.Println("Error loading committed tx: ", hash, err)
+			continue
+		}
+		result[hash] = tx
 	}
 	return result, nil
 }

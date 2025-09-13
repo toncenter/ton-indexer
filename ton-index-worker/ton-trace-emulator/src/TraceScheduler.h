@@ -17,6 +17,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::string input_redis_channel_;
     std::string working_dir_;
     std::function<void(Trace, td::Promise<td::Unit>)> insert_trace_;
+    std::function<void(CommittedAccountTxs, td::Promise<td::Unit>)> insert_committed_txs_;
 
     ton::BlockSeqno last_known_seqno_{0};
     ton::BlockSeqno last_fetched_seqno_{0};
@@ -47,6 +48,9 @@ class TraceEmulatorScheduler : public td::actor::Actor {
         inet_addr_(inet_addr), redis_dsn_(redis_dsn), input_redis_channel_(input_redis_channel), working_dir_(std::move(working_dir)) {
       insert_trace_ = [insert_manager = insert_manager_.get()](Trace trace, td::Promise<td::Unit> promise) {
         td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace), std::move(promise));
+      };
+      insert_committed_txs_ = [insert_manager = insert_manager_.get()](CommittedAccountTxs txs, td::Promise<td::Unit> promise) {
+        td::actor::send_closure(insert_manager, &ITraceInsertManager::insert_committed, std::move(txs), std::move(promise));
       };
     };
 

@@ -177,7 +177,7 @@ type transactionDescr struct {
 	Destroyed   bool            `msgpack:"destroyed" json:"destroyed"`
 }
 
-type transaction struct {
+type Transaction struct {
 	Hash                   hash             `msgpack:"hash" json:"-"`
 	Account                string           `msgpack:"account" json:"account"`
 	Lt                     uint64           `msgpack:"lt" json:"lt,string"`
@@ -477,7 +477,7 @@ type Trace struct {
 	Actions      []Action
 }
 type TraceNode struct {
-	Transaction  transaction `msgpack:"transaction"`
+	Transaction  Transaction `msgpack:"transaction"`
 	Emulated     bool        `msgpack:"emulated"`
 	BlockId      blockId     `msgpack:"block_id"`
 	McBlockSeqno uint32      `msgpack:"mc_block_seqno"`

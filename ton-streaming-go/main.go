@@ -18,8 +18,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/websocket/v2"
+	"github.com/jackc/pgx"
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
+	"github.com/vmihailenco/msgpack"
 
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
@@ -804,73 +806,80 @@ func SubscribeToCommittedTransactions(ctx context.Context, rdb *redis.Client, ma
 
 		// log.Printf("Received message from Redis: %s", msg.Payload)
 
-		parts := strings.Split(msg.Payload, ":")
-		if len(parts) != 2 {
+		parts := strings.Split(msg.Payload, "|")
+		if len(parts) < 2 {
 			log.Printf("Invalid message format: %s", msg.Payload)
 			continue
 		}
-		traceExternalHashNorm := parts[0]
-		txHashes := strings.Split(parts[1], ",")
+		addr := parts[0]
+		txHashes := parts[1:]
 
-		if len(txHashes) == 0 {
-			log.Printf("No transaction hashes found in commited txs channel message: %s", msg.Payload)
-			continue
-		}
-		ProcessNewCommitedTxs(ctx, rdb, traceExternalHashNorm, txHashes, manager)
+		ProcessNewCommitedTxs(ctx, rdb, addr, txHashes, manager)
 	}
 }
 
-func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
+func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, addr string, txHashes []string, manager *ClientManager) {
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
-	raw_traces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
+	commTxsData, err := repository.LoadCommittedTxs(txHashes)
 	if err != nil {
-		log.Printf("Error loading raw traces: %v, trace key: %s", err, traceExternalHashNorm)
-		return
-	}
-
-	emulatedContext := index.NewEmptyContext(false)
-	err = emulatedContext.FillFromRawData(raw_traces)
-	if err != nil {
-		log.Printf("Error filling context from raw data: %v, trace key: %s", err, traceExternalHashNorm)
-		return
-	}
-	if emulatedContext.GetTraceCount() > 1 {
-		log.Printf("More than 1 trace in the context, trace key: %s", traceExternalHashNorm)
-		return
-	}
-	if emulatedContext.GetTraceCount() == 0 {
-		log.Printf("No traces in the context, trace key: %s", traceExternalHashNorm)
-		return
-	}
-	rows := emulatedContext.GetTransactionsByTraceIdAndHash(traceExternalHashNorm, txHashes)
-	if len(rows) == 0 {
-		log.Printf("No transactions found for trace %s (%d hashes)", traceExternalHashNorm, len(txHashes))
+		log.Printf("Error loading committed txs: %v, addr: %s", err, addr)
 		return
 	}
 
 	var txs []index.Transaction
 	txs_map := map[index.HashType]int{}
-	{
-		rows := emulatedContext.GetTransactions()
-		for _, row := range rows {
-			if tx, err := index.ScanTransaction(row); err == nil {
-				txs = append(txs, *tx)
-				txs_map[tx.Hash] = len(txs) - 1
+	allAddresses := []string{}
+	for _, txData := range commTxsData {
+		var txModel emulated.Transaction
+		err := msgpack.Unmarshal([]byte(txData), &txModel)
+		if err != nil {
+			log.Printf("Error unmarshalling committed tx: %v, addr: %s", err, addr)
+			continue
+		}
+		// refactor after https://github.com/toncenter/ton-indexer/pull/216
+		mockNode := emulated.TraceNode{
+			Transaction: txModel,
+		}
+
+		txRowModel, err := mockNode.GetTransactionRow()
+		if err != nil {
+			log.Printf("Error getting transaction row: %v, addr: %s", err, addr)
+			continue
+		}
+		txRow := emulated.NewRow(&txRowModel)
+		if tx, err := index.ScanTransaction(txRow); err == nil {
+			txs = append(txs, *tx)
+			txs_map[tx.Hash] = len(txs) - 1
+		} else {
+			log.Printf("Error scanning transaction: %v, addr: %s", err, addr)
+			continue
+		}
+
+		messagesRowModel, contentsRowModel, initStatesRowModel, err := mockNode.GetMessages()
+		if err != nil {
+			log.Printf("Error getting messages: %v, addr: %s", err, addr)
+			continue
+		}
+
+		messageRows := make([]pgx.Row, 0)
+		for _, msg := range messagesRowModel {
+			var init_state *emulated.MessageContentRow
+			var message_content *emulated.MessageContentRow
+			if msg.InitStateHash != nil {
+				if state, ok := initStatesRowModel[*msg.InitStateHash]; ok {
+					init_state = &state
+				}
+			}
+			if content, ok := contentsRowModel[msg.MsgHash]; ok {
+				message_content = &content
+			}
+			if init_state == nil {
+				messageRows = append(messageRows, emulated.NewRow(&msg, message_content))
 			} else {
-				log.Printf("Error scanning transaction: %v", err)
+				messageRows = append(messageRows, emulated.NewRow(&msg, message_content, init_state))
 			}
 		}
-	}
-
-	allAddresses := []string{}
-	var tx_hashes []string
-	for _, t := range txs {
-		tx_hashes = append(tx_hashes, string(t.Hash))
-		allAddresses = append(allAddresses, string(t.Account))
-	}
-	if len(tx_hashes) > 0 {
-		rows := emulatedContext.GetMessages(tx_hashes)
-		for _, row := range rows {
+		for _, row := range messageRows {
 			msg, err := index.ScanMessageWithContent(row)
 			if err != nil {
 				log.Printf("Error scanning message: %v", err)
@@ -888,9 +897,10 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 				}
 			}
 		}
+
+		allAddresses = append(allAddresses, string(txModel.Account))
 	}
 
-	// sort messages
 	for idx := range txs {
 		sort.SliceStable(txs[idx].OutMsgs, func(i, j int) bool {
 			if txs[idx].OutMsgs[i].CreatedLt == nil {
@@ -902,6 +912,81 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
 		})
 	}
+
+	// emulatedContext := index.NewEmptyContext(false)
+	// err = emulatedContext.FillFromRawData(raw_traces)
+	// if err != nil {
+	// 	log.Printf("Error filling context from raw data: %v, trace key: %s", err, traceExternalHashNorm)
+	// 	return
+	// }
+	// if emulatedContext.GetTraceCount() > 1 {
+	// 	log.Printf("More than 1 trace in the context, trace key: %s", traceExternalHashNorm)
+	// 	return
+	// }
+	// if emulatedContext.GetTraceCount() == 0 {
+	// 	log.Printf("No traces in the context, trace key: %s", traceExternalHashNorm)
+	// 	return
+	// }
+	// rows := emulatedContext.GetTransactionsByTraceIdAndHash(traceExternalHashNorm, txHashes)
+	// if len(rows) == 0 {
+	// 	log.Printf("No transactions found for trace %s (%d hashes)", traceExternalHashNorm, len(txHashes))
+	// 	return
+	// }
+
+	// var txs []index.Transaction
+	// txs_map := map[index.HashType]int{}
+	// {
+	// 	rows := emulatedContext.GetTransactions()
+	// 	for _, row := range rows {
+	// 		if tx, err := index.ScanTransaction(row); err == nil {
+	// 			txs = append(txs, *tx)
+	// 			txs_map[tx.Hash] = len(txs) - 1
+	// 		} else {
+	// 			log.Printf("Error scanning transaction: %v", err)
+	// 		}
+	// 	}
+	// }
+
+	// allAddresses := []string{}
+	// var tx_hashes []string
+	// for _, t := range txs {
+	// 	tx_hashes = append(tx_hashes, string(t.Hash))
+	// 	allAddresses = append(allAddresses, string(t.Account))
+	// }
+	// if len(tx_hashes) > 0 {
+	// 	rows := emulatedContext.GetMessages(tx_hashes)
+	// 	for _, row := range rows {
+	// 		msg, err := index.ScanMessageWithContent(row)
+	// 		if err != nil {
+	// 			log.Printf("Error scanning message: %v", err)
+	// 			continue
+	// 		}
+	// 		if msg.Direction == "in" {
+	// 			txs[txs_map[msg.TxHash]].InMsg = msg
+	// 			if msg.Source != nil {
+	// 				allAddresses = append(allAddresses, string(*msg.Source))
+	// 			}
+	// 		} else {
+	// 			txs[txs_map[msg.TxHash]].OutMsgs = append(txs[txs_map[msg.TxHash]].OutMsgs, msg)
+	// 			if msg.Destination != nil {
+	// 				allAddresses = append(allAddresses, string(*msg.Destination))
+	// 			}
+	// 		}
+	// 	}
+	// }
+
+	// // sort messages
+	// for idx := range txs {
+	// 	sort.SliceStable(txs[idx].OutMsgs, func(i, j int) bool {
+	// 		if txs[idx].OutMsgs[i].CreatedLt == nil {
+	// 			return true
+	// 		}
+	// 		if txs[idx].OutMsgs[j].CreatedLt == nil {
+	// 			return false
+	// 		}
+	// 		return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
+	// 	})
+	// }
 
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata

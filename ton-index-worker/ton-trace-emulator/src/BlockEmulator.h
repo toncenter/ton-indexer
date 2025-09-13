@@ -4,6 +4,9 @@
 #include "IndexData.h"
 #include "TraceEmulator.h"
 
+// Forward declaration
+class CommittedTxsProcessor;
+
 
 struct OutMsgInfo {
     td::Bits256 hash;
@@ -44,6 +47,8 @@ private:
     std::vector<TransactionInfo> txs_;
 
     std::vector<td::Ref<vm::Cell>> shard_states_;
+    
+    td::actor::ActorId<CommittedTxsProcessor> committed_transactions_processor_;
 
     std::unordered_map<td::Bits256, TransactionInfo> tx_by_in_msg_hash_; // mapping from msg hash to tx that processed it as in_msg
     std::unordered_map<td::Bits256, TransactionInfo> tx_by_out_msg_hash_; // mapping from msg hash to tx that created it as out_msg
@@ -80,7 +85,7 @@ private:
     td::Result<block::Account> fetch_account(const block::StdAddress& addr, ton::UnixTime now);
 
 public:
-    McBlockEmulator(MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>)> trace_processor, td::Promise<> promise);
+    McBlockEmulator(MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>)> trace_processor, td::actor::ActorId<CommittedTxsProcessor> committed_transactions_processor, td::Promise<> promise);
 
     virtual void start_up() override;
 };

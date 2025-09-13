@@ -5,6 +5,7 @@ add_library(ton-trace-emulator-core STATIC
     src/OverlayListener.cpp
     src/BlockEmulator.cpp
     src/TraceInterfaceDetector.cpp
+    src/CommittedTxsProcessor.cpp
 )
 target_include_directories(ton-trace-emulator-core
     PUBLIC external/ton

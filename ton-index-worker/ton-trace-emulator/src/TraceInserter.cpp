@@ -57,9 +57,6 @@ public:
                 transaction_.zrem(addr, by_addr_key);
             }
 
-            std::string commited_txs_hashes = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) + ":";
-            bool has_commited_txs = false;
-
             // insert new trace
             for (const auto& node : flattened_trace) {
                 std::stringstream buffer;
@@ -70,17 +67,6 @@ public:
                 auto addr_raw = std::to_string(node.transaction.account.workchain) + ":" + node.transaction.account.addr.to_hex();
                 auto by_addr_key = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
                 transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
-
-                if (!node.emulated) {
-                    if (has_commited_txs) {
-                        commited_txs_hashes += ",";
-                    }
-                    commited_txs_hashes += td::base64_encode(node.transaction.hash.as_slice());
-                    has_commited_txs = true;
-                }
-            }
-            if (has_commited_txs) {
-                transaction_.publish("new_commited_txs", commited_txs_hashes);
             }
 
             // insert interfaces
@@ -145,6 +131,104 @@ public:
     }
 };
 
+// inserts latest state of the account, it's interfaces and transactions
+class AccTxsInserter: public td::actor::Actor {
+private:
+    sw::redis::Transaction transaction_;
+    CommittedAccountTxs acc_txs_;
+    td::Promise<td::Unit> promise_;
+public:
+    AccTxsInserter(sw::redis::Transaction&& transaction, CommittedAccountTxs acc_txs, td::Promise<td::Unit> promise) :
+        transaction_(std::move(transaction)), acc_txs_(std::move(acc_txs)), promise_(std::move(promise)) {
+    }
+
+    void start_up() override {
+        td::Timer timer;
+        try {
+            auto addr_raw = std::to_string(acc_txs_.account.workchain) + ":" + acc_txs_.account.addr.to_hex();
+
+            // 1. Upsert account state to key "acct:<acc_addr>:state"
+            // First, we need to get the account state from redis
+            auto account_state_r = parse_account(acc_txs_.account);
+            if (account_state_r.is_error()) {
+                promise_.set_error(account_state_r.move_as_error_prefix("Failed to parse account state: "));
+                stop();
+                return;
+            }
+            auto account_state = account_state_r.move_as_ok();
+            bool should_insert = true;
+            auto account_state_redis = transaction_.redis().get("acct:" + addr_raw + ":state");
+            if (account_state_redis) {
+                AccountState existing_account_state;
+                auto serialized = account_state_redis.value();
+                msgpack::unpacked result;
+                msgpack::unpack(result, serialized.data(), serialized.size());
+                result.get().convert(existing_account_state);
+                if (existing_account_state.last_trans_lt > account_state.last_trans_lt) {
+                    should_insert = false; // existing state is newer, skip
+                }
+            }
+            if (should_insert) {
+                std::stringstream buffer;
+                msgpack::pack(buffer, account_state);
+                transaction_.set("acct:" + addr_raw + ":state", buffer.str());
+                transaction_.expire("acct:" + addr_raw + ":state", 30); // 30 seconds expiration
+            }
+            
+            // 2. Insert committed transactions to redis key "comm:tx:<tx_hash>"
+            std::vector<std::string> tx_hashes;
+            for (const auto& tx_info : acc_txs_.txs) {
+                auto tx_r = parse_tx(tx_info.root, tx_info.account.workchain);
+                if (tx_r.is_error()) {
+                    promise_.set_error(tx_r.move_as_error_prefix("Failed to parse transaction: "));
+                    stop();
+                    return;
+                }
+                auto tx = tx_r.move_as_ok();
+                
+                std::stringstream buffer;
+                msgpack::pack(buffer, tx);
+                
+                auto tx_hash_b64 = td::base64_encode(tx.hash.as_slice());
+                transaction_.set("comm:tx:" + tx_hash_b64, buffer.str());
+                transaction_.expire("comm:tx:" + tx_hash_b64, 30); // 30 seconds expiration
+                tx_hashes.push_back(tx_hash_b64);
+            }
+            
+            // 3. Insert account interfaces to key "acct:<acc>:ifaces"
+            if (!acc_txs_.interfaces.empty()) {
+                auto interfaces_redis = parse_interfaces(acc_txs_.interfaces);
+                std::stringstream interfaces_buffer;
+                msgpack::pack(interfaces_buffer, interfaces_redis);
+                transaction_.set("acct:" + addr_raw + ":ifaces", interfaces_buffer.str());
+                transaction_.expire("acct:" + addr_raw + ":ifaces", 30); // 30 seconds expiration
+            }
+            
+            // 4. Publish new committed transactions to channel "new_commited_txs"
+            if (!tx_hashes.empty()) {
+                std::string message = addr_raw;
+                for (const auto& tx_hash : tx_hashes) {
+                    message += "|" + tx_hash;
+                }
+                transaction_.publish("new_commited_txs", message);
+            }
+            
+            transaction_.exec();
+            promise_.set_value(td::Unit());
+        } catch (const vm::VmError &e) {
+            promise_.set_error(td::Status::Error("Got VmError while inserting committed transactions: " + std::string(e.get_msg())));
+        } catch (const std::exception &e) {
+            promise_.set_error(td::Status::Error("Got exception while inserting committed transactions: " + std::string(e.what())));
+        }
+        g_statistics.record_time(INSERT_TRACE, timer.elapsed() * 1e3);
+        stop();
+    }
+};
+
 void RedisInsertManager::insert(Trace trace, td::Promise<td::Unit> promise) {
     td::actor::create_actor<TraceInserter>("TraceInserter", redis_.transaction(), std::move(trace), std::move(promise)).release();
+}
+
+void RedisInsertManager::insert_committed(CommittedAccountTxs acc_txs, td::Promise<td::Unit> promise) {
+    td::actor::create_actor<AccTxsInserter>("AccTxsInserter", redis_.transaction(), std::move(acc_txs), std::move(promise)).release();
 }

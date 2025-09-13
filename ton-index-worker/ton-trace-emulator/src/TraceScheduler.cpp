@@ -1,6 +1,6 @@
 #include "TraceScheduler.h"
-#include "BlockEmulator.h"
 #include "TraceInserter.h"
+#include "CommittedTxsProcessor.h"
 #include "td/utils/filesystem.h"
 #include "common/delay.h"
 
@@ -110,8 +110,12 @@ void TraceEmulatorScheduler::emulate_blocks() {
             }
             LOG(INFO) << "Success emulating mc block " << blkid.to_str();
         });
+        // Create CommittedTransactionsProcessor actor
+        auto processor_name = PSLICE() << "CommittedTransactionsProcessor" << last_emulated_seqno_ + 1;
+        auto committed_txs_processor = td::actor::create_actor<CommittedTxsProcessor>(processor_name, insert_committed_txs_).release();
+        
         auto actor_name = PSLICE() << "McBlockEmulator" << last_emulated_seqno_ + 1;
-        td::actor::create_actor<McBlockEmulator>(actor_name, it->second, insert_trace_, std::move(P)).release();
+        td::actor::create_actor<McBlockEmulator>(actor_name, it->second, insert_trace_, committed_txs_processor, std::move(P)).release();
 
         blocks_to_emulate_.erase(it);
         last_emulated_seqno_++;
