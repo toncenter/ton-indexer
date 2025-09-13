@@ -252,7 +252,7 @@ func markWithRefs(refs *messagesRefs) error {
 
 	// fill in opcode results
 	for i, opcode := range opcodes {
-		if decodedValue := decodedOpcodes[i]; strings.HasPrefix(decodedValue, "unknown") {
+		if decodedValue := decodedOpcodes[i]; !strings.HasPrefix(decodedValue, "unknown") {
 			for _, ref := range refs.opcodeRefs[opcode] {
 				*ref = decodedValue
 			}
@@ -261,7 +261,7 @@ func markWithRefs(refs *messagesRefs) error {
 
 	// fill in message body results
 	for i, body := range bodies {
-		if decodedValue := decodedBodies[i]; strings.HasPrefix(decodedValue, "unknown") {
+		if decodedValue := decodedBodies[i]; !strings.HasPrefix(decodedValue, "unknown") {
 			for _, ref := range refs.bodyRefs[body] {
 				var tmpResult map[string]interface{}
 				if err := json.Unmarshal([]byte(decodedValue), &tmpResult); err != nil {
