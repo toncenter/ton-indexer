@@ -177,7 +177,7 @@ func MarkMessages(messages []Message) error {
 	return markWithRefs(refs)
 }
 
-func MarkTransactions(transactions []*Transaction) error {
+func MarkTransactions(transactions []Transaction) error {
 	refs := collectTransactionRefs(transactions)
 	return markWithRefs(refs)
 }
@@ -195,7 +195,25 @@ func collectMessagesRefs(messages []Message) *messagesRefs {
 	return refs
 }
 
-// collects references from a single message
+func collectTransactionRefs(transactions []Transaction) *messagesRefs {
+	refs := &messagesRefs{
+		opcodeRefs: make(map[uint32][]*string),
+		bodyRefs:   make(map[string][]*DecodedContent),
+		opcodes:    make([]uint32, 0, len(transactions)*3), // rough approx capacity (1 in_msg + 2 out_msgs)
+		bodies:     make([]string, 0, len(transactions)*3), // both in sum gotta be 0.42 mb on limit=1k request
+	}
+
+	for _, tx := range transactions {
+		if tx.InMsg != nil {
+			collectSingleMessageRefs(tx.InMsg, refs)
+		}
+		for _, msg := range tx.OutMsgs {
+			collectSingleMessageRefs(msg, refs)
+		}
+	}
+	return refs
+}
+
 func collectSingleMessageRefs(msg *Message, refs *messagesRefs) {
 	if msg == nil {
 		return
@@ -216,29 +234,6 @@ func collectSingleMessageRefs(msg *Message, refs *messagesRefs) {
 		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], msg.MessageContent.Decoded)
 		refs.bodies = append(refs.bodies, *msg.MessageContent.Body)
 	}
-}
-
-// collects all references from messages in transactions
-func collectTransactionRefs(transactions []*Transaction) *messagesRefs {
-	refs := &messagesRefs{
-		opcodeRefs: make(map[uint32][]*string),
-		bodyRefs:   make(map[string][]*DecodedContent),
-	}
-
-	for _, tx := range transactions {
-		if tx == nil {
-			continue
-		}
-		// process InMsg
-		if tx.InMsg != nil {
-			collectSingleMessageRefs(tx.InMsg, refs)
-		}
-		// process OutMsgs
-		for _, msg := range tx.OutMsgs {
-			collectSingleMessageRefs(msg, refs)
-		}
-	}
-	return refs
 }
 
 func markWithRefs(refs *messagesRefs) error {

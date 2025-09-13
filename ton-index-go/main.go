@@ -267,31 +267,13 @@ func GetTransactions(c *fiber.Ctx) error {
 		return err
 	}
 
-	txPointers := make([]*index.Transaction, len(txs))
-	for i := range txs {
-		txPointers[i] = &txs[i]
+	if err := index.MarkTransactions(txs); err != nil {
+		hashes := make([]string, len(txs))
+		for i, tx := range txs {
+			hashes[i] = string(tx.Hash)
+		}
+		log.Printf("Error marking transactions with hashes %v: %v", hashes, err)
 	}
-
-	if err := index.MarkTransactions(txPointers); err != nil {
-		return err
-	}
-
-	// marker.EnrichResponseWithMarker(txs);
-
-	// var bocResults []string
-	// if txs[1].InMsg != nil {
-	// 	fmt.Println(*txs[1].InMsg.MessageContent.Body)
-	// 	_, bocResults, _, err = MarkerRequest([]uint32{}, []string{*txs[1].InMsg.MessageContent.Body}, [][]uint32{})
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	fmt.Println(bocResults[0])
-	// 	txs[1].InMsg.MessageContent.Decoded = &index.DecodedContent{Type: "tlb_decoded", Data: bocResults[0]}
-	// }
-
-	// if len(txs) == 0 {
-	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
-	// }
 
 	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
 	return c.JSON(txs_resp)
@@ -537,7 +519,11 @@ func GetMessages(c *fiber.Ctx) error {
 	// }
 
 	if err := index.MarkMessages(msgs); err != nil {
-		return err
+		hashes := make([]string, len(msgs))
+		for i, msg := range msgs {
+			hashes[i] = string(msg.MsgHash)
+		}
+		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
 	}
 	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book, Metadata: metadata}
 	return c.JSON(msgs_resp)
