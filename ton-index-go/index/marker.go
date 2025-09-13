@@ -168,7 +168,7 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 
 type messagesRefs struct {
 	opcodeRefs map[uint32][]*string         // key: opcode, value: list of pointers where to write decoded opcode
-	bodyRefs   map[string][]*DecodedContent // key: body, value: list of pointers where to write decoded body
+	bodyRefs   map[string][]*MessageContent // key: body, value: list of pointers where to write decoded body
 	opcodes    []uint32
 	bodies     []string
 }
@@ -186,7 +186,7 @@ func MarkTransactions(transactions []Transaction) error {
 func collectMessagesRefs(messages []Message) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*string),
-		bodyRefs:   make(map[string][]*DecodedContent),
+		bodyRefs:   make(map[string][]*MessageContent),
 		opcodes:    make([]uint32, 0, len(messages)),
 		bodies:     make([]string, 0, len(messages)),
 	}
@@ -199,7 +199,7 @@ func collectMessagesRefs(messages []Message) *messagesRefs {
 func collectTransactionRefs(transactions []Transaction) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*string),
-		bodyRefs:   make(map[string][]*DecodedContent),
+		bodyRefs:   make(map[string][]*MessageContent),
 		opcodes:    make([]uint32, 0, len(transactions)*3), // rough approx capacity (1 in_msg + 2 out_msgs)
 		bodies:     make([]string, 0, len(transactions)*3), // both in sum gotta be 0.42 mb on limit=1k request
 	}
@@ -232,7 +232,7 @@ func collectSingleMessageRefs(msg *Message, refs *messagesRefs) {
 		if msg.MessageContent.Decoded == nil {
 			msg.MessageContent.Decoded = new(DecodedContent)
 		}
-		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], msg.MessageContent.Decoded)
+		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], msg.MessageContent)
 		refs.bodies = append(refs.bodies, *msg.MessageContent.Body)
 	}
 }
@@ -261,18 +261,23 @@ func markWithRefs(refs *messagesRefs) error {
 
 	// fill in message body results
 	for i, body := range bodies {
-		if decodedValue := decodedBodies[i]; !strings.HasPrefix(decodedValue, "unknown") {
+		decodedValue := decodedBodies[i]
+		if strings.HasPrefix(decodedValue, "unknown") {
 			for _, ref := range refs.bodyRefs[body] {
-				var tmpResult map[string]interface{}
-				if err := json.Unmarshal([]byte(decodedValue), &tmpResult); err != nil {
-					return fmt.Errorf("failed to decode message body: %w", err)
-				}
-				for msgType, msgData := range tmpResult {
-					ref.Type = msgType
-					ref.Data = msgData
-					// there's only one key in the map
-					break
-				}
+				ref.Decoded = nil
+			}
+			continue
+		}
+		for _, ref := range refs.bodyRefs[body] {
+			var tmpResult map[string]interface{}
+			if err := json.Unmarshal([]byte(decodedValue), &tmpResult); err != nil {
+				return fmt.Errorf("failed to decode message body: %w", err)
+			}
+			for msgType, msgData := range tmpResult {
+				ref.Decoded.Type = msgType
+				ref.Decoded.Data = msgData
+				// there's only one key in the map
+				break
 			}
 		}
 	}
