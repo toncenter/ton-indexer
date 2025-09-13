@@ -118,7 +118,7 @@ chunk_ref$_ {n:#} ref:^(TextChunks (n + 1)) = TextChunkRef (n + 1);
 chunk_ref_empty$_ = TextChunkRef 0;
 text_chunk$_ {n:#} len:(## 8) data:(bits (len * 8)) next:(TextChunkRef n) = TextChunks (n + 1);
 text_chunk_empty$_ = TextChunks 0;
-// text$_ chunks:(## 8) rest:(TextChunks chunks) = Text;
+text$_ chunks:(## 8) rest:(TextChunks chunks) = Text;
 dns_text#1eda _:Text = DNSRecord;
 
 dns_next_resolver#ba93 resolver:MsgAddressInt = DNSRecord;  // usually in record #-1
