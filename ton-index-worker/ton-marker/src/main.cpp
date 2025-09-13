@@ -21,7 +21,7 @@ struct Request {
 // process cli boc request
 std::string process_cli_boc(const std::string& input_boc) {
     // check if input is base64 (starts with te6cckEB)
-    if (input_boc.substr(0, 8) == "te6cckEB") {
+    if (input_boc.substr(0, 7) == "te6cckE") {
         // already in base64, use directly
         auto result = ton_marker::decode_boc(input_boc);
         return result ? *result : "Error: Failed to decode BOC";
