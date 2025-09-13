@@ -71,10 +71,12 @@ std::string decode_boc(const std::string& boc_base64) {
         const schemes::InternalMsgBody3 parser3;
         const schemes::InternalMsgBody4 parser4;
         const schemes::InternalMsgBody5 parser5;
+        const schemes::ForwardPayload parser6;
 
         // try to parse with each parser
         std::string json_output;
         tlb::JsonPrinter pp(&json_output);
+        tlb::PrettyPrinter pp2(std::cout);
 
         // helper to try parsing with a specific parser
         const auto try_parse = [&cs, &pp](const auto& parser) -> bool {
@@ -85,11 +87,21 @@ std::string decode_boc(const std::string& boc_base64) {
         // find matching parser by opcode and try to parse
         bool parsed = false;
         const auto check_and_parse = [&](const auto& parser) -> bool {
+            json_output = "";
+            pp = tlb::JsonPrinter(&json_output);
             for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
                 if (parser.cons_tag[i] == opcode) {
-                    return try_parse(parser);
+                    if (try_parse(parser)) return true;
+                    else {
+                        std::cout << "ton-marker: some parser matched but failed for OPCODE=" << parser.cons_name[i] 
+                                  << ", JSON_OUTPUT=(" << json_output << ")" << std::endl;
+                        json_output = "";
+                        pp = tlb::JsonPrinter(&json_output);
+                        // continue searching, may be another parser for the same opcode
+                    }
                 }
             }
+            json_output = "unknown";
             return false;
         };
 
@@ -99,6 +111,7 @@ std::string decode_boc(const std::string& boc_base64) {
         else if (check_and_parse(parser3)) parsed = true;
         else if (check_and_parse(parser4)) parsed = true;
         else if (check_and_parse(parser5)) parsed = true;
+        else if (check_and_parse(parser6)) parsed = true;
 
         if (!parsed) {
             return "unknown: no parser succeeded";

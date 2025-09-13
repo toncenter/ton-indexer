@@ -75,7 +75,7 @@ hme_empty$0 {n:#} {X:Type} = HashmapE n X;
 hme_root$1 {n:#} {X:Type} root:^(Hashmap n X) = HashmapE n X;
 
 chunked_data#_ data:(HashmapE 32 ^Cell) = ChunkedData;               // chunked_data#_ data:(HashMapE 32 ^(SnakeData ~0)) = ChunkedData;
-text#_ data:Cell = Text;                                             // text#_ {n:#} data:(SnakeData ~n) = Text;
+// text#_ data:Cell = Text;                                             // text#_ {n:#} data:(SnakeData ~n) = Text;
 snake#00 data:Cell = ContentData;                                    // snake#00 data:(SnakeData ~n) = ContentData;
 chunks#01 data:ChunkedData = ContentData;
 onchain#00 data:(HashmapE 256 ^ContentData) = FullContent;

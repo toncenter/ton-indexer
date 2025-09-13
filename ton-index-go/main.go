@@ -267,14 +267,6 @@ func GetTransactions(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := index.MarkTransactions(txs); err != nil {
-		hashes := make([]string, len(txs))
-		for i, tx := range txs {
-			hashes[i] = string(tx.Hash)
-		}
-		log.Printf("Error marking transactions with hashes %v: %v", hashes, err)
-	}
-
 	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
 	return c.JSON(txs_resp)
 }
@@ -518,13 +510,6 @@ func GetMessages(c *fiber.Ctx) error {
 	// 	return index.IndexError{Code: 404, Message: "messages not found"}
 	// }
 
-	if err := index.MarkMessages(msgs); err != nil {
-		hashes := make([]string, len(msgs))
-		for i, msg := range msgs {
-			hashes[i] = string(msg.MsgHash)
-		}
-		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
-	}
 	msgs_resp := index.MessagesResponse{Messages: msgs, AddressBook: book, Metadata: metadata}
 	return c.JSON(msgs_resp)
 }
