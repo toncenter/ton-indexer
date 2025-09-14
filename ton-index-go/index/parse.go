@@ -554,8 +554,10 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.CustomPayload = raw.NFTTransferCustomPayload
 		details.ForwardPayload = raw.NFTTransferForwardPayload
 		details.ForwardAmount = raw.NFTTransferForwardAmount
-		if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
-			details.Marketplace = &marketplaceName
+		if (raw.NFTTransferIsPurchase != nil && *raw.NFTTransferIsPurchase) || raw.Type == "nft_purchase" {
+			if found, marketplaceName := GetMarketplaceName(raw.NFTTransferMarketplaceAddress, raw.Asset); found {
+				details.Marketplace = &marketplaceName
+			}
 		}
 		details.RealOldOwner = raw.NFTTransferRealPrevOwner
 		details.MarketplaceAddress = raw.NFTTransferMarketplaceAddress
