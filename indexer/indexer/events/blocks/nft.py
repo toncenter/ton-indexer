@@ -138,6 +138,8 @@ class NftTransferBlockMatcher(BlockMatcher):
                 nft_transfer_message.forward_payload is not None) else None
         data['new_owner'] = AccountId(nft_transfer_message.new_owner)
         data['nft'] = await _get_nft_data(AccountId(block.event_nodes[0].message.transaction.account))
+        if not data['nft']['exists']:
+            return []
         if block.previous_block is not None:
             nft_purchase_data = await _try_get_nft_purchase_data(block, nft_transfer_message.new_owner.to_str(False))
             if nft_purchase_data is not None and AccountId(nft_purchase_data['nft_address']) == data['nft']['address']:
@@ -320,6 +322,8 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
         data['custom_payload'] = None
         data['forward_payload'] = None
         data['nft'] = await _get_nft_data(AccountId(block.get_message().source))
+        if not data['nft']['exists']:
+            return []
         payload = nft_ownership_message.nft_payload
         if payload is not None:
             data['forward_payload'] = base64.b64encode(payload.raw).decode('utf-8')
