@@ -126,6 +126,8 @@ std::string decode_boc(const std::string& boc_base64) {
                 if (parser.cons_tag[i] == opcode) {
                     if (try_parse(parser)) return true;
                     else {
+                        std::cout << "ton-marker: some parser matched but failed for OPCODE=" << parser.cons_name[i] 
+                        << ", JSON_OUTPUT=" << json_output << std::endl;
                         json_output = "";
                         pp = tlb::JsonPrinter(&json_output);
                         // continue searching, may be another parser for the same opcode
