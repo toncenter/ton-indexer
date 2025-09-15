@@ -7,14 +7,11 @@
 #include "vm/excno.hpp"
 #include <set>
 #include <regex>
-#include <unordered_set>
 
 namespace ton_marker {
 
 namespace {
-// helper function to get opcode name
 std::string get_opcode_name(unsigned opcode) {
-    // try all message body types
     const schemes::InternalMsgBody0 parser0;
     const schemes::InternalMsgBody1 parser1;
     const schemes::InternalMsgBody2 parser2;
@@ -22,7 +19,6 @@ std::string get_opcode_name(unsigned opcode) {
     const schemes::InternalMsgBody4 parser4;
     const schemes::InternalMsgBody5 parser5;
 
-    // check each parser's tags
     const auto check_parser = [opcode](const auto& parser) -> std::optional<std::string> {
         for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
             if (parser.cons_tag[i] == opcode) {
@@ -42,56 +38,36 @@ std::string get_opcode_name(unsigned opcode) {
     return "unknown";
 }
 
-// recursive helper function to replace boc cells in json
-std::string replace_boc_cells_recursive(const std::string& json_str, std::unordered_set<std::string>& processed_bocs, int depth = 0) {
-    // prevent infinite recursion
+// would be good to load forward and custom_payload also.
+// they can't be described in TLB, so they have type Cell
+std::string replace_boc_cells_recursive(const std::string& json_str, int depth = 0) {
     if (depth > 10) {
         return json_str;
     }
-
-    // regex to find BOC strings in JSON values (starting with "te6c")
-    std::regex boc_pattern("\"(te6c[^\"]+)\"");
-    std::string result = json_str;
-    std::smatch match;
-
     // find all BOC strings and replace them
-    while (std::regex_search(result, match, boc_pattern)) {
-        std::string boc_with_quotes = match.str(0); // includes quotes
-        std::string boc_value = match.str(1); // without quotes
+    std::regex boc_b64_pattern("\"(te6c[^\"]+)\"");
+    std::string result = json_str;
+    std::vector<std::pair<size_t, size_t>> matches; // (position, length)
+    std::sregex_iterator iter(result.begin(), result.end(), boc_b64_pattern);
+    std::sregex_iterator end;
+    for (; iter != end; ++iter) {
+        matches.emplace_back(iter->position(), iter->length());
+    }
+    // process matches in reverse order to avoid index shifting
+    for (auto it = matches.rbegin(); it != matches.rend(); ++it) {
+        size_t pos = it->first;
+        size_t length = it->second;
 
-        // check if we've already processed this BOC to avoid infinite loops
-        if (processed_bocs.find(boc_value) != processed_bocs.end()) {
-            // already processed, skip
-            size_t pos = result.find(boc_with_quotes);
-            if (pos != std::string::npos) {
-                result = result.substr(0, pos + boc_with_quotes.length()) +
-                        result.substr(pos + boc_with_quotes.length());
-            }
-            break;
-        }
+        std::string boc_with_quotes = result.substr(pos, length);
+        std::string boc_value = boc_with_quotes.substr(1, boc_with_quotes.length() - 2); // remove quotes
 
-        // mark as processed
-        processed_bocs.insert(boc_value);
-
-        // decode the BOC
         std::string decoded = decode_boc(boc_value);
 
-        // if decoding was successful and not unknown, replace it
         if (!decoded.empty() && decoded.find("unknown") != 0) {
-            // recursively process the decoded content
-            std::string recursive_decoded = replace_boc_cells_recursive(decoded, processed_bocs, depth + 1);
-
-            // replace in result, but remove quotes since we're replacing the entire value
-            size_t pos = result.find(boc_with_quotes);
-            if (pos != std::string::npos) {
-                result.replace(pos, boc_with_quotes.length(), recursive_decoded);
-            }
-        } else {
-            // decoding failed or returned unknown, keep original
-            break;
+            std::string recursive_decoded = replace_boc_cells_recursive(decoded, depth + 1);
+            result.replace(pos, length, recursive_decoded);
         }
     }
-
     return result;
 }
 } // namespace
@@ -112,14 +88,18 @@ std::string decode_boc(const std::string& boc_base64) {
 
         auto cell = cell_result.move_as_ok();
         auto cs = vm::load_cell_slice(cell);
+        if (cs.size() == 0 && cs.size_refs() == 0) {
+            return "{\"empty_cell\": \"\"}";
+        }
         if (cs.size() < 32) {
             return "unknown: boc is too small, size=" + std::to_string(cs.size());
         }
 
-        // get opcode first
         unsigned opcode = cs.prefetch_ulong(32);
 
-        // try all message body types
+        // tlbc doesn't allow more than 64 constructors,
+        // so we split InternalMsgBody into 6 types,
+        // and try each...
         const schemes::InternalMsgBody0 parser0;
         const schemes::InternalMsgBody1 parser1;
         const schemes::InternalMsgBody2 parser2;
@@ -128,10 +108,8 @@ std::string decode_boc(const std::string& boc_base64) {
         const schemes::InternalMsgBody5 parser5;
         const schemes::ForwardPayload parser6;
 
-        // try to parse with each parser
         std::string json_output;
         tlb::JsonPrinter pp(&json_output);
-        tlb::PrettyPrinter pp2(std::cout);
 
         // helper to try parsing with a specific parser
         const auto try_parse = [&cs, &pp](const auto& parser) -> bool {
@@ -148,8 +126,6 @@ std::string decode_boc(const std::string& boc_base64) {
                 if (parser.cons_tag[i] == opcode) {
                     if (try_parse(parser)) return true;
                     else {
-                        std::cout << "ton-marker: some parser matched but failed for OPCODE=" << parser.cons_name[i] 
-                                  << ", JSON_OUTPUT=(" << json_output << ")" << std::endl;
                         json_output = "";
                         pp = tlb::JsonPrinter(&json_output);
                         // continue searching, may be another parser for the same opcode
@@ -186,16 +162,11 @@ std::string decode_boc(const std::string& boc_base64) {
 
 std::string decode_boc_recursive(const std::string& boc_base64) {
     try {
-        // first decode the main BOC
         std::string initial_result = decode_boc(boc_base64);
-        // if basic decoding failed, return as is
         if (initial_result.empty() || initial_result.find("unknown") == 0) {
             return initial_result;
         }
-        // process the result recursively to find and decode nested BOCs
-        std::unordered_set<std::string> processed_bocs;
-        processed_bocs.insert(boc_base64); // mark original as processed
-        return replace_boc_cells_recursive(initial_result, processed_bocs);
+        return replace_boc_cells_recursive(initial_result);
     } catch (const std::exception& e) {
         return "unknown: recursive decode error - " + std::string(e.what());
     } catch (...) {
