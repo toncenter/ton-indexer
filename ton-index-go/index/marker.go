@@ -325,3 +325,19 @@ func markWithRefs(refs *messagesRefs) error {
 
 	return nil
 }
+
+func MarkAccountStates(states []AccountStateFull) error {
+	methodIds := make([][]uint32, len(states))
+	for i := range states {
+		methodIds[i] = *states[i].ContractMethods
+	}
+	_, _, recognizedInterfaces, err := MarkerRequest(nil, nil, methodIds)
+	if err != nil {
+		return err
+	}
+	for i := range states {
+		interfaces := strings.Split(recognizedInterfaces[i], ",")
+		states[i].Interfaces = &interfaces
+	}
+	return nil
+}

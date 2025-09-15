@@ -1797,6 +1797,13 @@ func queryAccountStateFullImpl(query string, conn *pgxpool.Conn, settings Reques
 		if rows.Err() != nil {
 			return nil, IndexError{Code: 500, Message: rows.Err().Error()}
 		}
+		if err := MarkAccountStates(acsts); err != nil {
+			methodIds := make([]string, len(acsts))
+			for i, t := range acsts {
+				methodIds[i] = strings.Join(strings.Fields(fmt.Sprint(*t.ContractMethods)), ",")
+			}
+			log.Printf("Error marking account states with method ids %v: %v", methodIds, err)
+		}
 	}
 	return acsts, nil
 }

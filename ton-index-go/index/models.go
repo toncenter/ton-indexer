@@ -106,6 +106,7 @@ type AccountStateFull struct {
 	DataBoc                *string           `json:"data_boc,omitempty"`
 	CodeBoc                *string           `json:"code_boc,omitempty"`
 	ContractMethods        *[]uint32         `json:"contract_methods"`
+	Interfaces             *[]string         `json:"interfaces"`
 } // @name AccountStateFull
 
 type WalletState struct {
