@@ -6,6 +6,8 @@
 #include "td/utils/base64.h"
 #include "vm/excno.hpp"
 #include <set>
+#include <regex>
+#include <unordered_set>
 
 namespace ton_marker {
 
@@ -39,6 +41,59 @@ std::string get_opcode_name(unsigned opcode) {
 
     return "unknown";
 }
+
+// recursive helper function to replace boc cells in json
+std::string replace_boc_cells_recursive(const std::string& json_str, std::unordered_set<std::string>& processed_bocs, int depth = 0) {
+    // prevent infinite recursion
+    if (depth > 10) {
+        return json_str;
+    }
+
+    // regex to find BOC strings in JSON values (starting with "te6c")
+    std::regex boc_pattern("\"(te6c[^\"]+)\"");
+    std::string result = json_str;
+    std::smatch match;
+
+    // find all BOC strings and replace them
+    while (std::regex_search(result, match, boc_pattern)) {
+        std::string boc_with_quotes = match.str(0); // includes quotes
+        std::string boc_value = match.str(1); // without quotes
+
+        // check if we've already processed this BOC to avoid infinite loops
+        if (processed_bocs.find(boc_value) != processed_bocs.end()) {
+            // already processed, skip
+            size_t pos = result.find(boc_with_quotes);
+            if (pos != std::string::npos) {
+                result = result.substr(0, pos + boc_with_quotes.length()) +
+                        result.substr(pos + boc_with_quotes.length());
+            }
+            break;
+        }
+
+        // mark as processed
+        processed_bocs.insert(boc_value);
+
+        // decode the BOC
+        std::string decoded = decode_boc(boc_value);
+
+        // if decoding was successful and not unknown, replace it
+        if (!decoded.empty() && decoded.find("unknown") != 0) {
+            // recursively process the decoded content
+            std::string recursive_decoded = replace_boc_cells_recursive(decoded, processed_bocs, depth + 1);
+
+            // replace in result, but remove quotes since we're replacing the entire value
+            size_t pos = result.find(boc_with_quotes);
+            if (pos != std::string::npos) {
+                result.replace(pos, boc_with_quotes.length(), recursive_decoded);
+            }
+        } else {
+            // decoding failed or returned unknown, keep original
+            break;
+        }
+    }
+
+    return result;
+}
 } // namespace
 
 std::string decode_boc(const std::string& boc_base64) {
@@ -48,7 +103,7 @@ std::string decode_boc(const std::string& boc_base64) {
         if (boc_data.is_error()) {
             return "unknown: failed to decode base64";
         }
-        
+
         // deserialize
         auto cell_result = vm::std_boc_deserialize(boc_data.move_as_ok());
         if (cell_result.is_error()) {
@@ -58,7 +113,7 @@ std::string decode_boc(const std::string& boc_base64) {
         auto cell = cell_result.move_as_ok();
         auto cs = vm::load_cell_slice(cell);
         if (cs.size() < 32) {
-            return "unknown: boc is too small";
+            return "unknown: boc is too small, size=" + std::to_string(cs.size());
         }
 
         // get opcode first
@@ -129,6 +184,25 @@ std::string decode_boc(const std::string& boc_base64) {
     }
 }
 
+std::string decode_boc_recursive(const std::string& boc_base64) {
+    try {
+        // first decode the main BOC
+        std::string initial_result = decode_boc(boc_base64);
+        // if basic decoding failed, return as is
+        if (initial_result.empty() || initial_result.find("unknown") == 0) {
+            return initial_result;
+        }
+        // process the result recursively to find and decode nested BOCs
+        std::unordered_set<std::string> processed_bocs;
+        processed_bocs.insert(boc_base64); // mark original as processed
+        return replace_boc_cells_recursive(initial_result, processed_bocs);
+    } catch (const std::exception& e) {
+        return "unknown: recursive decode error - " + std::string(e.what());
+    } catch (...) {
+        return "unknown: recursive decode unhandled error";
+    }
+}
+
 std::string decode_opcode(unsigned int opcode) {
     try {
         std::string name = get_opcode_name(opcode);
@@ -173,7 +247,7 @@ BatchResponse process_batch(const BatchRequest& request) {
     response.boc_responses.reserve(request.boc_requests.size());
     for (const auto& req : request.boc_requests) {
         DecodeBocResponse resp;
-        resp.json_output = decode_boc(req.boc_base64);
+        resp.json_output = decode_boc_recursive(req.boc_base64);
         response.boc_responses.push_back(std::move(resp));
     }
 

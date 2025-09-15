@@ -46,6 +46,7 @@ struct BatchResponse {
 
 // core functions
 std::string decode_boc(const std::string& boc_base64);
+std::string decode_boc_recursive(const std::string& boc_base64);
 std::string decode_opcode(unsigned int opcode);
 std::string detect_interface(const std::vector<unsigned int>& method_ids);
 

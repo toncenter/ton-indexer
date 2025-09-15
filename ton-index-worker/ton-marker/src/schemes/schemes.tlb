@@ -465,7 +465,7 @@ forward_ton_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell)
 // jetton_transfer
 jetton_transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress
         response_destination:MsgAddress custom_payload:(Maybe ^Cell)
-        forward_ton_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell) 
+        forward_ton_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell)
         = InternalMsgBody0;
 
 // jetton_internal_transfer
@@ -1737,9 +1737,9 @@ tonkeeper_relayer_fee_forward_payload#878da6e3 = ForwardPayload;
 // none_forward_payload#_ any:Any = ForwardPayload;
 
 
-_ _:InternalMsgBody0 = InternalMsgBody;
-_ _:InternalMsgBody1 = InternalMsgBody;
-_ _:InternalMsgBody2 = InternalMsgBody;
-_ _:InternalMsgBody3 = InternalMsgBody;
-_ _:InternalMsgBody4 = InternalMsgBody;
-_ _:InternalMsgBody5 = InternalMsgBody;
+// _ _:InternalMsgBody0 = InternalMsgBody;
+// _ _:InternalMsgBody1 = InternalMsgBody;
+// _ _:InternalMsgBody2 = InternalMsgBody;
+// _ _:InternalMsgBody3 = InternalMsgBody;
+// _ _:InternalMsgBody4 = InternalMsgBody;
+// _ _:InternalMsgBody5 = InternalMsgBody;

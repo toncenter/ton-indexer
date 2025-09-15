@@ -23,7 +23,7 @@ std::string process_cli_boc(const std::string& input_boc) {
     // check if input is base64 (starts with te6cckEB)
     if (input_boc.substr(0, 3) == "te6") {
         // already in base64, use directly
-        auto result = ton_marker::decode_boc(input_boc);
+        auto result = ton_marker::decode_boc_recursive(input_boc);
         return result;
     }
 
@@ -37,7 +37,7 @@ std::string process_cli_boc(const std::string& input_boc) {
     auto boc_data = hex_result.move_as_ok();
     auto base64 = td::base64_encode(boc_data);
     
-    auto result = ton_marker::decode_boc(base64);
+    auto result = ton_marker::decode_boc_recursive(base64);
     return result;
 }
 
