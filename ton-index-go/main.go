@@ -97,6 +97,8 @@ func GetMasterchainInfo(c *fiber.Ctx) error {
 // @param	workchain query int32 false "Block workchain."
 // @param	shard query string false "Block shard id. Must be sent with *workchain*. Example: `8000000000000000`."
 // @param	seqno query int32 false "Block block seqno. Must be sent with *workchain* and *shard*."
+// @param   root_hash query string false "Block root hash."
+// @param   file_hash query string false "Block file hash."
 // @param	mc_seqno query int32 false "Masterchain block seqno"
 // @param start_utime query int32 false "Query blocks with generation UTC timestamp **after** given timestamp." minimum(0)
 // @param end_utime query int32 false "Query blocks with generation UTC timestamp **before** given timestamp." minimum(0)

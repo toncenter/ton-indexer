@@ -858,6 +858,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists blocks_index_2 on blocks (mc_block_seqno);\n"
       "create index if not exists blocks_index_3 on blocks (seqno) where (workchain = '-1'::integer);\n"
       "create index if not exists blocks_index_4 on blocks (start_lt);\n"
+      "create index if not exists blocks_index_5 on blocks (root_hash);\n"
+      "create index if not exists blocks_index_6 on blocks (file_hash);\n"
       "create index if not exists dns_entries_index_3 on dns_entries (dns_wallet, length(domain));\n"
       "create index if not exists dns_entries_index_4 on dns_entries (nft_item_owner, length(domain)) include (domain) where ((nft_item_owner)::text = (dns_wallet)::text);\n"
       "create index if not exists jetton_masters_index_1 on jetton_masters (admin_address, id);\n"

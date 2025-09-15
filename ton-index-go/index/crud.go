@@ -88,6 +88,12 @@ func buildBlocksQuery(
 	if v := blk_req.Seqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("seqno = %d", *v))
 	}
+	if v := blk_req.RootHash; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("root_hash = '%s'", *v))
+	}
+	if v := blk_req.FileHash; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("file_hash = '%s'", *v))
+	}
 	if v := blk_req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("mc_block_seqno = %d", *v))
 	}

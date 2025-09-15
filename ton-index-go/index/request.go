@@ -22,10 +22,12 @@ type RequestSettings struct {
 
 // requests
 type BlockRequest struct {
-	Workchain *int32   `query:"workchain"`
-	Shard     *ShardId `query:"shard"`
-	Seqno     *int32   `query:"seqno"`
-	McSeqno   *int32   `query:"mc_seqno"`
+	Workchain *int32    `query:"workchain"`
+	Shard     *ShardId  `query:"shard"`
+	Seqno     *int32    `query:"seqno"`
+	RootHash  *HashType `query:"root_hash"`
+	FileHash  *HashType `query:"file_hash"`
+	McSeqno   *int32    `query:"mc_seqno"`
 }
 
 type AddressBookRequest struct {
