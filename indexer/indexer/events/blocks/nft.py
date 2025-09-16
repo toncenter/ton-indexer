@@ -333,6 +333,13 @@ class TelegramNftPurchaseBlockMatcher(BlockMatcher):
             data['marketplace'] = 'fragment'
             data['real_prev_owner'] = None
             prev_block = block.previous_block
+            is_mint = False
+            if isinstance(prev_block, CallContractBlock) and prev_block.opcode == 0x299a3e15: # telemint (currently not supported)
+                is_mint = True
+            elif isinstance(prev_block, NftMintBlock):
+                is_mint = True
+            if is_mint:
+                data['is_purchase'] = False
             if (isinstance(prev_block, TonTransferBlock) or
                     (isinstance(prev_block, CallContractBlock) and prev_block.get_message().source is None)):
                 payouts = find_call_contracts(prev_block.next_blocks, AuctionFillUp.opcode)
