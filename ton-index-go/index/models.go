@@ -78,9 +78,9 @@ type AccountState struct {
 	Hash                   HashType          `json:"hash"`
 	Account                *AccountAddress   `json:"-"`
 	Balance                *string           `json:"balance"`
-	BalanceExtraCurrencies map[string]string `json:"extra_currencies"`
+	BalanceExtraCurrencies map[string]string `json:"extra_currencies,omitempty"`
 	AccountStatus          *string           `json:"account_status"`
-	FrozenHash             *HashType         `json:"frozen_hash"`
+	FrozenHash             *HashType         `json:"frozen_hash,omitempty"`
 	DataHash               *HashType         `json:"data_hash"`
 	CodeHash               *HashType         `json:"code_hash"`
 	DataBoc                *string           `json:"data_boc,omitempty"`
@@ -395,8 +395,8 @@ type JettonWallet struct {
 	Owner             AccountAddress            `json:"owner"`
 	Jetton            AccountAddress            `json:"jetton"`
 	LastTransactionLt int64                     `json:"last_transaction_lt,string"`
-	CodeHash          *HashType                 `json:"code_hash"`
-	DataHash          *HashType                 `json:"data_hash"`
+	CodeHash          *HashType                 `json:"code_hash,omitempty"`
+	DataHash          *HashType                 `json:"data_hash,omitempty"`
 	MintlessInfo      *JettonWalletMintlessInfo `json:"mintless_info,omitempty"`
 } // @name JettonWallet
 
