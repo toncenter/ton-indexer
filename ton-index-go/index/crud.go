@@ -3565,13 +3565,23 @@ func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest,
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
-	query := `
-        SELECT nft_item_address, nft_item_owner, domain, dns_next_resolver, dns_wallet, dns_site_adnl, dns_storage_bag_id
-        FROM dns_entries
+	var query string
+	var queryArg interface{}
+	query = `SELECT nft_item_address, nft_item_owner, domain, dns_next_resolver, dns_wallet, dns_site_adnl, dns_storage_bag_id
+        FROM dns_entries`
+	if req.WalletAddress != nil {
+		query += `
         WHERE dns_wallet = $1
 		ORDER BY LENGTH(domain), domain ASC ` + limit_query
+		queryArg = req.WalletAddress
+	} else {
+		query += `
+        WHERE domain = $1
+		ORDER BY LENGTH(domain), domain ASC ` + limit_query
+		queryArg = req.Domain
+	}
 
-	rows, err := conn.Query(ctx, query, req.WalletAddress)
+	rows, err := conn.Query(ctx, query, queryArg)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
