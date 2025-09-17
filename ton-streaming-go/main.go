@@ -715,7 +715,7 @@ var _ Notification = (*JettonsNotification)(nil)
 
 func (n *JettonsNotification) AdjustForClient(client *Client) any {
 	if client.Subscription.InterestedIn(n.Type, []string{n.Jetton.Address.String()}) ||
-		client.Subscription.InterestedIn(n.Type, []string{string(n.Jetton.Owner.String())}) {
+		client.Subscription.InterestedIn(n.Type, []string{n.Jetton.Owner.String()}) {
 		return n
 	}
 	return nil
