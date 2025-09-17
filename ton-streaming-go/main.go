@@ -992,7 +992,7 @@ func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addresses [
 			processedAccountStatesLtsMutex.Lock()
 			cur := processedAccountStatesLts[addr]
 
-			if accountState.LastTransLt != nil && *accountState.LastTransLt > cur {
+			if *accountState.LastTransLt > cur {
 				processedAccountStatesLts[addr] = *accountState.LastTransLt
 				shouldNotify = true
 			}
