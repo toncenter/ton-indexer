@@ -79,9 +79,6 @@ public:
                     has_commited_txs = true;
                 }
             }
-            if (has_commited_txs) {
-                transaction_.publish("new_commited_txs", commited_txs_hashes);
-            }
 
             // insert interfaces
             for (const auto& [addr, interfaces] : trace_.interfaces) {
@@ -91,6 +88,44 @@ public:
                 auto addr_raw = std::to_string(addr.workchain) + ":" + addr.addr.to_hex();
                 transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), addr_raw, buffer.str());
             }
+            
+            for (const auto& [addr, account] : trace_.committed_accounts) {
+                auto account_redis_r = parse_account(account);
+                if (account_redis_r.is_error()) {
+                    promise_.set_error(account_redis_r.move_as_error_prefix("Failed to parse account: "));
+                    stop();
+                    return;
+                }
+                auto account_redis = account_redis_r.move_as_ok();
+                std::stringstream state_buffer;
+                msgpack::pack(state_buffer, account_redis);
+                auto addr_raw = std::to_string(addr.workchain) + ":" + addr.addr.to_hex();
+
+                std::stringstream if_buffer;
+                auto interfaces = trace_.committed_interfaces.find(addr);
+                if (interfaces != trace_.committed_interfaces.end()) {
+                    auto interfaces_redis = parse_interfaces(interfaces->second);
+                    msgpack::pack(if_buffer, interfaces_redis);
+                }
+                
+                static const std::string script = R"(
+                    local cur = redis.call('HGET', KEYS[1], 'lt')
+                    local cur_num = tonumber(cur)
+                    local new_num = tonumber(ARGV[1])
+                    if (not cur_num) or (new_num > cur_num) then
+                        redis.call('HSET', KEYS[1], 'lt', ARGV[1], 'state', ARGV[2], 'interfaces', ARGV[3])
+                    end
+                    redis.call('EXPIRE', KEYS[1], 60)
+                    return 1
+                )";
+                auto key = "acct:" + addr_raw;
+                transaction_.eval(script, {key}, {std::to_string(account.last_trans_lt_), state_buffer.str(), if_buffer.str()});
+            }
+
+            if (has_commited_txs) {
+                transaction_.publish("new_commited_txs", commited_txs_hashes);
+            }
+
             if (trace_.root) {
                 auto it = trace_.emulated_accounts.find(trace_.root->address);
                 if (it != trace_.emulated_accounts.end()) {

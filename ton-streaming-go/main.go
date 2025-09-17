@@ -20,7 +20,9 @@ import (
 	"github.com/gofiber/websocket/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
+	"github.com/vmihailenco/msgpack/v5"
 
+	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 )
@@ -46,6 +48,8 @@ const (
 	PendingTransactions EventType = "pending_transactions"
 	PendingActions      EventType = "pending_actions"
 	TraceInvalidated    EventType = "trace_invalidated"
+	AccountStateChanged EventType = "account_state_change"
+	JettonsChanged      EventType = "jettons_change"
 )
 
 // RateLimitConfig holds rate limiting configuration for a client
@@ -329,7 +333,7 @@ func (manager *ClientManager) Run() {
 }
 
 // fetchAddressBookAndMetadata fetches address book and metadata for a list of addresses
-func fetchAddressBookAndMetadata(ctx context.Context, addresses []string, includeAddressBook bool, includeMetadata bool) (*index.AddressBook, *index.Metadata) {
+func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []string, metadataAddresses []string, includeAddressBook bool, includeMetadata bool) (*index.AddressBook, *index.Metadata) {
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
 
@@ -350,7 +354,7 @@ func fetchAddressBookAndMetadata(ctx context.Context, addresses []string, includ
 	}
 
 	if includeAddressBook {
-		book, err := index.QueryAddressBookImpl(addresses, conn, settings)
+		book, err := index.QueryAddressBookImpl(addrBookAddresses, conn, settings)
 		if err != nil {
 			log.Printf("Error querying address book: %v", err)
 		} else {
@@ -359,7 +363,7 @@ func fetchAddressBookAndMetadata(ctx context.Context, addresses []string, includ
 	}
 
 	if includeMetadata {
-		meta, err := index.QueryMetadataImpl(addresses, conn, settings)
+		meta, err := index.QueryMetadataImpl(metadataAddresses, conn, settings)
 		if err != nil {
 			log.Printf("Error querying metadata: %v", err)
 		} else {
@@ -484,7 +488,7 @@ func SubscribeToClassifiedTraces(ctx context.Context, rdb *redis.Client, manager
 		}
 
 		traceExternalHashNorm := msg.Payload
-		ProcessNewClassifiedTrace(ctx, rdb, traceExternalHashNorm, manager)
+		go ProcessNewClassifiedTrace(ctx, rdb, traceExternalHashNorm, manager)
 	}
 }
 
@@ -562,6 +566,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
 			allAddresses,
+			allAddresses,
 			shouldFetchAddressBook,
 			shouldFetchMetadata,
 		)
@@ -603,7 +608,7 @@ func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientMa
 		}
 
 		traceExternalHashNorm := msg.Payload
-		ProcessNewTrace(ctx, rdb, traceExternalHashNorm, manager)
+		go ProcessNewTrace(ctx, rdb, traceExternalHashNorm, manager)
 	}
 }
 
@@ -682,6 +687,38 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 		AddressBook:           adjustedAddressBook,
 		Metadata:              adjustedMetadata,
 	}
+}
+
+type AccountStateNotification struct {
+	Type    EventType          `json:"type"`
+	Account string             `json:"account"`
+	State   index.AccountState `json:"state"`
+}
+
+var _ Notification = (*AccountStateNotification)(nil)
+
+func (n *AccountStateNotification) AdjustForClient(client *Client) any {
+	if client.Subscription.InterestedIn(n.Type, []string{n.Account}) {
+		return n
+	}
+	return nil
+}
+
+type JettonsNotification struct {
+	Type        EventType          `json:"type"`
+	Jetton      index.JettonWallet `json:"jetton"`
+	AddressBook *index.AddressBook `json:"address_book,omitempty"`
+	Metadata    *index.Metadata    `json:"metadata,omitempty"`
+}
+
+var _ Notification = (*JettonsNotification)(nil)
+
+func (n *JettonsNotification) AdjustForClient(client *Client) any {
+	if client.Subscription.InterestedIn(n.Type, []string{n.Jetton.Address.String()}) ||
+		client.Subscription.InterestedIn(n.Type, []string{n.Jetton.Owner.String()}) {
+		return n
+	}
+	return nil
 }
 
 func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager) {
@@ -769,6 +806,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
 			allAddresses,
+			allAddresses,
 			shouldFetchAddressBook,
 			shouldFetchMetadata,
 		)
@@ -816,7 +854,7 @@ func SubscribeToCommittedTransactions(ctx context.Context, rdb *redis.Client, ma
 			log.Printf("No transaction hashes found in commited txs channel message: %s", msg.Payload)
 			continue
 		}
-		ProcessNewCommitedTxs(ctx, rdb, traceExternalHashNorm, txHashes, manager)
+		go ProcessNewCommitedTxs(ctx, rdb, traceExternalHashNorm, txHashes, manager)
 	}
 }
 
@@ -850,24 +888,25 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 
 	var txs []index.Transaction
 	txs_map := map[index.HashType]int{}
-	{
-		rows := emulatedContext.GetTransactions()
-		for _, row := range rows {
-			if tx, err := index.ScanTransaction(row); err == nil {
-				txs = append(txs, *tx)
-				txs_map[tx.Hash] = len(txs) - 1
-			} else {
-				log.Printf("Error scanning transaction: %v", err)
-			}
+	for _, row := range rows {
+		if tx, err := index.ScanTransaction(row); err == nil {
+			txs = append(txs, *tx)
+			txs_map[tx.Hash] = len(txs) - 1
+		} else {
+			log.Printf("Error scanning transaction: %v", err)
 		}
 	}
 
-	allAddresses := []string{}
+	txsAddresses := []string{}
 	var tx_hashes []string
 	for _, t := range txs {
 		tx_hashes = append(tx_hashes, string(t.Hash))
-		allAddresses = append(allAddresses, string(t.Account))
+		txsAddresses = append(txsAddresses, string(t.Account))
 	}
+
+	go ProcessNewAccountStates(ctx, rdb, txsAddresses, manager)
+
+	allAddresses := txsAddresses
 	if len(tx_hashes) > 0 {
 		rows := emulatedContext.GetMessages(tx_hashes)
 		for _, row := range rows {
@@ -910,6 +949,7 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
 			allAddresses,
+			allAddresses,
 			shouldFetchAddressBook,
 			shouldFetchMetadata,
 		)
@@ -926,6 +966,98 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 		Transactions:          txs,
 		AddressBook:           addressBook,
 		Metadata:              metadata,
+	}
+}
+
+// TODO: cleanup processedAccountStatesLts map periodically to avoid memory leak
+var processedAccountStatesLts = map[string]uint64{}
+var processedAccountStatesLtsMutex sync.RWMutex
+
+func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addresses []string, manager *ClientManager) {
+	for _, addr := range addresses {
+		key := fmt.Sprintf("acct:%s", addr)
+		acctData, err := rdb.HGetAll(ctx, key).Result()
+		if err != nil {
+			log.Printf("Error fetching account state for %s: %v", addr, err)
+			continue
+		}
+		var accountState models.AccountState
+		err = msgpack.Unmarshal([]byte(acctData["state"]), &accountState)
+		if err != nil {
+			log.Printf("Error unmarshalling account state for %s: %v (%s)", addr, err, acctData["state"])
+			continue
+		}
+		if accountState.LastTransLt != nil {
+			shouldNotify := false
+			processedAccountStatesLtsMutex.Lock()
+			cur := processedAccountStatesLts[addr]
+
+			if *accountState.LastTransLt > cur {
+				processedAccountStatesLts[addr] = *accountState.LastTransLt
+				shouldNotify = true
+			}
+			processedAccountStatesLtsMutex.Unlock()
+
+			if !shouldNotify {
+				continue // already processed same or newer LT
+			}
+		}
+
+		manager.broadcast <- &AccountStateNotification{
+			Type:    AccountStateChanged,
+			Account: addr,
+			State:   models.MsgPackAccountStateToIndexAccountState(accountState),
+		}
+
+		interfacesData := acctData["interfaces"]
+		if interfacesData == "" {
+			continue
+		}
+		var addrInterfaces models.AddressInterfaces
+		err = msgpack.Unmarshal([]byte(interfacesData), &addrInterfaces)
+		if err != nil {
+			log.Printf("Error unmarshalling address interfaces for %s: %v (%s)", addr, err, interfacesData)
+			continue
+		}
+
+		var notification *JettonsNotification
+
+		for _, iface := range addrInterfaces.Interfaces {
+			switch val := iface.Value.(type) {
+			case *models.JettonWalletInterface:
+				notification = &JettonsNotification{
+					Type:   JettonsChanged,
+					Jetton: MsgPackJettonWalletToModel(*val, int64(*accountState.LastTransLt)),
+				}
+			}
+		}
+		if notification == nil {
+			continue
+		}
+
+		addrBookAddresses := []string{notification.Jetton.Address.String(), notification.Jetton.Owner.String(), notification.Jetton.Jetton.String()}
+		metadataAddresses := []string{notification.Jetton.Owner.String(), notification.Jetton.Jetton.String()}
+		shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]EventType{JettonsChanged}, addrBookAddresses)
+		if shouldFetchAddressBook || shouldFetchMetadata {
+			notification.AddressBook, notification.Metadata = fetchAddressBookAndMetadata(
+				ctx,
+				addrBookAddresses,
+				metadataAddresses,
+				shouldFetchAddressBook,
+				shouldFetchMetadata,
+			)
+		}
+		manager.broadcast <- notification
+	}
+}
+
+func MsgPackJettonWalletToModel(j models.JettonWalletInterface, lastTransLt int64) index.JettonWallet {
+	return index.JettonWallet{
+		Address:           index.AccountAddress(j.Address),
+		Balance:           j.Balance,
+		Owner:             index.AccountAddress(j.Owner),
+		Jetton:            index.AccountAddress(j.Jetton),
+		LastTransactionLt: lastTransLt,
 	}
 }
 
@@ -967,6 +1099,8 @@ var validEventTypes = map[EventType]struct{}{
 	Actions:             {},
 	PendingTransactions: {},
 	Transactions:        {},
+	AccountStateChanged: {},
+	JettonsChanged:      {},
 }
 
 // ParseRateLimitHeaders extracts rate limiting configuration from headers map
