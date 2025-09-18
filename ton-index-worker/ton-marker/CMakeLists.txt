@@ -4,13 +4,13 @@ cmake_minimum_required(VERSION 3.16)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.cpp ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.h
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/auto
-    COMMAND tlbc 
+    COMMAND $<TARGET_FILE:tlbc>
     -o ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes
     -n schemes
     -z
     ${CMAKE_CURRENT_SOURCE_DIR}/src/schemes/schemes.tlb
     COMMAND ${CMAKE_COMMAND} -E echo "Generated schemes.cpp and schemes.h from TLB"
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/schemes/schemes.tlb
+    DEPENDS tlbc ${CMAKE_CURRENT_SOURCE_DIR}/src/schemes/schemes.tlb
     VERBATIM
 )
 
