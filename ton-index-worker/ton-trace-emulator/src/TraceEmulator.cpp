@@ -250,7 +250,7 @@ void MasterchainBlockEmulator::start_up() {
         for (const auto& shard_state : context_.get_shard_states()) {
             if (ton::shard_contains(shard_state.blkid.shard_full(),
                                     ton::extract_addr_prefix(msg_dest.workchain, msg_dest.addr))) {
-                auto sid = shard_state.blkid.shard;
+                auto sid = block::ShardId(shard_state.blkid);
                 auto it = bucket_idx.find(sid);
                 if (it == bucket_idx.end()) {
                     bucket_idx[sid] = buckets.size();
@@ -280,7 +280,7 @@ void MasterchainBlockEmulator::start_up() {
     ig.add_promise(std::move(ret_promise));
 
     for (auto& b : buckets) {
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), shard = b.blkid.shard, promise = ig.get_promise()]
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), shard = block::ShardId(b.blkid), promise = ig.get_promise()]
                 (td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
             if (R.is_error()) {
                 promise.set_error(R.move_as_error_prefix("failed to emulate shard block: "));
