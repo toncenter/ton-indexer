@@ -3,6 +3,8 @@
 #include "logic.h"
 #include <cstring>
 #include <vector>
+#include <optional>
+#include <string>
 
 namespace {
 // helper to convert string to C-string (returns nullptr for nullopt)
