@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
+# enable PIC for all targets by default
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # generate C++ from TL-B
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.cpp ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.h
