@@ -1,3 +1,7 @@
+[submodule "external/ton"]
+	path = ton-index-worker/external/ton
+	url = https://github.com/dungeon-master-666/ton
+	branch = ton-indexer
 [submodule "external/libpqxx"]
 	path = ton-index-worker/external/libpqxx
 	url = https://github.com/jtv/libpqxx.git
@@ -11,7 +15,3 @@
 [submodule "external/msgpack-c"]
 	path = ton-index-worker/external/msgpack-c
 	url = https://github.com/msgpack/msgpack-c
-[submodule "ton-index-worker/external/ton"]
-	path = ton-index-worker/external/ton
-	url = https://github.com/1ixi1/ton.git
-	branch = tlbc-json
