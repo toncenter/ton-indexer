@@ -42,7 +42,7 @@ services:
   index-api:
     image: toncenter/ton-indexer-api:v1.2.2
     build:
-      context: ton-index-go
+      context: .
       dockerfile: Dockerfile
     depends_on:
       postgres:
