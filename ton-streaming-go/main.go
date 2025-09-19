@@ -1027,7 +1027,7 @@ func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addresses [
 			case *models.JettonWalletInterface:
 				notification = &JettonsNotification{
 					Type:   JettonsChanged,
-					Jetton: MsgPackJettonWalletToModel(*val, int64(*accountState.LastTransLt)),
+					Jetton: MsgPackJettonWalletToModel(*val, int64(*accountState.LastTransLt), models.ConvertHashToIndex(accountState.CodeHash), models.ConvertHashToIndex(accountState.DataHash)),
 				}
 			}
 		}
@@ -1051,13 +1051,15 @@ func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addresses [
 	}
 }
 
-func MsgPackJettonWalletToModel(j models.JettonWalletInterface, lastTransLt int64) index.JettonWallet {
+func MsgPackJettonWalletToModel(j models.JettonWalletInterface, lastTransLt int64, codeHash *index.HashType, dataHash *index.HashType) index.JettonWallet {
 	return index.JettonWallet{
 		Address:           index.AccountAddress(j.Address),
 		Balance:           j.Balance,
 		Owner:             index.AccountAddress(j.Owner),
 		Jetton:            index.AccountAddress(j.Jetton),
 		LastTransactionLt: lastTransLt,
+		CodeHash:          codeHash,
+		DataHash:          dataHash,
 	}
 }
 
