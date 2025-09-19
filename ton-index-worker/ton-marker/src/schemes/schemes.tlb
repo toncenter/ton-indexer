@@ -543,7 +543,7 @@ jetton_change_metadata#cb862902
 bounce#ffffffff payload:Cell = InternalMsgBody1;
 
 // text_comment
-text_comment#00000000 text:Text = InternalMsgBody1;
+text_comment#00000000 text:SnakeString = InternalMsgBody1;
 
 // encrypted_text_comment
 encrypted_text_comment#2167da4b cipher_text:Bytes = InternalMsgBody1;
