@@ -31,6 +31,10 @@ RUN make -j$(nproc) ton-marker-core ton-marker ton-marker-cli
 # build main application ton-index-go
 FROM golang:bookworm AS go-builder
 
+RUN apt-get update -y \
+    && apt install -y dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
+    && rm -rf /var/lib/{apt,dpkg,cache,log}/
+
 RUN go install github.com/swaggo/swag/cmd/swag@latest
 
 ADD ton-index-go/index/ /go/app/index/
@@ -41,7 +45,9 @@ COPY --from=cpp-builder /app/build/ton-marker/libton-marker* /usr/lib/
 RUN cd /go/app && swag init && go build -o ton-index-go ./main.go
 
 FROM ubuntu:jammy
-RUN apt-get update && apt install --yes bash curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt install --yes bash curl dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
+    && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 COPY --from=go-builder /go/app/ton-index-go /usr/local/bin/ton-index-go
 COPY ton-index-go/entrypoint.sh /app/entrypoint.sh
