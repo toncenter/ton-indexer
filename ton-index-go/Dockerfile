@@ -10,17 +10,18 @@ RUN apt-get update -y \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 # building
-COPY external/ /app/external/
-COPY pgton/ /app/pgton/
-COPY celldb-migrate/ /app/celldb-migrate/
-COPY ton-index-clickhouse/ /app/ton-index-clickhouse/
-COPY ton-index-postgres/ /app/ton-index-postgres/
-COPY ton-integrity-checker/ /app/ton-integrity-checker/
-COPY ton-smc-scanner/ /app/ton-smc-scanner/
-COPY ton-trace-emulator/ /app/ton-trace-emulator/
-COPY ton-trace-task-emulator/ /app/ton-trace-task-emulator/
-COPY tondb-scanner/ /app/tondb-scanner/
-COPY CMakeLists.txt /app/
+COPY ton-index-worker/external/ /app/external/
+COPY ton-index-worker/pgton/ /app/pgton/
+COPY ton-index-worker/celldb-migrate/ /app/celldb-migrate/
+COPY ton-index-worker/ton-index-clickhouse/ /app/ton-index-clickhouse/
+COPY ton-index-worker/ton-index-postgres/ /app/ton-index-postgres/
+COPY ton-index-worker/ton-integrity-checker/ /app/ton-integrity-checker/
+COPY ton-index-worker/ton-smc-scanner/ /app/ton-smc-scanner/
+COPY ton-index-worker/ton-trace-emulator/ /app/ton-trace-emulator/
+COPY ton-index-worker/ton-trace-task-emulator/ /app/ton-trace-task-emulator/
+COPY ton-index-worker/tondb-scanner/ /app/tondb-scanner/
+COPY ton-index-worker/ton-marker/ /app/ton-marker/
+COPY ton-index-worker/CMakeLists.txt /app/
 
 WORKDIR /app/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release ..
@@ -32,10 +33,10 @@ FROM golang:bookworm AS go-builder
 
 RUN go install github.com/swaggo/swag/cmd/swag@latest
 
-ADD index/ /go/app/index/
-ADD main.go /go/app/main.go
-ADD go.mod /go/app/go.mod
-ADD go.sum /go/app/go.sum
+ADD ton-index-go/index/ /go/app/index/
+ADD ton-index-go/main.go /go/app/main.go
+ADD ton-index-go/go.mod /go/app/go.mod
+ADD ton-index-go/go.sum /go/app/go.sum
 COPY --from=cpp-builder /app/build/ton-marker/libton-marker* /usr/lib/
 RUN cd /go/app && swag init && go build -o ton-index-go ./main.go
 
@@ -43,6 +44,6 @@ FROM ubuntu:jammy
 RUN apt-get update && apt install --yes bash curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=go-builder /go/app/ton-index-go /usr/local/bin/ton-index-go
-COPY entrypoint.sh /app/entrypoint.sh
+COPY ton-index-go/entrypoint.sh /app/entrypoint.sh
 
 ENTRYPOINT [ "/app/entrypoint.sh" ]
