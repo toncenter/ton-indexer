@@ -869,7 +869,7 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists jetton_wallets_index_3 on jetton_wallets (id);\n"
       "create index if not exists jetton_wallets_index_4 on jetton_wallets (jetton asc, balance desc);\n"
       "create index if not exists jetton_wallets_index_5 on jetton_wallets (owner asc, balance desc);\n"
-      "create index if not exists latest_account_states_index_1 on latest_account_states (balance desc);\n"
+      "create index if not exists latest_account_states_index_1 on latest_account_states (balance desc) include (account);\n"
       "create index if not exists latest_account_states_address_book_index on latest_account_states (account) include (account_friendly, code_hash, account_status);\n"
       "create index if not exists latest_account_states_index_2 on latest_account_states (id);\n"
       "create index if not exists nft_collections_index_1 on nft_collections (owner_address, id);\n"
