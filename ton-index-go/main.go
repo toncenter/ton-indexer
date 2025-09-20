@@ -19,7 +19,6 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/pprof"
 	"github.com/gofiber/fiber/v2/middleware/redirect"
 	"github.com/gofiber/swagger"
-	_ "github.com/toncenter/ton-indexer/ton-index-go/docs"
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
 )
 
@@ -267,9 +266,6 @@ func GetTransactions(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	// if len(txs) == 0 {
-	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
-	// }
 
 	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
 	return c.JSON(txs_resp)
@@ -472,7 +468,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @param only_externals query bool false "Return only external messages."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
-// @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
+// @param sort query string false "Sort transactions by lt. If set to `desc`, you better set `start_lt = 1` to get latest messages." Enums(asc, desc) default(desc)
 // @router			/api/v3/messages [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -668,7 +664,8 @@ func GetWalletStates(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.DNSRecordsResponse
 // @failure 400 {object} index.RequestError
-// @param wallet query string true "Wallet address in any form. DNS records that contain this address in wallet category will be returned."
+// @param wallet query string false "Wallet address in any form. DNS records that contain this address in wallet category will be returned."
+// @param domain query string false "Domain name to search for. DNS records with this exact domain name will be returned."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(100)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router /api/v3/dns/records [get]
@@ -685,8 +682,15 @@ func GetDNSRecords(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if req.WalletAddress == nil || len(*req.WalletAddress) == 0 {
-		return index.IndexError{Code: 422, Message: "wallet address is required"}
+	hasWallet := req.WalletAddress != nil && len(*req.WalletAddress) > 0
+	hasDomain := req.Domain != nil && len(*req.Domain) > 0
+
+	if !hasWallet && !hasDomain {
+		return index.IndexError{Code: 422, Message: "either wallet address or domain is required"}
+	}
+
+	if hasWallet && hasDomain {
+		return index.IndexError{Code: 422, Message: "provide either wallet address or domain, not both"}
 	}
 
 	res, book, err := pool.QueryDNSRecords(lim_req, req, request_settings)

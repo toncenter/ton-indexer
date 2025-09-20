@@ -165,6 +165,7 @@ type PendingActionsRequest struct {
 
 type DNSRecordsRequest struct {
 	WalletAddress *AccountAddress `query:"wallet"`
+	Domain        *string         `query:"domain"`
 }
 
 type MultisigRequest struct {

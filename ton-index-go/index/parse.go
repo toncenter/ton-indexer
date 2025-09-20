@@ -3,7 +3,6 @@ package index
 import (
 	b64 "encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -370,19 +369,14 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			switch *raw.ChangeDNSRecordValueSchema {
 			case "DNSNextResolver":
 				details.Value.DnsNextResolverAddress = raw.ChangeDNSRecordValue
-				break
 			case "DNSAdnlAddress":
 				details.Value.DnsAdnlAddress = raw.ChangeDNSRecordValue
-				break
 			case "DNSSmcAddress":
 				details.Value.DnsSmcAddress = raw.ChangeDNSRecordValue
-				break
 			case "DNSStorageAddress":
 				details.Value.DnsStorageAddress = raw.ChangeDNSRecordValue
-				break
 			case "DNSText":
 				details.Value.DnsStorageAddress = raw.ChangeDNSRecordValue
-				break
 			}
 		}
 		details.Value.Flags = raw.ChangeDNSRecordFlags
@@ -1125,22 +1119,6 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 	return &t, nil
 }
 
-func (mc *MessageContent) TryDecodeBody() error {
-	if mc.Body == nil {
-		return errors.New("empty MessageContent")
-	}
-	if boc, err := b64.StdEncoding.DecodeString(*mc.Body); err == nil {
-		if c, err := cell.FromBOC(boc); err == nil {
-			l := c.BeginParse()
-			if val, err := l.LoadUInt(32); err == nil && val == 0 {
-				str, _ := l.LoadStringSnake()
-				mc.Decoded = &DecodedContent{Type: "text_comment", Comment: str}
-			}
-		}
-	}
-	return nil
-}
-
 func ScanMessageWithContent(row pgx.Row) (*Message, error) {
 	var m Message
 	var body MessageContent
@@ -1151,7 +1129,6 @@ func ScanMessageWithContent(row pgx.Row) (*Message, error) {
 		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash, &m.MsgHashNorm,
 		&m.InMsgTxHash, &m.OutMsgTxHash, &body.Hash, &body.Body, &init_state.Hash, &init_state.Body)
 	if body.Hash != nil {
-		body.TryDecodeBody()
 		m.MessageContent = &body
 	}
 	if init_state.Hash != nil {
@@ -1166,7 +1143,6 @@ func ScanMessageWithContent(row pgx.Row) (*Message, error) {
 func ScanMessageContent(row pgx.Row) (*MessageContent, error) {
 	var mc MessageContent
 	err := row.Scan(&mc.Hash, &mc.Body)
-	mc.TryDecodeBody()
 	if err != nil {
 		return nil, err
 	}

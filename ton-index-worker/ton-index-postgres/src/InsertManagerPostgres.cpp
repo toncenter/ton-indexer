@@ -381,6 +381,10 @@ void InsertBatchPostgres::start_up() {
 }
 
 std::string get_worker_id() {
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 64
+#endif
+
   char hostname[HOST_NAME_MAX];
   if (gethostname(hostname, HOST_NAME_MAX) != 0) {
     throw std::runtime_error("Failed to get hostname");

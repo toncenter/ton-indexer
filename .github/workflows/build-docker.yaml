@@ -54,8 +54,9 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ${{ matrix.image.context }}
-          file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
+          # only for ton-indexer-api we use the root context, others build from subdirectories
+          context: ${{ matrix.image.image-name == 'ton-indexer-api' && '.' || matrix.image.context }}
+          file: ${{ matrix.image.context }}/Dockerfile
           platforms: linux/${{ matrix.arch.platform }}
           push: true
           tags: |
