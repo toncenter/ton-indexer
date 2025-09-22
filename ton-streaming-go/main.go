@@ -1540,13 +1540,16 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					cnv, err := convertAddress(a)
 					if err != nil {
 						validationError = err
-						continue
+						break
 					}
 					for _, t := range et {
 						if _, ok := validEventTypes[t]; !ok {
 							validationError = fmt.Errorf("invalid event type: %s", t)
-							continue
+							break
 						}
+					}
+					if validationError != nil {
+						break
 					}
 					addrMap[cnv] = et
 				}
