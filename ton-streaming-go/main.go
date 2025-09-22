@@ -1509,6 +1509,9 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 							break
 						}
 					}
+					if validationError != nil {
+						break
+					}
 					addrMap[cnv] = req.Types
 				}
 				if validationError != nil {
