@@ -1331,7 +1331,6 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			LimitingKey: limitingKey,
 			Connected:   true,
 			Subscription: Subscription{
-				SubscribedAddresses:  make(AddressSubs),
 				IncludeAddressBook:   req.IncludeAddressBook != nil && *req.IncludeAddressBook,
 				IncludeMetadata:      req.IncludeMetadata != nil && *req.IncludeMetadata,
 				ActionTypes:          req.ActionTypes,
@@ -1347,6 +1346,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				}
 			},
 		}
+		client.Subscription.Add(addrMap)
 		manager.register <- client
 
 		// 3) SSE plumbing
