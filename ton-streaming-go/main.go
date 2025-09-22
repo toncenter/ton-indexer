@@ -221,8 +221,7 @@ type Envelope struct {
 	Id        *string   `json:"id"`
 	Operation Operation `json:"operation"`
 	// Keep the rest raw so we can decode per-op without ambiguity:
-	// (For WS you’ll have the entire message; for SSE initial request you can decode a specific struct.)
-	// For WS: decode once into Envelope, then unmarshal again into op-specific struct.
+	// unmarshal once into Envelope, then unmarshal again into op-specific struct.
 }
 
 // subscribe (merge) — adds event types to addresses (existing ones preserved)
