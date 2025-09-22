@@ -1257,7 +1257,7 @@ func sendWSJSONErr(c *websocket.Conn, id *string, err error) {
 }
 
 // checkAddressLimit checks if adding new addresses would exceed the limit
-func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimiter) error {
+func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimiter, toOverwrite bool) error {
 	if client.LimitingKey == "" {
 		return nil // No rate limiting
 	}
@@ -1268,6 +1268,9 @@ func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimite
 	}
 
 	currentCount := len(client.Subscription.SubscribedAddresses)
+	if toOverwrite {
+		currentCount = 0 // Overwriting, so current count is 0
+	}
 	if currentCount+newAddresses > maxAddresses {
 		return fmt.Errorf("address limit exceeded: current %d + new %d > max %d",
 			currentCount, newAddresses, maxAddresses)
@@ -1515,7 +1518,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 
 				// Check address limit
 				client.mu.Lock()
-				err = checkAddressLimit(client, len(req.Addresses), manager.rateLimiter)
+				err = checkAddressLimit(client, len(addrMap), manager.rateLimiter, false)
 				if err != nil {
 					client.mu.Unlock()
 					sendWSJSONErr(c, env.Id, err)
@@ -1560,7 +1563,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 
 				// Rate-limit against the *new* snapshot size
 				client.mu.Lock()
-				if err := checkAddressLimit(client, len(addrMap), manager.rateLimiter); err != nil {
+				if err := checkAddressLimit(client, len(addrMap), manager.rateLimiter, true); err != nil {
 					client.mu.Unlock()
 					sendWSJSONErr(c, env.Id, err)
 					continue
