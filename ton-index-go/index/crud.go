@@ -1800,7 +1800,11 @@ func queryAccountStateFullImpl(query string, conn *pgxpool.Conn, settings Reques
 		if err := MarkAccountStates(acsts); err != nil {
 			methodIds := make([]string, len(acsts))
 			for i, t := range acsts {
-				methodIds[i] = strings.Join(strings.Fields(fmt.Sprint(*t.ContractMethods)), ",")
+				if t.ContractMethods != nil {
+					methodIds[i] = strings.Join(strings.Fields(fmt.Sprint(*t.ContractMethods)), ",")
+				} else {
+					methodIds[i] = "nil"
+				}
 			}
 			log.Printf("Error marking account states with method ids %v: %v", methodIds, err)
 		}
