@@ -19,6 +19,7 @@ COPY ton-smc-scanner/ /app/ton-smc-scanner/
 COPY ton-trace-emulator/ /app/ton-trace-emulator/
 COPY ton-trace-task-emulator/ /app/ton-trace-task-emulator/
 COPY tondb-scanner/ /app/tondb-scanner/
+COPY ton-marker/ /app/ton-marker/
 COPY CMakeLists.txt /app/
 
 WORKDIR /app/build
