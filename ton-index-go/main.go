@@ -19,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/pprof"
 	"github.com/gofiber/fiber/v2/middleware/redirect"
 	"github.com/gofiber/swagger"
+	_ "github.com/toncenter/ton-indexer/ton-index-go/docs"
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
 )
 
