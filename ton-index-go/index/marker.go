@@ -334,8 +334,17 @@ func markWithRefs(refs *messagesRefs) error {
 				return fmt.Errorf("failed to decode message body: %w", err)
 			}
 			for msgType, msgData := range tmpResult {
+				// there's only one key in tmpResult map
+				if msgType == "text_comment" {
+					// back compatibility with scheme for text comment
+					if data, ok := msgData.(map[string]interface{}); ok {
+						if text, ok := data["text"].(string); ok {
+							*ref = &DecodedContent{Type: msgType, Comment: text}
+							break
+						}
+					}
+				}
 				*ref = &DecodedContent{Type: msgType, Data: msgData}
-				// there's only one key in the map
 				break
 			}
 		}
