@@ -38,31 +38,39 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 		return nil, nil, nil, errors.New("ton-marker library is not initialized")
 	}
 	// allocate memory for opcodes array
-	opcodesPtr := C.malloc(C.size_t(len(opcodesList) * int(unsafe.Sizeof(C.uint(0)))))
-	if opcodesPtr == nil {
-		panic("Failed to allocate memory for opcodes")
-	}
-	defer C.free(opcodesPtr)
+	var opcodesPtr unsafe.Pointer
+	if len(opcodesList) > 0 {
+		opcodesPtr = C.malloc(C.size_t(len(opcodesList) * int(unsafe.Sizeof(C.uint(0)))))
+		if opcodesPtr == nil {
+			panic("Failed to allocate memory for opcodes")
+		}
+		defer C.free(opcodesPtr)
 
-	// copy opcodes
-	opcodesSlice := unsafe.Slice((*C.uint)(opcodesPtr), len(opcodesList))
-	for i, op := range opcodesList {
-		opcodesSlice[i] = C.uint(op)
+		// copy opcodes
+		opcodesSlice := unsafe.Slice((*C.uint)(opcodesPtr), len(opcodesList))
+		for i, op := range opcodesList {
+			opcodesSlice[i] = C.uint(op)
+		}
 	}
 
 	// allocate memory for boc strings and create array of pointers
 	bocStrPtrs := make([]*C.char, len(bocBase64List))
-	bocListPtr := C.malloc(C.size_t(len(bocBase64List) * int(unsafe.Sizeof(uintptr(0)))))
-	if bocListPtr == nil {
-		panic("Failed to allocate memory for boc list")
+	var bocListPtr unsafe.Pointer
+	if len(bocBase64List) > 0 {
+		bocListPtr = C.malloc(C.size_t(len(bocBase64List) * int(unsafe.Sizeof(uintptr(0)))))
+		if bocListPtr == nil {
+			panic("Failed to allocate memory for boc list")
+		}
+		defer C.free(bocListPtr)
 	}
-	defer C.free(bocListPtr)
 
 	// convert strings and set up pointers
-	bocPtrSlice := unsafe.Slice((**C.char)(bocListPtr), len(bocBase64List))
-	for i, boc := range bocBase64List {
-		bocStrPtrs[i] = C.CString(boc)
-		bocPtrSlice[i] = bocStrPtrs[i]
+	if len(bocBase64List) > 0 {
+		bocPtrSlice := unsafe.Slice((**C.char)(bocListPtr), len(bocBase64List))
+		for i, boc := range bocBase64List {
+			bocStrPtrs[i] = C.CString(boc)
+			bocPtrSlice[i] = bocStrPtrs[i]
+		}
 	}
 	// run cleanup of strings after return
 	defer func() {
@@ -72,40 +80,50 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 	}()
 
 	// allocate memory for method ids arrays
-	methodIdsArrayPtr := C.malloc(C.size_t(len(methodIdsList) * int(unsafe.Sizeof(uintptr(0)))))
-	if methodIdsArrayPtr == nil {
-		panic("Failed to allocate memory for method ids array")
-	}
-	defer C.free(methodIdsArrayPtr)
+	var methodIdsArrayPtr unsafe.Pointer
+	var methodCountsPtr unsafe.Pointer
+	var methodIdsSlice []*C.uint
+	var methodCountsSlice []C.int
 
-	methodCountsPtr := C.malloc(C.size_t(len(methodIdsList) * int(unsafe.Sizeof(C.int(0)))))
-	if methodCountsPtr == nil {
-		panic("Failed to allocate memory for method counts")
+	if len(methodIdsList) > 0 {
+		methodIdsArrayPtr = C.malloc(C.size_t(len(methodIdsList) * int(unsafe.Sizeof(uintptr(0)))))
+		if methodIdsArrayPtr == nil {
+			panic("Failed to allocate memory for method ids array")
+		}
+		defer C.free(methodIdsArrayPtr)
+
+		methodCountsPtr = C.malloc(C.size_t(len(methodIdsList) * int(unsafe.Sizeof(C.int(0)))))
+		if methodCountsPtr == nil {
+			panic("Failed to allocate memory for method counts")
+		}
+		defer C.free(methodCountsPtr)
+
+		methodIdsSlice = unsafe.Slice((**C.uint)(methodIdsArrayPtr), len(methodIdsList))
+		methodCountsSlice = unsafe.Slice((*C.int)(methodCountsPtr), len(methodIdsList))
 	}
-	defer C.free(methodCountsPtr)
 
 	// allocate and fill method ids arrays
 	methodIdsPtrs := make([]unsafe.Pointer, len(methodIdsList))
-	methodIdsSlice := unsafe.Slice((**C.uint)(methodIdsArrayPtr), len(methodIdsList))
-	methodCountsSlice := unsafe.Slice((*C.int)(methodCountsPtr), len(methodIdsList))
 
-	for i, methods := range methodIdsList {
-		// allocate memory for this method ids array
-		methodIdsPtr := C.malloc(C.size_t(len(methods) * int(unsafe.Sizeof(C.uint(0)))))
-		if methodIdsPtr == nil {
-			panic("Failed to allocate memory for method ids")
+	if len(methodIdsList) > 0 {
+		for i, methods := range methodIdsList {
+			// allocate memory for this method ids array
+			methodIdsPtr := C.malloc(C.size_t(len(methods) * int(unsafe.Sizeof(C.uint(0)))))
+			if methodIdsPtr == nil {
+				panic("Failed to allocate memory for method ids")
+			}
+			methodIdsPtrs[i] = methodIdsPtr // save for cleanup
+
+			// copy method ids
+			methodsSlice := unsafe.Slice((*C.uint)(methodIdsPtr), len(methods))
+			for j, id := range methods {
+				methodsSlice[j] = C.uint(id)
+			}
+
+			// set up pointers and counts
+			methodIdsSlice[i] = (*C.uint)(methodIdsPtr)
+			methodCountsSlice[i] = C.int(len(methods))
 		}
-		methodIdsPtrs[i] = methodIdsPtr // save for cleanup
-
-		// copy method ids
-		methodsSlice := unsafe.Slice((*C.uint)(methodIdsPtr), len(methods))
-		for j, id := range methods {
-			methodsSlice[j] = C.uint(id)
-		}
-
-		// set up pointers and counts
-		methodIdsSlice[i] = (*C.uint)(methodIdsPtr)
-		methodCountsSlice[i] = C.int(len(methods))
 	}
 	// defer cleanup of method ids arrays
 	defer func() {
