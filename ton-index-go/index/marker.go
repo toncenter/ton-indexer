@@ -1,7 +1,7 @@
 package index
 
 /*
-#cgo CXXFLAGS: -I${SRCDIR}/../../ton-index-worker/ton-marker/src
+#cgo CPPFLAGS: -I${SRCDIR}/../../ton-index-worker/ton-marker/src
 #cgo LDFLAGS: -L${SRCDIR}/../../build/ton-index-worker/ton-marker -lton-marker-core -lton-marker -Wl,-rpath,${SRCDIR}/../../build/ton-index-worker/ton-marker
 
 #include "wrapper.h"
