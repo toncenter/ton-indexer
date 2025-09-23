@@ -340,6 +340,10 @@ func MarkAccountStates(states []AccountStateFull) error {
 		return err
 	}
 	for i := range states {
+		if recognizedInterfaces[i] == "" {
+			states[i].Interfaces = &[]string{}
+			continue
+		}
 		interfaces := strings.Split(recognizedInterfaces[i], ",")
 		states[i].Interfaces = &interfaces
 	}
