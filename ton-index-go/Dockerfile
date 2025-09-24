@@ -25,7 +25,7 @@ COPY ton-index-worker/CMakeLists.txt /app/
 
 WORKDIR /app/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release ..
-RUN make -j$(nproc) ton-marker-core ton-marker ton-marker-cli
+RUN make -j$(nproc) ton-marker-core ton-marker
 
 
 # build main application ton-index-go
@@ -42,6 +42,7 @@ ADD ton-index-go/main.go /go/app/main.go
 ADD ton-index-go/go.mod /go/app/go.mod
 ADD ton-index-go/go.sum /go/app/go.sum
 COPY --from=cpp-builder /app/build/ton-marker/libton-marker* /usr/lib/
+COPY --from=cpp-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
 RUN cd /go/app && swag init && go build -o ton-index-go ./main.go
 
 FROM ubuntu:jammy
