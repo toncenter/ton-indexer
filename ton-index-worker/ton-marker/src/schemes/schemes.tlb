@@ -195,6 +195,8 @@ bemo_return_unstake_request#38633538
 
 // bidask.xml
 
+// TODO checkout all their schemes with docs
+
 // bidask_swap
 bidask_swap#f2ef6c1b query_id:uint64 native_amount:Coins to_address:MsgAddress slippage:(Either Coins uint256) exact_out:Coins
         ref_address:MsgAddress additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
@@ -226,9 +228,10 @@ bidask_internal_swap#66210c65 query_id:uint64 to_address:MsgAddress order:Bool i
 bidask_internal_continue_swap#59699475 query_id:uint64 to_address:MsgAddress order:Bool is_x:Bool amount_in:Coins amount_out:Coins exact_out:Coins 
         slippage:(Either Coins uint256) ref_cell:(Maybe ^Cell) additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
-// // bidask_internal_provide TODO
-// bidask_internal_provide#d1b02ea5 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) _:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
-//         dex_payload:^[first_bin:int32 liquidity_dict:(HashmapE 32 int32) current_bin:int32 remaining:Cell]  = InternalMsgBody0;
+// bidask_internal_provide
+_ first_bin:int32 liquidity_dict:(HashmapE 32 int32) current_bin:int32 remaining:Cell = BidaskDexPayload;
+bidask_internal_provide#d1b02ea5 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) _:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
+        dex_payload:^BidaskDexPayload  = InternalMsgBody0;
 
 // bidask_internal_continue_provide
 bidask_internal_continue_provide#0c09445a query_id:uint64 amount_x:Coins amount_y:Coins excess_x:Coins excess_y:Coins user_address:MsgAddress
@@ -379,11 +382,11 @@ dedust_deposit_liquidity_forward_payload#40e108d6 pool_params:DedustPoolParams m
 // dns_balance_release
 dns_balance_release#4ed14b65 query_id:uint64 = InternalMsgBody0;
 
-// // delete_dns_record TODO
-// delete_dns_record#4eb1f0f9 query_id:uint64 key:bits256 = InternalMsgBody0;
-
 // change_dns_record
 change_dns_record#4eb1f0f9 query_id:uint64 key:bits256 value:^DNSRecord = InternalMsgBody0;
+
+// delete_dns_record will match if there were no value:^DNSRecord above
+delete_dns_record#4eb1f0f9 query_id:uint64 key:bits256 = InternalMsgBody1;
 
 // process_governance_decision
 process_governance_decision#44beae41 query_id:uint64 = InternalMsgBody0;
@@ -581,11 +584,11 @@ encrypted_text_comment_forward_payload#2167da4b cipher_text:Bytes = ForwardPaylo
 
 
 
-// liquid_stacking.xml
+// liquid_stacking.xml FIXED
 
-// // Types TODO
-// data#_ controller_id:uint32 validator:MsgAddress pool:MsgAddress governor:MsgAddress
-// ^[approver:MsgAddress halter:MsgAddress] = TonstakersControllerData;
+// Types
+_ approver:MsgAddress halter:MsgAddress = ApproverHalter;
+data#_ controller_id:uint32 validator:MsgAddress pool:MsgAddress governor:MsgAddress _:^ApproverHalter = TonstakersControllerData;
 
 // tonstake_controller_recover_stake
 tonstake_controller_recover_stake#eb373a05 query_id:uint64 = InternalMsgBody1;
@@ -612,8 +615,8 @@ tonstake_controller_return_unused_loan#ed7378a6 query_id:uint64 = InternalMsgBod
 // tonstake_controller_return_available_funds
 tonstake_controller_return_available_funds#55c26cd5 query_id:uint64 = InternalMsgBody1;
 
-// // tonstake_pool_request_loan TODO
-// tonstake_pool_request_loan#e642c965 query_id:uint64 min_loan:Coins max_loan:Coins max_interest:uint24 controller_data:^TonstakersControllerData= InternalMsgBody1;
+// tonstake_pool_request_loan
+tonstake_pool_request_loan#e642c965 query_id:uint64 min_loan:Coins max_loan:Coins max_interest:uint24 controller_data:^TonstakersControllerData = InternalMsgBody1;
 
 // tonstake_pool_loan_repayment
 tonstake_pool_loan_repayment#dfdca27b query_id:uint64 = InternalMsgBody1;
@@ -709,11 +712,12 @@ megaton_swap#7362d09c account_addr:MsgAddressInt
         in_token_addr:MsgAddressInt in_amount:Coins
         ^[ out_token_addr:MsgAddressInt out_amount:Coins ] = ExternalMsgBody;
 
-// // megaton_update_mining_params TODO
-// megaton_update_mining_params#56a8e920 pool_addr:MsgAddressInt
-//         last_mined:uint256 last_index:uint256
-//         ^[ last_mined:uint256 last_index:uint256] = ExternalMsgBody;
-
+// megaton_update_mining_params
+_ last_mined:uint256 last_index:uint256 = MegatonUpdateMiningParams;
+megaton_update_mining_params#56a8e920 pool_addr:MsgAddressInt
+        last_mined:uint256 last_index:uint256
+        _:^MegatonUpdateMiningParams
+         = ExternalMsgBody;
 
 
 // mooncx.xml
@@ -1127,9 +1131,9 @@ storm_change_settings#edcd36a6 redirect_addr:MsgAddress
 // storm_pay_funding
 storm_pay_funding#b652c441 oracle_ref:^OracleData = InternalMsgBody3;
 
-// // storm_vamm_init TODO
-// storm_vamm_init#29c102d1 redirect_addr:MsgAddress 
-//         code:^Cell data:^Cell = InternalMsgBody3;
+// storm_vamm_init
+storm_vamm_init#29c102d1 redirect_addr:MsgAddress 
+        code:^Cell data:^Cell = InternalMsgBody2;
 
 // storm_mint_referral
 storm_mint_referral#cb4ddc3c nft_owner:MsgAddress ref_type:uint2
@@ -1470,48 +1474,47 @@ tegro_add_liquidity_forward_payload#287e167a amount_a:(VarUInteger 16) abount_b:
 tegro_jetton_swap_forward_payload#01fb7a25 extract:Bool max_in:(VarUInteger 16) min_out:(VarUInteger 16) destination:MsgAddress error_destination:MsgAddress payload:(Maybe ^Cell) = ForwardPayload;
 
 
-// telegram.xml
+// telegram.xml FIXED
 
-// Types
-nft_royalty_params$_ numerator:uint16 denominator:uint16 destination:MsgAddress = NftRoyaltyParams;
-teleitem_auction_config$_ beneficiar_address:MsgAddress initial_min_bid:Grams max_bid:Grams min_bid_step:uint8
-min_extend_time:uint32 duration:uint32 = TeleitemAuctionConfig;
-// TODO
-// telemint_data$_ touched:Bool subwallet_id:uint32 public_key:bits256 collection_content:^Cell nft_item_code:^Cell
-// royalty_params:^NftRoyaltyParams = TelemintData;
-// telemint_unsigned_deploy$_ subwallet_id:uint32 valid_since:uint32 valid_till:uint32 username:FixedLengthText
-// content:^Cell auction_config:^TeleitemAuctionConfig royalty_params:(Maybe ^NftRoyaltyParams) =
-// TelemintUnsignedDeploy;
-// telemint_restrictions$_ force_sender_address:(Maybe MsgAddress) rewrite_sender_address:(Maybe MsgAddress) =
-// TelemintRestrictions;
-// telemint_unsigned_deploy_v2$_ subwallet_id:uint32 valid_since:uint32 valid_till:uint32
-// token_name:FixedLengthText
-// content:^Cell auction_config:^TeleitemAuctionConfig royalty_params:(Maybe ^NftRoyaltyParams) restrictions:(Maybe
-// ^TelemintRestrictions) = TelemintUnsignedDeployV2;
-// telemint_token_info$_ name:FixedLengthText domain:FixedLengthText = TelemintTokenInfo;
+teleitem_bid_info#38127de1 bid:Grams bid_ts:uint32 = InternalMsgBody5;
+teleitem_last_bid bidder_address:MsgAddressInt bid:Grams bid_ts:uint32 = TeleitemLastBid;
+teleitem_auction_state$_ last_bid:(Maybe ^TeleitemLastBid) min_bid:Grams end_time:uint32 = TeleitemAuctionState;
+teleitem_auction_config$_ beneficiary_address:MsgAddressInt initial_min_bid:Grams max_bid:Grams min_bid_step:uint8 min_extend_time:uint32 duration:uint32 = TeleitemAuctionConfig;
+teleitem_auction$_ state:^TeleitemAuctionState config:^TeleitemAuctionConfig = TeleitemAuction;
 
-// // telemint_deploy TODO
-// telemint_deploy#4637289a sig:bits512 msg:TelemintUnsignedDeploy = InternalMsgBody5;
+telemint_text$_ len:(## 8) text:(bits (len * 8)) = TelemintText;
+telemint_token_info$_ name:TelemintText domain:TelemintText = TelemintTokenInfo;
 
-// // telemint_deploy_v2 TODO
-// telemint_deploy_v2#4637289b sig:bits512 msg:TelemintUnsignedDeployV2 = InternalMsgBody5;
-
-// // teleitem_deploy TODO
-// teleitem_deploy#299a3e15 sender_address:MsgAddress bid:Grams token_info:^TelemintTokenInfo nft_content:^Cell
-//         auction_config:^TeleitemAuctionConfig royalty_params:^NftRoyaltyParams = InternalMsgBody5;
-
-// teleitem_start_auction
-teleitem_start_auction#487a8e81 query_id:int64 auction_config:^TeleitemAuctionConfig = InternalMsgBody5;
-
-// teleitem_cancel_auction
-teleitem_cancel_auction#371638ae query_id:int64 = InternalMsgBody5;
-
-// teleitem_ok
+teleitem_return_bid#a43227e1 query_id:int64 = InternalMsgBody5;
 teleitem_ok#a37a0983 query_id:int64 = InternalMsgBody5;
 
-// teleitem_return_bid
-teleitem_return_bid#a43227e1 cur_lt:int64 = InternalMsgBody5;
+// teleitem_cmd_nft$_ _:NftCmd = InternalMsgBody5;
+nft_royalty_params#_ numerator:uint16 denominator:uint16 destination:MsgAddress = NftRoyaltyParams;
 
+teleitem_msg_deploy#299a3e15 sender_address:MsgAddressInt bid:Grams token_info:^TelemintTokenInfo nft_content:^Cell
+  auction_config:^TeleitemAuctionConfig royalty_params:^NftRoyaltyParams = InternalMsgBody5;
+teleitem_msg_deploy_head#299a3e15 sender_address:MsgAddressInt bid:Grams = InternalMsgBody6;
+teleitem_msg_start_auction#487a8e81 query_id:int64 auction_config:^TeleitemAuctionConfig = InternalMsgBody5;
+teleitem_msg_cancel_auction#371638ae query_id:int64 = InternalMsgBody5;
+
+teleitem_config$_ item_index:bits256 collection_address:MsgAddressInt = TeleitemConfig;
+teleitem_content$_ nft_content:^Cell dns:DNS_RecordSet token_info:^TelemintTokenInfo = TeleitemContent;
+teleitem_state$_ owner_address:MsgAddressInt content:^TeleitemContent
+  auction:(Maybe ^TeleitemAuction) royalty_params:^NftRoyaltyParams = TeleitemState;
+
+teleitem_data$_ config:^TeleitemConfig state:(Maybe ^TeleitemState) = TeleitemData;
+
+telemint_data$_ touched:Bool subwallet_id:uint32 public_key:bits256 collection_content:^Cell nft_item_code:^Cell
+  full_domain:^TelemintText royalty_params:^NftRoyaltyParams = TelemintData;
+
+telemint_unsigned_deploy$_ subwallet_id:uint32 valid_since:uint32 valid_till:uint32 token_name:TelemintText
+  content:^Cell auction_config:^TeleitemAuctionConfig royalty_params:(Maybe ^NftRoyaltyParams) = TelemintUnsignedDeploy;
+telemint_msg_deploy#4637289a  sig:bits512 msg:TelemintUnsignedDeploy = InternalMsgBody5;
+
+telemint_restrictions$_ force_sender_address:(Maybe MsgAddressInt) rewrite_sender_address:(Maybe MsgAddressInt) = TelemintRestrictions;
+telemint_unsigned_deploy_v2$_ subwallet_id:uint32 valid_since:uint32 valid_till:uint32 token_name:TelemintText
+  content:^Cell auction_config:^TeleitemAuctionConfig royalty_params:(Maybe ^NftRoyaltyParams) restrictions:(Maybe ^TelemintRestrictions) = TelemintUnsignedDeployV2;
+telemint_msg_deploy_v2#4637289b  sig:bits512 msg:TelemintUnsignedDeployV2 = InternalMsgBody5;
 
 
 // tonco.xml FIXED
@@ -1558,7 +1561,7 @@ tonco_router_pay_to_exit_code_201#a1daa96d query_id:uint64 reciever0:MsgAddress
         coinsinfo_cell:(Maybe ^ToncoCoinsInfoCell)
         indexer_burn_info_cell:(Maybe ^ToncoIndexerBurnInfoCell) = InternalMsgBody5;
 
-// tonkeeper_2fa.xml
+// tonkeeper_2fa.xml FIXED
 
 // Types
 certificate_data$_ valid_until:uint64 pubkey:bits256 = CertificateData2Fa;
@@ -1568,22 +1571,22 @@ remove_extension#9d8084d6 seqno:uint32 valid_until:uint64 = Payload2Fa;
 delegation#23d9c15c seqno:uint32 valid_until:uint64 new_state_init:^Cell forward_amount:Coins = Payload2Fa;
 cancel_delegation#de82b501 seqno:uint32 valid_until:uint64 = Payload2Fa;
 
-// // tonkeeper_2fa_signed TODO
-// tonkeeper_2fa_signed#53684037
-//         ref_with_certificate:^Certificate2Fa
-//         ref_with_seed_signature:^[seed_signature:bits512]
-//         payload:Payload2Fa
-//         certificate_signature:bits512
-//         = InternalMsgBody5;
+// tonkeeper_2fa_signed
+_ seed_signature:bits512 = SeedSignature;
+tonkeeper_2fa_signed#53684037
+        ref_with_certificate:^Certificate2Fa
+        ref_seed_signature:^SeedSignature
+        payload:Payload2Fa
+        certificate_signature:bits512
+        = InternalMsgBody5;
 
-// // tonkeeper_2fa_signed_external TODO
-// signed_2fa_external$_
-//         ref_with_certificate:^Certificate2Fa
-//         ref_with_seed_signature:^[seed_signature:bits512]
-//         payload:Payload2Fa
-//         certificate_signature:bits512
-//         = ExternalMsgBody;
-
+// tonkeeper_2fa_signed_external
+signed_2fa_external$_
+        ref_with_certificate:^Certificate2Fa
+        ref_seed_signature:^SeedSignature
+        payload:Payload2Fa
+        certificate_signature:bits512
+        = ExternalMsgBody;
 
 
 // tonvalidators.xml
