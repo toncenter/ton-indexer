@@ -149,17 +149,21 @@ const std::vector<Interface> g_interfaces = {
         Interface::calc_method_id("get_order_data")
     }},
 
-    {"nft_sale_v1", {
+    {"nft_sale", { // FIXME: temporary
         Interface::calc_method_id("get_sale_data")
     }},
 
-    {"nft_sale_v2", {
-        Interface::calc_method_id("get_sale_data")
-    }},
+    // {"nft_sale_v1", {
+    //     Interface::calc_method_id("get_sale_data")
+    // }},
 
-    {"nft_auction_v1", {
-        Interface::calc_method_id("get_sale_data")
-    }},
+    // {"nft_sale_v2", {
+    //     Interface::calc_method_id("get_sale_data")
+    // }},
+
+    // {"nft_auction_v1", {
+    //     Interface::calc_method_id("get_sale_data")
+    // }},
 
     {"nft_sale_getgems_v4", {
         Interface::calc_method_id("get_fix_price_data_v4")
@@ -200,9 +204,9 @@ const std::vector<Interface> g_interfaces = {
         Interface::calc_method_id("get_lp_account_address")
     }},
 
-    {"stonfi_router", {
-        Interface::calc_method_id("get_router_data")
-    }},
+    // {"stonfi_router", {
+    //     Interface::calc_method_id("get_router_data")
+    // }},
 
     {"stonfi_router_v2", {
         Interface::calc_method_id("get_vault_address"),
@@ -215,9 +219,9 @@ const std::vector<Interface> g_interfaces = {
         Interface::calc_method_id("get_lp_account_data")
     }},
 
-    {"stonfi_vault_v2", {
-        Interface::calc_method_id("get_vault_data")
-    }},
+    // {"stonfi_vault_v2", {
+    //     Interface::calc_method_id("get_vault_data")
+    // }},
 
     {"storage_provider", {
         Interface::calc_method_id("get_wallet_params"),
@@ -364,40 +368,40 @@ const std::vector<Interface> g_interfaces = {
         Interface::calc_method_id("list_votes")
     }},
 
-    {"wallet_v1r2", {
-        Interface::calc_method_id("seqno")
-    }},
+    // {"wallet_v1r2", {
+    //     Interface::calc_method_id("seqno")
+    // }},
 
-    {"wallet_v1r3", {
-        Interface::calc_method_id("seqno"),
-        Interface::calc_method_id("get_public_key")
-    }},
+    // {"wallet_v1r3", {
+    //     Interface::calc_method_id("seqno"),
+    //     Interface::calc_method_id("get_public_key")
+    // }},
 
-    {"wallet_v2r1", {
-        Interface::calc_method_id("seqno")
-    }},
+    // {"wallet_v2r1", {
+    //     Interface::calc_method_id("seqno")
+    // }},
 
-    {"wallet_v2r2", {
-        Interface::calc_method_id("seqno"),
-        Interface::calc_method_id("get_public_key")
-    }},
+    // {"wallet_v2r2", {
+    //     Interface::calc_method_id("seqno"),
+    //     Interface::calc_method_id("get_public_key")
+    // }},
 
-    {"wallet_v3r1", {
-        Interface::calc_method_id("seqno")
-    }},
+    // {"wallet_v3r1", {
+    //     Interface::calc_method_id("seqno")
+    // }},
 
-    {"wallet_v3r2", {
-        Interface::calc_method_id("get_public_key"),
-        Interface::calc_method_id("seqno")
-    }},
+    // {"wallet_v3r2", {
+    //     Interface::calc_method_id("get_public_key"),
+    //     Interface::calc_method_id("seqno")
+    // }},
 
-    {"wallet_v4r1", {
-        Interface::calc_method_id("get_plugin_list"),
-        Interface::calc_method_id("is_plugin_installed"),
-        Interface::calc_method_id("get_public_key"),
-        Interface::calc_method_id("seqno"),
-        Interface::calc_method_id("get_subwallet_id")
-    }},
+    // {"wallet_v4r1", {
+    //     Interface::calc_method_id("get_plugin_list"),
+    //     Interface::calc_method_id("is_plugin_installed"),
+    //     Interface::calc_method_id("get_public_key"),
+    //     Interface::calc_method_id("seqno"),
+    //     Interface::calc_method_id("get_subwallet_id")
+    // }},
 
     {"wallet_v4r2", {
         Interface::calc_method_id("get_plugin_list"),
@@ -407,9 +411,9 @@ const std::vector<Interface> g_interfaces = {
         Interface::calc_method_id("get_subwallet_id")
     }},
 
-    {"wallet_v5_beta", {
-        Interface::calc_method_id("seqno")
-    }},
+    // {"wallet_v5_beta", {
+    //     Interface::calc_method_id("seqno")
+    // }},
 
     {"wallet_v5r1", {
         Interface::calc_method_id("seqno"),
@@ -419,9 +423,9 @@ const std::vector<Interface> g_interfaces = {
         Interface::calc_method_id("is_signature_allowed")
     }},
 
-    {"wallet_highload_v2", {
-        Interface::calc_method_id("get_public_key")
-    }},
+    // {"wallet_highload_v2", {
+    //     Interface::calc_method_id("get_public_key")
+    // }},
 
     {"wallet_highload_v3r1", {
         Interface::calc_method_id("get_public_key"),
