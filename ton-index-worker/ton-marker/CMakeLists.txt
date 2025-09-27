@@ -19,6 +19,7 @@ add_custom_command(
 
 # core library
 add_library(ton-marker-core STATIC
+    src/special.cpp
     src/logic.cpp
     src/interfaces.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/auto/schemes.h

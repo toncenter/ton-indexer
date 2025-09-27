@@ -1,6 +1,7 @@
 #include "logic.h"
 #include "schemes.h"
 #include "interfaces.h"
+#include "special.h"
 #include "vm/boc.h"
 #include "crypto/tl/tlblib.hpp"
 #include "td/utils/base64.h"
@@ -11,6 +12,7 @@
 namespace ton_marker {
 
 namespace {
+
 std::string get_opcode_name(unsigned opcode) {
     const schemes::InternalMsgBody0 parser0;
     const schemes::InternalMsgBody1 parser1;
@@ -120,7 +122,7 @@ std::string decode_boc(const std::string& boc_base64) {
         tlb::JsonPrinter pp(&json_output);
 
         // helper to try parsing with a specific parser
-        const auto try_parse = [&cs, &pp](const auto& parser) -> bool {
+        const auto try_parse = [&cs, &pp](const schemes::TLB_Complex& parser) -> bool {
             auto cs_copy = cs; // make a copy since parsing modifies the slice
             return parser.print_skip(pp, cs_copy);
         };
@@ -146,6 +148,10 @@ std::string decode_boc(const std::string& boc_base64) {
             return false;
         };
 
+        if (try_parse_special(opcode, cs, pp)) {
+            return json_output;
+        }
+        
         if (check_and_parse(parser0)) parsed = true;
         else if (check_and_parse(parser1)) parsed = true;
         else if (check_and_parse(parser2)) parsed = true;

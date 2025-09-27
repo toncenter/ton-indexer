@@ -282,6 +282,20 @@ bidask_provide_both_forward_payload#3ea0bafc ton_amount:Coins deposit_type:uint4
 // cron_trigger
 cron_trigger#2114702d reward_address:MsgAddress salt:uint32 = ExternalMsgBody;
 
+// cron_reward
+cron_reward#2e04891a = InternalMsgBody0;
+
+// cron_notify
+cron_notify#d027efe5 init_state_hash:uint256 init_state_depth:uint10 = InternalMsgBody0;
+
+// cron_init
+cron_init#2e41d3ac = InternalMsgBody0;
+
+// cron_destroyed
+cron_destroyed#bbe27821 = InternalMsgBody0;
+
+// cron topupper
+w5_dns_renewal_calc_and_topup#56f6110e first_call_time:uint32 repeat_every:uint32 salt:uint32 reward:Coins owner_address:MsgAddressInt renewal_actions_cell:^Cell topup_amount:Coins msg_to_wallet_amount:Coins = InternalMsgBody0;
 
 
 // daolama.xml
@@ -1637,10 +1651,6 @@ payment_confirmed#f06c7567 query_id:uint64 = InternalMsgBody5;
 // // wallet_signed_v4
 // wallet_signed_v4#_ signature:bits512 subwallet_id:uint32 valid_until:uint32 seqno:uint32 payload:WalletV4Payload = ExternalMsgBody;
 
-// // wallet_signed_external_v5r1
-// wallet_signed_external_v5r1#7369676e wallet_id:uint32 valid_until:uint32 seqno:uint32
-//         actions:(Maybe ^W5Actions) extended:(Maybe W5ExtendedActions) signature:bits512 = ExternalMsgBody;
-
 // // highload_wallet_signed_v3
 // highload_wallet_signed_v3#_ {n:#} signature:bits512 msg:^HighloadV3MsgInner = ExternalMsgBody;
 
@@ -1719,7 +1729,8 @@ tgbtc_new_key_event#27756729 amount:Coins new_internal_pubkey:uint256 pegout_add
 tgbtc_dkg_completed_event#453443a6 timestamp:uint64 internal_pubkey:uint256 = ExternalMsgBody;
 
 
-// w5
+// w5 FIXED. 
+// needs special ref counting. see special.cpp
 
 extended_list_empty$_ = W5ExtendedActionList 0;
 extended_list_action$_ {m:#} action:W5ExtendedAction prev:^(W5ExtendedActionList m) = W5ExtendedActionList (m + 1);
@@ -1728,7 +1739,7 @@ extra_action_add_extension#02 addr:MsgAddressInt = W5ExtendedAction;
 extra_action_delete_extension#03 addr:MsgAddressInt = W5ExtendedAction;
 extra_action_set_signature_auth_allowed#04 allowed:(## 1) = W5ExtendedAction;
 
-w5_actions_request$_ {m:#} {n:#} out_actions:(Maybe ^(OutList m)) other_actions:(Maybe ^(W5ExtendedActionList n)) = W5InnerRequest m n;
+w5_actions_request$_ {m:#} {n:#} out_actions:(Maybe ^(OutList m)) other_actions:(Maybe (W5ExtendedActionList n)) = W5InnerRequest m n;
 
 w5_signed_request$_ {m:#} {n:#}
   wallet_id:    uint32
@@ -1743,19 +1754,4 @@ w5_signed_request$_ {m:#} {n:#}
 w5_internal_signed_request#73696e74 {m:#} {n:#} request:(W5SignedRequest m n) = W5MsgBody m n;
 w5_external_signed_request#7369676e {m:#} {n:#} request:(W5SignedRequest m n) = W5MsgBody m n;
 
-w5_extension_action_request#6578746e {m:#} {n:#} query_id:(## 64) request:(W5InnerRequest m n) = W5MsgBody m n;
-
-
-// important: we can't use W5MsgBody just as is. it has snake cells in itself,
-// and tlb-generated code is not capable of detecting how many cells are in the snake.
-// so we first parse those snakes as ^Cells, running count_actions_depth on them.
-// and then parsing with W5MsgBody using the counts.
-
-w5_external_signed_request#7369676e  
-        wallet_id:uint32
-        valid_until:uint32
-        msg_seqno:uint32
-        out_actions:(Maybe ^Cell) 
-        other_actions:(Maybe ^Cell) 
-        signature:bits512
-= InternalMsgBody6;
+w5_extension_action_request#6578746e {m:#} {n:#} query_id:uint64 request:(W5InnerRequest m n) = W5MsgBody m n;
