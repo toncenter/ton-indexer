@@ -1730,7 +1730,7 @@ tgbtc_dkg_completed_event#453443a6 timestamp:uint64 internal_pubkey:uint256 = Ex
 
 
 // w5 FIXED. 
-// needs special ref counting. see special.cpp
+// needs special ref counting for parsing using tlbc. see special.cpp
 
 // note: `m = extended actions count - 1`, so the last ref is not empty cell
 extended_list_last$_ action:W5ExtendedAction = W5ExtendedActionList 0;
