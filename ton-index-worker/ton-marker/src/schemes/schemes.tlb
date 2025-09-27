@@ -1732,14 +1732,15 @@ tgbtc_dkg_completed_event#453443a6 timestamp:uint64 internal_pubkey:uint256 = Ex
 // w5 FIXED. 
 // needs special ref counting. see special.cpp
 
-extended_list_empty$_ = W5ExtendedActionList 0;
+// note: `m = extended actions count - 1`, so the last ref is not empty cell
+extended_list_last$_ action:W5ExtendedAction = W5ExtendedActionList 0;
 extended_list_action$_ {m:#} action:W5ExtendedAction prev:^(W5ExtendedActionList m) = W5ExtendedActionList (m + 1);
 
-extra_action_add_extension#02 addr:MsgAddressInt = W5ExtendedAction;
-extra_action_delete_extension#03 addr:MsgAddressInt = W5ExtendedAction;
-extra_action_set_signature_auth_allowed#04 allowed:(## 1) = W5ExtendedAction;
+add_extension#02 addr:MsgAddressInt = W5ExtendedAction;
+delete_extension#03 addr:MsgAddressInt = W5ExtendedAction;
+set_signature_auth_allowed#04 allowed:(## 1) = W5ExtendedAction;
 
-w5_actions_request$_ {m:#} {n:#} out_actions:(Maybe ^(OutList m)) other_actions:(Maybe (W5ExtendedActionList n)) = W5InnerRequest m n;
+w5_actions_request$_ {m:#} {n:#} out_actions:(Maybe ^(OutList m)) extended_actions:(Maybe (W5ExtendedActionList n)) = W5InnerRequest m n;
 
 w5_signed_request$_ {m:#} {n:#}
   wallet_id:    uint32
@@ -1750,7 +1751,7 @@ w5_signed_request$_ {m:#} {n:#}
 = W5SignedRequest m n;
 
 
-// actions_count:m, extended_actions_count:n
+// actions_count = m, extended_actions_count-1 = n
 w5_internal_signed_request#73696e74 {m:#} {n:#} request:(W5SignedRequest m n) = W5MsgBody m n;
 w5_external_signed_request#7369676e {m:#} {n:#} request:(W5SignedRequest m n) = W5MsgBody m n;
 

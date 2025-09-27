@@ -26,26 +26,44 @@ bool try_parse_special(unsigned opcode, vm::CellSlice& cs, tlb::JsonPrinter& pp)
         // and tlb-generated code is not capable of detecting how many cells are in the snake.
         // so we first just count actions depth on refs,
         // and then parsing with W5MsgBody using the counts.
+        auto cs_copy = cs;
         int out_actions_count = 0;
-        int other_actions_count = 0;
-        if (cs.size_refs() > 0) {
-            auto first_ref = cs.prefetch_ref(0);
+        int extended_actions_count = 0;
+
+        // skip opcode
+        cs_copy.advance(32);
+
+        // skip fields before actions
+        if (opcode == OPCODE_W5_EXTENSION_ACTION_REQUEST) {
+            cs_copy.advance(64); // skip query_id
+        } else {
+        cs_copy.advance(32); // skip wallet_id
+        cs_copy.advance(32); // skip valid_until
+        cs_copy.advance(32); // skip msg_seqno
+        }
+
+        // check flags for actions
+        bool has_out_actions = cs_copy.fetch_ulong(1);
+        bool has_extended_actions = cs_copy.fetch_ulong(1);
+
+        // get out_actions depth from first ref if present
+        if (has_out_actions && cs_copy.size_refs() > 0) {
+            auto first_ref = cs_copy.fetch_ref();
             if (first_ref.not_null()) {
                 out_actions_count = count_actions_depth(first_ref);
             }
         }
 
-        if (cs.size_refs() > 1) {
-            auto second_ref = cs.prefetch_ref(1);
-            if (second_ref.not_null()) {
-                other_actions_count = count_actions_depth(second_ref);
+        if (has_extended_actions) {
+            extended_actions_count = 1; // extended_actions are starting in the cell itself
+            while (cs_copy.size_refs() > 0) {
+                extended_actions_count++;
+                cs_copy = vm::load_cell_slice(cs_copy.fetch_ref());
             }
         }
-        std::cout << "out_actions_count: " << out_actions_count << std::endl;
-        std::cout << "other_actions_count: " << other_actions_count << std::endl;
-        schemes::W5MsgBody w5_parser(out_actions_count, other_actions_count);
-        auto cs_copy = cs;
-        return w5_parser.print_skip(pp, cs_copy);
+        schemes::W5MsgBody w5_parser(out_actions_count, extended_actions_count-1); // last ref is not empty cell, that's why -1
+        auto cs_copy2 = cs;
+        return w5_parser.print_skip(pp, cs_copy2);
     }
     
     return false;
