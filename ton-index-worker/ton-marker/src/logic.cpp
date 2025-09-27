@@ -18,6 +18,9 @@ std::string get_opcode_name(unsigned opcode) {
     const schemes::InternalMsgBody3 parser3;
     const schemes::InternalMsgBody4 parser4;
     const schemes::InternalMsgBody5 parser5;
+    const schemes::InternalMsgBody6 parser6;
+    const schemes::ExternalMsgBody parser7;
+    const schemes::ForwardPayload parser8;
 
     const auto check_parser = [opcode](const auto& parser) -> std::optional<std::string> {
         for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
@@ -34,6 +37,9 @@ std::string get_opcode_name(unsigned opcode) {
     if (auto name = check_parser(parser3)) return *name;
     if (auto name = check_parser(parser4)) return *name;
     if (auto name = check_parser(parser5)) return *name;
+    if (auto name = check_parser(parser6)) return *name;
+    if (auto name = check_parser(parser7)) return *name;
+    if (auto name = check_parser(parser8)) return *name;
 
     return "unknown";
 }
@@ -106,7 +112,9 @@ std::string decode_boc(const std::string& boc_base64) {
         const schemes::InternalMsgBody3 parser3;
         const schemes::InternalMsgBody4 parser4;
         const schemes::InternalMsgBody5 parser5;
-        const schemes::ForwardPayload parser6;
+        const schemes::InternalMsgBody6 parser6;
+        const schemes::ExternalMsgBody parser7;
+        const schemes::ForwardPayload parser8;
 
         std::string json_output;
         tlb::JsonPrinter pp(&json_output);
@@ -145,6 +153,8 @@ std::string decode_boc(const std::string& boc_base64) {
         else if (check_and_parse(parser4)) parsed = true;
         else if (check_and_parse(parser5)) parsed = true;
         else if (check_and_parse(parser6)) parsed = true;
+        else if (check_and_parse(parser7)) parsed = true;
+        else if (check_and_parse(parser8)) parsed = true;
 
         if (!parsed) {
             return "unknown: no parser succeeded";

@@ -334,12 +334,12 @@ dedust_swap#ea06185d query_id:uint64 amount:Coins step:DedustSwapStep swap_param
 // dedust_swap
 dedust_swap_second_opcode#e3a0d482 query_id:uint64 amount:Coins step:DedustSwapStep swap_params:^DedustSwapParams = InternalMsgBody0;
 
-// // dedust_deposit_liquidity TODO
-// dedust_deposit_liquidity#d55e4686 query_id:uint64 amount:Coins pool_params:DedustPoolParams
-//         params:^[ min_lp_amount:Coins
-//         asset0_target_balance:Coins asset1_target_balance:Coins ]
-//         fulfill_payload:(Maybe ^Cell)
-//         reject_payload:(Maybe ^Cell) = InternalMsgBody0;
+// dedust_deposit_liquidity
+_ min_lp_amount:Coins asset0_target_balance:Coins asset1_target_balance:Coins = DedustDepositLiquidityParams;
+dedust_deposit_liquidity#d55e4686 query_id:uint64 amount:Coins pool_params:DedustPoolParams
+        deposit_params:^DedustDepositLiquidityParams
+        fulfill_payload:(Maybe ^Cell)
+        reject_payload:(Maybe ^Cell) = InternalMsgBody0;
 
 // dedust_create_vault
 dedust_create_vault#21cfe02b query_id:uint64 asset:DedustAsset = InternalMsgBody0;
@@ -353,16 +353,16 @@ dedust_cancel_deposit#166cedee query_id:uint64 payload:(Maybe ^Cell) = InternalM
 // dedust_swap
 dedust_swap#9c610de3 asset_in:DedustAsset asset_out:DedustAsset amount_in:Coins amount_out:Coins
         ^[ sender_addr:MsgAddress referral_addr:MsgAddress
-        reserve0:Coins reserve1:Coins ] = ExtOutMsgBody;
+        reserve0:Coins reserve1:Coins ] = ExternalMsgBody;
 
 // dedust_deposit
 dedust_deposit#b544f4a4 sender_addr:MsgAddressInt amount0:Coins amount1:Coins
-        reserve0:Coins reserve1:Coins liquidity:Coins = ExtOutMsgBody;
+        reserve0:Coins reserve1:Coins liquidity:Coins = ExternalMsgBody;
 
 // dedust_withdrawal
 dedust_withdrawal#3aa870a6 sender_addr:MsgAddressInt liquidity:Coins
         amount0:Coins amount1:Coins
-        reserve0:Coins reserve1:Coins = ExtOutMsgBody;
+        reserve0:Coins reserve1:Coins = ExternalMsgBody;
 
 // dedust_swap
 dedust_swap_forward_payload#e3a0d482 step:DedustSwapStep swap_params:^DedustSwapParams = ForwardPayload;
@@ -707,12 +707,12 @@ megaton_wton_mint#77a33521 query_id:uint64 amount:Coins = InternalMsgBody1;
 // megaton_swap
 megaton_swap#7362d09c account_addr:MsgAddressInt
         in_token_addr:MsgAddressInt in_amount:Coins
-        ^[ out_token_addr:MsgAddressInt out_amount:Coins ] = ExtOutMsgBody;
+        ^[ out_token_addr:MsgAddressInt out_amount:Coins ] = ExternalMsgBody;
 
 // // megaton_update_mining_params TODO
 // megaton_update_mining_params#56a8e920 pool_addr:MsgAddressInt
 //         last_mined:uint256 last_index:uint256
-//         ^[ last_mined:uint256 last_index:uint256] = ExtOutMsgBody;
+//         ^[ last_mined:uint256 last_index:uint256] = ExternalMsgBody;
 
 
 
@@ -784,53 +784,51 @@ moon_fill_order_forward_payload#99b49842 recipient:MsgAddress recipient_payload:
         reject_address:MsgAddress = ForwardPayload;
 
 
-// // multisig.xml TODO
+// multisig.xml FIXED
 
-// // Types
-// send_message#f1381e5b _:SendMessageAction = MultisigSendMessageAction;
-// update_multisig_param#1d0cfbd3 threshold:uint8
-// signers:^(Hashmap 8 MsgAddressInt)
-// proposers:(HashmapE 8 MsgAddressInt) = MultisigSendMessageAction;
-// _ _:(Hashmap 8 ^MultisigSendMessageAction) = MultisigOrder;
-// signers_list#_ signers:(Hashmap 8 MsgAddressInt) = MultisigSignersList;
-// proposers_list#_ proposers:(Hashmap 8 MsgAddressInt) = MultisigProposersList;
+// Types
+send_message#f1381e5b mode:uint8 message:^(MessageRelaxed Any) = MulisigAction;
+update_multisig_param#1d0cfbd3 threshold:uint8
+                               signers:^(Hashmap 8 MsgAddressInt)
+                               proposers:(HashmapE 8 MsgAddressInt) = MulisigAction;
 
-// // multisig_new_order
-// multisig_new_order#f718510f query_id:uint64
-//         order_seqno:uint256
-//         signer:(## 1)
-//         index:uint8
-//         expiration_date:uint48
-//         order:^MultisigOrder = InternalMsgBody2;
+_ _:(Hashmap 8 ^MulisigAction) = MultisigOrder;
 
-// // multisig_execute
-// multisig_execute#75097f5d query_id:uint64
-//         order_seqno:uint256
-//         expiration_date:uint48
-//         approvals_num:uint8
-//         signers_hash:bits256
-//         order:^MultisigOrder = InternalMsgBody2;
+// multisig_new_order
+mulisig_new_order#f718510f query_id:uint64
+                   order_seqno:uint256
+                   signer:Bool
+                   index:uint8
+                   expiration_date:uint48
+                   order:^MultisigOrder = InternalMsgBody2;
 
-// // multisig_execute_internal
-// multisig_execute_internal#a32c59bf query_id:uint64 order:^MultisigOrder = InternalMsgBody2;
+// multisig_execute
+multisig_execute#75097f5d query_id:uint64
+        order_seqno:uint256
+        expiration_date:uint48
+        approvals_num:uint8
+        signers_hash:bits256
+        order:^MultisigOrder = InternalMsgBody2;
 
-// // multisig_order_init
-// multisig_order_init#9c73fba2 query_id:uint64
-//         threshold:uint8
-//         signers:^(Hashmap 8 MsgAddressInt)
-//         expiration_date:uint48
-//         order:^MultisigOrder
-//         signer_index:(Maybe uint8) = InternalMsgBody2;
+// multisig_execute_internal
+multisig_execute_internal#a32c59bf query_id:uint64 order:^MultisigOrder = InternalMsgBody2;
 
-// // multisig_approve
-// multisig_approve#a762230f query_id:uint64 signer_index:uint8 = InternalMsgBody2;
+// multisig_order_init
+multisig_order_init#9c73fba2 query_id:uint64
+        threshold:uint8
+        signers:^(Hashmap 8 MsgAddressInt)
+        expiration_date:uint48
+        order:^MultisigOrder
+        signer_index:(Maybe uint8) = InternalMsgBody2;
 
-// // multisig_approve_accepted
-// multisig_approve_accepted#82609bf6 query_id:uint64 = InternalMsgBody2;
+// multisig_approve
+multisig_approve#a762230f query_id:uint64 signer_index:uint8 = InternalMsgBody2;
 
-// // multisig_approve_rejected
-// multisig_approve_rejected#afaf283e query_id:uint64 exit_code:uint32 = InternalMsgBody2;
+// multisig_approve_accepted
+multisig_approve_accepted#82609bf6 query_id:uint64 = InternalMsgBody2;
 
+// multisig_approve_rejected
+multisig_approve_rejected#afaf283e query_id:uint64 exit_code:uint32 = InternalMsgBody2;
 
 
 // nft_sale.xml
@@ -1407,31 +1405,31 @@ coffee_update_withdrawer#c0ffee46 query_id:uint64 address:MsgAddressInt = Intern
 
 // coffee_staking_rewards_updated
 coffee_staking_rewards_updated#0a9577f0 query_id:uint64 jetton_wallet:MsgAddressInt duration:uint64 finish_at:uint64
-        rewards_rate:Coins = ExtOutMsgBody;
+        rewards_rate:Coins = ExternalMsgBody;
 
 // coffee_staking_rewards_claimed
 coffee_staking_rewards_claimed#b30c7310 query_id:uint64 jetton_wallet:MsgAddressInt amount:Coins
-        receiver:MsgAddressInt = ExtOutMsgBody;
+        receiver:MsgAddressInt = ExternalMsgBody;
 
 // coffee_swap_succeeded
 coffee_swap_succeeded#c0ffee30 query_id:uint64 input:CoffeeAsset input_amount:Coins output_amount:Coins
-        reserves:CoffeePoolReserves protocol_fee:Coins = ExtOutMsgBody;
+        reserves:CoffeePoolReserves protocol_fee:Coins = ExternalMsgBody;
 
 // coffee_swap_failed
 coffee_swap_failed#c0ffee31 query_id:uint64 input:CoffeeAsset input_amount:Coins
-        reserves:(Maybe ^CoffeePoolReserves) = ExtOutMsgBody;
+        reserves:(Maybe ^CoffeePoolReserves) = ExternalMsgBody;
 
 // coffee_deposit_liquidity_succeeded
 coffee_deposit_liquidity_succeeded#c0ffee33 query_id:uint64 amount1:Coins amount2:Coins lp_amount:Coins
-        total_supply:CoffeePoolReserves reserves:CoffeePoolReserves = ExtOutMsgBody;
+        total_supply:CoffeePoolReserves reserves:CoffeePoolReserves = ExternalMsgBody;
 
 // coffee_deposit_liquidity_failed
 coffee_deposit_liquidity_failed#c0ffee34 query_id:uint64 amount1:Coins amount2:Coins min_lp_amount:Coins
-        total_supply:Coins reserves:CoffeePoolReserves = ExtOutMsgBody;
+        total_supply:Coins reserves:CoffeePoolReserves = ExternalMsgBody;
 
 // coffee_withdraw_liquidity_succeeded
 coffee_withdraw_liquidity_succeeded#c0ffee35 query_id:uint64 amount1:Coins amount2:Coins lp_amount:Coins
-        total_supply:CoffeePoolReserves reserves:CoffeePoolReserves = ExtOutMsgBody;
+        total_supply:CoffeePoolReserves reserves:CoffeePoolReserves = ExternalMsgBody;
 
 // coffee_mev_protect_failed_swap
 coffee_mev_protect_failed_swap_forward_payload#ee51ce51 query_id:uint64 recipient:MsgAddressInt = ForwardPayload;
@@ -1516,76 +1514,49 @@ teleitem_return_bid#a43227e1 cur_lt:int64 = InternalMsgBody5;
 
 
 
-// tonco.xml
+// tonco.xml FIXED
 
-// Types TODO
-// pay_to_code0#00000000 seqno:uint64
-// coinsinfo_cell:(Maybe ^[
-// amount0:(VarUInteger 16)
-// jetton0_address:MsgAddress
-// amount1:(VarUInteger 16)
-// jetton1_address:MsgAddress
-// ] ) = PayTo;
-// pay_to_code200#000000c8 seqno:uint64
-// coinsinfo_cell:(Maybe ^[
-// amount0:(VarUInteger 16)
-// jetton0_address:MsgAddress
-// amount1:(VarUInteger 16)
-// jetton1_address:MsgAddress
-// payload_cell:^[
-// payload_amount0:(VarUInteger 16)
-// payload_cell0:(Maybe ^Cell)
-// payload_amount1:(VarUInteger 16)
-// payload_cell1:(Maybe ^Cell)
-// ]
-// ] )
-// indexer_swap_info_cell:(Maybe ^[
-// liquidity:uint128
-// price_sqrt:uint160
-// tick:int24
-// feeGrowthGlobal0X128:int256
-// feeGrowthGlobal1X128:int256
-// ] ) = PayTo;
-// pay_to_code201#000000c9 seqno:uint64
-// coinsinfo_cell:(Maybe ^[
-// amount0:(VarUInteger 16)
-// jetton0_address:MsgAddress
-// amount1:(VarUInteger 16)
-// jetton1_address:MsgAddress
-// payload_cell:^[
-// payload_amount0:(VarUInteger 16)
-// payload_cell0:(Maybe ^Cell)
-// payload_amount1:(VarUInteger 16)
-// payload_cell1:(Maybe ^Cell)
-// ]
-// ] )
-// indexer_burn_info_cell:(Maybe ^[
-// nftIndex:uint64
-// liquidityBurned:uint128
-// tickLower:int24
-// tickUpper:int24
-// tick:int24
-// ] ) = PayTo;
+// poolv3_swap
 
-// // poolv3_swap TODO
-// poolv3_swap#a7fb58f8 query_id:uint64 owner_address:MsgAddress source_wallet:MsgAddress
-//         params_cell:^[
-//             amount:(VarUInteger 16)
-//             sqrtPriceLimitX96:uint160
-//             minOutAmount:(VarUInteger 16)
-//         ]
-//         payloads_cell:^[
-//             target_address:MsgAddress
-//             ok_forward_amount:(VarUInteger 16)
-//             ok_forward_payload:(Maybe ^Cell)
-//             ret_forward_amount:(VarUInteger 16)
-//             ret_forward_payload:(Maybe ^Cell)
-//         ] = InternalMsgBody5;
+_ amount:(VarUInteger 16) sqrtPriceLimitX96:uint160 minOutAmount:(VarUInteger 16)
+    = ToncoSwapParams;
 
-// // pay_to TODO
-// pay_to#a1daa96d query_id:uint64 reciever0:MsgAddress reciever1:MsgAddress pay_to:PayTo = InternalMsgBody5;
+_ target_address:MsgAddress ok_forward_amount:(VarUInteger 16) ok_forward_payload:(Maybe ^Cell) 
+  ret_forward_amount:(VarUInteger 16) ret_forward_payload:(Maybe ^Cell)
+    = ToncoSwapPayloads;
+
+tonco_pool_swap#a7fb58f8 query_id:uint64 owner_address:MsgAddress source_wallet:MsgAddress
+        swap_params:^ToncoSwapParams
+        swap_payloads:^ToncoSwapPayloads = InternalMsgBody5;
+
+// pay_to
+
+_ payload_amount0:(VarUInteger 16) payload_0:(Maybe ^Cell) payload_amount1:(VarUInteger 16) payload_1:(Maybe ^Cell)
+    = ToncoPayloadCell;
+
+_ amount0:(VarUInteger 16) jetton0_address:MsgAddress amount1:(VarUInteger 16) jetton1_address:MsgAddress payload_cell:^ToncoPayloadCell
+    = ToncoCoinsInfoCellFull;
+
+_ amount0:(VarUInteger 16) jetton0_address:MsgAddress amount1:(VarUInteger 16) jetton1_address:MsgAddress
+    = ToncoCoinsInfoCell;
+
+_ liquidity:uint128 price_sqrt:uint160 tick:int24 fee_growth_global_0x128:int256 fee_growth_global_1x128:int256
+    = ToncoIndexerSwapInfoCell;
+
+_ nft_index:uint64 liquidity_burned:uint128 tick_lower:int24 tick_upper:int24 tick_burn:int24
+    = ToncoIndexerBurnInfoCell;
 
 
+// exit code 200 or 230
+tonco_router_pay_to_normal#a1daa96d query_id:uint64 reciever0:MsgAddress
+        reciever1:MsgAddress exit_code:uint32 seqno:uint64
+        coinsinfo_cell:(Maybe ^ToncoCoinsInfoCellFull)
+        indexer_swap_info_cell:(Maybe ^ToncoIndexerSwapInfoCell) = InternalMsgBody4;
+
+tonco_router_pay_to_exit_code_201#a1daa96d query_id:uint64 reciever0:MsgAddress
+        reciever1:MsgAddress exit_code:uint32 seqno:uint64
+        coinsinfo_cell:(Maybe ^ToncoCoinsInfoCell)
+        indexer_burn_info_cell:(Maybe ^ToncoIndexerBurnInfoCell) = InternalMsgBody5;
 
 // tonkeeper_2fa.xml
 
@@ -1736,10 +1707,25 @@ tonkeeper_relayer_fee_forward_payload#878da6e3 = ForwardPayload;
 
 // none_forward_payload#_ any:Any = ForwardPayload;
 
+// nerd_qr
+nerd_qr_verify#ccc2c823 item_id:uint32 signature:bits512 = ExternalMsgBody;
 
-// _ _:InternalMsgBody0 = InternalMsgBody;
-// _ _:InternalMsgBody1 = InternalMsgBody;
-// _ _:InternalMsgBody2 = InternalMsgBody;
-// _ _:InternalMsgBody3 = InternalMsgBody;
-// _ _:InternalMsgBody4 = InternalMsgBody;
-// _ _:InternalMsgBody5 = InternalMsgBody;
+// from our classifier
+
+// vesting
+vesting_send_message#a7733acd query_id:uint64 send_mode:uint8 message:^(MessageRelaxed Any) = InternalMsgBody6;
+
+vesting_send_message_response#f7733acd query_id:uint64 = InternalMsgBody6;
+
+vesting_add_white_list#7258a69b query_id:uint64 addresses_ref_snake:Any = InternalMsgBody6;
+
+vesting_add_white_list_response#f258a69b query_id:uint64 = InternalMsgBody6;
+
+// tgbtc
+tgbtc_mint_event#77a80ef3 amount:Coins recipient_address:MsgAddress bitcoin_txid:uint256 = ExternalMsgBody;
+
+tgbtc_burn_event#ca444ce6 amount:Coins sender_address:MsgAddress pegout_address:MsgAddress = ExternalMsgBody;
+
+tgbtc_new_key_event#27756729 amount:Coins new_internal_pubkey:uint256 pegout_address:MsgAddress = ExternalMsgBody;
+
+tgbtc_dkg_completed_event#453443a6 timestamp:uint64 internal_pubkey:uint256 = ExternalMsgBody;
