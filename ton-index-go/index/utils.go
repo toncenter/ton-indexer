@@ -33,7 +33,6 @@ var ActionTypeShortcuts = map[string][]string{
 		"coffee_create_vault", "coffee_create_pool_creator", "coffee_create_pool",
 		"coffee_mev_protect_hold_funds", "coffee_mev_protect_failed_swap", "coffee_staking_claim_rewards",
 		"coffee_staking_deposit", "coffee_staking_withdraw",
-		"layerzero_send", "layerzero_send_tokens", "layerzero_receive", "layerzero_commit_packet", "layerzero_dvn_verify",
 		"unknown",
 	},
 	"v3": {
@@ -42,6 +41,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"nft_cancel_auction", "nft_finish_auction", "teleitem_start_auction", "teleitem_cancel_auction",
 		"nft_update_sale",
 		"dns_purchase", "dns_release",
+		"layerzero_send", "layerzero_send_tokens", "layerzero_receive", "layerzero_commit_packet", "layerzero_dvn_verify",
 	},
 	"latest": {"v3"},
 	"staking": {
