@@ -1830,7 +1830,6 @@ jvault_set_data#383411ea = InternalMsgBody6;
 // getgems
 sale_update_message#6c6c2080 query_id:uint64 new_full_price:Coins new_mp_fee:Coins new_royalty_amount:Coins = InternalMsgBody6;
 
-
 // w5 FIXED. 
 // needs special ref counting for parsing using tlbc. see special.cpp
 
@@ -1858,3 +1857,185 @@ w5_internal_signed_request#73696e74 {m:#} {n:#} request:(W5SignedRequest m n) = 
 w5_external_signed_request#7369676e {m:#} {n:#} request:(W5SignedRequest m n) = W5MsgBody m n;
 
 w5_extension_action_request#6578746e {m:#} {n:#} query_id:uint64 request:(W5InnerRequest m n) = W5MsgBody m n;
+
+// evaa
+
+/* Common types */
+_ _:uint64 = SbRate;
+_ _:uint32 = Timestamp;
+_ _:int64 = Principal;
+_ _:uint64 = Balance;
+_ _:uint64 = Price;
+_ _:uint256 = AddressHash;
+_ _:uint256 = AssetId;
+_ _:uint64 = Amount;
+_ _:uint64 = TrackingIndex;
+
+bool_true$11 = BoolExtended;
+bool_false$00 = BoolExtended;
+
+!merkle_proof#03 {X:Type} virtual_hash:bits256 depth:uint16 virtual_root:^X = MERKLE_PROOF X;
+
+price_data$_ timestamp:uint32 prices:(HashmapE 256 Coins) = PriceData;
+
+price_assets$_ id:uint256 price:Coins next_asset:(Maybe ^PriceAssets) = PriceAssets;
+price_oracles_data$_ oracle_id:uint32 proof:^(MERKLE_PROOF PriceData) signature:bits512 next_oracles_data:(Maybe ^PriceOraclesData) = PriceOraclesData;
+
+prices_packed$_ assets:^PriceAssets oracles_data:^PriceOraclesData = PricesPacked;
+
+asset_rate$_ supply_rate:SbRate borrow_rate:SbRate = AssetRate;
+reward$_ tracking_index:uint64 tracking_accrued:uint64 = Reward;
+
+/* Asset config */
+_ collateral_factor:uint16 liquidation_threshold:uint16 liquidation_bonus:uint16 base_borrow_rate:uint64
+    borrow_rate_slope_low:uint64 borrow_rate_slope_high:uint64 supply_rate_slope_low:uint64
+    supply_rate_slope_high:uint64 target_utilization:uint64 origination_fee:uint64
+    dust_value:uint64 max_total_supply:uint64 reserve_factor:uint16
+    liquidation_reserve_factor:uint16 min_principal_for_rewards:uint64
+    base_tracking_supply_speed:uint64 base_tracking_borrow_speed:uint64 = AssetConfigParams;
+
+_ jw_address_hash:AddressHash decimals:uint8 params:^AssetConfigParams = AssetConfig;
+_ asset_configs:(HashmapE 256 AssetConfig) = AssetConfigCollection;
+
+/* Asset dynamics collection */
+_ s_rate:SbRate b_rate:SbRate total_supply_principal:Principal total_borrow_principal:Principal
+    last_accrual:Timestamp token_balance:Balance
+    tracking_supply_index:TrackingIndex tracking_borrow_index:TrackingIndex
+    awaited_supply:Balance = AssetDynamics;
+_ asset_dynamics:(HashmapE 256 AssetDynamics) = AssetDynamicsCollection;
+
+/* Blank storage */
+storage#_ platform_address:MsgAddressInt owner_address:MsgAddressInt type_id:uint8 params:(Maybe ^Cell) = BlankStorage;
+
+/* Master storage */
+oracles_info$_ total_oracles:uint16 threshold:uint16 oracles:^Cell = OraclesInfo;
+upgrade_config$_ master_code_version:Coins user_code_version:Coins timeout:uint32 update_time:uint64 freeze_time:uint64 user_code:^Cell blank_code:^Cell new_master_code:(Maybe ^Cell) new_user_code:(Maybe ^Cell) = UpgradeConfig;
+master_config$_ asset_config_collection:AssetConfigCollection if_active:int8 admin:MsgAddressInt oracles_info:OraclesInfo tokens_keys:(Maybe ^Cell) = MasterConfig;
+storage#_ meta:^Cell upgrade_config:^UpgradeConfig master_config:^MasterConfig asset_dynamics_collection:AssetDynamicsCollection = MasterStorage;
+
+/* User storage */
+storage#_ code_version:Coins master_address:MsgAddressInt owner_address:MsgAddressInt user_principals:(HashmapE 256 Principal) state:int64
+    user_rewards: (HashmapE 256 Reward) backup_cell_1:(Maybe ^Cell) backup_cell_2:(Maybe ^Cell) = UserStorage;
+
+// User commands should always start with UpgradeHeader
+// In this documentation, in the user commands section, they are referred to as "UserCommand."
+// "UserCommand" is an internal structure that needs to be converted either to "PackedCommand" or to "InternalMsgBody" for proper functionality.
+
+upgrade_header$_ user_code_version:Coins upgrade_info:(Maybe ^[ new_code:^Cell new_data:^Cell ]) upgrade_exec:BoolExtended = UpgradeHeader;
+
+// First message to User goes through Blank (1 runtime)
+// _ upgrade_header:UpgradeHeader extra:Any = InternalMsgBody6;
+
+// If there is an error during the upgrade from UpgradeHeader, a "revert_call" will be executed.
+evaa_revert_call#0000000f query_id:uint64 owner_address:MsgAddressInt revert_body:^Cell = InternalMsgBody6;
+
+/* Supply */
+evaa_supply_master#00000001 query_id:uint64 include_user_code:BoolExtended supply_amount:Amount recipient_address:MsgAddressInt
+    forward_ton_amount:Amount custom_response_payload:^Cell = InternalMsgBody6; // * -> Master
+evaa_supply_user#00000011 query_id:uint64 asset_id:AssetId
+    supply_amount_current:Amount s_rate:SbRate b_rate:SbRate
+    dust:uint64 max_token_amount:uint64 total_supply:Principal total_borrow:Principal
+    tracking_supply_index:TrackingIndex tracking_borrow_index:TrackingIndex
+    forward_ton_amount:Amount custom_response_payload:^Cell = UserCommand; // Master -> User
+evaa_supply_success#0000011a query_id:uint64 owner_address:MsgAddressInt
+    asset_id:AssetId amount_supplied:Amount user_new_principal:Principal
+    repay_amount_principal:Principal supply_amount_principal:Principal
+    custom_response_payload:^Cell = InternalMsgBody6; // User -> Master
+evaa_supply_fail#0000011f query_id:uint64 owner_address:MsgAddressInt asset_id:AssetId amount:Amount
+    forward_ton_amount:Amount custom_response_payload:^Cell = InternalMsgBody6; // User -> Master
+evaa_supply_excess_with_data#000011ae query_id:uint64 custom_response_payload:^Cell = InternalMsgBody5;
+evaa_supply_excess#000011ae query_id:uint64 = InternalMsgBody6; // Master -> User::owner_address
+evaa_supply_fail_with_data#00011ae1 query_id:uint64 custom_response_payload:^Cell = InternalMsgBody6;
+
+/* Withdraw */
+evaa_withdraw_master#00000002 query_id:uint64 asset_id:AssetId amount:Amount recipient_addr:MsgAddressInt
+    include_user_code:BoolExtended forward_ton_amount:Amount custom_response_payload:^Cell
+    prices_with_signature_packed:^PricesPacked = InternalMsgBody6; // * -> Master
+evaa_withdraw_user#00000021 query_id:uint64 asset_id:AssetId
+    withdraw_amount_current:Amount s_rate:SbRate b_rate:SbRate recipient_address:MsgAddressInt
+    ^[ asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection
+       prices_packed:^PricesPacked forward_ton_amount:Amount custom_response_payload:^Cell ] = UserCommand; // Master -> User
+evaa_withdraw_collateralized#00000211 query_id:uint64 owner_address:MsgAddressInt
+    asset_id:AssetId withdraw_amount_current:Amount
+    user_new_principal:Principal borrow_amount_principal:Principal reclaim_amount_principal:Principal
+    ^[ recipient_address:MsgAddressInt forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody6; // User -> Master
+evaa_withdraw_success#0000211a query_id:uint64 asset_id:AssetId principal_amount:Principal
+    tracking_supply_index:TrackingIndex tracking_borrow_index:TrackingIndex = UserCommand; // Master -> User
+evaa_withdraw_fail#0000211f query_id:uint64 asset_id:AssetId principal_amount:Principal = UserCommand; // Master -> User
+evaa_withdraw_success_excess_with_data#0000211a query_id:uint64 custom_response_payload:^Cell = InternalMsgBody6;
+evaa_withdraw_locked_excess#000021e6 query_id:uint64 = InternalMsgBody6; // User -> owner_address
+evaa_withdraw_not_collateralized_excess#000021e7 query_id:uint64 = InternalMsgBody6; // User -> owner_address
+evaa_withdraw_no_funds_excess#00211fe8 query_id:uint64 = InternalMsgBody6; // User -> owner_address
+evaa_withdraw_missing_prices_excess#000021e8 query_id:uint64 = InternalMsgBody6; // User -> owner_address
+evaa_withdraw_execution_crashed#000021ec query_id:uint64 = InternalMsgBody6; // User -> owner_address
+
+/* Liquidate */
+user_withdraw_in_progress#000031f0 = LiquidationError;
+not_liquidatable#000031f2 = LiquidationError;
+liquidation_prices_missing#000031f7 = LiquidationError;
+min_collateral_not_satisfied#000031f3 collateral_amount:Amount = LiquidationError;
+user_not_enough_collateral#000031f4 collateral_present:Amount = LiquidationError;
+user_liquidating_too_much#000031f5 max_not_too_much:Amount = LiquidationError;
+liqudation_execution_crashed#000031fe = LiquidationError;
+
+master_liquidating_too_much#000030f1 max_allowed_liquidation:Amount = LiquidationMasterError;
+master_not_enough_liquidity#000031f6 available_liquidity:Amount = LiquidationMasterError;
+liqudation_execution_crashed#000031fe = LiquidationMasterError;
+
+evaa_liquidate_master#00000003 query_id:uint64 borrower_address:MsgAddressInt liquidator_address:MsgAddressInt
+    collateral_asset_id:AssetId min_collateral_amount:Amount include_user_code:BoolExtended
+    liquidate_incoming_amount:Amount ^[ forward_ton_amount:Amount custom_response_payload:^Cell ]
+    prices_with_signature_packed:^PricesPacked = InternalMsgBody6; // * -> Master
+evaa_liquidate_user#00000031 query_id:uint64
+    asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection
+    ^[ prices_packed:^PricesPacked collateral_asset_id:AssetId min_collateral_amount:Amount
+       liquidator_address:MsgAddressInt transferred_asset_id:AssetId transfered_amount:Amount
+       forward_ton_amount:Amount custom_response_payload:^Cell ] = UserCommand; // Master -> User
+evaa_liquidate_unsatisfied#0000031f query_id:uint64 owner_address:MsgAddressInt
+    liquidator_address:MsgAddressInt transferred_asset_id:AssetId
+    ^[ transferred_amount:Amount collateral_asset_id:AssetId min_collateral_amount:Amount
+       forward_ton_amount:Amount custom_response_payload:^Cell error:LiquidationError ] = InternalMsgBody6; // User -> Master
+evaa_liquidate_satisfied#00000311 query_id:uint64 owner_address:MsgAddressInt
+    liquidator_address:MsgAddressInt transferred_asset_id:AssetId
+    ^[ delta_loan_principal:Principal liquidatable_amount:Amount protocol_gift:Amount
+       new_user_loan_principal:Principal collateral_asset_id:AssetId delta_collateral_principal:Principal
+       collateral_reward:Amount min_collateral_amount:Amount new_user_collateral_principal:Principal
+       forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody6; // User -> Master
+evaa_liquidate_success#0000311a query_id:uint64 transferred_asset_id:AssetId delta_loan_principal:Principal
+    loan_tracking_supply_index:TrackingIndex loan_tracking_borrow_index:TrackingIndex
+    collateral_asset_id:AssetId delta_collateral_principal:Principal
+    collateral_tracking_supply_index:TrackingIndex collateral_tracking_borrow_index:TrackingIndex = UserCommand; // Master -> User
+evaa_liquidate_fail#0000311f query_id:uint64 transferred_asset_id:AssetId
+    delta_loan_principal:Principal collateral_asset_id:AssetId delta_collateral_principal:Principal = UserCommand; // Master -> User
+evaa_liquidate_success_report#0000311d transferred_asset_id:AssetId transferred_amount:Amount
+    collateral_asset_id:AssetId collateral_reward:Amount custom_response_payload:^Cell = InternalMsgBody6; // Master -> liquidator_address
+
+evaa_liquidate_fail_report#_ error:LiquidationMasterError custom_response_payload:^Cell = InternalMsgBody6;
+
+/* IDLE */
+evaa_idle_master#00000008 query_id:uint64 target_address:MsgAddressInt = InternalMsgBody6; // * -> Master
+evaa_idle_user#00000081 query_id:uint64 tokens_keys:(Maybe ^Cell) originator_address:MsgAddressInt = UserCommand; // Master -> User
+evaa_idle_excess#0000081e query_id:uint64 = InternalMsgBody6; // User -> originator_address
+
+evaa_do_data_checks#0000d001 query_id:uint64 = InternalMsgBody6; // Should be called internally during upgrade without real message
+
+_ upgrade_header:UpgradeHeader command:UserCommand = PackedCommand;
+
+/* Other master commands (admin only) */
+_ new_asset_dynamics_collection:^AssetDynamicsCollection tokens_keys:^Cell = InitMasterPackedData;
+evaa_init_master#000000a1 query_id:uint64 new_asset_config_collection:^AssetConfigCollection
+    packed_data:^InitMasterPackedData = InternalMsgBody6; // * -> Master
+evaa_claim_asset_reserves#000000a2 query_id:uint64 target_address:MsgAddressInt asset_id:AssetId amount_to_claim:Amount = InternalMsgBody6; // * -> Master
+
+evaa_disable_contract_for_upgrade#000000e8 query_id:uint64 = InternalMsgBody6;
+evaa_init_upgrade#000000c1 query_id:uint64 new_master_code:(Maybe ^Cell) new_user_code:(Maybe ^Cell) = InternalMsgBody6;
+evaa_submit_upgrade#000000c2 query_id:uint64 = InternalMsgBody6;
+evaa_cancel_upgrade#000000c3 query_id:uint64 = InternalMsgBody6;
+
+evaa_update_config#000000e4 query_id:uint64 new_meta:^Cell new_config:^MasterConfig = InternalMsgBody6;
+evaa_add_new_token#00000a32 query_id:uint64 asset_key:AssetId new_asset_config:^AssetConfig new_asset_dynamics:^AssetDynamics = InternalMsgBody6;
+
+evaa_force_enable#000000e1 query_id:uint64 = InternalMsgBody6;
+evaa_force_disable_contract#000000e9 query_id:uint64 = InternalMsgBody6;
+
+evaa_debug_principals_edit_user#00000d21 query_id:uint64 new_principals:(HashmapE 256 Principal) = InternalMsgBody6;
