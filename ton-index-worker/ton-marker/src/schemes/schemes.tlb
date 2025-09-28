@@ -1542,8 +1542,6 @@ telemint_msg_deploy_v2#4637289b  sig:bits512 msg:TelemintUnsignedDeployV2 = Inte
 
 // tonco.xml FIXED
 
-// poolv3_swap
-
 _ amount:(VarUInteger 16) sqrtPriceLimitX96:uint160 minOutAmount:(VarUInteger 16)
     = ToncoSwapParams;
 
@@ -1623,8 +1621,6 @@ tonco_account_refund_me#bf3f447 query_id:uint64 = InternalMsgBody5;
 
 tonco_reset_gas#42a0fb43 query_id:uint64 = InternalMsgBody5;
 
-// pay_to
-
 _ payload_amount0:(VarUInteger 16) payload_0:(Maybe ^Cell) payload_amount1:(VarUInteger 16) payload_1:(Maybe ^Cell)
     = ToncoPayloadCell;
 
@@ -1640,7 +1636,6 @@ _ liquidity:uint128 price_sqrt:uint160 tick:int24 fee_growth_global_0x128:int256
 _ nft_index:uint64 liquidity_burned:uint128 tick_lower:int24 tick_upper:int24 tick_burn:int24
     = ToncoIndexerBurnInfoCell;
 
-
 // exit code 200 or 230
 tonco_router_pay_to_normal#a1daa96d query_id:uint64 reciever0:MsgAddress
         reciever1:MsgAddress exit_code:uint32 seqno:uint64
@@ -1651,6 +1646,8 @@ tonco_router_pay_to_exit_code_201#a1daa96d query_id:uint64 reciever0:MsgAddress
         reciever1:MsgAddress exit_code:uint32 seqno:uint64
         coinsinfo_cell:(Maybe ^ToncoCoinsInfoCell)
         indexer_burn_info_cell:(Maybe ^ToncoIndexerBurnInfoCell) = InternalMsgBody5;
+
+
 
 // tonkeeper_2fa.xml FIXED
 
@@ -1805,6 +1802,28 @@ tgbtc_new_key_event#27756729 amount:Coins new_internal_pubkey:uint256 pegout_add
 
 tgbtc_dkg_completed_event#453443a6 timestamp:uint64 internal_pubkey:uint256 = ExternalMsgBody;
 
+
+// jvault
+
+jvault_receive_jettons#d68a4ac1 query_id:uint64 min_deposit:Coins max_deposit:Coins unstake_commission:uint16 unstake_fee:Coins whitelist:(HashmapE 267 Bit) received_jettons:Coins = InternalMsgBody6;
+
+jvault_unstake_jettons#499a9262 query_id:uint64 jettons_to_unstake:Coins force_unstake:Bool = InternalMsgBody6;
+
+jvault_unstake_request#0168d4b7 query_id:uint64 jettons_to_unstake:Coins = InternalMsgBody6;
+
+jvault_claim_rewards_msg#78d9f109 query_id:uint64 jettons_to_claim:(HashmapE 267 Bit) = InternalMsgBody6;
+
+jvault_send_claimed_rewards#44bc1fe3 = InternalMsgBody6;
+
+jvault_request_update_rewards#f5c5baa3 = InternalMsgBody6;
+
+jvault_update_rewards#ae9307ce = InternalMsgBody6;
+
+jvault_request_update_referrer#55c35b40 = InternalMsgBody6;
+
+jvault_update_referrer#076ee4e0 = InternalMsgBody6;
+
+jvault_set_data#383411ea = InternalMsgBody6;
 
 // w5 FIXED. 
 // needs special ref counting for parsing using tlbc. see special.cpp
