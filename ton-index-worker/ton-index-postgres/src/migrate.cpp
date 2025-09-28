@@ -744,9 +744,6 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("create type coffee_create_pool_details as (amount_1 numeric, amount_2 numeric, initiator_1 tonaddr, initiator_2 tonaddr, provided_asset tonaddr, lp_tokens_minted numeric, pool_creator_contract tonaddr);");
     exec_query("create type coffee_staking_deposit_details as (minted_item_address tonaddr, minted_item_index numeric);");
     exec_query("create type coffee_staking_withdraw_details as (nft_address tonaddr, nft_index numeric, points numeric);");
-    exec_query("create type layerzero_send_details as (send_request_id numeric, msglib_manager varchar, msglib varchar, uln tonaddr, native_fee numeric, zro_fee numeric, endpoint tonaddr, channel tonaddr);");
-    exec_query("create type layerzero_packet_details as (src_oapp varchar, dst_oapp varchar, src_eid integer, dst_eid integer, nonce numeric, guid varchar, message varchar);");
-    exec_query("create type layerzero_dvn_verify_details as (nonce numeric, status varchar, dvn tonaddr, proxy tonaddr, uln tonaddr, uln_connection tonaddr);");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -761,10 +758,6 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_create_pool_data coffee_create_pool_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_deposit_data coffee_staking_deposit_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_withdraw_data coffee_staking_withdraw_details;\n";
-
-    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_send_data layerzero_send_details;\n";
-    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_packet_data layerzero_packet_details;\n";
-    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_dvn_verify_data layerzero_dvn_verify_details;\n";
 
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
@@ -817,6 +810,9 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("alter type nft_transfer_details add attribute payout_comment text;");
     exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
     exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
+    exec_query("create type layerzero_send_details as (send_request_id numeric, msglib_manager varchar, msglib varchar, uln tonaddr, native_fee numeric, zro_fee numeric, endpoint tonaddr, channel tonaddr);");
+    exec_query("create type layerzero_packet_details as (src_oapp varchar, dst_oapp varchar, src_eid integer, dst_eid integer, nonce numeric, guid varchar, message varchar);");
+    exec_query("create type layerzero_dvn_verify_details as (nonce numeric, status varchar, dvn tonaddr, proxy tonaddr, uln tonaddr, uln_connection tonaddr);");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -827,6 +823,11 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
     std::string query = "";
 
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS nft_listing_data nft_listing_details;\n";
+
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_send_data layerzero_send_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_packet_data layerzero_packet_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_dvn_verify_data layerzero_dvn_verify_details;\n";
+
     query += (
       "CREATE TABLE IF NOT EXISTS marketplace_names ("
       "address tonaddr NOT NULL PRIMARY KEY, "
