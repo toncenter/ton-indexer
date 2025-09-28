@@ -275,7 +275,9 @@ class EventClassifierWorker(mp.Process):
                                 Trace.nodes_ <= self.big_traces_threshold)
                 query = select(Trace).filter(fltr)
                 tx_join = selectinload(Trace.transactions).selectinload(Transaction.messages).selectinload(Message.message_content)
-                query = query.options(tx_join)
+                init_state_join = selectinload(Trace.transactions).selectinload(Transaction.messages).selectinload(
+                    Message.init_state)
+                query = query.options(tx_join, init_state_join)
 
                 result = await session.execute(query)
                 traces = result.scalars().unique().all()

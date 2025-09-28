@@ -788,6 +788,73 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.1 completed successfully.";
 }
 
+void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.2";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+
+    exec_query("alter type nft_transfer_details add attribute marketplace_address tonaddr;");
+    exec_query("alter type nft_transfer_details add attribute payout_amount numeric;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment_encrypted boolean;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment_encoded boolean;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment text;");
+    exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
+    exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
+  }
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS nft_listing_data nft_listing_details;\n";
+    query += (
+      "CREATE TABLE IF NOT EXISTS marketplace_names ("
+      "address tonaddr NOT NULL PRIMARY KEY, "
+      "name varchar NOT NULL);\n"
+    );
+
+    query += (
+      "INSERT INTO ton_db_version (id, major, minor, patch) "
+      "VALUES (1, 1, 2, 1) ON CONFLICT(id) DO UPDATE "
+      "SET major = 1, minor = 2, patch = 2;\n"
+    );
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.2 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -798,6 +865,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists blocks_index_2 on blocks (mc_block_seqno);\n"
       "create index if not exists blocks_index_3 on blocks (seqno) where (workchain = '-1'::integer);\n"
       "create index if not exists blocks_index_4 on blocks (start_lt);\n"
+      "create index if not exists blocks_index_5 on blocks (root_hash);\n"
+      "create index if not exists blocks_index_6 on blocks (file_hash);\n"
       "create index if not exists dns_entries_index_3 on dns_entries (dns_wallet, length(domain));\n"
       "create index if not exists dns_entries_index_4 on dns_entries (nft_item_owner, length(domain)) include (domain) where ((nft_item_owner)::text = (dns_wallet)::text);\n"
       "create index if not exists jetton_masters_index_1 on jetton_masters (admin_address, id);\n"
@@ -807,7 +876,7 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists jetton_wallets_index_3 on jetton_wallets (id);\n"
       "create index if not exists jetton_wallets_index_4 on jetton_wallets (jetton asc, balance desc);\n"
       "create index if not exists jetton_wallets_index_5 on jetton_wallets (owner asc, balance desc);\n"
-      "create index if not exists latest_account_states_index_1 on latest_account_states (balance desc);\n"
+      "create index if not exists latest_account_states_index_1 on latest_account_states (balance desc) include (account);\n"
       "create index if not exists latest_account_states_address_book_index on latest_account_states (account) include (account_friendly, code_hash, account_status);\n"
       "create index if not exists latest_account_states_index_2 on latest_account_states (id);\n"
       "create index if not exists nft_collections_index_1 on nft_collections (owner_address, id);\n"
@@ -975,6 +1044,11 @@ int main(int argc, char *argv[]) {
       run_1_2_1_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 1};
     }
+      if (migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
+      run_1_2_2_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 2};
+    }
+
 
     // In future, more migrations will be added here
     // if (is_migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {

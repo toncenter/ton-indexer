@@ -56,11 +56,14 @@ struct TraceNode {
         return ss.str();
     }
 
-    std::unordered_set<block::StdAddress> get_addresses() const {
+    std::unordered_set<block::StdAddress> get_addresses(bool only_committed) const {
+        if (only_committed && emulated) {
+            return {};
+        }
         std::unordered_set<block::StdAddress> addresses;
         addresses.insert(address);
         for (const auto& child : children) {
-            auto child_addresses = child->get_addresses();
+            auto child_addresses = child->get_addresses(only_committed);
             addresses.insert(child_addresses.begin(), child_addresses.end());
         }
         return addresses;
@@ -80,7 +83,14 @@ struct Trace {
                                         GetGemsNftFixPriceSale, GetGemsNftAuction>;
 
     std::multimap<block::StdAddress, block::Account, AddrCmp> emulated_accounts;
+    
+    // set of all detected interfaces for final state of accounts in trace (both emulated and non-emulated)
     std::unordered_map<block::StdAddress, std::vector<typename Detector::DetectedInterface>> interfaces;
+
+    // set of detected interfaces for final committed state of accounts in trace (no emulated accounts)
+    std::unordered_map<block::StdAddress, std::vector<typename Detector::DetectedInterface>> committed_interfaces;
+    // final committed state of accounts in trace (no emulated accounts)
+    std::unordered_map<block::StdAddress, block::Account> committed_accounts;
 
     int depth() const {
         return root->depth();
@@ -94,8 +104,8 @@ struct Trace {
         return root->to_string();
     }
 
-    std::unordered_set<block::StdAddress> get_addresses() const {
-        return root->get_addresses();
+    std::unordered_set<block::StdAddress> get_addresses(bool only_committed) const {
+        return root->get_addresses(only_committed);
     }
 };
 
@@ -153,6 +163,12 @@ private:
     void child_emulated(std::unique_ptr<TraceNode> node, size_t child_ind);
 };
 
+struct ShardIdHash {
+  size_t operator()(const block::ShardId& s) const noexcept {
+    return std::hash<int32_t>{}(s.workchain_id) ^ (std::hash<uint64_t>{}(s.shard_pfx) << 1);
+  }
+};
+
 class MasterchainBlockEmulator: public td::actor::Actor {
 private:
     std::shared_ptr<emulator::TransactionEmulator> emulator_;
@@ -160,6 +176,9 @@ private:
     std::vector<td::Ref<vm::Cell>> in_msgs_;
     td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise_;
     std::vector<std::unique_ptr<TraceNode>> result_{};
+    
+    std::unordered_map<td::Bits256, size_t> input_index_;
+    std::unordered_map<block::ShardId, std::vector<std::unique_ptr<TraceNode>>, ShardIdHash> shard_results_;
 
 public:
     MasterchainBlockEmulator(EmulationContext& context, std::vector<td::Ref<vm::Cell>> in_msgs,

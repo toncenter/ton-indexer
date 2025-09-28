@@ -18,6 +18,6 @@ public:
     void start_up() override;
 
 private:
-    void got_interfaces(block::StdAddress address, std::vector<typename Trace::Detector::DetectedInterface> interfaces, td::Promise<td::Unit> promise);
+    void got_interfaces(block::StdAddress address, std::vector<typename Trace::Detector::DetectedInterface> interfaces, bool is_committed, td::Promise<td::Unit> promise);
     void finish(td::Result<td::Unit> status);
 };

@@ -26,12 +26,24 @@ func convertHashToLocal(h *index.HashType) *Hash {
 	return &hash
 }
 
-func convertHashToIndex(h *Hash) *index.HashType {
+func ConvertHashToIndex(h *Hash) *index.HashType {
 	if h == nil {
 		return nil
 	}
 	hash := index.HashType(h.Base64())
 	return &hash
+}
+
+func MsgPackAccountStateToIndexAccountState(accountState AccountState) index.AccountState {
+	balance := strconv.FormatUint(accountState.Balance, 10)
+	return index.AccountState{
+		Hash:          *ConvertHashToIndex(&accountState.Hash),
+		Balance:       &balance,
+		AccountStatus: &accountState.AccountStatus,
+		FrozenHash:    ConvertHashToIndex(accountState.FrozenHash),
+		DataHash:      ConvertHashToIndex(accountState.DataHash),
+		CodeHash:      ConvertHashToIndex(accountState.CodeHash),
+	}
 }
 
 func convertToIndexAccountState(hash *index.HashType, accountStates map[Hash]*AccountState) *index.AccountState {
@@ -49,16 +61,8 @@ func convertToIndexAccountState(hash *index.HashType, accountStates map[Hash]*Ac
 	if !ok {
 		return nil
 	}
-
-	balance := strconv.FormatUint(accountState.Balance, 10)
-	return &index.AccountState{
-		Hash:          *convertHashToIndex(&accountState.Hash),
-		Balance:       &balance,
-		AccountStatus: &accountState.AccountStatus,
-		FrozenHash:    convertHashToIndex(accountState.FrozenHash),
-		DataHash:      convertHashToIndex(accountState.DataHash),
-		CodeHash:      convertHashToIndex(accountState.CodeHash),
-	}
+	indexAccountState := MsgPackAccountStateToIndexAccountState(*accountState)
+	return &indexAccountState
 }
 
 func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,

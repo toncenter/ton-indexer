@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,7 +19,9 @@ import (
 	"github.com/gofiber/websocket/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
+	"github.com/vmihailenco/msgpack/v5"
 
+	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 )
@@ -46,6 +47,8 @@ const (
 	PendingTransactions EventType = "pending_transactions"
 	PendingActions      EventType = "pending_actions"
 	TraceInvalidated    EventType = "trace_invalidated"
+	AccountStateChanged EventType = "account_state_change"
+	JettonsChanged      EventType = "jettons_change"
 )
 
 // RateLimitConfig holds rate limiting configuration for a client
@@ -143,23 +146,48 @@ func (rl *RateLimiter) GetAddressLimit(limitingKey string) int {
 	return 0
 }
 
-// Subscription represents a client's subscription to blockchain events
+type eventSet map[EventType]struct{}
+type AddressSubs map[string]eventSet
+
 type Subscription struct {
-	SubscribedAddresses  map[string][]EventType
+	SubscribedAddresses  AddressSubs
 	ActionTypes          []string
 	SupportedActionTypes []string
 	IncludeAddressBook   bool
 	IncludeMetadata      bool
 }
 
-func (s *Subscription) AddSubscribedAddresses(addresses map[string][]EventType) {
-	for addr, eventTypes := range addresses {
-		if _, ok := s.SubscribedAddresses[addr]; !ok {
-			s.SubscribedAddresses[addr] = eventTypes
-		} else {
-			s.SubscribedAddresses[addr] = append(s.SubscribedAddresses[addr], eventTypes...)
+func makeEventSet(types []EventType) eventSet {
+	s := make(eventSet, len(types))
+	for _, t := range types {
+		s[t] = struct{}{}
+	}
+	return s
+}
+
+func (s *Subscription) Add(addrs map[string][]EventType) {
+	if s.SubscribedAddresses == nil {
+		s.SubscribedAddresses = make(AddressSubs)
+	}
+	for addr, types := range addrs {
+		set, ok := s.SubscribedAddresses[addr]
+		if !ok {
+			s.SubscribedAddresses[addr] = makeEventSet(types)
+			continue
+		}
+		for _, t := range types {
+			set[t] = struct{}{}
 		}
 	}
+}
+
+func (s *Subscription) Replace(newAddrs map[string][]EventType) {
+	newMap := make(AddressSubs, len(newAddrs))
+	for addr, types := range newAddrs {
+		newMap[addr] = makeEventSet(types)
+	}
+
+	s.SubscribedAddresses = newMap
 }
 
 func (s *Subscription) Unsubscribe(addresses []string) {
@@ -169,27 +197,67 @@ func (s *Subscription) Unsubscribe(addresses []string) {
 }
 
 func (s *Subscription) InterestedIn(eventType EventType, eventAddresses []string) bool {
-	for _, eventAddr := range eventAddresses {
-		if _, ok := s.SubscribedAddresses[eventAddr]; ok {
-			if slices.Contains(s.SubscribedAddresses[eventAddr], eventType) {
+	for _, a := range eventAddresses {
+		if set, ok := s.SubscribedAddresses[a]; ok {
+			if _, has := set[eventType]; has {
 				return true
 			}
 		}
 	}
-
 	return false
 }
 
-// GenericRequest represents a subscription/unsubscription request
-type GenericRequest struct {
+type Operation string
+
+const (
+	OpPing            Operation = "ping"
+	OpSubscribe       Operation = "subscribe"        // merge
+	OpSetSubscription Operation = "set_subscription" // replace
+	OpUnsubscribe     Operation = "unsubscribe"
+	OpConfigure       Operation = "configure"
+)
+
+type Envelope struct {
+	Id        *string   `json:"id"`
+	Operation Operation `json:"operation"`
+	// Keep the rest raw so we can decode per-op without ambiguity:
+	// unmarshal once into Envelope, then unmarshal again into op-specific struct.
+}
+
+// subscribe (merge) — adds event types to addresses (existing ones preserved)
+type SubscribeRequest struct {
+	Addresses []string    `json:"addresses"`
+	Types     []EventType `json:"types"`
+}
+
+// set_subscription (replace) — authoritative snapshot of the full subscription
+type SetSubscriptionRequest struct {
+	Subscriptions map[string][]EventType `json:"subscriptions"`
+}
+
+// unsubscribe — remove a list of addresses entirely
+type UnsubscribeRequest struct {
+	Addresses []string `json:"addresses"`
+}
+
+// configure — toggle globals setting for this connection
+type ConfigureRequest struct {
+	IncludeAddressBook   *bool    `json:"include_address_book"`
+	IncludeMetadata      *bool    `json:"include_metadata"`
+	SupportedActionTypes []string `json:"supported_action_types"`
+	ActionTypes          []string `json:"action_types"`
+}
+
+// SSERequest represents a subscription/unsubscription request
+type SSERequest struct {
 	Id                   *string      `json:"id"`
 	Operation            *string      `json:"operation"`
 	Addresses            *[]string    `json:"addresses"`
 	Types                *[]EventType `json:"types"`
 	ActionTypes          []string     `json:"action_types"`
 	SupportedActionTypes []string     `json:"supported_action_types"`
-	IncludeAddressBook   *bool        `json:"include_address_book,omitempty"`
-	IncludeMetadata      *bool        `json:"include_metadata,omitempty"`
+	IncludeAddressBook   *bool        `json:"include_address_book"`
+	IncludeMetadata      *bool        `json:"include_metadata"`
 }
 
 // BlockchainEvent represents an event from the blockchain
@@ -329,7 +397,7 @@ func (manager *ClientManager) Run() {
 }
 
 // fetchAddressBookAndMetadata fetches address book and metadata for a list of addresses
-func fetchAddressBookAndMetadata(ctx context.Context, addresses []string, includeAddressBook bool, includeMetadata bool) (*index.AddressBook, *index.Metadata) {
+func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []string, metadataAddresses []string, includeAddressBook bool, includeMetadata bool) (*index.AddressBook, *index.Metadata) {
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
 
@@ -350,7 +418,7 @@ func fetchAddressBookAndMetadata(ctx context.Context, addresses []string, includ
 	}
 
 	if includeAddressBook {
-		book, err := index.QueryAddressBookImpl(addresses, conn, settings)
+		book, err := index.QueryAddressBookImpl(addrBookAddresses, conn, settings)
 		if err != nil {
 			log.Printf("Error querying address book: %v", err)
 		} else {
@@ -359,7 +427,7 @@ func fetchAddressBookAndMetadata(ctx context.Context, addresses []string, includ
 	}
 
 	if includeMetadata {
-		meta, err := index.QueryMetadataImpl(addresses, conn, settings)
+		meta, err := index.QueryMetadataImpl(metadataAddresses, conn, settings)
 		if err != nil {
 			log.Printf("Error querying metadata: %v", err)
 		} else {
@@ -484,7 +552,7 @@ func SubscribeToClassifiedTraces(ctx context.Context, rdb *redis.Client, manager
 		}
 
 		traceExternalHashNorm := msg.Payload
-		ProcessNewClassifiedTrace(ctx, rdb, traceExternalHashNorm, manager)
+		go ProcessNewClassifiedTrace(ctx, rdb, traceExternalHashNorm, manager)
 	}
 }
 
@@ -562,6 +630,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
 			allAddresses,
+			allAddresses,
 			shouldFetchAddressBook,
 			shouldFetchMetadata,
 		)
@@ -603,7 +672,7 @@ func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientMa
 		}
 
 		traceExternalHashNorm := msg.Payload
-		ProcessNewTrace(ctx, rdb, traceExternalHashNorm, manager)
+		go ProcessNewTrace(ctx, rdb, traceExternalHashNorm, manager)
 	}
 }
 
@@ -682,6 +751,38 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 		AddressBook:           adjustedAddressBook,
 		Metadata:              adjustedMetadata,
 	}
+}
+
+type AccountStateNotification struct {
+	Type    EventType          `json:"type"`
+	Account string             `json:"account"`
+	State   index.AccountState `json:"state"`
+}
+
+var _ Notification = (*AccountStateNotification)(nil)
+
+func (n *AccountStateNotification) AdjustForClient(client *Client) any {
+	if client.Subscription.InterestedIn(n.Type, []string{n.Account}) {
+		return n
+	}
+	return nil
+}
+
+type JettonsNotification struct {
+	Type        EventType          `json:"type"`
+	Jetton      index.JettonWallet `json:"jetton"`
+	AddressBook *index.AddressBook `json:"address_book,omitempty"`
+	Metadata    *index.Metadata    `json:"metadata,omitempty"`
+}
+
+var _ Notification = (*JettonsNotification)(nil)
+
+func (n *JettonsNotification) AdjustForClient(client *Client) any {
+	if client.Subscription.InterestedIn(n.Type, []string{n.Jetton.Address.String()}) ||
+		client.Subscription.InterestedIn(n.Type, []string{n.Jetton.Owner.String()}) {
+		return n
+	}
+	return nil
 }
 
 func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager) {
@@ -769,6 +870,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
 			allAddresses,
+			allAddresses,
 			shouldFetchAddressBook,
 			shouldFetchMetadata,
 		)
@@ -816,7 +918,7 @@ func SubscribeToCommittedTransactions(ctx context.Context, rdb *redis.Client, ma
 			log.Printf("No transaction hashes found in commited txs channel message: %s", msg.Payload)
 			continue
 		}
-		ProcessNewCommitedTxs(ctx, rdb, traceExternalHashNorm, txHashes, manager)
+		go ProcessNewCommitedTxs(ctx, rdb, traceExternalHashNorm, txHashes, manager)
 	}
 }
 
@@ -850,24 +952,25 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 
 	var txs []index.Transaction
 	txs_map := map[index.HashType]int{}
-	{
-		rows := emulatedContext.GetTransactions()
-		for _, row := range rows {
-			if tx, err := index.ScanTransaction(row); err == nil {
-				txs = append(txs, *tx)
-				txs_map[tx.Hash] = len(txs) - 1
-			} else {
-				log.Printf("Error scanning transaction: %v", err)
-			}
+	for _, row := range rows {
+		if tx, err := index.ScanTransaction(row); err == nil {
+			txs = append(txs, *tx)
+			txs_map[tx.Hash] = len(txs) - 1
+		} else {
+			log.Printf("Error scanning transaction: %v", err)
 		}
 	}
 
-	allAddresses := []string{}
+	txsAddresses := []string{}
 	var tx_hashes []string
 	for _, t := range txs {
 		tx_hashes = append(tx_hashes, string(t.Hash))
-		allAddresses = append(allAddresses, string(t.Account))
+		txsAddresses = append(txsAddresses, string(t.Account))
 	}
+
+	go ProcessNewAccountStates(ctx, rdb, txsAddresses, manager)
+
+	allAddresses := txsAddresses
 	if len(tx_hashes) > 0 {
 		rows := emulatedContext.GetMessages(tx_hashes)
 		for _, row := range rows {
@@ -910,6 +1013,7 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 		addressBook, metadata = fetchAddressBookAndMetadata(
 			ctx,
 			allAddresses,
+			allAddresses,
 			shouldFetchAddressBook,
 			shouldFetchMetadata,
 		)
@@ -926,6 +1030,100 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 		Transactions:          txs,
 		AddressBook:           addressBook,
 		Metadata:              metadata,
+	}
+}
+
+// TODO: cleanup processedAccountStatesLts map periodically to avoid memory leak
+var processedAccountStatesLts = map[string]uint64{}
+var processedAccountStatesLtsMutex sync.RWMutex
+
+func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addresses []string, manager *ClientManager) {
+	for _, addr := range addresses {
+		key := fmt.Sprintf("acct:%s", addr)
+		acctData, err := rdb.HGetAll(ctx, key).Result()
+		if err != nil {
+			log.Printf("Error fetching account state for %s: %v", addr, err)
+			continue
+		}
+		var accountState models.AccountState
+		err = msgpack.Unmarshal([]byte(acctData["state"]), &accountState)
+		if err != nil {
+			log.Printf("Error unmarshalling account state for %s: %v (%s)", addr, err, acctData["state"])
+			continue
+		}
+		if accountState.LastTransLt != nil {
+			shouldNotify := false
+			processedAccountStatesLtsMutex.Lock()
+			cur := processedAccountStatesLts[addr]
+
+			if *accountState.LastTransLt > cur {
+				processedAccountStatesLts[addr] = *accountState.LastTransLt
+				shouldNotify = true
+			}
+			processedAccountStatesLtsMutex.Unlock()
+
+			if !shouldNotify {
+				continue // already processed same or newer LT
+			}
+		}
+
+		manager.broadcast <- &AccountStateNotification{
+			Type:    AccountStateChanged,
+			Account: addr,
+			State:   models.MsgPackAccountStateToIndexAccountState(accountState),
+		}
+
+		interfacesData := acctData["interfaces"]
+		if interfacesData == "" {
+			continue
+		}
+		var addrInterfaces models.AddressInterfaces
+		err = msgpack.Unmarshal([]byte(interfacesData), &addrInterfaces)
+		if err != nil {
+			log.Printf("Error unmarshalling address interfaces for %s: %v (%s)", addr, err, interfacesData)
+			continue
+		}
+
+		var notification *JettonsNotification
+
+		for _, iface := range addrInterfaces.Interfaces {
+			switch val := iface.Value.(type) {
+			case *models.JettonWalletInterface:
+				notification = &JettonsNotification{
+					Type:   JettonsChanged,
+					Jetton: MsgPackJettonWalletToModel(*val, int64(*accountState.LastTransLt), models.ConvertHashToIndex(accountState.CodeHash), models.ConvertHashToIndex(accountState.DataHash)),
+				}
+			}
+		}
+		if notification == nil {
+			continue
+		}
+
+		addrBookAddresses := []string{notification.Jetton.Address.String(), notification.Jetton.Owner.String(), notification.Jetton.Jetton.String()}
+		metadataAddresses := []string{notification.Jetton.Owner.String(), notification.Jetton.Jetton.String()}
+		shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]EventType{JettonsChanged}, addrBookAddresses)
+		if shouldFetchAddressBook || shouldFetchMetadata {
+			notification.AddressBook, notification.Metadata = fetchAddressBookAndMetadata(
+				ctx,
+				addrBookAddresses,
+				metadataAddresses,
+				shouldFetchAddressBook,
+				shouldFetchMetadata,
+			)
+		}
+		manager.broadcast <- notification
+	}
+}
+
+func MsgPackJettonWalletToModel(j models.JettonWalletInterface, lastTransLt int64, codeHash *index.HashType, dataHash *index.HashType) index.JettonWallet {
+	return index.JettonWallet{
+		Address:           index.AccountAddress(j.Address),
+		Balance:           j.Balance,
+		Owner:             index.AccountAddress(j.Owner),
+		Jetton:            index.AccountAddress(j.Jetton),
+		LastTransactionLt: lastTransLt,
+		CodeHash:          codeHash,
+		DataHash:          dataHash,
 	}
 }
 
@@ -967,6 +1165,8 @@ var validEventTypes = map[EventType]struct{}{
 	Actions:             {},
 	PendingTransactions: {},
 	Transactions:        {},
+	AccountStateChanged: {},
+	JettonsChanged:      {},
 }
 
 // ParseRateLimitHeaders extracts rate limiting configuration from headers map
@@ -996,7 +1196,7 @@ func ParseRateLimitHeaders(headers map[string][]string) (string, RateLimitConfig
 	return limitingKey, config
 }
 
-func ValidateSSERequest(req *GenericRequest) (map[string][]EventType, error) {
+func ValidateSSERequest(req *SSERequest) (map[string][]EventType, error) {
 	if req.Addresses == nil || len(*req.Addresses) == 0 {
 		return nil, fmt.Errorf("addresses are required for subscribe operation")
 	}
@@ -1019,73 +1219,6 @@ func ValidateSSERequest(req *GenericRequest) (map[string][]EventType, error) {
 		}
 	}
 	return addrMap, nil
-}
-
-func ValidateSubscription(req *GenericRequest) (map[string][]EventType, error) {
-	if req.Operation == nil {
-		return nil, fmt.Errorf("operation is required")
-	}
-
-	if *req.Operation != "subscribe" {
-		return nil, fmt.Errorf("invalid operation: %s", *req.Operation)
-	}
-
-	// For subscribe operation, addresses and types are required
-	if req.Addresses == nil || len(*req.Addresses) == 0 {
-		return nil, fmt.Errorf("addresses are required for subscribe operation")
-	}
-	if req.Types == nil || len(*req.Types) == 0 {
-		return nil, fmt.Errorf("types are required for subscribe operation")
-	}
-
-	hasSettings := req.IncludeAddressBook != nil ||
-		req.IncludeMetadata != nil ||
-		len(req.ActionTypes) > 0 ||
-		len(req.SupportedActionTypes) > 0
-
-	if hasSettings {
-		return nil, fmt.Errorf("changing settings are not allowed for subscribe operation, use separate operation configure")
-	}
-
-	// convert addresses once; capacity = len(req.Addresses) avoids reallocs
-	addrMap := make(map[string][]EventType, len(*req.Addresses))
-	for _, a := range *req.Addresses {
-		cnv, err := convertAddress(a)
-		if err != nil {
-			return nil, err
-		}
-		addrMap[cnv] = *req.Types
-	}
-
-	for _, t := range *req.Types {
-		if _, ok := validEventTypes[t]; !ok {
-			return nil, fmt.Errorf("invalid event type: %s", t)
-		}
-	}
-	return addrMap, nil
-}
-
-// ValidateSettings validates the settings update request
-func ValidateSettings(req *GenericRequest) error {
-	if req.Operation == nil {
-		return fmt.Errorf("operation is required")
-	}
-
-	if *req.Operation != "configure" {
-		return fmt.Errorf("invalid operation: %s", *req.Operation)
-	}
-
-	// For configure, at least one setting should be provided
-	hasSettings := req.IncludeAddressBook != nil ||
-		req.IncludeMetadata != nil ||
-		len(req.ActionTypes) > 0 ||
-		len(req.SupportedActionTypes) > 0
-
-	if !hasSettings {
-		return fmt.Errorf("at least one setting must be provided for configure operation")
-	}
-
-	return nil
 }
 
 // convertAddress keeps the reflection ugliness in one place.
@@ -1123,7 +1256,7 @@ func sendWSJSONErr(c *websocket.Conn, id *string, err error) {
 }
 
 // checkAddressLimit checks if adding new addresses would exceed the limit
-func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimiter) error {
+func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimiter, toOverwrite bool) error {
 	if client.LimitingKey == "" {
 		return nil // No rate limiting
 	}
@@ -1134,6 +1267,9 @@ func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimite
 	}
 
 	currentCount := len(client.Subscription.SubscribedAddresses)
+	if toOverwrite {
+		currentCount = 0 // Overwriting, so current count is 0
+	}
 	if currentCount+newAddresses > maxAddresses {
 		return fmt.Errorf("address limit exceeded: current %d + new %d > max %d",
 			currentCount, newAddresses, maxAddresses)
@@ -1148,13 +1284,21 @@ func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimite
 
 func SSEHandler(manager *ClientManager) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		var req GenericRequest
+		var req SSERequest
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Error: fmt.Sprintf("invalid subscription request: %v", err)})
 		}
 		addrMap, err := ValidateSSERequest(&req)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Id: req.Id, Error: err.Error()})
+		}
+
+		if len(req.SupportedActionTypes) == 0 {
+			if val, ok := c.GetReqHeaders()["X-Actions-Version"]; ok && len(val) > 0 {
+				req.SupportedActionTypes = val
+			} else {
+				req.SupportedActionTypes = []string{"latest"}
+			}
 		}
 
 		// Parse rate limiting headers
@@ -1189,7 +1333,6 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			LimitingKey: limitingKey,
 			Connected:   true,
 			Subscription: Subscription{
-				SubscribedAddresses:  addrMap,
 				IncludeAddressBook:   req.IncludeAddressBook != nil && *req.IncludeAddressBook,
 				IncludeMetadata:      req.IncludeMetadata != nil && *req.IncludeMetadata,
 				ActionTypes:          req.ActionTypes,
@@ -1205,6 +1348,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				}
 			},
 		}
+		client.Subscription.Add(addrMap)
 		manager.register <- client
 
 		// 3) SSE plumbing
@@ -1261,6 +1405,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 		headers["X-Limiting-Key"] = []string{c.Headers("X-Limiting-Key")}
 		headers["X-Max-Parallel-Connections"] = []string{c.Headers("X-Max-Parallel-Connections")}
 		headers["X-Max-Subscribed-Addr"] = []string{c.Headers("X-Max-Subscribed-Addr")}
+		headers["X-Actions-Version"] = []string{c.Headers("X-Actions-Version", "latest")}
 		limitingKey, rateLimitConfig := ParseRateLimitHeaders(headers)
 
 		clientID := fmt.Sprintf("%s-%s", c.RemoteAddr(), time.Now().Format(time.RFC3339Nano))
@@ -1279,8 +1424,8 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			LimitingKey: limitingKey,
 			Connected:   true,
 			Subscription: Subscription{
-				SubscribedAddresses:  make(map[string][]EventType),
-				SupportedActionTypes: index.ExpandActionTypeShortcuts([]string{}),
+				SubscribedAddresses:  make(AddressSubs),
+				SupportedActionTypes: index.ExpandActionTypeShortcuts(headers["X-Actions-Version"]),
 				IncludeAddressBook:   false,
 				IncludeMetadata:      false,
 			},
@@ -1302,34 +1447,33 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				return
 			}
 
-			var req GenericRequest
-			if err := json.Unmarshal(msg, &req); err != nil {
+			var env Envelope
+			if err := json.Unmarshal(msg, &env); err != nil {
 				sendWSJSONErr(c, nil, fmt.Errorf("invalid subscription request: %v", err))
 				continue
 			}
-			if req.Operation == nil {
-				sendWSJSONErr(c, req.Id, fmt.Errorf("operation is required"))
-				continue
-			}
-
-			switch *req.Operation {
-			case "ping":
-				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "pong"})
+			switch env.Operation {
+			case OpPing:
+				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "pong"})
 				_ = c.WriteMessage(websocket.TextMessage, ack)
-				continue
 
-			case "unsubscribe":
-				if req.Addresses == nil || len(*req.Addresses) == 0 {
-					sendWSJSONErr(c, req.Id, fmt.Errorf("addresses are required"))
+			case OpUnsubscribe:
+				var req UnsubscribeRequest
+				if err := json.Unmarshal(msg, &req); err != nil {
+					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid unsubscribe request: %v", err))
 					continue
 				}
-				cnvAddrs := make([]string, len(*req.Addresses))
+				if len(req.Addresses) == 0 {
+					sendWSJSONErr(c, env.Id, fmt.Errorf("addresses are required"))
+					continue
+				}
+				cnvAddrs := make([]string, len(req.Addresses))
 				addrsValid := true
-				for i, a := range *req.Addresses {
+				for i, a := range req.Addresses {
 					cnvAddrs[i], err = convertAddress(a)
 					if err != nil {
 						addrsValid = false
-						sendWSJSONErr(c, req.Id, err)
+						sendWSJSONErr(c, env.Id, err)
 						break
 					}
 				}
@@ -1340,37 +1484,103 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				client.mu.Lock()
 				client.Subscription.Unsubscribe(cnvAddrs)
 				client.mu.Unlock()
-				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "unsubscribed"})
+				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "unsubscribed"})
 				_ = c.WriteMessage(websocket.TextMessage, ack)
-				continue
 
-			case "subscribe":
-				// Handle address subscription
-				addrMap, err := ValidateSubscription(&req)
-				if err != nil {
-					sendWSJSONErr(c, req.Id, err)
+			case OpSubscribe:
+				var req SubscribeRequest
+				if err := json.Unmarshal(msg, &req); err != nil {
+					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid subscribe request: %v", err))
+					continue
+				}
+
+				addrMap := make(map[string][]EventType, len(req.Addresses))
+				var validationError error
+				for _, a := range req.Addresses {
+					cnv, err := convertAddress(a)
+					if err != nil {
+						validationError = fmt.Errorf("invalid address: %s", a)
+						break
+					}
+					for _, t := range req.Types {
+						if _, ok := validEventTypes[t]; !ok {
+							validationError = fmt.Errorf("invalid event type: %s", t)
+							break
+						}
+					}
+					if validationError != nil {
+						break
+					}
+					addrMap[cnv] = req.Types
+				}
+				if validationError != nil {
+					sendWSJSONErr(c, env.Id, validationError)
 					continue
 				}
 
 				// Check address limit
 				client.mu.Lock()
-				err = checkAddressLimit(client, len(addrMap), manager.rateLimiter)
+				err = checkAddressLimit(client, len(addrMap), manager.rateLimiter, false)
 				if err != nil {
 					client.mu.Unlock()
-					sendWSJSONErr(c, req.Id, err)
+					sendWSJSONErr(c, env.Id, err)
 					continue
 				}
-				client.Subscription.AddSubscribedAddresses(addrMap)
+				client.Subscription.Add(addrMap)
 				client.mu.Unlock()
 
-				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "subscribed"})
+				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "subscribed"})
 				_ = c.WriteMessage(websocket.TextMessage, ack)
-				continue
 
-			case "configure":
-				// Handle settings update
-				if err := ValidateSettings(&req); err != nil {
-					sendWSJSONErr(c, req.Id, err)
+			case OpSetSubscription:
+				var req SetSubscriptionRequest
+				if err := json.Unmarshal(msg, &req); err != nil {
+					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid set_subscription: %v", err))
+					continue
+				}
+
+				addrMap := make(map[string][]EventType, len(req.Subscriptions))
+				var validationError error
+				for a, et := range req.Subscriptions {
+					cnv, err := convertAddress(a)
+					if err != nil {
+						validationError = err
+						break
+					}
+					for _, t := range et {
+						if _, ok := validEventTypes[t]; !ok {
+							validationError = fmt.Errorf("invalid event type: %s", t)
+							break
+						}
+					}
+					if validationError != nil {
+						break
+					}
+					addrMap[cnv] = et
+				}
+				if validationError != nil {
+					sendWSJSONErr(c, env.Id, validationError)
+					continue
+				}
+
+				// Rate-limit against the *new* snapshot size
+				client.mu.Lock()
+				if err := checkAddressLimit(client, len(addrMap), manager.rateLimiter, true); err != nil {
+					client.mu.Unlock()
+					sendWSJSONErr(c, env.Id, err)
+					continue
+				}
+
+				client.Subscription.Replace(addrMap)
+				client.mu.Unlock()
+
+				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "subscription_set"})
+				_ = c.WriteMessage(websocket.TextMessage, ack)
+
+			case OpConfigure:
+				var req ConfigureRequest
+				if err := json.Unmarshal(msg, &req); err != nil {
+					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid configure request: %v", err))
 					continue
 				}
 
@@ -1389,12 +1599,12 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				}
 				client.mu.Unlock()
 
-				ack, _ := json.Marshal(StatusResponse{Id: req.Id, Status: "configured"})
+				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "configured"})
 				_ = c.WriteMessage(websocket.TextMessage, ack)
 				continue
 
 			default:
-				sendWSJSONErr(c, req.Id, fmt.Errorf("unknown operation: %s", *req.Operation))
+				sendWSJSONErr(c, env.Id, fmt.Errorf("unknown operation: %s", env.Operation))
 			}
 		}
 	}

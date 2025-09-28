@@ -88,6 +88,12 @@ func buildBlocksQuery(
 	if v := blk_req.Seqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("seqno = %d", *v))
 	}
+	if v := blk_req.RootHash; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("root_hash = '%s'", *v))
+	}
+	if v := blk_req.FileHash; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("file_hash = '%s'", *v))
+	}
 	if v := blk_req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("mc_block_seqno = %d", *v))
 	}
@@ -1142,17 +1148,13 @@ func buildJettonBurnsQuery(burn_req JettonBurnRequest, utime_req UtimeRequest,
 	return query, nil
 }
 
-func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+func buildAccountStatesQuery(account_req AccountRequest, settings RequestSettings) (string, error) {
 	clmn_query_default := `A.account, A.hash, A.balance, A.balance_extra_currencies, A.account_status, A.frozen_hash, A.last_trans_hash, A.last_trans_lt, A.data_hash, A.code_hash, `
 	clmn_query := clmn_query_default + `A.data_boc, A.code_boc, C.methods`
 	from_query := `latest_account_states as A left join contract_methods as C on A.code_hash = C.code_hash`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	limit_query, err := limitQuery(lim_req, settings)
-	if err != nil {
-		return "", err
-	}
 
 	// build query
 	if v := account_req.AccountAddress; v != nil {
@@ -1180,7 +1182,7 @@ func buildAccountStatesQuery(account_req AccountRequest, lim_req LimitRequest, s
 	query += ` from ` + from_query
 	query += filter_query
 	query += orderby_query
-	query += limit_query
+	query += ` limit 1000`
 	// log.Println(query)
 	return query, nil
 }
@@ -2254,6 +2256,24 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.jetton_transfer_data).is_encrypted_comment, (A.nft_transfer_data).is_purchase, (A.nft_transfer_data).price,
 				(A.nft_transfer_data).query_id, (A.nft_transfer_data).custom_payload, (A.nft_transfer_data).forward_payload,
 				(A.nft_transfer_data).forward_amount, (A.nft_transfer_data).response_destination, (A.nft_transfer_data).nft_item_index, (A.nft_transfer_data).marketplace, (A.nft_transfer_data).real_prev_owner,
+				(A.nft_transfer_data).marketplace_address,
+				(A.nft_transfer_data).payout_amount,
+				(A.nft_transfer_data).payout_comment_encrypted,
+				(A.nft_transfer_data).payout_comment_encoded,
+				(A.nft_transfer_data).payout_comment,
+				(A.nft_transfer_data).royalty_amount,
+				(A.nft_listing_data).nft_item_index,
+				(A.nft_listing_data).full_price,
+				(A.nft_listing_data).marketplace_fee,
+				(A.nft_listing_data).royalty_amount,
+				(A.nft_listing_data).mp_fee_factor,
+				(A.nft_listing_data).mp_fee_base,
+				(A.nft_listing_data).royalty_fee_base,
+				(A.nft_listing_data).max_bid,
+				(A.nft_listing_data).min_bid,
+				(A.nft_listing_data).marketplace_fee_address,
+				(A.nft_listing_data).royalty_address,
+				(A.nft_listing_data).marketplace,
 				(A.jetton_swap_data).dex, (A.jetton_swap_data).sender, ((A.jetton_swap_data).dex_incoming_transfer).amount,
 				((A.jetton_swap_data).dex_incoming_transfer).asset, ((A.jetton_swap_data).dex_incoming_transfer).source,
 				((A.jetton_swap_data).dex_incoming_transfer).destination, ((A.jetton_swap_data).dex_incoming_transfer).source_jetton_wallet,
@@ -2799,7 +2819,6 @@ func (db *DbClient) QueryMessages(
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-
 		if !settings.NoMetadata {
 			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
@@ -3186,10 +3205,9 @@ func (db *DbClient) QueryJettonBurns(
 
 func (db *DbClient) QueryAccountStates(
 	account_req AccountRequest,
-	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]AccountStateFull, AddressBook, Metadata, error) {
-	query, err := buildAccountStatesQuery(account_req, lim_req, settings)
+	query, err := buildAccountStatesQuery(account_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -3237,10 +3255,9 @@ func (db *DbClient) QueryAccountStates(
 
 func (db *DbClient) QueryWalletStates(
 	account_req AccountRequest,
-	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]WalletState, AddressBook, Metadata, error) {
-	states, book, metadata, err := db.QueryAccountStates(account_req, lim_req, settings)
+	states, book, metadata, err := db.QueryAccountStates(account_req, settings)
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -3325,19 +3342,22 @@ func (db *DbClient) QueryActions(
 		}
 		actions = append(actions, *action)
 	}
-	if len(addr_map) > 0 && !settings.NoAddressBook {
+	if len(addr_map) > 0 {
 		addr_list := []string{}
 		for k := range addr_map {
 			addr_list = append(addr_list, string(k))
 		}
-		book, err = QueryAddressBookImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoAddressBook {
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
-
-		metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 	return actions, book, metadata, nil
@@ -3392,9 +3412,11 @@ func (db *DbClient) QueryTraces(
 				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 			}
 		}
-		metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 

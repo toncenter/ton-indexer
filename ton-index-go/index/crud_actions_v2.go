@@ -68,19 +68,22 @@ func (db *DbClient) QueryActionsV2(
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	if len(addr_map) > 0 && !settings.NoAddressBook {
+	if len(addr_map) > 0 {
 		addr_list := []string{}
 		for k := range addr_map {
 			addr_list = append(addr_list, string(k))
 		}
-		book, err = QueryAddressBookImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoAddressBook {
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
-
-		metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-		if err != nil {
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		if !settings.NoMetadata {
+			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+			if err != nil {
+				return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+			}
 		}
 	}
 	return actions, book, metadata, nil
@@ -96,6 +99,24 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.jetton_transfer_data).is_encrypted_comment, (A.nft_transfer_data).is_purchase, (A.nft_transfer_data).price,
 		(A.nft_transfer_data).query_id, (A.nft_transfer_data).custom_payload, (A.nft_transfer_data).forward_payload,
 		(A.nft_transfer_data).forward_amount, (A.nft_transfer_data).response_destination, (A.nft_transfer_data).nft_item_index, (A.nft_transfer_data).marketplace, (A.nft_transfer_data).real_prev_owner,
+		(A.nft_transfer_data).marketplace_address,
+		(A.nft_transfer_data).payout_amount,
+		(A.nft_transfer_data).payout_comment_encrypted,
+		(A.nft_transfer_data).payout_comment_encoded,
+		(A.nft_transfer_data).payout_comment,
+		(A.nft_transfer_data).royalty_amount,
+		(A.nft_listing_data).nft_item_index,
+		(A.nft_listing_data).full_price,
+		(A.nft_listing_data).marketplace_fee,
+		(A.nft_listing_data).royalty_amount,
+		(A.nft_listing_data).mp_fee_factor,
+		(A.nft_listing_data).mp_fee_base,
+		(A.nft_listing_data).royalty_fee_base,
+		(A.nft_listing_data).max_bid,
+		(A.nft_listing_data).min_bid,
+		(A.nft_listing_data).marketplace_fee_address,
+		(A.nft_listing_data).royalty_address,
+		(A.nft_listing_data).marketplace,
 		(A.jetton_swap_data).dex, (A.jetton_swap_data).sender, ((A.jetton_swap_data).dex_incoming_transfer).amount,
 		((A.jetton_swap_data).dex_incoming_transfer).asset, ((A.jetton_swap_data).dex_incoming_transfer).source,
 		((A.jetton_swap_data).dex_incoming_transfer).destination, ((A.jetton_swap_data).dex_incoming_transfer).source_jetton_wallet,
