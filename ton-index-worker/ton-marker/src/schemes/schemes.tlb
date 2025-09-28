@@ -529,6 +529,8 @@ jetton_mint#642b7d07
 
         = InternalMsgBody1;
 
+minter_jetton_mint#00000015 query_id:uint64 to_address:MsgAddress ton_amount:Coins master_msg:^Cell = InternalMsgBody1;
+
 // jetton_change_admin
 jetton_change_admin#6501f354
         query_id:uint64
@@ -1824,6 +1826,10 @@ jvault_request_update_referrer#55c35b40 = InternalMsgBody6;
 jvault_update_referrer#076ee4e0 = InternalMsgBody6;
 
 jvault_set_data#383411ea = InternalMsgBody6;
+
+// getgems
+sale_update_message#6c6c2080 query_id:uint64 new_full_price:Coins new_mp_fee:Coins new_royalty_amount:Coins = InternalMsgBody6;
+
 
 // w5 FIXED. 
 // needs special ref counting for parsing using tlbc. see special.cpp
