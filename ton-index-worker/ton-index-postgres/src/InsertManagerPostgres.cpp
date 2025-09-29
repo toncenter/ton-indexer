@@ -1575,10 +1575,13 @@ std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
+<<<<<<< HEAD
   std::initializer_list<std::string_view> pools_column = {
     "address", "asset_1", "asset_2", "reserve_1", "reserve_2", "pool_type", "dex", "fee", "last_transaction_lt", "code_hash", "data_hash"
   };
 
+=======
+>>>>>>> 6176be6 (Dedust pools indexing)
   std::unordered_map<block::StdAddress, DedustPoolData> dedust_pools;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
@@ -1593,29 +1596,49 @@ std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
     }
   }
 
+<<<<<<< HEAD
   PopulateTableStream pools_stream(txn, "dex_pools", pools_column, 1000, false);
   pools_stream.setConflictDoUpdate({"address"}, "dex_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
   std::string dex = "dedust";
   for (const auto& [addr, dedust_pool] : dedust_pools) {
     std::string pool_type = dedust_pool.is_stable ? "stable" : "volatile";
 
+=======
+  std::initializer_list<std::string_view> columns = {
+    "address", "asset_1", "asset_2", "last_transaction_lt", "code_hash", "data_hash"
+  };
+
+  PopulateTableStream stream(txn, "dedust_pools", columns, 1000, false);
+  stream.setConflictDoUpdate({"address"}, "dedust_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+  for (const auto& [addr, dedust_pool] : dedust_pools) {
+>>>>>>> 6176be6 (Dedust pools indexing)
     auto tuple = std::make_tuple(
       dedust_pool.address,
       dedust_pool.asset_1,
       dedust_pool.asset_2,
+<<<<<<< HEAD
       dedust_pool.reserve_1,
       dedust_pool.reserve_2,
       pool_type,
       dex,
       dedust_pool.fee,
+=======
+>>>>>>> 6176be6 (Dedust pools indexing)
       dedust_pool.last_transaction_lt,
       dedust_pool.code_hash,
       dedust_pool.data_hash
     );
+<<<<<<< HEAD
     pools_stream.insert_row(std::move(tuple));
   }
 
   return pools_stream.get_str();
+=======
+    stream.insert_row(std::move(tuple));
+  }
+  return stream.get_str();
+>>>>>>> 6176be6 (Dedust pools indexing)
 }
 
 void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn, bool with_copy) {
