@@ -832,6 +832,17 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
       "SET major = 1, minor = 2, patch = 2;\n"
     );
 
+    query += (
+      "CREATE TABLE IF NOT EXISTS dedust_pools ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "asset_1 tonaddr, "
+      "asset_2 tonaddr, "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash);\n"
+    );
+
     if (dry_run) {
       std::cout << query << std::endl;
       return;

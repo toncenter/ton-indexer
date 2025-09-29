@@ -498,6 +498,7 @@ void InsertBatchPostgres::do_insert() {
     insert_under_mutex_query += insert_getgems_nft_sales(txn);
     insert_under_mutex_query += insert_multisig_contracts(txn);
     insert_under_mutex_query += insert_multisig_orders(txn);
+    insert_under_mutex_query += insert_dedust_pools(txn);
     insert_under_mutex_query += insert_latest_account_states(txn);
     insert_under_mutex_query += insert_vesting(txn);
 
@@ -1566,6 +1567,42 @@ std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
       multisig_order.last_transaction_lt,
       multisig_order.code_hash,
       multisig_order.data_hash
+    );
+    stream.insert_row(std::move(tuple));
+  }
+  return stream.get_str();
+}
+
+std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
+  std::unordered_map<block::StdAddress, DedustPoolData> dedust_pools;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& dedust_pool : task.parsed_block_->get_accounts_v2<DedustPoolData>()) {
+      if (dedust_pools.find(dedust_pool.address) == dedust_pools.end()) {
+        dedust_pools[dedust_pool.address] = dedust_pool;
+      } else {
+        if (dedust_pools[dedust_pool.address].last_transaction_lt < dedust_pool.last_transaction_lt) {
+          dedust_pools[dedust_pool.address] = dedust_pool;
+        }
+      }
+    }
+  }
+
+  std::initializer_list<std::string_view> columns = {
+    "address", "asset_1", "asset_2", "last_transaction_lt", "code_hash", "data_hash"
+  };
+
+  PopulateTableStream stream(txn, "dedust_pools", columns, 1000, false);
+  stream.setConflictDoUpdate({"address"}, "dedust_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+  for (const auto& [addr, dedust_pool] : dedust_pools) {
+    auto tuple = std::make_tuple(
+      dedust_pool.address,
+      dedust_pool.asset_1,
+      dedust_pool.asset_2,
+      dedust_pool.last_transaction_lt,
+      dedust_pool.code_hash,
+      dedust_pool.data_hash
     );
     stream.insert_row(std::move(tuple));
   }

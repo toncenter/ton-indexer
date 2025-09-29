@@ -1,5 +1,7 @@
 #include "td/actor/actor.h"
 #include "vm/cells/Cell.h"
+#include <unordered_set>
+#include <string>
 #include "IndexData.h"
 #include "convert-utils.h"
 #include "DataParser.h"
@@ -523,4 +525,74 @@ void NftCollectionDetectorR::start_up() {
   data.collection_content = collection_content.move_as_ok();
   promise_.set_value(std::move(data));
   stop();
+}
+
+const std::unordered_set<std::string> DEDUST_POOL_CODE_HASHES {
+  "1275095B6DA3911292406F4F4386F9E780099B854C6DEE9EE2895DDCE70927C1",
+  "778F0D3FE6482C50888970DF5E787F40F3A4AB282170C035A5920877058C99D3",
+  "C0F9D14FBC8E14F0D72CBA2214165EEE35836AB174130912BAF9DBFA43EAD562"
+};
+
+DedustPoolDetector::DedustPoolDetector(block::StdAddress address,
+                                       td::Ref<vm::Cell> code_cell,
+                                       td::Ref<vm::Cell> data_cell,
+                                       AllShardStates shard_states,
+                                       std::shared_ptr<block::ConfigInfo> config,
+                                       td::Promise<Result> promise) :
+  address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
+  shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)) {}
+
+void DedustPoolDetector::start_up() {
+  if (code_cell_.is_null() || data_cell_.is_null()) {
+    promise_.set_error(td::Status::Error("Code or data null"));
+    stop();
+    return;
+  }
+
+  if (!DEDUST_POOL_CODE_HASHES.contains(code_cell_->get_hash().to_hex())) {
+    promise_.set_error(td::Status::Error("Code hash mismatch"));
+    stop();
+    return;
+  }
+  auto stack_r = execute_smc_method<2>(address_, code_cell_, data_cell_, config_,
+    "get_assets", {}, {vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice});
+  if (stack_r.is_error()) {
+    promise_.set_error(stack_r.move_as_error());
+    LOG(INFO) << address_.rserialize(false);
+    stop();
+    return;
+  }
+
+  auto stack = stack_r.move_as_ok();
+
+  Result data;
+
+  if (!get_asset(stack[0].as_slice(), data.asset_1) || !get_asset(stack[1].as_slice(), data.asset_2)) {
+    promise_.set_error(td::Status::Error("Unsupported sum type"));
+    stop();
+    return;
+  }
+
+  promise_.set_value(std::move(data));
+  stop();
+}
+
+bool DedustPoolDetector::get_asset(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress> &address) {
+  auto cell_slice = slice->clone();
+  int sum_type;
+  cell_slice.fetch_int_to(4, sum_type);
+  if (sum_type == 0) { // TON asset
+    address = std::nullopt;
+    return true;
+  }
+  if (sum_type == 1) {
+    const auto remaining_bits = cell_slice.data_bits();
+    const auto workchain_id = (ton::WorkchainId)remaining_bits.get_int(8);
+    const td::ConstBitPtr addr_ptr = remaining_bits + 8;
+    const ton::StdSmcAddress addr_bytes{addr_ptr};
+
+    address = block::StdAddress(workchain_id, addr_bytes);
+    return true;
+  }
+  return false;
 }
