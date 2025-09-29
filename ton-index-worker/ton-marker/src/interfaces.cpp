@@ -195,18 +195,40 @@ const std::vector<Interface> g_interfaces = {
         Interface::calc_method_id("get_channel_data")
     }},
 
-    // {"stonfi_pool", {
-    //     Interface::calc_method_id("get_pool_data")
-    // }},
+    {"pyth_price_oracle", {
+        Interface::calc_method_id("get_update_fee"),
+        Interface::calc_method_id("get_single_update_fee"),
+        Interface::calc_method_id("get_governance_data_source_index"),
+        Interface::calc_method_id("get_governance_data_source"),
+        Interface::calc_method_id("get_last_executed_governance_sequence"),
+        Interface::calc_method_id("get_is_valid_data_source"),
+        Interface::calc_method_id("get_price_unsafe"),
+        Interface::calc_method_id("get_price_no_older_than"),
+        Interface::calc_method_id("get_ema_price_unsafe"),
+        Interface::calc_method_id("get_ema_price_no_older_than"),
+        Interface::calc_method_id("get_chain_id"),
+        Interface::calc_method_id("get_current_guardian_set_index"),
+        Interface::calc_method_id("get_guardian_set"),
+        Interface::calc_method_id("get_governance_chain_id"),
+        Interface::calc_method_id("get_governance_contract"),
+        Interface::calc_method_id("governance_action_is_consumed")
+    }},
+
+    {"stonfi_pool", {
+        Interface::calc_method_id("get_pool_data"),
+        Interface::calc_method_id("get_expected_outputs"),
+        Interface::calc_method_id("get_expected_tokens"),
+        Interface::calc_method_id("get_expected_liquidity"),
+        Interface::calc_method_id("get_lp_account_address"),
+    }},
 
     {"stonfi_pool_v2", {
         Interface::calc_method_id("get_pool_data"),
-        Interface::calc_method_id("get_lp_account_address")
+        Interface::calc_method_id("get_pool_type"), // main diff from v1
+        Interface::calc_method_id("get_lp_account_address"),
+        Interface::calc_method_id("get_jetton_data"),
+        Interface::calc_method_id("get_wallet_address")
     }},
-
-    // {"stonfi_router", {
-    //     Interface::calc_method_id("get_router_data")
-    // }},
 
     {"stonfi_router_v2", {
         Interface::calc_method_id("get_vault_address"),
@@ -215,13 +237,19 @@ const std::vector<Interface> g_interfaces = {
         Interface::calc_method_id("get_router_version")
     }},
 
+    {"stonfi_router", {
+        Interface::calc_method_id("get_router_data"),
+        Interface::calc_method_id("get_pool_address")
+    }},
+
     {"stonfi_lp_account_v2", {
         Interface::calc_method_id("get_lp_account_data")
     }},
 
-    // {"stonfi_vault_v2", {
-    //     Interface::calc_method_id("get_vault_data")
-    // }},
+    {"stonfi_vault_v2", {
+        Interface::calc_method_id("get_vault_data"),
+        
+    }},
 
     {"storage_provider", {
         Interface::calc_method_id("get_wallet_params"),
