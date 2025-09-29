@@ -356,7 +356,7 @@ func (manager *ClientManager) Run() {
 		select {
 		case client := <-manager.register:
 			manager.mu.Lock()
-			client.sendChan = make(chan []byte, 1024*1024) // 1MB buffer
+			client.sendChan = make(chan []byte, 64)
 			manager.clients[client.ID] = client
 			manager.mu.Unlock()
 			client.startSender(manager)
