@@ -1861,15 +1861,15 @@ w5_extension_action_request#6578746e {m:#} {n:#} query_id:uint64 request:(W5Inne
 // evaa
 
 /* Common types */
-_ _:uint64 = SbRate;
-_ _:uint32 = Timestamp;
-_ _:int64 = Principal;
-_ _:uint64 = Balance;
-_ _:uint64 = Price;
-_ _:uint256 = AddressHash;
-_ _:uint256 = AssetId;
-_ _:uint64 = Amount;
-_ _:uint64 = TrackingIndex;
+_ sb_rate:uint64 = SbRate;
+_ timestamp:uint32 = Timestamp;
+_ principal:int64 = Principal;
+_ balance:uint64 = Balance;
+_ price:uint64 = Price;
+_ address_hash:uint256 = AddressHash;
+_ asset_id:uint256 = AssetId;
+_ amount:uint64 = Amount;
+_ tracking_index:uint64 = TrackingIndex;
 
 bool_true$11 = BoolExtended;
 bool_false$00 = BoolExtended;
@@ -1936,7 +1936,7 @@ evaa_supply_user#00000011 query_id:uint64 asset_id:AssetId
     supply_amount_current:Amount s_rate:SbRate b_rate:SbRate
     dust:uint64 max_token_amount:uint64 total_supply:Principal total_borrow:Principal
     tracking_supply_index:TrackingIndex tracking_borrow_index:TrackingIndex
-    forward_ton_amount:Amount custom_response_payload:^Cell = UserCommand; // Master -> User
+    forward_ton_amount:Amount custom_response_payload:^Cell = InternalMsgBody6; // Master -> User
 evaa_supply_success#0000011a query_id:uint64 owner_address:MsgAddressInt
     asset_id:AssetId amount_supplied:Amount user_new_principal:Principal
     repay_amount_principal:Principal supply_amount_principal:Principal
@@ -1954,15 +1954,17 @@ evaa_withdraw_master#00000002 query_id:uint64 asset_id:AssetId amount:Amount rec
 evaa_withdraw_user#00000021 query_id:uint64 asset_id:AssetId
     withdraw_amount_current:Amount s_rate:SbRate b_rate:SbRate recipient_address:MsgAddressInt
     ^[ asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection
-       prices_packed:^PricesPacked forward_ton_amount:Amount custom_response_payload:^Cell ] = UserCommand; // Master -> User
+       prices_packed:^PricesPacked forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody6; // Master -> User
 evaa_withdraw_collateralized#00000211 query_id:uint64 owner_address:MsgAddressInt
     asset_id:AssetId withdraw_amount_current:Amount
     user_new_principal:Principal borrow_amount_principal:Principal reclaim_amount_principal:Principal
     ^[ recipient_address:MsgAddressInt forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody6; // User -> Master
+
 evaa_withdraw_success#0000211a query_id:uint64 asset_id:AssetId principal_amount:Principal
-    tracking_supply_index:TrackingIndex tracking_borrow_index:TrackingIndex = UserCommand; // Master -> User
-evaa_withdraw_fail#0000211f query_id:uint64 asset_id:AssetId principal_amount:Principal = UserCommand; // Master -> User
+    tracking_supply_index:TrackingIndex tracking_borrow_index:TrackingIndex = InternalMsgBody5; // prior in matching
 evaa_withdraw_success_excess_with_data#0000211a query_id:uint64 custom_response_payload:^Cell = InternalMsgBody6;
+
+evaa_withdraw_fail#0000211f query_id:uint64 asset_id:AssetId principal_amount:Principal = InternalMsgBody6; // Master -> User
 evaa_withdraw_locked_excess#000021e6 query_id:uint64 = InternalMsgBody6; // User -> owner_address
 evaa_withdraw_not_collateralized_excess#000021e7 query_id:uint64 = InternalMsgBody6; // User -> owner_address
 evaa_withdraw_no_funds_excess#00211fe8 query_id:uint64 = InternalMsgBody6; // User -> owner_address
@@ -1985,57 +1987,152 @@ liqudation_execution_crashed#000031fe = LiquidationMasterError;
 evaa_liquidate_master#00000003 query_id:uint64 borrower_address:MsgAddressInt liquidator_address:MsgAddressInt
     collateral_asset_id:AssetId min_collateral_amount:Amount include_user_code:BoolExtended
     liquidate_incoming_amount:Amount ^[ forward_ton_amount:Amount custom_response_payload:^Cell ]
-    prices_with_signature_packed:^PricesPacked = InternalMsgBody6; // * -> Master
+    prices_with_signature_packed:^PricesPacked = InternalMsgBody7; // * -> Master
 evaa_liquidate_user#00000031 query_id:uint64
     asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection
     ^[ prices_packed:^PricesPacked collateral_asset_id:AssetId min_collateral_amount:Amount
        liquidator_address:MsgAddressInt transferred_asset_id:AssetId transfered_amount:Amount
-       forward_ton_amount:Amount custom_response_payload:^Cell ] = UserCommand; // Master -> User
+       forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody7; // Master -> User
 evaa_liquidate_unsatisfied#0000031f query_id:uint64 owner_address:MsgAddressInt
     liquidator_address:MsgAddressInt transferred_asset_id:AssetId
     ^[ transferred_amount:Amount collateral_asset_id:AssetId min_collateral_amount:Amount
-       forward_ton_amount:Amount custom_response_payload:^Cell error:LiquidationError ] = InternalMsgBody6; // User -> Master
+       forward_ton_amount:Amount custom_response_payload:^Cell error:LiquidationError ] = InternalMsgBody7; // User -> Master
 evaa_liquidate_satisfied#00000311 query_id:uint64 owner_address:MsgAddressInt
     liquidator_address:MsgAddressInt transferred_asset_id:AssetId
     ^[ delta_loan_principal:Principal liquidatable_amount:Amount protocol_gift:Amount
        new_user_loan_principal:Principal collateral_asset_id:AssetId delta_collateral_principal:Principal
        collateral_reward:Amount min_collateral_amount:Amount new_user_collateral_principal:Principal
-       forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody6; // User -> Master
+       forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody7; // User -> Master
 evaa_liquidate_success#0000311a query_id:uint64 transferred_asset_id:AssetId delta_loan_principal:Principal
     loan_tracking_supply_index:TrackingIndex loan_tracking_borrow_index:TrackingIndex
     collateral_asset_id:AssetId delta_collateral_principal:Principal
-    collateral_tracking_supply_index:TrackingIndex collateral_tracking_borrow_index:TrackingIndex = UserCommand; // Master -> User
+    collateral_tracking_supply_index:TrackingIndex collateral_tracking_borrow_index:TrackingIndex = InternalMsgBody7; // Master -> User
 evaa_liquidate_fail#0000311f query_id:uint64 transferred_asset_id:AssetId
-    delta_loan_principal:Principal collateral_asset_id:AssetId delta_collateral_principal:Principal = UserCommand; // Master -> User
+    delta_loan_principal:Principal collateral_asset_id:AssetId delta_collateral_principal:Principal = InternalMsgBody7; // Master -> User
 evaa_liquidate_success_report#0000311d transferred_asset_id:AssetId transferred_amount:Amount
-    collateral_asset_id:AssetId collateral_reward:Amount custom_response_payload:^Cell = InternalMsgBody6; // Master -> liquidator_address
+    collateral_asset_id:AssetId collateral_reward:Amount custom_response_payload:^Cell = InternalMsgBody7; // Master -> liquidator_address
 
-evaa_liquidate_fail_report#_ error:LiquidationMasterError custom_response_payload:^Cell = InternalMsgBody6;
+evaa_liquidate_fail_report#_ error:LiquidationMasterError custom_response_payload:^Cell = InternalMsgBody7;
+
+/* Supply & Withdraw */
+sw_supply$_ supply_amount:Amount = SWSupply;
+sw_supply_empty$_ = SWSupplyEmpty;
+sw_supply_user$_ _:SWSupply supply_asset_id:AssetId = SWSupplyUser;
+
+sw_withdraw$_ withdraw_amount:Amount withdraw_asset_id:AssetId recipient_address_of_withdraw:MsgAddressInt = SWWithdraw;
+sw_withdraw_user$_ _:SWWithdraw prices_packed:^Cell = SWWithdrawUser;
+sw_withdraw_empty$_ = SWWithdrawEmpty;
+
+// sw_general$_ include_user_code:BoolExtended ton_amount_for_repay_remainings:Amount
+//              custom_response_payload:^Cell opt:SupplyWithdrawMasterOptional = SWGeneral;
+sw_general$_ include_user_code:BoolExtended ton_amount_for_repay_remainings:Amount
+             custom_response_payload:^Cell swm_opt_data:Any = SWGeneral;
+sw_general_user$_ ton_amount_for_repay_remainings:Amount custom_response_payload:^Cell
+                  _:SupplyMasterWithdrawExtData = SWGeneralUser;
+
+swm_ext_data$_ subaccount_id:int16 return_repay_remainings_flag:BoolExtended
+               custom_payload_saturation_flag:BoolExtended = SupplyMasterWithdrawExtData;
+
+//TODO
+// swm_opt_none$_ = SupplyWithdrawMasterOptional;
+// swm_opt_data$_ _:SupplyMasterWithdrawExtData = SupplyWithdrawMasterOptional;
+
+supply_withdraw_master_params$_ supply_data:^SWSupply withdraw_data:^SWWithdraw general_data:^SWGeneral
+                                = SupplyWithdrawMasterParams;
+
+supply_withdraw_master_jetton_params$_ supply_data:^SWSupplyEmpty withdraw_data:^SWWithdraw general_data:^SWGeneral
+                                       = SupplyWithdrawMasterJettonParams;
+
+evaa_supply_withdraw_master#00000004 query_id:uint64 _:SupplyWithdrawMasterParams = NestedPythOperation; // -> Pyth -> Master ->;
+evaa_supply_withdraw_master_without_prices#00000401 query_id:uint64 _:SupplyWithdrawMasterParams = InternalMsgBody7;
+
+evaa_supply_withdraw_master_without_prices#00000401 _:SupplyWithdrawMasterJettonParams = ForwardPayload;
+evaa_supply_withdraw_master_jetton#00000042 _:SupplyWithdrawMasterJettonParams = ForwardPayload;
+
+supply_withdraw_master_jetton#00000042 query_id:uint64 evaa_operation_cell:^SupplyWithdrawMasterParams
+                                       master_jw_address:MsgAddressInt jetton_amount:uint64
+                                       initial_sender:MsgAddress = NestedPythOperation;
+
+_ asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection _:SWGeneralUser = SupplyWithdrawUserParams;
+evaa_supply_withdraw_user#00000041 query_id:uint64 supply_data:^SWSupplyUser withdraw_data:^SWWithdrawUser
+                              general_data:^SupplyWithdrawUserParams
+                              = InternalMsgBody7;
+
+_ owner_address:MsgAddressInt _:SWSupplyUser supply_new_principal:Principal
+repay_amount_principal:Principal supply_amount_principal:Principal = SupplyWithdrawSatisfiedSupplyData;
+_ _:SWWithdraw withdraw_new_principal:Principal borrow_amount_principal:Principal reclaim_amount_principal:Principal = SupplyWithdrawSatisfiedWithdrawData;
+evaa_supply_withdraw_satisfied#00000411 query_id:uint64
+                                   supply_data:^SupplyWithdrawSatisfiedSupplyData
+                                   withdraw_data:^SupplyWithdrawSatisfiedWithdrawData
+                                   general_data:^SWGeneralUser
+                                   = InternalMsgBody7;
+
+_ owner_address:MsgAddressInt _:SWSupplyUser = SupplyWithdrawUnsatisfiedSupplyData;
+_ ton_amount_for_repay_remainings:Amount custom_response_payload:^Cell subaccount_id:int16 = SupplyWithdrawUnsatisfiedGeneralData;
+evaa_supply_withdraw_unsatisfied#0000041f query_id:uint64
+                                     supply_data:^SupplyWithdrawUnsatisfiedSupplyData
+                                     withdraw_data:^SWWithdrawEmpty
+                                     general_data:^SupplyWithdrawUnsatisfiedGeneralData
+                                     = InternalMsgBody7;
+
+_ supply_asset_id:AssetId supply_principal_amount:Amount = SupplyWithdrawFailSupplyData;
+_ withdraw_asset_id:AssetId withdraw_principal_amount:Amount = SupplyWithdrawFailWithdrawData;
+_ subaccount_id:int16 = SupplyWithdrawFailGeneralData;
+evaa_supply_withdraw_fail#0000411f query_id:uint64
+                              supply_data:^SupplyWithdrawFailSupplyData
+                              withdraw_data:^SupplyWithdrawFailWithdrawData
+                              general_data:^SupplyWithdrawFailGeneralData
+                              = InternalMsgBody7;
+
+_ supply_asset_id:AssetId supply_principal_amount:Amount = SupplyWithdrawSuccessSupplyData;
+_ withdraw_asset_id:AssetId withdraw_principal_amount:Amount = SupplyWithdrawSuccessWithdrawData;
+_ asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection subaccount_id:int16 = SupplyWithdrawSuccessGeneralData;
+evaa_supply_withdraw_success#0000411a query_id:uint64
+                                 supply_data:^SupplyWithdrawSuccessSupplyData
+                                 withdraw_data:^SupplyWithdrawSuccessWithdrawData
+                                 general_data:^SupplyWithdrawSuccessGeneralData
+                                 = InternalMsgBody7;
 
 /* IDLE */
-evaa_idle_master#00000008 query_id:uint64 target_address:MsgAddressInt = InternalMsgBody6; // * -> Master
-evaa_idle_user#00000081 query_id:uint64 tokens_keys:(Maybe ^Cell) originator_address:MsgAddressInt = UserCommand; // Master -> User
-evaa_idle_excess#0000081e query_id:uint64 = InternalMsgBody6; // User -> originator_address
+evaa_idle_master#00000008 query_id:uint64 target_address:MsgAddressInt = InternalMsgBody7; // * -> Master
+evaa_idle_user#00000081 query_id:uint64 tokens_keys:(Maybe ^Cell) originator_address:MsgAddressInt = InternalMsgBody7; // Master -> User
+evaa_idle_excess#0000081e query_id:uint64 = InternalMsgBody7; // User -> originator_address
 
-evaa_do_data_checks#0000d001 query_id:uint64 = InternalMsgBody6; // Should be called internally during upgrade without real message
+evaa_do_data_checks#0000d001 query_id:uint64 = InternalMsgBody7; // Should be called internally during upgrade without real message
 
-_ upgrade_header:UpgradeHeader command:UserCommand = PackedCommand;
+_ upgrade_header:UpgradeHeader command:InternalMsgBody6 = PackedCommand; // no prefix -> not detectable
+
+/*  P y t h  */
+
+pyth_parse_price_feed_updates#00000005 query_id:uint64 num_price_feeds:uint8 price_feeds_cell:^Cell initial_sender:MsgAddress
+                                       operation_payload:^NestedPythOperation = InternalMsgBody7;
+
+pyth_response_error#00010002 query_id:uint64 error_code:uint32 operation_code:uint32
+                             operation_payload:^NestedPythOperation = InternalMsgBody7;
+
+/* Other master commands (any) */
+
+evaa_get_store_request#00009998 query_id:uint64 body_data:^Cell = InternalMsgBody7;
+evaa_get_store_response#00009999 query_id:uint64 body_data:^Cell storage:MasterStorage = InternalMsgBody7;
+
+evaa_add_to_reserve#00000a99 = InternalMsgBody7;
+
 
 /* Other master commands (admin only) */
 _ new_asset_dynamics_collection:^AssetDynamicsCollection tokens_keys:^Cell = InitMasterPackedData;
 evaa_init_master#000000a1 query_id:uint64 new_asset_config_collection:^AssetConfigCollection
-    packed_data:^InitMasterPackedData = InternalMsgBody6; // * -> Master
-evaa_claim_asset_reserves#000000a2 query_id:uint64 target_address:MsgAddressInt asset_id:AssetId amount_to_claim:Amount = InternalMsgBody6; // * -> Master
+    packed_data:^InitMasterPackedData = InternalMsgBody7; // * -> Master
+evaa_claim_asset_reserves#000000a2 query_id:uint64 target_address:MsgAddressInt asset_id:AssetId amount_to_claim:Amount = InternalMsgBody7; // * -> Master
 
-evaa_disable_contract_for_upgrade#000000e8 query_id:uint64 = InternalMsgBody6;
-evaa_init_upgrade#000000c1 query_id:uint64 new_master_code:(Maybe ^Cell) new_user_code:(Maybe ^Cell) = InternalMsgBody6;
-evaa_submit_upgrade#000000c2 query_id:uint64 = InternalMsgBody6;
-evaa_cancel_upgrade#000000c3 query_id:uint64 = InternalMsgBody6;
+evaa_disable_contract_for_upgrade#000000e8 query_id:uint64 = InternalMsgBody7;
+evaa_init_upgrade#000000c1 query_id:uint64 new_master_code:(Maybe ^Cell) new_user_code:(Maybe ^Cell) = InternalMsgBody7;
+evaa_submit_upgrade#000000c2 query_id:uint64 = InternalMsgBody7;
+evaa_cancel_upgrade#000000c3 query_id:uint64 = InternalMsgBody7;
 
-evaa_update_config#000000e4 query_id:uint64 new_meta:^Cell new_config:^MasterConfig = InternalMsgBody6;
-evaa_add_new_token#00000a32 query_id:uint64 asset_key:AssetId new_asset_config:^AssetConfig new_asset_dynamics:^AssetDynamics = InternalMsgBody6;
+evaa_update_config#000000e4 query_id:uint64 new_meta:^Cell new_config:^MasterConfig = InternalMsgBody7;
+evaa_add_new_token#00000a32 query_id:uint64 asset_key:AssetId new_asset_config:^AssetConfig new_asset_dynamics:^AssetDynamics = InternalMsgBody7;
 
-evaa_force_enable#000000e1 query_id:uint64 = InternalMsgBody6;
-evaa_force_disable_contract#000000e9 query_id:uint64 = InternalMsgBody6;
+evaa_force_enable#000000e1 query_id:uint64 = InternalMsgBody7;
+evaa_force_disable_contract#000000e9 query_id:uint64 = InternalMsgBody7;
 
-evaa_debug_principals_edit_user#00000d21 query_id:uint64 new_principals:(HashmapE 256 Principal) = InternalMsgBody6;
+evaa_debug_principals_edit_user#00000d21 query_id:uint64 new_principals:(HashmapE 256 Principal) = InternalMsgBody7;
