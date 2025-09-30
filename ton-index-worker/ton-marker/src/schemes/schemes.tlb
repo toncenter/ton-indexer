@@ -144,6 +144,13 @@ _ _:Cell = Bytes;
 
 // =======================================================================
 
+// overlaps: opcodes that are used in multiple protocols.
+
+// JustRandomSalt is to make schemes unmatchable so boc decoder will proceed to other schemes.
+rand#387da03b = JustRandomSalt;
+
+evaa_supply_master,pyth_update_guardian_set,w4_deploy_install_plugin#00000001 
+        rand:JustRandomSalt = InternalMsgBody0;
 
 // airdrop.xml
 
@@ -1716,8 +1723,8 @@ payment_confirmed#f06c7567 query_id:uint64 = InternalMsgBody5;
 // msg_inner#_ valid_until:uint64 seq_no:uint16 actions:^OutActions = PreprocessedWalletV2MsgInner;
 // extensions#_ extensions:(Hashmap 256 uint1) = WalletV5ExtensionsList;
 // simple_send$00000000 payload:WalletV1toV4Payload = WalletV4Payload;
-// deploy_and_install_plugin$00000001 plugin_workchain:int8 plugin_balance:Coins state_init:^StateInit body:^Cell = WalletV4Payload;
-// install_plugin$00000010 plugin_workchain:int8 plugin_address:bits256 amount:Coins query_id:uint64 = WalletV4Payload;
+// w4_deploy_install_plugin$00000001 plugin_workchain:int8 plugin_balance:Coins state_init:^StateInit body:^Cell = WalletV4Payload;
+// w4_install_plugin$00000010 plugin_workchain:int8 plugin_address:bits256 amount:Coins query_id:uint64 = WalletV4Payload;
 // remove_plugin$00000011 plugin_workchain:int8 plugin_address:bits256 amount:Coins query_id:uint64 = WalletV4Payload;
 
 // // wallet_signed_v3
@@ -1879,7 +1886,8 @@ bool_false$00 = BoolExtended;
 price_data$_ timestamp:uint32 prices:(HashmapE 256 Coins) = PriceData;
 
 price_assets$_ id:uint256 price:Coins next_asset:(Maybe ^PriceAssets) = PriceAssets;
-price_oracles_data$_ oracle_id:uint32 proof:^(MERKLE_PROOF PriceData) signature:bits512 next_oracles_data:(Maybe ^PriceOraclesData) = PriceOraclesData;
+// price_oracles_data$_ oracle_id:uint32 proof:^(MERKLE_PROOF PriceData) signature:bits512 next_oracles_data:(Maybe ^PriceOraclesData) = PriceOraclesData;
+price_oracles_data$_ oracle_id:uint32 proof:^Cell signature:bits512 next_oracles_data:(Maybe ^PriceOraclesData) = PriceOraclesData;
 
 prices_packed$_ assets:^PriceAssets oracles_data:^PriceOraclesData = PricesPacked;
 
@@ -2104,11 +2112,23 @@ _ upgrade_header:UpgradeHeader command:InternalMsgBody6 = PackedCommand; // no p
 
 /*  P y t h  */
 
-pyth_parse_price_feed_updates#00000005 query_id:uint64 num_price_feeds:uint8 price_feeds_cell:^Cell initial_sender:MsgAddress
-                                       operation_payload:^NestedPythOperation = InternalMsgBody7;
+pyth_update_guardian_set#00000001 ^[ version:uint8 guardian_set_index:uint32 signatures_length:uint8 rest_signatures:Any ] = InternalMsgBody7;
 
-pyth_response_error#00010002 query_id:uint64 error_code:uint32 operation_code:uint32
-                             operation_payload:^NestedPythOperation = InternalMsgBody7;
+pyth_parse_price_feed_updates#00000005 update_data:^Cell
+                                       price_ids:^Cell
+                                       min_publish_time:uint64
+                                       max_publish_time:uint64
+                                       target_address:MsgAddress
+                                       custom_payload:^Cell = InternalMsgBody7;
+
+pyth_parse_unique_price_feed_updates#00000006 update_data:^Cell price_ids:^Cell publish_time:uint64 max_staleness:uint64 target_address:MsgAddress custom_payload:^Cell = InternalMsgBody6; // prior - has more bits and refs
+
+pyth_parse_unique_price_feed_updates#00000006 number_of_price_feeds:uint8 price_feeds:^Cell sender_address:MsgAddress custom_payload:Any = InternalMsgBody7;
+
+pyth_response_success#00010001 result:^Cell original_custom_payload:^Cell = InternalMsgBody7;
+
+pyth_response_error#00010002 error_code:uint32 original_op_code:uint32 original_custom_payload:^Cell = InternalMsgBody7;
+
 
 /* Other master commands (any) */
 
