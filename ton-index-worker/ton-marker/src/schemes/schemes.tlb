@@ -2250,3 +2250,10 @@ blum_memepad_unlock_wallet#f0fd50bb query_id:uint64 = InternalMsgBody8;
 blum_memepad_buy_log#ceac8af4 buyer_address:MsgAddress tons_consumed:Coins supply_delta:Coins new_supply:Coins collected_ton_liq:Coins refferal:Cell = InternalMsgBody8;
 blum_memepad_sell_log#ef2e2def seller_address:MsgAddress ton_value:Coins supply_delta:Coins new_supply:Coins collected_ton_liq:Coins refferal:Cell = InternalMsgBody8;
 blum_memepad_send_liq_log#30c7219b ton_liq_amount:Coins jetton_liq_amount:Coins = InternalMsgBody8;
+
+// gas pump
+
+gas_pump_buy_log#67617302 buyer_address:MsgAddress input_ton_amount:Coins ton_amount:Coins jetton_amount:Coins fee_ton_amount:Coins bonding_curve_overflow:Bool = InternalMsgBody8;
+gas_pump_sell_log#67617303 seller_address:MsgAddress ton_amount:Coins jetton_amount:Coins fee_ton_amount:Coins = InternalMsgBody8;
+gas_pump_send_to_pool_log#67617305 ton_amount:Coins jetton_amount:Coins fee_ton_amount:Coins = InternalMsgBody8;
+gas_pump_change_trade_state_log#67617306 old_trade_state:uint16 new_trade_state:uint16 = InternalMsgBody8;
