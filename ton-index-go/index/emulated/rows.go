@@ -247,6 +247,7 @@ type ActionRow struct {
 	TraceExternalHash                                    *string
 	TraceExternalHashNorm                                *string
 	ExtraCurrencies                                      map[string]string
+
 	// Multisig action fields
 	MultisigCreateOrderQueryId           *string
 	MultisigCreateOrderOrderSeqno        *string
@@ -331,6 +332,29 @@ type ActionRow struct {
 	CoffeeCreatePoolInitiator2            *string
 	CoffeeCreatePoolProvidedAsset         *string
 	CoffeeCreatePoolPoolCreatorContract   *string
+
+	// LayerZero fields
+	LayerzeroSendSendRequestId      *uint64
+	LayerzeroSendMsglibManager      *string
+	LayerzeroSendMsglib             *string
+	LayerzeroSendUln                *string
+	LayerzeroSendNativeFee          *uint64
+	LayerzeroSendZroFee             *uint64
+	LayerzeroSendEndpoint           *string
+	LayerzeroSendChannel            *string
+	LayerzeroPacketSrcOapp          *string
+	LayerzeroPacketDstOapp          *string
+	LayerzeroPacketSrcEid           *int32
+	LayerzeroPacketDstEid           *int32
+	LayerzeroPacketNonce            *int64
+	LayerzeroPacketGuid             *string
+	LayerzeroPacketMessage          *string
+	LayerzeroDvnVerifyNonce         *int64
+	LayerzeroDvnVerifyStatus        *string
+	LayerzeroDvnVerifyDvn           *string
+	LayerzeroDvnVerifyProxy         *string
+	LayerzeroDvnVerifyUln           *string
+	LayerzeroDvnVerifyUlnConnection *string
 }
 type assign func(dest any) error
 type assignable interface {
@@ -571,6 +595,28 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.CoffeeStakingWithdrawNftAddress),
 		assignStringPtr(t.CoffeeStakingWithdrawNftIndex),
 		assignStringPtr(t.CoffeeStakingWithdrawPoints),
+		assignIntPtr(t.LayerzeroSendSendRequestId),
+		assignStringPtr(t.LayerzeroSendMsglibManager),
+		assignStringPtr(t.LayerzeroSendMsglib),
+		assignStringPtr(t.LayerzeroSendUln),
+		assignIntPtr(t.LayerzeroSendNativeFee),
+		assignIntPtr(t.LayerzeroSendZroFee),
+		assignStringPtr(t.LayerzeroSendEndpoint),
+		assignStringPtr(t.LayerzeroSendChannel),
+		assignStringPtr(t.LayerzeroPacketSrcOapp),
+		assignStringPtr(t.LayerzeroPacketDstOapp),
+		assignIntPtr(t.LayerzeroPacketSrcEid),
+		assignIntPtr(t.LayerzeroPacketDstEid),
+		assignIntPtr(t.LayerzeroPacketNonce),
+		assignStringPtr(t.LayerzeroPacketGuid),
+		assignStringPtr(t.LayerzeroPacketMessage),
+		assignIntPtr(t.LayerzeroDvnVerifyNonce),
+		assignStringPtr(t.LayerzeroDvnVerifyStatus),
+		assignStringPtr(t.LayerzeroDvnVerifyDvn),
+		assignStringPtr(t.LayerzeroDvnVerifyProxy),
+		assignStringPtr(t.LayerzeroDvnVerifyUln),
+		assignStringPtr(t.LayerzeroDvnVerifyUlnConnection),
+
 		assignStrCompatibleSlice(t.AncestorType),
 		assignStrCompatibleSlice(t.Accounts),
 	}

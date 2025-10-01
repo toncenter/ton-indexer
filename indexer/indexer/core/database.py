@@ -465,6 +465,33 @@ class Action(Base):
         Column("nft_index", Numeric),
         Column("points", Numeric),
     ]))
+    layerzero_send_data = Column(CompositeType("layerzero_send_details", [
+        Column("send_request_id", Numeric),
+        Column("msglib_manager", String),
+        Column("msglib", String),
+        Column("uln", String),
+        Column("native_fee", Numeric),
+        Column("zro_fee", Numeric),
+        Column("endpoint", String),
+        Column("channel", String),
+    ]))
+    layerzero_packet_data = Column(CompositeType("layerzero_packet_details", [
+        Column("src_oapp", String),
+        Column("dst_oapp", String),
+        Column("src_eid", Integer),
+        Column("dst_eid", Integer),
+        Column("nonce", Numeric),
+        Column("guid", String),
+        Column("message", String),
+    ]))
+    layerzero_dvn_verify_data = Column(CompositeType("layerzero_dvn_verify_details", [
+        Column("nonce", Numeric),
+        Column("status", String), # "succeeded" | "nonce_out_of_range" | "dvn_not_configured" | "unknown_<code>"
+        Column("dvn", String),
+        Column("proxy", String),
+        Column("uln", String),
+        Column("uln_connection", String),
+    ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)
@@ -853,7 +880,7 @@ class NftAuction(Base):
 
 class MultisigOrder(Base):
     __tablename__ = 'multisig_orders'
-    
+
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     address = Column(String, nullable=False, unique=True)
     multisig_address = Column(String)
