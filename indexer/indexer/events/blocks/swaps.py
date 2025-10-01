@@ -14,6 +14,7 @@ from indexer.events.blocks.basic_matchers import (
     OrMatcher,
     RecursiveMatcher,
     child_sequence_matcher,
+    GenericMatcher,
 )
 from indexer.events.blocks.core import Block, SingleLevelWrapper
 from indexer.events.blocks.jettons import JettonTransferBlock, PTonTransferMatcher
@@ -243,7 +244,16 @@ class StonfiV2SwapBlockMatcher(BlockMatcher):
                                                                  child_matcher=payout_matcher,
                                                                  optional=True))
 
+        pton_verified_call_contract= GenericMatcher(
+            self._validate_intermediate_pton_transfer,
+            child_matcher=ContractMatcher(JettonNotify.opcode, child_matcher=peer_swap_matcher),
+            optional=True
+        )
+        intermediate_pton_transfer = GenericMatcher(
+                lambda b: b.btype == 'jetton_transfer' and not b.data['has_internal_transfer'],
+                child_matcher=pton_verified_call_contract)
         payout_matcher.child_matcher = OrMatcher([
+            labeled('out_transfer', intermediate_pton_transfer),
             labeled('out_transfer', BlockTypeMatcher(block_type='jetton_transfer',
                                                      child_matcher=peer_swap_matcher,
                                                      optional=True)),
@@ -258,6 +268,23 @@ class StonfiV2SwapBlockMatcher(BlockMatcher):
 
         super().__init__(parent_matcher=in_transfer, optional=False,
                          child_matcher=payout_matcher)
+
+    def _validate_intermediate_pton_transfer(self, block: Block):
+        if block.previous_block.data['has_internal_transfer']:
+            return False
+        if block.previous_block.data['receiver'] != block.get_message().destination:
+            return False
+        try:
+            pton = PTonTransfer(block.get_body())
+            if pton.forward_payload is None:
+                return False
+            opcode = pton.forward_payload.to_slice().load_uint(32)
+            if opcode == self.swap_opcode:
+                return True
+            else:
+                return False
+        except:
+            return False
 
     def test_self(self, block: Block):
         return isinstance(block, CallContractBlock) and block.opcode == self.swap_opcode
