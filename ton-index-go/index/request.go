@@ -228,3 +228,8 @@ type V2EstimateFeeRequest struct {
 	InitData     string         `json:"init_data"`
 	IgnoreChksig bool           `json:"ignore_chksig"`
 } // @name V2EstimateFeeRequest
+
+type DecodeRequest struct {
+	Opcodes []string `query:"opcodes" json:"opcodes"`
+	Bodies  []string `query:"bodies" json:"bodies"`
+} // @name DecodeRequest
