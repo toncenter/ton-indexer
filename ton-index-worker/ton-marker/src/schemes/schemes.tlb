@@ -238,7 +238,9 @@ bidask_internal_continue_swap#59699475 query_id:uint64 to_address:MsgAddress ord
 // bidask_internal_provide
 _ first_bin:int32 liquidity_dict:(HashmapE 32 int32) current_bin:int32 remaining:Cell = BidaskDexPayload;
 bidask_internal_provide#d1b02ea5 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) _:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
-        dex_payload:^BidaskDexPayload  = InternalMsgBody0;
+        dex_payload:^BidaskDexPayload  = InternalMsgBody0; // prior - has ref
+bidask_internal_provide#d1b02ea5 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) _:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
+        dex_payload:Any = InternalMsgBody1;
 
 // bidask_internal_continue_provide
 bidask_internal_continue_provide#0c09445a query_id:uint64 amount_x:Coins amount_y:Coins excess_x:Coins excess_y:Coins user_address:MsgAddress
@@ -506,7 +508,13 @@ jetton_internal_transfer#178d4519 query_id:uint64 amount:(VarUInteger 16) from:M
         response_address:MsgAddress
         forward_ton_amount:(VarUInteger 16)
         forward_payload:(Either Cell ^Cell)
-        = InternalMsgBody0;
+        = InternalMsgBody0; // prior - has Either bit
+
+jetton_internal_transfer#178d4519 query_id:uint64 amount:(VarUInteger 16) from:MsgAddress
+        response_address:MsgAddress
+        forward_ton_amount:(VarUInteger 16)
+        forward_payload:Any // when no either bit
+        = InternalMsgBody1;
 
 // jetton_burn
 jetton_burn#595f07bc query_id:uint64 amount:(VarUInteger 16)
@@ -1865,6 +1873,24 @@ w5_external_signed_request#7369676e {m:#} {n:#} request:(W5SignedRequest m n) = 
 
 w5_extension_action_request#6578746e {m:#} {n:#} query_id:uint64 request:(W5InnerRequest m n) = W5MsgBody m n;
 
+// just for opcode detection
+w5_internal_signed_request#73696e74 = InternalMsgBody8;
+w5_external_signed_request#7369676e = InternalMsgBody8;
+w5_extension_action_request#6578746e = InternalMsgBody8;
+
+
+// highload v3
+// actions_count = n
+highload_v3_internal_request#ae42e5a4 {n:#} query_id:uint64 actions:^(OutList n) = HighloadV3InternalRequest n;
+
+// just for opcode detection
+highload_v3_internal_request#ae42e5a4 = InternalMsgBody8;
+
+// may be done later:
+// _ shift:uint13 bit_number:(## 10) { bit_number >= 0 } { bit_number < 1023 } = QueryId;
+// _ {n:#}  subwallet_id:uint32 message_to_send:^Cell send_mode:uint8 query_id:QueryId created_at:uint64 timeout:uint22 = MsgInner n;
+// msg_body$_ {n:#} signature:bits512 ^(MsgInner n) = ExternalMsgBody n;
+
 // evaa
 
 /* Common types */
@@ -1918,7 +1944,7 @@ storage#_ platform_address:MsgAddressInt owner_address:MsgAddressInt type_id:uin
 /* Master storage */
 oracles_info$_ total_oracles:uint16 threshold:uint16 oracles:^Cell = OraclesInfo;
 upgrade_config$_ master_code_version:Coins user_code_version:Coins timeout:uint32 update_time:uint64 freeze_time:uint64 user_code:^Cell blank_code:^Cell new_master_code:(Maybe ^Cell) new_user_code:(Maybe ^Cell) = UpgradeConfig;
-master_config$_ asset_config_collection:AssetConfigCollection if_active:int8 admin:MsgAddressInt oracles_info:OraclesInfo tokens_keys:(Maybe ^Cell) = MasterConfig;
+master_config$_ asset_config_collection:AssetConfigCollection if_active:int8 admin:MsgAddressInt oracles_info:OraclesInfo tokens_keys:(Maybe ^Cell) maybe_supervisor_address_cell:Any = MasterConfig;
 storage#_ meta:^Cell upgrade_config:^UpgradeConfig master_config:^MasterConfig asset_dynamics_collection:AssetDynamicsCollection = MasterStorage;
 
 /* User storage */
@@ -1938,19 +1964,63 @@ upgrade_header$_ user_code_version:Coins upgrade_info:(Maybe ^[ new_code:^Cell n
 evaa_revert_call#0000000f query_id:uint64 owner_address:MsgAddressInt revert_body:^Cell = InternalMsgBody6;
 
 /* Supply */
+sm_opt_data$_ subaccount_id:int16 return_repay_remainings_flag:BoolExtended custom_payload_recipient:MsgAddressInt
+              custom_payload_saturation_flag:BoolExtended = SupplyMasterOptional; // for v8
+
 evaa_supply_master#00000001 query_id:uint64 include_user_code:BoolExtended supply_amount:Amount recipient_address:MsgAddressInt
-    forward_ton_amount:Amount custom_response_payload:^Cell = InternalMsgBody6; // * -> Master
+    forward_ton_amount:Amount custom_response_payload:^Cell = InternalMsgBody6;  // prior - has forward_ton_amount
+
+evaa_supply_master#00000001 query_id:uint64 include_user_code:BoolExtended supply_amount:Amount recipient_address:MsgAddressInt
+    custom_response_payload:^Cell supply_master_optional:SupplyMasterOptional = InternalMsgBody7; // v8
+
+evaa_supply_master#00000001 query_id:uint64 include_user_code:BoolExtended supply_amount:Amount recipient_address:MsgAddressInt
+    custom_response_payload:^Cell supply_master_optional:Any = InternalMsgBody8; // v8, but when no supply_master_optional (may be empty cell)
+
+
 evaa_supply_user#00000011 query_id:uint64 asset_id:AssetId
     supply_amount_current:Amount s_rate:SbRate b_rate:SbRate
     dust:uint64 max_token_amount:uint64 total_supply:Principal total_borrow:Principal
     tracking_supply_index:TrackingIndex tracking_borrow_index:TrackingIndex
-    forward_ton_amount:Amount custom_response_payload:^Cell = InternalMsgBody6; // Master -> User
+    custom_response_payload:^Cell
+    ^[
+        subaccount_id:int16 return_repay_remainings_flag:BoolExtended
+        custom_payload_recipient:MsgAddressInt custom_payload_saturation_flag:BoolExtended
+        initial_sender:MsgAddressInt
+    ] = InternalMsgBody6; // prior - has extra ref
+
+evaa_supply_user#00000011 query_id:uint64 asset_id:AssetId
+    supply_amount_current:Amount s_rate:SbRate b_rate:SbRate
+    dust:uint64 max_token_amount:uint64 total_supply:Principal total_borrow:Principal
+    tracking_supply_index:TrackingIndex tracking_borrow_index:TrackingIndex
+    forward_ton_amount:Amount custom_response_payload:^Cell = InternalMsgBody7;
+
 evaa_supply_success#0000011a query_id:uint64 owner_address:MsgAddressInt
     asset_id:AssetId amount_supplied:Amount user_new_principal:Principal
     repay_amount_principal:Principal supply_amount_principal:Principal
-    custom_response_payload:^Cell = InternalMsgBody6; // User -> Master
+    custom_response_payload:^Cell 
+    subaccount_id:int16 return_repay_remainings_flag:BoolExtended
+    ^[ custom_payload_recipient:MsgAddress ]
+    custom_payload_saturation_flag:BoolExtended = InternalMsgBody6; // prior - has extra ref and bits
+
+evaa_supply_success#0000011a query_id:uint64 owner_address:MsgAddressInt
+    asset_id:AssetId amount_supplied:Amount user_new_principal:Principal
+    repay_amount_principal:Principal supply_amount_principal:Principal
+    custom_response_payload:^Cell = InternalMsgBody7;
+
+evaa_supply_success#0000011a query_id:uint64 owner_address:MsgAddressInt
+    asset_id:AssetId amount_supplied:Amount user_new_principal:Principal
+    repay_amount_principal:Principal
+    custom_response_payload:Any = InternalMsgBody8; // same without supply_amount_principal (old version)
+
+
+
 evaa_supply_fail#0000011f query_id:uint64 owner_address:MsgAddressInt asset_id:AssetId amount:Amount
-    forward_ton_amount:Amount custom_response_payload:^Cell = InternalMsgBody6; // User -> Master
+    forward_ton_amount:Amount custom_response_payload:^Cell
+    subaccount_id:int16 return_repay_remainings_flag:BoolExtended
+    ^[ initial_sender:MsgAddressInt ] = InternalMsgBody6; // prior - has fields and ref
+evaa_supply_fail#0000011f query_id:uint64 owner_address:MsgAddressInt asset_id:AssetId amount:Amount
+    forward_ton_amount:Amount custom_response_payload:^Cell = InternalMsgBody7;
+
 evaa_supply_excess_with_data#000011ae query_id:uint64 custom_response_payload:^Cell = InternalMsgBody5;
 evaa_supply_excess#000011ae query_id:uint64 = InternalMsgBody6; // Master -> User::owner_address
 evaa_supply_fail_with_data#00011ae1 query_id:uint64 custom_response_payload:^Cell = InternalMsgBody6;
@@ -1963,14 +2033,21 @@ evaa_withdraw_user#00000021 query_id:uint64 asset_id:AssetId
     withdraw_amount_current:Amount s_rate:SbRate b_rate:SbRate recipient_address:MsgAddressInt
     ^[ asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection
        prices_packed:^PricesPacked forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody6; // Master -> User
+
+   
 evaa_withdraw_collateralized#00000211 query_id:uint64 owner_address:MsgAddressInt
     asset_id:AssetId withdraw_amount_current:Amount
-    user_new_principal:Principal borrow_amount_principal:Principal reclaim_amount_principal:Principal
+    user_new_principal:Principal borrow_amount_principal:Principal reclaim_amount_principal:Principal  // prior - has ref and field
     ^[ recipient_address:MsgAddressInt forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody6; // User -> Master
 
+evaa_withdraw_collateralized#00000211 query_id:uint64 owner_address:MsgAddressInt
+    asset_id:AssetId withdraw_amount_current:Amount
+    user_new_principal:Principal borrow_amount_principal:Principal reclaim_amount_principal_optional:Any = InternalMsgBody7; // User -> Master
+
 evaa_withdraw_success#0000211a query_id:uint64 asset_id:AssetId principal_amount:Principal
-    tracking_supply_index:TrackingIndex tracking_borrow_index:TrackingIndex = InternalMsgBody5; // prior in matching
-evaa_withdraw_success_excess_with_data#0000211a query_id:uint64 custom_response_payload:^Cell = InternalMsgBody6;
+    tracking_supply_index:TrackingIndex tracking_borrow_index:TrackingIndex = InternalMsgBody5; // prior - has many fields
+evaa_withdraw_success_excess_with_data#0000211a query_id:uint64 custom_response_payload:^Cell = InternalMsgBody6; // prior - hase ref
+evaa_withdraw_success_excess_with_data#0000211a query_id:uint64 custom_response_payload:Any = InternalMsgBody7;
 
 evaa_withdraw_fail#0000211f query_id:uint64 asset_id:AssetId principal_amount:Principal = InternalMsgBody6; // Master -> User
 evaa_withdraw_locked_excess#000021e6 query_id:uint64 = InternalMsgBody6; // User -> owner_address
@@ -1992,25 +2069,33 @@ master_liquidating_too_much#000030f1 max_allowed_liquidation:Amount = Liquidatio
 master_not_enough_liquidity#000031f6 available_liquidity:Amount = LiquidationMasterError;
 liqudation_execution_crashed#000031fe = LiquidationMasterError;
 
-evaa_liquidate_master#00000003 query_id:uint64 borrower_address:MsgAddressInt liquidator_address:MsgAddressInt
+evaa_liquidate_master#00000003 query_id:uint64 borrower_address:MsgAddressInt liquidator_address:MsgAddress
     collateral_asset_id:AssetId min_collateral_amount:Amount include_user_code:BoolExtended
     liquidate_incoming_amount:Amount ^[ forward_ton_amount:Amount custom_response_payload:^Cell ]
     prices_with_signature_packed:^PricesPacked = InternalMsgBody7; // * -> Master
+
+evaa_liquidate_master#00000003 query_id:uint64 borrower_address:MsgAddressInt liquidator_address:MsgAddress
+    collateral_asset_id:AssetId min_collateral_amount:Amount include_user_code:BoolExtended
+    liquidate_incoming_amount:Amount ^[ forward_ton_amount:Amount custom_response_payload:^Cell ]
+= InternalMsgBody8; // * -> Master
+
+
 evaa_liquidate_user#00000031 query_id:uint64
     asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection
     ^[ prices_packed:^PricesPacked collateral_asset_id:AssetId min_collateral_amount:Amount
        liquidator_address:MsgAddressInt transferred_asset_id:AssetId transfered_amount:Amount
-       forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody7; // Master -> User
+       forward_ton_amount:Coins custom_response_payload:^Cell ] = InternalMsgBody7; // Master -> User
+
 evaa_liquidate_unsatisfied#0000031f query_id:uint64 owner_address:MsgAddressInt
     liquidator_address:MsgAddressInt transferred_asset_id:AssetId
     ^[ transferred_amount:Amount collateral_asset_id:AssetId min_collateral_amount:Amount
-       forward_ton_amount:Amount custom_response_payload:^Cell error:LiquidationError ] = InternalMsgBody7; // User -> Master
+       forward_ton_amount:Coins custom_response_payload:^Cell error:LiquidationError ] = InternalMsgBody7; // User -> Master
 evaa_liquidate_satisfied#00000311 query_id:uint64 owner_address:MsgAddressInt
     liquidator_address:MsgAddressInt transferred_asset_id:AssetId
     ^[ delta_loan_principal:Principal liquidatable_amount:Amount protocol_gift:Amount
        new_user_loan_principal:Principal collateral_asset_id:AssetId delta_collateral_principal:Principal
        collateral_reward:Amount min_collateral_amount:Amount new_user_collateral_principal:Principal
-       forward_ton_amount:Amount custom_response_payload:^Cell ] = InternalMsgBody7; // User -> Master
+       forward_ton_amount:Coins custom_response_payload:^Cell ] = InternalMsgBody7; // User -> Master
 evaa_liquidate_success#0000311a query_id:uint64 transferred_asset_id:AssetId delta_loan_principal:Principal
     loan_tracking_supply_index:TrackingIndex loan_tracking_borrow_index:TrackingIndex
     collateral_asset_id:AssetId delta_collateral_principal:Principal
@@ -2041,7 +2126,6 @@ sw_general_user$_ ton_amount_for_repay_remainings:Amount custom_response_payload
 swm_ext_data$_ subaccount_id:int16 return_repay_remainings_flag:BoolExtended
                custom_payload_saturation_flag:BoolExtended = SupplyMasterWithdrawExtData;
 
-//TODO
 // swm_opt_none$_ = SupplyWithdrawMasterOptional;
 // swm_opt_data$_ _:SupplyMasterWithdrawExtData = SupplyWithdrawMasterOptional;
 
@@ -2112,7 +2196,7 @@ _ upgrade_header:UpgradeHeader command:InternalMsgBody6 = PackedCommand; // no p
 
 /*  P y t h  */
 
-pyth_update_guardian_set#00000001 ^[ version:uint8 guardian_set_index:uint32 signatures_length:uint8 rest_signatures:Any ] = InternalMsgBody7;
+pyth_update_guardian_set#00000001 ^[ version:uint8 guardian_set_index:uint32 signatures_length:uint8 rest_signatures:Any ] = InternalMsgBody5; // 6-8 are for evaa_supply_master
 
 pyth_parse_price_feed_updates#00000005 update_data:^Cell
                                        price_ids:^Cell

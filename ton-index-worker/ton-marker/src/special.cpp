@@ -20,6 +20,8 @@ int count_actions_depth(vm::Ref<vm::Cell> list) {
     return i;
 }
 
+// JsonPrinter should be reset if this function fails, 
+// bc it writes failed result to pp
 bool try_parse_special(unsigned opcode, vm::CellSlice& cs, tlb::JsonPrinter& pp) {
     if (opcode == OPCODE_W5_EXTERNAL_SIGNED_REQUEST || opcode == OPCODE_W5_INTERNAL_SIGNED_REQUEST || opcode == OPCODE_W5_EXTENSION_ACTION_REQUEST) {        
         // we can't use W5MsgBody just as is. it has snake cells for actions,
@@ -64,6 +66,21 @@ bool try_parse_special(unsigned opcode, vm::CellSlice& cs, tlb::JsonPrinter& pp)
         schemes::W5MsgBody w5_parser(out_actions_count, extended_actions_count-1); // last ref is not empty cell, that's why -1
         auto cs_copy2 = cs;
         return w5_parser.print_skip(pp, cs_copy2);
+    }
+    if (opcode == OPCODE_HIGHLOAD_V3_INTERNAL_REQUEST) {
+        // same as W5MsgBody
+        // actions_count = n
+        auto cs_copy = cs;
+        int out_actions_count = 0;
+        if (cs_copy.size_refs() > 0) {
+            auto first_ref = cs_copy.fetch_ref();
+            if (first_ref.not_null()) {
+                out_actions_count = count_actions_depth(first_ref);
+            }
+        }
+        schemes::HighloadV3InternalRequest highload_v3_parser(out_actions_count);
+        auto cs_copy2 = cs;
+        return highload_v3_parser.print_skip(pp, cs_copy2);
     }
     
     return false;

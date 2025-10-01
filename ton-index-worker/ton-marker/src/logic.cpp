@@ -22,8 +22,9 @@ std::string get_opcode_name(unsigned opcode) {
     const schemes::InternalMsgBody5 parser5;
     const schemes::InternalMsgBody6 parser6;
     const schemes::InternalMsgBody7 parser7;
-    const schemes::ExternalMsgBody parser8;
-    const schemes::ForwardPayload parser9;
+    const schemes::InternalMsgBody8 parser8;
+    const schemes::ExternalMsgBody parser9;
+    const schemes::ForwardPayload parser10;
 
     const auto check_parser = [opcode](const auto& parser) -> std::optional<std::string> {
         for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
@@ -44,6 +45,7 @@ std::string get_opcode_name(unsigned opcode) {
     if (auto name = check_parser(parser7)) return *name;
     if (auto name = check_parser(parser8)) return *name;
     if (auto name = check_parser(parser9)) return *name;
+    if (auto name = check_parser(parser10)) return *name;
 
     return "unknown";
 }
@@ -118,8 +120,9 @@ std::string decode_boc(const std::string& boc_base64) {
         const schemes::InternalMsgBody5 parser5;
         const schemes::InternalMsgBody6 parser6;
         const schemes::InternalMsgBody7 parser7;
-        const schemes::ExternalMsgBody parser8;
-        const schemes::ForwardPayload parser9;
+        const schemes::InternalMsgBody8 parser8;
+        const schemes::ExternalMsgBody parser9;
+        const schemes::ForwardPayload parser10;
 
         std::string json_output;
         tlb::JsonPrinter pp(&json_output);
@@ -139,8 +142,9 @@ std::string decode_boc(const std::string& boc_base64) {
                 if (parser.cons_tag[i] == opcode) {
                     if (try_parse(parser)) return true;
                     else {
-                        std::cout << "ton-marker: some parser matched but failed for OPCODE=" << parser.cons_name[i] 
-                        << ", JSON_OUTPUT=" << json_output << std::endl;
+                        std::cout << "    ton-marker: some parser matched but failed" << "\n";
+                        std::cout << "    ton-marker: boc: " << boc_base64 << "\n";
+                        std::cout << "    ton-marker: JSON_OUTPUT: " << json_output << "\n\n";
                         json_output = "";
                         pp = tlb::JsonPrinter(&json_output);
                         // continue searching, may be another parser for the same opcode
@@ -165,8 +169,10 @@ std::string decode_boc(const std::string& boc_base64) {
         else if (check_and_parse(parser7)) parsed = true;
         else if (check_and_parse(parser8)) parsed = true;
         else if (check_and_parse(parser9)) parsed = true;
+        else if (check_and_parse(parser10)) parsed = true;
 
         if (!parsed) {
+            std::cout << "    ton-marker: no parser succeeded" << "\n\n";
             return "unknown: no parser succeeded";
         }
         return json_output;
