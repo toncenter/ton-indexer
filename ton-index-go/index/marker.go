@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"unsafe"
 )
@@ -331,7 +332,8 @@ func markWithRefs(refs *messagesRefs) error {
 		for _, ref := range refs.bodyRefs[body] {
 			var tmpResult map[string]interface{}
 			if err := json.Unmarshal([]byte(decodedValue), &tmpResult); err != nil {
-				return fmt.Errorf("failed to decode message body: %w", err)
+				tmpResult = map[string]interface{}{"failed_to_decode_json": decodedValue}
+				log.Printf("Error: failed to decode message body %s, got json %v", body, decodedValue)
 			}
 			for msgType, msgData := range tmpResult {
 				// there's only one key in tmpResult map
