@@ -2171,11 +2171,11 @@ gas_pump_change_trade_state_log#67617306 old_trade_state:uint16 new_trade_state:
 /// DeDust Protocol v2
 ///
 
-version#_ _:uint16 = DedustVersion;
+_ version:uint16 = DedustVersion;
 
-timestamp#_ _:uint32 = DedustTimestamp;
+_ timestamp:uint32 = DedustTimestamp;
 
-asset_type#_ _:uint4 = DedustAssetType;
+_ asset_type:uint4 = DedustAssetType;
 
 native$0000 = DedustAsset;
 jetton$0001 workchain_id:int8 address:bits256 = DedustAsset;
@@ -2198,10 +2198,10 @@ legacy_vault_factory#06 = DedustRole;
 quote_synchronizer#07 = DedustRole;
 quote_configurator#08 = DedustRole;
 
-proof#_ _:(DedustProof DedustAsset) = DedustVaultProof;
-proof#_ _:(DedustProof DedustPoolParams) = DedustPoolProof;
-proof#_ _:(DedustProof ^[ owner_addr:MsgAddressInt pool_params:DedustPoolParams ]) = DedustLiquidityDepositProof;
-proof#_ _:(DedustProof DedustRole) = DedustOperatorProof;
+_ proof:(DedustProof DedustAsset) = DedustVaultProof;
+_ proof:(DedustProof DedustPoolParams) = DedustPoolProof;
+_ proof:(DedustProof ^[ owner_addr:MsgAddressInt pool_params:DedustPoolParams ]) = DedustLiquidityDepositProof;
+_ proof:(DedustProof DedustRole) = DedustOperatorProof;
 
 given_in$0 = DedustSwapKind;
 given_out$1 = DedustSwapKind;
