@@ -399,15 +399,15 @@ dedust_deposit_liquidity_forward_payload#40e108d6 pool_params:DedustPoolParams m
         fulfill_payload:(Maybe ^Cell)
         reject_payload:(Maybe ^Cell) = ForwardPayload;
 
-dedust_deposit_liquidity_factory#9b3aa3fa = InternalMsgBody0;
+dedust_deposit_liquidity_factory#9b3aa3fa data:Any = InternalMsgBody0;
 
-dedust_ask_liquidity_factory#f04ec526 = InternalMsgBody0;
+dedust_ask_liquidity_factory#f04ec526 data:Any = InternalMsgBody0;
 
-dedust_top_up_liquidity_deposit_contract#54240fe5 = InternalMsgBody0;
+dedust_top_up_liquidity_deposit_contract#54240fe5 data:Any = InternalMsgBody0;
 
-dedust_destroy_liquidity_deposit_contract#aae79256 = InternalMsgBody0;
+dedust_destroy_liquidity_deposit_contract#aae79256 data:Any = InternalMsgBody0;
 
-dedust_return_excess_from_vault#6b0b787f = InternalMsgBody0;
+dedust_return_excess_from_vault#6b0b787f data:Any = InternalMsgBody0;
 
 // dns.xml
 
@@ -1959,6 +1959,9 @@ upgrade_header$_ user_code_version:Coins upgrade_info:(Maybe ^[ new_code:^Cell n
 
 // First message to User goes through Blank (1 runtime)
 // _ upgrade_header:UpgradeHeader extra:Any = InternalMsgBody6;
+
+// idk what version it is, but this opcode is quite common
+evaa_user_execute_action#107e0000 extra:Any = InternalMsgBody6;
 
 // If there is an error during the upgrade from UpgradeHeader, a "revert_call" will be executed.
 evaa_revert_call#0000000f query_id:uint64 owner_address:MsgAddressInt revert_body:^Cell = InternalMsgBody6;
