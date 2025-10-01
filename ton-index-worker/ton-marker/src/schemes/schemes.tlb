@@ -2240,3 +2240,13 @@ evaa_force_enable#000000e1 query_id:uint64 = InternalMsgBody7;
 evaa_force_disable_contract#000000e9 query_id:uint64 = InternalMsgBody7;
 
 evaa_debug_principals_edit_user#00000d21 query_id:uint64 new_principals:(HashmapE 256 Principal) = InternalMsgBody7;
+
+
+// blum memepad
+
+blum_memepad_buy#af750d34 query_id:uint64 min_recieve:Coins receiver:MsgAddress refferal:Cell = InternalMsgBody8;
+blum_memepad_sell#742b36d8 query_id:uint64 amount:Coins min_recieve:Coins refferal:Cell = InternalMsgBody8;
+blum_memepad_unlock_wallet#f0fd50bb query_id:uint64 = InternalMsgBody8;
+blum_memepad_buy_log#ceac8af4 buyer_address:MsgAddress tons_consumed:Coins supply_delta:Coins new_supply:Coins collected_ton_liq:Coins refferal:Cell = InternalMsgBody8;
+blum_memepad_sell_log#ef2e2def seller_address:MsgAddress ton_value:Coins supply_delta:Coins new_supply:Coins collected_ton_liq:Coins refferal:Cell = InternalMsgBody8;
+blum_memepad_send_liq_log#30c7219b ton_liq_amount:Coins jetton_liq_amount:Coins = InternalMsgBody8;
