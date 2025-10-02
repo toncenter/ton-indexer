@@ -7,12 +7,19 @@
 #include <string>
 
 namespace {
-// helper to convert string to C-string (returns nullptr for nullopt)
+// helper to convert optional string to C-string (returns nullptr for nullopt)
 char* to_c_str(const std::optional<std::string>& opt) {
     if (!opt) return nullptr;
     // allocate memory that will be freed by the caller
     char* result = new char[opt->length() + 1];
     std::strcpy(result, opt->c_str());
+    return result;
+}
+
+// overload for regular strings (always returns valid pointer)
+char* to_c_str(const std::string& str) {
+    char* result = new char[str.length() + 1];
+    std::strcpy(result, str.c_str());
     return result;
 }
 } // namespace
@@ -117,6 +124,12 @@ void ton_marker_free_batch_response(TonMarkerBatchResponse* response) {
     
     // free response struct
     delete response;
+}
+
+void ton_marker_free_string(const char* str) {
+    if (str) {
+        delete[] str;
+    }
 }
 
 int test_funct() {

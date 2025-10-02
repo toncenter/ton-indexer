@@ -26,7 +26,7 @@ func init() {
 	result := C.ton_marker_decode_opcode(C.uint(0))
 	if result != nil {
 		isLibraryInitialized = true
-		C.free(unsafe.Pointer(result))
+		C.ton_marker_free_string(result)
 		fmt.Println("ton-marker library initialized successfully")
 	} else {
 		fmt.Println("warning: ton-marker library initialization failed")
@@ -161,7 +161,11 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 	if response.opcode_count > 0 && response.opcode_results != nil {
 		results := unsafe.Slice(response.opcode_results, response.opcode_count)
 		for _, res := range results {
-			opcodeResults = append(opcodeResults, C.GoString(res))
+			if res != nil {
+				opcodeResults = append(opcodeResults, C.GoString(res))
+			} else {
+				opcodeResults = append(opcodeResults, "")
+			}
 		}
 	}
 
@@ -170,7 +174,11 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 	if response.boc_count > 0 && response.boc_results != nil {
 		results := unsafe.Slice(response.boc_results, response.boc_count)
 		for _, res := range results {
-			bocResults = append(bocResults, C.GoString(res))
+			if res != nil {
+				bocResults = append(bocResults, C.GoString(res))
+			} else {
+				bocResults = append(bocResults, "")
+			}
 		}
 	}
 
@@ -179,7 +187,11 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 	if response.interface_count > 0 && response.interface_results != nil {
 		results := unsafe.Slice(response.interface_results, response.interface_count)
 		for _, res := range results {
-			interfaceResults = append(interfaceResults, C.GoString(res))
+			if res != nil {
+				interfaceResults = append(interfaceResults, C.GoString(res))
+			} else {
+				interfaceResults = append(interfaceResults, "")
+			}
 		}
 	}
 	return opcodeResults, bocResults, interfaceResults, nil
