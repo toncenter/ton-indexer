@@ -306,6 +306,14 @@ func markWithRefs(refs *messagesRefs) error {
 		return nil
 	}
 
+	// debug info before marker request
+	opcodesStr := make([]string, len(opcodes))
+	for i, op := range opcodes {
+		opcodesStr[i] = fmt.Sprintf("0x%x", op)
+	}
+	fmt.Println("marker request debug - opcodes:", strings.Join(opcodesStr, " -o "))
+	fmt.Println("marker request debug - bodies:", strings.Join(bodies, " -b "))
+
 	decodedOpcodes, decodedBodies, _, err := MarkerRequest(opcodes, bodies, nil)
 	if err != nil {
 		return err
