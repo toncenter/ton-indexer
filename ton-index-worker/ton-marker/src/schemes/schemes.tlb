@@ -1698,7 +1698,7 @@ whales_nominators_accept_stake#99a811fb query_id:uint64 members:Cell = InternalM
 whales_nominators_accept_withdraws#a19fd934 query_id:uint64 members:Cell = InternalMsgBody5;
 
 // tonkeeper_relayer_fee
-tonkeeper_relayer_fee_forward_payload#878da6e3 = ForwardPayload;
+tonkeeper_relayer_fee_forward_payload#878da6e3 data:Any = ForwardPayload;
 
 // none_forward_payload#_ any:Any = ForwardPayload;
 
@@ -1736,17 +1736,17 @@ jvault_unstake_request#0168d4b7 query_id:uint64 jettons_to_unstake:Coins = Inter
 
 jvault_claim_rewards_msg#78d9f109 query_id:uint64 jettons_to_claim:(HashmapE 267 Bit) = InternalMsgBody6;
 
-jvault_send_claimed_rewards#44bc1fe3 = InternalMsgBody6;
+jvault_send_claimed_rewards#44bc1fe3 data:Any = InternalMsgBody6;
 
-jvault_request_update_rewards#f5c5baa3 = InternalMsgBody6;
+jvault_request_update_rewards#f5c5baa3 data:Any = InternalMsgBody6;
 
-jvault_update_rewards#ae9307ce = InternalMsgBody6;
+jvault_update_rewards#ae9307ce data:Any = InternalMsgBody6;
 
-jvault_request_update_referrer#55c35b40 = InternalMsgBody6;
+jvault_request_update_referrer#55c35b40 data:Any = InternalMsgBody6;
 
-jvault_update_referrer#076ee4e0 = InternalMsgBody6;
+jvault_update_referrer#076ee4e0 data:Any = InternalMsgBody6;
 
-jvault_set_data#383411ea = InternalMsgBody6;
+jvault_set_data#383411ea data:Any = InternalMsgBody6;
 
 // getgems
 sale_update_message#6c6c2080 query_id:uint64 new_full_price:Coins new_mp_fee:Coins new_royalty_amount:Coins = InternalMsgBody6;
