@@ -341,7 +341,7 @@ func markWithRefs(refs *messagesRefs) error {
 					// back compatibility with scheme for text comment
 					if data, ok := msgData.(map[string]interface{}); ok {
 						if text, ok := data["text"].(string); ok {
-							*ref = &DecodedContent{Type: msgType, Comment: text}
+							*ref = &DecodedContent{Type: msgType, Comment: &text}
 							break
 						}
 					}

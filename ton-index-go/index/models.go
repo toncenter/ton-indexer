@@ -158,7 +158,7 @@ type Block struct {
 
 type DecodedContent struct {
 	Type    string      `json:"type"`
-	Comment string      `json:"comment,omitempty"`
+	Comment *string     `json:"comment,omitempty"`
 	Data    interface{} `json:"data,omitempty"`
 } // @name DecodedContent
 
