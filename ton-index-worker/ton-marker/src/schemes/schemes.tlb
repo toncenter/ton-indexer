@@ -1,0 +1,2408 @@
+// =======================================================================
+
+unit$_ = Unit;
+true$_ = True;
+// EMPTY False;
+false$0 = Bool;
+true$1 = Bool;
+bool_false$0 = BoolFalse;
+bool_true$1 = BoolTrue;
+
+nothing_from_maybe$0 {X:Type} = Maybe X;
+something_from_maybe$1 {X:Type} value:X = Maybe X;
+
+first_from_either$0 {X:Type} {Y:Type} value:X = Either X Y;
+second_from_either$1 {X:Type} {Y:Type} value:Y = Either X Y;
+
+addr_none$00 = MsgAddressExt;
+addr_external$01 len:(## 9) external_address:(bits len)
+             = MsgAddressExt;
+anycast_info$_ depth:(#<= 30) { depth >= 1 }
+   rewrite_pfx:(bits depth) = Anycast;
+addr_std$10 anycast:(Maybe Anycast)
+   workchain_id:int8 address:bits256  = MsgAddressInt;
+addr_var$11 anycast:(Maybe Anycast) addr_len:(## 9)
+   workchain_id:int32 address:(bits addr_len) = MsgAddressInt;
+_ internal_address:MsgAddressInt = MsgAddress;
+_ external_address:MsgAddressExt = MsgAddress;
+
+var_uint$_ {n:#} len:(#< n) value:(uint (len * 8))
+         = VarUInteger n;
+var_int$_ {n:#} len:(#< n) value:(int (len * 8))
+        = VarInteger n;
+nanograms$_ amount:(VarUInteger 16) = Grams;
+
+nanocoins$_ amount:(VarUInteger 16) = Coins;
+
+bit$_ (## 1) = Bit;
+
+hashmap_edge#_ {n:#} {X:Type} {l:#} {m:#} label:(HmLabel ~l n)
+          {n = (~m) + l} node:(HashmapNode m X) = Hashmap n X;
+
+hashmap_node_leaf#_ {X:Type} value:X = HashmapNode 0 X;
+hashmap_node_fork#_ {n:#} {X:Type} left:^(Hashmap n X)
+           right:^(Hashmap n X) = HashmapNode (n + 1) X;
+
+hashmap_label_short$0 {m:#} {n:#} len:(Unary ~n) {n <= m} s:(n * Bit) = HmLabel ~n m;
+hashmap_label_long$10 {m:#} n:(#<= m) s:(n * Bit) = HmLabel ~n m;
+hashmap_label_same$11 {m:#} v:Bit n:(#<= m) = HmLabel ~n m;
+
+unary_zero$0 = Unary ~0;
+unary_succ$1 {n:#} x:(Unary ~n) = Unary ~(n + 1);
+
+hashmap_empty$0 {n:#} {X:Type} = HashmapE n X;
+hashmap_root$1 {n:#} {X:Type} root:^(Hashmap n X) = HashmapE n X;
+
+extra_currencies$_ dict:(HashmapE 32 (VarUInteger 32)) 
+                 = ExtraCurrencyCollection;
+currencies$_ grams:Grams other:ExtraCurrencyCollection 
+           = CurrencyCollection;
+
+int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+  src:MsgAddressInt dest:MsgAddressInt 
+  value:CurrencyCollection ihr_fee:Grams fwd_fee:Grams
+  created_lt:uint64 created_at:uint32 = CommonMsgInfo;
+ext_in_msg_info$10 src:MsgAddressExt dest:MsgAddressInt 
+  import_fee:Grams = CommonMsgInfo;
+ext_out_msg_info$11 src:MsgAddressInt dest:MsgAddressExt
+  created_lt:uint64 created_at:uint32 = CommonMsgInfo;
+
+int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+  src:MsgAddress dest:MsgAddressInt 
+  value:CurrencyCollection ihr_fee:Grams fwd_fee:Grams
+  created_lt:uint64 created_at:uint32 = CommonMsgInfoRelaxed;
+ext_out_msg_info$11 src:MsgAddress dest:MsgAddressExt
+  created_lt:uint64 created_at:uint32 = CommonMsgInfoRelaxed;
+
+tick_tock$_ tick:Bool tock:Bool = TickTock;
+
+_ fixed_prefix_length:(Maybe (## 5)) special:(Maybe TickTock)
+  code:(Maybe ^Cell) data:(Maybe ^Cell)
+  library:(Maybe ^Cell) = StateInit;
+
+// StateInitWithLibs is used to validate sent and received messages
+_ fixed_prefix_length:(Maybe (## 5)) special:(Maybe TickTock)
+  code:(Maybe ^Cell) data:(Maybe ^Cell)
+  library:(HashmapE 256 SimpleLib) = StateInitWithLibs;
+
+simple_lib$_ public:Bool root:^Cell = SimpleLib;
+
+message$_ {X:Type} info:CommonMsgInfo
+  init:(Maybe (Either StateInit ^StateInit))
+  body:(Either X ^X) = Message X;
+
+message$_ {X:Type} info:CommonMsgInfoRelaxed
+  init:(Maybe (Either StateInit ^StateInit))
+  body:(Either X ^X) = MessageRelaxed X;
+  
+_ (Message Any) = MessageAny;
+
+out_list_empty$_ = OutList 0;
+out_list$_ {n:#} prev:^(OutList n) action:OutAction
+  = OutList (n + 1);
+action_send_msg#0ec3c86d mode:(## 8) 
+  out_msg:^(MessageRelaxed Any) = OutAction;
+action_set_code#ad4de08e new_code:^Cell = OutAction;
+action_reserve_currency#36e6b809 mode:(## 8)
+  currency:CurrencyCollection = OutAction;
+libref_hash$0 lib_hash:bits256 = LibRef;
+libref_ref$1 library:^Cell = LibRef;
+action_change_library#26fa1dd4 mode:(## 7)
+  libref:LibRef = OutAction;
+
+out_list_node$_ prev:^Cell action:OutAction = OutListNode;
+
+_ (HashmapE 256 ^DNSRecord) = DNS_RecordSet;
+
+chunk_ref$_ {n:#} ref:^(TextChunks (n + 1)) = TextChunkRef (n + 1);
+chunk_ref_empty$_ = TextChunkRef 0;
+text_chunk$_ {n:#} len:(## 8) data:(bits (len * 8)) next:(TextChunkRef n) = TextChunks (n + 1);
+text_chunk_empty$_ = TextChunks 0;
+text$_ chunks:(## 8) rest:(TextChunks chunks) = Text;
+dns_text#1eda _:Text = DNSRecord;
+
+dns_next_resolver#ba93 resolver:MsgAddressInt = DNSRecord;  // usually in record #-1
+
+dns_adnl_address#ad01 adnl_addr:bits256 flags:(## 8) { flags <= 1 }
+  proto_list:flags . 0?ProtoList = DNSRecord;  // often in record #2
+proto_list_nil$0 = ProtoList;
+proto_list_next$1 item:Protocol next:ProtoList = ProtoList;
+proto_http#4854 = Protocol;
+
+dns_smc_address#9fd3 smc_addr:MsgAddressInt flags:(## 8) { flags <= 1 }
+  cap_list:flags . 0?SmcCapList = DNSRecord;   // often in record #1
+cap_list_nil$0 = SmcCapList;
+cap_list_next$1 item:SmcCapability next:SmcCapList = SmcCapList;
+cap_method_seqno#5371 = SmcCapability;
+cap_method_pubkey#71f4 = SmcCapability;
+cap_is_wallet#2177 = SmcCapability;
+cap_name#ff name:Text = SmcCapability;
+
+dns_storage_address#7473 bag_id:bits256 = DNSRecord;
+
+_ _:Cell = Bytes;
+
+// =======================================================================
+
+// overlaps: opcodes that are used in multiple protocols.
+
+// JustRandomSalt is to make schemes unmatchable so boc decoder will proceed to other schemes.
+rand#387da03b = JustRandomSalt;
+
+evaa_supply_master,pyth_update_guardian_set,w4_deploy_install_plugin#00000001 
+        rand:JustRandomSalt = InternalMsgBody0;
+
+// airdrop.xml
+
+// lock_and_claim
+lock_and_claim#3a86f1a0 query_id:uint64 proof:(Maybe ^Cell) = InternalMsgBody0;
+
+
+
+// bemo.xml
+
+// bemo_stake
+bemo_stake#4253c4d5
+        query_id:uint64
+        forward_ton_amount:(VarUInteger 16)
+        forward_payload:(Maybe ^Cell)
+        = InternalMsgBody0;
+
+// bemo_unstake
+bemo_unstake#492ab1b3
+        index:uint64 
+        owner:MsgAddress
+        ton_amount:(VarUInteger 16) 
+        jetton_amount:(VarUInteger 16)
+        forward_payload:(Maybe ^Cell) 
+        = InternalMsgBody0;
+
+// bemo_deploy_unstake_request
+bemo_deploy_unstake_request#10a1ce75 
+        query_id:uint64 
+        owner_address:MsgAddress 
+        withdraw_ton_amount:(VarUInteger 16)
+        withdraw_jetton_amount:(VarUInteger 16)
+        forward_payload:(Maybe ^Cell) 
+        lockup_timestamp:uint32 
+        = InternalMsgBody0;
+
+// bemo_unstake_notification
+bemo_unstake_notification#90c80a07 
+        query_id:uint64 
+        forward_payload:(Maybe ^Cell)
+        = InternalMsgBody0;
+
+// bemo_return_unstake_request
+bemo_return_unstake_request#38633538 
+        lockup_timestamp:uint32 
+        = InternalMsgBody0;
+
+
+
+// bidask.xml
+
+// TODO checkout all their schemes with docs
+
+// bidask_swap
+bidask_swap#f2ef6c1b query_id:uint64 native_amount:Coins to_address:MsgAddress slippage:(Either Coins uint256) exact_out:Coins
+        ref_address:MsgAddress additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_provide
+bidask_provide#96feef7b query_id:uint64 deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_swap_success
+bidask_swap_success#520e4831 query_id:uint64 new_current_bin:int32 new_sqrt_price:uint256 order:Bool amount_x:Coins amount_y:Coins 
+        is_x:Bool user_address:MsgAddress ref_cell:(Maybe ^Cell) additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_swap_fallback
+bidask_swap_fallback#1bba3896 query_id:uint64 first_range_bin:int32 order:Bool user_address:MsgAddress is_x:Bool 
+        amount_in:Coins additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_provide_refund
+bidask_provide_refund#02422cbe query_id:uint64 first_range_bin:int32 x_excess:Coins y_excess:Coins user_address:MsgAddress
+        reject_payload:(Maybe ^Cell) order:Bool  = InternalMsgBody0;
+
+// bidask_burn_payout
+bidask_burn_payout#42062d62 query_id:uint64 first_range_bin:int32 amount_x:Coins amount_y:Coins user_address:MsgAddress 
+        forward_payload:(Maybe ^Cell) = InternalMsgBody0;
+
+// bidask_internal_swap
+bidask_internal_swap#66210c65 query_id:uint64 to_address:MsgAddress order:Bool is_x:Bool amount_in:Coins amount_out:Coins exact_out:Coins 
+        slippage:(Either Coins uint256) ref_cell:(Maybe ^Cell) additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_internal_continue_swap
+bidask_internal_continue_swap#59699475 query_id:uint64 to_address:MsgAddress order:Bool is_x:Bool amount_in:Coins amount_out:Coins exact_out:Coins 
+        slippage:(Either Coins uint256) ref_cell:(Maybe ^Cell) additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_internal_provide
+_ first_bin:int32 liquidity_dict:(HashmapE 32 int32) current_bin:int32 remaining:Cell = BidaskDexPayload;
+bidask_internal_provide#d1b02ea5 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) _:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
+        dex_payload:^BidaskDexPayload  = InternalMsgBody0; // prior - has ref
+bidask_internal_provide#d1b02ea5 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) _:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
+        dex_payload:Any = InternalMsgBody1;
+
+// bidask_internal_continue_provide
+bidask_internal_continue_provide#0c09445a query_id:uint64 amount_x:Coins amount_y:Coins excess_x:Coins excess_y:Coins user_address:MsgAddress
+        first_bin:int32 number_of_bins:uint32 liquidity_dict:(HashmapE 32 int32) lp_tokens:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell) order:Bool = InternalMsgBody0;
+
+// bidask_save_liquidity_info
+bidask_save_liquidity_info#214ad1d2 query_id:uint64 amount_x:Coins amount_y:Coins deposit_type:uint3 
+        liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_adding_liquidity_notify
+bidask_adding_liquidity_notify#af31d23f query_id:uint64 user_address:MsgAddress amount_x:Coins amount_y:Coins deposit_type:uint3 
+        liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_internal_burn
+bidask_internal_burn#16e09400 query_id:uint64 owner_address:MsgAddress amount_x:Coins amount_y:Coins first_bin:int32 
+        tokens_to_burn:(HashmapE 32 int32) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_multitoken_mint
+bidask_multitoken_mint#250ad226 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) liquidity_dict:(HashmapE 32 int32) 
+        number_of_bins:uint32 forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_burn
+bidask_burn#73403c43 query_id:uint64 tokens_to_burn:(HashmapE 32 int32) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_burn_all
+bidask_burn_all#ebd6ec83 query_id:uint64 forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_liquidity_added_notify
+bidask_liquidity_added_notify#0dc8bb28 query_id:uint64 forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+// bidask_native_transfer_notification
+bidask_native_transfer_notification#6edd65f0 query_id:uint64 native_amount:Coins forward_payload:(Maybe ^Cell) = InternalMsgBody0;
+
+
+// bidask_swap
+bidask_swap_forward_payload#f2ef6c1b to_address:MsgAddress slippage:(Either Coins uint256) exact_out:Coins
+        ref_address:MsgAddress additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell) = ForwardPayload;
+
+// bidask_provide
+bidask_provide_forward_payload#96feef7b deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell) = ForwardPayload;
+
+// bidask_provide_both
+bidask_provide_both_forward_payload#3ea0bafc ton_amount:Coins deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell) = ForwardPayload;
+
+
+// cron.xml
+
+// cron_trigger
+cron_trigger#2114702d reward_address:MsgAddress salt:uint32 = ExternalMsgBody;
+
+// cron_reward
+cron_reward#2e04891a = InternalMsgBody0;
+
+// cron_notify
+cron_notify#d027efe5 init_state_hash:uint256 init_state_depth:uint10 = InternalMsgBody0;
+
+// cron_init
+cron_init#2e41d3ac = InternalMsgBody0;
+
+// cron_destroyed
+cron_destroyed#bbe27821 = InternalMsgBody0;
+
+// cron topupper
+w5_dns_renewal_calc_and_topup#56f6110e first_call_time:uint32 repeat_every:uint32 salt:uint32 reward:Coins owner_address:MsgAddressInt renewal_actions_cell:^Cell topup_amount:Coins msg_to_wallet_amount:Coins = InternalMsgBody0;
+
+
+// daolama.xml
+
+// daolama_vault_supply
+daolama_vault_supply#5c11ada9 amount:Coins = InternalMsgBody0;
+
+// // daolama_vault_withdraw overlap with jetton_burn
+// daolama_vault_withdraw#7bdd97de jetton_amount:Coins user_address:MsgAddress = InternalMsgBody0;
+
+// dns.xml
+
+// dns_balance_release
+dns_balance_release#4ed14b65 query_id:uint64 = InternalMsgBody0;
+
+// change_dns_record
+change_dns_record#4eb1f0f9 query_id:uint64 key:bits256 value:^DNSRecord = InternalMsgBody0;
+
+// delete_dns_record will match if there were no value:^DNSRecord above
+delete_dns_record#4eb1f0f9 query_id:uint64 key:bits256 = InternalMsgBody1;
+
+// process_governance_decision
+process_governance_decision#44beae41 query_id:uint64 = InternalMsgBody0;
+
+// auction_fill_up
+auction_fill_up#370fec51 query_id:uint64 = InternalMsgBody0;
+
+// outbid_notification
+outbid_notification#557cea20 query_id:uint64 = InternalMsgBody0;
+
+
+
+// gram.xml
+
+// gram_submit_proof_of_work
+gram_submit_proof_of_work#4d696e65 flags:uint8 expire:uint32 whom:bits256 rdata1:bits256 rseed:uint128 rdata2:bits256 = InternalMsgBody0;
+
+
+
+// hipo_finance.xml
+
+// hipo_finance_deposit_coins
+hipo_finance_deposit_coins#3d3761a6
+        query_id:uint64
+        owner:MsgAddress
+        coins:(VarUInteger 16)
+        ownership_assigned_amount:(VarUInteger 16)
+        referrer:MsgAddress
+        = InternalMsgBody0;
+
+// hipo_finance_proxy_tokens_minted
+hipo_finance_proxy_tokens_minted#5be57626
+        query_id:uint64
+        tokens:(VarUInteger 16)
+        coins:(VarUInteger 16)
+        owner:MsgAddress
+        round_since:uint32
+        = InternalMsgBody0;
+
+// hipo_finance_tokens_minted
+hipo_finance_tokens_minted#5445efee
+        query_id:uint64
+        tokens:(VarUInteger 16)
+        coins:(VarUInteger 16)
+        owner:MsgAddress
+        round_since:uint32
+        = InternalMsgBody0;
+
+
+
+// invoices.xml
+
+// Types
+none#00 = PaymentProviderUrl;
+tonsite#01 address:bits256 = PaymentProviderUrl;
+
+// invoice_payload
+invoice_payload#7aa23eb5 id:bits128 url:PaymentProviderUrl = InternalMsgBody0;
+
+// invoice_payload
+invoice_payload_forward_payload#7aa23eb5 id:bits128 url:PaymentProviderUrl = ForwardPayload;
+
+
+// jettons.xml
+
+// Types
+set_status#eed236d3
+query_id:uint64
+status:uint4
+= JettonForceAction;
+burn#595f07bc query_id:uint64 amount:(VarUInteger 16)
+response_destination:MsgAddress custom_payload:(Maybe ^Cell)
+= JettonForceAction;
+transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress
+response_destination:MsgAddress custom_payload:(Maybe ^Cell)
+forward_ton_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell)
+= JettonForceAction;
+
+// jetton_transfer
+jetton_transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress
+        response_destination:MsgAddress custom_payload:(Maybe ^Cell)
+        forward_ton_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell)
+        = InternalMsgBody0;
+
+// jetton_internal_transfer
+jetton_internal_transfer#178d4519 query_id:uint64 amount:(VarUInteger 16) from:MsgAddress
+        response_address:MsgAddress
+        forward_ton_amount:(VarUInteger 16)
+        forward_payload:(Either Cell ^Cell)
+        = InternalMsgBody0; // prior - has Either bit
+
+jetton_internal_transfer#178d4519 query_id:uint64 amount:(VarUInteger 16) from:MsgAddress
+        response_address:MsgAddress
+        forward_ton_amount:(VarUInteger 16)
+        forward_payload:Any // when no either bit
+        = InternalMsgBody1;
+
+// jetton_burn
+jetton_burn#595f07bc query_id:uint64 amount:(VarUInteger 16)
+        response_destination:MsgAddress custom_payload:(Maybe ^Cell)
+        = InternalMsgBody0;
+
+// jetton_burn_notification
+jetton_burn_notification#7bdd97de query_id:uint64 amount:(VarUInteger 16)
+        sender:MsgAddress response_destination:MsgAddress = InternalMsgBody1;
+
+// jetton_notify
+jetton_notify#7362d09c query_id:uint64 amount:(VarUInteger 16)
+        sender:MsgAddress forward_payload:(Either Cell ^Cell)
+        = InternalMsgBody1;
+
+// jetton_set_status
+jetton_set_status#eed236d3
+        query_id:uint64
+        status:uint4
+        = InternalMsgBody1;
+
+// jetton_mint
+jetton_mint#642b7d07
+        query_id:uint64
+        to_address:MsgAddressInt
+        ton_amount:Coins
+
+        = InternalMsgBody1;
+
+minter_jetton_mint#00000015 query_id:uint64 to_address:MsgAddress ton_amount:Coins master_msg:^Cell = InternalMsgBody1;
+
+// jetton_change_admin
+jetton_change_admin#6501f354
+        query_id:uint64
+        new_admin_address:MsgAddress
+        = InternalMsgBody1;
+
+// jetton_claim_admin
+jetton_claim_admin#fb88e119
+        query_id:uint64
+        = JettonMinterMsg;
+
+// jetton_call_to
+jetton_call_to#235caf52
+        query_id:uint64
+        to_address:MsgAddressInt
+        ton_amount:Coins
+        master_msg:^JettonForceAction
+        = JettonMinterMsg;
+
+// jetton_upgrade
+jetton_upgrade#2508d66a
+        query_id:uint64
+        new_data:^Cell
+        new_code:^Cell
+        = JettonMinterMsg;
+
+// jetton_change_metadata
+jetton_change_metadata#cb862902
+        query_id:uint64
+        metadata:Cell
+        = JettonMinterMsg;
+
+
+
+// known.xml
+
+// bounce
+bounce#ffffffff payload:Cell = InternalMsgBody1;
+
+// text_comment
+text_comment#00000000 text:SnakeString = InternalMsgBody1;
+
+// encrypted_text_comment
+encrypted_text_comment#2167da4b cipher_text:Bytes = InternalMsgBody1;
+
+// excess
+excess#d53276db query_id:uint64 = InternalMsgBody1;
+
+// top_up
+top_up#d372158c query_id:uint64 = InternalMsgBody1;
+
+// credit
+credit#1690c604 query_id:uint64 amount:Coins = InternalMsgBody1;
+
+// approve
+approve#7b4b42e6 query_id:uint64 = InternalMsgBody1;
+
+// disapprove
+disapprove#e8a0abfe query_id:uint64 = InternalMsgBody1;
+
+// elector_new_stake
+elector_new_stake#4e73744b query_id:uint64 validator_pubkey:bits256 stake_at:uint32
+        max_factor:uint32 adnl_addr:bits256 signature:^bits512 = InternalMsgBody1;
+
+// elector_new_stake_confirmation
+elector_new_stake_confirmation#f374484c query_id:uint64 = InternalMsgBody1;
+
+// elector_recover_stake_request
+elector_recover_stake_request#47657424 query_id:uint64 = InternalMsgBody1;
+
+// elector_recover_stake_response
+elector_recover_stake_response#f96f7324 query_id:uint64 = InternalMsgBody1;
+
+// encrypted_text_comment
+encrypted_text_comment_forward_payload#2167da4b cipher_text:Bytes = ForwardPayload;
+
+
+
+// liquid_stacking.xml FIXED
+
+// Types
+_ approver:MsgAddress halter:MsgAddress = ApproverHalter;
+data#_ controller_id:uint32 validator:MsgAddress pool:MsgAddress governor:MsgAddress _:^ApproverHalter = TonstakersControllerData;
+
+// tonstake_controller_recover_stake
+tonstake_controller_recover_stake#eb373a05 query_id:uint64 = InternalMsgBody1;
+
+// tonstake_controller_update_validator_hash
+tonstake_controller_update_validator_hash#f0fd2250 query_id:uint64 = InternalMsgBody1;
+
+// tonstake_controller_withdraw_validator
+tonstake_controller_withdraw_validator#8efed779 query_id:uint64 value:Coins = InternalMsgBody1;
+
+// tonstake_controller_validator_withdrawal
+tonstake_controller_validator_withdrawal#30026327 query_id:uint64 amount:Coins = InternalMsgBody1;
+
+// tonstake_controller_new_stake
+tonstake_controller_new_stake#e0505d0e query_id:uint64 value:Coins validator_pubkey:uint256 stake_at:uint32 max_factor:uint32
+        adnl_addr:uint256 signature:^(bits512) = InternalMsgBody1;
+
+// tonstake_controller_send_request_loan
+tonstake_controller_send_request_loan#6335b11a query_id:uint64 min_loan:Coins max_loan:Coins max_interst:uint24 = InternalMsgBody1;
+
+// tonstake_controller_return_unused_loan
+tonstake_controller_return_unused_loan#ed7378a6 query_id:uint64 = InternalMsgBody1;
+
+// tonstake_controller_return_available_funds
+tonstake_controller_return_available_funds#55c26cd5 query_id:uint64 = InternalMsgBody1;
+
+// tonstake_pool_request_loan
+tonstake_pool_request_loan#e642c965 query_id:uint64 min_loan:Coins max_loan:Coins max_interest:uint24 controller_data:^TonstakersControllerData = InternalMsgBody1;
+
+// tonstake_pool_loan_repayment
+tonstake_pool_loan_repayment#dfdca27b query_id:uint64 = InternalMsgBody1;
+
+// tonstake_pool_deposit
+tonstake_pool_deposit#47d54391 query_id:uint64 referral:Cell = InternalMsgBody1;
+
+// tonstake_pool_touch
+tonstake_pool_touch#4bc7c2df query_id:uint64 = InternalMsgBody1;
+
+// tonstake_pool_set_governance_fee
+tonstake_pool_set_governance_fee#2aaa96a0 query_id:uint64 governance_fee:uint16 = InternalMsgBody1;
+
+// tonstake_pool_withdraw
+tonstake_pool_withdraw#319b0cdc query_id:uint64 jetton_amount:Coins from_address:MsgAddress response_address:MsgAddress =
+        InternalMsgBody1;
+
+// tonstake_pool_withdrawal
+tonstake_pool_withdrawal#0a77535c query_id:uint64 = InternalMsgBody1;
+
+// tonstake_pool_set_roles
+tonstake_pool_set_roles#5e517f36 query_id:uint64 governor:(Maybe MsgAddress) interest_manager:(Maybe MsgAddress) halter:(Maybe MsgAddress) = InternalMsgBody1;
+
+// tonstake_pool_set_deposit_settings
+tonstake_pool_set_deposit_settings#9bf5561c query_id:uint64 optimistic_deposit_withdrawals:Bool deposits_open:Bool = InternalMsgBody1;
+
+// tonstake_pool_deploy_controller
+tonstake_pool_deploy_controller#b27edcad controller_id:uint32 query_id:uint64 = InternalMsgBody1;
+
+// tonstake_pool_prepare_governance_migration
+tonstake_pool_prepare_governance_migration#9971881c query_id:uint64 governor_update_after:uint48 = InternalMsgBody1;
+
+// tonstake_controller_pool_send_message
+tonstake_controller_pool_send_message#270695fb query_id:uint64 mode:uint8 msg:^Cell = InternalMsgBody1;
+
+// tonstake_controller_pool_upgrade
+tonstake_controller_pool_upgrade#96e7f528 query_id:uint64 data:(Maybe ^Cell) code:(Maybe ^Cell) after_upgrade:(Maybe ^Cell) =
+        InternalMsgBody1;
+
+// tonstake_controller_pool_set_sudoer
+tonstake_controller_pool_set_sudoer#79e7c016 query_id:uint64 sudoer:MsgAddress = InternalMsgBody1;
+
+// tonstake_controller_pool_unhalt
+tonstake_controller_pool_unhalt#7247e7a5 query_id:uint64 = InternalMsgBody1;
+
+// tonstake_controller_pool_halt
+tonstake_controller_pool_halt#139a1b4e query_id:uint64 = InternalMsgBody1;
+
+// tonstake_imanager_set_interest
+tonstake_imanager_set_interest#c9f04485 query_id:uint64 interest_rate:uint16 = InternalMsgBody1;
+
+// tonstake_imanager_operation_fee
+tonstake_imanager_operation_fee#54d37487 query_id:uint64 = InternalMsgBody1;
+
+// tonstake_imanager_request_notification
+tonstake_imanager_request_notification#b1ebae06 query_id:uint64 min_loan:Coins max_loan:Coins max_interest:uint16 = InternalMsgBody1;
+
+// tonstake_imanager_stats
+tonstake_imanager_stats#c1344900 query_id:uint64 borrowed:Coins expected:Coins returned:Coins profit_sign:int1 profit:Coins total_balance:Coins = InternalMsgBody1;
+
+// tonstake_nft_burn
+tonstake_nft_burn#f127fe4e query_id:uint64 = InternalMsgBody1;
+
+// tonstake_nft_burn_notification
+tonstake_nft_burn_notification#ed58b0b2 query_id:uint64 amount:Coins owner:MsgAddress index:uint64 = InternalMsgBody1;
+
+// tonstake_nft_init
+tonstake_nft_init#132f9a45 query_id:uint64 owner:MsgAddress amount:Coins prev:MsgAddress next:MsgAddress = InternalMsgBody1;
+
+// tonstake_nft_payout
+tonstake_nft_payout#db3b8abd query_id:uint64 = InternalMsgBody1;
+
+// tonstake_payout_mint_jettons
+tonstake_payout_mint_jettons#1674b0a0 query_id:uint64 destination:MsgAddress amount:Coins notification:Coins forward:Coins = InternalMsgBody1;
+
+
+
+// locker.xml
+
+
+
+// lockup-wallet.xml
+
+
+
+// megaton-fi.xml
+
+// megaton_wton_mint
+megaton_wton_mint#77a33521 query_id:uint64 amount:Coins = InternalMsgBody1;
+
+// megaton_swap
+megaton_swap#7362d09c account_addr:MsgAddressInt
+        in_token_addr:MsgAddressInt in_amount:Coins
+        ^[ out_token_addr:MsgAddressInt out_amount:Coins ] = ExternalMsgBody;
+
+// megaton_update_mining_params
+_ last_mined:uint256 last_index:uint256 = MegatonUpdateMiningParams;
+megaton_update_mining_params#56a8e920 pool_addr:MsgAddressInt
+        last_mined:uint256 last_index:uint256
+        _:^MegatonUpdateMiningParams
+         = ExternalMsgBody;
+
+
+// mooncx.xml
+
+// Types
+next_payload#_ recipient:MsgAddress payload:(Maybe ^Cell) = MoonNextPayload;
+swap_params#_ min_out:(VarUInteger 16) deadline:uint64 excess:(Maybe MsgAddress) referral:(Maybe MsgAddress)
+next_fulfill:(Maybe ^MoonNextPayload) next_reject:(Maybe ^MoonNextPayload) = MoonSwapParams;
+order_data#_ rate:uint256 lock:uint2 vesting_time:uint64 = MoonOrderParams;
+
+// moon_swap
+moon_swap#b37a900b query_id:uint64 amount:(VarUInteger 16) swap_params:MoonSwapParams = InternalMsgBody2;
+
+// moon_swap_succeed
+moon_swap_succeed#cb7f38d6 = InternalMsgBody2;
+
+// moon_swap_failed
+moon_swap_failed#c47c1f57 = InternalMsgBody2;
+
+// moon_deposit_liquidity
+moon_deposit_liquidity#b31db781 query_id:uint64 min_lp_out:(VarUInteger 16) = InternalMsgBody2;
+
+// moon_boost_pool
+moon_boost_pool#96aa1586 query_id:uint64 = InternalMsgBody2;
+
+// moon_create_order
+moon_create_order#da067c19 query_id:uint64 asset2_id:MsgAddress order_data:MoonOrderParams = InternalMsgBody2;
+
+// moon_deploy_order
+moon_deploy_order#983432e2 query_id:uint64 order_fee:uint8 order_data:MoonOrderParams pipes:^Cell = InternalMsgBody2;
+
+// moon_fill_order
+moon_fill_order#99b49842 query_id:uint64 recipient:MsgAddress recipient_payload:(Maybe ^Cell)
+        reject_address:MsgAddress = InternalMsgBody2;
+
+// moon_order_payout
+moon_order_payout#96612e37 query_id:uint64 = InternalMsgBody2;
+
+// moon_vesting_payout
+moon_vesting_payout#b4fc3916 query_id:uint64 = InternalMsgBody2;
+
+// moon_cancel_order
+moon_cancel_order#1e8d79c4 query_id:uint64 = InternalMsgBody2;
+
+// moon_order_cancelled
+moon_order_cancelled#49f48ee9 query_id:uint64 = InternalMsgBody2;
+
+// moon_swap
+moon_swap_forward_payload#b37a900b swap_params:MoonSwapParams = ForwardPayload;
+
+// moon_swap_succeed
+moon_swap_succeed_forward_payload#cb7f38d6 = ForwardPayload;
+
+// moon_swap_failed
+moon_swap_failed_forward_payload#c47c1f57 = ForwardPayload;
+
+// moon_deposit_liquidity
+moon_deposit_liquidity_forward_payload#b31db781 min_lp_out:(VarUInteger 16) = ForwardPayload;
+
+// moon_boost_pool
+moon_boost_pool_forward_payload#96aa1586 = ForwardPayload;
+
+// moon_create_order
+moon_create_order_forward_payload#da067c19 asset1_id:MsgAddress asset2_id:MsgAddress order_data:MoonOrderParams = ForwardPayload;
+
+// moon_fill_order
+moon_fill_order_forward_payload#99b49842 recipient:MsgAddress recipient_payload:(Maybe ^Cell)
+        reject_address:MsgAddress = ForwardPayload;
+
+
+// multisig.xml FIXED
+
+// Types
+send_message#f1381e5b mode:uint8 message:^(MessageRelaxed Any) = MulisigAction;
+update_multisig_param#1d0cfbd3 threshold:uint8
+                               signers:^(Hashmap 8 MsgAddressInt)
+                               proposers:(HashmapE 8 MsgAddressInt) = MulisigAction;
+
+_ _:(Hashmap 8 ^MulisigAction) = MultisigOrder;
+
+// multisig_new_order
+mulisig_new_order#f718510f query_id:uint64
+                   order_seqno:uint256
+                   signer:Bool
+                   index:uint8
+                   expiration_date:uint48
+                   order:^MultisigOrder = InternalMsgBody2;
+
+// multisig_execute
+multisig_execute#75097f5d query_id:uint64
+        order_seqno:uint256
+        expiration_date:uint48
+        approvals_num:uint8
+        signers_hash:bits256
+        order:^MultisigOrder = InternalMsgBody2;
+
+// multisig_execute_internal
+multisig_execute_internal#a32c59bf query_id:uint64 order:^MultisigOrder = InternalMsgBody2;
+
+// multisig_order_init
+multisig_order_init#9c73fba2 query_id:uint64
+        threshold:uint8
+        signers:^(Hashmap 8 MsgAddressInt)
+        expiration_date:uint48
+        order:^MultisigOrder
+        signer_index:(Maybe uint8) = InternalMsgBody2;
+
+// multisig_approve
+multisig_approve#a762230f query_id:uint64 signer_index:uint8 = InternalMsgBody2;
+
+// multisig_approve_accepted
+multisig_approve_accepted#82609bf6 query_id:uint64 = InternalMsgBody2;
+
+// multisig_approve_rejected
+multisig_approve_rejected#afaf283e query_id:uint64 exit_code:uint32 = InternalMsgBody2;
+
+
+// nft_sale.xml
+
+
+
+// nfts.xml
+
+// nft_transfer
+nft_transfer#5fcc3d14 query_id:uint64 new_owner:MsgAddress response_destination:MsgAddress
+        custom_payload:(Maybe ^Cell) forward_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell) =
+        InternalMsgBody2;
+
+// nft_ownership_assigned
+nft_ownership_assigned#05138d91 query_id:uint64 prev_owner:MsgAddress forward_payload:(Either Cell ^Cell) =
+        InternalMsgBody2;
+
+// get_static_data
+get_static_data#2fcb26a2 query_id:uint64 = InternalMsgBody2;
+
+// report_static_data
+report_static_data#8b771735 query_id:uint64 index:uint256 collection:MsgAddress = InternalMsgBody2;
+
+// get_royalty_params
+get_royalty_params#693d3950 query_id:uint64 = InternalMsgBody2;
+
+// report_royalty_params
+report_royalty_params#a8cb00ad query_id:uint64 numerator:uint16 denominator:uint16
+        destination:MsgAddress = InternalMsgBody2;
+
+// prove_ownership
+prove_ownership#04ded148 query_id:uint64 dest:MsgAddress
+        forward_payload:^Cell with_content:Bool = InternalMsgBody2;
+
+// ownership_proof
+ownership_proof#0524c7ae query_id:uint64 item_id:uint256 owner:MsgAddress
+        data:^Cell revoked_at:uint64 content:(Maybe ^Cell) = InternalMsgBody2;
+
+// sbt_request_owner
+sbt_request_owner#d0c3bfea query_id:uint64 dest:MsgAddress
+        forward_payload:^Cell with_content:Bool = InternalMsgBody2;
+
+// sbt_owner_info
+sbt_owner_info#0dd607e3 query_id:uint64 item_id:uint256 initiator:MsgAddress owner:MsgAddress
+        data:^Cell revoked_at:uint64 content:(Maybe ^Cell) = InternalMsgBody2;
+
+// sbt_destroy
+sbt_destroy#1f04537a query_id:uint64 = InternalMsgBody2;
+
+// sbt_revoke
+sbt_revoke#6f89f5e3 query_id:uint64 = InternalMsgBody2;
+
+
+
+// notcoin.xml
+
+
+
+// payment_channels.xml
+
+// Types
+cp#_ amount:Coins condition:Cell = ConditionalPayment;
+sc_body#_ seqno:uint64 sent:Coins conditionals:(HashmapE 32 ConditionalPayment)
+= SemiChannelBody; // 64+132+1 = 197
+semichannel_state#43685374 channel_id:uint128 data:SemiChannelBody counterparty_data:(Maybe ^SemiChannelBody)
+= SemiChannel; // 32 + 128 + 197 + 1 = 358
+signed_schs#_ signature:bits512 state:SemiChannel = SignedSemiChannel; // 512 + 358 = 870
+quarantined_state#_ state_A:SemiChannelBody state_B:SemiChannelBody
+quarantine_starts:uint32
+state_commited_by_A:Bool
+= QuarantinedState; // 358 + 358 + 32 + 1 = 749
+conf#_ quarantin_duration:uint32
+misbehavior_fine:Coins
+conditional_close_duration:uint32 = ClosingConfig; // 32 + 132 + 132 + 32 = 296
+payment_conf#_ excess_fee:Coins
+dest_A:MsgAddress
+dest_B:MsgAddress = PaymentConfig;
+channel_state#_ balance_A:Coins balance_B:Coins
+key_A:uint256 key_B:uint256
+channel_id:uint128
+config:^ClosingConfig
+commited_seqno_A:uint32 commited_seqno_B:uint32
+quarantin:(Maybe ^QuarantinedState)
+payments:^PaymentConfig = Storage;
+// 132 + 132 + 256 + 256 + 32 + 32 + 1 + 132 = 973
+
+// top_up_channel_balance
+top_up_channel_balance#67c7d281 add_A:Coins add_B:Coins = InternalMsgBody2;
+
+// init_payment_channel
+init_payment_channel#0e0620c2 is_A:Bool signature:bits512 tag:# channel_id:uint128 balance_A:Coins
+        balance_B:Coins = InternalMsgBody2;
+
+// channel_cooperative_close
+channel_cooperative_close#5577587e sig_A:^bits512 sig_B:^bits512 tag:# channel_id:uint128 balance_A:Coins
+        balance_B:Coins seqno_A:uint64 seqno_B:uint64 = InternalMsgBody2;
+
+// channel_cooperative_commit
+channel_cooperative_commit#79a126ef sig_A:^bits512 sig_B:^bits512 tag:# channel_id:uint128 seqno_A:uint64
+        seqno_B:uint64 = InternalMsgBody2;
+
+// start_uncooperative_channel_close
+start_uncooperative_channel_close#1f151acf signed_by_A:Bool signature:bits512 tag:# channel_id:uint128
+        sch_A:^SignedSemiChannel
+        sch_B:^SignedSemiChannel = InternalMsgBody2;
+
+// challenge_quarantined_channel_state
+challenge_quarantined_channel_state#088eaa32
+        challenged_by_A:Bool signature:bits512 tag:# channel_id:uint128
+        sch_A:^SignedSemiChannel
+        sch_B:^SignedSemiChannel = InternalMsgBody2;
+
+// settle_channel_conditionals
+settle_channel_conditionals#66f6f069
+        from_A:Bool signature:bits512 tag:# channel_id:uint128
+        conditionals_to_settle:(HashmapE 32 Cell)
+        = InternalMsgBody2;
+
+// finish_uncooperative_channel_close
+finish_uncooperative_channel_close#25432a91 = InternalMsgBody2;
+
+// channel_closed
+channel_closed#dddc88ba channel_id:uint128 = InternalMsgBody2;
+
+
+
+// ston-fi.xml
+
+// Types
+pay_to_params#_ amount0_out:(VarUInteger 16) token0_address:MsgAddress amount1_out:(VarUInteger 16) token1_address:MsgAddress = StonfiPayToParams;
+swap_addresses#_ from_user:MsgAddress = StonfiSwapAddrs;
+
+// stonfi_swap
+stonfi_swap#25938561 query_id:uint64 to_address:MsgAddress sender_address:MsgAddress
+        jetton_amount:(VarUInteger 16) min_out:(VarUInteger 16) has_ref_address:Bool addrs:^StonfiSwapAddrs = InternalMsgBody2;
+
+// stonfi_payment_request
+stonfi_payment_request#f93bb43f query_id:uint64 owner:MsgAddress exit_code:uint32
+        params:(Either StonfiPayToParams ^StonfiPayToParams) = InternalMsgBody3;
+
+// pton_ton_transfer
+pton_ton_transfer#01f3835d query_id:uint64 ton_amount:Coins refund_address:MsgAddress forward_payload:(Either Cell ^Cell) = InternalMsgBody3;
+
+// pton_ton_refund
+pton_ton_refund#ae25d79e query_id:uint64 = InternalMsgBody3;
+
+// pton_reset_gas
+pton_reset_gas#29d22935 query_id:uint64 = InternalMsgBody3;
+
+// pton_deploy_wallet
+pton_deploy_wallet#4f5f4313 query_id:uint64 owner_address:MsgAddress excesses_address:MsgAddress = InternalMsgBody3;
+
+// pton_internal_deploy
+pton_internal_deploy#6540cf85 query_id:uint64 excesses_address:MsgAddress = InternalMsgBody3;
+
+// stonfi_cb_add_liquidity_v2
+additional_fields#_ to_user_address:MsgAddress refund_address:MsgAddress excess_address:MsgAddress = AdditionalFields;
+stonfi_cb_add_liquidity_v2#06ecd527 query_id:uint64 tot_am0:(VarUInteger 16) tot_am1:(VarUInteger 16) user_address:MsgAddress min_lp_out:(VarUInteger 16)
+        fwd_amount:Coins custom_payload_cs:(Maybe ^Cell) _:^AdditionalFields = InternalMsgBody3;
+
+// stonfi_provide_lp_v2
+provide_lp_body_v2#_ min_lp_out:(VarUInteger 16) to_address:MsgAddress both_positive:uint1 fwd_amount:Coins custom_payload:(Maybe ^Cell) = ProvideLpBodyV2;
+dex_payload_provide_lp_v2#_ transferred_op:uint32 token_wallet1:MsgAddress refund_address:MsgAddress excesses_address:MsgAddress tx_deadline:uint64 _:^ProvideLpBodyV2 = DexPayloadProvideLpV2;
+stonfi_provide_lp_v2#37c096df query_id:uint64 from_user:MsgAddress left_amount:(VarUInteger 16) right_amount:(VarUInteger 16) _:^DexPayloadProvideLpV2 = InternalMsgBody3;
+
+// stonfi_add_liquidity_v2
+additional_fields_add_liquidity_v2#_ refund_address:MsgAddress excess_address:MsgAddress = AdditionalFieldsAddLiquidityV2;
+stonfi_add_liquidity_v2#50c6a654 query_id:uint64 new_amount0:(VarUInteger 16) new_amount1:(VarUInteger 16) min_lp_out:(VarUInteger 16) fwd_amount:Coins
+        both_positive:uint1 to_user:MsgAddress custom_payload_cs:(Maybe ^Cell) _:^AdditionalFieldsAddLiquidityV2 = InternalMsgBody3;
+
+// stonfi_pay_to_v2
+additional_info_pay_to_v2#_ fwd_ton_amount:Coins amount0_out:(VarUInteger 16) token0_address:MsgAddress amount1_out:(VarUInteger 16) token1_address:MsgAddress = AdditionalInfoPayToV2;
+stonfi_pay_to_v2#657b54f5 query_id:uint64 to_address:MsgAddress excesses_address:MsgAddress original_caller:MsgAddress exit_code:uint32 custom_payload:(Maybe ^Cell) _:^AdditionalInfoPayToV2 = InternalMsgBody3;
+
+// stonfi_swap_v2
+swap_body#_ min_out:(VarUInteger 16) receiver:MsgAddress fwd_gas:Coins custom_payload:(Maybe ^Cell) refund_fwd_gas:Coins refund_payload:(Maybe ^Cell) ref_fee:uint16 ref_address:MsgAddress = SwapBody;
+dex_payload#_ transferred_op:uint32 token_wallet1:MsgAddress refund_address:MsgAddress excesses_address:MsgAddress tx_deadline:uint64 _:^SwapBody = DexPayload;
+stonfi_swap_v2#6664de2a query_id:uint64 from_user:MsgAddress left_amount:(VarUInteger 16) right_amount:(VarUInteger 16) _:^DexPayload = InternalMsgBody3;
+
+// stonfi_withdraw_fee_v2
+stonfi_withdraw_fee_v2#354bcdf4 query_id:uint64 = InternalMsgBody3;
+
+// stonfi_deposit_ref_fee_v2
+stonfi_deposit_ref_fee_v2#0490f09b query_id:uint64 jetton_amount:(VarUInteger 16) excesses_address:MsgAddress = InternalMsgBody3;
+
+// stonfi_vault_pay_to_v2
+stonfi_vault_pay_to_v2#2100c922 query_id:uint64 amount_out:(VarUInteger 16) token_address:MsgAddress to_address:MsgAddress = InternalMsgBody3;
+
+// stonfi_pay_vault_v2
+additional_info_pay_vault_v2#_ amount0_out:(VarUInteger 16) token0_address:MsgAddress amount1_out:(VarUInteger 16) token1_address:MsgAddress = AdditionalInfoPayVaultV2;
+stonfi_pay_vault_v2#63381632 query_id:uint64 owner:MsgAddress excesses_address:MsgAddress _:^AdditionalInfoPayVaultV2 = InternalMsgBody3;
+
+// stonfi_burn_notification_ext_v2
+stonfi_burn_notification_ext_v2#297437cf query_id:uint64 jetton_amount:(VarUInteger 16) from_address:MsgAddress response_address:MsgAddress maybe_custom_payload:(Maybe ^Cell) = InternalMsgBody3;
+
+// stonfi_swap
+stonfi_swap_forward_payload#25938561 token_wallet:MsgAddress min_out:(VarUInteger 16) to_address:MsgAddress referral_address:(Maybe MsgAddress) = ForwardPayload;
+
+// stonfi_provide_liquidity
+stonfi_provide_liquidity_forward_payload#fcf9e58f token_wallet:MsgAddress min_lp_out:(VarUInteger 16) = ForwardPayload;
+
+// stonfi_swap_ok
+stonfi_swap_ok_forward_payload#c64370e5 = ForwardPayload;
+
+// stonfi_swap_ok_ref
+stonfi_swap_ok_ref_forward_payload#45078540 = ForwardPayload;
+
+// stonfi_swap_v2
+cross_swap_body#_ min_out:(VarUInteger 16) receiver:MsgAddress fwd_gas:Coins custom_payload:(Maybe ^Cell) refund_fwd_gas:Coins refund_payload:(Maybe ^Cell) ref_fee:uint16 ref_address:MsgAddress = CrossSwapBody;
+stonfi_swap_v2_forward_payload#6664de2a token_wallet1:MsgAddress refund_address:MsgAddress excesses_address:MsgAddress tx_deadline:uint64 _:^CrossSwapBody = ForwardPayload;
+
+// stonfi_provide_lp_v2
+cross_provide_lp_body#_ min_lp_out:(VarUInteger 16) to_address:MsgAddress both_positive:uint1 fwd_amount:Coins custom_payload:(Maybe ^Cell) = CrossProvideLpBody;
+stonfi_provide_lp_v2_forward_payload#37c096df token_wallet1:MsgAddress refund_address:MsgAddress excesses_address:MsgAddress tx_deadline:uint64 _:^CrossProvideLpBody = ForwardPayload;
+
+
+
+// storages.xml
+
+// Types
+torrent_info piece_size:uint32 file_size:uint64 root_hash:(## 256) header_size:uint64 header_hash:(## 256)
+microchunk_hash:(Maybe (## 256)) description:Cell = TorrentInfo;
+
+// deploy_storage_contract
+deploy_storage_contract#e4748df1
+        query_id:uint64 info:^TorrentInfo merkle_hash:bits256 expected_rate:Coins expected_max_span:uint32
+        = InternalMsgBody3;
+
+// update_pubkey
+update_pubkey#53f34cd6
+        query_id:uint64 new_pubkey:bits256 = InternalMsgBody3;
+
+// update_storage_params
+update_storage_params#54cbf19b
+        query_id:uint64 accept_new_contracts:Bool rate_per_mb_day:Coins max_span:uint32
+        minimal_file_size:uint64 maximal_file_size:uint64 = InternalMsgBody3;
+
+// offer_storage_contract
+offer_storage_contract#107c49ef
+        query_id:uint64 = InternalMsgBody3;
+
+// accept_storage_contract
+accept_storage_contract#7a361688
+        query_id:uint64 = InternalMsgBody3;
+
+// storage_contract_confirmed
+storage_contract_confirmed#d4caedcd
+        cur_lt:uint64 torrent_hash:bits256 = InternalMsgBody3;
+
+// close_storage_contract
+close_storage_contract#79f937ea
+        query_id:uint64 = InternalMsgBody3;
+
+// storage_contract_terminated
+storage_contract_terminated#b6236d63
+        cur_lt:uint64 torrent_hash:bits256 = InternalMsgBody3;
+
+// storage_withdraw
+storage_withdraw#46ed2e94
+        query_id:uint64 = InternalMsgBody3;
+
+// storage_reward_withdrawal
+storage_reward_withdrawal#a91baf56
+        query_id:uint64 = InternalMsgBody3;
+
+// proof_storage
+proof_storage#419d5d4d
+        query_id:uint64 file_dict_proof:^Cell = InternalMsgBody3;
+
+
+
+// storm.xml
+
+// Types
+parameters#_ discount:uint32 rebate:uint32 = Parameters;
+update_msg#_ price:Coins spread:Coins timestamp:uint32 asset_index:uint16 = UpdateMsg;
+oracle_data#_ update_msg:^UpdateMsg signatures:^Cell = OracleData;
+amm_settings#_ fee:uint32 rollover_fee:uint32 funding_period:uint32 init_margin_ratio:uint32
+maintenance_margin_ratio:uint32 liquidation_fee_ratio:uint32 partial_liquidation_ratio:uint32
+spread_limit:uint32 max_price_impact:uint32 max_price_spread:uint32 max_open_notional:uint32
+fee_to_stakers_percent:uint32 funding_mode:uint2 min_partial_liquidation_notional:Coins min_leverage:uint32 = AmmSettings;
+referral_data#_ amount:Coins index:uint32 = ReferralData;
+executor_data#_ split_executor_rewards:uint8 amount:Coins index:uint32 = ExecutorData;
+notification_payload#_ opcode:uint64 = NotificationPayload;
+position_change#_ size:uint128 direction:uint1 margin:Coins open_notional:Coins last_updated_cumulative_premium:uint64 fee:uint32 discount:uint32 rebate:uint32 last_updated_timestamp:uint32 = PositionChange;
+amm_change#_ quote_asset_reserve:Coins quote_asset_reserve_weight:Coins base_asset_reserve:Coins total_long_position_size:Coins total_short_position_size:Coins open_interest_long:Coins open_interest_short:Coins = AmmChange;
+order_payload#_ order_type:uint4 order_index:uint3 direction:uint1 = OrderPayload;
+signatures#_ data:Cell = Signatures;
+price_data#_ price:Coins spread:Coins another_spread:uint32 asset_id:uint16 = OraclePriceData;
+oracle_payload#_ price_data:^OraclePriceData signatures:^Signatures = OraclePayload;
+
+// storm_change_settings
+storm_change_settings#edcd36a6 redirect_addr:MsgAddress 
+        settings:^AmmSettings = InternalMsgBody3;
+
+// storm_pay_funding
+storm_pay_funding#b652c441 oracle_ref:^OracleData = InternalMsgBody3;
+
+// storm_vamm_init
+storm_vamm_init#29c102d1 redirect_addr:MsgAddress 
+        code:^Cell data:^Cell = InternalMsgBody2;
+
+// storm_mint_referral
+storm_mint_referral#cb4ddc3c nft_owner:MsgAddress ref_type:uint2
+        redirect_address:MsgAddress parameters:^Parameters balances_dict:^Cell = InternalMsgBody3;
+
+// storm_add_referral_amount
+storm_add_referral_amount#84dced7a referral_amount:Coins origin_addr:MsgAddress = InternalMsgBody3;
+
+// storm_withdraw_referral_amount
+storm_withdraw_referral_amount#f5d4eb52 index:uint64 referral_amount:Coins owner_addr:MsgAddress = InternalMsgBody3;
+
+// storm_mint_executor
+storm_mint_executor#4f38cae8 nft_owner:MsgAddress redirect_address:MsgAddress balances_dict:^Cell = InternalMsgBody3;
+
+// storm_add_executor_amount
+storm_add_executor_amount#5dd66579 referral_amount:Coins origin_addr:MsgAddress = InternalMsgBody3;
+
+// storm_withdraw_executor_amount
+storm_withdraw_executor_amount#2cde6351 index:uint64 executor_amount:Coins owner_addr:MsgAddress = InternalMsgBody3;
+
+// storm_vault_trade_notification
+storm_vault_trade_notification#3475fdd2 amm_index:uint16 free_amount:uint16 locked_amount:int64 exchange_amount:int64 withdraw_locked_amount:int64
+        fee_to_stakers:int64 withdraw_amount:int64 trader_addr:MsgAddress referral_params:(Maybe ^ReferralData) executor_params:(Maybe ^ExecutorData) = InternalMsgBody3;
+
+// storm_vault_stake
+storm_vault_stake#c89a3ee4 amount:Coins = InternalMsgBody3;
+
+// storm_vault_unstake
+storm_vault_unstake#d5b5e9ad jetton_amount:Coins user_address:MsgAddress = InternalMsgBody3;
+
+// storm_vault_init
+storm_vault_init#29c102d1 jetton_address:MsgAddress = InternalMsgBody3;
+
+// storm_take_referral_fees
+storm_take_referral_fees#12d9601d referral_fees:^Parameters = InternalMsgBody4;
+
+// storm_cancel_order
+storm_cancel_order#67134629 order_type:uint4 order_index:uint3 direction:uint1 gas_to_address:MsgAddress = InternalMsgBody4;
+
+// storm_create_order
+storm_create_order#a39843f4 order_payload:^OrderPayload = InternalMsgBody4;
+
+// storm_complete_order
+storm_complete_order#cf90d618 order_type:uint4 order_index:uint3 direction:uint1 origin_opcode:uint32 index_price:Coins settlement_oracle_price:(Maybe Coins) position:^PositionChange amm:^AmmChange = InternalMsgBody4;
+
+// storm_activate_order
+storm_activate_order#9d2ec640 order_index:uint3 activated_order:^OrderPayload = InternalMsgBody4;
+
+// storm_update_position
+storm_update_position#60dfc677 direction:uint1 origin_opcode:uint32 index_price:Coins settlement_oracle_price:(Maybe Coins) position:^PositionChange amm:^AmmChange = InternalMsgBody4;
+
+// storm_update_position_with_stop_loss
+storm_update_position_with_stop_loss#5d1b17b8 direction:uint1 stop_trigger_price:Coins take_trigger_price:Coins origin_opcode:uint32 index_price:Coins settlement_oracle_price:(Maybe Coins) position:^PositionChange amm:^AmmChange = InternalMsgBody4;
+
+// storm_order_created
+storm_order_created#3a943ce6 = InternalMsgBody4;
+
+// storm_order_canceled
+storm_order_canceled#69d08679 = InternalMsgBody4;
+
+// storm_vault_request_withdraw_position
+storm_vault_request_withdraw_position#0226df66 trader_addr:MsgAddress vamm_addr:MsgAddress amount:Coins gas_to_addr:MsgAddress withdraw_reason:uint32 = InternalMsgBody4;
+
+// storm_provide_position
+storm_provide_position#8865b402 order_type:uint4 order_index:uint3 direction:uint1 executor_index:uint32 oracle_payload:^OraclePayload = InternalMsgBody4;
+
+
+
+// subscriptions_v1.xml
+
+// subscription_payment
+subscription_payment#73756273 = InternalMsgBody4;
+
+// subscription_fallback
+subscription_fallback#756e6b77 = InternalMsgBody4;
+
+
+
+// subscriptions_v2.xml
+
+// subscription_deploy
+subscription_deploy#f71783cb query_id:uint64 first_charging_date:uint32 payment_per_period:Grams period:uint32 grace_period:uint32 caller_fee:Grams withdraw_address:MsgAddressInt withdraw_msg_body:^Cell metadata:^Cell = InternalMsgBody4;
+
+// subscription_reduce_payment
+subscription_reduce_payment#508238ec query_id:uint64 new_payment:Grams = InternalMsgBody4;
+
+
+
+// swap_coffee.xml
+
+// Types
+staking_asset_data#_ wallet:MsgAddressInt amount:Coins = CoffeeStakingAssetData;
+staking_position_data#_ user_points:Coins additional_points:Coins start_timestamp:uint64 end_timestamp:uint64
+period_id:uint32 = CoffeeStakingPositionData;
+staking_forward_data#_ gas:Coins payload:^Cell = CoffeeStakingForwardData;
+constant_product$000 = CoffeeAMM;
+curve_fi_stable$001 = CoffeeAMM;
+none$00 = CoffeeDepositLiquidityCondition;
+lp_quantity$01 min_lp_amount:Coins = CoffeeDepositLiquidityCondition;
+reserves_ratio$10 denominator:uint16 min_nominator:uint16 max_nominator:uint16 =
+CoffeeDepositLiquidityCondition;
+complex$11 min_lp_amount:Coins denominator:uint16 min_nominator:uint16 max_nominator:uint16 =
+CoffeeDepositLiquidityCondition;
+none$00 = CoffeeWithdrawLiquidityCondition;
+assets_quantity$01 min_first_amount:Coins min_second_amount:Coins = CoffeeWithdrawLiquidityCondition;
+reserves_ratio$10 denominator:uint16 min_nominator:uint16 max_nominator:uint16 =
+CoffeeWithdrawLiquidityCondition;
+complex$11 min_first_amount:Coins min_second_amount:Coins denominator:uint16 min_nominator:uint16
+max_nominator:uint16 = CoffeeWithdrawLiquidityCondition;
+native$00 = CoffeeAsset;
+jetton$01 chain:uint8 hash:uint256 = CoffeeAsset;
+extra$10 id:uint32 = CoffeeAsset;
+pool_params#_ first:CoffeeAsset second:CoffeeAsset amm:CoffeeAMM amm_settings:(Maybe ^Cell) = CoffeePoolParams;
+public_pool_creation_params#_ recipient:MsgAddressInt use_recipient_on_failure:int1 notification_data:(Maybe
+^Cell) = CoffeePublicPoolCreationParams;
+private_pool_creation_params#_ is_active:uint1 extra_settings:(Maybe ^Cell) = CoffeePrivatePoolCreationParams;
+pool_creation_params#_ public:CoffeePublicPoolCreationParams private:CoffeePrivatePoolCreationParams =
+CoffeePoolCreationParams;
+notification_data_single#_ receiver:MsgAddressInt fwd_gas:Coins payload:^Cell = CoffeeNotificationDataSingle;
+notification_data#_ on_success:(Maybe ^CoffeeNotificationDataSingle) on_failure:(Maybe
+^CoffeeNotificationDataSingle) = CoffeeNotificationData;
+swap_params#_ deadline:uint32 recipient:MsgAddressInt referral:MsgAddressInt notification_data:(Maybe
+^CoffeeNotificationData) = CoffeeSwapParams;
+swap_step_params#_ pool_address_hash:uint256 min_output_amount:Coins next:(Maybe ^CoffeeSwapStepParams) =
+CoffeeSwapStepParams;
+swap_step_internal_params#_ previous_amount:Coins previous_asset_hint:(Maybe CoffeeAsset)
+min_output_amount:Coins next:(Maybe ^CoffeeSwapStepParams) = CoffeeSwapStepInternalParams;
+swap_generic_fee#_ input_amount:Coins output_amount:Coins = CoffeeSwapGenericFee;
+swap_referral_fee#_ referral:MsgAddressInt input_amount:Coins output_amount:Coins = CoffeeSwapReferralFee;
+swap_fees#_ lp:CoffeeSwapGenericFee protocol:CoffeeSwapGenericFee referral:(Maybe ^CoffeeSwapReferralFee) =
+CoffeeSwapFees;
+pool_reserves#_ input_reserve:Coins output_reserve:Coins = CoffeePoolReserves;
+deposit_liquidity_params_trimmed#_ recipient:MsgAddressInt use_recipient_on_failure:int1 referral:MsgAddressInt
+deadline:uint32 condition:CoffeeDepositLiquidityCondition extra_settings:(Maybe ^Cell) notification_data:(Maybe
+^CoffeeNotificationData) = CoffeeDepositLiquidityParamsTrimmed;
+deposit_liquidity_params#_ params:^CoffeeDepositLiquidityParamsTrimmed pool_params:^CoffeePoolParams =
+CoffeeDepositLiquidityParams;
+contract_update#_ code:(Maybe ^Cell) data:(Maybe ^Cell) = CoffeeContractUpdate;
+
+// coffee_mev_protect_hold_funds
+coffee_mev_protect_hold_funds#6bc79e7e query_id:uint64 = InternalMsgBody4;
+
+// coffee_mev_protect_failed_swap
+coffee_mev_protect_failed_swap#ee51ce51 query_id:uint64 recipient:MsgAddressInt = InternalMsgBody4;
+
+// coffee_cross_dex_resend
+coffee_cross_dex_resend#200f9086 query_id:uint64 next_recipient:MsgAddressInt next:^Cell total_gas:Coins
+        next_gas:Coins = InternalMsgBody4;
+
+// coffee_cross_dex_failure
+coffee_cross_dex_failure#b902e61a query_id:uint64 recipient:MsgAddressInt = InternalMsgBody4;
+
+// coffee_staking_init
+coffee_staking_init#be5a7595 query_id:uint64 owner:MsgAddressInt jetton_data:^CoffeeStakingAssetData
+        position_data:^CoffeeStakingPositionData periods:^Cell = InternalMsgBody4;
+
+// coffee_staking_deposit
+coffee_staking_deposit#f9471134 query_id:uint64 sender:MsgAddressInt jetton_amount:Coins from_user:MsgAddressInt
+        period_id:uint32 = InternalMsgBody4;
+
+// coffee_staking_update_rewards
+coffee_staking_update_rewards#0a9577f0 query_id:uint64 jetton_wallet:MsgAddressInt jetton_amount:Coins
+        duration:uint64 = InternalMsgBody4;
+
+// coffee_staking_claim_rewards
+coffee_staking_claim_rewards#b30c7310 query_id:uint64 jetton_wallet:MsgAddressInt jetton_amount:Coins
+        receiver:MsgAddressInt payload:(Maybe ^CoffeeStakingForwardData) = InternalMsgBody4;
+
+// coffee_swap
+coffee_swap#c0ffee00 query_id:uint64 amount:Coins _:CoffeeSwapStepParams params:^CoffeeSwapParams = InternalMsgBody4;
+
+// coffee_swap_extra
+coffee_swap_extra#c0ffee01 query_id:uint64 _:CoffeeSwapStepParams params:^CoffeeSwapParams = InternalMsgBody4;
+
+// coffee_swap_internal
+coffee_swap_internal#c0ffee20 query_id:uint64 _:CoffeeSwapStepInternalParams params:^CoffeeSwapParams
+        proof:^Cell = InternalMsgBody4;
+
+// coffee_payout
+coffee_payout#c0ffee32 query_id:uint64 = InternalMsgBody4;
+
+// coffee_payout_internal
+coffee_payout_internal#c0ffee21 query_id:uint64 recipient:MsgAddressInt amount:Coins
+        notification_data:(Maybe ^CoffeeNotificationDataSingle) proof:(Maybe ^Cell) = InternalMsgBody4;
+
+// coffee_deploy
+coffee_deploy#c0ffee22 code:^Cell data:^Cell action:(Maybe ^Cell) = InternalMsgBody4;
+
+// coffee_create_pool
+coffee_create_pool#c0ffee02 query_id:uint64 amount:Coins params:CoffeePoolParams
+        creation_params:CoffeePoolCreationParams = InternalMsgBody4;
+
+// coffee_create_pool_extra
+coffee_create_pool_extra#c0ffee03 query_id:uint64 params:CoffeePoolParams
+        creation_params:CoffeePoolCreationParams = InternalMsgBody4;
+
+// coffee_create_pool_creator_request
+coffee_create_pool_creator_request#c0ffee23 query_id:uint64 amount:Coins params:CoffeePoolParams
+        creation_params:^CoffeePoolCreationParams sender:MsgAddressInt proof:^Cell = InternalMsgBody4;
+
+// coffee_create_pool_creator_internal
+coffee_create_pool_creator_internal#c0ffee24 query_id:uint64 asset:CoffeeAsset amount:Coins
+        creation_params:^CoffeePoolCreationParams = InternalMsgBody4;
+
+// coffee_create_pool_request
+coffee_create_pool_request#c0ffee25 query_id:uint64 amount1:Coins amount2:Coins tx_initiator:MsgAddressInt
+        creation_params:^CoffeePoolCreationParams proof:^Cell = InternalMsgBody4;
+
+// coffee_create_pool_internal
+coffee_create_pool_internal#c0ffee26 query_id:uint64 amount1:Coins amount2:Coins tx_initiator:MsgAddressInt
+        recipient:MsgAddressInt use_recipient_on_failure:int1 extra_settings:(Maybe ^Cell)
+        notification_data:(Maybe ^CoffeeNotificationData) = InternalMsgBody4;
+
+// coffee_deposit_liquidity
+coffee_deposit_liquidity#c0ffee04 query_id:uint64 input_amount:Coins
+        params:CoffeeDepositLiquidityParams = InternalMsgBody4;
+
+// coffee_deposit_liquidity_extra
+coffee_deposit_liquidity_extra#c0ffee05 query_id:uint64 params:CoffeeDepositLiquidityParams = InternalMsgBody4;
+
+// coffee_create_liquidity_depository_request
+coffee_create_liquidity_depository_request#c0ffee27 query_id:uint64 amount:Coins params:CoffeeDepositLiquidityParams
+        sender:MsgAddressInt proof:^Cell = InternalMsgBody4;
+
+// coffee_create_liquidity_depository_internal
+coffee_create_liquidity_depository_internal#c0ffee28 query_id:uint64 asset:CoffeeAsset amount:Coins
+        params:^CoffeeDepositLiquidityParamsTrimmed = InternalMsgBody4;
+
+// coffee_deposit_liquidity_internal
+coffee_deposit_liquidity_internal#c0ffee29 query_id:uint64 amount1:Coins amount2:Coins tx_initiator:MsgAddressInt
+        params:^CoffeeDepositLiquidityParamsTrimmed proof:^Cell = InternalMsgBody4;
+
+// coffee_create_vault
+coffee_create_vault#c0ffee06 query_id:uint64 asset:CoffeeAsset = InternalMsgBody5;
+
+// coffee_create_vault_internal
+coffee_create_vault_internal#c0ffee2a query_id:uint64 = InternalMsgBody5;
+
+// coffee_withdraw_deposit
+coffee_withdraw_deposit#c0ffee07 query_id:uint64 = InternalMsgBody5;
+
+// coffee_notification
+coffee_notification#c0ffee36 query_id:uint64 body:^Cell = InternalMsgBody5;
+
+// coffee_update_admin
+coffee_update_admin#c0ffee40 query_id:uint64 address:MsgAddressInt = InternalMsgBody5;
+
+// coffee_activate_vault
+coffee_activate_vault#c0ffee42 query_id:uint64 asset:CoffeeAsset wallet:MsgAddressInt = InternalMsgBody5;
+
+// coffee_activate_vault_internal
+coffee_activate_vault_internal#c0ffee2c query_id:uint64 wallet:MsgAddressInt = InternalMsgBody5;
+
+// coffee_withdraw
+coffee_withdraw#c0ffee43 query_id:uint64 pool_address:MsgAddressInt asset:CoffeeAsset amount:Coins
+        receiver:MsgAddressInt = InternalMsgBody5;
+
+// coffee_withdraw_internal
+coffee_withdraw_internal#c0ffee2d query_id:uint64 asset:CoffeeAsset amount:Coins receiver:MsgAddressInt = InternalMsgBody5;
+
+// coffee_update_code_cells
+coffee_update_code_cells#c0ffee44 query_id:uint64 first:^Cell second:^Cell = InternalMsgBody5;
+
+// coffee_update_contract
+coffee_update_contract#c0ffee45 query_id:uint64 contract_address:MsgAddressInt _:CoffeeContractUpdate = InternalMsgBody5;
+
+// coffee_update_contract_internal
+coffee_update_contract_internal#c0ffee2e query_id:uint64 excesses_receiver:MsgAddressInt
+        _:CoffeeContractUpdate = InternalMsgBody5;
+
+// coffee_update_withdrawer
+coffee_update_withdrawer#c0ffee46 query_id:uint64 address:MsgAddressInt = InternalMsgBody5;
+
+// coffee_staking_rewards_updated
+coffee_staking_rewards_updated#0a9577f0 query_id:uint64 jetton_wallet:MsgAddressInt duration:uint64 finish_at:uint64
+        rewards_rate:Coins = ExternalMsgBody;
+
+// coffee_staking_rewards_claimed
+coffee_staking_rewards_claimed#b30c7310 query_id:uint64 jetton_wallet:MsgAddressInt amount:Coins
+        receiver:MsgAddressInt = ExternalMsgBody;
+
+// coffee_swap_succeeded
+coffee_swap_succeeded#c0ffee30 query_id:uint64 input:CoffeeAsset input_amount:Coins output_amount:Coins
+        reserves:CoffeePoolReserves protocol_fee:Coins = ExternalMsgBody;
+
+// coffee_swap_failed
+coffee_swap_failed#c0ffee31 query_id:uint64 input:CoffeeAsset input_amount:Coins
+        reserves:(Maybe ^CoffeePoolReserves) = ExternalMsgBody;
+
+// coffee_deposit_liquidity_succeeded
+coffee_deposit_liquidity_succeeded#c0ffee33 query_id:uint64 amount1:Coins amount2:Coins lp_amount:Coins
+        total_supply:CoffeePoolReserves reserves:CoffeePoolReserves = ExternalMsgBody;
+
+// coffee_deposit_liquidity_failed
+coffee_deposit_liquidity_failed#c0ffee34 query_id:uint64 amount1:Coins amount2:Coins min_lp_amount:Coins
+        total_supply:Coins reserves:CoffeePoolReserves = ExternalMsgBody;
+
+// coffee_withdraw_liquidity_succeeded
+coffee_withdraw_liquidity_succeeded#c0ffee35 query_id:uint64 amount1:Coins amount2:Coins lp_amount:Coins
+        total_supply:CoffeePoolReserves reserves:CoffeePoolReserves = ExternalMsgBody;
+
+// coffee_mev_protect_failed_swap
+coffee_mev_protect_failed_swap_forward_payload#ee51ce51 query_id:uint64 recipient:MsgAddressInt = ForwardPayload;
+
+// coffee_cross_dex_resend
+coffee_cross_dex_resend_forward_payload#4ee9b106 next:^Cell = ForwardPayload;
+
+// coffee_cross_dex_failure
+coffee_cross_dex_failure_forward_payload#b902e61a query_id:uint64 recipient:MsgAddressInt = ForwardPayload;
+
+// coffee_staking_lock
+coffee_staking_lock_forward_payload#c0ffede period_id:uint32 = ForwardPayload;
+
+// coffee_swap
+coffee_swap_forward_payload#c0ffee10 _:CoffeeSwapStepParams params:^CoffeeSwapParams = ForwardPayload;
+
+// coffee_create_pool
+coffee_create_pool_forward_payload#c0ffee11 params:CoffeePoolParams creation_params:CoffeePoolCreationParams = ForwardPayload;
+
+// coffee_deposit_liquidity
+coffee_deposit_liquidity_forward_payload#c0ffee12 params:CoffeeDepositLiquidityParams = ForwardPayload;
+
+// coffee_notification
+coffee_notification_forward_payload#c0ffee36 query_id:uint64 body:^Cell = ForwardPayload;
+
+
+
+// tegro.xml
+
+// tegro_swap_ton
+tegro_swap_ton#600c00fd query_id:uint64 extract:Bool max_in:Coins min_out:Coins
+        destination:MsgAddress error_destination:MsgAddress ref:(Maybe ^MsgAddress) = InternalMsgBody5;
+
+// tegro_add_liquidity
+tegro_add_liquidity_forward_payload#287e167a amount_a:(VarUInteger 16) abount_b:(VarUInteger 16) = ForwardPayload;
+
+// tegro_jetton_swap
+tegro_jetton_swap_forward_payload#01fb7a25 extract:Bool max_in:(VarUInteger 16) min_out:(VarUInteger 16) destination:MsgAddress error_destination:MsgAddress payload:(Maybe ^Cell) = ForwardPayload;
+
+
+// telegram.xml FIXED
+
+teleitem_bid_info#38127de1 bid:Grams bid_ts:uint32 = InternalMsgBody5;
+teleitem_last_bid bidder_address:MsgAddressInt bid:Grams bid_ts:uint32 = TeleitemLastBid;
+teleitem_auction_state$_ last_bid:(Maybe ^TeleitemLastBid) min_bid:Grams end_time:uint32 = TeleitemAuctionState;
+teleitem_auction_config$_ beneficiary_address:MsgAddressInt initial_min_bid:Grams max_bid:Grams min_bid_step:uint8 min_extend_time:uint32 duration:uint32 = TeleitemAuctionConfig;
+teleitem_auction$_ state:^TeleitemAuctionState config:^TeleitemAuctionConfig = TeleitemAuction;
+
+telemint_text$_ len:(## 8) text:(bits (len * 8)) = TelemintText;
+telemint_token_info$_ name:TelemintText domain:TelemintText = TelemintTokenInfo;
+
+teleitem_return_bid#a43227e1 query_id:int64 = InternalMsgBody5;
+teleitem_ok#a37a0983 query_id:int64 = InternalMsgBody5;
+
+// teleitem_cmd_nft$_ _:NftCmd = InternalMsgBody5;
+nft_royalty_params#_ numerator:uint16 denominator:uint16 destination:MsgAddress = NftRoyaltyParams;
+
+teleitem_msg_deploy#299a3e15 sender_address:MsgAddressInt bid:Grams token_info:^TelemintTokenInfo nft_content:^Cell
+  auction_config:^TeleitemAuctionConfig royalty_params:^NftRoyaltyParams = InternalMsgBody5;
+teleitem_msg_deploy_head#299a3e15 sender_address:MsgAddressInt bid:Grams = InternalMsgBody6;
+teleitem_msg_start_auction#487a8e81 query_id:int64 auction_config:^TeleitemAuctionConfig = InternalMsgBody5;
+teleitem_msg_cancel_auction#371638ae query_id:int64 = InternalMsgBody5;
+
+teleitem_config$_ item_index:bits256 collection_address:MsgAddressInt = TeleitemConfig;
+teleitem_content$_ nft_content:^Cell dns:DNS_RecordSet token_info:^TelemintTokenInfo = TeleitemContent;
+teleitem_state$_ owner_address:MsgAddressInt content:^TeleitemContent
+  auction:(Maybe ^TeleitemAuction) royalty_params:^NftRoyaltyParams = TeleitemState;
+
+teleitem_data$_ config:^TeleitemConfig state:(Maybe ^TeleitemState) = TeleitemData;
+
+telemint_data$_ touched:Bool subwallet_id:uint32 public_key:bits256 collection_content:^Cell nft_item_code:^Cell
+  full_domain:^TelemintText royalty_params:^NftRoyaltyParams = TelemintData;
+
+telemint_unsigned_deploy$_ subwallet_id:uint32 valid_since:uint32 valid_till:uint32 token_name:TelemintText
+  content:^Cell auction_config:^TeleitemAuctionConfig royalty_params:(Maybe ^NftRoyaltyParams) = TelemintUnsignedDeploy;
+telemint_msg_deploy#4637289a  sig:bits512 msg:TelemintUnsignedDeploy = InternalMsgBody5;
+
+telemint_restrictions$_ force_sender_address:(Maybe MsgAddressInt) rewrite_sender_address:(Maybe MsgAddressInt) = TelemintRestrictions;
+telemint_unsigned_deploy_v2$_ subwallet_id:uint32 valid_since:uint32 valid_till:uint32 token_name:TelemintText
+  content:^Cell auction_config:^TeleitemAuctionConfig royalty_params:(Maybe ^NftRoyaltyParams) restrictions:(Maybe ^TelemintRestrictions) = TelemintUnsignedDeployV2;
+telemint_msg_deploy_v2#4637289b  sig:bits512 msg:TelemintUnsignedDeployV2 = InternalMsgBody5;
+
+
+// tonco.xml FIXED
+
+_ amount:(VarUInteger 16) sqrtPriceLimitX96:uint160 minOutAmount:(VarUInteger 16)
+    = ToncoSwapParams;
+
+_ target_address:MsgAddress ok_forward_amount:(VarUInteger 16) ok_forward_payload:(Maybe ^Cell) 
+  ret_forward_amount:(VarUInteger 16) ret_forward_payload:(Maybe ^Cell)
+    = ToncoSwapPayloads;
+
+tonco_pool_swap#a7fb58f8 query_id:uint64 owner_address:MsgAddress source_wallet:MsgAddress
+        swap_params:^ToncoSwapParams
+        swap_payloads:^ToncoSwapPayloads = InternalMsgBody5;
+
+
+tonco_pool_mint#b2c1b6e3 query_id:uint64 owner_address:MsgAddress amount0:(VarUInteger 16) 
+        amount1:(VarUInteger 16) enough0:(VarUInteger 16) enough1:(VarUInteger 16) 
+        liquidity:uint128 tick_lower:int24 tick_upper:int24 = InternalMsgBody5;
+
+tonco_pool_mint_and_refund#81702ef8 query_id:uint64 amount0_funded:(VarUInteger 16) 
+        amount1_funded:(VarUInteger 16) recipient:MsgAddress liquidity:uint128 
+        tick_lower:int24 tick_upper:int24 = InternalMsgBody5;
+
+tonco_pool_start_burn#530b5f2c query_id:uint64 burned_index:uint64 liquidity_to_burn:uint128 
+        tick_lower:int24 tick_upper:int24 = InternalMsgBody5;
+
+_ fee_growth_inside_0_last_x128:uint256 fee_growth_inside_1_last_x128:uint256 = ToncoOldFeeCell;
+_ fee_growth_inside_0_current_x128:uint256 fee_growth_inside_1_current_x128:uint256 = ToncoNewFeeCell;
+
+tonco_pool_burn#d73ac09d query_id:uint64 recipient:MsgAddress burned_index:uint64 
+        liquidity:uint128 tick_lower:int24 tick_upper:int24 liquidity_to_burn:uint128
+        old_fee_cell:^ToncoOldFeeCell
+        new_fee_cell:^ToncoNewFeeCell
+         = InternalMsgBody5;
+
+tonco_pool_fund_account#4468de77 query_id:uint64 owner_address:MsgAddress 
+        amount0:(VarUInteger 16) amount1:(VarUInteger 16) 
+        enough0:(VarUInteger 16) enough1:(VarUInteger 16) liquidity:uint128 
+        tick_lower:int24 tick_upper:int24 = InternalMsgBody5;
+
+tonco_pool_fund_account_payload#4468de77 other_jetton_wallet:MsgAddress 
+        amount0:(VarUInteger 16) amount1:(VarUInteger 16) liquidity:uint128 
+        tick_lower:int24 tick_upper:int24 = ForwardPayload;
+
+_ jetton0_minter:MsgAddress jetton1_minter:MsgAddress = ToncoMinterCell;
+
+tonco_pool_init#441c39ed query_id:uint64 from_admin:Bool has_admin:Bool admin_address:MsgAddress 
+        has_controller:Bool controller_address:MsgAddress set_spacing:Bool tick_spacing:int24 
+        set_price:Bool initial_price_x96:uint160 set_active:Bool pool_active:Bool protocol_fee:uint16 
+        lp_fee_base:uint16 lp_fee_current:uint16 nftv3_content:^Cell nftv3item_content:^Cell 
+        minter_cell:(Maybe ^ToncoMinterCell) = InternalMsgBody5;
+
+_ jetton0_minter:MsgAddress jetton1_minter:MsgAddress controller_addr:MsgAddress = ToncoMinterControllerCell;
+
+tonco_router_create_pool#2e3034ef query_id:uint64 jetton_wallet0:MsgAddress jetton_wallet1:MsgAddress 
+        tick_spacing:int24 initial_price_x96:uint160 protocol_fee:uint16 lp_fee_base:uint16 
+        lp_fee_current:uint16 nftv3_content:^Cell nftv3item_content:^Cell 
+        minter_cell:^ToncoMinterControllerCell = InternalMsgBody5;
+
+_ fee_growth_inside_0_last_x128:uint256 fee_growth_inside_1_last_x128:uint256 nft_index:uint64
+  jetton0_amount:(VarUInteger 16) jetton1_amount:(VarUInteger 16) tick:int24 = ToncoOldFeeCellFull;
+
+tonco_position_nft_init#d5ecca2a query_id:uint64 user_address:MsgAddress liquidity:uint128
+        tick_lower:int24 tick_upper:int24 old_fee_cell:^ToncoOldFeeCellFull = InternalMsgBody5;
+
+tonco_position_nft_burn#46ca335a query_id:uint64 nft_owner:MsgAddress liquidity_to_burn:uint128
+        tick_lower:int24 tick_upper:int24 old_fee_cell:^ToncoOldFeeCell = InternalMsgBody5;
+
+tonco_account_add_liquidity#3ebe5431 query_id:uint64 new_amount0:(VarUInteger 16) new_amount1:(VarUInteger 16)
+        new_enough0:(VarUInteger 16) new_enough1:(VarUInteger 16) liquidity:uint128 
+        tick_lower:int24 tick_upper:int24 = InternalMsgBody5;
+
+tonco_pool_lock#b1b0b7e2 query_id:uint64 = InternalMsgBody5;
+
+tonco_pool_unlock#4e737e4d query_id:uint64 = InternalMsgBody5;
+
+tonco_pool_set_fee#6bdcbeb8 query_id:uint64 protocol_fee:uint16 lp_fee_base:uint16 lp_fee_current:uint16 = InternalMsgBody5;
+
+tonco_account_refund_me#bf3f447 query_id:uint64 = InternalMsgBody5;
+
+tonco_reset_gas#42a0fb43 query_id:uint64 = InternalMsgBody5;
+
+_ payload_amount0:(VarUInteger 16) payload_0:(Maybe ^Cell) payload_amount1:(VarUInteger 16) payload_1:(Maybe ^Cell)
+    = ToncoPayloadCell;
+
+_ amount0:(VarUInteger 16) jetton0_address:MsgAddress amount1:(VarUInteger 16) jetton1_address:MsgAddress payload_cell:^ToncoPayloadCell
+    = ToncoCoinsInfoCellFull;
+
+_ amount0:(VarUInteger 16) jetton0_address:MsgAddress amount1:(VarUInteger 16) jetton1_address:MsgAddress
+    = ToncoCoinsInfoCell;
+
+_ liquidity:uint128 price_sqrt:uint160 tick:int24 fee_growth_global_0x128:int256 fee_growth_global_1x128:int256
+    = ToncoIndexerSwapInfoCell;
+
+_ nft_index:uint64 liquidity_burned:uint128 tick_lower:int24 tick_upper:int24 tick_burn:int24
+    = ToncoIndexerBurnInfoCell;
+
+// exit code 200 or 230
+tonco_router_pay_to_normal#a1daa96d query_id:uint64 reciever0:MsgAddress
+        reciever1:MsgAddress exit_code:uint32 seqno:uint64
+        coinsinfo_cell:(Maybe ^ToncoCoinsInfoCellFull)
+        indexer_swap_info_cell:(Maybe ^ToncoIndexerSwapInfoCell) = InternalMsgBody4;
+
+tonco_router_pay_to_exit_code_201#a1daa96d query_id:uint64 reciever0:MsgAddress
+        reciever1:MsgAddress exit_code:uint32 seqno:uint64
+        coinsinfo_cell:(Maybe ^ToncoCoinsInfoCell)
+        indexer_burn_info_cell:(Maybe ^ToncoIndexerBurnInfoCell) = InternalMsgBody5;
+
+
+
+// tonkeeper_2fa.xml FIXED
+
+// Types
+certificate_data$_ valid_until:uint64 pubkey:bits256 = CertificateData2Fa;
+certificate$_ data:CertificateData2Fa signature:bits512 = Certificate2Fa;
+send_actions#b15f2c8c seqno:uint32 valid_until:uint64 msg:^Cell mode:uint8 = Payload2Fa;
+remove_extension#9d8084d6 seqno:uint32 valid_until:uint64 = Payload2Fa;
+delegation#23d9c15c seqno:uint32 valid_until:uint64 new_state_init:^Cell forward_amount:Coins = Payload2Fa;
+cancel_delegation#de82b501 seqno:uint32 valid_until:uint64 = Payload2Fa;
+
+// tonkeeper_2fa_signed
+_ seed_signature:bits512 = SeedSignature;
+tonkeeper_2fa_signed#53684037
+        ref_with_certificate:^Certificate2Fa
+        ref_seed_signature:^SeedSignature
+        payload:Payload2Fa
+        certificate_signature:bits512
+        = InternalMsgBody5;
+
+// tonkeeper_2fa_signed_external
+signed_2fa_external$_
+        ref_with_certificate:^Certificate2Fa
+        ref_seed_signature:^SeedSignature
+        payload:Payload2Fa
+        certificate_signature:bits512
+        = ExternalMsgBody;
+
+
+// tonvalidators.xml
+
+// Types
+ton_validators_account_lists#_ list:(Hashmap 256 Cell) = TonValidatorsAccountLists;
+
+
+// wallets
+
+// wallet_plugin_installation_notification
+wallet_plugin_installation_notification#6e6f7465 query_id:uint64 = InternalMsgBody5;
+
+// wallet_plugin_destruct
+wallet_plugin_destruct#64737472 query_id:uint64 = InternalMsgBody5;
+
+// wallet_plugin_destruct_response
+wallet_plugin_destruct_response#e4737472 query_id:uint64 = InternalMsgBody5;
+
+// payment_request
+payment_request#706c7567 query_id:uint64 amount:CurrencyCollection = InternalMsgBody5;
+
+// payment_confirmed
+payment_confirmed#f06c7567 query_id:uint64 = InternalMsgBody5;
+
+
+// doesn't have tags:
+
+// message$_ info:CommonMsgInfoRelaxed
+//         init:(Maybe (Either StateInit ^StateInit))
+//         body:(Either (MessageRelaxed InternalMsgBody) ^(MessageRelaxed InternalMsgBody)) 
+//     = HighloadWalletV3MessageRelaxed;
+
+// query_id#_ shift:uint13 bit_number:(## 10) = HighloadV3QueryId;
+// msg_inner#_ subwallet_id:uint32 message_to_send:^(MessageRelaxed Any) send_mode:uint8 
+//         query_id:HighloadV3QueryId created_at:uint64 timeout:uint22 = HighloadV3MsgInner;
+// msg_inner#_ valid_until:uint64 seq_no:uint16 actions:^OutActions = PreprocessedWalletV2MsgInner;
+// extensions#_ extensions:(Hashmap 256 uint1) = WalletV5ExtensionsList;
+// simple_send$00000000 payload:WalletV1toV4Payload = WalletV4Payload;
+// w4_deploy_install_plugin$00000001 plugin_workchain:int8 plugin_balance:Coins state_init:^StateInit body:^Cell = WalletV4Payload;
+// w4_install_plugin$00000010 plugin_workchain:int8 plugin_address:bits256 amount:Coins query_id:uint64 = WalletV4Payload;
+// remove_plugin$00000011 plugin_workchain:int8 plugin_address:bits256 amount:Coins query_id:uint64 = WalletV4Payload;
+
+// // wallet_signed_v3
+// wallet_signed_v3#_ signature:bits512 subwallet_id:uint32 valid_until:uint32 seqno:uint32 payload:WalletV1toV4Payload =
+//         ExternalMsgBody;
+
+// // wallet_signed_v4
+// wallet_signed_v4#_ signature:bits512 subwallet_id:uint32 valid_until:uint32 seqno:uint32 payload:WalletV4Payload = ExternalMsgBody;
+
+// // highload_wallet_signed_v3
+// highload_wallet_signed_v3#_ {n:#} signature:bits512 msg:^HighloadV3MsgInner = ExternalMsgBody;
+
+// // preprocessed_wallet_signed_v2
+// preprocessed_wallet_signed_v2#_ {n:#} sign:bits512 msg:^PreprocessedWalletV2MsgInner = ExternalMsgBody;
+
+// // highload_wallet_signed_v2
+// highload_wallet_signed_v2#_ signature:bits512 subwallet_id:uint32 query_id:uint64 payload:(HashmapE 16 SendMessageAction) = ExternalMsgBody;
+
+
+
+// whales.xml
+
+// Types
+whales_nominators_member#_ profit_per_coin:int128 balance:Grams pending_withdraw:Grams pending_withdraw_all:Bool
+pending_deposit:Grams member_withdraw:Grams = WhalesNominatorsMember;
+whales_nominators_members_list#_ list:(Hashmap 256 WhalesNominatorsMember)= WhalesNominatorsMembersList;
+
+// whales_nominators_withdraw
+whales_nominators_withdraw#da803efd query_id:int64 gas:Grams amount:Grams = InternalMsgBody5;
+
+// whales_nominators_deposit
+whales_nominators_deposit#7bcd1fef query_id:int64 gas:Grams = InternalMsgBody5;
+
+// whales_nominators_force_kick
+whales_nominators_force_kick#1596920c query_id:int64 = InternalMsgBody5;
+
+// whales_nominators_stake_withdraw_delayed
+whales_nominators_stake_withdraw_delayed#74bb3427 query_id:int64 = InternalMsgBody5;
+
+// whales_nominators_stake_withdraw_completed
+whales_nominators_stake_withdraw_completed#23d421e1 query_id:int64 = InternalMsgBody5;
+
+// whales_nominators_send_stake
+whales_nominators_send_stake#a2065f2c query_id:uint64 gas_limit:Grams stake:Grams validator_pubkey:bits256 stake_at:uint32
+        max_factor:uint32 adnl_addr:bits256 signature:^bits512 = InternalMsgBody5;
+
+// whales_nominators_withdraw_unowned
+whales_nominators_withdraw_unowned#251d6a98 query_id:uint64 gas_limit:Grams = InternalMsgBody5;
+
+// whales_nominators_withdraw_unowned_response
+whales_nominators_withdraw_unowned_response#1d1715bf query_id:uint64 = InternalMsgBody5;
+
+// whales_nominators_accept_stake
+whales_nominators_accept_stake#99a811fb query_id:uint64 members:Cell = InternalMsgBody5;
+
+// whales_nominators_accept_withdraws
+whales_nominators_accept_withdraws#a19fd934 query_id:uint64 members:Cell = InternalMsgBody5;
+
+// tonkeeper_relayer_fee
+tonkeeper_relayer_fee_forward_payload#878da6e3 data:Any = ForwardPayload;
+
+// none_forward_payload#_ any:Any = ForwardPayload;
+
+// nerd_qr
+nerd_qr_verify#ccc2c823 item_id:uint32 signature:bits512 = ExternalMsgBody;
+
+// from our classifier
+
+// vesting
+vesting_send_message#a7733acd query_id:uint64 send_mode:uint8 message:^(MessageRelaxed Any) = InternalMsgBody6;
+
+vesting_send_message_response#f7733acd query_id:uint64 = InternalMsgBody6;
+
+vesting_add_white_list#7258a69b query_id:uint64 addresses_ref_snake:Any = InternalMsgBody6;
+
+vesting_add_white_list_response#f258a69b query_id:uint64 = InternalMsgBody6;
+
+// tgbtc
+tgbtc_mint_event#77a80ef3 amount:Coins recipient_address:MsgAddress bitcoin_txid:uint256 = ExternalMsgBody;
+
+tgbtc_burn_event#ca444ce6 amount:Coins sender_address:MsgAddress pegout_address:MsgAddress = ExternalMsgBody;
+
+tgbtc_new_key_event#27756729 amount:Coins new_internal_pubkey:uint256 pegout_address:MsgAddress = ExternalMsgBody;
+
+tgbtc_dkg_completed_event#453443a6 timestamp:uint64 internal_pubkey:uint256 = ExternalMsgBody;
+
+
+// jvault
+
+jvault_receive_jettons#d68a4ac1 query_id:uint64 min_deposit:Coins max_deposit:Coins unstake_commission:uint16 unstake_fee:Coins whitelist:(HashmapE 267 Bit) received_jettons:Coins = InternalMsgBody6;
+
+jvault_unstake_jettons#499a9262 query_id:uint64 jettons_to_unstake:Coins force_unstake:Bool = InternalMsgBody6;
+
+jvault_unstake_request#0168d4b7 query_id:uint64 jettons_to_unstake:Coins = InternalMsgBody6;
+
+jvault_claim_rewards_msg#78d9f109 query_id:uint64 jettons_to_claim:(HashmapE 267 Bit) = InternalMsgBody6;
+
+jvault_send_claimed_rewards#44bc1fe3 data:Any = InternalMsgBody6;
+
+jvault_request_update_rewards#f5c5baa3 data:Any = InternalMsgBody6;
+
+jvault_update_rewards#ae9307ce data:Any = InternalMsgBody6;
+
+jvault_request_update_referrer#55c35b40 data:Any = InternalMsgBody6;
+
+jvault_update_referrer#076ee4e0 data:Any = InternalMsgBody6;
+
+jvault_set_data#383411ea data:Any = InternalMsgBody6;
+
+// getgems
+sale_update_message#6c6c2080 query_id:uint64 new_full_price:Coins new_mp_fee:Coins new_royalty_amount:Coins = InternalMsgBody6;
+
+// w5 FIXED. 
+// needs special ref counting for parsing using tlbc. see special.cpp
+
+// note: `m = extended actions count - 1`, so the last ref is not empty cell
+extended_list_last$_ action:W5ExtendedAction = W5ExtendedActionList 0;
+extended_list_action$_ {m:#} action:W5ExtendedAction prev:^(W5ExtendedActionList m) = W5ExtendedActionList (m + 1);
+
+add_extension#02 addr:MsgAddressInt = W5ExtendedAction;
+delete_extension#03 addr:MsgAddressInt = W5ExtendedAction;
+set_signature_auth_allowed#04 allowed:Bool = W5ExtendedAction;
+
+w5_actions_request$_ {m:#} {n:#} out_actions:(Maybe ^(OutList m)) extended_actions:(Maybe (W5ExtendedActionList n)) = W5InnerRequest m n;
+
+w5_signed_request$_ {m:#} {n:#}
+  wallet_id:    uint32
+  valid_until:  uint32
+  msg_seqno:    uint32
+  inner:        (W5InnerRequest m n)
+  signature:    bits512
+= W5SignedRequest m n;
+
+
+// actions_count = m, extended_actions_count-1 = n
+w5_internal_signed_request#73696e74 {m:#} {n:#} request:(W5SignedRequest m n) = W5MsgBody m n;
+w5_external_signed_request#7369676e {m:#} {n:#} request:(W5SignedRequest m n) = W5MsgBody m n;
+
+w5_extension_action_request#6578746e {m:#} {n:#} query_id:uint64 request:(W5InnerRequest m n) = W5MsgBody m n;
+
+// just for opcode detection
+w5_internal_signed_request#73696e74 = InternalMsgBody8;
+w5_external_signed_request#7369676e = InternalMsgBody8;
+w5_extension_action_request#6578746e = InternalMsgBody8;
+
+
+// highload v3
+// actions_count = n
+highload_v3_internal_request#ae42e5a4 {n:#} query_id:uint64 actions:^(OutList n) = HighloadV3InternalRequest n;
+
+// just for opcode detection
+highload_v3_internal_request#ae42e5a4 = InternalMsgBody8;
+
+// may be done later:
+// _ shift:uint13 bit_number:(## 10) { bit_number >= 0 } { bit_number < 1023 } = QueryId;
+// _ {n:#}  subwallet_id:uint32 message_to_send:^Cell send_mode:uint8 query_id:QueryId created_at:uint64 timeout:uint22 = MsgInner n;
+// msg_body$_ {n:#} signature:bits512 ^(MsgInner n) = ExternalMsgBody n;
+
+// evaa
+
+/* Common types */
+_ sb_rate:uint64 = EvaaSbRate;
+_ timestamp:uint32 = EvaaTimestamp;
+_ principal:int64 = EvaaPrincipal;
+_ balance:uint64 = EvaaBalance;
+_ price:uint64 = EvaaPrice;
+_ address_hash:uint256 = EvaaAddressHash;
+_ asset_id:uint256 = EvaaAssetId;
+_ amount:uint64 = EvaaAmount;
+_ tracking_index:uint64 = EvaaTrackingIndex;
+
+bool_true$11 = BoolExtended;
+bool_false$00 = BoolExtended;
+
+!merkle_proof#03 {X:Type} virtual_hash:bits256 depth:uint16 virtual_root:^X = MERKLE_PROOF X;
+
+price_data$_ timestamp:uint32 prices:(HashmapE 256 Coins) = PriceData;
+
+price_assets$_ id:uint256 price:Coins next_asset:(Maybe ^PriceAssets) = PriceAssets;
+// price_oracles_data$_ oracle_id:uint32 proof:^(MERKLE_PROOF PriceData) signature:bits512 next_oracles_data:(Maybe ^PriceOraclesData) = PriceOraclesData;
+price_oracles_data$_ oracle_id:uint32 proof:^Cell signature:bits512 next_oracles_data:(Maybe ^PriceOraclesData) = PriceOraclesData;
+
+prices_packed$_ assets:^PriceAssets oracles_data:^PriceOraclesData = PricesPacked;
+
+asset_rate$_ supply_rate:EvaaSbRate borrow_rate:EvaaSbRate = AssetRate;
+reward$_ tracking_index:uint64 tracking_accrued:uint64 = Reward;
+
+/* Asset config */
+_ collateral_factor:uint16 liquidation_threshold:uint16 liquidation_bonus:uint16 base_borrow_rate:uint64
+    borrow_rate_slope_low:uint64 borrow_rate_slope_high:uint64 supply_rate_slope_low:uint64
+    supply_rate_slope_high:uint64 target_utilization:uint64 origination_fee:uint64
+    dust_value:uint64 max_total_supply:uint64 reserve_factor:uint16
+    liquidation_reserve_factor:uint16 min_principal_for_rewards:uint64
+    base_tracking_supply_speed:uint64 base_tracking_borrow_speed:uint64 = AssetConfigParams;
+
+_ jw_address_hash:EvaaAddressHash decimals:uint8 params:^AssetConfigParams = AssetConfig;
+_ asset_configs:(HashmapE 256 AssetConfig) = AssetConfigCollection;
+
+/* Asset dynamics collection */
+_ s_rate:EvaaSbRate b_rate:EvaaSbRate total_supply_principal:EvaaPrincipal total_borrow_principal:EvaaPrincipal
+    last_accrual:EvaaTimestamp token_balance:EvaaBalance
+    tracking_supply_index:EvaaTrackingIndex tracking_borrow_index:EvaaTrackingIndex
+    awaited_supply:EvaaBalance = AssetDynamics;
+_ asset_dynamics:(HashmapE 256 AssetDynamics) = AssetDynamicsCollection;
+
+/* Blank storage */
+storage#_ platform_address:MsgAddressInt owner_address:MsgAddressInt type_id:uint8 params:(Maybe ^Cell) = BlankStorage;
+
+/* Master storage */
+oracles_info$_ total_oracles:uint16 threshold:uint16 oracles:^Cell = OraclesInfo;
+upgrade_config$_ master_code_version:Coins user_code_version:Coins timeout:uint32 update_time:uint64 freeze_time:uint64 user_code:^Cell blank_code:^Cell new_master_code:(Maybe ^Cell) new_user_code:(Maybe ^Cell) = UpgradeConfig;
+master_config$_ asset_config_collection:AssetConfigCollection if_active:int8 admin:MsgAddressInt oracles_info:OraclesInfo tokens_keys:(Maybe ^Cell) maybe_supervisor_address_cell:Any = MasterConfig;
+storage#_ meta:^Cell upgrade_config:^UpgradeConfig master_config:^MasterConfig asset_dynamics_collection:AssetDynamicsCollection = MasterStorage;
+
+/* User storage */
+storage#_ code_version:Coins master_address:MsgAddressInt owner_address:MsgAddressInt user_principals:(HashmapE 256 EvaaPrincipal) state:int64
+    user_rewards: (HashmapE 256 Reward) backup_cell_1:(Maybe ^Cell) backup_cell_2:(Maybe ^Cell) = UserStorage;
+
+// User commands should always start with UpgradeHeader
+// In this documentation, in the user commands section, they are referred to as "UserCommand."
+// "UserCommand" is an internal structure that needs to be converted either to "PackedCommand" or to "InternalMsgBody" for proper functionality.
+
+upgrade_header$_ user_code_version:Coins upgrade_info:(Maybe ^[ new_code:^Cell new_data:^Cell ]) upgrade_exec:BoolExtended = UpgradeHeader;
+
+// First message to User goes through Blank (1 runtime)
+// _ upgrade_header:UpgradeHeader extra:Any = InternalMsgBody6;
+
+// idk what version it is, but this opcode is quite common
+evaa_user_execute_action#107e0000 extra:Any = InternalMsgBody6;
+
+// If there is an error during the upgrade from UpgradeHeader, a "revert_call" will be executed.
+evaa_revert_call#0000000f query_id:uint64 owner_address:MsgAddressInt revert_body:^Cell = InternalMsgBody6;
+
+/* Supply */
+sm_opt_data$_ subaccount_id:int16 return_repay_remainings_flag:BoolExtended custom_payload_recipient:MsgAddressInt
+              custom_payload_saturation_flag:BoolExtended = SupplyMasterOptional; // for v8
+
+evaa_supply_master#00000001 query_id:uint64 include_user_code:BoolExtended supply_amount:EvaaAmount recipient_address:MsgAddressInt
+    forward_ton_amount:EvaaAmount custom_response_payload:^Cell = InternalMsgBody6;  // prior - has forward_ton_amount
+
+evaa_supply_master#00000001 query_id:uint64 include_user_code:BoolExtended supply_amount:EvaaAmount recipient_address:MsgAddressInt
+    custom_response_payload:^Cell supply_master_optional:SupplyMasterOptional = InternalMsgBody7; // v8
+
+evaa_supply_master#00000001 query_id:uint64 include_user_code:BoolExtended supply_amount:EvaaAmount recipient_address:MsgAddressInt
+    custom_response_payload:^Cell supply_master_optional:Any = InternalMsgBody8; // v8, but when no supply_master_optional (may be empty cell)
+
+
+evaa_supply_user#00000011 query_id:uint64 asset_id:EvaaAssetId
+    supply_amount_current:EvaaAmount s_rate:EvaaSbRate b_rate:EvaaSbRate
+    dust:uint64 max_token_amount:uint64 total_supply:EvaaPrincipal total_borrow:EvaaPrincipal
+    tracking_supply_index:EvaaTrackingIndex tracking_borrow_index:EvaaTrackingIndex
+    custom_response_payload:^Cell
+    ^[
+        subaccount_id:int16 return_repay_remainings_flag:BoolExtended
+        custom_payload_recipient:MsgAddressInt custom_payload_saturation_flag:BoolExtended
+        initial_sender:MsgAddressInt
+    ] = InternalMsgBody6; // prior - has extra ref
+
+evaa_supply_user#00000011 query_id:uint64 asset_id:EvaaAssetId
+    supply_amount_current:EvaaAmount s_rate:EvaaSbRate b_rate:EvaaSbRate
+    dust:uint64 max_token_amount:uint64 total_supply:EvaaPrincipal total_borrow:EvaaPrincipal
+    tracking_supply_index:EvaaTrackingIndex tracking_borrow_index:EvaaTrackingIndex
+    forward_ton_amount:EvaaAmount custom_response_payload:^Cell = InternalMsgBody7;
+
+evaa_supply_success#0000011a query_id:uint64 owner_address:MsgAddressInt
+    asset_id:EvaaAssetId amount_supplied:EvaaAmount user_new_principal:EvaaPrincipal
+    repay_amount_principal:EvaaPrincipal supply_amount_principal:EvaaPrincipal
+    custom_response_payload:^Cell 
+    subaccount_id:int16 return_repay_remainings_flag:BoolExtended
+    ^[ custom_payload_recipient:MsgAddress ]
+    custom_payload_saturation_flag:BoolExtended = InternalMsgBody6; // prior - has extra ref and bits
+
+evaa_supply_success#0000011a query_id:uint64 owner_address:MsgAddressInt
+    asset_id:EvaaAssetId amount_supplied:EvaaAmount user_new_principal:EvaaPrincipal
+    repay_amount_principal:EvaaPrincipal supply_amount_principal:EvaaPrincipal
+    custom_response_payload:^Cell = InternalMsgBody7;
+
+evaa_supply_success#0000011a query_id:uint64 owner_address:MsgAddressInt
+    asset_id:EvaaAssetId amount_supplied:EvaaAmount user_new_principal:EvaaPrincipal
+    repay_amount_principal:EvaaPrincipal
+    custom_response_payload:Any = InternalMsgBody8; // same without supply_amount_principal (old version)
+
+
+
+evaa_supply_fail#0000011f query_id:uint64 owner_address:MsgAddressInt asset_id:EvaaAssetId amount:EvaaAmount
+    forward_ton_amount:EvaaAmount custom_response_payload:^Cell
+    subaccount_id:int16 return_repay_remainings_flag:BoolExtended
+    ^[ initial_sender:MsgAddressInt ] = InternalMsgBody6; // prior - has fields and ref
+evaa_supply_fail#0000011f query_id:uint64 owner_address:MsgAddressInt asset_id:EvaaAssetId amount:EvaaAmount
+    forward_ton_amount:EvaaAmount custom_response_payload:^Cell = InternalMsgBody7;
+
+evaa_supply_excess_with_data#000011ae query_id:uint64 custom_response_payload:^Cell = InternalMsgBody5;
+evaa_supply_excess#000011ae query_id:uint64 = InternalMsgBody6; // Master -> User::owner_address
+evaa_supply_fail_with_data#00011ae1 query_id:uint64 custom_response_payload:^Cell = InternalMsgBody6;
+
+/* Withdraw */
+evaa_withdraw_master#00000002 query_id:uint64 asset_id:EvaaAssetId amount:EvaaAmount recipient_addr:MsgAddressInt
+    include_user_code:BoolExtended forward_ton_amount:EvaaAmount custom_response_payload:^Cell
+    prices_with_signature_packed:^PricesPacked = InternalMsgBody6; // * -> Master
+evaa_withdraw_user#00000021 query_id:uint64 asset_id:EvaaAssetId
+    withdraw_amount_current:EvaaAmount s_rate:EvaaSbRate b_rate:EvaaSbRate recipient_address:MsgAddressInt
+    ^[ asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection
+       prices_packed:^PricesPacked forward_ton_amount:EvaaAmount custom_response_payload:^Cell ] = InternalMsgBody6; // Master -> User
+
+   
+evaa_withdraw_collateralized#00000211 query_id:uint64 owner_address:MsgAddressInt
+    asset_id:EvaaAssetId withdraw_amount_current:EvaaAmount
+    user_new_principal:EvaaPrincipal borrow_amount_principal:EvaaPrincipal reclaim_amount_principal:EvaaPrincipal  // prior - has ref and field
+    ^[ recipient_address:MsgAddressInt forward_ton_amount:EvaaAmount custom_response_payload:^Cell ] = InternalMsgBody6; // User -> Master
+
+evaa_withdraw_collateralized#00000211 query_id:uint64 owner_address:MsgAddressInt
+    asset_id:EvaaAssetId withdraw_amount_current:EvaaAmount
+    user_new_principal:EvaaPrincipal borrow_amount_principal:EvaaPrincipal reclaim_amount_principal_optional:Any = InternalMsgBody7; // User -> Master
+
+evaa_withdraw_success#0000211a query_id:uint64 asset_id:EvaaAssetId principal_amount:EvaaPrincipal
+    tracking_supply_index:EvaaTrackingIndex tracking_borrow_index:EvaaTrackingIndex = InternalMsgBody5; // prior - has many fields
+evaa_withdraw_success_excess_with_data#0000211a query_id:uint64 custom_response_payload:^Cell = InternalMsgBody6; // prior - hase ref
+evaa_withdraw_success_excess_with_data#0000211a query_id:uint64 custom_response_payload:Any = InternalMsgBody7;
+
+evaa_withdraw_fail#0000211f query_id:uint64 asset_id:EvaaAssetId principal_amount:EvaaPrincipal = InternalMsgBody6; // Master -> User
+evaa_withdraw_locked_excess#000021e6 query_id:uint64 = InternalMsgBody6; // User -> owner_address
+evaa_withdraw_not_collateralized_excess#000021e7 query_id:uint64 = InternalMsgBody6; // User -> owner_address
+evaa_withdraw_no_funds_excess#00211fe8 query_id:uint64 = InternalMsgBody6; // User -> owner_address
+evaa_withdraw_missing_prices_excess#000021e8 query_id:uint64 = InternalMsgBody6; // User -> owner_address
+evaa_withdraw_execution_crashed#000021ec query_id:uint64 = InternalMsgBody6; // User -> owner_address
+
+/* Liquidate */
+user_withdraw_in_progress#000031f0 = LiquidationError;
+not_liquidatable#000031f2 = LiquidationError;
+liquidation_prices_missing#000031f7 = LiquidationError;
+min_collateral_not_satisfied#000031f3 collateral_amount:EvaaAmount = LiquidationError;
+user_not_enough_collateral#000031f4 collateral_present:EvaaAmount = LiquidationError;
+user_liquidating_too_much#000031f5 max_not_too_much:EvaaAmount = LiquidationError;
+liqudation_execution_crashed#000031fe = LiquidationError;
+
+master_liquidating_too_much#000030f1 max_allowed_liquidation:EvaaAmount = LiquidationMasterError;
+master_not_enough_liquidity#000031f6 available_liquidity:EvaaAmount = LiquidationMasterError;
+liqudation_execution_crashed#000031fe = LiquidationMasterError;
+
+evaa_liquidate_master#00000003 query_id:uint64 borrower_address:MsgAddressInt liquidator_address:MsgAddress
+    collateral_asset_id:EvaaAssetId min_collateral_amount:EvaaAmount include_user_code:BoolExtended
+    liquidate_incoming_amount:EvaaAmount ^[ forward_ton_amount:EvaaAmount custom_response_payload:^Cell ]
+    prices_with_signature_packed:^PricesPacked = InternalMsgBody7; // * -> Master
+
+evaa_liquidate_master#00000003 query_id:uint64 borrower_address:MsgAddressInt liquidator_address:MsgAddress
+    collateral_asset_id:EvaaAssetId min_collateral_amount:EvaaAmount include_user_code:BoolExtended
+    liquidate_incoming_amount:EvaaAmount ^[ forward_ton_amount:EvaaAmount custom_response_payload:^Cell ]
+= InternalMsgBody8; // * -> Master
+
+
+evaa_liquidate_user#00000031 query_id:uint64
+    asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection
+    ^[ prices_packed:^PricesPacked collateral_asset_id:EvaaAssetId min_collateral_amount:EvaaAmount
+       liquidator_address:MsgAddressInt transferred_asset_id:EvaaAssetId transfered_amount:EvaaAmount
+       forward_ton_amount:Coins custom_response_payload:^Cell ] = InternalMsgBody7; // Master -> User
+
+evaa_liquidate_unsatisfied#0000031f query_id:uint64 owner_address:MsgAddressInt
+    liquidator_address:MsgAddressInt transferred_asset_id:EvaaAssetId
+    ^[ transferred_amount:EvaaAmount collateral_asset_id:EvaaAssetId min_collateral_amount:EvaaAmount
+       forward_ton_amount:Coins custom_response_payload:^Cell error:LiquidationError ] = InternalMsgBody7; // User -> Master
+evaa_liquidate_satisfied#00000311 query_id:uint64 owner_address:MsgAddressInt
+    liquidator_address:MsgAddressInt transferred_asset_id:EvaaAssetId
+    ^[ delta_loan_principal:EvaaPrincipal liquidatable_amount:EvaaAmount protocol_gift:EvaaAmount
+       new_user_loan_principal:EvaaPrincipal collateral_asset_id:EvaaAssetId delta_collateral_principal:EvaaPrincipal
+       collateral_reward:EvaaAmount min_collateral_amount:EvaaAmount new_user_collateral_principal:EvaaPrincipal
+       forward_ton_amount:Coins custom_response_payload:^Cell ] = InternalMsgBody7; // User -> Master
+evaa_liquidate_success#0000311a query_id:uint64 transferred_asset_id:EvaaAssetId delta_loan_principal:EvaaPrincipal
+    loan_tracking_supply_index:EvaaTrackingIndex loan_tracking_borrow_index:EvaaTrackingIndex
+    collateral_asset_id:EvaaAssetId delta_collateral_principal:EvaaPrincipal
+    collateral_tracking_supply_index:EvaaTrackingIndex collateral_tracking_borrow_index:EvaaTrackingIndex = InternalMsgBody7; // Master -> User
+evaa_liquidate_fail#0000311f query_id:uint64 transferred_asset_id:EvaaAssetId
+    delta_loan_principal:EvaaPrincipal collateral_asset_id:EvaaAssetId delta_collateral_principal:EvaaPrincipal = InternalMsgBody7; // Master -> User
+evaa_liquidate_success_report#0000311d transferred_asset_id:EvaaAssetId transferred_amount:EvaaAmount
+    collateral_asset_id:EvaaAssetId collateral_reward:EvaaAmount custom_response_payload:^Cell = InternalMsgBody7; // Master -> liquidator_address
+
+evaa_liquidate_fail_report#_ error:LiquidationMasterError custom_response_payload:^Cell = InternalMsgBody7;
+
+/* Supply & Withdraw */
+sw_supply$_ supply_amount:EvaaAmount = SWSupply;
+sw_supply_empty$_ = SWSupplyEmpty;
+sw_supply_user$_ _:SWSupply supply_asset_id:EvaaAssetId = SWSupplyUser;
+
+sw_withdraw$_ withdraw_amount:EvaaAmount withdraw_asset_id:EvaaAssetId recipient_address_of_withdraw:MsgAddressInt = SWWithdraw;
+sw_withdraw_user$_ _:SWWithdraw prices_packed:^Cell = SWWithdrawUser;
+sw_withdraw_empty$_ = SWWithdrawEmpty;
+
+// sw_general$_ include_user_code:BoolExtended ton_amount_for_repay_remainings:EvaaAmount
+//              custom_response_payload:^Cell opt:SupplyWithdrawMasterOptional = SWGeneral;
+sw_general$_ include_user_code:BoolExtended ton_amount_for_repay_remainings:EvaaAmount
+             custom_response_payload:^Cell swm_opt_data:Any = SWGeneral;
+sw_general_user$_ ton_amount_for_repay_remainings:EvaaAmount custom_response_payload:^Cell
+                  _:SupplyMasterWithdrawExtData = SWGeneralUser;
+
+swm_ext_data$_ subaccount_id:int16 return_repay_remainings_flag:BoolExtended
+               custom_payload_saturation_flag:BoolExtended = SupplyMasterWithdrawExtData;
+
+// swm_opt_none$_ = SupplyWithdrawMasterOptional;
+// swm_opt_data$_ _:SupplyMasterWithdrawExtData = SupplyWithdrawMasterOptional;
+
+supply_withdraw_master_params$_ supply_data:^SWSupply withdraw_data:^SWWithdraw general_data:^SWGeneral
+                                = SupplyWithdrawMasterParams;
+
+supply_withdraw_master_jetton_params$_ supply_data:^SWSupplyEmpty withdraw_data:^SWWithdraw general_data:^SWGeneral
+                                       = SupplyWithdrawMasterJettonParams;
+
+evaa_supply_withdraw_master#00000004 query_id:uint64 _:SupplyWithdrawMasterParams = NestedPythOperation; // -> Pyth -> Master ->;
+evaa_supply_withdraw_master_without_prices#00000401 query_id:uint64 _:SupplyWithdrawMasterParams = InternalMsgBody7;
+
+evaa_supply_withdraw_master_without_prices#00000401 _:SupplyWithdrawMasterJettonParams = ForwardPayload;
+evaa_supply_withdraw_master_jetton#00000042 _:SupplyWithdrawMasterJettonParams = ForwardPayload;
+
+supply_withdraw_master_jetton#00000042 query_id:uint64 evaa_operation_cell:^SupplyWithdrawMasterParams
+                                       master_jw_address:MsgAddressInt jetton_amount:uint64
+                                       initial_sender:MsgAddress = NestedPythOperation;
+
+_ asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection _:SWGeneralUser = SupplyWithdrawUserParams;
+evaa_supply_withdraw_user#00000041 query_id:uint64 supply_data:^SWSupplyUser withdraw_data:^SWWithdrawUser
+                              general_data:^SupplyWithdrawUserParams
+                              = InternalMsgBody7;
+
+_ owner_address:MsgAddressInt _:SWSupplyUser supply_new_principal:EvaaPrincipal
+repay_amount_principal:EvaaPrincipal supply_amount_principal:EvaaPrincipal = SupplyWithdrawSatisfiedSupplyData;
+_ _:SWWithdraw withdraw_new_principal:EvaaPrincipal borrow_amount_principal:EvaaPrincipal reclaim_amount_principal:EvaaPrincipal = SupplyWithdrawSatisfiedWithdrawData;
+evaa_supply_withdraw_satisfied#00000411 query_id:uint64
+                                   supply_data:^SupplyWithdrawSatisfiedSupplyData
+                                   withdraw_data:^SupplyWithdrawSatisfiedWithdrawData
+                                   general_data:^SWGeneralUser
+                                   = InternalMsgBody7;
+
+_ owner_address:MsgAddressInt _:SWSupplyUser = SupplyWithdrawUnsatisfiedSupplyData;
+_ ton_amount_for_repay_remainings:EvaaAmount custom_response_payload:^Cell subaccount_id:int16 = SupplyWithdrawUnsatisfiedGeneralData;
+evaa_supply_withdraw_unsatisfied#0000041f query_id:uint64
+                                     supply_data:^SupplyWithdrawUnsatisfiedSupplyData
+                                     withdraw_data:^SWWithdrawEmpty
+                                     general_data:^SupplyWithdrawUnsatisfiedGeneralData
+                                     = InternalMsgBody7;
+
+_ supply_asset_id:EvaaAssetId supply_principal_amount:EvaaAmount = SupplyWithdrawFailSupplyData;
+_ withdraw_asset_id:EvaaAssetId withdraw_principal_amount:EvaaAmount = SupplyWithdrawFailWithdrawData;
+_ subaccount_id:int16 = SupplyWithdrawFailGeneralData;
+evaa_supply_withdraw_fail#0000411f query_id:uint64
+                              supply_data:^SupplyWithdrawFailSupplyData
+                              withdraw_data:^SupplyWithdrawFailWithdrawData
+                              general_data:^SupplyWithdrawFailGeneralData
+                              = InternalMsgBody7;
+
+_ supply_asset_id:EvaaAssetId supply_principal_amount:EvaaAmount = SupplyWithdrawSuccessSupplyData;
+_ withdraw_asset_id:EvaaAssetId withdraw_principal_amount:EvaaAmount = SupplyWithdrawSuccessWithdrawData;
+_ asset_config_collection:AssetConfigCollection asset_dynamics_collection:AssetDynamicsCollection subaccount_id:int16 = SupplyWithdrawSuccessGeneralData;
+evaa_supply_withdraw_success#0000411a query_id:uint64
+                                 supply_data:^SupplyWithdrawSuccessSupplyData
+                                 withdraw_data:^SupplyWithdrawSuccessWithdrawData
+                                 general_data:^SupplyWithdrawSuccessGeneralData
+                                 = InternalMsgBody7;
+
+/* IDLE */
+evaa_idle_master#00000008 query_id:uint64 target_address:MsgAddressInt = InternalMsgBody7; // * -> Master
+evaa_idle_user#00000081 query_id:uint64 tokens_keys:(Maybe ^Cell) originator_address:MsgAddressInt = InternalMsgBody7; // Master -> User
+evaa_idle_excess#0000081e query_id:uint64 = InternalMsgBody7; // User -> originator_address
+
+evaa_do_data_checks#0000d001 query_id:uint64 = InternalMsgBody7; // Should be called internally during upgrade without real message
+
+_ upgrade_header:UpgradeHeader command:InternalMsgBody6 = PackedCommand; // no prefix -> not detectable
+
+/*  P y t h  */
+
+pyth_update_guardian_set#00000001 ^[ version:uint8 guardian_set_index:uint32 signatures_length:uint8 rest_signatures:Any ] = InternalMsgBody5; // 6-8 are for evaa_supply_master
+
+pyth_parse_price_feed_updates#00000005 update_data:^Cell
+                                       price_ids:^Cell
+                                       min_publish_time:uint64
+                                       max_publish_time:uint64
+                                       target_address:MsgAddress
+                                       custom_payload:^Cell = InternalMsgBody7;
+
+pyth_parse_unique_price_feed_updates#00000006 update_data:^Cell price_ids:^Cell publish_time:uint64 max_staleness:uint64 target_address:MsgAddress custom_payload:^Cell = InternalMsgBody6; // prior - has more bits and refs
+
+pyth_parse_unique_price_feed_updates#00000006 number_of_price_feeds:uint8 price_feeds:^Cell sender_address:MsgAddress custom_payload:Any = InternalMsgBody7;
+
+pyth_response_success#00010001 result:^Cell original_custom_payload:^Cell = InternalMsgBody7;
+
+pyth_response_error#00010002 error_code:uint32 original_op_code:uint32 original_custom_payload:^Cell = InternalMsgBody7;
+
+
+/* Other master commands (any) */
+
+evaa_get_store_request#00009998 query_id:uint64 body_data:^Cell = InternalMsgBody7;
+evaa_get_store_response#00009999 query_id:uint64 body_data:^Cell storage:MasterStorage = InternalMsgBody7;
+
+evaa_add_to_reserve#00000a99 = InternalMsgBody7;
+
+
+/* Other master commands (admin only) */
+_ new_asset_dynamics_collection:^AssetDynamicsCollection tokens_keys:^Cell = InitMasterPackedData;
+evaa_init_master#000000a1 query_id:uint64 new_asset_config_collection:^AssetConfigCollection
+    packed_data:^InitMasterPackedData = InternalMsgBody7; // * -> Master
+evaa_claim_asset_reserves#000000a2 query_id:uint64 target_address:MsgAddressInt asset_id:EvaaAssetId amount_to_claim:EvaaAmount = InternalMsgBody7; // * -> Master
+
+evaa_disable_contract_for_upgrade#000000e8 query_id:uint64 = InternalMsgBody7;
+evaa_init_upgrade#000000c1 query_id:uint64 new_master_code:(Maybe ^Cell) new_user_code:(Maybe ^Cell) = InternalMsgBody7;
+evaa_submit_upgrade#000000c2 query_id:uint64 = InternalMsgBody7;
+evaa_cancel_upgrade#000000c3 query_id:uint64 = InternalMsgBody7;
+
+evaa_update_config#000000e4 query_id:uint64 new_meta:^Cell new_config:^MasterConfig = InternalMsgBody7;
+evaa_add_new_token#00000a32 query_id:uint64 asset_key:EvaaAssetId new_asset_config:^AssetConfig new_asset_dynamics:^AssetDynamics = InternalMsgBody7;
+
+evaa_force_enable#000000e1 query_id:uint64 = InternalMsgBody7;
+evaa_force_disable_contract#000000e9 query_id:uint64 = InternalMsgBody7;
+
+evaa_debug_principals_edit_user#00000d21 query_id:uint64 new_principals:(HashmapE 256 EvaaPrincipal) = InternalMsgBody7;
+
+
+// blum memepad
+
+blum_memepad_buy#af750d34 query_id:uint64 min_recieve:Coins receiver:MsgAddress refferal:Cell = InternalMsgBody8;
+blum_memepad_sell#742b36d8 query_id:uint64 amount:Coins min_recieve:Coins refferal:Cell = InternalMsgBody8;
+blum_memepad_unlock_wallet#f0fd50bb query_id:uint64 = InternalMsgBody8;
+blum_memepad_buy_log#ceac8af4 buyer_address:MsgAddress tons_consumed:Coins supply_delta:Coins new_supply:Coins collected_ton_liq:Coins refferal:Cell = InternalMsgBody8;
+blum_memepad_sell_log#ef2e2def seller_address:MsgAddress ton_value:Coins supply_delta:Coins new_supply:Coins collected_ton_liq:Coins refferal:Cell = InternalMsgBody8;
+blum_memepad_send_liq_log#30c7219b ton_liq_amount:Coins jetton_liq_amount:Coins = InternalMsgBody8;
+
+// gas pump
+
+gas_pump_buy_log#67617302 buyer_address:MsgAddress input_ton_amount:Coins ton_amount:Coins jetton_amount:Coins fee_ton_amount:Coins bonding_curve_overflow:Bool = InternalMsgBody8;
+gas_pump_sell_log#67617303 seller_address:MsgAddress ton_amount:Coins jetton_amount:Coins fee_ton_amount:Coins = InternalMsgBody8;
+gas_pump_send_to_pool_log#67617305 ton_amount:Coins jetton_amount:Coins fee_ton_amount:Coins = InternalMsgBody8;
+gas_pump_change_trade_state_log#67617306 old_trade_state:uint16 new_trade_state:uint16 = InternalMsgBody8;
+
+///
+/// DeDust Protocol v2
+///
+
+_ version:uint16 = DedustVersion;
+
+_ timestamp:uint32 = DedustTimestamp;
+
+_ asset_type:uint4 = DedustAssetType;
+
+native$0000 = DedustAsset;
+jetton$0001 workchain_id:int8 address:bits256 = DedustAsset;
+
+vault#01 = DedustContractType;
+pool#02 = DedustContractType;
+liquidity_deposit#03 = DedustContractType;
+operator#04 = DedustContractType;
+
+proof#_ {X:Type} factory_addr:MsgAddressInt contract_type:DedustContractType params:X = DedustProof X;
+
+pool_params#_ is_stable:Bool asset0:DedustAsset asset1:DedustAsset = DedustPoolParams;
+
+code_installer#01 = DedustRole;
+code_updater#02 = DedustRole;
+fee_collector#03 = DedustRole;
+fee_configurator#04 = DedustRole;
+stable_pool_factory#05 = DedustRole;
+legacy_vault_factory#06 = DedustRole;
+quote_synchronizer#07 = DedustRole;
+quote_configurator#08 = DedustRole;
+
+_ proof:(DedustProof DedustAsset) = DedustVaultProof;
+_ proof:(DedustProof DedustPoolParams) = DedustPoolProof;
+_ proof:(DedustProof ^[ owner_addr:MsgAddressInt pool_params:DedustPoolParams ]) = DedustLiquidityDepositProof;
+_ proof:(DedustProof DedustRole) = DedustOperatorProof;
+
+given_in$0 = DedustSwapKind;
+given_out$1 = DedustSwapKind;
+
+swap_params#_ deadline:DedustTimestamp recipient_addr:MsgAddress referral_addr:MsgAddress
+              fulfill_payload:(Maybe ^Cell) reject_payload:(Maybe ^Cell) = DedustSwapParams;
+
+step_params#_ kind:DedustSwapKind limit:Coins next:(Maybe ^DedustSwapStep) = DedustSwapStepParams;
+step#_ pool_addr:MsgAddressInt params:DedustSwapStepParams = DedustSwapStep;
+
+//
+// Factory
+//
+
+// Ownership Management
+dedust_transfer_ownership#ca61554e query_id:uint64 new_owner_addr:MsgAddress = InternalMsgBody8;
+
+dedust_accept_ownership#dee60404 query_id:uint64 = InternalMsgBody8;
+
+dedust_cancel_ownership_transfer#16cb7fc2 query_id:uint64 = InternalMsgBody8;
+
+// Vaults
+dedust_install_vault_code#bc3f26f6 query_id:uint64 asset_type:DedustAssetType code_version:DedustVersion code:^Cell = InternalMsgBody8;
+
+dedust_create_vault#21cfe02b query_id:uint64 asset:DedustAsset = InternalMsgBody8;
+
+dedust_create_legacy_jetton_vault#c9a5752d query_id:uint64 minter_addr:MsgAddressInt resolver_addr: MsgAddressInt = InternalMsgBody8;
+
+dedust_upgrade_vault#25d66911 query_id:uint64 asset:DedustAsset = InternalMsgBody8;
+
+// Governance
+dedust_upgrade#df4a27aa query_id:uint64 code_version:DedustVersion code:^Cell = InternalMsgBody8;
+
+dedust_reset_gas#9f3f0937 query_id:uint64 = InternalMsgBody8;
+
+// Operators
+dedust_deploy_operator#b9d29997 query_id:uint64 role:DedustRole user_addr:MsgAddressInt = InternalMsgBody8;
+
+dedust_change_operator_user_addr#1be6df93 query_id:uint64 role:DedustRole user_addr:MsgAddressInt = InternalMsgBody8;
+
+dedust_install_operator_code#e505d21a query_id:uint64 code_version:DedustVersion code:^Cell = InternalMsgBody8;
+
+dedust_upgrade_operator#0085f5a3 query_id:uint64 role:DedustRole = InternalMsgBody8;
+
+// Pools
+dedust_install_pool_code#a3e45df1 query_id:uint64 code_version:DedustVersion code:^Cell = InternalMsgBody8;
+
+dedust_create_volatile_pool#97d51f2f query_id:uint64 asset0:DedustAsset asset1:DedustAsset = InternalMsgBody8;
+
+dedust_create_stable_pool#7c40ac87 query_id:uint64 asset0:DedustAsset asset0_decimals:uint8 asset1:DedustAsset asset1_decimals:uint8 = InternalMsgBody9;
+
+dedust_upgrade_pool#53e252ae query_id:uint64 pool_params:DedustPoolParams = InternalMsgBody9;
+
+dedust_sync_fee_collector_addr#817462a9 query_id:uint64 pool_addr:MsgAddressInt = InternalMsgBody9;
+
+dedust_configure_pool_asset_quote_provider#a805f43e query_id:uint64 pool_addr:MsgAddressInt
+                                             asset:DedustAsset quote_provider_addr:MsgAddress = InternalMsgBody9;
+
+dedust_sync_pool_asset_quote#59317e9a query_id:uint64 pool_addr:MsgAddressInt asset:DedustAsset = InternalMsgBody9;
+
+// Liquidity Deposits
+dedust_install_liquidity_deposit_code#99a84311 query_id:uint64 code_version:DedustVersion code:^Cell = InternalMsgBody9;
+
+dedust_create_liquidity_deposit#f04ec526 query_id:uint64 proof:^DedustVaultProof owner_addr:MsgAddressInt
+                                  pool_params:DedustPoolParams
+                                  ^[ asset0_target_balance:Coins asset1_target_balance:Coins
+                                  deposit_asset:DedustAsset deposit_amount:Coins min_lp_amount:Coins ]
+                                  fulfill_payload:(Maybe ^Cell) reject_payload:(Maybe ^Cell) = InternalMsgBody9;
+
+dedust_destroy_non_ready_vault#8a518d0d query_id:uint64 asset:DedustAsset = InternalMsgBody9;
+
+//
+// Blank
+//
+
+dedust_install#9b3aa3fa query_id:uint64 blank_code:^Cell
+                 code_version:DedustVersion code:^Cell extra_params:Cell = InternalMsgBody9;
+
+//
+// Vault
+//
+
+// Common
+dedust_pay_out_from_deposit#6b0b787f query_id:uint64 proof:^DedustLiquidityDepositProof
+                              amount:Coins payload:(Maybe ^Cell) = InternalMsgBody9;
+
+dedust_pay_out_from_pool#ad4eb6f5 query_id:uint64 proof:^DedustPoolProof amount:Coins
+                           recipient_addr:MsgAddress payload:(Maybe ^Cell) = InternalMsgBody9;
+
+dedust_provide_vault_state#e93405b9 query_id:uint64 = InternalMsgBody9;
+
+dedust_take_vault_state#a913dc0d query_id:uint64 is_ready:Bool = InternalMsgBody9;
+
+// Native-only
+
+_ min_lp_amount:Coins asset0_target_balance:Coins asset1_target_balance:Coins = DedustDepositLiquidityParams;
+
+dedust_deposit_liquidity#d55e4686 query_id:uint64 amount:Coins pool_params:DedustPoolParams
+        deposit_params:^DedustDepositLiquidityParams
+        fulfill_payload:(Maybe ^Cell)
+        reject_payload:(Maybe ^Cell) = InternalMsgBody0; // prior - has ref
+
+dedust_deposit_liquidity#d55e4686 query_id:uint64 amount:Coins pool_params:DedustPoolParams
+        min_lp_amount:Coins asset0_target_balance:Coins asset1_target_balance:Coins
+        fulfill_payload:(Maybe ^Cell) reject_payload:(Maybe ^Cell) = InternalMsgBody9;
+
+
+dedust_payout#474f86cf query_id:uint64 payload:(Maybe ^Cell) = InternalMsgBody9;
+
+dedust_swap#ea06185d query_id:uint64 amount:Coins _:DedustSwapStep swap_params:^DedustSwapParams = InternalMsgBody9;
+
+// Jetton-only
+dedust_deposit_liquidity#40e108d6 pool_params:DedustPoolParams min_lp_amount:Coins
+                           asset0_target_balance:Coins asset1_target_balance:Coins
+                           fulfill_payload:(Maybe ^Cell) reject_payload:(Maybe ^Cell) = ForwardPayload;
+
+dedust_swap#e3a0d482 _:DedustSwapStep swap_params:^DedustSwapParams = ForwardPayload;
+
+dedust_destroy_non_ready#9d65482b query_id:uint64 = InternalMsgBody9;
+
+//
+// Pool
+//
+
+// Operations
+dedust_deposit_liquidity_all#b56b9598 query_id:uint64 proof:^DedustLiquidityDepositProof
+                               owner_addr:MsgAddressInt min_lp_amount:Coins
+                               ^[ asset0:DedustAsset asset0_amount:Coins asset1:DedustAsset asset1_amount:Coins ]
+                               fulfill_payload:(Maybe ^Cell) reject_payload:(Maybe ^Cell) = InternalMsgBody9;
+
+dedust_swap_external#61ee542d query_id:uint64 proof:^DedustVaultProof amount:Coins
+                       sender_addr:MsgAddressInt current:DedustSwapStepParams
+                       swap_params:^DedustSwapParams = InternalMsgBody9;
+
+dedust_swap_peer#72aca8aa query_id:uint64 proof:^DedustPoolProof asset:DedustAsset amount:Coins
+                   sender_addr:MsgAddressInt current:DedustSwapStepParams
+                   swap_params:^DedustSwapParams = InternalMsgBody9;
+
+dedust_collect_fees#0b429f52 query_id:uint64
+                      asset0_amount:Coins asset0_destination:MsgAddressInt asset0_payload:(Maybe ^Cell)
+                      asset1_amount:Coins asset1_destination:MsgAddress asset1_payload:(Maybe ^Cell) = InternalMsgBody9;
+
+dedust_configure_fee_collector_addr#eda15922 query_id:uint64 fee_collector_addr:MsgAddressInt = InternalMsgBody9;
+
+dedust_configure_quote_provider#abb46b3d query_id:uint64 asset:DedustAsset quote_provider_addr:MsgAddress = InternalMsgBody9;
+
+dedust_sync_asset_quote#6873c90c query_id:uint64 asset:DedustAsset = InternalMsgBody9;
+
+dedust_provide_pool_state#6e24728d query_id:uint64 include_assets:Bool = InternalMsgBody9;
+
+dedust_take_pool_state#bddd4954 query_id:uint64 reserve0:Coins reserve1:Coins total_supply:Coins
+                         assets:(Maybe ^[ asset0:DedustAsset asset1:DedustAsset ]) = InternalMsgBody9;
+
+dedust_configure_start_time#7ed7f6ce query_id:uint64 start_at:DedustTimestamp = InternalMsgBody9;
+
+// Events
+dedust_deposit#b544f4a4 sender_addr:MsgAddressInt amount0:Coins amount1:Coins
+                 reserve0:Coins reserve1:Coins liquidity:Coins = ExtOutMsgBody;
+
+dedust_withdrawal#3aa870a6 sender_addr:MsgAddressInt liquidity:Coins
+                    amount0:Coins amount1:Coins
+                    reserve0:Coins reserve1:Coins = ExtOutMsgBody;
+
+dedust_swap#9c610de3 asset_in:DedustAsset asset_out:DedustAsset amount_in:Coins amount_out:Coins
+              ^[ sender_addr:MsgAddressInt referral_addr:MsgAddress
+              reserve0:Coins reserve1:Coins ] = ExtOutMsgBody;
+
+//
+// Liquidity Deposit
+//
+
+dedust_deposit_asset#54240fe5 query_id:uint64 asset:DedustAsset amount:Coins = InternalMsgBody9;
+
+dedust_fulfill_deposit#aae79256 query_id:uint64 proof:^DedustPoolProof
+                         asset0_deposit:Coins asset1_deposit:Coins = InternalMsgBody9;
+
+dedust_reject_deposit#e1a36cd4 query_id:uint64 proof:^DedustPoolProof payload:(Maybe ^Cell) = InternalMsgBody9;
+
+dedust_cancel_deposit#166cedee query_id:uint64 payload:(Maybe ^Cell) = InternalMsgBody9;
+
+///
+/// Quote Providers
+///
+
+dedust_provide_current_quote#ad83913f query_id:uint64 custom_payload:(Maybe ^Cell) = InternalMsgBody;
+
+dedust_take_current_quote#a420458 query_id:uint64
+                           quote_numerator:uint128 quote_denominator:uint128
+                           custom_payload:(Maybe ^Cell) = InternalMsgBody;
+
+///
+/// Common
+///
+
+dedust_configure_trade_fee#c015297f query_id:uint64 trade_fee:uint16 = InternalMsgBody9;
+
+dedust_reset_gas_v2#26c63ab7 query_id:uint64 response_destination:MsgAddressInt = InternalMsgBody9;
+
+//
+// Operator
+//
+
+dedust_set_user_addr#48e5a95d query_id:uint64 user_addr:MsgAddress = InternalMsgBody9;
+dedust_forward#f1989255 query_id:uint64 destination:MsgAddressInt body:^Cell = InternalMsgBody9;

@@ -17,12 +17,11 @@ def load_asset(slice: Slice) -> Asset:
 class DedustDepositTONToVault:
     opcode = 0xD55E4686
 
-    # pool_params#_ pool_type:DedustPoolType asset0:DedustAsset asset1:DedustAsset = DedustPoolParams;
-    # deposit_liquidity#d55e4686 query_id:uint64 amount:Coins pool_params:DedustPoolParams
-    # params:^[ min_lp_amount:Coins
-    # asset0_target_balance:Coins asset1_target_balance:Coins ]
-    # fulfill_payload:(Maybe ^Cell)
-    # reject_payload:(Maybe ^Cell) = InMsgBody;
+    # _ min_lp_amount:Coins asset0_target_balance:Coins asset1_target_balance:Coins = DedustDepositLiquidityParams;
+    # dedust_deposit_liquidity#d55e4686 query_id:uint64 amount:Coins pool_params:DedustPoolParams
+    #         deposit_params:^DedustDepositLiquidityParams
+    #         fulfill_payload:(Maybe ^Cell)
+    #         reject_payload:(Maybe ^Cell) = InternalMsgBody0;
 
     def __init__(self, slice: Slice):
         assert slice.load_uint(32) == self.opcode

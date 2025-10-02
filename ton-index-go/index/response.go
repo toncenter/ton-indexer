@@ -115,6 +115,11 @@ type VestingContractsResponse struct {
 	AddressBook      AddressBook   `json:"address_book"`
 } // @name VestingContractsResponse
 
+type DecodeResponse struct {
+	Opcodes []string                 `json:"opcodes"`
+	Bodies  []map[string]interface{} `json:"bodies"`
+} // @name DecodeResponse
+
 // errors
 type RequestError struct {
 	Message string `json:"error"`
