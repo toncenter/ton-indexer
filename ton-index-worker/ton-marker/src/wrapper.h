@@ -49,6 +49,9 @@ struct TonMarkerBatchResponse* ton_marker_process_batch(const struct TonMarkerBa
 // free batch response
 void ton_marker_free_batch_response(struct TonMarkerBatchResponse* response);
 
+// free single string result (from decode_opcode, decode_boc, detect_interface)
+void ton_marker_free_string(const char* str);
+
 int test_funct();
 
 #ifdef __cplusplus
