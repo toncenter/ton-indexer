@@ -237,6 +237,10 @@ public:
                     dedust_pool_data.last_transaction_now = last_trans_now;
                     dedust_pool_data.code_hash = code_hash;
                     dedust_pool_data.data_hash = data_hash;
+                    dedust_pool_data.reserve_1 = arg.reserve_1;
+                    dedust_pool_data.reserve_2 = arg.reserve_2;
+                    dedust_pool_data.is_stable = arg.is_stable;
+                    dedust_pool_data.fee = arg.fee;
                     interfaces_[address].push_back(dedust_pool_data);
                 }
             }, interface);
