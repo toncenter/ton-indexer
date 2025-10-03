@@ -7,11 +7,11 @@
 #include "smc-interfaces/InterfacesDetector.h"
 
 using AllShardStates = std::vector<td::Ref<vm::Cell>>;
-using FullDetector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR, 
+using FullDetector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR,
                                      NftItemDetectorR, NftCollectionDetectorR,
                                      GetGemsNftAuction, GetGemsNftFixPriceSale,
                                      MultisigContract, MultisigOrder,
-                                     VestingContract>;
+                                     VestingContract, DedustPoolDetector>;
 
 class BlockInterfaceProcessor: public td::actor::Actor {
 private:
@@ -228,6 +228,20 @@ public:
                     vesting_data.code_hash = code_hash;
                     vesting_data.data_hash = data_hash;
                     interfaces_[address].push_back(vesting_data);
+                } else if constexpr (std::is_same_v<T, DedustPoolDetector::Result>) {
+                    DedustPoolData dedust_pool_data;
+                    dedust_pool_data.address = address;
+                    dedust_pool_data.asset_1 = arg.asset_1;
+                    dedust_pool_data.asset_2 = arg.asset_2;
+                    dedust_pool_data.last_transaction_lt = last_trans_lt;
+                    dedust_pool_data.last_transaction_now = last_trans_now;
+                    dedust_pool_data.code_hash = code_hash;
+                    dedust_pool_data.data_hash = data_hash;
+                    dedust_pool_data.reserve_1 = arg.reserve_1;
+                    dedust_pool_data.reserve_2 = arg.reserve_2;
+                    dedust_pool_data.is_stable = arg.is_stable;
+                    dedust_pool_data.fee = arg.fee;
+                    interfaces_[address].push_back(dedust_pool_data);
                 }
             }, interface);
         }
