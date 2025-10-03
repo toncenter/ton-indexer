@@ -1576,12 +1576,18 @@ std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
 
 std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 07f3c7b (Add universal table for dex pools. Add pool validation. Add pool fees and reserves)
   std::initializer_list<std::string_view> pools_column = {
     "address", "asset_1", "asset_2", "reserve_1", "reserve_2", "pool_type", "dex", "fee", "last_transaction_lt", "code_hash", "data_hash"
   };
 
+<<<<<<< HEAD
 =======
 >>>>>>> 6176be6 (Dedust pools indexing)
+=======
+>>>>>>> 07f3c7b (Add universal table for dex pools. Add pool validation. Add pool fees and reserves)
   std::unordered_map<block::StdAddress, DedustPoolData> dedust_pools;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
@@ -1596,6 +1602,7 @@ std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
     }
   }
 
+<<<<<<< HEAD
 <<<<<<< HEAD
   PopulateTableStream pools_stream(txn, "dex_pools", pools_column, 1000, false);
   pools_stream.setConflictDoUpdate({"address"}, "dex_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
@@ -1613,22 +1620,37 @@ std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
 
   for (const auto& [addr, dedust_pool] : dedust_pools) {
 >>>>>>> 6176be6 (Dedust pools indexing)
+=======
+  PopulateTableStream pools_stream(txn, "dex_pools", pools_column, 1000, false);
+  pools_stream.setConflictDoUpdate({"address"}, "dex_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
+  std::string dex = "dedust";
+  for (const auto& [addr, dedust_pool] : dedust_pools) {
+    std::string pool_type = dedust_pool.is_stable ? "stable" : "volatile";
+
+>>>>>>> 07f3c7b (Add universal table for dex pools. Add pool validation. Add pool fees and reserves)
     auto tuple = std::make_tuple(
       dedust_pool.address,
       dedust_pool.asset_1,
       dedust_pool.asset_2,
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 07f3c7b (Add universal table for dex pools. Add pool validation. Add pool fees and reserves)
       dedust_pool.reserve_1,
       dedust_pool.reserve_2,
       pool_type,
       dex,
       dedust_pool.fee,
+<<<<<<< HEAD
 =======
 >>>>>>> 6176be6 (Dedust pools indexing)
+=======
+>>>>>>> 07f3c7b (Add universal table for dex pools. Add pool validation. Add pool fees and reserves)
       dedust_pool.last_transaction_lt,
       dedust_pool.code_hash,
       dedust_pool.data_hash
     );
+<<<<<<< HEAD
 <<<<<<< HEAD
     pools_stream.insert_row(std::move(tuple));
   }
@@ -1639,6 +1661,12 @@ std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
   }
   return stream.get_str();
 >>>>>>> 6176be6 (Dedust pools indexing)
+=======
+    pools_stream.insert_row(std::move(tuple));
+  }
+
+  return pools_stream.get_str();
+>>>>>>> 07f3c7b (Add universal table for dex pools. Add pool validation. Add pool fees and reserves)
 }
 
 void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn, bool with_copy) {
