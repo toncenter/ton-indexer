@@ -1244,9 +1244,6 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSetting
 		}
 	}
 
-	// debug query info
-	log.Printf("debug: marking messages from query: %s", query)
-
 	// decode opcodes and bodies
 	if err := MarkMessages(msgs); err != nil {
 		hashes := make([]string, len(msgs))
