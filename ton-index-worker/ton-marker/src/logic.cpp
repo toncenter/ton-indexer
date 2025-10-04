@@ -7,7 +7,6 @@
 #include "td/utils/base64.h"
 #include "vm/excno.hpp"
 #include <set>
-#include <regex>
 
 namespace ton_marker {
 
@@ -59,14 +58,25 @@ std::string replace_boc_cells_recursive(const std::string& json_str, int depth =
         return json_str;
     }
     // find all BOC strings and replace them
-    std::regex boc_b64_pattern("\"(te6c[^\"]+)\"");
+    const std::string start_marker = "\"te6c";
+    const char end_marker = '"';
     std::string result = json_str;
     std::vector<std::pair<size_t, size_t>> matches; // (position, length)
-    std::sregex_iterator iter(result.begin(), result.end(), boc_b64_pattern);
-    std::sregex_iterator end;
-    for (; iter != end; ++iter) {
-        matches.emplace_back(iter->position(), iter->length());
+    
+    // find all matches first
+    size_t current_pos = 0;
+    while ((current_pos = result.find(start_marker, current_pos)) != std::string::npos) {
+        size_t value_start_pos = current_pos + 1; // skip opening quote
+        size_t end_pos = result.find(end_marker, value_start_pos);
+        if (end_pos != std::string::npos) {
+            size_t match_length = end_pos - current_pos + 1; // include both quotes
+            matches.emplace_back(current_pos, match_length);
+            current_pos = end_pos + 1;
+        } else {
+            break;
+        }
     }
+    
     // process matches in reverse order to avoid index shifting
     for (auto it = matches.rbegin(); it != matches.rend(); ++it) {
         size_t pos = it->first;
