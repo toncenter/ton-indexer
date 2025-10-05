@@ -34,7 +34,7 @@ nanograms$_ amount:(VarUInteger 16) = Grams;
 
 nanocoins$_ amount:(VarUInteger 16) = Coins;
 
-bit$_ (## 1) = Bit;
+_ bit:(## 1) = Bit;
 
 hashmap_edge#_ {n:#} {X:Type} {l:#} {m:#} label:(HmLabel ~l n)
           {n = (~m) + l} node:(HashmapNode m X) = Hashmap n X;
