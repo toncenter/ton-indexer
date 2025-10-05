@@ -125,9 +125,9 @@ public:
     std::optional<std::map<std::string, std::string>> collection_content;
   };
 
-  NftCollectionDetectorR(block::StdAddress address, 
+  NftCollectionDetectorR(block::StdAddress address,
                        td::Ref<vm::Cell> code_cell,
-                       td::Ref<vm::Cell> data_cell, 
+                       td::Ref<vm::Cell> data_cell,
                        AllShardStates shard_states,
                        std::shared_ptr<block::ConfigInfo> config,
                        td::Promise<Result> promise);
@@ -141,4 +141,39 @@ private:
   AllShardStates shard_states_;
   std::shared_ptr<block::ConfigInfo> config_;
   td::Promise<Result> promise_;
+};
+
+class DedustPoolDetector: public td::actor::Actor {
+public:
+  struct Result {
+    block::StdAddress address;
+    std::optional<block::StdAddress> asset_1;
+    std::optional<block::StdAddress> asset_2;
+    bool is_stable;
+    td::RefInt256 reserve_1;
+    td::RefInt256 reserve_2;
+    double fee;
+    td::Ref<vm::CellSlice> asset_1_slice;
+    td::Ref<vm::CellSlice> asset_2_slice;
+  };
+
+  DedustPoolDetector(block::StdAddress address,
+                     td::Ref<vm::Cell> code_cell,
+                     td::Ref<vm::Cell> data_cell,
+                     AllShardStates shard_states,
+                     std::shared_ptr<block::ConfigInfo> config,
+                     td::Promise<Result> promise);
+
+  void start_up() override;
+
+private:
+  block::StdAddress address_;
+  td::Ref<vm::Cell> code_cell_;
+  td::Ref<vm::Cell> data_cell_;
+  AllShardStates shard_states_;
+  std::shared_ptr<block::ConfigInfo> config_;
+  td::Promise<Result> promise_;
+
+  static bool get_asset(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress>& address);
+  void verify_with_factory(td::Ref<vm::Cell> factory_code, td::Ref<vm::Cell> factory_data, Result pool_data);
 };

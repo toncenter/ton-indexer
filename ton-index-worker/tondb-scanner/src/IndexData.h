@@ -612,6 +612,20 @@ struct MultisigOrderData {
   td::Bits256 data_hash;
 };
 
+struct DedustPoolData {
+  block::StdAddress address;
+  std::optional<block::StdAddress> asset_1;
+  std::optional<block::StdAddress> asset_2;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::RefInt256 reserve_1;
+  td::RefInt256 reserve_2;
+  bool is_stable;
+  double fee;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
 //
 // Containers
 //
@@ -638,15 +652,16 @@ using BlockchainInterface = std::variant<JettonMasterData,
                                          NFTItemData>;
 
 
-using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2, 
-                                           JettonMasterDataV2, 
-                                           NFTCollectionDataV2, 
+using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
+                                           JettonMasterDataV2,
+                                           NFTCollectionDataV2,
                                            NFTItemDataV2,
                                            GetGemsNftFixPriceSaleData,
                                            GetGemsNftAuctionData,
                                            MultisigContractData,
                                            MultisigOrderData,
-                                           VestingData>;
+                                           VestingData,
+                                           DedustPoolData>;
 
 namespace std {
 template <>
