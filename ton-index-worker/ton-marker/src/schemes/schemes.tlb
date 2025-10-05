@@ -34,7 +34,7 @@ nanograms$_ amount:(VarUInteger 16) = Grams;
 
 nanocoins$_ amount:(VarUInteger 16) = Coins;
 
-bit$_ (## 1) = Bit;
+_ bit:(## 1) = Bit;
 
 hashmap_edge#_ {n:#} {X:Type} {l:#} {m:#} label:(HmLabel ~l n)
           {n = (~m) + l} node:(HashmapNode m X) = Hashmap n X;
@@ -292,16 +292,16 @@ bidask_provide_both_forward_payload#3ea0bafc ton_amount:Coins deposit_type:uint4
 cron_trigger#2114702d reward_address:MsgAddress salt:uint32 = ExternalMsgBody;
 
 // cron_reward
-cron_reward#2e04891a = InternalMsgBody0;
+cron_reward#2e04891a rest:Any = InternalMsgBody0;
 
 // cron_notify
 cron_notify#d027efe5 init_state_hash:uint256 init_state_depth:uint10 = InternalMsgBody0;
 
 // cron_init
-cron_init#2e41d3ac = InternalMsgBody0;
+cron_init#2e41d3ac rest:Any = InternalMsgBody0;
 
 // cron_destroyed
-cron_destroyed#bbe27821 = InternalMsgBody0;
+cron_destroyed#bbe27821 rest:Any = InternalMsgBody0;
 
 // cron topupper
 w5_dns_renewal_calc_and_topup#56f6110e first_call_time:uint32 repeat_every:uint32 salt:uint32 reward:Coins owner_address:MsgAddressInt renewal_actions_cell:^Cell topup_amount:Coins msg_to_wallet_amount:Coins = InternalMsgBody0;
@@ -678,10 +678,10 @@ order_data#_ rate:uint256 lock:uint2 vesting_time:uint64 = MoonOrderParams;
 moon_swap#b37a900b query_id:uint64 amount:(VarUInteger 16) swap_params:MoonSwapParams = InternalMsgBody2;
 
 // moon_swap_succeed
-moon_swap_succeed#cb7f38d6 = InternalMsgBody2;
+moon_swap_succeed#cb7f38d6 rest:Any = InternalMsgBody2;
 
 // moon_swap_failed
-moon_swap_failed#c47c1f57 = InternalMsgBody2;
+moon_swap_failed#c47c1f57 rest:Any = InternalMsgBody2;
 
 // moon_deposit_liquidity
 moon_deposit_liquidity#b31db781 query_id:uint64 min_lp_out:(VarUInteger 16) = InternalMsgBody2;
@@ -715,16 +715,16 @@ moon_order_cancelled#49f48ee9 query_id:uint64 = InternalMsgBody2;
 moon_swap_forward_payload#b37a900b swap_params:MoonSwapParams = ForwardPayload;
 
 // moon_swap_succeed
-moon_swap_succeed_forward_payload#cb7f38d6 = ForwardPayload;
+moon_swap_succeed_forward_payload#cb7f38d6 rest:Any = ForwardPayload;
 
 // moon_swap_failed
-moon_swap_failed_forward_payload#c47c1f57 = ForwardPayload;
+moon_swap_failed_forward_payload#c47c1f57 rest:Any = ForwardPayload;
 
 // moon_deposit_liquidity
 moon_deposit_liquidity_forward_payload#b31db781 min_lp_out:(VarUInteger 16) = ForwardPayload;
 
 // moon_boost_pool
-moon_boost_pool_forward_payload#96aa1586 = ForwardPayload;
+moon_boost_pool_forward_payload#96aa1586 rest:Any = ForwardPayload;
 
 // moon_create_order
 moon_create_order_forward_payload#da067c19 asset1_id:MsgAddress asset2_id:MsgAddress order_data:MoonOrderParams = ForwardPayload;
@@ -898,7 +898,7 @@ settle_channel_conditionals#66f6f069
         = InternalMsgBody2;
 
 // finish_uncooperative_channel_close
-finish_uncooperative_channel_close#25432a91 = InternalMsgBody2;
+finish_uncooperative_channel_close#25432a91 rest:Any = InternalMsgBody2;
 
 // channel_closed
 channel_closed#dddc88ba channel_id:uint128 = InternalMsgBody2;
@@ -1135,10 +1135,10 @@ storm_update_position#60dfc677 direction:uint1 origin_opcode:uint32 index_price:
 storm_update_position_with_stop_loss#5d1b17b8 direction:uint1 stop_trigger_price:Coins take_trigger_price:Coins origin_opcode:uint32 index_price:Coins settlement_oracle_price:(Maybe Coins) position:^PositionChange amm:^AmmChange = InternalMsgBody4;
 
 // storm_order_created
-storm_order_created#3a943ce6 = InternalMsgBody4;
+storm_order_created#3a943ce6 rest:Any = InternalMsgBody4;
 
 // storm_order_canceled
-storm_order_canceled#69d08679 = InternalMsgBody4;
+storm_order_canceled#69d08679 rest:Any = InternalMsgBody4;
 
 // storm_vault_request_withdraw_position
 storm_vault_request_withdraw_position#0226df66 trader_addr:MsgAddress vamm_addr:MsgAddress amount:Coins gas_to_addr:MsgAddress withdraw_reason:uint32 = InternalMsgBody4;
@@ -1151,10 +1151,10 @@ storm_provide_position#8865b402 order_type:uint4 order_index:uint3 direction:uin
 // subscriptions_v1.xml
 
 // subscription_payment
-subscription_payment#73756273 = InternalMsgBody4;
+subscription_payment#73756273 rest:Any = InternalMsgBody4;
 
 // subscription_fallback
-subscription_fallback#756e6b77 = InternalMsgBody4;
+subscription_fallback#756e6b77 rest:Any = InternalMsgBody4;
 
 
 
@@ -1698,7 +1698,7 @@ whales_nominators_accept_stake#99a811fb query_id:uint64 members:Cell = InternalM
 whales_nominators_accept_withdraws#a19fd934 query_id:uint64 members:Cell = InternalMsgBody5;
 
 // tonkeeper_relayer_fee
-tonkeeper_relayer_fee_forward_payload#878da6e3 data:Any = ForwardPayload;
+tonkeeper_relayer_fee_forward_payload#878da6e3 rest:Any = ForwardPayload;
 
 // none_forward_payload#_ any:Any = ForwardPayload;
 
@@ -1736,17 +1736,17 @@ jvault_unstake_request#0168d4b7 query_id:uint64 jettons_to_unstake:Coins = Inter
 
 jvault_claim_rewards_msg#78d9f109 query_id:uint64 jettons_to_claim:(HashmapE 267 Bit) = InternalMsgBody6;
 
-jvault_send_claimed_rewards#44bc1fe3 data:Any = InternalMsgBody6;
+jvault_send_claimed_rewards#44bc1fe3 rest:Any = InternalMsgBody6;
 
-jvault_request_update_rewards#f5c5baa3 data:Any = InternalMsgBody6;
+jvault_request_update_rewards#f5c5baa3 rest:Any = InternalMsgBody6;
 
-jvault_update_rewards#ae9307ce data:Any = InternalMsgBody6;
+jvault_update_rewards#ae9307ce rest:Any = InternalMsgBody6;
 
-jvault_request_update_referrer#55c35b40 data:Any = InternalMsgBody6;
+jvault_request_update_referrer#55c35b40 rest:Any = InternalMsgBody6;
 
-jvault_update_referrer#076ee4e0 data:Any = InternalMsgBody6;
+jvault_update_referrer#076ee4e0 rest:Any = InternalMsgBody6;
 
-jvault_set_data#383411ea data:Any = InternalMsgBody6;
+jvault_set_data#383411ea rest:Any = InternalMsgBody6;
 
 // getgems
 sale_update_message#6c6c2080 query_id:uint64 new_full_price:Coins new_mp_fee:Coins new_royalty_amount:Coins = InternalMsgBody6;
@@ -1780,9 +1780,9 @@ w5_external_signed_request#7369676e {m:#} {n:#} request:(W5SignedRequest m n) = 
 w5_extension_action_request#6578746e {m:#} {n:#} query_id:uint64 request:(W5InnerRequest m n) = W5MsgBody m n;
 
 // just for opcode detection
-w5_internal_signed_request#73696e74 = InternalMsgBody8;
-w5_external_signed_request#7369676e = InternalMsgBody8;
-w5_extension_action_request#6578746e = InternalMsgBody8;
+w5_internal_signed_request#73696e74 rest:Any = InternalMsgBody8;
+w5_external_signed_request#7369676e rest:Any = InternalMsgBody8;
+w5_extension_action_request#6578746e rest:Any = InternalMsgBody8;
 
 
 // highload v3
@@ -1790,7 +1790,7 @@ w5_extension_action_request#6578746e = InternalMsgBody8;
 highload_v3_internal_request#ae42e5a4 {n:#} query_id:uint64 actions:^(OutList n) = HighloadV3InternalRequest n;
 
 // just for opcode detection
-highload_v3_internal_request#ae42e5a4 = InternalMsgBody8;
+highload_v3_internal_request#ae42e5a4 rest:Any = InternalMsgBody8;
 
 // may be done later:
 // _ shift:uint13 bit_number:(## 10) { bit_number >= 0 } { bit_number < 1023 } = QueryId;
@@ -2028,7 +2028,7 @@ sw_withdraw_empty$_ = SWWithdrawEmpty;
 // sw_general$_ include_user_code:BoolExtended ton_amount_for_repay_remainings:EvaaAmount
 //              custom_response_payload:^Cell opt:SupplyWithdrawMasterOptional = SWGeneral;
 sw_general$_ include_user_code:BoolExtended ton_amount_for_repay_remainings:EvaaAmount
-             custom_response_payload:^Cell swm_opt_data:Any = SWGeneral;
+             custom_response_payload:^Cell swm_opt_rest:Any = SWGeneral;
 sw_general_user$_ ton_amount_for_repay_remainings:EvaaAmount custom_response_payload:^Cell
                   _:SupplyMasterWithdrawExtData = SWGeneralUser;
 
@@ -2128,7 +2128,7 @@ pyth_response_error#00010002 error_code:uint32 original_op_code:uint32 original_
 evaa_get_store_request#00009998 query_id:uint64 body_data:^Cell = InternalMsgBody7;
 evaa_get_store_response#00009999 query_id:uint64 body_data:^Cell storage:MasterStorage = InternalMsgBody7;
 
-evaa_add_to_reserve#00000a99 = InternalMsgBody7;
+evaa_add_to_reserve#00000a99 rest:Any = InternalMsgBody7;
 
 
 /* Other master commands (admin only) */
