@@ -106,6 +106,13 @@
         dest: "{{ deploy_path }}/{{ service_name }}"
         mode: "0777"
         force: true
+    
+    - name: Copy libton-marker
+      ansible.builtin.copy:
+        src: "{{ build_path }}/ton-index-worker/ton-marker/libton-marker.so"
+        dest: /usr/lib/libton-marker.so
+        mode: "0777"
+        force: true
 
     - name: Create systemd service from template
       ansible.builtin.template:
