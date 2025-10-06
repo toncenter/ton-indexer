@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -267,9 +268,6 @@ func GetTransactions(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	// if len(txs) == 0 {
-	// 	return index.IndexError{Code: 404, Message: "transactions not found"}
-	// }
 
 	txs_resp := index.TransactionsResponse{Transactions: txs, AddressBook: book}
 	return c.JSON(txs_resp)
@@ -472,7 +470,7 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @param only_externals query bool false "Return only external messages."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
-// @param sort query string false "Sort transactions by lt." Enums(asc, desc) default(desc)
+// @param sort query string false "Sort transactions by lt. If set to `desc`, you better set `start_lt = 1` to get latest messages." Enums(asc, desc) default(desc)
 // @router			/api/v3/messages [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -668,7 +666,8 @@ func GetWalletStates(c *fiber.Ctx) error {
 // @Produce json
 // @success 200 {object} index.DNSRecordsResponse
 // @failure 400 {object} index.RequestError
-// @param wallet query string true "Wallet address in any form. DNS records that contain this address in wallet category will be returned."
+// @param wallet query string false "Wallet address in any form. DNS records that contain this address in wallet category will be returned."
+// @param domain query string false "Domain name to search for. DNS records with this exact domain name will be returned."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(100)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router /api/v3/dns/records [get]
@@ -685,8 +684,15 @@ func GetDNSRecords(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
 
-	if req.WalletAddress == nil || len(*req.WalletAddress) == 0 {
-		return index.IndexError{Code: 422, Message: "wallet address is required"}
+	hasWallet := req.WalletAddress != nil && len(*req.WalletAddress) > 0
+	hasDomain := req.Domain != nil && len(*req.Domain) > 0
+
+	if !hasWallet && !hasDomain {
+		return index.IndexError{Code: 422, Message: "either wallet address or domain is required"}
+	}
+
+	if hasWallet && hasDomain {
+		return index.IndexError{Code: 422, Message: "provide either wallet address or domain, not both"}
 	}
 
 	res, book, err := pool.QueryDNSRecords(lim_req, req, request_settings)
@@ -1784,6 +1790,120 @@ func GetBalanceChanges(c *fiber.Ctx) error {
 	return c.Status(200).JSON(res)
 }
 
+// @summary Decode Opcodes and Bodies
+// @description Decode opcodes and message bodies. Opcodes can be in hex (with or without 0x prefix) or decimal format. Bodies should be in base64 or hex format.
+// @id api_v3_get_decode
+// @tags utils
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	index.DecodeResponse
+// @failure		400	{object}	index.RequestError
+// @param opcodes query []string false "List of opcodes to decode (hex or decimal)" collectionFormat(multi)
+// @param bodies query []string false "List of message bodies to decode (base64 or hex)" collectionFormat(multi)
+// @router			/api/v3/decode [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetDecode(c *fiber.Ctx) error {
+	var req index.DecodeRequest
+	if err := c.QueryParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(req.Opcodes) > 1000 {
+		return index.IndexError{Code: 422, Message: "opcodes list exceeds maximum length of 1000"}
+	}
+	if len(req.Bodies) > 1000 {
+		return index.IndexError{Code: 422, Message: "bodies list exceeds maximum length of 1000"}
+	}
+
+	return processDecode(c, req)
+}
+
+// @summary Decode Opcodes and Bodies
+// @description Decode opcodes and message bodies. Opcodes can be in hex (with or without 0x prefix) or decimal format. Bodies should be in base64 or hex format. Use POST method for long parameters that may be truncated in GET requests.
+// @id api_v3_post_decode
+// @tags utils
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	index.DecodeResponse
+// @failure		400	{object}	index.RequestError
+// @param request body index.DecodeRequest true "Decode request"
+// @router			/api/v3/decode [post]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func PostDecode(c *fiber.Ctx) error {
+	var req index.DecodeRequest
+	if err := c.BodyParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(req.Opcodes) > 1000 {
+		return index.IndexError{Code: 422, Message: "opcodes list exceeds maximum length of 1000"}
+	}
+	if len(req.Bodies) > 1000 {
+		return index.IndexError{Code: 422, Message: "bodies list exceeds maximum length of 1000"}
+	}
+
+	return processDecode(c, req)
+}
+
+func processDecode(c *fiber.Ctx, req index.DecodeRequest) error {
+	// parse opcodes from strings to uint32
+	opcodes := make([]uint32, len(req.Opcodes))
+	for i, opcodeStr := range req.Opcodes {
+		opcodeStr = strings.TrimPrefix(opcodeStr, "0x")
+		var opcode uint64
+		var err error
+		// try hex first
+		if opcode, err = strconv.ParseUint(opcodeStr, 16, 32); err != nil {
+			// try decimal
+			if opcode, err = strconv.ParseUint(opcodeStr, 10, 32); err != nil {
+				// try signed decimal
+				if signedOpcode, err2 := strconv.ParseInt(opcodeStr, 10, 32); err2 == nil {
+					opcodes[i] = uint32(signedOpcode)
+					continue
+				}
+				return index.IndexError{Code: 422, Message: fmt.Sprintf("invalid opcode format at index %d: %s", i, opcodeStr)}
+			}
+		}
+		opcodes[i] = uint32(opcode)
+	}
+
+	// bodies are already strings, just pass them through
+	bodies := req.Bodies
+
+	// call marker request
+	decodedOpcodes, decodedBodies, _, err := index.MarkerRequest(opcodes, bodies, nil)
+	if err != nil {
+		return index.IndexError{Code: 500, Message: fmt.Sprintf("marker request failed: %v", err)}
+	}
+
+	// prepare response
+	response := index.DecodeResponse{
+		Opcodes: make([]string, len(decodedOpcodes)),
+		Bodies:  make([]map[string]interface{}, len(decodedBodies)),
+	}
+
+	// fill opcodes, keep unknown as is
+	copy(response.Opcodes, decodedOpcodes)
+
+	// parse bodies json
+	for i, decoded := range decodedBodies {
+		if strings.HasPrefix(decoded, "unknown") {
+			response.Bodies[i] = nil
+		} else {
+			var bodyMap map[string]interface{}
+			if err := json.Unmarshal([]byte(decoded), &bodyMap); err != nil {
+				response.Bodies[i] = map[string]interface{}{"failed_to_decode_json": decoded}
+			} else {
+				response.Bodies[i] = bodyMap
+			}
+		}
+	}
+
+	return c.Status(200).JSON(response)
+}
+
 func HealthCheck(c *fiber.Ctx) error {
 	return c.Status(200).SendString("OK")
 }
@@ -2125,6 +2245,10 @@ func main() {
 	app.Get("/api/v3/balanceChanges", GetBalanceChanges)
 	app.Get("/api/v3/pendingTraces", GetPendingTraces)
 	app.Get("/api/v3/pendingActions", GetPendingActions)
+
+	// utils
+	app.Get("/api/v3/decode", GetDecode)
+	app.Post("/api/v3/decode", PostDecode)
 
 	// api/v2 proxied
 	app.Get("/api/v3/addressInformation", GetV2AddressInformation)

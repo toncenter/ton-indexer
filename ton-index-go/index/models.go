@@ -106,6 +106,7 @@ type AccountStateFull struct {
 	DataBoc                *string           `json:"data_boc,omitempty"`
 	CodeBoc                *string           `json:"code_boc,omitempty"`
 	ContractMethods        *[]uint32         `json:"contract_methods"`
+	Interfaces             *[]string         `json:"interfaces"`
 } // @name AccountStateFull
 
 type WalletState struct {
@@ -156,8 +157,9 @@ type Block struct {
 } // @name Block
 
 type DecodedContent struct {
-	Type    string `json:"type"`
-	Comment string `json:"comment"`
+	Type    string      `json:"type"`
+	Comment *string     `json:"comment,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
 } // @name DecodedContent
 
 type MessageContent struct {
@@ -181,6 +183,7 @@ type Message struct {
 	CreatedLt            *uint64           `json:"created_lt,string"`
 	CreatedAt            *uint32           `json:"created_at,string"`
 	Opcode               *OpcodeType       `json:"opcode"`
+	DecodedOpcode        *string           `json:"decoded_opcode"`
 	IhrDisabled          *bool             `json:"ihr_disabled"`
 	Bounce               *bool             `json:"bounce"`
 	Bounced              *bool             `json:"bounced"`
@@ -349,21 +352,23 @@ type NFTItem struct {
 } // @name NFTItem
 
 type NFTTransfer struct {
-	QueryId              string          `json:"query_id"`
-	NftItemAddress       AccountAddress  `json:"nft_address"`
-	NftItemIndex         string          `json:"-"`
-	NftCollectionAddress AccountAddress  `json:"nft_collection"`
-	TransactionHash      HashType        `json:"transaction_hash"`
-	TransactionLt        int64           `json:"transaction_lt,string"`
-	TransactionNow       int64           `json:"transaction_now"`
-	TransactionAborted   bool            `json:"transaction_aborted"`
-	OldOwner             AccountAddress  `json:"old_owner"`
-	NewOwner             AccountAddress  `json:"new_owner"`
-	ResponseDestination  *AccountAddress `json:"response_destination"`
-	CustomPayload        *string         `json:"custom_payload"`
-	ForwardAmount        *string         `json:"forward_amount"`
-	ForwardPayload       *string         `json:"forward_payload"`
-	TraceId              *HashType       `json:"trace_id"`
+	QueryId               string          `json:"query_id"`
+	NftItemAddress        AccountAddress  `json:"nft_address"`
+	NftItemIndex          string          `json:"-"`
+	NftCollectionAddress  AccountAddress  `json:"nft_collection"`
+	TransactionHash       HashType        `json:"transaction_hash"`
+	TransactionLt         int64           `json:"transaction_lt,string"`
+	TransactionNow        int64           `json:"transaction_now"`
+	TransactionAborted    bool            `json:"transaction_aborted"`
+	OldOwner              AccountAddress  `json:"old_owner"`
+	NewOwner              AccountAddress  `json:"new_owner"`
+	ResponseDestination   *AccountAddress `json:"response_destination"`
+	CustomPayload         *string         `json:"custom_payload"`
+	DecodedCustomPayload  *DecodedContent `json:"decoded_custom_payload"`
+	ForwardAmount         *string         `json:"forward_amount"`
+	ForwardPayload        *string         `json:"forward_payload"`
+	DecodedForwardPayload *DecodedContent `json:"decoded_forward_payload"`
+	TraceId               *HashType       `json:"trace_id"`
 } // @name NFTTransfer
 
 // jettons
@@ -401,36 +406,39 @@ type JettonWallet struct {
 } // @name JettonWallet
 
 type JettonTransfer struct {
-	QueryId             string          `json:"query_id"`
-	Source              AccountAddress  `json:"source"`
-	Destination         AccountAddress  `json:"destination"`
-	Amount              string          `json:"amount"`
-	SourceWallet        AccountAddress  `json:"source_wallet"`
-	JettonMaster        AccountAddress  `json:"jetton_master"`
-	TransactionHash     HashType        `json:"transaction_hash"`
-	TransactionLt       int64           `json:"transaction_lt,string"`
-	TransactionNow      int64           `json:"transaction_now"`
-	TransactionAborted  bool            `json:"transaction_aborted"`
-	ResponseDestination *AccountAddress `json:"response_destination"`
-	CustomPayload       *string         `json:"custom_payload"`
-	ForwardTonAmount    *string         `json:"forward_ton_amount"`
-	ForwardPayload      *string         `json:"forward_payload"`
-	TraceId             *HashType       `json:"trace_id"`
+	QueryId               string          `json:"query_id"`
+	Source                AccountAddress  `json:"source"`
+	Destination           AccountAddress  `json:"destination"`
+	Amount                string          `json:"amount"`
+	SourceWallet          AccountAddress  `json:"source_wallet"`
+	JettonMaster          AccountAddress  `json:"jetton_master"`
+	TransactionHash       HashType        `json:"transaction_hash"`
+	TransactionLt         int64           `json:"transaction_lt,string"`
+	TransactionNow        int64           `json:"transaction_now"`
+	TransactionAborted    bool            `json:"transaction_aborted"`
+	ResponseDestination   *AccountAddress `json:"response_destination"`
+	CustomPayload         *string         `json:"custom_payload"`
+	DecodedCustomPayload  *DecodedContent `json:"decoded_custom_payload"`
+	ForwardTonAmount      *string         `json:"forward_ton_amount"`
+	ForwardPayload        *string         `json:"forward_payload"`
+	DecodedForwardPayload *DecodedContent `json:"decoded_forward_payload"`
+	TraceId               *HashType       `json:"trace_id"`
 } // @name JettonTransfer
 
 type JettonBurn struct {
-	QueryId             string          `json:"query_id"`
-	Owner               AccountAddress  `json:"owner"`
-	JettonWallet        AccountAddress  `json:"jetton_wallet"`
-	JettonMaster        AccountAddress  `json:"jetton_master"`
-	TransactionHash     HashType        `json:"transaction_hash"`
-	TransactionLt       int64           `json:"transaction_lt,string"`
-	TransactionNow      int64           `json:"transaction_now"`
-	TransactionAborted  bool            `json:"transaction_aborted"`
-	Amount              string          `json:"amount"`
-	ResponseDestination *AccountAddress `json:"response_destination"`
-	CustomPayload       *string         `json:"custom_payload"`
-	TraceId             *HashType       `json:"trace_id"`
+	QueryId              string          `json:"query_id"`
+	Owner                AccountAddress  `json:"owner"`
+	JettonWallet         AccountAddress  `json:"jetton_wallet"`
+	JettonMaster         AccountAddress  `json:"jetton_master"`
+	TransactionHash      HashType        `json:"transaction_hash"`
+	TransactionLt        int64           `json:"transaction_lt,string"`
+	TransactionNow       int64           `json:"transaction_now"`
+	TransactionAborted   bool            `json:"transaction_aborted"`
+	Amount               string          `json:"amount"`
+	ResponseDestination  *AccountAddress `json:"response_destination"`
+	CustomPayload        *string         `json:"custom_payload"`
+	DecodedCustomPayload *DecodedContent `json:"decoded_custom_payload"`
+	TraceId              *HashType       `json:"trace_id"`
 } // @name JettonBurn
 
 type RawActionJettonSwapPeerSwap struct {

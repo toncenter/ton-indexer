@@ -813,6 +813,8 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("create type layerzero_send_details as (send_request_id numeric, msglib_manager varchar, msglib varchar, uln tonaddr, native_fee numeric, zro_fee numeric, endpoint tonaddr, channel tonaddr);");
     exec_query("create type layerzero_packet_details as (src_oapp varchar, dst_oapp varchar, src_eid integer, dst_eid integer, nonce numeric, guid varchar, message varchar);");
     exec_query("create type layerzero_dvn_verify_details as (nonce numeric, status varchar, dvn tonaddr, proxy tonaddr, uln tonaddr, uln_connection tonaddr);");
+    exec_query("create type pool_type as enum ('stable', 'volatile');");
+    exec_query("create type dex_type as enum ('dedust');");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -838,6 +840,22 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
       "INSERT INTO ton_db_version (id, major, minor, patch) "
       "VALUES (1, 1, 2, 1) ON CONFLICT(id) DO UPDATE "
       "SET major = 1, minor = 2, patch = 2;\n"
+    );
+
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "asset_1 tonaddr, "
+      "asset_2 tonaddr, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "pool_type pool_type, "
+      "dex dex_type, "
+      "fee double precision, "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash);\n"
     );
 
     if (dry_run) {

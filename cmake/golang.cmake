@@ -7,14 +7,14 @@ endfunction(ExternalGoProject_Add)
 
 function(add_go_executable NAME)
   file(GLOB GO_SOURCE RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*.go")
-  add_custom_command(OUTPUT ${OUTPUT_DIR}/.timestamp 
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${NAME}.timestamp 
     COMMAND env GOPATH=${GOPATH} ${CMAKE_Go_COMPILER} build
     -o "${CMAKE_CURRENT_BINARY_DIR}/${NAME}"
     ${CMAKE_GO_FLAGS} ${GO_SOURCE}
     WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
     COMMENT "Building Go executable ${NAME}")
 
-  add_custom_target(${NAME} ALL DEPENDS ${OUTPUT_DIR}/.timestamp ${ARGN})
+  add_custom_target(${NAME} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${NAME}.timestamp ${ARGN})
   install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/${NAME} DESTINATION bin)
 endfunction(add_go_executable)
 
@@ -27,13 +27,13 @@ add_custom_command(
 add_custom_target(install_swag DEPENDS ${GOPATH}/bin/swag)
 
 function(generate_swagger NAME)
-  add_custom_command(OUTPUT ${OUTPUT_DIR}/swagger.timestamp
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${NAME}-swagger.timestamp
     COMMAND ${GOPATH}/bin/swag init
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Generating Swagger docs with swag init"
     DEPENDS install_swag)
 
-  add_custom_target(${NAME}-swagger ALL DEPENDS ${OUTPUT_DIR}/swagger.timestamp ${ARGN})
+  add_custom_target(${NAME}-swagger ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${NAME}-swagger.timestamp ${ARGN})
   add_dependencies(${NAME} ${NAME}-swagger)
 endfunction(generate_swagger)
 
@@ -51,13 +51,13 @@ function(ADD_GO_LIBRARY NAME BUILD_TYPE)
   endif()
 
   file(GLOB GO_SOURCE RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*.go")
-  add_custom_command(OUTPUT ${OUTPUT_DIR}/.timestamp
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${NAME}.timestamp
     COMMAND env GOPATH=${GOPATH} ${CMAKE_Go_COMPILER} build ${BUILD_MODE}
     -o "${CMAKE_CURRENT_BINARY_DIR}/${LIB_NAME}"
     ${CMAKE_GO_FLAGS} ${GO_SOURCE}
     WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
 
-  add_custom_target(${NAME} ALL DEPENDS ${OUTPUT_DIR}/.timestamp ${ARGN})
+  add_custom_target(${NAME} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${NAME}.timestamp ${ARGN})
 
   if(NOT BUILD_TYPE STREQUAL "STATIC")
     install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/${LIB_NAME} DESTINATION bin)

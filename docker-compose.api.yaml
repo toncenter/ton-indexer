@@ -11,8 +11,8 @@ services:
   index-api-go:
     image: ${DOCKER_REGISTRY:-localhost:5000}/ton-index-go:${IMAGE_TAG:?}
     build:
-      context: ton-index-go
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ton-index-go/Dockerfile
     secrets:
       - postgres_password
     command: -prefork -threads ${TON_INDEXER_WORKERS:-1}

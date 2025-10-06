@@ -78,6 +78,7 @@ private:
   std::string insert_multisig_contracts(pqxx::work &txn);
   std::string insert_multisig_orders(pqxx::work &txn);
   std::string insert_vesting(pqxx::work &txn);
+  std::string insert_dedust_pools(pqxx::work &txn);
   void insert_contract_methods(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
 
