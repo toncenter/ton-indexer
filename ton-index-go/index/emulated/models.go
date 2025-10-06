@@ -430,6 +430,36 @@ type actionCoffeeStakingWithdrawDetails struct {
 	Points     *string `msgpack:"points"`
 }
 
+type actionLayerzeroSendDetails struct {
+	SendRequestId *uint64 `msgpack:"send_request_id"`
+	MsglibManager *string `msgpack:"msglib_manager"`
+	Msglib        *string `msgpack:"msglib"`
+	Uln           *string `msgpack:"uln"`
+	NativeFee     *uint64 `msgpack:"native_fee"`
+	ZroFee        *uint64 `msgpack:"zro_fee"`
+	Endpoint      *string `msgpack:"endpoint"`
+	Channel       *string `msgpack:"channel"`
+}
+
+type actionLayerzeroPacketDetails struct {
+	SrcOapp *string `msgpack:"src_oapp"`
+	DstOapp *string `msgpack:"dst_oapp"`
+	SrcEid  *int32  `msgpack:"src_eid"`
+	DstEid  *int32  `msgpack:"dst_eid"`
+	Nonce   *int64  `msgpack:"nonce"`
+	Guid    *string `msgpack:"guid"`
+	Message *string `msgpack:"message"`
+}
+
+type actionLayerzeroDvnVerifyDetails struct {
+	Nonce         *int64  `msgpack:"nonce"`
+	Status        *string `msgpack:"status"` // "succeeded" | "nonce_out_of_range" | "dvn_not_configured" | "unknown_<code>"
+	Dvn           *string `msgpack:"dvn"`
+	Proxy         *string `msgpack:"proxy"`
+	Uln           *string `msgpack:"uln"`
+	UlnConnection *string `msgpack:"uln_connection"`
+}
+
 type Action struct {
 	ActionId                  string                              `msgpack:"action_id"`
 	Type                      string                              `msgpack:"type"`
@@ -484,6 +514,9 @@ type Action struct {
 	CoffeeCreatePoolData      *actionCoffeeCreatePoolDetails      `msgpack:"coffee_create_pool_data"`
 	CoffeeStakingDepositData  *actionCoffeeStakingDepositDetails  `msgpack:"coffee_staking_deposit_data"`
 	CoffeeStakingWithdrawData *actionCoffeeStakingWithdrawDetails `msgpack:"coffee_staking_withdraw_data"`
+	LayerzeroSendData         *actionLayerzeroSendDetails         `msgpack:"layerzero_send_data"`
+	LayerzeroPacketData       *actionLayerzeroPacketDetails       `msgpack:"layerzero_packet_data"`
+	LayerzeroDvnVerifyData    *actionLayerzeroDvnVerifyDetails    `msgpack:"layerzero_dvn_verify_data"`
 }
 
 type blockId struct {
@@ -1216,6 +1249,33 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.CoffeeStakingWithdrawNftAddress = a.CoffeeStakingWithdrawData.NftAddress
 		row.CoffeeStakingWithdrawNftIndex = a.CoffeeStakingWithdrawData.NftIndex
 		row.CoffeeStakingWithdrawPoints = a.CoffeeStakingWithdrawData.Points
+	}
+	if a.LayerzeroSendData != nil {
+		row.LayerzeroSendSendRequestId = a.LayerzeroSendData.SendRequestId
+		row.LayerzeroSendMsglibManager = a.LayerzeroSendData.MsglibManager
+		row.LayerzeroSendMsglib = a.LayerzeroSendData.Msglib
+		row.LayerzeroSendUln = a.LayerzeroSendData.Uln
+		row.LayerzeroSendNativeFee = a.LayerzeroSendData.NativeFee
+		row.LayerzeroSendZroFee = a.LayerzeroSendData.ZroFee
+		row.LayerzeroSendEndpoint = a.LayerzeroSendData.Endpoint
+		row.LayerzeroSendChannel = a.LayerzeroSendData.Channel
+	}
+	if a.LayerzeroPacketData != nil {
+		row.LayerzeroPacketSrcOapp = a.LayerzeroPacketData.SrcOapp
+		row.LayerzeroPacketDstOapp = a.LayerzeroPacketData.DstOapp
+		row.LayerzeroPacketSrcEid = a.LayerzeroPacketData.SrcEid
+		row.LayerzeroPacketDstEid = a.LayerzeroPacketData.DstEid
+		row.LayerzeroPacketNonce = a.LayerzeroPacketData.Nonce
+		row.LayerzeroPacketGuid = a.LayerzeroPacketData.Guid
+		row.LayerzeroPacketMessage = a.LayerzeroPacketData.Message
+	}
+	if a.LayerzeroDvnVerifyData != nil {
+		row.LayerzeroDvnVerifyNonce = a.LayerzeroDvnVerifyData.Nonce
+		row.LayerzeroDvnVerifyStatus = a.LayerzeroDvnVerifyData.Status
+		row.LayerzeroDvnVerifyDvn = a.LayerzeroDvnVerifyData.Dvn
+		row.LayerzeroDvnVerifyProxy = a.LayerzeroDvnVerifyData.Proxy
+		row.LayerzeroDvnVerifyUln = a.LayerzeroDvnVerifyData.Uln
+		row.LayerzeroDvnVerifyUlnConnection = a.LayerzeroDvnVerifyData.UlnConnection
 	}
 	return row, nil
 }

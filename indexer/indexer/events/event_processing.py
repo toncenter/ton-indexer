@@ -27,6 +27,7 @@ from indexer.events.blocks.basic_blocks import (
     TickTockBlock,
     TonTransferBlock,
 )
+
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import ChangeDnsRecordMatcher
 from indexer.events.blocks.elections import (
@@ -114,6 +115,7 @@ from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlockMatcher,
     VestingSendMessageBlockMatcher,
 )
+from indexer.events.blocks.layerzero import LayerZeroCommitPacketMatcher, LayerZeroDvnVerifyMatcher, LayerZeroReceiveMatcher, LayerZeroSendMatcher, LayerZeroSendTokensMatcher
 
 from indexer.events.blocks.tgbtc import TgBTCBurnBlockMatcher, TgBTCMintBlockMatcher, TgBTCNewKeyBlockMatcher
 from indexer.events.blocks.tgbtc import TgBTCMintLogOnlyMatcher, TgBTCBurnLogOnlyMatcher, TgBTCNewKeyLogOnlyMatcher, TgBTCDkgLogOnlyMatcher
@@ -262,7 +264,12 @@ matchers = [
     CoffeeMevProtectFailedSwapMatcher(),
     CoffeeStakingDepositMatcher(),
     CoffeeStakingWithdrawMatcher(),
-    CoffeeStakingClaimRewardsMatcher()
+    CoffeeStakingClaimRewardsMatcher(),
+    LayerZeroSendMatcher(),
+    LayerZeroSendTokensMatcher(),
+    LayerZeroReceiveMatcher(),
+    LayerZeroCommitPacketMatcher(),
+    LayerZeroDvnVerifyMatcher()
 ]
 
 trace_post_processors = [

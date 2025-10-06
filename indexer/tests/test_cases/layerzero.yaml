@@ -1,0 +1,165 @@
+cases:
+  LayerZero send msg to tron:
+    trace-id: 01yfeTlzIHDqWZwz-PJTRADD3nDv5LWynHMGsnPZGJU=
+    expected-actions:
+      - type: layerzero_send
+        values:
+          source: 0:170725394AA56136FBD27D0CE31D8A98E0F8AE72A4D2379B5DDE83E211A2D5FA # initiator
+          layerzero_send_data:
+            send_request_id: 90
+            native_fee: 14835102020
+            zro_fee: 0
+            endpoint: 0:02A7E49D90DF81A1944DAC9241F477DBB17CB0C87313EAF2C58A13D85EF942D3
+            channel: 0:1348A0E6846379668D3AFB785299609F3930EE80A177F4C88263E3741DB3D90F
+            uln: 0:063BDFBF347F883DDBA72A200563570AF2DC72695B2B2FCCAAECD113688AC570
+            msglib_manager: "0x150645746e25be5486eb3b2f5d98b44c6b324697c48d495d059f96fc9d3ec368"
+            msglib: "0x63bdfbf347f883ddba72a200563570af2dc72695b2b2fccaaecd113688ac570"
+          layerzero_packet_data:
+            src_oapp: "0x170725394aa56136fbd27d0ce31d8a98e0f8ae72a4d2379b5dde83e211a2d5fa"
+            dst_oapp: "0x8925c1dd3e5d8011946a3430d91be742ba8ee930"
+            src_eid: 30343
+            dst_eid: 30420 # tron
+            nonce: 90
+            guid: "0x46c71599bf21b54d59bd078d0bae22878154b16c1216fb6b83b0edf3a1167476"
+            message: "0x000300000000000000000000000000000000000000e1320ab3ea00000000000000000000000000000000"
+
+  LayerZero send usdt to eth:
+    trace-id: KEbatIe0U3ZHIx6sYTg4O1tgYP9L6hMiHJ8nNnZdyBE=
+    expected-actions:
+      - type: layerzero_send_tokens
+        values:
+          source: 0:4884FB969A34FB7CFF95A26B935AC784F09356BF6ABB4187EC550D486709CC93 # sender 
+          source_secondary: 0:8CABD31233D389C6B739F6572944E713D135AA18EC00FE37592033E099C0A9A6 # sender wallet
+          destination: 0:170725394AA56136FBD27D0CE31D8A98E0F8AE72A4D2379B5DDE83E211A2D5FA # oapp
+          destination_secondary: 0:11AED1BF5C0388791EEA499DB0A40033E34A5E7C86DE1A0A9400204795596856 # oapp wallet
+          asset: 0:B113A994B5024A16719F69139328EB759596C38A25F59028B146FECDC3621DFE # asset
+          amount: 10000 # amount
+          layerzero_send_data:
+            send_request_id: 531
+            native_fee: 170162108
+            zro_fee: 0
+            endpoint: 0:0B0C4E7F053C490B93640B75945F70D8477758D562A0B64E295C7587B34A231C
+            channel: 0:25EC9F03589F3DDD170A9AD8B8C85213F7D12489A9B260C537499AAFA8A0E309
+            uln: 0:0F59D60C2B3724C1662C9AF5223D532D540E2214462424A85AAA4E841844A1BC
+            msglib_manager: "0x150645746e25be5486eb3b2f5d98b44c6b324697c48d495d059f96fc9d3ec368"
+            msglib: "0xf59d60c2b3724c1662c9af5223d532d540e2214462424a85aaa4e841844a1bc"
+          layerzero_packet_data:
+            src_oapp: "0x170725394aa56136fbd27d0ce31d8a98e0f8ae72a4d2379b5dde83e211a2d5fa"
+            dst_oapp: "0x811ed79db9d34e83bdb73df6c3e07961cfb0d5c0"
+            src_eid: 30343
+            dst_eid: 30101 # eth
+            nonce: 517
+            guid: "0xa0b6fa1485a8e904d1bf5c702f99936ceb8ab32730b2cd501071dc92456da7cb"
+            message: "0x00020000000000000000000000000378cca455f3befef687f9f7668b13eaa03f007c000000000000270d"
+
+  LayerZero send some test msg from ton to ton lol:
+    trace-id: 0_AQj88LwG2cEpyjulN9yyJWzx8_ymJMizzoR_FfDzU=
+    expected-actions:
+      - type: layerzero_send
+        values:
+          source: 0:AD526844E8E484DEA2F30053D5A0515FB86F00E0BE0C835C0E7B4AC98D4F38E8 # initiator
+          layerzero_send_data:
+              send_request_id: 5
+              native_fee: 904980038
+              zro_fee: 0
+              endpoint: 0:BA92D918248098831404784B68FB2FF4B7CF6567146C8FC34004236C98D6A2A4
+              channel: 0:971A687BBCBCF874C1C51839C0D1E13E8D3062E9ECCD41BA01DB199EA17CE0BD
+              uln: 0:D67E3C609E47F56EA336FA897A61283E26316A7729362C149B282DBC6C8331B5
+              msglib_manager: "0x150645746e25be5486eb3b2f5d98b44c6b324697c48d495d059f96fc9d3ec368"
+              msglib: "0xd67e3c609e47f56ea336fa897a61283e26316a7729362c149b282dbc6c8331b5"
+          layerzero_packet_data:
+              src_oapp: "0xad526844e8e484dea2f30053d5a0515fb86f00e0be0c835c0e7b4ac98d4f38e8"
+              dst_oapp: "0xad526844e8e484dea2f30053d5a0515fb86f00e0be0c835c0e7b4ac98d4f38e8"
+              src_eid: 30343
+              dst_eid: 30343
+              nonce: 5
+              guid: "0x37c20f4f7e4ad59fbd9c5b22dc6c73c595da305612cbf02fab8adc606693d0e5"
+              message: "0x010000768700000000"
+
+  LayerZero commit packet:
+    trace-id: 0vFe6hsNR4q75AjTQnOm7B1eoX9ZUDoNrsxeil6PY7E=
+    expected-actions:
+      - type: layerzero_commit_packet
+        values:
+          source: 0:8A59CDDC6E86D1E239C01BFE6BCE62D264478E5EBF0EE949EF881223BD85FFD8 # sender
+          source_secondary: 0:BA92D918248098831404784B68FB2FF4B7CF6567146C8FC34004236C98D6A2A4 # endpoint
+          destination: 0:54A466DAF8A8575471799B1187E06E2E68CC0E806B0547D3BE22FE64F5E86736 # uln
+          destination_secondary: 0:54A466DAF8A8575471799B1187E06E2E68CC0E806B0547D3BE22FE64F5E86736 # uln_connection
+          asset: 0:62056B0298CA16D840F7FB8ED420017589493426C8981EE76C0CA13454B15E78 # channel
+          asset_secondary: 0:54A466DAF8A8575471799B1187E06E2E68CC0E806B0547D3BE22FE64F5E86736 # msglib_connection
+          layerzero_packet_data:
+              src_oapp: "0x70037e28dd2535f6b31fe11109f075a4b3acb4a286480404cf0755c6b045caea"
+              dst_oapp: "0x70037e28dd2535f6b31fe11109f075a4b3acb4a286480404cf0755c6b045caea"
+              src_eid: 30343
+              dst_eid: 30343
+              nonce: 1
+              guid: "0xe7db0b36b8b81bcd2a22d087d69dd4ec7640c2bb358092ac9e7306b9a77601a9"
+              message: "0x010000768700000000"
+
+  LayerZero commit packet from eth to ton:
+    trace-id: 12Jtky5tD9ra9tUPUSSGXkMRySu85MpmdVFImk3jCRA=
+    expected-actions:
+      - type: layerzero_commit_packet
+        values:
+          source: 0:075009536B6A712C628045D87118652CB7C0E6E355B0E298927A653EBC90617F # sender
+          source_secondary: 0:0B0C4E7F053C490B93640B75945F70D8477758D562A0B64E295C7587B34A231C # endpoint
+          destination: 0:28F737B77A4E32422703959C690B76A9DEF6A009359B8948BAEE481CB736BD76 # uln
+          destination_secondary: 0:28F737B77A4E32422703959C690B76A9DEF6A009359B8948BAEE481CB736BD76 # uln_connection
+          asset: 0:12261E3E300E7DF7EB499F38262470E4E152FE42C1746E667D3D48E12D098E29 # channel
+          asset_secondary: 0:28F737B77A4E32422703959C690B76A9DEF6A009359B8948BAEE481CB736BD76 # msglib_connection
+          layerzero_packet_data:
+              src_oapp: "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+              dst_oapp: "0x23a676145f8dee3632f722aac50392f22cf0b4be8f624e038279a6f5005fb669"
+              src_eid: 30101
+              dst_eid: 30343
+              nonce: 194
+              guid: "0xab90579b86ec0ae70f16918597f7305234066f1dd12910543cb420e51da12bae"
+              message: "0x48f4826c3a1662ca01120de8a7eaf7aa1a25b0b4c5a3a5fe2338eef02cb9ccad00000002199d124f"
+
+  LayerZero dvn verify:
+    trace-id: 0IpCwGaMBpo9nqnjKOiBAnHhawXzcrpRHErKz6LJUFM=
+    expected-actions:
+      - type: layerzero_dvn_verify
+        values:
+          source: 0:045903F593BC81008FF9B652F53F1EDF8C819F3A9E4EB677C4D44467B9BAFADC
+          layerzero_dvn_verify_data:
+            nonce: 125
+            status: succeeded
+            dvn: 0:0E5C256C5A961C6D472F1AE83E2061D1F23C8BF2DA6C3EA9CEF67BEBF5DCA9BA
+            proxy: 0:04B9F9836004D7F53E52E01602D9C07C14CDF38B8A946B6E813CFEA8DE10927D
+            uln: 0:063BDFBF347F883DDBA72A200563570AF2DC72695B2B2FCCAAECD113688AC570
+            uln_connection: 0:2ED02651C800BEC3D3ECE7A43E475262605D7C390785E74AA740C6D31A89B7AE
+
+  LayerZero receive:
+    trace-id: 1lRaVzUa7EjqG228WiDTg_2b_HSGlO5apCmj2JEAHxA=
+    expected-actions:
+      - type: layerzero_receive
+        values:
+          source: 0:075009536B6A712C628045D87118652CB7C0E6E355B0E298927A653EBC90617F
+          destination_secondary: 0:25EC9F03589F3DDD170A9AD8B8C85213F7D12489A9B260C537499AAFA8A0E309 # channel
+          destination: 0:170725394AA56136FBD27D0CE31D8A98E0F8AE72A4D2379B5DDE83E211A2D5FA # oapp
+          layerzero_packet_data:
+            src_oapp: "0x811ed79db9d34e83bdb73df6c3e07961cfb0d5c0"
+            dst_oapp: "0x170725394aa56136fbd27d0ce31d8a98e0f8ae72a4d2379b5dde83e211a2d5fa"
+            src_eid: 30101
+            dst_eid: 30343
+            nonce: 729
+            guid: "0x9dc8c0fd5c765d02cf9b213b0f1e39b8617dd76cda4e7497bed59f0e31557cd"
+            message: "0x000250a601239531b76da161315c6cdf9885e875c5b169c032f013933b2a11f0366c00000012d8f40845"
+  
+  LayerZero receive another:
+    trace-id: 2gDW04F5Zve-t6WkfZR2jOgM15IDtYfVkIbuRTvrzT8=
+    expected-actions:
+      - type: layerzero_receive
+        values:
+          source: 0:075009536B6A712C628045D87118652CB7C0E6E355B0E298927A653EBC90617F
+          destination_secondary: 0:25EC9F03589F3DDD170A9AD8B8C85213F7D12489A9B260C537499AAFA8A0E309 # channel
+          destination: 0:170725394AA56136FBD27D0CE31D8A98E0F8AE72A4D2379B5DDE83E211A2D5FA # oapp
+          layerzero_packet_data:
+            src_oapp: "0x811ed79db9d34e83bdb73df6c3e07961cfb0d5c0"
+            dst_oapp: "0x170725394aa56136fbd27d0ce31d8a98e0f8ae72a4d2379b5dde83e211a2d5fa"
+            src_eid: 30101
+            dst_eid: 30343
+            nonce: 162
+            guid: "0x5bfa61f1b406276287d8e207a12fbebc41e80dcefc0e03b927a197dc4ce3e3e"
+            message: "0x0003000000000000000000000000000000000000013278caf57600000000000000000000000000000000"

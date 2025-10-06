@@ -69,6 +69,14 @@ from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlock,
     VestingSendMessageBlock,
 )
+from indexer.events.blocks.layerzero import (
+    LayerZeroCommitPacketBlock,
+    LayerZeroSendBlock,
+    LayerZeroReceiveBlock,
+    LayerZeroSendData,
+    LayerZeroDvnVerifyBlock,
+    LayerZeroSendTokensBlock,
+)
 from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
 
 logger = logging.getLogger(__name__)
@@ -1006,6 +1014,63 @@ def _fill_coffee_staking_claim_rewards(block: CoffeeStakingClaimRewardsBlock, ac
     action.asset = _addr(block.data.asset)
     action.amount = block.data.amount.value
 
+
+def _fill_layerzero_send_action(data: LayerZeroSendData, action: Action):
+    # use `data` instead of `block`, because thus `_fill_layerzero_send_action`
+    # may be easily called from `_fill_layerzero_send_tokens_action`
+    action.source = _addr(data.initiator)  # initiator goes to source
+    action.type = 'layerzero_send'
+    action.layerzero_send_data = {
+        "send_request_id": data.send_request_id,
+        "msglib_manager": data.msglib_manager,
+        "msglib": data.msglib,
+        "uln": _addr(data.uln),
+        "native_fee": data.native_fee,
+        "zro_fee": data.zro_fee,
+        "endpoint": _addr(data.endpoint),
+        "channel": _addr(data.channel)
+    }
+    action.layerzero_packet_data = data.packet_data.__dict__ # fields names are identical and no _addr() needed
+
+def _fill_layerzero_send_tokens_action(block: LayerZeroSendTokensBlock, action: Action):
+    # fill basic transfer data
+    action.source_secondary = _addr(block.data.sender_wallet)
+    action.destination = _addr(block.data.oapp)
+    action.destination_secondary = _addr(block.data.oapp_wallet)
+    action.amount = block.data.amount.value
+    action.asset = _addr(block.data.asset)
+    # fill data related to basic send
+    _fill_layerzero_send_action(block.data.layerzero_send_data, action)
+    # overwrite some fields
+    action.type = 'layerzero_send_tokens'
+    action.source = _addr(block.data.sender)
+
+def _fill_layerzero_receive_action(block: LayerZeroReceiveBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.oapp)
+    action.destination_secondary = _addr(block.data.channel)
+    action.layerzero_packet_data = block.data.packet_data.__dict__
+
+def _fill_layerzero_commit_packet_action(block: LayerZeroCommitPacketBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.source_secondary = _addr(block.data.endpoint)
+    action.destination = _addr(block.data.uln)
+    action.destination_secondary = _addr(block.data.uln_connection)
+    action.asset = _addr(block.data.channel)
+    action.asset_secondary = _addr(block.data.msglib_connection)
+    action.layerzero_packet_data = block.data.packet_data.__dict__
+
+def _fill_layerzero_dvn_verify_action(block: LayerZeroDvnVerifyBlock, action: Action):
+    action.source = _addr(block.data.sender)
+    action.layerzero_dvn_verify_data = {
+        "nonce": block.data.nonce,
+        "status": block.data.status,
+        "dvn": _addr(block.data.dvn),
+        "proxy": _addr(block.data.proxy),
+        "uln": _addr(block.data.uln),
+        "uln_connection": _addr(block.data.uln_connection),
+    }
+
 def _fill_dns_release(block: DnsReleaseBlock, action: Action):
     action.source = _addr(block.data.source)
     action.destination = _addr(block.data.nft_address)
@@ -1123,6 +1188,16 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_tick_tock_action(block, action)
         case 'tonco_withdraw_liquidity':
             _fill_tonco_withdraw_liquidity(block, action)
+        case 'layerzero_send':
+            _fill_layerzero_send_action(block.data, action) # data here, not block
+        case 'layerzero_send_tokens':
+            _fill_layerzero_send_tokens_action(block, action)
+        case 'layerzero_receive':
+            _fill_layerzero_receive_action(block, action)
+        case 'layerzero_commit_packet':
+            _fill_layerzero_commit_packet_action(block, action)
+        case 'layerzero_dvn_verify':
+            _fill_layerzero_dvn_verify_action(block, action)
         case 'coffee_create_vault':
             _fill_coffee_create_vault(block, action)
         case 'coffee_create_pool_creator':

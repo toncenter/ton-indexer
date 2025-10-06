@@ -668,8 +668,30 @@ type RawAction struct {
 	CoffeeStakingWithdrawNftAddress                      *AccountAddress
 	CoffeeStakingWithdrawNftIndex                        *string
 	CoffeeStakingWithdrawPoints                          *string
-	AncestorType                                         []string
-	Accounts                                             []string
+	LayerzeroSendSendRequestId                           *uint64
+	LayerzeroSendMsglibManager                           *string
+	LayerzeroSendMsglib                                  *string
+	LayerzeroSendUln                                     *AccountAddress
+	LayerzeroSendNativeFee                               *uint64
+	LayerzeroSendZroFee                                  *uint64
+	LayerzeroSendEndpoint                                *AccountAddress
+	LayerzeroSendChannel                                 *AccountAddress
+	LayerzeroPacketSrcOapp                               *string
+	LayerzeroPacketDstOapp                               *string
+	LayerzeroPacketSrcEid                                *int32
+	LayerzeroPacketDstEid                                *int32
+	LayerzeroPacketNonce                                 *int64
+	LayerzeroPacketGuid                                  *string
+	LayerzeroPacketMessage                               *string
+	LayerzeroDvnVerifyNonce                              *int64
+	LayerzeroDvnVerifyStatus                             *string
+	LayerzeroDvnVerifyDvn                                *AccountAddress
+	LayerzeroDvnVerifyProxy                              *AccountAddress
+	LayerzeroDvnVerifyUln                                *AccountAddress
+	LayerzeroDvnVerifyUlnConnection                      *AccountAddress
+
+	AncestorType []string
+	Accounts     []string
 } // @name RawAction
 
 type ActionDetailsCallContract struct {
@@ -788,6 +810,71 @@ type ActionDetailsToncoJettonSwap struct {
 	DexOutgoingTransfer *ActionDetailsJettonSwapTransfer  `json:"dex_outgoing_transfer"`
 	PeerSwaps           []ActionDetailsJettonSwapPeerSwap `json:"peer_swaps"`
 	MinOutAmount        *string                           `json:"min_out_amount"`
+}
+
+type ActionDetailsLayerZeroSendDetails struct {
+	SendRequestId *uint64         `json:"send_request_id"`
+	MsglibManager *string         `json:"msglib_manager"`
+	Msglib        *string         `json:"msglib"`
+	Uln           *AccountAddress `json:"uln"`
+	NativeFee     *uint64         `json:"native_fee"`
+	ZroFee        *uint64         `json:"zro_fee"`
+	Endpoint      *AccountAddress `json:"endpoint"`
+	Channel       *AccountAddress `json:"channel"`
+}
+
+type ActionDetailsLayerZeroPacket struct {
+	SrcOapp *string `json:"src_oapp"`
+	DstOapp *string `json:"dst_oapp"`
+	SrcEid  *int32  `json:"src_eid"`
+	DstEid  *int32  `json:"dst_eid"`
+	Nonce   *int64  `json:"nonce"`
+	Guid    *string `json:"guid"`
+	Message *string `json:"message"`
+}
+
+type ActionDetailsLayerZeroSend struct {
+	Sender          *AccountAddress                   `json:"initiator"`
+	LayerzeroSend   ActionDetailsLayerZeroSendDetails `json:"layerzero_send_data"`
+	LayerzeroPacket ActionDetailsLayerZeroPacket      `json:"layerzero_packet_data"`
+}
+
+type ActionDetailsLayerZeroReceive struct {
+	Sender          *AccountAddress              `json:"sender"`
+	Oapp            *AccountAddress              `json:"oapp"`
+	Channel         *AccountAddress              `json:"channel"`
+	LayerzeroPacket ActionDetailsLayerZeroPacket `json:"layerzero_packet_data"`
+}
+
+type ActionDetailsLayerZeroCommitPacket struct {
+	Sender           *AccountAddress              `json:"sender"`
+	Endpoint         *AccountAddress              `json:"endpoint"`
+	Uln              *AccountAddress              `json:"uln"`
+	UlnConnection    *AccountAddress              `json:"uln_connection"`
+	Channel          *AccountAddress              `json:"channel"`
+	MsglibConnection *AccountAddress              `json:"msglib_connection"`
+	LayerzeroPacket  ActionDetailsLayerZeroPacket `json:"layerzero_packet_data"`
+}
+
+type ActionDetailsLayerZeroDvnVerify struct {
+	Initiator     *AccountAddress `json:"initiator"`
+	Nonce         *int64          `json:"nonce"`
+	Status        *string         `json:"status"`
+	Dvn           *AccountAddress `json:"dvn"`
+	Proxy         *AccountAddress `json:"proxy"`
+	Uln           *AccountAddress `json:"uln"`
+	UlnConnection *AccountAddress `json:"uln_connection"`
+}
+
+type ActionDetailsLayerZeroSendTokens struct {
+	Sender          *AccountAddress                   `json:"sender"`
+	SenderWallet    *AccountAddress                   `json:"sender_wallet"`
+	Oapp            *AccountAddress                   `json:"oapp"`
+	OappWallet      *AccountAddress                   `json:"oapp_wallet"`
+	Asset           *AccountAddress                   `json:"asset"`
+	Amount          *string                           `json:"amount"`
+	LayerzeroSend   ActionDetailsLayerZeroSendDetails `json:"layerzero_send_data"`
+	LayerzeroPacket ActionDetailsLayerZeroPacket      `json:"layerzero_packet_data"`
 }
 
 type ActionDetailsJettonTransfer struct {

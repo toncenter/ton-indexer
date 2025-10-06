@@ -11,4 +11,5 @@ from .multisig import *
 from .jvault import *
 from .vesting import *
 from .evaa import *
+from .layerzero import *
 from .coffee import *

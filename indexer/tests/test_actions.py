@@ -52,6 +52,9 @@ class TestCoffeeActions(BaseGenericActionTest):
 class TestTgBTCActions(BaseGenericActionTest):
     yaml_file = "tgbtc.yaml"
 
+class TestLayerZeroActions(BaseGenericActionTest):
+    yaml_file = "layerzero.yaml"
+
 class TestClassificationCommon:
 
     def load_trace(self, trace_id, traces_dir) -> Trace:

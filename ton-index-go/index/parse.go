@@ -1008,6 +1008,101 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			details.Marketplace = &marketplaceName
 		}
 		act.Details = &details
+	case "layerzero_send":
+		details := ActionDetailsLayerZeroSend{}
+		details.Sender = raw.Source
+		details.LayerzeroSend = ActionDetailsLayerZeroSendDetails{
+			SendRequestId: raw.LayerzeroSendSendRequestId,
+			MsglibManager: raw.LayerzeroSendMsglibManager,
+			Msglib:        raw.LayerzeroSendMsglib,
+			Uln:           raw.LayerzeroSendUln,
+			NativeFee:     raw.LayerzeroSendNativeFee,
+			ZroFee:        raw.LayerzeroSendZroFee,
+			Endpoint:      raw.LayerzeroSendEndpoint,
+			Channel:       raw.LayerzeroSendChannel,
+		}
+		details.LayerzeroPacket = ActionDetailsLayerZeroPacket{
+			SrcOapp: raw.LayerzeroPacketSrcOapp,
+			DstOapp: raw.LayerzeroPacketDstOapp,
+			SrcEid:  raw.LayerzeroPacketSrcEid,
+			DstEid:  raw.LayerzeroPacketDstEid,
+			Nonce:   raw.LayerzeroPacketNonce,
+			Guid:    raw.LayerzeroPacketGuid,
+			Message: raw.LayerzeroPacketMessage,
+		}
+		act.Details = details
+	case "layerzero_send_tokens":
+		detailsTokens := ActionDetailsLayerZeroSendTokens{}
+		detailsTokens.Sender = raw.Source
+		detailsTokens.SenderWallet = raw.SourceSecondary
+		detailsTokens.Oapp = raw.Destination
+		detailsTokens.OappWallet = raw.DestinationSecondary
+		detailsTokens.Asset = raw.Asset
+		detailsTokens.Amount = raw.Amount
+		detailsTokens.LayerzeroSend = ActionDetailsLayerZeroSendDetails{
+			SendRequestId: raw.LayerzeroSendSendRequestId,
+			MsglibManager: raw.LayerzeroSendMsglibManager,
+			Msglib:        raw.LayerzeroSendMsglib,
+			Uln:           raw.LayerzeroSendUln,
+			NativeFee:     raw.LayerzeroSendNativeFee,
+			ZroFee:        raw.LayerzeroSendZroFee,
+			Endpoint:      raw.LayerzeroSendEndpoint,
+			Channel:       raw.LayerzeroSendChannel,
+		}
+		detailsTokens.LayerzeroPacket = ActionDetailsLayerZeroPacket{
+			SrcOapp: raw.LayerzeroPacketSrcOapp,
+			DstOapp: raw.LayerzeroPacketDstOapp,
+			SrcEid:  raw.LayerzeroPacketSrcEid,
+			DstEid:  raw.LayerzeroPacketDstEid,
+			Nonce:   raw.LayerzeroPacketNonce,
+			Guid:    raw.LayerzeroPacketGuid,
+			Message: raw.LayerzeroPacketMessage,
+		}
+		act.Details = detailsTokens
+	case "layerzero_receive":
+		details := ActionDetailsLayerZeroReceive{}
+		details.Sender = raw.Source
+		details.Oapp = raw.Destination
+		details.Channel = raw.DestinationSecondary
+		details.LayerzeroPacket = ActionDetailsLayerZeroPacket{
+			SrcOapp: raw.LayerzeroPacketSrcOapp,
+			DstOapp: raw.LayerzeroPacketDstOapp,
+			SrcEid:  raw.LayerzeroPacketSrcEid,
+			DstEid:  raw.LayerzeroPacketDstEid,
+			Nonce:   raw.LayerzeroPacketNonce,
+			Guid:    raw.LayerzeroPacketGuid,
+			Message: raw.LayerzeroPacketMessage,
+		}
+		act.Details = details
+	case "layerzero_commit_packet":
+		details := ActionDetailsLayerZeroCommitPacket{}
+		details.Sender = raw.Source
+		details.Endpoint = raw.SourceSecondary
+		details.Uln = raw.Destination
+		details.UlnConnection = raw.DestinationSecondary
+		details.Channel = raw.Asset
+		details.MsglibConnection = raw.AssetSecondary
+		details.LayerzeroPacket = ActionDetailsLayerZeroPacket{
+			SrcOapp: raw.LayerzeroPacketSrcOapp,
+			DstOapp: raw.LayerzeroPacketDstOapp,
+			SrcEid:  raw.LayerzeroPacketSrcEid,
+			DstEid:  raw.LayerzeroPacketDstEid,
+			Nonce:   raw.LayerzeroPacketNonce,
+			Guid:    raw.LayerzeroPacketGuid,
+			Message: raw.LayerzeroPacketMessage,
+		}
+		act.Details = details
+	case "layerzero_dvn_verify":
+		details := ActionDetailsLayerZeroDvnVerify{
+			Initiator:     raw.Source,
+			Nonce:         raw.LayerzeroDvnVerifyNonce,
+			Status:        raw.LayerzeroDvnVerifyStatus,
+			Dvn:           raw.LayerzeroDvnVerifyDvn,
+			Proxy:         raw.LayerzeroDvnVerifyProxy,
+			Uln:           raw.LayerzeroDvnVerifyUln,
+			UlnConnection: raw.LayerzeroDvnVerifyUlnConnection,
+		}
+		act.Details = details
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
@@ -1506,6 +1601,27 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.CoffeeStakingWithdrawNftAddress,
 		&act.CoffeeStakingWithdrawNftIndex,
 		&act.CoffeeStakingWithdrawPoints,
+		&act.LayerzeroSendSendRequestId,
+		&act.LayerzeroSendMsglibManager,
+		&act.LayerzeroSendMsglib,
+		&act.LayerzeroSendUln,
+		&act.LayerzeroSendNativeFee,
+		&act.LayerzeroSendZroFee,
+		&act.LayerzeroSendEndpoint,
+		&act.LayerzeroSendChannel,
+		&act.LayerzeroPacketSrcOapp,
+		&act.LayerzeroPacketDstOapp,
+		&act.LayerzeroPacketSrcEid,
+		&act.LayerzeroPacketDstEid,
+		&act.LayerzeroPacketNonce,
+		&act.LayerzeroPacketGuid,
+		&act.LayerzeroPacketMessage,
+		&act.LayerzeroDvnVerifyNonce,
+		&act.LayerzeroDvnVerifyStatus,
+		&act.LayerzeroDvnVerifyDvn,
+		&act.LayerzeroDvnVerifyProxy,
+		&act.LayerzeroDvnVerifyUln,
+		&act.LayerzeroDvnVerifyUlnConnection,
 
 		&act.AncestorType,
 		&act.Accounts,

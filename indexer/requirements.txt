@@ -58,3 +58,4 @@ urllib3==2.2.3
 uvicorn==0.24.0.post1
 uvloop==0.19.0
 x25519==0.0.2
+pycryptodome==3.21.0

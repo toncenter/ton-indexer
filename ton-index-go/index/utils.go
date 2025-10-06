@@ -41,6 +41,7 @@ var ActionTypeShortcuts = map[string][]string{
 		"nft_cancel_auction", "nft_finish_auction", "teleitem_start_auction", "teleitem_cancel_auction",
 		"nft_update_sale",
 		"dns_purchase", "dns_release",
+		"layerzero_send", "layerzero_send_tokens", "layerzero_receive", "layerzero_commit_packet", "layerzero_dvn_verify",
 	},
 	"latest": {"v3"},
 	"staking": {
@@ -86,6 +87,9 @@ var ActionTypeShortcuts = map[string][]string{
 		"tgbtc_new_key", "tgbtc_new_key_fallback",
 		"tgbtc_burn", "tgbtc_burn_fallback",
 		"tgbtc_mint", "tgbtc_mint_fallback",
+	},
+	"layerzero": {
+		"layerzero_send", "layerzero_send_tokens", "layerzero_receive", "layerzero_commit_packet", "layerzero_dvn_verify",
 	},
 }
 
