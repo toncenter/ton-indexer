@@ -1,6 +1,7 @@
 package index
 
 import (
+	"slices"
 	"sort"
 	"sync"
 
@@ -893,10 +894,8 @@ func DetectInterface(codeHash string, methodIDs []uint32) []string {
 	// first check code hash matches
 	if codeHash != "" {
 		for _, iface := range interfaces {
-			for _, hash := range iface.CodeHashes {
-				if codeHash == hash {
-					return []string{iface.Name} // exact match, return immediately
-				}
+			if slices.Contains(iface.CodeHashes, codeHash) {
+				return []string{iface.Name} // exact match, return immediately
 			}
 		}
 	}
