@@ -1,13 +1,10 @@
 #include "logic.h"
 #include "schemes.h"
-#include "interfaces.h"
 #include "special.h"
 #include "vm/boc.h"
 #include "crypto/tl/tlblib.hpp"
 #include "td/utils/base64.h"
 #include "vm/excno.hpp"
-#include <set>
-
 namespace ton_marker {
 
 namespace {
@@ -225,34 +222,6 @@ std::string decode_opcode(unsigned int opcode) {
     }
 }
 
-std::string detect_interface(const std::vector<unsigned int>& method_ids) {
-    try {
-        // convert to set for easier lookup
-        std::set<unsigned> method_set(method_ids.begin(), method_ids.end());
-        
-        // find matching interfaces
-        std::vector<std::string> matching;
-        for (const auto& interface : g_interfaces) {
-            if (std::includes(method_set.begin(), method_set.end(),
-                            interface.methods.begin(), interface.methods.end())) {
-                matching.push_back(interface.name);
-            }
-        }
-
-        // join with commas
-        std::string result;
-        for (size_t i = 0; i < matching.size(); ++i) {
-            if (i > 0) result += ",";
-            result += matching[i];
-        }
-        return result;
-    } catch (const std::exception& e) {
-        return "unknown: std error - " + std::string(e.what());
-    } catch (...) {
-        return "unknown: unhandled error";
-    }
-}
-
 BatchResponse process_batch(const BatchRequest& request) {
     BatchResponse response;
 
@@ -270,14 +239,6 @@ BatchResponse process_batch(const BatchRequest& request) {
         DecodeOpcodeResponse resp;
         resp.name = decode_opcode(req.opcode);
         response.opcode_responses.push_back(std::move(resp));
-    }
-
-    // process interface requests
-    response.interface_responses.reserve(request.interface_requests.size());
-    for (const auto& req : request.interface_requests) {
-        DetectInterfaceResponse resp;
-        resp.interfaces = detect_interface(req.method_ids);
-        response.interface_responses.push_back(std::move(resp));
     }
 
     return response;

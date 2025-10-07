@@ -10,9 +10,6 @@ const char* ton_marker_decode_opcode(unsigned int opcode);
 // decode boc
 const char* ton_marker_decode_boc(const char* boc_base64);
 
-// detect interface
-const char* ton_marker_detect_interface(const unsigned int* method_ids, int count);
-
 // batch processing
 struct TonMarkerBatchRequest {
     // decode boc requests
@@ -23,10 +20,6 @@ struct TonMarkerBatchRequest {
     const unsigned int* opcodes;
     int opcode_count;
     
-    // detect interface requests
-    const unsigned int** method_ids;
-    const int* method_counts;
-    int interface_count;
 };
 
 struct TonMarkerBatchResponse {
@@ -37,10 +30,6 @@ struct TonMarkerBatchResponse {
     // decode opcode responses
     char** opcode_results;
     int opcode_count;
-    
-    // detect interface responses
-    char** interface_results;
-    int interface_count;
 };
 
 // batch processing function
