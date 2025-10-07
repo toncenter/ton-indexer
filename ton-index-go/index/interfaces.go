@@ -23,12 +23,18 @@ func getInterfaces() []Interface {
 		interfacesCache = []Interface{
 			{
 				Name: "airdrop_interlocker_v1",
+				CodeHashes: []string{
+					"rNK47E23QUOW+lNphlPswEpBbuNknY9bILQfF2rYM/A=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_contract_data")),
 				},
 			},
 			{
 				Name: "airdrop_interlocker_v2",
+				CodeHashes: []string{
+					"D/RKlvwkgRESNtjZkg/W4pthCCFePsW6dh6tlgKtraQ=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_distribution_info")),
 					uint32(tlb.MethodNameHash("get_unlocks_info")),
@@ -71,6 +77,12 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
+				Name: "daolama_vault",
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("get_pool_data")),
+				},
+			},
+			{
 				Name: "dedust_factory",
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_vault_address")),
@@ -79,7 +91,7 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
-				Name: "dedust_liquidity_deposit",
+				Name: "dedust_liquidity_deposit ",
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_balances")),
 					uint32(tlb.MethodNameHash("get_target_balances")),
@@ -110,6 +122,9 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "gram_miner",
+				CodeHashes: []string{
+					"zK5v+2A8fT53mrWewmf/wi3B6+CvmDmQIomnqD5MAPE=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_pow_params")),
 				},
@@ -125,6 +140,24 @@ func getInterfaces() []Interface {
 				Name: "jetton_wallet",
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_wallet_data")),
+				},
+			},
+			{
+				Name: "jetton_wallet_v1",
+				CodeHashes: []string{
+					"vrBoPr64kn/p/I7AoYvH3ReJlomCWhIeq0bFo6hg0M4=",
+				},
+			},
+			{
+				Name: "jetton_wallet_v2",
+				CodeHashes: []string{
+					"jSjqQht36AX+pSrPM1KWSZ8Drsjp/SHdtfJWSqZcSN4=",
+				},
+			},
+			{
+				Name: "jetton_wallet_governed",
+				CodeHashes: []string{
+					"iUaPAseOVwgC45l5yFFvw43wfqdqSDV+BTbyuns+43s=",
 				},
 			},
 			{
@@ -180,6 +213,9 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "moon_pool",
+				CodeHashes: []string{
+					"KAgWUlMoah5P5j76ubo1SBE3qsCxoPntzLj2RC3eRsQ=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_jetton_data")),
 					uint32(tlb.MethodNameHash("get_reserves")),
@@ -189,6 +225,9 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "moon_booster",
+				CodeHashes: []string{
+					"zoTDgsi2rA0FISu6o00F5U4eMOLMkony2cnWRyahEqg=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_status")),
 					uint32(tlb.MethodNameHash("get_pool")),
@@ -196,6 +235,9 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "moon_order_factory",
+				CodeHashes: []string{
+					"0Ec31vZ4EDqeRIwiEJkZ0PnL4F7xsag8XnuIZoOlRwQ=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_id")),
 					uint32(tlb.MethodNameHash("get_pipe")),
@@ -203,6 +245,10 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "moon_order",
+				CodeHashes: []string{
+					"iMONKVhrXXSLrbx7Tb/iOcJcuFypxFhqROBVB6bt9qY=",
+					"7gcUCzzP4mHtKFgPYKFr2kxLnG19p64F9bfH4rHf4iY=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_status")),
 					uint32(tlb.MethodNameHash("get_order_amount")),
@@ -212,6 +258,9 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "multisig_v2",
+				CodeHashes: []string{
+					"09FNqaYn8Ow1MzQYKXYq+SuVQLIb8DZl+sCcK0bqu6w=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_multisig_data")),
 					uint32(tlb.MethodNameHash("get_order_address")),
@@ -219,6 +268,9 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "multisig_order_v2",
+				CodeHashes: []string{
+					"oB4Ff71CiEArmJjXjWe9TpAlTJPFhmh5vC0dEoZUNrw=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_order_data")),
 				},
@@ -230,13 +282,52 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
+				Name: "nft_auction_v1",
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("get_sale_data")),
+				},
+			},
+			{
+				Name: "nft_offer_getgems_v1",
+				CodeHashes: []string{
+					"bl1mf6bvqBh8bQKe/UAVYBIy/S42wpHbw0be2rbcgCQ=",
+				},
+			},
+			{
 				Name: "nft_sale_getgems_v4",
+				CodeHashes: []string{
+					"a5WmQYucnSNZBF0edVm41UmuDlBvJMqrWPowyPsf64Y=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_fix_price_data_v4")),
 				},
 			},
 			{
+				Name: "nft_sale_getgems_v3",
+				CodeHashes: []string{
+					"JCIfpXHlQuBVx3vt/b9SfHr0YM/cfzRMRQeHtM+h600=",
+					"3rU7bFdlwebNI4v0e8XoO6WWvcwEsLhM1Qqx5HSgjzE=",
+					"MgUN+sRPZIZrzIbyzZ4TBf6dyts5WcACI3z7CQLUQyM=",
+				},
+			},
+			{
+				Name: "nft_sale_getgems_v2",
+				CodeHashes: []string{
+					"gnj0xSM95vvtyWmvUZNEp6m//FRIVtuphqlcC8+Fcck=",
+				},
+			},
+			{
+				Name: "nft_auction_getgems_v3",
+				CodeHashes: []string{
+					"G9nFo5v/t6DzQViLXdkrgTqEK/Ze8UEJOCIAzq+Pct8=",
+					"ZmiHL6eXBUQ//UdSPo6eqfdquZ+aC1nSfej4GhwnudQ=",
+				},
+			},
+			{
 				Name: "nft_auction_getgems_v4",
+				CodeHashes: []string{
+					"zlp4U06qps7tja/UhtB262CpsNbb+1Nnb2YmScBomVY=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_auction_data_v4")),
 				},
@@ -253,6 +344,12 @@ func getInterfaces() []Interface {
 				Name: "nft_item",
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_nft_data")),
+				},
+			},
+			{
+				Name: "nft_item_simple",
+				CodeHashes: []string{
+					"TJEjgoaC+m9DeXq0FzK8qJDK4Bdm4GdBACUFFuC/jUI=",
 				},
 			},
 			{
@@ -343,6 +440,13 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
+				Name: "omniston_referral",
+				CodeHashes: []string{
+					"7cxi8XUil/vaJAjAnKQgs6+VKBAuM7ngoOvjhVPBj+w=",
+					"bNo1HDwO42iHOl6hD1O5pHpVqs3I3rP9EDwvloyVJSc=",
+				},
+			},
+			{
 				Name: "storage_provider",
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_wallet_params")),
@@ -425,10 +529,25 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "subscription_v2",
+				CodeHashes: []string{
+					"XUG7cGLs/yqv7/IFppEtfFyyIwjbHRLCCH3IzAORwy4=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_subscription_info")),
 					uint32(tlb.MethodNameHash("get_payment_info")),
 					uint32(tlb.MethodNameHash("get_cron_info")),
+				},
+			},
+			{
+				Name: "coffee_mev_protector",
+				CodeHashes: []string{
+					"WPvC26JoTTi4C/zj3Fqf/OAK+bRkx7TcIc9X46rhHxw=",
+				},
+			},
+			{
+				Name: "coffee_cross_dex",
+				CodeHashes: []string{
+					"/qnGoe9eqyxcqU1r7x4zmUxXhqvrUmR2DhUNozv7Nnc=",
 				},
 			},
 			{
@@ -476,6 +595,15 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
+				Name: "coffee_vault_native",
+			},
+			{
+				Name: "coffee_vault_jetton",
+			},
+			{
+				Name: "coffee_vault_extra",
+			},
+			{
 				Name: "coffee_pool",
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_jetton_data")),
@@ -484,6 +612,12 @@ func getInterfaces() []Interface {
 					uint32(tlb.MethodNameHash("estimate_swap_amount")),
 					uint32(tlb.MethodNameHash("estimate_liquidity_withdraw_amount")),
 					uint32(tlb.MethodNameHash("estimate_liquidity_deposit_amount")),
+				},
+			},
+			{
+				Name: "jetton_wallet_coffee_lp",
+				CodeHashes: []string{
+					"18OPqZSoKCZXIJ+T68Xf6Qil8G0uQfDAhekXvE9UorM=",
 				},
 			},
 			{
@@ -496,6 +630,9 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "tonco_pool",
+				CodeHashes: []string{
+					"vJR9FjRsL9yEW3pEY4L1nIassHXiox2/qVbNDJ5UZ44=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_collection_data")),
 					uint32(tlb.MethodNameHash("getIsActive")),
@@ -506,6 +643,9 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "tonco_router",
+				CodeHashes: []string{
+					"m5iR6qfbe+zGzN2hvZqNJdw98oF9V+SyfsAD2vgaRDk=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("getRouterState")),
 					uint32(tlb.MethodNameHash("getPoolAddress")),
@@ -514,6 +654,9 @@ func getInterfaces() []Interface {
 			},
 			{
 				Name: "tonkeeper_2fa",
+				CodeHashes: []string{
+					"xe8Z3yKu6LcHvXoYEXTkAKQiUiPFrkDYMg9d3XB9NKE=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_wallet_addr")),
 					uint32(tlb.MethodNameHash("get_root_pubkey")),
@@ -532,7 +675,73 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
-				Name: "wallet_v4r2",
+				Name: "wallet_v1r1",
+				CodeHashes: []string{
+					"oM/CxIruFqJx8s/AtzgtgXVs7LEBfQd/qqs7tgL2how=",
+				},
+			},
+			{
+				Name: "wallet_v1r2",
+				CodeHashes: []string{
+					"1JAvzJ+tdGmPqONTIgpo2g3PcuMryy657gQhfBfTBiw=",
+				},
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("seqno")),
+				},
+			},
+			{
+				Name: "wallet_v1r3",
+				CodeHashes: []string{
+					"WHzHie/xyE9G7DeX5F/ICaFP9a4k8eDHpqmcydyQYf8=",
+				},
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("seqno")),
+					uint32(tlb.MethodNameHash("get_public_key")),
+				},
+			},
+			{
+				Name: "wallet_v2r1",
+				CodeHashes: []string{
+					"XJpeaMEI4YchoHxC+ZVr+zmtd+xtYktgxXbsiO7mUyk=",
+				},
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("seqno")),
+				},
+			},
+			{
+				Name: "wallet_v2r2",
+				CodeHashes: []string{
+					"/pUw0yQ4Uwg+8u8LTCkIwKv2+hwx6iQ6rKpb+MfXU/E=",
+				},
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("seqno")),
+					uint32(tlb.MethodNameHash("get_public_key")),
+				},
+			},
+			{
+				Name: "wallet_v3r1",
+				CodeHashes: []string{
+					"thBBpYp5gLlG6PueGY48kE0keZ/6NldOpCUcQaVm9YE=",
+				},
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("seqno")),
+				},
+			},
+			{
+				Name: "wallet_v3r2",
+				CodeHashes: []string{
+					"hNr6RJ+Ypph3ibojI1gHK8D3bcRSQAKl0JGLmnXS1Zk=",
+				},
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("get_public_key")),
+					uint32(tlb.MethodNameHash("seqno")),
+				},
+			},
+			{
+				Name: "wallet_v4r1",
+				CodeHashes: []string{
+					"ZN1UgFUixb6KnbWc6gEFzPDQh4bKeb64y3nogKjXMi0=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_plugin_list")),
 					uint32(tlb.MethodNameHash("is_plugin_installed")),
@@ -542,7 +751,33 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
+				Name: "wallet_v4r2",
+				CodeHashes: []string{
+					"/rX/aCDi/w2Ug+fg1iyBfYRniftK5YDIeIZtlZ2r1cA=",
+				},
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("get_plugin_list")),
+					uint32(tlb.MethodNameHash("is_plugin_installed")),
+					uint32(tlb.MethodNameHash("get_public_key")),
+					uint32(tlb.MethodNameHash("seqno")),
+					uint32(tlb.MethodNameHash("get_subwallet_id")),
+				},
+			},
+			{
+				Name: "wallet_v5_beta",
+				CodeHashes: []string{
+					"89fKU0k97trCizgZhqhJQDy6w9LFhHea8IEGWvCsS5M=",
+					"5M87L0xtamHqDytUR9JmeFsmrzY32y3u5rzRqoJvNBI=",
+				},
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("seqno")),
+				},
+			},
+			{
 				Name: "wallet_v5r1",
+				CodeHashes: []string{
+					"IINLe3KxEhR+Gy+0V7hOdNGjDwT3N9T2KmaOlVLSty8=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("seqno")),
 					uint32(tlb.MethodNameHash("get_public_key")),
@@ -552,7 +787,43 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
+				Name: "wallet_highload_v1r1",
+				CodeHashes: []string{
+					"2M27t58sXKpnesRQdwvgNRviHhJQSG3oXMUqoz3RZIQ=",
+				},
+			},
+			{
+				Name: "wallet_highload_v1r2",
+				CodeHashes: []string{
+					"Dc7tISadZgE+lbGfu1xVpvAa2tQIN7qo5SHN46AqpGw=",
+				},
+			},
+			{
+				Name: "wallet_highload_v2",
+				CodeHashes: []string{
+					"lJTRzI7fEvBWcaGpugmSEJbrUIEeGSTsZcPGKfu4CBI=",
+				},
+				Methods: []uint32{
+					uint32(tlb.MethodNameHash("get_public_key")),
+				},
+			},
+			{
+				Name: "wallet_highload_v2r1",
+				CodeHashes: []string{
+					"jOtFs81LXMYOquHBO5wJI5Jnf+U2sumy2AG2Lv+TH+E=",
+				},
+			},
+			{
+				Name: "wallet_highload_v2r2",
+				CodeHashes: []string{
+					"ID3U81ittJmTEpqpJcrDmRa2ig5PeNJujywraer6Vnk=",
+				},
+			},
+			{
 				Name: "wallet_highload_v3r1",
+				CodeHashes: []string{
+					"EayteVWEQJDyg78ji8FEmHH3g+fMCXlAjT9IWUg+hSU=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("get_public_key")),
 					uint32(tlb.MethodNameHash("get_subwallet_id")),
@@ -560,7 +831,16 @@ func getInterfaces() []Interface {
 				},
 			},
 			{
+				Name: "wallet_preprocessed_v2",
+				CodeHashes: []string{
+					"Reu86bXSNYhstr/hw62TtwjeBYJEiSNlye4N/kOct7U=",
+				},
+			},
+			{
 				Name: "wallet_vesting",
+				CodeHashes: []string{
+					"tItTGr7DtxRjgpH3137W3J9qJynvyiBHcTc3TUrotZA=",
+				},
 				Methods: []uint32{
 					uint32(tlb.MethodNameHash("seqno")),
 					uint32(tlb.MethodNameHash("get_public_key")),
