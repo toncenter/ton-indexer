@@ -367,26 +367,26 @@ func markWithRefs(refs *messagesRefs) error {
 	return nil
 }
 
-func MarkAccountStates(states []AccountStateFull) error {
-	methodIds := make([][]uint32, len(states))
-	for i := range states {
-		if states[i].ContractMethods != nil {
-			methodIds[i] = *states[i].ContractMethods
-		} else {
-			methodIds[i] = []uint32{}
-		}
-	}
-	_, _, recognizedInterfaces, err := MarkerRequest(nil, nil, methodIds)
-	if err != nil {
-		return err
-	}
-	for i := range states {
-		if recognizedInterfaces[i] == "" {
-			states[i].Interfaces = &[]string{}
-			continue
-		}
-		interfaces := strings.Split(recognizedInterfaces[i], ",")
-		states[i].Interfaces = &interfaces
-	}
-	return nil
-}
+// func MarkAccountStates(states []AccountStateFull) error {
+// 	methodIds := make([][]uint32, len(states))
+// 	for i := range states {
+// 		if states[i].ContractMethods != nil {
+// 			methodIds[i] = *states[i].ContractMethods
+// 		} else {
+// 			methodIds[i] = []uint32{}
+// 		}
+// 	}
+// 	_, _, recognizedInterfaces, err := MarkerRequest(nil, nil, methodIds)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	for i := range states {
+// 		if recognizedInterfaces[i] == "" {
+// 			states[i].Interfaces = &[]string{}
+// 			continue
+// 		}
+// 		interfaces := strings.Split(recognizedInterfaces[i], ",")
+// 		states[i].Interfaces = &interfaces
+// 	}
+// 	return nil
+// }
