@@ -1873,7 +1873,7 @@ func processDecode(c *fiber.Ctx, req index.DecodeRequest) error {
 	bodies := req.Bodies
 
 	// call marker request
-	decodedOpcodes, decodedBodies, _, err := index.MarkerRequest(opcodes, bodies, nil)
+	decodedOpcodes, decodedBodies, err := index.MarkerRequest(opcodes, bodies)
 	if err != nil {
 		return index.IndexError{Code: 500, Message: fmt.Sprintf("marker request failed: %v", err)}
 	}

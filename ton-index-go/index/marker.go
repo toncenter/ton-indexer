@@ -34,9 +34,9 @@ func init() {
 }
 
 // batch request to a c++ library
-func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [][]uint32) ([]string, []string, []string, error) {
+func MarkerRequest(opcodesList []uint32, bocBase64List []string) ([]string, []string, error) {
 	if !isLibraryInitialized {
-		return nil, nil, nil, errors.New("ton-marker library is not initialized")
+		return nil, nil, errors.New("ton-marker library is not initialized")
 	}
 	// allocate memory for opcodes array
 	var opcodesPtr unsafe.Pointer
@@ -80,74 +80,18 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 		}
 	}()
 
-	// allocate memory for method ids arrays
-	var methodIdsArrayPtr unsafe.Pointer
-	var methodCountsPtr unsafe.Pointer
-	var methodIdsSlice []*C.uint
-	var methodCountsSlice []C.int
-
-	if len(methodIdsList) > 0 {
-		methodIdsArrayPtr = C.malloc(C.size_t(len(methodIdsList) * int(unsafe.Sizeof(uintptr(0)))))
-		if methodIdsArrayPtr == nil {
-			panic("Failed to allocate memory for method ids array")
-		}
-		defer C.free(methodIdsArrayPtr)
-
-		methodCountsPtr = C.malloc(C.size_t(len(methodIdsList) * int(unsafe.Sizeof(C.int(0)))))
-		if methodCountsPtr == nil {
-			panic("Failed to allocate memory for method counts")
-		}
-		defer C.free(methodCountsPtr)
-
-		methodIdsSlice = unsafe.Slice((**C.uint)(methodIdsArrayPtr), len(methodIdsList))
-		methodCountsSlice = unsafe.Slice((*C.int)(methodCountsPtr), len(methodIdsList))
-	}
-
-	// allocate and fill method ids arrays
-	methodIdsPtrs := make([]unsafe.Pointer, len(methodIdsList))
-
-	if len(methodIdsList) > 0 {
-		for i, methods := range methodIdsList {
-			// allocate memory for this method ids array
-			methodIdsPtr := C.malloc(C.size_t(len(methods) * int(unsafe.Sizeof(C.uint(0)))))
-			if methodIdsPtr == nil {
-				panic("Failed to allocate memory for method ids")
-			}
-			methodIdsPtrs[i] = methodIdsPtr // save for cleanup
-
-			// copy method ids
-			methodsSlice := unsafe.Slice((*C.uint)(methodIdsPtr), len(methods))
-			for j, id := range methods {
-				methodsSlice[j] = C.uint(id)
-			}
-
-			// set up pointers and counts
-			methodIdsSlice[i] = (*C.uint)(methodIdsPtr)
-			methodCountsSlice[i] = C.int(len(methods))
-		}
-	}
-	// defer cleanup of method ids arrays
-	defer func() {
-		for _, ptr := range methodIdsPtrs {
-			C.free(ptr)
-		}
-	}()
-
 	// create batch request
 	request := C.struct_TonMarkerBatchRequest{
 		opcodes:         (*C.uint)(opcodesPtr),
 		opcode_count:    C.int(len(opcodesList)),
 		boc_base64_list: (**C.char)(bocListPtr),
 		boc_count:       C.int(len(bocBase64List)),
-		method_ids:      (**C.uint)(methodIdsArrayPtr),
-		method_counts:   (*C.int)(methodCountsPtr),
-		interface_count: C.int(len(methodIdsList)),
 	}
 
 	// call batch function
 	response := C.ton_marker_process_batch(&request)
 	if response == nil {
-		return nil, nil, nil, errors.New("ton_marker_process_batch failed or returned nil")
+		return nil, nil, errors.New("ton_marker_process_batch failed or returned nil")
 	}
 
 	defer func() {
@@ -182,19 +126,7 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string, methodIdsList [
 		}
 	}
 
-	// get interface results
-	var interfaceResults []string = make([]string, 0)
-	if response.interface_count > 0 && response.interface_results != nil {
-		results := unsafe.Slice(response.interface_results, response.interface_count)
-		for _, res := range results {
-			if res != nil {
-				interfaceResults = append(interfaceResults, C.GoString(res))
-			} else {
-				interfaceResults = append(interfaceResults, "")
-			}
-		}
-	}
-	return opcodeResults, bocResults, interfaceResults, nil
+	return opcodeResults, bocResults, nil
 }
 
 type messagesRefs struct {
@@ -318,7 +250,7 @@ func markWithRefs(refs *messagesRefs) error {
 		return nil
 	}
 
-	decodedOpcodes, decodedBodies, _, err := MarkerRequest(opcodes, bodies, nil)
+	decodedOpcodes, decodedBodies, err := MarkerRequest(opcodes, bodies)
 	if err != nil {
 		return err
 	}
@@ -364,29 +296,5 @@ func markWithRefs(refs *messagesRefs) error {
 		}
 	}
 
-	return nil
-}
-
-func MarkAccountStates(states []AccountStateFull) error {
-	methodIds := make([][]uint32, len(states))
-	for i := range states {
-		if states[i].ContractMethods != nil {
-			methodIds[i] = *states[i].ContractMethods
-		} else {
-			methodIds[i] = []uint32{}
-		}
-	}
-	_, _, recognizedInterfaces, err := MarkerRequest(nil, nil, methodIds)
-	if err != nil {
-		return err
-	}
-	for i := range states {
-		if recognizedInterfaces[i] == "" {
-			states[i].Interfaces = &[]string{}
-			continue
-		}
-		interfaces := strings.Split(recognizedInterfaces[i], ",")
-		states[i].Interfaces = &interfaces
-	}
 	return nil
 }
