@@ -37,13 +37,14 @@ RUN apt-get update -y \
 
 RUN go install github.com/swaggo/swag/cmd/swag@latest
 
-ADD ton-index-go/index/ /go/app/index/
-ADD ton-index-go/main.go /go/app/main.go
-ADD ton-index-go/go.mod /go/app/go.mod
-ADD ton-index-go/go.sum /go/app/go.sum
+ADD ton-index-go/ /go/ton-index-go/
+ADD ton-emulate-go/models/ /go/app/models/
+ADD ton-emulate-go/main.go /go/app/main.go
+ADD ton-emulate-go/go.mod /go/app/go.mod
+ADD ton-emulate-go/go.sum /go/app/go.sum
 COPY --from=cpp-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=cpp-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
-RUN cd /go/app && swag init && go build -o ton-index-go ./main.go
+RUN cd /go/app && swag init && go build -o ton-emulate-go ./main.go
 
 FROM ubuntu:jammy
 RUN apt-get update \
@@ -51,7 +52,7 @@ RUN apt-get update \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 COPY --from=cpp-builder /app/build/ton-marker/libton-marker* /usr/lib/
-COPY --from=go-builder /go/app/ton-index-go /usr/local/bin/ton-index-go
-COPY ton-index-go/entrypoint.sh /app/entrypoint.sh
+COPY --from=go-builder /go/app/ton-emulate-go /usr/local/bin/ton-emulate-go
+COPY ton-emulate-go/entrypoint.sh /app/entrypoint.sh
 
 ENTRYPOINT [ "/app/entrypoint.sh" ]

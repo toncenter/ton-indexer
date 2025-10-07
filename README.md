@@ -21,6 +21,9 @@ TON Indexer stack consists of following services:
 5. `run-migrations` -  Initializes the database schema and runs all required migrations.
 6. `metadata-fetcher` - Indexes offchain metadata for Jettons and NFTs, optional service.
 7. `imgproxy` - Proxies images from Jetton and NFT metadata, optional service.
+8. `emulate-task-emulator` - emulates trace for given external message.
+9. `emulate-event-classifier` - actions for emulated traces.
+10. `emulate-api` - API for emulation services.
 
 > [!IMPORTANT]
 > Metadata fetcher and imgproxy services perform requests to external links, such requests may expose your IP, strongly recommended to run this services on a separate machine and set up `IMGPROXY_KEY` and `IMGPROXY_SALT` variables.
@@ -56,6 +59,10 @@ docker compose up -d
 # To run ton-indexer with metadata services
 docker compose --profile metadata pull
 docker compose --profile metadata up -d
+
+# To run emulate api
+docker compose --profile emulate pull
+docker compose --profile emulate up -d
 ```
 
 Once the stack is running, the REST API and interactive Swagger are available at `localhost:8081/`.
