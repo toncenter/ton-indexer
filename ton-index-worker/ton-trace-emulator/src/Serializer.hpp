@@ -288,7 +288,7 @@ td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
       TRY_RESULT_ASSIGN(msg.source, convert::to_raw_address(msg_info.src));
       TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest));
       TRY_RESULT_ASSIGN(msg.fwd_fee, to_balance(msg_info.fwd_fee));
-      TRY_RESULT_ASSIGN(msg.ihr_fee, to_balance(msg_info.ihr_fee));
+      msg.ihr_fee = 0;
       msg.created_lt = msg_info.created_lt;
       msg.created_at = msg_info.created_at;
       msg.bounce = msg_info.bounce;

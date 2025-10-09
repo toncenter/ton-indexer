@@ -97,7 +97,8 @@ void ShardStateScanner::start_up() {
     for (const auto &shard_ds : mc_block_ds_.shard_blocks_) {
         shard_state_data_->shard_states_.push_back(shard_ds.block_state);
     }
-    auto config_r = block::ConfigInfo::extract_config(mc_block_ds_.shard_blocks_[0].block_state, block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries);
+    auto config_r = block::ConfigInfo::extract_config(mc_block_ds_.shard_blocks_[0].block_state, 
+        mc_block_ds_.shard_blocks_[0].handle->id(), block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries);
     if (config_r.is_error()) {
         LOG(ERROR) << "Failed to extract config: " << config_r.move_as_error();
         std::_Exit(2);

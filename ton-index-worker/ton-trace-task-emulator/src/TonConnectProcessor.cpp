@@ -178,9 +178,10 @@ td::Result<td::Ref<vm::Cell>> TonConnectProcessor::message_to_cell(const TonConn
   }
   {
     vm::CellBuilder cb;
-    block::tlb::t_Grams.store_integer_value(cb, td::BigInt256(0));
-    msg_info.ihr_fee = cb.as_cellslice_ref();
+    block::tlb::t_VarUInteger_16.store_integer_value(cb, td::BigInt256(0));
+    msg_info.extra_flags = cb.as_cellslice_ref();
   }
+  
   msg_info.created_lt = 0;
   msg_info.created_at = static_cast<uint32_t>(td::Timestamp::now().at_unix());
   if (!tlb::csr_pack(message.info, msg_info)) {
