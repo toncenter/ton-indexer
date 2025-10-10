@@ -2402,6 +2402,6 @@ _ subwallet_id:uint32 message_to_send:^(MessageRelaxed Any) send_mode:uint8
 
 highload_wallet_signed_v3#_ signature:bits512 msg_innner:^HighloadV3MsgInner = HighloadV3MsgBody;
 
-_ valid_until:uint64 seqno:uint16 actions:^(OutList n) = PreprocessedWalletV2MsgInner; // n = actions count, calculated as for w5
+_ {n:#} valid_until:uint64 seqno:uint16 actions:^(OutList n) = PreprocessedWalletV2MsgInner n; // n = actions count, calculated as for w5
 
 preprocessed_wallet_signed_v2#_ {n:#} signature:bits512 msg:^(PreprocessedWalletV2MsgInner n) = PreprocessedWalletV2MsgBody n;
