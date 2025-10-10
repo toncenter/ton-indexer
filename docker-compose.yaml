@@ -133,6 +133,7 @@ services:
       options:
         max-size: 4G
 
+# additional: offchain metadata indexer
   metadata-fetcher:
     profiles: [metadata]
     image: toncenter/ton-indexer-metadata-fetcher:v1.2.2
@@ -167,10 +168,100 @@ services:
     networks:
       internal:
 
+# additional: API Emulate
+  emulate-task-emulator:
+    profiles: [emulate]
+    image: toncenter/ton-indexer-worker:v1.2.2
+    build:
+      context: ton-index-worker
+      dockerfile: Dockerfile
+    depends_on:
+      emulate-redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      run-migrations:
+        condition: service_completed_successfully
+    networks:
+      internal:
+    environment:
+      <<: *index-pg-access
+      TON_INDEXER_EMULATE_REDIS_DSN: redis://emulate-redis:6379
+      TON_WORKER_BINARY: ton-trace-task-emulator
+      TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
+    command: --redis tcp://emulate-redis:6379 --db /tondb --working-dir /ton_emulate_workdir ${TON_EMULATE_ADDITIONAL_ARGS:-}
+    secrets:
+      - postgres_password
+    volumes:
+      - ${TON_WORKER_DBROOT:-/var/ton-work/db}:/tondb:ro
+      - ton_emulate_workdir:/ton_emulate_workdir
+
+  emulate-redis:
+    profiles: [emulate]
+    image: redis:8-alpine
+    networks:
+      internal:
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  emulate-event-classifier:
+    profiles: [emulate]
+    image: toncenter/ton-indexer-classifier:v1.2.2
+    build:
+      context: indexer
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      emulate-redis:
+        condition: service_healthy
+      emulate-task-emulator:
+        condition: service_started
+    secrets:
+      - postgres_password
+    command: --emulated-trace-tasks --emulated-traces-redis-channel classifierchannel
+    environment:
+      <<: *index-pg-access
+      TON_INDEXER_REDIS_DSN: redis://emulate-redis:6379
+      TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
+    restart: unless-stopped
+    networks:
+      internal:
+
+  emulate-api:
+    image: toncenter/ton-indexer-emulate-api:v1.2.2
+    build:
+      context: .
+      dockerfile: ton-emulate-go/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      run-migrations:
+        condition: service_completed_successfully
+    secrets:
+      - postgres_password
+    command: -prefork -redis emulate-redis:6379
+    ports:
+      - target: 8080
+        published: ${TON_EMULATE_API_PORT:-8082}
+    environment:
+      <<: *index-pg-access
+      TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
+      TON_INDEXER_IMGPROXY_BASEURL: ${TON_INDEXER_IMGPROXY_BASEURL:-}
+    restart: unless-stopped
+    networks:
+      internal:
+
 volumes:
   postgres_data:
     external: false
   ton_index_workdir:
+    external: false
+  ton_emulate_workdir:
     external: false
 
 networks:

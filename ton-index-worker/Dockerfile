@@ -24,7 +24,7 @@ COPY CMakeLists.txt /app/
 
 WORKDIR /app/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release ..
-RUN make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner ton-integrity-checker ton-trace-emulator ton-marker-cli
+RUN make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner ton-integrity-checker ton-trace-emulator ton-trace-task-emulator ton-marker-cli
 
 FROM ubuntu:22.04
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
@@ -39,5 +39,7 @@ COPY --from=builder /app/build/ton-index-clickhouse/ton-index-clickhouse /usr/bi
 COPY --from=builder /app/build/ton-smc-scanner/ton-smc-scanner /usr/bin/ton-smc-scanner
 COPY --from=builder /app/build/ton-integrity-checker/ton-integrity-checker /usr/bin/ton-integrity-checker
 COPY --from=builder /app/build/ton-trace-emulator/ton-trace-emulator /usr/bin/ton-trace-emulator
+COPY --from=builder /app/build/ton-trace-task-emulator/ton-trace-task-emulator /usr/bin/ton-trace-task-emulator
+COPY --from=builder /app/build/ton-marker/ton-marker-cli /usr/bin/ton-marker-cli
 
 ENTRYPOINT [ "/entrypoint.sh" ]
