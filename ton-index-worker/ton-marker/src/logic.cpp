@@ -149,37 +149,25 @@ std::string decode_boc(const std::string& boc_input) {
         std::string json_output;
         tlb::JsonPrinter pp(&json_output);
 
-        // helper to try parsing with a specific parser
-        const auto try_parse = [&cs, &pp](const schemes::TLB_Complex& parser) -> bool {
-            auto cs_copy = cs; // make a copy since parsing modifies the slice
-            return parser.print_skip(pp, cs_copy);
-        };
+        // try special parsers first (w5, highload v3, wallets without opcode)
+        if (try_parse_special(get_opcode_name(opcode), cs, pp, json_output)) {
+            return json_output;
+        }
 
         // find matching parser by opcode and try to parse
         bool parsed = false;
         const auto check_and_parse = [&](const auto& parser) -> bool {
-            json_output = "";
-            pp = tlb::JsonPrinter(&json_output);
             for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
                 if (parser.cons_tag[i] == opcode) {
-                    if (try_parse(parser)) return true;
-                    else {
-                        // std::cout << "    ton-marker: some parser matched but failed" << "\n";
-                        // std::cout << "    ton-marker: boc: " << boc_base64 << "\n";
-                        // std::cout << "    ton-marker: JSON_OUTPUT: " << json_output << "\n";
-                        json_output = "";
-                        pp = tlb::JsonPrinter(&json_output);
-                        // continue searching, may be another parser for the same opcode
-                    }
+                    auto cs_copy = cs;
+                    if (parser.print_skip(pp, cs_copy)) return true;
+                    // restore output on failure
+                    json_output = "";
+                    pp = tlb::JsonPrinter(&json_output); // JsonPrinter has state vars like is_first_field, reset them
                 }
             }
-            json_output = "unknown";
             return false;
         };
-
-        if (try_parse_special(get_opcode_name(opcode), cs, pp)) {
-            return json_output;
-        }
         
         if (check_and_parse(parser0)) parsed = true;
         else if (check_and_parse(parser1)) parsed = true;
