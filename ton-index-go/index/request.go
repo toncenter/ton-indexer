@@ -37,7 +37,7 @@ type AddressBookRequest struct {
 type TransactionRequest struct {
 	Account        []AccountAddress `query:"account"`
 	ExcludeAccount []AccountAddress `query:"exclude_account"`
-	Hash           *HashType        `query:"hash"`
+	Hash           []HashType       `query:"hash"`
 	Lt             *uint64          `query:"lt"`
 }
 
@@ -134,6 +134,7 @@ type ActionRequest struct {
 	ExcludeActionTypes   []string        `query:"exclude_action_type"`
 	SupportedActionTypes []string        `query:"supported_action_types"`
 	IncludeAccounts      *bool           `query:"include_accounts"`
+	IncludeTransactions  *bool           `query:"include_transactions"`
 }
 
 type BalanceChangesRequest struct {
@@ -161,6 +162,7 @@ type PendingActionsRequest struct {
 	AccountAddress       *AccountAddress `query:"account"`
 	ExtMsgHash           []HashType      `query:"ext_msg_hash"`
 	SupportedActionTypes []string        `query:"supported_action_types"`
+	IncludeTransactions  *bool           `query:"include_transactions"`
 }
 
 type DNSRecordsRequest struct {
