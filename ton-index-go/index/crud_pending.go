@@ -66,7 +66,7 @@ func (db *DbClient) QueryPendingActions(settings RequestSettings, emulatedContex
 		}
 
 		for i := range actions {
-			actions[i].Transactions = make([]*Transaction, 0)
+			actions[i].Transactions = make([]*Transaction, 0, len(actions[i].TxHashes))
 			for _, txHash := range actions[i].TxHashes {
 				if tx, ok := txMap[txHash]; ok {
 					actions[i].Transactions = append(actions[i].Transactions, tx)
