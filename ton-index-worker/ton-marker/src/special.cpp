@@ -22,8 +22,8 @@ int count_actions_depth(vm::Ref<vm::Cell> list) {
 
 // JsonPrinter should be reset if this function fails, 
 // bc it writes failed result to pp
-bool try_parse_special(unsigned opcode, vm::CellSlice& cs, tlb::JsonPrinter& pp) {
-    if (opcode == OPCODE_W5_EXTERNAL_SIGNED_REQUEST || opcode == OPCODE_W5_INTERNAL_SIGNED_REQUEST || opcode == OPCODE_W5_EXTENSION_ACTION_REQUEST) {        
+bool try_parse_special(std::string opcode_name, vm::CellSlice& cs, tlb::JsonPrinter& pp) {
+    if (opcode_name == "w5_external_signed_request" || opcode_name == "w5_internal_signed_request" || opcode_name == "w5_extension_action_request") {        
         // we can't use W5MsgBody just as is. it has snake cells for actions,
         // and tlb-generated code is not capable of detecting how many cells are in the snake.
         // so we first just count actions depth on refs,
@@ -36,7 +36,7 @@ bool try_parse_special(unsigned opcode, vm::CellSlice& cs, tlb::JsonPrinter& pp)
         cs_copy.advance(32);
 
         // skip fields before actions
-        if (opcode == OPCODE_W5_EXTENSION_ACTION_REQUEST) {
+        if (opcode_name == "w5_extension_action_request") {
             cs_copy.advance(64); // skip query_id
         } else {
         cs_copy.advance(32); // skip wallet_id
@@ -67,7 +67,7 @@ bool try_parse_special(unsigned opcode, vm::CellSlice& cs, tlb::JsonPrinter& pp)
         auto cs_copy2 = cs;
         return w5_parser.print_skip(pp, cs_copy2);
     }
-    if (opcode == OPCODE_HIGHLOAD_V3_INTERNAL_REQUEST) {
+    if (opcode_name == "highload_v3_internal_request") {
         // same as W5MsgBody
         // actions_count = n
         auto cs_copy = cs;
@@ -81,6 +81,17 @@ bool try_parse_special(unsigned opcode, vm::CellSlice& cs, tlb::JsonPrinter& pp)
         schemes::HighloadV3InternalRequest highload_v3_parser(out_actions_count);
         auto cs_copy2 = cs;
         return highload_v3_parser.print_skip(pp, cs_copy2);
+    }
+    if (opcode_name.find("unknown") != std::string::npos) {
+        // try parse externals that start with signatures
+        
+        // try parse as wallet v3 message
+        int n = cs.size_refs();
+        const schemes::W3MsgBody parser(n);
+        auto cs_copy = cs;
+        if (parser.print_skip(pp, cs_copy)) {
+            return true;
+        }
     }
     
     return false;

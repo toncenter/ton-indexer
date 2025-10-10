@@ -177,7 +177,7 @@ std::string decode_boc(const std::string& boc_input) {
             return false;
         };
 
-        if (try_parse_special(opcode, cs, pp)) {
+        if (try_parse_special(get_opcode_name(opcode), cs, pp)) {
             return json_output;
         }
         

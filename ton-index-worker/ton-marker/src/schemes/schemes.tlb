@@ -1606,59 +1606,6 @@ signed_2fa_external$_
 ton_validators_account_lists#_ list:(Hashmap 256 Cell) = TonValidatorsAccountLists;
 
 
-// wallets
-
-// wallet_plugin_installation_notification
-wallet_plugin_installation_notification#6e6f7465 query_id:uint64 = InternalMsgBody5;
-
-// wallet_plugin_destruct
-wallet_plugin_destruct#64737472 query_id:uint64 = InternalMsgBody5;
-
-// wallet_plugin_destruct_response
-wallet_plugin_destruct_response#e4737472 query_id:uint64 = InternalMsgBody5;
-
-// payment_request
-payment_request#706c7567 query_id:uint64 amount:CurrencyCollection = InternalMsgBody5;
-
-// payment_confirmed
-payment_confirmed#f06c7567 query_id:uint64 = InternalMsgBody5;
-
-
-// doesn't have tags:
-
-// message$_ info:CommonMsgInfoRelaxed
-//         init:(Maybe (Either StateInit ^StateInit))
-//         body:(Either (MessageRelaxed InternalMsgBody) ^(MessageRelaxed InternalMsgBody)) 
-//     = HighloadWalletV3MessageRelaxed;
-
-// query_id#_ shift:uint13 bit_number:(## 10) = HighloadV3QueryId;
-// msg_inner#_ subwallet_id:uint32 message_to_send:^(MessageRelaxed Any) send_mode:uint8 
-//         query_id:HighloadV3QueryId created_at:uint64 timeout:uint22 = HighloadV3MsgInner;
-// msg_inner#_ valid_until:uint64 seq_no:uint16 actions:^OutActions = PreprocessedWalletV2MsgInner;
-// extensions#_ extensions:(Hashmap 256 uint1) = WalletV5ExtensionsList;
-// simple_send$00000000 payload:WalletV1toV4Payload = WalletV4Payload;
-// w4_deploy_install_plugin$00000001 plugin_workchain:int8 plugin_balance:Coins state_init:^StateInit body:^Cell = WalletV4Payload;
-// w4_install_plugin$00000010 plugin_workchain:int8 plugin_address:bits256 amount:Coins query_id:uint64 = WalletV4Payload;
-// remove_plugin$00000011 plugin_workchain:int8 plugin_address:bits256 amount:Coins query_id:uint64 = WalletV4Payload;
-
-// // wallet_signed_v3
-// wallet_signed_v3#_ signature:bits512 subwallet_id:uint32 valid_until:uint32 seqno:uint32 payload:WalletV1toV4Payload =
-//         ExternalMsgBody;
-
-// // wallet_signed_v4
-// wallet_signed_v4#_ signature:bits512 subwallet_id:uint32 valid_until:uint32 seqno:uint32 payload:WalletV4Payload = ExternalMsgBody;
-
-// // highload_wallet_signed_v3
-// highload_wallet_signed_v3#_ {n:#} signature:bits512 msg:^HighloadV3MsgInner = ExternalMsgBody;
-
-// // preprocessed_wallet_signed_v2
-// preprocessed_wallet_signed_v2#_ {n:#} sign:bits512 msg:^PreprocessedWalletV2MsgInner = ExternalMsgBody;
-
-// // highload_wallet_signed_v2
-// highload_wallet_signed_v2#_ signature:bits512 subwallet_id:uint32 query_id:uint64 payload:(HashmapE 16 SendMessageAction) = ExternalMsgBody;
-
-
-
 // whales.xml
 
 // Types
@@ -2406,3 +2353,55 @@ dedust_reset_gas_v2#26c63ab7 query_id:uint64 response_destination:MsgAddressInt 
 
 dedust_set_user_addr#48e5a95d query_id:uint64 user_addr:MsgAddress = InternalMsgBody9;
 dedust_forward#f1989255 query_id:uint64 destination:MsgAddressInt body:^Cell = InternalMsgBody9;
+
+
+// wallets
+
+wallet_plugin_installation_notification#6e6f7465 query_id:uint64 = InternalMsgBody5;
+
+wallet_plugin_destruct#64737472 query_id:uint64 = InternalMsgBody5;
+
+wallet_plugin_destruct_response#e4737472 query_id:uint64 = InternalMsgBody5;
+
+payment_request#706c7567 query_id:uint64 amount:CurrencyCollection = InternalMsgBody5;
+
+payment_confirmed#f06c7567 query_id:uint64 = InternalMsgBody5;
+
+// no prefixes:
+
+_ mode:(## 8) msg:^(MessageRelaxed Any) = ModeWithMessage;
+msgs_0#_ = WalletV1toV4Msgs 0;
+msgs_1#_ msg_1:ModeWithMessage = WalletV1toV4Msgs 1;
+msgs_2#_ msg_1:ModeWithMessage msg_2:ModeWithMessage = WalletV1toV4Msgs 2;
+msgs_3#_ msg_1:ModeWithMessage msg_2:ModeWithMessage msg_3:ModeWithMessage = WalletV1toV4Msgs 3;
+msgs_4#_ msg_1:ModeWithMessage msg_2:ModeWithMessage msg_3:ModeWithMessage msg_4:ModeWithMessage = WalletV1toV4Msgs 4;
+
+// w1 and w2 are the same
+wallet_signed_v1_v2#_ {n:#} signature:bits512 msg_seqno:uint32 valid_until:uint32 msgs:(WalletV1toV4Msgs n) =
+        W1W2MsgBody n; // n = msgs count, calculated as refs count
+
+wallet_signed_v3#_ {n:#} signature:bits512 subwallet_id:uint32 valid_until:uint32 msg_seqno:uint32 msgs:(WalletV1toV4Msgs n) =
+        W3MsgBody n; // n = msgs count, calculated as refs count
+
+simple_send#00 {n:#} msgs:(WalletV1toV4Msgs n) = W4Operation n; // n = msgs count, calculated as refs count
+deploy_install_plugin#01 {n:#} plugin_workchain:int8 plugin_balance:Coins state_init:^StateInit body:^Cell = W4Operation n; // n unused
+install_plugin#02 {n:#} plugin_workchain:int8 plugin_address:bits256 amount:Coins query_id:uint64 = W4Operation n; // n unused
+remove_plugin#03 {n:#} plugin_workchain:int8 plugin_address:bits256 amount:Coins query_id:uint64 = W4Operation n; // n unused
+
+wallet_signed_v4#_ {n:#} signature:bits512 subwallet_id:uint32 valid_until:uint32 msg_seqno:uint32 op:(W4Operation n) =
+        W4MsgBody n; // n = msgs count or nothing, calculated as refs count
+
+highload_wallet_signed_v1#_ signature:bits512 subwallet_id:uint32 valid_until:uint32 msg_seqno:uint32
+        payload:^(Hashmap 16 ModeWithMessage) = HighloadV1MsgBody; // yep, not HashmapE, its a ref to a Hashmap
+
+highload_wallet_signed_v2#_ signature:bits512 subwallet_id:uint32 query_id:uint64 payload:(HashmapE 16 ModeWithMessage) = HighloadV2MsgBody;
+
+_ shift:uint13 bit_number:(## 10) = HighloadV3QueryId;
+_ subwallet_id:uint32 message_to_send:^(MessageRelaxed Any) send_mode:uint8
+            query_id:HighloadV3QueryId created_at:uint64 timeout:uint22 = HighloadV3MsgInner;
+
+highload_wallet_signed_v3#_ signature:bits512 msg_innner:^HighloadV3MsgInner = HighloadV3MsgBody;
+
+_ valid_until:uint64 seqno:uint16 actions:^(OutList n) = PreprocessedWalletV2MsgInner; // n = actions count, calculated as for w5
+
+preprocessed_wallet_signed_v2#_ {n:#} signature:bits512 msg:^(PreprocessedWalletV2MsgInner n) = PreprocessedWalletV2MsgBody n;
