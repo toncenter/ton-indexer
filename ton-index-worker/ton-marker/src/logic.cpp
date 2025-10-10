@@ -3,8 +3,10 @@
 #include "special.h"
 #include "vm/boc.h"
 #include "crypto/tl/tlblib.hpp"
+#include "td/utils/misc.h"
 #include "td/utils/base64.h"
 #include "vm/excno.hpp"
+
 namespace ton_marker {
 
 namespace {
@@ -93,18 +95,28 @@ std::string replace_boc_cells_recursive(const std::string& json_str, int depth =
 }
 } // namespace
 
-std::string decode_boc(const std::string& boc_base64) {
+std::string decode_boc(const std::string& boc_input) {
     try {
-        // decode base64
-        auto boc_data = td::base64_decode(boc_base64);
-        if (boc_data.is_error()) {
-            return "unknown: failed to decode base64";
+        td::Result<std::string> decoded_result;
+
+        // check if input is base64 (starts with te6)
+        if (boc_input.substr(0, 3) == "te6") {
+            decoded_result = td::base64_decode(boc_input);
+            if (decoded_result.is_error()) {
+                return "unknown: failed to decode base64: " + decoded_result.error().message().str();
+            }
+        } else {
+            // try as hex
+            decoded_result = td::hex_decode(td::Slice(boc_input));
+            if (decoded_result.is_error()) {
+                return "unknown: failed to decode hex: " + decoded_result.error().message().str();
+            }
         }
 
         // deserialize
-        auto cell_result = vm::std_boc_deserialize(boc_data.move_as_ok());
+        auto cell_result = vm::std_boc_deserialize(decoded_result.move_as_ok());
         if (cell_result.is_error()) {
-            return "unknown: failed to deserialize boc";
+            return "unknown: failed to deserialize boc: " + cell_result.error().message().str();
         }
 
         auto cell = cell_result.move_as_ok();
@@ -113,7 +125,7 @@ std::string decode_boc(const std::string& boc_base64) {
             return "{\"empty_cell\": \"\"}";
         }
         if (cs.size() < 32) {
-            return "unknown: boc is too small, size=" + std::to_string(cs.size());
+            return "unknown: boc is too small, size " + std::to_string(cs.size());
         }
 
         unsigned opcode = cs.prefetch_ulong(32);
