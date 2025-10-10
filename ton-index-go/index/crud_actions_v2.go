@@ -466,6 +466,7 @@ func queryActionsTransactionsImpl(actions []Action, conn *pgxpool.Conn, settings
 	}
 
 	// Build query using buildTransactionsQuery with multiple hashes
+	// Only the Hash field of TransactionRequest is needed for this query; other fields are left at their zero values intentionally.
 	tx_req := TransactionRequest{Hash: txHashes}
 	query, err := buildTransactionsQuery(
 		BlockRequest{}, tx_req, MessageRequest{},
