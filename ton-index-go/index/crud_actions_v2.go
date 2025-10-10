@@ -68,6 +68,12 @@ func (db *DbClient) QueryActionsV2(
 			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 		}
 	}
+	if act_req.IncludeTransactions != nil && *act_req.IncludeTransactions {
+		actions, err = queryActionsTransactionsImpl(actions, conn, settings)
+		if err != nil {
+			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
+		}
+	}
 	if len(addr_map) > 0 {
 		addr_list := []string{}
 		for k := range addr_map {
@@ -434,4 +440,61 @@ func queryRawActionsImplV2(query string, args []any, conn *pgxpool.Conn, setting
 		return nil, IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 	return res, nil
+}
+
+func queryActionsTransactionsImpl(actions []Action, conn *pgxpool.Conn, settings RequestSettings) ([]Action, error) {
+	if len(actions) == 0 {
+		return actions, nil
+	}
+
+	// Collect all unique transaction hashes from all actions
+	txHashSet := make(map[HashType]bool)
+	for _, action := range actions {
+		for _, txHash := range action.TxHashes {
+			txHashSet[txHash] = true
+		}
+	}
+
+	if len(txHashSet) == 0 {
+		return actions, nil
+	}
+
+	// Convert set to slice
+	txHashes := make([]HashType, 0, len(txHashSet))
+	for hash := range txHashSet {
+		txHashes = append(txHashes, hash)
+	}
+
+	// Build query using buildTransactionsQuery with multiple hashes
+	// Only the Hash field of TransactionRequest is needed for this query; other fields are left at their zero values intentionally.
+	tx_req := TransactionRequest{Hash: txHashes}
+	query, err := buildTransactionsQuery(
+		BlockRequest{}, tx_req, MessageRequest{},
+		UtimeRequest{}, LtRequest{}, LimitRequest{}, settings)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	txs, err := queryTransactionsImpl(query, conn, settings)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+
+	// Create a map of transactions by hash
+	txMap := make(map[HashType]*Transaction)
+	for i := range txs {
+		txMap[txs[i].Hash] = &txs[i]
+	}
+
+	// Assign transactions to actions
+	for i := range actions {
+		actions[i].Transactions = make([]*Transaction, 0, len(actions[i].TxHashes))
+		for _, txHash := range actions[i].TxHashes {
+			if tx, ok := txMap[txHash]; ok {
+				actions[i].Transactions = append(actions[i].Transactions, tx)
+			}
+		}
+	}
+
+	return actions, nil
 }

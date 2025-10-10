@@ -218,9 +218,12 @@ func buildTransactionsQuery(
 		}
 	}
 	// TODO: implement ExcludeAccount logic
-	if v := tx_req.Hash; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("T.hash = '%s'", *v))
-		orderby_query = ``
+	if v := tx_req.Hash; len(v) > 0 {
+		filter_str := filterByArray("T.hash", v)
+		if len(filter_str) > 0 {
+			filter_list = append(filter_list, filter_str)
+		}
+		orderby_query = fmt.Sprintf(" order by T.hash %s", sort_order)
 	}
 	if v := tx_req.Lt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.lt = %d", *v))

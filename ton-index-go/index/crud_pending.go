@@ -54,6 +54,27 @@ func (db *DbClient) QueryPendingActions(settings RequestSettings, emulatedContex
 		}
 	}
 
+	if request.IncludeTransactions != nil && *request.IncludeTransactions {
+		txs, err := QueryPendingTransactionsImpl(emulatedContext, conn, settings, false)
+		if err != nil {
+			return nil, nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
+		}
+		txMap := make(map[HashType]*Transaction)
+		for idx := range txs {
+			tx := &txs[idx]
+			txMap[tx.Hash] = tx
+		}
+
+		for i := range actions {
+			actions[i].Transactions = make([]*Transaction, 0, len(actions[i].TxHashes))
+			for _, txHash := range actions[i].TxHashes {
+				if tx, ok := txMap[txHash]; ok {
+					actions[i].Transactions = append(actions[i].Transactions, tx)
+				}
+			}
+		}
+	}
+
 	return actions, book, metadata, nil
 }
 
