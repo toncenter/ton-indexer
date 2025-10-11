@@ -1220,7 +1220,7 @@ func ScanMessageWithContent(row pgx.Row) (*Message, error) {
 	var init_state MessageContent
 
 	err := row.Scan(&m.TxHash, &m.TxLt, &m.MsgHash, &m.Direction, &m.TraceId, &m.Source, &m.Destination,
-		&m.Value, &m.ValueExtraCurrencies, &m.FwdFee, &m.IhrFee, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
+		&m.Value, &m.ValueExtraCurrencies, &m.FwdFee, &m.IhrFee, &m.ExtraFlags, &m.CreatedLt, &m.CreatedAt, &m.Opcode,
 		&m.IhrDisabled, &m.Bounce, &m.Bounced, &m.ImportFee, &m.BodyHash, &m.InitStateHash, &m.MsgHashNorm,
 		&m.InMsgTxHash, &m.OutMsgTxHash, &body.Hash, &body.Body, &init_state.Hash, &init_state.Body)
 	if body.Hash != nil {

@@ -154,6 +154,7 @@ type trMessage struct {
 	Value        *uint64 `msgpack:"value" json:"value"`
 	FwdFee       *uint64 `msgpack:"fwd_fee" json:"fwd_fee"`
 	IhrFee       *uint64 `msgpack:"ihr_fee" json:"ihr_fee"`
+	ExtraFlags   *string `msgpack:"extra_flags" json:"extra_flags"`
 	CreatedLt    *uint64 `msgpack:"created_lt" json:"created_lt"`
 	CreatedAt    *uint32 `msgpack:"created_at" json:"created_at"`
 	Opcode       *int32  `msgpack:"opcode" json:"opcode"`
@@ -931,6 +932,7 @@ func (m *trMessage) GetMessageRow(traceId string, direction string, txLt uint64,
 		ValueExtraCurrencies: map[string]string{},
 		FwdFee:               m.FwdFee,
 		IhrFee:               m.IhrFee,
+		ExtraFlags:           m.ExtraFlags,
 		CreatedLt:            m.CreatedLt,
 		CreatedAt:            m.CreatedAt,
 		Opcode:               m.Opcode,

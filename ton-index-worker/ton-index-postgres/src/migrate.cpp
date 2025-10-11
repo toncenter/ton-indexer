@@ -221,6 +221,7 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "value_extra_currencies jsonb, "
       "fwd_fee bigint, "
       "ihr_fee bigint, "
+      "extra_flags numeric,"
       "created_lt bigint, "
       "created_at bigint, "
       "opcode integer, "
@@ -824,6 +825,8 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
+    query += "ALTER TABLE messages ADD COLUMN IF NOT EXISTS extra_flags numeric;\n";
+
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS nft_listing_data nft_listing_details;\n";
 
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_send_data layerzero_send_details;\n";
@@ -838,7 +841,7 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
 
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 1) ON CONFLICT(id) DO UPDATE "
+      "VALUES (1, 1, 2, 2) ON CONFLICT(id) DO UPDATE "
       "SET major = 1, minor = 2, patch = 2;\n"
     );
 

@@ -151,6 +151,7 @@ struct Message {
   std::optional<uint64_t> value;
   std::optional<uint64_t> fwd_fee;
   std::optional<uint64_t> ihr_fee;
+  std::optional<std::string> extra_flags;
   std::optional<uint64_t> created_lt;
   std::optional<uint32_t> created_at;
   std::optional<int32_t> opcode;
@@ -167,7 +168,7 @@ struct Message {
 
   std::optional<td::Bits256> hash_norm;
 
-  MSGPACK_DEFINE(hash, source, destination, value, fwd_fee, ihr_fee, created_lt, created_at, 
+  MSGPACK_DEFINE(hash, source, destination, value, fwd_fee, ihr_fee, extra_flags, created_lt, created_at, 
                  opcode, ihr_disabled, bounce, bounced, import_fee, body_boc, init_state_boc, hash_norm)
 };
 
@@ -289,6 +290,11 @@ td::Result<Message> parse_message(td::Ref<vm::Cell> msg_cell) {
       TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest));
       TRY_RESULT_ASSIGN(msg.fwd_fee, to_balance(msg_info.fwd_fee));
       msg.ihr_fee = 0;
+      auto extra_flags_ref = block::tlb::t_VarUInteger_16.as_integer_skip(msg_info.extra_flags.write());
+      if (extra_flags_ref.is_null()) {
+        return td::Status::Error("Failed to unpack extra_flags");
+      }
+      msg.extra_flags = extra_flags_ref->to_dec_string();
       msg.created_lt = msg_info.created_lt;
       msg.created_at = msg_info.created_at;
       msg.bounce = msg_info.bounce;

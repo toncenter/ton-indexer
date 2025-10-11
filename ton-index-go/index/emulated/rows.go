@@ -93,6 +93,7 @@ type MessageRow struct {
 	ValueExtraCurrencies map[string]string
 	FwdFee               *uint64
 	IhrFee               *uint64
+	ExtraFlags           *string
 	CreatedLt            *uint64
 	CreatedAt            *uint32
 	Opcode               *int32
@@ -719,6 +720,7 @@ func (m *MessageRow) getAssigns() []assign {
 		assignMap(m.ValueExtraCurrencies),
 		assignIntPtr(m.FwdFee),
 		assignIntPtr(m.IhrFee),
+		assignStringPtr(m.ExtraFlags),
 		assignIntPtr(m.CreatedLt),
 		assignIntPtr(m.CreatedAt),
 		assignIntPtr(m.Opcode),

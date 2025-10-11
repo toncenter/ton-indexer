@@ -903,7 +903,7 @@ void InsertBatchPostgres::insert_transactions(pqxx::work &txn, bool with_copy) {
 
 void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
   std::initializer_list<std::string_view> columns = {"tx_hash", "tx_lt", "mc_seqno", "msg_hash", "direction", "trace_id", "source", "destination",
-                                                "value", "value_extra_currencies", "fwd_fee", "ihr_fee", "created_lt", "created_at",
+                                                "value", "value_extra_currencies", "fwd_fee", "ihr_fee", "extra_flags", "created_lt", "created_at",
                                                 "opcode", "ihr_disabled", "bounce", "bounced", "import_fee", "body_hash", "init_state_hash", "msg_hash_norm"};
   PopulateTableStream stream(txn, "messages", columns, 1000, with_copy);
   if (!with_copy) {
@@ -935,6 +935,7 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
       msg.value ? std::make_optional(extra_currencies_to_json_string(msg.value->extra_currencies)) : std::nullopt,
       msg.fwd_fee,
       msg.ihr_fee,
+      msg.extra_flags,
       msg.created_lt,
       msg.created_at,
       msg.opcode,

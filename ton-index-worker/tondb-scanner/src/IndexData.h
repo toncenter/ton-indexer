@@ -190,6 +190,7 @@ struct Message {
   std::optional<CurrencyCollection> value;
   std::optional<td::RefInt256> fwd_fee;
   std::optional<td::RefInt256> ihr_fee;
+  std::optional<td::RefInt256> extra_flags;
   std::optional<uint64_t> created_lt;
   std::optional<uint32_t> created_at;
   std::optional<int32_t> opcode;
