@@ -142,7 +142,8 @@ void RedisListener::process_trace_task(TraceTask task) {
         auto mc_block_ds = R.move_as_ok();
         for (auto &block_ds : mc_block_ds.shard_blocks_) {
             if (block_ds.block_data->block_id().is_masterchain()) {
-                mc_block_ds.config_ = block::ConfigInfo::extract_config(block_ds.block_state, block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries | block::ConfigInfo::needWorkchainInfo | block::ConfigInfo::needSpecialSmc).move_as_ok();
+                mc_block_ds.config_ = block::ConfigInfo::extract_config(block_ds.block_state, 
+                  block_ds.block_data->block_id(), block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries | block::ConfigInfo::needWorkchainInfo | block::ConfigInfo::needSpecialSmc).move_as_ok();
                 break;
             }
         }
