@@ -811,11 +811,6 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("alter type nft_transfer_details add attribute payout_comment text;");
     exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
     exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
-    exec_query("create type layerzero_send_details as (send_request_id numeric, msglib_manager varchar, msglib varchar, uln tonaddr, native_fee numeric, zro_fee numeric, endpoint tonaddr, channel tonaddr);");
-    exec_query("create type layerzero_packet_details as (src_oapp varchar, dst_oapp varchar, src_eid integer, dst_eid integer, nonce numeric, guid varchar, message varchar);");
-    exec_query("create type layerzero_dvn_verify_details as (nonce numeric, status varchar, dvn tonaddr, proxy tonaddr, uln tonaddr, uln_connection tonaddr);");
-    exec_query("create type pool_type as enum ('stable', 'volatile');");
-    exec_query("create type dex_type as enum ('dedust');");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -825,13 +820,7 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
-    query += "ALTER TABLE messages ADD COLUMN IF NOT EXISTS extra_flags numeric;\n";
-
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS nft_listing_data nft_listing_details;\n";
-
-    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_send_data layerzero_send_details;\n";
-    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_packet_data layerzero_packet_details;\n";
-    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_dvn_verify_data layerzero_dvn_verify_details;\n";
 
     query += (
       "CREATE TABLE IF NOT EXISTS marketplace_names ("
@@ -843,22 +832,6 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
       "INSERT INTO ton_db_version (id, major, minor, patch) "
       "VALUES (1, 1, 2, 2) ON CONFLICT(id) DO UPDATE "
       "SET major = 1, minor = 2, patch = 2;\n"
-    );
-
-    query += (
-      "CREATE TABLE IF NOT EXISTS dex_pools ("
-      "id bigserial not null, "
-      "address tonaddr not null primary key, "
-      "asset_1 tonaddr, "
-      "asset_2 tonaddr, "
-      "reserve_1 numeric, "
-      "reserve_2 numeric, "
-      "pool_type pool_type, "
-      "dex dex_type, "
-      "fee double precision, "
-      "last_transaction_lt bigint, "
-      "code_hash tonhash, "
-      "data_hash tonhash);\n"
     );
 
     if (dry_run) {
@@ -956,6 +929,56 @@ void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
   }
 
   LOG(INFO) << "Migration to version 1.2.3 completed successfully.";
+}
+
+void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.4";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        // TODO: add types creation
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+  }
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    // TODO: add queries
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.4 completed successfully.";
 }
 
 void create_indexes(std::string connection_string, bool dry_run) {
