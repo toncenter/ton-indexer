@@ -1152,7 +1152,7 @@ int main(int argc, char *argv[]) {
       current_version = Version{1, 2, 2};
     }
     if (migration_needed(current_version, Version{1, 2, 3}, rerun_last_migration)) {
-      run_1_2_2_migrations(pg_connection_string, dry_run);
+      run_1_2_3_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 3};
     }
 

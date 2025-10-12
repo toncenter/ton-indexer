@@ -58,7 +58,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.image.context }}
-          file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
+          file: ${{ matrix.image.context }}/q${{ matrix.image.dockerfile }}
           platforms: linux/${{ matrix.arch.platform }}
           push: true
           tags: |
