@@ -281,7 +281,7 @@ func buildMessagesQuery(
 	settings RequestSettings,
 ) (string, error) {
 	rest_columns := `M.trace_id, M.source, M.destination, M.value, 
-		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
+		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.extra_flags, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
 		M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm`
 	clmn_query := `'', 0, M.msg_hash, '', ` + rest_columns + `, 
 		max(case when M.direction='in' then M.tx_hash else null end) as in_tx_hash, 
@@ -1352,7 +1352,7 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 	if len(hash_list) > 0 {
 		hash_list_str := strings.Join(hash_list, ",")
 		query = fmt.Sprintf(`select M.tx_hash, M.tx_lt, M.msg_hash, M.direction, M.trace_id, M.source, M.destination, M.value, 
-			M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
+			M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.extra_flags, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
 			M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm, NULL, NULL, B.*, I.* from messages as M 
 			left join message_contents as B on M.body_hash = B.hash 
 			left join message_contents as I on M.init_state_hash = I.hash

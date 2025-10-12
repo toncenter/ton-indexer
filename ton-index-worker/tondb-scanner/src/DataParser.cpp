@@ -44,6 +44,15 @@ td::Status ParseQuery::parse_impl() {
         mc_block = schema_block;
     }
 
+    // config
+    if (block_ds.block_data->block_id().is_masterchain()) {
+      td::Timer config_timer;
+      TRY_RESULT_ASSIGN(mc_block_.config_, block::ConfigInfo::extract_config(block_ds.block_state, 
+                                                        block_ds.block_data->block_id(), 
+                                                        block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries));
+      g_statistics.record_time(PARSE_CONFIG, config_timer.elapsed() * 1e6);
+    }
+
     // transactions and messages
     td::Timer transactions_timer;
     std::map<td::Bits256, AccountStateShort> account_states_to_get;
@@ -56,15 +65,6 @@ td::Status ParseQuery::parse_impl() {
     
     for (auto &acc : account_states_fast) {
       result->account_states_.push_back(std::move(acc));
-    }
-
-    // config
-    if (block_ds.block_data->block_id().is_masterchain()) {
-      td::Timer config_timer;
-      TRY_RESULT_ASSIGN(mc_block_.config_, block::ConfigInfo::extract_config(block_ds.block_state, 
-                                                        block_ds.block_data->block_id(), 
-                                                        block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries));
-      g_statistics.record_time(PARSE_CONFIG, config_timer.elapsed() * 1e6);
     }
 
     result->blocks_.push_back(schema_block);
@@ -258,7 +258,14 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
       TRY_RESULT_ASSIGN(msg.source, convert::to_raw_address(msg_info.src));
       TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest));
       msg.fwd_fee = block::tlb::t_Grams.as_integer_skip(msg_info.fwd_fee.write());
-      msg.ihr_fee = td::RefInt256{true, 0};
+      if (mc_block_.config_->get_global_version() >= 12) {
+        msg.ihr_fee = td::RefInt256{true, 0};
+        msg.extra_flags = block::tlb::t_VarUInteger_16.as_integer_skip(msg_info.extra_flags.write());
+      } else {
+        // Legacy: extra_flags was previously ihr_fee
+        msg.ihr_fee = block::tlb::t_Grams.as_integer_skip(msg_info.extra_flags.write());
+        msg.extra_flags = std::nullopt;
+      }
       msg.created_lt = msg_info.created_lt;
       msg.created_at = msg_info.created_at;
       msg.bounce = msg_info.bounce;

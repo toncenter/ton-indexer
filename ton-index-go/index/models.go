@@ -180,6 +180,7 @@ type Message struct {
 	ValueExtraCurrencies map[string]string `json:"value_extra_currencies"`
 	FwdFee               *uint64           `json:"fwd_fee,string"`
 	IhrFee               *uint64           `json:"ihr_fee,string"`
+	ExtraFlags           *string           `json:"extra_flags"`
 	CreatedLt            *uint64           `json:"created_lt,string"`
 	CreatedAt            *uint32           `json:"created_at,string"`
 	Opcode               *OpcodeType       `json:"opcode"`
