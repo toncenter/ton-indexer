@@ -931,6 +931,62 @@ void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.3 completed successfully.";
 }
 
+void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.4";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+
+    // TODO: add new migrations
+  }
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    // TODO: add new migrations
+
+    query += (
+      "INSERT INTO ton_db_version (id, major, minor, patch) "
+      "VALUES (1, 1, 2, 4) ON CONFLICT(id) DO UPDATE "
+      "SET major = 1, minor = 2, patch = 4;\n"
+    );
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.4 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1129,6 +1185,10 @@ int main(int argc, char *argv[]) {
       current_version = Version{1, 2, 3};
     }
 
+    if (migration_needed(current_version, Version{1, 2, 4}, rerun_last_migration)) {
+      run_1_2_4_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 4};
+    }
 
     // In future, more migrations will be added here
     // if (is_migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
