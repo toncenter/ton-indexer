@@ -3,8 +3,10 @@
 #include "special.h"
 #include "vm/boc.h"
 #include "crypto/tl/tlblib.hpp"
+#include "td/utils/misc.h"
 #include "td/utils/base64.h"
 #include "vm/excno.hpp"
+
 namespace ton_marker {
 
 namespace {
@@ -93,18 +95,28 @@ std::string replace_boc_cells_recursive(const std::string& json_str, int depth =
 }
 } // namespace
 
-std::string decode_boc(const std::string& boc_base64) {
+std::string decode_boc(const std::string& boc_input) {
     try {
-        // decode base64
-        auto boc_data = td::base64_decode(boc_base64);
-        if (boc_data.is_error()) {
-            return "unknown: failed to decode base64";
+        td::Result<std::string> decoded_result;
+
+        // check if input is base64 (starts with te6)
+        if (boc_input.substr(0, 3) == "te6") {
+            decoded_result = td::base64_decode(boc_input);
+            if (decoded_result.is_error()) {
+                return "unknown: failed to decode base64: " + decoded_result.error().message().str();
+            }
+        } else {
+            // try as hex
+            decoded_result = td::hex_decode(td::Slice(boc_input));
+            if (decoded_result.is_error()) {
+                return "unknown: failed to decode hex: " + decoded_result.error().message().str();
+            }
         }
 
         // deserialize
-        auto cell_result = vm::std_boc_deserialize(boc_data.move_as_ok());
+        auto cell_result = vm::std_boc_deserialize(decoded_result.move_as_ok());
         if (cell_result.is_error()) {
-            return "unknown: failed to deserialize boc";
+            return "unknown: failed to deserialize boc: " + cell_result.error().message().str();
         }
 
         auto cell = cell_result.move_as_ok();
@@ -113,7 +125,7 @@ std::string decode_boc(const std::string& boc_base64) {
             return "{\"empty_cell\": \"\"}";
         }
         if (cs.size() < 32) {
-            return "unknown: boc is too small, size=" + std::to_string(cs.size());
+            return "unknown: boc is too small, size " + std::to_string(cs.size());
         }
 
         unsigned opcode = cs.prefetch_ulong(32);
@@ -137,37 +149,25 @@ std::string decode_boc(const std::string& boc_base64) {
         std::string json_output;
         tlb::JsonPrinter pp(&json_output);
 
-        // helper to try parsing with a specific parser
-        const auto try_parse = [&cs, &pp](const schemes::TLB_Complex& parser) -> bool {
-            auto cs_copy = cs; // make a copy since parsing modifies the slice
-            return parser.print_skip(pp, cs_copy);
-        };
+        // try special parsers first (w5, highload v3, wallets without opcode)
+        if (try_parse_special(get_opcode_name(opcode), cs, pp, json_output)) {
+            return json_output;
+        }
 
         // find matching parser by opcode and try to parse
         bool parsed = false;
         const auto check_and_parse = [&](const auto& parser) -> bool {
-            json_output = "";
-            pp = tlb::JsonPrinter(&json_output);
             for (size_t i = 0; i < sizeof(parser.cons_tag) / sizeof(parser.cons_tag[0]); ++i) {
                 if (parser.cons_tag[i] == opcode) {
-                    if (try_parse(parser)) return true;
-                    else {
-                        // std::cout << "    ton-marker: some parser matched but failed" << "\n";
-                        // std::cout << "    ton-marker: boc: " << boc_base64 << "\n";
-                        // std::cout << "    ton-marker: JSON_OUTPUT: " << json_output << "\n";
-                        json_output = "";
-                        pp = tlb::JsonPrinter(&json_output);
-                        // continue searching, may be another parser for the same opcode
-                    }
+                    auto cs_copy = cs;
+                    if (parser.print_skip(pp, cs_copy)) return true;
+                    // restore output on failure
+                    json_output = "";
+                    pp = tlb::JsonPrinter(&json_output); // JsonPrinter has state vars like is_first_field, reset them
                 }
             }
-            json_output = "unknown";
             return false;
         };
-
-        if (try_parse_special(opcode, cs, pp)) {
-            return json_output;
-        }
         
         if (check_and_parse(parser0)) parsed = true;
         else if (check_and_parse(parser1)) parsed = true;

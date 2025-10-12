@@ -1892,7 +1892,7 @@ func processDecode(c *fiber.Ctx, req index.DecodeRequest) error {
 	// parse bodies json
 	for i, decoded := range decodedBodies {
 		if strings.HasPrefix(decoded, "unknown") {
-			response.Bodies[i] = nil
+			response.Bodies[i] = map[string]interface{}{"error": decoded}
 		} else {
 			var bodyMap map[string]interface{}
 			if err := json.Unmarshal([]byte(decoded), &bodyMap); err != nil {
