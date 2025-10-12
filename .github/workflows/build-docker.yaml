@@ -31,14 +31,17 @@ jobs:
             context: indexer
             dockerfile: Dockerfile
           - image-name: ton-indexer-api
-            context: ton-index-go
-            dockerfile: Dockerfile
+            context: .
+            dockerfile: ton-index-go/Dockerfile
           - image-name: ton-indexer-worker
             context: ton-index-worker
             dockerfile: Dockerfile
           - image-name: ton-indexer-metadata-fetcher
             context: ton-metadata-fetcher
             dockerfile: Dockerfile
+          - image-name: ton-indexer-emulate-api
+            context: .
+            dockerfile: ton-emulate-go/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,9 +57,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          # only for ton-indexer-api we use the root context, others build from subdirectories
-          context: ${{ matrix.image.image-name == 'ton-indexer-api' && '.' || matrix.image.context }}
-          file: ${{ matrix.image.context }}/Dockerfile
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
           platforms: linux/${{ matrix.arch.platform }}
           push: true
           tags: |
@@ -72,6 +74,7 @@ jobs:
           - ton-indexer-api
           - ton-indexer-worker
           - ton-indexer-metadata-fetcher
+          - ton-indexer-emulate-api
     steps:
       - name: Login to DockerHub
         uses: docker/login-action@v3
