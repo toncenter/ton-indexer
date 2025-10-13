@@ -830,8 +830,10 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	}
 	if len(tx_hashes) > 0 {
 		rows := emulatedContext.GetMessages(tx_hashes)
+		msgPtrs := make([]*index.Message, 0, len(rows))
 		for _, row := range rows {
 			msg, err := index.ScanMessageWithContent(row)
+			msgPtrs = append(msgPtrs, msg)
 			if err != nil {
 				log.Printf("Error scanning message: %v", err)
 				continue
@@ -847,6 +849,14 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 					allAddresses = append(allAddresses, string(*msg.Destination))
 				}
 			}
+		}
+		// mark msg bodies and opcodes
+		if err := index.MarkMessagesByPtr(msgPtrs); err != nil {
+			hashes := make([]string, len(msgPtrs))
+			for i, msg := range msgPtrs {
+				hashes[i] = string(msg.MsgHash)
+			}
+			log.Printf("Error marking messages with hashes %v: %v", hashes, err)
 		}
 	}
 

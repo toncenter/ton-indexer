@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 
@@ -262,6 +263,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 	if len(txs) == 0 {
 		return txs, nil
 	}
+	msgPtrs := []*Message{}
 	if len(hash_list) > 0 {
 		rows := emulatedContext.GetMessages(hash_list)
 		for _, row := range rows {
@@ -269,6 +271,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 			if err != nil {
 				return nil, IndexError{Code: 500, Message: err.Error()}
 			}
+			msgPtrs = append(msgPtrs, msg)
 			if msg.Direction == "in" {
 				txs[txs_map[msg.TxHash]].InMsg = msg
 			} else {
@@ -276,7 +279,14 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 			}
 		}
 	}
-
+	// mark msg bodies and opcodes
+	if err := MarkMessagesByPtr(msgPtrs); err != nil {
+		hashes := make([]string, len(msgPtrs))
+		for i, msg := range msgPtrs {
+			hashes[i] = string(msg.MsgHash)
+		}
+		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
+	}
 	// sort messages
 	for idx := range txs {
 		sort.SliceStable(txs[idx].OutMsgs, func(i, j int) bool {
