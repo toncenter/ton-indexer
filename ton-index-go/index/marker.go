@@ -274,13 +274,20 @@ func markWithRefs(refs *messagesRefs) error {
 			continue
 		}
 		for _, ref := range refs.bodyRefs[body] {
+			// save original JSON to preserve order
+			var rawData DecodedScheme
+			if err := json.Unmarshal([]byte(decodedValue), &rawData); err != nil {
+				log.Printf("Error: failed to decode message body %s, got json %v", body, decodedValue)
+				continue
+			}
+
+			// parse only to get message type and maybe process text_comment
 			var tmpResult map[string]interface{}
 			if err := json.Unmarshal([]byte(decodedValue), &tmpResult); err != nil {
-				tmpResult = map[string]interface{}{"failed_to_decode_json": decodedValue}
-				log.Printf("Error: failed to decode message body %s, got json %v", body, decodedValue)
+				continue
 			}
+
 			for msgType, msgData := range tmpResult {
-				// there's only one key in tmpResult map
 				if msgType == "text_comment" {
 					// back compatibility with scheme for text comment
 					if data, ok := msgData.(map[string]interface{}); ok {
@@ -290,7 +297,8 @@ func markWithRefs(refs *messagesRefs) error {
 						}
 					}
 				}
-				*ref = &DecodedContent{Type: msgType, Data: msgData}
+				// give raw JSON to preserve order
+				*ref = &DecodedContent{Type: msgType, Data: rawData}
 				break
 			}
 		}

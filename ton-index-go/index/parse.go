@@ -3,6 +3,7 @@ package index
 import (
 	b64 "encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"reflect"
@@ -59,6 +60,28 @@ func (v *AccountAddress) String() string {
 
 func (v *AccountAddress) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
+}
+
+// DecodedScheme is just like json.RawMessage,
+// but swagger doesn't support it, so we implement it manually
+func (m DecodedScheme) MarshalJSON() ([]byte, error) {
+	if m == nil {
+		return []byte("null"), nil
+	}
+	return m, nil
+}
+
+func (m *DecodedScheme) UnmarshalJSON(data []byte) error {
+	if m == nil {
+		return fmt.Errorf("DecodedScheme: UnmarshalJSON on nil pointer")
+	}
+	// check that data is a valid JSON
+	var js interface{}
+	if err := json.Unmarshal(data, &js); err != nil {
+		return err
+	}
+	*m = append((*m)[0:0], data...)
+	return nil
 }
 
 func (v *HexInt) String() string {
