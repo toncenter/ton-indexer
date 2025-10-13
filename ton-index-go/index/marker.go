@@ -134,6 +134,17 @@ type messagesRefs struct {
 	bodyRefs   map[string][]*(*DecodedContent) // key: body, value: list of pointers where to write decoded body
 }
 
+func MarkMessagesByPtr(messages []*Message) error {
+	refs := &messagesRefs{
+		opcodeRefs: make(map[uint32][]*string),
+		bodyRefs:   make(map[string][]*(*DecodedContent)),
+	}
+	for i := range messages {
+		collectSingleMessageRefs(messages[i], refs)
+	}
+	return markWithRefs(refs)
+}
+
 func MarkMessages(messages []Message) error {
 	refs := collectMessagesRefs(messages)
 	return markWithRefs(refs)
