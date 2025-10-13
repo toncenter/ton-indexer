@@ -109,8 +109,8 @@ fi
 
 # build image
 if [[ $BUILD -eq "1" ]]; then
-    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml -f docker-compose.imgproxy.yaml build $BUILD_ARGS
-    docker compose -f docker-compose.api.yaml -f docker-compose.events.yaml -f docker-compose.imgproxy.yaml push
+    docker compose -f docker-compose.events.yaml -f docker-compose.imgproxy.yaml build $BUILD_ARGS
+    docker compose -f docker-compose.events.yaml -f docker-compose.imgproxy.yaml push
 fi
 
 if [[ $UPDATE_POOLS -eq "1" ]]; then
