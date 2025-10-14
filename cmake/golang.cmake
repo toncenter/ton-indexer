@@ -28,7 +28,7 @@ add_custom_target(install_swag DEPENDS ${GOPATH}/bin/swag)
 
 function(generate_swagger NAME)
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${NAME}-swagger.timestamp
-    COMMAND ${GOPATH}/bin/swag init
+    COMMAND ${GOPATH}/bin/swag init --parseDependency
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Generating Swagger docs with swag init"
     DEPENDS install_swag)

@@ -1,6 +1,7 @@
 package index
 
 import (
+	"encoding/json"
 	"fmt"
 )
 
@@ -157,9 +158,9 @@ type Block struct {
 } // @name Block
 
 type DecodedContent struct {
-	Type    string      `json:"type"`
-	Comment *string     `json:"comment,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
+	Type    string          `json:"type"`
+	Comment *string         `json:"comment,omitempty"`
+	Data    json.RawMessage `json:"data,omitempty"`
 } // @name DecodedContent
 
 type MessageContent struct {
