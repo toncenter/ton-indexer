@@ -1063,6 +1063,7 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists transactions_index_6 on transactions (hash);\n"
       "create index if not exists transactions_index_8 on transactions (mc_block_seqno, lt);\n"
       "create index if not exists transactions_index_7 on transactions (trace_id, lt);\n"
+      "create index if not exists transactions_index_9 on transactions (account, trace_id);\n"
       "create index if not exists _classifier_tasks_mc_seqno_idx on _classifier_tasks (mc_seqno desc);\n"
       "create index if not exists actions_index_3 on actions (end_lt);\n"
       "create index if not exists actions_index_2 on actions (action_id);\n"
