@@ -87,7 +87,9 @@
           dest: "{{ deploy_path }}/{{ stack_name }}__emulate_api"
         - src: "{{ build_path }}/ton-index-worker/ton-trace-task-emulator/ton-trace-task-emulator"
           dest: "{{ deploy_path }}/{{ stack_name }}__trace_task_emulator"
-    
+        - src: "{{ build_path }}/ton-index-worker/ton-marker/libton-marker.so"
+          dest: /usr/lib/libton-marker.so
+
     - name: Update ldconfig
       ansible.builtin.shell: ldconfig
 

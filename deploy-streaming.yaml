@@ -71,6 +71,8 @@
       with_items:
         - src: "{{ build_path }}/ton-streaming-go/ton-streaming-go"
           dest: "{{ deploy_path }}/{{ stack_name }}__streaming_api"
+        - src: "{{ build_path }}/ton-index-worker/ton-marker/libton-marker.so"
+          dest: /usr/lib/libton-marker.so
     
     - name: Update ldconfig
       ansible.builtin.shell: ldconfig
