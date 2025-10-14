@@ -130,13 +130,13 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string) ([]string, []st
 }
 
 type messagesRefs struct {
-	opcodeRefs map[uint32][]*string            // key: opcode, value: list of pointers where to write decoded opcode
+	opcodeRefs map[uint32][]*(*string)         // key: opcode, value: list of pointers to string pointers
 	bodyRefs   map[string][]*(*DecodedContent) // key: body, value: list of pointers where to write decoded body
 }
 
 func MarkMessagesByPtr(messages []*Message) error {
 	refs := &messagesRefs{
-		opcodeRefs: make(map[uint32][]*string),
+		opcodeRefs: make(map[uint32][]*(*string)),
 		bodyRefs:   make(map[string][]*(*DecodedContent)),
 	}
 	for i := range messages {
@@ -167,7 +167,7 @@ func MarkNFTTransfers(transfers []NFTTransfer) error {
 
 func collectMessagesRefs(messages []Message) *messagesRefs {
 	refs := &messagesRefs{
-		opcodeRefs: make(map[uint32][]*string),
+		opcodeRefs: make(map[uint32][]*(*string)),
 		bodyRefs:   make(map[string][]*(*DecodedContent)),
 	}
 	for i := range messages {
@@ -178,7 +178,7 @@ func collectMessagesRefs(messages []Message) *messagesRefs {
 
 func collectJettonTransfersRefs(transfers []JettonTransfer) *messagesRefs {
 	refs := &messagesRefs{
-		opcodeRefs: make(map[uint32][]*string),
+		opcodeRefs: make(map[uint32][]*(*string)),
 		bodyRefs:   make(map[string][]*(*DecodedContent)),
 	}
 	for i := range transfers {
@@ -197,7 +197,7 @@ func collectJettonTransfersRefs(transfers []JettonTransfer) *messagesRefs {
 
 func collectJettonBurnsRefs(burns []JettonBurn) *messagesRefs {
 	refs := &messagesRefs{
-		opcodeRefs: make(map[uint32][]*string),
+		opcodeRefs: make(map[uint32][]*(*string)),
 		bodyRefs:   make(map[string][]*(*DecodedContent)),
 	}
 	for i := range burns {
@@ -212,7 +212,7 @@ func collectJettonBurnsRefs(burns []JettonBurn) *messagesRefs {
 
 func collectNFTTransfersRefs(transfers []NFTTransfer) *messagesRefs {
 	refs := &messagesRefs{
-		opcodeRefs: make(map[uint32][]*string),
+		opcodeRefs: make(map[uint32][]*(*string)),
 		bodyRefs:   make(map[string][]*(*DecodedContent)),
 	}
 	for i := range transfers {
@@ -235,10 +235,7 @@ func collectSingleMessageRefs(msg *Message, refs *messagesRefs) {
 	}
 	// collect opcodes
 	if msg.Opcode != nil {
-		if msg.DecodedOpcode == nil {
-			msg.DecodedOpcode = new(string)
-		}
-		refs.opcodeRefs[uint32(*msg.Opcode)] = append(refs.opcodeRefs[uint32(*msg.Opcode)], msg.DecodedOpcode)
+		refs.opcodeRefs[uint32(*msg.Opcode)] = append(refs.opcodeRefs[uint32(*msg.Opcode)], &msg.DecodedOpcode)
 	}
 	// collect message bodies
 	if msg.MessageContent != nil && msg.MessageContent.Body != nil && msg.MessageContent.Decoded == nil {
@@ -270,7 +267,11 @@ func markWithRefs(refs *messagesRefs) error {
 	for i, opcode := range opcodes {
 		if decodedValue := decodedOpcodes[i]; !strings.HasPrefix(decodedValue, "unknown") {
 			for _, ref := range refs.opcodeRefs[opcode] {
-				*ref = decodedValue
+				*ref = &decodedValue
+			}
+		} else {
+			for _, ref := range refs.opcodeRefs[opcode] {
+				*ref = nil
 			}
 		}
 	}
