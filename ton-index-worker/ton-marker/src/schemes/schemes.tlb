@@ -200,9 +200,7 @@ bemo_return_unstake_request#38633538
 
 
 
-// bidask.xml
-
-// TODO checkout all their schemes with docs
+// bidask
 
 // bidask_swap
 bidask_swap#f2ef6c1b query_id:uint64 native_amount:Coins to_address:MsgAddress slippage:(Either Coins uint256) exact_out:Coins
@@ -217,7 +215,7 @@ bidask_swap_success#520e4831 query_id:uint64 new_current_bin:int32 new_sqrt_pric
 
 // bidask_swap_fallback
 bidask_swap_fallback#1bba3896 query_id:uint64 first_range_bin:int32 order:Bool user_address:MsgAddress is_x:Bool 
-        amount_in:Coins additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell)  = InternalMsgBody0;
+        amount_in:Coins additional_data:(Maybe ^Cell) reject_payload:(Maybe ^Cell)  = InternalMsgBody1;
 
 // bidask_provide_refund
 bidask_provide_refund#02422cbe query_id:uint64 first_range_bin:int32 x_excess:Coins y_excess:Coins user_address:MsgAddress
@@ -285,6 +283,30 @@ bidask_provide_forward_payload#96feef7b deposit_type:uint4 liquidity_dict:(Hashm
 // bidask_provide_both
 bidask_provide_both_forward_payload#3ea0bafc ton_amount:Coins deposit_type:uint4 liquidity_dict:(HashmapE 32 int32) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell) = ForwardPayload;
 
+// v2
+
+additional_data#_ from_address:MsgAddress ref_address:MsgAddress = BidaskAdditionalData;
+farming_data#_ distributed_x_amount:Coins distributed_y_amount:Coins = BidaskFarmingData;
+swap_additional#_ previous_time:uint64 start_price:uint256 actual_fee:uint16 distributed_x_amount:Coins distributed_y_amount:Coins = BidaskSwapAdditionalData;
+
+bidask_internal_swap_v2#87d36990 query_id:uint64 to_address:MsgAddress order:Bool is_x:Bool amount_in:Coins amount_out:Coins exact_out:Coins
+        slippage:(Either Coins uint256) farming_cell:(Maybe ^BidaskFarmingData) additional_data:(Maybe ^BidaskAdditionalData) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0; // prior to swap_v2 - more fields
+
+bidask_swap_v2#87d36990 query_id:uint64 native_amount:Coins to_address:MsgAddress slippage:(Either Coins uint256) exact_out:Coins 
+        additional_data:(Maybe ^BidaskAdditionalData) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody1;
+
+bidask_swap_v2_forward_payload#87d36990 to_address:MsgAddress slippage:(Either Coins uint256) exact_out:Coins 
+        additional_data:(Maybe ^BidaskAdditionalData) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = ForwardPayload;
+
+bidask_swap_success_v2#d3a25890 query_id:uint64 new_current_bin:int32 new_sqrt_price:uint256 order:Bool amount_x:Coins amount_y:Coins 
+        is_x:Bool user_address:MsgAddress dynamic_fee:uint16 additional_data:(Maybe ^BidaskAdditionalData) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+        
+bidask_internal_continue_swap_v2#5a6a036f query_id:uint64 to_address:MsgAddress order:Bool is_x:Bool amount_in:Coins amount_out:Coins exact_out:Coins
+        slippage:(Either Coins uint256) swap_additional_data:(Maybe ^BidaskSwapAdditionalData) additional_data:(Maybe ^BidaskAdditionalData) reject_payload:(Maybe ^Cell) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
+
+bidask_swap_fallback_v2#1bba3896 query_id:uint64 first_range_bin:int32 order:Bool user_address:MsgAddress is_x:Bool
+        amount_in:Coins distributed_x_amount:Coins distributed_y_amount:Coins additional_data:(Maybe ^BidaskAdditionalData) reject_payload:(Maybe ^Cell)  = InternalMsgBody0; // prior to v1 - more specific
 
 // cron.xml
 
