@@ -275,7 +275,7 @@ func markWithRefs(refs *messagesRefs) error {
 		}
 		for _, ref := range refs.bodyRefs[body] {
 			// save original JSON to preserve order
-			var rawData DecodedScheme
+			var rawData json.RawMessage
 			if err := json.Unmarshal([]byte(decodedValue), &rawData); err != nil {
 				log.Printf("Error: failed to decode message body %s, got json %v", body, decodedValue)
 				continue

@@ -1,6 +1,7 @@
 package index
 
 import (
+	"encoding/json"
 	"fmt"
 )
 
@@ -8,7 +9,6 @@ type ShardId int64                 // @name ShardId
 type AccountAddress string         // @name AccountAddress
 type AccountAddressNullable string // @name AccountAddressNullable
 type HashType string               // @name HashType
-type DecodedScheme []byte          // @name DecodedScheme
 type HexInt int64                  // @name HexInt
 type OpcodeType int64              // @name OpcodeType
 
@@ -158,9 +158,9 @@ type Block struct {
 } // @name Block
 
 type DecodedContent struct {
-	Type    string        `json:"type"`
-	Comment *string       `json:"comment,omitempty"`
-	Data    DecodedScheme `json:"data,omitempty"`
+	Type    string          `json:"type"`
+	Comment *string         `json:"comment,omitempty"`
+	Data    json.RawMessage `json:"data,omitempty"`
 } // @name DecodedContent
 
 type MessageContent struct {
