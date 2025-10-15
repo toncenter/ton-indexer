@@ -811,6 +811,8 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("alter type nft_transfer_details add attribute payout_comment text;");
     exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
     exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
+    exec_query("create type pool_type as enum ('stable', 'volatile');");
+    exec_query("create type dex_type as enum ('dedust');");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -832,6 +834,22 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
       "INSERT INTO ton_db_version (id, major, minor, patch) "
       "VALUES (1, 1, 2, 2) ON CONFLICT(id) DO UPDATE "
       "SET major = 1, minor = 2, patch = 2;\n"
+    );
+
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "asset_1 tonaddr, "
+      "asset_2 tonaddr, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "pool_type pool_type, "
+      "dex dex_type, "
+      "fee double precision, "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash);\n"
     );
 
     if (dry_run) {
@@ -886,12 +904,21 @@ void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
-    query += "ALTER TABLE messages ADD COLUMN IF NOT EXISTS extra_flags numeric;\n";
-
-
-    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_send_data layerzero_send_details;\n";
-    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_packet_data layerzero_packet_details;\n";
-    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_dvn_verify_data layerzero_dvn_verify_details;\n";
+    // historic tables pattern: store all state changes for entities
+    // naming: {entity}_historic (e.g., jetton_wallets_historic)
+    // required columns: id, mc_seqno, timestamp, address, last_transaction_lt
+    // only mutable fields (not code_hash, data_hash)
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools_historic ("
+      "id bigserial PRIMARY KEY, "
+      "mc_seqno integer NOT NULL, "
+      "timestamp integer NOT NULL, "
+      "address tonaddr NOT NULL, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "fee double precision, "
+      "last_transaction_lt bigint NOT NULL);\n"
+    );
 
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
@@ -1086,6 +1113,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists nft_items_index_4 on nft_items (last_transaction_lt);\n"
       "create index if not exists nft_items_index_5 on nft_items (owner_address, last_transaction_lt);\n"
       "create index if not exists nft_items_index_6 on nft_items (collection_address, last_transaction_lt);\n"
+      "create index if not exists dex_pools_historic_index_1 on dex_pools_historic (address, timestamp);\n"
+      "create index if not exists dex_pools_historic_index_2 on dex_pools_historic (mc_seqno);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;
