@@ -978,14 +978,15 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 }
 
 func buildTracesQuery(trace_req TracesRequest, utime_req UtimeRequest, lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
-	clmn_query_default := `E.trace_id, E.external_hash, E.mc_seqno_start, E.mc_seqno_end, 
-						   E.start_lt, E.start_utime, E.end_lt, E.end_utime, 
-						   E.state, E.edges_, E.nodes_, E.pending_edges_, E.classification_state`
-	clmn_query := clmn_query_default
+	clmn_query := `E.trace_id, E.external_hash, E.mc_seqno_start, E.mc_seqno_end, 
+				   E.start_lt, E.start_utime, E.end_lt, E.end_utime, 
+				   E.state, E.edges_, E.nodes_, E.pending_edges_, E.classification_state`
+
 	from_query := `traces as E`
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
+
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return "", err
@@ -999,7 +1000,7 @@ func buildTracesQuery(trace_req TracesRequest, utime_req UtimeRequest, lt_req Lt
 		}
 	}
 
-	// time
+	// time window + which column to order by
 	order_by_now := false
 	if v := utime_req.StartUtime; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("E.end_utime >= %d", *v))
@@ -1022,46 +1023,52 @@ func buildTracesQuery(trace_req TracesRequest, utime_req UtimeRequest, lt_req Lt
 		orderby_query = fmt.Sprintf(" order by E.end_lt %s, E.trace_id %s", sort_order, sort_order)
 	}
 
+	// —— Filters that used to cause JOINs — now as EXISTS subqueries —— //
+
+	// account → EXISTS over transactions
 	if v := trace_req.AccountAddress; v != nil && len(*v) > 0 {
-		filter_str := fmt.Sprintf("T.account = '%s'", *v)
-		filter_list = append(filter_list, filter_str)
-
-		from_query = `traces as E join transactions as T on E.trace_id = T.trace_id`
-		if order_by_now {
-			clmn_query = `distinct on (E.end_utime, E.trace_id) ` + clmn_query_default
-		} else {
-			clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
-		}
+		filter_list = append(filter_list,
+			fmt.Sprintf(`EXISTS (
+				SELECT 1
+				FROM transactions AS T
+				WHERE T.trace_id = E.trace_id
+				  AND T.account = '%s'
+			)`, *v))
 	}
+
+	// transaction hashes → EXISTS over transactions
 	if v := trace_req.TransactionHash; v != nil {
-		filter_str := filterByArray("T.hash", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
-		from_query = `traces as E join transactions as T on E.trace_id = T.trace_id`
-
-		if order_by_now {
-			clmn_query = `distinct on (E.end_utime, E.trace_id) ` + clmn_query_default
-		} else {
-			clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
+		if cond := filterByArray("T.hash", v); len(cond) > 0 {
+			filter_list = append(filter_list,
+				fmt.Sprintf(`EXISTS (
+					SELECT 1
+					FROM transactions AS T
+					WHERE T.trace_id = E.trace_id
+					  AND %s
+				)`, cond))
 		}
 	}
+
+	// message hashes → EXISTS over messages (either raw or normalized)
 	if v := trace_req.MessageHash; len(v) > 0 {
-		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
-		filter_list = append(filter_list, filter_str)
-		from_query = `traces as E join messages as M on E.trace_id = M.trace_id`
-
-		if order_by_now {
-			clmn_query = `distinct on (E.end_utime, E.trace_id) ` + clmn_query_default
-		} else {
-			clmn_query = `distinct on (E.end_lt, E.trace_id) ` + clmn_query_default
-		}
+		cond := fmt.Sprintf("(%s OR %s)",
+			filterByArray("M.msg_hash", v),
+			filterByArray("M.msg_hash_norm", v),
+		)
+		filter_list = append(filter_list,
+			fmt.Sprintf(`EXISTS (
+				SELECT 1
+				FROM messages AS M
+				WHERE M.trace_id = E.trace_id
+				  AND %s
+			)`, cond))
 	}
+
+	// —— Filters that are native to traces —— //
 
 	if v := trace_req.TraceId; v != nil {
-		filter_str := filterByArray("E.trace_id", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
+		if cond := filterByArray("E.trace_id", v); len(cond) > 0 {
+			filter_list = append(filter_list, cond)
 		}
 	}
 	if v := trace_req.McSeqno; v != nil {
@@ -1073,11 +1080,13 @@ func buildTracesQuery(trace_req TracesRequest, utime_req UtimeRequest, lt_req Lt
 	if len(filter_list) > 0 {
 		filter_query = ` where ` + strings.Join(filter_list, " and ")
 	}
-	query := `select ` + clmn_query
-	query += ` from ` + from_query
-	query += filter_query
-	query += orderby_query
-	query += limit_query
+
+	query := `select ` + clmn_query +
+		` from ` + from_query +
+		filter_query +
+		orderby_query +
+		limit_query
+
 	return query, nil
 }
 
