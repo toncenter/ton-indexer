@@ -1073,104 +1073,6 @@ proof_storage#419d5d4d
 
 
 
-// storm.xml
-
-// Types
-parameters#_ discount:uint32 rebate:uint32 = Parameters;
-update_msg#_ price:Coins spread:Coins timestamp:uint32 asset_index:uint16 = UpdateMsg;
-oracle_data#_ update_msg:^UpdateMsg signatures:^Cell = OracleData;
-amm_settings#_ fee:uint32 rollover_fee:uint32 funding_period:uint32 init_margin_ratio:uint32
-maintenance_margin_ratio:uint32 liquidation_fee_ratio:uint32 partial_liquidation_ratio:uint32
-spread_limit:uint32 max_price_impact:uint32 max_price_spread:uint32 max_open_notional:uint32
-fee_to_stakers_percent:uint32 funding_mode:uint2 min_partial_liquidation_notional:Coins min_leverage:uint32 = AmmSettings;
-referral_data#_ amount:Coins index:uint32 = ReferralData;
-executor_data#_ split_executor_rewards:uint8 amount:Coins index:uint32 = ExecutorData;
-notification_payload#_ opcode:uint64 = NotificationPayload;
-position_change#_ size:uint128 direction:uint1 margin:Coins open_notional:Coins last_updated_cumulative_premium:uint64 fee:uint32 discount:uint32 rebate:uint32 last_updated_timestamp:uint32 = PositionChange;
-amm_change#_ quote_asset_reserve:Coins quote_asset_reserve_weight:Coins base_asset_reserve:Coins total_long_position_size:Coins total_short_position_size:Coins open_interest_long:Coins open_interest_short:Coins = AmmChange;
-order_payload#_ order_type:uint4 order_index:uint3 direction:uint1 = OrderPayload;
-signatures#_ data:Cell = Signatures;
-price_data#_ price:Coins spread:Coins another_spread:uint32 asset_id:uint16 = OraclePriceData;
-oracle_payload#_ price_data:^OraclePriceData signatures:^Signatures = OraclePayload;
-
-// storm_change_settings
-storm_change_settings#edcd36a6 redirect_addr:MsgAddress 
-        settings:^AmmSettings = InternalMsgBody3;
-
-// storm_pay_funding
-storm_pay_funding#b652c441 oracle_ref:^OracleData = InternalMsgBody3;
-
-// storm_vamm_init
-storm_vamm_init#29c102d1 redirect_addr:MsgAddress 
-        code:^Cell data:^Cell = InternalMsgBody2;
-
-// storm_mint_referral
-storm_mint_referral#cb4ddc3c nft_owner:MsgAddress ref_type:uint2
-        redirect_address:MsgAddress parameters:^Parameters balances_dict:^Cell = InternalMsgBody3;
-
-// storm_add_referral_amount
-storm_add_referral_amount#84dced7a referral_amount:Coins origin_addr:MsgAddress = InternalMsgBody3;
-
-// storm_withdraw_referral_amount
-storm_withdraw_referral_amount#f5d4eb52 index:uint64 referral_amount:Coins owner_addr:MsgAddress = InternalMsgBody3;
-
-// storm_mint_executor
-storm_mint_executor#4f38cae8 nft_owner:MsgAddress redirect_address:MsgAddress balances_dict:^Cell = InternalMsgBody3;
-
-// storm_add_executor_amount
-storm_add_executor_amount#5dd66579 referral_amount:Coins origin_addr:MsgAddress = InternalMsgBody3;
-
-// storm_withdraw_executor_amount
-storm_withdraw_executor_amount#2cde6351 index:uint64 executor_amount:Coins owner_addr:MsgAddress = InternalMsgBody3;
-
-// storm_vault_trade_notification
-storm_vault_trade_notification#3475fdd2 amm_index:uint16 free_amount:uint16 locked_amount:int64 exchange_amount:int64 withdraw_locked_amount:int64
-        fee_to_stakers:int64 withdraw_amount:int64 trader_addr:MsgAddress referral_params:(Maybe ^ReferralData) executor_params:(Maybe ^ExecutorData) = InternalMsgBody3;
-
-// storm_vault_stake
-storm_vault_stake#c89a3ee4 amount:Coins = InternalMsgBody3;
-
-// storm_vault_unstake
-storm_vault_unstake#d5b5e9ad jetton_amount:Coins user_address:MsgAddress = InternalMsgBody3;
-
-// storm_vault_init
-storm_vault_init#29c102d1 jetton_address:MsgAddress = InternalMsgBody3;
-
-// storm_take_referral_fees
-storm_take_referral_fees#12d9601d referral_fees:^Parameters = InternalMsgBody4;
-
-// storm_cancel_order
-storm_cancel_order#67134629 order_type:uint4 order_index:uint3 direction:uint1 gas_to_address:MsgAddress = InternalMsgBody4;
-
-// storm_create_order
-storm_create_order#a39843f4 order_payload:^OrderPayload = InternalMsgBody4;
-
-// storm_complete_order
-storm_complete_order#cf90d618 order_type:uint4 order_index:uint3 direction:uint1 origin_opcode:uint32 index_price:Coins settlement_oracle_price:(Maybe Coins) position:^PositionChange amm:^AmmChange = InternalMsgBody4;
-
-// storm_activate_order
-storm_activate_order#9d2ec640 order_index:uint3 activated_order:^OrderPayload = InternalMsgBody4;
-
-// storm_update_position
-storm_update_position#60dfc677 direction:uint1 origin_opcode:uint32 index_price:Coins settlement_oracle_price:(Maybe Coins) position:^PositionChange amm:^AmmChange = InternalMsgBody4;
-
-// storm_update_position_with_stop_loss
-storm_update_position_with_stop_loss#5d1b17b8 direction:uint1 stop_trigger_price:Coins take_trigger_price:Coins origin_opcode:uint32 index_price:Coins settlement_oracle_price:(Maybe Coins) position:^PositionChange amm:^AmmChange = InternalMsgBody4;
-
-// storm_order_created
-storm_order_created#3a943ce6 rest:Any = InternalMsgBody4;
-
-// storm_order_canceled
-storm_order_canceled#69d08679 rest:Any = InternalMsgBody4;
-
-// storm_vault_request_withdraw_position
-storm_vault_request_withdraw_position#0226df66 trader_addr:MsgAddress vamm_addr:MsgAddress amount:Coins gas_to_addr:MsgAddress withdraw_reason:uint32 = InternalMsgBody4;
-
-// storm_provide_position
-storm_provide_position#8865b402 order_type:uint4 order_index:uint3 direction:uint1 executor_index:uint32 oracle_payload:^OraclePayload = InternalMsgBody4;
-
-
-
 // subscriptions_v1.xml
 
 // subscription_payment
@@ -2428,3 +2330,235 @@ highload_v3_internal_request#ae42e5a4 {n:#} query_id:uint64 actions:^(OutList n)
 
 // just for opcode detection
 highload_v3_internal_request#ae42e5a4 rest:Any = InternalMsgBody8;
+
+
+// storm
+
+nothing_from_inverted_maybe$1 {X:Type} = InvertedMaybe X;
+just_from_inverted_maybe$0 {X:Type} value:X = InvertedMaybe X;
+
+long$0 = StormDirection;
+short$1 = StormDirection;
+
+_ size:int128 direction:StormDirection margin:Coins open_notional:Coins last_updated_cumulative_premium:int64 fee:uint32
+  discount:uint32 rebate:uint32 last_updated_timestamp:uint32 = StormPositionData;
+
+free$0 position_data:^StormPositionData = StormPositionRecord;
+locked$1 position_data:^StormPositionData = StormPositionRecord;
+
+amm_state_log#_ quote_asset_reserve:Coins quote_asset_weight:Coins
+  base_asset_reserve:Coins
+  total_long_position_size:Coins total_short_position_size:Coins
+  open_interest_long:Coins open_interest_short:Coins = StormAmmStateLog;
+
+market_depth#_ vpi_spread:Coins vpi_market_depth_long:Coins vpi_market_depth_short:Coins vpi_coefficient:uint64 = StormMarketDepth;
+
+stop_loss_order#0 expiration:uint32 direction:StormDirection amount:Coins trigger_price:Coins = StormUserOrder;
+take_profit_order#1 expiration:uint32 direction:StormDirection amount:Coins trigger_price:Coins = StormUserOrder;
+
+limit_order#2 expiration:uint32 direction:StormDirection amount:Coins leverage:uint64
+  limit_price:Coins stop_price:Coins stop_trigger_price:Coins take_trigger_price:Coins = StormCreateOrder;
+market_order#3 expiration:uint32 direction:StormDirection amount:Coins leverage:uint64
+  limit_price:Coins stop_price:Coins stop_trigger_price:Coins take_trigger_price:Coins = StormCreateOrder;
+_ order:StormCreateOrder = StormUserOrder;
+add_margin#4 direction:StormDirection amount:Coins = StormUserOrder;
+remove_margin#5 direction:StormDirection amount:Coins = StormUserOrder;
+liquidate#6 direction:StormDirection = StormExecutorOrder;
+force_close#7 direction:StormDirection = StormExecutorOrder;
+force_close_max_leverage#9 direction:StormDirection = StormExecutorOrder;
+force_close_min_margin#a direction:StormDirection = StormExecutorOrder;
+
+execute_stop$0 = StormExecuteSelector;
+execute_take$1 = StormExecuteSelector;
+request_order#8 selector:StormExecuteSelector order:StormCreateOrder = StormUserOrder;
+
+update_msg#_ price:Coins spread:Coins timestamp:uint32 assetIndex:uint16 pause_at:uint32 unpause_at:uint32
+  vpi_spread:Coins vpi_market_depth_long:Coins vpi_market_depth_short:Coins vpi_coefficient:uint64 = StormUpdateMsg;
+
+empty$0 continue:(InvertedMaybe ^StormSignature) = StormSignature;
+fulled$1 signature:bits512 continue:(InvertedMaybe ^StormSignature) = StormSignature;
+
+without_settlement#_ update_msg:^StormUpdateMsg signatures:^StormSignature = StormSingleOraclePayload;
+with_settlement#_ update_msg:^StormUpdateMsg signatures:^StormSignature settlement_update_msg:^StormUpdateMsg
+  settlement_signatures:^StormSignature = StormDoubleOraclePayload;
+
+created_price#00 update_msg:^StormUpdateMsg signatures:^StormSignature = StormCreatedOraclePayload;
+created_price_with_settlement#01 update_msg:^StormUpdateMsg signatures:^StormSignature settlement_update_msg:^StormUpdateMsg
+  settlement_signatures:^StormSignature = StormCreatedOraclePayload;
+
+_ number_of_properties:(## 8) { number_of_properties = 2 } price_property_id:(## 8) { price_property_id = 0 } price_property_value:uint64
+  exponent_property_id:(## 8) { exponent_property_id = 4 } exponent_property_value:int16 = StormLazerFeed;
+
+  // magic:(## 32) { magic = 2479346549 }
+lazer_payload_magic#93c7d375 = StormLazerPayloadMagic;
+single_lazer_payload$0 magic:StormLazerPayloadMagic timestamp:uint64 channel_id:uint8 number_of_feeds:(## 8) { number_of_feeds = 1 }
+  index_feed_id:uint32 index_feed:StormLazerFeed = StormLazerPayload;
+
+double_lazer_payload$1 magic:StormLazerPayloadMagic timestamp:uint64 channel_id:uint8 number_of_feeds:(## 8) { number_of_feeds = 2 }
+  index_feed_id:uint32 index_feed:StormLazerFeed settlement_feed_id:uint32 settlement_feed:StormLazerFeed  = StormLazerPayload;
+
+  // magic:(## 32) { magic = 2593727018 }
+lazer_message#9a99222a r:uint256 s:uint256 v:uint8 payload_length:uint16 payload:StormLazerPayload = StormLazerMessage;
+
+_ lazer_message:^StormLazerMessage created_lazer_message:^StormLazerMessage = StormLazerMessageWithCreated;
+
+single_lazer_payload#00 price_oracle_payload:^StormSingleOraclePayload lazer_message:(Maybe ^StormLazerMessage) = StormOraclePayload;
+double_lazer_payload#01 price_oracle_payload:^StormDoubleOraclePayload lazer_message:(Maybe ^StormLazerMessage) = StormOraclePayload;
+single_with_created#02 price_oracle_payload:^StormSingleOraclePayload created_oracle_payload:^StormCreatedOraclePayload
+  lazer_message:(Maybe ^StormLazerMessage) created_lazer_message:(Maybe ^StormLazerMessage) = StormOraclePayload;
+double_with_created#03 price_oracle_payload:^StormDoubleOraclePayload created_oracle_payload:^StormCreatedOraclePayload
+  lazer_message:(Maybe ^StormLazerMessage) created_lazer_message:(Maybe ^StormLazerMessage) = StormOraclePayload;
+
+storm#0 = StormOracleType;
+lazer#1 = StormOracleType;
+
+_ referrer_address:MsgAddressInt referrer_part:uint8 = StormReferrerData;
+_ discount:uint32 rebate:uint32 ref_info:(HashmapE 4 StormReferrerData) = StormReferralData;
+_ trader_address:MsgAddressInt smart_account_factory_address:MsgAddressInt vault_address:MsgAddress = StormAddressesData;
+
+_ shift:(## 13) {shift >= 0} { shift <= 5999 } bit_number:(## 10) { bit_number >= 0 } { bit_number <= 1022 } = StormUserQueryId;
+_ shift:(## 13) {shift >= 6000} bit_number:(## 10) { bit_number >= 0 } { bit_number <= 1022 } = StormExecutorQueryId;
+
+user_intent_payload#_ amm_address:MsgAddressInt sa_address:MsgAddressInt order:^StormUserOrder = StormUserIntentPayload;
+_ query_id:StormUserQueryId created_at:uint32 reference_query_id:(Maybe StormUserQueryId) public_key:bits256 intent:^StormUserIntentPayload = StormUserIntent;
+_ amm_address:MsgAddressInt sa_address:MsgAddressInt order:^StormExecutorOrder = StormExecutorIntent;
+
+user_intent$0 signature:bits512 intent:^StormUserIntent oracle_payload:^StormOraclePayload next_intent:(Maybe ^StormIntent) = StormIntent;
+executor_intent$1 intent:^StormExecutorIntent oracle_payload:^StormOraclePayload next_intent:(Maybe ^StormIntent) = StormIntent;
+
+_ old_queries:(HashmapE 13 ^Cell) queries:(HashmapE 13 ^Cell) last_clean_time:uint64 timeout:uint24 = StormHighloadData;
+_ hot_public_key:uint256 cold_public_key:uint256 user_public_keys:(HashmapE 256 Cell) keys_count:uint8 = StormKeys;
+
+// skip - storage
+storage#_ sa_type:uint8 factory_address:MsgAddressInt owner_address:MsgAddressInt balances:(HashmapE 267 Coins)
+  version:uint8 keys:^StormKeys positions:(HashmapE 268 StormPositionRecord) highload_data:^StormHighloadData = SmartAccountStorage;
+storage#_ sa_type:uint8 factory_address:MsgAddressInt owner_address:MsgAddressInt balances:(HashmapE 267 Coins) = SmartAccountBlankStorage;
+storage#_ admin_address:MsgAddressInt highload_timeout:uint24 hot_public_key:uint256 cold_public_key:uint256 content:^Cell
+  sa_ordinary_version:uint8 sa_ordinary_account_code:^Cell = SmartAccountFactoryStorage;
+
+
+increase#00 = StormLogType;
+close#01 = StormLogType;
+add_margin#02 = StormLogType;
+remove_margin#03 = StormLogType;
+
+// Messages
+
+// v2
+storm_force_close_max_leverage#5b705138 executor_index:uint32 oracle_payload:^StormOraclePayload = InternalMsgBody10;
+storm_force_close_min_margin#5a8cf652 executor_index:uint32 oracle_payload:^StormOraclePayload = InternalMsgBody10;
+storm_change_max_leverage#0ef28735 query_id:uint64 response_destination:MsgAddressInt new_max_leverage:uint32 = InternalMsgBody10;
+storm_change_max_leverage_request#28055719 query_id:uint64 vamm_address:MsgAddressInt new_max_leverage:uint32 = InternalMsgBody10;
+
+storm_change_lazer_data#04db6665 query_id:uint64 response_destination:MsgAddressInt oracle_flag:StormOracleType index_asset_pyth_id:uint32 settlement_asset_pyth_id:uint32 = InternalMsgBody10;
+storm_change_lazer_data_request#174c830c query_id:uint64 vamm_address:MsgAddressInt oracle_flag:StormOracleType index_asset_pyth_id:uint32 settlement_asset_pyth_id:uint32 = InternalMsgBody10;
+
+storm_update_position#60dfc677 direction:StormDirection origin_op:uint32 oracle_price:Coins
+  settlement_oracle_price:Coins new_position_ref:^StormPositionData amm_state_log:^StormAmmStateLog = InternalMsgBody10;
+
+storm_complete_order#cf90d618 order_type:uint4 order_index:uint3 direction:StormDirection origin_op:uint32 oracle_price:Coins
+  settlement_oracle_price:Coins new_position_ref:^StormPositionData amm_state_log:^StormAmmStateLog
+  market_depth_log_ref:^StormMarketDepth = InternalMsgBody10;
+
+referral_params#_ referral_amount:Coins referral_addr:MsgAddress = StormNotificationReferralParams;
+executor_params#_ split_executor_reward:uint1 executor_amount:Coins executor_index:uint32 = StormNotificationExecutorParams;
+storm_trade_notification#3475fdd2 asset_id:uint16 free_amount:int64 locked_amount:int64 exchange_amount:int64
+  withdraw_locked_amount:uint64 fee_to_stakers:uint64 withdraw_amount:uint64 trader_addr:MsgAddressInt origin_addr:MsgAddressInt
+  referral_data:(Maybe ^StormNotificationReferralParams) executor_params:(Maybe ^StormNotificationExecutorParams) = InternalMsgBody10;
+  
+storm_execute_order#de1ddbcc direction:StormDirection order_index:uint3
+  trader_addr:MsgAddressInt prev_addr:MsgAddressInt ref_addr:MsgAddress
+  executor_index:uint32 order:^StormUserOrder position:^StormPositionData oracle_payload:^StormOraclePayload = InternalMsgBody10;
+
+
+storm_provide_position#13076670 direction:uint1 gas_to_addr:MsgAddress inner_opcode:uint32 executor_index:uint32
+  oracle_ref:^StormOraclePayload = InternalMsgBody10;
+
+// v3
+
+storm_deploy_ordinary_sa#0302cd79 query_id:uint64 user_public_keys:(HashmapE 256 Cell) = InternalMsgBody10;
+
+_ highload_timeout:uint24 keys:^StormKeys version:uint8 new_code:^Cell = StormInitializationData;
+storm_init_sa#5b0dd9f4 query_id:uint64 init_data:StormInitializationData = InternalMsgBody10;
+
+storm_add_public_key#220c4c19 query_id:uint64 public_key:uint256 = InternalMsgBody10;
+storm_remove_public_key#76519f8b query_id:uint64 public_key:uint256 = InternalMsgBody10;
+storm_remove_all_keys_except_current#644794b8 query_id:uint64 public_key:uint256 = InternalMsgBody10;
+
+need_key_init$1 user_public_keys:(HashmapE 256 Cell) = StormInitializationRequest;
+no_key_init$0 = StormInitializationRequest;
+storm_deposit_native#29bb3721 query_id:uint64 amount:Coins receiver_address:MsgAddressInt init:Bool key_init:StormInitializationRequest = InternalMsgBody10;
+storm_deposit_jetton#76840119 query_id:uint64 receiver_address:MsgAddressInt init:Bool key_init:StormInitializationRequest = InternalMsgBody10;
+storm_notify_with_deploy#5a89f5a2 query_id:uint64 amount:Coins user_public_keys:(HashmapE 256 Cell) sender_address:MsgAddressInt owner_address:MsgAddressInt
+  jetton_minter_address:MsgAddressInt = InternalMsgBody10;
+storm_deposit_notify_with_deploy#18a092f7 query_id:uint64 vault_address:MsgAddressInt amount:Coins sender_address:MsgAddressInt
+  init_data:StormInitializationData = InternalMsgBody10;
+storm_deposit_notify#186b2edf query_id:uint64 amount:Coins sender_address:MsgAddressInt jetton_minter_address:MsgAddressInt = InternalMsgBody10;
+storm_deposit_revert#5b27f9c5 query_id:uint64 amount:Coins sender_address:MsgAddress owner_address:MsgAddressInt = InternalMsgBody10;
+storm_unsuccessful_deposit#6cde12e2 query_id:uint64 = InternalMsgBody10;
+
+storm_withdraw_request_user#6eec039d query_id:uint64 vault_address:MsgAddressInt amount:Coins = InternalMsgBody10;
+storm_withdraw_request#512cbd25 query_id:uint64 amount:Coins owner_address:MsgAddressInt = InternalMsgBody10;
+storm_withdraw_success#20d835c2 query_id:uint64 = InternalMsgBody10;
+
+// bundles
+
+storm_take_position_v2#1bea50f1 query_id:uint64 bundle_sender_address:MsgAddress amm_address:MsgAddressInt direction:StormDirection spent_amount:Coins
+  addresses:^StormAddressesData ref_count:(## 4) ref_data:ref_count?(StormReferralData) position:^StormPositionData intent:^StormIntent = InternalMsgBody10;
+
+_ migrate_code:(Maybe ^Cell) new_code:(Maybe ^Cell) = StormUpgradePayload;
+_ signature:bits512 payload:(HashmapE 8 StormUpgradePayload) = StormSignedUpgradePayload;
+_ query_id:StormExecutorQueryId created_at:uint32 sa_address:MsgAddressInt actual_version:uint8 upgrade_payload:(Maybe ^StormSignedUpgradePayload)
+  msg:(Maybe ^(MessageRelaxed Any)) = StormExternalMsgPayload;
+
+storm_execute_orders_bundle#04c52fd2 query_id:uint64 signature:bits512 payload:^StormExternalMsgPayload = ExternalMsgBody;
+storm_execute_orders_bundle#5f40f1ec query_id:uint64 signature:bits512 payload:^StormExternalMsgPayload = InternalMsgBody10;
+
+_ type:StormLogType size:int128 margin:Coins open_notional:Coins last_updated_cpf:int64 realized_pnl:int64 funding_payment:int64
+  rollover_fee:uint64 position_fee_rate:uint32 executor_fee_rate:uint32 position_fee_amount:Coins executor_fee_amount:Coins
+  fee_to_stakers_percent:uint32 = StormIntentLog;
+logs#012e8f40 log_dict:(HashmapE 8 StormIntentLog) = ExternalMsgBody;
+
+_ bundle_sender_address:MsgAddress balance_delta:Coins amm_address:MsgAddressInt direction:StormDirection position_data:(Maybe ^StormPositionData) = StormNotificationPayload;
+storm_trade_notification_v2#28d36491 query_id:uint64 asset_id:uint16 free_amount:int64 locked_amount:int64 exchange_amount:int64
+  withdraw_locked_amount:uint64 fee_to_stakers:uint64 executor_amount:uint64 total_referrer_amount:uint64 ref_count:uint4
+  referral_data:(HashmapE 4 StormReferrerData) sa_address:MsgAddressInt notification_payload:^StormNotificationPayload = InternalMsgBody10;
+
+storm_notify_update_position#1ca43d2f query_id:uint64 jetton_minter_address:MsgAddressInt notification_payload:^StormNotificationPayload = InternalMsgBody10;
+
+storm_referral_fees#4fedc82b query_id:uint64 referral_sa_address:MsgAddressInt amount:Coins
+  jetton_minter_address:MsgAddressInt notification_payload:^StormNotificationPayload = InternalMsgBody10;
+
+storm_failed_bundle_execution#666392ee query_id:uint64 asset_id:uint16 error_code:uint16 spent_amount:Coins sa_address:MsgAddressInt
+  amm_address:MsgAddressInt direction:StormDirection bundle_sender_address:MsgAddress intent:^StormIntent = InternalMsgBody10;
+
+storm_fail_notification#367f2743 query_id:uint64 spent_amount:Coins jetton_minter_address:MsgAddressInt amm_address:MsgAddressInt direction:StormDirection
+  bundle_sender_address:MsgAddress intent:^StormIntent = InternalMsgBody10;
+
+
+_ query_id:StormExecutorQueryId created_at:uint32 sa_address:MsgAddressInt new_hot_key:uint256 = SignedChangeKeyPayload;
+storm_change_hot_key#34d2e9f9 query_id:uint64 signature:bits512 signed_payload:^SignedChangeKeyPayload = ExternalMsgBody;
+
+storm_change_cold_key_factory#0b9d20cc query_id:uint64 new_cold_key:uint256 = InternalMsgBody10;
+storm_change_hot_key_factory#1bd24ca6 query_id:uint64 new_hot_key:uint256 = InternalMsgBody10;
+storm_change_cold_key_request#7a0bda1c query_id:uint64 sa_address:MsgAddressInt = InternalMsgBody10;
+storm_change_cold_key#70246da6 query_id:uint64 response_destination:MsgAddress new_cold_key:uint256 = InternalMsgBody10;
+
+storm_update_sa_ordinary_code#0c6ca95e query_id:uint64 version:uint8 new_code:^Cell = InternalMsgBody10;
+
+_ external_query_id:StormExecutorQueryId created_at:uint32 sa_address:MsgAddressInt query_id:uint64 amount:Coins
+  vault_address:MsgAddressInt = StormSignedSelfDepositNativePayload;
+storm_self_deposit_native#558e804a query_id:uint64 signature:bits512 signed_payload:^StormSignedSelfDepositNativePayload = ExternalMsgBody;
+
+_ external_query_id:StormExecutorQueryId created_at:uint32 sa_address:MsgAddressInt query_id:uint64 amount:Coins
+  vault_address:MsgAddressInt ^[ jetton_wallet_address:MsgAddressInt ] = StormSignedSelfDepositJettonPayload;
+storm_self_deposit_jetton#01d81ebc query_id:uint64 signature:bits512 signed_payload:^StormSignedSelfDepositJettonPayload = ExternalMsgBody;
+
+storm_deposit_ton#5a091c43 query_id:uint64 = InternalMsgBody10;
+
+// factory
+storm_change_factory_content#13559d58 query_id:uint64 new_content:^Cell = InternalMsgBody10;
+storm_change_factory_code#179d61f9 query_id:uint64 new_code:^Cell = InternalMsgBody10;
+
+// vault
+storm_change_v3_state#3e56c929 query_id:uint64 = InternalMsgBody10;
