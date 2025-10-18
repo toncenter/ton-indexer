@@ -168,7 +168,7 @@ std::string decode_boc(const std::string& boc_input) {
                     // else std::cout << "    ton-marker: failed to parse " << json_output << "\n";
                     // restore output on failure
                     json_output = "";
-                    // pp = tlb::JsonPrinter(&json_output); // JsonPrinter has state vars like is_first_field, reset them
+                    pp = tlb::JsonPrinter(&json_output); // JsonPrinter has state vars like is_first_field, reset them
                 }
             }
             return false;
