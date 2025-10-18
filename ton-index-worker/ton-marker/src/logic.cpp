@@ -124,7 +124,7 @@ std::string decode_boc(const std::string& boc_input) {
         auto cell = cell_result.move_as_ok();
         auto cs = vm::load_cell_slice(cell);
         if (cs.size() == 0 && cs.size_refs() == 0) {
-            return "{\"empty_cell\": \"\"}";
+            return "{\"@type\": \"empty_cell\"}";
         }
         if (cs.size() < 32) {
             return "unknown: boc is too small, size " + std::to_string(cs.size());

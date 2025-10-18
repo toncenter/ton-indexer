@@ -130,14 +130,14 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string) ([]string, []st
 }
 
 type messagesRefs struct {
-	opcodeRefs map[uint32][]*(*string)         // key: opcode, value: list of pointers to string pointers
-	bodyRefs   map[string][]*(*DecodedContent) // key: body, value: list of pointers where to write decoded body
+	opcodeRefs map[uint32][]*(*string)          // key: opcode, value: list of pointers to string pointers
+	bodyRefs   map[string][]*(*json.RawMessage) // key: body, value: list of pointers where to write decoded body
 }
 
 func MarkMessagesByPtr(messages []*Message) error {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*(*string)),
-		bodyRefs:   make(map[string][]*(*DecodedContent)),
+		bodyRefs:   make(map[string][]*(*json.RawMessage)),
 	}
 	for i := range messages {
 		collectSingleMessageRefs(messages[i], refs)
@@ -168,7 +168,7 @@ func MarkNFTTransfers(transfers []NFTTransfer) error {
 func collectMessagesRefs(messages []Message) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*(*string)),
-		bodyRefs:   make(map[string][]*(*DecodedContent)),
+		bodyRefs:   make(map[string][]*(*json.RawMessage)),
 	}
 	for i := range messages {
 		collectSingleMessageRefs(&messages[i], refs)
@@ -179,12 +179,12 @@ func collectMessagesRefs(messages []Message) *messagesRefs {
 func collectJettonTransfersRefs(transfers []JettonTransfer) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*(*string)),
-		bodyRefs:   make(map[string][]*(*DecodedContent)),
+		bodyRefs:   make(map[string][]*(*json.RawMessage)),
 	}
 	for i := range transfers {
 		transfer := &transfers[i]
 		customPayload := transfer.CustomPayload
-		if customPayload != nil && transfer.DecodedCustomPayload == nil { // skip if already decoded (as text comment)
+		if customPayload != nil && transfer.DecodedCustomPayload == nil { // skip if already decoded
 			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &transfer.DecodedCustomPayload)
 		}
 		forwardPayload := transfer.ForwardPayload
@@ -198,7 +198,7 @@ func collectJettonTransfersRefs(transfers []JettonTransfer) *messagesRefs {
 func collectJettonBurnsRefs(burns []JettonBurn) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*(*string)),
-		bodyRefs:   make(map[string][]*(*DecodedContent)),
+		bodyRefs:   make(map[string][]*(*json.RawMessage)),
 	}
 	for i := range burns {
 		burn := &burns[i]
@@ -213,7 +213,7 @@ func collectJettonBurnsRefs(burns []JettonBurn) *messagesRefs {
 func collectNFTTransfersRefs(transfers []NFTTransfer) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*(*string)),
-		bodyRefs:   make(map[string][]*(*DecodedContent)),
+		bodyRefs:   make(map[string][]*(*json.RawMessage)),
 	}
 	for i := range transfers {
 		transfer := &transfers[i]
@@ -286,32 +286,35 @@ func markWithRefs(refs *messagesRefs) error {
 			continue
 		}
 		for _, ref := range refs.bodyRefs[body] {
-			// save original JSON to preserve order
+			// unmarshal as JSON RawMessage to preserve order
 			var rawData json.RawMessage
 			if err := json.Unmarshal([]byte(decodedValue), &rawData); err != nil {
 				log.Printf("Error: failed to decode message body %s, got json %v", body, decodedValue)
 				continue
 			}
 
-			// parse only to get message type and maybe process text_comment
+			// unmarshal as map only to get message type and maybe process text_comment
 			var tmpResult map[string]interface{}
 			if err := json.Unmarshal([]byte(decodedValue), &tmpResult); err != nil {
+				log.Printf("Error: failed to unmarshal message body to map %s, got json %v", body, decodedValue)
 				continue
 			}
 
-			for msgType, msgData := range tmpResult {
-				if msgType == "text_comment" {
-					// back compatibility with scheme for text comment
-					if data, ok := msgData.(map[string]interface{}); ok {
-						if text, ok := data["text"].(string); ok {
-							*ref = &DecodedContent{Type: msgType, Comment: &text}
-							break
-						}
-					}
+			// back compatibility with old scheme for text_comment, many clients rely on it
+			msgType, hasType := tmpResult["@type"].(string)
+			text, hasText := tmpResult["text"].(string)
+			if hasType && msgType == "text_comment" && hasText {
+				backCompatJSON := map[string]interface{}{
+					"type":    "text_comment",
+					"comment": text,
 				}
-				// give raw JSON to preserve order
-				*ref = &DecodedContent{Type: msgType, Data: rawData}
-				break
+				if jsonData, err := json.Marshal(backCompatJSON); err == nil {
+					result := json.RawMessage(jsonData)
+					*ref = &result
+				}
+			} else {
+				// for all other types, return raw JSON as is, to preserve fields order
+				*ref = &rawData
 			}
 		}
 	}
