@@ -23,8 +23,18 @@ addr_std$10 anycast:(Maybe Anycast)
    workchain_id:int8 address:bits256  = MsgAddressInt;
 addr_var$11 anycast:(Maybe Anycast) addr_len:(## 9)
    workchain_id:int32 address:(bits addr_len) = MsgAddressInt;
-_ internal_address:MsgAddressInt = MsgAddress;
-_ external_address:MsgAddressExt = MsgAddress;
+
+// this is classic, but hard for later parsing
+// _ internal_address:MsgAddressInt = MsgAddress;
+// _ external_address:MsgAddressExt = MsgAddress;
+// just omit this definitions and use MsgAddress directly
+addr_none$00 = MsgAddress;
+addr_external$01 len:(## 9) external_address:(bits len)
+             = MsgAddress;
+addr_std$10 anycast:(Maybe Anycast)
+   workchain_id:int8 address:bits256  = MsgAddress;
+addr_var$11 anycast:(Maybe Anycast) addr_len:(## 9)
+   workchain_id:int32 address:(bits addr_len) = MsgAddress;
 
 var_uint$_ {n:#} len:(#< n) value:(uint (len * 8))
          = VarUInteger n;
@@ -235,9 +245,9 @@ bidask_internal_continue_swap#59699475 query_id:uint64 to_address:MsgAddress ord
 
 // bidask_internal_provide
 _ first_bin:int32 liquidity_dict:(HashmapE 32 int32) current_bin:int32 remaining:Cell = BidaskDexPayload;
-bidask_internal_provide#d1b02ea5 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) _:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
+bidask_internal_provide#d1b02ea5 query_id:uint64 ref_1:(Maybe ^Cell) ref_2:(Maybe ^Cell) ref_3:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
         dex_payload:^BidaskDexPayload  = InternalMsgBody0; // prior - has ref
-bidask_internal_provide#d1b02ea5 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) _:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
+bidask_internal_provide#d1b02ea5 query_id:uint64 ref_1:(Maybe ^Cell) ref_2:(Maybe ^Cell) ref_3:(Maybe ^Cell) amount_x:Coins amount_y:Coins to_address:MsgAddress
         dex_payload:Any = InternalMsgBody1;
 
 // bidask_internal_continue_provide
@@ -257,7 +267,7 @@ bidask_internal_burn#16e09400 query_id:uint64 owner_address:MsgAddress amount_x:
         tokens_to_burn:(HashmapE 32 int32) forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_multitoken_mint
-bidask_multitoken_mint#250ad226 query_id:uint64 _:(Maybe ^Cell) _:(Maybe ^Cell) liquidity_dict:(HashmapE 32 int32) 
+bidask_multitoken_mint#250ad226 query_id:uint64 ref_1:(Maybe ^Cell) ref_2:(Maybe ^Cell) liquidity_dict:(HashmapE 32 int32) 
         number_of_bins:uint32 forward_payload:(Maybe ^Cell)  = InternalMsgBody0;
 
 // bidask_burn

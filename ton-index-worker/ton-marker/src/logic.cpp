@@ -150,6 +150,7 @@ std::string decode_boc(const std::string& boc_input) {
         const schemes::ForwardPayload parser12;
 
         std::string json_output;
+        // tlb::PrettyPrinter pp(std::cout, 2);
         tlb::JsonPrinter pp(&json_output);
 
         // try special parsers first (w5, highload v3, wallets without opcode)
