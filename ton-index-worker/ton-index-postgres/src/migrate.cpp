@@ -1005,6 +1005,77 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.4 completed successfully.";
 }
 
+void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.5";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+
+    // TODO: add new migrations
+  }
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += (
+      "INSERT INTO ton_db_version (id, major, minor, patch) "
+      "VALUES (1, 1, 2, 5) ON CONFLICT(id) DO UPDATE "
+      "SET major = 1, minor = 2, patch = 5;\n"
+    );
+
+    // historic tables pattern: store all state changes for entities
+    // naming: {entity}_historic (e.g., jetton_wallets_historic)
+    // required columns: id, mc_seqno, timestamp, address, last_transaction_lt
+    // only mutable fields (not code_hash, data_hash)
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools_historic ("
+      "id bigserial PRIMARY KEY, "
+      "mc_seqno integer NOT NULL, "
+      "timestamp integer NOT NULL, "
+      "address tonaddr NOT NULL, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "fee double precision, "
+      "last_transaction_lt bigint NOT NULL);\n"
+    );
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.5 completed successfully.";
+}
+
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1104,6 +1175,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists nft_items_index_4 on nft_items (last_transaction_lt);\n"
       "create index if not exists nft_items_index_5 on nft_items (owner_address, last_transaction_lt);\n"
       "create index if not exists nft_items_index_6 on nft_items (collection_address, last_transaction_lt);\n"
+      "create index if not exists dex_pools_historic_index_1 on dex_pools_historic (address, timestamp);\n"
+      "create index if not exists dex_pools_historic_index_2 on dex_pools_historic (mc_seqno);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;
