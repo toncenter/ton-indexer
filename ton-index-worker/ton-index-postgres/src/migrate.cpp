@@ -971,7 +971,7 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
       }
     };
 
-    // TODO: add new migrations
+    // TODO: add new types
   }
 
   LOG(INFO) << "Updating tables...";
@@ -981,12 +981,26 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
-    // TODO: add new migrations
-
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
       "VALUES (1, 1, 2, 4) ON CONFLICT(id) DO UPDATE "
       "SET major = 1, minor = 2, patch = 4;\n"
+    );
+
+    // historic tables pattern: store all state changes for entities
+    // naming: {entity}_historic (e.g., jetton_wallets_historic)
+    // required columns: id, mc_seqno, timestamp, address, last_transaction_lt
+    // only mutable fields (not code_hash, data_hash)
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools_historic ("
+      "id bigserial PRIMARY KEY, "
+      "mc_seqno integer NOT NULL, "
+      "timestamp integer NOT NULL, "
+      "address tonaddr NOT NULL, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "fee double precision, "
+      "last_transaction_lt bigint NOT NULL);\n"
     );
 
     if (dry_run) {
@@ -1027,7 +1041,7 @@ void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
       }
     };
 
-    // TODO: add new migrations
+    // TODO: add new types
   }
 
   LOG(INFO) << "Updating tables...";
@@ -1037,26 +1051,12 @@ void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
+    // TODO: add new tables
+
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
       "VALUES (1, 1, 2, 5) ON CONFLICT(id) DO UPDATE "
       "SET major = 1, minor = 2, patch = 5;\n"
-    );
-
-    // historic tables pattern: store all state changes for entities
-    // naming: {entity}_historic (e.g., jetton_wallets_historic)
-    // required columns: id, mc_seqno, timestamp, address, last_transaction_lt
-    // only mutable fields (not code_hash, data_hash)
-    query += (
-      "CREATE TABLE IF NOT EXISTS dex_pools_historic ("
-      "id bigserial PRIMARY KEY, "
-      "mc_seqno integer NOT NULL, "
-      "timestamp integer NOT NULL, "
-      "address tonaddr NOT NULL, "
-      "reserve_1 numeric, "
-      "reserve_2 numeric, "
-      "fee double precision, "
-      "last_transaction_lt bigint NOT NULL);\n"
     );
 
     if (dry_run) {
