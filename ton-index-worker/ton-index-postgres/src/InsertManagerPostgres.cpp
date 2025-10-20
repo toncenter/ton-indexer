@@ -53,6 +53,7 @@ private:
   std::string insert_vesting(pqxx::work &txn);
   std::string insert_telemint(pqxx::work &txn);
   std::string insert_dedust_pools(pqxx::work &txn);
+  void insert_dedust_pools_historic(pqxx::work &txn);
   void insert_contract_methods(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
 
@@ -274,6 +275,7 @@ void InsertBatchPostgres::do_insert() {
     insert_nft_transfers(txn, with_copy_);
     insert_traces(txn, with_copy_);
     insert_contract_methods(txn);
+    insert_dedust_pools_historic(txn);
     data_timer.pause();
     td::Timer states_timer;
     std::string upsert_query;
@@ -1704,6 +1706,30 @@ void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn, bool with_cop
         transfer.forward_ton_amount,
         forward_payload_boc,
         transfer.trace_id
+      );
+      stream.insert_row(std::move(tuple));
+    }
+  }
+  stream.finish();
+}
+
+void InsertBatchPostgres::insert_dedust_pools_historic(pqxx::work &txn) {
+  std::initializer_list<std::string_view> columns = {
+    "mc_seqno", "timestamp", "address", "reserve_1", "reserve_2", "fee", "last_transaction_lt"
+  };
+
+  PopulateTableStream stream(txn, "dex_pools_historic", columns, 1000, false);
+
+  for (const auto& task : insert_tasks_) {
+    for (const auto& dedust_pool : task.parsed_block_->get_accounts_v2<schema::DedustPoolData>()) {
+      auto tuple = std::make_tuple(
+        task.mc_seqno_,
+        dedust_pool.last_transaction_now,
+        dedust_pool.address,
+        dedust_pool.reserve_1,
+        dedust_pool.reserve_2,
+        dedust_pool.fee,
+        dedust_pool.last_transaction_lt
       );
       stream.insert_row(std::move(tuple));
     }

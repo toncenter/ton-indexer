@@ -1274,6 +1274,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists nft_items_index_6 on nft_items (collection_address, last_transaction_lt);\n"
       "create index if not exists nft_items_index_7 on nft_items (real_owner, last_transaction_lt);\n"
       "create index if not exists nft_items_index_8 on nft_items (real_owner, collection_address, index);\n"
+      "create index if not exists dex_pools_historic_index_1 on dex_pools_historic (address, timestamp);\n"
+      "create index if not exists dex_pools_historic_index_2 on dex_pools_historic (mc_seqno);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;
