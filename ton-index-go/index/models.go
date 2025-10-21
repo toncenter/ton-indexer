@@ -160,7 +160,7 @@ type Block struct {
 type MessageContent struct {
 	Hash    *HashType        `json:"hash"`
 	Body    *string          `json:"body"`
-	Decoded *json.RawMessage `json:"decoded"`
+	Decoded *json.RawMessage `json:"decoded" swaggertype:"object"`
 } // @name MessageContent
 
 type Message struct {
