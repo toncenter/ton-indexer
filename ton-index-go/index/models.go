@@ -157,10 +157,16 @@ type Block struct {
 	PrevBlocks             []BlockId `json:"prev_blocks"`
 } // @name Block
 
+type DecodedContent struct {
+	Type    string `json:"type"`
+	Comment string `json:"comment"`
+} // @name DecodedContent
+
 type MessageContent struct {
-	Hash    *HashType        `json:"hash"`
-	Body    *string          `json:"body"`
-	Decoded *json.RawMessage `json:"decoded" swaggertype:"object"`
+	Hash       *HashType        `json:"hash"`
+	Body       *string          `json:"body"`
+	Decoded    *DecodedContent  `json:"decoded"`
+	DecodedTlb *json.RawMessage `json:"decoded_tlb" swaggertype:"object"`
 } // @name MessageContent
 
 type Message struct {

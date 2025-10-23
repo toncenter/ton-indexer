@@ -129,15 +129,19 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string) ([]string, []st
 	return opcodeResults, bocResults, nil
 }
 
+type bodyRef struct {
+	content *(*DecodedContent)
+	body    *(*json.RawMessage)
+}
 type messagesRefs struct {
-	opcodeRefs map[uint32][]*(*string)          // key: opcode, value: list of pointers to string pointers
-	bodyRefs   map[string][]*(*json.RawMessage) // key: body, value: list of pointers where to write decoded body
+	opcodeRefs map[uint32][]*(*string) // key: opcode, value: list of pointers to string pointers
+	bodyRefs   map[string][]bodyRef    // key: body, value: list of pointers where to write decoded body
 }
 
 func MarkMessagesByPtr(messages []*Message) error {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*(*string)),
-		bodyRefs:   make(map[string][]*(*json.RawMessage)),
+		bodyRefs:   make(map[string][]bodyRef),
 	}
 	for i := range messages {
 		collectSingleMessageRefs(messages[i], refs)
@@ -168,7 +172,7 @@ func MarkNFTTransfers(transfers []NFTTransfer) error {
 func collectMessagesRefs(messages []Message) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*(*string)),
-		bodyRefs:   make(map[string][]*(*json.RawMessage)),
+		bodyRefs:   make(map[string][]bodyRef),
 	}
 	for i := range messages {
 		collectSingleMessageRefs(&messages[i], refs)
@@ -179,17 +183,19 @@ func collectMessagesRefs(messages []Message) *messagesRefs {
 func collectJettonTransfersRefs(transfers []JettonTransfer) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*(*string)),
-		bodyRefs:   make(map[string][]*(*json.RawMessage)),
+		bodyRefs:   make(map[string][]bodyRef),
 	}
 	for i := range transfers {
 		transfer := &transfers[i]
 		customPayload := transfer.CustomPayload
 		if customPayload != nil && transfer.DecodedCustomPayload == nil { // skip if already decoded
-			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &transfer.DecodedCustomPayload)
+			bodyref := bodyRef{nil, &transfer.DecodedCustomPayload}
+			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], bodyref)
 		}
 		forwardPayload := transfer.ForwardPayload
 		if forwardPayload != nil && transfer.DecodedForwardPayload == nil {
-			refs.bodyRefs[*forwardPayload] = append(refs.bodyRefs[*forwardPayload], &transfer.DecodedForwardPayload)
+			bodyref := bodyRef{nil, &transfer.DecodedForwardPayload}
+			refs.bodyRefs[*forwardPayload] = append(refs.bodyRefs[*forwardPayload], bodyref)
 		}
 	}
 	return refs
@@ -198,13 +204,14 @@ func collectJettonTransfersRefs(transfers []JettonTransfer) *messagesRefs {
 func collectJettonBurnsRefs(burns []JettonBurn) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*(*string)),
-		bodyRefs:   make(map[string][]*(*json.RawMessage)),
+		bodyRefs:   make(map[string][]bodyRef),
 	}
 	for i := range burns {
 		burn := &burns[i]
 		customPayload := burn.CustomPayload
 		if customPayload != nil && burn.DecodedCustomPayload == nil {
-			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &burn.DecodedCustomPayload)
+			bodyref := bodyRef{nil, &burn.DecodedCustomPayload}
+			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], bodyref)
 		}
 	}
 	return refs
@@ -213,17 +220,19 @@ func collectJettonBurnsRefs(burns []JettonBurn) *messagesRefs {
 func collectNFTTransfersRefs(transfers []NFTTransfer) *messagesRefs {
 	refs := &messagesRefs{
 		opcodeRefs: make(map[uint32][]*(*string)),
-		bodyRefs:   make(map[string][]*(*json.RawMessage)),
+		bodyRefs:   make(map[string][]bodyRef),
 	}
 	for i := range transfers {
 		transfer := &transfers[i]
 		customPayload := transfer.CustomPayload
 		if customPayload != nil && transfer.DecodedCustomPayload == nil {
-			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &transfer.DecodedCustomPayload)
+			bodyref := bodyRef{nil, &transfer.DecodedCustomPayload}
+			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], bodyref)
 		}
 		forwardPayload := transfer.ForwardPayload
 		if forwardPayload != nil && transfer.DecodedForwardPayload == nil {
-			refs.bodyRefs[*forwardPayload] = append(refs.bodyRefs[*forwardPayload], &transfer.DecodedForwardPayload)
+			bodyref := bodyRef{nil, &transfer.DecodedForwardPayload}
+			refs.bodyRefs[*forwardPayload] = append(refs.bodyRefs[*forwardPayload], bodyref)
 		}
 	}
 	return refs
@@ -238,8 +247,9 @@ func collectSingleMessageRefs(msg *Message, refs *messagesRefs) {
 		refs.opcodeRefs[uint32(*msg.Opcode)] = append(refs.opcodeRefs[uint32(*msg.Opcode)], &msg.DecodedOpcode)
 	}
 	// collect message bodies
-	if msg.MessageContent != nil && msg.MessageContent.Body != nil && msg.MessageContent.Decoded == nil {
-		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], &msg.MessageContent.Decoded)
+	if msg.MessageContent != nil && msg.MessageContent.Body != nil && msg.MessageContent.DecodedTlb == nil {
+		bodyref := bodyRef{&msg.MessageContent.Decoded, &msg.MessageContent.DecodedTlb}
+		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], bodyref)
 	}
 }
 
@@ -281,7 +291,8 @@ func markWithRefs(refs *messagesRefs) error {
 		decodedValue := decodedBodies[i]
 		if strings.HasPrefix(decodedValue, "unknown") {
 			for _, ref := range refs.bodyRefs[body] {
-				(*ref) = nil
+				(*ref.content) = nil
+				(*ref.body) = nil
 			}
 			continue
 		}
@@ -299,22 +310,15 @@ func markWithRefs(refs *messagesRefs) error {
 				log.Printf("Error: failed to unmarshal message body to map %s, got json %v", body, decodedValue)
 				continue
 			}
-
+			*ref.body = &rawData
 			// back compatibility with old scheme for text_comment, many clients rely on it
 			msgType, hasType := tmpResult["@type"].(string)
 			text, hasText := tmpResult["text"].(string)
 			if hasType && msgType == "text_comment" && hasText {
-				backCompatJSON := map[string]interface{}{
-					"type":    "text_comment",
-					"comment": text,
-				}
-				if jsonData, err := json.Marshal(backCompatJSON); err == nil {
-					result := json.RawMessage(jsonData)
-					*ref = &result
-				}
+				content := DecodedContent{"text_comment", text}
+				*ref.content = &content
 			} else {
-				// for all other types, return raw JSON as is, to preserve fields order
-				*ref = &rawData
+				*ref.content = nil
 			}
 		}
 	}
