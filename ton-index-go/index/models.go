@@ -165,8 +165,8 @@ type DecodedContent struct {
 type MessageContent struct {
 	Hash       *HashType        `json:"hash"`
 	Body       *string          `json:"body"`
-	Decoded    *DecodedContent  `json:"decoded"`
-	DecodedTlb *json.RawMessage `json:"decoded_tlb" swaggertype:"object"`
+	Decoded    *DecodedContent  `json:"decoded,omitempty"`
+	DecodedTlb *json.RawMessage `json:"decoded_tlb,omitempty" swaggertype:"object"`
 } // @name MessageContent
 
 type Message struct {

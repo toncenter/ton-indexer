@@ -310,15 +310,16 @@ func markWithRefs(refs *messagesRefs) error {
 				log.Printf("Error: failed to unmarshal message body to map %s, got json %v", body, decodedValue)
 				continue
 			}
-			*ref.body = &rawData
 			// back compatibility with old scheme for text_comment, many clients rely on it
 			msgType, hasType := tmpResult["@type"].(string)
 			text, hasText := tmpResult["text"].(string)
 			if hasType && msgType == "text_comment" && hasText {
 				content := DecodedContent{"text_comment", text}
 				*ref.content = &content
+				*ref.body = nil // maybe *ref.body = &rawData
 			} else {
 				*ref.content = nil
+				*ref.body = &rawData
 			}
 		}
 	}
