@@ -305,7 +305,8 @@ func markWithRefs(refs *messagesRefs) error {
 			text, hasText := tmpResult["text"].(string)
 			if hasType && msgType == "text_comment" && hasText {
 				backCompatJSON := map[string]interface{}{
-					"type":    "text_comment",
+					"type":    "text_comment", // deprecated
+					"@type":   "text_comment",
 					"comment": text,
 				}
 				if jsonData, err := json.Marshal(backCompatJSON); err == nil {
