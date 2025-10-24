@@ -2572,3 +2572,6 @@ storm_change_factory_code#179d61f9 query_id:uint64 new_code:^Cell = InternalMsgB
 
 // vault
 storm_change_v3_state#3e56c929 query_id:uint64 = InternalMsgBody10;
+
+// scaled ui 
+scaled_ui_display_multiplier_changed#ac392598 numerator:(VarUInteger 32) denominator:(VarUInteger 32) comment:(Maybe SnakeString) = ExternalMsgBody;
