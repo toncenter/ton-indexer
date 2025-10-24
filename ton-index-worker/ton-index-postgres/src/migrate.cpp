@@ -971,7 +971,12 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
       }
     };
 
-    // TODO: add new types
+    // change enum types to varchar for dex_pools table
+    // to add new pool types and dexes without schema changes in future
+    exec_query("ALTER TABLE dex_pools ALTER COLUMN pool_type TYPE varchar(50) USING pool_type::text;");
+    exec_query("ALTER TABLE dex_pools ALTER COLUMN dex TYPE varchar(50) USING dex::text;");
+    exec_query("DROP TYPE IF EXISTS pool_type;");
+    exec_query("DROP TYPE IF EXISTS dex_type;");
   }
 
   LOG(INFO) << "Updating tables...";

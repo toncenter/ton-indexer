@@ -1642,7 +1642,7 @@ std::string InsertBatchPostgres::insert_stonfi_pools_v2(pqxx::work &txn) {
 
   PopulateTableStream pools_stream(txn, "dex_pools", pools_column, 1000, false);
   pools_stream.setConflictDoUpdate({"address"}, "dex_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
-  std::string dex = "stonfi";
+  std::string dex = "stonfi-v2";
   for (const auto& [addr, stonfi_pool] : stonfi_pools) {
     auto tuple = std::make_tuple(
       stonfi_pool.address,
