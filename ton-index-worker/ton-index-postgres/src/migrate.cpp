@@ -811,6 +811,8 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("alter type nft_transfer_details add attribute payout_comment text;");
     exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
     exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
+    exec_query("create type pool_type as enum ('stable', 'volatile');");
+    exec_query("create type dex_type as enum ('dedust');");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -832,6 +834,22 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
       "INSERT INTO ton_db_version (id, major, minor, patch) "
       "VALUES (1, 1, 2, 2) ON CONFLICT(id) DO UPDATE "
       "SET major = 1, minor = 2, patch = 2;\n"
+    );
+
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools ("
+      "id bigserial not null, "
+      "address tonaddr not null primary key, "
+      "asset_1 tonaddr, "
+      "asset_2 tonaddr, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "pool_type pool_type, "
+      "dex dex_type, "
+      "fee double precision, "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash);\n"
     );
 
     if (dry_run) {
@@ -953,7 +971,12 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
       }
     };
 
-    // TODO: add new migrations
+    // change enum types to varchar for dex_pools table
+    // to add new pool types and dexes without schema changes in future
+    exec_query("ALTER TABLE dex_pools ALTER COLUMN pool_type TYPE varchar(50) USING pool_type::text;");
+    exec_query("ALTER TABLE dex_pools ALTER COLUMN dex TYPE varchar(50) USING dex::text;");
+    exec_query("DROP TYPE IF EXISTS pool_type;");
+    exec_query("DROP TYPE IF EXISTS dex_type;");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -963,12 +986,26 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
-    // TODO: add new migrations
-
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
       "VALUES (1, 1, 2, 4) ON CONFLICT(id) DO UPDATE "
       "SET major = 1, minor = 2, patch = 4;\n"
+    );
+
+    // historic tables pattern: store all state changes for entities
+    // naming: {entity}_historic (e.g., jetton_wallets_historic)
+    // required columns: id, mc_seqno, timestamp, address, last_transaction_lt
+    // only mutable fields (not code_hash, data_hash)
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools_historic ("
+      "id bigserial PRIMARY KEY, "
+      "mc_seqno integer NOT NULL, "
+      "timestamp integer NOT NULL, "
+      "address tonaddr NOT NULL, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "fee double precision, "
+      "last_transaction_lt bigint NOT NULL);\n"
     );
 
     if (dry_run) {
@@ -986,6 +1023,63 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
 
   LOG(INFO) << "Migration to version 1.2.4 completed successfully.";
 }
+
+void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.5";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+
+    // TODO: add new types
+  }
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    // TODO: add new tables
+
+    query += (
+      "INSERT INTO ton_db_version (id, major, minor, patch) "
+      "VALUES (1, 1, 2, 5) ON CONFLICT(id) DO UPDATE "
+      "SET major = 1, minor = 2, patch = 5;\n"
+    );
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.5 completed successfully.";
+}
+
 
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
@@ -1086,6 +1180,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists nft_items_index_4 on nft_items (last_transaction_lt);\n"
       "create index if not exists nft_items_index_5 on nft_items (owner_address, last_transaction_lt);\n"
       "create index if not exists nft_items_index_6 on nft_items (collection_address, last_transaction_lt);\n"
+      "create index if not exists dex_pools_historic_index_1 on dex_pools_historic (address, timestamp);\n"
+      "create index if not exists dex_pools_historic_index_2 on dex_pools_historic (mc_seqno);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;
