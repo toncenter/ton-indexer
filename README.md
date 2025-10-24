@@ -89,6 +89,19 @@ Once the stack is running, the REST API and interactive Swagger are available at
    docker compose up -d run-migrations index-worker index-api event-classifier event-cache
    ```
 
+## How to run TON Index worker independently
+
+When using a remote PostgreSQL instance, you can run the index worker independently without service dependencies:
+
+```bash
+docker compose up -d --no-deps index-worker
+```
+
+This is useful when you want to:
+- Run index worker with a remote PostgreSQL database
+- Deploy index worker separately from other services
+- Avoid unnecessary service dependencies in your deployment
+
 ## How to update Indexer
 
 1. Ensure your current version only differs from the latest by patch version. Major/minor upgrades are not supported and require clean DB.

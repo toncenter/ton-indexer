@@ -81,7 +81,7 @@ services:
       TON_WORKER_BINARY: ton-index-postgres-migrate
     networks:
       internal:
-    command: ton-index-postgres-migrate --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
+    command: ton-index-postgres-migrate --pg postgresql://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
     restart: on-failure
 
   index-worker:
@@ -105,7 +105,7 @@ services:
       TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
     networks:
       internal:
-    command: ton-index-postgres --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DB} --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:?} ${TON_WORKER_ADDITIONAL_ARGS:-}
+    command: ton-index-postgres --pg postgresql://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB} --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:?} ${TON_WORKER_ADDITIONAL_ARGS:-}
     restart: unless-stopped
 
   postgres:
