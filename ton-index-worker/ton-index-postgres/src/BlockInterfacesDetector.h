@@ -11,7 +11,7 @@ using FullDetector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetec
                                      NftItemDetectorR, NftCollectionDetectorR,
                                      GetGemsNftAuction, GetGemsNftFixPriceSale,
                                      MultisigContract, MultisigOrder,
-                                     VestingContract, DedustPoolDetector>;
+                                     VestingContract, DedustPoolDetector, StonfiPoolV2Detector>;
 
 class BlockInterfaceProcessor: public td::actor::Actor {
 private:
@@ -242,6 +242,20 @@ public:
                     dedust_pool_data.is_stable = arg.is_stable;
                     dedust_pool_data.fee = arg.fee;
                     interfaces_[address].push_back(dedust_pool_data);
+                } else if constexpr (std::is_same_v<T, StonfiPoolV2Detector::Result>) {
+                    StonfiPoolV2Data stonfi_pool_data;
+                    stonfi_pool_data.address = address;
+                    stonfi_pool_data.asset_1 = arg.asset_1;
+                    stonfi_pool_data.asset_2 = arg.asset_2;
+                    stonfi_pool_data.last_transaction_lt = last_trans_lt;
+                    stonfi_pool_data.last_transaction_now = last_trans_now;
+                    stonfi_pool_data.code_hash = code_hash;
+                    stonfi_pool_data.data_hash = data_hash;
+                    stonfi_pool_data.reserve_1 = arg.reserve_1;
+                    stonfi_pool_data.reserve_2 = arg.reserve_2;
+                    stonfi_pool_data.pool_type = arg.pool_type;
+                    stonfi_pool_data.fee = arg.fee;
+                    interfaces_[address].push_back(stonfi_pool_data);
                 }
             }, interface);
         }

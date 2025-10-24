@@ -700,3 +700,171 @@ bool DedustPoolDetector::get_asset(td::Ref<vm::CellSlice> slice, std::optional<b
   }
   return false;
 }
+
+// stonfi v2 pool code hashes for different pool types.
+// they're immutable, so we can hardcode them.
+const std::unordered_map<std::string, std::string> STONFI_POOL_V2_CODE_HASHES {
+  {"02BBFE992EA55521EC06A1C0303E00806538C66F60DB13D66E6377A2F7FD115E", "weighted_const_product"},
+  {"9E5038AB735973D5450FAE1A14E7707B332DCD8E744F5DDB3B6A0D994D400C59", "weighted_stableswap"},
+  {"A9338ECD624CA15D37E4A8D9BF677DDC9B84F0E98F05F2FB84C7AFE332A281B4", "constant_product"},
+  {"10D723C788D8A44E4F62EA4A992BE59E44B0ED36CFF365400BAA44BDD2BDFD2B", "constant_sum"},
+  {"3C882EB9EDE6BE2459B2D2E469680AF9F8E48AB16EC0726F0D07B0E5686BE718", "stableswap"}
+};
+
+StonfiPoolV2Detector::StonfiPoolV2Detector(block::StdAddress address,
+                                           td::Ref<vm::Cell> code_cell,
+                                           td::Ref<vm::Cell> data_cell,
+                                           AllShardStates shard_states,
+                                           std::shared_ptr<block::ConfigInfo> config,
+                                           td::Promise<Result> promise) :
+  address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
+  shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)) {}
+
+void StonfiPoolV2Detector::start_up() {
+  if (code_cell_.is_null() || data_cell_.is_null()) {
+    promise_.set_error(td::Status::Error("Code or data null"));
+    stop();
+    return;
+  }
+
+  auto code_hash = code_cell_->get_hash().to_hex();
+  auto pool_type_iter = STONFI_POOL_V2_CODE_HASHES.find(code_hash);
+  if (pool_type_iter == STONFI_POOL_V2_CODE_HASHES.end()) {
+    promise_.set_error(td::Status::Error("Code hash mismatch"));
+    stop();
+    return;
+  }
+
+  Result data;
+  data.pool_type = pool_type_iter->second;  // get pool type by code hash
+
+  // get pool data: reserves, token wallets, fees
+  {
+    auto stack_r = execute_smc_method<12>(address_, code_cell_, data_cell_, config_, "get_pool_data", {},
+      { vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_int,
+        vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice,
+        vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int,
+        vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_int });
+    if (stack_r.is_error()) {
+      promise_.set_error(stack_r.move_as_error());
+      stop();
+      return;
+    }
+
+    auto stack = stack_r.move_as_ok();
+    // stack[0] = is_locked
+    // stack[1] = router_address
+    // stack[2] = total_supply
+    data.reserve_1 = stack[3].as_int();
+    data.reserve_2 = stack[4].as_int();
+    auto token0_wallet_slice = stack[5].as_slice();
+    auto token1_wallet_slice = stack[6].as_slice();
+    auto lp_fee = stack[7].as_int(); 
+    // stack[8] = protocol_fee
+    // stack[9] = protocol_fee_address
+    // stack[10] = collected_token0_protocol_fee
+    // stack[11] = collected_token1_protocol_fee
+
+    data.fee = lp_fee->to_long() / 10000.0;
+
+    // parse token wallet addresses
+    auto token0_wallet_r = convert::to_std_address(token0_wallet_slice);
+    if (token0_wallet_r.is_error()) {
+      promise_.set_error(token0_wallet_r.move_as_error());
+      stop();
+      return;
+    }
+    auto token1_wallet_r = convert::to_std_address(token1_wallet_slice);
+    if (token1_wallet_r.is_error()) {
+      promise_.set_error(token1_wallet_r.move_as_error());
+      stop();
+      return;
+    }
+
+    auto token0_wallet = token0_wallet_r.move_as_ok();
+    auto token1_wallet = token1_wallet_r.move_as_ok();
+
+    // resolve assets from token wallets
+    resolve_assets(std::move(data), token0_wallet, token1_wallet);
+  }
+}
+
+void StonfiPoolV2Detector::resolve_assets(Result pool_data, block::StdAddress token0_wallet, block::StdAddress token1_wallet) {
+  auto R = td::PromiseCreator::lambda([=, this, SelfId = actor_id(this)](td::Result<schema::AccountState> account_state_r) mutable {
+    if (account_state_r.is_error()) {
+      promise_.set_error(account_state_r.move_as_error());
+      stop();
+      return;
+    }
+    auto account_state = account_state_r.move_as_ok();
+    td::actor::send_closure(SelfId, &StonfiPoolV2Detector::got_token0_wallet_account, 
+                           pool_data, token1_wallet, account_state.code, account_state.data);
+  });
+
+  td::actor::create_actor<FetchAccountFromShardV2>("fetchaccountfromshard", shard_states_, token0_wallet, std::move(R)).release();
+}
+
+void StonfiPoolV2Detector::got_token0_wallet_account(Result pool_data, block::StdAddress token1_wallet,
+                                                     td::Ref<vm::Cell> token0_wallet_code, td::Ref<vm::Cell> token0_wallet_data) {
+  try {
+    pool_data.asset_1 = get_jetton_master(token0_wallet_code, token0_wallet_data, config_);
+  } catch (const std::exception& e) {
+    promise_.set_error(td::Status::Error(std::string("Failed to resolve asset_1: ") + e.what()));
+    stop();
+    return;
+  }
+
+  auto R = td::PromiseCreator::lambda([=, this, SelfId = actor_id(this)](td::Result<schema::AccountState> account_state_r) mutable {
+    if (account_state_r.is_error()) {
+      promise_.set_error(account_state_r.move_as_error());
+      stop();
+      return;
+    }
+    auto account_state = account_state_r.move_as_ok();
+    td::actor::send_closure(SelfId, &StonfiPoolV2Detector::got_token1_wallet_account,
+                           pool_data, account_state.code, account_state.data);
+  });
+
+  td::actor::create_actor<FetchAccountFromShardV2>("fetchaccountfromshard", shard_states_, token1_wallet, std::move(R)).release();
+}
+
+void StonfiPoolV2Detector::got_token1_wallet_account(Result pool_data, td::Ref<vm::Cell> token1_wallet_code,
+                                                     td::Ref<vm::Cell> token1_wallet_data) {
+  try {
+    pool_data.asset_2 = get_jetton_master(token1_wallet_code, token1_wallet_data, config_);
+  } catch (const std::exception& e) {
+    promise_.set_error(td::Status::Error(std::string("Failed to resolve asset_2: ") + e.what()));
+    stop();
+    return;
+  }
+  promise_.set_value(std::move(pool_data));
+  stop();
+}
+
+std::optional<block::StdAddress> StonfiPoolV2Detector::get_jetton_master(td::Ref<vm::Cell> wallet_code,
+                                                                         td::Ref<vm::Cell> wallet_data,
+                                                                         std::shared_ptr<block::ConfigInfo> config) {  
+  if (wallet_code.is_null() || wallet_data.is_null()) {
+    throw std::runtime_error("Wallet code or data is null");
+  }
+
+  auto stack_r = execute_smc_method<4>(block::StdAddress(), wallet_code, wallet_data, config, "get_wallet_data", {},
+    {vm::StackEntry::Type::t_int, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_slice, vm::StackEntry::Type::t_cell});
+  
+  if (stack_r.is_error()) {
+    throw std::runtime_error("Failed to call get_wallet_data: " + stack_r.error().to_string());
+  }
+
+  auto stack = stack_r.move_as_ok();
+  // stack[0] = balance
+  // stack[1] = owner
+  auto jetton_master_slice = stack[2].as_slice();
+  // stack[3] = jetton_wallet_code
+
+  auto jetton_master_r = convert::to_std_address(jetton_master_slice);
+  if (jetton_master_r.is_error()) {
+    throw std::runtime_error("Failed to parse jetton master address");
+  }
+
+  return jetton_master_r.move_as_ok();
+}

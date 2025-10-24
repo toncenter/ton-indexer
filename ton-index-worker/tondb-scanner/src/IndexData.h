@@ -627,7 +627,7 @@ struct DedustPoolData {
   td::Bits256 data_hash;
 };
 
-struct StonfiPoolData {
+struct StonfiPoolV2Data {
   block::StdAddress address;
   std::optional<block::StdAddress> asset_1;
   std::optional<block::StdAddress> asset_2;
@@ -635,7 +635,6 @@ struct StonfiPoolData {
   uint32_t last_transaction_now;
   td::RefInt256 reserve_1;
   td::RefInt256 reserve_2;
-  bool is_stable;
   std::string pool_type;
   double fee;
   td::Bits256 code_hash;
@@ -679,7 +678,7 @@ using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
                                            MultisigOrderData,
                                            VestingData,
                                            DedustPoolData,
-                                           StonfiPoolData>;
+                                           StonfiPoolV2Data>;
 
 namespace std {
 template <>
