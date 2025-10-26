@@ -1,6 +1,9 @@
 ---
 - name: Prepare to build
-  hosts: localhost
+  hosts: builder
+  tags: [build]
+  vars:
+    rev: "{{ git_sha | default('main') }}"
   tasks:
     - name: Install requirements
       ansible.builtin.apt:
@@ -33,19 +36,39 @@
           - ccache
         state: present
       become: true
+    - name: Create temp workspace
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: ton-indexer
+      register: builddir
+    - block:
+        - name: Checkout code
+          ansible.builtin.git:
+            repo: https://github.com/toncenter/ton-indexer.git
+            dest: "{{ builddir.path }}"
+            version: "{{ rev }}"
+            single_branch: yes
+            depth: 1
 
-- name: Build binaries
-  hosts: localhost
-  tasks:
-    - name: Build the Go application
-      ansible.builtin.shell: |
-          cmake -DCMAKE_BUILD_TYPE=Release -S . -B {{ build_path }}
-          cmake --build {{ build_path }} --parallel $(nproc) --target ton-index-go ton-metadata-fetcher
-      changed_when: true
-      vars:
-        service: "{{ services[item] }}"
-      failed_when: build_result.rc != 0
-      register: build_result
+        - name: Build the Go application ton-index-go and ton-metadata-fetcher
+          ansible.builtin.shell: |
+              cmake -DCMAKE_BUILD_TYPE=Release -S . -B {{ builddir.path }}
+              cmake --build {{ builddir.path }} --parallel $(nproc) --target ton-index-go ton-metadata-fetcher
+
+        - name: Collect ton-index-go
+          ansible.builtin.fetch:
+            src: "{{ builddir.path }}/ton-index-go/ton-index-go"
+            dest: "artifacts/{{ rev }}/"
+        - name: Collect ton-metadata-fetcher
+          ansible.builtin.fetch:
+            src: "{{ builddir.path }}/ton-metadata-fetcher/ton-metadata-fetcher"
+            dest: "artifacts/{{ rev }}/"
+
+      always:
+        - name: Cleanup workspace
+          ansible.builtin.file:
+            path: "{{ builddir.path }}"
+            state: absent
 
 - name: Deploy metadata_fetcher service on master nodes
   vars:
@@ -53,6 +76,7 @@
     service_name: "{{ stack_name }}__{{ service.service_name }}"
   hosts: "{{ stack_name }}__master_nodes"
   become: true
+  tags: [deploy]
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
@@ -93,6 +117,7 @@
     service_name: "{{ stack_name }}__{{ service.service_name }}"
   hosts: "{{ stack_name }}__replica_nodes"
   become: true
+  tags: [deploy]
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
