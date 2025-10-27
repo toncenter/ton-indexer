@@ -1,11 +1,11 @@
 # Precompute git SHA on the controller so all plays can use it
-- name: Compute git SHA once
+- name: Resolve repo path & SHA
   hosts: localhost
   gather_facts: false
   tasks:
-    - name: Get commit hash (from playbook repo)
-      ansible.builtin.set_fact:
-        git_sha: "{{ lookup('pipe', 'git -C ' ~ playbook_dir ~ ' rev-parse --short=12 HEAD') | trim }}"
+    - ansible.builtin.set_fact:
+        repo_dir: "{{ lookup('env','SEMAPHORE_GIT_DIR') | default('.', true) }}"
+        git_sha: "{{ (lookup('env','SEMAPHORE_GIT_SHA') | default(''))[0:12] }}"
       run_once: true
 
 - name: Prepare to build
