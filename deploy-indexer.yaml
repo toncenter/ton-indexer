@@ -74,11 +74,6 @@
             rsync_opts:
               - "--exclude=.git"
               - "--exclude=artifacts"
-              - "--exclude=ansible/vault.yml"
-              - "--exclude=*log"
-              - "--exclude=*.yaml"
-              - "--exclude=*.yml"
-              - "--exclude=deploy-*.yaml"
             recursive: yes
             delete: no
 
