@@ -54,11 +54,20 @@
       register: builddir
 
     - block:
-        - name: Copy project to builder (simple; consider synchronize for speed)
-          ansible.builtin.copy:
-            src: .
+        - name: Copy project to builder from . to "{{ builddir.path }}/source" with rsync
+          ansible.builtin.synchronize:
+            src: "."
             dest: "{{ builddir.path }}/source"
-            mode: "0755"
+            rsync_opts:
+              - "--exclude=.git"
+              - "--exclude=artifacts"
+              - "--exclude=ansible/vault.yml"
+              - "--exclude=*log"
+              - "--exclude=*.yaml"
+              - "--exclude=*.yml"
+              - "--exclude=deploy-*.yaml"
+            recursive: yes
+            delete: no
 
         - name: Build ton-index-go and ton-metadata-fetcher
           ansible.builtin.shell: |
