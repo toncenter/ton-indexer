@@ -56,7 +56,7 @@
     - block:
         - name: Copy project to builder from . to "{{ builddir.path }}/source" with rsync
           ansible.builtin.synchronize:
-            src: "{{ repo_dir }}"
+            src: "{{ hostvars['localhost'].repo_dir }}/"
             dest: "{{ builddir.path }}/source"
             rsync_opts:
               - "--exclude=.git"
