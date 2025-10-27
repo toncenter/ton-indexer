@@ -34,13 +34,6 @@ if(NOT CMAKE_Go_COMPILER)
     STRING(REGEX MATCH "go[0-9]+.[0-9]+.[0-9]+[ /A-Za-z0-9]*" VERSION "${GOLANG_VERSION}")
     message("-- The Golang compiler identification is ${VERSION}")
     message("-- Check for working Golang compiler: ${CMAKE_Go_COMPILER}")
-    
-    # add go directory to $PATH
-    if(CMAKE_Go_COMPILER)
-      get_filename_component(GO_COMPILER_PATH ${CMAKE_Go_COMPILER} PATH)
-      set(ENV{PATH} "${GO_COMPILER_PATH};$ENV{PATH}")
-      message("-- Added Go compiler directory to PATH: ${GO_COMPILER_PATH}")
-    endif()
   endif()
 endif()
 
