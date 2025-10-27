@@ -67,10 +67,10 @@
       register: builddir
 
     - block:
-        - name: Copy project to builder from . to "{{ builddir.path }}/source" with rsync
+        - name: Copy project to builder from . to "{{ builddir.path }}" with rsync
           ansible.builtin.synchronize:
             src: "{{ hostvars['localhost'].repo_dir }}/"
-            dest: "{{ builddir.path }}/source"
+            dest: "{{ builddir.path }}"
             rsync_opts:
               - "--exclude=.git"
               - "--exclude=artifacts"
@@ -86,12 +86,12 @@
           ansible.builtin.shell: |
             set -e
             cmake -DCMAKE_BUILD_TYPE=Release \
-                  -S . -B "{{ builddir.path }}"
-            cmake --build "{{ builddir.path }}" \
+                  -S . -B "{{ builddir.path }}/build"
+            cmake --build "{{ builddir.path }}/build" \
                   --parallel {{ ansible_facts.processor_vcpus | default(2) }} \
                   --target ton-index-go ton-metadata-fetcher
           args:
-            chdir: "{{ builddir.path }}/source"
+            chdir: "{{ builddir.path }}"
 
         - name: Collect built binaries
           ansible.builtin.fetch:
