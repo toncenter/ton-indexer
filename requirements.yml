@@ -1,2 +1,6 @@
-- src: geerlingguy.go
-- src: geerlingguy.redis
+---
+roles:
+  - name: geerlingguy.go
+    src: geerlingguy.go
+  - name: geerlingguy.redis
+    src: geerlingguy.redis
