@@ -40,8 +40,8 @@ if(NOT CMAKE_Go_COMPILER)
       get_filename_component(GO_COMPILER_PATH ${CMAKE_Go_COMPILER} PATH)
       set(ENV{PATH} "${GO_COMPILER_PATH};$ENV{PATH}")
       message("-- Added Go compiler directory to PATH: ${GO_COMPILER_PATH}")
+    endif()
   endif()
-
 endif()
 
 mark_as_advanced(CMAKE_Go_COMPILER)
