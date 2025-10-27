@@ -18,6 +18,7 @@ if(NOT CMAKE_Go_COMPILER)
     $ENV{GOROOT}/../bin
     $ENV{GO_COMPILER}
     /usr/bin
+    /usr/local/
     /usr/local/bin
     )
 
