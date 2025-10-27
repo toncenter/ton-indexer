@@ -48,7 +48,6 @@
         state: present
 
     - name: Ensure golang is installed
-      become: true
       ansible.builtin.include_role:
         name: geerlingguy.go
       vars:
