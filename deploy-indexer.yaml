@@ -55,7 +55,7 @@
         # Official SHA256 for go1.24.7.linux-amd64.tar.gz:
         go_checksum: "da18191ddb7db8a9339816f3e2b54bdded8047cdc2a5d67059478f8d1595c43f"
         # Optional: force reinstall/upgrade if a different Go is present
-        go_download_force: true
+        go_download_force: false
 
     - name: Create temp workspace
       ansible.builtin.tempfile:
