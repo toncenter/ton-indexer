@@ -104,7 +104,7 @@
           environment:
             CCACHE_DIR: "{{ ansible_env.HOME }}/.cache/ccache"
             CCACHE_BASEDIR: "{{ builddir.path }}"
-            CCACHE_SLOPPINESS=file_macro
+            CCACHE_SLOPPINESS: "file_macro"
             GOCACHE: "{{ ansible_env.HOME }}/.cache/go-build"
             GOMODCACHE: "{{ ansible_env.HOME }}/.cache/gomod"
             GOFLAGS: "-modcacherw"
