@@ -21,6 +21,7 @@
           - build-essential
           - cmake
           - clang
+          - ninja-build
           - openssl
           - libssl-dev
           - zlib1g-dev
@@ -46,6 +47,16 @@
           - ccache
           - rsync
         state: present
+
+    - name: Ensure shared caches exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0775"
+      loop:
+        - "{{ ansible_env.HOME }}/.cache/ccache"
+        - "{{ ansible_env.HOME }}/.cache/go-build"
+        - "{{ ansible_env.HOME }}/.cache/gomod"
 
     - name: Ensure golang is installed
       ansible.builtin.include_role:
@@ -81,16 +92,26 @@
           ansible.builtin.shell: |
             set -e
             cmake -DCMAKE_BUILD_TYPE=Release \
-                  -S . -B "{{ builddir.path }}/build"
+                  -S . -B "{{ builddir.path }}/build" \
+                  -G Ninja \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache 
             cmake --build "{{ builddir.path }}/build" \
                   --parallel {{ ansible_facts.processor_vcpus | default(2) }} \
                   --target ton-index-go ton-metadata-fetcher
           args:
             chdir: "{{ builddir.path }}"
+          environment:
+            CCACHE_DIR: "{{ ansible_env.HOME }}/.cache/ccache"
+            CCACHE_BASEDIR: "{{ builddir.path }}"
+            CCACHE_SLOPPINESS=file_macro
+            GOCACHE: "{{ ansible_env.HOME }}/.cache/go-build"
+            GOMODCACHE: "{{ ansible_env.HOME }}/.cache/gomod"
+            GOFLAGS: "-modcacherw"
 
         - name: Collect built binaries
           ansible.builtin.fetch:
-            src: "{{ builddir.path }}/{{ item }}"
+            src: "{{ builddir.path }}/build/{{ item }}"
             dest: "artifacts/{{ hostvars['localhost'].git_sha }}/"
             flat: true
           loop:
