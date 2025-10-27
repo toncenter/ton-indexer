@@ -129,6 +129,7 @@
   hosts: "{{ stack_name }}__master_nodes"
   become: true
   serial: 1
+  tags: [deploy]
   vars:
     service: "{{ services.metadata_fetcher }}"
     service_name: "{{ stack_name }}__{{ service.service_name }}"
