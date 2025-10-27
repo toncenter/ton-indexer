@@ -1,16 +1,26 @@
----
+# Precompute git SHA on the controller so all plays can use it
+- name: Compute git SHA once
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Get commit hash (from playbook repo)
+      ansible.builtin.set_fact:
+        git_sha: "{{ lookup('pipe', 'git -C ' ~ playbook_dir ~ ' rev-parse --short=12 HEAD') | trim }}"
+      run_once: true
+
 - name: Prepare to build
   hosts: builder
-  tags: [build]
-  vars:
-    rev: "{{ git_sha | default('main') }}"
+  gather_facts: true
   tasks:
     - name: Install requirements
+      become: true
       ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
         name:
-          - build-essential 
-          - cmake 
-          - clang 
+          - build-essential
+          - cmake
+          - clang
           - openssl
           - libssl-dev
           - zlib1g-dev
@@ -19,8 +29,8 @@
           - git
           - curl
           - liblz4-dev
-          - pkg-config 
-          - libsecp256k1-dev 
+          - pkg-config
+          - libsecp256k1-dev
           - libsodium-dev
           - libhiredis-dev
           - python3-dev
@@ -30,132 +40,155 @@
           - lsb-release
           - software-properties-common
           - gnupg
-          - autoconf 
+          - autoconf
           - libtool
           - libmicrohttpd-dev
           - ccache
+          # - rsync   # (optional, if you switch to synchronize)
         state: present
-      become: true
+
     - name: Create temp workspace
       ansible.builtin.tempfile:
         state: directory
         suffix: ton-indexer
       register: builddir
+
     - block:
-        - name: Checkout code
-          ansible.builtin.git:
-            repo: https://github.com/toncenter/ton-indexer.git
-            dest: "{{ builddir.path }}"
-            version: "{{ rev }}"
-            single_branch: yes
-            depth: 1
+        - name: Copy project to builder (simple; consider synchronize for speed)
+          ansible.builtin.copy:
+            src: .
+            dest: "{{ builddir.path }}/source"
+            mode: "0755"
 
-        - name: Build the Go application ton-index-go and ton-metadata-fetcher
+        - name: Build ton-index-go and ton-metadata-fetcher
           ansible.builtin.shell: |
-              cmake -DCMAKE_BUILD_TYPE=Release -S . -B {{ builddir.path }}
-              cmake --build {{ builddir.path }} --parallel $(nproc) --target ton-index-go ton-metadata-fetcher
+            set -e
+            cmake -DCMAKE_BUILD_TYPE=Release \
+                  -S . -B "{{ builddir.path }}"
+            cmake --build "{{ builddir.path }}" \
+                  --parallel {{ ansible_facts.processor_vcpus | default(2) }} \
+                  --target ton-index-go ton-metadata-fetcher
+          args:
+            chdir: "{{ builddir.path }}/source"
 
-        - name: Collect ton-index-go
+        - name: Collect built binaries
           ansible.builtin.fetch:
-            src: "{{ builddir.path }}/ton-index-go/ton-index-go"
-            dest: "artifacts/{{ rev }}/"
-        - name: Collect ton-metadata-fetcher
-          ansible.builtin.fetch:
-            src: "{{ builddir.path }}/ton-metadata-fetcher/ton-metadata-fetcher"
-            dest: "artifacts/{{ rev }}/"
-
+            src: "{{ builddir.path }}/{{ item }}"
+            dest: "artifacts/{{ hostvars['localhost'].git_sha }}/"
+            flat: true
+          loop:
+            - "ton-index-go/ton-index-go"
+            - "ton-metadata-fetcher/ton-metadata-fetcher"
+            - "ton-index-worker/ton-marker/libton-marker.so"
       always:
         - name: Cleanup workspace
           ansible.builtin.file:
             path: "{{ builddir.path }}"
             state: absent
 
+# Handlers are shared by the deploy plays below
 - name: Deploy metadata_fetcher service on master nodes
+  hosts: "{{ stack_name }}__master_nodes"
+  become: true
+  serial: 1
   vars:
     service: "{{ services.metadata_fetcher }}"
     service_name: "{{ stack_name }}__{{ service.service_name }}"
-  hosts: "{{ stack_name }}__master_nodes"
-  become: true
-  tags: [deploy]
-  tasks:
-    - name: Ensure binary directory
-      ansible.builtin.file:
-        path: "{{ deploy_path }}"
-        recurse: true
-        state: directory
-
-    - name: Copy service binary
-      ansible.builtin.copy:
-        src: "{{ build_path }}/{{ service.binary_path }}"
-        dest: "{{ deploy_path }}/{{ stack_name }}__{{ service.service_name }}"
-        mode: "0777"
-        force: true
-
-    - name: Create systemd service from template
-      ansible.builtin.template:
-        src: "ansible/systemd.service.j2"
-        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
-        mode: "0644"
-        force: true
-      vars:
-        pg_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
-        start_cmd: "{{ service_name }} -pg {{ pg_dsn }} {{ service.additional_args }}"
-
-    - name: Restart and enable service
+    artifact_root: "artifacts/{{ hostvars['localhost'].git_sha }}"
+  handlers:
+    - name: restart service
       ansible.builtin.systemd:
         name: "{{ service_name }}"
         state: restarted
         enabled: true
-        force: true
         daemon_reload: true
       throttle: 1
-      become: true
-
-- name: Deploy api service on replica nodes
-  vars:
-    service: "{{ services.api }}"
-    service_name: "{{ stack_name }}__{{ service.service_name }}"
-  hosts: "{{ stack_name }}__replica_nodes"
-  become: true
-  tags: [deploy]
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
         path: "{{ deploy_path }}"
-        recurse: true
         state: directory
+        mode: "0755"
 
     - name: Copy service binary
       ansible.builtin.copy:
-        src: "{{ build_path }}/{{ service.binary_path }}"
+        src: "{{ artifact_root }}/{{ service.binary_path }}"
         dest: "{{ deploy_path }}/{{ service_name }}"
-        mode: "0777"
-        force: true
-    
-    - name: Copy libton-marker
-      ansible.builtin.copy:
-        src: "{{ build_path }}/ton-index-worker/ton-marker/libton-marker.so"
-        dest: /usr/lib/libton-marker.so
-        mode: "0777"
-        force: true
+        mode: "0755"
+        owner: root
+        group: root
+      notify: restart service
 
     - name: Create systemd service from template
       ansible.builtin.template:
         src: "ansible/systemd.service.j2"
         dest: "{{ systemd_service_path }}/{{ service_name }}.service"
         mode: "0644"
+        owner: root
+        group: root
+        force: true
+      vars:
+        pg_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
+        start_cmd: "{{ deploy_path }}/{{ service_name }} -pg {{ pg_dsn }} {{ service.additional_args }}"
+      no_log: true
+      notify: restart service
+
+- name: Deploy api service on replica nodes
+  hosts: "{{ stack_name }}__{{ 'replica_nodes' }}"
+  become: true
+  serial: 1
+  tags: [deploy]
+  vars:
+    service: "{{ services.api }}"
+    service_name: "{{ stack_name }}__{{ service.service_name }}"
+    artifact_root: "artifacts/{{ hostvars['localhost'].git_sha }}"
+  handlers:
+    - name: restart service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        enabled: true
+        daemon_reload: true
+      throttle: 1
+  tasks:
+    - name: Ensure binary directory
+      ansible.builtin.file:
+        path: "{{ deploy_path }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy service binary
+      ansible.builtin.copy:
+        src: "{{ artifact_root }}/{{ service.binary_path }}"
+        dest: "{{ deploy_path }}/{{ service_name }}"
+        mode: "0755"
+        owner: root
+        group: root
+      notify: restart service
+
+    - name: Install libton-marker.so
+      ansible.builtin.copy:
+        src: "{{ artifact_root }}/libton-marker.so"
+        dest: "/usr/lib/libton-marker.so"
+        mode: "0644"
+        owner: root
+        group: root
+
+    - name: Refresh linker cache
+      ansible.builtin.command: ldconfig
+      changed_when: false
+
+    - name: Create systemd service from template
+      ansible.builtin.template:
+        src: "ansible/systemd.service.j2"
+        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+        mode: "0644"
+        owner: root
+        group: root
         force: true
       vars:
         pg_dsn: "postgresql://{{ pg_readonly_user }}:{{ pg_readonly_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
         pg_master_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master }}/{{ pg_database }}?application_name={{ service_name }}"
         start_cmd: "{{ deploy_path }}/{{ service_name }} -pg {{ pg_dsn }} -pg-master {{ pg_master_dsn }} {{ service.additional_args }}"
-
-    - name: Restart and enable service
-      ansible.builtin.systemd:
-        name: "{{ service_name }}"
-        state: restarted
-        enabled: true
-        force: true
-        daemon_reload: true
-      throttle: 1
-      become: true
+      no_log: true
+      notify: restart service
