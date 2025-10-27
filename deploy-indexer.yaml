@@ -11,12 +11,6 @@
 - name: Prepare to build
   hosts: builder
   gather_facts: true
-  roles:
-    - role: geerlingguy.go
-      vars:
-        go_version: "1.24.7"
-        go_checksum: "da18191ddb7db8a9339816f3e2b54bdded8047cdc2a5d67059478f8d1595c43f"
-        go_download_force: true
   tasks:
     - name: Install requirements
       become: true
@@ -52,6 +46,15 @@
           - ccache
           - rsync
         state: present
+
+    - name: Ensure golang is installed
+      ansible.builtin.include_role:
+        name: geerlingguy.go
+        apply:
+          become: true
+      vars:
+        go_version: "1.24.7"
+        go_checksum: "da18191ddb7db8a9339816f3e2b54bdded8047cdc2a5d67059478f8d1595c43f"
 
     - name: Create temp workspace
       ansible.builtin.tempfile:
