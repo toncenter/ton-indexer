@@ -56,6 +56,10 @@
         go_version: "1.24.7"
         go_checksum: "da18191ddb7db8a9339816f3e2b54bdded8047cdc2a5d67059478f8d1595c43f"
 
+- name: Build ton-indexer binaries
+  hosts: builder
+  gather_facts: true
+  tasks:
     - name: Create temp workspace
       ansible.builtin.tempfile:
         state: directory
