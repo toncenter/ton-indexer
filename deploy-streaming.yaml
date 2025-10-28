@@ -142,7 +142,7 @@
         mode: "0777"
         force: true
       with_items:
-        - src: "{{ build_path }}/ton-streaming-go/ton-streaming-go"
+        - src: "{{ artifact_root }}/ton-streaming-go"
           dest: "{{ deploy_path }}/{{ stack_name }}__streaming_api"
       
     - name: Install libton-marker.so
