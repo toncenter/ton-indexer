@@ -1,4 +1,3 @@
-# Precompute git SHA on the controller so all plays can use it
 - name: Resolve repo path & SHA
   hosts: localhost
   gather_facts: false
@@ -118,11 +117,11 @@
             - "ton-index-go/ton-index-go"
             - "ton-metadata-fetcher/ton-metadata-fetcher"
             - "ton-index-worker/ton-marker/libton-marker.so"
-      # always:
-      #   - name: Cleanup workspace
-      #     ansible.builtin.file:
-      #       path: "{{ builddir.path }}"
-      #       state: absent
+      always:
+        - name: Cleanup workspace
+          ansible.builtin.file:
+            path: "{{ builddir.path }}"
+            state: absent
 
 # Handlers are shared by the deploy plays below
 - name: Deploy metadata_fetcher service on master nodes
