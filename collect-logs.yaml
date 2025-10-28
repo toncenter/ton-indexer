@@ -1,0 +1,75 @@
+# collect_logs_ui.yml
+- name: Collect service logs (UI-only)
+  hosts: "{{ target_hosts | default(stack_name ~ '__replica_nodes') }}"
+  become: true
+  gather_facts: false
+  tags: [logs]
+
+  vars:
+    # survey-driven
+    service_unit: "{{ service_unit | default(stack_name ~ '__' ~ services.api.service_name) }}"
+    logs_mode: "{{ logs_mode | default('since') }}"   # enum: since | tail | range
+    logs_since: "{{ logs_since | default('1 hour ago') }}"
+    logs_until: "{{ logs_until | default('now') }}"
+    log_lines: "{{ (log_lines | default(500)) | int }}"
+    grep_pattern: "{{ grep_pattern | default('') }}"
+    show_unit_status: "{{ (show_unit_status | default(true)) | bool }}"
+    chunk_lines: "{{ (chunk_lines | default(200)) | int }}"
+
+  tasks:
+    - name: Header
+      ansible.builtin.debug:
+        msg: >
+          === {{ inventory_hostname }} | unit={{ service_unit }}
+          | mode={{ logs_mode }} | since='{{ logs_since }}' | until='{{ logs_until }}'
+          | lines={{ log_lines }} | grep='{{ grep_pattern }}' ===
+
+    - name: Optional: show systemd status
+      ansible.builtin.command:
+        argv: [systemctl, status, "--no-pager", "--lines=30", "{{ service_unit }}"]
+      register: svc_status
+      changed_when: false
+      failed_when: false
+      when: show_unit_status
+
+    - name: Print status
+      ansible.builtin.debug:
+        msg: "{{ svc_status.stdout | default('no status available') }}"
+      when: show_unit_status
+
+    - name: Build journalctl argv
+      ansible.builtin.set_fact:
+        _jc_argv: >-
+          {{
+            (logs_mode == 'tail')
+            | ternary(
+                ['journalctl','-u',service_unit,'--no-pager','--output=short-iso','-n',log_lines|string],
+                (logs_mode == 'range')
+                | ternary(
+                    ['journalctl','-u',service_unit,'--no-pager','--output=short-iso','--since',logs_since,'--until',logs_until],
+                    ['journalctl','-u',service_unit,'--no-pager','--output=short-iso','--since',logs_since]
+                )
+              )
+          }}
+
+    - name: Collect logs (server-side)
+      ansible.builtin.shell: >-
+        {{ _jc_argv | join(' ') }}
+        {{ (grep_pattern | length) > 0
+           | ternary(" | grep -Ei -- " ~ quote(grep_pattern) ~ " || true", "") }}
+      args:
+        executable: /bin/bash
+      register: jc
+      changed_when: false
+      failed_when: false
+
+    - name: Print logs in chunks (keeps UI responsive)
+      vars:
+        _lines: "{{ jc.stdout.splitlines() }}"
+      loop: "{{ _lines | batch(chunk_lines, fillvalue='') }}"
+      loop_control:
+        index_var: idx
+      ansible.builtin.debug:
+        msg: |
+          ----- {{ inventory_hostname }} | chunk {{ idx + 1 }} -----
+          {{ (item | reject('equalto','') | list) | join('\n') }}
