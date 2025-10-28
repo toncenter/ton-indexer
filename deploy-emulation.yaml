@@ -11,7 +11,10 @@
   hosts: builder
   tasks:
     - name: Install requirements
+      become: true
       ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
         name:
           - build-essential
           - cmake
@@ -41,7 +44,7 @@
           - ccache
           - rsync
         state: present
-      become: true
+
     - name: Ensure shared caches exist
       ansible.builtin.file:
         path: "{{ item }}"
@@ -122,6 +125,8 @@
   hosts: "{{ stack_name }}__emulation"
   become: true
   tags: [deploy]
+  vars:
+    artifact_root: "artifacts/{{ hostvars['localhost'].git_sha }}"
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
@@ -148,14 +153,17 @@
         src: "{{ item.src }}"
         dest: "{{ item.dest }}"
         mode: "0777"
-        force: true
       with_items:
-        - src: "artifacts/{{ hostvars['localhost'].git_sha }}//ton-emulate-go"
+        - src: "{{ artifact_root }}/ton-emulate-go"
           dest: "{{ deploy_path }}/{{ stack_name }}__emulate_api"
-        - src: "artifacts/{{ hostvars['localhost'].git_sha }}/ton-trace-task-emulator"
+        - src: "{{ artifact_root }}/ton-trace-task-emulator"
           dest: "{{ deploy_path }}/{{ stack_name }}__trace_task_emulator"
-        - src: "artifacts/{{ hostvars['localhost'].git_sha }}/libton-marker.so"
-          dest: /usr/lib/libton-marker.so
+
+    - name: Install libton-marker.so
+      ansible.builtin.copy:
+        src: "{{ artifact_root }}/libton-marker.so"
+        dest: "/usr/lib/libton-marker.so"
+        mode: "0644"
 
     - name: Refresh linker cache
       ansible.builtin.command: ldconfig
@@ -178,7 +186,6 @@
         src: "ansible/systemd.service.j2"
         dest: "{{ systemd_service_path }}/{{ service_name }}.service"
         mode: "0644"
-        force: true
       vars:
         service: "{{ services[item] }}"
         service_name: "{{ stack_name }}__{{ item }}"
@@ -192,9 +199,6 @@
         src: "ansible/systemd.service.j2"
         dest: "{{ systemd_service_path }}/{{ service_name }}.service"
         mode: "0644"
-        owner: root
-        group: root
-        force: true
       vars:
         service: "{{ services.action_classifier }}"
         service_name: "{{ stack_name }}__{{ service.service_name }}"
@@ -210,7 +214,6 @@
         force: true
         daemon_reload: true
       throttle: 1
-      become: true
 
     - name: Restart and enable emulation services
       ansible.builtin.systemd:
@@ -222,7 +225,6 @@
       vars:
         service_name: "{{ stack_name }}__{{ item }}"
       throttle: 1
-      become: true
       with_items:
        - emulate_api
        - trace_task_emulator

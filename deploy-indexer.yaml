@@ -180,14 +180,6 @@
     service: "{{ services.api }}"
     service_name: "{{ stack_name }}__{{ service.service_name }}"
     artifact_root: "artifacts/{{ hostvars['localhost'].git_sha }}"
-  handlers:
-    - name: restart service
-      ansible.builtin.systemd:
-        name: "{{ service_name }}"
-        state: restarted
-        enabled: true
-        daemon_reload: true
-      throttle: 1
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
@@ -200,17 +192,12 @@
         src: "{{ artifact_root }}/ton-index-go"
         dest: "{{ deploy_path }}/{{ service_name }}"
         mode: "0755"
-        owner: root
-        group: root
-      notify: restart service
 
     - name: Install libton-marker.so
       ansible.builtin.copy:
         src: "{{ artifact_root }}/libton-marker.so"
         dest: "/usr/lib/libton-marker.so"
         mode: "0644"
-        owner: root
-        group: root
 
     - name: Refresh linker cache
       ansible.builtin.command: ldconfig
@@ -221,12 +208,17 @@
         src: "ansible/systemd.service.j2"
         dest: "{{ systemd_service_path }}/{{ service_name }}.service"
         mode: "0644"
-        owner: root
-        group: root
-        force: true
       vars:
         pg_dsn: "postgresql://{{ pg_readonly_user }}:{{ pg_readonly_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
         pg_master_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master }}/{{ pg_database }}?application_name={{ service_name }}"
         start_cmd: "{{ deploy_path }}/{{ service_name }} -pg {{ pg_dsn }} -pg-master {{ pg_master_dsn }} {{ service.additional_args }}"
       no_log: true
-      notify: restart service
+
+    - name: Restart and enable service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        enabled: true
+        force: true
+        daemon_reload: true
+      throttle: 1
