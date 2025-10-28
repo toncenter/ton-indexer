@@ -106,7 +106,6 @@
           loop:
             - "ton-index-worker/ton-trace-emulator/ton-trace-emulator"
             - "ton-trace-ttl-tracker/ton-trace-ttl-tracker"
-            - "ton-index-worker/ton-marker/libton-marker.so"
       always:
         - name: Cleanup workspace
           ansible.builtin.file:
@@ -147,12 +146,6 @@
           dest: "{{ deploy_path }}/{{ stack_name }}__trace_emulator"
         - src: "artifacts/ton-trace-ttl-tracker"
           dest: "{{ deploy_path }}/{{ stack_name }}__trace_ttl_tracker"
-    
-    - name: Install libton-marker.so
-      ansible.builtin.copy:
-        src: "artifacts/libton-marker.so"
-        dest: "/usr/lib/libton-marker.so"
-        mode: "0644"
 
     - name: Refresh linker cache
       ansible.builtin.command: ldconfig
