@@ -1,87 +1,36 @@
-# collect_logs_ui.yml
-- name: Collect service logs (UI-only)
-  hosts: "{{ (target_hosts | default('') | trim) | length > 0
-             | ternary(target_hosts, stack_name ~ '__replica_nodes') }}"
+# collect_logs_minimal.yml
+- name: View service logs (UI-only)
+  hosts: "{{ target_hosts | default('all') }}"
   become: true
   gather_facts: false
-  tags: [logs]
-
-  vars:
-    # Defaults that don't self-reference
-    service_unit_default: "{{ stack_name }}__{{ services.api.service_name }}"
-
-    # Effective values derived from survey inputs (no recursion)
-    effective_service_unit: "{{ (service_unit | default('') | trim) | length > 0
-                                | ternary(service_unit, service_unit_default) }}"
-    effective_mode: "{{ (logs_mode | default('') | trim) | length > 0
-                        | ternary(logs_mode, 'since') }}"
-    effective_since: "{{ (logs_since | default('') | trim) | length > 0
-                         | ternary(logs_since, '1 hour ago') }}"
-    effective_until: "{{ (logs_until | default('') | trim) | length > 0
-                         | ternary(logs_until, 'now') }}"
-    effective_log_lines: "{{ (log_lines | default(500)) | int }}"
-    effective_grep: "{{ grep_pattern | default('') }}"
-
-    # Convert survey boolean reliably (surveys often pass strings)
-    _sus: "{{ (show_unit_status | default('')) | string | trim | lower }}"
-    effective_show_status: "{{ _sus == '' or _sus in ['1','true','yes','on'] }}"
-
-    effective_chunk: "{{ (chunk_lines | default(200)) | int }}"
 
   tasks:
-    - name: Header
-      ansible.builtin.debug:
-        msg: >
-          === {{ inventory_hostname }} | unit={{ effective_service_unit }}
-          | mode={{ effective_mode }} | since='{{ effective_since }}' | until='{{ effective_until }}'
-          | lines={{ effective_log_lines }} | grep='{{ effective_grep }}' ===
-
-    - name: show systemd status
+    - name: Show brief systemd status (optional)
       ansible.builtin.command:
-        argv: [systemctl, status, "--no-pager", "--lines=30", "{{ effective_service_unit }}"]
+        argv: [systemctl, status, "--no-pager", "--lines=20", "{{ service_unit }}"]
       register: svc_status
       changed_when: false
       failed_when: false
-      when: effective_show_status
 
-    - name: Print status
-      ansible.builtin.debug:
+    - ansible.builtin.debug:
         msg: "{{ svc_status.stdout | default('no status available') }}"
-      when: effective_show_status
 
-    - name: Build journalctl argv
-      ansible.builtin.set_fact:
-        _jc_argv: >-
-          {{
-            (effective_mode == 'tail')
-            | ternary(
-                ['journalctl','-u',effective_service_unit,'--no-pager','--output=short-iso','-n',effective_log_lines|string],
-                (effective_mode == 'range')
-                | ternary(
-                    ['journalctl','-u',effective_service_unit,'--no-pager','--output=short-iso','--since',effective_since,'--until',effective_until],
-                    ['journalctl','-u',effective_service_unit,'--no-pager','--output=short-iso','--since',effective_since]
-                )
-              )
-          }}
-
-    - name: Collect logs (server-side)
-      ansible.builtin.shell: >-
-        {{ _jc_argv | join(' ') }}
-        {{ (effective_grep | length) > 0
-           | ternary(" | grep -Ei -- " ~ quote(effective_grep) ~ " || true", "") }}
+    - name: Show journal logs (since OR last N)
+      ansible.builtin.shell: |
+        set -o pipefail
+        journalctl -u {{ service_unit | quote }} \
+        {% if (since | default('')) | length > 0 -%}
+          --since {{ since | quote }}
+        {%- else -%}
+          -n {{ (tail_lines | default(300)) | int }}
+        {%- endif %} \
+        --no-pager --output=short-iso
       args:
         executable: /bin/bash
       register: jc
       changed_when: false
       failed_when: false
 
-    - name: Print logs in chunks (keeps UI responsive)
-      vars:
-        _lines: "{{ jc.stdout.splitlines() }}"
-      loop: "{{ _lines | batch(effective_chunk, fillvalue='') }}"
-      loop_control:
-        index_var: idx
+    - name: Print logs
       ansible.builtin.debug:
-        msg: |
-          ----- {{ inventory_hostname }} | chunk {{ idx + 1 }} -----
-          {{ (item | reject('equalto','') | list) | join('\n') }}
+        msg: "{{ jc.stdout | default('(no logs)') }}"
