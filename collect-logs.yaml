@@ -24,7 +24,7 @@
           | mode={{ logs_mode }} | since='{{ logs_since }}' | until='{{ logs_until }}'
           | lines={{ log_lines }} | grep='{{ grep_pattern }}' ===
 
-    - name: Optional: show systemd status
+    - name: show systemd status
       ansible.builtin.command:
         argv: [systemctl, status, "--no-pager", "--lines=30", "{{ service_unit }}"]
       register: svc_status
