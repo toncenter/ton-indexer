@@ -33,4 +33,5 @@
 
     - name: Print logs
       ansible.builtin.debug:
-        msg: "{{ jc.stdout | default('(no logs)') }}"
+        msg: "{{ item }}"
+      loop: "{{ jc.stdout_lines }}"
