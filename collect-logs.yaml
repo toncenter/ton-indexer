@@ -36,7 +36,7 @@
           | mode={{ effective_mode }} | since='{{ effective_since }}' | until='{{ effective_until }}'
           | lines={{ effective_log_lines }} | grep='{{ effective_grep }}' ===
 
-    - name: Optional: show systemd status
+    - name: show systemd status
       ansible.builtin.command:
         argv: [systemctl, status, "--no-pager", "--lines=30", "{{ effective_service_unit }}"]
       register: svc_status
