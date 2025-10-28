@@ -125,6 +125,7 @@
 - name: Deploy services
   hosts: "{{ stack_name }}__streaming"
   become: true
+  tags: [deploy]
   vars:
     artifact_root: "artifacts/{{ hostvars['localhost'].git_sha }}"
   tasks:
