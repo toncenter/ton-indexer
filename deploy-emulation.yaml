@@ -8,7 +8,7 @@
       run_once: true
 
 - name: Prepare to build
-  hosts: localhost
+  hosts: builder
   tasks:
     - name: Install requirements
       ansible.builtin.apt:
