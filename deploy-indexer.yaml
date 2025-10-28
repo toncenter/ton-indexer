@@ -151,7 +151,7 @@
 
     - name: Copy service binary
       ansible.builtin.copy:
-        src: "{{ artifact_root }}/{{ service.binary_path }}"
+        src: "{{ artifact_root }}/ton-metadata-fetcher"
         dest: "{{ deploy_path }}/{{ service_name }}"
         mode: "0755"
         owner: root
@@ -198,7 +198,7 @@
 
     - name: Copy service binary
       ansible.builtin.copy:
-        src: "{{ artifact_root }}/{{ service.binary_path }}"
+        src: "{{ artifact_root }}/ton-index-go"
         dest: "{{ deploy_path }}/{{ service_name }}"
         mode: "0755"
         owner: root
