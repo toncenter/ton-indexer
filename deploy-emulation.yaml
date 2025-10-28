@@ -1,12 +1,3 @@
-- name: Resolve repo path & SHA
-  hosts: localhost
-  gather_facts: false
-  tasks:
-    - ansible.builtin.set_fact:
-        repo_dir: "{{ lookup('env','SEMAPHORE_GIT_DIR') | default('.', true) }}"
-        git_sha: "{{ (lookup('env','SEMAPHORE_GIT_SHA') | default(''))[0:12] }}"
-      run_once: true
-
 - name: Prepare to build
   hosts: builder
   tasks:
@@ -66,7 +57,6 @@
 
 - name: Build ton-indexer binaries
   hosts: builder
-  gather_facts: true
   tasks:
     - name: Create temp workspace
       ansible.builtin.tempfile:
@@ -109,7 +99,7 @@
         - name: Collect built binaries
           ansible.builtin.fetch:
             src: "{{ builddir.path }}/build/{{ item }}"
-            dest: "artifacts/{{ hostvars['localhost'].git_sha }}/"
+            dest: "artifacts/"
             flat: true
           loop:
             - "ton-emulate-go/ton-emulate-go"
@@ -125,8 +115,6 @@
   hosts: "{{ stack_name }}__emulation"
   become: true
   tags: [deploy]
-  vars:
-    artifact_root: "artifacts/{{ hostvars['localhost'].git_sha }}"
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
@@ -154,14 +142,14 @@
         dest: "{{ item.dest }}"
         mode: "0777"
       with_items:
-        - src: "{{ artifact_root }}/ton-emulate-go"
+        - src: "artifacts/ton-emulate-go"
           dest: "{{ deploy_path }}/{{ stack_name }}__emulate_api"
-        - src: "{{ artifact_root }}/ton-trace-task-emulator"
+        - src: "artifacts/ton-trace-task-emulator"
           dest: "{{ deploy_path }}/{{ stack_name }}__trace_task_emulator"
 
     - name: Install libton-marker.so
       ansible.builtin.copy:
-        src: "{{ artifact_root }}/libton-marker.so"
+        src: "artifacts/libton-marker.so"
         dest: "/usr/lib/libton-marker.so"
         mode: "0644"
 
