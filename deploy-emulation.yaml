@@ -111,7 +111,7 @@
           loop:
             - "ton-emulate-go/ton-emulate-go"
             - "ton-index-worker/ton-marker/libton-marker.so"
-            - "ton-index-worker/ton-trace-task-emulator/ton-metadata-fetcher"
+            - "ton-index-worker/ton-trace-task-emulator/ton-trace-task-emulator"
       always:
         - name: Cleanup workspace
           ansible.builtin.file:
@@ -150,11 +150,11 @@
         mode: "0777"
         force: true
       with_items:
-        - src: "{{ build_path }}/ton-emulate-go/ton-emulate-go"
+        - src: "artifacts/{{ hostvars['localhost'].git_sha }}//ton-emulate-go"
           dest: "{{ deploy_path }}/{{ stack_name }}__emulate_api"
-        - src: "{{ build_path }}/ton-index-worker/ton-trace-task-emulator/ton-trace-task-emulator"
+        - src: "artifacts/{{ hostvars['localhost'].git_sha }}/ton-trace-task-emulator"
           dest: "{{ deploy_path }}/{{ stack_name }}__trace_task_emulator"
-        - src: "{{ build_path }}/ton-index-worker/ton-marker/libton-marker.so"
+        - src: "artifacts/{{ hostvars['localhost'].git_sha }}/libton-marker.so"
           dest: /usr/lib/libton-marker.so
 
     - name: Refresh linker cache
