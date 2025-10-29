@@ -184,9 +184,11 @@
         mode: "0644"
         force: true
       vars:
-        service: "{{ services.pendings_action_classifier }}"
-        service_name: "{{ stack_name }}__{{ service.service_name }}"
+        service: "{{ services[item] }}"
+        service_name: "{{ stack_name }}__{{ item }}"
         start_cmd: "{{ deploy_path }}/venv/bin/python3 {{ deploy_path }}/indexer/event_classifier.py {{ service.additional_args }}"
+      with_items:
+        - pendings_action_classifier
 
     - name: Install and configure Redis
       ansible.builtin.include_role:

@@ -122,15 +122,7 @@
   tags: [deploy]
   vars:
     service: "{{ services.metadata_fetcher }}"
-    service_name: "{{ stack_name }}__{{ service.service_name }}"
-  handlers:
-    - name: restart service
-      ansible.builtin.systemd:
-        name: "{{ service_name }}"
-        state: restarted
-        enabled: true
-        daemon_reload: true
-      throttle: 1
+    service_name: "{{ stack_name }}__metadata_fetcher"
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
@@ -145,7 +137,6 @@
         mode: "0755"
         owner: root
         group: root
-      notify: restart service
 
     - name: Create systemd service from template
       ansible.builtin.template:
@@ -159,7 +150,15 @@
         pg_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
         start_cmd: "{{ deploy_path }}/{{ service_name }} -pg {{ pg_dsn }} {{ service.additional_args }}"
       no_log: true
-      notify: restart service
+
+    - name: Restart and enable service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        enabled: true
+        force: true
+        daemon_reload: true
+      throttle: 1
 
 - name: Deploy api service on replica nodes
   hosts: "{{ stack_name }}__{{ 'replica_nodes' }}"
@@ -168,7 +167,7 @@
   tags: [deploy]
   vars:
     service: "{{ services.api }}"
-    service_name: "{{ stack_name }}__{{ service.service_name }}"
+    service_name: "{{ stack_name }}__api"
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
