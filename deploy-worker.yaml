@@ -119,7 +119,7 @@
   serial: 1
   tags: [deploy]
   vars:
-    service_name: "{{ stack_name }}__index_postgres }}"
+    service_name: "{{ stack_name }}__index_postgres"
     service: "{{ services.index_postgres }}"
 
   tasks:
