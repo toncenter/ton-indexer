@@ -124,6 +124,12 @@
 
   tasks:
     - block:
+        - name: Ensure binary directory
+          ansible.builtin.file:
+            path: "{{ deploy_path }}"
+            recurse: true
+            state: directory
+
         - name: Stop service
           ansible.builtin.systemd:
             name: "{{ service_name }}"
