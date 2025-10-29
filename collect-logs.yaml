@@ -15,8 +15,6 @@
     - name: Print service status
       ansible.builtin.debug:
         msg: "{{ svc_status.stdout }}"
-        # msg: "{{ item }}"
-      # loop: "{{ svc_status.stdout_lines }}"
 
     - name: Show journal logs (since OR last N)
       ansible.builtin.shell: |
@@ -36,5 +34,4 @@
 
     - name: Print logs
       ansible.builtin.debug:
-        msg: "{{ item }}"
-      loop: "{{ jc.stdout_lines }}"
+        msg: "{{ jc.stdout }}"
