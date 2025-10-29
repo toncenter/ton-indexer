@@ -12,8 +12,10 @@
       changed_when: false
       failed_when: false
 
-    - ansible.builtin.debug:
-        msg: "{{ svc_status.stdout | default('no status available') }}"
+    - name: Print service status
+      ansible.builtin.debug:
+        msg: "{{ item }}"
+      loop: "{{ svc_status.stdout_lines }}"
 
     - name: Show journal logs (since OR last N)
       ansible.builtin.shell: |
