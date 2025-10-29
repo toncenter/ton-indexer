@@ -3,6 +3,8 @@
   hosts: "{{ target_hosts | default('all') }}"
   become: true
   gather_facts: false
+  vars:
+    service_unit: "{{ stack_name }}__{{ service_name }}"
 
   tasks:
     - name: Show brief systemd status (optional)
