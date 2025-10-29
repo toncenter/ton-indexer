@@ -1,4 +1,3 @@
-# collect_logs_minimal.yml
 - name: View service logs (UI-only)
   hosts: "{{ target_hosts | default('all') }}"
   become: true
@@ -7,7 +6,7 @@
     service_unit: "{{ stack_name }}__{{ service_name }}"
 
   tasks:
-    - name: Show brief systemd status (optional)
+    - name: Show brief systemd status
       ansible.builtin.command:
         argv: [systemctl, status, "--no-pager", "--lines=20", "{{ service_unit }}"]
       register: svc_status
@@ -24,6 +23,9 @@
         journalctl -u {{ service_unit | quote }} \
         {% if (since | default('')) | length > 0 -%}
           --since {{ since | quote }}
+          {% if (until | default('')) | length > 0 -%}
+            --until {{ until | quote }}
+          {%- endif %}
         {%- else -%}
           -n {{ (tail_lines | default(300)) | int }}
         {%- endif %} \
