@@ -113,35 +113,6 @@
             path: "{{ builddir.path }}"
             state: absent
 
-# copy ton-index-postgres and ton-index-postgres-migrate to worker nodes
-- name: Copy ton-index-postgres binaries to worker nodes
-  hosts: "{{ stack_name }}__worker_nodes"
-  become: true
-  serial: 1
-  tags: [deploy]
-  vars:
-    service_name: "{{ stack_name }}__index_postgres"
-  tasks:
-    - name: Ensure binary directory
-      ansible.builtin.file:
-        path: "{{ deploy_path }}"
-        state: directory
-        mode: "0755"
-    - name: Copy ton-index-postgres binary
-      ansible.builtin.copy:
-        src: "artifacts/ton-index-postgres"
-        dest: "{{ deploy_path }}/{{ service_name }}"
-        mode: "0755"
-        owner: root
-        group: root
-    - name: Copy ton-index-postgres-migrate binary
-      ansible.builtin.copy:
-        src: "artifacts/ton-index-postgres-migrate"
-        dest: "{{ deploy_path }}/{{ service_name }}_migrate"
-        mode: "0755"
-        owner: root
-        group: root
-
 - name: Run migrations and deploy ton-index-postgres service
   hosts: "{{ stack_name }}__worker_nodes"
   become: true
