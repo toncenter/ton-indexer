@@ -156,7 +156,6 @@
               - "--no-create-indexes"
               - "--rerun-last-migration"
           register: migrate_result
-          no_log: true
 
         - name: Assert migration succeeded
           ansible.builtin.assert:
