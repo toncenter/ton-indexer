@@ -963,7 +963,7 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
-    // TODO: add new migrations
+    query += "alter table address_metadata add reindex_allowed boolean default true not null;\n"
 
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
