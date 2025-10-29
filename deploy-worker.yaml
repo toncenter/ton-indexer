@@ -151,7 +151,7 @@
           ansible.builtin.command:
             argv:
               - "{{ deploy_path }}/{{ service_name }}_migrate"
-              - "-pg"
+              - "--pg"
               - "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master_host }}:5432/{{ pg_database }}"
               - "--no-create-indexes"
               - "--rerun-last-migration"
