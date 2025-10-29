@@ -179,7 +179,7 @@
             group: root
             force: true
           vars:
-            pg_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
+            pg_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master_host }}:5432/{{ pg_database }}?application_name={{ service_name }}"
             start_cmd: "{{ deploy_path }}/{{ service_name }} --pg {{ pg_dsn }} {{ service.additional_args }}"
 
         - name: Restart and enable service
