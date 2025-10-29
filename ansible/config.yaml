@@ -21,15 +21,11 @@ services:
     hosts_group: replica_nodes
     service_user: root
     service_group: root
-    binary_path: "ton-index-go/ton-index-go"
-    prepare_command: swag init
     additional_args: -bind ":4100"
   metadata_fetcher:
     hosts_group: master_nodes
     service_user: root
     service_group: root
-    binary_path: "ton-metadata-fetcher/ton-metadata-fetcher"
-    prepare_command:
     additional_args:
   emulate_api:
     additional_args: -prefork
