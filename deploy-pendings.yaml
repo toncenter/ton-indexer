@@ -1,9 +1,11 @@
----
 - name: Prepare to build
-  hosts: localhost
+  hosts: builder
+  gather_facts: true
   tasks:
     - name: Install requirements
       ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
         name:
           - build-essential
           - cmake
@@ -31,30 +33,89 @@
           - libtool
           - libmicrohttpd-dev
           - ccache
+          - rsync
         state: present
       become: true
-
-- name: Build binaries
-  hosts: localhost
-  tasks:
-    - name: Remove CMakeCache.txt
+    
+    - name: Ensure shared caches exist
       ansible.builtin.file:
-        path: "{{ build_path }}/CMakeCache.txt"
-        state: absent
-    - name: Build ton-trace-emulator and ton-trace-ttl-tracker 
-      ansible.builtin.shell: |
-          mkdir -p {{ build_path }}
-          cmake -DCMAKE_BUILD_TYPE=Release -S . -B {{ build_path }} > {{ build_path }}/prepare.log 2>&1
-          cmake --build {{ build_path }} --parallel $(nproc) --target ton-trace-emulator ton-trace-ttl-tracker > {{ build_path }}/build.log 2>&1
-      changed_when: true
+        path: "{{ item }}"
+        state: directory
+        mode: "0775"
+      loop:
+        - "{{ ansible_env.HOME }}/.cache/ccache"
+        - "{{ ansible_env.HOME }}/.cache/go-build"
+        - "{{ ansible_env.HOME }}/.cache/gomod"
+
+    - name: Ensure golang is installed
+      ansible.builtin.include_role:
+        name: geerlingguy.go
+        apply:
+          become: true
       vars:
-        service: "{{ services[item] }}"
-      failed_when: build_result.rc != 0
-      register: build_result
+        go_version: "1.24.7"
+        go_checksum: "da18191ddb7db8a9339816f3e2b54bdded8047cdc2a5d67059478f8d1595c43f"
+
+- name: Build ton-indexer binaries
+  hosts: builder
+  gather_facts: true
+  tasks:
+    - name: Create temp workspace
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: ton-indexer
+      register: builddir
+
+    - block:
+        - name: Copy project to builder from . to "{{ builddir.path }}" with rsync
+          ansible.builtin.synchronize:
+            src: "./"
+            dest: "{{ builddir.path }}"
+            rsync_opts:
+              - "--exclude=.git"
+              - "--exclude=artifacts"
+            recursive: yes
+            delete: no
+
+        - name: Build ton-trace-emulator and ton-trace-ttl-tracker
+          ansible.builtin.shell: |
+            set -e
+            cmake -DCMAKE_BUILD_TYPE=Release \
+                  -S . -B "{{ builddir.path }}/build" \
+                  -G Ninja \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache 
+            cmake --build "{{ builddir.path }}/build" \
+                  --parallel {{ ansible_facts.processor_vcpus | default(2) }} \
+                  --target ton-trace-emulator ton-trace-ttl-tracker
+          args:
+            chdir: "{{ builddir.path }}"
+          environment:
+            CCACHE_DIR: "{{ ansible_env.HOME }}/.cache/ccache"
+            CCACHE_BASEDIR: "{{ builddir.path }}"
+            CCACHE_SLOPPINESS: "file_macro"
+            GOCACHE: "{{ ansible_env.HOME }}/.cache/go-build"
+            GOMODCACHE: "{{ ansible_env.HOME }}/.cache/gomod"
+            GOFLAGS: "-modcacherw"
+
+        - name: Collect built binaries
+          ansible.builtin.fetch:
+            src: "{{ builddir.path }}/build/{{ item }}"
+            dest: "artifacts/"
+            flat: true
+          loop:
+            - "ton-index-worker/ton-trace-emulator/ton-trace-emulator"
+            - "ton-trace-ttl-tracker/ton-trace-ttl-tracker"
+      always:
+        - name: Cleanup workspace
+          ansible.builtin.file:
+            path: "{{ builddir.path }}"
+            state: absent
 
 - name: Deploy services
   hosts: "{{ stack_name }}__pendings"
   become: true
+  tags: [deploy]
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
@@ -73,22 +134,22 @@
           - libsodium-dev
           - libhiredis-dev
         state: present
-      become: true
 
     - name: Copy binaries
       ansible.builtin.copy:
         src: "{{ item.src }}"
         dest: "{{ item.dest }}"
-        mode: "0777"
+        mode: "0755"
         force: true
       with_items:
-        - src: "{{ build_path }}/ton-index-worker/ton-trace-emulator/ton-trace-emulator"
+        - src: "artifacts/ton-trace-emulator"
           dest: "{{ deploy_path }}/{{ stack_name }}__trace_emulator"
-        - src: "{{ build_path }}/ton-trace-ttl-tracker/ton-trace-ttl-tracker"
+        - src: "artifacts/ton-trace-ttl-tracker"
           dest: "{{ deploy_path }}/{{ stack_name }}__trace_ttl_tracker"
-    
-    - name: Update ldconfig
-      ansible.builtin.shell: ldconfig
+
+    - name: Refresh linker cache
+      ansible.builtin.command: ldconfig
+      changed_when: false
 
     - name: Copy python module
       ansible.builtin.copy:
@@ -123,9 +184,11 @@
         mode: "0644"
         force: true
       vars:
-        service: "{{ services.pendings_action_classifier }}"
-        service_name: "{{ stack_name }}__{{ service.service_name }}"
+        service: "{{ services[item] }}"
+        service_name: "{{ stack_name }}__{{ item }}"
         start_cmd: "{{ deploy_path }}/venv/bin/python3 {{ deploy_path }}/indexer/event_classifier.py {{ service.additional_args }}"
+      with_items:
+        - pendings_action_classifier
 
     - name: Install and configure Redis
       ansible.builtin.include_role:
@@ -144,7 +207,6 @@
       vars:
         service_name: "{{ stack_name }}__{{ item }}"
       throttle: 1
-      become: true
       with_items:
        - trace_emulator
        - pendings_action_classifier

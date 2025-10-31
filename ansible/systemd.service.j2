@@ -1,5 +1,5 @@
 [Unit]
-Description = "{{ service.service_name }} service"
+Description = "{{ service_name }} service"
 After = network.target
 
 [Service]
@@ -7,7 +7,7 @@ Type = simple
 Restart = always
 RestartSec = 5
 ExecStart={{ start_cmd }}
-ExecStopPost = /bin/echo "{{ service.service_name }} service down"
+ExecStopPost = /bin/echo "{{ service_name }} service down"
 User = {{ service.service_user | default("root") }}
 Group = {{ service.service_group | default("root") }}
 {% if service.environment is defined %}

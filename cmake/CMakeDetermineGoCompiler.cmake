@@ -18,7 +18,9 @@ if(NOT CMAKE_Go_COMPILER)
     $ENV{GOROOT}/../bin
     $ENV{GO_COMPILER}
     /usr/bin
+    /usr/local/
     /usr/local/bin
+    /usr/local/go/bin/
     )
 
   if(CMAKE_Go_COMPILER_INIT)
@@ -33,7 +35,6 @@ if(NOT CMAKE_Go_COMPILER)
     message("-- The Golang compiler identification is ${VERSION}")
     message("-- Check for working Golang compiler: ${CMAKE_Go_COMPILER}")
   endif()
-
 endif()
 
 mark_as_advanced(CMAKE_Go_COMPILER)
