@@ -194,7 +194,6 @@
       with_items:
         - action_classifier
       no_log: true
-      notify: restart service
     
     - name: Start and enable service redis-server
       ansible.builtin.systemd:
