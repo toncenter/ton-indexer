@@ -1,6 +1,6 @@
 ---
 - name: Check TON validator time drift
-  hosts: ton_nodes
+  hosts: "{{ stack_name }}__ton_nodes"
   gather_facts: no
 
   tasks:
