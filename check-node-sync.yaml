@@ -1,0 +1,31 @@
+---
+- name: Check TON validator time drift
+  hosts: ton_nodes
+  gather_facts: no
+
+  tasks:
+    - name: Calculate time drift between local node and masterchain (seconds)
+      become: yes
+      shell: |
+        set -o pipefail
+
+        height=$(
+          /usr/bin/ton/validator-engine-console/validator-engine-console \
+            --address 127.0.0.1:$(jq -r '.control[0].port' /var/ton-work/db/config.json) \
+            --key /var/ton-work/keys/client \
+            --pub /var/ton-work/keys/server.pub \
+            -c getstats
+        )
+
+        unixtime=$(echo "$height" | awk '{ for (i=1; i<NF; i++) if ($i=="unixtime") { print $(i+1); exit } }')
+        mastertime=$(echo "$height" | awk '{ for (i=1; i<NF; i++) if ($i=="masterchainblocktime") { print $(i+1); exit } }')
+
+        echo $((unixtime - mastertime))
+      register: drift
+      changed_when: false
+
+    - name: Fail if drift above threshold
+      debug:
+        msg: "Node sync is {{ drift.stdout | trim }}s (threshold {{ threshold | default(60) }}s)"
+      failed_when: (drift.stdout | trim | int) > (threshold | int)
+      changed_when: false
