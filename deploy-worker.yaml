@@ -116,7 +116,6 @@
 - name: Run migrations and deploy ton-index-postgres service
   hosts: "{{ stack_name }}__worker_nodes"
   become: true
-  serial: 1
   tags: [deploy]
   vars:
     service_name: "{{ stack_name }}__index_postgres"
