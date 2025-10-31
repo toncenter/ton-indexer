@@ -12,7 +12,6 @@ pg_master_password: REPLACEME
 pendings_redis_password: REPLACEME
 
 # deploy config. Adjust this also
-build_path: "{{ playbook_dir }}/build"
 binary_path: /usr/local/bin
 systemd_service_path: /etc/systemd/system
 
