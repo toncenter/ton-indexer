@@ -21,6 +21,8 @@
         mastertime=$(echo "$height" | awk '{ for (i=1; i<NF; i++) if ($i=="masterchainblocktime") { print $(i+1); exit } }')
 
         echo $((unixtime - mastertime))
+      args:
+        executable: /bin/bash
       register: sync_delta
       changed_when: false
 
