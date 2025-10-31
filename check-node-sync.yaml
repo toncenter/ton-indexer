@@ -21,11 +21,11 @@
         mastertime=$(echo "$height" | awk '{ for (i=1; i<NF; i++) if ($i=="masterchainblocktime") { print $(i+1); exit } }')
 
         echo $((unixtime - mastertime))
-      register: drift
+      register: sync_delta
       changed_when: false
 
-    - name: Fail if drift above threshold
+    - name: Fail if sync_delta above threshold
       debug:
-        msg: "Node sync is {{ drift.stdout | trim }}s (threshold {{ threshold | default(60) }}s)"
-      failed_when: (drift.stdout | trim | int) > (threshold | int)
+        msg: "Node sync is {{ sync_delta.stdout | trim }}s (threshold {{ threshold | default(60) }}s)"
+      failed_when: (sync_delta.stdout | trim | int) > (threshold | int)
       changed_when: false
