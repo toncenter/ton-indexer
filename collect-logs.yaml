@@ -22,9 +22,9 @@
         set -o pipefail
         journalctl -u {{ service_unit | quote }} \
         {% if (since_ts | default('')) | length > 0 -%}
-          --since {{ since_ts | quote }}
+          --since {{ since_ts | quote }} \
           {% if (until_ts | default('')) | length > 0 -%}
-            --until {{ until_ts | quote }}
+            --until {{ until_ts | quote }} \
           {%- endif %}
         {%- else -%}
           -n {{ (tail_lines | default(300)) | int }}
