@@ -153,7 +153,7 @@
               - "--pg"
               - "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master_host }}:5432/{{ pg_database }}"
               - "--no-create-indexes"
-              - "--rerun-last-migration"
+              # - "--rerun-last-migration"
           register: migrate_result
 
         - name: Assert migration succeeded
