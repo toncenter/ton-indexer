@@ -1,4 +1,4 @@
-openapi: 3.0.1
+openapi: 3.1.0
 info:
   title: TON Center API v3
   description: TON Index collects data from a full node to PostgreSQL database and
@@ -359,7 +359,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsResponse'
+                $ref: '#/components/schemas/Transactions'
         "400":
           description: Bad Request
           content:
@@ -470,7 +470,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BlocksResponse'
+                $ref: '#/components/schemas/Blocks'
         "400":
           description: Bad Request
           content:
@@ -1018,7 +1018,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsResponse'
+                $ref: '#/components/schemas/Transactions'
         "400":
           description: Bad Request
           content:
@@ -1067,7 +1067,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsResponse'
+                $ref: '#/components/schemas/Transactions'
         "400":
           description: Bad Request
           content:
@@ -1822,7 +1822,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsResponse'
+                $ref: '#/components/schemas/Transactions'
         "400":
           description: Bad Request
           content:
@@ -2179,7 +2179,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsResponse'
+                $ref: '#/components/schemas/Transactions'
         "400":
           description: Bad Request
           content:
@@ -2236,7 +2236,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsResponse'
+                $ref: '#/components/schemas/Transactions'
         "400":
           description: Bad Request
           content:
@@ -2301,7 +2301,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsResponse'
+                $ref: '#/components/schemas/Transactions'
         "400":
           description: Bad Request
           content:
@@ -2471,16 +2471,64 @@ components:
       x-typescript-type: bignum
       x-js-type: bignum
       minimum: 0
-      maximum: 1329227995784915872903807060280344576
       description: Variable-length 120-bit integer representing native currency amount
-    Hash:
+    ExtraCoins:
       type: string
-      format: bytes
+      format: bigint
+      x-java-type: java.math.BigInteger
+      x-go-type: '*big.Int'
+      x-typescript-type: bignum
+      x-js-type: bignum
+      minimum: 0
+      description: Variable-length 120-bit integer representing extra currency amount
+    ExtraCurrencies:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/ExtraCoins'
+    WorkchainId:
+      type: integer
+      format: int32
+      minimum: -1
+      maximum: 0
+      description: Workchain identifier. -1 for masterchain, 0 for basechain
     ShardId:
       type: string
-      format: hex-int64
+      format: hex
       pattern: '^[0-9a-fA-F]{1,16}$'
+      example: 8000000000000000
       description: 64-bit shard identifier in hex format
+    Hash:
+      type: string
+      format: hash
+      pattern: '^[A-Za-z0-9+/]{43}=$'
+      contentEncoding: base64
+      description: 32-byte hash in base64 format
+    LogicalTime:
+      type: integer
+      format: int64
+      minimum: 0
+      description: 64-bit logical time
+    UnixTime:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Unix timestamp in seconds
+    Opcode:
+      type: integer
+      format: int64
+    AccountStatus:
+      type: string
+      enum:
+        - uninit
+        - frozen
+        - active
+        - nonexist
+    AccountStatusChange:
+      type: string
+      enum:
+        - unchanged
+        - frozen
+        - deleted
     TokenType:
       type: string
       enum:
@@ -2516,17 +2564,17 @@ components:
         code_boc:
           type: string
         code_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         data_boc:
           type: string
         data_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         extra_currencies:
           type: object
           additionalProperties:
             type: string
         frozen_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         hash:
           type: string
     AccountStateFull:
@@ -2536,8 +2584,7 @@ components:
       type: object
       properties:
         account_state_hash:
-          type: string
-          format: hash
+          $ref: '#/components/schemas/Hash'
         address:
           type: string
           format: address
@@ -2546,7 +2593,7 @@ components:
         code_boc:
           type: string
         code_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         contract_methods:
           type: array
           items:
@@ -2554,25 +2601,21 @@ components:
         data_boc:
           type: string
         data_hash:
-          type: string
-          format: hash
+          $ref: '#/components/schemas/Hash'
         extra_currencies:
           type: object
           additionalProperties:
             type: string
         frozen_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         interfaces:
           type: array
           items:
             type: string
         last_transaction_hash:
-          type: string
-          format: hash
+          $ref: '#/components/schemas/Hash'
         last_transaction_lt:
-          type: string
-          format: hash
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         status:
           type: string
     Action:
@@ -2587,20 +2630,17 @@ components:
         details:
           type: object
         end_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         end_utime:
-          type: integer
+          $ref: '#/components/schemas/UnixTime'
         start_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         start_utime:
-          type: integer
+          $ref: '#/components/schemas/UnixTime'
         success:
           type: boolean
         trace_end_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         trace_end_utime:
           type: integer
         trace_external_hash:
@@ -2621,55 +2661,6 @@ components:
             $ref: '#/components/schemas/Transaction'
         type:
           type: string
-    ActionPhase:
-      required:
-        - action_list_hash
-        - msgs_created
-        - no_funds
-        - result_code
-        - skipped_actions
-        - spec_actions
-        - status_change
-        - success
-        - tot_actions
-        - tot_msg_size
-        - valid
-      type: object
-      properties:
-        action_list_hash:
-          type: string
-        msgs_created:
-          type: integer
-        no_funds:
-          type: boolean
-        result_arg:
-          type: integer
-        result_code:
-          type: integer
-        skipped_actions:
-          type: integer
-        spec_actions:
-          type: integer
-        status_change:
-          type: string
-          enum:
-            - unchanged
-            - frozen
-            - deleted
-        success:
-          type: boolean
-        tot_actions:
-          type: integer
-        tot_msg_size:
-          $ref: '#/components/schemas/MsgSize'
-        total_action_fees:
-          type: string
-          example: "0"
-        total_fwd_fees:
-          type: string
-          example: "0"
-        valid:
-          type: boolean
     AddressBook:
       type: object
       additionalProperties:
@@ -2731,21 +2722,24 @@ components:
       type: object
       properties:
         workchain:
-          type: integer
-          format: int32
-          description: Workchain ID (-1 for masterchain, 0 for basechain)
+          $ref: '#/components/schemas/WorkchainId'
         shard:
           $ref: '#/components/schemas/ShardId'
         seqno:
           type: integer
           description: Block sequence number
         root_hash:
-          $ref: '#/components/schemas/Hash'
+          allOf:
+            - $ref: '#/components/schemas/Hash'
+          description: Base64-encoded 32-byte hash representing the root cell of the referenced block.
         file_hash:
-          $ref: '#/components/schemas/Hash'
+          allOf:
+            - $ref: '#/components/schemas/Hash'
+          description: Base64-encoded 32-byte hash of the BOC-encoded root cell for the referenced block.
         global_id:
           type: integer
           format: int32
+          description: Global network id.
         version:
           type: integer
           format: int32
@@ -2776,21 +2770,16 @@ components:
           format: int32
           description: Block flags (currently only bit 1 is used, for `gen_software`)
         gen_utime:
-          type: integer
-          format: unix-time
+          allOf:
+            - $ref: '#/components/schemas/UnixTime'
           description: Unix timestamp in seconds when the block was created.
-          example: 1730444460
-          minimum: 0
-          maximum: 4294967295
         start_lt:
-          type: integer
-          example: int64
-          minimum: 0
+          allOf:
+            - $ref: '#/components/schemas/LogicalTime'
           description: Logical time range start.
         end_lt:
-          type: string
-          example: int64
-          minimum: 0
+          allOf:
+            - $ref: '#/components/schemas/LogicalTime'
           description: Logical time range end.
         validator_list_hash_short:
           type: integer
@@ -2830,10 +2819,14 @@ components:
           pattern: '^[A-Za-z0-9+/]{43}=$'
         tx_count:
           type: integer
+          format: int32
+          minimum: 0
+          description: Number of transactions in the block.
         masterchain_block_ref:
           $ref: '#/components/schemas/BlockIdShort'
         prev_blocks:
           type: array
+          maxItems: 2
           items:
             $ref: '#/components/schemas/BlockIdShort'
     BlockIdShort:
@@ -2844,88 +2837,13 @@ components:
       type: object
       properties:
         workchain:
-          type: integer
+          $ref: '#/components/schemas/WorkchainId'
         shard:
           $ref: '#/components/schemas/ShardId'
         seqno:
           type: integer
-    BouncePhase:
-      type: object
-      properties:
-        fwd_fees:
-          type: string
-          example: "0"
-        msg_fees:
-          type: string
-          example: "0"
-        msg_size:
-          $ref: '#/components/schemas/MsgSize'
-        req_fwd_fees:
-          type: string
-          example: "0"
-        type:
-          type: string
-    ComputePhase:
-      required:
-        - skipped
-      type: object
-      properties:
-        account_activated:
-          type: boolean
-        exit_arg:
-          type: integer
-        exit_code:
-          type: integer
-        gas_credit:
-          type: string
-          example: "0"
-        gas_fees:
-          type: string
-          example: "0"
-        gas_limit:
-          type: string
-          example: "0"
-        gas_used:
-          type: string
-          example: "0"
-        mode:
-          type: integer
-        msg_state_used:
-          type: boolean
-        reason:
-          type: string
-          enum:
-            - no_state
-            - bad_state
-            - no_gas
-            - suspended
-        skipped:
-          type: boolean
-        success:
-          type: boolean
-        vm_final_state_hash:
-          type: string
-        vm_init_state_hash:
-          type: string
-        vm_steps:
-          type: integer
-    CreditPhase:
-      required:
-        - credit
-        - credit_extra_currencies
-        - due_fees_collected
-      type: object
-      properties:
-        credit:
-          type: string
-          example: "0"
-        credit_extra_currencies:
-          type: object
-          additionalProperties:
-            type: string
-        due_fees_collected:
-          type: string
-          example: "0"
+          format: int32
+          minimum: 0
     DNSRecord:
       type: object
       properties:
@@ -2980,12 +2898,11 @@ components:
         transaction_aborted:
           type: boolean
         transaction_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         transaction_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         transaction_now:
-          type: integer
+          $ref: '#/components/schemas/UnixTime'
     JettonMaster:
       type: object
       properties:
@@ -2994,17 +2911,16 @@ components:
         admin_address:
           type: string
         code_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         data_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         jetton_content:
           type: object
           additionalProperties: true
         jetton_wallet_code_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         last_transaction_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         mintable:
           type: boolean
         total_supply:
@@ -3045,12 +2961,11 @@ components:
         transaction_aborted:
           type: boolean
         transaction_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         transaction_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         transaction_now:
-          type: integer
+          $ref: '#/components/schemas/UnixTime'
     JettonWallet:
       type: object
       properties:
@@ -3059,14 +2974,13 @@ components:
         balance:
           type: string
         code_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         data_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         jetton:
           type: string
         last_transaction_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         mintless_info:
           $ref: '#/components/schemas/JettonWalletMintlessInfo'
         owner:
@@ -3089,57 +3003,46 @@ components:
         - hash
       type: object
       properties:
+        hash:
+          $ref: "#/components/schemas/Hash"
+        source:
+          $ref: "#/components/schemas/AccountAddress"
+        destination:
+          $ref: "#/components/schemas/AccountAddress"
+        value:
+          $ref: '#/components/schemas/Coins'
+        value_extra_currencies:
+          $ref: '#/components/schemas/ExtraCurrencies'
+        fwd_fee:
+          $ref: '#/components/schemas/Coins'
+        ihr_fee:
+          $ref: '#/components/schemas/Coins'
+        extra_flags:
+          $ref: '#/components/schemas/Coins'
+        created_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        created_at:
+          $ref: '#/components/schemas/UnixTime'
+        opcode:
+          $ref: '#/components/schemas/Opcode'
+        decoded_opcode:
+          type: string
+        ihr_disabled:
+          type: boolean
         bounce:
           type: boolean
         bounced:
           type: boolean
-        created_at:
-          type: string
-          example: "0"
-        created_lt:
-          type: string
-          example: "0"
-        decoded_opcode:
-          type: string
-        destination:
-          type: string
-        extra_flags:
-          type: string
-        fwd_fee:
-          type: string
-          example: "0"
-        hash:
-          type: string
-        hash_norm:
-          type: string
-        ihr_disabled:
-          type: boolean
-        ihr_fee:
-          type: string
-          example: "0"
-        import_fee:
-          type: string
-          example: "0"
         in_msg_tx_hash:
-          type: string
-        init_state:
-          $ref: '#/components/schemas/MessageContent'
+          $ref: '#/components/schemas/Hash'
+        out_msg_tx_hash:
+          $ref: '#/components/schemas/Hash'
         message_content:
           $ref: '#/components/schemas/MessageContent'
-        opcode:
-          type: integer
-          format: hex
-        out_msg_tx_hash:
-          type: string
-        source:
-          type: string
-        value:
-          type: string
-          example: "0"
-        value_extra_currencies:
-          type: object
-          additionalProperties:
-            type: string
+        init_state:
+          $ref: '#/components/schemas/MessageContent'
+        hash_norm:
+          $ref: '#/components/schemas/Hash'
     MessageContent:
       type: object
       properties:
@@ -3149,35 +3052,36 @@ components:
           type: object
           properties: { }
         hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
     Metadata:
       type: object
       additionalProperties:
         $ref: '#/components/schemas/AddressMetadata'
     MsgSize:
-      required:
-        - bits
-        - cells
       type: object
+      required: [ cells,bits ]
       properties:
-        bits:
-          type: string
-          example: "0"
         cells:
-          type: string
-          example: "0"
+          type: integer
+          format: int64
+          minimum: 0
+          description: Amount of unique cells.
+        bits:
+          type: integer
+          format: int32
+          minimum: 0
+          description: The total number of bits in unique cells.
     Multisig:
       type: object
       properties:
         address:
           type: string
         code_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         data_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         last_transaction_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         next_order_seqno:
           type: string
         orders:
@@ -3214,8 +3118,7 @@ components:
         expiration_date:
           type: integer
         last_transaction_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         multisig_address:
           type: string
         order_boc:
@@ -3236,15 +3139,14 @@ components:
         address:
           type: string
         code_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         collection_content:
           type: object
           additionalProperties: true
         data_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         last_transaction_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         next_item_index:
           type: string
         owner_address:
@@ -3265,7 +3167,7 @@ components:
         auction_contract_address:
           type: string
         code_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         collection:
           $ref: '#/components/schemas/NFTCollection'
         collection_address:
@@ -3274,14 +3176,13 @@ components:
           type: object
           additionalProperties: true
         data_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         index:
           type: string
         init:
           type: boolean
         last_transaction_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         on_sale:
           type: boolean
         owner_address:
@@ -3335,12 +3236,11 @@ components:
         transaction_aborted:
           type: boolean
         transaction_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         transaction_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         transaction_now:
-          type: integer
+          $ref: '#/components/schemas/UnixTime'
     RequestError:
       type: object
       properties:
@@ -3348,38 +3248,6 @@ components:
           type: integer
         error:
           type: string
-    SplitInfo:
-      type: object
-      properties:
-        acc_split_depth:
-          type: integer
-        cur_shard_pfx_len:
-          type: integer
-        sibling_addr:
-          type: string
-        this_addr:
-          type: string
-    StoragePhase:
-      required:
-        - status_change
-        - storage_fees_collected
-        - storage_fees_due
-      type: object
-      properties:
-        foo:
-          $ref: '#/components/schemas/index.StatusChange'
-        status_change:
-          type: string
-          enum:
-            - unchanged
-            - frozen
-            - deleted
-        storage_fees_collected:
-          type: string
-          example: "0"
-        storage_fees_due:
-          type: string
-          example: "0"
     TokenInfo:
       type: object
       required:
@@ -3411,8 +3279,7 @@ components:
           items:
             $ref: '#/components/schemas/Action'
         end_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         end_utime:
           type: integer
         external_hash:
@@ -3424,8 +3291,7 @@ components:
         mc_seqno_start:
           type: string
         start_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         start_utime:
           type: integer
         trace:
@@ -3467,88 +3333,316 @@ components:
         in_msg:
           $ref: '#/components/schemas/Message'
         in_msg_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         transaction:
           $ref: '#/components/schemas/Transaction'
         tx_hash:
-          type: string
-    Transaction:
+          $ref: '#/components/schemas/Hash'
+    StoragePhase:
+      type: object
+      required:
+        - storage_fees_collected
+        - status_change
+      properties:
+        storage_fees_collected:
+          $ref: '#/components/schemas/Coins'
+        storage_fees_due:
+          $ref: '#/components/schemas/Coins'
+        status_change:
+          $ref: '#/components/schemas/AccountStatusChange'
+    CreditPhase:
+      type: object
+      required:
+        - credit
+        - credit_extra_currencies
+      properties:
+        due_fees_collected:
+          $ref: '#/components/schemas/Coins'
+        credit:
+          $ref: '#/components/schemas/Coins'
+        credit_extra_currencies:
+          $ref: '#/components/schemas/ExtraCurrencies'
+    ComputeSkipReason:
+      type: string
+      enum:
+        - no_state
+        - bad_state
+        - no_gas
+        - suspended
+    ComputePhase:
+      type: object
+      required: [ skipped ]
+      properties:
+        skipped:
+          type: boolean
+      discriminator:
+        propertyName: skipped
+        mapping:
+          true: '#/components/schemas/ComputePhaseSkipped'
+          false: '#/components/schemas/ComputePhaseExecuted'
+    ComputePhaseSkipped:
+      allOf:
+        - $ref: '#/components/schemas/ComputePhase'
+        - type: object
+          required: [ reason ]
+          properties:
+            reason:
+              $ref: '#/components/schemas/ComputeSkipReason'
+    ComputePhaseExecuted:
+      allOf:
+        - $ref: '#/components/schemas/ComputePhase'
+        - type: object
+          required: [ success,msg_state_used,account_activated,gas_fees,gas_used,gas_limit,mode,exit_code,vm_steps,vm_final_state_hash,vm_init_state_hash ]
+          properties:
+            success:
+              type: boolean
+            msg_state_used:
+              type: boolean
+            account_activated:
+              type: boolean
+            gas_fees:
+              $ref: '#/components/schemas/Coins'
+            gas_used:
+              type: integer
+              format: int64
+            gas_limit:
+              type: integer
+              format: int64
+            gas_credit:
+              type: integer
+              format: int64
+            mode:
+              type: integer
+              format: int32
+            exit_code:
+              type: integer
+              format: int32
+            exit_arg:
+              type: integer
+              format: int32
+            vm_steps:
+              type: integer
+              format: int32
+            vm_final_state_hash:
+              $ref: '#/components/schemas/Hash'
+            vm_init_state_hash:
+              $ref: '#/components/schemas/Hash'
+    ActionPhase:
+      required: [ success,action_list_hash,no_funds,status_change,result_code,tot_actions,spec_actions,skipped_actions,msgs_created,action_list_hash,tot_msg_size ]
       type: object
       properties:
-        account:
-          type: string
-        account_state_after:
-          $ref: '#/components/schemas/AccountState'
-        account_state_before:
-          $ref: '#/components/schemas/AccountState'
-        block_ref:
-          $ref: '#/components/schemas/BlockIdShort'
-        description:
-          $ref: '#/components/schemas/TransactionDescr'
-        emulated:
+        success:
           type: boolean
-        end_status:
-          type: string
-        hash:
-          type: string
-        in_msg:
-          $ref: '#/components/schemas/Message'
-        lt:
-          type: string
-          example: "0"
-        mc_block_seqno:
+        valid:
+          type: boolean
+        no_funds:
+          type: boolean
+        status_change:
+          $ref: '#/components/schemas/AccountStatusChange'
+        total_fwd_fees:
+          $ref: '#/components/schemas/Coins'
+        total_action_fees:
+          $ref: '#/components/schemas/Coins'
+        result_code:
           type: integer
-        now:
+          format: int32
+        result_arg:
           type: integer
-        orig_status:
-          type: string
-        out_msgs:
-          type: array
-          items:
-            $ref: '#/components/schemas/Message'
-        prev_trans_hash:
-          type: string
-        prev_trans_lt:
-          type: string
-          example: "0"
-        total_fees:
-          type: string
-          example: "0"
-        total_fees_extra_currencies:
-          type: object
-          additionalProperties:
-            type: string
-        trace_external_hash:
-          type: string
-        trace_id:
-          type: string
+          format: int32
+        tot_actions:
+          type: integer
+          format: int32
+          maximum: 65535
+        spec_actions:
+          type: integer
+          format: int32
+          maximum: 65535
+        skipped_actions:
+          type: integer
+          format: int32
+          maximum: 65535
+        msgs_created:
+          type: integer
+          format: int32
+          maximum: 65535
+        action_list_hash:
+          $ref: '#/components/schemas/Hash'
+        tot_msg_size:
+          $ref: '#/components/schemas/MsgSize'
+    BouncePhaseType:
+      type: string
+      enum: [ negfunds,nofunds,ok ]
+    BouncePhase:
+      type: object
+      required: [ type ]
+      properties:
+        type:
+          $ref: '#/components/schemas/BouncePhaseType'
+      discriminator:
+        propertyName: type
+        mapping:
+          negfunds: '#/components/schemas/BouncePhaseNegFunds'
+          nofunds: '#/components/schemas/BouncePhaseNoFunds'
+          ok: '#/components/schemas/BouncePhaseExecuted'
+    BouncePhaseNegFunds:
+      allOf:
+        - $ref: '#/components/schemas/BouncePhase'
+        - type: object
+    BouncePhaseNoFunds:
+      allOf:
+        - $ref: '#/components/schemas/BouncePhase'
+        - type: object
+          required: [ msg_size,req_fwd_fees ]
+          properties:
+            msg_size:
+              $ref: '#/components/schemas/MsgSize'
+            req_fwd_fees:
+              $ref: '#/components/schemas/Coins'
+    BouncePhaseExecuted:
+      allOf:
+        - $ref: '#/components/schemas/BouncePhase'
+        - type: object
+          required: [ msg_size,fwd_fees,msg_fees ]
+          properties:
+            msg_size:
+              $ref: '#/components/schemas/MsgSize'
+            msg_fees:
+              $ref: '#/components/schemas/Coins'
+            fwd_fees:
+              $ref: '#/components/schemas/Coins'
+    SplitInfo:
+      type: object
+      properties:
+        cur_shard_pfx_len:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 63
+        acc_split_depth:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 63
+        this_addr:
+          $ref: '#/components/schemas/AccountAddress'
+        sibling_addr:
+          $ref: '#/components/schemas/AccountAddress'
+    TransactionDescrType:
+      type: string
+      enum: [ ord,storage,tick_tock,split_prepare,split_install,merge_prepare,merge_install ]
     TransactionDescr:
       type: object
+      required: [ type ]
       properties:
-        aborted:
-          type: boolean
-        action:
-          $ref: '#/components/schemas/ActionPhase'
-        bounce:
-          $ref: '#/components/schemas/BouncePhase'
-        compute_ph:
-          $ref: '#/components/schemas/ComputePhase'
-        credit_first:
-          type: boolean
-        credit_ph:
-          $ref: '#/components/schemas/CreditPhase'
-        destroyed:
-          type: boolean
-        installed:
-          type: boolean
-        is_tock:
-          type: boolean
-        split_info:
-          $ref: '#/components/schemas/SplitInfo'
-        storage_ph:
-          $ref: '#/components/schemas/StoragePhase'
         type:
-          type: string
+          $ref: '#/components/schemas/TransactionDescrType'
+      discriminator:
+        propertyName: type
+        mapping:
+          ord: '#/components/schemas/TransactionDescrOrd'
+          tick_tock: '#/components/schemas/TransactionDescrTickTock'
+    TransactionDescrOrd:
+      allOf:
+        - $ref: '#/components/schemas/TransactionDescr'
+        - type: object
+          required: [ aborted,destroyed,credit_first,compute_ph ]
+          properties:
+            aborted:
+              type: bool
+            destroyed:
+              type: bool
+            credit_first:
+              type: bool
+            storage_ph:
+              $ref: '#/components/schemas/StoragePhase'
+            credit_ph:
+              $ref: '#/components/schemas/CreditPhase'
+            compute_ph:
+              $ref: '#/components/schemas/ComputePhase'
+            action:
+              $ref: '#/components/schemas/ActionPhase'
+            bounce:
+              $ref: '#/components/schemas/BouncePhase'
+    TransactionDescrTickTock:
+      allOf:
+        - $ref: '#/components/schemas/TransactionDescr'
+        - type: object
+          required: [ aborted,destroyed,is_tock,storage_ph,compute_ph ]
+          properties:
+            aborted:
+              type: bool
+            destroyed:
+              type: bool
+            is_tock:
+              type: bool
+            storage_ph:
+              $ref: '#/components/schemas/StoragePhase'
+            compute_ph:
+              $ref: '#/components/schemas/ComputePhase'
+            action:
+              $ref: '#/components/schemas/ActionPhase'
+    Transaction:
+      type: object
+      required:
+        - account
+        - hash
+        - lt
+        - now
+        - mc_block_seqno
+        - prev_trans_hash
+        - prev_trans_lt
+        - orig_status
+        - end_status
+        - total_fees
+        - total_fees_extra_currencies
+        - description
+        - block_ref
+        - emulated
+      properties:
+        account:
+          $ref: '#/components/schemas/AccountAddress'
+        hash:
+          $ref: '#/components/schemas/Hash'
+        lt:
+          $ref: '#/components/schemas/LogicalTime'
+        now:
+          $ref: '#/components/schemas/UnixTime'
+        mc_block_seqno:
+          type: integer
+          format: int32
+        trace_id:
+          $ref: '#/components/schemas/Hash'
+        trace_external_hash:
+          $ref: '#/components/schemas/Hash'
+        prev_trans_hash:
+          $ref: '#/components/schemas/Hash'
+        prev_trans_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        orig_status:
+          $ref: '#/components/schemas/AccountStatus'
+        end_status:
+          $ref: '#/components/schemas/AccountStatus'
+        total_fees:
+          $ref: '#/components/schemas/Coins'
+        total_fees_extra_currencies:
+          $ref: '#/components/schemas/ExtraCurrencies'
+        description:
+          $ref: '#/components/schemas/TransactionDescr'
+        block_ref:
+          $ref: '#/components/schemas/BlockIdShort'
+        in_msg:
+          $ref: '#/components/schemas/Message'
+        out_msgs:
+          type: array
+          maxItems: 32767
+          items:
+            $ref: '#/components/schemas/Message'
+        account_state_before:
+          $ref: '#/components/schemas/AccountState'
+        account_state_after:
+          $ref: '#/components/schemas/AccountState'
+        emulated:
+          type: boolean
     V2AddressInformation:
       type: object
       properties:
@@ -3559,11 +3653,11 @@ components:
         data:
           type: string
         frozen_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         last_transaction_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         last_transaction_lt:
-          type: string
+          $ref: '#/components/schemas/LogicalTime'
         status:
           type: string
     V2EstimateFeeRequest:
@@ -3619,9 +3713,9 @@ components:
       type: object
       properties:
         message_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         message_hash_norm:
-          type: string
+          $ref: '#/components/schemas/Hash'
     V2StackEntity:
       type: object
       properties:
@@ -3635,9 +3729,9 @@ components:
         balance:
           type: string
         last_transaction_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         last_transaction_lt:
-          type: string
+          $ref: '#/components/schemas/LogicalTime'
         seqno:
           type: integer
         status:
@@ -3701,7 +3795,7 @@ components:
         balance:
           type: string
         code_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         extra_currencies:
           type: object
           additionalProperties:
@@ -3711,19 +3805,13 @@ components:
         is_wallet:
           type: boolean
         last_transaction_hash:
-          type: string
+          $ref: '#/components/schemas/Hash'
         last_transaction_lt:
-          type: string
-          example: "0"
+          $ref: '#/components/schemas/LogicalTime'
         seqno:
           type: integer
         status:
-          type: string
-          enum:
-            - uninit
-            - frozen
-            - active
-            - inactive
+          $ref: '#/components/schemas/AccountStatus'
         wallet_id:
           type: integer
         wallet_type:
@@ -3768,16 +3856,18 @@ components:
           $ref: '#/components/schemas/Block'
         first:
           $ref: '#/components/schemas/Block'
-    BlocksResponse:
+    Blocks:
       type: object
       required:
         - blocks
       properties:
         blocks:
           type: array
+          minItems: 0
+          maxItems: 1000
           items:
             $ref: '#/components/schemas/Block'
-    TransactionsResponse:
+    Transactions:
       type: object
       required:
         - transactions
@@ -3785,6 +3875,8 @@ components:
       properties:
         transactions:
           type: array
+          minItems: 0
+          maxItems: 1000
           items:
             $ref: '#/components/schemas/Transaction'
         address_book:
