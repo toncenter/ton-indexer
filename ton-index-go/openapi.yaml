@@ -36,7 +36,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AccountStatesResponse'
+                $ref: '#/components/schemas/AccountStates'
         "400":
           description: Bad Request
           content:
@@ -315,7 +315,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TracesResponse'
+                $ref: '#/components/schemas/Traces'
         "400":
           description: Bad Request
           content:
@@ -397,7 +397,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TracesResponse'
+                $ref: '#/components/schemas/Traces'
         "400":
           description: Bad Request
           content:
@@ -1022,7 +1022,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DecodeResponse'
+                $ref: '#/components/schemas/DecodeResult'
         "400":
           description: Bad Request
           content:
@@ -1053,7 +1053,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DecodeResponse'
+                $ref: '#/components/schemas/DecodeResult'
         "400":
           description: Bad Request
           content:
@@ -1093,7 +1093,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DNSRecordsResponse'
+                $ref: '#/components/schemas/DNSRecords'
         "400":
           description: Bad Request
           content:
@@ -1142,7 +1142,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JettonBurnsResponse'
+                $ref: '#/components/schemas/JettonBurns'
         "400":
           description: Bad Request
           content:
@@ -1182,7 +1182,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JettonMastersResponse'
+                $ref: '#/components/schemas/JettonMasters'
         "400":
           description: Bad Request
           content:
@@ -1235,7 +1235,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JettonTransfersResponse'
+                $ref: '#/components/schemas/JettonTransfers'
         "400":
           description: Bad Request
           content:
@@ -1486,7 +1486,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NFTItemsResponse'
+                $ref: '#/components/schemas/NFTItems'
         "400":
           description: Bad Request
           content:
@@ -1543,7 +1543,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NFTTransfersResponse'
+                $ref: '#/components/schemas/NFTTransfers'
         "400":
           description: Bad Request
           content:
@@ -1749,6 +1749,14 @@ components:
       schema:
         $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
   schemas:
+    RequestError:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        error:
+          type: string
     SortType:
       type: string
       enum:
@@ -1853,13 +1861,6 @@ components:
         - unchanged
         - frozen
         - deleted
-    TokenType:
-      type: string
-      enum:
-        - jetton_wallets
-        - nft_items
-        - nft_collections
-        - jetton_masters
     AccountBalance:
       type: object
       required:
@@ -1942,62 +1943,19 @@ components:
           $ref: '#/components/schemas/LogicalTime'
         status:
           type: string
-    Action:
+    AccountStates:
       type: object
-      required: [
-        action_id,
-        start_lt,
-        end_lt,
-        start_utime,
-        end_utime,
-        trace_end_lt,
-        trace_end_utime,
-        trace_mc_seqno_end,
-        transactions,
-        type,
-        details,
-      ]
+      required:
+        - accounts
       properties:
-        trace_id:
-          $ref: '#/components/schemas/Hash'
-        action_id:
-          $ref: '#/components/schemas/Hash'
-        start_lt:
-          $ref: '#/components/schemas/LogicalTime'
-        end_lt:
-          $ref: '#/components/schemas/LogicalTime'
-        start_utime:
-          $ref: '#/components/schemas/UnixTime'
-        end_utime:
-          $ref: '#/components/schemas/UnixTime'
-        trace_end_lt:
-          $ref: '#/components/schemas/LogicalTime'
-        trace_end_utime:
-          $ref: '#/components/schemas/UnixTime'
-        trace_mc_seqno_end:
-          type: integer
-        transactions:
-          type: array
-          items:
-            $ref: '#/components/schemas/Hash'
-        success:
-          type: boolean
-        type:
-          $ref: '#/components/schemas/ActionType'
-        details:
-          type: object
-        trace_external_hash:
-          $ref: '#/components/schemas/Hash'
-        trace_external_hash_norm:
-          $ref: '#/components/schemas/Hash'
         accounts:
           type: array
           items:
-            $ref: '#/components/schemas/AccountAddress'
-        transactions_full:
-          type: array
-          items:
-            $ref: '#/components/schemas/Transaction'
+            $ref: '#/components/schemas/AccountStateFull'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
     AddressBook:
       type: object
       additionalProperties:
@@ -2025,6 +1983,21 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TokenInfo'
+    BlockIdShort:
+      required:
+        - seqno
+        - shard
+        - workchain
+      type: object
+      properties:
+        workchain:
+          $ref: '#/components/schemas/WorkchainId'
+        shard:
+          $ref: '#/components/schemas/ShardId'
+        seqno:
+          type: integer
+          format: int32
+          minimum: 0
     Block:
       required:
         - after_merge
@@ -2166,41 +2139,16 @@ components:
           maxItems: 2
           items:
             $ref: '#/components/schemas/BlockIdShort'
-    BlockIdShort:
-      required:
-        - seqno
-        - shard
-        - workchain
-      type: object
-      properties:
-        workchain:
-          $ref: '#/components/schemas/WorkchainId'
-        shard:
-          $ref: '#/components/schemas/ShardId'
-        seqno:
-          type: integer
-          format: int32
-          minimum: 0
-    DNSRecord:
+    Blocks:
       type: object
       required:
-        - nft_item_address
-        - domain
+        - blocks
       properties:
-        nft_item_address:
-          $ref: '#/components/schemas/AccountAddress'
-        nft_item_owner:
-          $ref: '#/components/schemas/AccountAddress'
-        domain:
-          type: string
-        dns_next_resolver:
-          $ref: '#/components/schemas/AccountAddress'
-        dns_wallet:
-          $ref: '#/components/schemas/AccountAddress'
-        dns_site_adnl:
-          type: string
-        dns_storage_bag_id:
-          type: string
+        blocks:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/Block'
     DecodeRequest:
       type: object
       properties:
@@ -2285,6 +2233,19 @@ components:
           $ref: '#/components/schemas/Hash'
         last_transaction_lt:
           $ref: '#/components/schemas/LogicalTime'
+    JettonMasters:
+      type: object
+      required:
+        - jetton_masters
+      properties:
+        jetton_masters:
+          type: array
+          items:
+            $ref: '#/components/schemas/JettonMaster'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
     JettonTransfer:
       type: object
       required:
@@ -2338,6 +2299,37 @@ components:
             type: integer
         trace_id:
           $ref: '#/components/schemas/Hash'
+    JettonTransfers:
+      type: object
+      required:
+        - jetton_transfers
+      properties:
+        jetton_transfers:
+          type: array
+          items:
+            $ref: '#/components/schemas/JettonTransfer'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    JettonWalletMintlessInfo:
+      type: object
+      required:
+        - amount
+        - start_from
+        - expire_at
+        - custom_payload_api_uri
+      properties:
+        amount:
+          $ref: '#/components/schemas/Coins'
+        start_from:
+          $ref: '#/components/schemas/UnixTime'
+        expire_at:
+          $ref: '#/components/schemas/UnixTime'
+        custom_payload_api_uri:
+          type: array
+          items:
+            type: string
     JettonWallet:
       type: object
       required:
@@ -2363,24 +2355,42 @@ components:
           $ref: '#/components/schemas/Hash'
         mintless_info:
           $ref: '#/components/schemas/JettonWalletMintlessInfo'
-    JettonWalletMintlessInfo:
+    JettonWallets:
       type: object
       required:
-        - amount
-        - start_from
-        - expire_at
-        - custom_payload_api_uri
+        - jetton_wallets
       properties:
-        amount:
-          $ref: '#/components/schemas/Coins'
-        start_from:
-          $ref: '#/components/schemas/UnixTime'
-        expire_at:
-          $ref: '#/components/schemas/UnixTime'
-        custom_payload_api_uri:
+        jetton_wallets:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/JettonWallet'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    JettonBurns:
+      type: object
+      required:
+        - jetton_burns
+      properties:
+        jetton_burns:
+          type: array
+          items:
+            $ref: '#/components/schemas/JettonBurn'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    MessageContent:
+      type: object
+      properties:
+        body:
+          type: string
+        decoded:
+          type: object
+          properties: { }
+        hash:
+          $ref: '#/components/schemas/Hash'
     Message:
       required:
         - hash
@@ -2425,16 +2435,6 @@ components:
         init_state:
           $ref: '#/components/schemas/MessageContent'
         hash_norm:
-          $ref: '#/components/schemas/Hash'
-    MessageContent:
-      type: object
-      properties:
-        body:
-          type: string
-        decoded:
-          type: object
-          properties: { }
-        hash:
           $ref: '#/components/schemas/Hash'
     Metadata:
       type: object
@@ -2533,31 +2533,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OrderAction'
-    NFTCollection:
-      type: object
-      required:
-        - address
-        - last_transaction_lt
-        - next_item_index
-        - collection_content
-        - data_hash
-        - code_hash
-      properties:
-        address:
-          $ref: '#/components/schemas/AccountAddress'
-        owner_address:
-          $ref: '#/components/schemas/AccountAddress'
-        last_transaction_lt:
-          $ref: '#/components/schemas/LogicalTime'
-        next_item_index:
-          $ref: '#/components/schemas/NFTIndex'
-        collection_content:
-          type: object
-          additionalProperties: true
-        data_hash:
-          $ref: '#/components/schemas/Hash'
-        code_hash:
-          $ref: '#/components/schemas/Hash'
     NFTIndex:
       type: string
       format: bigint
@@ -2566,6 +2541,36 @@ components:
       x-typescript-type: bignum
       x-js-type: bignum
       description: 257-bit integer of NFT item index
+    TokenType:
+      type: string
+      enum:
+        - jetton_wallets
+        - nft_items
+        - nft_collections
+        - jetton_masters
+    TokenInfo:
+      type: object
+      required:
+        - valid
+        - type
+      properties:
+        valid:
+          type: boolean
+        type:
+          $ref: '#/components/schemas/TokenType'
+        name:
+          type: string
+        symbol:
+          type: string
+        description:
+          type: string
+        image:
+          type: string
+        nft_index:
+          $ref: '#/components/schemas/NFTIndex'
+        extra:
+          type: object
+          additionalProperties: true
     NFTItem:
       type: object
       properties:
@@ -2598,7 +2603,7 @@ components:
           type: string
         sale_contract_address:
           type: string
-    NFTItemsResponse:
+    NFTItems:
       type: object
       properties:
         address_book:
@@ -2609,6 +2614,44 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NFTItem'
+    NFTCollection:
+      type: object
+      required:
+        - address
+        - last_transaction_lt
+        - next_item_index
+        - collection_content
+        - data_hash
+        - code_hash
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddress'
+        owner_address:
+          $ref: '#/components/schemas/AccountAddress'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        next_item_index:
+          $ref: '#/components/schemas/NFTIndex'
+        collection_content:
+          type: object
+          additionalProperties: true
+        data_hash:
+          $ref: '#/components/schemas/Hash'
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+    NFTCollections:
+      type: object
+      required:
+        - nft_collections
+      properties:
+        nft_collections:
+          type: array
+          items:
+            $ref: '#/components/schemas/NFTCollection'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
     NFTTransfer:
       type: object
       required:
@@ -2662,134 +2705,50 @@ components:
             type: integer
         trace_id:
           $ref: '#/components/schemas/Hash'
-    RequestError:
-      type: object
-      properties:
-        code:
-          type: integer
-        error:
-          type: string
-    TokenInfo:
+    NFTTransfers:
       type: object
       required:
-        - valid
-        - type
+        - nft_transfers
       properties:
-        valid:
-          type: boolean
-        type:
-          $ref: '#/components/schemas/TokenType'
-        name:
-          type: string
-        symbol:
-          type: string
-        description:
-          type: string
-        image:
-          type: string
-        nft_index:
-          $ref: '#/components/schemas/NFTIndex'
-        extra:
-          type: object
-          additionalProperties: true
-    Trace:
-      type: object
-      required:
-        - mc_seqno_start
-        - mc_seqno_end
-        - start_lt
-        - start_utime
-        - trace_info
-        - is_incomplete
-        - warning
-      properties:
-        trace_id:
-          $ref: '#/components/schemas/Hash'
-        external_hash:
-          $ref: '#/components/schemas/Hash'
-        mc_seqno_start:
-          $ref: '#/components/schemas/Hash'
-        mc_seqno_end:
-          $ref: '#/components/schemas/Hash'
-        start_lt:
-          $ref: '#/components/schemas/LogicalTime'
-        start_utime:
-          $ref: '#/components/schemas/UnixTime'
-        end_lt:
-          $ref: '#/components/schemas/LogicalTime'
-        end_utime:
-          $ref: '#/components/schemas/UnixTime'
-        trace_info:
-          $ref: '#/components/schemas/TraceMeta'
-        is_incomplete:
-          type: boolean
-        warning:
-          type: string
-        actions:
+        nft_transfers:
           type: array
           items:
-            $ref: '#/components/schemas/Action'
-        trace:
-          $ref: '#/components/schemas/TraceNode'
-        transactions_order:
-          type: array
-          items:
-            $ref: '#/components/schemas/Hash'
-        transactions:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/Transaction'
-    TraceClassificationState:
-      type: string
-      enum: [ unclassified,failed,ok,broken ]
-      default: unclassified
-    TraceState:
-      type: string
-      enum: [ complete,pending,broken ]
-    TraceMeta:
+            $ref: '#/components/schemas/NFTTransfer'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    DNSRecord:
       type: object
       required:
-        - trace_state
-        - messages
-        - transactions
-        - pending_messages
-        - classification_state
+        - nft_item_address
+        - domain
       properties:
-        trace_state:
-          $ref: '#/components/schemas/TraceState'
-        messages:
-          type: integer
-          format: int32
-          minimum: 0
-        transactions:
-          type: integer
-          format: int32
-          minimum: 0
-        pending_messages:
-          type: integer
-          format: int32
-          minimum: 0
-        classification_state:
-          $ref: '#/components/schemas/TraceClassificationState'
-    TraceNode:
+        nft_item_address:
+          $ref: '#/components/schemas/AccountAddress'
+        nft_item_owner:
+          $ref: '#/components/schemas/AccountAddress'
+        domain:
+          type: string
+        dns_next_resolver:
+          $ref: '#/components/schemas/AccountAddress'
+        dns_wallet:
+          $ref: '#/components/schemas/AccountAddress'
+        dns_site_adnl:
+          type: string
+        dns_storage_bag_id:
+          type: string
+    DNSRecords:
       type: object
       required:
-        - tx_hash
-        - in_msg_hash
-        - children
+        - records
       properties:
-        tx_hash:
-          $ref: '#/components/schemas/Hash'
-        in_msg_hash:
-          $ref: '#/components/schemas/Hash'
-        transaction:
-          $ref: '#/components/schemas/Transaction'
-        in_msg:
-          $ref: '#/components/schemas/Message'
-        children:
+        records:
           type: array
           items:
-            $ref: '#/components/schemas/TraceNode'
+            $ref: '#/components/schemas/DNSRecord'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
     StoragePhase:
       type: object
       required:
@@ -3393,24 +3352,6 @@ components:
           format: int32
         wallet_type:
           $ref: '#/components/schemas/WalletType'
-    index.JettonWalletMintlessInfo:
-      type: object
-      properties:
-        amount:
-          type: string
-        custom_payload_api_uri:
-          type: array
-          items:
-            type: string
-        expire_at:
-          type: integer
-        start_from:
-          type: integer
-    index.StatusChange:
-      type: object
-      properties:
-        string:
-          type: string
     MasterchainInfo:
       type: object
       required:
@@ -3421,16 +3362,6 @@ components:
           $ref: '#/components/schemas/Block'
         first:
           $ref: '#/components/schemas/Block'
-    Blocks:
-      type: object
-      required:
-        - blocks
-      properties:
-        blocks:
-          type: array
-          maxItems: 1000
-          items:
-            $ref: '#/components/schemas/Block'
     Transactions:
       type: object
       required:
@@ -3457,19 +3388,6 @@ components:
           $ref: '#/components/schemas/AddressBook'
         metadata:
           $ref: '#/components/schemas/Metadata'
-    AccountStatesResponse:
-      type: object
-      required:
-        - accounts
-      properties:
-        accounts:
-          type: array
-          items:
-            $ref: '#/components/schemas/AccountStateFull'
-        address_book:
-          $ref: '#/components/schemas/AddressBook'
-        metadata:
-          $ref: '#/components/schemas/Metadata'
     WalletStates:
       type: object
       required:
@@ -3483,121 +3401,6 @@ components:
           $ref: '#/components/schemas/AddressBook'
         metadata:
           $ref: '#/components/schemas/Metadata'
-    NFTCollections:
-      type: object
-      required:
-        - nft_collections
-      properties:
-        nft_collections:
-          type: array
-          items:
-            $ref: '#/components/schemas/NFTCollection'
-        address_book:
-          $ref: '#/components/schemas/AddressBook'
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-    NFTTransfersResponse:
-      type: object
-      required:
-        - nft_transfers
-      properties:
-        nft_transfers:
-          type: array
-          items:
-            $ref: '#/components/schemas/NFTTransfer'
-        address_book:
-          $ref: '#/components/schemas/AddressBook'
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-    JettonMastersResponse:
-      type: object
-      required:
-        - jetton_masters
-      properties:
-        jetton_masters:
-          type: array
-          items:
-            $ref: '#/components/schemas/JettonMaster'
-        address_book:
-          $ref: '#/components/schemas/AddressBook'
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-    JettonWallets:
-      type: object
-      required:
-        - jetton_wallets
-      properties:
-        jetton_wallets:
-          type: array
-          items:
-            $ref: '#/components/schemas/JettonWallet'
-        address_book:
-          $ref: '#/components/schemas/AddressBook'
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-    JettonTransfersResponse:
-      type: object
-      required:
-        - jetton_transfers
-      properties:
-        jetton_transfers:
-          type: array
-          items:
-            $ref: '#/components/schemas/JettonTransfer'
-        address_book:
-          $ref: '#/components/schemas/AddressBook'
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-    JettonBurnsResponse:
-      type: object
-      required:
-        - jetton_burns
-      properties:
-        jetton_burns:
-          type: array
-          items:
-            $ref: '#/components/schemas/JettonBurn'
-        address_book:
-          $ref: '#/components/schemas/AddressBook'
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-    TracesResponse:
-      type: object
-      required:
-        - traces
-      properties:
-        traces:
-          type: array
-          items:
-            $ref: '#/components/schemas/Trace'
-        address_book:
-          $ref: '#/components/schemas/AddressBook'
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-    Actions:
-      type: object
-      required:
-        - actions
-      properties:
-        actions:
-          type: array
-          items:
-            $ref: '#/components/schemas/Action'
-        address_book:
-          $ref: '#/components/schemas/AddressBook'
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-    DNSRecordsResponse:
-      type: object
-      required:
-        - records
-      properties:
-        records:
-          type: array
-          items:
-            $ref: '#/components/schemas/DNSRecord'
-        address_book:
-          $ref: '#/components/schemas/AddressBook'
     MultisigResponse:
       type: object
       required:
@@ -3631,7 +3434,7 @@ components:
             $ref: '#/components/schemas/VestingInfo'
         address_book:
           $ref: '#/components/schemas/AddressBook'
-    DecodeResponse:
+    DecodeResult:
       type: object
       required:
         - opcodes
@@ -3711,3 +3514,182 @@ components:
         - layerzero_receive
         - layerzero_commit_packet
         - layerzero_dvn_verify
+    Action:
+      type: object
+      required:
+        - action_id
+        - start_lt
+        - end_lt
+        - start_utime
+        - end_utime
+        - trace_end_lt
+        - trace_end_utime
+        - trace_mc_seqno_end
+        - transactions
+        - type
+        - details
+      properties:
+        trace_id:
+          $ref: '#/components/schemas/Hash'
+        action_id:
+          $ref: '#/components/schemas/Hash'
+        start_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        end_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        start_utime:
+          $ref: '#/components/schemas/UnixTime'
+        end_utime:
+          $ref: '#/components/schemas/UnixTime'
+        trace_end_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        trace_end_utime:
+          $ref: '#/components/schemas/UnixTime'
+        trace_mc_seqno_end:
+          type: integer
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Hash'
+        success:
+          type: boolean
+        type:
+          $ref: '#/components/schemas/ActionType'
+        details:
+          type: object
+        trace_external_hash:
+          $ref: '#/components/schemas/Hash'
+        trace_external_hash_norm:
+          $ref: '#/components/schemas/Hash'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountAddress'
+        transactions_full:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+    Actions:
+      type: object
+      required:
+        - actions
+      properties:
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Action'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    TraceClassificationState:
+      type: string
+      enum: [ unclassified,failed,ok,broken ]
+      default: unclassified
+    TraceState:
+      type: string
+      enum: [ complete,pending,broken ]
+    TraceMeta:
+      type: object
+      required:
+        - trace_state
+        - messages
+        - transactions
+        - pending_messages
+        - classification_state
+      properties:
+        trace_state:
+          $ref: '#/components/schemas/TraceState'
+        messages:
+          type: integer
+          format: int32
+          minimum: 0
+        transactions:
+          type: integer
+          format: int32
+          minimum: 0
+        pending_messages:
+          type: integer
+          format: int32
+          minimum: 0
+        classification_state:
+          $ref: '#/components/schemas/TraceClassificationState'
+    TraceNode:
+      type: object
+      required:
+        - tx_hash
+        - in_msg_hash
+        - children
+      properties:
+        tx_hash:
+          $ref: '#/components/schemas/Hash'
+        in_msg_hash:
+          $ref: '#/components/schemas/Hash'
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+        in_msg:
+          $ref: '#/components/schemas/Message'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/TraceNode'
+    Trace:
+      type: object
+      required:
+        - mc_seqno_start
+        - mc_seqno_end
+        - start_lt
+        - start_utime
+        - trace_info
+        - is_incomplete
+        - warning
+      properties:
+        trace_id:
+          $ref: '#/components/schemas/Hash'
+        external_hash:
+          $ref: '#/components/schemas/Hash'
+        mc_seqno_start:
+          $ref: '#/components/schemas/Hash'
+        mc_seqno_end:
+          $ref: '#/components/schemas/Hash'
+        start_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        start_utime:
+          $ref: '#/components/schemas/UnixTime'
+        end_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        end_utime:
+          $ref: '#/components/schemas/UnixTime'
+        trace_info:
+          $ref: '#/components/schemas/TraceMeta'
+        is_incomplete:
+          type: boolean
+        warning:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Action'
+        trace:
+          $ref: '#/components/schemas/TraceNode'
+        transactions_order:
+          type: array
+          items:
+            $ref: '#/components/schemas/Hash'
+        transactions:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Transaction'
+    Traces:
+      type: object
+      required:
+        - traces
+      properties:
+        traces:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trace'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
