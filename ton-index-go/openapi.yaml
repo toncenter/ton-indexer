@@ -140,6 +140,7 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
+
   /api/v3/actions:
     get:
       tags:
@@ -155,32 +156,36 @@ paths:
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/Hash'
         - name: msg_hash
           in: query
           description: Find actions by message hash.
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/Hash'
         - name: action_id
           in: query
-          description: Find actions by the action_id.
+          description: Find actions by the `action_id`.
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/Hash'
         - name: trace_id
           in: query
-          description: Find actions by the trace_id.
+          description: Find actions by the `trace_id`.
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/Hash'
         - name: mc_seqno
           in: query
           description: Query actions of traces which was completed in masterchain block
@@ -188,6 +193,7 @@ paths:
           schema:
             type: integer
             format: int32
+            minimum: 0
         - $ref: '#/components/parameters/StartUtime'
         - $ref: '#/components/parameters/EndUtime'
         - $ref: '#/components/parameters/StartLt'
@@ -198,6 +204,7 @@ paths:
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
               $ref: '#/components/schemas/ActionType'
         - name: exclude_action_type
@@ -206,6 +213,7 @@ paths:
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
               $ref: '#/components/schemas/ActionType'
         - $ref: '#/components/parameters/SupportedActionTypes'
@@ -256,8 +264,9 @@ paths:
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/Hash'
         - $ref: '#/components/parameters/SupportedActionTypes'
         - name: include_transactions
           in: query
@@ -297,8 +306,9 @@ paths:
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/Hash'
       responses:
         "200":
           description: OK
@@ -330,24 +340,27 @@ paths:
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/Hash'
         - name: tx_hash
           in: query
           description: Find trace by transaction hash.
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/Hash'
         - name: msg_hash
           in: query
           description: Find trace by message hash.
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/Hash'
         - name: mc_seqno
           in: query
           description: Query traces that was completed in masterchain block with given
@@ -355,6 +368,7 @@ paths:
           schema:
             type: integer
             format: int32
+            minimum: 0
         - $ref: '#/components/parameters/StartUtime'
         - $ref: '#/components/parameters/EndUtime'
         - $ref: '#/components/parameters/StartLt'
@@ -371,8 +385,9 @@ paths:
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/ActionType'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
         - $ref: '#/components/parameters/Sort'
@@ -392,6 +407,7 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
+
   /api/v3/addressInformation:
     get:
       tags:
@@ -489,34 +505,44 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
-  /api/v3/adjacentTransactions:
-    get:
+  /api/v3/runGetMethod:
+    post:
       tags:
-        - blockchain
-      summary: Get Adjacent Transactions
-      description: Get parent and/or children for specified transaction.
-      operationId: api_v3_get_adjacent_transactions
-      parameters:
-        - name: hash
-          in: query
-          description: Transaction hash.
-          schema:
-            type: string
-        - name: direction
-          in: query
-          description: Direction of message.
-          schema:
-            type: string
-            enum:
-              - in
-              - out
+        - api/v2
+      summary: Run Get-Method
+      description: |-
+        Run get method of smart contract. Stack supports only `num`, `cell` and `slice` types:
+        ```
+        [
+        {
+        "type": "num",
+        "value": "0x12a"
+        },
+        {
+        "type": "cell",
+        "value": "te6..." // base64 encoded boc with cell
+        },
+        {
+        "type": "slice",
+        "value": "te6..." // base64 encoded boc with slice
+        }
+        ]
+        ```
+      operationId: api_v3_post_v2_rungetmethod
+      requestBody:
+        description: Run Get-method request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2RunGetMethodRequest'
+        required: true
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Transactions'
+                $ref: '#/components/schemas/V2RunGetMethodRequest'
         "400":
           description: Bad Request
           content:
@@ -526,6 +552,46 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
+  /api/v3/walletInformation:
+    get:
+      tags:
+        - api/v2
+      summary: Get Wallet Information
+      description: "Get wallet smart contract information. The following wallets are\
+        \ supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`,\
+        \ `v4r2`, `v5beta`, `v5r1`. In case the account is not a wallet error code\
+        \ 409 is returned."
+      operationId: api_v3_get_wallet_information
+      parameters:
+        - name: address
+          in: query
+          description: Account address in any form.
+          required: true
+          schema:
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: use_v2
+          in: query
+          description: Use method from api/v2. Not recommended
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2WalletInformation'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
   /api/v3/blocks:
     get:
       tags:
@@ -534,39 +600,26 @@ paths:
       description: Returns blocks by specified filters.
       operationId: api_v3_get_blocks
       parameters:
-        - name: workchain
-          in: query
-          description: Block workchain.
-          schema:
-            type: integer
-            format: int32
-        - name: shard
-          in: query
-          description: "Block shard id. Must be sent with *workchain*. Example: `8000000000000000`."
-          schema:
-            type: string
-        - name: seqno
-          in: query
-          description: Block block seqno. Must be sent with *workchain* and *shard*.
-          schema:
-            type: integer
-            format: int32
+        - $ref: '#/components/parameters/Workchain'
+        - $ref: '#/components/parameters/Shard'
+        - $ref: '#/components/parameters/Seqno'
         - name: root_hash
           in: query
           description: Block root hash.
           schema:
-            type: string
+            $ref: '#/components/schemas/Hash'
         - name: file_hash
           in: query
           description: Block file hash.
           schema:
-            type: string
+            $ref: '#/components/schemas/Hash'
         - name: mc_seqno
           in: query
           description: Masterchain block seqno
           schema:
             type: integer
             format: int32
+            minimum: 0
         - $ref: '#/components/parameters/StartUtime'
         - $ref: '#/components/parameters/EndUtime'
         - $ref: '#/components/parameters/StartLt'
@@ -590,6 +643,351 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
+  /api/v3/masterchainBlockShardState:
+    get:
+      tags:
+        - blockchain
+      summary: Get masterchain block shard state
+      description: Get masterchain block shard state. Same as /api/v2/shards.
+      operationId: api_v3_get_masterchainBlockShardState
+      parameters:
+        - $ref: '#/components/parameters/SeqnoInMasterchain'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/masterchainBlockShards:
+    get:
+      tags:
+        - blockchain
+      summary: Get masterchain block shard state
+      description: Returns all workchain blocks, that appeared after previous masterchain block.
+      operationId: api_v3_get_masterchainBlockShards
+      parameters:
+        - $ref: '#/components/parameters/SeqnoInMasterchain'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/masterchainInfo:
+    get:
+      tags:
+        - blockchain
+      summary: Get Masterchain Info
+      description: Get first and last indexed block
+      operationId: api_v3_get_masterchain_info
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterchainInfo'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/messages:
+    get:
+      tags:
+        - blockchain
+      summary: Get messages
+      description: Get messages by specified filters.
+      operationId: api_v3_get_messages
+      parameters:
+        - name: msg_hash
+          in: query
+          description: "Message hash. Acceptable in hex, base64 and base64url forms."
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+        - name: body_hash
+          in: query
+          description: Hash of message body.
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - name: source
+          in: query
+          description: "The source account address. Can be sent in hex, base64 or base64url\
+          \ form. Use value `null` to get external messages."
+          schema:
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: destination
+          in: query
+          description: "The destination account address. Can be sent in hex, base64\
+          \ or base64url form. Use value `null` to get log messages."
+          schema:
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: opcode
+          in: query
+          description: Opcode of message in hex or signed 32-bit decimal form.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/StartUtime'
+        - $ref: '#/components/parameters/EndUtime'
+        - $ref: '#/components/parameters/StartLt'
+        - $ref: '#/components/parameters/EndLt'
+        - $ref: '#/components/parameters/MessageDirection'
+        - name: exclude_externals
+          in: query
+          description: Exclude external messages.
+          schema:
+            type: boolean
+        - name: only_externals
+          in: query
+          description: Return only external messages.
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Messages'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/pendingTransactions:
+    get:
+      tags:
+        - blockchain
+      summary: Get pending transactions
+      description: Get pending transactions by specified filter.
+      operationId: api_v3_get_pending_transactions
+      parameters:
+        - $ref: '#/components/parameters/Account'
+        - name: trace_id
+          in: query
+          description: Find transactions by trace id.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/transactions:
+    get:
+      tags:
+        - blockchain
+      summary: Get transactions
+      description: Get transactions by specified filter.
+      operationId: api_v3_get_transactions
+      parameters:
+        - $ref: '#/components/parameters/Workchain'
+        - $ref: '#/components/parameters/Shard'
+        - $ref: '#/components/parameters/Seqno'
+        - name: mc_seqno
+          in: query
+          description: Masterchain block seqno.
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+        - $ref: '#/components/parameters/Account'
+        - name: exclude_account
+          in: query
+          description: Exclude transactions on specified account addresses.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: hash
+          in: query
+          description: Transaction hash.
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - name: lt
+          in: query
+          description: Transaction lt.
+          schema:
+            $ref: '#/components/schemas/LogicalTime'
+        - $ref: '#/components/parameters/StartUtime'
+        - $ref: '#/components/parameters/EndUtime'
+        - $ref: '#/components/parameters/StartLt'
+        - $ref: '#/components/parameters/EndLt'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/transactionsByMasterchainBlock:
+    get:
+      tags:
+        - blockchain
+      summary: Get transactions by Masterchain block
+      description: Returns transactions from masterchain block and from all shards.
+      operationId: api_v3_get_transactions_by_masterchain_block
+      parameters:
+        - $ref: '#/components/parameters/SeqnoInMasterchain'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/transactionsByMessage:
+    get:
+      tags:
+        - blockchain
+      summary: Get transactions by message
+      description: Get transactions whose inbound/outbound message has the specified
+        hash. \
+      operationId: api_v3_get_transactions_by_message
+      parameters:
+        - name: msg_hash
+          in: query
+          description: "Message hash. Acceptable in hex, base64 and base64url forms."
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - name: body_hash
+          in: query
+          description: Hash of message body.
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - name: opcode
+          in: query
+          description: Opcode of message in hex or signed 32-bit decimal form.
+          schema:
+            $ref: '#/components/schemas/Opcode'
+        - $ref: '#/components/parameters/MessageDirection'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/adjacentTransactions:
+    get:
+      tags:
+        - blockchain
+      summary: Get Adjacent Transactions
+      description: Get parent and/or children for specified transaction.
+      operationId: api_v3_get_adjacent_transactions
+      parameters:
+        - name: hash
+          in: query
+          description: Transaction hash.
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - $ref: '#/components/parameters/MessageDirection'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
   /api/v3/decode:
     get:
       tags:
@@ -606,14 +1004,16 @@ paths:
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/Opcode'
         - name: bodies
           in: query
           description: List of message bodies to decode (base64 or hex)
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
               type: string
       responses:
@@ -663,6 +1063,7 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
+
   /api/v3/dns/records:
     get:
       tags:
@@ -702,6 +1103,7 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
+
   /api/v3/jetton/burns:
     get:
       tags:
@@ -721,14 +1123,12 @@ paths:
           description: "Jetton wallet address in any form. Max: 1000."
           style: form
           schema:
-            type: array
-            items:
-              type: string
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
         - name: jetton_master
           in: query
           description: Jetton master address in any form.
           schema:
-            type: string
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
         - $ref: '#/components/parameters/StartUtime'
         - $ref: '#/components/parameters/EndUtime'
         - $ref: '#/components/parameters/StartLt'
@@ -805,30 +1205,23 @@ paths:
           description: Address of jetton wallet owner in any form. Max 1000
           style: form
           schema:
-            type: array
-            items:
-              type: string
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
         - name: jetton_wallet
           in: query
           description: "Jetton wallet address in any form. Max: 1000."
           style: form
           schema:
-            type: array
-            items:
-              type: string
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
         - name: jetton_master
           in: query
           description: Jetton master address in any form.
           schema:
-            type: string
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
         - name: direction
           in: query
           description: Direction of transfer. *Note:* applied only with owner_address.
           schema:
-            type: string
-            enum:
-              - in
-              - out
+            $ref: '#/components/schemas/MessageDirection'
         - $ref: '#/components/parameters/StartUtime'
         - $ref: '#/components/parameters/EndUtime'
         - $ref: '#/components/parameters/StartLt'
@@ -871,17 +1264,13 @@ paths:
           description: "Address of Jetton wallet's owner in any form. Max: 1000."
           style: form
           schema:
-            type: array
-            items:
-              type: string
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
         - name: jetton_address
           in: query
           description: Jetton Master in any form.
           style: form
           schema:
-            type: array
-            items:
-              type: string
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
         - name: exclude_zero_balance
           in: query
           description: Exclude jetton wallets with 0 balance.
@@ -901,7 +1290,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JettonWalletsResponse'
+                $ref: '#/components/schemas/JettonWallets'
         "400":
           description: Bad Request
           content:
@@ -911,173 +1300,7 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
-  /api/v3/masterchainBlockShardState:
-    get:
-      tags:
-        - blockchain
-      summary: Get masterchain block shard state
-      description: Get masterchain block shard state. Same as /api/v2/shards.
-      operationId: api_v3_get_masterchainBlockShardState
-      parameters:
-        - name: seqno
-          in: query
-          description: Masterchain block seqno.
-          required: true
-          schema:
-            type: integer
-            format: int32
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Transactions'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RequestError'
-      security:
-        - APIKeyHeader: [ ]
-        - APIKeyQuery: [ ]
-  /api/v3/masterchainBlockShards:
-    get:
-      tags:
-        - blockchain
-      summary: Get masterchain block shard state
-      description: "Returns all worchain blocks, that appeared after previous masterchain\
-        \ block."
-      operationId: api_v3_get_masterchainBlockShards
-      parameters:
-        - name: seqno
-          in: query
-          description: Masterchain block seqno.
-          required: true
-          schema:
-            type: integer
-            format: int32
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Offset'
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Transactions'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RequestError'
-      security:
-        - APIKeyHeader: [ ]
-        - APIKeyQuery: [ ]
-  /api/v3/masterchainInfo:
-    get:
-      tags:
-        - blockchain
-      summary: Get Masterchain Info
-      description: Get first and last indexed block
-      operationId: api_v3_get_masterchain_info
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MasterchainInfo'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RequestError'
-      security:
-        - APIKeyHeader: [ ]
-        - APIKeyQuery: [ ]
-  /api/v3/messages:
-    get:
-      tags:
-        - blockchain
-      summary: Get messages
-      description: Get messages by specified filters.
-      operationId: api_v3_get_messages
-      parameters:
-        - name: msg_hash
-          in: query
-          description: "Message hash. Acceptable in hex, base64 and base64url forms."
-          style: form
-          schema:
-            type: array
-            items:
-              type: string
-        - name: body_hash
-          in: query
-          description: Hash of message body.
-          schema:
-            type: string
-        - name: source
-          in: query
-          description: "The source account address. Can be sent in hex, base64 or base64url\
-          \ form. Use value `null` to get external messages."
-          schema:
-            type: string
-        - name: destination
-          in: query
-          description: "The destination account address. Can be sent in hex, base64\
-          \ or base64url form. Use value `null` to get log messages."
-          schema:
-            type: string
-        - name: opcode
-          in: query
-          description: Opcode of message in hex or signed 32-bit decimal form.
-          schema:
-            type: string
-        - $ref: '#/components/parameters/StartUtime'
-        - $ref: '#/components/parameters/EndUtime'
-        - $ref: '#/components/parameters/StartLt'
-        - $ref: '#/components/parameters/EndLt'
-        - name: direction
-          in: query
-          description: Direction of message.
-          schema:
-            type: string
-            enum:
-              - in
-              - out
-        - name: exclude_externals
-          in: query
-          description: Exclude external messages.
-          schema:
-            type: boolean
-        - name: only_externals
-          in: query
-          description: Return only external messages.
-          schema:
-            type: boolean
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Offset'
-        - $ref: '#/components/parameters/Sort'
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Messages'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RequestError'
-      security:
-        - APIKeyHeader: [ ]
-        - APIKeyQuery: [ ]
+
   /api/v3/multisig/orders:
     get:
       tags:
@@ -1094,12 +1317,10 @@ paths:
             $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
         - name: multisig_address
           in: query
-          description: "Address of corresponding multisig. Max: 1024."
+          description: "Address of corresponding multisig. Max: 1000."
           style: form
           schema:
-            type: array
-            items:
-              type: string
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
         - name: parse_actions
           in: query
           description: Parser order actions
@@ -1115,7 +1336,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MultisigOrderResponse'
+                $ref: '#/components/schemas/MultisigOrders'
         "400":
           description: Bad Request
           content:
@@ -1172,6 +1393,7 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
+
   /api/v3/nft/collections:
     get:
       tags:
@@ -1182,20 +1404,16 @@ paths:
       parameters:
         - name: collection_address
           in: query
-          description: "Collection address in any form. Max: 1024."
+          description: "Collection address in any form. Max: 1000."
           style: form
           schema:
-            type: array
-            items:
-              type: string
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
         - name: owner_address
           in: query
-          description: "Address of collection owner in any form. Max: 1024."
+          description: "Address of collection owner in any form. Max: 1000."
           style: form
           schema:
-            type: array
-            items:
-              type: string
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
       responses:
@@ -1204,7 +1422,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NFTCollectionsResponse'
+                $ref: '#/components/schemas/NFTCollections'
         "400":
           description: Bad Request
           content:
@@ -1311,10 +1529,7 @@ paths:
           in: query
           description: Direction of transfer.
           schema:
-            type: string
-            enum:
-              - in
-              - out
+            $ref: '#/components/schemas/MessageDirection'
         - $ref: '#/components/parameters/StartUtime'
         - $ref: '#/components/parameters/EndUtime'
         - $ref: '#/components/parameters/StartLt'
@@ -1338,125 +1553,7 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
-  /api/v3/pendingTransactions:
-    get:
-      tags:
-        - blockchain
-      summary: Get pending transactions
-      description: Get pending transactions by specified filter.
-      operationId: api_v3_get_pending_transactions
-      parameters:
-        - $ref: '#/components/parameters/Account'
-        - name: trace_id
-          in: query
-          description: Find transactions by trace id.
-          style: form
-          schema:
-            type: array
-            items:
-              type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Transactions'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RequestError'
-      security:
-        - APIKeyHeader: [ ]
-        - APIKeyQuery: [ ]
-  /api/v3/runGetMethod:
-    post:
-      tags:
-        - api/v2
-      summary: Run Get-Method
-      description: |-
-        Run get method of smart contract. Stack supports only `num`, `cell` and `slice` types:
-        ```
-        [
-        {
-        "type": "num",
-        "value": "0x12a"
-        },
-        {
-        "type": "cell",
-        "value": "te6..." // base64 encoded boc with cell
-        },
-        {
-        "type": "slice",
-        "value": "te6..." // base64 encoded boc with slice
-        }
-        ]
-        ```
-      operationId: api_v3_post_v2_rungetmethod
-      requestBody:
-        description: Run Get-method request
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/V2RunGetMethodRequest'
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2RunGetMethodRequest'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RequestError'
-      security:
-        - APIKeyHeader: [ ]
-        - APIKeyQuery: [ ]
-  /api/v3/walletInformation:
-    get:
-      tags:
-        - api/v2
-      summary: Get Wallet Information
-      description: "Get wallet smart contract information. The following wallets are\
-        \ supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`,\
-        \ `v4r2`, `v5beta`, `v5r1`. In case the account is not a wallet error code\
-        \ 409 is returned."
-      operationId: api_v3_get_wallet_information
-      parameters:
-        - name: address
-          in: query
-          description: Account address in any form.
-          required: true
-          schema:
-            $ref: '#/components/schemas/AccountAddressAnyFormat'
-        - name: use_v2
-          in: query
-          description: Use method from api/v2. Not recommended
-          schema:
-            type: boolean
-            default: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2WalletInformation'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RequestError'
-      security:
-        - APIKeyHeader: [ ]
-        - APIKeyQuery: [ ]
+
   /api/v3/topAccountsByBalance:
     get:
       tags:
@@ -1485,164 +1582,7 @@ paths:
       security:
         - APIKeyHeader: [ ]
         - APIKeyQuery: [ ]
-  /api/v3/transactions:
-    get:
-      tags:
-        - blockchain
-      summary: Get transactions
-      description: Get transactions by specified filter.
-      operationId: api_v3_get_transactions
-      parameters:
-        - name: workchain
-          in: query
-          description: Block workchain.
-          schema:
-            type: integer
-            format: int32
-        - name: shard
-          in: query
-          description: "Block shard id. Must be sent with *workchain*. Example: `8000000000000000`."
-          schema:
-            type: string
-        - name: seqno
-          in: query
-          description: Block block seqno. Must be sent with *workchain* and *shard*.
-          schema:
-            type: integer
-            format: int32
-        - name: mc_seqno
-          in: query
-          description: Masterchain block seqno.
-          schema:
-            type: integer
-            format: int32
-        - $ref: '#/components/parameters/Account'
-        - name: exclude_account
-          in: query
-          description: Exclude transactions on specified account addresses.
-          style: form
-          schema:
-            type: array
-            items:
-              type: string
-        - name: hash
-          in: query
-          description: Transaction hash.
-          schema:
-            type: string
-        - name: lt
-          in: query
-          description: Transaction lt.
-          schema:
-            type: integer
-            format: int64
-        - $ref: '#/components/parameters/StartUtime'
-        - $ref: '#/components/parameters/EndUtime'
-        - $ref: '#/components/parameters/StartLt'
-        - $ref: '#/components/parameters/EndLt'
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Offset'
-        - $ref: '#/components/parameters/Sort'
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Transactions'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RequestError'
-      security:
-        - APIKeyHeader: [ ]
-        - APIKeyQuery: [ ]
-  /api/v3/transactionsByMasterchainBlock:
-    get:
-      tags:
-        - blockchain
-      summary: Get transactions by Masterchain block
-      description: Returns transactions from masterchain block and from all shards.
-      operationId: api_v3_get_transactions_by_masterchain_block
-      parameters:
-        - name: seqno
-          in: query
-          description: Masterchain block seqno.
-          required: true
-          schema:
-            type: integer
-            format: int32
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Offset'
-        - $ref: '#/components/parameters/Sort'
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Transactions'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RequestError'
-      security:
-        - APIKeyHeader: [ ]
-        - APIKeyQuery: [ ]
-  /api/v3/transactionsByMessage:
-    get:
-      tags:
-        - blockchain
-      summary: Get transactions by message
-      description: Get transactions whose inbound/outbound message has the specified
-        hash. \
-      operationId: api_v3_get_transactions_by_message
-      parameters:
-        - name: msg_hash
-          in: query
-          description: "Message hash. Acceptable in hex, base64 and base64url forms."
-          schema:
-            type: string
-        - name: body_hash
-          in: query
-          description: Hash of message body.
-          schema:
-            type: string
-        - name: opcode
-          in: query
-          description: Opcode of message in hex or signed 32-bit decimal form.
-          schema:
-            type: string
-        - name: direction
-          in: query
-          description: Direction of message.
-          schema:
-            type: string
-            enum:
-              - in
-              - out
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Offset'
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Transactions'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RequestError'
-      security:
-        - APIKeyHeader: [ ]
-        - APIKeyQuery: [ ]
+
   /api/v3/vesting:
     get:
       tags:
@@ -1657,16 +1597,18 @@ paths:
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/AccountAddressAnyFormat'
         - name: wallet_address
           in: query
           description: "Wallet address to filter by owner or sender. Max: 1000."
           style: form
           schema:
             type: array
+            maxItems: 1000
             items:
-              type: string
+              $ref: '#/components/schemas/AccountAddressAnyFormat'
         - name: check_whitelist
           in: query
           description: Check if wallet address is in whitelist.
@@ -1681,7 +1623,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VestingContractsResponse'
+                $ref: '#/components/schemas/VestingContracts'
         "400":
           description: Bad Request
           content:
@@ -1702,6 +1644,40 @@ components:
       name: api_key
       in: query
   parameters:
+    Workchain:
+      name: workchain
+      in: query
+      description: Block workchain.
+      schema:
+        $ref: '#/components/schemas/WorkchainId'
+    Shard:
+      name: shard
+      in: query
+      description: 'Block shard id. Must be sent with `workchain`. Example: `8000000000000000`.'
+      schema:
+        $ref: '#/components/schemas/ShardId'
+    Seqno:
+      name: seqno
+      in: query
+      description: Block block seqno. Must be sent with `workchain` and `shard`.
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+    SeqnoInMasterchain:
+      name: seqno
+      in: query
+      description: Masterchain block block seqno.
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+    MessageDirection:
+      name: direction
+      in: query
+      description: Direction of message.
+      schema:
+        $ref: '#/components/schemas/MessageDirection'
     StartUtime:
       name: start_utime
       in: query
@@ -1779,6 +1755,12 @@ components:
         - asc
         - desc
       default: desc
+    MessageDirection:
+      description: Direction of message.
+      type: string
+      enum:
+        - in
+        - out
     AccountAddress:
       type: string
       description: Account address in Base64 encoded format
@@ -1787,6 +1769,7 @@ components:
     RawAccountAddress:
       type: string
       description: Raw account address in hex format with workchain prefix
+      format: address
       example: "0:0ab558f4db84fd31f61a273535c670c091ffc619b1cdbbe5769a0bf28d3b8fea"
     AccountAddressAnyFormat:
       description: Account address in any format (hex, base64, base64url)
@@ -2200,20 +2183,23 @@ components:
           minimum: 0
     DNSRecord:
       type: object
+      required:
+        - nft_item_address
+        - domain
       properties:
-        dns_next_resolver:
+        nft_item_address:
+          $ref: '#/components/schemas/AccountAddress'
+        nft_item_owner:
+          $ref: '#/components/schemas/AccountAddress'
+        domain:
           type: string
+        dns_next_resolver:
+          $ref: '#/components/schemas/AccountAddress'
+        dns_wallet:
+          $ref: '#/components/schemas/AccountAddress'
         dns_site_adnl:
           type: string
         dns_storage_bag_id:
-          type: string
-        dns_wallet:
-          type: string
-        domain:
-          type: string
-        nft_item_address:
-          type: string
-        nft_item_owner:
           type: string
     DecodeRequest:
       type: object
@@ -2228,130 +2214,173 @@ components:
             type: string
     JettonBurn:
       type: object
+      required:
+        - query_id
+        - owner
+        - jetton_wallet
+        - jetton_master
+        - transaction_hash
+        - transaction_lt
+        - transaction_now
+        - transaction_aborted
+        - amount
       properties:
-        amount:
-          type: string
-        custom_payload:
-          type: string
-        decoded_custom_payload:
-          type: array
-          items:
-            type: integer
-        jetton_master:
-          type: string
-        jetton_wallet:
-          type: string
-        owner:
-          type: string
         query_id:
-          type: string
-        response_destination:
-          type: string
-        trace_id:
-          type: string
-        transaction_aborted:
-          type: boolean
+          type: integer
+          format: int64
+        owner:
+          $ref: '#/components/schemas/AccountAddress'
+        jetton_wallet:
+          $ref: '#/components/schemas/AccountAddress'
+        jetton_master:
+          $ref: '#/components/schemas/AccountAddress'
         transaction_hash:
           $ref: '#/components/schemas/Hash'
         transaction_lt:
           $ref: '#/components/schemas/LogicalTime'
         transaction_now:
           $ref: '#/components/schemas/UnixTime'
+        transaction_aborted:
+          type: boolean
+        amount:
+          $ref: '#/components/schemas/Coins'
+        response_destination:
+          $ref: '#/components/schemas/AccountAddress'
+        custom_payload:
+          type: string
+        decoded_custom_payload:
+          type: array
+          items:
+            type: integer
+        trace_id:
+          $ref: '#/components/schemas/Hash'
     JettonMaster:
       type: object
+      required:
+        - address
+        - total_supply
+        - mintable
+        - jetton_content
+        - jetton_wallet_code_hash
+        - code_hash
+        - data_hash
+        - last_transaction_lt
       properties:
         address:
-          type: string
+          $ref: '#/components/schemas/AccountAddress'
+        total_supply:
+          $ref: '#/components/schemas/Coins'
+        mintable:
+          type: boolean
         admin_address:
-          type: string
-        code_hash:
-          $ref: '#/components/schemas/Hash'
-        data_hash:
-          $ref: '#/components/schemas/Hash'
+          $ref: '#/components/schemas/AccountAddress'
         jetton_content:
           type: object
           additionalProperties: true
         jetton_wallet_code_hash:
           $ref: '#/components/schemas/Hash'
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+        data_hash:
+          $ref: '#/components/schemas/Hash'
         last_transaction_lt:
           $ref: '#/components/schemas/LogicalTime'
-        mintable:
-          type: boolean
-        total_supply:
-          type: string
     JettonTransfer:
       type: object
+      required:
+        - query_id
+        - source
+        - destination
+        - amount
+        - source_wallet
+        - jetton_master
+        - transaction_hash
+        - transaction_lt
+        - transaction_now
+        - transaction_aborted
       properties:
-        amount:
-          type: string
-        custom_payload:
-          type: string
-        decoded_custom_payload:
-          type: array
-          items:
-            type: integer
-        decoded_forward_payload:
-          type: array
-          items:
-            type: integer
-        destination:
-          type: string
-        forward_payload:
-          type: string
-        forward_ton_amount:
-          type: string
-        jetton_master:
-          type: string
         query_id:
-          type: string
-        response_destination:
-          type: string
+          type: integer
+          format: int64
         source:
-          type: string
+          $ref: '#/components/schemas/AccountAddress'
+        destination:
+          $ref: '#/components/schemas/AccountAddress'
+        amount:
+          $ref: '#/components/schemas/Coins'
         source_wallet:
-          type: string
-        trace_id:
-          type: string
-        transaction_aborted:
-          type: boolean
+          $ref: '#/components/schemas/AccountAddress'
+        jetton_master:
+          $ref: '#/components/schemas/AccountAddress'
         transaction_hash:
           $ref: '#/components/schemas/Hash'
         transaction_lt:
           $ref: '#/components/schemas/LogicalTime'
         transaction_now:
           $ref: '#/components/schemas/UnixTime'
+        transaction_aborted:
+          type: boolean
+        response_destination:
+          $ref: '#/components/schemas/AccountAddress'
+        custom_payload:
+          type: string
+        decoded_custom_payload:
+          type: array
+          items:
+            type: integer
+        forward_ton_amount:
+          $ref: '#/components/schemas/Coins'
+        forward_payload:
+          type: string
+        decoded_forward_payload:
+          type: array
+          items:
+            type: integer
+        trace_id:
+          $ref: '#/components/schemas/Hash'
     JettonWallet:
       type: object
+      required:
+        - address
+        - balance
+        - owner
+        - jetton
+        - last_transaction_lt
       properties:
         address:
-          type: string
+          $ref: '#/components/schemas/AccountAddress'
         balance:
-          type: string
+          $ref: '#/components/schemas/Coins'
+        owner:
+          $ref: '#/components/schemas/AccountAddress'
+        jetton:
+          $ref: '#/components/schemas/AccountAddress'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
         code_hash:
           $ref: '#/components/schemas/Hash'
         data_hash:
           $ref: '#/components/schemas/Hash'
-        jetton:
-          type: string
-        last_transaction_lt:
-          $ref: '#/components/schemas/LogicalTime'
         mintless_info:
           $ref: '#/components/schemas/JettonWalletMintlessInfo'
-        owner:
-          type: string
     JettonWalletMintlessInfo:
       type: object
+      required:
+        - amount
+        - start_from
+        - expire_at
+        - custom_payload_api_uri
       properties:
         amount:
-          type: string
+          $ref: '#/components/schemas/Coins'
+        start_from:
+          $ref: '#/components/schemas/UnixTime'
+        expire_at:
+          $ref: '#/components/schemas/UnixTime'
         custom_payload_api_uri:
           type: array
           items:
             type: string
-        expire_at:
-          type: integer
-        start_from:
-          type: integer
     Message:
       required:
         - hash
@@ -2427,84 +2456,108 @@ components:
           description: The total number of bits in unique cells.
     Multisig:
       type: object
+      required:
+        - address
+        - signers
+        - proposers
+        - last_transaction_lt
+        - orders
       properties:
         address:
+          $ref: '#/components/schemas/AccountAddress'
+        next_order_seqno:
           type: string
+        threshold:
+          type: integer
+          format: int32
+        signers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountAddress'
+        proposers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountAddress'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
         code_hash:
           $ref: '#/components/schemas/Hash'
         data_hash:
           $ref: '#/components/schemas/Hash'
-        last_transaction_lt:
-          $ref: '#/components/schemas/LogicalTime'
-        next_order_seqno:
-          type: string
         orders:
           type: array
           items:
             $ref: '#/components/schemas/MultisigOrder'
-        proposers:
-          type: array
-          items:
-            type: string
-        signers:
-          type: array
-          items:
-            type: string
-        threshold:
-          type: integer
     MultisigOrder:
       type: object
+      required:
+        - address
+        - multisig_address
+        - signers
+        - last_transaction_lt
+        - actions
       properties:
-        actions:
-          type: array
-          items:
-            $ref: '#/components/schemas/OrderAction'
         address:
+          $ref: '#/components/schemas/AccountAddress'
+        multisig_address:
+          $ref: '#/components/schemas/AccountAddress'
+        order_seqno:
           type: string
+        threshold:
+          type: integer
+          format: int32
+        sent_for_execution:
+          type: boolean
         approvals_mask:
           type: string
         approvals_num:
           type: integer
-        code_hash:
-          type: string
-        data_hash:
-          type: string
+          format: int32
         expiration_date:
-          type: integer
-        last_transaction_lt:
-          $ref: '#/components/schemas/LogicalTime'
-        multisig_address:
-          type: string
+          $ref: '#/components/schemas/UnixTime'
         order_boc:
           type: string
-        order_seqno:
-          type: string
-        sent_for_execution:
-          type: boolean
+          format: bytes
+          contentEncoding: base64
         signers:
           type: array
           items:
-            type: string
-        threshold:
-          type: integer
-    NFTCollection:
-      type: object
-      properties:
-        address:
-          type: string
+            $ref: '#/components/schemas/AccountAddress'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
         code_hash:
           $ref: '#/components/schemas/Hash'
+        data_hash:
+          $ref: '#/components/schemas/Hash'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderAction'
+    NFTCollection:
+      type: object
+      required:
+        - address
+        - last_transaction_lt
+        - next_item_index
+        - collection_content
+        - data_hash
+        - code_hash
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddress'
+        owner_address:
+          $ref: '#/components/schemas/AccountAddress'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        next_item_index:
+          $ref: '#/components/schemas/NFTIndex'
         collection_content:
           type: object
           additionalProperties: true
         data_hash:
           $ref: '#/components/schemas/Hash'
-        last_transaction_lt:
-          $ref: '#/components/schemas/LogicalTime'
-        next_item_index:
-          type: string
-        owner_address:
-          type: string
+        code_hash:
+          $ref: '#/components/schemas/Hash'
     NFTIndex:
       type: string
       format: bigint
@@ -2532,7 +2585,7 @@ components:
         data_hash:
           $ref: '#/components/schemas/Hash'
         index:
-          type: string
+          $ref: '#/components/schemas/NFTIndex'
         init:
           type: boolean
         last_transaction_lt:
@@ -2558,43 +2611,57 @@ components:
             $ref: '#/components/schemas/NFTItem'
     NFTTransfer:
       type: object
+      required:
+        - query_id
+        - nft_address
+        - nft_collection
+        - transaction_hash
+        - transaction_lt
+        - transaction_now
+        - transaction_aborted
+        - old_owner
+        - new_owner
       properties:
-        custom_payload:
-          type: string
-        decoded_custom_payload:
-          type: array
-          items:
-            type: integer
-        decoded_forward_payload:
-          type: array
-          items:
-            type: integer
-        forward_amount:
-          type: string
-        forward_payload:
-          type: string
-        new_owner:
-          type: string
-        nft_address:
-          type: string
-        nft_collection:
-          type: string
-        old_owner:
-          type: string
         query_id:
           type: string
-        response_destination:
-          type: string
-        trace_id:
-          type: string
-        transaction_aborted:
-          type: boolean
+        nft_address:
+          $ref: '#/components/schemas/AccountAddress'
+        nft_collection:
+          $ref: '#/components/schemas/AccountAddress'
         transaction_hash:
           $ref: '#/components/schemas/Hash'
         transaction_lt:
           $ref: '#/components/schemas/LogicalTime'
         transaction_now:
           $ref: '#/components/schemas/UnixTime'
+        transaction_aborted:
+          type: boolean
+        old_owner:
+          $ref: '#/components/schemas/AccountAddress'
+        new_owner:
+          $ref: '#/components/schemas/AccountAddress'
+        response_destination:
+          $ref: '#/components/schemas/AccountAddress'
+        custom_payload:
+          type: string
+          format: bytes
+          contentEncoding: base64
+        decoded_custom_payload:
+          type: array
+          items:
+            type: integer
+        forward_amount:
+          $ref: '#/components/schemas/Coins'
+        forward_payload:
+          type: string
+          format: bytes
+          contentEncoding: base64
+        decoded_forward_payload:
+          type: array
+          items:
+            type: integer
+        trace_id:
+          $ref: '#/components/schemas/Hash'
     RequestError:
       type: object
       properties:
@@ -3258,25 +3325,28 @@ components:
       type: object
       properties:
         address:
-          type: string
-        cliff_duration:
-          type: integer
-        owner_address:
-          type: string
-        sender_address:
-          type: string
+          $ref: '#/components/schemas/AccountAddress'
         start_time:
-          type: integer
-        total_amount:
-          type: string
+          $ref: '#/components/schemas/UnixTime'
         total_duration:
           type: integer
+          format: int64
         unlock_period:
           type: integer
+          format: int64
+        cliff_duration:
+          type: integer
+          format: int64
+        sender_address:
+          $ref: '#/components/schemas/AccountAddress'
+        owner_address:
+          $ref: '#/components/schemas/AccountAddress'
+        total_amount:
+          $ref: '#/components/schemas/Coins'
         whitelist:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/AccountAddress'
     WalletType:
       type: string
       enum:
@@ -3413,7 +3483,7 @@ components:
           $ref: '#/components/schemas/AddressBook'
         metadata:
           $ref: '#/components/schemas/Metadata'
-    NFTCollectionsResponse:
+    NFTCollections:
       type: object
       required:
         - nft_collections
@@ -3452,7 +3522,7 @@ components:
           $ref: '#/components/schemas/AddressBook'
         metadata:
           $ref: '#/components/schemas/Metadata'
-    JettonWalletsResponse:
+    JettonWallets:
       type: object
       required:
         - jetton_wallets
@@ -3539,7 +3609,7 @@ components:
             $ref: '#/components/schemas/Multisig'
         address_book:
           $ref: '#/components/schemas/AddressBook'
-    MultisigOrderResponse:
+    MultisigOrders:
       type: object
       required:
         - orders
@@ -3550,7 +3620,7 @@ components:
             $ref: '#/components/schemas/MultisigOrder'
         address_book:
           $ref: '#/components/schemas/AddressBook'
-    VestingContractsResponse:
+    VestingContracts:
       type: object
       required:
         - vesting_contracts
