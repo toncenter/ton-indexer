@@ -39,15 +39,14 @@ type ServiceVersion struct {
     Major int32
     Minor int32
     Patch int32
-    Extra string
 }
 
 func LoadVersion(pool *pgxpool.Pool) ServiceVersion {
     ctx := context.Background()
-    query := `SELECT major, minor, patch, '' as extra FROM ton_db_version where id = 1;`
+    query := `SELECT major, minor, patch as extra FROM ton_db_version where id = 1;`
 
-    version := ServiceVersion{1, 2, 0, ``}
-    err := pool.QueryRow(ctx, query).Scan(&version.Major, &version.Minor, &version.Patch, &version.Extra)
+    version := ServiceVersion{1, 2, 0}
+    err := pool.QueryRow(ctx, query).Scan(&version.Major, &version.Minor, &version.Patch)
     if err != nil {
         log.Printf("Warning: Failed to load version: %v", err)
     }
