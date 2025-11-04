@@ -17,27 +17,25 @@ bool migration_needed(std::optional<Version> current_version, Version migration_
 }
 
 void ensure_version_impl(const Version& version, bool dry_run, pqxx::work& txn) {
-  auto exec_query = [&] (const std::string& query) {
-    try {
-      std::stringstream ss;
-      ss << "create table if not exists ton_db_version ("
-         << "id                INTEGER PRIMARY KEY CHECK (id = 1),"
-         << "major             INTEGER NOT NULL, "
-         << "minor             INTEGER NOT NULL, "
-         << "patch             INTEGER NOT NULL);\n";
+  std::stringstream ss;
+  ss << "create table if not exists ton_db_version ("
+     << "id                INTEGER PRIMARY KEY CHECK (id = 1),"
+     << "major             INTEGER NOT NULL, "
+     << "minor             INTEGER NOT NULL, "
+     << "patch             INTEGER NOT NULL);\n";
 
-      ss << "INSERT INTO ton_db_version(id, major, minor, patch) "
-         << "VALUES (1, " << version.major << ", " << version.minor << ", " << version.patch << ") "
-         << "ON CONFLICT (id) DO UPDATE SET major = EXCLUDED.major, minor = EXCLUDED.minor, patch = EXCLUDED.patch;";
-      if (dry_run) {
-        return;
-      }
-      txn.exec(ss.str()).no_rows();
-    } catch (const std::exception &e) {
-      LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+  ss << "INSERT INTO ton_db_version(id, major, minor, patch) "
+     << "VALUES (1, " << version.major << ", " << version.minor << ", " << version.patch << ") "
+     << "ON CONFLICT (id) DO UPDATE SET major = EXCLUDED.major, minor = EXCLUDED.minor, patch = EXCLUDED.patch;";
+  std::string query = ss.str();
+  try {
+    if (dry_run) {
+      return;
     }
-  };
-  exec_query("create extension if not exists pg_trgm;");
+    txn.exec(query).no_rows();
+  } catch (const std::exception &e) {
+    LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+  }
 }
 
 void ensure_version(const std::string& connection_string, const Version& version) {
