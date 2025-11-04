@@ -55,6 +55,9 @@ class TestTgBTCActions(BaseGenericActionTest):
 class TestLayerZeroActions(BaseGenericActionTest):
     yaml_file = "layerzero.yaml"
 
+class TestEthenaActions(BaseGenericActionTest):
+    yaml_file = "ethena.yaml"
+
 class TestClassificationCommon:
 
     def load_trace(self, trace_id, traces_dir) -> Trace:
