@@ -43,7 +43,8 @@ services:
     image: toncenter/ton-indexer-api:v1.2.4
     build:
       context: .
-      dockerfile: ton-index-go/Dockerfile
+      dockerfile: Dockerfile
+      target: index-api
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,8 +70,9 @@ services:
   run-migrations:
     image: toncenter/ton-indexer-worker:v1.2.4
     build:
-      context: ton-index-worker
+      context: .
       dockerfile: Dockerfile
+      target: index-worker
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,8 +89,9 @@ services:
   index-worker:
     image: toncenter/ton-indexer-worker:v1.2.4
     build:
-      context: ton-index-worker
+      context: .
       dockerfile: Dockerfile
+      target: index-worker
     depends_on:
       postgres:
         condition: service_healthy
@@ -173,8 +176,9 @@ services:
     profiles: [emulate]
     image: toncenter/ton-indexer-worker:v1.2.4
     build:
-      context: ton-index-worker
+      context: .
       dockerfile: Dockerfile
+      target: index-worker
     depends_on:
       emulate-redis:
         condition: service_healthy
@@ -237,7 +241,8 @@ services:
     image: toncenter/ton-indexer-emulate-api:v1.2.4
     build:
       context: .
-      dockerfile: ton-emulate-go/Dockerfile
+      dockerfile: Dockerfile
+      target: emulate-api
     depends_on:
       postgres:
         condition: service_healthy
