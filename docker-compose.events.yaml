@@ -22,8 +22,9 @@ services:
   event-classifier:
     image: ${DOCKER_REGISTRY:-localhost:5000}/ton-index-event-classfier:${IMAGE_TAG:?}
     build:
-      context: indexer
+      context: .
       dockerfile: Dockerfile
+      target: classifier
     secrets:
       - postgres_password
     command: --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 1000 --batch-size 100 --expected-total 720000000

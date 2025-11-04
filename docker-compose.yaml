@@ -21,8 +21,9 @@ services:
   event-classifier:
     image: toncenter/ton-indexer-classifier:v1.2.4
     build:
-      context: indexer
+      context: .
       dockerfile: Dockerfile
+      target: classifier
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,8 +142,9 @@ services:
     profiles: [metadata]
     image: toncenter/ton-indexer-metadata-fetcher:v1.2.4
     build:
-      context: ton-metadata-fetcher
+      context: .
       dockerfile: Dockerfile
+      target: metadata-fetcher
     depends_on:
       postgres:
         condition: service_healthy
@@ -216,8 +218,9 @@ services:
     profiles: [emulate]
     image: toncenter/ton-indexer-classifier:v1.2.4
     build:
-      context: indexer
+      context: .
       dockerfile: Dockerfile
+      target: classifier
     depends_on:
       postgres:
         condition: service_healthy
