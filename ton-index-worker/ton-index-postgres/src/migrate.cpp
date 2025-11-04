@@ -16,7 +16,7 @@ bool migration_needed(std::optional<Version> current_version, Version migration_
   return false;
 }
 
-void ensure_version_impl(const Version& version, bool dry_run, pqxx::work& txn) {
+void set_version(pqxx::work& txn, const Version& version, bool dry_run) {
   std::stringstream ss;
   ss << "create table if not exists ton_db_version ("
      << "id                INTEGER PRIMARY KEY CHECK (id = 1),"
@@ -34,16 +34,18 @@ void ensure_version_impl(const Version& version, bool dry_run, pqxx::work& txn) 
     }
     txn.exec(query).no_rows();
   } catch (const std::exception &e) {
-    LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+    LOG(ERROR) << "Failed to set version '" << query << "': " << e.what();
+    throw;
   }
 }
 
-void ensure_version(const std::string& connection_string, const Version& version) {
+void set_latest_version(const std::string& connection_string) {
+  const Version& version = latest_version;
   try {
     pqxx::connection c(connection_string);
     pqxx::work txn(c);
     LOG(INFO) << "Setting latest version to " << version.major << "." << version.minor << "." << version.patch << "...";
-    ensure_version_impl(version, false, txn);
+    set_version(txn, version, false);
     txn.commit();
     LOG(INFO) << "Set version OK!";
   } catch (const std::exception &e) {
@@ -726,7 +728,7 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "execute procedure on_new_mc_block_func();\n"
     );
 
-    ensure_version_impl({1, 2, 0}, dry_run, txn);
+    set_version(txn, {1, 2, 0}, dry_run);
 
     if (dry_run) {
       std::cout << query << std::endl;
@@ -786,7 +788,7 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_deposit_data coffee_staking_deposit_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_withdraw_data coffee_staking_withdraw_details;\n";
 
-    ensure_version_impl({1, 2, 1}, dry_run, txn);
+    set_version(txn, {1, 2, 1}, dry_run);
 
     if (dry_run) {
       std::cout << query << std::endl;
@@ -850,7 +852,7 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
       "name varchar NOT NULL);\n"
     );
 
-    ensure_version_impl({1, 2, 2}, dry_run, txn);
+    set_version(txn, {1, 2, 2}, dry_run);
 
     if (dry_run) {
       std::cout << query << std::endl;
@@ -927,7 +929,7 @@ void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
       "data_hash tonhash);\n"
     );
 
-    ensure_version_impl({1, 2, 3}, dry_run, txn);
+    set_version(txn, {1, 2, 3}, dry_run);
 
     if (dry_run) {
       std::cout << query << std::endl;
@@ -1155,7 +1157,7 @@ int main(int argc, char *argv[]) {
     // and so on...
 
     // finally, we bump a version to the latest
-    ensure_version(pg_connection_string, latest_version);
+    set_latest_version(pg_connection_string);
   }
   
   if (should_create_indexes) {
