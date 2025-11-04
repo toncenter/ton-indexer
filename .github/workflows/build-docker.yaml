@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - 'v*.*.*'
-      - '_dev'
+      - 'dev'
 
 jobs:
   release:
@@ -29,8 +29,9 @@ jobs:
             platform: arm64
         image:
           - image-name: ton-indexer-classifier
-            context: indexer
+            context: .
             dockerfile: Dockerfile
+            target: classifier
           - image-name: ton-indexer-api
             context: .
             dockerfile: Dockerfile
@@ -40,8 +41,9 @@ jobs:
             dockerfile: Dockerfile
             target: index-worker
           - image-name: ton-indexer-metadata-fetcher
-            context: ton-metadata-fetcher
+            context: .
             dockerfile: Dockerfile
+            target: metadata-fetcher
           - image-name: ton-indexer-emulate-api
             context: .
             dockerfile: Dockerfile

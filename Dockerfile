@@ -1,4 +1,5 @@
-# build core functionality
+# BUILD Stages
+## build core functionality
 FROM ubuntu:22.04 AS core-builder
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
 RUN apt-get update -y \
@@ -8,8 +9,6 @@ RUN apt-get update -y \
                    automake libjemalloc-dev lsb-release software-properties-common gnupg \
                    autoconf libtool \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
-
-# building
 COPY ton-index-worker/external/ /app/external/
 COPY ton-index-worker/pgton/ /app/pgton/
 COPY ton-index-worker/celldb-migrate/ /app/celldb-migrate/
@@ -29,7 +28,7 @@ RUN make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clic
      ton-integrity-checker ton-trace-emulator ton-trace-task-emulator ton-marker-cli ton-marker-core ton-marker
 
 
-# build index api service ton-index-go
+## build index api service ton-index-go
 FROM golang:bookworm AS index-api-builder
 
 RUN apt-get update -y \
@@ -47,7 +46,7 @@ COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrappe
 RUN cd /go/app && swag init && go build -o ton-index-go ./main.go
 
 
-# build emulate api service ton-emulate-go
+## build emulate api service ton-emulate-go
 FROM golang:bookworm AS emulate-api-builder
 
 RUN apt-get update -y \
@@ -66,7 +65,22 @@ COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrappe
 RUN cd /go/app && swag init && go build -o ton-emulate-go ./main.go
 
 
-# index worker service image
+## build metadata fetcher service ton-metadata-fetcher
+FROM golang:bookworm AS metadata-fetcher-builder
+
+ADD ton-metadata-fetcher/images.go /go/app/images.go
+ADD ton-metadata-fetcher/ipfs.go /go/app/ipfs.go
+ADD ton-metadata-fetcher/main.go /go/app/main.go
+ADD ton-metadata-fetcher/overrides.go /go/app/overrides.go
+ADD ton-metadata-fetcher/go.mod /go/app/go.mod
+ADD ton-metadata-fetcher/go.sum /go/app/go.sum
+
+WORKDIR /go/app
+RUN go build -o ton-metadata-fetcher ./*.go
+
+
+# IMAGE stages
+## index worker service image
 FROM ubuntu:22.04 AS index-worker
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
 RUN apt-get update -y \
@@ -87,7 +101,7 @@ COPY --from=core-builder /app/build/ton-marker/ton-marker-cli /usr/bin/ton-marke
 ENTRYPOINT [ "/app/entrypoint.sh" ]
 
 
-# index api service image
+## index api service image
 FROM ubuntu:jammy AS index-api
 RUN apt-get update \
     && apt install --yes bash curl dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
@@ -100,7 +114,7 @@ COPY ton-index-go/entrypoint.sh /app/entrypoint.sh
 ENTRYPOINT [ "/app/entrypoint.sh" ]
 
 
-# emulate api service image
+## emulate api service image
 FROM ubuntu:jammy AS emulate-api
 RUN apt-get update \
     && apt install --yes bash curl dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
@@ -110,4 +124,27 @@ COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=emulate-api-builder /go/app/ton-emulate-go /usr/local/bin/ton-emulate-go
 COPY ton-emulate-go/entrypoint.sh /app/entrypoint.sh
 
+ENTRYPOINT [ "/app/entrypoint.sh" ]
+
+
+## metadata fetcher service image
+FROM ubuntu:jammy AS metadata-fetcher
+RUN apt-get update && apt install --yes bash curl && rm -rf /var/lib/apt/lists/*
+
+COPY --from=metadata-fetcher-builder /go/app/ton-metadata-fetcher /usr/local/bin/ton-metadata-fetcher
+COPY ton-metadata-fetcher/entrypoint.sh /app/entrypoint.sh
+COPY ton-metadata-fetcher/metadata_overrides.json /app/metadata_overrides.json
+
+ENTRYPOINT [ "/app/entrypoint.sh" ]
+
+
+## classifier service image
+FROM python:3.12-bookworm AS classifier
+ADD indexer/requirements.txt /tmp/requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.txt
+COPY indexer/ /app/
+COPY indexer/files/* /app
+
+WORKDIR /app
+ENV C_FORCE_ROOT=1
 ENTRYPOINT [ "/app/entrypoint.sh" ]
