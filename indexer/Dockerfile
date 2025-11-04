@@ -10,5 +10,5 @@ COPY files/* /app
 WORKDIR /app
 
 # entrypoint
-ENV C_FORCE_ROOT 1
+ENV C_FORCE_ROOT=1
 ENTRYPOINT [ "/app/entrypoint.sh" ]
