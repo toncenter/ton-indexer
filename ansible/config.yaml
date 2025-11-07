@@ -6,25 +6,22 @@ pg_database: ton_index
 pg_readonly_user: readonly
 pg_readonly_password: REPLACEME
 
+pg_master_host: postgres-host
 pg_master_user: postgres
 pg_master_password: REPLACEME
 
 pendings_redis_password: REPLACEME
 
 # deploy config. Adjust this also
-binary_path: /usr/local/bin
+deploy_path: /opt/ton-index
 systemd_service_path: /etc/systemd/system
 
 services:
   api:
-    hosts_group: replica_nodes
-    service_user: root
-    service_group: root
     additional_args: -bind ":4100"
+  index_postgres:
+    additional_args: --working-dir /var/ton-index/ --db /var/ton-work/db --from 29000000
   metadata_fetcher:
-    hosts_group: master_nodes
-    service_user: root
-    service_group: root
     additional_args:
   emulate_api:
     additional_args: -prefork
@@ -42,4 +39,6 @@ services:
     environment: "ton_indexer_redis_dsn=redis://:{{ pendings_redis_password }}@localhost:6379"
   trace_ttl_tracker:
     additional_args: --ttl 1m "--redis-dsn=redis://:{{ pendings_redis_password }}@localhost:6379" --synthetic-ttl=30s --completed-ttl=30s --enable-cleanup --cleanup-interval=1h
+  streaming_api:
+    additional_args: -testnet -redis "redis://:{{ pendings_redis_password }}@localhost:6379" -pg "postgresql://{{ pg_readonly_user }}:{{ pg_readonly_password }}@localhost:5432/{{ pg_database }}"
 
