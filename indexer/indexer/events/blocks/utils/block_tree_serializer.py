@@ -12,6 +12,7 @@ from indexer.events.blocks.dns import (
     DeleteDnsRecordBlock,
     DnsRenewBlock,
 )
+from indexer.events.blocks.ethena_staking import EthenaWithdrawalRequestBlock, EthenaDepositBlock
 from indexer.events.blocks.evaa import (
     EvaaLiquidateBlock,
     EvaaSupplyBlock,
@@ -1081,6 +1082,31 @@ def _fill_dns_release(block: DnsReleaseBlock, action: Action):
     }
     action.value = _value(block.data.value)
 
+def _fill_ethena_withdrawal_request(block: EthenaWithdrawalRequestBlock, action: Action):
+    action.type = 'stake_withdrawal_request'
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.source_wallet)
+    action.destination = _addr(block.data.pool)
+    action.asset = _addr(block.data.asset)
+    action.amount = block.data.amount.value
+    action.staking_data = {
+        "provider": "ethena",
+        "tokens_minted": _value(block.data.ts_usde_amount)
+    }
+
+def _fill_ethena_deposit_action(block: EthenaDepositBlock, action: Action):
+    action.type = 'stake_deposit'
+    action.source = _addr(block.data.source)
+    action.source_secondary = _addr(block.data.user_jetton_wallet)
+    action.destination = _addr(block.data.pool)
+    action.amount = block.data.value.value
+    action.asset = _addr(block.data.asset)
+    action.asset2 = _addr(block.data.source_asset)
+    action.staking_data = {
+        'provider': 'ethena',
+        'tokens_minted': _value(block.data.tokens_minted)
+    }
+
 
 # noinspection PyCompatibility,PyTypeChecker
 def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
@@ -1156,6 +1182,10 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_jvault_claim(block, action)
         case 'jvault_unstake_request':
             _fill_jvault_unstake_request(block, action)
+        case 'ethena_withdrawal_request':
+            _fill_ethena_withdrawal_request(block, action)
+        case 'ethena_deposit':
+            _fill_ethena_deposit_action(block, action)
         case 'multisig_create_order':
             _fill_multisig_create_order(block, action)
         case 'multisig_approve':
@@ -1277,6 +1307,8 @@ v1_ops = [
     'tonstakers_deposit',
     'tonstakers_withdraw_request',
     'tonstakers_withdraw',
+    'ethena_withdrawal_request',
+    'ethena_deposit',
     'tonco_deposit_liquidity',
     'tonco_withdraw_liquidity',
     'coffee_deposit_liquidity'
