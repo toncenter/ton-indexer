@@ -43,10 +43,11 @@ type BackgroundTask struct {
 }
 
 type FetchTask struct {
-	Address string
-	Type    string
-	Retry   int
-	TaskId  int64
+	Address          string
+	Type             string
+	Retry            int
+	TaskId           int64
+	MetadataOverride map[string]interface{}
 }
 
 type AddressMetadata struct {
@@ -119,11 +120,16 @@ func fetchTasks(ctx context.Context, pool *pgxpool.Pool) ([]FetchTask, error) {
 		if err := rows.Scan(&task.Id, &task.Type, &task.Data, &task.Retry); err != nil {
 			return nil, fmt.Errorf("failed to scan task: %v", err)
 		}
+		var contentOverride map[string]interface{} = nil
+		if override, ok := task.Data["content_override"]; ok {
+			contentOverride = override.(map[string]interface{})
+		}
 		tasks = append(tasks, FetchTask{
-			TaskId:  task.Id,
-			Type:    task.Data["type"].(string),
-			Address: task.Data["address"].(string),
-			Retry:   task.Retry,
+			TaskId:           task.Id,
+			Type:             task.Data["type"].(string),
+			Address:          task.Data["address"].(string),
+			MetadataOverride: contentOverride,
+			Retry:            task.Retry,
 		})
 	}
 	return tasks, nil
@@ -186,6 +192,9 @@ func getNftMetadataFromDb(ctx context.Context, tx pgx.Tx, task FetchTask) (map[s
 }
 
 func getMetadata(ctx context.Context, tx pgx.Tx, task FetchTask) (map[string]interface{}, error) {
+	if task.MetadataOverride != nil && len(task.MetadataOverride) != 0 {
+		return task.MetadataOverride, nil
+	}
 	switch task.Type {
 	case "nft_collections", "jetton_masters":
 		return getCommonMetadataFromDb(ctx, tx, task)
@@ -386,11 +395,13 @@ func processTask(ctx context.Context, pool *pgxpool.Pool, task FetchTask) (taskE
 		content.Extra["_image_big"] = img_url_builder.BuildUrl(*content.Image, "big")
 	}
 
-	_, err = tx.Exec(ctx, `INSERT INTO address_metadata (address, type, valid, name, description, image, symbol, extra, updated_at, expires_at)
-    							VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (address, type) DO UPDATE SET 
-    							valid = $3, name = $4, description = $5, image = $6, symbol = $7, extra = $8, updated_at = $9, expires_at = $10`,
+	reindexAllowed := !(task.MetadataOverride != nil && len(task.MetadataOverride) > 0)
+
+	_, err = tx.Exec(ctx, `INSERT INTO address_metadata (address, type, valid, name, description, image, symbol, extra, updated_at, expires_at, reindex_allowed)
+    							VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (address, type) DO UPDATE SET 
+    							valid = $3, name = $4, description = $5, image = $6, symbol = $7, extra = $8, updated_at = $9, expires_at = $10, reindex_allowed = $11`,
 		task.Address, task.Type, true, content.Name, content.Description, content.Image, content.Symbol, content.Extra,
-		time.Now().Unix(), time.Now().Add(EXPIRATION_PERIOD).Unix())
+		time.Now().Unix(), time.Now().Add(EXPIRATION_PERIOD).Unix(), reindexAllowed)
 	if err != nil {
 		log.Printf("Error inserting metadata for task %v: %v", task, err)
 		return handleTaskFailure(ctx, tx, task, err)
