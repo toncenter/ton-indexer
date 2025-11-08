@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*.*.*'
+      - 'dev'
 
 jobs:
   release:
@@ -28,20 +29,25 @@ jobs:
             platform: arm64
         image:
           - image-name: ton-indexer-classifier
-            context: indexer
+            context: .
             dockerfile: Dockerfile
+            target: classifier
           - image-name: ton-indexer-api
             context: .
-            dockerfile: ton-index-go/Dockerfile
+            dockerfile: Dockerfile
+            target: index-api
           - image-name: ton-indexer-worker
-            context: ton-index-worker
+            context: .
             dockerfile: Dockerfile
+            target: index-worker
           - image-name: ton-indexer-metadata-fetcher
-            context: ton-metadata-fetcher
+            context: .
             dockerfile: Dockerfile
+            target: metadata-fetcher
           - image-name: ton-indexer-emulate-api
             context: .
-            dockerfile: ton-emulate-go/Dockerfile
+            dockerfile: Dockerfile
+            target: emulate-api
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,6 +67,7 @@ jobs:
           file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
           platforms: linux/${{ matrix.arch.platform }}
           push: true
+          target: ${{ matrix.image.target }}
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.image-name }}:${{ needs.release.outputs.version }}-${{ matrix.arch.platform }}
 
