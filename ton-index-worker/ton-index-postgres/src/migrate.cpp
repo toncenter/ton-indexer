@@ -1157,7 +1157,11 @@ int main(int argc, char *argv[]) {
     // and so on...
 
     // finally, we bump a version to the latest
-    set_latest_version(pg_connection_string);
+    if (!dry_run) {
+      set_latest_version(pg_connection_string);
+    } else {
+      LOG(INFO) << "Dry run mode enabled. No changes will be applied to the database.";
+    }
   }
   
   if (should_create_indexes) {
