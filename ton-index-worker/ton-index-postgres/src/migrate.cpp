@@ -6,14 +6,8 @@
 #include "pqxx/pqxx"
 #include "version.h"
 
-bool migration_needed(std::optional<Version> current_version, Version migration_version, bool rerun_last_migration) {
-  if (rerun_last_migration && migration_version == latest_version) {
-    return true;
-  }
-  if (current_version.has_value() && *current_version < migration_version) {
-    return true;
-  }
-  return false;
+bool migration_needed(std::optional<Version> current_version, Version migration_version) {
+  return current_version.has_value() && *current_version < migration_version;
 }
 
 std::string set_version_query(const Version& version) {
@@ -26,38 +20,23 @@ std::string set_version_query(const Version& version) {
 
   ss << "INSERT INTO ton_db_version(id, major, minor, patch) "
      << "VALUES (1, " << version.major << ", " << version.minor << ", " << version.patch << ") "
-     << "ON CONFLICT (id) DO UPDATE SET major = EXCLUDED.major, minor = EXCLUDED.minor, patch = EXCLUDED.patch;";
+     << "ON CONFLICT (id) DO UPDATE SET major = EXCLUDED.major, minor = EXCLUDED.minor, patch = EXCLUDED.patch;\n";
   return ss.str();
 }
 
-void set_version(pqxx::work& txn, const Version& version, bool dry_run) {
+void ensure_latest_version(const std::string& connection_string, bool dry_run) {
+  const Version& version = latest_version;
   auto query = set_version_query(version);
   if (dry_run) {
     std::cout << query << std::endl;
     return;
   }
   try {
-    txn.exec(query).no_rows();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Failed to set version '" << query << "': " << e.what();
-    throw;
-  }
-}
-
-void set_latest_version(const std::string& connection_string, bool dry_run) {
-  const Version& version = latest_version;
-  if (dry_run) {
-    auto query = set_version_query(version);
-    std::cout << query << std::endl;
-    return;
-  }
-  try {
     pqxx::connection c(connection_string);
     pqxx::work txn(c);
-    LOG(INFO) << "Setting latest version to " << version.major << "." << version.minor << "." << version.patch << "...";
-    set_version(txn, version, false);
+    txn.exec(query).no_rows();
+    LOG(INFO) << "Set latest version to " << version.major << "." << version.minor << "." << version.patch;
     txn.commit();
-    LOG(INFO) << "Set version OK!";
   } catch (const std::exception &e) {
     LOG(WARNING) << "Failed to ensure version: " << e.what();
   }
@@ -738,11 +717,11 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "execute procedure on_new_mc_block_func();\n"
     );
 
+    query += set_version_query({1, 2, 0});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
-    set_version(txn, {1, 2, 0}, dry_run);
 
     txn.exec(query).no_rows();
     txn.commit();
@@ -796,12 +775,11 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_deposit_data coffee_staking_deposit_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_withdraw_data coffee_staking_withdraw_details;\n";
 
-
+    query += set_version_query({1, 2, 1});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
-    set_version(txn, {1, 2, 1}, dry_run);
 
     txn.exec(query).no_rows();
     txn.commit();
@@ -859,11 +837,11 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
       "name varchar NOT NULL);\n"
     );
 
+    query += set_version_query({1, 2, 2});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
-    set_version(txn, {1, 2, 2}, dry_run);
 
     txn.exec(query).no_rows();
     txn.commit();
@@ -934,11 +912,11 @@ void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
       "data_hash tonhash);\n"
     );
 
+    query += set_version_query({1, 2, 3});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
-    set_version(txn, {1, 2, 3}, dry_run);
 
     txn.exec(query).no_rows();
     txn.commit();
@@ -1136,15 +1114,15 @@ int main(int argc, char *argv[]) {
       run_1_2_0_migrations(pg_connection_string, custom_types, dry_run);
       current_version = Version{1, 2, 0};
     }
-    if (migration_needed(current_version, Version{1, 2, 1}, rerun_last_migration)) {
+    if (migration_needed(current_version, Version{1, 2, 1})) {
       run_1_2_1_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 1};
     }
-    if (migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
+    if (migration_needed(current_version, Version{1, 2, 2})) {
       run_1_2_2_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 2};
     }
-    if (migration_needed(current_version, Version{1, 2, 3}, rerun_last_migration)) {
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 3})) {
       run_1_2_3_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 3};
     }
@@ -1160,7 +1138,7 @@ int main(int argc, char *argv[]) {
     // and so on...
 
     // finally, we bump a version to the latest
-    set_latest_version(pg_connection_string, dry_run);
+    ensure_latest_version(pg_connection_string, dry_run);
   }
   
   if (should_create_indexes) {
