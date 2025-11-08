@@ -1,0 +1,3695 @@
+openapi: 3.1.0
+info:
+  title: TON Center API v3
+  description: TON Index collects data from a full node to PostgreSQL database and
+    provides convenient API to an indexed blockchain.
+  contact: { }
+  version: 1.1.0
+servers:
+  - url: https://toncenter.com/
+    description: TON Center mainnet
+paths:
+  /api/v3/accountStates:
+    get:
+      tags:
+        - accounts
+      summary: Get Account States
+      description: Query account states
+      operationId: api_v3_get_account_states
+      parameters:
+        - name: address
+          in: query
+          description: List of addresses in any form. Maximum 1000 addresses allowed.
+          required: true
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: include_boc
+          in: query
+          description: "Include code and data BOCs. Default: true"
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountStates'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/addressBook:
+    get:
+      tags:
+        - accounts
+      summary: Address Book
+      description: Query address book
+      operationId: api_v3_get_address_book
+      parameters:
+        - name: address
+          in: query
+          description: "List of addresses in any form to get address book. Max: 1000."
+          required: true
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressBook'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/metadata:
+    get:
+      tags:
+        - accounts
+      summary: Metadata
+      description: Query address metadata
+      operationId: api_v3_get_metadata
+      parameters:
+        - name: address
+          in: query
+          description: "List of addresses in any form to get address metadata. Max:\
+          \ 1000."
+          required: true
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Metadata'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/walletStates:
+    get:
+      tags:
+        - accounts
+      summary: Get Wallet States
+      description: Query wallet information
+      operationId: api_v3_get_wallet_states
+      parameters:
+        - name: address
+          in: query
+          description: List of addresses in any form. Maximum 1000 addresses allowed.
+          required: true
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletStates'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
+  /api/v3/actions:
+    get:
+      tags:
+        - actions
+      summary: Get Actions
+      description: Get actions by specified filter.
+      operationId: api_v3_get_actions
+      parameters:
+        - $ref: '#/components/parameters/Account'
+        - name: tx_hash
+          in: query
+          description: Find actions by transaction hash.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+        - name: msg_hash
+          in: query
+          description: Find actions by message hash.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+        - name: action_id
+          in: query
+          description: Find actions by the `action_id`.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+        - name: trace_id
+          in: query
+          description: Find actions by the `trace_id`.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+        - name: mc_seqno
+          in: query
+          description: Query actions of traces which was completed in masterchain block
+            with given seqno
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+        - $ref: '#/components/parameters/StartUtime'
+        - $ref: '#/components/parameters/EndUtime'
+        - $ref: '#/components/parameters/StartLt'
+        - $ref: '#/components/parameters/EndLt'
+        - name: action_type
+          in: query
+          description: Include action types.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/ActionType'
+        - name: exclude_action_type
+          in: query
+          description: Exclude action types.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/ActionType'
+        - $ref: '#/components/parameters/SupportedActionTypes'
+        - name: include_accounts
+          in: query
+          description: Include accounts array for each action in response.
+          schema:
+            type: boolean
+            default: false
+        - name: include_transactions
+          in: query
+          description: Include `transactions_full` array with detailed transaction data
+            for each action in response.
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Actions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/pendingActions:
+    get:
+      tags:
+        - actions
+      summary: Get Pending Actions
+      description: Get actions by specified filter.
+      operationId: api_v3_get_pending_actions
+      parameters:
+        - $ref: '#/components/parameters/Account'
+        - name: ext_msg_hash
+          in: query
+          description: Find actions by trace external hash
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+        - $ref: '#/components/parameters/SupportedActionTypes'
+        - name: include_transactions
+          in: query
+          description: Include `transactions_full` array with detailed transaction data
+            for each action in response.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Actions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/pendingTraces:
+    get:
+      tags:
+        - actions
+      summary: Get Pending Traces
+      description: Get traces by specified filter.
+      operationId: api_v3_get_pending_traces
+      parameters:
+        - $ref: '#/components/parameters/Account'
+        - name: ext_msg_hash
+          in: query
+          description: Find trace by external hash
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Traces'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/traces:
+    get:
+      tags:
+        - actions
+      summary: Get Traces
+      description: Get traces by specified filter.
+      operationId: api_v3_get_traces
+      parameters:
+        - $ref: '#/components/parameters/Account'
+        - name: trace_id
+          in: query
+          description: Find trace by trace id.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+        - name: tx_hash
+          in: query
+          description: Find trace by transaction hash.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+        - name: msg_hash
+          in: query
+          description: Find trace by message hash.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+        - name: mc_seqno
+          in: query
+          description: Query traces that was completed in masterchain block with given
+            seqno
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+        - $ref: '#/components/parameters/StartUtime'
+        - $ref: '#/components/parameters/EndUtime'
+        - $ref: '#/components/parameters/StartLt'
+        - $ref: '#/components/parameters/EndLt'
+        - name: include_actions
+          in: query
+          description: Include trace actions.
+          schema:
+            type: boolean
+            default: false
+        - name: supported_action_types
+          in: query
+          description: Supported action types
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/ActionType'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Traces'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
+  /api/v3/addressInformation:
+    get:
+      tags:
+        - api/v2
+      summary: Get Address Information
+      description: Get smart contract information.
+      operationId: api_v3_get_v2_addressInformation
+      parameters:
+        - name: address
+          in: query
+          description: Account address in any form.
+          required: true
+          schema:
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: use_v2
+          in: query
+          description: Use method from api/v2. Not recommended
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2AddressInformation'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/estimateFee:
+    post:
+      tags:
+        - api/v2
+      summary: Estimate Fee
+      description: "Estimate fees required for query processing. Fields body, init-code\
+        \ and init-data accepted in serialized format (b64-encoded)."
+      operationId: api_v3_post_v2_estimate_fee
+      requestBody:
+        description: Estimate fee request.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2EstimateFeeRequest'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2EstimateFeeResult'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/message:
+    post:
+      tags:
+        - api/v2
+      summary: Send Message
+      description: Send an external message to the TON network.
+      operationId: api_v3_post_v2_message
+      requestBody:
+        description: Message in boc base64 format.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2SendMessageRequest'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2SendMessageResult'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/runGetMethod:
+    post:
+      tags:
+        - api/v2
+      summary: Run Get-Method
+      description: |-
+        Run get method of smart contract. Stack supports only `num`, `cell` and `slice` types:
+        ```
+        [
+        {
+        "type": "num",
+        "value": "0x12a"
+        },
+        {
+        "type": "cell",
+        "value": "te6..." // base64 encoded boc with cell
+        },
+        {
+        "type": "slice",
+        "value": "te6..." // base64 encoded boc with slice
+        }
+        ]
+        ```
+      operationId: api_v3_post_v2_rungetmethod
+      requestBody:
+        description: Run Get-method request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2RunGetMethodRequest'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2RunGetMethodRequest'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/walletInformation:
+    get:
+      tags:
+        - api/v2
+      summary: Get Wallet Information
+      description: "Get wallet smart contract information. The following wallets are\
+        \ supported: `v1r1`, `v1r2`, `v1r3`, `v2r1`, `v2r2`, `v3r1`, `v3r2`, `v4r1`,\
+        \ `v4r2`, `v5beta`, `v5r1`. In case the account is not a wallet error code\
+        \ 409 is returned."
+      operationId: api_v3_get_wallet_information
+      parameters:
+        - name: address
+          in: query
+          description: Account address in any form.
+          required: true
+          schema:
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: use_v2
+          in: query
+          description: Use method from api/v2. Not recommended
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2WalletInformation'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
+  /api/v3/blocks:
+    get:
+      tags:
+        - blockchain
+      summary: Get blocks
+      description: Returns blocks by specified filters.
+      operationId: api_v3_get_blocks
+      parameters:
+        - $ref: '#/components/parameters/Workchain'
+        - $ref: '#/components/parameters/Shard'
+        - $ref: '#/components/parameters/Seqno'
+        - name: root_hash
+          in: query
+          description: Block root hash.
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - name: file_hash
+          in: query
+          description: Block file hash.
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - name: mc_seqno
+          in: query
+          description: Masterchain block seqno
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+        - $ref: '#/components/parameters/StartUtime'
+        - $ref: '#/components/parameters/EndUtime'
+        - $ref: '#/components/parameters/StartLt'
+        - $ref: '#/components/parameters/EndLt'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Blocks'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/masterchainBlockShardState:
+    get:
+      tags:
+        - blockchain
+      summary: Get masterchain block shard state
+      description: Get masterchain block shard state. Same as /api/v2/shards.
+      operationId: api_v3_get_masterchainBlockShardState
+      parameters:
+        - $ref: '#/components/parameters/SeqnoInMasterchain'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/masterchainBlockShards:
+    get:
+      tags:
+        - blockchain
+      summary: Get masterchain block shard state
+      description: Returns all workchain blocks, that appeared after previous masterchain block.
+      operationId: api_v3_get_masterchainBlockShards
+      parameters:
+        - $ref: '#/components/parameters/SeqnoInMasterchain'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/masterchainInfo:
+    get:
+      tags:
+        - blockchain
+      summary: Get Masterchain Info
+      description: Get first and last indexed block
+      operationId: api_v3_get_masterchain_info
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterchainInfo'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/messages:
+    get:
+      tags:
+        - blockchain
+      summary: Get messages
+      description: Get messages by specified filters.
+      operationId: api_v3_get_messages
+      parameters:
+        - name: msg_hash
+          in: query
+          description: "Message hash. Acceptable in hex, base64 and base64url forms."
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+        - name: body_hash
+          in: query
+          description: Hash of message body.
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - name: source
+          in: query
+          description: "The source account address. Can be sent in hex, base64 or base64url\
+          \ form. Use value `null` to get external messages."
+          schema:
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: destination
+          in: query
+          description: "The destination account address. Can be sent in hex, base64\
+          \ or base64url form. Use value `null` to get log messages."
+          schema:
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: opcode
+          in: query
+          description: Opcode of message in hex or signed 32-bit decimal form.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/StartUtime'
+        - $ref: '#/components/parameters/EndUtime'
+        - $ref: '#/components/parameters/StartLt'
+        - $ref: '#/components/parameters/EndLt'
+        - $ref: '#/components/parameters/MessageDirection'
+        - name: exclude_externals
+          in: query
+          description: Exclude external messages.
+          schema:
+            type: boolean
+        - name: only_externals
+          in: query
+          description: Return only external messages.
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Messages'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/pendingTransactions:
+    get:
+      tags:
+        - blockchain
+      summary: Get pending transactions
+      description: Get pending transactions by specified filter.
+      operationId: api_v3_get_pending_transactions
+      parameters:
+        - $ref: '#/components/parameters/Account'
+        - name: trace_id
+          in: query
+          description: Find transactions by trace id.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Hash'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/transactions:
+    get:
+      tags:
+        - blockchain
+      summary: Get transactions
+      description: Get transactions by specified filter.
+      operationId: api_v3_get_transactions
+      parameters:
+        - $ref: '#/components/parameters/Workchain'
+        - $ref: '#/components/parameters/Shard'
+        - $ref: '#/components/parameters/Seqno'
+        - name: mc_seqno
+          in: query
+          description: Masterchain block seqno.
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+        - $ref: '#/components/parameters/Account'
+        - name: exclude_account
+          in: query
+          description: Exclude transactions on specified account addresses.
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: hash
+          in: query
+          description: Transaction hash.
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - name: lt
+          in: query
+          description: Transaction lt.
+          schema:
+            $ref: '#/components/schemas/LogicalTime'
+        - $ref: '#/components/parameters/StartUtime'
+        - $ref: '#/components/parameters/EndUtime'
+        - $ref: '#/components/parameters/StartLt'
+        - $ref: '#/components/parameters/EndLt'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/transactionsByMasterchainBlock:
+    get:
+      tags:
+        - blockchain
+      summary: Get transactions by Masterchain block
+      description: Returns transactions from masterchain block and from all shards.
+      operationId: api_v3_get_transactions_by_masterchain_block
+      parameters:
+        - $ref: '#/components/parameters/SeqnoInMasterchain'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/transactionsByMessage:
+    get:
+      tags:
+        - blockchain
+      summary: Get transactions by message
+      description: Get transactions whose inbound/outbound message has the specified
+        hash. \
+      operationId: api_v3_get_transactions_by_message
+      parameters:
+        - name: msg_hash
+          in: query
+          description: "Message hash. Acceptable in hex, base64 and base64url forms."
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - name: body_hash
+          in: query
+          description: Hash of message body.
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - name: opcode
+          in: query
+          description: Opcode of message in hex or signed 32-bit decimal form.
+          schema:
+            $ref: '#/components/schemas/Opcode'
+        - $ref: '#/components/parameters/MessageDirection'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/adjacentTransactions:
+    get:
+      tags:
+        - blockchain
+      summary: Get Adjacent Transactions
+      description: Get parent and/or children for specified transaction.
+      operationId: api_v3_get_adjacent_transactions
+      parameters:
+        - name: hash
+          in: query
+          description: Transaction hash.
+          schema:
+            $ref: '#/components/schemas/Hash'
+        - $ref: '#/components/parameters/MessageDirection'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transactions'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
+  /api/v3/decode:
+    get:
+      tags:
+        - utils
+      summary: Decode Opcodes and Bodies
+      description: Decode opcodes and message bodies. Opcodes can be in hex (with
+        or without 0x prefix) or decimal format. Bodies should be in base64 or hex
+        format.
+      operationId: api_v3_get_decode
+      parameters:
+        - name: opcodes
+          in: query
+          description: List of opcodes to decode (hex or decimal)
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/Opcode'
+        - name: bodies
+          in: query
+          description: List of message bodies to decode (base64 or hex)
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecodeResult'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+    post:
+      tags:
+        - utils
+      summary: Decode Opcodes and Bodies
+      description: Decode opcodes and message bodies. Opcodes can be in hex (with
+        or without 0x prefix) or decimal format. Bodies should be in base64 or hex
+        format. Use POST method for long parameters that may be truncated in GET requests.
+      operationId: api_v3_post_decode
+      requestBody:
+        description: Decode request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecodeRequest'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecodeResult'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
+  /api/v3/dns/records:
+    get:
+      tags:
+        - dns
+      summary: Get DNS Records
+      description: Query DNS records by specified filters. Currently .ton and .t.me
+        DNS are supported.
+      operationId: api_v3_get_dns_records
+      parameters:
+        - name: wallet
+          in: query
+          description: Wallet address in any form. DNS records that contain this address
+            in wallet category will be returned.
+          schema:
+            type: string
+        - name: domain
+          in: query
+          description: Domain name to search for. DNS records with this exact domain
+            name will be returned.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DNSRecords'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
+  /api/v3/jetton/burns:
+    get:
+      tags:
+        - jettons
+      summary: Get Jetton Burns
+      description: Get Jetton burns by specified filters
+      operationId: api_v3_get_jetton_burns
+      parameters:
+        - name: address
+          in: query
+          description: Address of jetton wallet owner in any form. Max 1000
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: jetton_wallet
+          in: query
+          description: "Jetton wallet address in any form. Max: 1000."
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: jetton_master
+          in: query
+          description: Jetton master address in any form.
+          schema:
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - $ref: '#/components/parameters/StartUtime'
+        - $ref: '#/components/parameters/EndUtime'
+        - $ref: '#/components/parameters/StartLt'
+        - $ref: '#/components/parameters/EndLt'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JettonBurns'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/jetton/masters:
+    get:
+      tags:
+        - jettons
+      summary: Get Jetton Masters
+      description: Get Jetton masters by specified filters
+      operationId: api_v3_get_jetton_masters
+      parameters:
+        - name: address
+          in: query
+          description: "Jetton Master address in any form. Max: 1000."
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: admin_address
+          in: query
+          description: "Address of Jetton Master's admin in any form. Max: 1024."
+          style: form
+          schema:
+            type: array
+            items:
+              type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JettonMasters'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/jetton/transfers:
+    get:
+      tags:
+        - jettons
+      summary: Get Jetton Transfers
+      description: Get Jetton transfers by specified filters
+      operationId: api_v3_get_jetton_transfers
+      parameters:
+        - name: owner_address
+          in: query
+          description: Address of jetton wallet owner in any form. Max 1000
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: jetton_wallet
+          in: query
+          description: "Jetton wallet address in any form. Max: 1000."
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: jetton_master
+          in: query
+          description: Jetton master address in any form.
+          schema:
+            $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: direction
+          in: query
+          description: Direction of transfer. *Note:* applied only with owner_address.
+          schema:
+            $ref: '#/components/schemas/MessageDirection'
+        - $ref: '#/components/parameters/StartUtime'
+        - $ref: '#/components/parameters/EndUtime'
+        - $ref: '#/components/parameters/StartLt'
+        - $ref: '#/components/parameters/EndLt'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JettonTransfers'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/jetton/wallets:
+    get:
+      tags:
+        - jettons
+      summary: Get Jetton Wallets
+      description: Get Jetton wallets by specified filters
+      operationId: api_v3_get_jetton_wallets
+      parameters:
+        - name: address
+          in: query
+          description: "Jetton wallet address in any form. Max: 1000."
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: owner_address
+          in: query
+          description: "Address of Jetton wallet's owner in any form. Max: 1000."
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: jetton_address
+          in: query
+          description: Jetton Master in any form.
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: exclude_zero_balance
+          in: query
+          description: Exclude jetton wallets with 0 balance.
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: sort
+          in: query
+          description: Sort jetton wallets by balance. **Warning:** results may be inconsistent
+            during the read with limit and offset.
+          schema:
+            $ref: '#/components/schemas/SortType'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JettonWallets'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
+  /api/v3/multisig/orders:
+    get:
+      tags:
+        - multisig
+      summary: Get Multisig Orders
+      description: Get multisig orders by specified filters
+      operationId: api_v3_get_multisig_orders
+      parameters:
+        - name: address
+          in: query
+          description: "Order address in any form. Max: 1000."
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: multisig_address
+          in: query
+          description: "Address of corresponding multisig. Max: 1000."
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: parse_actions
+          in: query
+          description: Parser order actions
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MultisigOrders'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/multisig/wallets:
+    get:
+      tags:
+        - multisig
+      summary: Get Multisigs
+      description: Get multisig contracts by specified filters with associated orders
+      operationId: api_v3_get_multisig_wallets
+      parameters:
+        - name: address
+          in: query
+          description: "Multisig contract address in any form. Max: 1000."
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: wallet_address
+          in: query
+          description: "Address of signer or proposer wallet in any form. Max: 1024."
+          style: form
+          schema:
+            type: array
+            items:
+              type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+        - name: include_orders
+          in: query
+          description: Gather multisig orders
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MultisigResponse'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
+  /api/v3/nft/collections:
+    get:
+      tags:
+        - nfts
+      summary: Get NFT collections
+      description: Get NFT collections by specified filters
+      operationId: api_v3_get_nft_collections
+      parameters:
+        - name: collection_address
+          in: query
+          description: "Collection address in any form. Max: 1000."
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - name: owner_address
+          in: query
+          description: "Address of collection owner in any form. Max: 1000."
+          style: form
+          schema:
+            $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NFTCollections'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/nft/items:
+    get:
+      tags:
+        - nfts
+      summary: Get NFT items
+      description: Get NFT items by specified filters
+      operationId: api_v3_get_nft_items
+      parameters:
+        - name: address
+          in: query
+          description: "NFT item address in any form. Max: 1000."
+          style: form
+          schema:
+            type: array
+            items:
+              type: string
+        - name: owner_address
+          in: query
+          description: "Address of NFT item owner in any form. Max: 1000."
+          style: form
+          schema:
+            type: array
+            items:
+              type: string
+        - name: collection_address
+          in: query
+          description: Collection address in any form.
+          style: form
+          schema:
+            type: array
+            items:
+              type: string
+        - name: index
+          in: query
+          description: "Index of item for given collection. Max: 1000."
+          style: form
+          schema:
+            type: array
+            items:
+              type: string
+        - name: sort_by_last_transaction_lt
+          in: query
+          description: Sort NFT items by last transaction lt descending. **Warning:**
+            results may be inconsistent during pagination with limit and offset.
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NFTItems'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+  /api/v3/nft/transfers:
+    get:
+      tags:
+        - nfts
+      summary: Get NFT Transfers
+      description: Get transfers of NFT items by specified filters
+      operationId: api_v3_get_nft_transfers
+      parameters:
+        - name: owner_address
+          in: query
+          description: Address of NFT owner in any form. Max 1000
+          style: form
+          schema:
+            type: array
+            items:
+              type: string
+        - name: item_address
+          in: query
+          description: "Address of NFT item in any form. Max: 1000."
+          style: form
+          schema:
+            type: array
+            items:
+              type: string
+        - name: collection_address
+          in: query
+          description: Collection address in any form.
+          schema:
+            type: string
+        - name: direction
+          in: query
+          description: Direction of transfer.
+          schema:
+            $ref: '#/components/schemas/MessageDirection'
+        - $ref: '#/components/parameters/StartUtime'
+        - $ref: '#/components/parameters/EndUtime'
+        - $ref: '#/components/parameters/StartLt'
+        - $ref: '#/components/parameters/EndLt'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NFTTransfers'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
+  /api/v3/topAccountsByBalance:
+    get:
+      tags:
+        - stats
+      summary: Get Top Accounts By Balance
+      description: Get list of accounts sorted descending by balance.
+      operationId: api_v3_get_top_accounts_by_balance
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccountBalance'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+
+  /api/v3/vesting:
+    get:
+      tags:
+        - vesting
+      summary: Get Vesting Contracts
+      description: Get vesting contracts by specified filters
+      operationId: api_v3_get_vesting_contracts
+      parameters:
+        - name: contract_address
+          in: query
+          description: "Vesting contract address in any form. Max: 1000."
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: wallet_address
+          in: query
+          description: "Wallet address to filter by owner or sender. Max: 1000."
+          style: form
+          schema:
+            type: array
+            maxItems: 1000
+            items:
+              $ref: '#/components/schemas/AccountAddressAnyFormat'
+        - name: check_whitelist
+          in: query
+          description: Check if wallet address is in whitelist.
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VestingContracts'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestError'
+      security:
+        - APIKeyHeader: [ ]
+        - APIKeyQuery: [ ]
+components:
+  securitySchemes:
+    APIKeyHeader:
+      type: apiKey
+      name: X-Api-Key
+      in: header
+    APIKeyQuery:
+      type: apiKey
+      name: api_key
+      in: query
+  parameters:
+    Workchain:
+      name: workchain
+      in: query
+      description: Block workchain.
+      schema:
+        $ref: '#/components/schemas/WorkchainId'
+    Shard:
+      name: shard
+      in: query
+      description: 'Block shard id. Must be sent with `workchain`. Example: `8000000000000000`.'
+      schema:
+        $ref: '#/components/schemas/ShardId'
+    Seqno:
+      name: seqno
+      in: query
+      description: Block block seqno. Must be sent with `workchain` and `shard`.
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+    SeqnoInMasterchain:
+      name: seqno
+      in: query
+      description: Masterchain block block seqno.
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+    MessageDirection:
+      name: direction
+      in: query
+      description: Direction of message.
+      schema:
+        $ref: '#/components/schemas/MessageDirection'
+    StartUtime:
+      name: start_utime
+      in: query
+      description: Query with UTC timestamp **after** given timestamp.
+      schema:
+        $ref: '#/components/schemas/UnixTime'
+    EndUtime:
+      name: end_utime
+      in: query
+      description: Query with UTC timestamp **before** given timestamp.
+      schema:
+        $ref: '#/components/schemas/UnixTime'
+    StartLt:
+      name: start_lt
+      in: query
+      description: Query with logical time **after** given lt.
+      schema:
+        $ref: '#/components/schemas/LogicalTime'
+    EndLt:
+      name: end_lt
+      in: query
+      description: Query with logical time **before** given lt.
+      schema:
+        $ref: '#/components/schemas/LogicalTime'
+    Limit:
+      name: limit
+      in: query
+      description: Limit number of queried rows. Use with `offset` to batch read.
+      schema:
+        maximum: 1000
+        minimum: 1
+        type: integer
+        format: int32
+        default: 10
+    Offset:
+      name: offset
+      in: query
+      description: Skip first N rows. Use with `limit` to batch read.
+      schema:
+        minimum: 0
+        type: integer
+        format: int32
+        default: 0
+    Sort:
+      name: sort
+      in: query
+      description: Sort results by logical time.
+      schema:
+        $ref: '#/components/schemas/SortType'
+    SupportedActionTypes:
+      name: supported_action_types
+      in: query
+      description: Supported action types
+      style: form
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/ActionType'
+    Address:
+      name: address
+      in: query
+      description: List of account addresses. Can be in hex, base64 or base64url format.
+      schema:
+        $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+    Account:
+      name: account
+      in: query
+      description: List of account addresses. Can be in hex, base64 or base64url format.
+      schema:
+        $ref: '#/components/schemas/AccountAddressSingleOrMultiple'
+  schemas:
+    RequestError:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        error:
+          type: string
+    SortType:
+      type: string
+      enum:
+        - asc
+        - desc
+      default: desc
+    MessageDirection:
+      description: Direction of message.
+      type: string
+      enum:
+        - in
+        - out
+    AccountAddress:
+      type: string
+      description: Account address in Base64 encoded format
+      format: address
+      example: "UQAKtVj024T9MfYaJzU1xnDAkf_GGbHNu-V2mgvyjTuP6uYH"
+    RawAccountAddress:
+      type: string
+      description: Raw account address in hex format with workchain prefix
+      format: address
+      example: "0:0ab558f4db84fd31f61a273535c670c091ffc619b1cdbbe5769a0bf28d3b8fea"
+    AccountAddressAnyFormat:
+      description: Account address in any format (hex, base64, base64url)
+      oneOf:
+        - $ref: '#/components/schemas/AccountAddress'
+        - $ref: '#/components/schemas/RawAccountAddress'
+    AccountAddressSingleOrMultiple:
+      description: Single or multiple account addresses in any format (hex, base64, base64url)
+      type: array
+      maxItems: 1000
+      items:
+        $ref: '#/components/schemas/AccountAddressAnyFormat'
+    Coins:
+      type: string
+      format: bigint
+      x-java-type: java.math.BigInteger
+      x-go-type: '*big.Int'
+      x-typescript-type: bignum
+      x-js-type: bignum
+      minimum: 0
+      description: Variable-length 120-bit integer representing native currency amount
+    ExtraCoins:
+      type: string
+      format: bigint
+      x-java-type: java.math.BigInteger
+      x-go-type: '*big.Int'
+      x-typescript-type: bignum
+      x-js-type: bignum
+      minimum: 0
+      description: Variable-length 120-bit integer representing extra currency amount
+    ExtraCurrencies:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/ExtraCoins'
+    WorkchainId:
+      type: integer
+      format: int32
+      minimum: -1
+      maximum: 0
+      description: Workchain identifier. -1 for masterchain, 0 for basechain
+    ShardId:
+      type: string
+      format: hex
+      pattern: '^[0-9a-fA-F]{1,16}$'
+      example: 8000000000000000
+      description: 64-bit shard identifier in hex format
+    Hash:
+      type: string
+      format: hash
+      pattern: '^[A-Za-z0-9+/]{43}=$'
+      contentEncoding: base64
+      description: 32-byte hash in base64 format
+    LogicalTime:
+      type: integer
+      format: int64
+      minimum: 0
+      description: 64-bit logical time
+    UnixTime:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Unix timestamp in seconds
+    Opcode:
+      type: integer
+      format: int64
+    HexInt:
+      type: string
+      pattern: '^(?:0x0|0x[0-9a-fA-F]+)$'
+      format: bigint
+      example: '0x1bc16d674ec80000'
+    AccountStatus:
+      type: string
+      enum:
+        - uninit
+        - frozen
+        - active
+        - nonexist
+    AccountStatusChange:
+      type: string
+      enum:
+        - unchanged
+        - frozen
+        - deleted
+    AccountBalance:
+      type: object
+      required:
+        - account
+        - balance
+      properties:
+        account:
+          $ref: '#/components/schemas/AccountAddress'
+        balance:
+          $ref: '#/components/schemas/Coins'
+    AccountState:
+      required:
+        - account_status
+        - hash
+      type: object
+      properties:
+        account_status:
+          type: string
+          enum:
+            - uninit
+            - frozen
+            - active
+            - inactive
+        balance:
+          $ref: '#/components/schemas/Coins'
+        code_boc:
+          type: string
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+        data_boc:
+          type: string
+        data_hash:
+          $ref: '#/components/schemas/Hash'
+        extra_currencies:
+          type: object
+          additionalProperties:
+            type: string
+        frozen_hash:
+          $ref: '#/components/schemas/Hash'
+        hash:
+          type: string
+    AccountStateFull:
+      required:
+        - account_state_hash
+        - status
+      type: object
+      properties:
+        account_state_hash:
+          $ref: '#/components/schemas/Hash'
+        address:
+          type: string
+          format: address
+        balance:
+          type: string
+        code_boc:
+          type: string
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+        contract_methods:
+          type: array
+          items:
+            type: integer
+        data_boc:
+          type: string
+        data_hash:
+          $ref: '#/components/schemas/Hash'
+        extra_currencies:
+          type: object
+          additionalProperties:
+            type: string
+        frozen_hash:
+          $ref: '#/components/schemas/Hash'
+        interfaces:
+          type: array
+          items:
+            type: string
+        last_transaction_hash:
+          $ref: '#/components/schemas/Hash'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        status:
+          type: string
+    AccountStates:
+      type: object
+      required:
+        - accounts
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountStateFull'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    AddressBook:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/AddressBookRow'
+    AddressBookRow:
+      type: object
+      properties:
+        domain:
+          type: string
+        interfaces:
+          type: array
+          items:
+            type: string
+        user_friendly:
+          type: string
+    AddressMetadata:
+      required:
+        - is_indexed
+        - token_info
+      type: object
+      properties:
+        is_indexed:
+          type: boolean
+        token_info:
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenInfo'
+    BlockIdShort:
+      required:
+        - seqno
+        - shard
+        - workchain
+      type: object
+      properties:
+        workchain:
+          $ref: '#/components/schemas/WorkchainId'
+        shard:
+          $ref: '#/components/schemas/ShardId'
+        seqno:
+          type: integer
+          format: int32
+          minimum: 0
+    Block:
+      required:
+        - after_merge
+        - after_split
+        - before_split
+        - created_by
+        - end_lt
+        - file_hash
+        - flags
+        - gen_catchain_seqno
+        - gen_utime
+        - global_id
+        - key_block
+        - master_ref_seqno
+        - masterchain_block_ref
+        - min_ref_mc_seqno
+        - prev_blocks
+        - prev_key_block_seqno
+        - rand_seed
+        - root_hash
+        - seqno
+        - shard
+        - start_lt
+        - tx_count
+        - validator_list_hash_short
+        - version
+        - vert_seqno
+        - vert_seqno_incr
+        - want_merge
+        - want_split
+        - workchain
+      type: object
+      properties:
+        workchain:
+          $ref: '#/components/schemas/WorkchainId'
+        shard:
+          $ref: '#/components/schemas/ShardId'
+        seqno:
+          type: integer
+          description: Block sequence number
+        root_hash:
+          allOf:
+            - $ref: '#/components/schemas/Hash'
+          description: Base64-encoded 32-byte hash representing the root cell of the referenced block.
+        file_hash:
+          allOf:
+            - $ref: '#/components/schemas/Hash'
+          description: Base64-encoded 32-byte hash of the BOC-encoded root cell for the referenced block.
+        global_id:
+          type: integer
+          format: int32
+          description: Global network id.
+        version:
+          type: integer
+          format: int32
+          description: Block model version
+        after_merge:
+          type: boolean
+          description: Whether this block was produced after the shards were merged.
+        before_split:
+          type: boolean
+          description: Whether this block was produced before the shards split.
+        after_split:
+          type: boolean
+          description: Whether this block was produced after the shards split.
+        want_merge:
+          type: boolean
+          description: Hint that the shard with this block should merge.
+        want_split:
+          type: boolean
+          description: Hint that the shard with this block should split.
+        key_block:
+          type: boolean
+          description: Whether this block is a key block.
+        vert_seqno_incr:
+          type: boolean
+          description: Whether the vertical sequence number is incremented in this block.
+        flags:
+          type: integer
+          format: int32
+          description: Block flags (currently only bit 1 is used, for `gen_software`)
+        gen_utime:
+          allOf:
+            - $ref: '#/components/schemas/UnixTime'
+          description: Unix timestamp in seconds when the block was created.
+        start_lt:
+          allOf:
+            - $ref: '#/components/schemas/LogicalTime'
+          description: Logical time range start.
+        end_lt:
+          allOf:
+            - $ref: '#/components/schemas/LogicalTime'
+          description: Logical time range end.
+        validator_list_hash_short:
+          type: integer
+          format: int32
+          description: Last 4 bytes of the hash of the validator list.
+        gen_catchain_seqno:
+          type: integer
+          format: int32
+          description: Seqno of the catchain session where this block was produced.
+        min_ref_mc_seqno:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+        prev_key_block_seqno:
+          type: integer
+          format: int32
+          description: Previous key block seqno.
+        vert_seqno:
+          type: integer
+          format: int32
+          description: Block vertical sequence number.
+        master_ref_seqno:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+        rand_seed:
+          type: string
+          format: bytes
+          description: Random generator seed.
+          pattern: '^[A-Za-z0-9+/]{43}=$'
+        created_by:
+          type: string
+          format: bytes
+          description: Public key of the collator who produced this block.
+          pattern: '^[A-Za-z0-9+/]{43}=$'
+        tx_count:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Number of transactions in the block.
+        masterchain_block_ref:
+          $ref: '#/components/schemas/BlockIdShort'
+        prev_blocks:
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/BlockIdShort'
+    Blocks:
+      type: object
+      required:
+        - blocks
+      properties:
+        blocks:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/Block'
+    DecodeRequest:
+      type: object
+      properties:
+        bodies:
+          type: array
+          items:
+            type: string
+        opcodes:
+          type: array
+          items:
+            type: string
+    JettonBurn:
+      type: object
+      required:
+        - query_id
+        - owner
+        - jetton_wallet
+        - jetton_master
+        - transaction_hash
+        - transaction_lt
+        - transaction_now
+        - transaction_aborted
+        - amount
+      properties:
+        query_id:
+          type: integer
+          format: int64
+        owner:
+          $ref: '#/components/schemas/AccountAddress'
+        jetton_wallet:
+          $ref: '#/components/schemas/AccountAddress'
+        jetton_master:
+          $ref: '#/components/schemas/AccountAddress'
+        transaction_hash:
+          $ref: '#/components/schemas/Hash'
+        transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        transaction_now:
+          $ref: '#/components/schemas/UnixTime'
+        transaction_aborted:
+          type: boolean
+        amount:
+          $ref: '#/components/schemas/Coins'
+        response_destination:
+          $ref: '#/components/schemas/AccountAddress'
+        custom_payload:
+          type: string
+        decoded_custom_payload:
+          type: array
+          items:
+            type: integer
+        trace_id:
+          $ref: '#/components/schemas/Hash'
+    JettonMaster:
+      type: object
+      required:
+        - address
+        - total_supply
+        - mintable
+        - jetton_content
+        - jetton_wallet_code_hash
+        - code_hash
+        - data_hash
+        - last_transaction_lt
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddress'
+        total_supply:
+          $ref: '#/components/schemas/Coins'
+        mintable:
+          type: boolean
+        admin_address:
+          $ref: '#/components/schemas/AccountAddress'
+        jetton_content:
+          type: object
+          additionalProperties: true
+        jetton_wallet_code_hash:
+          $ref: '#/components/schemas/Hash'
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+        data_hash:
+          $ref: '#/components/schemas/Hash'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+    JettonMasters:
+      type: object
+      required:
+        - jetton_masters
+      properties:
+        jetton_masters:
+          type: array
+          items:
+            $ref: '#/components/schemas/JettonMaster'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    JettonTransfer:
+      type: object
+      required:
+        - query_id
+        - source
+        - destination
+        - amount
+        - source_wallet
+        - jetton_master
+        - transaction_hash
+        - transaction_lt
+        - transaction_now
+        - transaction_aborted
+      properties:
+        query_id:
+          type: integer
+          format: int64
+        source:
+          $ref: '#/components/schemas/AccountAddress'
+        destination:
+          $ref: '#/components/schemas/AccountAddress'
+        amount:
+          $ref: '#/components/schemas/Coins'
+        source_wallet:
+          $ref: '#/components/schemas/AccountAddress'
+        jetton_master:
+          $ref: '#/components/schemas/AccountAddress'
+        transaction_hash:
+          $ref: '#/components/schemas/Hash'
+        transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        transaction_now:
+          $ref: '#/components/schemas/UnixTime'
+        transaction_aborted:
+          type: boolean
+        response_destination:
+          $ref: '#/components/schemas/AccountAddress'
+        custom_payload:
+          type: string
+        decoded_custom_payload:
+          type: array
+          items:
+            type: integer
+        forward_ton_amount:
+          $ref: '#/components/schemas/Coins'
+        forward_payload:
+          type: string
+        decoded_forward_payload:
+          type: array
+          items:
+            type: integer
+        trace_id:
+          $ref: '#/components/schemas/Hash'
+    JettonTransfers:
+      type: object
+      required:
+        - jetton_transfers
+      properties:
+        jetton_transfers:
+          type: array
+          items:
+            $ref: '#/components/schemas/JettonTransfer'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    JettonWalletMintlessInfo:
+      type: object
+      required:
+        - amount
+        - start_from
+        - expire_at
+        - custom_payload_api_uri
+      properties:
+        amount:
+          $ref: '#/components/schemas/Coins'
+        start_from:
+          $ref: '#/components/schemas/UnixTime'
+        expire_at:
+          $ref: '#/components/schemas/UnixTime'
+        custom_payload_api_uri:
+          type: array
+          items:
+            type: string
+    JettonWallet:
+      type: object
+      required:
+        - address
+        - balance
+        - owner
+        - jetton
+        - last_transaction_lt
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddress'
+        balance:
+          $ref: '#/components/schemas/Coins'
+        owner:
+          $ref: '#/components/schemas/AccountAddress'
+        jetton:
+          $ref: '#/components/schemas/AccountAddress'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+        data_hash:
+          $ref: '#/components/schemas/Hash'
+        mintless_info:
+          $ref: '#/components/schemas/JettonWalletMintlessInfo'
+    JettonWallets:
+      type: object
+      required:
+        - jetton_wallets
+      properties:
+        jetton_wallets:
+          type: array
+          items:
+            $ref: '#/components/schemas/JettonWallet'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    JettonBurns:
+      type: object
+      required:
+        - jetton_burns
+      properties:
+        jetton_burns:
+          type: array
+          items:
+            $ref: '#/components/schemas/JettonBurn'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    MessageContent:
+      type: object
+      properties:
+        body:
+          type: string
+        decoded:
+          type: object
+          properties: { }
+        hash:
+          $ref: '#/components/schemas/Hash'
+    Message:
+      required:
+        - hash
+      type: object
+      properties:
+        hash:
+          $ref: "#/components/schemas/Hash"
+        source:
+          $ref: "#/components/schemas/AccountAddress"
+        destination:
+          $ref: "#/components/schemas/AccountAddress"
+        value:
+          $ref: '#/components/schemas/Coins'
+        value_extra_currencies:
+          $ref: '#/components/schemas/ExtraCurrencies'
+        fwd_fee:
+          $ref: '#/components/schemas/Coins'
+        ihr_fee:
+          $ref: '#/components/schemas/Coins'
+        extra_flags:
+          $ref: '#/components/schemas/Coins'
+        created_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        created_at:
+          $ref: '#/components/schemas/UnixTime'
+        opcode:
+          $ref: '#/components/schemas/Opcode'
+        decoded_opcode:
+          type: string
+        ihr_disabled:
+          type: boolean
+        bounce:
+          type: boolean
+        bounced:
+          type: boolean
+        in_msg_tx_hash:
+          $ref: '#/components/schemas/Hash'
+        out_msg_tx_hash:
+          $ref: '#/components/schemas/Hash'
+        message_content:
+          $ref: '#/components/schemas/MessageContent'
+        init_state:
+          $ref: '#/components/schemas/MessageContent'
+        hash_norm:
+          $ref: '#/components/schemas/Hash'
+    Metadata:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/AddressMetadata'
+    MsgSize:
+      type: object
+      required: [ cells,bits ]
+      properties:
+        cells:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Amount of unique cells.
+        bits:
+          type: integer
+          format: int32
+          minimum: 0
+          description: The total number of bits in unique cells.
+    Multisig:
+      type: object
+      required:
+        - address
+        - signers
+        - proposers
+        - last_transaction_lt
+        - orders
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddress'
+        next_order_seqno:
+          type: string
+        threshold:
+          type: integer
+          format: int32
+        signers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountAddress'
+        proposers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountAddress'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+        data_hash:
+          $ref: '#/components/schemas/Hash'
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/MultisigOrder'
+    MultisigOrder:
+      type: object
+      required:
+        - address
+        - multisig_address
+        - signers
+        - last_transaction_lt
+        - actions
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddress'
+        multisig_address:
+          $ref: '#/components/schemas/AccountAddress'
+        order_seqno:
+          type: string
+        threshold:
+          type: integer
+          format: int32
+        sent_for_execution:
+          type: boolean
+        approvals_mask:
+          type: string
+        approvals_num:
+          type: integer
+          format: int32
+        expiration_date:
+          $ref: '#/components/schemas/UnixTime'
+        order_boc:
+          type: string
+          format: bytes
+          contentEncoding: base64
+        signers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountAddress'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+        data_hash:
+          $ref: '#/components/schemas/Hash'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderAction'
+    NFTIndex:
+      type: string
+      format: bigint
+      x-java-type: java.math.BigInteger
+      x-go-type: '*big.Int'
+      x-typescript-type: bignum
+      x-js-type: bignum
+      description: 257-bit integer of NFT item index
+    TokenType:
+      type: string
+      enum:
+        - jetton_wallets
+        - nft_items
+        - nft_collections
+        - jetton_masters
+    TokenInfo:
+      type: object
+      required:
+        - valid
+        - type
+      properties:
+        valid:
+          type: boolean
+        type:
+          $ref: '#/components/schemas/TokenType'
+        name:
+          type: string
+        symbol:
+          type: string
+        description:
+          type: string
+        image:
+          type: string
+        nft_index:
+          $ref: '#/components/schemas/NFTIndex'
+        extra:
+          type: object
+          additionalProperties: true
+    NFTItem:
+      type: object
+      properties:
+        address:
+          type: string
+        auction_contract_address:
+          type: string
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+        collection:
+          $ref: '#/components/schemas/NFTCollection'
+        collection_address:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+        data_hash:
+          $ref: '#/components/schemas/Hash'
+        index:
+          $ref: '#/components/schemas/NFTIndex'
+        init:
+          type: boolean
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        on_sale:
+          type: boolean
+        owner_address:
+          type: string
+        real_owner:
+          type: string
+        sale_contract_address:
+          type: string
+    NFTItems:
+      type: object
+      properties:
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+        nft_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NFTItem'
+    NFTCollection:
+      type: object
+      required:
+        - address
+        - last_transaction_lt
+        - next_item_index
+        - collection_content
+        - data_hash
+        - code_hash
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddress'
+        owner_address:
+          $ref: '#/components/schemas/AccountAddress'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        next_item_index:
+          $ref: '#/components/schemas/NFTIndex'
+        collection_content:
+          type: object
+          additionalProperties: true
+        data_hash:
+          $ref: '#/components/schemas/Hash'
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+    NFTCollections:
+      type: object
+      required:
+        - nft_collections
+      properties:
+        nft_collections:
+          type: array
+          items:
+            $ref: '#/components/schemas/NFTCollection'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    NFTTransfer:
+      type: object
+      required:
+        - query_id
+        - nft_address
+        - nft_collection
+        - transaction_hash
+        - transaction_lt
+        - transaction_now
+        - transaction_aborted
+        - old_owner
+        - new_owner
+      properties:
+        query_id:
+          type: string
+        nft_address:
+          $ref: '#/components/schemas/AccountAddress'
+        nft_collection:
+          $ref: '#/components/schemas/AccountAddress'
+        transaction_hash:
+          $ref: '#/components/schemas/Hash'
+        transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        transaction_now:
+          $ref: '#/components/schemas/UnixTime'
+        transaction_aborted:
+          type: boolean
+        old_owner:
+          $ref: '#/components/schemas/AccountAddress'
+        new_owner:
+          $ref: '#/components/schemas/AccountAddress'
+        response_destination:
+          $ref: '#/components/schemas/AccountAddress'
+        custom_payload:
+          type: string
+          format: bytes
+          contentEncoding: base64
+        decoded_custom_payload:
+          type: array
+          items:
+            type: integer
+        forward_amount:
+          $ref: '#/components/schemas/Coins'
+        forward_payload:
+          type: string
+          format: bytes
+          contentEncoding: base64
+        decoded_forward_payload:
+          type: array
+          items:
+            type: integer
+        trace_id:
+          $ref: '#/components/schemas/Hash'
+    NFTTransfers:
+      type: object
+      required:
+        - nft_transfers
+      properties:
+        nft_transfers:
+          type: array
+          items:
+            $ref: '#/components/schemas/NFTTransfer'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    DNSRecord:
+      type: object
+      required:
+        - nft_item_address
+        - domain
+      properties:
+        nft_item_address:
+          $ref: '#/components/schemas/AccountAddress'
+        nft_item_owner:
+          $ref: '#/components/schemas/AccountAddress'
+        domain:
+          type: string
+        dns_next_resolver:
+          $ref: '#/components/schemas/AccountAddress'
+        dns_wallet:
+          $ref: '#/components/schemas/AccountAddress'
+        dns_site_adnl:
+          type: string
+        dns_storage_bag_id:
+          type: string
+    DNSRecords:
+      type: object
+      required:
+        - records
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/DNSRecord'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+    StoragePhase:
+      type: object
+      required:
+        - storage_fees_collected
+        - status_change
+      properties:
+        storage_fees_collected:
+          $ref: '#/components/schemas/Coins'
+        storage_fees_due:
+          $ref: '#/components/schemas/Coins'
+        status_change:
+          $ref: '#/components/schemas/AccountStatusChange'
+    CreditPhase:
+      type: object
+      required:
+        - credit
+        - credit_extra_currencies
+      properties:
+        due_fees_collected:
+          $ref: '#/components/schemas/Coins'
+        credit:
+          $ref: '#/components/schemas/Coins'
+        credit_extra_currencies:
+          $ref: '#/components/schemas/ExtraCurrencies'
+    ComputeSkipReason:
+      type: string
+      enum:
+        - no_state
+        - bad_state
+        - no_gas
+        - suspended
+    ComputePhase:
+      type: object
+      required: [ skipped ]
+      properties:
+        skipped:
+          type: boolean
+      discriminator:
+        propertyName: skipped
+        mapping:
+          true: '#/components/schemas/ComputePhaseSkipped'
+          false: '#/components/schemas/ComputePhaseExecuted'
+    ComputePhaseSkipped:
+      allOf:
+        - $ref: '#/components/schemas/ComputePhase'
+        - type: object
+          required: [ reason ]
+          properties:
+            reason:
+              $ref: '#/components/schemas/ComputeSkipReason'
+    ComputePhaseExecuted:
+      allOf:
+        - $ref: '#/components/schemas/ComputePhase'
+        - type: object
+          required: [ success,msg_state_used,account_activated,gas_fees,gas_used,gas_limit,mode,exit_code,vm_steps,vm_final_state_hash,vm_init_state_hash ]
+          properties:
+            success:
+              type: boolean
+            msg_state_used:
+              type: boolean
+            account_activated:
+              type: boolean
+            gas_fees:
+              $ref: '#/components/schemas/Coins'
+            gas_used:
+              type: integer
+              format: int64
+            gas_limit:
+              type: integer
+              format: int64
+            gas_credit:
+              type: integer
+              format: int64
+            mode:
+              type: integer
+              format: int32
+            exit_code:
+              type: integer
+              format: int32
+            exit_arg:
+              type: integer
+              format: int32
+            vm_steps:
+              type: integer
+              format: int32
+            vm_final_state_hash:
+              $ref: '#/components/schemas/Hash'
+            vm_init_state_hash:
+              $ref: '#/components/schemas/Hash'
+    ActionPhase:
+      required: [ success,action_list_hash,no_funds,status_change,result_code,tot_actions,spec_actions,skipped_actions,msgs_created,action_list_hash,tot_msg_size ]
+      type: object
+      properties:
+        success:
+          type: boolean
+        valid:
+          type: boolean
+        no_funds:
+          type: boolean
+        status_change:
+          $ref: '#/components/schemas/AccountStatusChange'
+        total_fwd_fees:
+          $ref: '#/components/schemas/Coins'
+        total_action_fees:
+          $ref: '#/components/schemas/Coins'
+        result_code:
+          type: integer
+          format: int32
+        result_arg:
+          type: integer
+          format: int32
+        tot_actions:
+          type: integer
+          format: int32
+          maximum: 65535
+        spec_actions:
+          type: integer
+          format: int32
+          maximum: 65535
+        skipped_actions:
+          type: integer
+          format: int32
+          maximum: 65535
+        msgs_created:
+          type: integer
+          format: int32
+          maximum: 65535
+        action_list_hash:
+          $ref: '#/components/schemas/Hash'
+        tot_msg_size:
+          $ref: '#/components/schemas/MsgSize'
+    BouncePhaseType:
+      type: string
+      enum: [ negfunds,nofunds,ok ]
+    BouncePhase:
+      type: object
+      required: [ type ]
+      properties:
+        type:
+          $ref: '#/components/schemas/BouncePhaseType'
+      discriminator:
+        propertyName: type
+        mapping:
+          negfunds: '#/components/schemas/BouncePhaseNegFunds'
+          nofunds: '#/components/schemas/BouncePhaseNoFunds'
+          ok: '#/components/schemas/BouncePhaseExecuted'
+    BouncePhaseNegFunds:
+      allOf:
+        - $ref: '#/components/schemas/BouncePhase'
+        - type: object
+    BouncePhaseNoFunds:
+      allOf:
+        - $ref: '#/components/schemas/BouncePhase'
+        - type: object
+          required: [ msg_size,req_fwd_fees ]
+          properties:
+            msg_size:
+              $ref: '#/components/schemas/MsgSize'
+            req_fwd_fees:
+              $ref: '#/components/schemas/Coins'
+    BouncePhaseExecuted:
+      allOf:
+        - $ref: '#/components/schemas/BouncePhase'
+        - type: object
+          required: [ msg_size,fwd_fees,msg_fees ]
+          properties:
+            msg_size:
+              $ref: '#/components/schemas/MsgSize'
+            msg_fees:
+              $ref: '#/components/schemas/Coins'
+            fwd_fees:
+              $ref: '#/components/schemas/Coins'
+    SplitInfo:
+      type: object
+      properties:
+        cur_shard_pfx_len:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 63
+        acc_split_depth:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 63
+        this_addr:
+          $ref: '#/components/schemas/AccountAddress'
+        sibling_addr:
+          $ref: '#/components/schemas/AccountAddress'
+    TransactionDescrType:
+      type: string
+      enum: [ ord,storage,tick_tock,split_prepare,split_install,merge_prepare,merge_install ]
+    TransactionDescr:
+      type: object
+      required: [ type ]
+      properties:
+        type:
+          $ref: '#/components/schemas/TransactionDescrType'
+      discriminator:
+        propertyName: type
+        mapping:
+          ord: '#/components/schemas/TransactionDescrOrd'
+          tick_tock: '#/components/schemas/TransactionDescrTickTock'
+    TransactionDescrOrd:
+      allOf:
+        - $ref: '#/components/schemas/TransactionDescr'
+        - type: object
+          required: [ aborted,destroyed,credit_first,compute_ph ]
+          properties:
+            aborted:
+              type: bool
+            destroyed:
+              type: bool
+            credit_first:
+              type: bool
+            storage_ph:
+              $ref: '#/components/schemas/StoragePhase'
+            credit_ph:
+              $ref: '#/components/schemas/CreditPhase'
+            compute_ph:
+              $ref: '#/components/schemas/ComputePhase'
+            action:
+              $ref: '#/components/schemas/ActionPhase'
+            bounce:
+              $ref: '#/components/schemas/BouncePhase'
+    TransactionDescrTickTock:
+      allOf:
+        - $ref: '#/components/schemas/TransactionDescr'
+        - type: object
+          required: [ aborted,destroyed,is_tock,storage_ph,compute_ph ]
+          properties:
+            aborted:
+              type: bool
+            destroyed:
+              type: bool
+            is_tock:
+              type: bool
+            storage_ph:
+              $ref: '#/components/schemas/StoragePhase'
+            compute_ph:
+              $ref: '#/components/schemas/ComputePhase'
+            action:
+              $ref: '#/components/schemas/ActionPhase'
+    Transaction:
+      type: object
+      required:
+        - account
+        - hash
+        - lt
+        - now
+        - mc_block_seqno
+        - prev_trans_hash
+        - prev_trans_lt
+        - orig_status
+        - end_status
+        - total_fees
+        - total_fees_extra_currencies
+        - description
+        - block_ref
+        - emulated
+      properties:
+        account:
+          $ref: '#/components/schemas/AccountAddress'
+        hash:
+          $ref: '#/components/schemas/Hash'
+        lt:
+          $ref: '#/components/schemas/LogicalTime'
+        now:
+          $ref: '#/components/schemas/UnixTime'
+        mc_block_seqno:
+          type: integer
+          format: int32
+        trace_id:
+          $ref: '#/components/schemas/Hash'
+        trace_external_hash:
+          $ref: '#/components/schemas/Hash'
+        prev_trans_hash:
+          $ref: '#/components/schemas/Hash'
+        prev_trans_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        orig_status:
+          $ref: '#/components/schemas/AccountStatus'
+        end_status:
+          $ref: '#/components/schemas/AccountStatus'
+        total_fees:
+          $ref: '#/components/schemas/Coins'
+        total_fees_extra_currencies:
+          $ref: '#/components/schemas/ExtraCurrencies'
+        description:
+          $ref: '#/components/schemas/TransactionDescr'
+        block_ref:
+          $ref: '#/components/schemas/BlockIdShort'
+        in_msg:
+          $ref: '#/components/schemas/Message'
+        out_msgs:
+          type: array
+          maxItems: 32767
+          items:
+            $ref: '#/components/schemas/Message'
+        account_state_before:
+          $ref: '#/components/schemas/AccountState'
+        account_state_after:
+          $ref: '#/components/schemas/AccountState'
+        emulated:
+          type: boolean
+    V2AddressInformation:
+      type: object
+      required:
+        - balance
+        - status
+      properties:
+        balance:
+          $ref: '#/components/schemas/Coins'
+        code:
+          type: string
+          format: bytes
+          encodedFormat: base64
+        data:
+          type: string
+          format: bytes
+          encodedFormat: base64
+        frozen_hash:
+          $ref: '#/components/schemas/Hash'
+        last_transaction_hash:
+          $ref: '#/components/schemas/Hash'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        status:
+          $ref: '#/components/schemas/AccountStatus'
+    V2EstimateFeeRequest:
+      type: object
+      required:
+        - address
+        - body
+        - init_code
+        - init_data
+        - ignore_chksig
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddressAnyFormat'
+        body:
+          type: string
+          format: bytes
+          encodedFormat: base64
+        init_code:
+          type: string
+          format: bytes
+          encodedFormat: base64
+        init_data:
+          type: string
+          format: bytes
+          encodedFormat: base64
+        ignore_chksig:
+          type: boolean
+    V2EstimateFeeResult:
+      type: object
+      required:
+        - source_fees
+        - destination_fees
+      properties:
+        source_fees:
+          $ref: '#/components/schemas/V2EstimatedFee'
+        destination_fees:
+          type: array
+          items:
+            $ref: '#/components/schemas/V2EstimatedFee'
+    V2EstimatedFee:
+      type: object
+      required:
+        - fwd_fee
+        - gas_fee
+        - in_fwd_fee
+        - storage_fee
+      properties:
+        fwd_fee:
+          $ref: '#/components/schemas/Coins'
+        gas_fee:
+          $ref: '#/components/schemas/Coins'
+        in_fwd_fee:
+          $ref: '#/components/schemas/Coins'
+        storage_fee:
+          $ref: '#/components/schemas/Coins'
+    V2RunGetMethodRequest:
+      type: object
+      required:
+        - address
+        - method
+        - stack
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddressAnyFormat'
+        method:
+          type: string
+        stack:
+          type: array
+          items:
+            $ref: '#/components/schemas/StackEntry'
+    V2SendMessageRequest:
+      type: object
+      required:
+        - boc
+      properties:
+        boc:
+          type: string
+          format: bytes
+          encodedFormat: base64
+    V2SendMessageResult:
+      type: object
+      properties:
+        message_hash:
+          $ref: '#/components/schemas/Hash'
+        message_hash_norm:
+          $ref: '#/components/schemas/Hash'
+    StackEntryType:
+      type: string
+      enum:
+        - num
+        - cell
+        - slice
+        - tuple
+    StackEntry:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/StackEntryType'
+      required: [ type ]
+      discriminator:
+        propertyName: type
+        mapping:
+          num: '#/components/schemas/StackEntryNum'
+          cell: '#/components/schemas/StackEntryCell'
+          slice: '#/components/schemas/StackEntrySlice'
+          tuple: '#/components/schemas/StackEntryTuple'
+    StackEntryNum:
+      allOf:
+        - $ref: '#/components/schemas/StackEntry'
+        - type: object
+          required:
+            - value
+          properties:
+            value:
+              $ref: '#/components/schemas/HexInt'
+          value:
+            type: string
+    StackEntryCell:
+      allOf:
+        - $ref: '#/components/schemas/StackEntry'
+        - type: object
+          required:
+            - value
+          properties:
+            value:
+              type: string
+              format: bytes
+              encodedFormat: base64
+          value:
+            type: string
+            format: bytes
+            encodedFormat: base64
+    StackEntrySlice:
+      allOf:
+        - $ref: '#/components/schemas/StackEntry'
+        - type: object
+          required:
+            - value
+          properties:
+            value:
+              type: string
+              format: bytes
+              encodedFormat: base64
+          value:
+            type: string
+    StackEntryTuple:
+      allOf:
+        - $ref: '#/components/schemas/StackEntry'
+        - type: object
+          required:
+            - value
+          properties:
+            value:
+              type: array
+              items:
+                $ref: '#/components/schemas/StackEntry'
+          value:
+            type: string
+    V2WalletInformation:
+      type: object
+      required:
+        - balance
+        - last_transaction_lt
+        - last_transaction_hash
+        - status
+      properties:
+        balance:
+          type: string
+        wallet_type:
+          $ref: '#/components/schemas/WalletType'
+        seqno:
+          type: integer
+          format: int32
+          minimum: 0
+        wallet_id:
+          type: integer
+          format: int32
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        last_transaction_hash:
+          $ref: '#/components/schemas/Hash'
+        status:
+          $ref: '#/components/schemas/AccountStatus'
+    OrderAction:
+      type: object
+      properties:
+        body_raw:
+          type: array
+          items:
+            type: integer
+        destination:
+          type: string
+        error:
+          type: string
+        parsed:
+          type: boolean
+        parsed_body:
+          type: object
+        parsed_body_type:
+          type: string
+        send_mode:
+          type: integer
+        value:
+          type: string
+    VestingInfo:
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddress'
+        start_time:
+          $ref: '#/components/schemas/UnixTime'
+        total_duration:
+          type: integer
+          format: int64
+        unlock_period:
+          type: integer
+          format: int64
+        cliff_duration:
+          type: integer
+          format: int64
+        sender_address:
+          $ref: '#/components/schemas/AccountAddress'
+        owner_address:
+          $ref: '#/components/schemas/AccountAddress'
+        total_amount:
+          $ref: '#/components/schemas/Coins'
+        whitelist:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountAddress'
+    WalletType:
+      type: string
+      enum:
+        - wallet v1 r1
+        - wallet v1 r2
+        - wallet v1 r3
+        - wallet v2 r1
+        - wallet v2 r2
+        - wallet v3 r1
+        - wallet v3 r2
+        - wallet v4 r1
+        - wallet v4 r2
+        - wallet v5 beta
+        - wallet v5 r1
+    WalletState:
+      required:
+        - address
+        - is_wallet
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/AccountAddress'
+        balance:
+          $ref: '#/components/schemas/Coins'
+        code_hash:
+          $ref: '#/components/schemas/Hash'
+        extra_currencies:
+          $ref: '#/components/schemas/ExtraCurrencies'
+        is_signature_allowed:
+          type: boolean
+        is_wallet:
+          type: boolean
+        last_transaction_hash:
+          $ref: '#/components/schemas/Hash'
+        last_transaction_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        seqno:
+          type: integer
+          format: int32
+        status:
+          $ref: '#/components/schemas/AccountStatus'
+        wallet_id:
+          type: integer
+          format: int32
+        wallet_type:
+          $ref: '#/components/schemas/WalletType'
+    MasterchainInfo:
+      type: object
+      required:
+        - last
+        - first
+      properties:
+        last:
+          $ref: '#/components/schemas/Block'
+        first:
+          $ref: '#/components/schemas/Block'
+    Transactions:
+      type: object
+      required:
+        - transactions
+      properties:
+        transactions:
+          type: array
+          minItems: 0
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/Transaction'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+    Messages:
+      type: object
+      required:
+        - messages
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    WalletStates:
+      type: object
+      required:
+        - wallets
+      properties:
+        wallets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WalletState'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    MultisigResponse:
+      type: object
+      required:
+        - multisigs
+      properties:
+        multisigs:
+          type: array
+          items:
+            $ref: '#/components/schemas/Multisig'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+    MultisigOrders:
+      type: object
+      required:
+        - orders
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/MultisigOrder'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+    VestingContracts:
+      type: object
+      required:
+        - vesting_contracts
+      properties:
+        vesting_contracts:
+          type: array
+          items:
+            $ref: '#/components/schemas/VestingInfo'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+    DecodeResult:
+      type: object
+      required:
+        - opcodes
+        - bodies
+      properties:
+        opcodes:
+          type: array
+          items:
+            type: string
+        bodies:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    ActionType:
+      type: string
+      enum:
+        - call_contract
+        - contract_deploy
+        - ton_transfer
+        - stake_deposit
+        - stake_withdrawal
+        - stake_withdrawal_request
+        - dex_deposit_liquidity
+        - jetton_transfer
+        - nft_transfer
+        - nft_mint
+        - jetton_burn
+        - jetton_mint
+        - jetton_swap
+        - change_dns
+        - delete_dns
+        - renew_dns
+        - subscribe
+        - dex_withdraw_liquidity
+        - unsubscribe
+        - election_deposit
+        - election_recover
+        - auction_bid
+        - tick_tock
+        - multisig_create_order
+        - multisig_approve
+        - multisig_execute
+        - vesting_send_message
+        - vesting_add_whitelist
+        - evaa_supply
+        - evaa_withdraw
+        - evaa_liquidate
+        - jvault_stake
+        - jvault_unstake
+        - jvault_claim
+        - jvault_unstake_request
+        - nft_discovery
+        - tonco_deploy_pool
+        - coffee_create_vault
+        - coffee_create_pool_creator
+        - coffee_create_pool
+        - coffee_mev_protect_hold_funds
+        - coffee_mev_protect_failed_swap
+        - coffee_staking_claim_rewards
+        - coffee_staking_deposit
+        - coffee_staking_withdraw
+        - unknown
+        - nft_put_on_sale
+        - nft_put_on_auction
+        - auction_outbid
+        - nft_cancel_sale
+        - nft_cancel_auction
+        - nft_finish_auction
+        - teleitem_start_auction
+        - teleitem_cancel_auction
+        - nft_update_sale
+        - dns_purchase
+        - dns_release
+        - layerzero_send
+        - layerzero_send_tokens
+        - layerzero_receive
+        - layerzero_commit_packet
+        - layerzero_dvn_verify
+    Action:
+      type: object
+      required:
+        - action_id
+        - start_lt
+        - end_lt
+        - start_utime
+        - end_utime
+        - trace_end_lt
+        - trace_end_utime
+        - trace_mc_seqno_end
+        - transactions
+        - type
+        - details
+      properties:
+        trace_id:
+          $ref: '#/components/schemas/Hash'
+        action_id:
+          $ref: '#/components/schemas/Hash'
+        start_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        end_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        start_utime:
+          $ref: '#/components/schemas/UnixTime'
+        end_utime:
+          $ref: '#/components/schemas/UnixTime'
+        trace_end_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        trace_end_utime:
+          $ref: '#/components/schemas/UnixTime'
+        trace_mc_seqno_end:
+          type: integer
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Hash'
+        success:
+          type: boolean
+        type:
+          $ref: '#/components/schemas/ActionType'
+        details:
+          type: object
+        trace_external_hash:
+          $ref: '#/components/schemas/Hash'
+        trace_external_hash_norm:
+          $ref: '#/components/schemas/Hash'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountAddress'
+        transactions_full:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+    Actions:
+      type: object
+      required:
+        - actions
+      properties:
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Action'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+    TraceClassificationState:
+      type: string
+      enum: [ unclassified,failed,ok,broken ]
+      default: unclassified
+    TraceState:
+      type: string
+      enum: [ complete,pending,broken ]
+    TraceMeta:
+      type: object
+      required:
+        - trace_state
+        - messages
+        - transactions
+        - pending_messages
+        - classification_state
+      properties:
+        trace_state:
+          $ref: '#/components/schemas/TraceState'
+        messages:
+          type: integer
+          format: int32
+          minimum: 0
+        transactions:
+          type: integer
+          format: int32
+          minimum: 0
+        pending_messages:
+          type: integer
+          format: int32
+          minimum: 0
+        classification_state:
+          $ref: '#/components/schemas/TraceClassificationState'
+    TraceNode:
+      type: object
+      required:
+        - tx_hash
+        - in_msg_hash
+        - children
+      properties:
+        tx_hash:
+          $ref: '#/components/schemas/Hash'
+        in_msg_hash:
+          $ref: '#/components/schemas/Hash'
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+        in_msg:
+          $ref: '#/components/schemas/Message'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/TraceNode'
+    Trace:
+      type: object
+      required:
+        - mc_seqno_start
+        - mc_seqno_end
+        - start_lt
+        - start_utime
+        - trace_info
+        - is_incomplete
+        - warning
+      properties:
+        trace_id:
+          $ref: '#/components/schemas/Hash'
+        external_hash:
+          $ref: '#/components/schemas/Hash'
+        mc_seqno_start:
+          $ref: '#/components/schemas/Hash'
+        mc_seqno_end:
+          $ref: '#/components/schemas/Hash'
+        start_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        start_utime:
+          $ref: '#/components/schemas/UnixTime'
+        end_lt:
+          $ref: '#/components/schemas/LogicalTime'
+        end_utime:
+          $ref: '#/components/schemas/UnixTime'
+        trace_info:
+          $ref: '#/components/schemas/TraceMeta'
+        is_incomplete:
+          type: boolean
+        warning:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Action'
+        trace:
+          $ref: '#/components/schemas/TraceNode'
+        transactions_order:
+          type: array
+          items:
+            $ref: '#/components/schemas/Hash'
+        transactions:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Transaction'
+    Traces:
+      type: object
+      required:
+        - traces
+      properties:
+        traces:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trace'
+        address_book:
+          $ref: '#/components/schemas/AddressBook'
+        metadata:
+          $ref: '#/components/schemas/Metadata'

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -20,7 +21,6 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/pprof"
 	"github.com/gofiber/fiber/v2/middleware/redirect"
 	"github.com/gofiber/swagger"
-	_ "github.com/toncenter/ton-indexer/ton-index-go/docs"
 	"github.com/toncenter/ton-indexer/ton-index-go/index"
 )
 
@@ -2106,6 +2106,9 @@ func test() {
 	// log.Println(addr, err)
 }
 
+//go:embed openapi.yaml
+var openapiSpec []byte
+
 func main() {
 	test()
 	var timeout_ms int
@@ -2272,9 +2275,15 @@ func main() {
 		StatusCode: 301,
 	}))
 
+	app.Get("/openapi.yaml", func(c *fiber.Ctx) error {
+		c.Type("yaml")
+		return c.Send(openapiSpec)
+	})
+
 	// swagger
 	var swagger_config = swagger.Config{
 		Title:           "TON Index (" + settings.InstanceName + ") - Swagger UI",
+		URL:             "/openapi.yaml",
 		Layout:          "BaseLayout",
 		DeepLinking:     true,
 		TryItOutEnabled: true,
