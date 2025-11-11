@@ -705,11 +705,11 @@ bool DedustPoolDetector::get_asset(td::Ref<vm::CellSlice> slice, std::optional<b
 // they're immutable, so we can hardcode them.
 // all been obtained by compiling ston-fi/dex-core-v2 contracts and wrapping them into libs
 const std::unordered_map<std::string, std::string> STONFI_POOL_V2_CODE_HASHES {
-  {"f04a14c3231221056c3499965e4604417e324f8e9121d840120d803288715594", "weighted_const_product"},
-  {"063e559f6f6be7ca44b2e6bcb448650d06f73d5cb83cdcc3b3695543474aedcf", "weighted_stableswap"},
-  {"ec614ea4aaea3f7768606f1c1632b3374d3de096a1e7c4ba43c8009c487fee9d", "constant_product"},
-  {"2963cf56242fd0cd4da02fce037c10ec86056083a7264047fedac1c8fc534f7e", "constant_sum"},
-  {"fbc7e8fcca72c2b9c078b359ffa936f46384491b895b6577b0a6cb3f569040bc", "stableswap"}
+  {"F04A14C3231221056C3499965E4604417E324F8E9121D840120D803288715594", "weighted_const_product"},
+  {"063E559F6F6BE7CA44B2E6BCB448650D06F73D5CB83CDCC3B3695543474AEDCF", "weighted_stableswap"},
+  {"EC614EA4AAEA3F7768606F1C1632B3374D3DE096A1E7C4BA43C8009C487FEE9D", "constant_product"},
+  {"2963CF56242FD0CD4DA02FCE037C10EC86056083A7264047FEDAC1C8FC534F7E", "constant_sum"},
+  {"FBC7E8FCCA72C2B9C078B359FFA936F46384491B895B6577B0A6CB3F569040BC", "stableswap"}
 };
 
 StonfiPoolV2Detector::StonfiPoolV2Detector(block::StdAddress address,
