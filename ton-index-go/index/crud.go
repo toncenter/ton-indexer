@@ -4141,3 +4141,331 @@ func queryVestingContractsImpl(query string, conn *pgxpool.Conn, settings Reques
 
 	return vestings, nil
 }
+
+// GetNominatorBookings returns bookings (income, deposits, withdrawals) for a specific nominator in a pool
+func (db *DbClient) GetNominatorBookings(
+	nominatorAddr string,
+	poolAddr string,
+	fromTime, toTime *int32,
+	limit int,
+) ([]NominatorBooking, error) {
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	var bookings []NominatorBooking
+
+	// query incomes
+	incomeQuery := `
+		SELECT tx_now, income_amount
+		FROM nominator_pool_incomes
+		WHERE nominator_address = $1 AND pool_address = $2
+	`
+	var incomeArgs []interface{}
+	incomeArgs = append(incomeArgs, nominatorAddr, poolAddr)
+	argIdx := 3
+
+	if fromTime != nil {
+		incomeQuery += fmt.Sprintf(" AND tx_now >= $%d", argIdx)
+		incomeArgs = append(incomeArgs, *fromTime)
+		argIdx++
+	}
+	if toTime != nil {
+		incomeQuery += fmt.Sprintf(" AND tx_now <= $%d", argIdx)
+		incomeArgs = append(incomeArgs, *toTime)
+		argIdx++
+	}
+
+	incomeQuery += " ORDER BY tx_now DESC"
+
+	if limit > 0 {
+		incomeQuery += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	incomeRows, err := conn.Query(context.Background(), incomeQuery, incomeArgs...)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer incomeRows.Close()
+
+	for incomeRows.Next() {
+		var utime int32
+		var amount string
+		if err := incomeRows.Scan(&utime, &amount); err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		bookings = append(bookings, NominatorBooking{
+			Utime:       utime,
+			BookingType: "income",
+			Debit:       "0",
+			Credit:      amount,
+		})
+	}
+
+	// query actions (deposits, withdrawals)
+	actionQuery := `
+		SELECT start_utime, type, value
+		FROM actions
+		WHERE (source = $1 OR destination = $1)
+		  AND (source = $2 OR destination = $2)
+		  AND type IN ('nominator_pool_deposit', 'nominator_pool_withdraw_request')
+	`
+	var actionArgs []interface{}
+	actionArgs = append(actionArgs, nominatorAddr, poolAddr)
+	argIdx = 3
+
+	if fromTime != nil {
+		actionQuery += fmt.Sprintf(" AND start_utime >= $%d", argIdx)
+		actionArgs = append(actionArgs, *fromTime)
+		argIdx++
+	}
+	if toTime != nil {
+		actionQuery += fmt.Sprintf(" AND start_utime <= $%d", argIdx)
+		actionArgs = append(actionArgs, *toTime)
+		argIdx++
+	}
+
+	actionQuery += " ORDER BY start_utime DESC"
+
+	if limit > 0 {
+		actionQuery += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	actionRows, err := conn.Query(context.Background(), actionQuery, actionArgs...)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer actionRows.Close()
+
+	for actionRows.Next() {
+		var utime int32
+		var actionType string
+		var value *string
+		if err := actionRows.Scan(&utime, &actionType, &value); err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+
+		var debit, credit string
+		if actionType == "nominator_pool_deposit" {
+			debit = "0"
+			if value != nil {
+				credit = *value
+			} else {
+				credit = "0"
+			}
+		} else { // withdrawal
+			if value != nil {
+				debit = *value
+			} else {
+				debit = "0"
+			}
+			credit = "0"
+		}
+
+		bookings = append(bookings, NominatorBooking{
+			Utime:       utime,
+			BookingType: actionType,
+			Debit:       debit,
+			Credit:      credit,
+		})
+	}
+
+	// sort by utime desc
+	sort.Slice(bookings, func(i, j int) bool {
+		return bookings[i].Utime > bookings[j].Utime
+	})
+
+	// apply limit to combined results
+	if limit > 0 && len(bookings) > limit {
+		bookings = bookings[:limit]
+	}
+
+	return bookings, nil
+}
+
+// GetPoolBookings returns all bookings for a pool (across all nominators)
+func (db *DbClient) GetPoolBookings(
+	poolAddr string,
+	fromTime, toTime *int32,
+	limit int,
+) ([]PoolBooking, error) {
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	var bookings []PoolBooking
+
+	// query incomes
+	incomeQuery := `
+		SELECT nominator_address, tx_now, income_amount
+		FROM nominator_pool_incomes
+		WHERE pool_address = $1
+	`
+	var incomeArgs []interface{}
+	incomeArgs = append(incomeArgs, poolAddr)
+	argIdx := 2
+
+	if fromTime != nil {
+		incomeQuery += fmt.Sprintf(" AND tx_now >= $%d", argIdx)
+		incomeArgs = append(incomeArgs, *fromTime)
+		argIdx++
+	}
+	if toTime != nil {
+		incomeQuery += fmt.Sprintf(" AND tx_now <= $%d", argIdx)
+		incomeArgs = append(incomeArgs, *toTime)
+		argIdx++
+	}
+
+	incomeQuery += " ORDER BY tx_now DESC"
+
+	if limit > 0 {
+		incomeQuery += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	incomeRows, err := conn.Query(context.Background(), incomeQuery, incomeArgs...)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer incomeRows.Close()
+
+	for incomeRows.Next() {
+		var nominatorAddr string
+		var utime int32
+		var amount string
+		if err := incomeRows.Scan(&nominatorAddr, &utime, &amount); err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		bookings = append(bookings, PoolBooking{
+			NominatorAddress: nominatorAddr,
+			Utime:            utime,
+			BookingType:      "income",
+			Debit:            "0",
+			Credit:           amount,
+		})
+	}
+
+	// query actions (deposits, withdrawals) - pool as destination or source
+	actionQuery := `
+		SELECT 
+			CASE 
+				WHEN source = $1 THEN destination
+				ELSE source
+			END as nominator_address,
+			start_utime, type, value
+		FROM actions
+		WHERE (source = $1 OR destination = $1)
+		  AND type IN ('nominator_pool_deposit', 'nominator_pool_withdraw_request')
+	`
+	var actionArgs []interface{}
+	actionArgs = append(actionArgs, poolAddr)
+	argIdx = 2
+
+	if fromTime != nil {
+		actionQuery += fmt.Sprintf(" AND start_utime >= $%d", argIdx)
+		actionArgs = append(actionArgs, *fromTime)
+		argIdx++
+	}
+	if toTime != nil {
+		actionQuery += fmt.Sprintf(" AND start_utime <= $%d", argIdx)
+		actionArgs = append(actionArgs, *toTime)
+		argIdx++
+	}
+
+	actionQuery += " ORDER BY start_utime DESC"
+
+	if limit > 0 {
+		actionQuery += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	actionRows, err := conn.Query(context.Background(), actionQuery, actionArgs...)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer actionRows.Close()
+
+	for actionRows.Next() {
+		var nominatorAddr string
+		var utime int32
+		var actionType string
+		var value *string
+		if err := actionRows.Scan(&nominatorAddr, &utime, &actionType, &value); err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+
+		var debit, credit string
+		if actionType == "nominator_pool_deposit" {
+			debit = "0"
+			if value != nil {
+				credit = *value
+			} else {
+				credit = "0"
+			}
+		} else { // withdrawal
+			if value != nil {
+				debit = *value
+			} else {
+				debit = "0"
+			}
+			credit = "0"
+		}
+
+		bookings = append(bookings, PoolBooking{
+			NominatorAddress: nominatorAddr,
+			Utime:            utime,
+			BookingType:      actionType,
+			Debit:            debit,
+			Credit:           credit,
+		})
+	}
+
+	// sort by utime desc
+	sort.Slice(bookings, func(i, j int) bool {
+		return bookings[i].Utime > bookings[j].Utime
+	})
+
+	// apply limit to combined results
+	if limit > 0 && len(bookings) > limit {
+		bookings = bookings[:limit]
+	}
+
+	return bookings, nil
+}
+
+// GetNominatorPools returns distinct pool addresses where nominator has recent activity
+func (db *DbClient) GetNominatorPools(nominatorAddr string) ([]string, error) {
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	// get pools from incomes in last 24 hours
+	query := `
+		SELECT DISTINCT pool_address
+		FROM nominator_pool_incomes
+		WHERE nominator_address = $1
+		  AND tx_now > extract(epoch from now() - interval '24 hours')
+		ORDER BY pool_address
+	`
+
+	rows, err := conn.Query(context.Background(), query, nominatorAddr)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer rows.Close()
+
+	var pools []string
+	for rows.Next() {
+		var pool string
+		if err := rows.Scan(&pool); err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		pools = append(pools, pool)
+	}
+
+	return pools, nil
+}

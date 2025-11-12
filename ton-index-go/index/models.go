@@ -367,6 +367,33 @@ type NFTTransfer struct {
 	TraceId               *HashType        `json:"trace_id"`
 } // @name NFTTransfer
 
+type NominatorPoolIncome struct {
+	TxHash           HashType       `json:"tx_hash"`
+	TxLt             int64          `json:"tx_lt,string"`
+	TxNow            int32          `json:"tx_now"`
+	McSeqno          int32          `json:"mc_seqno"`
+	PoolAddress      AccountAddress `json:"pool_address"`
+	NominatorAddress AccountAddress `json:"nominator_address"`
+	IncomeAmount     string         `json:"income_amount"`
+	NominatorBalance string         `json:"nominator_balance"`
+	TraceId          *HashType      `json:"trace_id,omitempty"`
+} // @name NominatorPoolIncome
+
+type NominatorBooking struct {
+	Utime       int32  `json:"utime"`
+	BookingType string `json:"booking_type"` // "income", "deposit", "withdrawal"
+	Debit       string `json:"debit"`
+	Credit      string `json:"credit"`
+} // @name NominatorBooking
+
+type PoolBooking struct {
+	NominatorAddress string `json:"nominator_address"`
+	Utime            int32  `json:"utime"`
+	BookingType      string `json:"booking_type"`
+	Debit            string `json:"debit"`
+	Credit           string `json:"credit"`
+} // @name PoolBooking
+
 // jettons
 type JettonMaster struct {
 	Address              AccountAddress         `json:"address"`

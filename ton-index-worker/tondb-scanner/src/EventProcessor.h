@@ -1,6 +1,7 @@
 #pragma once
 #include "InterfaceDetectors.hpp"
 #include "Statistics.h"
+#include "common/refint.h"
 
 
 // Detects special cases of Actions like - Jetton transfers and burns, NFT transfers
@@ -26,6 +27,22 @@ public:
   }
 
   void process_tx(const schema::Transaction& transaction) {
+    // check for recover_stake_ok from elector to nominator pool
+    if (transaction.in_msg && !transaction.in_msg.value().body.is_null()) {
+      auto in_msg_body_cs = vm::load_cell_slice_ref(transaction.in_msg.value().body);
+      if (in_msg_body_cs->size() >= 32) {
+        auto opcode = in_msg_body_cs->prefetch_ulong(32);
+        if (opcode == 0xf96f7324) {  // recover_stake_ok from elector
+          auto incomes = parse_nominator_pool_incomes(transaction);
+          if (incomes.is_ok()) {
+            for (auto& income : incomes.ok()) {
+              block_->events_.push_back(std::move(income));
+            }
+          }
+        }
+      }
+    }
+
     auto interfaces_it = block_->account_interfaces_.find(transaction.account);
 
     if (interfaces_it == block_->account_interfaces_.end()) {
@@ -209,6 +226,121 @@ public:
     }
 
     return transfer;
+  }
+
+  td::Result<std::vector<NominatorPoolIncome>> parse_nominator_pool_incomes(const schema::Transaction& transaction) {
+    std::vector<NominatorPoolIncome> incomes;
+    
+    // check code hash of pool contract: mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8=
+    const std::string NOMINATOR_POOL_CODE_HASH = "9A3EC0B8098C6B440C5990CE22C2EE809F576CA1E00687B6856990A5EDEBDDCD";
+    
+    // find account state for the pool
+    schema::AccountState pool_state;
+    bool found = false;
+    for (const auto& acc_state : block_->account_states_) {
+      if (acc_state.account == transaction.account) {
+        if (acc_state.code_hash.has_value() && 
+            acc_state.code_hash.value().to_hex() == NOMINATOR_POOL_CODE_HASH) {
+          pool_state = acc_state;
+          found = true;
+          break;
+        }
+      }
+    }
+    
+    if (!found || pool_state.data.is_null()) {
+      return td::Status::Error("Nominator pool state not found");
+    }
+    
+    // parse pool data structure
+    auto ds = vm::load_cell_slice(pool_state.data);
+    if (!ds.is_valid()) {
+      return td::Status::Error("Failed to parse pool state");
+    }
+    ds.advance(8);  // skip state:uint8
+    ds.advance(16); // skip nominators_count:uint16
+    auto stake_amount_sent = block::tlb::t_Grams.as_integer_skip(ds);  // Coins
+    ds.advance(120); // skip validator_amount:Coins
+    ds.fetch_ref();  // skip config ref
+    
+    td::Ref<vm::Cell> nominators_cell_ref;
+    if (!ds.fetch_maybe_ref(nominators_cell_ref) || nominators_cell_ref.is_null()) {
+      return incomes;  // no nominators
+    }
+    
+    // get transaction value for reward calculation
+    if (!transaction.in_msg.has_value()) {
+      return incomes;
+    }
+    auto tx_value = transaction.in_msg.value().value;
+
+    auto tx_value_grams = transaction.in_msg.value().value->grams;
+
+    
+    // calculate reward: tx_value - stake_amount_sent
+    // use simple comparison since both are big numbers
+    td::RefInt256 tx_value_big = tx_value_grams;
+    if (td::cmp(tx_value_big, stake_amount_sent) <= 0) {
+      return incomes;  // no reward
+    }
+    td::RefInt256 reward_total = tx_value_big - stake_amount_sent;
+    
+    // parse nominators dict
+    vm::Dictionary nominators_dict{nominators_cell_ref, 256};
+    auto iterator = nominators_dict.begin();
+    
+    // first pass: calculate total balance
+    td::RefInt256 total_balance = td::make_refint(td::BigInt256(0));
+    std::vector<std::pair<td::BitArray<256>, td::RefInt256>> nominators_list;
+    
+    while (!iterator.eof()) {
+      auto addr_hash = td::BitArray<256>(iterator.cur_pos());
+      auto nominator_cs_ref = iterator.cur_value();
+      
+      // nominator#_ deposit:Coins pending_deposit:Coins
+      // create mutable copy of CellSlice for parsing
+      vm::CellSlice nominator_cs = *nominator_cs_ref;
+      auto deposit = block::tlb::t_Grams.as_integer_skip(nominator_cs);
+      
+      if (!deposit.is_null() && td::sgn(deposit) > 0) {
+        total_balance = total_balance + deposit;
+        nominators_list.push_back({addr_hash, deposit});
+      }
+      
+      ++iterator;
+    }
+    
+    if (total_balance.is_null() || td::sgn(total_balance) == 0) {
+      return incomes;  // no balance to distribute
+    }
+    
+    // second pass: calculate income for each nominator
+    std::string pool_address = convert::to_raw_address(transaction.account);
+    
+    for (const auto& [addr_hash, balance] : nominators_list) {
+      NominatorPoolIncome income;
+      income.trace_id = transaction.trace_id;
+      income.transaction_hash = transaction.hash;
+      income.transaction_lt = transaction.lt;
+      income.transaction_now = transaction.now;
+      income.mc_seqno = transaction.mc_seqno;
+      income.pool_address = pool_address;
+      
+      // reconstruct nominator address from hash (workchain 0)
+      block::StdAddress nominator_addr;
+      nominator_addr.workchain = 0;
+      nominator_addr.addr = addr_hash;
+      income.nominator_address = convert::to_raw_address(nominator_addr);
+      
+      // calculate proportional income: reward * balance / total_balance
+      auto income_amount = (reward_total * balance) / total_balance;
+      income.income_amount = income_amount;
+      income.nominator_balance = balance;
+      
+      incomes.push_back(std::move(income));
+    }
+    
+    return incomes;
   }
 };
 

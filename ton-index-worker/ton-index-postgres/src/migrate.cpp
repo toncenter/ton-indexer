@@ -408,6 +408,31 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
     );
 
     query += (
+      "create table if not exists nominator_pool_incomes ("
+      "tx_hash tonhash not null, "
+      "tx_lt bigint not null, "
+      "tx_now integer not null, "
+      "mc_seqno integer, "
+      "pool_address tonaddr not null, "
+      "nominator_address tonaddr not null, "
+      "income_amount numeric not null, "
+      "nominator_balance numeric not null, "
+      "trace_id tonhash, "
+      "primary key (tx_hash, tx_lt, nominator_address), "
+      "foreign key (tx_hash, tx_lt) references transactions);\n"
+    );
+
+    query += (
+      "create index if not exists idx_nominator_pool_incomes_nominator "
+      "on nominator_pool_incomes(nominator_address, tx_now desc);\n"
+    );
+
+    query += (
+      "create index if not exists idx_nominator_pool_incomes_pool "
+      "on nominator_pool_incomes(pool_address, tx_now desc);\n"
+    );
+
+    query += (
       "create table if not exists getgems_nft_sales ("
       "id bigserial not null, "
       "address tonaddr not null primary key, "

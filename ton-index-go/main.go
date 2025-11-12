@@ -1910,6 +1910,131 @@ func HealthCheck(c *fiber.Ctx) error {
 	return c.Status(200).SendString("OK")
 }
 
+// GetNominatorBookings godoc
+// @summary Get nominator bookings
+// @tags Nominator Pools
+// @id getNominatorBookings
+// @param nominator query string true "Nominator address"
+// @param pool query string true "Pool address"
+// @param from_time query integer false "From timestamp"
+// @param to_time query integer false "To timestamp"
+// @param limit query integer false "Limit" default(100)
+// @produce json
+// @success 200 {array} index.NominatorBooking
+// @failure 422 {object} index.IndexError
+// @failure 500 {object} index.IndexError
+// @router /api/smc-index/getNominatorBookings [get]
+func GetNominatorBookings(c *fiber.Ctx) error {
+	nominator := c.Query("nominator")
+	poolAddr := c.Query("pool")
+
+	if nominator == "" || poolAddr == "" {
+		return index.IndexError{Code: 422, Message: "nominator and pool parameters are required"}
+	}
+
+	var fromTime, toTime *int32
+	if fromStr := c.Query("from_time"); fromStr != "" {
+		if val, err := strconv.ParseInt(fromStr, 10, 32); err == nil {
+			tmp := int32(val)
+			fromTime = &tmp
+		}
+	}
+	if toStr := c.Query("to_time"); toStr != "" {
+		if val, err := strconv.ParseInt(toStr, 10, 32); err == nil {
+			tmp := int32(val)
+			toTime = &tmp
+		}
+	}
+
+	limit := 100
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil {
+			limit = val
+		}
+	}
+
+	bookings, err := pool.GetNominatorBookings(nominator, poolAddr, fromTime, toTime, limit)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(bookings)
+}
+
+// GetPoolBookings godoc
+// @summary Get pool bookings
+// @tags Nominator Pools
+// @id getPoolBookings
+// @param pool query string true "Pool address"
+// @param from_time query integer false "From timestamp"
+// @param to_time query integer false "To timestamp"
+// @param limit query integer false "Limit" default(100)
+// @produce json
+// @success 200 {array} index.PoolBooking
+// @failure 422 {object} index.IndexError
+// @failure 500 {object} index.IndexError
+// @router /api/smc-index/getPoolBookings [get]
+func GetPoolBookings(c *fiber.Ctx) error {
+	poolAddr := c.Query("pool")
+
+	if poolAddr == "" {
+		return index.IndexError{Code: 422, Message: "pool parameter is required"}
+	}
+
+	var fromTime, toTime *int32
+	if fromStr := c.Query("from_time"); fromStr != "" {
+		if val, err := strconv.ParseInt(fromStr, 10, 32); err == nil {
+			tmp := int32(val)
+			fromTime = &tmp
+		}
+	}
+	if toStr := c.Query("to_time"); toStr != "" {
+		if val, err := strconv.ParseInt(toStr, 10, 32); err == nil {
+			tmp := int32(val)
+			toTime = &tmp
+		}
+	}
+
+	limit := 100
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil {
+			limit = val
+		}
+	}
+
+	bookings, err := pool.GetPoolBookings(poolAddr, fromTime, toTime, limit)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(bookings)
+}
+
+// GetNominatorPools godoc
+// @summary Get pools where nominator has activity
+// @tags Nominator Pools
+// @id getNominatorPools
+// @param nominator query string true "Nominator address"
+// @produce json
+// @success 200 {array} string
+// @failure 422 {object} index.IndexError
+// @failure 500 {object} index.IndexError
+// @router /api/smc-index/getNominatorPools [get]
+func GetNominatorPools(c *fiber.Ctx) error {
+	nominator := c.Query("nominator")
+
+	if nominator == "" {
+		return index.IndexError{Code: 422, Message: "nominator parameter is required"}
+	}
+
+	pools, err := pool.GetNominatorPools(nominator)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(pools)
+}
+
 func ExtractParam(ctx *fiber.Ctx, header string, query string) (string, bool) {
 	if val := ctx.GetReqHeaders()[header]; len(val) > 0 {
 		return val[0], true
@@ -2251,6 +2376,11 @@ func main() {
 	// utils
 	app.Get("/api/v3/decode", GetDecode)
 	app.Post("/api/v3/decode", PostDecode)
+
+	// smc-index compatibility endpoints
+	app.Get("/api/smc-index/getNominatorBookings", GetNominatorBookings)
+	app.Get("/api/smc-index/getPoolBookings", GetPoolBookings)
+	app.Get("/api/smc-index/getNominatorPools", GetNominatorPools)
 
 	// api/v2 proxied
 	app.Get("/api/v3/addressInformation", GetV2AddressInformation)
