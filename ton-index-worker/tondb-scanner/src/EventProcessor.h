@@ -232,7 +232,7 @@ public:
     std::vector<NominatorPoolIncome> incomes;
     
     // check code hash of pool contract: mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8=
-    const std::string NOMINATOR_POOL_CODE_HASH = "9A3EC0B8098C6B440C5990CE22C2EE809F576CA1E00687B6856990A5EDEBDDCD";
+    const std::string NOMINATOR_POOL_CODE_HASH = "9A3EC14BC098F6B44064C305222CAEA2800F17DDA85EE6A8198A7095EDE10DCF";
     
     // find account state for the pool
     schema::AccountState pool_state;
