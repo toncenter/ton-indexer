@@ -299,7 +299,14 @@ public:
     ds.advance(16); // skip nominators_count:uint16
     auto stake_amount_sent = block::tlb::t_Grams.as_integer_skip(ds);  // Coins
     ds.advance(120); // skip validator_amount:Coins
-    ds.fetch_ref();  // skip config ref
+
+    td::Ref<vm::Cell> config_ref;
+    if (!ds.fetch_ref_to(config_ref)) {
+      return td::Status::Error("Failed to fetch config ref");
+    }
+    auto config_cs = vm::load_cell_slice(config_ref);
+    config_cs.advance(256); // skip validator address hash
+    auto validator_reward_share = config_cs.fetch_ulong(16); // uint16
     
     td::Ref<vm::Cell> nominators_cell_ref;
     if (!ds.fetch_maybe_ref(nominators_cell_ref) || nominators_cell_ref.is_null()) {
@@ -311,17 +318,18 @@ public:
       return incomes;
     }
     auto tx_value = transaction.in_msg.value().value;
-
     auto tx_value_grams = transaction.in_msg.value().value->grams;
-
     
-    // calculate reward: tx_value - stake_amount_sent
-    // use simple comparison since both are big numbers
+    // calculate total reward: tx_value - stake_amount_sent
     td::RefInt256 tx_value_big = tx_value_grams;
     if (td::cmp(tx_value_big, stake_amount_sent) <= 0) {
       return incomes;  // no reward
     }
     td::RefInt256 reward_total = tx_value_big - stake_amount_sent;
+    
+    // subtract validator's share from total reward
+    td::RefInt256 validator_reward = (reward_total * td::make_refint(validator_reward_share)) / td::make_refint(10000);
+    td::RefInt256 nominators_reward = reward_total - validator_reward;
     
     // parse nominators dict
     vm::Dictionary nominators_dict{nominators_cell_ref, 256};
@@ -370,8 +378,8 @@ public:
       nominator_addr.addr = addr_hash;
       income.nominator_address = convert::to_raw_address(nominator_addr);
       
-      // calculate proportional income: reward * balance / total_balance
-      auto income_amount = (reward_total * balance) / total_balance;
+      // calculate proportional income: nominators_reward * balance / total_balance
+      auto income_amount = (nominators_reward * balance) / total_balance;
       income.income_amount = income_amount;
       income.nominator_balance = balance;
       
