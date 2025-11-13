@@ -2,6 +2,7 @@
 #include "InterfaceDetectors.hpp"
 #include "Statistics.h"
 #include "common/refint.h"
+#include "DataParser.h"
 
 
 // Detects special cases of Actions like - Jetton transfers and burns, NFT transfers
@@ -234,22 +235,34 @@ public:
     // check code hash of pool contract: mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8=
     const std::string NOMINATOR_POOL_CODE_HASH = "9A3EC14BC098F6B44064C305222CAEA2800F17DDA85EE6A8198A7095EDE10DCF";
     
-    // find account state for the pool
-    schema::AccountState pool_state;
-    bool found = false;
-    for (const auto& acc_state : block_->account_states_) {
-      if (acc_state.account == transaction.account) {
-        if (acc_state.code_hash.has_value() && 
-            acc_state.code_hash.value().to_hex() == NOMINATOR_POOL_CODE_HASH) {
-          pool_state = acc_state;
-          found = true;
-          break;
-        }
-      }
+    // load account state before transaction using cell_db_reader
+    if (!block_->cell_db_reader_) {
+      return td::Status::Error("cell_db_reader not available");
     }
     
-    if (!found || pool_state.data.is_null()) {
-      return td::Status::Error("Nominator pool state not found");
+    auto account_cell_r = block_->cell_db_reader_->load_cell(transaction.account_state_hash_before.as_slice());
+    if (account_cell_r.is_error()) {
+      return td::Status::Error(PSLICE() << "Failed to load previous account state: " << account_cell_r.error());
+    }
+    
+    auto account_cell = account_cell_r.move_as_ok();
+    auto pool_state_r = ParseQuery::parse_account(account_cell, transaction.now, 
+                                                   transaction.prev_trans_hash, 
+                                                   transaction.prev_trans_lt);
+    if (pool_state_r.is_error()) {
+      return pool_state_r.move_as_error_prefix("Failed to parse account state: ");
+    }
+    
+    auto pool_state = pool_state_r.move_as_ok();
+    
+    // check code hash
+    if (!pool_state.code_hash.has_value() || 
+        pool_state.code_hash.value().to_hex() != NOMINATOR_POOL_CODE_HASH) {
+      return td::Status::Error("Not a nominator pool contract");
+    }
+    
+    if (pool_state.data.is_null()) {
+      return td::Status::Error("Pool state data is null");
     }
     
     // parse pool data structure
