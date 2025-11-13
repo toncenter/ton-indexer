@@ -463,6 +463,19 @@ struct JettonBurn {
   td::Ref<vm::Cell> custom_payload;
 };
 
+struct NominatorPoolIncome {
+  td::Bits256 trace_id;
+  td::Bits256 transaction_hash;
+  uint64_t transaction_lt;
+  uint32_t transaction_now;
+  uint32_t mc_seqno;
+  
+  std::string pool_address;
+  std::string nominator_address;
+  td::RefInt256 income_amount;
+  td::RefInt256 nominator_balance;  // balance at income time
+};
+
 struct NFTCollectionData {
   std::string address;
   td::RefInt256 next_item_index;
@@ -627,6 +640,21 @@ struct DedustPoolData {
   td::Bits256 data_hash;
 };
 
+struct StonfiPoolV2Data {
+  block::StdAddress address;
+  std::optional<block::StdAddress> asset_1;
+  std::optional<block::StdAddress> asset_2;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::RefInt256 reserve_1;
+  td::RefInt256 reserve_2;
+  std::string pool_type;
+  double fee;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
+
 //
 // Containers
 //
@@ -645,7 +673,8 @@ struct MasterchainBlockDataState {
 
 using BlockchainEvent = std::variant<JettonTransfer, 
                                      JettonBurn,
-                                     NFTTransfer>;
+                                     NFTTransfer,
+                                     NominatorPoolIncome>;
 
 using BlockchainInterface = std::variant<JettonMasterData, 
                                          JettonWalletData, 
@@ -662,7 +691,8 @@ using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
                                            MultisigContractData,
                                            MultisigOrderData,
                                            VestingData,
-                                           DedustPoolData>;
+                                           DedustPoolData,
+                                           StonfiPoolV2Data>;
 
 namespace std {
 template <>
@@ -686,6 +716,7 @@ struct hash<block::StdAddress> {
 
 struct ParsedBlock {
   MasterchainBlockDataState mc_block_;
+  std::shared_ptr<vm::CellDbReader> cell_db_reader_;  // for loading previous states
 
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;

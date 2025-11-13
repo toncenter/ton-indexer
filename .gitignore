@@ -317,3 +317,9 @@ sandbox/
 .DS_Store
 ton-index-worker/tondb-scanner/src/tokens-tlb.cpp
 ton-index-worker/tondb-scanner/src/tokens-tlb.h
+dev/
+indexer/actions-searcher2.ipynb
+indexer/db_transfer.py
+indexer/debug_api.py
+indexer/dev_utils/
+indexer/dump_trace_to_lz4.py
