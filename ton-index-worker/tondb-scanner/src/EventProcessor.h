@@ -229,26 +229,51 @@ public:
     return transfer;
   }
 
+  // find first transaction for account in current block by lt
+  td::optional<schema::Transaction> find_first_tx_for_account(const block::StdAddress& account) {
+    td::optional<schema::Transaction> first_tx;
+    uint64_t min_lt = std::numeric_limits<uint64_t>::max();
+    
+    for (const auto& block : block_->blocks_) {
+      for (const auto& tx : block.transactions) {
+        if (tx.account == account && tx.lt < min_lt) {
+          min_lt = tx.lt;
+          first_tx = tx;
+        }
+      }
+    }
+    
+    return first_tx;
+  }
+
   td::Result<std::vector<NominatorPoolIncome>> parse_nominator_pool_incomes(const schema::Transaction& transaction) {
     std::vector<NominatorPoolIncome> incomes;
     
     // check code hash of pool contract: mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8=
     const std::string NOMINATOR_POOL_CODE_HASH = "9A3EC14BC098F6B44064C305222CAEA2800F17DDA85EE6A8198A7095EDE10DCF";
     
-    // load account state before transaction using cell_db_reader
+    // find first transaction for account in the block because we need stake amount to calculate rewards
+    auto first_tx_opt = find_first_tx_for_account(transaction.account);
+    if (!first_tx_opt) {
+      return td::Status::Error("Failed to find first transaction for account");
+    }
+    
+    auto& first_tx = first_tx_opt.value();
+    
+    // load account state before first transaction (guaranteed in celldb)
     if (!block_->cell_db_reader_) {
       return td::Status::Error("cell_db_reader not available");
     }
     
-    auto account_cell_r = block_->cell_db_reader_->load_cell(transaction.account_state_hash_before.as_slice());
+    auto account_cell_r = block_->cell_db_reader_->load_cell(first_tx.account_state_hash_before.as_slice());
     if (account_cell_r.is_error()) {
-      return td::Status::Error(PSLICE() << "Failed to load previous account state: " << account_cell_r.error());
+      return td::Status::Error(PSLICE() << "Failed to load account state: " << account_cell_r.error());
     }
     
     auto account_cell = account_cell_r.move_as_ok();
-    auto pool_state_r = ParseQuery::parse_account(account_cell, transaction.now, 
-                                                   transaction.prev_trans_hash, 
-                                                   transaction.prev_trans_lt);
+    auto pool_state_r = ParseQuery::parse_account(account_cell, first_tx.now, 
+                                                   first_tx.prev_trans_hash, 
+                                                   first_tx.prev_trans_lt);
     if (pool_state_r.is_error()) {
       return pool_state_r.move_as_error_prefix("Failed to parse account state: ");
     }
