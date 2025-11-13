@@ -230,66 +230,70 @@ public:
   }
 
   // find first transaction for account in current block by lt
-  td::optional<schema::Transaction> find_first_tx_for_account(const block::StdAddress& account) {
+  td::optional<schema::Transaction> find_first_tx_for_account(const block::StdAddress &account) {
     td::optional<schema::Transaction> first_tx;
     uint64_t min_lt = std::numeric_limits<uint64_t>::max();
-    
-    for (const auto& block : block_->blocks_) {
-      for (const auto& tx : block.transactions) {
+
+    for (const auto &block : block_->blocks_) {
+      for (const auto &tx : block.transactions) {
         if (tx.account == account && tx.lt < min_lt) {
           min_lt = tx.lt;
           first_tx = tx;
         }
       }
     }
-    
+
     return first_tx;
   }
 
-  td::Result<std::vector<NominatorPoolIncome>> parse_nominator_pool_incomes(const schema::Transaction& transaction) {
+  td::Result<std::vector<NominatorPoolIncome>> parse_nominator_pool_incomes(const schema::Transaction &transaction) {
     std::vector<NominatorPoolIncome> incomes;
-    
-    // check code hash of pool contract: mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8=
-    const std::string NOMINATOR_POOL_CODE_HASH = "9A3EC14BC098F6B44064C305222CAEA2800F17DDA85EE6A8198A7095EDE10DCF";
-    
-    // find first transaction for account in the block because we need stake amount to calculate rewards
+
+    const std::string NOMINATOR_POOL_CODE_HASH =
+        "9A3EC14BC098F6B44064C305222CAEA2800F17DDA85EE6A8198A7095EDE10DCF";
+
+    // find first transaction for account in the block because we need
+    // the sent stake amount to calculate the reward
     auto first_tx_opt = find_first_tx_for_account(transaction.account);
     if (!first_tx_opt) {
       return td::Status::Error("Failed to find first transaction for account");
     }
-    
-    auto& first_tx = first_tx_opt.value();
-    
+
+    auto &first_tx = first_tx_opt.value();
+
     // load account state before first transaction (guaranteed in celldb)
     if (!block_->cell_db_reader_) {
       return td::Status::Error("cell_db_reader not available");
     }
-    
-    auto account_cell_r = block_->cell_db_reader_->load_cell(first_tx.account_state_hash_before.as_slice());
+
+    auto account_cell_r = block_->cell_db_reader_->load_cell(
+        first_tx.account_state_hash_before.as_slice());
     if (account_cell_r.is_error()) {
-      return td::Status::Error(PSLICE() << "Failed to load account state: " << account_cell_r.error());
+      return td::Status::Error(PSLICE() << "Failed to load account state: "
+                                        << account_cell_r.error());
     }
-    
+
     auto account_cell = account_cell_r.move_as_ok();
-    auto pool_state_r = ParseQuery::parse_account(account_cell, first_tx.now, 
-                                                   first_tx.prev_trans_hash, 
-                                                   first_tx.prev_trans_lt);
+    auto pool_state_r = ParseQuery::parse_account(account_cell, first_tx.now,
+                                                  first_tx.prev_trans_hash,
+                                                  first_tx.prev_trans_lt);
     if (pool_state_r.is_error()) {
-      return pool_state_r.move_as_error_prefix("Failed to parse account state: ");
+      return pool_state_r.move_as_error_prefix(
+          "Failed to parse account state: ");
     }
-    
+
     auto pool_state = pool_state_r.move_as_ok();
-    
+
     // check code hash
-    if (!pool_state.code_hash.has_value() || 
+    if (!pool_state.code_hash.has_value() ||
         pool_state.code_hash.value().to_hex() != NOMINATOR_POOL_CODE_HASH) {
       return td::Status::Error("Not a nominator pool contract");
     }
-    
+
     if (pool_state.data.is_null()) {
       return td::Status::Error("Pool state data is null");
     }
-    
+
     // parse pool data structure
     auto ds = vm::load_cell_slice(pool_state.data);
     if (!ds.is_valid()) {
@@ -297,7 +301,7 @@ public:
     }
     ds.advance(8);  // skip state:uint8
     ds.advance(16); // skip nominators_count:uint16
-    auto stake_amount_sent = block::tlb::t_Grams.as_integer_skip(ds);  // Coins
+    auto stake_amount_sent = block::tlb::t_Grams.as_integer_skip(ds); // Coins
     ds.advance(120); // skip validator_amount:Coins
 
     td::Ref<vm::Cell> config_ref;
@@ -307,63 +311,66 @@ public:
     auto config_cs = vm::load_cell_slice(config_ref);
     config_cs.advance(256); // skip validator address hash
     auto validator_reward_share = config_cs.fetch_ulong(16); // uint16
-    
+
     td::Ref<vm::Cell> nominators_cell_ref;
-    if (!ds.fetch_maybe_ref(nominators_cell_ref) || nominators_cell_ref.is_null()) {
-      return incomes;  // no nominators
+    if (!ds.fetch_maybe_ref(nominators_cell_ref) ||
+        nominators_cell_ref.is_null()) {
+      return incomes; // no nominators
     }
-    
+
     // get transaction value for reward calculation
     if (!transaction.in_msg.has_value()) {
       return incomes;
     }
     auto tx_value = transaction.in_msg.value().value;
     auto tx_value_grams = transaction.in_msg.value().value->grams;
-    
+
     // calculate total reward: tx_value - stake_amount_sent
     td::RefInt256 tx_value_big = tx_value_grams;
     if (td::cmp(tx_value_big, stake_amount_sent) <= 0) {
-      return incomes;  // no reward
+      return incomes; // no reward
     }
     td::RefInt256 reward_total = tx_value_big - stake_amount_sent;
-    
+
     // subtract validator's share from total reward
-    td::RefInt256 validator_reward = (reward_total * td::make_refint(validator_reward_share)) / td::make_refint(10000);
+    td::RefInt256 validator_reward =
+        (reward_total * td::make_refint(validator_reward_share)) /
+        td::make_refint(10000);
     td::RefInt256 nominators_reward = reward_total - validator_reward;
-    
+
     // parse nominators dict
     vm::Dictionary nominators_dict{nominators_cell_ref, 256};
     auto iterator = nominators_dict.begin();
-    
+
     // first pass: calculate total balance
     td::RefInt256 total_balance = td::make_refint(td::BigInt256(0));
     std::vector<std::pair<td::BitArray<256>, td::RefInt256>> nominators_list;
-    
+
     while (!iterator.eof()) {
       auto addr_hash = td::BitArray<256>(iterator.cur_pos());
       auto nominator_cs_ref = iterator.cur_value();
-      
+
       // nominator#_ deposit:Coins pending_deposit:Coins
       // create mutable copy of CellSlice for parsing
       vm::CellSlice nominator_cs = *nominator_cs_ref;
       auto deposit = block::tlb::t_Grams.as_integer_skip(nominator_cs);
-      
+
       if (!deposit.is_null() && td::sgn(deposit) > 0) {
         total_balance = total_balance + deposit;
         nominators_list.push_back({addr_hash, deposit});
       }
-      
+
       ++iterator;
     }
-    
+
     if (total_balance.is_null() || td::sgn(total_balance) == 0) {
-      return incomes;  // no balance to distribute
+      return incomes; // no balance to distribute
     }
-    
+
     // second pass: calculate income for each nominator
     std::string pool_address = convert::to_raw_address(transaction.account);
-    
-    for (const auto& [addr_hash, balance] : nominators_list) {
+
+    for (const auto &[addr_hash, balance] : nominators_list) {
       NominatorPoolIncome income;
       income.trace_id = transaction.trace_id;
       income.transaction_hash = transaction.hash;
@@ -371,26 +378,26 @@ public:
       income.transaction_now = transaction.now;
       income.mc_seqno = transaction.mc_seqno;
       income.pool_address = pool_address;
-      
+
       // reconstruct nominator address from hash (workchain 0)
       block::StdAddress nominator_addr;
       nominator_addr.workchain = 0;
       nominator_addr.addr = addr_hash;
       income.nominator_address = convert::to_raw_address(nominator_addr);
-      
+
       // calculate proportional income: nominators_reward * balance / total_balance
       auto income_amount = (nominators_reward * balance) / total_balance;
       income.income_amount = income_amount;
       income.nominator_balance = balance;
-      
+
       incomes.push_back(std::move(income));
     }
-    
+
     return incomes;
   }
 };
 
-class EventProcessor: public td::actor::Actor {
+class EventProcessor : public td::actor::Actor {
 private:
   td::actor::ActorOwn<InterfaceManager> interface_manager_;
   td::actor::ActorOwn<JettonMasterDetector> jetton_master_detector_;
