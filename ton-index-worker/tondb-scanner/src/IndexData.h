@@ -757,6 +757,7 @@ struct hash<block::StdAddress> {
 
 struct ParsedBlock {
   schema::MasterchainBlockDataState mc_block_;
+  std::shared_ptr<vm::CellDbReader> cell_db_reader_;  // for loading previous states
 
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;
