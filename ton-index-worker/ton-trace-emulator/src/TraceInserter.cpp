@@ -39,7 +39,7 @@ public:
                 }
                 auto redis_node = redis_node_r.move_as_ok();
 
-                if (!current.emulated) {
+                if (current.execution_state != TraceExecutionState::Emulated) {
                     delete_db_subtree(td::base64_encode(redis_node.transaction.in_msg.value().hash.as_slice()), tx_keys_to_delete, addr_keys_to_delete);
                 }
 
@@ -71,7 +71,7 @@ public:
                 auto by_addr_key = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
                 transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
 
-                if (!node.emulated) {
+                if (node.execution_state != TraceExecutionState::Emulated) {
                     if (has_commited_txs) {
                         commited_txs_hashes += ",";
                     }
@@ -140,7 +140,7 @@ public:
             transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
             transaction_.hset(td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()), "depth_limit_exceeded", trace_.tx_limit_exceeded ? "1" : "0");
             
-            if (!trace_.root->emulated) {
+            if (trace_.root && trace_.root->execution_state != TraceExecutionState::Emulated) {
                 transaction_.set("tr_root_tx:" + td::base64_encode(trace_.root_tx_hash.as_slice()), td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()));
                 transaction_.expire("tr_root_tx:" + td::base64_encode(trace_.root_tx_hash.as_slice()), 600);
             }
