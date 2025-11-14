@@ -963,7 +963,28 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
-    // TODO: add new migrations
+    query += "ALTER TABLE nft_items ADD COLUMN IF NOT EXISTS real_owner tonaddr;";
+
+    query += (
+        "CREATE OR REPLACE FUNCTION update_nft_real_owner() RETURNS TRIGGER AS $$ "
+        "BEGIN "
+        "   SELECT nft_owner_address INTO NEW.real_owner FROM getgems_nft_sales WHERE address = NEW.owner_address "
+        "    AND nft_address = NEW.address LIMIT 1; "
+        "   IF NEW.real_owner IS NULL THEN "
+        "   SELECT nft_owner INTO NEW.real_owner FROM getgems_nft_auctions WHERE address = NEW.owner_address "
+        "    AND nft_addr = NEW.address LIMIT 1; "
+        "   END IF; "
+        "   IF NEW.real_owner IS NULL THEN NEW.real_owner := NEW.owner_address; END IF; "
+        "   RETURN NEW; "
+        "END; "
+        "$$ LANGUAGE plpgsql;"
+    );
+
+    query += (
+        "CREATE OR REPLACE TRIGGER try_update_nft_real_owner "
+        "BEFORE INSERT OR UPDATE OF owner_address ON nft_items "
+        "FOR EACH ROW EXECUTE FUNCTION update_nft_real_owner();"
+    );
 
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "

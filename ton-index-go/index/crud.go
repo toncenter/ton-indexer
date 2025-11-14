@@ -461,7 +461,12 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 		orderby_query = ``
 	}
 	if v := nft_req.OwnerAddress; v != nil {
-		filter_str := filterByArray("N.owner_address", v)
+		var filter_str string
+		if nft_req.IncludeOnSale != nil && *nft_req.IncludeOnSale {
+			filter_str = filterByArray("N.real_owner", v)
+		} else {
+			filter_str = filterByArray("N.owner_address", v)
+		}
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
