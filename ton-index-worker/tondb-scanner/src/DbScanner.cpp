@@ -317,6 +317,24 @@ void DbScanner::get_cell_db_reader(td::Promise<std::shared_ptr<vm::CellDbReader>
   td::actor::send_closure(db_, &RootDb::get_cell_db_reader, std::move(promise));
 }
 
+void DbScanner::iterate_temp_block_handles(std::function<void(const ton::validator::BlockHandleInterface&)> f) {
+  td::actor::send_closure(db_, &RootDb::iterate_temp_block_handles, std::move(f));
+}
+
+void DbScanner::fetch_block_by_id(ton::BlockIdExt block_id, td::Promise<BlockDataState> promise) {
+  auto P = td::PromiseCreator::lambda(
+      [SelfId = actor_id(this), this, promise = std::move(promise)](td::Result<ton::validator::BlockHandle> R) mutable {
+        if (R.is_error()) {
+          promise.set_error(R.move_as_error());
+          return;
+        }
+        td::actor::create_actor<GetBlockDataState>("getblockdatastate-single", db_.get(), R.move_as_ok(),
+                                                   std::move(promise))
+            .release();
+      });
+  td::actor::send_closure(db_, &RootDb::get_block_handle, block_id, std::move(P));
+}
+
 void DbScanner::catch_up_with_primary() {
   auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), this, timer = td::Timer{}](td::Result<td::Unit> R) mutable {
     R.ensure();

@@ -1,5 +1,6 @@
 #pragma once
 #include <any>
+#include <cstdint>
 #include <td/actor/actor.h>
 #include <emulator/transaction-emulator.h>
 #include "DbScanner.h"
@@ -10,6 +11,12 @@
 using TraceId = td::Bits256;
 
 
+enum class TraceExecutionState : uint8_t {
+    Emulated = 0,
+    Confirmed = 1,
+    Committed = 2
+};
+
 struct TraceNode {
     td::Bits256 node_id; // hash of cur tx in msg
     block::StdAddress address;
@@ -19,7 +26,7 @@ struct TraceNode {
     ton::BlockSeqno mc_block_seqno;
     ton::BlockId block_id;
 
-    bool emulated;
+    TraceExecutionState execution_state{TraceExecutionState::Emulated};
 
     int depth() const {
         int res = 0;
@@ -57,7 +64,7 @@ struct TraceNode {
     }
 
     std::unordered_set<block::StdAddress> get_addresses(bool only_committed) const {
-        if (only_committed && emulated) {
+        if (only_committed && execution_state == TraceExecutionState::Emulated) {
             return {};
         }
         std::unordered_set<block::StdAddress> addresses;
@@ -213,4 +220,3 @@ public:
     void start_up() override;
     void finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> root_r);
 };
-
