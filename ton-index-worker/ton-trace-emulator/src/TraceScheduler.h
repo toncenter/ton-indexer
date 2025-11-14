@@ -1,5 +1,8 @@
 #pragma once
 #include <queue>
+#include <deque>
+#include <unordered_set>
+#include <unordered_map>
 #include "td/actor/actor.h"
 #include "DbScanner.h"
 #include "OverlayListener.h"
@@ -26,6 +29,11 @@ class TraceEmulatorScheduler : public td::actor::Actor {
 
     std::unordered_set<ton::BlockSeqno> seqnos_to_fetch_;
     std::map<ton::BlockSeqno, MasterchainBlockDataState> blocks_to_emulate_;
+    std::deque<ton::BlockIdExt> confirmed_block_queue_;
+    std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> known_temp_blocks_;
+    bool initial_temp_snapshot_taken_{false};
+    std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> confirmed_blocks_inflight_;
+    std::unordered_map<ton::BlockIdExt, BlockDataState, BlockIdExtHasher> confirmed_block_storage_;
 
     td::actor::ActorOwn<OverlayListener> overlay_listener_;
     td::actor::ActorOwn<RedisListener> redis_listener_;
@@ -36,6 +44,12 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void fetch_error(std::uint32_t seqno, td::Status error);
     void seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState mc_data_state);
     void emulate_blocks();
+    void scan_unconfirmed_shards();
+    void handle_temp_block(ton::BlockIdExt block_id, bool capture_only);
+    void enqueue_confirmed_block(ton::BlockIdExt block_id);
+    void confirmed_block_fetched(ton::BlockIdExt block_id, BlockDataState block_data_state);
+    void confirmed_block_error(ton::BlockIdExt block_id, td::Status error);
+    void process_confirmed_blocks();
 
     void alarm();
 

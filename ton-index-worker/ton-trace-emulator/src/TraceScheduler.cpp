@@ -3,6 +3,7 @@
 #include "TraceInserter.h"
 #include "td/utils/filesystem.h"
 #include "common/delay.h"
+#include "validator/interfaces/block-handle.h"
 
 
 void TraceEmulatorScheduler::start_up() {
@@ -120,6 +121,78 @@ void TraceEmulatorScheduler::emulate_blocks() {
     }
 }
 
+void TraceEmulatorScheduler::scan_unconfirmed_shards() {
+    bool capture_only = !initial_temp_snapshot_taken_;
+    auto callback = [SelfId = actor_id(this), capture_only](const ton::validator::BlockHandleInterface& handle) {
+        if (handle.id().is_masterchain()) {
+            return;
+        }
+        if (!handle.received_state()) {
+            return;
+        }
+        if (handle.handle_moved_to_archive()) {
+            return;
+        }
+        auto block_id = handle.id();
+        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::handle_temp_block, block_id, capture_only);
+    };
+    td::actor::send_closure(db_scanner_, &DbScanner::iterate_temp_block_handles, std::move(callback));
+    initial_temp_snapshot_taken_ = true;
+}
+
+void TraceEmulatorScheduler::handle_temp_block(ton::BlockIdExt block_id, bool capture_only) {
+    auto [_, inserted] = known_temp_blocks_.insert(block_id);
+    if (capture_only) {
+        return;
+    }
+    if (!inserted) {
+        return;
+    }
+    enqueue_confirmed_block(block_id);
+}
+
+void TraceEmulatorScheduler::enqueue_confirmed_block(ton::BlockIdExt block_id) {
+    if (confirmed_blocks_inflight_.count(block_id) != 0 || confirmed_block_storage_.count(block_id) != 0) {
+        return;
+    }
+    confirmed_blocks_inflight_.insert(block_id);
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<BlockDataState> R) mutable {
+        if (R.is_error()) {
+            td::actor::send_closure(SelfId, &TraceEmulatorScheduler::confirmed_block_error, block_id, R.move_as_error());
+            return;
+        }
+        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::confirmed_block_fetched, block_id, R.move_as_ok());
+    });
+    td::actor::send_closure(db_scanner_, &DbScanner::fetch_block_by_id, block_id, std::move(P));
+}
+
+void TraceEmulatorScheduler::confirmed_block_fetched(ton::BlockIdExt block_id, BlockDataState block_data_state) {
+    confirmed_blocks_inflight_.erase(block_id);
+    confirmed_block_storage_.emplace(block_id, std::move(block_data_state));
+    confirmed_block_queue_.push_back(block_id);
+    LOG(INFO) << "Collected confirmed shard block " << block_id.to_str();
+    process_confirmed_blocks();
+}
+
+void TraceEmulatorScheduler::confirmed_block_error(ton::BlockIdExt block_id, td::Status error) {
+    confirmed_blocks_inflight_.erase(block_id);
+    LOG(ERROR) << "Failed to collect confirmed shard block " << block_id.to_str() << ": " << error;
+}
+
+void TraceEmulatorScheduler::process_confirmed_blocks() {
+    while (!confirmed_block_queue_.empty()) {
+        auto block_id = confirmed_block_queue_.front();
+        confirmed_block_queue_.pop_front();
+        auto it = confirmed_block_storage_.find(block_id);
+        if (it == confirmed_block_storage_.end()) {
+            continue;
+        }
+        // LOG(INFO) << "Processing confirmed shard block " << block_id.to_str()
+        //           << " (emulation for confirmed path not implemented yet)";
+        confirmed_block_storage_.erase(it);
+    }
+}
+
 // int seqno = 37786481;
 
 void TraceEmulatorScheduler::alarm() {
@@ -134,6 +207,7 @@ void TraceEmulatorScheduler::alarm() {
     td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
 
     fetch_seqnos();
+    scan_unconfirmed_shards();
 
     if (next_statistics_flush_.is_in_past()) {
         ton::delay_action([working_dir = this->working_dir_]() {
