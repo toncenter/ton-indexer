@@ -72,6 +72,7 @@ type NFTItemRequest struct {
 	OwnerAddress            []AccountAddress `query:"owner_address"`
 	CollectionAddress       []AccountAddress `query:"collection_address"`
 	Index                   []string         `query:"index"`
+	IncludeOnSale           *bool            `query:"include_on_sale"`
 	SortByLastTransactionLt *bool            `query:"sort_by_last_transaction_lt"`
 }
 

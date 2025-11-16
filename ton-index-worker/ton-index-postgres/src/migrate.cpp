@@ -963,7 +963,30 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
-    // TODO: add new migrations
+    query += "ALTER TABLE nft_items ADD COLUMN IF NOT EXISTS real_owner tonaddr;";
+
+    query += (
+        "CREATE OR REPLACE FUNCTION update_nft_real_owner() RETURNS TRIGGER AS $$ "
+        "BEGIN "
+        "   IF NEW.real_owner IS NULL OR NEW.real_owner = NEW.owner_address THEN "
+        "     SELECT nft_owner_address INTO NEW.real_owner FROM getgems_nft_sales WHERE address = NEW.owner_address "
+        "      AND nft_address = NEW.address LIMIT 1; "
+        "     IF NEW.real_owner IS NULL THEN "
+        "       SELECT nft_owner INTO NEW.real_owner FROM getgems_nft_auctions WHERE address = NEW.owner_address "
+        "        AND nft_addr = NEW.address LIMIT 1; "
+        "     END IF; "
+        "     IF NEW.real_owner IS NULL THEN NEW.real_owner := NEW.owner_address; END IF; "
+        "   END IF; "
+        "   RETURN NEW; "
+        "END; "
+        "$$ LANGUAGE plpgsql;"
+    );
+
+    query += (
+        "CREATE OR REPLACE TRIGGER try_update_nft_real_owner "
+        "BEFORE INSERT OR UPDATE OF owner_address ON nft_items "
+        "FOR EACH ROW EXECUTE FUNCTION update_nft_real_owner();"
+    );
 
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
@@ -1086,6 +1109,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists nft_items_index_4 on nft_items (last_transaction_lt);\n"
       "create index if not exists nft_items_index_5 on nft_items (owner_address, last_transaction_lt);\n"
       "create index if not exists nft_items_index_6 on nft_items (collection_address, last_transaction_lt);\n"
+      "create index if not exists nft_items_index_7 on nft_items (real_owner, last_transaction_lt);\n"
+      "create index if not exists nft_items_index_8 on nft_items (real_owner, collection_address, index);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;

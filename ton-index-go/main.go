@@ -799,6 +799,7 @@ func GetNFTCollections(c *fiber.Ctx) error {
 // @param owner_address query []string false "Address of NFT item owner in any form. Max: 1000." collectionFormat(multi)
 // @param collection_address query []string false "Collection address in any form."
 // @param index query []string false "Index of item for given collection. Max: 1000." collectionFormat(multi)
+// @param include_on_sale query bool false "Include nft on sales and auctions. Used only when owner_address is passed" default(false)
 // @param sort_by_last_transaction_lt query bool false "Sort NFT items by last transaction lt descending. **Warning:** results may be inconsistent during pagination with limit and offset."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)

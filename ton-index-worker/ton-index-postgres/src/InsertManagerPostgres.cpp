@@ -493,9 +493,9 @@ void InsertBatchPostgres::do_insert() {
     insert_under_mutex_query += insert_jetton_masters(txn);
     insert_under_mutex_query += insert_jetton_wallets(txn);
     insert_under_mutex_query += insert_nft_collections(txn);
-    insert_under_mutex_query += insert_nft_items(txn);
     insert_under_mutex_query += insert_getgems_nft_auctions(txn);
     insert_under_mutex_query += insert_getgems_nft_sales(txn);
+    insert_under_mutex_query += insert_nft_items(txn);
     insert_under_mutex_query += insert_multisig_contracts(txn);
     insert_under_mutex_query += insert_multisig_orders(txn);
     insert_under_mutex_query += insert_dedust_pools(txn);
@@ -1255,6 +1255,25 @@ std::string InsertBatchPostgres::insert_nft_collections(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
+  std::map<std::pair<ton::StdSmcAddress, ton::StdSmcAddress>, block::StdAddress> sale_real_owners;
+  std::map<std::pair<ton::StdSmcAddress, ton::StdSmcAddress>, block::StdAddress> auction_real_owners;
+
+  for (auto i = insert_tasks_.begin(); i != insert_tasks_.end(); ++i) {
+    const auto& task = *i;
+    // Build sale lookup: (sale_address, nft_address) -> nft_owner_address
+    for (const auto& sale : task.parsed_block_->get_accounts_v2<GetGemsNftFixPriceSaleData>()) {
+      if (sale.nft_owner_address) {
+        sale_real_owners[{sale.address.addr, sale.nft_address.addr}] = sale.nft_owner_address.value();
+      }
+    }
+    // Build auction lookup: (auction_address, nft_addr) -> nft_owner
+    for (const auto& auction : task.parsed_block_->get_accounts_v2<GetGemsNftAuctionData>()) {
+      if (auction.nft_owner) {
+        auction_real_owners[{auction.address.addr, auction.nft_addr.addr}] = auction.nft_owner.value();
+      }
+    }
+  }
+
   std::unordered_map<block::StdAddress, NFTItemDataV2> nft_items;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
@@ -1270,7 +1289,7 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
   }
 
   std::initializer_list<std::string_view> columns = {
-    "address", "init", "index", "collection_address", "owner_address", "content", "last_transaction_lt", "code_hash", "data_hash"
+    "address", "init", "index", "collection_address", "owner_address", "content", "last_transaction_lt", "code_hash", "data_hash", "real_owner"
   };
   
   PopulateTableStream stream(txn, "nft_items", columns, 1000, false);
@@ -1281,6 +1300,23 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
     if (nft_item.content) {
       content_str = content_to_json_string(nft_item.content.value());
     }
+
+    // Calculate real_owner based on sales/auctions lookup
+    std::optional<block::StdAddress> real_owner = nft_item.owner_address;
+    if (nft_item.owner_address) {
+      auto sale_key = std::make_pair(nft_item.owner_address.value().addr, nft_item.address.addr);
+      auto sale_it = sale_real_owners.find(sale_key);
+      if (sale_it != sale_real_owners.end()) {
+        real_owner = sale_it->second;
+      } else {
+        auto auction_key = std::make_pair(nft_item.owner_address.value().addr, nft_item.address.addr);
+        auto auction_it = auction_real_owners.find(auction_key);
+        if (auction_it != auction_real_owners.end()) {
+          real_owner = auction_it->second;
+        }
+      }
+    }
+
     auto tuple = std::make_tuple(
       nft_item.address,
       nft_item.init,
@@ -1290,7 +1326,8 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
       content_str,
       nft_item.last_transaction_lt,
       nft_item.code_hash,
-      nft_item.data_hash
+      nft_item.data_hash,
+      real_owner
     );
     stream.insert_row(std::move(tuple));
   }
