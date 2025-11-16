@@ -1258,7 +1258,7 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
   std::map<std::pair<ton::StdSmcAddress, ton::StdSmcAddress>, block::StdAddress> sale_real_owners;
   std::map<std::pair<ton::StdSmcAddress, ton::StdSmcAddress>, block::StdAddress> auction_real_owners;
 
-  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+  for (auto i = insert_tasks_.begin(); i != insert_tasks_.end(); ++i) {
     const auto& task = *i;
     // Build sale lookup: (sale_address, nft_address) -> nft_owner_address
     for (const auto& sale : task.parsed_block_->get_accounts_v2<GetGemsNftFixPriceSaleData>()) {
