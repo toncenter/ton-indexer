@@ -14,7 +14,7 @@ using TraceId = td::Bits256;
 enum class TraceExecutionState : uint8_t {
     Emulated = 0,
     Confirmed = 1,
-    Committed = 2
+    Finalized = 2
 };
 
 struct TraceNode {
@@ -64,7 +64,7 @@ struct TraceNode {
     }
 
     std::unordered_set<block::StdAddress> get_addresses(bool only_committed) const {
-        if (only_committed && execution_state == TraceExecutionState::Emulated) {
+        if (only_committed && execution_state != TraceExecutionState::Finalized) {
             return {};
         }
         std::unordered_set<block::StdAddress> addresses;

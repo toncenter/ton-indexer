@@ -84,6 +84,18 @@ void TraceEmulatorScheduler::seqno_fetched(std::uint32_t seqno, MasterchainBlock
         LOG(INFO) << "Setting last fetched seqno to " << seqno;
         last_fetched_seqno_ = seqno;
 
+        latest_config_ = mc_data_state.config_;
+        latest_shard_states_.clear();
+        for (const auto& shard_state : mc_data_state.shard_blocks_) {
+            ShardStateSnapshot snapshot{
+                shard_state.handle->id().id,
+                shard_state.handle->unix_time(),
+                shard_state.handle->logical_time(),
+                shard_state.block_state
+            };
+            latest_shard_states_.push_back(std::move(snapshot));
+        }
+
         if (!overlay_listener_.empty()) {
             td::actor::send_closure(overlay_listener_, &OverlayListener::set_mc_data_state, mc_data_state);
         }
@@ -123,7 +135,7 @@ void TraceEmulatorScheduler::emulate_blocks() {
 
 void TraceEmulatorScheduler::scan_unconfirmed_shards() {
     bool capture_only = !initial_temp_snapshot_taken_;
-    auto callback = [SelfId = actor_id(this), capture_only](const ton::validator::BlockHandleInterface& handle) {
+    auto callback = [SelfId = actor_id(this), capture_only, confirmed_block_storage = confirmed_block_storage_](const ton::validator::BlockHandleInterface& handle) {
         if (handle.id().is_masterchain()) {
             return;
         }
@@ -131,6 +143,9 @@ void TraceEmulatorScheduler::scan_unconfirmed_shards() {
             return;
         }
         if (handle.handle_moved_to_archive()) {
+            return;
+        }
+        if (confirmed_block_storage.find(handle.id()) != confirmed_block_storage.end()) {
             return;
         }
         auto block_id = handle.id();
@@ -163,6 +178,7 @@ void TraceEmulatorScheduler::enqueue_confirmed_block(ton::BlockIdExt block_id) {
         }
         td::actor::send_closure(SelfId, &TraceEmulatorScheduler::confirmed_block_fetched, block_id, R.move_as_ok());
     });
+    LOG(INFO) << "Fetching confirmed shard block " << block_id.to_str();
     td::actor::send_closure(db_scanner_, &DbScanner::fetch_block_by_id, block_id, std::move(P));
 }
 
@@ -187,9 +203,38 @@ void TraceEmulatorScheduler::process_confirmed_blocks() {
         if (it == confirmed_block_storage_.end()) {
             continue;
         }
-        // LOG(INFO) << "Processing confirmed shard block " << block_id.to_str()
-        //           << " (emulation for confirmed path not implemented yet)";
+        if (!latest_config_ || latest_shard_states_.empty()) {
+            LOG(WARNING) << "Deferring confirmed shard block " << block_id.to_str() << " due to missing masterchain context";
+            confirmed_block_queue_.push_front(block_id);
+            break;
+        }
+
+        auto block_data_state = std::move(it->second);
         confirmed_block_storage_.erase(it);
+
+        auto shard_snapshot_copy = latest_shard_states_;
+        // overwrite the entry for the shard we’re about to emulate with the fresher state 
+        // pulled from block_data_state (including timestamp and logical time)
+        for (auto& snapshot : shard_snapshot_copy) {
+            if (snapshot.blkid.shard_full() == block_data_state.block_data->block_id().shard_full()) {
+                snapshot.state = block_data_state.block_state;
+                snapshot.timestamp = block_data_state.handle->unix_time();
+                snapshot.logical_time = block_data_state.handle->logical_time();
+            }
+        }
+
+        auto P = td::PromiseCreator::lambda([block_id](td::Result<> R) mutable {
+            if (R.is_error()) {
+                LOG(ERROR) << "Error processing confirmed shard block " << block_id.to_str() << ": " << R.move_as_error();
+            } else {
+                LOG(INFO) << "Finished confirmed shard block " << block_id.to_str();
+            }
+        });
+        auto actor_name = PSLICE() << "ConfirmedBlockEmulator" << block_id.seqno();
+        td::actor::create_actor<ConfirmedBlockEmulator>(actor_name, std::move(block_data_state), latest_config_,
+                                                        std::move(shard_snapshot_copy), insert_trace_,
+                                                        std::move(P))
+            .release();
     }
 }
 

@@ -3,12 +3,14 @@
 #include <deque>
 #include <unordered_set>
 #include <unordered_map>
+#include <memory>
 #include "td/actor/actor.h"
 #include "DbScanner.h"
 #include "OverlayListener.h"
 #include "RedisListener.h"
 #include "TraceEmulator.h"
 #include "TraceInserter.h"
+#include "BlockEmulator.h"
 
 
 class TraceEmulatorScheduler : public td::actor::Actor {
@@ -34,6 +36,8 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     bool initial_temp_snapshot_taken_{false};
     std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> confirmed_blocks_inflight_;
     std::unordered_map<ton::BlockIdExt, BlockDataState, BlockIdExtHasher> confirmed_block_storage_;
+    std::shared_ptr<block::ConfigInfo> latest_config_;
+    std::vector<ShardStateSnapshot> latest_shard_states_;
 
     td::actor::ActorOwn<OverlayListener> overlay_listener_;
     td::actor::ActorOwn<RedisListener> redis_listener_;
