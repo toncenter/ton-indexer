@@ -71,7 +71,7 @@ public:
                 auto by_addr_key = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
                 transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
 
-                if (node.execution_state != TraceExecutionState::Emulated) {
+                if (node.execution_state == TraceExecutionState::Finalized) {
                     if (has_commited_txs) {
                         commited_txs_hashes += ",";
                     }
