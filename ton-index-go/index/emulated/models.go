@@ -532,13 +532,64 @@ type Trace struct {
 	Classified   bool
 	Actions      []Action
 }
+
+type FinalityState uint8
+
+const (
+	FinalityStateEmulated FinalityState = iota
+	FinalityStateConfirmed
+	FinalityStateFinalized
+)
+
+func (fs FinalityState) String() string {
+	switch fs {
+	case FinalityStateEmulated:
+		return "emulated"
+	case FinalityStateConfirmed:
+		return "confirmed"
+	case FinalityStateFinalized:
+		return "finalized"
+	default:
+		return "unknown_" + strconv.Itoa(int(fs))
+	}
+}
+
+// marshal and unmarshal FinalityState as string
+func (fs FinalityState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(fs.String())
+}
+
+func (fs *FinalityState) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "emulated":
+		*fs = FinalityStateEmulated
+	case "confirmed":
+		*fs = FinalityStateConfirmed
+	case "finalized":
+		*fs = FinalityStateFinalized
+	default:
+		return fmt.Errorf("unknown finality state: %s", s)
+	}
+	return nil
+}
+
+func (s *FinalityState) Scan(value interface{}) error {
+	*s = value.(FinalityState)
+	return nil
+}
+
 type TraceNode struct {
-	Transaction  transaction `msgpack:"transaction"`
-	Emulated     bool        `msgpack:"emulated"`
-	BlockId      blockId     `msgpack:"block_id"`
-	McBlockSeqno uint32      `msgpack:"mc_block_seqno"`
-	TraceId      *string
-	Key          string
+	Transaction   transaction   `msgpack:"transaction"`
+	Emulated      bool          `msgpack:"emulated"`
+	BlockId       blockId       `msgpack:"block_id"`
+	McBlockSeqno  uint32        `msgpack:"mc_block_seqno"`
+	FinalityState FinalityState `msgpack:"finality_state"`
+	TraceId       *string
+	Key           string
 }
 
 type computePhaseVar struct {
@@ -806,6 +857,7 @@ func (n *TraceNode) GetTransactionRow() (TransactionRow, error) {
 		Credit:                   credit,
 		CreditExtraCurrencies:    map[string]string{},
 		Emulated:                 n.Emulated,
+		Finality:                 n.FinalityState,
 	}
 	if n.Transaction.Description.ComputePh.Type == 0 {
 		txRow.ComputeSkipped = new(bool)

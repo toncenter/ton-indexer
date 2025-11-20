@@ -742,7 +742,7 @@ func (rct *RedisCleanupTool) takeSnapshot(ctx context.Context) (*RedisSnapshot, 
 		// Add keys to snapshot
 		for _, key := range keys {
 			// Skip certain keys
-			if strings.Contains(key, "tr_in_msg") || strings.Contains(key, "tr_root_tx") {
+			if strings.Contains(key, "tr_in_msg") {
 				continue
 			}
 
