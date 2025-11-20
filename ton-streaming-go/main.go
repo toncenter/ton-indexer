@@ -82,6 +82,7 @@ func main() {
 	go streamingv2.SubscribeToConfirmedTransactions(ctx, rdb, v2Manager, *confirmedTxsChannel) // "new_confirmed_txs"
 	go streamingv2.SubscribeToFinalizedTransactions(ctx, rdb, v2Manager, *commitedTxsChannel)  // "new_finalized_txs"
 	go streamingv2.SubscribeToClassifiedTraces(ctx, rdb, v2Manager, *classifiedTracesChannel)
+	go streamingv2.SubscribeToAccountStateUpdates(ctx, rdb, v2Manager, "new_account_state")
 	go streamingv2.SubscribeToInvalidatedTraces(ctx, rdb, v2Manager, "invalidated_traces")
 
 	app := fiber.New(fiber.Config{
