@@ -79,6 +79,7 @@ type TransactionRow struct {
 	SplitInfoThisAddr        *string
 	SplitInfoSiblingAddr     *string
 	Emulated                 bool
+	Finality                 FinalityState
 }
 
 type MessageRow struct {
@@ -748,6 +749,7 @@ func (t *TransactionRow) getAssigns() []assign {
 		assignStringPtr(t.SplitInfoThisAddr),
 		assignStringPtr(t.SplitInfoSiblingAddr),
 		assignBool(t.Emulated),
+		assignInt(int8(t.Finality)),
 	}
 }
 func (t *TransactionRow) Scan(dest ...any) error {

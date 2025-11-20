@@ -1263,7 +1263,7 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 		&ms1.Cells, &ms1.Bits,
 		&bo.Type, &ms2.Cells, &ms2.Bits,
 		&bo.ReqFwdFees, &bo.MsgFees, &bo.FwdFees,
-		&sp.CurShardPfxLen, &sp.AccSplitDepth, &sp.ThisAddr, &sp.SiblingAddr, &t.Emulated)
+		&sp.CurShardPfxLen, &sp.AccSplitDepth, &sp.ThisAddr, &sp.SiblingAddr, &t.Emulated, &t.Finality)
 
 	if err != nil {
 		return nil, err

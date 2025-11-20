@@ -183,10 +183,13 @@ void TraceEmulatorScheduler::enqueue_confirmed_block(ton::BlockIdExt block_id) {
 }
 
 void TraceEmulatorScheduler::confirmed_block_fetched(ton::BlockIdExt block_id, BlockDataState block_data_state) {
+    auto time_diff = td::Clocks::system() - block_data_state.handle->unix_time();
+    LOG(INFO) << "Collected confirmed shard block " << block_id.to_str() << " created " << td::StringBuilder::FixedDouble(time_diff, 2) << "s ago";
+
     confirmed_blocks_inflight_.erase(block_id);
     confirmed_block_storage_.emplace(block_id, std::move(block_data_state));
     confirmed_block_queue_.push_back(block_id);
-    LOG(INFO) << "Collected confirmed shard block " << block_id.to_str();
+
     process_confirmed_blocks();
 }
 

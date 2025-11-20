@@ -11,10 +11,10 @@
 using TraceId = td::Bits256;
 
 
-enum class TraceExecutionState : uint8_t {
-    Emulated = 0,
-    Confirmed = 1,
-    Finalized = 2
+enum class FinalityState : uint8_t {
+    Emulated = 0,  // tx was emulated but not confirmed onchain
+    Confirmed = 1, // tx was committed to shard account, but the shard account was not committed to masterchain
+    Finalized = 2  // tx was committed to shard account and the shard account was committed to masterchain
 };
 
 struct TraceNode {
@@ -26,7 +26,7 @@ struct TraceNode {
     ton::BlockSeqno mc_block_seqno;
     ton::BlockId block_id;
 
-    TraceExecutionState execution_state{TraceExecutionState::Emulated};
+    FinalityState finality_state{FinalityState::Emulated};
 
     int depth() const {
         int res = 0;
@@ -64,7 +64,7 @@ struct TraceNode {
     }
 
     std::unordered_set<block::StdAddress> get_addresses(bool only_committed) const {
-        if (only_committed && execution_state != TraceExecutionState::Finalized) {
+        if (only_committed && finality_state == FinalityState::Emulated) {
             return {};
         }
         std::unordered_set<block::StdAddress> addresses;
