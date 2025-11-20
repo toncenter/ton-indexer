@@ -895,9 +895,6 @@ func ProcessNewConfirmedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 		txsAddresses = append(txsAddresses, string(t.Account))
 	}
 
-	// confirmed state implies account_state_change & jettons_change
-	go ProcessNewAccountStates(ctx, rdb, txsAddresses, emulated.FinalityStateConfirmed, manager)
-
 	allAddresses := txsAddresses
 	if len(hashes) > 0 {
 		rows := emulatedContext.GetMessages(hashes)
@@ -1012,9 +1009,6 @@ func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 		txsAddresses = append(txsAddresses, string(t.Account))
 	}
 
-	// finalized state implies account_state_change & jettons_change
-	go ProcessNewAccountStates(ctx, rdb, txsAddresses, emulated.FinalityStateFinalized, manager)
-
 	allAddresses := txsAddresses
 	if len(hashes) > 0 {
 		rows := emulatedContext.GetMessages(hashes)
@@ -1079,6 +1073,56 @@ func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 		AddressBook:           addressBook,
 		Metadata:              metadata,
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Account state updates
+////////////////////////////////////////////////////////////////////////////////
+
+func SubscribeToAccountStateUpdates(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
+	pubsub := rdb.Subscribe(ctx, channel)
+	defer pubsub.Close()
+
+	log.Printf("[v2] Subscribed to Redis channel (account state updates): %s", channel)
+
+	for {
+		msg, err := pubsub.ReceiveMessage(ctx)
+		if err != nil {
+			log.Printf("[v2] Error receiving account state update message: %v", err)
+			continue
+		}
+
+		finality, addr, err := parseAccountStateChannelPayload(msg.Payload)
+		if err != nil {
+			log.Printf("[v2] Invalid account state payload %q: %v", msg.Payload, err)
+			continue
+		}
+
+		go ProcessNewAccountStates(ctx, rdb, addr, finality, manager)
+	}
+}
+
+func parseAccountStateChannelPayload(payload string) (emulated.FinalityState, string, error) {
+	parts := strings.SplitN(payload, ":", 2)
+	if len(parts) != 2 {
+		return 0, "", fmt.Errorf("unexpected payload format")
+	}
+
+	var finality emulated.FinalityState
+	switch parts[0] {
+	case "account_confirmed":
+		finality = emulated.FinalityStateConfirmed
+	case "account_finalized":
+		finality = emulated.FinalityStateFinalized
+	default:
+		return 0, "", fmt.Errorf("unknown prefix %q", parts[0])
+	}
+
+	if parts[1] == "" {
+		return 0, "", fmt.Errorf("missing address")
+	}
+
+	return finality, parts[1], nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1231,82 +1275,76 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 // Account state & jettons (confirmed & finalized, no pending)
 ////////////////////////////////////////////////////////////////////////////////
 
-func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addresses []string, finality emulated.FinalityState, manager *ClientManager) {
-	for _, addr := range addresses {
-		var key string
-		if finality == emulated.FinalityStateConfirmed {
-			key = fmt.Sprintf("account_confirmed:%s", addr)
-		} else if finality == emulated.FinalityStateFinalized {
-			key = fmt.Sprintf("account_finalized:%s", addr)
-		}
-		acctData, err := rdb.HGetAll(ctx, key).Result()
-		if err != nil {
-			log.Printf("[v2] Error fetching account state for %s: %v", addr, err)
-			continue
-		}
-		var accountState models.AccountState
-		err = msgpack.Unmarshal([]byte(acctData["state"]), &accountState)
-		if err != nil {
-			log.Printf("[v2] Error unmarshalling account state finality %v for %s: %v (%s)", finality, addr, err, acctData["state"])
-			continue
-		}
+func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string, finality emulated.FinalityState, manager *ClientManager) {
+	var key string
+	if finality == emulated.FinalityStateConfirmed {
+		key = fmt.Sprintf("account_confirmed:%s", addr)
+	} else if finality == emulated.FinalityStateFinalized {
+		key = fmt.Sprintf("account_finalized:%s", addr)
+	}
+	acctData, err := rdb.HGetAll(ctx, key).Result()
+	if err != nil {
+		log.Printf("[v2] Error fetching account state for %s: %v", addr, err)
+		return
+	}
+	var accountState models.AccountState
+	err = msgpack.Unmarshal([]byte(acctData["state"]), &accountState)
+	if err != nil {
+		log.Printf("[v2] Error unmarshalling account state finality %v for %s: %v (%s)", finality, addr, err, acctData["state"])
+		return
+	}
 
-		if finality == emulated.FinalityStateFinalized && addr == "0:DAE153A74D894BBC32748198CD626E4F5DF4A69AD2FA56CE80FC2644B5708D20" {
-			log.Printf("[v2] Account %s sending finalized account state", addr)
-		}
+	manager.broadcast <- &AccountStateNotification{
+		Type:     EventAccountStateChange,
+		Finality: finality,
+		Account:  addr,
+		State:    models.MsgPackAccountStateToIndexAccountState(accountState),
+	}
 
-		manager.broadcast <- &AccountStateNotification{
-			Type:     EventAccountStateChange,
-			Finality: finality,
-			Account:  addr,
-			State:    models.MsgPackAccountStateToIndexAccountState(accountState),
-		}
+	interfacesData := acctData["interfaces"]
+	if interfacesData == "" {
+		return
+	}
+	var addrInterfaces models.AddressInterfaces
+	err = msgpack.Unmarshal([]byte(interfacesData), &addrInterfaces)
+	if err != nil {
+		log.Printf("[v2] Error unmarshalling address interfaces for %s: %v (%s)", addr, err, interfacesData)
+		return
+	}
 
-		interfacesData := acctData["interfaces"]
-		if interfacesData == "" {
-			continue
-		}
-		var addrInterfaces models.AddressInterfaces
-		err = msgpack.Unmarshal([]byte(interfacesData), &addrInterfaces)
-		if err != nil {
-			log.Printf("[v2] Error unmarshalling address interfaces for %s: %v (%s)", addr, err, interfacesData)
-			continue
-		}
+	var notification *JettonsNotification
 
-		var notification *JettonsNotification
-
-		for _, iface := range addrInterfaces.Interfaces {
-			switch val := iface.Value.(type) {
-			case *models.JettonWalletInterface:
-				notification = &JettonsNotification{
-					Type:     EventJettonsChange,
-					Finality: finality,
-					Jetton:   MsgPackJettonWalletToModel(*val, int64(*accountState.LastTransLt), models.ConvertHashToIndex(accountState.CodeHash), models.ConvertHashToIndex(accountState.DataHash)),
-				}
+	for _, iface := range addrInterfaces.Interfaces {
+		switch val := iface.Value.(type) {
+		case *models.JettonWalletInterface:
+			notification = &JettonsNotification{
+				Type:     EventJettonsChange,
+				Finality: finality,
+				Jetton:   MsgPackJettonWalletToModel(*val, int64(*accountState.LastTransLt), models.ConvertHashToIndex(accountState.CodeHash), models.ConvertHashToIndex(accountState.DataHash)),
 			}
 		}
-		if notification == nil {
-			continue
-		}
-
-		addrBookAddresses := []string{notification.Jetton.Address.String(), notification.Jetton.Owner.String(), notification.Jetton.Jetton.String()}
-		metadataAddresses := []string{notification.Jetton.Owner.String(), notification.Jetton.Jetton.String()}
-		shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
-			[]EventType{EventJettonsChange},
-			finality,
-			addrBookAddresses,
-		)
-		if shouldFetchAddressBook || shouldFetchMetadata {
-			notification.AddressBook, notification.Metadata = fetchAddressBookAndMetadata(
-				ctx,
-				addrBookAddresses,
-				metadataAddresses,
-				shouldFetchAddressBook,
-				shouldFetchMetadata,
-			)
-		}
-		manager.broadcast <- notification
 	}
+	if notification == nil {
+		return
+	}
+
+	addrBookAddresses := []string{notification.Jetton.Address.String(), notification.Jetton.Owner.String(), notification.Jetton.Jetton.String()}
+	metadataAddresses := []string{notification.Jetton.Owner.String(), notification.Jetton.Jetton.String()}
+	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
+		[]EventType{EventJettonsChange},
+		finality,
+		addrBookAddresses,
+	)
+	if shouldFetchAddressBook || shouldFetchMetadata {
+		notification.AddressBook, notification.Metadata = fetchAddressBookAndMetadata(
+			ctx,
+			addrBookAddresses,
+			metadataAddresses,
+			shouldFetchAddressBook,
+			shouldFetchMetadata,
+		)
+	}
+	manager.broadcast <- notification
 }
 
 func MsgPackJettonWalletToModel(j models.JettonWalletInterface, lastTransLt int64, codeHash *index.HashType, dataHash *index.HashType) index.JettonWallet {
