@@ -536,15 +536,15 @@ type Trace struct {
 type FinalityState uint8
 
 const (
-	FinalityStateEmulated FinalityState = iota
+	FinalityStatePending FinalityState = iota
 	FinalityStateConfirmed
 	FinalityStateFinalized
 )
 
 func (fs FinalityState) String() string {
 	switch fs {
-	case FinalityStateEmulated:
-		return "emulated"
+	case FinalityStatePending:
+		return "pending"
 	case FinalityStateConfirmed:
 		return "confirmed"
 	case FinalityStateFinalized:
@@ -566,7 +566,7 @@ func (fs *FinalityState) UnmarshalJSON(data []byte) error {
 	}
 	switch s {
 	case "emulated":
-		*fs = FinalityStateEmulated
+		*fs = FinalityStatePending
 	case "confirmed":
 		*fs = FinalityStateConfirmed
 	case "finalized":

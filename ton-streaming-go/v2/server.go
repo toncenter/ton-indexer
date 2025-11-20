@@ -499,7 +499,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 
 	// Manage invalidation tracking
 	switch n.Finality {
-	case emulated.FinalityStateEmulated, emulated.FinalityStateConfirmed:
+	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed:
 		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	case emulated.FinalityStateFinalized:
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
@@ -580,7 +580,7 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 	}
 
 	switch n.Finality {
-	case emulated.FinalityStateEmulated, emulated.FinalityStateConfirmed:
+	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed:
 		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	case emulated.FinalityStateFinalized:
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
@@ -752,7 +752,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	var metadata *index.Metadata
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
 		[]EventType{EventTransactions},
-		emulated.FinalityStateEmulated,
+		emulated.FinalityStatePending,
 		allAddresses,
 	)
 	if shouldFetchAddressBook || shouldFetchMetadata {
@@ -772,7 +772,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 
 	manager.broadcast <- &TransactionsNotification{
 		Type:                  EventTransactions,
-		Finality:              emulated.FinalityStateEmulated,
+		Finality:              emulated.FinalityStatePending,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		Transactions:          txs,
 		AddressBook:           addressBook,
@@ -1173,7 +1173,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	// Determine if trace is fully on-chain (non-emulated).
 	// This still only distinguishes "pending" vs "on-chain";
 	// new confirmed/finalized details are driven by tx channels.
-	minFinality := emulated.FinalityStateEmulated
+	minFinality := emulated.FinalityStatePending
 	for _, row := range emulatedContext.GetTransactions() {
 		if tx, err := index.ScanTransaction(row); err == nil {
 			if tx.Finality < minFinality {
@@ -1221,7 +1221,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	// For now, we emit "pending" actions and optionally a "finalized" snapshot.
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
 		[]EventType{EventActions},
-		emulated.FinalityStateEmulated,
+		emulated.FinalityStatePending,
 		allAddresses,
 	)
 	if shouldFetchAddressBook || shouldFetchMetadata {
@@ -1277,10 +1277,14 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 
 func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string, finality emulated.FinalityState, manager *ClientManager) {
 	var key string
-	if finality == emulated.FinalityStateConfirmed {
+	switch finality {
+	case emulated.FinalityStateConfirmed:
 		key = fmt.Sprintf("account_confirmed:%s", addr)
-	} else if finality == emulated.FinalityStateFinalized {
+	case emulated.FinalityStateFinalized:
 		key = fmt.Sprintf("account_finalized:%s", addr)
+	default:
+		log.Printf("[v2] Unsupported finality %d for account state processing for %s", finality, addr)
+		return
 	}
 	acctData, err := rdb.HGetAll(ctx, key).Result()
 	if err != nil {
