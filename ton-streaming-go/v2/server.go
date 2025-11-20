@@ -162,10 +162,11 @@ func (rl *RateLimiter) GetAddressLimit(limitingKey string) int {
 ////////////////////////////////////////////////////////////////////////////////
 
 type eventSet map[EventType]struct{}
-type AddressSubs map[string]eventSet
+type AddressSet map[string]struct{}
 
 type Subscription struct {
-	SubscribedAddresses  AddressSubs
+	SubscribedAddresses  AddressSet
+	EventTypes           eventSet
 	ActionTypes          []string
 	SupportedActionTypes []string
 	IncludeAddressBook   bool
@@ -181,28 +182,17 @@ func makeEventSet(types []EventType) eventSet {
 	return s
 }
 
-func (s *Subscription) Add(addrs map[string][]EventType) {
-	if s.SubscribedAddresses == nil {
-		s.SubscribedAddresses = make(AddressSubs)
+func makeAddressSet(addrs []string) AddressSet {
+	s := make(AddressSet, len(addrs))
+	for _, addr := range addrs {
+		s[addr] = struct{}{}
 	}
-	for addr, types := range addrs {
-		set, ok := s.SubscribedAddresses[addr]
-		if !ok {
-			s.SubscribedAddresses[addr] = makeEventSet(types)
-			continue
-		}
-		for _, t := range types {
-			set[t] = struct{}{}
-		}
-	}
+	return s
 }
 
-func (s *Subscription) Replace(newAddrs map[string][]EventType) {
-	newMap := make(AddressSubs, len(newAddrs))
-	for addr, types := range newAddrs {
-		newMap[addr] = makeEventSet(types)
-	}
-	s.SubscribedAddresses = newMap
+func (s *Subscription) Replace(addresses []string, eventTypes []EventType) {
+	s.SubscribedAddresses = makeAddressSet(addresses)
+	s.EventTypes = makeEventSet(eventTypes)
 }
 
 func (s *Subscription) Unsubscribe(addresses []string) {
@@ -212,11 +202,15 @@ func (s *Subscription) Unsubscribe(addresses []string) {
 }
 
 func (s *Subscription) InterestedIn(eventType EventType, eventAddresses []string) bool {
+	if s.EventTypes == nil {
+		return false
+	}
+	if _, ok := s.EventTypes[eventType]; !ok {
+		return false
+	}
 	for _, a := range eventAddresses {
-		if set, ok := s.SubscribedAddresses[a]; ok {
-			if _, has := set[eventType]; has {
-				return true
-			}
+		if _, ok := s.SubscribedAddresses[a]; ok {
+			return true
 		}
 	}
 	return false
@@ -1406,6 +1400,30 @@ func convertAddress(s string) (string, error) {
 	return string(raw.Interface().(index.AccountAddress)), nil
 }
 
+func validateAddressesAndTypes(addresses []string, types []EventType) ([]string, error) {
+	for _, t := range types {
+		if _, ok := validEventTypes[t]; !ok {
+			return nil, fmt.Errorf("invalid event type: %s", t)
+		}
+	}
+
+	uniqueAddrs := make([]string, 0, len(addresses))
+	addrsSet := make(map[string]struct{}, len(addresses))
+	for _, a := range addresses {
+		cnv, err := convertAddress(a)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := addrsSet[cnv]; exists {
+			continue
+		}
+		addrsSet[cnv] = struct{}{}
+		uniqueAddrs = append(uniqueAddrs, cnv)
+	}
+
+	return uniqueAddrs, nil
+}
+
 func writeSSE(w *bufio.Writer, event string, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -1466,7 +1484,7 @@ type SSERequest struct {
 	IncludeMetadata      *bool                   `json:"include_metadata"`
 }
 
-func ValidateSSERequest(req *SSERequest) (map[string][]EventType, emulated.FinalityState, error) {
+func ValidateSSERequest(req *SSERequest) ([]string, emulated.FinalityState, error) {
 	if len(req.Addresses) == 0 {
 		return nil, defaultMinFinality(), fmt.Errorf("addresses are required for subscription")
 	}
@@ -1474,19 +1492,9 @@ func ValidateSSERequest(req *SSERequest) (map[string][]EventType, emulated.Final
 		return nil, defaultMinFinality(), fmt.Errorf("types are required for subscription")
 	}
 
-	addrMap := make(map[string][]EventType, len(req.Addresses))
-	for _, a := range req.Addresses {
-		cnv, err := convertAddress(a)
-		if err != nil {
-			return nil, defaultMinFinality(), err
-		}
-		addrMap[cnv] = req.Types
-	}
-
-	for _, t := range req.Types {
-		if _, ok := validEventTypes[t]; !ok {
-			return nil, defaultMinFinality(), fmt.Errorf("invalid event type: %s", t)
-		}
+	uniqueAddrs, err := validateAddressesAndTypes(req.Addresses, req.Types)
+	if err != nil {
+		return nil, defaultMinFinality(), err
 	}
 
 	minFin := defaultMinFinality()
@@ -1494,7 +1502,7 @@ func ValidateSSERequest(req *SSERequest) (map[string][]EventType, emulated.Final
 		minFin = *req.MinFinality
 	}
 
-	return addrMap, minFin, nil
+	return uniqueAddrs, minFin, nil
 }
 
 func SSEHandler(manager *ClientManager) fiber.Handler {
@@ -1503,7 +1511,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Error: fmt.Sprintf("invalid subscription request: %v", err)})
 		}
-		addrMap, minFinality, err := ValidateSSERequest(&req)
+		addresses, minFinality, err := ValidateSSERequest(&req)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Id: req.Id, Error: err.Error()})
 		}
@@ -1527,11 +1535,11 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 					Error: err.Error(),
 				})
 			}
-			if rateLimitConfig.MaxSubscribedAddresses != -1 && len(addrMap) > rateLimitConfig.MaxSubscribedAddresses {
+			if rateLimitConfig.MaxSubscribedAddresses != -1 && len(addresses) > rateLimitConfig.MaxSubscribedAddresses {
 				manager.rateLimiter.UnregisterConnection(limitingKey, clientID)
 				return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
 					Id:    req.Id,
-					Error: fmt.Sprintf("too many addresses: %d > max %d", len(addrMap), rateLimitConfig.MaxSubscribedAddresses),
+					Error: fmt.Sprintf("too many addresses: %d > max %d", len(addresses), rateLimitConfig.MaxSubscribedAddresses),
 				})
 			}
 		}
@@ -1559,7 +1567,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				}
 			},
 		}
-		client.Subscription.Add(addrMap)
+		client.Subscription.Replace(addresses, req.Types)
 		manager.register <- client
 
 		c.Set("Content-Type", "text/event-stream")
@@ -1669,7 +1677,8 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			LimitingKey: limitingKey,
 			Connected:   true,
 			Subscription: Subscription{
-				SubscribedAddresses:  make(AddressSubs),
+				SubscribedAddresses:  make(AddressSet),
+				EventTypes:           make(eventSet),
 				SupportedActionTypes: index.ExpandActionTypeShortcuts(headers["X-Actions-Version"]),
 				IncludeAddressBook:   false,
 				IncludeMetadata:      false,
@@ -1749,27 +1758,9 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					continue
 				}
 
-				addrMap := make(map[string][]EventType, len(req.Addresses))
-				var validationError error
-				for _, a := range req.Addresses {
-					cnv, err := convertAddress(a)
-					if err != nil {
-						validationError = err
-						break
-					}
-					for _, t := range req.Types {
-						if _, ok := validEventTypes[t]; !ok {
-							validationError = fmt.Errorf("invalid event type: %s", t)
-							break
-						}
-					}
-					if validationError != nil {
-						break
-					}
-					addrMap[cnv] = req.Types
-				}
-				if validationError != nil {
-					sendWSJSONErr(c, env.Id, validationError)
+				cnvAddrs, err := validateAddressesAndTypes(req.Addresses, req.Types)
+				if err != nil {
+					sendWSJSONErr(c, env.Id, err)
 					continue
 				}
 
@@ -1779,14 +1770,14 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				}
 
 				client.mu.Lock()
-				err = checkAddressLimit(client, len(addrMap), manager.rateLimiter, true)
+				err = checkAddressLimit(client, len(cnvAddrs), manager.rateLimiter, true)
 				if err != nil {
 					client.mu.Unlock()
 					sendWSJSONErr(c, env.Id, err)
 					continue
 				}
 
-				client.Subscription.Replace(addrMap)
+				client.Subscription.Replace(cnvAddrs, req.Types)
 				client.Subscription.MinFinality = minFin
 
 				if req.IncludeAddressBook != nil {
