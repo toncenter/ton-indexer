@@ -78,6 +78,7 @@ td::Status ParseQuery::parse_impl() {
   }
 
   result->mc_block_ = mc_block_;
+  result->cell_db_reader_ = cell_db_reader_;
   return td::Status::OK();
 }
 
