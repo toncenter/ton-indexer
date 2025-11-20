@@ -178,7 +178,6 @@ void TraceEmulatorScheduler::enqueue_confirmed_block(ton::BlockIdExt block_id) {
         }
         td::actor::send_closure(SelfId, &TraceEmulatorScheduler::confirmed_block_fetched, block_id, R.move_as_ok());
     });
-    LOG(INFO) << "Fetching confirmed shard block " << block_id.to_str();
     td::actor::send_closure(db_scanner_, &DbScanner::fetch_block_by_id, block_id, std::move(P));
 }
 
@@ -229,8 +228,6 @@ void TraceEmulatorScheduler::process_confirmed_blocks() {
         auto P = td::PromiseCreator::lambda([block_id](td::Result<> R) mutable {
             if (R.is_error()) {
                 LOG(ERROR) << "Error processing confirmed shard block " << block_id.to_str() << ": " << R.move_as_error();
-            } else {
-                LOG(INFO) << "Finished confirmed shard block " << block_id.to_str();
             }
         });
         auto actor_name = PSLICE() << "ConfirmedBlockEmulator" << block_id.seqno();
