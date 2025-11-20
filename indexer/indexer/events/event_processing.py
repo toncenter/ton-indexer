@@ -125,7 +125,7 @@ from indexer.events.blocks.swaps import (
     ToncoSwapBlockMatcher,
 )
 from indexer.events.blocks.utils import EventNode, NoMessageBodyException, to_tree
-from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action, serialize_blocks
+from indexer.events.blocks.utils.block_tree_serializer import block_to_action, create_unknown_action, serialize_blocks, _calculate_trace_finality
 from indexer.events.blocks.vesting import (
     VestingAddWhiteListBlockMatcher,
     VestingSendMessageBlockMatcher,
@@ -366,6 +366,7 @@ async def try_process_unknown_event(trace: Trace) -> list[Block]:
 
 async def try_classify_unknown_trace(trace):
     actions = []
+    trace_finality = _calculate_trace_finality(trace)
     try:
         blocks = await try_process_unknown_event(trace)
         for block in blocks:
@@ -375,15 +376,15 @@ async def try_classify_unknown_trace(trace):
                 continue
             if block.btype == 'call_contract' and block.event_nodes[0].message.source is None:
                 continue
-            action = block_to_action(block, trace.trace_id, trace)
+            action = block_to_action(block, trace.trace_id, trace, trace_finality)
             assert len(action.accounts) > 0, f"Action {action} has no accounts"
             actions.append(action)
         if len(actions) == 0:
-            unknown_action = create_unknown_action(trace)
+            unknown_action = create_unknown_action(trace, trace_finality)
             actions.append(unknown_action)
     except Exception as e:
         logging.error(f"Failed to classify trace {trace.trace_id}. Falling back to unknown action")
-        unknown_action = create_unknown_action(trace)
+        unknown_action = create_unknown_action(trace, trace_finality)
         actions.append(unknown_action)
     return actions
 

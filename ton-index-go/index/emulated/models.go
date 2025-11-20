@@ -550,6 +550,7 @@ type Action struct {
 	Asset2Secondary                  *string                                    `msgpack:"asset2_secondary"`
 	Opcode                           *uint32                                    `msgpack:"opcode"`
 	Success                          bool                                       `msgpack:"success"`
+	Finality                         FinalityState                              `msgpack:"finality"`
 	TonTransferData                  *actionTonTransferDetails                  `msgpack:"ton_transfer_data"`
 	AncestorType                     []string                                   `msgpack:"ancestor_type"`
 	ParentActionId                   *string                                    `msgpack:"parent_action_id"`
@@ -651,17 +652,12 @@ func (fs *FinalityState) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (s *FinalityState) Scan(value interface{}) error {
-	*s = value.(FinalityState)
-	return nil
-}
-
 type TraceNode struct {
 	Transaction   transaction   `msgpack:"transaction"`
 	Emulated      bool          `msgpack:"emulated"`
 	BlockId       blockId       `msgpack:"block_id"`
 	McBlockSeqno  uint32        `msgpack:"mc_block_seqno"`
-	FinalityState FinalityState `msgpack:"finality_state"`
+	FinalityState FinalityState `msgpack:"finality"`
 	TraceId       *string
 	Key           string
 }
@@ -1136,6 +1132,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		Asset2Secondary:       a.Asset2Secondary,
 		Opcode:                a.Opcode,
 		Success:               a.Success,
+		Finality:              a.Finality,
 		TraceExternalHash:     &a.TraceExternalHash,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		ParentActionId:        a.ParentActionId,
