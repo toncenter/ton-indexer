@@ -47,7 +47,7 @@ public:
                 // if existing node is more advanced (e.g. it's finalized, but we are inserting emulated), skip subtree
                 auto existing_node = load_existing_node(trace_key_, msg_hash_key);
                 if (existing_node &&
-                    static_cast<int>(existing_node->finality_state) > static_cast<int>(redis_node.finality_state)) {
+                    static_cast<int>(existing_node->finality) > static_cast<int>(redis_node.finality)) {
                     continue;
                 }
 
@@ -55,7 +55,7 @@ public:
                     queue.push(child.get());
                 }
 
-                if (redis_node.finality_state != FinalityState::Emulated) {
+                if (redis_node.finality != FinalityState::Emulated) {
                     delete_db_subtree(msg_hash_key, tx_keys_to_delete, addr_keys_to_delete,
                                       existing_node ? &*existing_node : nullptr);
                 }
@@ -94,7 +94,7 @@ public:
                 auto by_addr_key = trace_key_ + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
                 transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
 
-                if (node.finality_state == FinalityState::Finalized || node.finality_state == FinalityState::Confirmed) {
+                if (node.finality == FinalityState::Finalized || node.finality == FinalityState::Confirmed) {
                     if (has_commited_txs) {
                         commited_txs_hashes += ",";
                     }

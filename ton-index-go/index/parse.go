@@ -315,6 +315,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 	act.TraceMcSeqnoEnd = raw.TraceMcSeqnoEnd
 	act.TxHashes = raw.TxHashes
 	act.Success = raw.Success
+	act.Finality = raw.Finality
 	act.Type = raw.Type
 	act.TraceExternalHash = raw.TraceExternalHash
 	act.TraceExternalHashNorm = raw.TraceExternalHashNorm
@@ -1543,6 +1544,7 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.StakingDataTokensBurnt,
 		&act.StakingDataTokensMinted,
 		&act.Success,
+		&act.Finality,
 		&act.TraceExternalHash,
 		&act.TraceExternalHashNorm,
 		&act.ExtraCurrencies,

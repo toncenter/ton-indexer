@@ -4,7 +4,7 @@ import base64
 import hashlib
 import logging
 
-from indexer.core.database import Action, Trace
+from indexer.core.database import Action, FinalityState, Trace
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import (
@@ -82,6 +82,15 @@ from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCB
 
 logger = logging.getLogger(__name__)
 
+def _calculate_trace_finality(trace: Trace) -> FinalityState:
+    min_finality = FinalityState.finalized
+    for tx in trace.transactions:
+        if tx.finality < min_finality:
+            min_finality = tx.finality
+            if min_finality == FinalityState.pending:
+                break
+    return min_finality
+
 def _addr(addr: AccountId | Asset | None) -> str | None:
     if addr is None:
         return None
@@ -108,7 +117,7 @@ def _calc_action_id(block: Block) -> str:
     return base64.b64encode(h.digest()).decode()
 
 
-def _base_block_to_action(block: Block, trace_id: str) -> Action:
+def _base_block_to_action(block: Block, trace_id: str, trace_finality: FinalityState) -> Action:
     action_id = _calc_action_id(block)
     tx_hashes = list(set(n.get_tx_hash() for n in block.event_nodes))
     mc_seqno_end = max(n.get_tx().mc_block_seqno for n in block.event_nodes if n.get_tx() is not None)
@@ -130,6 +139,7 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
         end_utime=block.max_utime,
         success=not block.failed,
         mc_seqno_end=mc_seqno_end,
+        finality=trace_finality,
         value_extra_currencies=dict(),
     )
     action.accounts = accounts
@@ -1109,8 +1119,10 @@ def _fill_ethena_deposit_action(block: EthenaDepositBlock, action: Action):
 
 
 # noinspection PyCompatibility,PyTypeChecker
-def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
-    action = _base_block_to_action(block, trace_id)
+def block_to_action(block: Block, trace_id: str, trace: Trace | None = None,
+                    trace_finality: FinalityState | None = None) -> Action:
+    effective_finality = trace_finality if trace_finality is not None else _calculate_trace_finality(trace)
+    action = _base_block_to_action(block, trace_id, effective_finality)
     if trace is not None:
         action.trace_end_lt = trace.end_lt
         action.trace_end_utime = trace.end_utime
@@ -1314,7 +1326,8 @@ v1_ops = [
     'coffee_deposit_liquidity'
 ]
 
-def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:
+def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None,
+                    serialize_child_actions=True, trace_finality: FinalityState) -> tuple[list[Action], str]:
     actions = []
     action_ids = []
     state = 'ok'
@@ -1328,7 +1341,7 @@ def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_
                 continue
             if block.broken:
                 state = 'broken'
-            action = block_to_action(block, trace_id, trace)
+            action = block_to_action(block, trace_id, trace, trace_finality)
             if parent_acton_id is not None and action.action_id == parent_acton_id:
                 continue
             action.parent_action_id = parent_acton_id
@@ -1336,7 +1349,7 @@ def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_
             actions.append(action)
             if serialize_child_actions:
                 if block.btype not in v1_ops:
-                    child_actions, child_state = serialize_blocks(block.children_blocks, trace_id, trace, action.action_id, serialize_child_actions)
+                    child_actions, child_state = serialize_blocks(block.children_blocks, trace_id, trace, action.action_id, serialize_child_actions, trace_finality)
                     for child_action in child_actions:
                         if child_action.type == 'contract_deploy':
                             continue
@@ -1353,7 +1366,7 @@ def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_
                         state = child_state
     return actions, state
 
-def create_unknown_action(trace: Trace) -> Action:
+def create_unknown_action(trace: Trace, trace_finality: FinalityState) -> Action:
     logger.debug("Creating unknown action for " + trace.trace_id)
     tx_hashes = [n.hash for n in trace.transactions]
     failed = any(n.aborted for n in trace.transactions)
@@ -1368,6 +1381,7 @@ def create_unknown_action(trace: Trace) -> Action:
         end_utime=trace.end_utime,
         success=not failed,
         mc_seqno_end=trace.mc_seqno_end,
+        finality=trace_finality,
         value_extra_currencies=dict(),
         trace_end_lt=trace.end_lt,
         trace_end_utime=trace.end_utime,
