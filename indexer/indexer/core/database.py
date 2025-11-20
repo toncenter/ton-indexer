@@ -5,6 +5,7 @@ import logging
 from time import sleep
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
+from enum import IntEnum
 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -81,6 +82,11 @@ def init_database(create=False):
 
 # types
 AccountStatus = Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status')
+
+class FinalityState(IntEnum):
+    pending = 0
+    confirmed = 1
+    finalized = 2
 
 
 def convert_numerics_to_strings(data, exclusions):
@@ -633,6 +639,7 @@ class Transaction(Base):
     messages: List[Message] = relationship("Message", back_populates="transaction", viewonly=True)
     trace: Optional[Trace] = relationship("Trace", foreign_keys=[trace_id], primaryjoin="Transaction.trace_id == Trace.trace_id", viewonly=True)
     emulated: bool = False
+    finality: FinalityState
 
 class AccountState(Base):
     __tablename__ = 'account_states'
