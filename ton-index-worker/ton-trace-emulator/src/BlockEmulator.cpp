@@ -228,7 +228,7 @@ void McBlockEmulator::process_txs() {
 
 std::unique_ptr<TraceNode> McBlockEmulator::construct_commited_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs) {
     auto trace_node = std::make_unique<TraceNode>();
-    trace_node->execution_state = TraceExecutionState::Finalized;
+    trace_node->finality_state = FinalityState::Finalized;
     trace_node->transaction_root = tx.root;
     trace_node->node_id = tx.in_msg_hash;
     trace_node->address = tx.account;
@@ -527,7 +527,7 @@ void ConfirmedBlockEmulator::emulate_traces() {
 
 std::unique_ptr<TraceNode> ConfirmedBlockEmulator::construct_confirmed_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs) {
     auto trace_node = std::make_unique<TraceNode>();
-    trace_node->execution_state = TraceExecutionState::Confirmed;
+    trace_node->finality_state = FinalityState::Confirmed;
     trace_node->transaction_root = tx.root;
     trace_node->node_id = tx.in_msg_hash;
     trace_node->address = tx.account;
