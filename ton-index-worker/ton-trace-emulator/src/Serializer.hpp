@@ -212,9 +212,9 @@ struct RedisTraceNode {
   bool emulated;
   uint32_t mc_block_seqno;
   BlockId block_id;
-  FinalityState finality_state{FinalityState::Emulated};
+  FinalityState finality{FinalityState::Emulated};
 
-  MSGPACK_DEFINE(transaction, emulated, mc_block_seqno, block_id, finality_state);
+  MSGPACK_DEFINE(transaction, emulated, mc_block_seqno, block_id, finality);
 };
 
 td::Result<int64_t> to_balance(vm::CellSlice& balance_slice) {
@@ -585,7 +585,7 @@ td::Result<RedisTraceNode> parse_trace_node(const TraceNode& node) {
                         .emulated = node.finality_state == FinalityState::Emulated, 
                         .mc_block_seqno = node.mc_block_seqno, 
                         .block_id = redis_blkid,
-                        .finality_state = node.finality_state};
+                        .finality = node.finality_state};
 }
 
 struct JettonWalletSchema {
