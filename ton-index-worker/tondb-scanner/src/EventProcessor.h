@@ -3,6 +3,7 @@
 #include "Statistics.h"
 #include "common/refint.h"
 #include "DataParser.h"
+#include "validators-tlb.h"
 
 
 // Detects special cases of Actions like - Jetton transfers and burns, NFT transfers
@@ -294,31 +295,32 @@ public:
       return td::Status::Error("Pool state data is null");
     }
 
-    // parse pool data structure
-    auto ds = vm::load_cell_slice(pool_state.data);
-    if (!ds.is_valid()) {
-      return td::Status::Error("Failed to parse pool state");
+    validators::gen::NominatorPoolStorage::Record pool_storage;
+    if (!validators::gen::t_NominatorPoolStorage.cell_unpack(pool_state.data, pool_storage)) {
+      return td::Status::Error("Failed to unpack NominatorPoolStorage");
     }
-    ds.advance(8);  // skip state:uint8
-    ds.advance(16); // skip nominators_count:uint16
-    auto stake_amount_sent = block::tlb::t_Grams.as_integer_skip(ds); // Coins
-    ds.advance(120); // skip validator_amount:Coins
 
-    td::Ref<vm::Cell> config_ref;
-    if (!ds.fetch_ref_to(config_ref)) {
-      return td::Status::Error("Failed to fetch config ref");
+    auto stake_amount_sent = block::tlb::t_Grams.as_integer(pool_storage.stake_amount_sent);
+    if (stake_amount_sent.is_null()) {
+      return td::Status::Error("Failed to parse stake_amount_sent");
     }
-    auto config_cs = vm::load_cell_slice(config_ref);
-    config_cs.advance(256); // skip validator address hash
-    auto validator_reward_share = config_cs.fetch_ulong(16); // uint16
 
-    td::Ref<vm::Cell> nominators_cell_ref;
-    if (!ds.fetch_maybe_ref(nominators_cell_ref) ||
-        nominators_cell_ref.is_null()) {
+    validators::gen::NominatorPoolConfig::Record pool_config;
+    if (!validators::gen::t_NominatorPoolConfig.cell_unpack(pool_storage.config, pool_config)) {
+      return td::Status::Error("Failed to unpack NominatorPoolConfig");
+    }
+    auto validator_reward_share = pool_config.validator_reward_share;
+
+    if (pool_storage.nominators.is_null() || pool_storage.nominators->size() == 0) {
       return incomes; // no nominators
     }
 
-    // get transaction value for reward calculation
+    td::Ref<vm::Cell> nominators_cell_ref;
+    vm::CellSlice temp_slice = *pool_storage.nominators;
+    if (!temp_slice.fetch_maybe_ref(nominators_cell_ref) || nominators_cell_ref.is_null()) {
+      return incomes; // no nominators
+    }
+
     if (!transaction.in_msg.has_value()) {
       return incomes;
     }
@@ -327,10 +329,13 @@ public:
 
     // calculate total reward: tx_value - stake_amount_sent
     td::RefInt256 tx_value_big = tx_value_grams;
-    if (td::cmp(tx_value_big, stake_amount_sent) <= 0) {
-      return incomes; // no reward
-    }
     td::RefInt256 reward_total = tx_value_big - stake_amount_sent;
+
+    // handle negative reward (penalty) - nominators don't get anything
+    // note: we don't handle case when validator balance is insufficient to cover penalty
+    if (td::sgn(reward_total) <= 0) {
+      return incomes;  // penalty or no reward, nominators get nothing
+    }
 
     // subtract validator's share from total reward
     td::RefInt256 validator_reward =
@@ -338,7 +343,7 @@ public:
         td::make_refint(10000);
     td::RefInt256 nominators_reward = reward_total - validator_reward;
 
-    // parse nominators dict
+    // parse nominators dict (using vm::Dictionary for iteration, but TLB for parsing values)
     vm::Dictionary nominators_dict{nominators_cell_ref, 256};
     auto iterator = nominators_dict.begin();
 
@@ -350,12 +355,22 @@ public:
       auto addr_hash = td::BitArray<256>(iterator.cur_pos());
       auto nominator_cs_ref = iterator.cur_value();
 
-      // nominator#_ deposit:Coins pending_deposit:Coins
-      // create mutable copy of CellSlice for parsing
+      validators::gen::Nominator::Record nominator_data;
       vm::CellSlice nominator_cs = *nominator_cs_ref;
-      auto deposit = block::tlb::t_Grams.as_integer_skip(nominator_cs);
+      if (!validators::gen::t_Nominator.unpack(nominator_cs, nominator_data)) {
+        LOG(DEBUG) << "Failed to unpack Nominator, skipping";
+        ++iterator;
+        continue;
+      }
 
-      if (!deposit.is_null() && td::sgn(deposit) > 0) {
+      auto deposit = block::tlb::t_Grams.as_integer(nominator_data.amount);
+      if (deposit.is_null()) {
+        LOG(DEBUG) << "Failed to parse nominator amount, skipping";
+        ++iterator;
+        continue;
+      }
+
+      if (td::sgn(deposit) > 0) {
         total_balance = total_balance + deposit;
         nominators_list.push_back({addr_hash, deposit});
       }
