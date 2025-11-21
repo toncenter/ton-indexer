@@ -208,6 +208,23 @@ class Trace(Base):
                                                      uselist=True,
                                                      viewonly=True)
 
+    _finality_cache: FinalityState | None = None
+
+    @property
+    def finality(self) -> FinalityState:
+        """
+        Lazily compute finality across all transactions in the trace and cache the result.
+        """
+        if self._finality_cache is None:
+            min_finality = FinalityState.finalized
+            for tx in self.transactions:
+                if tx.finality < min_finality:
+                    min_finality = tx.finality
+                    if min_finality == FinalityState.pending:
+                        break
+            self._finality_cache = min_finality
+        return self._finality_cache
+
 
 class TraceEdge(Base):
     __tablename__ = 'trace_edges'
@@ -689,7 +706,7 @@ class Transaction(Base):
     messages: List[Message] = relationship("Message", back_populates="transaction", viewonly=True)
     trace: Optional[Trace] = relationship("Trace", foreign_keys=[trace_id], primaryjoin="Transaction.trace_id == Trace.trace_id", viewonly=True)
     emulated: bool = False
-    finality: FinalityState
+    finality: FinalityState = FinalityState.finalized
 
 class AccountState(Base):
     __tablename__ = 'account_states'
