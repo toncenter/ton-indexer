@@ -270,6 +270,7 @@ class Action(Base):
     asset2_secondary: str | None = Column(String(70))
     opcode: int | None = Column(BigInteger)
     success: bool = Column(Boolean)
+    finality: FinalityState = FinalityState.finalized
     ton_transfer_data = Column(CompositeType("ton_transfer_details", [
         Column("content", String),
         Column("encrypted", Boolean)
