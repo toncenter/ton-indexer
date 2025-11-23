@@ -50,7 +50,7 @@ cases:
           source_secondary: 0:297821FC140CCD6054B6EABB5DF48C76B1C7E6C985FEB9FFDEF343A6BA4B13AF
           destination: 0:A11AE0F5BB47BB2945871F915A621FF281C2D786C746DA74873D71D6F2AAA7A5
           amount: 199179780
-          unstake_data:
+          staking_data:
             provider: ethena
             tokens_minted: 250729913
           asset: 0:D0E545323C7ACB7102653C073377F7E3C67F122EB94D430A250739F109D4A57D
