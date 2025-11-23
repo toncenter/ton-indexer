@@ -634,6 +634,9 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Provider = raw.StakingDataProvider
 		details.TokensMinted = raw.StakingDataTokensMinted
 		details.Asset = raw.Asset
+		if details.Provider != nil && *details.Provider == "ethena" {
+			details.SourceAsset = raw.Asset2
+		}
 		act.Details = &details
 	case "stake_withdrawal":
 		var details ActionDetailsWithdrawStake
@@ -654,6 +657,8 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 		details.Asset = raw.Asset
 		if details.Provider != nil && *details.Provider == "tonstakers" {
 			details.TokensBurnt = raw.Amount
+		} else if details.Provider != nil && *details.Provider == "ethena" {
+			details.TokensMinted = raw.StakingDataTokensMinted
 		}
 		act.Details = &details
 	case "subscribe":
