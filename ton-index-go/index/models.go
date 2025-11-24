@@ -382,16 +382,16 @@ type NominatorPoolIncome struct {
 type NominatorBooking struct {
 	Utime       int32  `json:"utime"`
 	BookingType string `json:"booking_type"` // "income", "deposit", "withdrawal"
-	Debit       string `json:"debit"`
-	Credit      string `json:"credit"`
+	Debit       int64  `json:"debit"`
+	Credit      int64  `json:"credit"`
 } // @name NominatorBooking
 
 type PoolBooking struct {
 	NominatorAddress string `json:"nominator_address"`
 	Utime            int32  `json:"utime"`
 	BookingType      string `json:"booking_type"`
-	Debit            string `json:"debit"`
-	Credit           string `json:"credit"`
+	Debit            int64  `json:"debit"`
+	Credit           int64  `json:"credit"`
 } // @name PoolBooking
 
 // jettons
@@ -1797,3 +1797,23 @@ type UnknownMessage struct {
 }
 
 func (um *UnknownMessage) GetType() string { return "unknown" }
+
+type NominatorPoolInfo struct {
+	StakeAmountSent    int64                 `json:"stake_amount_sent"`
+	ValidatorAmount    int64                 `json:"validator_amount"`
+	NominatorsCount    int                   `json:"nominators_count"`
+	ActiveNominators   []ActiveNominatorInfo `json:"active_nominators"`
+	InactiveNominators []string              `json:"inactive_nominators"`
+} // @name NominatorPoolInfo
+
+type ActiveNominatorInfo struct {
+	Address        string `json:"address"`
+	Balance        int64  `json:"balance"`
+	PendingBalance int64  `json:"pending_balance"`
+} // @name ActiveNominatorInfo
+
+type NominatorInPool struct {
+	PoolAddress    string `json:"pool_address"`
+	Balance        int64  `json:"balance"`
+	PendingBalance int64  `json:"pending_balance"`
+} // @name NominatorInPool
