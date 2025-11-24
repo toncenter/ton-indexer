@@ -34,6 +34,7 @@ from indexer.events.blocks.elections import (
     ElectionDepositStakeBlockMatcher,
     ElectionRecoverStakeBlockMatcher,
 )
+from indexer.events.blocks.ethena_staking import EthenaWithdrawalRequestBlockMatcher, EthenaDepositBlockMatcher
 from indexer.events.blocks.evaa import (
     EvaaLiquidateBlockMatcher,
     EvaaSupplyBlockMatcher,
@@ -234,7 +235,9 @@ matchers = [
     NftCancelSaleMatcher(),
     NftFinishAuctionMatcher(),
     NftCancelAuctionMatcher(),
+    EthenaWithdrawalRequestBlockMatcher(),
     JettonMintBlockMatcher(),
+    EthenaDepositBlockMatcher(),
     StonfiV2ProvideLiquidityMatcher(),
     StonfiV2WithdrawLiquidityMatcher(),
     JVaultStakeBlockMatcher(),

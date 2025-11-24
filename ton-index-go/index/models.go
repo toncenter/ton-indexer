@@ -1067,6 +1067,7 @@ type ActionDetailsStakeDeposit struct {
 	Amount       *string         `json:"amount"`
 	TokensMinted *string         `json:"tokens_minted"`
 	Asset        *AccountAddress `json:"asset"`
+	SourceAsset  *AccountAddress `json:"source_asset,omitempty"`
 }
 
 type ActionDetailsWithdrawStake struct {
@@ -1080,12 +1081,13 @@ type ActionDetailsWithdrawStake struct {
 }
 
 type ActionDetailsWithdrawStakeRequest struct {
-	Provider    *string         `json:"provider"`
-	StakeHolder *AccountAddress `json:"stake_holder"`
-	Pool        *AccountAddress `json:"pool"`
-	PayoutNft   *AccountAddress `json:"payout_nft"`
-	Asset       *AccountAddress `json:"asset"`
-	TokensBurnt *string         `json:"tokens_burnt"`
+	Provider     *string         `json:"provider"`
+	StakeHolder  *AccountAddress `json:"stake_holder"`
+	Pool         *AccountAddress `json:"pool"`
+	PayoutNft    *AccountAddress `json:"payout_nft"`
+	Asset        *AccountAddress `json:"asset"`
+	TokensBurnt  *string         `json:"tokens_burnt"`
+	TokensMinted *string         `json:"tokens_minted,omitempty"`
 }
 
 type Action struct {
