@@ -4297,6 +4297,75 @@ func (db *DbClient) GetNominatorBookings(
 	return bookings, nil
 }
 
+func (db *DbClient) GetNominatorEarnings(
+	nominatorAddr string,
+	poolAddr string,
+	fromTime, toTime *int32,
+	limit int,
+) (*NominatorEarningsResponse, error) {
+	conn, err := db.Pool.Acquire(context.Background())
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer conn.Release()
+
+	// query incomes only
+	incomeQuery := `
+		SELECT tx_now, income_amount, nominator_balance
+		FROM nominator_pool_incomes
+		WHERE nominator_address = $1 AND pool_address = $2
+	`
+	var incomeArgs []interface{}
+	incomeArgs = append(incomeArgs, nominatorAddr, poolAddr)
+	argIdx := 3
+
+	if fromTime != nil {
+		incomeQuery += fmt.Sprintf(" AND tx_now >= $%d", argIdx)
+		incomeArgs = append(incomeArgs, *fromTime)
+		argIdx++
+	}
+	if toTime != nil {
+		incomeQuery += fmt.Sprintf(" AND tx_now <= $%d", argIdx)
+		incomeArgs = append(incomeArgs, *toTime)
+		argIdx++
+	}
+
+	incomeQuery += " ORDER BY tx_now ASC"
+
+	if limit > 0 {
+		incomeQuery += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	incomeRows, err := conn.Query(context.Background(), incomeQuery, incomeArgs...)
+	if err != nil {
+		return nil, IndexError{Code: 500, Message: err.Error()}
+	}
+	defer incomeRows.Close()
+
+	earnings := []NominatorEarning{}
+	var totalOnPeriod int64 = 0
+
+	for incomeRows.Next() {
+		var utime int32
+		var income int64
+		var stakeBefore int64
+		if err := incomeRows.Scan(&utime, &income, &stakeBefore); err != nil {
+			return nil, IndexError{Code: 500, Message: err.Error()}
+		}
+		earnings = append(earnings, NominatorEarning{
+			Utime:       utime,
+			Income:      income,
+			StakeBefore: stakeBefore,
+		})
+		totalOnPeriod += income
+	}
+
+	return &NominatorEarningsResponse{
+		TotalOnPeriod: totalOnPeriod,
+		Earnings:      earnings,
+	}, nil
+}
+
 func (db *DbClient) GetPoolBookings(
 	poolAddr string,
 	fromTime, toTime *int32,

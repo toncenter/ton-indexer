@@ -1817,3 +1817,14 @@ type NominatorInPool struct {
 	Balance        int64  `json:"balance"`
 	PendingBalance int64  `json:"pending_balance"`
 } // @name NominatorInPool
+
+type NominatorEarning struct {
+	Utime       int32 `json:"utime"`
+	Income      int64 `json:"income"`
+	StakeBefore int64 `json:"stake_before"`
+} // @name NominatorEarning
+
+type NominatorEarningsResponse struct {
+	TotalOnPeriod int64              `json:"total_on_period"`
+	Earnings      []NominatorEarning `json:"earnings"`
+} // @name NominatorEarningsResponse

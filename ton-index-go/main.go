@@ -1912,7 +1912,7 @@ func HealthCheck(c *fiber.Ctx) error {
 
 // GetPool godoc
 // @summary Get pool information
-// @tags Nominator Pools
+// @tags staking
 // @id getPool
 // @param pool query string true "Pool address in any form"
 // @produce json
@@ -1921,7 +1921,7 @@ func HealthCheck(c *fiber.Ctx) error {
 // @failure 404 {object} index.IndexError
 // @failure 422 {object} index.IndexError
 // @failure 500 {object} index.IndexError
-// @router /api/smc-index/getPool [get]
+// @router /api/v3/nominators/getPool [get]
 func GetPool(c *fiber.Ctx) error {
 	poolAddr := c.Query("pool")
 
@@ -1946,7 +1946,7 @@ func GetPool(c *fiber.Ctx) error {
 
 // GetNominatorBookings godoc
 // @summary Get nominator bookings
-// @tags Nominator Pools
+// @tags staking
 // @id getNominatorBookings
 // @param nominator query string true "Nominator address in any form"
 // @param pool query string true "Pool address in any form"
@@ -1957,7 +1957,7 @@ func GetPool(c *fiber.Ctx) error {
 // @success 200 {array} index.NominatorBooking
 // @failure 422 {object} index.IndexError
 // @failure 500 {object} index.IndexError
-// @router /api/smc-index/getNominatorBookings [get]
+// @router /api/v3/nominators/getNominatorBookings [get]
 func GetNominatorBookings(c *fiber.Ctx) error {
 	nominator := c.Query("nominator")
 	poolAddr := c.Query("pool")
@@ -2010,7 +2010,7 @@ func GetNominatorBookings(c *fiber.Ctx) error {
 
 // GetPoolBookings godoc
 // @summary Get pool bookings
-// @tags Nominator Pools
+// @tags staking
 // @id getPoolBookings
 // @param pool query string true "Pool address in any form"
 // @param from_time query integer false "From timestamp"
@@ -2020,7 +2020,7 @@ func GetNominatorBookings(c *fiber.Ctx) error {
 // @success 200 {array} index.PoolBooking
 // @failure 422 {object} index.IndexError
 // @failure 500 {object} index.IndexError
-// @router /api/smc-index/getPoolBookings [get]
+// @router /api/v3/nominators/getPoolBookings [get]
 func GetPoolBookings(c *fiber.Ctx) error {
 	poolAddr := c.Query("pool")
 
@@ -2066,14 +2066,14 @@ func GetPoolBookings(c *fiber.Ctx) error {
 
 // GetNominator godoc
 // @summary Get all pools where nominator has balance
-// @tags Nominator Pools
+// @tags staking
 // @id getNominator
 // @param nominator query string true "Nominator address in any form"
 // @produce json
 // @success 200 {array} index.NominatorInPool
 // @failure 422 {object} index.IndexError
 // @failure 500 {object} index.IndexError
-// @router /api/smc-index/getNominator [get]
+// @router /api/v3/nominators/getNominator [get]
 func GetNominator(c *fiber.Ctx) error {
 	nominator := c.Query("nominator")
 
@@ -2094,6 +2094,70 @@ func GetNominator(c *fiber.Ctx) error {
 	}
 
 	return c.Status(200).JSON(pools)
+}
+
+// GetNominatorEarnings godoc
+// @summary Get nominator earnings (incomes only)
+// @tags staking
+// @id getNominatorEarnings
+// @param nominator query string true "Nominator address in any form"
+// @param pool query string true "Pool address in any form"
+// @param from_time query integer false "From timestamp"
+// @param to_time query integer false "To timestamp"
+// @param limit query integer false "Limit" default(100)
+// @produce json
+// @success 200 {object} index.NominatorEarningsResponse
+// @failure 422 {object} index.IndexError
+// @failure 500 {object} index.IndexError
+// @router /api/v3/nominators/getNominatorEarnings [get]
+func GetNominatorEarnings(c *fiber.Ctx) error {
+	nominator := c.Query("nominator")
+	poolAddr := c.Query("pool")
+
+	if nominator == "" || poolAddr == "" {
+		return index.IndexError{Code: 422, Message: "nominator and pool parameters are required"}
+	}
+
+	// normalize addresses
+	nominatorAddrVal := index.AccountAddressConverter(nominator)
+	if !nominatorAddrVal.IsValid() {
+		return index.IndexError{Code: 422, Message: "invalid nominator address format"}
+	}
+	normalizedNominator := nominatorAddrVal.Interface().(index.AccountAddress)
+
+	poolAddrVal := index.AccountAddressConverter(poolAddr)
+	if !poolAddrVal.IsValid() {
+		return index.IndexError{Code: 422, Message: "invalid pool address format"}
+	}
+	normalizedPool := poolAddrVal.Interface().(index.AccountAddress)
+
+	var fromTime, toTime *int32
+	if fromStr := c.Query("from_time"); fromStr != "" {
+		if val, err := strconv.ParseInt(fromStr, 10, 32); err == nil {
+			tmp := int32(val)
+			fromTime = &tmp
+		}
+	}
+	if toStr := c.Query("to_time"); toStr != "" {
+		if val, err := strconv.ParseInt(toStr, 10, 32); err == nil {
+			tmp := int32(val)
+			toTime = &tmp
+		}
+	}
+
+	limit := 100
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil {
+			limit = val
+		}
+	}
+
+	earnings, err := pool.GetNominatorEarnings(string(normalizedNominator), string(normalizedPool), fromTime, toTime, limit)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(earnings)
 }
 
 func ExtractParam(ctx *fiber.Ctx, header string, query string) (string, bool) {
@@ -2438,12 +2502,12 @@ func main() {
 	app.Get("/api/v3/decode", GetDecode)
 	app.Post("/api/v3/decode", PostDecode)
 
-	// smc-index compatibility endpoints
-	app.Get("/api/smc-index/getPool", GetPool)
-	app.Get("/api/smc-index/getNominatorBookings", GetNominatorBookings)
-	app.Get("/api/smc-index/getPoolBookings", GetPoolBookings)
-	app.Get("/api/smc-index/getNominator", GetNominator)
-	app.Get("/api/smc-index/getPool", GetPool)
+	// v3/nominators compatibility endpoints
+	app.Get("/api/v3/nominators/getPool", GetPool)
+	app.Get("/api/v3/nominators/getNominatorBookings", GetNominatorBookings)
+	app.Get("/api/v3/nominators/getPoolBookings", GetPoolBookings)
+	app.Get("/api/v3/nominators/getNominator", GetNominator)
+	app.Get("/api/v3/nominators/getNominatorEarnings", GetNominatorEarnings)
 
 	// api/v2 proxied
 	app.Get("/api/v3/addressInformation", GetV2AddressInformation)
