@@ -988,6 +988,8 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
         "FOR EACH ROW EXECUTE FUNCTION update_nft_real_owner();"
     );
 
+    query += "alter table address_metadata add reindex_allowed boolean default true not null;\n";
+
     query += (
       "INSERT INTO ton_db_version (id, major, minor, patch) "
       "VALUES (1, 1, 2, 4) ON CONFLICT(id) DO UPDATE "
