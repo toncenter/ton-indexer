@@ -46,6 +46,9 @@ jobs:
 
   build:
     runs-on: ubuntu-22.04
+    env:
+      CC: clang-16
+      CXX: clang++-16
 
     steps:
     - name: Check out repository
@@ -71,7 +74,7 @@ jobs:
         cmake-version: '3.x'
 
     - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_C_COMPILER=clang-16 -DCMAKE_CXX_COMPILER=clang++-16
 
     - name: Build C++ libraries
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --target ton-marker-core ton-marker --parallel $(nproc)
