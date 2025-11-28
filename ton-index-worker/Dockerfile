@@ -1,7 +1,7 @@
-FROM ubuntu:22.04 AS builder
+FROM ubuntu:24.04 AS builder
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
 RUN apt-get update -y \
-    && apt-get install -y build-essential cmake clang openssl libssl-dev zlib1g-dev \
+    && apt-get install -y build-essential cmake clang-20 openssl libssl-dev zlib1g-dev \
                    gperf wget git curl ccache libmicrohttpd-dev liblz4-dev \
                    pkg-config libsecp256k1-dev libsodium-dev libhiredis-dev python3-dev libpq-dev \
                    automake libjemalloc-dev lsb-release software-properties-common gnupg \
@@ -23,13 +23,15 @@ COPY ton-marker/ /app/ton-marker/
 COPY CMakeLists.txt /app/
 
 WORKDIR /app/build
+ENV CC=clang-20
+ENV CXX=clang++-20
+RUN touch /app/suppression_mappings.txt
 RUN cmake -DCMAKE_BUILD_TYPE=Release ..
 RUN make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner ton-integrity-checker ton-trace-emulator ton-trace-task-emulator ton-marker-cli
 
-FROM ubuntu:22.04
-RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
-RUN apt-get update -y \
-    && apt install -y dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
+FROM ubuntu:24.04
+RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
+    && apt install -y dnsutils libpq5 libsecp256k1-1 libsodium23 libhiredis1.1.0 \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 COPY scripts/entrypoint.sh /entrypoint.sh

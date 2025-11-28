@@ -166,7 +166,7 @@ td::Result<td::Ref<vm::Cell>> TonConnectProcessor::message_to_cell(const TonConn
   }
   {
     auto amount = std::stoull(out_msg.amount);
-    block::CurrencyCollection cc{amount};
+    block::CurrencyCollection cc{static_cast<long long>(amount)};
     if (!cc.pack_to(msg_info.value)) {
       return td::Status::Error("Failed to pack CurrencyCollection for value");
     }
