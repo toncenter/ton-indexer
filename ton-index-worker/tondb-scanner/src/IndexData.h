@@ -12,6 +12,8 @@
 
 namespace schema {
 
+using bytes_string = std::string;
+
 struct CurrencyCollection {
   td::RefInt256 grams;
   std::map<uint32_t, td::RefInt256> extra_currencies;
@@ -200,10 +202,10 @@ struct Message {
   std::optional<td::RefInt256> import_fee;
 
   td::Ref<vm::Cell> body;
-  std::string body_boc;
+  bytes_string body_boc;
 
   td::Ref<vm::Cell> init_state;
-  std::optional<std::string> init_state_boc;
+  std::optional<bytes_string> init_state_boc;
 
   td::Bits256 trace_id;
 };

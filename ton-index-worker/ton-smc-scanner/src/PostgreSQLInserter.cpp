@@ -13,7 +13,7 @@ namespace pqxx
 
 template<> struct nullness<schema::BlockReference> : pqxx::no_null<schema::BlockReference> {};
 
-template<> struct string_traits<schema::BlockReference>
+template<> struct pqxx::string_traits<schema::BlockReference>
 {
   static constexpr bool converts_to_string{true};
   static constexpr bool converts_from_string{false};
@@ -82,16 +82,13 @@ template<> struct string_traits<block::StdAddress>
   }
  
   static char *into_buf(char *begin, char *end, block::StdAddress const &value) {
-    std::ostringstream stream;
-    stream << value.workchain << ":" << value.addr;
-    auto text = stream.str();
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for block::StdAddress."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
+    bytes data{36, std::byte{0}};
+    std::memcpy(&data[0], &value.workchain, 4);
+    std::memcpy(&data[0] + 4, value.addr.as_slice().str().c_str(), 32);
+    return string_traits<bytes>::into_buf(begin, end, data);
   }
   static std::size_t size_buffer(block::StdAddress const &value) noexcept {
-    return 80;
+    return 75;
   }
 };
 
@@ -107,14 +104,10 @@ template<> struct string_traits<td::Bits256>
   }
  
   static char *into_buf(char *begin, char *end, td::Bits256 const &value) {
-    auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for td::Bits256."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
+    return string_traits<bytes_view>::into_buf(begin, end, pqxx::binary_cast(value.as_slice().str()));
   }
   static std::size_t size_buffer(td::Bits256 const &value) noexcept {
-    return 64;
+    return string_traits<bytes_view>::size_buffer(pqxx::binary_cast(value.as_slice().str()));;
   }
 };
 
@@ -130,14 +123,10 @@ template<> struct string_traits<vm::CellHash>
   }
  
   static char *into_buf(char *begin, char *end, vm::CellHash const &value) {
-    auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for vm::CellHash."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
+    return string_traits<bytes_view>::into_buf(begin, end, pqxx::binary_cast(value.as_slice().str()));
   }
   static std::size_t size_buffer(vm::CellHash const &value) noexcept {
-    return 64;
+    return string_traits<bytes_view>::size_buffer(pqxx::binary_cast(value.as_slice().str()));;
   }
 };
 }
@@ -384,16 +373,17 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
     "account", "account_friendly", "hash", "balance", "balance_extra_currencies", "account_status", "timestamp",
     "last_trans_hash", "last_trans_lt", "frozen_hash", "data_hash", "code_hash", "data_boc", "code_boc"
   };
-  PopulateTableStream stream(transaction, "latest_account_states", columns, 1000, false);
+  PopulateTableStream stream(transaction, "latest_account_states", columns, 8192, false);
   stream.setConflictDoUpdate({"account"}, "latest_account_states.last_trans_lt < EXCLUDED.last_trans_lt");
 
   for (const auto& account_state : latest_account_states) {
-    std::optional<std::string> code_str = std::nullopt;
-    std::optional<std::string> data_str = std::nullopt;
+    std::optional<pqxx::bytes> code_str = std::nullopt;
+    std::optional<pqxx::bytes> data_str = std::nullopt;
     if (account_state.data.not_null()) {
       auto data_res = vm::std_boc_serialize(account_state.data);
       if (data_res.is_ok()){
-        data_str = td::base64_encode(data_res.move_as_ok());
+        auto data_slice = data_res.move_as_ok().as_slice();
+        data_str = pqxx::binary_cast(data_slice.str());
       } else {
         LOG(ERROR) << "Failed to serialize account data for " << account_state.account
                    << ": " << data_res.move_as_error().message();
@@ -403,7 +393,8 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
     {
       auto code_res = vm::std_boc_serialize(account_state.code);
       if (code_res.is_ok()){
-        code_str = td::base64_encode(code_res.move_as_ok());
+        auto code_slice = code_res.move_as_ok().as_slice();
+        code_str = pqxx::binary_cast(code_slice.str());
       }
       if (code_str->length() > 128000) {
         LOG(WARNING) << "Large account code: " << account_state.account;
