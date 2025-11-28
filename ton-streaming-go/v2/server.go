@@ -1167,7 +1167,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	// Determine if trace is fully on-chain (non-emulated).
 	// This still only distinguishes "pending" vs "on-chain";
 	// new confirmed/finalized details are driven by tx channels.
-	minFinality := emulated.FinalityStatePending
+	minFinality := emulated.FinalityStateFinalized
 	for _, row := range emulatedContext.GetTransactions() {
 		if tx, err := index.ScanTransaction(row); err == nil {
 			if tx.Finality < minFinality {
