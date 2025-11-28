@@ -80,8 +80,7 @@ int main(int argc, char *argv[]) {
     is_testnet = true;
   });
 
-  auto S = p.run(argc, argv);
-  if (S.is_error()) {
+  if (auto S = p.run(argc, argv); S.is_error()) {
     LOG(ERROR) << "failed to parse options: " << S.move_as_error();
     std::_Exit(2);
   }
@@ -104,8 +103,7 @@ int main(int argc, char *argv[]) {
   if (options_.working_dir_.empty()) {
     LOG(WARNING) << "You did not specify --working-dir option, checkpoints will not be saved and the process will start from scratch in case of crash";
   } else {
-    auto S = td::mkdir(options_.working_dir_);
-    if (S.is_error()) {
+    if (auto S = td::mkdir(options_.working_dir_); S.is_error()) {
       LOG(ERROR) << "Failed to create working directory " << options_.working_dir_ << ": " << S.move_as_error();
       std::exit(2);
     }
@@ -131,5 +129,3 @@ int main(int argc, char *argv[]) {
   LOG(INFO) << "TON DB integrity check finished successfully";
   return 0;
 }
-
-
