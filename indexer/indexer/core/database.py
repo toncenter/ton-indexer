@@ -603,7 +603,7 @@ class Action(Base):
         r = self.__dict__.copy()
         r.pop('_sa_instance_state')
 
-        return convert_numerics_to_strings(r, {'start_lt', 'end_lt', 'start_utime', 'end_utime', 'opcode', 'trace_start_lt',
+        return convert_numerics_to_strings(r, {'start_lt', 'end_lt', 'start_utime', 'end_utime', 'opcode', 'trace_start_lt', 'finality',
                                                'trace_end_lt', 'trace_end_utime', 'mc_seqno_end', 'trace_mc_seqno_end'})
 
 class Transaction(Base):
