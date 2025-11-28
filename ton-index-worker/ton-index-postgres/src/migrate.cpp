@@ -6,14 +6,40 @@
 #include "pqxx/pqxx"
 #include "version.h"
 
-bool migration_needed(std::optional<Version> current_version, Version migration_version, bool rerun_last_migration) {
-  if (rerun_last_migration && migration_version == latest_version) {
-    return true;
+bool migration_needed(std::optional<Version> current_version, Version migration_version) {
+  return current_version.has_value() && *current_version < migration_version;
+}
+
+std::string set_version_query(const Version& version) {
+  std::stringstream ss;
+  ss << "create table if not exists ton_db_version ("
+     << "id                INTEGER PRIMARY KEY CHECK (id = 1),"
+     << "major             INTEGER NOT NULL, "
+     << "minor             INTEGER NOT NULL, "
+     << "patch             INTEGER NOT NULL);\n";
+
+  ss << "INSERT INTO ton_db_version(id, major, minor, patch) "
+     << "VALUES (1, " << version.major << ", " << version.minor << ", " << version.patch << ") "
+     << "ON CONFLICT (id) DO UPDATE SET major = EXCLUDED.major, minor = EXCLUDED.minor, patch = EXCLUDED.patch;\n";
+  return ss.str();
+}
+
+void ensure_latest_version(const std::string& connection_string, bool dry_run) {
+  const Version& version = latest_version;
+  auto query = set_version_query(version);
+  if (dry_run) {
+    std::cout << query << std::endl;
+    return;
   }
-  if (current_version.has_value() && *current_version < migration_version) {
-    return true;
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+    txn.exec(query).no_rows();
+    LOG(INFO) << "Set latest version to " << version.major << "." << version.minor << "." << version.patch;
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(WARNING) << "Failed to ensure version: " << e.what();
   }
-  return false;
 }
 
 void run_1_2_0_migrations(const std::string& connection_string, bool custom_types, bool dry_run) {
@@ -691,23 +717,12 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "execute procedure on_new_mc_block_func();\n"
     );
 
-    query += (
-      "create table if not exists ton_db_version ("
-      "id                INTEGER PRIMARY KEY CHECK (id = 1),"
-      "major             INTEGER NOT NULL, "
-      "minor             INTEGER NOT NULL, "
-      "patch             INTEGER NOT NULL);\n"
-      
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 0) ON CONFLICT DO NOTHING;\n"
-    );
-
+    query += set_version_query({1, 2, 0});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
 
-    LOG(DEBUG) << query;
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception &e) {
@@ -760,18 +775,12 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_deposit_data coffee_staking_deposit_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_withdraw_data coffee_staking_withdraw_details;\n";
 
-    query += (
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 1) ON CONFLICT(id) DO UPDATE "
-      "SET major = 1, minor = 2, patch = 1;\n"
-    );
-
+    query += set_version_query({1, 2, 1});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
 
-    LOG(DEBUG) << query;
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception &e) {
@@ -828,18 +837,12 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
       "name varchar NOT NULL);\n"
     );
 
-    query += (
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 2) ON CONFLICT(id) DO UPDATE "
-      "SET major = 1, minor = 2, patch = 2;\n"
-    );
-
+    query += set_version_query({1, 2, 2});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
 
-    LOG(DEBUG) << query;
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception &e) {
@@ -894,12 +897,6 @@ void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_dvn_verify_data layerzero_dvn_verify_details;\n";
 
     query += (
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 3) ON CONFLICT(id) DO UPDATE "
-      "SET major = 1, minor = 2, patch = 3;\n"
-    );
-
-    query += (
       "CREATE TABLE IF NOT EXISTS dex_pools ("
       "id bigserial not null, "
       "address tonaddr not null primary key, "
@@ -915,12 +912,12 @@ void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
       "data_hash tonhash);\n"
     );
 
+    query += set_version_query({1, 2, 3});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
 
-    LOG(DEBUG) << query;
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception &e) {
@@ -990,12 +987,7 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
 
     query += "alter table address_metadata add reindex_allowed boolean default true not null;\n";
 
-    query += (
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 4) ON CONFLICT(id) DO UPDATE "
-      "SET major = 1, minor = 2, patch = 4;\n"
-    );
-
+    query += set_version_query({1, 2, 4});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
@@ -1200,34 +1192,36 @@ int main(int argc, char *argv[]) {
       run_1_2_0_migrations(pg_connection_string, custom_types, dry_run);
       current_version = Version{1, 2, 0};
     }
-    if (migration_needed(current_version, Version{1, 2, 1}, rerun_last_migration)) {
+    if (migration_needed(current_version, Version{1, 2, 1})) {
       run_1_2_1_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 1};
     }
-    if (migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
+    if (migration_needed(current_version, Version{1, 2, 2})) {
       run_1_2_2_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 2};
     }
-    if (migration_needed(current_version, Version{1, 2, 3}, rerun_last_migration)) {
+    if (migration_needed(current_version, Version{1, 2, 3})) {
       run_1_2_3_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 3};
     }
-
-    if (migration_needed(current_version, Version{1, 2, 4}, rerun_last_migration)) {
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 4})) {
       run_1_2_4_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 4};
     }
 
+
     // In future, more migrations will be added here
+    // not every version must have migrations
+    // name of a function should have target version of migration,
+    // f.e. run_1_2_2 sets version to 1.2.2
     // if (is_migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
     //   run_1_2_2_migrations(pg_connection_string);
     //   current_version = Version{1, 2, 2};
     // }
-    // if (is_migration_needed(current_version, Version{1, 2, 3}, rerun_last_migration)) {
-    //   run_1_2_3_migrations(pg_connection_string);
-    //   current_version = Version{1, 2, 3};
-    // }
     // and so on...
+
+    // finally, we bump a version to the latest
+    ensure_latest_version(pg_connection_string, dry_run);
   }
   
   if (should_create_indexes) {
