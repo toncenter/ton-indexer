@@ -38,8 +38,9 @@ func (e IndexError) Error() string {
 
 // models
 type AddressBookRow struct {
-	UserFriendly *string `json:"user_friendly"`
-	Domain       *string `json:"domain"`
+	UserFriendly *string   `json:"user_friendly"`
+	Domain       *string   `json:"domain"`
+	Interfaces   *[]string `json:"interfaces"`
 } // @name AddressBookRow
 
 type AddressBook map[string]AddressBookRow // @name AddressBook
@@ -160,7 +161,7 @@ type Block struct {
 type MessageContent struct {
 	Hash    *HashType        `json:"hash"`
 	Body    *string          `json:"body"`
-	Decoded *json.RawMessage `json:"decoded"`
+	Decoded *json.RawMessage `json:"decoded" swaggertype:"object"`
 } // @name MessageContent
 
 type Message struct {
@@ -360,10 +361,10 @@ type NFTTransfer struct {
 	NewOwner              AccountAddress   `json:"new_owner"`
 	ResponseDestination   *AccountAddress  `json:"response_destination"`
 	CustomPayload         *string          `json:"custom_payload"`
-	DecodedCustomPayload  *json.RawMessage `json:"decoded_custom_payload"`
+	DecodedCustomPayload  *json.RawMessage `json:"decoded_custom_payload" swaggertype:"object"`
 	ForwardAmount         *string          `json:"forward_amount"`
 	ForwardPayload        *string          `json:"forward_payload"`
-	DecodedForwardPayload *json.RawMessage `json:"decoded_forward_payload"`
+	DecodedForwardPayload *json.RawMessage `json:"decoded_forward_payload" swaggertype:"object"`
 	TraceId               *HashType        `json:"trace_id"`
 } // @name NFTTransfer
 
@@ -441,10 +442,10 @@ type JettonTransfer struct {
 	TransactionAborted    bool             `json:"transaction_aborted"`
 	ResponseDestination   *AccountAddress  `json:"response_destination"`
 	CustomPayload         *string          `json:"custom_payload"`
-	DecodedCustomPayload  *json.RawMessage `json:"decoded_custom_payload"`
+	DecodedCustomPayload  *json.RawMessage `json:"decoded_custom_payload" swaggertype:"object"`
 	ForwardTonAmount      *string          `json:"forward_ton_amount"`
 	ForwardPayload        *string          `json:"forward_payload"`
-	DecodedForwardPayload *json.RawMessage `json:"decoded_forward_payload"`
+	DecodedForwardPayload *json.RawMessage `json:"decoded_forward_payload" swaggertype:"object"`
 	TraceId               *HashType        `json:"trace_id"`
 } // @name JettonTransfer
 
@@ -460,7 +461,7 @@ type JettonBurn struct {
 	Amount               string           `json:"amount"`
 	ResponseDestination  *AccountAddress  `json:"response_destination"`
 	CustomPayload        *string          `json:"custom_payload"`
-	DecodedCustomPayload *json.RawMessage `json:"decoded_custom_payload"`
+	DecodedCustomPayload *json.RawMessage `json:"decoded_custom_payload" swaggertype:"object"`
 	TraceId              *HashType        `json:"trace_id"`
 } // @name JettonBurn
 
@@ -1093,6 +1094,7 @@ type ActionDetailsStakeDeposit struct {
 	Amount       *string         `json:"amount"`
 	TokensMinted *string         `json:"tokens_minted"`
 	Asset        *AccountAddress `json:"asset"`
+	SourceAsset  *AccountAddress `json:"source_asset,omitempty"`
 }
 
 type ActionDetailsWithdrawStake struct {
@@ -1106,12 +1108,13 @@ type ActionDetailsWithdrawStake struct {
 }
 
 type ActionDetailsWithdrawStakeRequest struct {
-	Provider    *string         `json:"provider"`
-	StakeHolder *AccountAddress `json:"stake_holder"`
-	Pool        *AccountAddress `json:"pool"`
-	PayoutNft   *AccountAddress `json:"payout_nft"`
-	Asset       *AccountAddress `json:"asset"`
-	TokensBurnt *string         `json:"tokens_burnt"`
+	Provider     *string         `json:"provider"`
+	StakeHolder  *AccountAddress `json:"stake_holder"`
+	Pool         *AccountAddress `json:"pool"`
+	PayoutNft    *AccountAddress `json:"payout_nft"`
+	Asset        *AccountAddress `json:"asset"`
+	TokensBurnt  *string         `json:"tokens_burnt"`
+	TokensMinted *string         `json:"tokens_minted,omitempty"`
 }
 
 type Action struct {

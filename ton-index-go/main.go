@@ -56,7 +56,7 @@ var settings Settings
 var emulatedTracesRepository *emulated.EmulatedTracesRepository
 
 //	@title			TON Index (Go)
-//	@version		1.2.3
+//	@version		1.2.4
 //	@description	TON Index collects data from a full node to PostgreSQL database and provides convenient API to an indexed blockchain.
 //  @query.collection.format multi
 
@@ -799,6 +799,7 @@ func GetNFTCollections(c *fiber.Ctx) error {
 // @param owner_address query []string false "Address of NFT item owner in any form. Max: 1000." collectionFormat(multi)
 // @param collection_address query []string false "Collection address in any form."
 // @param index query []string false "Index of item for given collection. Max: 1000." collectionFormat(multi)
+// @param include_on_sale query bool false "Include nft on sales and auctions. Used only when owner_address is passed" default(false)
 // @param sort_by_last_transaction_lt query bool false "Sort NFT items by last transaction lt descending. **Warning:** results may be inconsistent during pagination with limit and offset."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -2394,6 +2395,9 @@ func main() {
 		os.Exit(63)
 	}
 
+    // get database version
+    service_version := index.LoadVersion(pool.Pool)
+
 	// Load marketplace cache on startup
 	if err = index.LoadMarketplaceCache(pool.Pool); err != nil {
 		log.Printf("Warning: Failed to load marketplace cache: %v", err)
@@ -2433,6 +2437,7 @@ func main() {
 		err := c.Next()
 		stop := time.Now()
 		c.Append("Server-timing", fmt.Sprintf("app;dur=%v", stop.Sub(start).String()))
+		c.Append("X-API-Version", fmt.Sprintf("%d.%d.%d", service_version.Major, service_version.Minor, service_version.Patch))
 		return err
 	})
 	if settings.Debug {

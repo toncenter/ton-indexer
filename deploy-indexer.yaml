@@ -1,13 +1,17 @@
----
 - name: Prepare to build
-  hosts: localhost
+  hosts: builder
+  gather_facts: true
   tasks:
     - name: Install requirements
+      become: true
       ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
         name:
-          - build-essential 
-          - cmake 
-          - clang 
+          - build-essential
+          - cmake
+          - clang
+          - ninja-build
           - openssl
           - libssl-dev
           - zlib1g-dev
@@ -16,8 +20,8 @@
           - git
           - curl
           - liblz4-dev
-          - pkg-config 
-          - libsecp256k1-dev 
+          - pkg-config
+          - libsecp256k1-dev
           - libsodium-dev
           - libhiredis-dev
           - python3-dev
@@ -27,55 +31,125 @@
           - lsb-release
           - software-properties-common
           - gnupg
-          - autoconf 
+          - autoconf
           - libtool
           - libmicrohttpd-dev
           - ccache
+          - rsync
         state: present
-      become: true
 
-- name: Build binaries
-  hosts: localhost
-  tasks:
-    - name: Build the Go application
-      ansible.builtin.shell: |
-          cmake -DCMAKE_BUILD_TYPE=Release -S . -B {{ build_path }}
-          cmake --build {{ build_path }} --parallel $(nproc) --target ton-index-go ton-metadata-fetcher
-      changed_when: true
+    - name: Ensure shared caches exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0775"
+      loop:
+        - "{{ ansible_env.HOME }}/.cache/ccache"
+        - "{{ ansible_env.HOME }}/.cache/go-build"
+        - "{{ ansible_env.HOME }}/.cache/gomod"
+
+    - name: Ensure golang is installed
+      ansible.builtin.include_role:
+        name: geerlingguy.go
+        apply:
+          become: true
       vars:
-        service: "{{ services[item] }}"
-      failed_when: build_result.rc != 0
-      register: build_result
+        go_version: "1.24.7"
+        go_checksum: "da18191ddb7db8a9339816f3e2b54bdded8047cdc2a5d67059478f8d1595c43f"
 
+- name: Build ton-indexer binaries
+  hosts: builder
+  gather_facts: true
+  tasks:
+    - name: Create temp workspace
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: ton-indexer
+      register: builddir
+
+    - block:
+        - name: Copy project to builder from . to "{{ builddir.path }}" with rsync
+          ansible.builtin.synchronize:
+            src: "./"
+            dest: "{{ builddir.path }}"
+            rsync_opts:
+              - "--exclude=.git"
+              - "--exclude=artifacts"
+            recursive: yes
+            delete: no
+
+        - name: Build ton-index-go and ton-metadata-fetcher
+          ansible.builtin.shell: |
+            set -e
+            cmake -DCMAKE_BUILD_TYPE=Release \
+                  -S . -B "{{ builddir.path }}/build" \
+                  -G Ninja \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache 
+            cmake --build "{{ builddir.path }}/build" \
+                  --parallel {{ ansible_facts.processor_vcpus | default(2) }} \
+                  --target ton-index-go ton-metadata-fetcher
+          args:
+            chdir: "{{ builddir.path }}"
+          environment:
+            CCACHE_DIR: "{{ ansible_env.HOME }}/.cache/ccache"
+            CCACHE_BASEDIR: "{{ builddir.path }}"
+            CCACHE_SLOPPINESS: "file_macro"
+            GOCACHE: "{{ ansible_env.HOME }}/.cache/go-build"
+            GOMODCACHE: "{{ ansible_env.HOME }}/.cache/gomod"
+            GOFLAGS: "-modcacherw"
+
+        - name: Collect built binaries
+          ansible.builtin.fetch:
+            src: "{{ builddir.path }}/build/{{ item }}"
+            dest: "artifacts/"
+            flat: true
+          loop:
+            - "ton-index-go/ton-index-go"
+            - "ton-metadata-fetcher/ton-metadata-fetcher"
+            - "ton-index-worker/ton-marker/libton-marker.so"
+      always:
+        - name: Cleanup workspace
+          ansible.builtin.file:
+            path: "{{ builddir.path }}"
+            state: absent
+
+# Handlers are shared by the deploy plays below
 - name: Deploy metadata_fetcher service on master nodes
-  vars:
-    service: "{{ services.metadata_fetcher }}"
-    service_name: "{{ stack_name }}__{{ service.service_name }}"
   hosts: "{{ stack_name }}__master_nodes"
   become: true
+  serial: 1
+  tags: [deploy]
+  vars:
+    service: "{{ services.metadata_fetcher }}"
+    service_name: "{{ stack_name }}__metadata_fetcher"
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
         path: "{{ deploy_path }}"
-        recurse: true
         state: directory
+        mode: "0755"
 
     - name: Copy service binary
       ansible.builtin.copy:
-        src: "{{ build_path }}/{{ service.binary_path }}"
-        dest: "{{ deploy_path }}/{{ stack_name }}__{{ service.service_name }}"
-        mode: "0777"
-        force: true
+        src: "artifacts/ton-metadata-fetcher"
+        dest: "{{ deploy_path }}/{{ service_name }}"
+        mode: "0755"
+        owner: root
+        group: root
 
     - name: Create systemd service from template
       ansible.builtin.template:
         src: "ansible/systemd.service.j2"
         dest: "{{ systemd_service_path }}/{{ service_name }}.service"
         mode: "0644"
+        owner: root
+        group: root
         force: true
       vars:
         pg_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
-        start_cmd: "{{ service_name }} -pg {{ pg_dsn }} {{ service.additional_args }}"
+        start_cmd: "{{ deploy_path }}/{{ service_name }} -pg {{ pg_dsn }} {{ service.additional_args }}"
+      no_log: true
 
     - name: Restart and enable service
       ansible.builtin.systemd:
@@ -85,45 +159,48 @@
         force: true
         daemon_reload: true
       throttle: 1
-      become: true
 
 - name: Deploy api service on replica nodes
+  hosts: "{{ stack_name }}__{{ 'replica_nodes' }}"
+  become: true
+  serial: 1
+  tags: [deploy]
   vars:
     service: "{{ services.api }}"
-    service_name: "{{ stack_name }}__{{ service.service_name }}"
-  hosts: "{{ stack_name }}__replica_nodes"
-  become: true
+    service_name: "{{ stack_name }}__api"
   tasks:
     - name: Ensure binary directory
       ansible.builtin.file:
         path: "{{ deploy_path }}"
-        recurse: true
         state: directory
+        mode: "0755"
 
     - name: Copy service binary
       ansible.builtin.copy:
-        src: "{{ build_path }}/{{ service.binary_path }}"
+        src: "artifacts/ton-index-go"
         dest: "{{ deploy_path }}/{{ service_name }}"
-        mode: "0777"
-        force: true
-    
-    - name: Copy libton-marker
+        mode: "0755"
+
+    - name: Install libton-marker.so
       ansible.builtin.copy:
-        src: "{{ build_path }}/ton-index-worker/ton-marker/libton-marker.so"
-        dest: /usr/lib/libton-marker.so
-        mode: "0777"
-        force: true
+        src: "artifacts/libton-marker.so"
+        dest: "/usr/lib/libton-marker.so"
+        mode: "0644"
+
+    - name: Refresh linker cache
+      ansible.builtin.command: ldconfig
+      changed_when: false
 
     - name: Create systemd service from template
       ansible.builtin.template:
         src: "ansible/systemd.service.j2"
         dest: "{{ systemd_service_path }}/{{ service_name }}.service"
         mode: "0644"
-        force: true
       vars:
         pg_dsn: "postgresql://{{ pg_readonly_user }}:{{ pg_readonly_password }}@localhost:5432/{{ pg_database }}?application_name={{ service_name }}"
         pg_master_dsn: "postgresql://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master }}/{{ pg_database }}?application_name={{ service_name }}"
         start_cmd: "{{ deploy_path }}/{{ service_name }} -pg {{ pg_dsn }} -pg-master {{ pg_master_dsn }} {{ service.additional_args }}"
+      no_log: true
 
     - name: Restart and enable service
       ansible.builtin.systemd:
@@ -133,4 +210,3 @@
         force: true
         daemon_reload: true
       throttle: 1
-      become: true

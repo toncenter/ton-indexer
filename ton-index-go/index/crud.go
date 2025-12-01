@@ -461,7 +461,12 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 		orderby_query = ``
 	}
 	if v := nft_req.OwnerAddress; v != nil {
-		filter_str := filterByArray("N.owner_address", v)
+		var filter_str string
+		if nft_req.IncludeOnSale != nil && *nft_req.IncludeOnSale {
+			filter_str = filterByArray("N.real_owner", v)
+		} else {
+			filter_str = filterByArray("N.owner_address", v)
+		}
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
@@ -906,7 +911,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
 
-		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] @> A.tx_hashes`
+		from_query = `actions as A join messages as M on A.trace_id = M.trace_id and array[M.tx_hash::tonhash] <@ A.tx_hashes`
 		if order_by_now {
 			clmn_query = `distinct on (A.trace_end_utime, A.trace_id, A.end_utime, A.action_id) ` + clmn_query_default
 		} else {
@@ -1680,8 +1685,10 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 	book_tmp := AddressBook{}
 	addr_list_str := strings.Join(quote_addr_list, ",")
 	{
-		query := fmt.Sprintf(`SELECT account, code_hash FROM latest_account_states las
-							WHERE account IN (%s)`, addr_list_str)
+		query := fmt.Sprintf(`SELECT las.account, las.code_hash, cm.methods
+							FROM latest_account_states las
+							LEFT JOIN contract_methods cm ON las.code_hash = cm.code_hash
+							WHERE las.account IN (%s)`, addr_list_str)
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
 		rows, err := conn.Query(ctx, query)
@@ -1693,9 +1700,30 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		for rows.Next() {
 			var account string
 			var code_hash *string
-			if err := rows.Scan(&account, &code_hash); err == nil {
+			var methods *[]uint32
+			if err := rows.Scan(&account, &code_hash, &methods); err == nil {
 				addr_str := getAccountAddressFriendly(account, code_hash, settings.IsTestnet)
-				book_tmp[strings.Trim(account, " ")] = AddressBookRow{UserFriendly: &addr_str, Domain: nil}
+
+				// detect interfaces
+				var interfaces []string
+				if code_hash != nil || methods != nil {
+					codeHashStr := ""
+					if code_hash != nil {
+						codeHashStr = *code_hash
+					}
+					var methodIDs []uint32
+					if methods != nil {
+						methodIDs = *methods
+					}
+					interfaces = DetectInterface(codeHashStr, methodIDs)
+				}
+
+				interfacesPtr := &interfaces
+				book_tmp[strings.Trim(account, " ")] = AddressBookRow{
+					UserFriendly: &addr_str,
+					Domain:       nil,
+					Interfaces:   interfacesPtr,
+				}
 			} else {
 				return nil, IndexError{Code: 500, Message: err.Error()}
 			}
@@ -1747,7 +1775,12 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 			book[addr] = rec
 		} else {
 			addr_str := getAccountAddressFriendly(account, nil, settings.IsTestnet)
-			book[addr] = AddressBookRow{UserFriendly: &addr_str, Domain: nil}
+			emptyInterfaces := []string{}
+			book[addr] = AddressBookRow{
+				UserFriendly: &addr_str,
+				Domain:       nil,
+				Interfaces:   &emptyInterfaces,
+			}
 		}
 	}
 	return book, nil
@@ -2693,7 +2726,12 @@ func (db *DbClient) QueryAddressBook(
 		if vv, ok := book[v]; ok {
 			new_addr_book[k] = vv
 		} else {
-			new_addr_book[k] = AddressBookRow{UserFriendly: nil, Domain: nil}
+			emptyInterfaces := []string{}
+			new_addr_book[k] = AddressBookRow{
+				UserFriendly: nil,
+				Domain:       nil,
+				Interfaces:   &emptyInterfaces,
+			}
 		}
 	}
 	return new_addr_book, nil

@@ -19,10 +19,11 @@ services:
     restart: unless-stopped
 
   event-classifier:
-    image: toncenter/ton-indexer-classifier:v1.2.3
+    image: toncenter/ton-indexer-classifier:v1.2.4
     build:
-      context: indexer
+      context: .
       dockerfile: Dockerfile
+      target: classifier
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,10 +41,11 @@ services:
       internal:
 
   index-api:
-    image: toncenter/ton-indexer-api:v1.2.3
+    image: toncenter/ton-indexer-api:v1.2.4
     build:
       context: .
-      dockerfile: ton-index-go/Dockerfile
+      dockerfile: Dockerfile
+      target: index-api
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,10 +69,11 @@ services:
       internal:
 
   run-migrations:
-    image: toncenter/ton-indexer-worker:v1.2.3
+    image: toncenter/ton-indexer-worker:v1.2.4
     build:
-      context: ton-index-worker
+      context: .
       dockerfile: Dockerfile
+      target: index-worker
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,14 +84,15 @@ services:
       TON_WORKER_BINARY: ton-index-postgres-migrate
     networks:
       internal:
-    command: ton-index-postgres-migrate --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
+    command: ton-index-postgres-migrate --pg postgresql://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
     restart: on-failure
 
   index-worker:
-    image: toncenter/ton-indexer-worker:v1.2.3
+    image: toncenter/ton-indexer-worker:v1.2.4
     build:
-      context: ton-index-worker
+      context: .
       dockerfile: Dockerfile
+      target: index-worker
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,7 +109,7 @@ services:
       TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
     networks:
       internal:
-    command: ton-index-postgres --pg postgresql://${POSTGRES_USER}@postgres:${POSTGRES_PORT}/${POSTGRES_DB} --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:?} ${TON_WORKER_ADDITIONAL_ARGS:-}
+    command: ton-index-postgres --pg postgresql://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB} --db /tondb --working-dir /ton_index_workdir --from ${TON_WORKER_FROM:?} ${TON_WORKER_ADDITIONAL_ARGS:-}
     restart: unless-stopped
 
   postgres:
@@ -136,10 +140,11 @@ services:
 # additional: offchain metadata indexer
   metadata-fetcher:
     profiles: [metadata]
-    image: toncenter/ton-indexer-metadata-fetcher:v1.2.3
+    image: toncenter/ton-indexer-metadata-fetcher:v1.2.4
     build:
-      context: ton-metadata-fetcher
+      context: .
       dockerfile: Dockerfile
+      target: metadata-fetcher
     depends_on:
       postgres:
         condition: service_healthy
@@ -171,10 +176,11 @@ services:
 # additional: API Emulate
   emulate-task-emulator:
     profiles: [emulate]
-    image: toncenter/ton-indexer-worker:v1.2.3
+    image: toncenter/ton-indexer-worker:v1.2.4
     build:
-      context: ton-index-worker
+      context: .
       dockerfile: Dockerfile
+      target: index-worker
     depends_on:
       emulate-redis:
         condition: service_healthy
@@ -210,10 +216,11 @@ services:
 
   emulate-event-classifier:
     profiles: [emulate]
-    image: toncenter/ton-indexer-classifier:v1.2.3
+    image: toncenter/ton-indexer-classifier:v1.2.4
     build:
-      context: indexer
+      context: .
       dockerfile: Dockerfile
+      target: classifier
     depends_on:
       postgres:
         condition: service_healthy
@@ -234,10 +241,11 @@ services:
 
   emulate-api:
     profiles: [emulate]
-    image: toncenter/ton-indexer-emulate-api:v1.2.3
+    image: toncenter/ton-indexer-emulate-api:v1.2.4
     build:
       context: .
-      dockerfile: ton-emulate-go/Dockerfile
+      dockerfile: Dockerfile
+      target: emulate-api
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,0 +1,41 @@
+- name: View service logs (UI-only)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: false
+  vars:
+    service_unit: "{{ stack_name }}__{{ service_name }}"
+
+  tasks:
+    - name: Show brief systemd status
+      ansible.builtin.command:
+        argv: [systemctl, status, "--no-pager", "--lines=20", "{{ service_unit }}"]
+      register: svc_status
+      changed_when: false
+      failed_when: false
+
+    - name: Print service status
+      ansible.builtin.debug:
+        msg: "{{ svc_status.stdout }}"
+
+    - name: Show journal logs (since OR last N)
+      ansible.builtin.shell: |
+        set -o pipefail
+        journalctl -u {{ service_unit | quote }} \
+        {% if (since_ts | default('')) | length > 0 -%}
+          --since {{ since_ts | quote }} \
+          {% if (until_ts | default('')) | length > 0 -%}
+            --until {{ until_ts | quote }} \
+          {%- endif %}
+        {%- else -%}
+          -n {{ (tail_lines | default(300)) | int }}
+        {%- endif %} \
+        --no-pager --output=short-iso
+      args:
+        executable: /bin/bash
+      register: jc
+      changed_when: false
+      failed_when: false
+
+    - name: Print logs
+      ansible.builtin.debug:
+        msg: "{{ jc.stdout }}"
