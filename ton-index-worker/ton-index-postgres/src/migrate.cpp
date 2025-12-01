@@ -1004,6 +1004,113 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.4 completed successfully.";
 }
 
+void run_1_3_0_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.3.0";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+
+    // directly using varchar instead of enum for flexibility
+    exec_query("create type pool_type_enum as enum ('stable', 'volatile');");
+    exec_query("create type dex_type_enum as enum ('dedust');");
+  }
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    // add nominator pool incomes table
+    query += (
+      "CREATE TABLE IF NOT EXISTS nominator_pool_incomes ("
+      "tx_hash tonhash NOT NULL, "
+      "tx_lt bigint NOT NULL, "
+      "tx_now integer NOT NULL, "
+      "mc_seqno integer, "
+      "pool_address tonaddr NOT NULL, "
+      "nominator_address tonaddr NOT NULL, "
+      "income_amount numeric NOT NULL, "
+      "nominator_balance numeric NOT NULL, "
+      "trace_id tonhash, "
+      "PRIMARY KEY (tx_hash, tx_lt, nominator_address), "
+      "FOREIGN KEY (tx_hash, tx_lt) REFERENCES transactions);\n"
+    );
+
+    query += (
+      "CREATE INDEX IF NOT EXISTS idx_nominator_pool_incomes_nominator "
+      "ON nominator_pool_incomes(nominator_address, tx_now DESC);\n"
+    );
+
+    query += (
+      "CREATE INDEX IF NOT EXISTS idx_nominator_pool_incomes_pool "
+      "ON nominator_pool_incomes(pool_address, tx_now DESC);\n"
+    );
+
+    // add dex pools table with varchar types for flexibility
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools ("
+      "id bigserial NOT NULL, "
+      "address tonaddr NOT NULL PRIMARY KEY, "
+      "asset_1 tonaddr, "
+      "asset_2 tonaddr, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "pool_type varchar(50), "
+      "dex varchar(50), "
+      "fee double precision, "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash);\n"
+    );
+
+    // add historic table for dex pools
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools_historic ("
+      "id bigserial PRIMARY KEY, "
+      "mc_seqno integer NOT NULL, "
+      "timestamp integer NOT NULL, "
+      "address tonaddr NOT NULL, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "fee double precision, "
+      "last_transaction_lt bigint NOT NULL);\n"
+    );
+
+    query += set_version_query({1, 3, 0});
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.3.0 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1105,6 +1212,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists nft_items_index_6 on nft_items (collection_address, last_transaction_lt);\n"
       "create index if not exists nft_items_index_7 on nft_items (real_owner, last_transaction_lt);\n"
       "create index if not exists nft_items_index_8 on nft_items (real_owner, collection_address, index);\n"
+      "create index if not exists dex_pools_historic_index_1 on dex_pools_historic (address, timestamp);\n"
+      "create index if not exists dex_pools_historic_index_2 on dex_pools_historic (mc_seqno);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;
@@ -1204,10 +1313,15 @@ int main(int argc, char *argv[]) {
       run_1_2_3_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 3};
     }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 4})) {
+    if (migration_needed(current_version, Version{1, 2, 4})) {
       run_1_2_4_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 4};
     }
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 3, 0})) {
+      run_1_3_0_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 3, 0};
+    }
+
 
 
     // In future, more migrations will be added here
