@@ -6,14 +6,40 @@
 #include "pqxx/pqxx"
 #include "version.h"
 
-bool migration_needed(std::optional<Version> current_version, Version migration_version, bool rerun_last_migration) {
-  if (rerun_last_migration && migration_version == latest_version) {
-    return true;
+bool migration_needed(std::optional<Version> current_version, Version migration_version) {
+  return current_version.has_value() && *current_version < migration_version;
+}
+
+std::string set_version_query(const Version& version) {
+  std::stringstream ss;
+  ss << "create table if not exists ton_db_version ("
+     << "id                INTEGER PRIMARY KEY CHECK (id = 1),"
+     << "major             INTEGER NOT NULL, "
+     << "minor             INTEGER NOT NULL, "
+     << "patch             INTEGER NOT NULL);\n";
+
+  ss << "INSERT INTO ton_db_version(id, major, minor, patch) "
+     << "VALUES (1, " << version.major << ", " << version.minor << ", " << version.patch << ") "
+     << "ON CONFLICT (id) DO UPDATE SET major = EXCLUDED.major, minor = EXCLUDED.minor, patch = EXCLUDED.patch;\n";
+  return ss.str();
+}
+
+void ensure_latest_version(const std::string& connection_string, bool dry_run) {
+  const Version& version = latest_version;
+  auto query = set_version_query(version);
+  if (dry_run) {
+    std::cout << query << std::endl;
+    return;
   }
-  if (current_version.has_value() && *current_version < migration_version) {
-    return true;
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+    txn.exec(query).no_rows();
+    LOG(INFO) << "Set latest version to " << version.major << "." << version.minor << "." << version.patch;
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(WARNING) << "Failed to ensure version: " << e.what();
   }
-  return false;
 }
 
 void run_1_2_0_migrations(const std::string& connection_string, bool custom_types, bool dry_run) {
@@ -408,31 +434,6 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
     );
 
     query += (
-      "create table if not exists nominator_pool_incomes ("
-      "tx_hash tonhash not null, "
-      "tx_lt bigint not null, "
-      "tx_now integer not null, "
-      "mc_seqno integer, "
-      "pool_address tonaddr not null, "
-      "nominator_address tonaddr not null, "
-      "income_amount numeric not null, "
-      "nominator_balance numeric not null, "
-      "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt, nominator_address), "
-      "foreign key (tx_hash, tx_lt) references transactions);\n"
-    );
-
-    query += (
-      "create index if not exists idx_nominator_pool_incomes_nominator "
-      "on nominator_pool_incomes(nominator_address, tx_now desc);\n"
-    );
-
-    query += (
-      "create index if not exists idx_nominator_pool_incomes_pool "
-      "on nominator_pool_incomes(pool_address, tx_now desc);\n"
-    );
-
-    query += (
       "create table if not exists getgems_nft_sales ("
       "id bigserial not null, "
       "address tonaddr not null primary key, "
@@ -716,23 +717,12 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "execute procedure on_new_mc_block_func();\n"
     );
 
-    query += (
-      "create table if not exists ton_db_version ("
-      "id                INTEGER PRIMARY KEY CHECK (id = 1),"
-      "major             INTEGER NOT NULL, "
-      "minor             INTEGER NOT NULL, "
-      "patch             INTEGER NOT NULL);\n"
-      
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 0) ON CONFLICT DO NOTHING;\n"
-    );
-
+    query += set_version_query({1, 2, 0});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
 
-    LOG(DEBUG) << query;
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception &e) {
@@ -785,18 +775,12 @@ void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_deposit_data coffee_staking_deposit_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_withdraw_data coffee_staking_withdraw_details;\n";
 
-    query += (
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 1) ON CONFLICT(id) DO UPDATE "
-      "SET major = 1, minor = 2, patch = 1;\n"
-    );
-
+    query += set_version_query({1, 2, 1});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
 
-    LOG(DEBUG) << query;
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception &e) {
@@ -836,8 +820,6 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
     exec_query("alter type nft_transfer_details add attribute payout_comment text;");
     exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
     exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
-    exec_query("create type pool_type as enum ('stable', 'volatile');");
-    exec_query("create type dex_type as enum ('dedust');");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -855,34 +837,12 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
       "name varchar NOT NULL);\n"
     );
 
-    query += (
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 2) ON CONFLICT(id) DO UPDATE "
-      "SET major = 1, minor = 2, patch = 2;\n"
-    );
-
-    query += (
-      "CREATE TABLE IF NOT EXISTS dex_pools ("
-      "id bigserial not null, "
-      "address tonaddr not null primary key, "
-      "asset_1 tonaddr, "
-      "asset_2 tonaddr, "
-      "reserve_1 numeric, "
-      "reserve_2 numeric, "
-      "pool_type pool_type, "
-      "dex dex_type, "
-      "fee double precision, "
-      "last_transaction_lt bigint, "
-      "code_hash tonhash, "
-      "data_hash tonhash);\n"
-    );
-
+    query += set_version_query({1, 2, 2});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
 
-    LOG(DEBUG) << query;
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception &e) {
@@ -937,12 +897,6 @@ void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_dvn_verify_data layerzero_dvn_verify_details;\n";
 
     query += (
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 3) ON CONFLICT(id) DO UPDATE "
-      "SET major = 1, minor = 2, patch = 3;\n"
-    );
-
-    query += (
       "CREATE TABLE IF NOT EXISTS dex_pools ("
       "id bigserial not null, "
       "address tonaddr not null primary key, "
@@ -958,12 +912,12 @@ void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
       "data_hash tonhash);\n"
     );
 
+    query += set_version_query({1, 2, 3});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
 
-    LOG(DEBUG) << query;
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception &e) {
@@ -996,12 +950,7 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
       }
     };
 
-    // change enum types to varchar for dex_pools table
-    // to add new pool types and dexes without schema changes in future
-    exec_query("ALTER TABLE dex_pools ALTER COLUMN pool_type TYPE varchar(50) USING pool_type::text;");
-    exec_query("ALTER TABLE dex_pools ALTER COLUMN dex TYPE varchar(50) USING dex::text;");
-    exec_query("DROP TYPE IF EXISTS pool_type;");
-    exec_query("DROP TYPE IF EXISTS dex_type;");
+    // TODO: add new migrations
   }
 
   LOG(INFO) << "Updating tables...";
@@ -1011,28 +960,34 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
+    query += "ALTER TABLE nft_items ADD COLUMN IF NOT EXISTS real_owner tonaddr;";
+
     query += (
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 4) ON CONFLICT(id) DO UPDATE "
-      "SET major = 1, minor = 2, patch = 4;\n"
+        "CREATE OR REPLACE FUNCTION update_nft_real_owner() RETURNS TRIGGER AS $$ "
+        "BEGIN "
+        "   IF NEW.real_owner IS NULL OR NEW.real_owner = NEW.owner_address THEN "
+        "     SELECT nft_owner_address INTO NEW.real_owner FROM getgems_nft_sales WHERE address = NEW.owner_address "
+        "      AND nft_address = NEW.address LIMIT 1; "
+        "     IF NEW.real_owner IS NULL THEN "
+        "       SELECT nft_owner INTO NEW.real_owner FROM getgems_nft_auctions WHERE address = NEW.owner_address "
+        "        AND nft_addr = NEW.address LIMIT 1; "
+        "     END IF; "
+        "     IF NEW.real_owner IS NULL THEN NEW.real_owner := NEW.owner_address; END IF; "
+        "   END IF; "
+        "   RETURN NEW; "
+        "END; "
+        "$$ LANGUAGE plpgsql;"
     );
 
-    // historic tables pattern: store all state changes for entities
-    // naming: {entity}_historic (e.g., jetton_wallets_historic)
-    // required columns: id, mc_seqno, timestamp, address, last_transaction_lt
-    // only mutable fields (not code_hash, data_hash)
     query += (
-      "CREATE TABLE IF NOT EXISTS dex_pools_historic ("
-      "id bigserial PRIMARY KEY, "
-      "mc_seqno integer NOT NULL, "
-      "timestamp integer NOT NULL, "
-      "address tonaddr NOT NULL, "
-      "reserve_1 numeric, "
-      "reserve_2 numeric, "
-      "fee double precision, "
-      "last_transaction_lt bigint NOT NULL);\n"
+        "CREATE OR REPLACE TRIGGER try_update_nft_real_owner "
+        "BEFORE INSERT OR UPDATE OF owner_address ON nft_items "
+        "FOR EACH ROW EXECUTE FUNCTION update_nft_real_owner();"
     );
 
+    query += "alter table address_metadata add reindex_allowed boolean default true not null;\n";
+
+    query += set_version_query({1, 2, 4});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
@@ -1049,8 +1004,8 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.4 completed successfully.";
 }
 
-void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
-  LOG(INFO) << "Running migrations to version 1.2.5";
+void run_1_3_0_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.3.0";
 
   LOG(INFO) << "Altering types...";
   {
@@ -1071,7 +1026,9 @@ void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
       }
     };
 
-    // TODO: add new types
+    // directly using varchar instead of enum for flexibility
+    exec_query("create type pool_type_enum as enum ('stable', 'volatile');");
+    exec_query("create type dex_type_enum as enum ('dedust');");
   }
 
   LOG(INFO) << "Updating tables...";
@@ -1081,14 +1038,63 @@ void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
-    // TODO: add new tables
-
+    // add nominator pool incomes table
     query += (
-      "INSERT INTO ton_db_version (id, major, minor, patch) "
-      "VALUES (1, 1, 2, 5) ON CONFLICT(id) DO UPDATE "
-      "SET major = 1, minor = 2, patch = 5;\n"
+      "CREATE TABLE IF NOT EXISTS nominator_pool_incomes ("
+      "tx_hash tonhash NOT NULL, "
+      "tx_lt bigint NOT NULL, "
+      "tx_now integer NOT NULL, "
+      "mc_seqno integer, "
+      "pool_address tonaddr NOT NULL, "
+      "nominator_address tonaddr NOT NULL, "
+      "income_amount numeric NOT NULL, "
+      "nominator_balance numeric NOT NULL, "
+      "trace_id tonhash, "
+      "PRIMARY KEY (tx_hash, tx_lt, nominator_address), "
+      "FOREIGN KEY (tx_hash, tx_lt) REFERENCES transactions);\n"
     );
 
+    query += (
+      "CREATE INDEX IF NOT EXISTS idx_nominator_pool_incomes_nominator "
+      "ON nominator_pool_incomes(nominator_address, tx_now DESC);\n"
+    );
+
+    query += (
+      "CREATE INDEX IF NOT EXISTS idx_nominator_pool_incomes_pool "
+      "ON nominator_pool_incomes(pool_address, tx_now DESC);\n"
+    );
+
+    // add dex pools table with varchar types for flexibility
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools ("
+      "id bigserial NOT NULL, "
+      "address tonaddr NOT NULL PRIMARY KEY, "
+      "asset_1 tonaddr, "
+      "asset_2 tonaddr, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "pool_type varchar(50), "
+      "dex varchar(50), "
+      "fee double precision, "
+      "last_transaction_lt bigint, "
+      "code_hash tonhash, "
+      "data_hash tonhash);\n"
+    );
+
+    // add historic table for dex pools
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools_historic ("
+      "id bigserial PRIMARY KEY, "
+      "mc_seqno integer NOT NULL, "
+      "timestamp integer NOT NULL, "
+      "address tonaddr NOT NULL, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "fee double precision, "
+      "last_transaction_lt bigint NOT NULL);\n"
+    );
+
+    query += set_version_query({1, 3, 0});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
@@ -1102,9 +1108,8 @@ void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
     std::exit(1);
   }
 
-  LOG(INFO) << "Migration to version 1.2.5 completed successfully.";
+  LOG(INFO) << "Migration to version 1.3.0 completed successfully.";
 }
-
 
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
@@ -1205,6 +1210,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists nft_items_index_4 on nft_items (last_transaction_lt);\n"
       "create index if not exists nft_items_index_5 on nft_items (owner_address, last_transaction_lt);\n"
       "create index if not exists nft_items_index_6 on nft_items (collection_address, last_transaction_lt);\n"
+      "create index if not exists nft_items_index_7 on nft_items (real_owner, last_transaction_lt);\n"
+      "create index if not exists nft_items_index_8 on nft_items (real_owner, collection_address, index);\n"
       "create index if not exists dex_pools_historic_index_1 on dex_pools_historic (address, timestamp);\n"
       "create index if not exists dex_pools_historic_index_2 on dex_pools_historic (mc_seqno);\n"
     );
@@ -1294,34 +1301,40 @@ int main(int argc, char *argv[]) {
       run_1_2_0_migrations(pg_connection_string, custom_types, dry_run);
       current_version = Version{1, 2, 0};
     }
-    if (migration_needed(current_version, Version{1, 2, 1}, rerun_last_migration)) {
+    if (migration_needed(current_version, Version{1, 2, 1})) {
       run_1_2_1_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 1};
     }
-    if (migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
+    if (migration_needed(current_version, Version{1, 2, 2})) {
       run_1_2_2_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 2};
     }
-    if (migration_needed(current_version, Version{1, 2, 3}, rerun_last_migration)) {
+    if (migration_needed(current_version, Version{1, 2, 3})) {
       run_1_2_3_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 3};
     }
-
-    if (migration_needed(current_version, Version{1, 2, 4}, rerun_last_migration)) {
+    if (migration_needed(current_version, Version{1, 2, 4})) {
       run_1_2_4_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 4};
     }
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 3, 0})) {
+      run_1_3_0_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 3, 0};
+    }
+
 
     // In future, more migrations will be added here
+    // not every version must have migrations
+    // name of a function should have target version of migration,
+    // f.e. run_1_2_2 sets version to 1.2.2
     // if (is_migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
     //   run_1_2_2_migrations(pg_connection_string);
     //   current_version = Version{1, 2, 2};
     // }
-    // if (is_migration_needed(current_version, Version{1, 2, 3}, rerun_last_migration)) {
-    //   run_1_2_3_migrations(pg_connection_string);
-    //   current_version = Version{1, 2, 3};
-    // }
     // and so on...
+
+    // finally, we bump a version to the latest
+    ensure_latest_version(pg_connection_string, dry_run);
   }
   
   if (should_create_indexes) {
