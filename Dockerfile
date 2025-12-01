@@ -1,9 +1,9 @@
 # BUILD Stages
 ## build core functionality
-FROM ubuntu:22.04 AS core-builder
+FROM ubuntu:24.04 AS core-builder
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
 RUN apt-get update -y \
-    && apt-get install -y build-essential cmake clang openssl libssl-dev zlib1g-dev \
+    && apt-get install -y build-essential cmake clang-20 openssl libssl-dev zlib1g-dev \
                    gperf wget git curl ccache libmicrohttpd-dev liblz4-dev \
                    pkg-config libsecp256k1-dev libsodium-dev libhiredis-dev python3-dev libpq-dev \
                    automake libjemalloc-dev lsb-release software-properties-common gnupg \
@@ -23,13 +23,14 @@ COPY ton-index-worker/ton-marker/ /app/ton-marker/
 COPY ton-index-worker/CMakeLists.txt /app/
 
 WORKDIR /app/build
-RUN cmake -DCMAKE_BUILD_TYPE=Release ..
-RUN make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner \
+ENV CC=clang-20
+ENV CXX=clang++-20
+RUN touch /app/suppression_mappings.txt && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner \
      ton-integrity-checker ton-trace-emulator ton-trace-task-emulator ton-marker-cli ton-marker-core ton-marker
 
 
 ## build index api service ton-index-go
-FROM golang:bookworm AS index-api-builder
+FROM golang:trixie AS index-api-builder
 
 RUN apt-get update -y \
     && apt install -y dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
@@ -47,7 +48,7 @@ RUN cd /go/app && swag init && go build -o ton-index-go ./main.go
 
 
 ## build emulate api service ton-emulate-go
-FROM golang:bookworm AS emulate-api-builder
+FROM golang:trixie AS emulate-api-builder
 
 RUN apt-get update -y \
     && apt install -y dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
@@ -66,7 +67,7 @@ RUN cd /go/app && swag init && go build -o ton-emulate-go ./main.go
 
 
 ## build metadata fetcher service ton-metadata-fetcher
-FROM golang:bookworm AS metadata-fetcher-builder
+FROM golang:trixie AS metadata-fetcher-builder
 
 ADD ton-metadata-fetcher/images.go /go/app/images.go
 ADD ton-metadata-fetcher/ipfs.go /go/app/ipfs.go
@@ -81,10 +82,10 @@ RUN go build -o ton-metadata-fetcher ./*.go
 
 # IMAGE stages
 ## index worker service image
-FROM ubuntu:22.04 AS index-worker
+FROM ubuntu:24.04 AS index-worker
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get update -y && apt-get -y install tzdata && rm -rf /var/lib/{apt,dpkg,cache,log}/
 RUN apt-get update -y \
-    && apt install -y dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
+    && apt install -y dnsutils libpq5 libsecp256k1-1 libsodium23 libhiredis1.1.0 \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 COPY ton-index-worker/scripts/entrypoint.sh /app/entrypoint.sh
@@ -102,9 +103,9 @@ ENTRYPOINT [ "/app/entrypoint.sh" ]
 
 
 ## index api service image
-FROM ubuntu:jammy AS index-api
+FROM ubuntu:24.04 AS index-api
 RUN apt-get update \
-    && apt install --yes bash curl dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
+    && apt install --yes dnsutils libpq5 libsecp256k1-1 libsodium23 libhiredis1.1.0 \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
@@ -115,9 +116,9 @@ ENTRYPOINT [ "/app/entrypoint.sh" ]
 
 
 ## emulate api service image
-FROM ubuntu:jammy AS emulate-api
+FROM ubuntu:24.04 AS emulate-api
 RUN apt-get update \
-    && apt install --yes bash curl dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
+    && apt install --yes curl dnsutils libpq5 libsecp256k1-1 libsodium23 libhiredis1.1.0 \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
@@ -128,8 +129,8 @@ ENTRYPOINT [ "/app/entrypoint.sh" ]
 
 
 ## metadata fetcher service image
-FROM ubuntu:jammy AS metadata-fetcher
-RUN apt-get update && apt install --yes bash curl && rm -rf /var/lib/apt/lists/*
+FROM ubuntu:24.04 AS metadata-fetcher
+RUN apt-get update && apt install --yes curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=metadata-fetcher-builder /go/app/ton-metadata-fetcher /usr/local/bin/ton-metadata-fetcher
 COPY ton-metadata-fetcher/entrypoint.sh /app/entrypoint.sh
@@ -139,7 +140,7 @@ ENTRYPOINT [ "/app/entrypoint.sh" ]
 
 
 ## classifier service image
-FROM python:3.12-bookworm AS classifier
+FROM python:3.12-trixie AS classifier
 ADD indexer/requirements.txt /tmp/requirements.txt
 RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.txt
 COPY indexer/ /app/
