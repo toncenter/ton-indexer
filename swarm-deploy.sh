@@ -6,7 +6,6 @@ DEPLOY_DATABASE=0
 BUILD=1
 DEPLOY_API=0
 DEPLOY_EVENTS=0
-DEPLOY_IMGPROXY=0
 UPDATE_POOLS=0
 
 BUILD_ARGS=
@@ -42,16 +41,8 @@ while [[ $# -gt 0 ]]; do
             BUILD_ARGS=--no-cache
             shift
             ;;
-        --api)
-            DEPLOY_API=1
-            shift
-            ;;
         --events)
             DEPLOY_EVENTS=1
-            shift
-            ;;
-        --imgproxy)
-            DEPLOY_IMGPROXY=1
             shift
             ;;
         --update-pools)
@@ -101,12 +92,6 @@ if [[ -z "$NETWORK_ID" ]]; then
 fi
 echo "Network ID of toncenter-global: $NETWORK_ID"
 
-# deploy database
-if [[ $DEPLOY_DATABASE -eq "1" ]]; then
-    echo "Deploying Docker database"
-    docker stack deploy -c docker-compose.database.yaml ${STACK_NAME}
-fi
-
 # build image
 if [[ $BUILD -eq "1" ]]; then
     docker compose -f docker-compose.events.yaml -f docker-compose.imgproxy.yaml build $BUILD_ARGS
@@ -126,9 +111,4 @@ fi
 if [[ $DEPLOY_EVENTS -eq "1" ]]; then
     echo "Deploying event classifier"
     docker stack deploy --with-registry-auth -c docker-compose.events.yaml ${STACK_NAME}
-fi
-
-if [[ $DEPLOY_IMGPROXY -eq "1" ]]; then
-    echo "Deploying imgproxy"
-    docker stack deploy --with-registry-auth -c docker-compose.imgproxy.yaml ${STACK_NAME}
 fi
