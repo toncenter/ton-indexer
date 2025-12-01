@@ -7,6 +7,12 @@
 
 namespace pqxx
 {
+std::optional<pqxx::bytes> to_pq_bytes(const std::optional<std::string>& value) {
+  if (value.has_value()) {
+    return pqxx::binary_cast(value.value()).data();
+  }
+  return std::nullopt;
+}
 
 template<> struct nullness<schema::BlockReference> : pqxx::no_null<schema::BlockReference> {};
 
@@ -79,16 +85,16 @@ template<> struct string_traits<block::StdAddress>
   }
  
   static char *into_buf(char *begin, char *end, block::StdAddress const &value) {
-    std::ostringstream stream;
-    stream << value.workchain << ":" << value.addr;
-    auto text = stream.str();
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for block::StdAddress."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
+    bytes data{36, std::byte{0}};
+    std::memcpy(&data[0], &value.workchain, 4);
+    std::memcpy(&data[0] + 4, value.addr.as_slice().str().c_str(), 32);
+    return string_traits<bytes>::into_buf(begin, end, data);
   }
   static std::size_t size_buffer(block::StdAddress const &value) noexcept {
-    return 80;
+    bytes data{36, std::byte{0}};
+    std::memcpy(&data[0], &value.workchain, 4);
+    std::memcpy(&data[0] + 4, value.addr.as_slice().str().c_str(), 32);
+    return string_traits<bytes>::size_buffer(data);
   }
 };
 
@@ -104,14 +110,10 @@ template<> struct string_traits<td::Bits256>
   }
  
   static char *into_buf(char *begin, char *end, td::Bits256 const &value) {
-    auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for td::Bits256."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
+    return string_traits<bytes_view>::into_buf(begin, end, pqxx::binary_cast(value.as_slice().str()));
   }
   static std::size_t size_buffer(td::Bits256 const &value) noexcept {
-    return 64;
+    return string_traits<bytes_view>::size_buffer(pqxx::binary_cast(value.as_slice().str()));;
   }
 };
 
@@ -127,14 +129,10 @@ template<> struct string_traits<vm::CellHash>
   }
  
   static char *into_buf(char *begin, char *end, vm::CellHash const &value) {
-    auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for vm::CellHash."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
+    return string_traits<bytes_view>::into_buf(begin, end, pqxx::binary_cast(value.as_slice().str()));;
   }
   static std::size_t size_buffer(vm::CellHash const &value) noexcept {
-    return 64;
+    return string_traits<bytes_view>::size_buffer(pqxx::binary_cast(value.as_slice().str()));;
   }
 };
 }
@@ -656,20 +654,25 @@ template<typename... Tuples>
 using tuple_cat_t = decltype(std::tuple_cat(std::declval<Tuples>()...));
 
 void InsertBatchPostgres::insert_transactions(pqxx::work &txn, bool with_copy) {
+  // std::initializer_list<std::string_view> columns = {
+  //   "account", "hash", "lt", "block_workchain", "block_shard", "block_seqno", "mc_block_seqno", "trace_id",
+  //   "prev_trans_hash", "prev_trans_lt", "now", "orig_status", "end_status", "total_fees", "total_fees_extra_currencies",
+  //   "account_state_hash_before", "account_state_hash_after", "descr", "aborted", "destroyed", "credit_first", "is_tock",
+  //   "installed", "storage_fees_collected", "storage_fees_due", "storage_status_change", "credit_due_fees_collected",
+  //   "credit", "credit_extra_currencies", "compute_skipped", "skipped_reason", "compute_success", "compute_msg_state_used",
+  //   "compute_account_activated", "compute_gas_fees", "compute_gas_used", "compute_gas_limit", "compute_gas_credit",
+  //   "compute_mode", "compute_exit_code", "compute_exit_arg", "compute_vm_steps", "compute_vm_init_state_hash",
+  //   "compute_vm_final_state_hash", "action_success", "action_valid", "action_no_funds", "action_status_change",
+  //   "action_total_fwd_fees", "action_total_action_fees", "action_result_code", "action_result_arg", "action_tot_actions",
+  //   "action_spec_actions", "action_skipped_actions", "action_msgs_created", "action_action_list_hash",
+  //   "action_tot_msg_size_cells", "action_tot_msg_size_bits", "bounce", "bounce_msg_size_cells", "bounce_msg_size_bits",
+  //   "bounce_req_fwd_fees", "bounce_msg_fees", "bounce_fwd_fees", "split_info_cur_shard_pfx_len", "split_info_acc_split_depth",
+  //   "split_info_this_addr", "split_info_sibling_addr"
+  // };
   std::initializer_list<std::string_view> columns = {
     "account", "hash", "lt", "block_workchain", "block_shard", "block_seqno", "mc_block_seqno", "trace_id",
     "prev_trans_hash", "prev_trans_lt", "now", "orig_status", "end_status", "total_fees", "total_fees_extra_currencies",
-    "account_state_hash_before", "account_state_hash_after", "descr", "aborted", "destroyed", "credit_first", "is_tock",
-    "installed", "storage_fees_collected", "storage_fees_due", "storage_status_change", "credit_due_fees_collected",
-    "credit", "credit_extra_currencies", "compute_skipped", "skipped_reason", "compute_success", "compute_msg_state_used",
-    "compute_account_activated", "compute_gas_fees", "compute_gas_used", "compute_gas_limit", "compute_gas_credit",
-    "compute_mode", "compute_exit_code", "compute_exit_arg", "compute_vm_steps", "compute_vm_init_state_hash",
-    "compute_vm_final_state_hash", "action_success", "action_valid", "action_no_funds", "action_status_change",
-    "action_total_fwd_fees", "action_total_action_fees", "action_result_code", "action_result_arg", "action_tot_actions",
-    "action_spec_actions", "action_skipped_actions", "action_msgs_created", "action_action_list_hash",
-    "action_tot_msg_size_cells", "action_tot_msg_size_bits", "bounce", "bounce_msg_size_cells", "bounce_msg_size_bits",
-    "bounce_req_fwd_fees", "bounce_msg_fees", "bounce_fwd_fees", "split_info_cur_shard_pfx_len", "split_info_acc_split_depth",
-    "split_info_this_addr", "split_info_sibling_addr"
+    "account_state_hash_before", "account_state_hash_after", "descr_boc"
   };
 
   PopulateTableStream stream(txn, "transactions", columns, 1000, with_copy);
@@ -871,30 +874,32 @@ void InsertBatchPostgres::insert_transactions(pqxx::work &txn, bool with_copy) {
           transaction.total_fees.grams,
           extra_currencies_to_json_string(transaction.total_fees.extra_currencies),
           transaction.account_state_hash_before,
-          transaction.account_state_hash_after
+          transaction.account_state_hash_after,
+          pqxx::binary_cast(transaction.description_boc)
         );
-        auto descr_tuple = std::visit([&](auto&& arg) {
-          using T = std::decay_t<decltype(arg)>;
-          if constexpr (std::is_same_v<T, schema::TransactionDescr_ord>) {
-            return store_transaction_descr_ord(arg);
-          } else if constexpr (std::is_same_v<T, schema::TransactionDescr_storage>) {
-            return store_transaction_descr_storage(arg);
-          } else if constexpr (std::is_same_v<T, schema::TransactionDescr_tick_tock>) {
-            return store_transaction_descr_tick_tock(arg);
-          } else if constexpr (std::is_same_v<T, schema::TransactionDescr_split_prepare>) {
-            return store_transaction_descr_split_prepare(arg);
-          } else if constexpr (std::is_same_v<T, schema::TransactionDescr_split_install>) {
-            return store_transaction_descr_split_install(arg);
-          } else if constexpr (std::is_same_v<T, schema::TransactionDescr_merge_prepare>) {
-            return store_transaction_descr_merge_prepare(arg);
-          } else if constexpr (std::is_same_v<T, schema::TransactionDescr_merge_install>) {
-            return store_transaction_descr_merge_install(arg);
-          } else {
-            UNREACHABLE();
-          }
-        }, transaction.description);
-        auto row_tuple = std::tuple_cat(std::move(tx_common_tuple), std::move(descr_tuple));
-        stream.insert_row(std::move(row_tuple));
+        stream.insert_row(std::move(tx_common_tuple));
+        // auto descr_tuple = std::visit([&](auto&& arg) {
+        //   using T = std::decay_t<decltype(arg)>;
+        //   if constexpr (std::is_same_v<T, schema::TransactionDescr_ord>) {
+        //     return store_transaction_descr_ord(arg);
+        //   } else if constexpr (std::is_same_v<T, schema::TransactionDescr_storage>) {
+        //     return store_transaction_descr_storage(arg);
+        //   } else if constexpr (std::is_same_v<T, schema::TransactionDescr_tick_tock>) {
+        //     return store_transaction_descr_tick_tock(arg);
+        //   } else if constexpr (std::is_same_v<T, schema::TransactionDescr_split_prepare>) {
+        //     return store_transaction_descr_split_prepare(arg);
+        //   } else if constexpr (std::is_same_v<T, schema::TransactionDescr_split_install>) {
+        //     return store_transaction_descr_split_install(arg);
+        //   } else if constexpr (std::is_same_v<T, schema::TransactionDescr_merge_prepare>) {
+        //     return store_transaction_descr_merge_prepare(arg);
+        //   } else if constexpr (std::is_same_v<T, schema::TransactionDescr_merge_install>) {
+        //     return store_transaction_descr_merge_install(arg);
+        //   } else {
+        //     UNREACHABLE();
+        //   }
+        // }, transaction.description);
+        // auto row_tuple = std::tuple_cat(std::move(tx_common_tuple), std::move(descr_tuple));
+        // stream.insert_row(std::move(row_tuple));
       }
     }
   }
@@ -904,7 +909,7 @@ void InsertBatchPostgres::insert_transactions(pqxx::work &txn, bool with_copy) {
 void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
   std::initializer_list<std::string_view> columns = {"tx_hash", "tx_lt", "mc_seqno", "msg_hash", "direction", "trace_id", "source", "destination",
                                                 "value", "value_extra_currencies", "fwd_fee", "ihr_fee", "extra_flags", "created_lt", "created_at",
-                                                "opcode", "ihr_disabled", "bounce", "bounced", "import_fee", "body_hash", "init_state_hash", "msg_hash_norm"};
+                                                "opcode", "ihr_disabled", "bounce", "bounced", "import_fee", "body_hash", "init_state_hash", "msg_hash_norm", "body_boc", "init_state_boc"};
   PopulateTableStream stream(txn, "messages", columns, 1000, with_copy);
   if (!with_copy) {
     stream.setConflictDoNothing();
@@ -943,51 +948,53 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
       msg.bounce,
       msg.bounced,
       import_fee_val,
-      msg.body->get_hash(),
-      msg.init_state.not_null() ? std::make_optional(msg.init_state->get_hash()) : std::nullopt,
+      msg.body_hash,
+      msg.init_state_hash,
       (msg.hash_norm.has_value() && msg.hash_norm.value() != msg.hash) ? 
-            std::make_optional(msg.hash_norm.value()) : std::nullopt
+            std::make_optional(msg.hash_norm.value()) : std::nullopt,
+      pqxx::binary_cast(msg.body_boc),
+      pqxx::to_pq_bytes(msg.init_state_boc)
     );
     stream.insert_row(std::move(tuple));
   };
   
-  // we lock the message bodies to prevent multiple parallel queries for the same message
-  // otherwise it causes deadlocks
-  std::vector<std::tuple<td::Bits256, std::string>> msg_bodies;
-  SCOPE_EXIT {
-    std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
-    for (const auto& [body_hash, body] : msg_bodies) {
-      msg_bodies_in_progress.erase(body_hash);
-    }
-  };
-  auto lock_msg_body = [&](const td::Bits256& body_hash, const std::string& body_boc) {
-    auto [_, inserted] = msg_bodies_in_progress.insert(body_hash);
-    if (inserted) {
-      msg_bodies.emplace_back(body_hash, body_boc);
-    }
-  };
-
-  {
-    std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
-    for (const auto& task : insert_tasks_) {
-      for (const auto &blk : task.parsed_block_->blocks_) {
-        for (const auto& transaction : blk.transactions) {
-          if (transaction.in_msg) {
-            lock_msg_body(transaction.in_msg->body->get_hash().bits(), transaction.in_msg->body_boc);
-            if (transaction.in_msg->init_state_boc) {
-              lock_msg_body(transaction.in_msg->init_state->get_hash().bits(), transaction.in_msg->init_state_boc.value());
-            }
-          }
-          for (const auto& msg : transaction.out_msgs) {
-            lock_msg_body(msg.body->get_hash().bits(), msg.body_boc);
-            if (msg.init_state_boc) {
-              lock_msg_body(msg.init_state->get_hash().bits(), msg.init_state_boc.value());
-            }
-          }
-        }
-      }
-    }
-  }
+  // // we lock the message bodies to prevent multiple parallel queries for the same message
+  // // otherwise it causes deadlocks
+  // std::vector<std::tuple<td::Bits256, std::string>> msg_bodies;
+  // SCOPE_EXIT {
+  //   std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
+  //   for (const auto& [body_hash, body] : msg_bodies) {
+  //     msg_bodies_in_progress.erase(body_hash);
+  //   }
+  // };
+  // auto lock_msg_body = [&](const td::Bits256& body_hash, const std::string& body_boc) {
+  //   auto [_, inserted] = msg_bodies_in_progress.insert(body_hash);
+  //   if (inserted) {
+  //     msg_bodies.emplace_back(body_hash, body_boc);
+  //   }
+  // };
+  //
+  // {
+  //   std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
+  //   for (const auto& task : insert_tasks_) {
+  //     for (const auto &blk : task.parsed_block_->blocks_) {
+  //       for (const auto& transaction : blk.transactions) {
+  //         if (transaction.in_msg) {
+  //           lock_msg_body(transaction.in_msg->body->get_hash().bits(), transaction.in_msg->body_boc);
+  //           if (transaction.in_msg->init_state_boc) {
+  //             lock_msg_body(transaction.in_msg->init_state->get_hash().bits(), transaction.in_msg->init_state_boc.value());
+  //           }
+  //         }
+  //         for (const auto& msg : transaction.out_msgs) {
+  //           lock_msg_body(msg.body->get_hash().bits(), msg.body_boc);
+  //           if (msg.init_state_boc) {
+  //             lock_msg_body(msg.init_state->get_hash().bits(), msg.init_state_boc.value());
+  //           }
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
 
   for (const auto& task : insert_tasks_) {
     for (const auto &blk : task.parsed_block_->blocks_) {
@@ -1003,14 +1010,14 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
   }
   stream.finish();
 
-  PopulateTableStream bodies_stream(txn, "message_contents", {"hash", "body"}, 1000, false);
-  bodies_stream.setConflictDoNothing();
-
-  for (const auto& [body_hash, body] : msg_bodies) {
-    auto tuple = std::make_tuple(body_hash, body);
-    bodies_stream.insert_row(std::move(tuple));
-  }
-  bodies_stream.finish();
+  // PopulateTableStream bodies_stream(txn, "message_contents", {"hash", "body"}, 1000, false);
+  // bodies_stream.setConflictDoNothing();
+  //
+  // for (const auto& [body_hash, body] : msg_bodies) {
+  //   auto tuple = std::make_tuple(body_hash, body);
+  //   bodies_stream.insert_row(std::move(tuple));
+  // }
+  // bodies_stream.finish();
 }
 
 void InsertBatchPostgres::insert_account_states(pqxx::work &txn, bool with_copy) {
@@ -1067,29 +1074,29 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
   }
 
   for (const auto& [_, account_state] : latest_account_states) {
-    std::optional<std::string> code_str = std::nullopt;
-    std::optional<std::string> data_str = std::nullopt;
-
-    if (max_data_depth_ >= 0 && account_state.data.not_null() && (max_data_depth_ == 0 || account_state.data->get_depth() <= max_data_depth_)){
-      auto data_res = vm::std_boc_serialize(account_state.data);
-      if (data_res.is_ok()){
-        data_str = td::base64_encode(data_res.move_as_ok());
-      }
-    } else {
-      if (account_state.data.not_null()) {
-        LOG(DEBUG) << "Large account data: " << account_state.account 
-                  << " Depth: " << account_state.data->get_depth();
-      }
-    }
-    {
-      auto code_res = vm::std_boc_serialize(account_state.code);
-      if (code_res.is_ok()){
-        code_str = td::base64_encode(code_res.move_as_ok());
-      }
-      if (code_str->length() > 128000) {
-        LOG(WARNING) << "Large account code: " << account_state.account;
-      }
-    }
+    // std::optional<std::string> code_str = std::nullopt;
+    // std::optional<std::string> data_str = std::nullopt;
+    //
+    // if (max_data_depth_ >= 0 && account_state.data.not_null() && (max_data_depth_ == 0 || account_state.data->get_depth() <= max_data_depth_)){
+    //   auto data_res = vm::std_boc_serialize(account_state.data);
+    //   if (data_res.is_ok()){
+    //     data_str = td::base64_encode(data_res.move_as_ok());
+    //   }
+    // } else {
+    //   if (account_state.data.not_null()) {
+    //     LOG(DEBUG) << "Large account data: " << account_state.account
+    //               << " Depth: " << account_state.data->get_depth();
+    //   }
+    // }
+    // {
+    //   auto code_res = vm::std_boc_serialize(account_state.code);
+    //   if (code_res.is_ok()){
+    //     code_str = td::base64_encode(code_res.move_as_ok());
+    //   }
+    //   if (code_str->length() > 128000) {
+    //     LOG(WARNING) << "Large account code: " << account_state.account;
+    //   }
+    // }
     auto tuple = std::make_tuple(
       account_state.account,
       std::nullopt,
@@ -1103,8 +1110,8 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
       account_state.frozen_hash,
       account_state.data_hash,
       account_state.code_hash,
-      data_str,
-      code_str
+      pqxx::to_pq_bytes(account_state.data_boc),
+      pqxx::to_pq_bytes(account_state.code_boc)
     );
     stream.insert_row(std::move(tuple));
   }
@@ -1112,11 +1119,11 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_jetton_masters(pqxx::work &txn) {
-  std::unordered_map<block::StdAddress, JettonMasterDataV2> jetton_masters;
+  std::unordered_map<block::StdAddress, schema::JettonMasterDataV2> jetton_masters;
 
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& jetton_master : task.parsed_block_->get_accounts_v2<JettonMasterDataV2>()) {
+    for (const auto& jetton_master : task.parsed_block_->get_accounts_v2<schema::JettonMasterDataV2>()) {
       if (jetton_masters.find(jetton_master.address) == jetton_masters.end()) {
         jetton_masters[jetton_master.address] = jetton_master;
       } else {
@@ -1158,10 +1165,10 @@ std::string InsertBatchPostgres::insert_jetton_masters(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
-  std::unordered_map<block::StdAddress, JettonWalletDataV2> jetton_wallets;
+  std::unordered_map<block::StdAddress, schema::JettonWalletDataV2> jetton_wallets;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& jetton_wallet : task.parsed_block_->get_accounts_v2<JettonWalletDataV2>()) {
+    for (const auto& jetton_wallet : task.parsed_block_->get_accounts_v2<schema::JettonWalletDataV2>()) {
       if (jetton_wallets.find(jetton_wallet.address) == jetton_wallets.end()) {
         jetton_wallets[jetton_wallet.address] = jetton_wallet;
       } else {
@@ -1214,10 +1221,10 @@ std::string InsertBatchPostgres::insert_jetton_wallets(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_nft_collections(pqxx::work &txn) {
-  std::unordered_map<block::StdAddress, NFTCollectionDataV2> nft_collections;
+  std::unordered_map<block::StdAddress, schema::NFTCollectionDataV2> nft_collections;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& nft_collection : task.parsed_block_->get_accounts_v2<NFTCollectionDataV2>()) {
+    for (const auto& nft_collection : task.parsed_block_->get_accounts_v2<schema::NFTCollectionDataV2>()) {
       if (nft_collections.find(nft_collection.address) == nft_collections.end()) {
         nft_collections[nft_collection.address] = nft_collection;
       } else {
@@ -1261,23 +1268,23 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
   for (auto i = insert_tasks_.begin(); i != insert_tasks_.end(); ++i) {
     const auto& task = *i;
     // Build sale lookup: (sale_address, nft_address) -> nft_owner_address
-    for (const auto& sale : task.parsed_block_->get_accounts_v2<GetGemsNftFixPriceSaleData>()) {
+    for (const auto& sale : task.parsed_block_->get_accounts_v2<schema::GetGemsNftFixPriceSaleData>()) {
       if (sale.nft_owner_address) {
         sale_real_owners[{sale.address.addr, sale.nft_address.addr}] = sale.nft_owner_address.value();
       }
     }
     // Build auction lookup: (auction_address, nft_addr) -> nft_owner
-    for (const auto& auction : task.parsed_block_->get_accounts_v2<GetGemsNftAuctionData>()) {
+    for (const auto& auction : task.parsed_block_->get_accounts_v2<schema::GetGemsNftAuctionData>()) {
       if (auction.nft_owner) {
         auction_real_owners[{auction.address.addr, auction.nft_addr.addr}] = auction.nft_owner.value();
       }
     }
   }
 
-  std::unordered_map<block::StdAddress, NFTItemDataV2> nft_items;
+  std::unordered_map<block::StdAddress, schema::NFTItemDataV2> nft_items;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& nft_item : task.parsed_block_->get_accounts_v2<NFTItemDataV2>()) {
+    for (const auto& nft_item : task.parsed_block_->get_accounts_v2<schema::NFTItemDataV2>()) {
       if (nft_items.find(nft_item.address) == nft_items.end()) {
         nft_items[nft_item.address] = nft_item;
       } else {
@@ -1361,10 +1368,10 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_getgems_nft_sales(pqxx::work &txn) {
-  std::unordered_map<block::StdAddress, GetGemsNftFixPriceSaleData> nft_sales;
+  std::unordered_map<block::StdAddress, schema::GetGemsNftFixPriceSaleData> nft_sales;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& nft_sale : task.parsed_block_->get_accounts_v2<GetGemsNftFixPriceSaleData>()) {
+    for (const auto& nft_sale : task.parsed_block_->get_accounts_v2<schema::GetGemsNftFixPriceSaleData>()) {
       if (nft_sales.find(nft_sale.address) == nft_sales.end()) {
         nft_sales[nft_sale.address] = nft_sale;
       } else {
@@ -1405,10 +1412,10 @@ std::string InsertBatchPostgres::insert_getgems_nft_sales(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_vesting(pqxx::work &txn) {
-    std::unordered_map<block::StdAddress, VestingData> vesting_contracts;
+    std::unordered_map<block::StdAddress, schema::VestingData> vesting_contracts;
     for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
         const auto& task = *i;
-        for (const auto& vesting : task.parsed_block_->get_accounts_v2<VestingData>()) {
+        for (const auto& vesting : task.parsed_block_->get_accounts_v2<schema::VestingData>()) {
             if (vesting_contracts.find(vesting.address) == vesting_contracts.end()) {
                 vesting_contracts[vesting.address] = vesting;
             } else {
@@ -1466,10 +1473,10 @@ std::string InsertBatchPostgres::insert_vesting(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
-  std::unordered_map<block::StdAddress, GetGemsNftAuctionData> nft_auctions;
+  std::unordered_map<block::StdAddress, schema::GetGemsNftAuctionData> nft_auctions;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& nft_auction : task.parsed_block_->get_accounts_v2<GetGemsNftAuctionData>()) {
+    for (const auto& nft_auction : task.parsed_block_->get_accounts_v2<schema::GetGemsNftAuctionData>()) {
       if (nft_auctions.find(nft_auction.address) == nft_auctions.end()) {
         nft_auctions[nft_auction.address] = nft_auction;
       } else {
@@ -1519,10 +1526,10 @@ std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_multisig_contracts(pqxx::work &txn) {
-  std::unordered_map<block::StdAddress, MultisigContractData> multisig_contracts;
+  std::unordered_map<block::StdAddress, schema::MultisigContractData> multisig_contracts;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& multisig_contract : task.parsed_block_->get_accounts_v2<MultisigContractData>()) {
+    for (const auto& multisig_contract : task.parsed_block_->get_accounts_v2<schema::MultisigContractData>()) {
       if (multisig_contracts.find(multisig_contract.address) == multisig_contracts.end()) {
         multisig_contracts[multisig_contract.address] = multisig_contract;
       } else {
@@ -1558,10 +1565,10 @@ std::string InsertBatchPostgres::insert_multisig_contracts(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_multisig_orders(pqxx::work &txn) {
-  std::unordered_map<block::StdAddress, MultisigOrderData> multisig_orders;
+  std::unordered_map<block::StdAddress, schema::MultisigOrderData> multisig_orders;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& multisig_order : task.parsed_block_->get_accounts_v2<MultisigOrderData>()) {
+    for (const auto& multisig_order : task.parsed_block_->get_accounts_v2<schema::MultisigOrderData>()) {
       if (multisig_orders.find(multisig_order.address) == multisig_orders.end()) {
         multisig_orders[multisig_order.address] = multisig_order;
       } else {
@@ -1616,10 +1623,10 @@ std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
     "address", "asset_1", "asset_2", "reserve_1", "reserve_2", "pool_type", "dex", "fee", "last_transaction_lt", "code_hash", "data_hash"
   };
 
-  std::unordered_map<block::StdAddress, DedustPoolData> dedust_pools;
+  std::unordered_map<block::StdAddress, schema::DedustPoolData> dedust_pools;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& dedust_pool : task.parsed_block_->get_accounts_v2<DedustPoolData>()) {
+    for (const auto& dedust_pool : task.parsed_block_->get_accounts_v2<schema::DedustPoolData>()) {
       if (dedust_pools.find(dedust_pool.address) == dedust_pools.end()) {
         dedust_pools[dedust_pool.address] = dedust_pool;
       } else {
@@ -1666,7 +1673,7 @@ void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn, bool with_cop
   }
 
   for (const auto& task : insert_tasks_) {
-    for (const auto& transfer : task.parsed_block_->get_events<JettonTransfer>()) {
+    for (const auto& transfer : task.parsed_block_->get_events<schema::JettonTransfer>()) {
       auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
       auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
@@ -1686,9 +1693,9 @@ void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn, bool with_cop
         transfer.jetton_wallet,
         transfer.jetton_master,
         transfer.response_destination,
-        custom_payload_boc,
+        pqxx::to_pq_bytes(custom_payload_boc),
         transfer.forward_ton_amount,
-        forward_payload_boc,
+        pqxx::to_pq_bytes(forward_payload_boc),
         transfer.trace_id
       );
       stream.insert_row(std::move(tuple));
@@ -1708,7 +1715,7 @@ void InsertBatchPostgres::insert_jetton_burns(pqxx::work &txn, bool with_copy) {
   }
 
   for (const auto& task : insert_tasks_) {
-    for (const auto& burn : task.parsed_block_->get_events<JettonBurn>()) {
+    for (const auto& burn : task.parsed_block_->get_events<schema::JettonBurn>()) {
       auto custom_payload_boc_r = convert::to_bytes(burn.custom_payload);
       auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
@@ -1724,7 +1731,7 @@ void InsertBatchPostgres::insert_jetton_burns(pqxx::work &txn, bool with_copy) {
         burn.jetton_master,
         burn.amount,
         burn.response_destination,
-        custom_payload_boc,
+        pqxx::to_pq_bytes(custom_payload_boc),
         burn.trace_id
       );
 
@@ -1745,7 +1752,7 @@ void InsertBatchPostgres::insert_nft_transfers(pqxx::work &txn, bool with_copy) 
   }
 
   for (const auto& task : insert_tasks_) {
-    for (const auto& transfer : task.parsed_block_->get_events<NFTTransfer>()) {
+    for (const auto& transfer : task.parsed_block_->get_events<schema::NFTTransfer>()) {
       auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
       auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
@@ -1765,9 +1772,9 @@ void InsertBatchPostgres::insert_nft_transfers(pqxx::work &txn, bool with_copy) 
         transfer.old_owner,
         transfer.new_owner,
         transfer.response_destination,
-        custom_payload_boc,
+        pqxx::to_pq_bytes(custom_payload_boc),
         transfer.forward_amount,
-        forward_payload_boc,
+        pqxx::to_pq_bytes(forward_payload_boc),
         transfer.trace_id
       );
       stream.insert_row(std::move(tuple));

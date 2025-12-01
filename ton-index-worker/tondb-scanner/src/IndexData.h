@@ -202,9 +202,11 @@ struct Message {
   std::optional<td::RefInt256> import_fee;
 
   td::Ref<vm::Cell> body;
+  td::Bits256 body_hash;
   bytes_string body_boc;
 
   td::Ref<vm::Cell> init_state;
+  std::optional<td::Bits256> init_state_hash;
   std::optional<bytes_string> init_state_boc;
 
   td::Bits256 trace_id;
@@ -228,10 +230,13 @@ struct Transaction {
   CurrencyCollection total_fees;
 
   td::Bits256 account_state_hash_before;
+  bytes_string account_state_before;
   td::Bits256 account_state_hash_after;
+  bytes_string account_state_after;
 
   td::Bits256 trace_id;
   TransactionDescr description;
+  bytes_string description_boc;
 };
 
 struct BlockReference {
@@ -244,8 +249,8 @@ struct Block {
   int32_t workchain;
   int64_t shard;
   uint32_t seqno;
-  std::string root_hash;
-  std::string file_hash;
+  td::Bits256 root_hash;
+  td::Bits256 file_hash;
 
   std::optional<int32_t> mc_block_workchain;
   std::optional<int64_t> mc_block_shard;
@@ -270,8 +275,8 @@ struct Block {
   int32_t prev_key_block_seqno;
   int32_t vert_seqno;
   std::optional<int32_t> master_ref_seqno;
-  std::string rand_seed;
-  std::string created_by;
+  td::Bits256 rand_seed;
+  td::Bits256 created_by;
 
   std::vector<Transaction> transactions;
   std::vector<BlockReference> prev_blocks;
@@ -296,8 +301,10 @@ struct AccountState {
   std::string account_status; // "uninit", "frozen", "active", "nonexist"
   std::optional<td::Bits256> frozen_hash;
   td::Ref<vm::Cell> code;
+  std::optional<bytes_string> code_boc;
   std::optional<td::Bits256> code_hash;
   td::Ref<vm::Cell> data;
+  std::optional<bytes_string> data_boc;
   std::optional<td::Bits256> data_hash;
   td::Bits256 last_trans_hash;
   uint64_t last_trans_lt;     // in "nonexist" case it is lt of block, not tx. TODO: fix it
@@ -360,8 +367,6 @@ struct TraceAssemblerState {
   std::vector<Trace> pending_traces_;
 };
 
-}  // namespace schema
-
 struct JettonMasterData {
   std::string address;
   td::RefInt256 total_supply;
@@ -373,8 +378,8 @@ struct JettonMasterData {
   vm::CellHash code_hash;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
-  std::string code_boc;
-  std::string data_boc;
+  bytes_string code_boc;
+  bytes_string data_boc;
 };
 
 struct JettonMasterDataV2 {
@@ -665,6 +670,7 @@ using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
                                            MultisigOrderData,
                                            VestingData,
                                            DedustPoolData>;
+}  // namespace schema
 
 namespace std {
 template <>
@@ -687,7 +693,7 @@ struct hash<block::StdAddress> {
 }  // namespace std
 
 struct ParsedBlock {
-  MasterchainBlockDataState mc_block_;
+  schema::MasterchainBlockDataState mc_block_;
 
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;
@@ -695,10 +701,10 @@ struct ParsedBlock {
 
   std::vector<schema::Trace> traces_;
 
-  std::vector<BlockchainEvent> events_;
-  std::vector<BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
+  std::vector<schema::BlockchainEvent> events_;
+  std::vector<schema::BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
 
-  std::unordered_map<block::StdAddress, std::vector<BlockchainInterfaceV2>> account_interfaces_;
+  std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
   
   template <class T>
   std::vector<T> get_events() {

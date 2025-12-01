@@ -96,5 +96,5 @@ td::Result<std::optional<std::string>> convert::to_bytes(td::Ref<vm::Cell> cell)
     return std::nullopt;
   }
   TRY_RESULT(boc, vm::std_boc_serialize(cell, vm::BagOfCells::Mode::WithCRC32C));
-  return td::base64_encode(boc.as_slice().str());
+  return boc.as_slice().str();
 }

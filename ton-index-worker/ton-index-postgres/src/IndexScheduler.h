@@ -65,7 +65,7 @@ private:
 
   void schedule_seqno(std::uint32_t mc_seqno);
   void reschedule_seqno(std::uint32_t mc_seqno, bool silent = false);
-  void seqno_fetched(std::uint32_t mc_seqno, MasterchainBlockDataState block_data_state);
+  void seqno_fetched(std::uint32_t mc_seqno, schema::MasterchainBlockDataState block_data_state);
   void seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);

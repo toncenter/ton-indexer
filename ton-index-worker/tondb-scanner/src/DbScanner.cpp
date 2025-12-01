@@ -9,13 +9,13 @@ using namespace ton::validator;
 class GetBlockDataState: public td::actor::Actor {
 private:
   td::actor::ActorId<ton::validator::RootDb> db_;
-  td::Promise<BlockDataState> promise_;
+  td::Promise<schema::BlockDataState> promise_;
   ConstBlockHandle handle_;
 
   td::Ref<BlockData> block_data_;
   td::Ref<vm::Cell> block_state_root_;
 public:
-  GetBlockDataState(td::actor::ActorId<ton::validator::RootDb> db, ConstBlockHandle handle, td::Promise<BlockDataState> promise) :
+  GetBlockDataState(td::actor::ActorId<ton::validator::RootDb> db, ConstBlockHandle handle, td::Promise<schema::BlockDataState> promise) :
     db_(db),
     handle_(handle),
     promise_(std::move(promise)) {
@@ -71,7 +71,7 @@ class IndexQuery: public td::actor::Actor {
 private:
   const int mc_seqno_;
   td::actor::ActorId<ton::validator::RootDb> db_;
-  td::Promise<MasterchainBlockDataState> promise_;
+  td::Promise<schema::MasterchainBlockDataState> promise_;
   td::Timer timer_{true};
 
   td::Ref<BlockData> mc_block_data_;
@@ -86,10 +86,10 @@ private:
   std::set<ton::BlockId> current_shard_blk_ids_;
   std::unordered_set<ConstBlockHandle> shard_block_handles_;
 
-  MasterchainBlockDataState result_;
+  schema::MasterchainBlockDataState result_;
 
 public:
-  IndexQuery(int mc_seqno, td::actor::ActorId<ton::validator::RootDb> db, td::Promise<MasterchainBlockDataState> promise) : 
+  IndexQuery(int mc_seqno, td::actor::ActorId<ton::validator::RootDb> db, td::Promise<schema::MasterchainBlockDataState> promise) :
     db_(db), 
     mc_seqno_(mc_seqno),
     promise_(std::move(promise)) {
@@ -248,7 +248,7 @@ public:
     ig.add_promise(std::move(P));
 
     for (auto& handle: shard_block_handles_) {
-      auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), handle, promise = ig.get_promise()](td::Result<BlockDataState> R) mutable {
+      auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), handle, promise = ig.get_promise()](td::Result<schema::BlockDataState> R) mutable {
         if (R.is_error()) {
           promise.set_error(R.move_as_error_prefix(PSTRING() << handle->id().to_str() << ": "));
         } else {
@@ -259,7 +259,7 @@ public:
     }
   }
 
-  void got_shard_block(BlockDataState block_data_state, ConstBlockHandle handle, td::Promise<td::Unit> promise) {
+  void got_shard_block(schema::BlockDataState block_data_state, ConstBlockHandle handle, td::Promise<td::Unit> promise) {
     if (current_shard_blk_ids_.count(block_data_state.block_data->block_id().id) > 0) {
       result_.shard_blocks_.push_back(block_data_state);
     }
@@ -327,7 +327,7 @@ void DbScanner::catch_up_with_primary() {
   td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, std::move(R));
 }
 
-void DbScanner::fetch_seqno(std::uint32_t mc_seqno, td::Promise<MasterchainBlockDataState> promise) {
+void DbScanner::fetch_seqno(std::uint32_t mc_seqno, td::Promise<schema::MasterchainBlockDataState> promise) {
   td::actor::create_actor<IndexQuery>("indexquery", mc_seqno, db_.get(), std::move(promise)).release();
 }
 

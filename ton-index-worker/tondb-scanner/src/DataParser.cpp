@@ -91,8 +91,8 @@ schema::Block ParseQuery::parse_block(const td::Ref<vm::Cell>& root_cell, const 
   block.workchain = blk_id.id.workchain;
   block.shard = static_cast<int64_t>(blk_id.id.shard);
   block.seqno = blk_id.id.seqno;
-  block.root_hash = td::base64_encode(blk_id.root_hash.as_slice());
-  block.file_hash = td::base64_encode(blk_id.file_hash.as_slice());
+  block.root_hash = td::Bits256{blk_id.root_hash};
+  block.file_hash = td::Bits256{blk_id.file_hash};
   if (mc_block) {
       block.mc_block_workchain = mc_block.value().workchain;
       block.mc_block_shard = mc_block.value().shard;
@@ -126,8 +126,8 @@ schema::Block ParseQuery::parse_block(const td::Ref<vm::Cell>& root_cell, const 
   if (!info.not_master || tlb::unpack_cell(info.master_ref, mcref)) {
       block.master_ref_seqno = mcref.seq_no;
   }
-  block.rand_seed = td::base64_encode(extra.rand_seed.as_slice());
-  block.created_by = td::base64_encode(extra.created_by.as_slice());
+  block.rand_seed = extra.rand_seed;
+  block.created_by = extra.created_by;
 
   // prev blocks
   std::vector<ton::BlockIdExt> prev;
@@ -220,6 +220,7 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
   if (!body_boc) {
     return td::Status::Error("Failed to convert message body to bytes");
   }
+  msg.body_hash = msg.body->get_hash().bits();
   msg.body_boc = body_boc.value();
 
   if (body->prefetch_long(32) != vm::CellSlice::fetch_long_eof) {
@@ -236,10 +237,12 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
     } else {
       msg.init_state = init_state_cs.fetch_ref();
     }
+
     TRY_RESULT(init_state_boc, convert::to_bytes(msg.init_state));
     if (!init_state_boc) {
       return td::Status::Error("Failed to convert message init state to bytes");
     }
+    msg.init_state_hash = msg.init_state->get_hash().bits();
     msg.init_state_boc = init_state_boc.value();
   }
       
@@ -674,9 +677,11 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
         schema_tx.account_state_hash_before = state_hash_update.old_hash;
         schema_tx.account_state_hash_after = state_hash_update.new_hash;
 
+        if (auto r_descr_boc = vm::std_boc_serialize(trans.description); r_descr_boc.is_ok()) {
+          schema_tx.description_boc = r_descr_boc.move_as_ok().as_slice().str();
+        }
         auto descr_cs = vm::load_cell_slice(trans.description);
         TRY_RESULT_ASSIGN(schema_tx.description, process_transaction_descr(descr_cs));
-
         res.push_back(schema_tx);
         
         account_states[cur_addr] = {schema_tx.account_state_hash_after, schema_tx.lt, schema_tx.hash};
@@ -698,6 +703,7 @@ td::Result<std::vector<schema::AccountState>> ParseQuery::parse_account_states_n
       continue;
     }
     auto account_cell = account_cell_r.move_as_ok();
+    TRY_RESULT(account_boc, vm::std_boc_serialize(account_cell));
     int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account_cell));
     switch (account_tag) {
     case block::gen::Account::account_none: {
@@ -782,11 +788,17 @@ td::Result<schema::AccountState> ParseQuery::parse_account(td::Ref<vm::Cell> acc
       if (code_cs.fetch_long(1) != 0) {
         schema_account.code = code_cs.prefetch_ref();
         schema_account.code_hash = schema_account.code->get_hash().bits();
+        if (auto r_code_boc = vm::std_boc_serialize(schema_account.code); r_code_boc.is_ok()) {
+          schema_account.code_boc = r_code_boc.move_as_ok().as_slice().str();
+        }
       }
       auto& data_cs = state_init.data.write();
       if (data_cs.fetch_long(1) != 0) {
         schema_account.data = data_cs.prefetch_ref();
         schema_account.data_hash = schema_account.data->get_hash().bits();
+        if (auto r_data_boc = vm::std_boc_serialize(schema_account.data); r_data_boc.is_ok()) {
+          schema_account.data_boc = r_data_boc.move_as_ok().as_slice().str();
+        }
       }
       break;
     }

@@ -88,7 +88,10 @@ template<> struct string_traits<block::StdAddress>
     return string_traits<bytes>::into_buf(begin, end, data);
   }
   static std::size_t size_buffer(block::StdAddress const &value) noexcept {
-    return 75;
+    bytes data{36, std::byte{0}};
+    std::memcpy(&data[0], &value.workchain, 4);
+    std::memcpy(&data[0] + 4, value.addr.as_slice().str().c_str(), 32);
+    return string_traits<bytes>::size_buffer(data);
   }
 };
 
@@ -422,10 +425,10 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
 }
 
 void PostgreSQLInserter::insert_jetton_masters(pqxx::work &transaction) {
-  std::vector<JettonMasterDataV2> jetton_masters;
+  std::vector<schema::JettonMasterDataV2> jetton_masters;
   for (auto &data : data_) {
-      if (std::holds_alternative<JettonMasterDataV2>(data)) {
-          jetton_masters.push_back(std::get<JettonMasterDataV2>(data));
+      if (std::holds_alternative<schema::JettonMasterDataV2>(data)) {
+          jetton_masters.push_back(std::get<schema::JettonMasterDataV2>(data));
       }
   }
 
@@ -460,10 +463,10 @@ void PostgreSQLInserter::insert_jetton_masters(pqxx::work &transaction) {
 }
 
 void PostgreSQLInserter::insert_jetton_wallets(pqxx::work &transaction) {
-  std::vector<JettonWalletDataV2> jetton_wallets;
+  std::vector<schema::JettonWalletDataV2> jetton_wallets;
   for (auto& data : data_) {
-    if (std::holds_alternative<JettonWalletDataV2>(data)) {
-      jetton_wallets.push_back(std::get<JettonWalletDataV2>(data));
+    if (std::holds_alternative<schema::JettonWalletDataV2>(data)) {
+      jetton_wallets.push_back(std::get<schema::JettonWalletDataV2>(data));
     }
   }
 
@@ -506,10 +509,10 @@ void PostgreSQLInserter::insert_jetton_wallets(pqxx::work &transaction) {
 }
 
 void PostgreSQLInserter::insert_nft_collections(pqxx::work &txn) {
-  std::vector<NFTCollectionDataV2> nft_collections;
+  std::vector<schema::NFTCollectionDataV2> nft_collections;
   for (auto& data : data_) {
-    if (std::holds_alternative<NFTCollectionDataV2>(data)) {
-      nft_collections.push_back(std::get<NFTCollectionDataV2>(data));
+    if (std::holds_alternative<schema::NFTCollectionDataV2>(data)) {
+      nft_collections.push_back(std::get<schema::NFTCollectionDataV2>(data));
     }
   }
 
@@ -540,10 +543,10 @@ void PostgreSQLInserter::insert_nft_collections(pqxx::work &txn) {
 }
 
 void PostgreSQLInserter::insert_nft_items(pqxx::work &txn) {
-  std::vector<NFTItemDataV2> nft_items;
+  std::vector<schema::NFTItemDataV2> nft_items;
   for (auto& data : data_) {
-    if (std::holds_alternative<NFTItemDataV2>(data)) {
-      nft_items.push_back(std::get<NFTItemDataV2>(data));
+    if (std::holds_alternative<schema::NFTItemDataV2>(data)) {
+      nft_items.push_back(std::get<schema::NFTItemDataV2>(data));
     }
   }
   std::initializer_list<std::string_view> columns = {
@@ -601,10 +604,10 @@ void PostgreSQLInserter::insert_nft_items(pqxx::work &txn) {
 }
 
 void PostgreSQLInserter::insert_multisig_contracts(pqxx::work &txn) {
-  std::vector<MultisigContractData> multisig_contracts;
+  std::vector<schema::MultisigContractData> multisig_contracts;
   for (auto& data : data_) {
-    if (std::holds_alternative<MultisigContractData>(data)) {
-      multisig_contracts.push_back(std::get<MultisigContractData>(data));
+    if (std::holds_alternative<schema::MultisigContractData>(data)) {
+      multisig_contracts.push_back(std::get<schema::MultisigContractData>(data));
     }
   }
   std::initializer_list<std::string_view> columns = {
@@ -631,10 +634,10 @@ void PostgreSQLInserter::insert_multisig_contracts(pqxx::work &txn) {
 }
 
 void PostgreSQLInserter::insert_multisig_orders(pqxx::work &txn) {
-  std::vector<MultisigOrderData> multisig_orders;
+  std::vector<schema::MultisigOrderData> multisig_orders;
   for (auto& data : data_) {
-    if (std::holds_alternative<MultisigOrderData>(data)) {
-      multisig_orders.push_back(std::get<MultisigOrderData>(data));
+    if (std::holds_alternative<schema::MultisigOrderData>(data)) {
+      multisig_orders.push_back(std::get<schema::MultisigOrderData>(data));
     }
   }
   std::initializer_list<std::string_view> columns = {
@@ -675,10 +678,10 @@ void PostgreSQLInserter::insert_multisig_orders(pqxx::work &txn) {
 }
 
 void PostgreSQLInserter::insert_vesting_contracts(pqxx::work &txn) {
-  std::vector<VestingData> vesting_contracts;
+  std::vector<schema::VestingData> vesting_contracts;
   for (auto& data : data_) {
-    if (std::holds_alternative<VestingData>(data)) {
-      vesting_contracts.push_back(std::get<VestingData>(data));
+    if (std::holds_alternative<schema::VestingData>(data)) {
+      vesting_contracts.push_back(std::get<schema::VestingData>(data));
     }
   }
   
