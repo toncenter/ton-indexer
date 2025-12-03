@@ -10,14 +10,15 @@ private:
     Trace trace_;
     td::Promise<td::Unit> promise_;
     std::string trace_key_;
-
+    MeasurementPtr measurement_;
 public:
-    TraceInserter(sw::redis::Transaction&& transaction, Trace trace, td::Promise<td::Unit> promise) :
-        transaction_(std::move(transaction)), trace_(std::move(trace)), promise_(std::move(promise)) {
+    TraceInserter(sw::redis::Transaction&& transaction, Trace trace, td::Promise<td::Unit> promise, const MeasurementPtr& measurement) :
+        transaction_(std::move(transaction)), trace_(std::move(trace)), promise_(std::move(promise)), measurement_(measurement) {
     }
 
     void start_up() override {
         td::Timer timer;
+        measurement_->measure_step("trace_insert_start");
         try {
             std::queue<TraceNode*> queue;
         
@@ -187,6 +188,7 @@ public:
             }
             transaction_.hset(trace_key_, "root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
             transaction_.hset(trace_key_, "depth_limit_exceeded", trace_.tx_limit_exceeded ? "1" : "0");
+            transaction_.hset(trace_key_, "measurement_id", std::to_string(measurement_->id()));
             
             transaction_.set("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), trace_key_);
             transaction_.expire("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), 600);
@@ -194,6 +196,7 @@ public:
             transaction_.publish("new_trace", trace_key_);
             
             transaction_.exec();
+            measurement_->measure_step("trace_insert_complete");
 
             promise_.set_value(td::Unit());
         } catch (const vm::VmError &e) {
@@ -250,6 +253,6 @@ public:
     }
 };
 
-void RedisInsertManager::insert(Trace trace, td::Promise<td::Unit> promise) {
-    td::actor::create_actor<TraceInserter>("TraceInserter", redis_.transaction(), std::move(trace), std::move(promise)).release();
+void RedisInsertManager::insert(Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) {
+    td::actor::create_actor<TraceInserter>("TraceInserter", redis_.transaction(), std::move(trace), std::move(promise), measurement).release();
 }
