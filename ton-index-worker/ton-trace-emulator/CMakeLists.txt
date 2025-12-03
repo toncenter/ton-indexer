@@ -25,6 +25,8 @@ add_executable(ton-trace-emulator
     src/InvalidatedTraceTracker.cpp
     src/TraceInserter.cpp
     src/RedisListener.cpp
+    src/Measurement.h
+    src/Measurement.cpp
 )
 target_include_directories(ton-trace-emulator
     PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/../external/redis-plus-plus/src

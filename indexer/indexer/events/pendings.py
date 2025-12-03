@@ -5,7 +5,9 @@ import logging
 import time
 import traceback
 from collections import defaultdict
-from typing import List, Tuple, Set, Dict
+from typing import List, Tuple, Set, Dict, Optional
+from datetime import datetime
+from copy import deepcopy
 
 import msgpack
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +15,7 @@ from sqlalchemy.orm import sessionmaker
 import multiprocessing as mp
 
 from indexer.core import redis
-from indexer.core.database import engine
+from indexer.core.database import engine, FinalityState
 from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_accounts_from_trace
@@ -33,6 +35,33 @@ async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession
 logger = logging.getLogger(__name__)
 interface_cache: LRUCache | None = None
 
+
+class Measurement:
+    id: int = 0
+    ext_msg_hash: Optional[str] = None
+    ext_msg_hash_norm: Optional[str] = None
+    trace_root_tx_hash: Optional[str] = None
+
+    timings: Dict[str, float] = dict()
+
+    def measure_step(self, step: str, timestamp: Optional[float] = None) -> "Measurement":
+        ts = datetime.now().timestamp() if timestamp is None else timestamp
+        self.timings[step] = ts
+        return self
+
+    def print_measurement(self) -> "Measurement":
+        line = 'MEASURE['
+        line += f"id={self.id};"
+        line += "msg_hash_norm=" + (f"{self.ext_msg_hash_norm};" if self.ext_msg_hash_norm else "-;")
+        line += "msg_hash=" + (f"{self.ext_msg_hash};" if self.ext_msg_hash_norm else "-;")
+        line += "trace_id=" + (f"{self.trace_root_tx_hash}" if self.trace_root_tx_hash else "-")
+        line += ']'
+        for step, ts in self.timings.items():
+            logger.error(f"{line}(step={step};time={ts})")
+        return self
+
+    def clone(self) -> "Measurement":
+        return deepcopy(self)
 
 class PendingTraceClassifierWorker(mp.Process):
 
@@ -91,13 +120,14 @@ class PendingTraceClassifierWorker(mp.Process):
         except Exception as exc:  # never let an exception kill the loop
             logger.error("Batch FAILED: %s", exc, exc_info=True)
 
-
     async def process_emulated_trace_batch(
             self,
             trace_keys: List[str],
             session: AsyncSession,
             use_combined: bool = False
     ) -> List[Tuple[str, bool]]:
+        measurement = Measurement().measure_step("batch_classification__start")
+
         results = []
 
         all_accounts = set()
@@ -116,13 +146,15 @@ class PendingTraceClassifierWorker(mp.Process):
                     continue
 
                 trace = deserialize_event(trace_key, trace_map)
+                if 'measurement_id' in trace_map:
+                    measurement.id = int(trace_map['measurement_id'].decode('utf-8'))
                 traces_data[trace_key] = (trace, trace_map)
 
                 all_accounts, extra_data_requests = extract_accounts_from_trace(trace)
-
             except Exception as e:
                 logger.error(f"Failed to extract accounts from trace {trace_key}: {e}")
                 results.append((trace_key, False))
+        measurement.measure_step("batch_classification__traces_extracted")
 
         # Gather interfaces
         db_interfaces = {}
@@ -137,8 +169,14 @@ class PendingTraceClassifierWorker(mp.Process):
                 logger.error(f"Failed to gather interfaces: {e}")
                 # Continue with empty db_interfaces
 
+        measurement.measure_step("batch_classification__interfaces_gathered")
         # Process traces
         for trace_key, (trace, trace_map) in traces_data.items():
+            meas = measurement.clone()
+            meas.ext_msg_hash_norm = trace_key
+            meas.ext_msg_hash = trace.external_hash
+            meas.trace_root_tx_hash = trace.trace_id
+
             try:
                 # Setup repositories
                 emulated_repository = EmulatedTransactionsInterfaceRepository(trace_map)
@@ -154,6 +192,7 @@ class PendingTraceClassifierWorker(mp.Process):
                 # Process trace
                 processor = TraceProcessor()
                 result = await processor.process_trace(trace)
+                meas.measure_step("trace_classification__trace_processing_finished")
 
                 # Fill trace external hash if needed
                 for action in result.actions:
@@ -172,6 +211,7 @@ class PendingTraceClassifierWorker(mp.Process):
                         self.emulated_traces_redis_response_channel,
                         trace_key
                     )
+                meas.measure_step("trace_classification__results_stored")
 
                 # Build index
                 index = defaultdict(set)
@@ -181,6 +221,8 @@ class PendingTraceClassifierWorker(mp.Process):
                         v = trace.start_lt
                         index[account.account].add((k, v))
 
+                meas.measure_step("trace_classification__indexes_built")
+
                 # Store referenced accounts
                 transaction_accounts = set(t.account for t in trace.transactions)
                 referenced_accounts = set(index.keys()) - transaction_accounts
@@ -188,11 +230,13 @@ class PendingTraceClassifierWorker(mp.Process):
                 # Add indices to Redis
                 for account, values in index.items():
                     await redis.client.zadd(f"_aai:{account}", dict(values))
+                meas.measure_step("trace_classification__complete")
 
                 # Publish referenced accounts
                 for r in referenced_accounts:
                     await redis.client.publish('referenced_accounts', f"{r};{trace_key}")
-
+                meas.measure_step("trace_classification__published_referenced_accounts_in_redis")
+                meas.print_measurement()
                 results.append((trace_key, True))
 
             except Exception as e:
@@ -276,7 +320,8 @@ async def start_emulated_traces_processing(settings: Settings,
             if message is not None and message['type'] == 'message':
                 trace_id = message['data'].decode('utf-8')
                 pending_traces.append(trace_id)
-                logger.debug(f"Added trace {trace_id} to batch (size: {len(pending_traces)})")
+                logger.info(f"Added trace {trace_id} to batch (size: {len(pending_traces)})")
+                # logger.error(f"MEASURE[{trace_id}](unixtime={datetime.now().timestamp()} module=event_classifier step=classifier_trace_queued)")
 
             if not pending_traces:
                 continue
