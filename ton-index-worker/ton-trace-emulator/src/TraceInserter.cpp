@@ -186,7 +186,7 @@ public:
             transaction_.publish("new_trace", trace_key_);
             
             transaction_.exec();
-            LOG(ERROR) << "MEASURE[" << td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) << "] unixtime=" << td::Time::now() << " module=trace_emulator step=trace_inserted";
+            LOG(ERROR) << "MEASURE[" << td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << td::Time::now() << " module=trace_emulator step=trace_inserted)";
 
             promise_.set_value(td::Unit());
         } catch (const vm::VmError &e) {
