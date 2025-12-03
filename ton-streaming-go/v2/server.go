@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,6 +41,44 @@ var config Config
 // InitConfig registers configuration to be used by v2 handlers.
 func InitConfig(cfg Config) {
 	config = cfg
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Debug measurements
+////////////////////////////////////////////////////////////////////////////////
+
+type Measurement struct {
+	Id              int64              `json:"id"`
+	ExtMsgHashNorm  index.HashType     `json:"ext_msg_hash_norm"`
+	ExtMsgHash      index.HashType     `json:"ext_msg_hash"`
+	TraceRootTxHash index.HashType     `json:"trace_root_tx_hash"`
+	Timings         map[string]float64 `json:"timings"`
+}
+
+func NewMeasurement() *Measurement {
+	return &Measurement{
+		ExtMsgHashNorm:  "-",
+		ExtMsgHash:      "-",
+		TraceRootTxHash: "-",
+		Timings:         make(map[string]float64),
+	}
+}
+
+func (m *Measurement) PrintMeasurement() {
+	traceId := m.TraceRootTxHash
+	if m.Id == -1 {
+		traceId = "-"
+	}
+	line := fmt.Sprintf("MEASURE[id=%d;msg_hash_norm=%s;msg_hash=%s;trace_id=%s]",
+		m.Id, m.ExtMsgHashNorm, m.ExtMsgHash, traceId)
+	for step, elapsed := range m.Timings {
+		log.Printf("[v2] %s(step=%s;time=%f)", line, step, elapsed)
+	}
+}
+
+func (m *Measurement) MeasureStep(step string) {
+	elapsed := float64(time.Now().UnixNano()) / 1e9
+	m.Timings[step] = elapsed
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -792,12 +831,22 @@ func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientMa
 
 // pending (emulated) trace
 func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager) {
+	m := NewMeasurement()
+	m.ExtMsgHashNorm = index.HashType(traceExternalHashNorm)
+	m.MeasureStep("process_new_trace__start")
+
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
 	if err != nil {
 		log.Printf("[v2] Error loading raw traces (pending): %v, trace key: %s", err, traceExternalHashNorm)
 		return
 	}
+	m.Id, err = strconv.ParseInt(rawTraces[traceExternalHashNorm]["measurement_id"], 10, 64)
+	if err != nil {
+		m.Id = rand.Int64()
+	}
+	m.ExtMsgHash = index.HashType(rawTraces[traceExternalHashNorm]["root_node"])
+	m.MeasureStep("process_new_trace__raw_traces_loaded")
 
 	emulatedContext := index.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(rawTraces)
@@ -822,11 +871,15 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 			if tx, err := index.ScanTransaction(row); err == nil {
 				txs = append(txs, *tx)
 				txsMap[tx.Hash] = len(txs) - 1
+				if m.TraceRootTxHash == "-" && tx.TraceId != nil {
+					m.TraceRootTxHash = *tx.TraceId
+				}
 			} else {
 				log.Printf("[v2] Error scanning transaction (pending): %v", err)
 			}
 		}
 	}
+	m.MeasureStep("process_new_trace__transactions_parsed")
 
 	allAddresses := []string{}
 	var txHashes []string
@@ -877,6 +930,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
 		})
 	}
+	m.MeasureStep("process_new_trace__messages_marked")
 
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
@@ -899,6 +953,8 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	sort.Slice(txs, func(i, j int) bool {
 		return txs[i].Lt > txs[j].Lt
 	})
+	m.MeasureStep("process_new_trace__address_book_and_metadata_fetched")
+	m.PrintMeasurement()
 
 	manager.broadcast <- &TransactionsNotification{
 		Type:                  EventTransactions,
@@ -1034,12 +1090,22 @@ func processTransactionsTraceSnapshot(
 	manager *ClientManager,
 	channelHint string,
 ) {
+	m := NewMeasurement()
+	m.ExtMsgHashNorm = index.HashType(traceExternalHashNorm)
+	m.MeasureStep("process_new_" + channelHint + "_transactions__start")
+
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
 	if err != nil {
 		log.Printf("[v2] Error loading raw traces (%s): %v, trace key: %s", channelHint, err, traceExternalHashNorm)
 		return
 	}
+	m.Id, err = strconv.ParseInt(rawTraces[traceExternalHashNorm]["measurement_id"], 10, 64)
+	if err != nil {
+		m.Id = rand.Int64()
+	}
+	m.ExtMsgHash = index.HashType(rawTraces[traceExternalHashNorm]["root_node"])
+	m.MeasureStep("process_new_" + channelHint + "_transactions__raw_traces_loaded")
 
 	emulatedContext := index.NewEmptyContext(false)
 	if err := emulatedContext.FillFromRawData(rawTraces); err != nil {
@@ -1074,10 +1140,15 @@ func processTransactionsTraceSnapshot(
 		txs = append(txs, *tx)
 		txsMap[tx.Hash] = len(txs) - 1
 
+		if m.TraceRootTxHash == "-" && tx.TraceId != nil {
+			m.TraceRootTxHash = *tx.TraceId
+		}
+
 		if tx.Finality < traceFinality {
 			traceFinality = tx.Finality
 		}
 	}
+	m.MeasureStep("process_new_" + channelHint + "_transactions__transactions_parsed")
 
 	if len(txs) == 0 {
 		log.Printf("[v2] No transactions found for trace %s (%s)", traceExternalHashNorm, channelHint)
@@ -1135,6 +1206,7 @@ func processTransactionsTraceSnapshot(
 			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
 		})
 	}
+	m.MeasureStep("process_new_" + channelHint + "_transactions__messages_marked")
 
 	// Sort transactions by Lt descending (as documented).
 	sort.Slice(txs, func(i, j int) bool {
@@ -1160,6 +1232,9 @@ func processTransactionsTraceSnapshot(
 			shouldFetchMetadata,
 		)
 	}
+
+	m.MeasureStep("process_new_" + channelHint + "_transactions__address_book_and_metadata_fetched")
+	m.PrintMeasurement()
 
 	manager.broadcast <- &TransactionsNotification{
 		Type:                  EventTransactions,
@@ -1246,12 +1321,22 @@ func SubscribeToClassifiedTraces(ctx context.Context, rdb *redis.Client, manager
 }
 
 func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager) {
+	m := NewMeasurement()
+	m.ExtMsgHashNorm = index.HashType(traceExternalHashNorm)
+	m.MeasureStep("process_new_classified_trace__start")
+
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
 	if err != nil {
 		log.Printf("[v2] Error loading raw traces (classified): %v, trace key: %s", err, traceExternalHashNorm)
 		return
 	}
+	m.Id, err = strconv.ParseInt(rawTraces[traceExternalHashNorm]["measurement_id"], 10, 64)
+	if err != nil {
+		m.Id = rand.Int64()
+	}
+	m.ExtMsgHash = index.HashType(rawTraces[traceExternalHashNorm]["root_node"])
+	m.MeasureStep("process_new_classified_trace__raw_traces_loaded")
 
 	emulatedContext := index.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(rawTraces)
@@ -1282,6 +1367,9 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 				txHash := string(tx.Hash)
 				txHashes = append(txHashes, txHash)
 				txFinality[txHash] = tx.Finality
+				if m.TraceRootTxHash == "-" && tx.TraceId != nil {
+					m.TraceRootTxHash = *tx.TraceId
+				}
 			} else {
 				log.Printf("[v2] Error scanning transaction (classified): %v", err)
 			}
@@ -1349,6 +1437,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		actions = append(actions, action)
 		actionsAddresses = append(actionsAddresses, actionAddresses)
 	}
+	m.MeasureStep("process_new_classified_trace__actions_parsed")
 
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
@@ -1371,6 +1460,8 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 			shouldFetchMetadata,
 		)
 	}
+	m.MeasureStep("process_new_classified_trace__address_book_and_metadata_fetched")
+	m.PrintMeasurement()
 
 	// Pending actions
 	manager.broadcast <- &ActionsNotification{
