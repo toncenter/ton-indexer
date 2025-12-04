@@ -186,6 +186,10 @@ public:
             transaction_.publish("new_trace", trace_key_);
             
             transaction_.exec();
+            // {
+            //     double ts = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+            //     LOG(ERROR) << "MEASURE[" << td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << ts << " module=trace_inserter step=trace_inserted)";
+            // }
 
             promise_.set_value(td::Unit());
         } catch (const vm::VmError &e) {
