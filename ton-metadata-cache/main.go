@@ -31,18 +31,13 @@ type Config struct {
 func parseFlags() Config {
 	cfg := Config{}
 
-	flag.StringVar(&cfg.PostgresDSN, "postgres-dsn", "", "PostgreSQL connection DSN")
-	flag.StringVar(&cfg.PostgresReplicationDSN, "postgres-repl-dsn", "", "PostgreSQL replication connection DSN")
-	flag.StringVar(&cfg.RedisURL, "redis-url", "redis://localhost:6379", "Redis connection URL")
+	flag.StringVar(&cfg.PostgresDSN, "pg", "", "PostgreSQL connection DSN")
+	flag.StringVar(&cfg.PostgresReplicationDSN, "pg-repl", "", "PostgreSQL replication connection DSN")
+	flag.StringVar(&cfg.RedisURL, "redis", "", "Redis connection URL")
 	flag.StringVar(&cfg.ListenAddr, "listen", ":8000", "HTTP server listen address")
 	flag.BoolVar(&cfg.IsTestnet, "testnet", false, "Enable testnet mode for address formatting")
 
 	flag.Parse()
-
-	// Allow environment variables as fallback
-	if cfg.PostgresDSN == "" {
-		cfg.PostgresDSN = os.Getenv("POSTGRES_DSN")
-	}
 
 	return cfg
 }
@@ -51,7 +46,13 @@ func main() {
 	cfg := parseFlags()
 
 	if cfg.PostgresDSN == "" {
-		log.Fatal("PostgreSQL DSN is required. Use -postgres-dsn flag or set POSTGRES_DSN environment variable")
+		log.Fatal("PostgreSQL DSN is required. Use -pg flag")
+	}
+	if cfg.PostgresReplicationDSN == "" {
+		log.Fatal("PostgreSQL replication DSN is required. Use -pg-repl flag")
+	}
+	if cfg.RedisURL == "" {
+		log.Fatal("Redis connection string is required. Use -redis flag")
 	}
 
 	// Setup context with cancellation
