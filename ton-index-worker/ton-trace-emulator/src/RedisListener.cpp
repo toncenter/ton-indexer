@@ -75,7 +75,10 @@ void RedisListener::on_new_message(td::Ref<vm::Cell> msg_cell) {
   if (!inserted) {
     return;
   }
-  LOG(ERROR) << "MEASURE[" << td::base64url_encode(msg_hash_norm.as_slice()) << "](unixtime=" << td::Time::now() << " module=redis_listener step=redis_listener_got_message)";
+  {
+    double ts = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+    LOG(ERROR) << "MEASURE[" << td::base64url_encode(msg_hash_norm.as_slice()) << "](unixtime=" << ts << " module=redis_listener step=redis_listener_got_message)";
+  }
 
   auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), msg_hash_norm](td::Result<Trace> R) mutable {
     if (R.is_error()) {
@@ -102,14 +105,20 @@ void RedisListener::set_mc_data_state(MasterchainBlockDataState mc_data_state) {
 
 void RedisListener::trace_error(td::Bits256 ext_in_msg_hash_norm, td::Status error) {
   LOG(ERROR) << "Failed to emulate trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << error;
-  LOG(ERROR) << "MEASURE[" << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << td::Time::now() << " module=redis_listener step=redis_listener_trace_emulate_failed)";
+  {
+    double ts = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+    LOG(ERROR) << "MEASURE[" << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << ts << " module=redis_listener step=redis_listener_trace_emulate_failed)";
+  }
   known_ext_msgs_.erase(ext_in_msg_hash_norm);
 }
 
 void RedisListener::trace_received(Trace trace) {
   LOG(INFO) << "Emulated trace from msg " << td::base64_encode(trace.ext_in_msg_hash_norm.as_slice()) << ": " 
         << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
-  LOG(ERROR) << "MEASURE[" << td::base64_encode(trace.ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << td::Time::now() << " module=redis_listener step=redis_listener_trace_emulated)";
+  {
+    double ts = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+    LOG(ERROR) << "MEASURE[" << td::base64_encode(trace.ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << ts << " module=redis_listener step=redis_listener_trace_emulated)";
+  }
   if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm](td::Result<Trace> R) {
       if (R.is_error()) {
@@ -126,19 +135,28 @@ void RedisListener::trace_received(Trace trace) {
 }
 
 void RedisListener::trace_interfaces_error(td::Bits256 ext_in_msg_hash_norm, td::Status error) {
-    LOG(ERROR) << "Failed to detect interfaces on trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << error;
-  LOG(ERROR) << "MEASURE[" << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << td::Time::now() << " module=redis_listener step=redis_listener_trace_interfaces_detection_failed)";
+  LOG(ERROR) << "Failed to detect interfaces on trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << error;
+  {
+    double ts = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+    LOG(ERROR) << "MEASURE[" << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << ts << " module=redis_listener step=redis_listener_trace_interfaces_detection_failed)";
+  }
 }
 
 void RedisListener::finish_processing(Trace trace) {
-    LOG(ERROR) << "MEASURE[" << td::base64_encode(trace.ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << td::Time::now() << " module=redis_listener step=redis_listener_trace_interfaces_detected)";
-    auto P = td::PromiseCreator::lambda([ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm](td::Result<td::Unit> R) {
-      if (R.is_error()) {
-        LOG(ERROR) << "Failed to insert trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << R.move_as_error();
-        return;
-      }
-      LOG(DEBUG) << "Successfully inserted trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice());
-      LOG(ERROR) << "MEASURE[" << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << td::Time::now() << " module=redis_listener step=redis_listener_insert_complete)";
-    });
-    trace_processor_(std::move(trace), std::move(P));
+  {
+    double ts = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+    LOG(ERROR) << "MEASURE[" << td::base64_encode(trace.ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << ts << " module=redis_listener step=redis_listener_trace_interfaces_detected)";
+  }
+  auto P = td::PromiseCreator::lambda([ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm](td::Result<td::Unit> R) {
+    if (R.is_error()) {
+      LOG(ERROR) << "Failed to insert trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << R.move_as_error();
+      return;
+    }
+    LOG(DEBUG) << "Successfully inserted trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice());
+    {
+      double ts = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+      LOG(ERROR) << "MEASURE[" << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << "](unixtime=" << ts << " module=redis_listener step=redis_listener_insert_complete)";
+    }
+  });
+  trace_processor_(std::move(trace), std::move(P));
 }
