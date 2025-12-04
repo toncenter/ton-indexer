@@ -6,6 +6,7 @@ import time
 import traceback
 from collections import defaultdict
 from typing import List, Tuple, Set, Dict
+from datetime import datetime
 
 import msgpack
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,6 +108,7 @@ class PendingTraceClassifierWorker(mp.Process):
 
         for trace_key in trace_keys:
             try:
+                logger.error(f"MEASURE[{trace_key}](unixtime={datetime.now().timestamp()}) module=event_classifier step=classifier_extract_accounts_started)")
                 trace_map = await redis.client.hgetall(trace_key)
                 trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
 
@@ -140,6 +142,7 @@ class PendingTraceClassifierWorker(mp.Process):
         # Process traces
         for trace_key, (trace, trace_map) in traces_data.items():
             try:
+                logger.error(f"MEASURE[{trace_key}](unixtime={datetime.now().timestamp()}) module=event_classifier step=classifier_processing_started)")
                 # Setup repositories
                 emulated_repository = EmulatedTransactionsInterfaceRepository(trace_map)
                 if use_combined:
@@ -172,6 +175,7 @@ class PendingTraceClassifierWorker(mp.Process):
                         self.emulated_traces_redis_response_channel,
                         trace_key
                     )
+                logger.error(f"MEASURE[{trace_key}](unixtime={datetime.now().timestamp()}) module=event_classifier step=classifier_processing_finished)")
 
                 # Build index
                 index = defaultdict(set)
@@ -192,6 +196,7 @@ class PendingTraceClassifierWorker(mp.Process):
                 # Publish referenced accounts
                 for r in referenced_accounts:
                     await redis.client.publish('referenced_accounts', f"{r};{trace_key}")
+                logger.error(f"MEASURE[{trace_key}](unixtime={datetime.now().timestamp()}) module=event_classifier step=classifier_completed)")
 
                 results.append((trace_key, True))
 
@@ -277,6 +282,7 @@ async def start_emulated_traces_processing(settings: Settings,
                 trace_id = message['data'].decode('utf-8')
                 pending_traces.append(trace_id)
                 logger.debug(f"Added trace {trace_id} to batch (size: {len(pending_traces)})")
+                logger.error(f"MEASURE[{trace_id}](unixtime={datetime.now().timestamp()}) module=event_classifier step=classifier_trace_queued)")
 
             if not pending_traces:
                 continue
