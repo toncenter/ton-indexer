@@ -16,7 +16,7 @@ import (
 )
 
 // utils
-func getAccountAddressFriendly(account string, code_hash *string, is_testnet bool) string {
+func GetAccountAddressFriendly(account string, code_hash *string, is_testnet bool) string {
 	addr, err := address.ParseRawAddr(strings.Trim(account, " "))
 	if err != nil {
 		return "addr_none"
@@ -1509,6 +1509,14 @@ func queryJettonWalletsTokenInfo(addr_list []string, conn *pgxpool.Conn, ctx con
 }
 
 func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
+	if settings.UseCache {
+		metadata, err := AddressInfoCacheClient.GetMetadata(addr_list)
+		if err != nil {
+			log.Println("Error getting metadata from cache: ", err)
+		} else {
+			return metadata, nil
+		}
+	}
 	token_info_map := map[string][]TokenInfo{}
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -1675,6 +1683,14 @@ func queryActionsAccountsImpl(actions []Action, conn *pgxpool.Conn) ([]Action, e
 }
 
 func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
+	if settings.UseCache {
+		book, err := AddressInfoCacheClient.GetAddressBook(addr_list)
+		if err != nil {
+			log.Println("Error getting address book from cache: ", err)
+		} else {
+			return book, nil
+		}
+	}
 	book := AddressBook{}
 	quote_addr_list := []string{}
 	for _, item := range addr_list {
@@ -1702,7 +1718,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 			var code_hash *string
 			var methods *[]uint32
 			if err := rows.Scan(&account, &code_hash, &methods); err == nil {
-				addr_str := getAccountAddressFriendly(account, code_hash, settings.IsTestnet)
+				addr_str := GetAccountAddressFriendly(account, code_hash, settings.IsTestnet)
 
 				// detect interfaces
 				var interfaces []string
@@ -1774,7 +1790,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		if rec, ok := book_tmp[account]; ok {
 			book[addr] = rec
 		} else {
-			addr_str := getAccountAddressFriendly(account, nil, settings.IsTestnet)
+			addr_str := GetAccountAddressFriendly(account, nil, settings.IsTestnet)
 			emptyInterfaces := []string{}
 			book[addr] = AddressBookRow{
 				UserFriendly: &addr_str,

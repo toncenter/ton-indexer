@@ -65,6 +65,29 @@ COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
 RUN cd /go/app && swag init && go build -o ton-emulate-go ./main.go
 
+## build metadata cache service ton-metadata-cache
+FROM golang:trixie AS metadata-cache-builder
+
+RUN apt-get update -y \
+    && apt install -y dnsutils libpq-dev libsecp256k1-dev libsodium-dev libhiredis-dev \
+    && rm -rf /var/lib/{apt,dpkg,cache,log}/
+
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+
+ADD ton-index-go/ /go/ton-index-go/
+ADD ton-metadata-cache/cache/ /go/app/cache/
+ADD ton-metadata-cache/repl/ /go/app/repl/
+ADD ton-metadata-cache/models/ /go/app/models/
+ADD ton-metadata-cache/loader/ /go/app/loader/
+ADD ton-metadata-cache/main.go /go/app/main.go
+ADD ton-metadata-cache/db.go /go/app/db.go
+ADD ton-metadata-cache/handler.go /go/app/handler.go
+ADD ton-metadata-cache/go.mod /go/app/go.mod
+ADD ton-metadata-cache/go.sum /go/app/go.sum
+COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
+COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
+RUN cd /go/app && go build -o ton-metadata-cache ./main.go
+
 
 ## build metadata fetcher service ton-metadata-fetcher
 FROM golang:trixie AS metadata-fetcher-builder
@@ -124,6 +147,18 @@ RUN apt-get update \
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=emulate-api-builder /go/app/ton-emulate-go /usr/local/bin/ton-emulate-go
 COPY ton-emulate-go/entrypoint.sh /app/entrypoint.sh
+
+ENTRYPOINT [ "/app/entrypoint.sh" ]
+
+## metadata cache service image
+FROM ubuntu:24.04 AS metadata-cache
+RUN apt-get update \
+    && apt install --yes curl dnsutils libpq5 libsecp256k1-1 libsodium23 libhiredis1.1.0 \
+    && rm -rf /var/lib/{apt,dpkg,cache,log}/
+
+COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
+COPY --from=metadata-cache-builder /go/app/ton-metadata-cache /usr/local/bin/ton-metadata-cache
+COPY ton-metadata-cache/entrypoint.sh /app/entrypoint.sh
 
 ENTRYPOINT [ "/app/entrypoint.sh" ]
 
