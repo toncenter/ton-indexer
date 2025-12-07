@@ -34,7 +34,7 @@ func parseFlags() Config {
 	flag.StringVar(&cfg.PostgresDSN, "pg", "", "PostgreSQL connection DSN")
 	flag.StringVar(&cfg.PostgresReplicationDSN, "pg-repl", "", "PostgreSQL replication connection DSN")
 	flag.StringVar(&cfg.RedisURL, "redis", "", "Redis connection URL")
-	flag.StringVar(&cfg.ListenAddr, "listen", ":8000", "HTTP server listen address")
+	flag.StringVar(&cfg.ListenAddr, "bind", ":8000", "HTTP server listen address")
 	flag.BoolVar(&cfg.IsTestnet, "testnet", false, "Enable testnet mode for address formatting")
 
 	flag.Parse()

@@ -86,7 +86,7 @@ ADD ton-metadata-cache/go.mod /go/app/go.mod
 ADD ton-metadata-cache/go.sum /go/app/go.sum
 COPY --from=core-builder /app/build/ton-marker/libton-marker* /usr/lib/
 COPY --from=core-builder /app/ton-marker/src/wrapper.h /usr/local/include/wrapper.h
-RUN cd /go/app && go build -o ton-metadata-cache ./main.go
+RUN cd /go/app && go build -o ton-metadata-cache .
 
 
 ## build metadata fetcher service ton-metadata-fetcher

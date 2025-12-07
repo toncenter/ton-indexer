@@ -279,13 +279,14 @@ services:
         condition: service_completed_successfully
     secrets:
       - postgres_password
-    command: --redis ${TON_METADATA_CACHE_REDIS:redis://localhost:6379} --pg postgresql://${POSTGRES_USER}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB} --pg-repl=${TON_MEDATA_CACHE_PG_REPL?}
     ports:
       - target: 8000
-        published: ${TON_METADATA_CACHE_PORT:-8082}
+        published: ${TON_METADATA_CACHE_PORT:-18082}
     environment:
       <<: *index-pg-access
       TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
+      TON_METADATA_CACHE_PG_REPL: $TON_METADATA_CACHE_PG_REPL
+      TON_METADATA_CACHE_REDIS: $TON_METADATA_CACHE_REDIS
     restart: unless-stopped
     networks:
       internal:
