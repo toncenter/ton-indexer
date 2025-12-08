@@ -5,7 +5,6 @@
 #include "common/delay.h"
 #include "validator/interfaces/block-handle.h"
 
-
 void TraceEmulatorScheduler::start_up() {
     alarm_timestamp() = td::Timestamp::in(0.1);
 
@@ -117,15 +116,22 @@ void TraceEmulatorScheduler::emulate_blocks() {
     auto it = blocks_to_emulate_.find(last_emulated_seqno_ + 1);
     while(it != blocks_to_emulate_.end()) {
         LOG(ERROR) << "Emulating mc block " << last_emulated_seqno_ + 1;
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), blkid = it->second.shard_blocks_[0].block_data->block_id().id](td::Result<> R) {
+        std::vector<ton::BlockId> block_ids;
+        block_ids.reserve(it->second.shard_blocks_diff_.size());
+        for (const auto& shard_block : it->second.shard_blocks_diff_) {
+            block_ids.push_back(shard_block.block_data->block_id().id);
+        }
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), blkid = it->second.shard_blocks_[0].block_data->block_id().id, block_ids, tracker = invalidated_trace_tracker_.get()](td::Result<> R) mutable {
             if (R.is_error()) {
                 LOG(ERROR) << "Error emulating mc block " << blkid.to_str();
                 return;
             }
             LOG(INFO) << "Success emulating mc block " << blkid.to_str();
+            td::actor::send_closure(tracker, &InvalidatedTraceTracker::finalized_mc_block_emulated, std::move(block_ids));
         });
         auto actor_name = PSLICE() << "McBlockEmulator" << last_emulated_seqno_ + 1;
-        td::actor::create_actor<McBlockEmulator>(actor_name, it->second, insert_trace_, std::move(P)).release();
+        auto trace_processor = make_finalized_trace_processor(it->second);
+        td::actor::create_actor<McBlockEmulator>(actor_name, it->second, std::move(trace_processor), std::move(P)).release();
 
         blocks_to_emulate_.erase(it);
         last_emulated_seqno_++;
@@ -186,6 +192,7 @@ void TraceEmulatorScheduler::confirmed_block_fetched(ton::BlockIdExt block_id, B
     LOG(INFO) << "Collected confirmed shard block " << block_id.to_str() << " created " << td::StringBuilder::FixedDouble(time_diff, 2) << "s ago";
 
     confirmed_blocks_inflight_.erase(block_id);
+    td::actor::send_closure(invalidated_trace_tracker_, &InvalidatedTraceTracker::register_pending_block, block_data_state.handle->id());
     confirmed_block_storage_.emplace(block_id, std::move(block_data_state));
     confirmed_block_queue_.push_back(block_id);
 
@@ -206,8 +213,7 @@ void TraceEmulatorScheduler::process_confirmed_blocks() {
             continue;
         }
         if (!latest_config_ || latest_shard_states_.empty()) {
-            LOG(WARNING) << "Deferring confirmed shard block " << block_id.to_str() << " due to missing masterchain context";
-            confirmed_block_queue_.push_front(block_id);
+            LOG(WARNING) << "Skipping confirmed shard block " << block_id.to_str() << " due to missing masterchain context";
             break;
         }
 
@@ -231,11 +237,36 @@ void TraceEmulatorScheduler::process_confirmed_blocks() {
             }
         });
         auto actor_name = PSLICE() << "ConfirmedBlockEmulator" << block_id.seqno();
+        auto trace_processor = make_confirmed_trace_processor(block_id);
         td::actor::create_actor<ConfirmedBlockEmulator>(actor_name, std::move(block_data_state), latest_config_,
-                                                        std::move(shard_snapshot_copy), insert_trace_,
+                                                        std::move(shard_snapshot_copy), std::move(trace_processor),
                                                         std::move(P))
             .release();
     }
+}
+
+std::function<void(Trace, td::Promise<td::Unit>)> TraceEmulatorScheduler::make_confirmed_trace_processor(const ton::BlockIdExt& block_id_ext) {
+    return [insert_trace = insert_trace_, block_id_ext, tracker = invalidated_trace_tracker_.get()](Trace trace, td::Promise<td::Unit> promise) mutable {
+        td::actor::send_closure(tracker, &InvalidatedTraceTracker::add_confirmed_trace, block_id_ext, trace.ext_in_msg_hash_norm);
+        insert_trace(std::move(trace), std::move(promise));
+    };
+}
+
+std::function<void(Trace, td::Promise<td::Unit>)> TraceEmulatorScheduler::make_finalized_trace_processor(const MasterchainBlockDataState& mc_data_state) {
+    std::unordered_map<ton::BlockId, ton::BlockIdExt, BlockIdHasher, BlockIdEq> shard_block_ids;
+    for (const auto& shard_block : mc_data_state.shard_blocks_diff_) {
+        shard_block_ids.emplace(shard_block.block_data->block_id().id, shard_block.block_data->block_id());
+    }
+
+    return [insert_trace = insert_trace_, shard_block_ids = std::move(shard_block_ids), tracker = invalidated_trace_tracker_.get()](Trace trace, td::Promise<td::Unit> promise) mutable {
+        auto block_id_it = shard_block_ids.find(trace.root->block_id);
+        if (block_id_it != shard_block_ids.end()) {
+            td::actor::send_closure(tracker, &InvalidatedTraceTracker::add_finalized_trace, block_id_it->second, trace.ext_in_msg_hash_norm);
+        } else {
+            LOG(WARNING) << "Finalized trace belongs to unknown block " << trace.root->block_id.to_str();
+        }
+        insert_trace(std::move(trace), std::move(promise));
+    };
 }
 
 // int seqno = 37786481;
