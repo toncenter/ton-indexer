@@ -4,6 +4,8 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <memory>
+#include <vector>
+#include <functional>
 #include "td/actor/actor.h"
 #include "DbScanner.h"
 #include "OverlayListener.h"
@@ -11,7 +13,8 @@
 #include "TraceEmulator.h"
 #include "TraceInserter.h"
 #include "BlockEmulator.h"
-
+#include "IndexData.h"
+#include "InvalidatedTraceTracker.h"
 
 class TraceEmulatorScheduler : public td::actor::Actor {
   private: 
@@ -42,6 +45,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     td::actor::ActorOwn<OverlayListener> overlay_listener_;
     td::actor::ActorOwn<RedisListener> redis_listener_;
     td::actor::ActorOwn<ITraceInsertManager> insert_manager_;
+    td::actor::ActorOwn<InvalidatedTraceTracker> invalidated_trace_tracker_;
 
     void got_last_mc_seqno(ton::BlockSeqno last_known_seqno);
     void fetch_seqnos();
@@ -54,6 +58,8 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void confirmed_block_fetched(ton::BlockIdExt block_id, BlockDataState block_data_state);
     void confirmed_block_error(ton::BlockIdExt block_id, td::Status error);
     void process_confirmed_blocks();
+    std::function<void(Trace, td::Promise<td::Unit>)> make_confirmed_trace_processor(const ton::BlockIdExt& block_id_ext);
+    std::function<void(Trace, td::Promise<td::Unit>)> make_finalized_trace_processor(const MasterchainBlockDataState& mc_data_state);
 
     void alarm();
 
@@ -66,6 +72,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
       insert_trace_ = [insert_manager = insert_manager_.get()](Trace trace, td::Promise<td::Unit> promise) {
         td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace), std::move(promise));
       };
+      invalidated_trace_tracker_ = td::actor::create_actor<InvalidatedTraceTracker>("InvalidatedTraceTracker", redis_dsn_);
     };
 
     virtual void start_up() override;
