@@ -1622,7 +1622,6 @@ const (
 	OpPing        Operation = "ping"
 	OpSubscribe   Operation = "subscribe" // replaces entire subscription snapshot
 	OpUnsubscribe Operation = "unsubscribe"
-	OpConfigure   Operation = "configure"
 )
 
 type Envelope struct {
@@ -1642,14 +1641,6 @@ type SubscribeRequest struct {
 
 type UnsubscribeRequest struct {
 	Addresses []string `json:"addresses"`
-}
-
-type ConfigureRequest struct {
-	IncludeAddressBook   *bool                   `json:"include_address_book"`
-	IncludeMetadata      *bool                   `json:"include_metadata"`
-	SupportedActionTypes []string                `json:"supported_action_types"`
-	ActionTypes          []string                `json:"action_types"`
-	MinFinality          *emulated.FinalityState `json:"min_finality"`
 }
 
 func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
@@ -1796,34 +1787,6 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				client.mu.Unlock()
 
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "subscribed"})
-				_ = c.WriteMessage(websocket.TextMessage, ack)
-
-			case OpConfigure:
-				var req ConfigureRequest
-				if err := json.Unmarshal(msg, &req); err != nil {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid configure request: %v", err))
-					continue
-				}
-
-				client.mu.Lock()
-				if req.IncludeAddressBook != nil {
-					client.Subscription.IncludeAddressBook = *req.IncludeAddressBook
-				}
-				if req.IncludeMetadata != nil {
-					client.Subscription.IncludeMetadata = *req.IncludeMetadata
-				}
-				if len(req.SupportedActionTypes) > 0 {
-					client.Subscription.SupportedActionTypes = index.ExpandActionTypeShortcuts(req.SupportedActionTypes)
-				}
-				if len(req.ActionTypes) > 0 {
-					client.Subscription.ActionTypes = req.ActionTypes
-				}
-				if req.MinFinality != nil {
-					client.Subscription.MinFinality = *req.MinFinality
-				}
-				client.mu.Unlock()
-
-				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "configured"})
 				_ = c.WriteMessage(websocket.TextMessage, ack)
 
 			default:
