@@ -566,7 +566,7 @@ func (fs *FinalityState) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch s {
-	case "emulated":
+	case "pending":
 		*fs = FinalityStatePending
 	case "confirmed":
 		*fs = FinalityStateConfirmed
