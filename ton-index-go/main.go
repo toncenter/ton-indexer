@@ -56,7 +56,7 @@ var settings Settings
 var emulatedTracesRepository *emulated.EmulatedTracesRepository
 
 //	@title			TON Index (Go)
-//	@version		1.2.4
+//	@version		1.2.5
 //	@description	TON Index collects data from a full node to PostgreSQL database and provides convenient API to an indexed blockchain.
 //  @query.collection.format multi
 
@@ -2145,8 +2145,8 @@ func main() {
 		os.Exit(63)
 	}
 
-    // get database version
-    service_version := index.LoadVersion(pool.Pool)
+	// get database version
+	service_version := index.LoadVersion(pool.Pool)
 
 	// Load marketplace cache on startup
 	if err = index.LoadMarketplaceCache(pool.Pool); err != nil {
