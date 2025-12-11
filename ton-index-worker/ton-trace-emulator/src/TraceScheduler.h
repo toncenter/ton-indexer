@@ -15,6 +15,8 @@
 #include "BlockEmulator.h"
 #include "IndexData.h"
 #include "InvalidatedTraceTracker.h"
+#include "auto/tl/ton_api.h"
+#include "DbEventListener.h"
 
 class TraceEmulatorScheduler : public td::actor::Actor {
   private: 
@@ -24,7 +26,9 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::string redis_dsn_;
     std::string input_redis_channel_;
     std::string working_dir_;
+    std::string db_event_fifo_path_;
     std::function<void(Trace, td::Promise<td::Unit>)> insert_trace_;
+    td::actor::ActorOwn<DbEventListener> db_event_listener_;
 
     ton::BlockSeqno last_known_seqno_{0};
     ton::BlockSeqno last_fetched_seqno_{0};
@@ -47,6 +51,9 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     td::actor::ActorOwn<ITraceInsertManager> insert_manager_;
     td::actor::ActorOwn<InvalidatedTraceTracker> invalidated_trace_tracker_;
 
+    void handle_block_candidate(ton::BlockIdExt block_id);
+    void handle_block_applied(ton::BlockIdExt block_id);
+
     void got_last_mc_seqno(ton::BlockSeqno last_known_seqno);
     void fetch_seqnos();
     void fetch_error(std::uint32_t seqno, td::Status error);
@@ -61,14 +68,16 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::function<void(Trace, td::Promise<td::Unit>)> make_confirmed_trace_processor(const ton::BlockIdExt& block_id_ext);
     std::function<void(Trace, td::Promise<td::Unit>)> make_finalized_trace_processor(const MasterchainBlockDataState& mc_data_state);
 
-    void alarm();
+    void alarm() override;
 
   public:
     TraceEmulatorScheduler(td::actor::ActorId<DbScanner> db_scanner, td::actor::ActorId<ITraceInsertManager> insert_manager,
                            std::string global_config_path, std::string inet_addr, 
-                           std::string redis_dsn, std::string input_redis_channel, std::string working_dir) :
+                           std::string redis_dsn, std::string input_redis_channel, std::string working_dir,
+                           std::string db_event_fifo_path) :
         db_scanner_(db_scanner), insert_manager_(insert_manager), global_config_path_(global_config_path), 
-        inet_addr_(inet_addr), redis_dsn_(redis_dsn), input_redis_channel_(input_redis_channel), working_dir_(std::move(working_dir)) {
+        inet_addr_(inet_addr), redis_dsn_(redis_dsn), input_redis_channel_(input_redis_channel),
+        working_dir_(std::move(working_dir)), db_event_fifo_path_(std::move(db_event_fifo_path)) {
       insert_trace_ = [insert_manager = insert_manager_.get()](Trace trace, td::Promise<td::Unit> promise) {
         td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace), std::move(promise));
       };
@@ -76,4 +85,6 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     };
 
     virtual void start_up() override;
+
+    void handle_db_event(ton::tl_object_ptr<ton::ton_api::db_Event> event);
 };
