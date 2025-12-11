@@ -26,6 +26,7 @@ int main(int argc, char *argv[]) {
   
   std::string global_config_path;
   std::string inet_addr;
+  std::string db_event_fifo_path;
   
   td::OptionParser p;
   p.set_description("Emulate TON traces");
@@ -73,6 +74,10 @@ int main(int argc, char *argv[]) {
     inet_addr = fname.str();
   });
 
+  p.add_option('\0', "db-event-fifo", "Path to FIFO pipe for DB events", [&](td::Slice fname) { 
+    db_event_fifo_path = fname.str();
+  });
+
 
   auto S = p.run(argc, argv);
   if (S.is_error()) {
@@ -103,7 +108,7 @@ int main(int argc, char *argv[]) {
     db_scanner = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir, 0.05f);
     insert_manager = td::actor::create_actor<RedisInsertManager>("RedisInsertManager", redis_dsn);
     td::actor::create_actor<TraceEmulatorScheduler>("integritychecker", db_scanner.get(), insert_manager.get(), 
-      global_config_path, inet_addr, redis_dsn, redis_channel, working_dir).release();
+      global_config_path, inet_addr, redis_dsn, redis_channel, working_dir, db_event_fifo_path).release();
   });
   
   scheduler.run();

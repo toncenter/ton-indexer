@@ -2,8 +2,56 @@
 #include "BlockEmulator.h"
 #include "TraceInserter.h"
 #include "td/utils/filesystem.h"
+#include "td/utils/Status.h"
 #include "common/delay.h"
 #include "validator/interfaces/block-handle.h"
+#include "tl-utils/common-utils.hpp"
+#include "ton/ton-tl.hpp"
+#include "td/utils/overloaded.h"
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+
+
+void TraceEmulatorScheduler::handle_db_event(ton::tl_object_ptr<ton::ton_api::db_Event> event) {
+    ton::ton_api::downcast_call(
+        *event, td::overloaded(
+                     // for now blockCandidateReceived and blockSigned are processed the same way - as confirmed
+                    [&](ton::ton_api::db_event_blockCandidateReceived &ev) {
+                        LOG(WARNING) << "db_event_blockCandidateReceived: " << ton::create_block_id(ev.block_id_).to_str();
+                        handle_block_candidate(ton::create_block_id(ev.block_id_));
+                    },
+                    [&](ton::ton_api::db_event_blockApplied &ev) {
+                        LOG(WARNING) << "db_event_blockApplied: "<< ton::create_block_id(ev.block_id_).to_str();
+                        handle_block_applied(ton::create_block_id(ev.block_id_));
+                    },
+                    [&](ton::ton_api::db_event_blockSigned &ev) {
+                        LOG(WARNING) << "db_event_blockSigned: " << ton::create_block_id(ev.block_id_).to_str();
+                        handle_block_candidate(ton::create_block_id(ev.block_id_));
+                    }));
+}
+
+void TraceEmulatorScheduler::handle_block_candidate(ton::BlockIdExt block_id) {
+    if (block_id.is_masterchain()) {
+        return;
+    }
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<td::Unit> R) {
+        R.ensure();
+        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::enqueue_confirmed_block, block_id);
+    });
+    td::actor::send_closure(db_scanner_, &DbScanner::request_catch_up, std::move(P));
+}
+
+void TraceEmulatorScheduler::handle_block_applied(ton::BlockIdExt block_id) {
+    if (!block_id.is_masterchain()) {
+        return;
+    }
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<td::Unit> R) {
+        R.ensure();
+        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, block_id.seqno());
+    });
+    td::actor::send_closure(db_scanner_, &DbScanner::request_catch_up, std::move(P));
+}
 
 void TraceEmulatorScheduler::start_up() {
     alarm_timestamp() = td::Timestamp::in(0.1);
@@ -18,6 +66,12 @@ void TraceEmulatorScheduler::start_up() {
         LOG(WARNING) << "Input redis queue name is empty. RedisListener was not started.";
     } else {
         redis_listener_ = td::actor::create_actor<RedisListener>("RedisListener", redis_dsn_, input_redis_channel_, insert_trace_);
+    }
+
+    if (db_event_fifo_path_.empty()) {
+        LOG(WARNING) << "DB events FIFO path is empty. Falling back to polling.";
+    } else {
+        db_event_listener_ = td::actor::create_actor<DbEventListener>("DbEventListener", db_event_fifo_path_, actor_id(this));
     }
 }
 
@@ -43,11 +97,13 @@ void TraceEmulatorScheduler::got_last_mc_seqno(ton::BlockSeqno new_last_known_se
     }
 
     last_known_seqno_ = new_last_known_seqno;
+    fetch_seqnos();
 }
 
 void TraceEmulatorScheduler::fetch_seqnos() {
     for (auto it = seqnos_to_fetch_.begin(); it != seqnos_to_fetch_.end(); ) {
         auto seqno = *it;
+        LOG(INFO) << "Fetching seqno " << seqno;
 
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), seqno](td::Result<MasterchainBlockDataState> R) {
             if (R.is_error()) {
@@ -202,6 +258,9 @@ void TraceEmulatorScheduler::confirmed_block_fetched(ton::BlockIdExt block_id, B
 void TraceEmulatorScheduler::confirmed_block_error(ton::BlockIdExt block_id, td::Status error) {
     confirmed_blocks_inflight_.erase(block_id);
     LOG(ERROR) << "Failed to collect confirmed shard block " << block_id.to_str() << ": " << error;
+    ton::delay_action([SelfId = actor_id(this), block_id]() {
+        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::enqueue_confirmed_block, block_id);
+    }, td::Timestamp::in(0.1));
 }
 
 void TraceEmulatorScheduler::process_confirmed_blocks() {
@@ -272,18 +331,19 @@ std::function<void(Trace, td::Promise<td::Unit>)> TraceEmulatorScheduler::make_f
 // int seqno = 37786481;
 
 void TraceEmulatorScheduler::alarm() {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ton::BlockSeqno> R){
-        if (R.is_error()) {
-            LOG(ERROR) << "Failed to update last seqno: " << R.move_as_error();
-            return;
-        }
-        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, R.move_as_ok());
-        // td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, seqno++); // for debugging
-    });
-    td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
+    if (db_event_fifo_path_.empty()) {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<ton::BlockSeqno> R){
+            if (R.is_error()) {
+                LOG(ERROR) << "Failed to update last seqno: " << R.move_as_error();
+                return;
+            }
+            td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, R.move_as_ok());
+        });
+        td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
+        scan_unconfirmed_shards();
+    }
 
     fetch_seqnos();
-    scan_unconfirmed_shards();
 
     if (next_statistics_flush_.is_in_past()) {
         ton::delay_action([working_dir = this->working_dir_]() {

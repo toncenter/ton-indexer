@@ -331,13 +331,22 @@ void DbScanner::fetch_block_by_id(ton::BlockIdExt block_id, td::Promise<BlockDat
         td::actor::create_actor<GetBlockDataState>("getblockdatastate-single", db_.get(), R.move_as_ok(),
                                                    std::move(promise))
             .release();
-      });
+  });
   td::actor::send_closure(db_, &RootDb::get_block_handle, block_id, std::move(P));
 }
 
-void DbScanner::catch_up_with_primary() {
-  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), this, timer = td::Timer{}](td::Result<td::Unit> R) mutable {
+void DbScanner::request_catch_up(td::Promise<td::Unit> promise) {
+  if (mode_ == dbs_readonly || db_.empty()) {
+    promise.set_error(td::Status::Error("cannot catch up in readonly mode"));
+    return;
+  }
+  catch_up_with_primary(std::move(promise));
+}
+
+void DbScanner::catch_up_with_primary(td::Promise<td::Unit> promise) {
+  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), this, timer = td::Timer{}, p = std::move(promise)](td::Result<td::Unit> R) mutable {
     R.ensure();
+    p.set_value(td::Unit());
     this->is_ready_ = true;
     timer.pause();
     g_statistics.record_time(CATCH_UP_WITH_PRIMARY, timer.elapsed() * 1e3);
@@ -358,5 +367,9 @@ void DbScanner::alarm() {
     return;
   }
 
-  td::actor::send_closure(actor_id(this), &DbScanner::catch_up_with_primary);
+  auto P = td::PromiseCreator::lambda([](td::Result<td::Unit> R) {
+    R.ensure();
+  });
+
+  td::actor::send_closure(actor_id(this), &DbScanner::catch_up_with_primary, std::move(P));
 }
