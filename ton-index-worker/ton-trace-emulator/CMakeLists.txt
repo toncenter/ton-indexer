@@ -20,6 +20,7 @@ target_compile_features(ton-trace-emulator-core PRIVATE cxx_std_20)
 
 add_executable(ton-trace-emulator
     src/main.cpp
+    src/DbEventListener.cpp
     src/TraceScheduler.cpp
     src/InvalidatedTraceTracker.cpp
     src/TraceInserter.cpp
