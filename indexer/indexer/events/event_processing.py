@@ -21,6 +21,9 @@ from indexer.events.blocks.auction import (
     DnsReleaseMatcher,
     UpdateSaleMatcher
 )
+from indexer.events.blocks.cocoon import (
+    CocoonWorkerPayoutMatcher,
+)
 from indexer.events.blocks.basic_blocks import (
     CallContractBlock,
     ContractDeploy,
@@ -272,7 +275,8 @@ matchers = [
     LayerZeroSendTokensMatcher(),
     LayerZeroReceiveMatcher(),
     LayerZeroCommitPacketMatcher(),
-    LayerZeroDvnVerifyMatcher()
+    LayerZeroDvnVerifyMatcher(),
+    CocoonWorkerPayoutMatcher()
 ]
 
 trace_post_processors = [

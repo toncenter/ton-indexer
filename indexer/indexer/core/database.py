@@ -492,6 +492,13 @@ class Action(Base):
         Column("uln", String),
         Column("uln_connection", String),
     ]))
+    cocoon_worker_payout_data = Column(CompositeType("cocoon_worker_payout_details", [
+        Column("payout_type", String),  # "regular" or "last"
+        Column("query_id", Numeric),
+        Column("new_tokens", Numeric),
+        Column("worker_state", Integer),
+        Column("worker_tokens", Numeric),
+    ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)

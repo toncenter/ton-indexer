@@ -1016,6 +1016,26 @@ def _fill_coffee_staking_claim_rewards(block: CoffeeStakingClaimRewardsBlock, ac
     action.amount = block.data.amount.value
 
 
+def _fill_cocoon_worker_payout_action(block, action: Action):
+    # import here to avoid circular dependency
+    from indexer.events.blocks.cocoon import CocoonWorkerPayoutBlock
+    
+    if not isinstance(block, CocoonWorkerPayoutBlock):
+        return
+    
+    action.source = _addr(block.data.proxy_contract)
+    action.source_secondary = _addr(block.data.worker_contract)
+    action.destination = _addr(block.data.worker_owner)
+    action.amount = block.data.payout_amount.value
+    action.cocoon_worker_payout_data = {
+        'payout_type': block.data.payout_type,
+        'query_id': block.data.query_id,
+        'new_tokens': block.data.new_tokens,
+        'worker_state': block.data.worker_state,
+        'worker_tokens': block.data.worker_tokens,
+    }
+
+
 def _fill_layerzero_send_action(data: LayerZeroSendData, action: Action):
     # use `data` instead of `block`, because thus `_fill_layerzero_send_action`
     # may be easily called from `_fill_layerzero_send_tokens_action`
@@ -1242,6 +1262,8 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_staking_withdraw(block, action)
         case 'coffee_staking_claim_rewards':
             _fill_coffee_staking_claim_rewards(block, action)
+        case 'cocoon_worker_payout':
+            _fill_cocoon_worker_payout_action(block, action)
         case 'nft_purchase' | 'dns_purchase':
             _fill_nft_purchase_action(block, action)
         case 'auction_outbid':
