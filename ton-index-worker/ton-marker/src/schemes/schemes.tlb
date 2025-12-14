@@ -2575,3 +2575,63 @@ storm_change_v3_state#3e56c929 query_id:uint64 = InternalMsgBody10;
 
 // scaled ui 
 scaled_ui_display_multiplier_changed#ac392598 numerator:(VarUInteger 32) denominator:(VarUInteger 32) comment:(Maybe SnakeString) = ExternalMsgBody;
+
+// cocoon
+
+// === Common Messages ===
+cocoon_return_excesses_back#2565934c query_id:uint64 = InternalMsgBody11;
+cocoon_payout#c59a7cd3 query_id:uint64 = InternalMsgBody11;
+
+// === Worker <-> Proxy Messages ===
+cocoon_worker_proxy_request#4d725d2c query_id:uint64 owner_address:MsgAddress state:uint2 tokens:uint64 payload:(Maybe ^Cell) = InternalMsgBody11;
+cocoon_worker_proxy_payout_request#08e7d036 worker_part:Coins proxy_part:Coins send_excesses_to:MsgAddress = InternalMsgBody11;
+
+// === Client <-> Proxy Messages ===
+cocoon_client_proxy_request#65448ff4 query_id:uint64 owner_address:MsgAddress state_data:^Cell payload:(Maybe ^Cell) = InternalMsgBody11;
+cocoon_client_proxy_top_up#5cfc6b87 top_up_coins:Coins send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_client_proxy_register#a35cb580 = InternalMsgBody11;
+cocoon_client_proxy_refund_granted#c68ebc7b coins:Coins send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_client_proxy_refund_force#f4c354c9 coins:Coins send_excesses_to:MsgAddress = InternalMsgBody11;
+
+// === Signed Message Structures ===
+cocoon_payout_payload#a040ad28 query_id:uint64 new_tokens:uint64 expected_my_address:MsgAddress = InternalMsgBody11;
+cocoon_last_payout_payload#f5f26a36 query_id:uint64 new_tokens:uint64 expected_my_address:MsgAddress = InternalMsgBody11;
+
+// === Root Messages ===
+cocoon_add_worker_type#e34b1c60 query_id:uint64 worker_hash:uint256 = InternalMsgBody11;
+cocoon_del_worker_type#8d94a79a query_id:uint64 worker_hash:uint256 = InternalMsgBody11;
+cocoon_add_model_type#c146134d query_id:uint64 model_hash:uint256 = InternalMsgBody11;
+cocoon_del_model_type#92b11c18 query_id:uint64 model_hash:uint256 = InternalMsgBody11;
+cocoon_add_proxy_type#71860e80 query_id:uint64 proxy_hash:uint256 = InternalMsgBody11;
+cocoon_del_proxy_type#3c41d0b2 query_id:uint64 proxy_hash:uint256 = InternalMsgBody11;
+cocoon_register_proxy#927c7cb5 query_id:uint64 proxy_info:Cell = InternalMsgBody11;
+cocoon_unregister_proxy#6d49eaf2 query_id:uint64 seqno:uint32 = InternalMsgBody11;
+cocoon_update_proxy#9c7924ba query_id:uint64 seqno:uint32 proxy_addr:Cell = InternalMsgBody11;
+cocoon_change_fees#c52ed8d4 query_id:uint64 price_per_token:Coins worker_fee_per_token:Coins = InternalMsgBody11;
+cocoon_change_params#022fa189 query_id:uint64 price_per_token:Coins worker_fee_per_token:Coins proxy_delay_before_close:uint32 client_delay_before_close:uint32 min_proxy_stake:Coins min_client_stake:Coins = InternalMsgBody11;
+cocoon_upgrade_contracts#a2370f61 query_id:uint64 proxy_code:^Cell worker_code:^Cell client_code:^Cell = InternalMsgBody11;
+cocoon_upgrade_code#11aefd51 query_id:uint64 new_code:^Cell = InternalMsgBody11;
+cocoon_reset_root#563c1d96 query_id:uint64 = InternalMsgBody11;
+cocoon_upgrade_full#4f7c5789 query_id:uint64 new_data:^Cell new_code:^Cell = InternalMsgBody11;
+cocoon_change_owner#c4a1ae54 query_id:uint64 new_owner_address:MsgAddress = InternalMsgBody11;
+
+// === Worker Messages ===
+cocoon_owner_worker_register#26ed7f65 query_id:uint64 send_excesses_to:MsgAddress = InternalMsgBody11;
+
+// === Proxy Messages ===
+cocoon_ext_proxy_payout_request#7610e6eb query_id:uint64 send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_ext_proxy_increase_stake#9713f187 query_id:uint64 grams:Coins send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_owner_proxy_close#b51d5a01 query_id:uint64 send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_close_request_payload#636a4391 query_id:uint64 expected_my_address:MsgAddress = InternalMsgBody11;
+cocoon_close_complete_request_payload#e511abc7 query_id:uint64 expected_my_address:MsgAddress = InternalMsgBody11;
+
+// === Client Messages ===
+cocoon_ext_client_top_up#f172e6c2 query_id:uint64 top_up_amount:Coins send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_owner_client_change_secret_hash_and_top_up#8473b408 query_id:uint64 top_up_amount:Coins new_secret_hash:uint256 send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_owner_client_register#c45f9f3b query_id:uint64 nonce:uint64 send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_owner_client_change_secret_hash#a9357034 query_id:uint64 new_secret_hash:uint256 send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_owner_client_increase_stake#6a1f6a60 query_id:uint64 new_stake:Coins send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_owner_client_withdraw#da068e78 query_id:uint64 send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_owner_client_request_refund#fafa6cc1 query_id:uint64 send_excesses_to:MsgAddress = InternalMsgBody11;
+cocoon_charge_payload#bb63ff93 query_id:uint64 new_tokens_used:uint64 expected_my_address:MsgAddress = InternalMsgBody11;
+cocoon_grant_refund_payload#efd711e1 query_id:uint64 new_tokens_used:uint64 expected_my_address:MsgAddress = InternalMsgBody11;
