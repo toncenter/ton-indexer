@@ -70,6 +70,10 @@ services:
 
   run-migrations:
     image: toncenter/ton-indexer-worker:v1.2.5
+    ulimits:
+      nofile:
+        soft: 1000000
+        hard: 1000000
     build:
       context: .
       dockerfile: Dockerfile
@@ -89,6 +93,10 @@ services:
 
   index-worker:
     image: toncenter/ton-indexer-worker:v1.2.5
+    ulimits:
+      nofile:
+        soft: 1000000
+        hard: 1000000
     build:
       context: .
       dockerfile: Dockerfile
@@ -177,6 +185,10 @@ services:
   emulate-task-emulator:
     profiles: [emulate]
     image: toncenter/ton-indexer-worker:v1.2.5
+    ulimits:
+      nofile:
+        soft: 1000000
+        hard: 1000000    
     build:
       context: .
       dockerfile: Dockerfile
