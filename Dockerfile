@@ -25,7 +25,7 @@ COPY ton-index-worker/CMakeLists.txt /app/
 WORKDIR /app/build
 ENV CC=clang-20
 ENV CXX=clang++-20
-RUN touch /app/suppression_mappings.txt && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner \
+RUN touch /app/suppression_mappings.txt && cmake -DCMAKE_BUILD_TYPE=Release -DPORTABLE=1 .. && make -j$(nproc) ton-index-postgres ton-index-postgres-migrate ton-index-clickhouse ton-smc-scanner \
      ton-integrity-checker ton-trace-emulator ton-trace-task-emulator ton-marker-cli ton-marker-core ton-marker
 
 
