@@ -1,0 +1,31 @@
+cases:
+  "Cocoon Worker Payout":
+    trace-id: 1LzTIRFPDw1CixKXM9wxSE5zxTg7okb2kstnP3GQhNU=
+    expected-blocks:
+      - type: cocoon_worker_payout
+        values:
+          data:
+            proxy_contract: 0:B16DB31490EE38ED5DD0258D9B686FF0BA590025E4A4BD232D1CD5A8AA805A16
+            worker_contract: 0:3120737EC3A10FC6331A16C93EC88203A0342AB4AC96671E6163E39CBC2F69C4
+            worker_owner: 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+            payout_type: regular
+            query_id: 10553886210694500674
+            new_tokens: 9229614747703451079
+            expected_address: null
+            payout_amount: 4500148290
+            worker_state: 0
+            worker_tokens: 73063940556
+    expected-actions:
+      - type: cocoon_worker_payout
+        values:
+          success: true
+          source: 0:B16DB31490EE38ED5DD0258D9B686FF0BA590025E4A4BD232D1CD5A8AA805A16
+          source_secondary: 0:3120737EC3A10FC6331A16C93EC88203A0342AB4AC96671E6163E39CBC2F69C4
+          destination: 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+          amount: 4500148290
+          cocoon_worker_payout_data:
+            payout_type: regular
+            query_id: 10553886210694500674
+            new_tokens: 9229614747703451079
+            worker_state: 0
+            worker_tokens: 73063940556
