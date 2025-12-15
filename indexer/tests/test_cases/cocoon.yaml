@@ -60,3 +60,205 @@ cases:
             new_tokens: 9225483487327049292
             worker_state: 2
             worker_tokens: 199630509
+            
+  "Cocoon Proxy Payout":
+    trace-id: 2c8XSjnlpuxjOu3ixrdO0m_W1fiikVWZQB6h5sJe7U4=
+    expected-blocks:
+      - type: cocoon_proxy_payout
+        values:
+          data:
+            proxy_contract: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+            proxy_owner: 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+            excesses_recipient: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+            query_id: 12731543016903973642
+    expected-actions:
+      - type: cocoon_proxy_payout
+        values:
+          success: true
+          source: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+          destination: 0:E796C95723646D2355A12E6B5E9646F8095406C6BF04FF14888E5D0783BF6336
+          destination_secondary: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+          cocoon_proxy_payout_data:
+            query_id: 12731543016903973642
+
+  "Cocoon Proxy Charge":
+    trace-id: 005toDO4Q3z9WP4LSihK9uVPDH-ygXgGSEDNnT9h3oc=
+    expected-blocks:
+      - type: cocoon_proxy_charge
+        values:
+          data:
+            proxy_contract: 0:20A3E6577F7EE23A43FD0BDB835EF01E86FC2FA3290421E2CAB05132AFEC09B0
+            client_contract: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+            query_id: 3340233008295500229
+            new_tokens_used: 9225483487327049292
+            expected_address: 260;8da2c03aaf0c2beb208f6828c3547d4a86e19a98f1bfaaba09bcd727438138bfc
+    expected-actions:
+      - type: cocoon_proxy_charge
+        values:
+          success: true
+          source: 0:20A3E6577F7EE23A43FD0BDB835EF01E86FC2FA3290421E2CAB05132AFEC09B0
+          destination: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+          amount: 0
+          cocoon_proxy_charge_data:
+            query_id: 3340233008295500229
+            new_tokens_used: 9225483487327049292
+            expected_address: 260;8da2c03aaf0c2beb208f6828c3547d4a86e19a98f1bfaaba09bcd727438138bfc
+
+  "Cocoon Client Top Up":
+    trace-id: 02ZsangSM2tiw_-vYumdC8Kde09o3-7qnJHLIgWrv4s=
+    expected-blocks:
+      - type: cocoon_client_top_up
+        values:
+          data:
+            client_contract: 0:E4B2FA549D8BDE017318D66A496AE5CD4ABE6DC887D5336A93F3445AC306C62F
+            proxy_contract: 0:2AA8DBE7AADAF51EF0A74FD69DF48A5C440711E4048061976F8DD211C6C92671
+            sender: 0:EE35299E2C43D1455080253B6BF9D350FE3EC7353CD90A2F07DF31CE68B6EF6C
+            query_id: 11691960163567649532
+            top_up_amount: 1000000000
+    expected-actions:
+      - type: cocoon_client_top_up
+        values:
+          success: true
+          source: 0:EE35299E2C43D1455080253B6BF9D350FE3EC7353CD90A2F07DF31CE68B6EF6C
+          destination: 0:E4B2FA549D8BDE017318D66A496AE5CD4ABE6DC887D5336A93F3445AC306C62F
+          destination_secondary: 0:2AA8DBE7AADAF51EF0A74FD69DF48A5C440711E4048061976F8DD211C6C92671
+          amount: 1000000000
+          cocoon_client_top_up_data:
+            query_id: 11691960163567649532
+
+  "Cocoon Register Proxy":
+    trace-id: -5SK3b3jO5MhZCqc6AMK931wBbvGGZcZPM0AruldKXE=
+    expected-blocks:
+      - type: cocoon_register_proxy
+        values:
+          data:
+            root_contract: 0:AB6831390BF3B13923E7DEFFB9552A65626113BF0BA2D2D3DC203DECFCE4A6F6
+            query_id: 0
+    expected-actions:
+      - type: cocoon_register_proxy
+        values:
+          success: true
+          destination: 0:AB6831390BF3B13923E7DEFFB9552A65626113BF0BA2D2D3DC203DECFCE4A6F6
+          cocoon_register_proxy_data:
+            query_id: 0
+
+  "Cocoon Unregister Proxy":
+    trace-id: 3UJokH6MJ8TSK3Get0x_n975z1gfeALOnnhQYyZ8t-c=
+    expected-blocks:
+      - type: cocoon_unregister_proxy
+        values:
+          data:
+            root_contract: 0:C8B0987AA4AD70F4855B9C6B543E53B46E7F747A60E7799222A37DB220811643
+            query_id: 0
+            seqno: 1
+    expected-actions:
+      - type: cocoon_unregister_proxy
+        values:
+          success: true
+          destination: 0:C8B0987AA4AD70F4855B9C6B543E53B46E7F747A60E7799222A37DB220811643
+          cocoon_unregister_proxy_data:
+            query_id: 0
+            seqno: 1
+
+
+  "Cocoon Client Register and Change Secret Hash": # double action
+    trace-id: 5B6Ex8kvs5Qb8lcTKPbFhlz2yhVv7aUIvkvngzWK6dI=
+    expected-blocks:
+      - type: cocoon_client_register
+        values:
+          data:
+            client_contract: 0:22F52E6CC5DA14DBDEC97D2E1778ADF79EBE1E6A2E53928FCF5EA5827A7608E0
+            owner: 0:0A8F73CF5E9CEC1CC503D7FC936CD05ACDC721BD6234B1CF286D7964ADECD117
+            query_id: 1821011912409218354
+            nonce: 11924145372215500834
+      - type: cocoon_client_change_secret_hash
+        values:
+          data:
+            client_contract: 0:22F52E6CC5DA14DBDEC97D2E1778ADF79EBE1E6A2E53928FCF5EA5827A7608E0
+            owner: 0:0A8F73CF5E9CEC1CC503D7FC936CD05ACDC721BD6234B1CF286D7964ADECD117
+            query_id: 1387465229815244673
+            new_secret_hash: 102987336249554097029535212322581322789799900648198034993379397001115665086549
+            # in hex for db record: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    expected-actions:
+      - type: cocoon_client_register
+        values:
+          success: true
+          source: 0:0A8F73CF5E9CEC1CC503D7FC936CD05ACDC721BD6234B1CF286D7964ADECD117
+          destination: 0:22F52E6CC5DA14DBDEC97D2E1778ADF79EBE1E6A2E53928FCF5EA5827A7608E0
+          cocoon_client_register_data:
+            query_id: 1821011912409218354
+            nonce: 11924145372215500834
+      - type: cocoon_client_change_secret_hash
+        values:
+          success: true
+          source: 0:0A8F73CF5E9CEC1CC503D7FC936CD05ACDC721BD6234B1CF286D7964ADECD117
+          destination: 0:22F52E6CC5DA14DBDEC97D2E1778ADF79EBE1E6A2E53928FCF5EA5827A7608E0
+          cocoon_client_change_secret_hash_data:
+            query_id: 1387465229815244673
+            new_secret_hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+  "Cocoon Client Request Refund (Direct)":
+    trace-id: AMdf-I0NoFEBeMMac3s9-0LcCUfLy1fYZcSp0MH7lnA=
+    expected-blocks:
+      - type: cocoon_client_request_refund
+        values:
+          data:
+            client_contract: 0:F978B227515EB9390BED8220B922543CFEFB5AE63BBB29BCFA95FA628E5D50EF
+            owner: 0:EE35299E2C43D1455080253B6BF9D350FE3EC7353CD90A2F07DF31CE68B6EF6C
+            query_id: 14276226389141423125
+            via_wallet: false
+    expected-actions:
+      - type: cocoon_client_request_refund
+        values:
+          success: true
+          source: 0:EE35299E2C43D1455080253B6BF9D350FE3EC7353CD90A2F07DF31CE68B6EF6C
+          destination: 0:F978B227515EB9390BED8220B922543CFEFB5AE63BBB29BCFA95FA628E5D50EF
+          cocoon_client_request_refund_data:
+            query_id: 14276226389141423125
+            via_wallet: false
+
+  "Cocoon Client Request Refund (Via Wallet)":
+    trace-id: A88GSRUqsE9po3lrzfdNf9D9XwXzDu7vQ9BqGx1VS94=
+    expected-blocks:
+      - type: cocoon_client_request_refund
+        values:
+          data:
+            client_contract: 0:C76C004F2AD8AD1F8D5AA4EF38F1FBEE40C33B04BB5FA0827FAE600EAE155F0F
+            owner: 0:0C3F87BD2FCDF764A96A919541B124D7E39447BA89457AFB317AF41FF3492068
+            query_id: 0
+            via_wallet: true
+    expected-actions:
+      - type: cocoon_client_request_refund
+        values:
+          success: true
+          source: 0:0C3F87BD2FCDF764A96A919541B124D7E39447BA89457AFB317AF41FF3492068
+          destination: 0:C76C004F2AD8AD1F8D5AA4EF38F1FBEE40C33B04BB5FA0827FAE600EAE155F0F
+          cocoon_client_request_refund_data:
+            query_id: 0
+            via_wallet: true
+
+  "Cocoon Grant Refund":
+    trace-id: EOSxi6ERPIqAHjKYGUA-TUJFSjw5uYxIB7CwQEhnVuc=
+    expected-blocks:
+      - type: cocoon_grant_refund
+        values:
+          data:
+            proxy_contract: 0:4846B4982861D84FA03627ED0129EC24570A972B3F1D16E1C10D135C6BAF195F
+            client_contract: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+            refund_recipient: 0:2914D6B5E1AFDA8E2A4D266F7108AC6F097B6FC61C8560306E27741866F77D5F
+            query_id: 8779794170130083123
+            new_tokens_used: 9225483487327049292
+            expected_address: 260;8da2c03aaf0c2beb208f6828c3547d4a86e19a98f1bfaaba9e7fc24ff1452428e
+            payout_amount: 14999630120
+    expected-actions:
+      - type: cocoon_grant_refund
+        values:
+          success: true
+          source: 0:4846B4982861D84FA03627ED0129EC24570A972B3F1D16E1C10D135C6BAF195F
+          source_secondary: 0:B94C23C25E82509C6834B6C513FA7B4F5B8A924694C579ADED8CD0079E646A50
+          destination: 0:2914D6B5E1AFDA8E2A4D266F7108AC6F097B6FC61C8560306E27741866F77D5F
+          amount: 14999630120
+          cocoon_grant_refund_data:
+            query_id: 8779794170130083123
+            new_tokens_used: 9225483487327049292
+            expected_address: 260;8da2c03aaf0c2beb208f6828c3547d4a86e19a98f1bfaaba9e7fc24ff1452428e
