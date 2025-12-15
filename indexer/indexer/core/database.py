@@ -533,7 +533,7 @@ class Action(Base):
         Column("query_id", Numeric),
         Column("new_tokens_used", Numeric),
         Column("expected_address", String),
-    ]))
+    ]))  # payout_amount stored in action.amount
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)
