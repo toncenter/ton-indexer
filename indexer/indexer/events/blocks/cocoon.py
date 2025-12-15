@@ -14,6 +14,10 @@ from indexer.events.blocks.messages.cocoon import (
     CocoonWorkerProxyRequest,
 )
 
+from pytoniq_core import ExternalAddress, Address
+
+# log this module to file at debug level
+logger.add("output.log", level="DEBUG")
 
 # === Worker Payout ===
 
@@ -30,7 +34,7 @@ class CocoonWorkerPayoutData:
     payout_type: str  # "regular" or "last"
     query_id: int
     new_tokens: int  # number of new tokens from payload
-    expected_address: AccountId | None  # expected address from payload
+    expected_address: str | None  # expected address from payload
     payout_amount: Amount  # actual payout amount sent to worker owner
     worker_state: int  # worker state from WorkerProxyRequest
     worker_tokens: int  # worker tokens from WorkerProxyRequest
@@ -99,7 +103,7 @@ class CocoonWorkerPayoutMatcher(BlockMatcher):
         # determine payout type
         payout_type = (
             "last"
-            if start_block.opcode == CocoonLastPayoutPayload.opcode
+            if isinstance(start_block, CallContractBlock) and start_block.opcode == CocoonLastPayoutPayload.opcode
             else "regular"
         )
 
@@ -112,11 +116,11 @@ class CocoonWorkerPayoutMatcher(BlockMatcher):
 
             query_id = payload_msg.query_id
             new_tokens = payload_msg.new_tokens
-            expected_address = (
-                AccountId(payload_msg.expected_my_address)
-                if payload_msg.expected_my_address
-                else None
-            )
+            expected_address = payload_msg.expected_my_address
+            if isinstance(expected_address, ExternalAddress):
+                expected_address = f"{expected_address.len};{hex(expected_address.external_address)[2:]}" # type: ignore
+            elif isinstance(expected_address, Address):
+                expected_address = expected_address.to_str(False).upper()
         except Exception as e:
             logger.error(
                 f"failed to parse payout payload in trace {start_msg.trace_id}: {e}",
