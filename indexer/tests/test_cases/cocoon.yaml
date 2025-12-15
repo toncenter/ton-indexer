@@ -29,3 +29,34 @@ cases:
             new_tokens: 9229614747703451079
             worker_state: 0
             worker_tokens: 73063940556
+
+  "Cocoon Worker Last Payout":
+    trace-id: 1gnDaOa5Fh8ZglQELMgsywJaevp2NfPSDg5AmW8jNP8=
+    expected-blocks:
+      - type: cocoon_worker_payout
+        values:
+          data:
+            proxy_contract: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+            worker_contract: 0:5B453E7E9A1FA44C3D19033DF75686096097B4F0DCF26D23BC00CE2E8E74EFAA
+            worker_owner: 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+            payout_type: last
+            query_id: 2073831913118480719
+            new_tokens: 9225483487327049292
+            expected_address: 260;8da2c03aaf0c2beb208f6828c3547d4a86e19a98f1bfaaba49ac412277cba6d98
+            payout_amount: 3792979671
+            worker_state: 2
+            worker_tokens: 199630509
+    expected-actions:
+      - type: cocoon_worker_payout
+        values:
+          success: true
+          source: 0:3C02D2FAE2B263048DA2C03AAF0C2BEB208F6828C3547D4A86E19A98F1BFAABA
+          source_secondary: 0:5B453E7E9A1FA44C3D19033DF75686096097B4F0DCF26D23BC00CE2E8E74EFAA
+          destination: 0:E572BD4E31B098C7E1AA8BB779D48EAF01D279831502C4029C7B522614873BCA
+          amount: 3792979671
+          cocoon_worker_payout_data:
+            payout_type: last
+            query_id: 2073831913118480719
+            new_tokens: 9225483487327049292
+            worker_state: 2
+            worker_tokens: 199630509
