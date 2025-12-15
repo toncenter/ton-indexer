@@ -586,7 +586,7 @@ class CocoonExtClientTopUp:
     def __init__(self, body: Slice):
         assert body.load_uint(32) == self.opcode
         self.query_id = body.load_uint(64)
-        self.top_up_amount = body.load_coins()
+        self.top_up_amount = body.load_coins() or 0
         self.send_excesses_to = body.load_address()
 
 
@@ -722,3 +722,20 @@ class CocoonGrantRefundPayload:
         self.query_id = body.load_uint(64)
         self.new_tokens_used = body.load_uint(64)
         self.expected_my_address = body.load_address()
+
+
+class CocoonOwnerWalletSendMessage:
+    """
+    struct (0x9c69f376) OwnerWalletSendMessage {
+        queryId: uint64
+        mode: uint8
+        body: cell
+    }
+    """
+    opcode = 0x9c69f376
+
+    def __init__(self, body: Slice):
+        assert body.load_uint(32) == self.opcode
+        self.query_id = body.load_uint(64)
+        self.mode = body.load_uint(8)
+        self.body = body.load_ref()
