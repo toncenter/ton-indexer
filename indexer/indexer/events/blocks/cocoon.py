@@ -913,11 +913,13 @@ class CocoonClientRequestRefundMatcher(BlockMatcher):
 class CocoonGrantRefundData:
     """grant refund action data"""
 
-    proxy_contract: AccountId  # proxy granting refund
-    client_contract: AccountId  # client receiving refund
+    proxy_contract: AccountId  # proxy granting refund (A)
+    client_contract: AccountId  # client receiving refund (B)
+    refund_recipient: AccountId  # who receives the payout (D)
     query_id: int
     new_tokens_used: int  # tokens used/charged
     expected_address: str | None  # expected address
+    payout_amount: Amount  # actual refund amount sent
 
 
 class CocoonGrantRefundBlock(Block):
@@ -927,20 +929,38 @@ class CocoonGrantRefundBlock(Block):
         super().__init__("cocoon_grant_refund", [], data)
 
     def __repr__(self):
-        return f"cocoon_grant_refund proxy={self.data.proxy_contract.address} client={self.data.client_contract.address}"
+        return f"cocoon_grant_refund proxy={self.data.proxy_contract.address} client={self.data.client_contract.address} amount={self.data.payout_amount}"
 
 
 class CocoonGrantRefundMatcher(BlockMatcher):
     """
     matches grant refund flow:
-    external_in → GrantRefundPayload (to Proxy)
-      → ClientProxyRequest (Proxy → Client) [aborted with 1014]
+    external_in → GrantRefundPayload (A → B)
+      → ClientProxyRequest (B → C)
+        → Payout (C → D) ✅
+        → ReturnExcessesBack (C → A)
     """
 
     def __init__(self):
-        client_request = ContractMatcher(
-            opcode=CocoonClientProxyRequest.opcode, optional=False
+        # payout to refund recipient
+        payout = ContractMatcher(
+            opcode=CocoonPayout.opcode, optional=False
         )
+        # excesses back to proxy
+        excesses = ContractMatcher(
+            opcode=CocoonReturnExcessesBack.opcode, optional=False
+        )
+        
+        # client proxy request with payout and excesses
+        client_request = ContractMatcher(
+            opcode=CocoonClientProxyRequest.opcode,
+            optional=False,
+            children_matchers=[
+                labeled("payout", payout),
+                labeled("excesses", excesses),
+            ],
+        )
+        
         super().__init__(optional=False, child_matcher=labeled("client_request", client_request))
 
     def test_self(self, block: Block):
@@ -978,20 +998,34 @@ class CocoonGrantRefundMatcher(BlockMatcher):
             )
             return []
 
+        # find Payout block
+        payout_block = get_labeled("payout", other_blocks, CallContractBlock)
+        if not payout_block:
+            logger.warning(
+                f"Payout block not found in cocoon grant refund trace {start_msg.trace_id}"
+            )
+            return []
+
         client_msg = client_request_block.get_message()
-        proxy_contract = AccountId(start_msg.destination)
-        client_contract = AccountId(client_msg.destination)
+        payout_msg = payout_block.get_message()
+        
+        proxy_contract = AccountId(start_msg.destination)  # A
+        client_contract = AccountId(client_msg.destination)  # B (from A→B)
+        refund_recipient = AccountId(payout_msg.destination)  # D (from C→D)
+        payout_amount = Amount(payout_msg.value)
 
         data = CocoonGrantRefundData(
             proxy_contract=proxy_contract,
             client_contract=client_contract,
+            refund_recipient=refund_recipient,
             query_id=query_id,
             new_tokens_used=new_tokens_used,
             expected_address=expected_address,
+            payout_amount=payout_amount,
         )
 
         new_block = CocoonGrantRefundBlock(data)
         new_block.merge_blocks([start_block] + other_blocks)
-        new_block.failed = start_msg.transaction.aborted
+        new_block.failed = payout_msg.transaction.aborted
 
         return [new_block]

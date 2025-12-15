@@ -1155,8 +1155,9 @@ def _fill_cocoon_grant_refund_action(block, action: Action):
         return
 
     action.source = _addr(block.data.proxy_contract)
-    action.destination = _addr(block.data.client_contract)
-    action.amount = 0  # no actual transfer
+    action.source_secondary = _addr(block.data.client_contract)
+    action.destination = _addr(block.data.refund_recipient)
+    action.amount = block.data.payout_amount.value
     action.cocoon_grant_refund_data = {
         'query_id': block.data.query_id,
         'new_tokens_used': block.data.new_tokens_used,
