@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
 
   event-classifier:
-    image: toncenter/ton-indexer-classifier:v1.2.5
+    image: toncenter/ton-indexer-classifier:v1.2.6
     build:
       context: .
       dockerfile: Dockerfile
@@ -41,7 +41,7 @@ services:
       internal:
 
   index-api:
-    image: toncenter/ton-indexer-api:v1.2.5
+    image: toncenter/ton-indexer-api:v1.2.6
     build:
       context: .
       dockerfile: Dockerfile
@@ -69,7 +69,7 @@ services:
       internal:
 
   run-migrations:
-    image: toncenter/ton-indexer-worker:v1.2.5
+    image: toncenter/ton-indexer-worker:v1.2.6
     ulimits:
       nofile:
         soft: 1000000
@@ -92,7 +92,7 @@ services:
     restart: on-failure
 
   index-worker:
-    image: toncenter/ton-indexer-worker:v1.2.5
+    image: toncenter/ton-indexer-worker:v1.2.6
     ulimits:
       nofile:
         soft: 1000000
@@ -148,7 +148,7 @@ services:
 # additional: offchain metadata indexer
   metadata-fetcher:
     profiles: [metadata]
-    image: toncenter/ton-indexer-metadata-fetcher:v1.2.5
+    image: toncenter/ton-indexer-metadata-fetcher:v1.2.6
     build:
       context: .
       dockerfile: Dockerfile
@@ -184,7 +184,7 @@ services:
 # additional: API Emulate
   emulate-task-emulator:
     profiles: [emulate]
-    image: toncenter/ton-indexer-worker:v1.2.5
+    image: toncenter/ton-indexer-worker:v1.2.6
     ulimits:
       nofile:
         soft: 1000000
@@ -228,7 +228,7 @@ services:
 
   emulate-event-classifier:
     profiles: [emulate]
-    image: toncenter/ton-indexer-classifier:v1.2.5
+    image: toncenter/ton-indexer-classifier:v1.2.6
     build:
       context: .
       dockerfile: Dockerfile
@@ -253,7 +253,7 @@ services:
 
   emulate-api:
     profiles: [emulate]
-    image: toncenter/ton-indexer-emulate-api:v1.2.5
+    image: toncenter/ton-indexer-emulate-api:v1.2.6
     build:
       context: .
       dockerfile: Dockerfile
