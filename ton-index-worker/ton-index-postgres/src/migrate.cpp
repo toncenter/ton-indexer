@@ -1004,6 +1004,78 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.4 completed successfully.";
 }
 
+void run_1_2_6_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.6";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+
+    exec_query("create type cocoon_worker_payout_details as (payout_type varchar, query_id numeric, new_tokens numeric, worker_state integer, worker_tokens numeric);");
+    exec_query("create type cocoon_proxy_payout_details as (query_id numeric);");
+    exec_query("create type cocoon_proxy_charge_details as (query_id numeric, new_tokens_used numeric, expected_address varchar);");
+    exec_query("create type cocoon_client_top_up_details as (query_id numeric);");
+    exec_query("create type cocoon_register_proxy_details as (query_id numeric);");
+    exec_query("create type cocoon_unregister_proxy_details as (query_id numeric, seqno integer);");
+    exec_query("create type cocoon_client_register_details as (query_id numeric, nonce numeric);");
+    exec_query("create type cocoon_client_change_secret_hash_details as (query_id numeric, new_secret_hash varchar);");
+    exec_query("create type cocoon_client_request_refund_details as (query_id numeric, via_wallet boolean);");
+    exec_query("create type cocoon_grant_refund_details as (query_id numeric, new_tokens_used numeric, expected_address varchar);");
+    exec_query("create type cocoon_client_increase_stake_details as (query_id numeric, new_stake numeric);");
+    exec_query("create type cocoon_client_withdraw_details as (query_id numeric, withdraw_amount numeric);");
+  }
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_worker_payout_data cocoon_worker_payout_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_proxy_payout_data cocoon_proxy_payout_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_proxy_charge_data cocoon_proxy_charge_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_top_up_data cocoon_client_top_up_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_register_proxy_data cocoon_register_proxy_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_unregister_proxy_data cocoon_unregister_proxy_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_register_data cocoon_client_register_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_change_secret_hash_data cocoon_client_change_secret_hash_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_request_refund_data cocoon_client_request_refund_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_grant_refund_data cocoon_grant_refund_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_increase_stake_data cocoon_client_increase_stake_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_withdraw_data cocoon_client_withdraw_details;\n";
+
+    query += set_version_query({1, 2, 6});
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.6 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1204,9 +1276,13 @@ int main(int argc, char *argv[]) {
       run_1_2_3_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 3};
     }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 4})) {
+    if (migration_needed(current_version, Version{1, 2, 4})) {
       run_1_2_4_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 4};
+    }
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 6})) {
+      run_1_2_6_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 6};
     }
 
 
