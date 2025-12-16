@@ -461,63 +461,137 @@ type actionLayerzeroDvnVerifyDetails struct {
 	UlnConnection *string `msgpack:"uln_connection"`
 }
 
+type actionCocoonWorkerPayoutDetails struct {
+	PayoutType   *string `msgpack:"payout_type"`
+	QueryId      *string `msgpack:"query_id"`
+	NewTokens    *string `msgpack:"new_tokens"`
+	WorkerState  *int64  `msgpack:"worker_state"`
+	WorkerTokens *string `msgpack:"worker_tokens"`
+}
+
+type actionCocoonProxyPayoutDetails struct {
+	QueryId *string `msgpack:"query_id"`
+}
+
+type actionCocoonProxyChargeDetails struct {
+	QueryId         *string `msgpack:"query_id"`
+	NewTokensUsed   *string `msgpack:"new_tokens_used"`
+	ExpectedAddress *string `msgpack:"expected_address"`
+}
+
+type actionCocoonClientTopUpDetails struct {
+	QueryId *string `msgpack:"query_id"`
+}
+
+type actionCocoonRegisterProxyDetails struct {
+	QueryId *string `msgpack:"query_id"`
+}
+
+type actionCocoonUnregisterProxyDetails struct {
+	QueryId *string `msgpack:"query_id"`
+	Seqno   *int64  `msgpack:"seqno"`
+}
+
+type actionCocoonClientRegisterDetails struct {
+	QueryId *string `msgpack:"query_id"`
+	Nonce   *string `msgpack:"nonce"`
+}
+
+type actionCocoonClientChangeSecretHashDetails struct {
+	QueryId       *string `msgpack:"query_id"`
+	NewSecretHash *string `msgpack:"new_secret_hash"`
+}
+
+type actionCocoonClientRequestRefundDetails struct {
+	QueryId   *string `msgpack:"query_id"`
+	ViaWallet *bool   `msgpack:"via_wallet"`
+}
+
+type actionCocoonGrantRefundDetails struct {
+	QueryId         *string `msgpack:"query_id"`
+	NewTokensUsed   *string `msgpack:"new_tokens_used"`
+	ExpectedAddress *string `msgpack:"expected_address"`
+}
+
+type actionCocoonClientIncreaseStakeDetails struct {
+	QueryId  *string `msgpack:"query_id"`
+	NewStake *string `msgpack:"new_stake"`
+}
+
+type actionCocoonClientWithdrawDetails struct {
+	QueryId        *string `msgpack:"query_id"`
+	WithdrawAmount *string `msgpack:"withdraw_amount"`
+}
+
 type Action struct {
-	ActionId                  string                              `msgpack:"action_id"`
-	Type                      string                              `msgpack:"type"`
-	TraceId                   *string                             `msgpack:"trace_id"`
-	TraceExternalHash         string                              `msgpack:"trace_external_hash"`
-	TraceExternalHashNorm     *string                             `msgpack:"trace_external_hash_norm"`
-	TxHashes                  []string                            `msgpack:"tx_hashes"`
-	Value                     *string                             `msgpack:"value"`
-	Amount                    *string                             `msgpack:"amount"`
-	StartLt                   *uint64                             `msgpack:"start_lt"`
-	EndLt                     *uint64                             `msgpack:"end_lt"`
-	StartUtime                *uint32                             `msgpack:"start_utime"`
-	EndUtime                  *uint32                             `msgpack:"end_utime"`
-	TraceEndLt                *uint64                             `msgpack:"trace_end_lt"`
-	TraceEndUtime             *uint32                             `msgpack:"trace_end_utime"`
-	TraceStartLt              *uint64                             `msgpack:"trace_start_lt"`
-	TraceMcSeqnoEnd           *uint32                             `msgpack:"trace_mc_seqno_end"`
-	Source                    *string                             `msgpack:"source"`
-	SourceSecondary           *string                             `msgpack:"source_secondary"`
-	Destination               *string                             `msgpack:"destination"`
-	DestinationSecondary      *string                             `msgpack:"destination_secondary"`
-	Asset                     *string                             `msgpack:"asset"`
-	AssetSecondary            *string                             `msgpack:"asset_secondary"`
-	Asset2                    *string                             `msgpack:"asset2"`
-	Asset2Secondary           *string                             `msgpack:"asset2_secondary"`
-	Opcode                    *uint32                             `msgpack:"opcode"`
-	Success                   bool                                `msgpack:"success"`
-	TonTransferData           *actionTonTransferDetails           `msgpack:"ton_transfer_data"`
-	AncestorType              []string                            `msgpack:"ancestor_type"`
-	ParentActionId            *string                             `msgpack:"parent_action_id"`
-	Accounts                  []string                            `msgpack:"accounts"`
-	JettonTransferData        *actionJettonTransferDetails        `msgpack:"jetton_transfer_data"`
-	NftTransferData           *actionNftTransferDetails           `msgpack:"nft_transfer_data"`
-	NftListingData            *actionNftListingDetails            `msgpack:"nft_listing_data"`
-	JettonSwapData            *actionJettonSwapDetails            `msgpack:"jetton_swap_data"`
-	ChangeDnsRecordData       *actionChangeDnsRecordDetails       `msgpack:"change_dns_record_data"`
-	NftMintData               *actionNftMintDetails               `msgpack:"nft_mint_data"`
-	DexDepositLiquidityData   *actionDexDepositLiquidityData      `msgpack:"dex_deposit_liquidity_data"`
-	DexWithdrawLiquidityData  *actionDexWithdrawLiquidityData     `msgpack:"dex_withdraw_liquidity_data"`
-	StakingData               *actionStakingData                  `msgpack:"staking_data"`
-	ToncoDeployPoolData       *actionToncoDeployPoolDetails       `msgpack:"tonco_deploy_pool_data"`
-	MultisigCreateOrderData   *actionMultisigCreateOrderDetails   `msgpack:"multisig_create_order_data"`
-	MultisigApproveData       *actionMultisigApproveDetails       `msgpack:"multisig_approve_data"`
-	MultisigExecuteData       *actionMultisigExecuteDetails       `msgpack:"multisig_execute_data"`
-	VestingSendMessageData    *actionVestingSendMessageDetails    `msgpack:"vesting_send_message_data"`
-	VestingAddWhitelistData   *actionVestingAddWhitelistDetails   `msgpack:"vesting_add_whitelist_data"`
-	EvaaSupplyData            *actionEvaaSupplyDetails            `msgpack:"evaa_supply_data"`
-	EvaaWithdrawData          *actionEvaaWithdrawDetails          `msgpack:"evaa_withdraw_data"`
-	EvaaLiquidateData         *actionEvaaLiquidateDetails         `msgpack:"evaa_liquidate_data"`
-	JvaultClaimData           *actionJvaultClaimDetails           `msgpack:"jvault_claim_data"`
-	JvaultStakeData           *actionJvaultStakeDetails           `msgpack:"jvault_stake_data"`
-	CoffeeCreatePoolData      *actionCoffeeCreatePoolDetails      `msgpack:"coffee_create_pool_data"`
-	CoffeeStakingDepositData  *actionCoffeeStakingDepositDetails  `msgpack:"coffee_staking_deposit_data"`
-	CoffeeStakingWithdrawData *actionCoffeeStakingWithdrawDetails `msgpack:"coffee_staking_withdraw_data"`
-	LayerzeroSendData         *actionLayerzeroSendDetails         `msgpack:"layerzero_send_data"`
-	LayerzeroPacketData       *actionLayerzeroPacketDetails       `msgpack:"layerzero_packet_data"`
-	LayerzeroDvnVerifyData    *actionLayerzeroDvnVerifyDetails    `msgpack:"layerzero_dvn_verify_data"`
+	ActionId                         string                                     `msgpack:"action_id"`
+	Type                             string                                     `msgpack:"type"`
+	TraceId                          *string                                    `msgpack:"trace_id"`
+	TraceExternalHash                string                                     `msgpack:"trace_external_hash"`
+	TraceExternalHashNorm            *string                                    `msgpack:"trace_external_hash_norm"`
+	TxHashes                         []string                                   `msgpack:"tx_hashes"`
+	Value                            *string                                    `msgpack:"value"`
+	Amount                           *string                                    `msgpack:"amount"`
+	StartLt                          *uint64                                    `msgpack:"start_lt"`
+	EndLt                            *uint64                                    `msgpack:"end_lt"`
+	StartUtime                       *uint32                                    `msgpack:"start_utime"`
+	EndUtime                         *uint32                                    `msgpack:"end_utime"`
+	TraceEndLt                       *uint64                                    `msgpack:"trace_end_lt"`
+	TraceEndUtime                    *uint32                                    `msgpack:"trace_end_utime"`
+	TraceStartLt                     *uint64                                    `msgpack:"trace_start_lt"`
+	TraceMcSeqnoEnd                  *uint32                                    `msgpack:"trace_mc_seqno_end"`
+	Source                           *string                                    `msgpack:"source"`
+	SourceSecondary                  *string                                    `msgpack:"source_secondary"`
+	Destination                      *string                                    `msgpack:"destination"`
+	DestinationSecondary             *string                                    `msgpack:"destination_secondary"`
+	Asset                            *string                                    `msgpack:"asset"`
+	AssetSecondary                   *string                                    `msgpack:"asset_secondary"`
+	Asset2                           *string                                    `msgpack:"asset2"`
+	Asset2Secondary                  *string                                    `msgpack:"asset2_secondary"`
+	Opcode                           *uint32                                    `msgpack:"opcode"`
+	Success                          bool                                       `msgpack:"success"`
+	TonTransferData                  *actionTonTransferDetails                  `msgpack:"ton_transfer_data"`
+	AncestorType                     []string                                   `msgpack:"ancestor_type"`
+	ParentActionId                   *string                                    `msgpack:"parent_action_id"`
+	Accounts                         []string                                   `msgpack:"accounts"`
+	JettonTransferData               *actionJettonTransferDetails               `msgpack:"jetton_transfer_data"`
+	NftTransferData                  *actionNftTransferDetails                  `msgpack:"nft_transfer_data"`
+	NftListingData                   *actionNftListingDetails                   `msgpack:"nft_listing_data"`
+	JettonSwapData                   *actionJettonSwapDetails                   `msgpack:"jetton_swap_data"`
+	ChangeDnsRecordData              *actionChangeDnsRecordDetails              `msgpack:"change_dns_record_data"`
+	NftMintData                      *actionNftMintDetails                      `msgpack:"nft_mint_data"`
+	DexDepositLiquidityData          *actionDexDepositLiquidityData             `msgpack:"dex_deposit_liquidity_data"`
+	DexWithdrawLiquidityData         *actionDexWithdrawLiquidityData            `msgpack:"dex_withdraw_liquidity_data"`
+	StakingData                      *actionStakingData                         `msgpack:"staking_data"`
+	ToncoDeployPoolData              *actionToncoDeployPoolDetails              `msgpack:"tonco_deploy_pool_data"`
+	MultisigCreateOrderData          *actionMultisigCreateOrderDetails          `msgpack:"multisig_create_order_data"`
+	MultisigApproveData              *actionMultisigApproveDetails              `msgpack:"multisig_approve_data"`
+	MultisigExecuteData              *actionMultisigExecuteDetails              `msgpack:"multisig_execute_data"`
+	VestingSendMessageData           *actionVestingSendMessageDetails           `msgpack:"vesting_send_message_data"`
+	VestingAddWhitelistData          *actionVestingAddWhitelistDetails          `msgpack:"vesting_add_whitelist_data"`
+	EvaaSupplyData                   *actionEvaaSupplyDetails                   `msgpack:"evaa_supply_data"`
+	EvaaWithdrawData                 *actionEvaaWithdrawDetails                 `msgpack:"evaa_withdraw_data"`
+	EvaaLiquidateData                *actionEvaaLiquidateDetails                `msgpack:"evaa_liquidate_data"`
+	JvaultClaimData                  *actionJvaultClaimDetails                  `msgpack:"jvault_claim_data"`
+	JvaultStakeData                  *actionJvaultStakeDetails                  `msgpack:"jvault_stake_data"`
+	CoffeeCreatePoolData             *actionCoffeeCreatePoolDetails             `msgpack:"coffee_create_pool_data"`
+	CoffeeStakingDepositData         *actionCoffeeStakingDepositDetails         `msgpack:"coffee_staking_deposit_data"`
+	CoffeeStakingWithdrawData        *actionCoffeeStakingWithdrawDetails        `msgpack:"coffee_staking_withdraw_data"`
+	LayerzeroSendData                *actionLayerzeroSendDetails                `msgpack:"layerzero_send_data"`
+	LayerzeroPacketData              *actionLayerzeroPacketDetails              `msgpack:"layerzero_packet_data"`
+	LayerzeroDvnVerifyData           *actionLayerzeroDvnVerifyDetails           `msgpack:"layerzero_dvn_verify_data"`
+	CocoonWorkerPayoutData           *actionCocoonWorkerPayoutDetails           `msgpack:"cocoon_worker_payout_data"`
+	CocoonProxyPayoutData            *actionCocoonProxyPayoutDetails            `msgpack:"cocoon_proxy_payout_data"`
+	CocoonProxyChargeData            *actionCocoonProxyChargeDetails            `msgpack:"cocoon_proxy_charge_data"`
+	CocoonClientTopUpData            *actionCocoonClientTopUpDetails            `msgpack:"cocoon_client_top_up_data"`
+	CocoonRegisterProxyData          *actionCocoonRegisterProxyDetails          `msgpack:"cocoon_register_proxy_data"`
+	CocoonUnregisterProxyData        *actionCocoonUnregisterProxyDetails        `msgpack:"cocoon_unregister_proxy_data"`
+	CocoonClientRegisterData         *actionCocoonClientRegisterDetails         `msgpack:"cocoon_client_register_data"`
+	CocoonClientChangeSecretHashData *actionCocoonClientChangeSecretHashDetails `msgpack:"cocoon_client_change_secret_hash_data"`
+	CocoonClientRequestRefundData    *actionCocoonClientRequestRefundDetails    `msgpack:"cocoon_client_request_refund_data"`
+	CocoonGrantRefundData            *actionCocoonGrantRefundDetails            `msgpack:"cocoon_grant_refund_data"`
+	CocoonClientIncreaseStakeData    *actionCocoonClientIncreaseStakeDetails    `msgpack:"cocoon_client_increase_stake_data"`
+	CocoonClientWithdrawData         *actionCocoonClientWithdrawDetails         `msgpack:"cocoon_client_withdraw_data"`
 }
 
 type blockId struct {
@@ -1278,6 +1352,56 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		row.LayerzeroDvnVerifyProxy = a.LayerzeroDvnVerifyData.Proxy
 		row.LayerzeroDvnVerifyUln = a.LayerzeroDvnVerifyData.Uln
 		row.LayerzeroDvnVerifyUlnConnection = a.LayerzeroDvnVerifyData.UlnConnection
+	}
+	if a.CocoonWorkerPayoutData != nil {
+		row.CocoonWorkerPayoutPayoutType = a.CocoonWorkerPayoutData.PayoutType
+		row.CocoonWorkerPayoutQueryId = a.CocoonWorkerPayoutData.QueryId
+		row.CocoonWorkerPayoutNewTokens = a.CocoonWorkerPayoutData.NewTokens
+		row.CocoonWorkerPayoutWorkerState = a.CocoonWorkerPayoutData.WorkerState
+		row.CocoonWorkerPayoutWorkerTokens = a.CocoonWorkerPayoutData.WorkerTokens
+	}
+	if a.CocoonProxyPayoutData != nil {
+		row.CocoonProxyPayoutQueryId = a.CocoonProxyPayoutData.QueryId
+	}
+	if a.CocoonProxyChargeData != nil {
+		row.CocoonProxyChargeQueryId = a.CocoonProxyChargeData.QueryId
+		row.CocoonProxyChargeNewTokensUsed = a.CocoonProxyChargeData.NewTokensUsed
+		row.CocoonProxyChargeExpectedAddress = a.CocoonProxyChargeData.ExpectedAddress
+	}
+	if a.CocoonClientTopUpData != nil {
+		row.CocoonClientTopUpQueryId = a.CocoonClientTopUpData.QueryId
+	}
+	if a.CocoonRegisterProxyData != nil {
+		row.CocoonRegisterProxyQueryId = a.CocoonRegisterProxyData.QueryId
+	}
+	if a.CocoonUnregisterProxyData != nil {
+		row.CocoonUnregisterProxyQueryId = a.CocoonUnregisterProxyData.QueryId
+		row.CocoonUnregisterProxySeqno = a.CocoonUnregisterProxyData.Seqno
+	}
+	if a.CocoonClientRegisterData != nil {
+		row.CocoonClientRegisterQueryId = a.CocoonClientRegisterData.QueryId
+		row.CocoonClientRegisterNonce = a.CocoonClientRegisterData.Nonce
+	}
+	if a.CocoonClientChangeSecretHashData != nil {
+		row.CocoonClientChangeSecretHashQueryId = a.CocoonClientChangeSecretHashData.QueryId
+		row.CocoonClientChangeSecretHashNewSecretHash = a.CocoonClientChangeSecretHashData.NewSecretHash
+	}
+	if a.CocoonClientRequestRefundData != nil {
+		row.CocoonClientRequestRefundQueryId = a.CocoonClientRequestRefundData.QueryId
+		row.CocoonClientRequestRefundViaWallet = a.CocoonClientRequestRefundData.ViaWallet
+	}
+	if a.CocoonGrantRefundData != nil {
+		row.CocoonGrantRefundQueryId = a.CocoonGrantRefundData.QueryId
+		row.CocoonGrantRefundNewTokensUsed = a.CocoonGrantRefundData.NewTokensUsed
+		row.CocoonGrantRefundExpectedAddress = a.CocoonGrantRefundData.ExpectedAddress
+	}
+	if a.CocoonClientIncreaseStakeData != nil {
+		row.CocoonClientIncreaseStakeQueryId = a.CocoonClientIncreaseStakeData.QueryId
+		row.CocoonClientIncreaseStakeNewStake = a.CocoonClientIncreaseStakeData.NewStake
+	}
+	if a.CocoonClientWithdrawData != nil {
+		row.CocoonClientWithdrawQueryId = a.CocoonClientWithdrawData.QueryId
+		row.CocoonClientWithdrawWithdrawAmount = a.CocoonClientWithdrawData.WithdrawAmount
 	}
 	return row, nil
 }

@@ -2275,6 +2275,23 @@ func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *RawActio
 		(*addr_list)[(string)(v)] = true
 	}
 
+	// COCOON fields - expected_address fields contain addresses in raw format
+	// they need to be parsed using AccountAddressConverter
+	if v := raw_action.CocoonProxyChargeExpectedAddress; v != nil {
+		addrValue := AccountAddressConverter(*v)
+		if addrValue.IsValid() {
+			addr := addrValue.Interface().(AccountAddress)
+			(*addr_list)[string(addr)] = true
+		}
+	}
+	if v := raw_action.CocoonGrantRefundExpectedAddress; v != nil {
+		addrValue := AccountAddressConverter(*v)
+		if addrValue.IsValid() {
+			addr := addrValue.Interface().(AccountAddress)
+			(*addr_list)[string(addr)] = true
+		}
+	}
+
 	return success
 }
 

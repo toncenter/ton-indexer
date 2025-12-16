@@ -1108,6 +1108,95 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			UlnConnection: raw.LayerzeroDvnVerifyUlnConnection,
 		}
 		act.Details = details
+	case "cocoon_worker_payout":
+		act.Details = ActionDetailsCocoonWorkerPayout{
+			PayoutType:   raw.CocoonWorkerPayoutPayoutType,
+			QueryId:      raw.CocoonWorkerPayoutQueryId,
+			NewTokens:    raw.CocoonWorkerPayoutNewTokens,
+			WorkerState:  raw.CocoonWorkerPayoutWorkerState,
+			WorkerTokens: raw.CocoonWorkerPayoutWorkerTokens,
+			Source:       raw.Source,
+			Destination:  raw.Destination,
+			Amount:       raw.Amount,
+		}
+	case "cocoon_proxy_payout":
+		act.Details = ActionDetailsCocoonProxyPayout{
+			QueryId:     raw.CocoonProxyPayoutQueryId,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+		}
+	case "cocoon_proxy_charge":
+		act.Details = ActionDetailsCocoonProxyCharge{
+			QueryId:         raw.CocoonProxyChargeQueryId,
+			NewTokensUsed:   raw.CocoonProxyChargeNewTokensUsed,
+			ExpectedAddress: raw.CocoonProxyChargeExpectedAddress,
+			Source:          raw.Source,
+			Destination:     raw.Destination,
+		}
+	case "cocoon_client_top_up":
+		act.Details = ActionDetailsCocoonClientTopUp{
+			QueryId:     raw.CocoonClientTopUpQueryId,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+			Amount:      raw.Amount,
+		}
+	case "cocoon_register_proxy":
+		act.Details = ActionDetailsCocoonRegisterProxy{
+			QueryId:     raw.CocoonRegisterProxyQueryId,
+			Destination: raw.Destination,
+		}
+	case "cocoon_unregister_proxy":
+		act.Details = ActionDetailsCocoonUnregisterProxy{
+			QueryId:     raw.CocoonUnregisterProxyQueryId,
+			Seqno:       raw.CocoonUnregisterProxySeqno,
+			Destination: raw.Destination,
+		}
+	case "cocoon_client_register":
+		act.Details = ActionDetailsCocoonClientRegister{
+			QueryId:     raw.CocoonClientRegisterQueryId,
+			Nonce:       raw.CocoonClientRegisterNonce,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+		}
+	case "cocoon_client_change_secret_hash":
+		act.Details = ActionDetailsCocoonClientChangeSecretHash{
+			QueryId:       raw.CocoonClientChangeSecretHashQueryId,
+			NewSecretHash: raw.CocoonClientChangeSecretHashNewSecretHash,
+			Source:        raw.Source,
+			Destination:   raw.Destination,
+		}
+	case "cocoon_client_request_refund":
+		act.Details = ActionDetailsCocoonClientRequestRefund{
+			QueryId:     raw.CocoonClientRequestRefundQueryId,
+			ViaWallet:   raw.CocoonClientRequestRefundViaWallet,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+		}
+	case "cocoon_grant_refund":
+		act.Details = ActionDetailsCocoonGrantRefund{
+			QueryId:         raw.CocoonGrantRefundQueryId,
+			NewTokensUsed:   raw.CocoonGrantRefundNewTokensUsed,
+			ExpectedAddress: raw.CocoonGrantRefundExpectedAddress,
+			Source:          raw.Source,
+			Destination:     raw.Destination,
+			Amount:          raw.Amount,
+		}
+	case "cocoon_client_increase_stake":
+		act.Details = ActionDetailsCocoonClientIncreaseStake{
+			QueryId:     raw.CocoonClientIncreaseStakeQueryId,
+			NewStake:    raw.CocoonClientIncreaseStakeNewStake,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+			Amount:      raw.Amount,
+		}
+	case "cocoon_client_withdraw":
+		act.Details = ActionDetailsCocoonClientWithdraw{
+			QueryId:        raw.CocoonClientWithdrawQueryId,
+			WithdrawAmount: raw.CocoonClientWithdrawWithdrawAmount,
+			Source:         raw.Source,
+			Destination:    raw.Destination,
+			Amount:         raw.Amount,
+		}
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
@@ -1627,6 +1716,32 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.LayerzeroDvnVerifyProxy,
 		&act.LayerzeroDvnVerifyUln,
 		&act.LayerzeroDvnVerifyUlnConnection,
+		&act.CocoonWorkerPayoutPayoutType,
+		&act.CocoonWorkerPayoutQueryId,
+		&act.CocoonWorkerPayoutNewTokens,
+		&act.CocoonWorkerPayoutWorkerState,
+		&act.CocoonWorkerPayoutWorkerTokens,
+		&act.CocoonProxyPayoutQueryId,
+		&act.CocoonProxyChargeQueryId,
+		&act.CocoonProxyChargeNewTokensUsed,
+		&act.CocoonProxyChargeExpectedAddress,
+		&act.CocoonClientTopUpQueryId,
+		&act.CocoonRegisterProxyQueryId,
+		&act.CocoonUnregisterProxyQueryId,
+		&act.CocoonUnregisterProxySeqno,
+		&act.CocoonClientRegisterQueryId,
+		&act.CocoonClientRegisterNonce,
+		&act.CocoonClientChangeSecretHashQueryId,
+		&act.CocoonClientChangeSecretHashNewSecretHash,
+		&act.CocoonClientRequestRefundQueryId,
+		&act.CocoonClientRequestRefundViaWallet,
+		&act.CocoonGrantRefundQueryId,
+		&act.CocoonGrantRefundNewTokensUsed,
+		&act.CocoonGrantRefundExpectedAddress,
+		&act.CocoonClientIncreaseStakeQueryId,
+		&act.CocoonClientIncreaseStakeNewStake,
+		&act.CocoonClientWithdrawQueryId,
+		&act.CocoonClientWithdrawWithdrawAmount,
 
 		&act.AncestorType,
 		&act.Accounts,
