@@ -8,14 +8,17 @@ from indexer.events.blocks.utils.block_utils import find_call_contract, get_labe
 from indexer.events.blocks.utils.ton_utils import AccountId, Amount
 from indexer.events.blocks.messages.cocoon import (
     CocoonChargePayload,
+    CocoonClientProxyRefundGranted,
     CocoonClientProxyRequest,
     CocoonExtClientTopUp,
     CocoonExtProxyPayoutRequest,
     CocoonGrantRefundPayload,
     CocoonLastPayoutPayload,
     CocoonOwnerClientChangeSecretHash,
+    CocoonOwnerClientIncreaseStake,
     CocoonOwnerClientRegister,
     CocoonOwnerClientRequestRefund,
+    CocoonOwnerClientWithdraw,
     CocoonOwnerWalletSendMessage,
     CocoonPayout,
     CocoonPayoutPayload,
@@ -900,6 +903,191 @@ class CocoonClientRequestRefundMatcher(BlockMatcher):
         )
 
         new_block = CocoonClientRequestRefundBlock(data)
+        new_block.merge_blocks([start_block] + other_blocks)
+        new_block.failed = start_msg.transaction.aborted
+
+        return [new_block]
+
+
+# === Client Increase Stake ===
+
+
+@dataclass
+class CocoonClientIncreaseStakeData:
+    owner: AccountId
+    client_contract: AccountId
+    query_id: int
+    new_stake: Amount
+
+
+class CocoonClientIncreaseStakeBlock(Block):
+    data: CocoonClientIncreaseStakeData
+
+    def __init__(self, data: CocoonClientIncreaseStakeData):
+        super().__init__("cocoon_client_increase_stake", [], data)
+
+    def __repr__(self):
+        return f"cocoon_client_increase_stake owner={self.data.owner.address} client={self.data.client_contract.address} stake={self.data.new_stake}"
+
+
+class CocoonClientIncreaseStakeMatcher(BlockMatcher):
+    """
+    matches client increase stake flow:
+    external_in → OwnerClientIncreaseStake (to Client)
+      → ReturnExcessesBack (Client → send_excesses_to)
+      → ClientProxyRequest (Client → Proxy) [usually aborted]
+    """
+
+    def __init__(self):
+        excesses = ContractMatcher(
+            opcode=CocoonReturnExcessesBack.opcode, optional=False
+        )
+        client_request = ContractMatcher(
+            opcode=CocoonClientProxyRequest.opcode, optional=False
+        )
+        super().__init__(optional=False, children_matchers=[
+                labeled("excesses", excesses),
+                labeled("client_request", client_request),
+            ])
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == CocoonOwnerClientIncreaseStake.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        start_block = block
+        start_msg = start_block.get_message()
+
+        # parse OwnerClientIncreaseStake
+        try:
+            increase_stake_msg = CocoonOwnerClientIncreaseStake(start_block.get_body())
+            query_id = increase_stake_msg.query_id
+            new_stake_value = increase_stake_msg.new_stake
+            owner = AccountId(increase_stake_msg.send_excesses_to)
+        except Exception as e:
+            logger.error(
+                f"failed to parse OwnerClientIncreaseStake in trace {start_msg.trace_id}: {e}",
+                exc_info=True,
+            )
+            return []
+
+        client_contract = AccountId(start_msg.destination)
+
+        data = CocoonClientIncreaseStakeData(
+            owner=owner,
+            client_contract=client_contract,
+            query_id=query_id,
+            new_stake=Amount(new_stake_value),
+        )
+
+        new_block = CocoonClientIncreaseStakeBlock(data)
+        new_block.merge_blocks([start_block] + other_blocks)
+        new_block.failed = start_msg.transaction.aborted
+
+        return [new_block]
+
+
+# === Client Withdraw ===
+
+
+@dataclass
+class CocoonClientWithdrawData:
+    owner: AccountId
+    client_contract: AccountId
+    query_id: int
+    withdraw_amount: Amount
+
+
+class CocoonClientWithdrawBlock(Block):
+    data: CocoonClientWithdrawData
+
+    def __init__(self, data: CocoonClientWithdrawData):
+        super().__init__("cocoon_client_withdraw", [], data)
+
+    def __repr__(self):
+        return f"cocoon_client_withdraw owner={self.data.owner.address} client={self.data.client_contract.address} amount={self.data.withdraw_amount}"
+
+
+class CocoonClientWithdrawMatcher(BlockMatcher):
+    """
+    matches client withdraw flow:
+    external_in → OwnerClientWithdraw (to Client)
+      → ClientProxyRequest (Client → Proxy)
+        → payload: ClientProxyRefundGranted
+      → ReturnExcessesBack (Client → send_excesses_to)
+    """
+
+    def __init__(self):
+        excesses = ContractMatcher(
+            opcode=CocoonReturnExcessesBack.opcode, optional=True
+        )
+        payout = ContractMatcher(
+            opcode=CocoonPayout.opcode, optional=False
+        )
+        proxy_request = ContractMatcher(
+            opcode=CocoonClientProxyRequest.opcode, optional=False,
+            children_matchers=[
+                labeled("excesses", excesses),
+                labeled("payout", payout),
+            ]
+        )
+        super().__init__(optional=False, child_matcher=labeled("client_request", proxy_request))
+
+    def test_self(self, block: Block):
+        return (
+            isinstance(block, CallContractBlock)
+            and block.opcode == CocoonOwnerClientWithdraw.opcode
+        )
+
+    async def build_block(self, block: Block, other_blocks: list[Block]) -> list[Block]:
+        start_block = block
+        start_msg = start_block.get_message()
+
+        # parse OwnerClientWithdraw
+        try:
+            withdraw_msg = CocoonOwnerClientWithdraw(start_block.get_body())
+            query_id = withdraw_msg.query_id
+            owner = AccountId(withdraw_msg.send_excesses_to)
+        except Exception as e:
+            logger.error(
+                f"failed to parse OwnerClientWithdraw in trace {start_msg.trace_id}: {e}",
+                exc_info=True,
+            )
+            return []
+
+        client_contract = AccountId(start_msg.destination)
+
+        # find ClientProxyRequest to extract withdraw amount from payload
+        client_request_block = get_labeled("client_request", other_blocks, CallContractBlock)
+        withdraw_amount = None
+
+        if client_request_block:
+            try:
+                client_req = CocoonClientProxyRequest(client_request_block.get_body())
+                if client_req.payload:
+                    payload_slice = client_req.payload.begin_parse()
+                    refund_granted = CocoonClientProxyRefundGranted(payload_slice)
+                    withdraw_amount = refund_granted.coins
+            except Exception as e:
+                logger.error(
+                    f"failed to parse ClientProxyRefundGranted payload in trace {start_msg.trace_id}: {e}",
+                    exc_info=True,
+                )
+
+        if withdraw_amount is None:
+            logger.warning(f"withdraw_amount is None in trace {start_msg.trace_id}")
+            withdraw_amount = 0
+
+        data = CocoonClientWithdrawData(
+            owner=owner,
+            client_contract=client_contract,
+            query_id=query_id,
+            withdraw_amount=Amount(withdraw_amount),
+        )
+
+        new_block = CocoonClientWithdrawBlock(data)
         new_block.merge_blocks([start_block] + other_blocks)
         new_block.failed = start_msg.transaction.aborted
 

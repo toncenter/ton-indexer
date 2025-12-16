@@ -262,3 +262,45 @@ cases:
             query_id: 8779794170130083123
             new_tokens_used: 9225483487327049292
             expected_address: 260;8da2c03aaf0c2beb208f6828c3547d4a86e19a98f1bfaaba9e7fc24ff1452428e
+
+  "Cocoon Client Increase Stake":
+    trace-id: 9ASdFVnxka3wXQIY-czQvwSDLxTxHxbloVgZUhWAH-4=
+    expected-blocks:
+      - type: cocoon_client_increase_stake
+        values:
+          data:
+            owner: 0:29DE6F2E63A467C5C32C2D35C6D4BE5E0F192A6464AE288686EEBA6A0F5C2340
+            client_contract: 0:92F4468997A5839A274A00F452DA447608C5A7EF7DDE19083041620598B390E1
+            query_id: 0
+            new_stake: 18000000000
+    expected-actions:
+      - type: cocoon_client_increase_stake
+        values:
+          success: true
+          source: 0:29DE6F2E63A467C5C32C2D35C6D4BE5E0F192A6464AE288686EEBA6A0F5C2340
+          destination: 0:92F4468997A5839A274A00F452DA447608C5A7EF7DDE19083041620598B390E1
+          amount: 18000000000
+          cocoon_client_increase_stake_data:
+            query_id: 0
+            new_stake: 18000000000
+
+  "Cocoon Client Withdraw":
+    trace-id: K-nxIQ9D2cc51j_BfU2nurITZia3POGyoZkiSeP9qqI=
+    expected-blocks:
+      - type: cocoon_client_withdraw
+        values:
+          data:
+            owner: 0:F88EACAE633FAAFBBAF40F843BA54977C77D573E8582337244A5F745B84F8F2B
+            client_contract: 0:38B9DB6796941103B4FF1CB3DC8E312FC936A226DF2A1C3FB7ADC2ED2459EBCF
+            query_id: 374934315680212459
+            withdraw_amount: 999985640
+    expected-actions:
+      - type: cocoon_client_withdraw
+        values:
+          success: true
+          source: 0:F88EACAE633FAAFBBAF40F843BA54977C77D573E8582337244A5F745B84F8F2B
+          destination: 0:38B9DB6796941103B4FF1CB3DC8E312FC936A226DF2A1C3FB7ADC2ED2459EBCF
+          amount: 999985640
+          cocoon_client_withdraw_data:
+            query_id: 374934315680212459
+            withdraw_amount: 999985640

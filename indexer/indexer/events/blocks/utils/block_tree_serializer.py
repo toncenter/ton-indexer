@@ -1165,6 +1165,36 @@ def _fill_cocoon_grant_refund_action(block, action: Action):
     }
 
 
+def _fill_cocoon_client_increase_stake_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonClientIncreaseStakeBlock
+
+    if not isinstance(block, CocoonClientIncreaseStakeBlock):
+        return
+
+    action.source = _addr(block.data.owner)
+    action.destination = _addr(block.data.client_contract)
+    action.amount = block.data.new_stake.value
+    action.cocoon_client_increase_stake_data = {
+        'query_id': block.data.query_id,
+        'new_stake': block.data.new_stake.value,
+    }
+
+
+def _fill_cocoon_client_withdraw_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonClientWithdrawBlock
+
+    if not isinstance(block, CocoonClientWithdrawBlock):
+        return
+
+    action.source = _addr(block.data.owner)
+    action.destination = _addr(block.data.client_contract)
+    action.amount = block.data.withdraw_amount.value
+    action.cocoon_client_withdraw_data = {
+        'query_id': block.data.query_id,
+        'withdraw_amount': block.data.withdraw_amount.value,
+    }
+
+
 def _fill_layerzero_send_action(data: LayerZeroSendData, action: Action):
     # use `data` instead of `block`, because thus `_fill_layerzero_send_action`
     # may be easily called from `_fill_layerzero_send_tokens_action`
@@ -1411,6 +1441,10 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_cocoon_client_request_refund_action(block, action)
         case 'cocoon_grant_refund':
             _fill_cocoon_grant_refund_action(block, action)
+        case 'cocoon_client_increase_stake':
+            _fill_cocoon_client_increase_stake_action(block, action)
+        case 'cocoon_client_withdraw':
+            _fill_cocoon_client_withdraw_action(block, action)
         case 'nft_purchase' | 'dns_purchase':
             _fill_nft_purchase_action(block, action)
         case 'auction_outbid':

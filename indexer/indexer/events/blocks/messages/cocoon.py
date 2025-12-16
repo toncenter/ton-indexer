@@ -656,7 +656,7 @@ class CocoonOwnerClientIncreaseStake:
     def __init__(self, body: Slice):
         assert body.load_uint(32) == self.opcode
         self.query_id = body.load_uint(64)
-        self.new_stake = body.load_coins()
+        self.new_stake = body.load_coins() or 0
         self.send_excesses_to = body.load_address()
 
 

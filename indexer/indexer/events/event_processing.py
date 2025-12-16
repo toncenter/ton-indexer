@@ -23,9 +23,11 @@ from indexer.events.blocks.auction import (
 )
 from indexer.events.blocks.cocoon import (
     CocoonClientChangeSecretHashMatcher,
+    CocoonClientIncreaseStakeMatcher,
     CocoonClientRegisterMatcher,
     CocoonClientRequestRefundMatcher,
     CocoonClientTopUpMatcher,
+    CocoonClientWithdrawMatcher,
     CocoonGrantRefundMatcher,
     CocoonProxyChargeMatcher,
     CocoonProxyPayoutMatcher,
@@ -295,6 +297,8 @@ matchers = [
     CocoonClientChangeSecretHashMatcher(),
     CocoonClientRequestRefundMatcher(),
     CocoonGrantRefundMatcher(),
+    CocoonClientIncreaseStakeMatcher(),
+    CocoonClientWithdrawMatcher(),
 ]
 
 trace_post_processors = [
