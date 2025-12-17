@@ -613,6 +613,7 @@ type FinalityState uint8
 const (
 	FinalityStatePending FinalityState = iota
 	FinalityStateConfirmed
+	FinalityStateSigned
 	FinalityStateFinalized
 )
 
@@ -622,6 +623,8 @@ func (fs FinalityState) String() string {
 		return "pending"
 	case FinalityStateConfirmed:
 		return "confirmed"
+	case FinalityStateSigned:
+		return "signed"
 	case FinalityStateFinalized:
 		return "finalized"
 	default:
@@ -644,6 +647,8 @@ func (fs *FinalityState) UnmarshalJSON(data []byte) error {
 		*fs = FinalityStatePending
 	case "confirmed":
 		*fs = FinalityStateConfirmed
+	case "signed":
+		*fs = FinalityStateSigned
 	case "finalized":
 		*fs = FinalityStateFinalized
 	default:

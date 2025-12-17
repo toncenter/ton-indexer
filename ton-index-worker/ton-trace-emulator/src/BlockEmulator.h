@@ -91,6 +91,7 @@ public:
 
 class ConfirmedBlockEmulator : public td::actor::Actor {
 private:
+    FinalityState finality_;
     BlockDataState block_data_state_;
     std::shared_ptr<block::ConfigInfo> config_;
     std::vector<ShardStateSnapshot> shard_states_snapshot_;
@@ -120,13 +121,26 @@ private:
     void trace_emulated(Trace trace);
     void trace_finished(td::Bits256 trace_root_tx_hash);
 
+    const char* finality_label() const {
+        switch (finality_) {
+            case FinalityState::Confirmed:
+                return "confirmed";
+            case FinalityState::Signed:
+                return "signed";
+            default:
+                return "unknown";
+        }
+    }
+
 public:
-    ConfirmedBlockEmulator(BlockDataState block_data_state,
+    ConfirmedBlockEmulator(FinalityState finality,
+                           BlockDataState block_data_state,
                            std::shared_ptr<block::ConfigInfo> config,
                            std::vector<ShardStateSnapshot> shard_states_snapshot,
                            std::function<void(Trace, td::Promise<td::Unit>)> trace_processor,
                            td::Promise<> promise)
-        : block_data_state_(std::move(block_data_state)),
+        : finality_(finality),
+          block_data_state_(std::move(block_data_state)),
           config_(std::move(config)),
           shard_states_snapshot_(std::move(shard_states_snapshot)),
           trace_processor_(std::move(trace_processor)),
