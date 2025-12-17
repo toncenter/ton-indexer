@@ -404,14 +404,15 @@ void ConfirmedBlockEmulator::start_up() {
             td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::block_parsed, R.move_as_ok());
         }
     });
-    td::actor::create_actor<BlockParser>("ConfirmedBlockParser", block_data_state_.block_data,
+    auto actor_name = PSLICE() << finality_label() << "BlockParser" << static_cast<int>(block_data_state_.block_data->block_id().id.seqno);
+    td::actor::create_actor<BlockParser>(actor_name, block_data_state_.block_data,
                                          config_->block_id.id.seqno + 1, // this block is not committed in mc yet, so +1
                                          std::move(P))
         .release();
 }
 
 void ConfirmedBlockEmulator::parse_error(td::Status error) {
-    LOG(ERROR) << "Failed to parse confirmed block " << block_data_state_.block_data->block_id().to_str() << ": " << error;
+    LOG(ERROR) << "Failed to parse " << finality_label() << " block " << block_data_state_.block_data->block_id().to_str() << ": " << error;
     promise_.set_error(std::move(error));
     stop();
 }
@@ -479,7 +480,7 @@ void ConfirmedBlockEmulator::emulate_traces() {
         }
 
         if (!config_ || shard_states_snapshot_.empty()) {
-            LOG(ERROR) << "Missing config or shard state snapshot for confirmed block tails";
+            LOG(ERROR) << "Missing config or shard state snapshot for " << finality_label() << " block tails";
             children_emulated(std::move(parent_node), {}, tx.trace_ids.value(), {}, nullptr);
             continue;
         }
@@ -513,13 +514,14 @@ void ConfirmedBlockEmulator::emulate_traces() {
             }
         });
 
-        td::actor::create_actor<MasterchainBlockEmulator>("ConfirmedTailEmulator", context_ref,
+        auto actor_name = PSLICE() << finality_label() << "TailEmulator";
+        td::actor::create_actor<MasterchainBlockEmulator>(actor_name, context_ref,
                                                           std::move(msgs_to_emulate), std::move(P))
             .release();
     }
 
     if (in_progress_cnt_ == 0) {
-        LOG(DEBUG) << "No confirmed traces built for block " << block_data_state_.block_data->block_id().to_str();
+        LOG(DEBUG) << "No " << finality_label() << " traces built for block " << block_data_state_.block_data->block_id().to_str();
         promise_.set_value(td::Unit());
         stop();
     }
@@ -527,7 +529,7 @@ void ConfirmedBlockEmulator::emulate_traces() {
 
 std::unique_ptr<TraceNode> ConfirmedBlockEmulator::construct_confirmed_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs) {
     auto trace_node = std::make_unique<TraceNode>();
-    trace_node->finality_state = FinalityState::Confirmed;
+    trace_node->finality_state = finality_;
     trace_node->transaction_root = tx.root;
     trace_node->node_id = tx.in_msg_hash;
     trace_node->address = tx.account;
@@ -610,24 +612,24 @@ void ConfirmedBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent
 }
 
 void ConfirmedBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error) {
-    LOG(ERROR) << "Failed to emulate confirmed trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice())
+    LOG(ERROR) << "Failed to emulate " << finality_label() << " trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice())
                << " from tx " << tx_hash.to_hex() << ": " << error;
     trace_finished(trace_root_tx_hash);
 }
 
 void ConfirmedBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error) {
-    LOG(ERROR) << "Failed to detect interfaces on confirmed trace with root tx "
+    LOG(ERROR) << "Failed to detect interfaces on " << finality_label() << " trace with root tx "
                << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
     trace_finished(trace_root_tx_hash);
 }
 
 void ConfirmedBlockEmulator::trace_emulated(Trace trace) {
     auto root_hash = trace.root_tx_hash;
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), root_hash](td::Result<td::Unit> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), root_hash, label = std::string(finality_label())](td::Result<td::Unit> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to insert confirmed trace " << td::base64_encode(root_hash.as_slice()) << ": " << R.move_as_error();
+            LOG(ERROR) << "Failed to insert " << label << " trace " << td::base64_encode(root_hash.as_slice()) << ": " << R.move_as_error();
         } else {
-            LOG(DEBUG) << "Inserted confirmed trace " << td::base64_encode(root_hash.as_slice());
+            LOG(DEBUG) << "Inserted " << label << " trace " << td::base64_encode(root_hash.as_slice());
         }
         td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::trace_finished, root_hash);
     });
@@ -643,7 +645,7 @@ void ConfirmedBlockEmulator::trace_finished(td::Bits256 trace_root_tx_hash) {
     traces_cnt_++;
 
     if (in_progress_cnt_ == 0) {
-        LOG(INFO) << "Finished confirmed block " << block_data_state_.block_data->block_id().to_str()
+        LOG(INFO) << "Finished " << finality_label() << " block " << block_data_state_.block_data->block_id().to_str()
                   << ": " << traces_cnt_ << " traces in "
                   << (td::Timestamp::now().at() - start_time_.at()) * 1000 << " ms";
         promise_.set_value(td::Unit());
