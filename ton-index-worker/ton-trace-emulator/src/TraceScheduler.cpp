@@ -16,7 +16,6 @@
 void TraceEmulatorScheduler::handle_db_event(ton::tl_object_ptr<ton::ton_api::db_Event> event) {
     ton::ton_api::downcast_call(
         *event, td::overloaded(
-                     // for now blockCandidateReceived and blockSigned are processed the same way - as confirmed
                     [&](ton::ton_api::db_event_blockCandidateReceived &ev) {
                         LOG(WARNING) << "db_event_blockCandidateReceived: " << ton::create_block_id(ev.block_id_).to_str();
                         handle_block_candidate(ton::create_block_id(ev.block_id_));
@@ -27,7 +26,7 @@ void TraceEmulatorScheduler::handle_db_event(ton::tl_object_ptr<ton::ton_api::db
                     },
                     [&](ton::ton_api::db_event_blockSigned &ev) {
                         LOG(WARNING) << "db_event_blockSigned: " << ton::create_block_id(ev.block_id_).to_str();
-                        handle_block_candidate(ton::create_block_id(ev.block_id_));
+                        handle_block_signed(ton::create_block_id(ev.block_id_));
                     }));
 }
 
@@ -38,6 +37,17 @@ void TraceEmulatorScheduler::handle_block_candidate(ton::BlockIdExt block_id) {
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<td::Unit> R) {
         R.ensure();
         td::actor::send_closure(SelfId, &TraceEmulatorScheduler::enqueue_confirmed_block, block_id);
+    });
+    td::actor::send_closure(db_scanner_, &DbScanner::request_catch_up, std::move(P));
+}
+
+void TraceEmulatorScheduler::handle_block_signed(ton::BlockIdExt block_id) {
+    if (block_id.is_masterchain()) {
+        return;
+    }
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<td::Unit> R) {
+        R.ensure();
+        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::enqueue_signed_block, block_id);
     });
     td::actor::send_closure(db_scanner_, &DbScanner::request_catch_up, std::move(P));
 }
@@ -195,7 +205,7 @@ void TraceEmulatorScheduler::emulate_blocks() {
     }
 }
 
-void TraceEmulatorScheduler::scan_unconfirmed_shards() {
+void TraceEmulatorScheduler::scan_confirmed_shards() {
     bool capture_only = !initial_temp_snapshot_taken_;
     auto callback = [SelfId = actor_id(this), capture_only, confirmed_block_storage = confirmed_block_storage_](const ton::validator::BlockHandleInterface& handle) {
         if (handle.id().is_masterchain()) {
@@ -263,6 +273,41 @@ void TraceEmulatorScheduler::confirmed_block_error(ton::BlockIdExt block_id, td:
     }, td::Timestamp::in(0.1));
 }
 
+void TraceEmulatorScheduler::enqueue_signed_block(ton::BlockIdExt block_id) {
+    if (signed_blocks_inflight_.count(block_id) != 0 || signed_block_storage_.count(block_id) != 0) {
+        return;
+    }
+    signed_blocks_inflight_.insert(block_id);
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<BlockDataState> R) mutable {
+        if (R.is_error()) {
+            td::actor::send_closure(SelfId, &TraceEmulatorScheduler::signed_block_error, block_id, R.move_as_error());
+            return;
+        }
+        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::signed_block_fetched, block_id, R.move_as_ok());
+    });
+    td::actor::send_closure(db_scanner_, &DbScanner::fetch_block_by_id, block_id, std::move(P));
+}
+
+void TraceEmulatorScheduler::signed_block_fetched(ton::BlockIdExt block_id, BlockDataState block_data_state) {
+    auto time_diff = td::Clocks::system() - block_data_state.handle->unix_time();
+    LOG(INFO) << "Collected signed shard block " << block_id.to_str() << " created " << td::StringBuilder::FixedDouble(time_diff, 2) << "s ago";
+
+    signed_blocks_inflight_.erase(block_id);
+    td::actor::send_closure(invalidated_trace_tracker_, &InvalidatedTraceTracker::register_pending_block, block_data_state.handle->id());
+    signed_block_storage_.emplace(block_id, std::move(block_data_state));
+    signed_block_queue_.push_back(block_id);
+
+    process_signed_blocks();
+}
+
+void TraceEmulatorScheduler::signed_block_error(ton::BlockIdExt block_id, td::Status error) {
+    signed_blocks_inflight_.erase(block_id);
+    LOG(ERROR) << "Failed to collect signed shard block " << block_id.to_str() << ": " << error;
+    ton::delay_action([SelfId = actor_id(this), block_id]() {
+        td::actor::send_closure(SelfId, &TraceEmulatorScheduler::enqueue_signed_block, block_id);
+    }, td::Timestamp::in(0.1));
+}
+
 void TraceEmulatorScheduler::process_confirmed_blocks() {
     while (!confirmed_block_queue_.empty()) {
         auto block_id = confirmed_block_queue_.front();
@@ -273,6 +318,7 @@ void TraceEmulatorScheduler::process_confirmed_blocks() {
         }
         if (!latest_config_ || latest_shard_states_.empty()) {
             LOG(WARNING) << "Skipping confirmed shard block " << block_id.to_str() << " due to missing masterchain context";
+            confirmed_block_queue_.push_front(block_id);
             break;
         }
 
@@ -297,7 +343,47 @@ void TraceEmulatorScheduler::process_confirmed_blocks() {
         });
         auto actor_name = PSLICE() << "ConfirmedBlockEmulator" << block_id.seqno();
         auto trace_processor = make_confirmed_trace_processor(block_id);
-        td::actor::create_actor<ConfirmedBlockEmulator>(actor_name, std::move(block_data_state), latest_config_,
+        td::actor::create_actor<ConfirmedBlockEmulator>(actor_name, FinalityState::Confirmed, std::move(block_data_state), latest_config_,
+                                                        std::move(shard_snapshot_copy), std::move(trace_processor),
+                                                        std::move(P))
+            .release();
+    }
+}
+
+void TraceEmulatorScheduler::process_signed_blocks() {
+    while (!signed_block_queue_.empty()) {
+        auto block_id = signed_block_queue_.front();
+        signed_block_queue_.pop_front();
+        auto it = signed_block_storage_.find(block_id);
+        if (it == signed_block_storage_.end()) {
+            continue;
+        }
+        if (!latest_config_ || latest_shard_states_.empty()) {
+            LOG(WARNING) << "Skipping signed shard block " << block_id.to_str() << " due to missing masterchain context";
+            signed_block_queue_.push_front(block_id);
+            break;
+        }
+
+        auto block_data_state = std::move(it->second);
+        signed_block_storage_.erase(it);
+
+        auto shard_snapshot_copy = latest_shard_states_;
+        for (auto& snapshot : shard_snapshot_copy) {
+            if (snapshot.blkid.shard_full() == block_data_state.block_data->block_id().shard_full()) {
+                snapshot.state = block_data_state.block_state;
+                snapshot.timestamp = block_data_state.handle->unix_time();
+                snapshot.logical_time = block_data_state.handle->logical_time();
+            }
+        }
+
+        auto P = td::PromiseCreator::lambda([block_id](td::Result<> R) mutable {
+            if (R.is_error()) {
+                LOG(ERROR) << "Error processing signed shard block " << block_id.to_str() << ": " << R.move_as_error();
+            }
+        });
+        auto actor_name = PSLICE() << "SignedBlockEmulator" << block_id.seqno();
+        auto trace_processor = make_signed_trace_processor(block_id);
+        td::actor::create_actor<ConfirmedBlockEmulator>(actor_name, FinalityState::Signed, std::move(block_data_state), latest_config_,
                                                         std::move(shard_snapshot_copy), std::move(trace_processor),
                                                         std::move(P))
             .release();
@@ -307,6 +393,13 @@ void TraceEmulatorScheduler::process_confirmed_blocks() {
 std::function<void(Trace, td::Promise<td::Unit>)> TraceEmulatorScheduler::make_confirmed_trace_processor(const ton::BlockIdExt& block_id_ext) {
     return [insert_trace = insert_trace_, block_id_ext, tracker = invalidated_trace_tracker_.get()](Trace trace, td::Promise<td::Unit> promise) mutable {
         td::actor::send_closure(tracker, &InvalidatedTraceTracker::add_confirmed_trace, block_id_ext, trace.ext_in_msg_hash_norm);
+        insert_trace(std::move(trace), std::move(promise));
+    };
+}
+
+std::function<void(Trace, td::Promise<td::Unit>)> TraceEmulatorScheduler::make_signed_trace_processor(const ton::BlockIdExt& block_id_ext) {
+    return [insert_trace = insert_trace_, block_id_ext, tracker = invalidated_trace_tracker_.get()](Trace trace, td::Promise<td::Unit> promise) mutable {
+        td::actor::send_closure(tracker, &InvalidatedTraceTracker::add_signed_trace, block_id_ext, trace.ext_in_msg_hash_norm);
         insert_trace(std::move(trace), std::move(promise));
     };
 }
@@ -340,10 +433,12 @@ void TraceEmulatorScheduler::alarm() {
             td::actor::send_closure(SelfId, &TraceEmulatorScheduler::got_last_mc_seqno, R.move_as_ok());
         });
         td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
-        scan_unconfirmed_shards();
+        scan_confirmed_shards();
     }
 
     fetch_seqnos();
+    process_confirmed_blocks();
+    process_signed_blocks();
 
     if (next_statistics_flush_.is_in_past()) {
         ton::delay_action([working_dir = this->working_dir_]() {

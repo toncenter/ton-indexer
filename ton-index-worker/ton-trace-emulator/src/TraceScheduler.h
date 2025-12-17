@@ -39,10 +39,13 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::unordered_set<ton::BlockSeqno> seqnos_to_fetch_;
     std::map<ton::BlockSeqno, MasterchainBlockDataState> blocks_to_emulate_;
     std::deque<ton::BlockIdExt> confirmed_block_queue_;
+    std::deque<ton::BlockIdExt> signed_block_queue_;
     std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> known_temp_blocks_;
     bool initial_temp_snapshot_taken_{false};
     std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> confirmed_blocks_inflight_;
+    std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> signed_blocks_inflight_;
     std::unordered_map<ton::BlockIdExt, BlockDataState, BlockIdExtHasher> confirmed_block_storage_;
+    std::unordered_map<ton::BlockIdExt, BlockDataState, BlockIdExtHasher> signed_block_storage_;
     std::shared_ptr<block::ConfigInfo> latest_config_;
     std::vector<ShardStateSnapshot> latest_shard_states_;
 
@@ -52,6 +55,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     td::actor::ActorOwn<InvalidatedTraceTracker> invalidated_trace_tracker_;
 
     void handle_block_candidate(ton::BlockIdExt block_id);
+    void handle_block_signed(ton::BlockIdExt block_id);
     void handle_block_applied(ton::BlockIdExt block_id);
 
     void got_last_mc_seqno(ton::BlockSeqno last_known_seqno);
@@ -59,13 +63,18 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void fetch_error(std::uint32_t seqno, td::Status error);
     void seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState mc_data_state);
     void emulate_blocks();
-    void scan_unconfirmed_shards();
+    void scan_confirmed_shards();
     void handle_temp_block(ton::BlockIdExt block_id, bool capture_only);
     void enqueue_confirmed_block(ton::BlockIdExt block_id);
+    void enqueue_signed_block(ton::BlockIdExt block_id);
     void confirmed_block_fetched(ton::BlockIdExt block_id, BlockDataState block_data_state);
+    void signed_block_fetched(ton::BlockIdExt block_id, BlockDataState block_data_state);
     void confirmed_block_error(ton::BlockIdExt block_id, td::Status error);
+    void signed_block_error(ton::BlockIdExt block_id, td::Status error);
     void process_confirmed_blocks();
+    void process_signed_blocks();
     std::function<void(Trace, td::Promise<td::Unit>)> make_confirmed_trace_processor(const ton::BlockIdExt& block_id_ext);
+    std::function<void(Trace, td::Promise<td::Unit>)> make_signed_trace_processor(const ton::BlockIdExt& block_id_ext);
     std::function<void(Trace, td::Promise<td::Unit>)> make_finalized_trace_processor(const MasterchainBlockDataState& mc_data_state);
 
     void alarm() override;

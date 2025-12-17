@@ -86,7 +86,8 @@ AccountStatus = Enum('uninit', 'frozen', 'active', 'nonexist', name='account_sta
 class FinalityState(IntEnum):
     pending = 0
     confirmed = 1
-    finalized = 2
+    signed = 2
+    finalized = 3
 
 
 def convert_numerics_to_strings(data, exclusions):

@@ -66,6 +66,7 @@ class InvalidatedTraceTracker : public td::actor::Actor {
 
     void register_pending_block(ton::BlockIdExt block_id_ext);
     void add_confirmed_trace(ton::BlockIdExt block_id_ext, td::Bits256 ext_in_hash_norm);
+    void add_signed_trace(ton::BlockIdExt block_id_ext, td::Bits256 ext_in_hash_norm);
     void add_finalized_trace(ton::BlockIdExt block_id_ext, td::Bits256 ext_in_hash_norm);
     void finalized_mc_block_emulated(std::vector<ton::BlockId> block_ids);
 };

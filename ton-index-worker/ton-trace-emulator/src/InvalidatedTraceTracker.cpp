@@ -51,6 +51,11 @@ void InvalidatedTraceTracker::add_confirmed_trace(ton::BlockIdExt block_id_ext, 
     }
 }
 
+void InvalidatedTraceTracker::add_signed_trace(ton::BlockIdExt block_id_ext, td::Bits256 ext_in_hash_norm) {
+    // Signed traces are treated the same as confirmed traces for invalidation purposes.
+    add_confirmed_trace(std::move(block_id_ext), ext_in_hash_norm);
+}
+
 void InvalidatedTraceTracker::add_finalized_trace(ton::BlockIdExt block_id_ext, td::Bits256 ext_in_hash_norm) {
     auto& finalized_entry = finalized_block_traces_[block_id_ext.id];
     finalized_entry.block_id_ext = block_id_ext;

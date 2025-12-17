@@ -493,7 +493,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 
 	// Manage invalidation tracking
 	switch n.Finality {
-	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed:
+	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed, emulated.FinalityStateSigned:
 		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	case emulated.FinalityStateFinalized:
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
@@ -574,7 +574,7 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 	}
 
 	switch n.Finality {
-	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed:
+	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed, emulated.FinalityStateSigned:
 		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	case emulated.FinalityStateFinalized:
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
@@ -592,7 +592,7 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 
 type AccountStateNotification struct {
 	Type     EventType              `json:"type"`
-	Finality emulated.FinalityState `json:"finality"` // can confirmed or finalized for now
+	Finality emulated.FinalityState `json:"finality"` // confirmed / signed / finalized
 	Account  string                 `json:"account"`
 	State    index.AccountState     `json:"state"`
 }
@@ -614,7 +614,7 @@ func (n *AccountStateNotification) AdjustForClient(client *Client) any {
 
 type JettonsNotification struct {
 	Type        EventType              `json:"type"`
-	Finality    emulated.FinalityState `json:"finality"` // can confirmed or finalized for now
+	Finality    emulated.FinalityState `json:"finality"` // confirmed / signed / finalized
 	Jetton      index.JettonWallet     `json:"jetton"`
 	AddressBook *index.AddressBook     `json:"address_book,omitempty"`
 	Metadata    *index.Metadata        `json:"metadata,omitempty"`
@@ -777,6 +777,37 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 ////////////////////////////////////////////////////////////////////////////////
 // Redis subscription: confirmed & finalized txs
 ////////////////////////////////////////////////////////////////////////////////
+
+// SubscribeToSignedTransactions listens for txs that reached "signed" state.
+// Channel format is assumed to be: "<trace_external_hash_norm>:txhash1,txhash2,..."
+func SubscribeToSignedTransactions(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
+	pubsub := rdb.Subscribe(ctx, channel)
+	defer pubsub.Close()
+
+	log.Printf("[v2] Subscribed to Redis channel (signed txs): %s", channel)
+
+	for {
+		msg, err := pubsub.ReceiveMessage(ctx)
+		if err != nil {
+			log.Printf("[v2] Error receiving signed txs message: %v", err)
+			continue
+		}
+
+		parts := strings.Split(msg.Payload, ":")
+		if len(parts) != 2 {
+			log.Printf("[v2] Invalid signed txs message format: %s", msg.Payload)
+			continue
+		}
+		traceExternalHashNorm := parts[0]
+		txHashes := strings.Split(parts[1], ",")
+		if len(txHashes) == 0 {
+			log.Printf("[v2] No transaction hashes found in signed txs message: %s", msg.Payload)
+			continue
+		}
+
+		go ProcessNewSignedTxs(ctx, rdb, traceExternalHashNorm, txHashes, manager)
+	}
+}
 
 // SubscribeToConfirmedTransactions listens for txs that reached "confirmed" state.
 // Channel format is assumed to be: "<trace_external_hash_norm>:txhash1,txhash2,..."
@@ -956,6 +987,120 @@ func ProcessNewConfirmedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 	}
 }
 
+// signed txs
+func ProcessNewSignedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
+	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
+	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
+	if err != nil {
+		log.Printf("[v2] Error loading raw traces (signed): %v, trace key: %s", err, traceExternalHashNorm)
+		return
+	}
+
+	emulatedContext := index.NewEmptyContext(false)
+	err = emulatedContext.FillFromRawData(rawTraces)
+	if err != nil {
+		log.Printf("[v2] Error filling context from raw data (signed): %v, trace key: %s", err, traceExternalHashNorm)
+		return
+	}
+	if emulatedContext.GetTraceCount() > 1 {
+		log.Printf("[v2] More than 1 trace in context (signed), trace key: %s", traceExternalHashNorm)
+		return
+	}
+	if emulatedContext.GetTraceCount() == 0 {
+		log.Printf("[v2] No traces in context (signed), trace key: %s", traceExternalHashNorm)
+		return
+	}
+
+	rows := emulatedContext.GetTransactionsByTraceIdAndHash(traceExternalHashNorm, txHashes)
+	if len(rows) == 0 {
+		log.Printf("[v2] No transactions found for trace %s (signed, %d hashes)", traceExternalHashNorm, len(txHashes))
+		return
+	}
+
+	var txs []index.Transaction
+	txsMap := map[index.HashType]int{}
+	for _, row := range rows {
+		if tx, err := index.ScanTransaction(row); err == nil {
+			txs = append(txs, *tx)
+			txsMap[tx.Hash] = len(txs) - 1
+		} else {
+			log.Printf("[v2] Error scanning transaction (signed): %v", err)
+		}
+	}
+
+	txsAddresses := []string{}
+	var hashes []string
+	for _, t := range txs {
+		hashes = append(hashes, string(t.Hash))
+		txsAddresses = append(txsAddresses, string(t.Account))
+	}
+
+	allAddresses := txsAddresses
+	if len(hashes) > 0 {
+		rows := emulatedContext.GetMessages(hashes)
+		for _, row := range rows {
+			msg, err := index.ScanMessageWithContent(row)
+			if err != nil {
+				log.Printf("[v2] Error scanning message (signed): %v", err)
+				continue
+			}
+			if msg.Direction == "in" {
+				txs[txsMap[msg.TxHash]].InMsg = msg
+				if msg.Source != nil {
+					allAddresses = append(allAddresses, string(*msg.Source))
+				}
+			} else {
+				txs[txsMap[msg.TxHash]].OutMsgs = append(txs[txsMap[msg.TxHash]].OutMsgs, msg)
+				if msg.Destination != nil {
+					allAddresses = append(allAddresses, string(*msg.Destination))
+				}
+			}
+		}
+	}
+
+	for idx := range txs {
+		sort.SliceStable(txs[idx].OutMsgs, func(i, j int) bool {
+			if txs[idx].OutMsgs[i].CreatedLt == nil {
+				return true
+			}
+			if txs[idx].OutMsgs[j].CreatedLt == nil {
+				return false
+			}
+			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
+		})
+	}
+
+	var addressBook *index.AddressBook
+	var metadata *index.Metadata
+	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
+		[]EventType{EventTransactions},
+		emulated.FinalityStateSigned,
+		allAddresses,
+	)
+	if shouldFetchAddressBook || shouldFetchMetadata {
+		addressBook, metadata = fetchAddressBookAndMetadata(
+			ctx,
+			allAddresses,
+			allAddresses,
+			shouldFetchAddressBook,
+			shouldFetchMetadata,
+		)
+	}
+
+	sort.Slice(txs, func(i, j int) bool {
+		return txs[i].Lt > txs[j].Lt
+	})
+
+	manager.broadcast <- &TransactionsNotification{
+		Type:                  EventTransactions,
+		Finality:              emulated.FinalityStateSigned,
+		TraceExternalHashNorm: traceExternalHashNorm,
+		Transactions:          txs,
+		AddressBook:           addressBook,
+		Metadata:              metadata,
+	}
+}
+
 // finalized txs (old "committed")
 func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
@@ -1106,6 +1251,8 @@ func parseAccountStateChannelPayload(payload string) (emulated.FinalityState, st
 	switch parts[0] {
 	case "account_confirmed":
 		finality = emulated.FinalityStateConfirmed
+	case "account_signed":
+		finality = emulated.FinalityStateSigned
 	case "account_finalized":
 		finality = emulated.FinalityStateFinalized
 	default:
@@ -1266,7 +1413,7 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Account state & jettons (confirmed & finalized, no pending)
+// Account state & jettons (confirmed, signed & finalized, no pending)
 ////////////////////////////////////////////////////////////////////////////////
 
 func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string, finality emulated.FinalityState, manager *ClientManager) {
@@ -1274,6 +1421,8 @@ func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string
 	switch finality {
 	case emulated.FinalityStateConfirmed:
 		key = fmt.Sprintf("account_confirmed:%s", addr)
+	case emulated.FinalityStateSigned:
+		key = fmt.Sprintf("account_signed:%s", addr)
 	case emulated.FinalityStateFinalized:
 		key = fmt.Sprintf("account_finalized:%s", addr)
 	default:
