@@ -1385,6 +1385,111 @@ func ScanNFTTransfer(row pgx.Row) (*NFTTransfer, error) {
 	return &res, nil
 }
 
+func ScanNFTSale(row pgx.Row) (*NFTSale, error) {
+	var sale NFTSale
+	var nftItem NFTItemNullable
+	var nftCollection NFTCollectionNullable
+
+	err := row.Scan(
+		&sale.SaleType,
+		&sale.Address,
+		&sale.NftAddress,
+		&sale.NftOwnerAddress,
+		&sale.MarketplaceAddress,
+		&sale.CreatedAt,
+		&sale.LastTransactionLt,
+		&sale.CodeHash,
+		&sale.DataHash,
+		&sale.IsComplete,
+		&sale.FullPrice,
+		&sale.MarketplaceFeeAddress,
+		&sale.MarketplaceFee,
+		&sale.RoyaltyAddress,
+		&sale.RoyaltyAmount,
+		&sale.EndFlag,
+		&sale.EndTime,
+		&sale.LastBid,
+		&sale.LastMember,
+		&sale.MinStep,
+		&sale.MpFeeAddress,
+		&sale.MpFeeFactor,
+		&sale.MpFeeBase,
+		&sale.RoyaltyFeeAddress,
+		&sale.RoyaltyFeeFactor,
+		&sale.RoyaltyFeeBase,
+		&sale.MaxBid,
+		&sale.MinBid,
+		&sale.LastBidAt,
+		&sale.IsCanceled,
+		&nftItem.Address,
+		&nftItem.Init,
+		&nftItem.Index,
+		&nftItem.CollectionAddress,
+		&nftItem.OwnerAddress,
+		&nftItem.Content,
+		&nftItem.LastTransactionLt,
+		&nftItem.CodeHash,
+		&nftItem.DataHash,
+		&nftCollection.Address,
+		&nftCollection.NextItemIndex,
+		&nftCollection.OwnerAddress,
+		&nftCollection.CollectionContent,
+		&nftCollection.DataHash,
+		&nftCollection.CodeHash,
+		&nftCollection.LastTransactionLt,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Populate NFT item if exists
+	if nftItem.Address != nil {
+		sale.NftItem = new(NFTItem)
+		sale.NftItem.Address = *nftItem.Address
+		if nftItem.Init != nil {
+			sale.NftItem.Init = *nftItem.Init
+		}
+		if nftItem.Index != nil {
+			sale.NftItem.Index = *nftItem.Index
+		}
+		sale.NftItem.CollectionAddress = nftItem.CollectionAddress
+		sale.NftItem.OwnerAddress = nftItem.OwnerAddress
+		sale.NftItem.Content = nftItem.Content
+		if nftItem.LastTransactionLt != nil {
+			sale.NftItem.LastTransactionLt = *nftItem.LastTransactionLt
+		}
+		if nftItem.CodeHash != nil {
+			sale.NftItem.CodeHash = *nftItem.CodeHash
+		}
+		if nftItem.DataHash != nil {
+			sale.NftItem.DataHash = *nftItem.DataHash
+		}
+
+		// Populate collection if exists
+		if nftCollection.Address != nil {
+			sale.NftItem.Collection = new(NFTCollection)
+			sale.NftItem.Collection.Address = *nftCollection.Address
+			if nftCollection.NextItemIndex != nil {
+				sale.NftItem.Collection.NextItemIndex = *nftCollection.NextItemIndex
+			}
+			sale.NftItem.Collection.OwnerAddress = nftCollection.OwnerAddress
+			sale.NftItem.Collection.CollectionContent = nftCollection.CollectionContent
+			if nftCollection.DataHash != nil {
+				sale.NftItem.Collection.DataHash = *nftCollection.DataHash
+			}
+			if nftCollection.CodeHash != nil {
+				sale.NftItem.Collection.CodeHash = *nftCollection.CodeHash
+			}
+			if nftCollection.LastTransactionLt != nil {
+				sale.NftItem.Collection.LastTransactionLt = *nftCollection.LastTransactionLt
+			}
+		}
+	}
+
+	return &sale, nil
+}
+
 func ScanJettonMaster(row pgx.Row) (*JettonMaster, error) {
 	var res JettonMaster
 	err := row.Scan(&res.Address, &res.TotalSupply, &res.Mintable, &res.AdminAddress,

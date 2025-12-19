@@ -331,6 +331,18 @@ type NFTCollectionNullable struct {
 	DataBoc           *string
 }
 
+type NFTItemNullable struct {
+	Address           *AccountAddress
+	Init              *bool
+	Index             *string
+	CollectionAddress *AccountAddress
+	OwnerAddress      *AccountAddress
+	Content           map[string]interface{}
+	LastTransactionLt *int64
+	CodeHash          *HashType
+	DataHash          *HashType
+}
+
 type NFTItem struct {
 	Address                AccountAddress         `json:"address"`
 	Init                   bool                   `json:"init"`
@@ -367,6 +379,40 @@ type NFTTransfer struct {
 	DecodedForwardPayload *json.RawMessage `json:"decoded_forward_payload"`
 	TraceId               *HashType        `json:"trace_id"`
 } // @name NFTTransfer
+
+type NFTSale struct {
+	SaleType            string          `json:"sale_type"`
+	Address             AccountAddress  `json:"address"`
+	NftAddress          *AccountAddress `json:"nft_address,omitempty"`
+	NftOwnerAddress     *AccountAddress `json:"nft_owner_address,omitempty"`
+	MarketplaceAddress  *AccountAddress `json:"marketplace_address,omitempty"`
+	CreatedAt           *int64          `json:"created_at,omitempty"`
+	LastTransactionLt   *int64          `json:"last_transaction_lt,string,omitempty"`
+	CodeHash            *HashType       `json:"code_hash,omitempty"`
+	DataHash            *HashType       `json:"data_hash,omitempty"`
+	IsComplete          *bool           `json:"is_complete,omitempty"`
+	FullPrice           *string         `json:"full_price,omitempty"`
+	MarketplaceFeeAddress *AccountAddress `json:"marketplace_fee_address,omitempty"`
+	MarketplaceFee      *string         `json:"marketplace_fee,omitempty"`
+	RoyaltyAddress      *AccountAddress `json:"royalty_address,omitempty"`
+	RoyaltyAmount       *string         `json:"royalty_amount,omitempty"`
+	EndFlag             *bool           `json:"end_flag,omitempty"`
+	EndTime             *int64          `json:"end_time,omitempty"`
+	LastBid             *string         `json:"last_bid,omitempty"`
+	LastMember          *AccountAddress `json:"last_member,omitempty"`
+	MinStep             *int64          `json:"min_step,omitempty"`
+	MpFeeAddress        *AccountAddress `json:"mp_fee_address,omitempty"`
+	MpFeeFactor         *int64          `json:"mp_fee_factor,omitempty"`
+	MpFeeBase           *int64          `json:"mp_fee_base,omitempty"`
+	RoyaltyFeeAddress   *AccountAddress `json:"royalty_fee_address,omitempty"`
+	RoyaltyFeeFactor    *int64          `json:"royalty_fee_factor,omitempty"`
+	RoyaltyFeeBase      *int64          `json:"royalty_fee_base,omitempty"`
+	MaxBid              *string         `json:"max_bid,omitempty"`
+	MinBid              *string         `json:"min_bid,omitempty"`
+	LastBidAt           *int64          `json:"last_bid_at,omitempty"`
+	IsCanceled          *bool           `json:"is_canceled,omitempty"`
+	NftItem             *NFTItem        `json:"nft_item,omitempty"`
+} // @name NFTSale
 
 // jettons
 type JettonMaster struct {

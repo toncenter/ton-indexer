@@ -5,8 +5,10 @@
 #include <mc-config.h>
 #include "Tokens.h"
 #include "NftSale.h"
+#include "NftSaleV4.h"
 #include "Multisig.h"
 #include "Vesting.h"
+#include "Telemint.h"
 
 template<typename... Detectors>
 class InterfacesDetector: public td::actor::Actor {

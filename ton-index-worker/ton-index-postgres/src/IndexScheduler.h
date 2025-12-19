@@ -10,9 +10,10 @@
 #include "DataParser.h"
 #include "smc-interfaces/InterfacesDetector.h"
 
-using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR, 
+using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR,
                                       NftItemDetectorR, NftCollectionDetectorR,
-                                      GetGemsNftFixPriceSale, GetGemsNftAuction, VestingContract>;
+                                      GetGemsNftFixPriceSale, GetGemsNftFixPriceSaleV4,
+                                      GetGemsNftAuction, VestingContract>;
 
 class IndexScheduler: public td::actor::Actor {
 private:
