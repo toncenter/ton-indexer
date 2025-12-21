@@ -492,6 +492,56 @@ class Action(Base):
         Column("uln", String),
         Column("uln_connection", String),
     ]))
+    cocoon_worker_payout_data = Column(CompositeType("cocoon_worker_payout_details", [
+        Column("payout_type", String),  # "regular" or "last"
+        Column("query_id", Numeric),
+        Column("new_tokens", Numeric),
+        Column("worker_state", Integer),
+        Column("worker_tokens", Numeric),
+    ]))
+    cocoon_proxy_payout_data = Column(CompositeType("cocoon_proxy_payout_details", [
+        Column("query_id", Numeric),
+    ]))
+    cocoon_proxy_charge_data = Column(CompositeType("cocoon_proxy_charge_details", [
+        Column("query_id", Numeric),
+        Column("new_tokens_used", Numeric),
+        Column("expected_address", String),
+    ]))
+    cocoon_client_top_up_data = Column(CompositeType("cocoon_client_top_up_details", [
+        Column("query_id", Numeric),
+    ]))
+    cocoon_register_proxy_data = Column(CompositeType("cocoon_register_proxy_details", [
+        Column("query_id", Numeric),
+    ]))
+    cocoon_unregister_proxy_data = Column(CompositeType("cocoon_unregister_proxy_details", [
+        Column("query_id", Numeric),
+        Column("seqno", Integer),
+    ]))
+    cocoon_client_register_data = Column(CompositeType("cocoon_client_register_details", [
+        Column("query_id", Numeric),
+        Column("nonce", Numeric),
+    ]))
+    cocoon_client_change_secret_hash_data = Column(CompositeType("cocoon_client_change_secret_hash_details", [
+        Column("query_id", Numeric),
+        Column("new_secret_hash", String),  # uint256 as string
+    ]))
+    cocoon_client_request_refund_data = Column(CompositeType("cocoon_client_request_refund_details", [
+        Column("query_id", Numeric),
+        Column("via_wallet", Boolean),
+    ]))
+    cocoon_grant_refund_data = Column(CompositeType("cocoon_grant_refund_details", [
+        Column("query_id", Numeric),
+        Column("new_tokens_used", Numeric),
+        Column("expected_address", String),
+    ]))  # payout_amount stored in action.amount
+    cocoon_client_increase_stake_data = Column(CompositeType("cocoon_client_increase_stake_details", [
+        Column("query_id", Numeric),
+        Column("new_stake", Numeric),
+    ]))
+    cocoon_client_withdraw_data = Column(CompositeType("cocoon_client_withdraw_details", [
+        Column("query_id", Numeric),
+        Column("withdraw_amount", Numeric),
+    ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)

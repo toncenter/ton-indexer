@@ -687,6 +687,34 @@ type RawAction struct {
 	LayerzeroDvnVerifyUln                                *AccountAddress
 	LayerzeroDvnVerifyUlnConnection                      *AccountAddress
 
+	// COCOON fields
+	CocoonWorkerPayoutPayoutType              *string
+	CocoonWorkerPayoutQueryId                 *string
+	CocoonWorkerPayoutNewTokens               *string
+	CocoonWorkerPayoutWorkerState             *int64
+	CocoonWorkerPayoutWorkerTokens            *string
+	CocoonProxyPayoutQueryId                  *string
+	CocoonProxyChargeQueryId                  *string
+	CocoonProxyChargeNewTokensUsed            *string
+	CocoonProxyChargeExpectedAddress          *string
+	CocoonClientTopUpQueryId                  *string
+	CocoonRegisterProxyQueryId                *string
+	CocoonUnregisterProxyQueryId              *string
+	CocoonUnregisterProxySeqno                *int64
+	CocoonClientRegisterQueryId               *string
+	CocoonClientRegisterNonce                 *string
+	CocoonClientChangeSecretHashQueryId       *string
+	CocoonClientChangeSecretHashNewSecretHash *string
+	CocoonClientRequestRefundQueryId          *string
+	CocoonClientRequestRefundViaWallet        *bool
+	CocoonGrantRefundQueryId                  *string
+	CocoonGrantRefundNewTokensUsed            *string
+	CocoonGrantRefundExpectedAddress          *string
+	CocoonClientIncreaseStakeQueryId          *string
+	CocoonClientIncreaseStakeNewStake         *string
+	CocoonClientWithdrawQueryId               *string
+	CocoonClientWithdrawWithdrawAmount        *string
+
 	AncestorType []string
 	Accounts     []string
 } // @name RawAction
@@ -1609,6 +1637,96 @@ type ActionDetailsNftUpdateSale struct {
 	FullPrice          *string         `json:"full_price"`
 	MarketplaceFee     *string         `json:"marketplace_fee"`
 	RoyaltyAmount      *string         `json:"royalty_amount"`
+}
+
+// COCOON action details structs
+type ActionDetailsCocoonWorkerPayout struct {
+	PayoutType   *string         `json:"payout_type"`
+	QueryId      *string         `json:"query_id"`
+	NewTokens    *string         `json:"new_tokens"`
+	WorkerState  *int64          `json:"worker_state"`
+	WorkerTokens *string         `json:"worker_tokens"`
+	Source       *AccountAddress `json:"source"`
+	Destination  *AccountAddress `json:"destination"`
+	Amount       *string         `json:"amount"`
+}
+
+type ActionDetailsCocoonProxyPayout struct {
+	QueryId     *string         `json:"query_id"`
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+}
+
+type ActionDetailsCocoonProxyCharge struct {
+	QueryId         *string         `json:"query_id"`
+	NewTokensUsed   *string         `json:"new_tokens_used"`
+	ExpectedAddress *string         `json:"expected_address"`
+	Source          *AccountAddress `json:"source"`
+	Destination     *AccountAddress `json:"destination"`
+}
+
+type ActionDetailsCocoonClientTopUp struct {
+	QueryId     *string         `json:"query_id"`
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+	Amount      *string         `json:"amount"`
+}
+
+type ActionDetailsCocoonRegisterProxy struct {
+	QueryId     *string         `json:"query_id"`
+	Destination *AccountAddress `json:"destination"`
+}
+
+type ActionDetailsCocoonUnregisterProxy struct {
+	QueryId     *string         `json:"query_id"`
+	Seqno       *int64          `json:"seqno"`
+	Destination *AccountAddress `json:"destination"`
+}
+
+type ActionDetailsCocoonClientRegister struct {
+	QueryId     *string         `json:"query_id"`
+	Nonce       *string         `json:"nonce"`
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+}
+
+type ActionDetailsCocoonClientChangeSecretHash struct {
+	QueryId       *string         `json:"query_id"`
+	NewSecretHash *string         `json:"new_secret_hash"`
+	Source        *AccountAddress `json:"source"`
+	Destination   *AccountAddress `json:"destination"`
+}
+
+type ActionDetailsCocoonClientRequestRefund struct {
+	QueryId     *string         `json:"query_id"`
+	ViaWallet   *bool           `json:"via_wallet"`
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+}
+
+type ActionDetailsCocoonGrantRefund struct {
+	QueryId         *string         `json:"query_id"`
+	NewTokensUsed   *string         `json:"new_tokens_used"`
+	ExpectedAddress *string         `json:"expected_address"`
+	Source          *AccountAddress `json:"source"`
+	Destination     *AccountAddress `json:"destination"`
+	Amount          *string         `json:"amount"`
+}
+
+type ActionDetailsCocoonClientIncreaseStake struct {
+	QueryId     *string         `json:"query_id"`
+	NewStake    *string         `json:"new_stake"`
+	Source      *AccountAddress `json:"source"`
+	Destination *AccountAddress `json:"destination"`
+	Amount      *string         `json:"amount"`
+}
+
+type ActionDetailsCocoonClientWithdraw struct {
+	QueryId        *string         `json:"query_id"`
+	WithdrawAmount *string         `json:"withdraw_amount"`
+	Source         *AccountAddress `json:"source"`
+	Destination    *AccountAddress `json:"destination"`
+	Amount         *string         `json:"amount"`
 }
 
 type OrderAction struct {
