@@ -407,7 +407,7 @@ type NFTSaleDetailsGetgemsAuction struct {
 	IsCanceled        *bool           `json:"is_canceled,omitempty"`
 }
 
-type NFTSaleDetailsTelemint struct {
+type NFTSaleDetailsTeleitem struct {
 	TokenName          *string         `json:"token_name,omitempty"`
 	BidderAddress      *AccountAddress `json:"bidder_address,omitempty"`
 	Bid                *string         `json:"bid,omitempty"`

@@ -282,7 +282,7 @@ func queryTelemintImpl(addresses []AccountAddress, conn *pgxpool.Conn, settings 
 	results := []RawNFTSale{}
 	for rows.Next() {
 		var raw RawNFTSale
-		raw.Type = "telemint"
+		raw.Type = "teleitem"
 
 		err := rows.Scan(
 			&raw.Type,
@@ -310,14 +310,10 @@ func queryTelemintImpl(addresses []AccountAddress, conn *pgxpool.Conn, settings 
 			return nil, IndexError{Code: 500, Message: err.Error()}
 		}
 
-		// Set nft_address to telemint address itself
 		raw.NftAddress = &raw.Address
 
-		// Populate nft_item using telemint address
 		raw.NftItemAddress = &raw.Address
 		if raw.TokenName != nil {
-			// Create a synthetic nft_item for telemint
-			// The actual NFT item data will be the telemint contract itself
 			raw.NftItemInit = new(bool)
 			*raw.NftItemInit = true
 			raw.NftItemIndex = raw.TokenName
@@ -434,7 +430,7 @@ func (db *DbClient) QueryNFTSales(
 				}
 			}
 		case "telemint":
-			if details, ok := sale.Details.(*NFTSaleDetailsTelemint); ok {
+			if details, ok := sale.Details.(*NFTSaleDetailsTeleitem); ok {
 				if details.BidderAddress != nil {
 					addr_list = append(addr_list, string(*details.BidderAddress))
 				}

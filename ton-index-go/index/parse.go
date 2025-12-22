@@ -1385,85 +1385,6 @@ func ScanNFTTransfer(row pgx.Row) (*NFTTransfer, error) {
 	return &res, nil
 }
 
-func ScanRawNFTSale(row pgx.Row) (*RawNFTSale, error) {
-	var raw RawNFTSale
-
-	err := row.Scan(
-		&raw.Type,
-		&raw.Address,
-		&raw.NftAddress,
-		&raw.NftOwnerAddress,
-		&raw.MarketplaceAddress,
-		&raw.CreatedAt,
-		&raw.LastTransactionLt,
-		&raw.CodeHash,
-		&raw.DataHash,
-		// GetGems Sale fields
-		&raw.IsComplete,
-		&raw.FullPrice,
-		&raw.MarketplaceFeeAddress,
-		&raw.MarketplaceFee,
-		&raw.RoyaltyAddress,
-		&raw.RoyaltyAmount,
-		// GetGems Auction fields
-		&raw.EndFlag,
-		&raw.EndTime,
-		&raw.LastBid,
-		&raw.LastMember,
-		&raw.MinStep,
-		&raw.MpFeeAddress,
-		&raw.MpFeeFactor,
-		&raw.MpFeeBase,
-		&raw.RoyaltyFeeAddress,
-		&raw.RoyaltyFeeFactor,
-		&raw.RoyaltyFeeBase,
-		&raw.MaxBid,
-		&raw.MinBid,
-		&raw.LastBidAt,
-		&raw.IsCanceled,
-		// Telemint fields
-		&raw.TokenName,
-		&raw.BidderAddress,
-		&raw.Bid,
-		&raw.BidTs,
-		&raw.TelemintMinBid,
-		&raw.TelemintEndTime,
-		&raw.BeneficiaryAddress,
-		&raw.InitialMinBid,
-		&raw.TelemintMaxBid,
-		&raw.MinBidStep,
-		&raw.MinExtendTime,
-		&raw.Duration,
-		&raw.RoyaltyNumerator,
-		&raw.RoyaltyDenominator,
-		&raw.RoyaltyDestination,
-		// NFT Item fields
-		&raw.NftItemAddress,
-		&raw.NftItemInit,
-		&raw.NftItemIndex,
-		&raw.NftItemCollectionAddress,
-		&raw.NftItemOwnerAddress,
-		&raw.NftItemContent,
-		&raw.NftItemLastTransactionLt,
-		&raw.NftItemCodeHash,
-		&raw.NftItemDataHash,
-		// NFT Collection fields
-		&raw.CollectionAddress,
-		&raw.CollectionNextItemIndex,
-		&raw.CollectionOwnerAddress,
-		&raw.CollectionContent,
-		&raw.CollectionDataHash,
-		&raw.CollectionCodeHash,
-		&raw.CollectionLastTransactionLt,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &raw, nil
-}
-
 func ParseNFTSale(raw *RawNFTSale) (*NFTSale, error) {
 	var sale NFTSale
 
@@ -1477,7 +1398,6 @@ func ParseNFTSale(raw *RawNFTSale) (*NFTSale, error) {
 	sale.CodeHash = raw.CodeHash
 	sale.DataHash = raw.DataHash
 
-	// Populate Details based on Type
 	switch raw.Type {
 	case "getgems_sale":
 		var details NFTSaleDetailsGetgemsSale
@@ -1507,7 +1427,7 @@ func ParseNFTSale(raw *RawNFTSale) (*NFTSale, error) {
 		details.IsCanceled = raw.IsCanceled
 		sale.Details = &details
 	case "telemint":
-		var details NFTSaleDetailsTelemint
+		var details NFTSaleDetailsTeleitem
 		details.TokenName = raw.TokenName
 		details.BidderAddress = raw.BidderAddress
 		details.Bid = raw.Bid
@@ -1526,7 +1446,6 @@ func ParseNFTSale(raw *RawNFTSale) (*NFTSale, error) {
 		sale.Details = &details
 	}
 
-	// Populate NFT Item if exists
 	if raw.NftItemAddress != nil {
 		sale.NftItem = new(NFTItem)
 		sale.NftItem.Address = *raw.NftItemAddress
@@ -1549,7 +1468,6 @@ func ParseNFTSale(raw *RawNFTSale) (*NFTSale, error) {
 			sale.NftItem.DataHash = *raw.NftItemDataHash
 		}
 
-		// Populate Collection if exists
 		if raw.CollectionAddress != nil {
 			sale.NftItem.Collection = new(NFTCollection)
 			sale.NftItem.Collection.Address = *raw.CollectionAddress
