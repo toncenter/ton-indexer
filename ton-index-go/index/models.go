@@ -331,18 +331,6 @@ type NFTCollectionNullable struct {
 	DataBoc           *string
 }
 
-type NFTItemNullable struct {
-	Address           *AccountAddress
-	Init              *bool
-	Index             *string
-	CollectionAddress *AccountAddress
-	OwnerAddress      *AccountAddress
-	Content           map[string]interface{}
-	LastTransactionLt *int64
-	CodeHash          *HashType
-	DataHash          *HashType
-}
-
 type NFTItem struct {
 	Address                AccountAddress         `json:"address"`
 	Init                   bool                   `json:"init"`
