@@ -1385,104 +1385,187 @@ func ScanNFTTransfer(row pgx.Row) (*NFTTransfer, error) {
 	return &res, nil
 }
 
-func ScanNFTSale(row pgx.Row) (*NFTSale, error) {
-	var sale NFTSale
-	var nftItem NFTItemNullable
-	var nftCollection NFTCollectionNullable
+func ScanRawNFTSale(row pgx.Row) (*RawNFTSale, error) {
+	var raw RawNFTSale
 
 	err := row.Scan(
-		&sale.SaleType,
-		&sale.Address,
-		&sale.NftAddress,
-		&sale.NftOwnerAddress,
-		&sale.MarketplaceAddress,
-		&sale.CreatedAt,
-		&sale.LastTransactionLt,
-		&sale.CodeHash,
-		&sale.DataHash,
-		&sale.IsComplete,
-		&sale.FullPrice,
-		&sale.MarketplaceFeeAddress,
-		&sale.MarketplaceFee,
-		&sale.RoyaltyAddress,
-		&sale.RoyaltyAmount,
-		&sale.EndFlag,
-		&sale.EndTime,
-		&sale.LastBid,
-		&sale.LastMember,
-		&sale.MinStep,
-		&sale.MpFeeAddress,
-		&sale.MpFeeFactor,
-		&sale.MpFeeBase,
-		&sale.RoyaltyFeeAddress,
-		&sale.RoyaltyFeeFactor,
-		&sale.RoyaltyFeeBase,
-		&sale.MaxBid,
-		&sale.MinBid,
-		&sale.LastBidAt,
-		&sale.IsCanceled,
-		&nftItem.Address,
-		&nftItem.Init,
-		&nftItem.Index,
-		&nftItem.CollectionAddress,
-		&nftItem.OwnerAddress,
-		&nftItem.Content,
-		&nftItem.LastTransactionLt,
-		&nftItem.CodeHash,
-		&nftItem.DataHash,
-		&nftCollection.Address,
-		&nftCollection.NextItemIndex,
-		&nftCollection.OwnerAddress,
-		&nftCollection.CollectionContent,
-		&nftCollection.DataHash,
-		&nftCollection.CodeHash,
-		&nftCollection.LastTransactionLt,
+		&raw.Type,
+		&raw.Address,
+		&raw.NftAddress,
+		&raw.NftOwnerAddress,
+		&raw.MarketplaceAddress,
+		&raw.CreatedAt,
+		&raw.LastTransactionLt,
+		&raw.CodeHash,
+		&raw.DataHash,
+		// GetGems Sale fields
+		&raw.IsComplete,
+		&raw.FullPrice,
+		&raw.MarketplaceFeeAddress,
+		&raw.MarketplaceFee,
+		&raw.RoyaltyAddress,
+		&raw.RoyaltyAmount,
+		// GetGems Auction fields
+		&raw.EndFlag,
+		&raw.EndTime,
+		&raw.LastBid,
+		&raw.LastMember,
+		&raw.MinStep,
+		&raw.MpFeeAddress,
+		&raw.MpFeeFactor,
+		&raw.MpFeeBase,
+		&raw.RoyaltyFeeAddress,
+		&raw.RoyaltyFeeFactor,
+		&raw.RoyaltyFeeBase,
+		&raw.MaxBid,
+		&raw.MinBid,
+		&raw.LastBidAt,
+		&raw.IsCanceled,
+		// Telemint fields
+		&raw.TokenName,
+		&raw.BidderAddress,
+		&raw.Bid,
+		&raw.BidTs,
+		&raw.TelemintMinBid,
+		&raw.TelemintEndTime,
+		&raw.BeneficiaryAddress,
+		&raw.InitialMinBid,
+		&raw.TelemintMaxBid,
+		&raw.MinBidStep,
+		&raw.MinExtendTime,
+		&raw.Duration,
+		&raw.RoyaltyNumerator,
+		&raw.RoyaltyDenominator,
+		&raw.RoyaltyDestination,
+		// NFT Item fields
+		&raw.NftItemAddress,
+		&raw.NftItemInit,
+		&raw.NftItemIndex,
+		&raw.NftItemCollectionAddress,
+		&raw.NftItemOwnerAddress,
+		&raw.NftItemContent,
+		&raw.NftItemLastTransactionLt,
+		&raw.NftItemCodeHash,
+		&raw.NftItemDataHash,
+		// NFT Collection fields
+		&raw.CollectionAddress,
+		&raw.CollectionNextItemIndex,
+		&raw.CollectionOwnerAddress,
+		&raw.CollectionContent,
+		&raw.CollectionDataHash,
+		&raw.CollectionCodeHash,
+		&raw.CollectionLastTransactionLt,
 	)
 
 	if err != nil {
 		return nil, err
 	}
 
-	// Populate NFT item if exists
-	if nftItem.Address != nil {
+	return &raw, nil
+}
+
+func ParseNFTSale(raw *RawNFTSale) (*NFTSale, error) {
+	var sale NFTSale
+
+	sale.Type = raw.Type
+	sale.Address = raw.Address
+	sale.NftAddress = raw.NftAddress
+	sale.NftOwnerAddress = raw.NftOwnerAddress
+	sale.MarketplaceAddress = raw.MarketplaceAddress
+	sale.CreatedAt = raw.CreatedAt
+	sale.LastTransactionLt = raw.LastTransactionLt
+	sale.CodeHash = raw.CodeHash
+	sale.DataHash = raw.DataHash
+
+	// Populate Details based on Type
+	switch raw.Type {
+	case "getgems_sale":
+		var details NFTSaleDetailsGetgemsSale
+		details.IsComplete = raw.IsComplete
+		details.FullPrice = raw.FullPrice
+		details.MarketplaceFeeAddress = raw.MarketplaceFeeAddress
+		details.MarketplaceFee = raw.MarketplaceFee
+		details.RoyaltyAddress = raw.RoyaltyAddress
+		details.RoyaltyAmount = raw.RoyaltyAmount
+		sale.Details = &details
+	case "getgems_auction":
+		var details NFTSaleDetailsGetgemsAuction
+		details.EndFlag = raw.EndFlag
+		details.EndTime = raw.EndTime
+		details.LastBid = raw.LastBid
+		details.LastMember = raw.LastMember
+		details.MinStep = raw.MinStep
+		details.MpFeeAddress = raw.MpFeeAddress
+		details.MpFeeFactor = raw.MpFeeFactor
+		details.MpFeeBase = raw.MpFeeBase
+		details.RoyaltyFeeAddress = raw.RoyaltyFeeAddress
+		details.RoyaltyFeeFactor = raw.RoyaltyFeeFactor
+		details.RoyaltyFeeBase = raw.RoyaltyFeeBase
+		details.MaxBid = raw.MaxBid
+		details.MinBid = raw.MinBid
+		details.LastBidAt = raw.LastBidAt
+		details.IsCanceled = raw.IsCanceled
+		sale.Details = &details
+	case "telemint":
+		var details NFTSaleDetailsTelemint
+		details.TokenName = raw.TokenName
+		details.BidderAddress = raw.BidderAddress
+		details.Bid = raw.Bid
+		details.BidTs = raw.BidTs
+		details.MinBid = raw.TelemintMinBid
+		details.EndTime = raw.TelemintEndTime
+		details.BeneficiaryAddress = raw.BeneficiaryAddress
+		details.InitialMinBid = raw.InitialMinBid
+		details.MaxBid = raw.TelemintMaxBid
+		details.MinBidStep = raw.MinBidStep
+		details.MinExtendTime = raw.MinExtendTime
+		details.Duration = raw.Duration
+		details.RoyaltyNumerator = raw.RoyaltyNumerator
+		details.RoyaltyDenominator = raw.RoyaltyDenominator
+		details.RoyaltyDestination = raw.RoyaltyDestination
+		sale.Details = &details
+	}
+
+	// Populate NFT Item if exists
+	if raw.NftItemAddress != nil {
 		sale.NftItem = new(NFTItem)
-		sale.NftItem.Address = *nftItem.Address
-		if nftItem.Init != nil {
-			sale.NftItem.Init = *nftItem.Init
+		sale.NftItem.Address = *raw.NftItemAddress
+		if raw.NftItemInit != nil {
+			sale.NftItem.Init = *raw.NftItemInit
 		}
-		if nftItem.Index != nil {
-			sale.NftItem.Index = *nftItem.Index
+		if raw.NftItemIndex != nil {
+			sale.NftItem.Index = *raw.NftItemIndex
 		}
-		sale.NftItem.CollectionAddress = nftItem.CollectionAddress
-		sale.NftItem.OwnerAddress = nftItem.OwnerAddress
-		sale.NftItem.Content = nftItem.Content
-		if nftItem.LastTransactionLt != nil {
-			sale.NftItem.LastTransactionLt = *nftItem.LastTransactionLt
+		sale.NftItem.CollectionAddress = raw.NftItemCollectionAddress
+		sale.NftItem.OwnerAddress = raw.NftItemOwnerAddress
+		sale.NftItem.Content = raw.NftItemContent
+		if raw.NftItemLastTransactionLt != nil {
+			sale.NftItem.LastTransactionLt = *raw.NftItemLastTransactionLt
 		}
-		if nftItem.CodeHash != nil {
-			sale.NftItem.CodeHash = *nftItem.CodeHash
+		if raw.NftItemCodeHash != nil {
+			sale.NftItem.CodeHash = *raw.NftItemCodeHash
 		}
-		if nftItem.DataHash != nil {
-			sale.NftItem.DataHash = *nftItem.DataHash
+		if raw.NftItemDataHash != nil {
+			sale.NftItem.DataHash = *raw.NftItemDataHash
 		}
 
-		// Populate collection if exists
-		if nftCollection.Address != nil {
+		// Populate Collection if exists
+		if raw.CollectionAddress != nil {
 			sale.NftItem.Collection = new(NFTCollection)
-			sale.NftItem.Collection.Address = *nftCollection.Address
-			if nftCollection.NextItemIndex != nil {
-				sale.NftItem.Collection.NextItemIndex = *nftCollection.NextItemIndex
+			sale.NftItem.Collection.Address = *raw.CollectionAddress
+			if raw.CollectionNextItemIndex != nil {
+				sale.NftItem.Collection.NextItemIndex = *raw.CollectionNextItemIndex
 			}
-			sale.NftItem.Collection.OwnerAddress = nftCollection.OwnerAddress
-			sale.NftItem.Collection.CollectionContent = nftCollection.CollectionContent
-			if nftCollection.DataHash != nil {
-				sale.NftItem.Collection.DataHash = *nftCollection.DataHash
+			sale.NftItem.Collection.OwnerAddress = raw.CollectionOwnerAddress
+			sale.NftItem.Collection.CollectionContent = raw.CollectionContent
+			if raw.CollectionDataHash != nil {
+				sale.NftItem.Collection.DataHash = *raw.CollectionDataHash
 			}
-			if nftCollection.CodeHash != nil {
-				sale.NftItem.Collection.CodeHash = *nftCollection.CodeHash
+			if raw.CollectionCodeHash != nil {
+				sale.NftItem.Collection.CodeHash = *raw.CollectionCodeHash
 			}
-			if nftCollection.LastTransactionLt != nil {
-				sale.NftItem.Collection.LastTransactionLt = *nftCollection.LastTransactionLt
+			if raw.CollectionLastTransactionLt != nil {
+				sale.NftItem.Collection.LastTransactionLt = *raw.CollectionLastTransactionLt
 			}
 		}
 	}
