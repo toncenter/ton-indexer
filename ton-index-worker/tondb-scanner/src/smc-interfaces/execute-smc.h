@@ -52,9 +52,7 @@ td::Result<std::vector<vm::StackEntry>> execute_smc_method_nullable(const block:
       continue;
     }
     if (stack[i].type() != expected.type) {
-      return td::Status::Error(method_id + " unexpected stack entry type " +
-          std::to_string(i) + " " + std::to_string(stack[i].type()) +
-          " -- " + std::to_string(expected.type));
+      return td::Status::Error(method_id + " unexpected stack entry type");
     }
   }
 
