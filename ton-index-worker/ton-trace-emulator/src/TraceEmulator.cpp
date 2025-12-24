@@ -67,7 +67,7 @@ void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress addr
     
     auto result = std::make_unique<TraceNode>();
     result->node_id = in_msg->get_hash().bits();
-    result->emulated = true;
+    result->finality_state = FinalityState::Emulated;
     result->address = address;
     result->transaction_root = emulation_success.transaction;
     result->block_id = block_id_;
