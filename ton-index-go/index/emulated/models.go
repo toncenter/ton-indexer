@@ -488,6 +488,7 @@ type Action struct {
 	Asset2Secondary           *string                             `msgpack:"asset2_secondary"`
 	Opcode                    *uint32                             `msgpack:"opcode"`
 	Success                   bool                                `msgpack:"success"`
+	Finality                  FinalityState                       `msgpack:"finality"`
 	TonTransferData           *actionTonTransferDetails           `msgpack:"ton_transfer_data"`
 	AncestorType              []string                            `msgpack:"ancestor_type"`
 	ParentActionId            *string                             `msgpack:"parent_action_id"`
@@ -532,13 +533,64 @@ type Trace struct {
 	Classified   bool
 	Actions      []Action
 }
+
+type FinalityState uint8
+
+const (
+	FinalityStatePending FinalityState = iota
+	FinalityStateConfirmed
+	FinalityStateSigned
+	FinalityStateFinalized
+)
+
+func (fs FinalityState) String() string {
+	switch fs {
+	case FinalityStatePending:
+		return "pending"
+	case FinalityStateConfirmed:
+		return "confirmed"
+	case FinalityStateSigned:
+		return "signed"
+	case FinalityStateFinalized:
+		return "finalized"
+	default:
+		return "unknown_" + strconv.Itoa(int(fs))
+	}
+}
+
+// marshal and unmarshal FinalityState as string
+func (fs FinalityState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(fs.String())
+}
+
+func (fs *FinalityState) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "pending":
+		*fs = FinalityStatePending
+	case "confirmed":
+		*fs = FinalityStateConfirmed
+	case "signed":
+		*fs = FinalityStateSigned
+	case "finalized":
+		*fs = FinalityStateFinalized
+	default:
+		return fmt.Errorf("unknown finality state: %s", s)
+	}
+	return nil
+}
+
 type TraceNode struct {
-	Transaction  transaction `msgpack:"transaction"`
-	Emulated     bool        `msgpack:"emulated"`
-	BlockId      blockId     `msgpack:"block_id"`
-	McBlockSeqno uint32      `msgpack:"mc_block_seqno"`
-	TraceId      *string
-	Key          string
+	Transaction   transaction   `msgpack:"transaction"`
+	Emulated      bool          `msgpack:"emulated"`
+	BlockId       blockId       `msgpack:"block_id"`
+	McBlockSeqno  uint32        `msgpack:"mc_block_seqno"`
+	FinalityState FinalityState `msgpack:"finality"`
+	TraceId       *string
+	Key           string
 }
 
 type computePhaseVar struct {
@@ -806,6 +858,7 @@ func (n *TraceNode) GetTransactionRow() (TransactionRow, error) {
 		Credit:                   credit,
 		CreditExtraCurrencies:    map[string]string{},
 		Emulated:                 n.Emulated,
+		Finality:                 n.FinalityState,
 	}
 	if n.Transaction.Description.ComputePh.Type == 0 {
 		txRow.ComputeSkipped = new(bool)
@@ -1010,6 +1063,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		Asset2Secondary:       a.Asset2Secondary,
 		Opcode:                a.Opcode,
 		Success:               a.Success,
+		Finality:              a.Finality,
 		TraceExternalHash:     &a.TraceExternalHash,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		ParentActionId:        a.ParentActionId,

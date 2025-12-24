@@ -1,5 +1,6 @@
 #pragma once
 #include <queue>
+#include <functional>
 #include "validator/manager-disk.h"
 #include "validator/db/rootdb.hpp"
 
@@ -35,8 +36,11 @@ public:
   void get_oldest_mc_seqno(td::Promise<ton::BlockSeqno> promise);
   void get_mc_block_handle(ton::BlockSeqno seqno, td::Promise<ton::validator::ConstBlockHandle> promise);
   void get_cell_db_reader(td::Promise<std::shared_ptr<vm::CellDbReader>> promise);
+  void iterate_temp_block_handles(std::function<void(const ton::validator::BlockHandleInterface&)> f);
+  void fetch_block_by_id(ton::BlockIdExt block_id, td::Promise<BlockDataState> promise);
+  void request_catch_up(td::Promise<td::Unit> promise);
 private:
-  void catch_up_with_primary();
+  void catch_up_with_primary(td::Promise<td::Unit> promise);
 };
 
 struct BlockIdExtHasher {

@@ -4,7 +4,7 @@ import base64
 import hashlib
 import logging
 
-from indexer.core.database import Action, Trace
+from indexer.core.database import Action, FinalityState, Trace
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import (
@@ -108,7 +108,7 @@ def _calc_action_id(block: Block) -> str:
     return base64.b64encode(h.digest()).decode()
 
 
-def _base_block_to_action(block: Block, trace_id: str) -> Action:
+def _base_block_to_action(block: Block, trace_id: str, finality: FinalityState) -> Action:
     action_id = _calc_action_id(block)
     tx_hashes = list(set(n.get_tx_hash() for n in block.event_nodes))
     mc_seqno_end = max(n.get_tx().mc_block_seqno for n in block.event_nodes if n.get_tx() is not None)
@@ -130,6 +130,7 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
         end_utime=block.max_utime,
         success=not block.failed,
         mc_seqno_end=mc_seqno_end,
+        finality=finality,
         value_extra_currencies=dict(),
     )
     action.accounts = accounts
@@ -1109,14 +1110,15 @@ def _fill_ethena_deposit_action(block: EthenaDepositBlock, action: Action):
 
 
 # noinspection PyCompatibility,PyTypeChecker
-def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> Action:
-    action = _base_block_to_action(block, trace_id)
-    if trace is not None:
-        action.trace_end_lt = trace.end_lt
-        action.trace_end_utime = trace.end_utime
-        action.trace_external_hash = trace.external_hash
-        action.trace_external_hash_norm = trace.external_hash_norm
-        action.trace_mc_seqno_end = trace.mc_seqno_end
+def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
+    if trace is None:
+        raise ValueError("Trace is required to build action finality")
+    action = _base_block_to_action(block, trace_id, trace.finality)
+    action.trace_end_lt = trace.end_lt
+    action.trace_end_utime = trace.end_utime
+    action.trace_external_hash = trace.external_hash
+    action.trace_external_hash_norm = trace.external_hash_norm
+    action.trace_mc_seqno_end = trace.mc_seqno_end
     match block.btype:
         case 'call_contract' | 'contract_deploy':
             _fill_call_contract_action(block, action)
@@ -1314,10 +1316,13 @@ v1_ops = [
     'coffee_deposit_liquidity'
 ]
 
-def serialize_blocks(blocks: list[Block], trace_id, trace: Trace = None, parent_acton_id = None, serialize_child_actions=True) -> tuple[list[Action], str]:
+def serialize_blocks(blocks: list[Block], trace_id, trace: Trace, parent_acton_id = None,
+                    serialize_child_actions=True) -> tuple[list[Action], str]:
     actions = []
     action_ids = []
     state = 'ok'
+    if trace is None:
+        raise ValueError("Trace is required to serialize blocks")
     for block in blocks:
         if block.btype != 'root':
             if block.btype == 'call_contract' and block.event_nodes[0].message.destination is None:
@@ -1368,6 +1373,7 @@ def create_unknown_action(trace: Trace) -> Action:
         end_utime=trace.end_utime,
         success=not failed,
         mc_seqno_end=trace.mc_seqno_end,
+        finality=trace.finality,
         value_extra_currencies=dict(),
         trace_end_lt=trace.end_lt,
         trace_end_utime=trace.end_utime,
