@@ -1,5 +1,7 @@
 #pragma once
+#include <atomic>
 #include <map>
+#include <mutex>
 #include <optional>
 
 #include "common/bitstring.h"
@@ -10,6 +12,7 @@ class Measurement;
 class Measurement {
     static std::atomic<std::int64_t> next_id;
 
+    mutable std::mutex mutex_;
     std::int64_t measurement_id;
     std::optional<td::Bits256> ext_msg_hash_{std::nullopt};
     std::optional<td::Bits256> ext_msg_hash_norm_{std::nullopt};
@@ -20,7 +23,8 @@ class Measurement {
 public:
     Measurement() : measurement_id(next_id.fetch_add(1)) {}
 
-    Measurement(const Measurement &) = default;
+    Measurement(const Measurement &other);
+    Measurement &operator=(const Measurement &other);
 
     std::shared_ptr<Measurement> clone() const;
 
