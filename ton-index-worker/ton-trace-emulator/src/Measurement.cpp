@@ -3,16 +3,16 @@
 #include <memory>
 #include <chrono>
 #include <mutex>
+#include <random>
 
 #include "td/utils/logging.h"
 #include "td/utils/base64.h"
+#include "td/utils/JsonBuilder.h"
 
-
-std::atomic<std::int64_t> Measurement::next_id{0};
 
 Measurement::Measurement(const Measurement &other) {
     std::lock_guard<std::mutex> lock(other.mutex_);
-    measurement_id = other.measurement_id;
+    measurement_id_ = other.measurement_id_;
     ext_msg_hash_ = other.ext_msg_hash_;
     ext_msg_hash_norm_ = other.ext_msg_hash_norm_;
     trace_root_tx_hash_ = other.trace_root_tx_hash_;
@@ -26,7 +26,7 @@ Measurement &Measurement::operator=(const Measurement &other) {
     std::lock(mutex_, other.mutex_);
     std::lock_guard<std::mutex> lock_self(mutex_, std::adopt_lock);
     std::lock_guard<std::mutex> lock_other(other.mutex_, std::adopt_lock);
-    measurement_id = other.measurement_id;
+    measurement_id_ = other.measurement_id_;
     ext_msg_hash_ = other.ext_msg_hash_;
     ext_msg_hash_norm_ = other.ext_msg_hash_norm_;
     trace_root_tx_hash_ = other.trace_root_tx_hash_;
@@ -38,19 +38,19 @@ std::shared_ptr<Measurement> Measurement::clone() const {
     std::unique_ptr<Measurement> clone(
         new Measurement(*this)
     );
-    clone->measurement_id = next_id.fetch_add(1);
+    clone->measurement_id_ = get_new_id();
     return std::shared_ptr(std::move(clone));
 }
 
 Measurement &Measurement::remove_id() {
     std::lock_guard<std::mutex> lock(mutex_);
-    measurement_id = -1;
+    measurement_id_ = -1;
     return *this;
 }
 
 std::int64_t Measurement::id() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return measurement_id;
+    return measurement_id_;
 }
 
 Measurement & Measurement::set_trace_root_tx_hash(const td::Bits256 &trace_root_tx_hash) {
@@ -102,32 +102,34 @@ std::string block_id_or_default(std::optional<ton::BlockIdExt> block_id) {
 }
 
 Measurement &Measurement::print_measurement() {
-    std::int64_t measurement_id_local;
-    std::optional<td::Bits256> ext_msg_hash_local;
-    std::optional<td::Bits256> ext_msg_hash_norm_local;
-    std::optional<td::Bits256> trace_root_tx_hash_local;
-    std::map<std::string, double> timings_local;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        measurement_id_local = measurement_id;
-        ext_msg_hash_local = ext_msg_hash_;
-        ext_msg_hash_norm_local = ext_msg_hash_norm_;
-        trace_root_tx_hash_local = trace_root_tx_hash_;
-        timings_local = timings_;
+    std::lock_guard<std::mutex> lock(mutex_);
+    td::JsonBuilder extra_jb;
+    auto extra_json = extra_jb.enter_object();
+    for (auto &[k, v] : extra_) {
+        extra_json(k, v);
     }
-    td::StringBuilder sb;
-    sb << "MEASURE[";
-    sb << "id=" << measurement_id_local << ";";
-    sb << "msg_hash_norm=" << b64_hash_or_default(ext_msg_hash_norm_local) << ";";
-    sb << "msg_hash=" << b64_hash_or_default(ext_msg_hash_local) << ";";
-    sb << "trace_id=" << b64_hash_or_default(trace_root_tx_hash_local) << "]";
-    std::string common = sb.as_cslice().str();
-
-    for (auto &[step_name, ts]: timings_local) {
-        td::StringBuilder sb2;
-        sb2 << "(step=" << step_name << ";";
-        sb2 << "time=" << ts << ")";
-        LOG(ERROR) << common << sb2.as_cslice();
+    extra_json.leave();
+    auto extra_raw = extra_jb.string_builder().as_cslice();
+    for (auto &[step_name, ts]: timings_) {
+        td::JsonBuilder jb;
+        auto obj = jb.enter_object();
+        obj("id", measurement_id_);
+        obj("msg_hash_norm", b64_hash_or_default(ext_msg_hash_norm_));
+        obj("msg_hash", b64_hash_or_default(ext_msg_hash_));
+        obj("trace_id", b64_hash_or_default(trace_root_tx_hash_));
+        obj("step", step_name);
+        obj("time", ts);
+        obj("extra", td::JsonRaw{extra_raw});
+        obj.leave();
+        LOG(ERROR) << "MEASURE " << jb.string_builder().as_cslice() << " END";
     }
     return *this;
+}
+
+std::int64_t Measurement::get_new_id() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<std::int64_t> distribution(0, 1000);
+    std::int64_t random_num = distribution(gen);
+    return std::chrono::nanoseconds(std::chrono::system_clock::now().time_since_epoch()).count() + random_num;
 }
