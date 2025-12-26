@@ -27,7 +27,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::string input_redis_channel_;
     std::string working_dir_;
     std::string db_event_fifo_path_;
-    std::function<void(Trace, td::Promise<td::Unit>)> insert_trace_;
+    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> insert_trace_;
     td::actor::ActorOwn<DbEventListener> db_event_listener_;
 
     ton::BlockSeqno last_known_seqno_{0};
@@ -73,9 +73,9 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void signed_block_error(ton::BlockIdExt block_id, td::Status error);
     void process_confirmed_blocks();
     void process_signed_blocks();
-    std::function<void(Trace, td::Promise<td::Unit>)> make_confirmed_trace_processor(const ton::BlockIdExt& block_id_ext);
-    std::function<void(Trace, td::Promise<td::Unit>)> make_signed_trace_processor(const ton::BlockIdExt& block_id_ext);
-    std::function<void(Trace, td::Promise<td::Unit>)> make_finalized_trace_processor(const MasterchainBlockDataState& mc_data_state);
+    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_confirmed_trace_processor(const ton::BlockIdExt& block_id_ext);
+    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_signed_trace_processor(const ton::BlockIdExt& block_id_ext);
+    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_finalized_trace_processor(const MasterchainBlockDataState& mc_data_state);
 
     void alarm() override;
 
@@ -87,8 +87,8 @@ class TraceEmulatorScheduler : public td::actor::Actor {
         db_scanner_(db_scanner), insert_manager_(insert_manager), global_config_path_(global_config_path), 
         inet_addr_(inet_addr), redis_dsn_(redis_dsn), input_redis_channel_(input_redis_channel),
         working_dir_(std::move(working_dir)), db_event_fifo_path_(std::move(db_event_fifo_path)) {
-      insert_trace_ = [insert_manager = insert_manager_.get()](Trace trace, td::Promise<td::Unit> promise) {
-        td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace), std::move(promise));
+      insert_trace_ = [insert_manager = insert_manager_.get()](Trace trace, td::Promise<td::Unit> promise, MeasurementPtr measurement) {
+        td::actor::send_closure(insert_manager, &ITraceInsertManager::insert, std::move(trace), std::move(promise), measurement);
       };
       invalidated_trace_tracker_ = td::actor::create_actor<InvalidatedTraceTracker>("InvalidatedTraceTracker", redis_dsn_);
     };
