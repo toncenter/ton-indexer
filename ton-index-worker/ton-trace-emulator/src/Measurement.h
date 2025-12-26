@@ -10,18 +10,16 @@
 class Measurement;
 
 class Measurement {
-    static std::atomic<std::int64_t> next_id;
-
     mutable std::mutex mutex_;
-    std::int64_t measurement_id;
+    std::int64_t measurement_id_;
     std::optional<td::Bits256> ext_msg_hash_{std::nullopt};
     std::optional<td::Bits256> ext_msg_hash_norm_{std::nullopt};
     std::optional<td::Bits256> trace_root_tx_hash_{std::nullopt};
 
     std::map<std::string, double> timings_{};
-
+    std::map<std::string, std::string> extra_{};
 public:
-    Measurement() : measurement_id(next_id.fetch_add(1)) {}
+    Measurement() : measurement_id_(get_new_id()) {}
 
     Measurement(const Measurement &other);
     Measurement &operator=(const Measurement &other);
@@ -42,6 +40,8 @@ public:
     Measurement &measure_step(const std::string &step_name, std::optional<double> time = std::nullopt);
 
     Measurement &print_measurement();
+
+    static std::int64_t get_new_id();
 };
 
 using MeasurementPtr = std::shared_ptr<Measurement>;

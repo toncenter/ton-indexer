@@ -48,11 +48,21 @@ func InitConfig(cfg Config) {
 ////////////////////////////////////////////////////////////////////////////////
 
 type Measurement struct {
+	Id              int64
+	ExtMsgHashNorm  index.HashType
+	ExtMsgHash      index.HashType
+	TraceRootTxHash index.HashType
+	Timings         map[string]float64
+	Extra           map[string]string
+}
+type MeasurementRow struct {
 	Id              int64              `json:"id"`
-	ExtMsgHashNorm  index.HashType     `json:"ext_msg_hash_norm"`
-	ExtMsgHash      index.HashType     `json:"ext_msg_hash"`
-	TraceRootTxHash index.HashType     `json:"trace_root_tx_hash"`
-	Timings         map[string]float64 `json:"timings"`
+	ExtMsgHashNorm  index.HashType     `json:"msg_hash_norm"`
+	ExtMsgHash      index.HashType     `json:"msg_hash"`
+	TraceRootTxHash index.HashType     `json:"trace_id"`
+	Step            string             `json:"step"`
+	Time            float64            `json:"time"`
+	Extra           *map[string]string `json:"extra"`
 }
 
 func NewMeasurement() *Measurement {
@@ -61,6 +71,7 @@ func NewMeasurement() *Measurement {
 		ExtMsgHash:      "-",
 		TraceRootTxHash: "-",
 		Timings:         make(map[string]float64),
+		Extra:           make(map[string]string),
 	}
 }
 
@@ -69,10 +80,19 @@ func (m *Measurement) PrintMeasurement() {
 	if m.Id == -1 {
 		traceId = "-"
 	}
-	line := fmt.Sprintf("MEASURE[id=%d;msg_hash_norm=%s;msg_hash=%s;trace_id=%s]",
-		m.Id, m.ExtMsgHashNorm, m.ExtMsgHash, traceId)
+
 	for step, elapsed := range m.Timings {
-		log.Printf("[v2] %s(step=%s;time=%f)", line, step, elapsed)
+		row := MeasurementRow{
+			Id:              m.Id,
+			ExtMsgHashNorm:  m.ExtMsgHashNorm,
+			ExtMsgHash:      m.ExtMsgHash,
+			TraceRootTxHash: traceId,
+			Step:            step,
+			Time:            elapsed,
+			Extra:           &m.Extra,
+		}
+		json_str, _ := json.Marshal(row)
+		log.Printf("[v2] MEASURE %s END", json_str)
 	}
 }
 

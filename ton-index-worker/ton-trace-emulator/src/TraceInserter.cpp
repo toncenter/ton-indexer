@@ -18,7 +18,7 @@ public:
 
     void start_up() override {
         td::Timer timer;
-        measurement_->measure_step("trace_insert_start");
+        measurement_->measure_step("trace_inserter__trace_insert_start");
         try {
             std::queue<TraceNode*> queue;
         
@@ -196,7 +196,7 @@ public:
             transaction_.publish("new_trace", trace_key_);
             
             transaction_.exec();
-            measurement_->measure_step("trace_insert_complete");
+            measurement_->measure_step("trace_inserter__trace_insert_complete");
 
             promise_.set_value(td::Unit());
         } catch (const vm::VmError &e) {

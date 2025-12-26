@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import json
 import time
 import traceback
 from collections import defaultdict
@@ -43,6 +44,7 @@ class Measurement:
     trace_root_tx_hash: Optional[str] = None
 
     timings: Dict[str, float] = dict()
+    extra: Dict[str, str] = dict()
 
     def measure_step(self, step: str, timestamp: Optional[float] = None) -> "Measurement":
         ts = datetime.now().timestamp() if timestamp is None else timestamp
@@ -50,14 +52,18 @@ class Measurement:
         return self
 
     def print_measurement(self) -> "Measurement":
-        line = 'MEASURE['
-        line += f"id={self.id};"
-        line += "msg_hash_norm=" + (f"{self.ext_msg_hash_norm};" if self.ext_msg_hash_norm else "-;")
-        line += "msg_hash=" + (f"{self.ext_msg_hash};" if self.ext_msg_hash_norm else "-;")
-        line += "trace_id=" + (f"{self.trace_root_tx_hash}" if self.trace_root_tx_hash else "-")
-        line += ']'
         for step, ts in self.timings.items():
-            logger.error(f"{line}(step={step};time={ts})")
+            meas = {
+                'id': self.id,
+                'msg_hash_norm': self.ext_msg_hash_norm,
+                'msg_hash': self.ext_msg_hash,
+                'trace_id': self.trace_root_tx_hash,
+                'step': step,
+                'time': ts,
+                'extra': self.extra
+            }
+            meas_str = json.dumps(meas)
+            logger.error(f"MEASURE {meas_str} END")
         return self
 
     def clone(self) -> "Measurement":
@@ -173,6 +179,7 @@ class PendingTraceClassifierWorker(mp.Process):
         # Process traces
         for trace_key, (trace, trace_map) in traces_data.items():
             meas = measurement.clone()
+            meas.extra['num_txs'] = len(trace.transactions)
             meas.ext_msg_hash_norm = trace_key
             meas.ext_msg_hash = trace.external_hash
             meas.trace_root_tx_hash = trace.trace_id
@@ -195,11 +202,14 @@ class PendingTraceClassifierWorker(mp.Process):
                 meas.measure_step("trace_classification__trace_processing_finished")
 
                 # Fill trace external hash if needed
+                action_types = []
                 for action in result.actions:
+                    action_types.append(action.type)
                     if trace.transactions[0].emulated:
                         action.trace_id = None
                         action.trace_external_hash = trace.external_hash
                     action.trace_external_hash_norm = trace_key
+                meas.extra['action_types'] = ','.join(set(action_types))
 
                 # Store results in Redis
                 action_data = msgpack.packb([a.to_dict() for a in result.actions])
