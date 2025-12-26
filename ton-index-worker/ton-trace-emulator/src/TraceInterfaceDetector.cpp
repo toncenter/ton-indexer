@@ -3,7 +3,7 @@
 #include "smc-interfaces/FetchAccountFromShard.h"
 
 void TraceInterfaceDetector::start_up() {
-    measurement_->measure_step("trace_interface_detection_start");
+    measurement_->measure_step("trace_interface_detector__start");
     td::MultiPromise mp;
     auto ig = mp.init_guard();
     auto P = td::PromiseCreator::lambda([&, SelfId=actor_id(this)](td::Result<td::Unit> res) mutable {
@@ -86,6 +86,7 @@ void TraceInterfaceDetector::got_interfaces(block::StdAddress address, std::vect
     if (is_committed) {
         trace_.committed_interfaces[address] = trace_.interfaces[address];
     }
+    measurement_->measure_step("trace_interface_detector__complete");
     promise.set_value(td::Unit());
 }
 
@@ -95,6 +96,5 @@ void TraceInterfaceDetector::finish(td::Result<td::Unit> status) {
     } else {
         promise_.set_value(std::move(trace_));
     }
-    measurement_->measure_step("trace_interface_detection_start");
     stop();
 }
