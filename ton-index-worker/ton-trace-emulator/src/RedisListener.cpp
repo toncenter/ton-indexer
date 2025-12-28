@@ -78,7 +78,6 @@ void RedisListener::on_new_message(td::Ref<vm::Cell> msg_cell) {
     return;
   }
   auto measurement = std::make_shared<Measurement>();
-  measurement->remove_id();
   measurement->measure_step("redis_listener__got_message");
   measurement->set_ext_msg_hash_norm(msg_hash_norm);
   measurement->set_ext_msg_hash(msg_cell->get_hash().bits());
