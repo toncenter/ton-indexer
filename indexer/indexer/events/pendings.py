@@ -21,7 +21,7 @@ from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_accounts_from_trace
 from indexer.events.blocks.utils.block_tree_serializer import serialize_blocks
-from indexer.events.blocks.utils.dedust_pools import get_pools_manager, start_pools_background_updater
+from indexer.events.blocks.utils.dedust_pools import get_pools_manager, start_pools_background_updater, UPDATE_FALLBACK_INTERVAL
 from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async_with_postprocessing, try_classify_unknown_trace
 from indexer.events.interface_repository import (
@@ -30,7 +30,7 @@ from indexer.events.interface_repository import (
 )
 from indexer.events.trace_processor import TraceProcessor
 from indexer.events.utils.lru_cache import LRUCache
-from queue import Full
+from queue import Full, Empty
 
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 logger = logging.getLogger(__name__)
@@ -104,7 +104,15 @@ class PendingTraceClassifierWorker(mp.Process):
         return
 
     def process_batch(self):
-        batch = self.task_queue.get(block=True)
+        while True:
+            try:
+                batch = self.task_queue.get(block=True, timeout=1.0)
+                break  # got a batch, proceed to process
+            except Empty:
+                # Worker is idle - attempt pool update (method checks 120s interval internally)
+                asyncio.get_event_loop().run_until_complete(
+                    get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
+                )
         logger.debug(f"Processing batch of {len(batch)} traces in worker #{self.id}")
         asyncio.get_event_loop().run_until_complete(self._run_batch(batch))
 
@@ -139,8 +147,11 @@ class PendingTraceClassifierWorker(mp.Process):
         all_accounts = set()
         traces_data = {}
 
-        await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
+        await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis(
+            fallback_interval=UPDATE_FALLBACK_INTERVAL
+        )
 
+        raw_trace_data = {}
         for trace_key in trace_keys:
             try:
                 trace_map = await redis.client.hgetall(trace_key)
@@ -150,7 +161,13 @@ class PendingTraceClassifierWorker(mp.Process):
                     logger.warning(f"No data found in Redis for trace {trace_key}")
                     results.append((trace_key, False))
                     continue
-
+                raw_trace_data[trace_key] = trace_map
+            except Exception as e:
+                logger.error(f"Unable to get trace {trace_key}: {e}")
+                results.append((trace_key, False))
+        measurement.measure_step("batch_classification__traces_loaded_from_redis")
+        for trace_key, trace_map in raw_trace_data.items():
+            try:
                 trace = deserialize_event(trace_key, trace_map)
                 if 'measurement_id' in trace_map:
                     measurement.id = int(trace_map['measurement_id'].decode('utf-8'))
