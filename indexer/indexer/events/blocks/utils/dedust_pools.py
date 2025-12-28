@@ -22,6 +22,7 @@ FALLBACK_FILENAME = 'dedust_pools.json'
 
 POOLS_DATA_KEY = 'I_dedust_pools:data'
 UPDATE_INTERVAL = 120
+UPDATE_FALLBACK_INTERVAL = 600  # 10 minutes fallback during processing
 
 
 def pools_updater_worker(update_interval: int, stop_event):
@@ -113,10 +114,11 @@ class DedustPoolsManager:
 
             logger.info("Pools updater process stopped")
             
-    async def fetch_and_update_context_pools_from_redis(self):
+    async def fetch_and_update_context_pools_from_redis(self, fallback_interval: int = None):
         """Fetch and update context.dedust_pools from Redis (if needed)"""
         try:
-            if self.last_context_update + datetime.timedelta(seconds=self.update_interval) < datetime.datetime.now():
+            interval = fallback_interval if fallback_interval else self.update_interval
+            if self.last_context_update + datetime.timedelta(seconds=interval) < datetime.datetime.now():
                 data = await self.redis_client.get(POOLS_DATA_KEY)
                 logger.debug(f"Updating context pools from Redis (last update: {self.last_context_update})")
                 if data:
