@@ -151,6 +151,7 @@ class PendingTraceClassifierWorker(mp.Process):
             fallback_interval=UPDATE_FALLBACK_INTERVAL
         )
 
+        raw_trace_data = {}
         for trace_key in trace_keys:
             try:
                 trace_map = await redis.client.hgetall(trace_key)
@@ -160,7 +161,13 @@ class PendingTraceClassifierWorker(mp.Process):
                     logger.warning(f"No data found in Redis for trace {trace_key}")
                     results.append((trace_key, False))
                     continue
-
+                raw_trace_data[trace_key] = trace_map
+            except Exception as e:
+                logger.error(f"Unable to get trace {trace_key}: {e}")
+                results.append((trace_key, False))
+        measurement.measure_step("batch_classification__traces_loaded_from_redis")
+        for trace_key, trace_map in raw_trace_data.items():
+            try:
                 trace = deserialize_event(trace_key, trace_map)
                 if 'measurement_id' in trace_map:
                     measurement.id = int(trace_map['measurement_id'].decode('utf-8'))
