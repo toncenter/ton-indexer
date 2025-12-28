@@ -124,7 +124,6 @@ void OverlayListener::process_external_message(td::Ref<ton::validator::ExtMessag
     LOG(DEBUG) << "Starting processing ExtMessageQ hash norm: " << td::base64_encode(msg_hash_norm.as_slice()) << " addr: " << message->wc() << ":" << message->addr().to_hex();
 
     auto measurement = std::make_shared<Measurement>();
-    measurement->remove_id();
     measurement->set_ext_msg_hash_norm(msg_hash_norm);
     measurement->set_ext_msg_hash(message->root_cell()->get_hash().bits());
     measurement->measure_step("overlay_listener__process_external_message");
