@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
+	"log"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -32,6 +33,24 @@ func afterConnectRegisterTypes(ctx context.Context, conn *pgx.Conn) error {
 		conn.TypeMap().RegisterType(data_type)
 	}
 	return nil
+}
+
+type ServiceVersion struct {
+    Major int32
+    Minor int32
+    Patch int32
+}
+
+func LoadVersion(pool *pgxpool.Pool) ServiceVersion {
+    ctx := context.Background()
+    query := `SELECT major, minor, patch as extra FROM ton_db_version where id = 1;`
+
+    version := ServiceVersion{1, 2, 0}
+    err := pool.QueryRow(ctx, query).Scan(&version.Major, &version.Minor, &version.Patch)
+    if err != nil {
+        log.Printf("Warning: Failed to load version: %v", err)
+    }
+    return version
 }
 
 func NewDbClient(dsn string, maxconns int, minconns int) (*DbClient, error) {

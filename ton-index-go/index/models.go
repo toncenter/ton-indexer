@@ -361,10 +361,10 @@ type NFTTransfer struct {
 	NewOwner              AccountAddress   `json:"new_owner"`
 	ResponseDestination   *AccountAddress  `json:"response_destination"`
 	CustomPayload         *string          `json:"custom_payload"`
-	DecodedCustomPayload  *json.RawMessage `json:"decoded_custom_payload"`
+	DecodedCustomPayload  *json.RawMessage `json:"decoded_custom_payload" swaggertype:"object"`
 	ForwardAmount         *string          `json:"forward_amount"`
 	ForwardPayload        *string          `json:"forward_payload"`
-	DecodedForwardPayload *json.RawMessage `json:"decoded_forward_payload"`
+	DecodedForwardPayload *json.RawMessage `json:"decoded_forward_payload" swaggertype:"object"`
 	TraceId               *HashType        `json:"trace_id"`
 } // @name NFTTransfer
 
@@ -543,10 +543,10 @@ type JettonTransfer struct {
 	TransactionAborted    bool             `json:"transaction_aborted"`
 	ResponseDestination   *AccountAddress  `json:"response_destination"`
 	CustomPayload         *string          `json:"custom_payload"`
-	DecodedCustomPayload  *json.RawMessage `json:"decoded_custom_payload"`
+	DecodedCustomPayload  *json.RawMessage `json:"decoded_custom_payload" swaggertype:"object"`
 	ForwardTonAmount      *string          `json:"forward_ton_amount"`
 	ForwardPayload        *string          `json:"forward_payload"`
-	DecodedForwardPayload *json.RawMessage `json:"decoded_forward_payload"`
+	DecodedForwardPayload *json.RawMessage `json:"decoded_forward_payload" swaggertype:"object"`
 	TraceId               *HashType        `json:"trace_id"`
 } // @name JettonTransfer
 
@@ -562,7 +562,7 @@ type JettonBurn struct {
 	Amount               string           `json:"amount"`
 	ResponseDestination  *AccountAddress  `json:"response_destination"`
 	CustomPayload        *string          `json:"custom_payload"`
-	DecodedCustomPayload *json.RawMessage `json:"decoded_custom_payload"`
+	DecodedCustomPayload *json.RawMessage `json:"decoded_custom_payload" swaggertype:"object"`
 	TraceId              *HashType        `json:"trace_id"`
 } // @name JettonBurn
 
