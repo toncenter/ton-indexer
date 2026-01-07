@@ -607,30 +607,6 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "primary key (vesting_contract_address, wallet_address));\n"
     );
 
-    query += (
-      "create table if not exists telemint_nft_items ("
-      "id bigserial not null, "
-      "address              tonaddr not null primary key, "
-      "token_name           varchar, "
-      "bidder_address       tonaddr, "
-      "bid                  numeric, "
-      "bid_ts               integer, "
-      "min_bid              numeric, "
-      "end_time             integer, "
-      "beneficiary_address  tonaddr, "
-      "initial_min_bid      numeric, "
-      "max_bid              numeric, "
-      "min_bid_step         numeric, "
-      "min_extend_time      integer, "
-      "duration             integer, "
-      "royalty_numerator    integer, "
-      "royalty_denominator  integer, "
-      "royalty_destination  tonaddr, "
-      "last_transaction_lt  bigint, "
-      "code_hash            tonhash, "
-      "data_hash            tonhash);\n"
-    );
-
     query += "create table if not exists blocks_classified (mc_seqno integer not null primary key);\n";
 
     query += (
@@ -1043,6 +1019,30 @@ void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
     pqxx::work txn(c);
 
     std::string query = "";
+
+    query += (
+      "create table if not exists telemint_nft_items ("
+      "id                   bigserial not null, "
+      "address              tonaddr not null primary key, "
+      "token_name           varchar, "
+      "bidder_address       tonaddr, "
+      "bid                  numeric, "
+      "bid_ts               integer, "
+      "min_bid              numeric, "
+      "end_time             integer, "
+      "beneficiary_address  tonaddr, "
+      "initial_min_bid      numeric, "
+      "max_bid              numeric, "
+      "min_bid_step         numeric, "
+      "min_extend_time      integer, "
+      "duration             integer, "
+      "royalty_numerator    integer, "
+      "royalty_denominator  integer, "
+      "royalty_destination  tonaddr, "
+      "last_transaction_lt  bigint, "
+      "code_hash            tonhash, "
+      "data_hash            tonhash);\n"
+    );
 
     query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_at numeric;\n";
     query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_query_id bigint;\n";
