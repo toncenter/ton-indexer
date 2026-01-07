@@ -277,6 +277,32 @@ services:
     networks:
       internal:
 
+  metadata-cache:
+    profiles: [ metadata ]
+    image: toncenter/ton-metadata-cache:v1.2.5
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: metadata-cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      run-migrations:
+        condition: service_completed_successfully
+    secrets:
+      - postgres_password
+    ports:
+      - target: 8000
+        published: ${TON_METADATA_CACHE_PORT:-18082}
+    environment:
+      <<: *index-pg-access
+      TON_INDEXER_IS_TESTNET: ${TON_INDEXER_IS_TESTNET:-0}
+      TON_METADATA_CACHE_PG_REPL: $TON_METADATA_CACHE_PG_REPL
+      TON_METADATA_CACHE_REDIS: $TON_METADATA_CACHE_REDIS
+    restart: unless-stopped
+    networks:
+      internal:
+
 volumes:
   postgres_data:
     external: false
