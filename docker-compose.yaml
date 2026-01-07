@@ -267,7 +267,7 @@ services:
 
   metadata-cache:
     profiles: [ metadata ]
-    image: toncenter/ton-metadata-cache:v1.2.4
+    image: toncenter/ton-metadata-cache:v1.2.5
     build:
       context: .
       dockerfile: Dockerfile
