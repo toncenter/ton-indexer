@@ -83,6 +83,10 @@ type NFTTransferRequest struct {
 	Direction         *string          `query:"direction"`
 }
 
+type NFTSalesRequest struct {
+	Address []AccountAddress `query:"address"`
+}
+
 type JettonMasterRequest struct {
 	MasterAddress []AccountAddress `query:"address"`
 	AdminAddress  []AccountAddress `query:"admin_address"`

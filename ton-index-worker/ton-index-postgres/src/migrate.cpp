@@ -1004,6 +1004,70 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.4 completed successfully.";
 }
 
+void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.5";
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += (
+      "create table if not exists telemint_nft_items ("
+      "id                   bigserial not null, "
+      "address              tonaddr not null primary key, "
+      "token_name           varchar, "
+      "bidder_address       tonaddr, "
+      "bid                  numeric, "
+      "bid_ts               integer, "
+      "min_bid              numeric, "
+      "end_time             integer, "
+      "beneficiary_address  tonaddr, "
+      "initial_min_bid      numeric, "
+      "max_bid              numeric, "
+      "min_bid_step         numeric, "
+      "min_extend_time      integer, "
+      "duration             integer, "
+      "royalty_numerator    integer, "
+      "royalty_denominator  integer, "
+      "royalty_destination  tonaddr, "
+      "last_transaction_lt  bigint, "
+      "code_hash            tonhash, "
+      "data_hash            tonhash);\n"
+    );
+
+    query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_at numeric;\n";
+    query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_query_id bigint;\n";
+    query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS jetton_price_dict jsonb;\n";
+
+    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS activated boolean;\n";
+    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS step_time bigint;\n";
+    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS last_query_id bigint;\n";
+    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS jetton_wallet tonaddr;\n";
+    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS jetton_master tonaddr;\n";
+    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS is_broken_state boolean;\n";
+    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS public_key varchar;\n";
+
+    query += set_version_query({1, 2, 5});
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.5 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1209,6 +1273,10 @@ int main(int argc, char *argv[]) {
       current_version = Version{1, 2, 4};
     }
 
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 5})) {
+      run_1_2_5_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 5};
+    }
 
     // In future, more migrations will be added here
     // not every version must have migrations

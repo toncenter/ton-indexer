@@ -655,8 +655,15 @@ struct GetGemsNftAuctionSchema {
   uint32_t created_at;
   uint32_t last_bid_at;
   bool is_canceled;
+  std::optional<bool> activated;
+  std::optional<uint32_t> step_time;
+  std::optional<uint64_t> last_query_id;
+  std::optional<block::StdAddress> jetton_wallet;
+  std::optional<block::StdAddress> jetton_master;
+  std::optional<bool> is_broken_state;
+  std::optional<td::Bits256> public_key;
 
-  MSGPACK_DEFINE(address, end, end_time, mp_addr, nft_addr, nft_owner, last_bid, last_member, min_step, mp_fee_addr, mp_fee_factor, mp_fee_base, royalty_fee_addr, royalty_fee_factor, royalty_fee_base, max_bid, min_bid, created_at, last_bid_at, is_canceled);
+  MSGPACK_DEFINE(address, end, end_time, mp_addr, nft_addr, nft_owner, last_bid, last_member, min_step, mp_fee_addr, mp_fee_factor, mp_fee_base, royalty_fee_addr, royalty_fee_factor, royalty_fee_base, max_bid, min_bid, created_at, last_bid_at, is_canceled, activated, step_time, last_query_id, jetton_wallet, jetton_master, is_broken_state, public_key);
 };
 
 struct AddressInterfaces {
@@ -741,6 +748,13 @@ AddressInterfaces parse_interfaces(std::vector<typename Trace::Detector::Detecte
         schema.created_at = arg.created_at;
         schema.last_bid_at = arg.last_bid_at;
         schema.is_canceled = arg.is_canceled;
+        schema.activated = arg.activated;
+        schema.step_time = arg.step_time;
+        schema.last_query_id = arg.last_query_id;
+        schema.jetton_wallet = arg.jetton_wallet;
+        schema.jetton_master = arg.jetton_master;
+        schema.is_broken_state = arg.is_broken_state;
+        schema.public_key = arg.public_key;
         result.interfaces.push_back(schema);
       } else {
         static_assert(always_false<T>, "non-exhaustive visitor!");
