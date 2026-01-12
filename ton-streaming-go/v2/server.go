@@ -68,6 +68,11 @@ var validEventTypes = map[EventType]struct{}{
 	EventJettonsChange:      {},
 }
 
+const (
+	jettonTransferNotificationOpcode       index.OpcodeType = 0x7362d09c
+	nftOwnershipAssignedNotificationOpcode index.OpcodeType = 0x05138d91
+)
+
 ////////////////////////////////////////////////////////////////////////////////
 // Rate limiting
 ////////////////////////////////////////////////////////////////////////////////
@@ -1311,17 +1316,54 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		return
 	}
 
-	// Determine if trace is fully on-chain (non-emulated).
-	// This still only distinguishes "pending" vs "on-chain";
-	// new confirmed/finalized details are driven by tx channels.
+	// Finality of trace is the minimum finality of its txs
+	// NFT and jetton transfer notifications do not affect finality if there are no outgoing messages
 	minFinality := emulated.FinalityStateFinalized
-	for _, row := range emulatedContext.GetTransactions() {
-		if tx, err := index.ScanTransaction(row); err == nil {
-			if tx.Finality < minFinality {
-				minFinality = tx.Finality
+	{
+		txRows := emulatedContext.GetTransactions()
+		txFinality := make(map[string]emulated.FinalityState, len(txRows))
+		txHashes := make([]string, 0, len(txRows))
+		for _, row := range txRows {
+			if tx, err := index.ScanTransaction(row); err == nil {
+				txHash := string(tx.Hash)
+				txHashes = append(txHashes, txHash)
+				txFinality[txHash] = tx.Finality
+			} else {
+				log.Printf("[v2] Error scanning transaction (classified): %v", err)
 			}
-		} else {
-			log.Printf("[v2] Error scanning transaction (classified): %v", err)
+		}
+
+		inOpcodes := make(map[string]index.OpcodeType, len(txFinality))
+		outMsgCounts := make(map[string]int, len(txFinality))
+		if len(txHashes) > 0 {
+			for _, row := range emulatedContext.GetMessages(txHashes) {
+				msg, err := index.ScanMessageWithContent(row)
+				if err != nil {
+					log.Printf("[v2] Error scanning message (classified): %v", err)
+					continue
+				}
+				txHash := string(msg.TxHash)
+				if msg.Direction == "in" {
+					if msg.Opcode != nil {
+						inOpcodes[txHash] = *msg.Opcode
+					}
+					continue
+				}
+				outMsgCounts[txHash]++
+			}
+		}
+
+		for txHash, finality := range txFinality {
+			if outMsgCounts[txHash] == 0 {
+				if opcode, ok := inOpcodes[txHash]; ok {
+					if opcode == jettonTransferNotificationOpcode || opcode == nftOwnershipAssignedNotificationOpcode {
+						continue
+					}
+				}
+			}
+			if finality < minFinality {
+				minFinality = finality
+			}
 		}
 	}
 
