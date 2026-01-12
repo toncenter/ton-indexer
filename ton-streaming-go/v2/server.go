@@ -69,9 +69,9 @@ var validEventTypes = map[EventType]struct{}{
 }
 
 const (
-	jettonTransferNotificationOpcode       index.OpcodeType = 0x7362d09c
-	nftOwnershipAssignedNotificationOpcode index.OpcodeType = 0x05138d91
-	excessesOpcode                         index.OpcodeType = 0xd53276db
+	jettonTransferNotificationOpcode       string = "0x7362d09c"
+	nftOwnershipAssignedNotificationOpcode string = "0x05138d91"
+	excessesOpcode                         string = "0xd53276db"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1317,6 +1317,8 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		return
 	}
 
+	log.Print("[v2] Processing classified trace: ", traceExternalHashNorm)
+
 	// Finality of trace is the minimum finality of its txs
 	// NFT and jetton transfer notifications do not affect finality if there are no outgoing messages
 	minFinality := emulated.FinalityStateFinalized
@@ -1334,7 +1336,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 			}
 		}
 
-		inOpcodes := make(map[string]index.OpcodeType, len(txFinality))
+		inOpcodes := make(map[string]string, len(txFinality))
 		outMsgCounts := make(map[string]int, len(txFinality))
 		if len(txHashes) > 0 {
 			for _, row := range emulatedContext.GetMessages(txHashes) {
@@ -1346,7 +1348,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 				txHash := string(msg.TxHash)
 				if msg.Direction == "in" {
 					if msg.Opcode != nil {
-						inOpcodes[txHash] = *msg.Opcode
+						inOpcodes[txHash] = (*msg.Opcode).String()
 					}
 					continue
 				} else {
