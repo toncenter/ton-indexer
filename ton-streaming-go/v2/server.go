@@ -71,6 +71,7 @@ var validEventTypes = map[EventType]struct{}{
 const (
 	jettonTransferNotificationOpcode       index.OpcodeType = 0x7362d09c
 	nftOwnershipAssignedNotificationOpcode index.OpcodeType = 0x05138d91
+	excessesOpcode                         index.OpcodeType = 0xd53276db
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1356,7 +1357,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		for txHash, finality := range txFinality {
 			if outMsgCounts[txHash] == 0 {
 				if opcode, ok := inOpcodes[txHash]; ok {
-					if opcode == jettonTransferNotificationOpcode || opcode == nftOwnershipAssignedNotificationOpcode {
+					if opcode == jettonTransferNotificationOpcode || opcode == nftOwnershipAssignedNotificationOpcode || opcode == excessesOpcode {
 						continue
 					}
 				}
