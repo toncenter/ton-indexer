@@ -1349,8 +1349,9 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 						inOpcodes[txHash] = *msg.Opcode
 					}
 					continue
+				} else {
+					outMsgCounts[txHash]++
 				}
-				outMsgCounts[txHash]++
 			}
 		}
 
