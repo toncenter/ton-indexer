@@ -220,14 +220,21 @@ class PendingTraceClassifierWorker(mp.Process):
 
                 # Fill trace external hash if needed
                 action_types = []
+                is_jetton_transfer = False
+                jetton_senders = []
                 for action in result.actions:
+                    if action.type == 'jetton_transfer':
+                        logger.error(f"action: {action.to_dict()}")
+                        if action.source is not None:
+                            is_jetton_transfer = True
+                            jetton_senders.append(action.source)
                     action_types.append(action.type)
                     if trace.transactions[0].emulated:
                         action.trace_id = None
                         action.trace_external_hash = trace.external_hash
                     action.trace_external_hash_norm = trace_key
                 meas.extra['action_types'] = ','.join(set(action_types))
-
+                meas.extra['jetton_senders'] = ','.join(set(jetton_senders))
                 # Store results in Redis
                 action_data = msgpack.packb([a.to_dict() for a in result.actions])
                 await redis.client.hset(trace_key, 'actions', action_data)
