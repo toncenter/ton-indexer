@@ -878,298 +878,114 @@ func SubscribeToFinalizedTransactions(ctx context.Context, rdb *redis.Client, ma
 	}
 }
 
-// confirmed txs
+// ProcessNewConfirmedTxs now emits a FULL TRACE SNAPSHOT (not a fragment).
+// txHashes is ignored for payload building; it only serves as a "trace changed" signal.
 func ProcessNewConfirmedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
-	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
-	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
-	if err != nil {
-		log.Printf("[v2] Error loading raw traces (confirmed): %v, trace key: %s", err, traceExternalHashNorm)
-		return
-	}
-
-	emulatedContext := index.NewEmptyContext(false)
-	err = emulatedContext.FillFromRawData(rawTraces)
-	if err != nil {
-		log.Printf("[v2] Error filling context from raw data (confirmed): %v, trace key: %s", err, traceExternalHashNorm)
-		return
-	}
-	if emulatedContext.GetTraceCount() > 1 {
-		log.Printf("[v2] More than 1 trace in context (confirmed), trace key: %s", traceExternalHashNorm)
-		return
-	}
-	if emulatedContext.GetTraceCount() == 0 {
-		log.Printf("[v2] No traces in context (confirmed), trace key: %s", traceExternalHashNorm)
-		return
-	}
-
-	rows := emulatedContext.GetTransactionsByTraceIdAndHash(traceExternalHashNorm, txHashes)
-	if len(rows) == 0 {
-		log.Printf("[v2] No transactions found for trace %s (confirmed, %d hashes)", traceExternalHashNorm, len(txHashes))
-		return
-	}
-
-	var txs []index.Transaction
-	txsMap := map[index.HashType]int{}
-	for _, row := range rows {
-		if tx, err := index.ScanTransaction(row); err == nil {
-			txs = append(txs, *tx)
-			txsMap[tx.Hash] = len(txs) - 1
-		} else {
-			log.Printf("[v2] Error scanning transaction (confirmed): %v", err)
-		}
-	}
-
-	txsAddresses := []string{}
-	var hashes []string
-	for _, t := range txs {
-		hashes = append(hashes, string(t.Hash))
-		txsAddresses = append(txsAddresses, string(t.Account))
-	}
-
-	allAddresses := txsAddresses
-	if len(hashes) > 0 {
-		rows := emulatedContext.GetMessages(hashes)
-		for _, row := range rows {
-			msg, err := index.ScanMessageWithContent(row)
-			if err != nil {
-				log.Printf("[v2] Error scanning message (confirmed): %v", err)
-				continue
-			}
-			if msg.Direction == "in" {
-				txs[txsMap[msg.TxHash]].InMsg = msg
-				if msg.Source != nil {
-					allAddresses = append(allAddresses, string(*msg.Source))
-				}
-			} else {
-				txs[txsMap[msg.TxHash]].OutMsgs = append(txs[txsMap[msg.TxHash]].OutMsgs, msg)
-				if msg.Destination != nil {
-					allAddresses = append(allAddresses, string(*msg.Destination))
-				}
-			}
-		}
-	}
-
-	for idx := range txs {
-		sort.SliceStable(txs[idx].OutMsgs, func(i, j int) bool {
-			if txs[idx].OutMsgs[i].CreatedLt == nil {
-				return true
-			}
-			if txs[idx].OutMsgs[j].CreatedLt == nil {
-				return false
-			}
-			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
-		})
-	}
-
-	var addressBook *index.AddressBook
-	var metadata *index.Metadata
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
-		[]EventType{EventTransactions},
-		emulated.FinalityStateConfirmed,
-		allAddresses,
-	)
-	if shouldFetchAddressBook || shouldFetchMetadata {
-		addressBook, metadata = fetchAddressBookAndMetadata(
-			ctx,
-			allAddresses,
-			allAddresses,
-			shouldFetchAddressBook,
-			shouldFetchMetadata,
-		)
-	}
-
-	// Sort transactions by Lt descending
-	sort.Slice(txs, func(i, j int) bool {
-		return txs[i].Lt > txs[j].Lt
-	})
-
-	manager.broadcast <- &TransactionsNotification{
-		Type:                  EventTransactions,
-		Finality:              emulated.FinalityStateConfirmed,
-		TraceExternalHashNorm: traceExternalHashNorm,
-		Transactions:          txs,
-		AddressBook:           addressBook,
-		Metadata:              metadata,
-	}
+	processTransactionsTraceSnapshot(ctx, rdb, traceExternalHashNorm, manager, "confirmed")
 }
 
-// signed txs
 func ProcessNewSignedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
-	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
-	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
-	if err != nil {
-		log.Printf("[v2] Error loading raw traces (signed): %v, trace key: %s", err, traceExternalHashNorm)
-		return
-	}
-
-	emulatedContext := index.NewEmptyContext(false)
-	err = emulatedContext.FillFromRawData(rawTraces)
-	if err != nil {
-		log.Printf("[v2] Error filling context from raw data (signed): %v, trace key: %s", err, traceExternalHashNorm)
-		return
-	}
-	if emulatedContext.GetTraceCount() > 1 {
-		log.Printf("[v2] More than 1 trace in context (signed), trace key: %s", traceExternalHashNorm)
-		return
-	}
-	if emulatedContext.GetTraceCount() == 0 {
-		log.Printf("[v2] No traces in context (signed), trace key: %s", traceExternalHashNorm)
-		return
-	}
-
-	rows := emulatedContext.GetTransactionsByTraceIdAndHash(traceExternalHashNorm, txHashes)
-	if len(rows) == 0 {
-		log.Printf("[v2] No transactions found for trace %s (signed, %d hashes)", traceExternalHashNorm, len(txHashes))
-		return
-	}
-
-	var txs []index.Transaction
-	txsMap := map[index.HashType]int{}
-	for _, row := range rows {
-		if tx, err := index.ScanTransaction(row); err == nil {
-			txs = append(txs, *tx)
-			txsMap[tx.Hash] = len(txs) - 1
-		} else {
-			log.Printf("[v2] Error scanning transaction (signed): %v", err)
-		}
-	}
-
-	txsAddresses := []string{}
-	var hashes []string
-	for _, t := range txs {
-		hashes = append(hashes, string(t.Hash))
-		txsAddresses = append(txsAddresses, string(t.Account))
-	}
-
-	allAddresses := txsAddresses
-	if len(hashes) > 0 {
-		rows := emulatedContext.GetMessages(hashes)
-		for _, row := range rows {
-			msg, err := index.ScanMessageWithContent(row)
-			if err != nil {
-				log.Printf("[v2] Error scanning message (signed): %v", err)
-				continue
-			}
-			if msg.Direction == "in" {
-				txs[txsMap[msg.TxHash]].InMsg = msg
-				if msg.Source != nil {
-					allAddresses = append(allAddresses, string(*msg.Source))
-				}
-			} else {
-				txs[txsMap[msg.TxHash]].OutMsgs = append(txs[txsMap[msg.TxHash]].OutMsgs, msg)
-				if msg.Destination != nil {
-					allAddresses = append(allAddresses, string(*msg.Destination))
-				}
-			}
-		}
-	}
-
-	for idx := range txs {
-		sort.SliceStable(txs[idx].OutMsgs, func(i, j int) bool {
-			if txs[idx].OutMsgs[i].CreatedLt == nil {
-				return true
-			}
-			if txs[idx].OutMsgs[j].CreatedLt == nil {
-				return false
-			}
-			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
-		})
-	}
-
-	var addressBook *index.AddressBook
-	var metadata *index.Metadata
-	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
-		[]EventType{EventTransactions},
-		emulated.FinalityStateSigned,
-		allAddresses,
-	)
-	if shouldFetchAddressBook || shouldFetchMetadata {
-		addressBook, metadata = fetchAddressBookAndMetadata(
-			ctx,
-			allAddresses,
-			allAddresses,
-			shouldFetchAddressBook,
-			shouldFetchMetadata,
-		)
-	}
-
-	sort.Slice(txs, func(i, j int) bool {
-		return txs[i].Lt > txs[j].Lt
-	})
-
-	manager.broadcast <- &TransactionsNotification{
-		Type:                  EventTransactions,
-		Finality:              emulated.FinalityStateSigned,
-		TraceExternalHashNorm: traceExternalHashNorm,
-		Transactions:          txs,
-		AddressBook:           addressBook,
-		Metadata:              metadata,
-	}
+	processTransactionsTraceSnapshot(ctx, rdb, traceExternalHashNorm, manager, "signed")
 }
 
-// finalized txs (old "committed")
 func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
+	processTransactionsTraceSnapshot(ctx, rdb, traceExternalHashNorm, manager, "finalized")
+}
+
+// processTransactionsTraceSnapshot loads the entire trace from Redis,
+// attaches messages, sorts, computes TRACE-level finality (min tx finality),
+// fetches address_book/metadata only if at least one eligible client needs them,
+// and broadcasts a single TransactionsNotification snapshot.
+// channelHint is only used for logging/debugging.
+func processTransactionsTraceSnapshot(
+	ctx context.Context,
+	rdb *redis.Client,
+	traceExternalHashNorm string,
+	manager *ClientManager,
+	channelHint string,
+) {
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
 	if err != nil {
-		log.Printf("[v2] Error loading raw traces (finalized): %v, trace key: %s", err, traceExternalHashNorm)
+		log.Printf("[v2] Error loading raw traces (%s): %v, trace key: %s", channelHint, err, traceExternalHashNorm)
 		return
 	}
 
 	emulatedContext := index.NewEmptyContext(false)
-	err = emulatedContext.FillFromRawData(rawTraces)
-	if err != nil {
-		log.Printf("[v2] Error filling context from raw data (finalized): %v, trace key: %s", err, traceExternalHashNorm)
+	if err := emulatedContext.FillFromRawData(rawTraces); err != nil {
+		log.Printf("[v2] Error filling context from raw data (%s): %v, trace key: %s", channelHint, err, traceExternalHashNorm)
 		return
 	}
 	if emulatedContext.GetTraceCount() > 1 {
-		log.Printf("[v2] More than 1 trace in context (finalized), trace key: %s", traceExternalHashNorm)
+		log.Printf("[v2] More than 1 trace in context (%s), trace key: %s", channelHint, traceExternalHashNorm)
 		return
 	}
 	if emulatedContext.GetTraceCount() == 0 {
-		log.Printf("[v2] No traces in context (finalized), trace key: %s", traceExternalHashNorm)
-		return
-	}
-	rows := emulatedContext.GetTransactionsByTraceIdAndHash(traceExternalHashNorm, txHashes)
-	if len(rows) == 0 {
-		log.Printf("[v2] No transactions found for trace %s (finalized, %d hashes)", traceExternalHashNorm, len(txHashes))
+		log.Printf("[v2] No traces in context (%s), trace key: %s", channelHint, traceExternalHashNorm)
 		return
 	}
 
+	// Build FULL snapshot of all transactions in this trace.
 	var txs []index.Transaction
-	txsMap := map[index.HashType]int{}
+	txsMap := map[index.HashType]int{} // txHash -> index in txs slice
+
+	// Compute trace-level finality as min(tx.Finality).
+	// Start from the highest state.
+	traceFinality := emulated.FinalityStateFinalized
+
+	rows := emulatedContext.GetTransactions()
 	for _, row := range rows {
-		if tx, err := index.ScanTransaction(row); err == nil {
-			txs = append(txs, *tx)
-			txsMap[tx.Hash] = len(txs) - 1
-		} else {
-			log.Printf("[v2] Error scanning transaction (finalized): %v", err)
+		tx, scanErr := index.ScanTransaction(row)
+		if scanErr != nil {
+			log.Printf("[v2] Error scanning transaction (%s): %v", channelHint, scanErr)
+			continue
+		}
+
+		txs = append(txs, *tx)
+		txsMap[tx.Hash] = len(txs) - 1
+
+		if tx.Finality < traceFinality {
+			traceFinality = tx.Finality
 		}
 	}
 
-	txsAddresses := []string{}
-	var hashes []string
-	for _, t := range txs {
-		hashes = append(hashes, string(t.Hash))
-		txsAddresses = append(txsAddresses, string(t.Account))
+	if len(txs) == 0 {
+		log.Printf("[v2] No transactions found for trace %s (%s)", traceExternalHashNorm, channelHint)
+		return
 	}
 
-	allAddresses := txsAddresses
+	// Collect tx hashes & initial addresses (accounts).
+	hashes := make([]string, 0, len(txs))
+	allAddresses := make([]string, 0, len(txs)*3)
+
+	for _, t := range txs {
+		hashes = append(hashes, string(t.Hash))
+		allAddresses = append(allAddresses, string(t.Account))
+	}
+
+	// Attach messages for ALL transactions in snapshot.
 	if len(hashes) > 0 {
-		rows := emulatedContext.GetMessages(hashes)
-		for _, row := range rows {
-			msg, err := index.ScanMessageWithContent(row)
-			if err != nil {
-				log.Printf("[v2] Error scanning message (finalized): %v", err)
+		msgRows := emulatedContext.GetMessages(hashes)
+		for _, row := range msgRows {
+			msg, scanErr := index.ScanMessageWithContent(row)
+			if scanErr != nil {
+				log.Printf("[v2] Error scanning message (%s): %v", channelHint, scanErr)
 				continue
 			}
+
+			txIdx, ok := txsMap[msg.TxHash]
+			if !ok {
+				log.Printf("[v2] Message for unknown transaction (%s), tx hash: %s", channelHint, msg.TxHash)
+				continue
+			}
+
 			if msg.Direction == "in" {
-				txs[txsMap[msg.TxHash]].InMsg = msg
+				txs[txIdx].InMsg = msg
 				if msg.Source != nil {
 					allAddresses = append(allAddresses, string(*msg.Source))
 				}
 			} else {
-				txs[txsMap[msg.TxHash]].OutMsgs = append(txs[txsMap[msg.TxHash]].OutMsgs, msg)
+				txs[txIdx].OutMsgs = append(txs[txIdx].OutMsgs, msg)
 				if msg.Destination != nil {
 					allAddresses = append(allAddresses, string(*msg.Destination))
 				}
@@ -1177,6 +993,7 @@ func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 		}
 	}
 
+	// Sort OutMsgs by CreatedLt ascending
 	for idx := range txs {
 		sort.SliceStable(txs[idx].OutMsgs, func(i, j int) bool {
 			if txs[idx].OutMsgs[i].CreatedLt == nil {
@@ -1189,11 +1006,19 @@ func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 		})
 	}
 
+	// Sort transactions by Lt descending (as documented).
+	sort.Slice(txs, func(i, j int) bool {
+		return txs[i].Lt > txs[j].Lt
+	})
+
+	// Fetch address_book/metadata only if at least one eligible client needs it,
+	// and only if that client will receive this event with traceFinality.
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
+
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
 		[]EventType{EventTransactions},
-		emulated.FinalityStateFinalized,
+		traceFinality,
 		allAddresses,
 	)
 	if shouldFetchAddressBook || shouldFetchMetadata {
@@ -1206,13 +1031,9 @@ func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 		)
 	}
 
-	sort.Slice(txs, func(i, j int) bool {
-		return txs[i].Lt > txs[j].Lt
-	})
-
 	manager.broadcast <- &TransactionsNotification{
 		Type:                  EventTransactions,
-		Finality:              emulated.FinalityStateFinalized,
+		Finality:              traceFinality,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		Transactions:          txs,
 		AddressBook:           addressBook,
