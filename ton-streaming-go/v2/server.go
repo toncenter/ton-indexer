@@ -56,6 +56,7 @@ type EventType string
 const (
 	EventTransactions       EventType = "transactions"
 	EventActions            EventType = "actions"
+	EventTrace              EventType = "trace"
 	EventAccountStateChange EventType = "account_state_change"
 	EventJettonsChange      EventType = "jettons_change"
 	EventTraceInvalidated   EventType = "trace_invalidated" // internal; not subscribable
@@ -64,6 +65,7 @@ const (
 var validEventTypes = map[EventType]struct{}{
 	EventTransactions:       {},
 	EventActions:            {},
+	EventTrace:              {},
 	EventAccountStateChange: {},
 	EventJettonsChange:      {},
 }
@@ -169,9 +171,11 @@ func (rl *RateLimiter) GetAddressLimit(limitingKey string) int {
 
 type eventSet map[EventType]struct{}
 type AddressSet map[string]struct{}
+type TraceSet map[string]struct{}
 
 type Subscription struct {
 	SubscribedAddresses  AddressSet
+	SubscribedTraces     TraceSet
 	EventTypes           eventSet
 	ActionTypes          []string
 	SupportedActionTypes []string
@@ -196,14 +200,32 @@ func makeAddressSet(addrs []string) AddressSet {
 	return s
 }
 
+func makeTraceSet(traces []string) TraceSet {
+	s := make(TraceSet, len(traces))
+	for _, trace := range traces {
+		s[trace] = struct{}{}
+	}
+	return s
+}
+
 func (s *Subscription) Replace(addresses []string, eventTypes []EventType) {
 	s.SubscribedAddresses = makeAddressSet(addresses)
 	s.EventTypes = makeEventSet(eventTypes)
 }
 
+func (s *Subscription) ReplaceTraces(traces []string) {
+	s.SubscribedTraces = makeTraceSet(traces)
+}
+
 func (s *Subscription) Unsubscribe(addresses []string) {
 	for _, addr := range addresses {
 		delete(s.SubscribedAddresses, addr)
+	}
+}
+
+func (s *Subscription) UnsubscribeTraces(traces []string) {
+	for _, trace := range traces {
+		delete(s.SubscribedTraces, trace)
 	}
 }
 
@@ -220,6 +242,21 @@ func (s *Subscription) InterestedIn(eventType EventType, eventAddresses []string
 		}
 	}
 	return false
+}
+
+func (s *Subscription) InterestedInTrace(eventType EventType, traceExternalHashNorm string) bool {
+	if s.EventTypes == nil {
+		return false
+	}
+	if _, ok := s.EventTypes[eventType]; !ok {
+		return false
+	}
+
+	if s.SubscribedTraces == nil {
+		return false
+	}
+	_, ok := s.SubscribedTraces[traceExternalHashNorm]
+	return ok
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -301,6 +338,37 @@ func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []Eve
 					shouldFetchAddressBook = shouldFetchAddressBook || client.Subscription.IncludeAddressBook
 					shouldFetchMetadata = shouldFetchMetadata || client.Subscription.IncludeMetadata
 				}
+			}
+		}
+		client.mu.Unlock()
+
+		if shouldFetchAddressBook && shouldFetchMetadata {
+			break
+		}
+	}
+
+	return shouldFetchAddressBook, shouldFetchMetadata
+}
+
+// shouldFetchAddressBookAndMetadataForTrace checks if any connected client
+// subscribed to the trace will receive this event and needs address book or metadata.
+func (manager *ClientManager) shouldFetchAddressBookAndMetadataForTrace(eventFinality emulated.FinalityState, traceExternalHashNorm string) (bool, bool) {
+	shouldFetchAddressBook := false
+	shouldFetchMetadata := false
+
+	manager.mu.RLock()
+	clients := make([]*Client, 0, len(manager.clients))
+	for _, c := range manager.clients {
+		clients = append(clients, c)
+	}
+	manager.mu.RUnlock()
+
+	for _, client := range clients {
+		client.mu.Lock()
+		if client.Connected && client.Subscription.MinFinality <= eventFinality {
+			if client.Subscription.InterestedInTrace(EventTrace, traceExternalHashNorm) {
+				shouldFetchAddressBook = shouldFetchAddressBook || client.Subscription.IncludeAddressBook
+				shouldFetchMetadata = shouldFetchMetadata || client.Subscription.IncludeMetadata
 			}
 		}
 		client.mu.Unlock()
@@ -593,6 +661,68 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 		Transactions:          adjustedTransactions,
 		AddressBook:           adjustedAddressBook,
 		Metadata:              adjustedMetadata,
+	}
+}
+
+type TraceNotification struct {
+	Type                  EventType                             `json:"type"` // always "trace"
+	Finality              emulated.FinalityState                `json:"finality"`
+	TraceExternalHashNorm string                                `json:"trace_external_hash_norm"`
+	Trace                 index.TraceNode                       `json:"trace"`
+	Transactions          map[index.HashType]*index.Transaction `json:"transactions"`
+	Actions               *[]*index.Action                      `json:"actions,omitempty"`
+	AddressBook           *index.AddressBook                    `json:"address_book,omitempty"`
+	Metadata              *index.Metadata                       `json:"metadata,omitempty"`
+}
+
+var _ Notification = (*TraceNotification)(nil)
+
+func (n *TraceNotification) AdjustForClient(client *Client) any {
+	if n.Finality < client.Subscription.MinFinality {
+		return nil
+	}
+	if !client.Subscription.InterestedInTrace(EventTrace, n.TraceExternalHashNorm) {
+		return nil
+	}
+
+	var adjustedActions *[]*index.Action
+	if n.Actions != nil {
+		supportedActionsSet := mapset.NewSet(client.Subscription.SupportedActionTypes...)
+		filterActionsSet := mapset.NewSet(client.Subscription.ActionTypes...)
+		filteredActions := make([]*index.Action, 0, len(*n.Actions))
+		for _, action := range *n.Actions {
+			if !filterActionsSet.IsEmpty() && !filterActionsSet.ContainsAny(action.Type) {
+				continue
+			}
+			if supportedActionsSet.ContainsAny(action.AncestorType...) {
+				continue
+			}
+			if !supportedActionsSet.ContainsAny(action.Type) {
+				continue
+			}
+			filteredActions = append(filteredActions, action)
+		}
+		if len(filteredActions) > 0 {
+			adjustedActions = &filteredActions
+		}
+	}
+
+	switch n.Finality {
+	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed, emulated.FinalityStateSigned:
+		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
+	case emulated.FinalityStateFinalized:
+		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
+	}
+
+	return &TraceNotification{
+		Type:                  n.Type,
+		Finality:              n.Finality,
+		TraceExternalHashNorm: n.TraceExternalHashNorm,
+		Trace:                 n.Trace,
+		Transactions:          n.Transactions,
+		Actions:               adjustedActions,
+		AddressBook:           n.AddressBook,
+		Metadata:              n.Metadata,
 	}
 }
 
@@ -1138,11 +1268,11 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		return
 	}
 
-	log.Print("[v2] Processing classified trace: ", traceExternalHashNorm)
+	// log.Print("[v2] Processing classified trace: ", traceExternalHashNorm)
 
-	// Finality of trace is the minimum finality of its txs
+	// Finality of trace is the minimum finality of its txs, however,
 	// NFT and jetton transfer notifications do not affect finality if there are no outgoing messages
-	minFinality := emulated.FinalityStateFinalized
+	traceFinality := emulated.FinalityStateFinalized
 	{
 		txRows := emulatedContext.GetTransactions()
 		txFinality := make(map[string]emulated.FinalityState, len(txRows))
@@ -1186,8 +1316,8 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 					}
 				}
 			}
-			if finality < minFinality {
-				minFinality = finality
+			if finality < traceFinality {
+				traceFinality = finality
 			}
 		}
 	}
@@ -1245,12 +1375,77 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	// Pending actions
 	manager.broadcast <- &ActionsNotification{
 		Type:                  EventActions,
-		Finality:              minFinality,
+		Finality:              traceFinality,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		Actions:               actions,
 		ActionAddresses:       actionsAddresses,
 		AddressBook:           addressBook,
 		Metadata:              metadata,
+	}
+
+	txs, err := index.QueryPendingTransactionsImpl(emulatedContext, nil, index.RequestSettings{}, false)
+	if err != nil {
+		log.Printf("[v2] Error querying trace transactions (classified): %v", err)
+		return
+	}
+
+	txOrder := make([]index.HashType, 0, len(txs))
+	for idx := range txs {
+		txOrder = append(txOrder, txs[idx].Hash)
+	}
+
+	traceRoot, traceTxMap, err := buildTraceFromTransactions(txOrder, txs)
+	if err != nil {
+		log.Printf("[v2] Error assembling trace (classified) %s: %v", traceExternalHashNorm, err)
+	}
+	if traceRoot == nil {
+		return
+	}
+
+	traceAddrSet := map[string]bool{}
+	for idx := range txs {
+		collectAddressesFromTransaction(traceAddrSet, &txs[idx])
+	}
+	for _, aa := range actionsAddresses {
+		for _, addr := range aa {
+			traceAddrSet[addr] = true
+		}
+	}
+	traceAddresses := make([]string, 0, len(traceAddrSet))
+	for addr := range traceAddrSet {
+		traceAddresses = append(traceAddresses, addr)
+	}
+
+	var traceAddressBook *index.AddressBook
+	var traceMetadata *index.Metadata
+	shouldFetchTraceAddressBook, shouldFetchTraceMetadata := manager.shouldFetchAddressBookAndMetadataForTrace(
+		traceFinality,
+		traceExternalHashNorm,
+	)
+	if shouldFetchTraceAddressBook || shouldFetchTraceMetadata {
+		traceAddressBook, traceMetadata = fetchAddressBookAndMetadata(
+			ctx,
+			traceAddresses,
+			traceAddresses,
+			shouldFetchTraceAddressBook,
+			shouldFetchTraceMetadata,
+		)
+	}
+
+	var traceActionsPtr *[]*index.Action
+	if len(actions) > 0 {
+		traceActionsPtr = &actions
+	}
+
+	manager.broadcast <- &TraceNotification{
+		Type:                  EventTrace,
+		Finality:              traceFinality,
+		TraceExternalHashNorm: traceExternalHashNorm,
+		Trace:                 *traceRoot,
+		Transactions:          traceTxMap,
+		Actions:               traceActionsPtr,
+		AddressBook:           traceAddressBook,
+		Metadata:              traceMetadata,
 	}
 }
 
@@ -1440,6 +1635,101 @@ func validateAddressesAndTypes(addresses []string, types []EventType) ([]string,
 	return uniqueAddrs, nil
 }
 
+func validateTraceExternalHashNorms(traces []string) ([]string, error) {
+	unique := make([]string, 0, len(traces))
+	seen := make(map[string]struct{}, len(traces))
+	for _, trace := range traces {
+		trace = strings.TrimSpace(trace)
+		if trace == "" {
+			return nil, fmt.Errorf("trace_external_hash_norms contains empty value")
+		}
+		if _, exists := seen[trace]; exists {
+			continue
+		}
+		seen[trace] = struct{}{}
+		unique = append(unique, trace)
+	}
+	return unique, nil
+}
+
+func hasEventType(types []EventType, target EventType) bool {
+	for _, t := range types {
+		if t == target {
+			return true
+		}
+	}
+	return false
+}
+
+func hasNonTraceEventTypes(types []EventType) bool {
+	for _, t := range types {
+		if t != EventTrace {
+			return true
+		}
+	}
+	return false
+}
+
+func collectAddressesFromTransaction(addrSet map[string]bool, tx *index.Transaction) {
+	addrSet[string(tx.Account)] = true
+	if tx.InMsg != nil && tx.InMsg.Source != nil {
+		addrSet[string(*tx.InMsg.Source)] = true
+	}
+	for _, outMsg := range tx.OutMsgs {
+		if outMsg.Destination != nil {
+			addrSet[string(*outMsg.Destination)] = true
+		}
+	}
+}
+
+func buildActionsFromContext(emulatedContext *index.EmulatedTracesContext) ([]*index.Action, [][]string) {
+	actions := make([]*index.Action, 0)
+	actionsAddresses := make([][]string, 0)
+	for _, row := range emulatedContext.GetAllActions() {
+		rawAction, err := index.ScanRawAction(row)
+		if err != nil {
+			log.Printf("[v2] Error scanning raw action: %v", err)
+			continue
+		}
+
+		actionAddrMap := map[string]bool{}
+		index.CollectAddressesFromAction(&actionAddrMap, rawAction)
+
+		action, err := index.ParseRawAction(rawAction)
+		if err != nil {
+			log.Printf("[v2] Error parsing raw action: %v", err)
+			continue
+		}
+
+		actionAddresses := make([]string, 0, len(actionAddrMap))
+		for addr := range actionAddrMap {
+			actionAddresses = append(actionAddresses, addr)
+		}
+
+		actions = append(actions, action)
+		actionsAddresses = append(actionsAddresses, actionAddresses)
+	}
+
+	return actions, actionsAddresses
+}
+
+func buildTraceFromTransactions(txOrder []index.HashType, txs []index.Transaction) (*index.TraceNode, map[index.HashType]*index.Transaction, error) {
+	txMap := make(map[index.HashType]*index.Transaction, len(txs))
+	for idx := range txs {
+		tx := &txs[idx]
+		txMap[tx.Hash] = tx
+	}
+
+	traceRoot, err := index.AssembleTraceTxsFromMap(&txOrder, &txMap)
+	if err != nil {
+		return traceRoot, txMap, err
+	}
+	if traceRoot == nil {
+		return nil, txMap, fmt.Errorf("trace root is nil")
+	}
+	return traceRoot, txMap, nil
+}
+
 func writeSSE(w *bufio.Writer, event string, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -1490,27 +1780,43 @@ func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimite
 ////////////////////////////////////////////////////////////////////////////////
 
 type SSERequest struct {
-	Id                   *string                 `json:"id"`
-	Addresses            []string                `json:"addresses"`
-	Types                []EventType             `json:"types"`
-	MinFinality          *emulated.FinalityState `json:"min_finality,omitempty"`
-	ActionTypes          []string                `json:"action_types"`
-	SupportedActionTypes []string                `json:"supported_action_types"`
-	IncludeAddressBook   *bool                   `json:"include_address_book"`
-	IncludeMetadata      *bool                   `json:"include_metadata"`
+	Id                     *string                 `json:"id"`
+	Addresses              []string                `json:"addresses"`
+	TraceExternalHashNorms []string                `json:"trace_external_hash_norms,omitempty"`
+	Types                  []EventType             `json:"types"`
+	MinFinality            *emulated.FinalityState `json:"min_finality,omitempty"`
+	ActionTypes            []string                `json:"action_types"`
+	SupportedActionTypes   []string                `json:"supported_action_types"`
+	IncludeAddressBook     *bool                   `json:"include_address_book"`
+	IncludeMetadata        *bool                   `json:"include_metadata"`
 }
 
-func ValidateSSERequest(req *SSERequest) ([]string, emulated.FinalityState, error) {
-	if len(req.Addresses) == 0 {
-		return nil, defaultMinFinality(), fmt.Errorf("addresses are required for subscription")
-	}
+func ValidateSSERequest(req *SSERequest) ([]string, []string, emulated.FinalityState, error) {
 	if len(req.Types) == 0 {
-		return nil, defaultMinFinality(), fmt.Errorf("types are required for subscription")
+		return nil, nil, defaultMinFinality(), fmt.Errorf("types are required for subscription")
 	}
 
 	uniqueAddrs, err := validateAddressesAndTypes(req.Addresses, req.Types)
 	if err != nil {
-		return nil, defaultMinFinality(), err
+		return nil, nil, defaultMinFinality(), err
+	}
+
+	traceExternalHashNorms, err := validateTraceExternalHashNorms(req.TraceExternalHashNorms)
+	if err != nil {
+		return nil, nil, defaultMinFinality(), err
+	}
+
+	hasTraceType := hasEventType(req.Types, EventTrace)
+	hasAddressTypes := hasNonTraceEventTypes(req.Types)
+
+	if len(traceExternalHashNorms) > 0 && !hasTraceType {
+		return nil, nil, defaultMinFinality(), fmt.Errorf("trace_external_hash_norms requires type \"trace\"")
+	}
+	if hasTraceType && len(traceExternalHashNorms) == 0 {
+		return nil, nil, defaultMinFinality(), fmt.Errorf("trace_external_hash_norms are required for trace subscription")
+	}
+	if hasAddressTypes && len(uniqueAddrs) == 0 {
+		return nil, nil, defaultMinFinality(), fmt.Errorf("addresses are required for subscription")
 	}
 
 	minFin := defaultMinFinality()
@@ -1518,7 +1824,7 @@ func ValidateSSERequest(req *SSERequest) ([]string, emulated.FinalityState, erro
 		minFin = *req.MinFinality
 	}
 
-	return uniqueAddrs, minFin, nil
+	return uniqueAddrs, traceExternalHashNorms, minFin, nil
 }
 
 func SSEHandler(manager *ClientManager) fiber.Handler {
@@ -1527,7 +1833,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Error: fmt.Sprintf("invalid subscription request: %v", err)})
 		}
-		addresses, minFinality, err := ValidateSSERequest(&req)
+		addresses, traceExternalHashNorms, minFinality, err := ValidateSSERequest(&req)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{Id: req.Id, Error: err.Error()})
 		}
@@ -1584,6 +1890,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 			},
 		}
 		client.Subscription.Replace(addresses, req.Types)
+		client.Subscription.ReplaceTraces(traceExternalHashNorms)
 		manager.register <- client
 
 		c.Set("Content-Type", "text/event-stream")
@@ -1646,17 +1953,19 @@ type Envelope struct {
 }
 
 type SubscribeRequest struct {
-	Addresses            []string                `json:"addresses"`
-	Types                []EventType             `json:"types"`
-	MinFinality          *emulated.FinalityState `json:"min_finality,omitempty"`
-	ActionTypes          []string                `json:"action_types,omitempty"`
-	SupportedActionTypes []string                `json:"supported_action_types,omitempty"`
-	IncludeAddressBook   *bool                   `json:"include_address_book,omitempty"`
-	IncludeMetadata      *bool                   `json:"include_metadata,omitempty"`
+	Addresses              []string                `json:"addresses"`
+	TraceExternalHashNorms []string                `json:"trace_external_hash_norms,omitempty"`
+	Types                  []EventType             `json:"types"`
+	MinFinality            *emulated.FinalityState `json:"min_finality,omitempty"`
+	ActionTypes            []string                `json:"action_types,omitempty"`
+	SupportedActionTypes   []string                `json:"supported_action_types,omitempty"`
+	IncludeAddressBook     *bool                   `json:"include_address_book,omitempty"`
+	IncludeMetadata        *bool                   `json:"include_metadata,omitempty"`
 }
 
 type UnsubscribeRequest struct {
-	Addresses []string `json:"addresses"`
+	Addresses              []string `json:"addresses"`
+	TraceExternalHashNorms []string `json:"trace_external_hash_norms,omitempty"`
 }
 
 func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
@@ -1685,6 +1994,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			Connected:   true,
 			Subscription: Subscription{
 				SubscribedAddresses:  make(AddressSet),
+				SubscribedTraces:     make(TraceSet),
 				EventTypes:           make(eventSet),
 				SupportedActionTypes: index.ExpandActionTypeShortcuts(headers["X-Actions-Version"]),
 				IncludeAddressBook:   false,
@@ -1726,26 +2036,41 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid unsubscribe request: %v", err))
 					continue
 				}
-				if len(req.Addresses) == 0 {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("addresses are required"))
+				if len(req.Addresses) == 0 && len(req.TraceExternalHashNorms) == 0 {
+					sendWSJSONErr(c, env.Id, fmt.Errorf("addresses or trace_external_hash_norms are required"))
 					continue
 				}
-				cnvAddrs := make([]string, len(req.Addresses))
-				addrsValid := true
-				for i, a := range req.Addresses {
-					cnvAddrs[i], err = convertAddress(a)
-					if err != nil {
-						addrsValid = false
-						sendWSJSONErr(c, env.Id, err)
-						break
+
+				var cnvAddrs []string
+				if len(req.Addresses) > 0 {
+					cnvAddrs = make([]string, len(req.Addresses))
+					addrsValid := true
+					for i, a := range req.Addresses {
+						cnvAddrs[i], err = convertAddress(a)
+						if err != nil {
+							addrsValid = false
+							sendWSJSONErr(c, env.Id, err)
+							break
+						}
+					}
+					if !addrsValid {
+						continue
 					}
 				}
-				if !addrsValid {
+
+				traceExternalHashNorms, err := validateTraceExternalHashNorms(req.TraceExternalHashNorms)
+				if err != nil {
+					sendWSJSONErr(c, env.Id, err)
 					continue
 				}
 
 				client.mu.Lock()
-				client.Subscription.Unsubscribe(cnvAddrs)
+				if len(cnvAddrs) > 0 {
+					client.Subscription.Unsubscribe(cnvAddrs)
+				}
+				if len(traceExternalHashNorms) > 0 {
+					client.Subscription.UnsubscribeTraces(traceExternalHashNorms)
+				}
 				client.mu.Unlock()
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "unsubscribed"})
 				_ = c.WriteMessage(websocket.TextMessage, ack)
@@ -1756,10 +2081,6 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid subscribe request: %v", err))
 					continue
 				}
-				if len(req.Addresses) == 0 {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("addresses are required"))
-					continue
-				}
 				if len(req.Types) == 0 {
 					sendWSJSONErr(c, env.Id, fmt.Errorf("types are required"))
 					continue
@@ -1768,6 +2089,27 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				cnvAddrs, err := validateAddressesAndTypes(req.Addresses, req.Types)
 				if err != nil {
 					sendWSJSONErr(c, env.Id, err)
+					continue
+				}
+
+				traceExternalHashNorms, err := validateTraceExternalHashNorms(req.TraceExternalHashNorms)
+				if err != nil {
+					sendWSJSONErr(c, env.Id, err)
+					continue
+				}
+
+				hasTraceType := hasEventType(req.Types, EventTrace)
+				hasAddressTypes := hasNonTraceEventTypes(req.Types)
+				if len(traceExternalHashNorms) > 0 && !hasTraceType {
+					sendWSJSONErr(c, env.Id, fmt.Errorf("trace_external_hash_norms requires type \"trace\""))
+					continue
+				}
+				if hasTraceType && len(traceExternalHashNorms) == 0 {
+					sendWSJSONErr(c, env.Id, fmt.Errorf("trace_external_hash_norms are required for trace subscription"))
+					continue
+				}
+				if hasAddressTypes && len(cnvAddrs) == 0 {
+					sendWSJSONErr(c, env.Id, fmt.Errorf("addresses are required"))
 					continue
 				}
 
@@ -1785,6 +2127,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				}
 
 				client.Subscription.Replace(cnvAddrs, req.Types)
+				client.Subscription.ReplaceTraces(traceExternalHashNorms)
 				client.Subscription.MinFinality = minFin
 
 				if req.IncludeAddressBook != nil {
