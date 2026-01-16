@@ -1256,9 +1256,24 @@ func writeSSEBytes(w *bufio.Writer, event string, payload []byte) error {
 }
 
 // sendWSJSONErr centralises websocket error frames.
-func sendWSJSONErr(c *websocket.Conn, id *string, err error) {
+func writeWSMessage(c *websocket.Conn, client *Client, msg []byte) error {
+	if client == nil {
+		return c.WriteMessage(websocket.TextMessage, msg)
+	}
+
+	client.mu.Lock()
+	if !client.Connected {
+		client.mu.Unlock()
+		return nil
+	}
+	err := client.SendEvent(msg)
+	client.mu.Unlock()
+	return err
+}
+
+func sendWSJSONErr(c *websocket.Conn, client *Client, id *string, err error) {
 	if msg, e := json.Marshal(ErrorResponse{Id: id, Error: err.Error()}); e == nil {
-		_ = c.WriteMessage(websocket.TextMessage, msg)
+		_ = writeWSMessage(c, client, msg)
 	} else {
 		log.Printf("marshal error response: %v", e)
 	}
@@ -1422,7 +1437,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 		// Check connection limit
 		if limitingKey != "" {
 			if err := manager.rateLimiter.RegisterConnection(limitingKey, clientID, rateLimitConfig); err != nil {
-				sendWSJSONErr(c, nil, err)
+				sendWSJSONErr(c, nil, nil, err)
 				c.Close()
 				return
 			}
@@ -1458,22 +1473,22 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 
 			var env Envelope
 			if err := json.Unmarshal(msg, &env); err != nil {
-				sendWSJSONErr(c, nil, fmt.Errorf("invalid subscription request: %v", err))
+				sendWSJSONErr(c, client, nil, fmt.Errorf("invalid subscription request: %v", err))
 				continue
 			}
 			switch env.Operation {
 			case OpPing:
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "pong"})
-				_ = c.WriteMessage(websocket.TextMessage, ack)
+				_ = writeWSMessage(c, client, ack)
 
 			case OpUnsubscribe:
 				var req UnsubscribeRequest
 				if err := json.Unmarshal(msg, &req); err != nil {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid unsubscribe request: %v", err))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("invalid unsubscribe request: %v", err))
 					continue
 				}
 				if len(req.Addresses) == 0 {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("addresses are required"))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("addresses are required"))
 					continue
 				}
 				cnvAddrs := make([]string, len(req.Addresses))
@@ -1482,7 +1497,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					cnvAddrs[i], err = convertAddress(a)
 					if err != nil {
 						addrsValid = false
-						sendWSJSONErr(c, env.Id, err)
+						sendWSJSONErr(c, client, env.Id, err)
 						break
 					}
 				}
@@ -1494,12 +1509,12 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				client.Subscription.Unsubscribe(cnvAddrs)
 				client.mu.Unlock()
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "unsubscribed"})
-				_ = c.WriteMessage(websocket.TextMessage, ack)
+				_ = writeWSMessage(c, client, ack)
 
 			case OpSubscribe:
 				var req SubscribeRequest
 				if err := json.Unmarshal(msg, &req); err != nil {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid subscribe request: %v", err))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("invalid subscribe request: %v", err))
 					continue
 				}
 
@@ -1523,7 +1538,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					addrMap[cnv] = req.Types
 				}
 				if validationError != nil {
-					sendWSJSONErr(c, env.Id, validationError)
+					sendWSJSONErr(c, client, env.Id, validationError)
 					continue
 				}
 
@@ -1532,19 +1547,19 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				err = checkAddressLimit(client, len(addrMap), manager.rateLimiter, false)
 				if err != nil {
 					client.mu.Unlock()
-					sendWSJSONErr(c, env.Id, err)
+					sendWSJSONErr(c, client, env.Id, err)
 					continue
 				}
 				client.Subscription.Add(addrMap)
 				client.mu.Unlock()
 
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "subscribed"})
-				_ = c.WriteMessage(websocket.TextMessage, ack)
+				_ = writeWSMessage(c, client, ack)
 
 			case OpSetSubscription:
 				var req SetSubscriptionRequest
 				if err := json.Unmarshal(msg, &req); err != nil {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid set_subscription: %v", err))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("invalid set_subscription: %v", err))
 					continue
 				}
 
@@ -1568,7 +1583,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					addrMap[cnv] = et
 				}
 				if validationError != nil {
-					sendWSJSONErr(c, env.Id, validationError)
+					sendWSJSONErr(c, client, env.Id, validationError)
 					continue
 				}
 
@@ -1576,7 +1591,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				client.mu.Lock()
 				if err := checkAddressLimit(client, len(addrMap), manager.rateLimiter, true); err != nil {
 					client.mu.Unlock()
-					sendWSJSONErr(c, env.Id, err)
+					sendWSJSONErr(c, client, env.Id, err)
 					continue
 				}
 
@@ -1584,12 +1599,12 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				client.mu.Unlock()
 
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "subscription_set"})
-				_ = c.WriteMessage(websocket.TextMessage, ack)
+				_ = writeWSMessage(c, client, ack)
 
 			case OpConfigure:
 				var req ConfigureRequest
 				if err := json.Unmarshal(msg, &req); err != nil {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid configure request: %v", err))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("invalid configure request: %v", err))
 					continue
 				}
 
@@ -1609,11 +1624,11 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				client.mu.Unlock()
 
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "configured"})
-				_ = c.WriteMessage(websocket.TextMessage, ack)
+				_ = writeWSMessage(c, client, ack)
 				continue
 
 			default:
-				sendWSJSONErr(c, env.Id, fmt.Errorf("unknown operation: %s", env.Operation))
+				sendWSJSONErr(c, client, env.Id, fmt.Errorf("unknown operation: %s", env.Operation))
 			}
 		}
 	}

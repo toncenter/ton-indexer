@@ -1745,9 +1745,24 @@ func writeSSEBytes(w *bufio.Writer, event string, payload []byte) error {
 	return w.Flush()
 }
 
-func sendWSJSONErr(c *websocket.Conn, id *string, err error) {
+func writeWSMessage(c *websocket.Conn, client *Client, msg []byte) error {
+	if client == nil {
+		return c.WriteMessage(websocket.TextMessage, msg)
+	}
+
+	client.mu.Lock()
+	if !client.Connected {
+		client.mu.Unlock()
+		return nil
+	}
+	err := client.SendEvent(msg)
+	client.mu.Unlock()
+	return err
+}
+
+func sendWSJSONErr(c *websocket.Conn, client *Client, id *string, err error) {
 	if msg, e := json.Marshal(ErrorResponse{Id: id, Error: err.Error()}); e == nil {
-		_ = c.WriteMessage(websocket.TextMessage, msg)
+		_ = writeWSMessage(c, client, msg)
 	} else {
 		log.Printf("[v2] marshal error response: %v", e)
 	}
@@ -1982,7 +1997,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 
 		if limitingKey != "" {
 			if err := manager.rateLimiter.RegisterConnection(limitingKey, clientID, rateLimitConfig); err != nil {
-				sendWSJSONErr(c, nil, err)
+				sendWSJSONErr(c, nil, nil, err)
 				_ = c.Close()
 				return
 			}
@@ -2021,23 +2036,23 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 
 			var env Envelope
 			if err := json.Unmarshal(msg, &env); err != nil {
-				sendWSJSONErr(c, nil, fmt.Errorf("invalid request envelope: %v", err))
+				sendWSJSONErr(c, client, nil, fmt.Errorf("invalid request envelope: %v", err))
 				continue
 			}
 
 			switch env.Operation {
 			case OpPing:
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "pong"})
-				_ = c.WriteMessage(websocket.TextMessage, ack)
+				_ = writeWSMessage(c, client, ack)
 
 			case OpUnsubscribe:
 				var req UnsubscribeRequest
 				if err := json.Unmarshal(msg, &req); err != nil {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid unsubscribe request: %v", err))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("invalid unsubscribe request: %v", err))
 					continue
 				}
 				if len(req.Addresses) == 0 && len(req.TraceExternalHashNorms) == 0 {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("addresses or trace_external_hash_norms are required"))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("addresses or trace_external_hash_norms are required"))
 					continue
 				}
 
@@ -2049,7 +2064,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 						cnvAddrs[i], err = convertAddress(a)
 						if err != nil {
 							addrsValid = false
-							sendWSJSONErr(c, env.Id, err)
+							sendWSJSONErr(c, client, env.Id, err)
 							break
 						}
 					}
@@ -2060,7 +2075,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 
 				traceExternalHashNorms, err := validateTraceExternalHashNorms(req.TraceExternalHashNorms)
 				if err != nil {
-					sendWSJSONErr(c, env.Id, err)
+					sendWSJSONErr(c, client, env.Id, err)
 					continue
 				}
 
@@ -2073,43 +2088,43 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				}
 				client.mu.Unlock()
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "unsubscribed"})
-				_ = c.WriteMessage(websocket.TextMessage, ack)
+				_ = writeWSMessage(c, client, ack)
 
 			case OpSubscribe:
 				var req SubscribeRequest
 				if err := json.Unmarshal(msg, &req); err != nil {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("invalid subscribe request: %v", err))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("invalid subscribe request: %v", err))
 					continue
 				}
 				if len(req.Types) == 0 {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("types are required"))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("types are required"))
 					continue
 				}
 
 				cnvAddrs, err := validateAddressesAndTypes(req.Addresses, req.Types)
 				if err != nil {
-					sendWSJSONErr(c, env.Id, err)
+					sendWSJSONErr(c, client, env.Id, err)
 					continue
 				}
 
 				traceExternalHashNorms, err := validateTraceExternalHashNorms(req.TraceExternalHashNorms)
 				if err != nil {
-					sendWSJSONErr(c, env.Id, err)
+					sendWSJSONErr(c, client, env.Id, err)
 					continue
 				}
 
 				hasTraceType := hasEventType(req.Types, EventTrace)
 				hasAddressTypes := hasNonTraceEventTypes(req.Types)
 				if len(traceExternalHashNorms) > 0 && !hasTraceType {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("trace_external_hash_norms requires type \"trace\""))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("trace_external_hash_norms requires type \"trace\""))
 					continue
 				}
 				if hasTraceType && len(traceExternalHashNorms) == 0 {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("trace_external_hash_norms are required for trace subscription"))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("trace_external_hash_norms are required for trace subscription"))
 					continue
 				}
 				if hasAddressTypes && len(cnvAddrs) == 0 {
-					sendWSJSONErr(c, env.Id, fmt.Errorf("addresses are required"))
+					sendWSJSONErr(c, client, env.Id, fmt.Errorf("addresses are required"))
 					continue
 				}
 
@@ -2122,7 +2137,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				err = checkAddressLimit(client, len(cnvAddrs), manager.rateLimiter, true)
 				if err != nil {
 					client.mu.Unlock()
-					sendWSJSONErr(c, env.Id, err)
+					sendWSJSONErr(c, client, env.Id, err)
 					continue
 				}
 
@@ -2146,10 +2161,10 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 				client.mu.Unlock()
 
 				ack, _ := json.Marshal(StatusResponse{Id: env.Id, Status: "subscribed"})
-				_ = c.WriteMessage(websocket.TextMessage, ack)
+				_ = writeWSMessage(c, client, ack)
 
 			default:
-				sendWSJSONErr(c, env.Id, fmt.Errorf("unknown operation: %s", env.Operation))
+				sendWSJSONErr(c, client, env.Id, fmt.Errorf("unknown operation: %s", env.Operation))
 			}
 		}
 	}
