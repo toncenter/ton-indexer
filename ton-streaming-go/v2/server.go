@@ -308,8 +308,8 @@ type ClientManager struct {
 func NewClientManager() *ClientManager {
 	return &ClientManager{
 		clients:     make(map[string]*Client),
-		register:    make(chan *Client),
-		unregister:  make(chan *Client),
+		register:    make(chan *Client, 128),
+		unregister:  make(chan *Client, 128),
 		broadcast:   make(chan Notification),
 		rateLimiter: NewRateLimiter(),
 	}
