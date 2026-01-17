@@ -206,6 +206,10 @@ public:
           promise.set_error(R.move_as_error_prefix(PSTRING() << blk_id.to_str() << ": "));
         } else {
           auto handle = R.move_as_ok();
+          if (!handle->inited_masterchain_ref_block()) {
+            promise.set_result(td::Status::Error(PSLICE () << "block " << handle->id().to_str() << " does not have masterchain ref block initialized"));
+            return;
+          }
           if (handle->masterchain_ref_block() == mc_seqno || current_shard_blk_ids.count(handle->id()) > 0) {
             td::actor::send_closure(SelfId, &IndexQuery::add_block_handle, std::move(handle), std::move(promise));
           } else {
