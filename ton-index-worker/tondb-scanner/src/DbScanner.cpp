@@ -81,9 +81,9 @@ private:
   td::Ref<MasterchainState> mc_prev_block_state_;
   int pending_{0};
 
-  std::queue<ton::BlockId> blocks_queue_;
+  std::queue<ton::BlockIdExt> blocks_queue_;
 
-  std::set<ton::BlockId> current_shard_blk_ids_;
+  std::set<ton::BlockIdExt> current_shard_blk_ids_;
   std::unordered_set<ConstBlockHandle> shard_block_handles_;
 
   MasterchainBlockDataState result_;
@@ -168,11 +168,11 @@ public:
       return error(td::Status::Error("cannot extract shard configuration from masterchain state extra information"));
     }
 
-    for (auto& s : shards_config.get_shard_hash_ids(true)) {
-      if (s.seqno > 0) {
+    for (auto& s : shards_config.get_shard_hash_ids_ext(true)) {
+      if (s.id.seqno > 0) {
         blocks_queue_.push(s);
       } else {
-        LOG(WARNING) << "Skipping block workchain: " << s.workchain << " shard: " << s.shard << " seqno: " << s.seqno;
+        LOG(WARNING) << "Skipping block workchain: " << s.id.workchain << " shard: " << s.id.shard << " seqno: " << s.id.seqno;
       }
       current_shard_blk_ids_.insert(s);
     }
@@ -201,19 +201,19 @@ public:
       auto blk_id = blocks_queue_.front();
       blocks_queue_.pop();
 
-      auto P = td::PromiseCreator::lambda([&, SelfId = actor_id(this), mc_seqno = mc_seqno_, blk_id, current_shard_blk_ids = current_shard_blk_ids_, promise = ig.get_promise()](td::Result<ConstBlockHandle> R) mutable {
+      auto P = td::PromiseCreator::lambda([&, SelfId = actor_id(this), mc_seqno = mc_seqno_, blk_id, current_shard_blk_ids = current_shard_blk_ids_, promise = ig.get_promise()](td::Result<BlockHandle> R) mutable {
         if (R.is_error()) {
           promise.set_error(R.move_as_error_prefix(PSTRING() << blk_id.to_str() << ": "));
         } else {
           auto handle = R.move_as_ok();
-          if (handle->masterchain_ref_block() == mc_seqno || current_shard_blk_ids.count(handle->id().id) > 0) {
+          if (handle->masterchain_ref_block() == mc_seqno || current_shard_blk_ids.count(handle->id()) > 0) {
             td::actor::send_closure(SelfId, &IndexQuery::add_block_handle, std::move(handle), std::move(promise));
           } else {
             promise.set_result(td::Unit());
           }
         }
       });
-      td::actor::send_closure(db_, &RootDb::get_block_by_seqno, ton::AccountIdPrefixFull{blk_id.workchain, blk_id.shard}, blk_id.seqno, std::move(P));
+      td::actor::send_closure(db_, &RootDb::get_block_handle, blk_id, std::move(P));
     }
   }
 
@@ -226,7 +226,7 @@ public:
     shard_block_handles_.insert(handle);
     for (const auto& prev: handle->prev()) {
       if (prev.id.seqno > 0) {
-        blocks_queue_.push(prev.id);
+        blocks_queue_.push(prev);
       } else {
         LOG(WARNING) << "Skipping block workchain: " << prev.id.workchain << " shard: " << prev.id.shard << " seqno: " << prev.id.seqno;
       }
@@ -260,7 +260,7 @@ public:
   }
 
   void got_shard_block(BlockDataState block_data_state, ConstBlockHandle handle, td::Promise<td::Unit> promise) {
-    if (current_shard_blk_ids_.count(block_data_state.block_data->block_id().id) > 0) {
+    if (current_shard_blk_ids_.count(block_data_state.block_data->block_id()) > 0) {
       result_.shard_blocks_.push_back(block_data_state);
     }
     if (handle->masterchain_ref_block() == mc_seqno_) {
