@@ -985,7 +985,7 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
         "FOR EACH ROW EXECUTE FUNCTION update_nft_real_owner();"
     );
 
-    query += "alter table address_metadata add reindex_allowed boolean default true not null;\n";
+    query += "alter table address_metadata add column if not exists reindex_allowed boolean default true not null;\n";
 
     query += set_version_query({1, 2, 4});
     if (dry_run) {
