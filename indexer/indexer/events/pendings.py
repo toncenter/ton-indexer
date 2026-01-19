@@ -256,6 +256,7 @@ async def start_emulated_traces_processing(settings: Settings,
         worker.start()
         workers.append(worker)
 
+    batching_enabled = batch_window > 0
     logger.info(f"Starting emulated trace processing with time-window batching")
     logger.info(f"  Batch window: {batch_window} seconds")
     logger.info(f"  Max batch size: {max_batch_size} traces")
@@ -282,7 +283,7 @@ async def start_emulated_traces_processing(settings: Settings,
                 continue
 
             # Process batch if window elapsed or max size reached
-            if window_elapsed >= batch_window or len(pending_traces) >= max_batch_size:
+            if window_elapsed >= batch_window or len(pending_traces) >= max_batch_size or not batching_enabled:
                 batch = pending_traces.copy()
                 pending_traces.clear()
                 last_process_time = current_time
