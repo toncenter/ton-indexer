@@ -356,6 +356,34 @@ type ActionRow struct {
 	LayerzeroDvnVerifyProxy         *string
 	LayerzeroDvnVerifyUln           *string
 	LayerzeroDvnVerifyUlnConnection *string
+
+	// COCOON fields
+	CocoonWorkerPayoutPayoutType              *string
+	CocoonWorkerPayoutQueryId                 *string
+	CocoonWorkerPayoutNewTokens               *string
+	CocoonWorkerPayoutWorkerState             *int64
+	CocoonWorkerPayoutWorkerTokens            *string
+	CocoonProxyPayoutQueryId                  *string
+	CocoonProxyChargeQueryId                  *string
+	CocoonProxyChargeNewTokensUsed            *string
+	CocoonProxyChargeExpectedAddress          *string
+	CocoonClientTopUpQueryId                  *string
+	CocoonRegisterProxyQueryId                *string
+	CocoonUnregisterProxyQueryId              *string
+	CocoonUnregisterProxySeqno                *int64
+	CocoonClientRegisterQueryId               *string
+	CocoonClientRegisterNonce                 *string
+	CocoonClientChangeSecretHashQueryId       *string
+	CocoonClientChangeSecretHashNewSecretHash *string
+	CocoonClientRequestRefundQueryId          *string
+	CocoonClientRequestRefundViaWallet        *bool
+	CocoonGrantRefundQueryId                  *string
+	CocoonGrantRefundNewTokensUsed            *string
+	CocoonGrantRefundExpectedAddress          *string
+	CocoonClientIncreaseStakeQueryId          *string
+	CocoonClientIncreaseStakeNewStake         *string
+	CocoonClientWithdrawQueryId               *string
+	CocoonClientWithdrawWithdrawAmount        *string
 }
 type assign func(dest any) error
 type assignable interface {
@@ -617,6 +645,32 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.LayerzeroDvnVerifyProxy),
 		assignStringPtr(t.LayerzeroDvnVerifyUln),
 		assignStringPtr(t.LayerzeroDvnVerifyUlnConnection),
+		assignStringPtr(t.CocoonWorkerPayoutPayoutType),
+		assignStringPtr(t.CocoonWorkerPayoutQueryId),
+		assignStringPtr(t.CocoonWorkerPayoutNewTokens),
+		assignIntPtr(t.CocoonWorkerPayoutWorkerState),
+		assignStringPtr(t.CocoonWorkerPayoutWorkerTokens),
+		assignStringPtr(t.CocoonProxyPayoutQueryId),
+		assignStringPtr(t.CocoonProxyChargeQueryId),
+		assignStringPtr(t.CocoonProxyChargeNewTokensUsed),
+		assignStringPtr(t.CocoonProxyChargeExpectedAddress),
+		assignStringPtr(t.CocoonClientTopUpQueryId),
+		assignStringPtr(t.CocoonRegisterProxyQueryId),
+		assignStringPtr(t.CocoonUnregisterProxyQueryId),
+		assignIntPtr(t.CocoonUnregisterProxySeqno),
+		assignStringPtr(t.CocoonClientRegisterQueryId),
+		assignStringPtr(t.CocoonClientRegisterNonce),
+		assignStringPtr(t.CocoonClientChangeSecretHashQueryId),
+		assignStringPtr(t.CocoonClientChangeSecretHashNewSecretHash),
+		assignStringPtr(t.CocoonClientRequestRefundQueryId),
+		assignBoolPtr(t.CocoonClientRequestRefundViaWallet),
+		assignStringPtr(t.CocoonGrantRefundQueryId),
+		assignStringPtr(t.CocoonGrantRefundNewTokensUsed),
+		assignStringPtr(t.CocoonGrantRefundExpectedAddress),
+		assignStringPtr(t.CocoonClientIncreaseStakeQueryId),
+		assignStringPtr(t.CocoonClientIncreaseStakeNewStake),
+		assignStringPtr(t.CocoonClientWithdrawQueryId),
+		assignStringPtr(t.CocoonClientWithdrawWithdrawAmount),
 
 		assignStrCompatibleSlice(t.AncestorType),
 		assignStrCompatibleSlice(t.Accounts),
