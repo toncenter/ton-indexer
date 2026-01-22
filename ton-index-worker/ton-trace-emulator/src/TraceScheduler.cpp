@@ -17,8 +17,8 @@ void TraceEmulatorScheduler::handle_db_event(ton::tl_object_ptr<ton::ton_api::db
     ton::ton_api::downcast_call(
         *event, td::overloaded(
                     [&](ton::ton_api::db_event_blockCandidateReceived &ev) {
-                        LOG(WARNING) << "db_event_blockCandidateReceived: " << ton::create_block_id(ev.block_id_).to_str();
-                        handle_block_candidate(ton::create_block_id(ev.block_id_));
+                        // LOG(WARNING) << "db_event_blockCandidateReceived: " << ton::create_block_id(ev.block_id_).to_str();
+                        // handle_block_candidate(ton::create_block_id(ev.block_id_));
                     },
                     [&](ton::ton_api::db_event_blockApplied &ev) {
                         LOG(WARNING) << "db_event_blockApplied: "<< ton::create_block_id(ev.block_id_).to_str();
