@@ -624,7 +624,7 @@ func (fs FinalityState) String() string {
 	case FinalityStateConfirmed:
 		return "confirmed"
 	case FinalityStateSigned:
-		return "confirmed" // temporary mapping signed to confirmed
+		return "signed"
 	case FinalityStateFinalized:
 		return "finalized"
 	default:
