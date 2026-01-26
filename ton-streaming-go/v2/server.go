@@ -1483,6 +1483,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	m.MeasureStep("process_new_classified_trace__address_book_and_metadata_fetched")
 	m.PrintMeasurement()
 
+	log.Printf("[v2] Broadcasting classified trace actions for trace %s with finality %d: %d actions, addresses: %v", traceExternalHashNorm, traceFinality, len(actions), actionsAddresses)
 	// Pending actions
 	manager.broadcast <- &ActionsNotification{
 		Type:                  EventActions,
