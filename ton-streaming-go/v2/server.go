@@ -852,6 +852,7 @@ func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientMa
 // pending (emulated) trace
 func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager) {
 	m := NewMeasurement()
+	m.Extra["redis_conns"] = strconv.Itoa(int(rdb.PoolStats().TotalConns - rdb.PoolStats().IdleConns))
 	m.ExtMsgHashNorm = index.HashType(traceExternalHashNorm)
 	m.MeasureStep("process_new_trace__start")
 
@@ -1111,6 +1112,7 @@ func processTransactionsTraceSnapshot(
 	channelHint string,
 ) {
 	m := NewMeasurement()
+	m.Extra["redis_conns"] = strconv.Itoa(int(rdb.PoolStats().TotalConns - rdb.PoolStats().IdleConns))
 	m.ExtMsgHashNorm = index.HashType(traceExternalHashNorm)
 	m.MeasureStep("process_new_" + channelHint + "_transactions__start")
 
@@ -1342,6 +1344,7 @@ func SubscribeToClassifiedTraces(ctx context.Context, rdb *redis.Client, manager
 
 func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager) {
 	m := NewMeasurement()
+	m.Extra["redis_conns"] = strconv.Itoa(int(rdb.PoolStats().TotalConns - rdb.PoolStats().IdleConns))
 	m.ExtMsgHashNorm = index.HashType(traceExternalHashNorm)
 	m.MeasureStep("process_new_classified_trace__start")
 
