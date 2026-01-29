@@ -24,6 +24,10 @@ var (
 	confirmedTxsChannel     = flag.String("confirmed-txs-channel", "new_confirmed_txs", "Redis channel for confirmed transactions")
 	signedTxsChannel        = flag.String("signed-txs-channel", "new_signed_txs", "Redis channel for signed transactions")
 	classifiedTracesChannel = flag.String("classified-traces-channel", "classified_trace", "Redis channel for classified traces")
+	redisPoolSize           = flag.Int("redis-pool-size", 0, "Connection pool size of redis client")
+	redisMinIdleConns       = flag.Int("redis-min-idle-conns", 0, "Minimum amount of idle connections to keep in pool for redis client")
+	redisMaxIdleConns       = flag.Int("redis-max-idle-conns", 0, "Maximum amount of idle connections to keep in pool for redis client")
+	redisMaxActiveConns     = flag.Int("redis-max-active-conns", 0, "Maximum active redis connections")
 	serverPort              = flag.Int("port", 8085, "Server port")
 	prefork                 = flag.Bool("prefork", false, "Use prefork")
 	testnet                 = flag.Bool("testnet", false, "Use testnet")
@@ -38,8 +42,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error parsing Redis URL: %v", err)
 	}
+	if redisPoolSize != nil {
+		options.PoolSize = *redisPoolSize
+	}
+	if redisMinIdleConns != nil {
+		options.MinIdleConns = *redisMinIdleConns
+	}
+	if redisMaxIdleConns != nil {
+		options.MaxIdleConns = *redisMaxIdleConns
+	}
+	if redisMaxActiveConns != nil {
+		options.MaxActiveConns = *redisMaxActiveConns
+	}
 	rdb := redis.NewClient(options)
 	ctx := context.Background()
+	go runRedisPoolStatLogger(ctx, rdb)
 
 	var dbClient *index.DbClient
 	if *pg != "" {
@@ -122,4 +139,15 @@ func main() {
 
 	log.Printf("Starting server on port %d", *serverPort)
 	log.Fatal(app.Listen(fmt.Sprintf(":%d", *serverPort)))
+}
+
+func runRedisPoolStatLogger(ctx context.Context, client *redis.Client) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		stats := client.PoolStats()
+		log.Printf("Redis stats Hits: %d, Misses: %d, Timeouts: %d, TotalConns: %d, IdleConns: %d, StaleConns: %d\n",
+			stats.Hits, stats.Misses, stats.Timeouts, stats.TotalConns, stats.IdleConns, stats.StaleConns)
+	}
 }

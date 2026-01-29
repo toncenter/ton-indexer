@@ -187,6 +187,8 @@
             state: restarted
             enabled: true
             daemon_reload: true
+            force: true
+          throttle: 1
 
       rescue:
         - name: Start previous version to keep service available

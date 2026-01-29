@@ -426,7 +426,7 @@ func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (*Tra
 	nodes := make(map[string]TraceNode)
 	for key, value := range traceData {
 		if key == "root_node" || key == "depth_limit_exceeded" || key == "root_account_code_hash" ||
-			strings.Contains(key, ":") || strings.Contains(key, "actions") {
+			strings.Contains(key, ":") || strings.Contains(key, "actions") || key == "measurement_id" {
 			continue
 		}
 		var node TraceNode
