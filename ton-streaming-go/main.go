@@ -113,7 +113,7 @@ func main() {
 
 	api := app.Group("/api/streaming")
 
-	app.Get("/healthz", healthzHandler(rdb))
+	api.Get("/healthz", healthzHandler(rdb))
 
 	api.Post("/v1/sse", streamingv1.SSEHandler(manager))
 
