@@ -110,9 +110,10 @@ func main() {
 	})
 
 	app.Use(logger.New())
-	app.Get("/healthz", healthzHandler(rdb))
 
 	api := app.Group("/api/streaming")
+
+	app.Get("/healthz", healthzHandler(rdb))
 
 	api.Post("/v1/sse", streamingv1.SSEHandler(manager))
 
