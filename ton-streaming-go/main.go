@@ -22,7 +22,6 @@ var (
 	tracesChannel           = flag.String("traces-channel", "new_trace", "Redis channel for blockchain events")
 	commitedTxsChannel      = flag.String("commited-txs-channel", "new_finalized_txs", "Redis channel for committed transactions")
 	confirmedTxsChannel     = flag.String("confirmed-txs-channel", "new_confirmed_txs", "Redis channel for confirmed transactions")
-	signedTxsChannel        = flag.String("signed-txs-channel", "new_signed_txs", "Redis channel for signed transactions")
 	classifiedTracesChannel = flag.String("classified-traces-channel", "classified_trace", "Redis channel for classified traces")
 	redisPoolSize           = flag.Int("redis-pool-size", 0, "Connection pool size of redis client")
 	redisMinIdleConns       = flag.Int("redis-min-idle-conns", 0, "Minimum amount of idle connections to keep in pool for redis client")
@@ -98,7 +97,6 @@ func main() {
 
 	go streamingv2.SubscribeToTraces(ctx, rdb, v2Manager, *tracesChannel)
 	go streamingv2.SubscribeToConfirmedTransactions(ctx, rdb, v2Manager, *confirmedTxsChannel) // "new_confirmed_txs"
-	go streamingv2.SubscribeToSignedTransactions(ctx, rdb, v2Manager, *signedTxsChannel)       // "new_signed_txs"
 	go streamingv2.SubscribeToFinalizedTransactions(ctx, rdb, v2Manager, *commitedTxsChannel)  // "new_finalized_txs"
 	go streamingv2.SubscribeToClassifiedTraces(ctx, rdb, v2Manager, *classifiedTracesChannel)
 	go streamingv2.SubscribeToAccountStateUpdates(ctx, rdb, v2Manager, "new_account_state")

@@ -14,9 +14,8 @@ using TraceId = td::Bits256;
 
 enum class FinalityState : uint8_t {
     Emulated = 0,  // tx was emulated but not confirmed onchain
-    Confirmed = 1, // block candidate received, not yet signed
-    Signed = 2,    // block is signed but not yet finalized in masterchain
-    Finalized = 3  // tx was committed to shard account and the shard account was committed to masterchain
+    Confirmed = 1, // block is signed but not yet finalized in masterchain
+    Finalized = 2  // tx was committed to shard account and the shard account was committed to masterchain
 };
 
 struct TraceNode {

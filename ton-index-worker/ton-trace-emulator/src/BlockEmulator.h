@@ -122,8 +122,8 @@ private:
         switch (finality_) {
             case FinalityState::Confirmed:
                 return "confirmed";
-            case FinalityState::Signed:
-                return "signed";
+            case FinalityState::Finalized:
+                return "finalized";
             default:
                 return "unknown";
         }

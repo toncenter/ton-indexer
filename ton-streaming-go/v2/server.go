@@ -625,11 +625,10 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	}
 
 	// Manage invalidation tracking
-	switch n.Finality {
-	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed, emulated.FinalityStateSigned:
-		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
-	case emulated.FinalityStateFinalized:
+	if n.Finality == emulated.FinalityStateFinalized {
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
+	} else {
+		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	}
 
 	return &ActionsNotification{
@@ -706,11 +705,10 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 		}
 	}
 
-	switch n.Finality {
-	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed, emulated.FinalityStateSigned:
-		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
-	case emulated.FinalityStateFinalized:
+	if n.Finality == emulated.FinalityStateFinalized {
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
+	} else {
+		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	}
 
 	return &TransactionsNotification{
@@ -766,11 +764,10 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 		}
 	}
 
-	switch n.Finality {
-	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed, emulated.FinalityStateSigned:
-		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
-	case emulated.FinalityStateFinalized:
+	if n.Finality == emulated.FinalityStateFinalized {
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
+	} else {
+		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	}
 
 	return &TraceNotification{
@@ -787,7 +784,7 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 
 type AccountStateNotification struct {
 	Type     EventType              `json:"type"`
-	Finality emulated.FinalityState `json:"finality"` // confirmed / signed / finalized
+	Finality emulated.FinalityState `json:"finality"` // confirmed / finalized
 	Account  string                 `json:"account"`
 	State    index.AccountState     `json:"state"`
 }
@@ -809,7 +806,7 @@ func (n *AccountStateNotification) AdjustForClient(client *Client) any {
 
 type JettonsNotification struct {
 	Type        EventType              `json:"type"`
-	Finality    emulated.FinalityState `json:"finality"` // confirmed / signed / finalized
+	Finality    emulated.FinalityState `json:"finality"` // confirmed / finalized
 	Jetton      index.JettonWallet     `json:"jetton"`
 	AddressBook *index.AddressBook     `json:"address_book,omitempty"`
 	Metadata    *index.Metadata        `json:"metadata,omitempty"`
@@ -991,37 +988,6 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 // Redis subscription: confirmed & finalized txs
 ////////////////////////////////////////////////////////////////////////////////
 
-// SubscribeToSignedTransactions listens for txs that reached "signed" state.
-// Channel format is assumed to be: "<trace_external_hash_norm>:txhash1,txhash2,..."
-func SubscribeToSignedTransactions(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
-	pubsub := rdb.Subscribe(ctx, channel)
-	defer pubsub.Close()
-
-	log.Printf("[v2] Subscribed to Redis channel (signed txs): %s", channel)
-
-	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil {
-			log.Printf("[v2] Error receiving signed txs message: %v", err)
-			continue
-		}
-
-		parts := strings.Split(msg.Payload, ":")
-		if len(parts) != 2 {
-			log.Printf("[v2] Invalid signed txs message format: %s", msg.Payload)
-			continue
-		}
-		traceExternalHashNorm := parts[0]
-		txHashes := strings.Split(parts[1], ",")
-		if len(txHashes) == 0 {
-			log.Printf("[v2] No transaction hashes found in signed txs message: %s", msg.Payload)
-			continue
-		}
-
-		go ProcessNewSignedTxs(ctx, rdb, traceExternalHashNorm, txHashes, manager)
-	}
-}
-
 // SubscribeToConfirmedTransactions listens for txs that reached "confirmed" state.
 // Channel format is assumed to be: "<trace_external_hash_norm>:txhash1,txhash2,..."
 func SubscribeToConfirmedTransactions(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
@@ -1089,10 +1055,6 @@ func SubscribeToFinalizedTransactions(ctx context.Context, rdb *redis.Client, ma
 // txHashes is ignored for payload building; it only serves as a "trace changed" signal.
 func ProcessNewConfirmedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
 	processTransactionsTraceSnapshot(ctx, rdb, traceExternalHashNorm, manager, "confirmed")
-}
-
-func ProcessNewSignedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
-	processTransactionsTraceSnapshot(ctx, rdb, traceExternalHashNorm, manager, "signed")
 }
 
 func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
@@ -1305,8 +1267,6 @@ func parseAccountStateChannelPayload(payload string) (emulated.FinalityState, st
 	switch parts[0] {
 	case "account_confirmed":
 		finality = emulated.FinalityStateConfirmed
-	case "account_signed":
-		finality = emulated.FinalityStateSigned
 	case "account_finalized":
 		finality = emulated.FinalityStateFinalized
 	default:
@@ -1590,7 +1550,7 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Account state & jettons (confirmed, signed & finalized, no pending)
+// Account state & jettons (confirmed & finalized, no pending)
 ////////////////////////////////////////////////////////////////////////////////
 
 func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string, finality emulated.FinalityState, manager *ClientManager) {
@@ -1598,8 +1558,6 @@ func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string
 	switch finality {
 	case emulated.FinalityStateConfirmed:
 		key = fmt.Sprintf("account_confirmed:%s", addr)
-	case emulated.FinalityStateSigned:
-		key = fmt.Sprintf("account_signed:%s", addr)
 	case emulated.FinalityStateFinalized:
 		key = fmt.Sprintf("account_finalized:%s", addr)
 	default:

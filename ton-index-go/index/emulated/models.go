@@ -611,10 +611,9 @@ type Trace struct {
 type FinalityState uint8
 
 const (
-	FinalityStatePending FinalityState = iota
-	FinalityStateConfirmed
-	FinalityStateSigned
-	FinalityStateFinalized
+	FinalityStatePending   FinalityState = 0
+	FinalityStateConfirmed FinalityState = 1
+	FinalityStateFinalized FinalityState = 2
 )
 
 func (fs FinalityState) String() string {
@@ -623,8 +622,6 @@ func (fs FinalityState) String() string {
 		return "pending"
 	case FinalityStateConfirmed:
 		return "confirmed"
-	case FinalityStateSigned:
-		return "confirmed" // temporary mapping signed to confirmed
 	case FinalityStateFinalized:
 		return "finalized"
 	default:
@@ -647,8 +644,6 @@ func (fs *FinalityState) UnmarshalJSON(data []byte) error {
 		*fs = FinalityStatePending
 	case "confirmed":
 		*fs = FinalityStateConfirmed
-	case "signed":
-		*fs = FinalityStateSigned
 	case "finalized":
 		*fs = FinalityStateFinalized
 	default:
