@@ -95,7 +95,7 @@ public:
                 auto by_addr_key = trace_key_ + ":" + td::base64_encode(node.transaction.in_msg.value().hash.as_slice());
                 transaction_.zadd(addr_raw, by_addr_key, node.transaction.lt);
 
-                if (node.finality == FinalityState::Finalized || node.finality == FinalityState::Signed || node.finality == FinalityState::Confirmed) {
+                if (node.finality != FinalityState::Emulated) {
                     if (has_commited_txs) {
                         commited_txs_hashes += ",";
                     }
@@ -148,9 +148,6 @@ public:
                     case FinalityState::Finalized:
                         key_prefix = "account_finalized:";
                         break;
-                    case FinalityState::Signed:
-                        key_prefix = "account_signed:";
-                        break;
                     case FinalityState::Confirmed:
                         key_prefix = "account_confirmed:";
                         break;
@@ -164,9 +161,7 @@ public:
             if (has_commited_txs) {
                 if (trace_.root->finality_state == FinalityState::Finalized) {
                     transaction_.publish("new_finalized_txs", commited_txs_hashes);
-                } else if (trace_.root->finality_state == FinalityState::Signed) {
-                    transaction_.publish("new_signed_txs", commited_txs_hashes);
-                } else if (trace_.root->finality_state == FinalityState::Confirmed) {
+                } else {
                     transaction_.publish("new_confirmed_txs", commited_txs_hashes);
                 }
             }
