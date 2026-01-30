@@ -36,6 +36,32 @@ async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession
 logger = logging.getLogger(__name__)
 interface_cache: LRUCache | None = None
 
+HEALTH_KEY_EVENT_CLASSIFIER = "health:event-classifier"
+HEALTH_LAST_CLASSIFIED_FIELD = "last_classified_trace_time"
+HEALTH_HEARTBEAT_INTERVAL = 5
+HEALTH_HEARTBEAT_TTL = 20
+
+
+async def update_last_classified_trace_time():
+    try:
+        now = int(time.time())
+        await redis.client.hset(HEALTH_KEY_EVENT_CLASSIFIER, mapping={HEALTH_LAST_CLASSIFIED_FIELD: now})
+    except Exception as exc:
+        logger.warning(f"Failed to update last classified trace time: {exc}")
+
+
+async def health_heartbeat_loop(interval: int = HEALTH_HEARTBEAT_INTERVAL, ttl: int = HEALTH_HEARTBEAT_TTL):
+    while True:
+        try:
+            now = int(time.time())
+            await redis.client.hset(HEALTH_KEY_EVENT_CLASSIFIER, mapping={"last_heartbeat": now})
+            await redis.client.expire(HEALTH_KEY_EVENT_CLASSIFIER, ttl)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(f"Failed to update event-classifier heartbeat: {exc}")
+        await asyncio.sleep(interval)
+
 
 class Measurement:
     id: int = 0
@@ -271,6 +297,7 @@ class PendingTraceClassifierWorker(mp.Process):
                     await redis.client.publish('referenced_accounts', f"{r};{trace_key}")
                 meas.measure_step("trace_classification__published_referenced_accounts_in_redis")
                 meas.print_measurement()
+                await update_last_classified_trace_time()
                 results.append((trace_key, True))
 
             except Exception as e:
@@ -316,6 +343,7 @@ class PendingTraceClassifierWorker(mp.Process):
 async def start_emulated_traces_processing(settings: Settings,
                                            batch_window: float = 0.1, max_batch_size: int = 50, pool_size=5,
                                            max_queue_size=10):
+    asyncio.create_task(health_heartbeat_loop())
     pubsub = redis.client.pubsub()
     await pubsub.subscribe(settings.emulated_traces_redis_channel)
     use_combined = settings.use_combined_repository
@@ -382,5 +410,3 @@ async def start_emulated_traces_processing(settings: Settings,
     finally:
         await pubsub.unsubscribe()
         logger.info("Emulated trace processing stopped")
-
-
