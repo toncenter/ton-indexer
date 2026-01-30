@@ -21,6 +21,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	healthKeyTTLTracker     = "health:ton-trace-ttl-tracker"
+	healthHeartbeatInterval = 5 * time.Second
+	healthHeartbeatTTL      = 20 * time.Second
+)
+
 // Traces where root_account_code_hash mentioned in this list will not be treated as synthetic traces
 var ignoreSyntheticTracesCodeHashes = []string{
 	"EayteVWEQJDyg78ji8FEmHH3g+fMCXlAjT9IWUg+hSU=", // highload v3
@@ -972,6 +978,29 @@ func (rct *RedisCleanupTool) Run(ctx context.Context) {
 	}
 }
 
+func startHealthHeartbeat(ctx context.Context, redisClient *redis.Client, logger *logrus.Logger) {
+	ticker := time.NewTicker(healthHeartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			now := time.Now().Unix()
+			if err := redisClient.HSet(ctx, healthKeyTTLTracker, map[string]interface{}{
+				"last_heartbeat": now,
+			}).Err(); err != nil {
+				logger.WithError(err).Warn("Failed to update ttl-tracker heartbeat")
+				continue
+			}
+			if err := redisClient.Expire(ctx, healthKeyTTLTracker, healthHeartbeatTTL).Err(); err != nil {
+				logger.WithError(err).Warn("Failed to set ttl-tracker heartbeat TTL")
+			}
+		}
+	}
+}
+
 func main() {
 	redisAddr := flag.String("redis-dsn", "", "Redis server address")
 
@@ -1016,6 +1045,8 @@ func main() {
 		logger.WithError(err).Fatal("Failed to parse Redis DSN")
 	}
 	redisClient := redis.NewClient(redisOptions)
+
+	go startHealthHeartbeat(ctx, redisClient, logger)
 
 	// Subscribe to the Pub/Sub channel
 	sub := redisClient.Subscribe(ctx, *channelName)

@@ -11,6 +11,13 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <chrono>
+
+namespace {
+constexpr const char* kHealthKey = "health:ton-trace-emulator";
+constexpr auto kHealthTtl = std::chrono::seconds(20);
+constexpr double kHealthIntervalSec = 1.0;
+}  // namespace
 
 
 void TraceEmulatorScheduler::handle_db_event(ton::tl_object_ptr<ton::ton_api::db_Event> event) {
@@ -71,6 +78,7 @@ void TraceEmulatorScheduler::start_up() {
     } else {
         db_event_listener_ = td::actor::create_actor<DbEventListener>("DbEventListener", db_event_fifo_path_, actor_id(this));
     }
+    next_health_update_ = td::Timestamp::in(0.1);
 }
 
 void TraceEmulatorScheduler::got_last_mc_seqno(ton::BlockSeqno new_last_known_seqno) {
@@ -132,6 +140,8 @@ void TraceEmulatorScheduler::fetch_error(std::uint32_t seqno, td::Status error) 
 
 void TraceEmulatorScheduler::seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState mc_data_state) {
     LOG(INFO) << "Fetched seqno " << seqno;
+
+    last_finalized_mc_block_time_ = mc_data_state.shard_blocks_[0].handle->unix_time();
 
     if (seqno > last_fetched_seqno_) {
         LOG(INFO) << "Setting last fetched seqno to " << seqno;
@@ -204,6 +214,8 @@ void TraceEmulatorScheduler::enqueue_signed_block(ton::BlockIdExt block_id) {
 void TraceEmulatorScheduler::signed_block_fetched(ton::BlockIdExt block_id, BlockDataState block_data_state) {
     auto time_diff = td::Clocks::system() - block_data_state.handle->unix_time();
     LOG(INFO) << "Collected signed shard block " << block_id.to_str() << " created " << td::StringBuilder::FixedDouble(time_diff, 2) << "s ago";
+
+    last_confirmed_block_time_ = block_data_state.handle->unix_time();
 
     signed_blocks_inflight_.erase(block_id);
     td::actor::send_closure(invalidated_trace_tracker_, &InvalidatedTraceTracker::register_pending_block, block_data_state.handle->id());
@@ -285,6 +297,25 @@ std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> TraceEmulatorS
     };
 }
 
+void TraceEmulatorScheduler::publish_health() {
+    if (!health_redis_) {
+        return;
+    }
+
+    std::vector<std::pair<std::string, std::string>> fields{
+        {"finalized_mc_block_time", std::to_string(last_finalized_mc_block_time_)},
+        {"confirmed_block_time", std::to_string(last_confirmed_block_time_)},
+        {"updated_at", std::to_string(static_cast<std::uint32_t>(td::Clocks::system()))},
+    };
+
+    try {
+        health_redis_->hset(kHealthKey, fields.begin(), fields.end());
+        health_redis_->expire(kHealthKey, kHealthTtl);
+    } catch (const sw::redis::Error &e) {
+        LOG(ERROR) << "Failed to update Redis health state: " << e.what();
+    }
+}
+
 // // debugging
 // int seqno = 37600000;
 // int end_seqno = 37600100;
@@ -319,6 +350,11 @@ void TraceEmulatorScheduler::alarm() {
         }, td::Timestamp::now());
         
         next_statistics_flush_ = td::Timestamp::in(60.0);
+    }
+
+    if (health_redis_ && next_health_update_.is_in_past()) {
+        publish_health();
+        next_health_update_ = td::Timestamp::in(kHealthIntervalSec);
     }
 
     alarm_timestamp() = td::Timestamp::in(0.3);
