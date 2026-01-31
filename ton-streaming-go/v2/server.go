@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,6 +41,64 @@ var config Config
 // InitConfig registers configuration to be used by v2 handlers.
 func InitConfig(cfg Config) {
 	config = cfg
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Debug measurements
+////////////////////////////////////////////////////////////////////////////////
+
+type Measurement struct {
+	Id              int64
+	ExtMsgHashNorm  index.HashType
+	ExtMsgHash      index.HashType
+	TraceRootTxHash index.HashType
+	Timings         map[string]float64
+	Extra           map[string]string
+}
+type MeasurementRow struct {
+	Id              int64              `json:"id"`
+	ExtMsgHashNorm  index.HashType     `json:"msg_hash_norm"`
+	ExtMsgHash      index.HashType     `json:"msg_hash"`
+	TraceRootTxHash index.HashType     `json:"trace_id"`
+	Step            string             `json:"step"`
+	Time            float64            `json:"time"`
+	Extra           *map[string]string `json:"extra"`
+}
+
+func NewMeasurement() *Measurement {
+	return &Measurement{
+		ExtMsgHashNorm:  "-",
+		ExtMsgHash:      "-",
+		TraceRootTxHash: "-",
+		Timings:         make(map[string]float64),
+		Extra:           make(map[string]string),
+	}
+}
+
+func (m *Measurement) PrintMeasurement() {
+	traceId := m.TraceRootTxHash
+	if m.Id == -1 {
+		traceId = "-"
+	}
+
+	for step, elapsed := range m.Timings {
+		row := MeasurementRow{
+			Id:              m.Id,
+			ExtMsgHashNorm:  m.ExtMsgHashNorm,
+			ExtMsgHash:      m.ExtMsgHash,
+			TraceRootTxHash: traceId,
+			Step:            step,
+			Time:            elapsed,
+			Extra:           &m.Extra,
+		}
+		json_str, _ := json.Marshal(row)
+		log.Printf("[v2] MEASURE %s END", json_str)
+	}
+}
+
+func (m *Measurement) MeasureStep(step string) {
+	elapsed := float64(time.Now().UnixNano()) / 1e9
+	m.Timings[step] = elapsed
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -566,11 +625,10 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	}
 
 	// Manage invalidation tracking
-	switch n.Finality {
-	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed, emulated.FinalityStateSigned:
-		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
-	case emulated.FinalityStateFinalized:
+	if n.Finality == emulated.FinalityStateFinalized {
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
+	} else {
+		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	}
 
 	return &ActionsNotification{
@@ -647,11 +705,10 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 		}
 	}
 
-	switch n.Finality {
-	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed, emulated.FinalityStateSigned:
-		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
-	case emulated.FinalityStateFinalized:
+	if n.Finality == emulated.FinalityStateFinalized {
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
+	} else {
+		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	}
 
 	return &TransactionsNotification{
@@ -707,11 +764,10 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 		}
 	}
 
-	switch n.Finality {
-	case emulated.FinalityStatePending, emulated.FinalityStateConfirmed, emulated.FinalityStateSigned:
-		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
-	case emulated.FinalityStateFinalized:
+	if n.Finality == emulated.FinalityStateFinalized {
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
+	} else {
+		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
 	}
 
 	return &TraceNotification{
@@ -728,7 +784,7 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 
 type AccountStateNotification struct {
 	Type     EventType              `json:"type"`
-	Finality emulated.FinalityState `json:"finality"` // confirmed / signed / finalized
+	Finality emulated.FinalityState `json:"finality"` // confirmed / finalized
 	Account  string                 `json:"account"`
 	State    index.AccountState     `json:"state"`
 }
@@ -750,7 +806,7 @@ func (n *AccountStateNotification) AdjustForClient(client *Client) any {
 
 type JettonsNotification struct {
 	Type        EventType              `json:"type"`
-	Finality    emulated.FinalityState `json:"finality"` // confirmed / signed / finalized
+	Finality    emulated.FinalityState `json:"finality"` // confirmed / finalized
 	Jetton      index.JettonWallet     `json:"jetton"`
 	AddressBook *index.AddressBook     `json:"address_book,omitempty"`
 	Metadata    *index.Metadata        `json:"metadata,omitempty"`
@@ -792,12 +848,23 @@ func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientMa
 
 // pending (emulated) trace
 func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager) {
+	m := NewMeasurement()
+	m.Extra["redis_conns"] = strconv.Itoa(int(rdb.PoolStats().TotalConns - rdb.PoolStats().IdleConns))
+	m.ExtMsgHashNorm = index.HashType(traceExternalHashNorm)
+	m.MeasureStep("process_new_trace__start")
+
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
 	if err != nil {
 		log.Printf("[v2] Error loading raw traces (pending): %v, trace key: %s", err, traceExternalHashNorm)
 		return
 	}
+	m.Id, err = strconv.ParseInt(rawTraces[traceExternalHashNorm]["measurement_id"], 10, 64)
+	if err != nil {
+		m.Id = rand.Int64()
+	}
+	m.ExtMsgHash = index.HashType(rawTraces[traceExternalHashNorm]["root_node"])
+	m.MeasureStep("process_new_trace__raw_traces_loaded")
 
 	emulatedContext := index.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(rawTraces)
@@ -822,11 +889,15 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 			if tx, err := index.ScanTransaction(row); err == nil {
 				txs = append(txs, *tx)
 				txsMap[tx.Hash] = len(txs) - 1
+				if m.TraceRootTxHash == "-" && tx.TraceId != nil {
+					m.TraceRootTxHash = *tx.TraceId
+				}
 			} else {
 				log.Printf("[v2] Error scanning transaction (pending): %v", err)
 			}
 		}
 	}
+	m.MeasureStep("process_new_trace__transactions_parsed")
 
 	allAddresses := []string{}
 	var txHashes []string
@@ -877,6 +948,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
 		})
 	}
+	m.MeasureStep("process_new_trace__messages_marked")
 
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
@@ -899,6 +971,8 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	sort.Slice(txs, func(i, j int) bool {
 		return txs[i].Lt > txs[j].Lt
 	})
+	m.MeasureStep("process_new_trace__address_book_and_metadata_fetched")
+	m.PrintMeasurement()
 
 	manager.broadcast <- &TransactionsNotification{
 		Type:                  EventTransactions,
@@ -913,37 +987,6 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 ////////////////////////////////////////////////////////////////////////////////
 // Redis subscription: confirmed & finalized txs
 ////////////////////////////////////////////////////////////////////////////////
-
-// SubscribeToSignedTransactions listens for txs that reached "signed" state.
-// Channel format is assumed to be: "<trace_external_hash_norm>:txhash1,txhash2,..."
-func SubscribeToSignedTransactions(ctx context.Context, rdb *redis.Client, manager *ClientManager, channel string) {
-	pubsub := rdb.Subscribe(ctx, channel)
-	defer pubsub.Close()
-
-	log.Printf("[v2] Subscribed to Redis channel (signed txs): %s", channel)
-
-	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil {
-			log.Printf("[v2] Error receiving signed txs message: %v", err)
-			continue
-		}
-
-		parts := strings.Split(msg.Payload, ":")
-		if len(parts) != 2 {
-			log.Printf("[v2] Invalid signed txs message format: %s", msg.Payload)
-			continue
-		}
-		traceExternalHashNorm := parts[0]
-		txHashes := strings.Split(parts[1], ",")
-		if len(txHashes) == 0 {
-			log.Printf("[v2] No transaction hashes found in signed txs message: %s", msg.Payload)
-			continue
-		}
-
-		go ProcessNewSignedTxs(ctx, rdb, traceExternalHashNorm, txHashes, manager)
-	}
-}
 
 // SubscribeToConfirmedTransactions listens for txs that reached "confirmed" state.
 // Channel format is assumed to be: "<trace_external_hash_norm>:txhash1,txhash2,..."
@@ -1014,10 +1057,6 @@ func ProcessNewConfirmedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 	processTransactionsTraceSnapshot(ctx, rdb, traceExternalHashNorm, manager, "confirmed")
 }
 
-func ProcessNewSignedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
-	processTransactionsTraceSnapshot(ctx, rdb, traceExternalHashNorm, manager, "signed")
-}
-
 func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, txHashes []string, manager *ClientManager) {
 	processTransactionsTraceSnapshot(ctx, rdb, traceExternalHashNorm, manager, "finalized")
 }
@@ -1034,12 +1073,23 @@ func processTransactionsTraceSnapshot(
 	manager *ClientManager,
 	channelHint string,
 ) {
+	m := NewMeasurement()
+	m.Extra["redis_conns"] = strconv.Itoa(int(rdb.PoolStats().TotalConns - rdb.PoolStats().IdleConns))
+	m.ExtMsgHashNorm = index.HashType(traceExternalHashNorm)
+	m.MeasureStep("process_new_" + channelHint + "_transactions__start")
+
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
 	if err != nil {
 		log.Printf("[v2] Error loading raw traces (%s): %v, trace key: %s", channelHint, err, traceExternalHashNorm)
 		return
 	}
+	m.Id, err = strconv.ParseInt(rawTraces[traceExternalHashNorm]["measurement_id"], 10, 64)
+	if err != nil {
+		m.Id = rand.Int64()
+	}
+	m.ExtMsgHash = index.HashType(rawTraces[traceExternalHashNorm]["root_node"])
+	m.MeasureStep("process_new_" + channelHint + "_transactions__raw_traces_loaded")
 
 	emulatedContext := index.NewEmptyContext(false)
 	if err := emulatedContext.FillFromRawData(rawTraces); err != nil {
@@ -1074,10 +1124,15 @@ func processTransactionsTraceSnapshot(
 		txs = append(txs, *tx)
 		txsMap[tx.Hash] = len(txs) - 1
 
+		if m.TraceRootTxHash == "-" && tx.TraceId != nil {
+			m.TraceRootTxHash = *tx.TraceId
+		}
+
 		if tx.Finality < traceFinality {
 			traceFinality = tx.Finality
 		}
 	}
+	m.MeasureStep("process_new_" + channelHint + "_transactions__transactions_parsed")
 
 	if len(txs) == 0 {
 		log.Printf("[v2] No transactions found for trace %s (%s)", traceExternalHashNorm, channelHint)
@@ -1135,6 +1190,7 @@ func processTransactionsTraceSnapshot(
 			return *txs[idx].OutMsgs[i].CreatedLt < *txs[idx].OutMsgs[j].CreatedLt
 		})
 	}
+	m.MeasureStep("process_new_" + channelHint + "_transactions__messages_marked")
 
 	// Sort transactions by Lt descending (as documented).
 	sort.Slice(txs, func(i, j int) bool {
@@ -1160,6 +1216,9 @@ func processTransactionsTraceSnapshot(
 			shouldFetchMetadata,
 		)
 	}
+
+	m.MeasureStep("process_new_" + channelHint + "_transactions__address_book_and_metadata_fetched")
+	m.PrintMeasurement()
 
 	manager.broadcast <- &TransactionsNotification{
 		Type:                  EventTransactions,
@@ -1208,8 +1267,6 @@ func parseAccountStateChannelPayload(payload string) (emulated.FinalityState, st
 	switch parts[0] {
 	case "account_confirmed":
 		finality = emulated.FinalityStateConfirmed
-	case "account_signed":
-		finality = emulated.FinalityStateSigned
 	case "account_finalized":
 		finality = emulated.FinalityStateFinalized
 	default:
@@ -1246,12 +1303,23 @@ func SubscribeToClassifiedTraces(ctx context.Context, rdb *redis.Client, manager
 }
 
 func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager) {
+	m := NewMeasurement()
+	m.Extra["redis_conns"] = strconv.Itoa(int(rdb.PoolStats().TotalConns - rdb.PoolStats().IdleConns))
+	m.ExtMsgHashNorm = index.HashType(traceExternalHashNorm)
+	m.MeasureStep("process_new_classified_trace__start")
+
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
 	if err != nil {
 		log.Printf("[v2] Error loading raw traces (classified): %v, trace key: %s", err, traceExternalHashNorm)
 		return
 	}
+	m.Id, err = strconv.ParseInt(rawTraces[traceExternalHashNorm]["measurement_id"], 10, 64)
+	if err != nil {
+		m.Id = rand.Int64()
+	}
+	m.ExtMsgHash = index.HashType(rawTraces[traceExternalHashNorm]["root_node"])
+	m.MeasureStep("process_new_classified_trace__raw_traces_loaded")
 
 	emulatedContext := index.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(rawTraces)
@@ -1282,6 +1350,9 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 				txHash := string(tx.Hash)
 				txHashes = append(txHashes, txHash)
 				txFinality[txHash] = tx.Finality
+				if m.TraceRootTxHash == "-" && tx.TraceId != nil {
+					m.TraceRootTxHash = *tx.TraceId
+				}
 			} else {
 				log.Printf("[v2] Error scanning transaction (classified): %v", err)
 			}
@@ -1349,6 +1420,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		actions = append(actions, action)
 		actionsAddresses = append(actionsAddresses, actionAddresses)
 	}
+	m.MeasureStep("process_new_classified_trace__actions_parsed")
 
 	var addressBook *index.AddressBook
 	var metadata *index.Metadata
@@ -1371,7 +1443,10 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 			shouldFetchMetadata,
 		)
 	}
+	m.MeasureStep("process_new_classified_trace__address_book_and_metadata_fetched")
+	m.PrintMeasurement()
 
+	log.Printf("[v2] Broadcasting classified trace actions for trace %s with finality %d: %d actions, addresses: %v", traceExternalHashNorm, traceFinality, len(actions), actionsAddresses)
 	// Pending actions
 	manager.broadcast <- &ActionsNotification{
 		Type:                  EventActions,
@@ -1475,7 +1550,7 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Account state & jettons (confirmed, signed & finalized, no pending)
+// Account state & jettons (confirmed & finalized, no pending)
 ////////////////////////////////////////////////////////////////////////////////
 
 func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string, finality emulated.FinalityState, manager *ClientManager) {
@@ -1483,8 +1558,6 @@ func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string
 	switch finality {
 	case emulated.FinalityStateConfirmed:
 		key = fmt.Sprintf("account_confirmed:%s", addr)
-	case emulated.FinalityStateSigned:
-		key = fmt.Sprintf("account_signed:%s", addr)
 	case emulated.FinalityStateFinalized:
 		key = fmt.Sprintf("account_finalized:%s", addr)
 	default:

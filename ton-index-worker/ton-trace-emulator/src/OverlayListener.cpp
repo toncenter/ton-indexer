@@ -86,7 +86,6 @@ void OverlayListener::start_up() {
     cat_mask[0] = true;
     td::actor::send_closure(adnl_network_manager_, &ton::adnl::AdnlNetworkManager::add_self_addr, addr, std::move(cat_mask), 0);
 
-
     td::actor::send_closure(adnl_, &ton::adnl::Adnl::register_network_manager, adnl_network_manager_.get());
 
     ton::adnl::AdnlAddress x = ton::adnl::AdnlAddressImpl::create(
@@ -124,33 +123,39 @@ void OverlayListener::process_external_message(td::Ref<ton::validator::ExtMessag
 
     LOG(DEBUG) << "Starting processing ExtMessageQ hash norm: " << td::base64_encode(msg_hash_norm.as_slice()) << " addr: " << message->wc() << ":" << message->addr().to_hex();
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), msg_hash_norm](td::Result<Trace> R) mutable {
+    auto measurement = std::make_shared<Measurement>();
+    measurement->set_ext_msg_hash_norm(msg_hash_norm);
+    measurement->set_ext_msg_hash(message->root_cell()->get_hash().bits());
+    measurement->measure_step("overlay_listener__process_external_message");
+
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), msg_hash_norm, measurement](td::Result<Trace> R) mutable {
         if (R.is_error()) {
-            td::actor::send_closure(SelfId, &OverlayListener::trace_error, std::move(msg_hash_norm), R.move_as_error());
+            td::actor::send_closure(SelfId, &OverlayListener::trace_error, std::move(msg_hash_norm), R.move_as_error(), measurement);
         } else {
-            td::actor::send_closure(SelfId, &OverlayListener::trace_received, R.move_as_ok());
+            td::actor::send_closure(SelfId, &OverlayListener::trace_received, R.move_as_ok(), measurement);
         }
     });
-    td::actor::create_actor<TraceEmulator>("TraceEmu", mc_data_state_, message->root_cell(), false, std::move(P)).release();
+    td::actor::create_actor<TraceEmulator>("TraceEmu", mc_data_state_, message->root_cell(), false, std::move(P), measurement).release();
 
     g_statistics.record_count(EMULATE_SRC_OVERLAY);
 }
 
-void OverlayListener::trace_error(td::Bits256 ext_in_msg_hash_norm, td::Status error) {
+void OverlayListener::trace_error(td::Bits256 ext_in_msg_hash_norm, td::Status error, MeasurementPtr measurement) {
     LOG(ERROR) << "Failed to emulate trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << error;
-    known_ext_msgs_.erase(ext_in_msg_hash_norm);
+    measurement->measure_step("overlay_listener__trace_error");
 }
 
-void OverlayListener::trace_received(Trace trace) {
+void OverlayListener::trace_received(Trace trace, MeasurementPtr measurement) {
     LOG(INFO) << "Emulated trace from msg " << td::base64_encode(trace.ext_in_msg_hash_norm.as_slice()) << ": " 
         << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
+    measurement->measure_step("overlay_listener__trace_received");
     if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm](td::Result<Trace> R) {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm, measurement](td::Result<Trace> R) {
             if (R.is_error()) {
-                td::actor::send_closure(SelfId, &OverlayListener::trace_interfaces_error, ext_in_msg_hash_norm, R.move_as_error());
+                td::actor::send_closure(SelfId, &OverlayListener::trace_interfaces_error, ext_in_msg_hash_norm, R.move_as_error(), measurement);
                 return;
             }
-            td::actor::send_closure(SelfId, &OverlayListener::finish_processing, R.move_as_ok());
+            td::actor::send_closure(SelfId, &OverlayListener::finish_processing, R.move_as_ok(), measurement);
         });
 
         std::vector<td::Ref<vm::Cell>> shard_states;
@@ -158,24 +163,27 @@ void OverlayListener::trace_received(Trace trace) {
             shard_states.push_back(shard_state.block_state);
         }
 
-        td::actor::create_actor<TraceInterfaceDetector>("TraceInterfaceDetector", std::move(shard_states), mc_data_state_.config_, std::move(trace), std::move(P)).release();
+        td::actor::create_actor<TraceInterfaceDetector>("TraceInterfaceDetector", std::move(shard_states), mc_data_state_.config_, std::move(trace), std::move(P), measurement).release();
     } else {
-        finish_processing(std::move(trace));
+        finish_processing(std::move(trace), measurement);
     }
 }
 
-void OverlayListener::trace_interfaces_error(td::Bits256 ext_in_msg_hash_norm, td::Status error) {
+void OverlayListener::trace_interfaces_error(td::Bits256 ext_in_msg_hash_norm, td::Status error, MeasurementPtr measurement) {
     LOG(ERROR) << "Failed to detect interfaces on trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << error;
+    measurement->measure_step("overlay_listener___trace_interfaces_error");
 }
 
-void OverlayListener::finish_processing(Trace trace) {
-    auto P = td::PromiseCreator::lambda([ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm](td::Result<td::Unit> R) {
+void OverlayListener::finish_processing(Trace trace, MeasurementPtr measurement) {
+    measurement->measure_step("overlay_listener__finish_processing");
+    auto P = td::PromiseCreator::lambda([ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm, measurement](td::Result<td::Unit> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to insert trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << R.move_as_error();
             return;
         }
         LOG(DEBUG) << "Successfully inserted trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice());
+        measurement->print_measurement();
     });
-    trace_processor_(std::move(trace), std::move(P));
+    trace_processor_(std::move(trace), std::move(P), measurement);
     traces_cnt_++;
 }
