@@ -25,12 +25,12 @@ const (
 type componentHealth struct {
 	OK                       bool   `json:"ok"`
 	Error                    string `json:"error,omitempty"`
-	AgeSeconds               int64  `json:"age_seconds,omitempty"`
-	LastHeartbeat            int64  `json:"last_heartbeat,omitempty"`
-	LastFinalizedMcBlockTime int64  `json:"last_finalized_mc_block_time,omitempty"`
-	FinalizedAgeSeconds      int64  `json:"finalized_age_seconds,omitempty"`
-	LastConfirmedBlockTime   int64  `json:"last_confirmed_block_time,omitempty"`
-	ConfirmedAgeSeconds      int64  `json:"confirmed_age_seconds,omitempty"`
+	AgeSeconds               *int64 `json:"age_seconds,omitempty"`
+	LastHeartbeat            *int64 `json:"last_heartbeat,omitempty"`
+	LastFinalizedMcBlockTime *int64 `json:"last_finalized_mc_block_time,omitempty"`
+	FinalizedAgeSeconds      *int64 `json:"finalized_age_seconds,omitempty"`
+	LastConfirmedBlockTime   *int64 `json:"last_confirmed_block_time,omitempty"`
+	ConfirmedAgeSeconds      *int64 `json:"confirmed_age_seconds,omitempty"`
 }
 
 type healthzResponse struct {
@@ -49,14 +49,6 @@ func parseInt64Field(values map[string]string, field string) (int64, error) {
 		return 0, fmt.Errorf("invalid %s value %q", field, val)
 	}
 	return parsed, nil
-}
-
-func clampAgeSeconds(now int64, ts int64) int64 {
-	age := now - ts
-	if age < 0 {
-		return 0
-	}
-	return age
 }
 
 func statusFromCmd(cmd *redis.MapStringStringCmd) (componentHealth, map[string]string) {
@@ -87,9 +79,9 @@ func applyHeartbeat(status *componentHealth, values map[string]string, now int64
 		}
 		return
 	}
-	status.LastHeartbeat = lastHeartbeat
-	age := clampAgeSeconds(now, lastHeartbeat)
-	status.AgeSeconds = age
+	status.LastHeartbeat = &lastHeartbeat
+	age := now - lastHeartbeat
+	status.AgeSeconds = &age
 	if time.Duration(age)*time.Second > maxAge {
 		status.OK = false
 		if status.Error == "" {
@@ -107,9 +99,9 @@ func applyEmulatorStatus(status *componentHealth, values map[string]string, now 
 		status.OK = false
 		status.Error = err.Error()
 	} else {
-		status.LastFinalizedMcBlockTime = finalized
-		finalizedAge := clampAgeSeconds(now, finalized)
-		status.FinalizedAgeSeconds = finalizedAge
+		status.LastFinalizedMcBlockTime = &finalized
+		finalizedAge := now - finalized
+		status.FinalizedAgeSeconds = &finalizedAge
 		if time.Duration(finalizedAge)*time.Second > finalizedMaxAge {
 			status.OK = false
 			status.Error = "finalized masterchain block is too old"
@@ -123,9 +115,9 @@ func applyEmulatorStatus(status *componentHealth, values map[string]string, now 
 			status.Error = err.Error()
 		}
 	} else {
-		status.LastConfirmedBlockTime = confirmed
-		confirmedAge := clampAgeSeconds(now, confirmed)
-		status.ConfirmedAgeSeconds = confirmedAge
+		status.LastConfirmedBlockTime = &confirmed
+		confirmedAge := now - confirmed
+		status.ConfirmedAgeSeconds = &confirmedAge
 		if time.Duration(confirmedAge)*time.Second > confirmedMaxAge {
 			status.OK = false
 			if status.Error == "" {
