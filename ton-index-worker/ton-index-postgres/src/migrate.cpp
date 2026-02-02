@@ -1139,6 +1139,39 @@ create table if not exists dex_pools
     code_hash           tonhash,
     data_hash           tonhash
 );
+
+create table if not exists nominator_pool_incomes (
+    tx_hash tonhash not null,
+    tx_hash tonhash not null,
+    tx_lt bigint not null,
+    tx_now integer not null,
+    mc_seqno integer,
+    pool_address tonaddr NOT NULL,
+    nominator_address tonaddr NOT NULL,
+    income_amount numeric NOT NULL,
+    nominator_balance numeric NOT NULL,
+    trace_id tonhash,
+    PRIMARY KEY (tx_hash, tx_lt, nominator_address),
+    FOREIGN KEY (tx_hash, tx_lt) REFERENCES transactions
+);
+
+CREATE TABLE IF NOT EXISTS dex_pools_historic (
+    id bigserial PRIMARY KEY,
+    mc_seqno integer NOT NULL,
+    timestamp integer NOT NULL,
+    address tonaddr NOT NULL,
+    reserve_1 numeric,
+    reserve_2 numeric,
+    fee double precision,
+    last_transaction_lt bigint NOT NULL
+);
+
+-- required indexes
+create index if not exists trace_unclassified_index on traces (state, start_lt) include (trace_id, nodes_)
+    where (classification_state = 'unclassified'::trace_classification_state);
+
+create index if not exists _classifier_tasks_mc_seqno_idx on _classifier_tasks (mc_seqno desc);
+
 --
 -- create or replace function trace_get_root(transaction_hash tonhash) returns tonhash
 --     parallel safe
@@ -1286,67 +1319,6 @@ BEGIN
 END;
 $$;
 )SQL";
-        // TODO: normalize query
-        // add nominator pool incomes table
-        query += (
-          "CREATE TABLE IF NOT EXISTS nominator_pool_incomes ("
-          "tx_hash tonhash NOT NULL, "
-          "tx_lt bigint NOT NULL, "
-          "tx_now integer NOT NULL, "
-          "mc_seqno integer, "
-          "pool_address tonaddr NOT NULL, "
-          "nominator_address tonaddr NOT NULL, "
-          "income_amount numeric NOT NULL, "
-          "nominator_balance numeric NOT NULL, "
-          "trace_id tonhash, "
-          "PRIMARY KEY (tx_hash, tx_lt, nominator_address), "
-          "FOREIGN KEY (tx_hash, tx_lt) REFERENCES transactions);\n"
-        );
-
-        query += (
-          "CREATE INDEX IF NOT EXISTS idx_nominator_pool_incomes_nominator "
-          "ON nominator_pool_incomes(nominator_address, tx_now DESC);\n"
-        );
-
-        query += (
-          "CREATE INDEX IF NOT EXISTS idx_nominator_pool_incomes_pool "
-          "ON nominator_pool_incomes(pool_address, tx_now DESC);\n"
-        );
-
-        // add dex pools table with varchar types for flexibility
-        query += (
-          "CREATE TABLE IF NOT EXISTS dex_pools ("
-          "id bigserial NOT NULL, "
-          "address tonaddr NOT NULL PRIMARY KEY, "
-          "asset_1 tonaddr, "
-          "asset_2 tonaddr, "
-          "reserve_1 numeric, "
-          "reserve_2 numeric, "
-          "pool_type varchar(50), "
-          "dex varchar(50), "
-          "fee double precision, "
-          "last_transaction_lt bigint, "
-          "code_hash tonhash, "
-          "data_hash tonhash);\n"
-        );
-
-        // add historic table for dex pools
-        query += (
-          "CREATE TABLE IF NOT EXISTS dex_pools_historic ("
-          "id bigserial PRIMARY KEY, "
-          "mc_seqno integer NOT NULL, "
-          "timestamp integer NOT NULL, "
-          "address tonaddr NOT NULL, "
-          "reserve_1 numeric, "
-          "reserve_2 numeric, "
-          "fee double precision, "
-          "last_transaction_lt bigint NOT NULL);\n"
-        );
-        // create required indexes
-        query += (
-            "create index if not exists trace_unclassified_index on traces (state, start_lt) include (trace_id, nodes_) where (classification_state = 'unclassified'::trace_classification_state);\n"
-            "create index if not exists _classifier_tasks_mc_seqno_idx on _classifier_tasks (mc_seqno desc);\n"
-        );
 
         query += set_version_query({1, 3, 0});
         if (dry_run) {
@@ -1670,6 +1642,12 @@ create index if not exists dex_pools_historic_index_1
 
 create index if not exists dex_pools_historic_index_2
     on dex_pools_historic (mc_seqno);
+
+CREATE INDEX IF NOT EXISTS nominator_pool_incomes_nominator_1
+    ON nominator_pool_incomes(nominator_address, tx_now DESC);
+
+CREATE INDEX IF NOT EXISTS nominator_pool_incomes_pool_2
+    ON nominator_pool_incomes(pool_address, tx_now DESC);
 )SQL";
         if (dry_run) {
             std::cout << query << std::endl;
