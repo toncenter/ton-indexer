@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
 
   // options
   td::uint32 threads = 7;
-  td::int32 stats_timeout = 10;
+  td::int32 stats_timeout = 1;
   std::string db_root;
   td::uint32 last_known_seqno = 0;
   std::string checkpoint_path;

@@ -70,8 +70,8 @@ TEST(TonDbScanner, JettonWalletDetector_parse_burn) {
   td::actor::ActorOwn<JettonMasterDetector> jetton_master_detector;
 
   // prepare jetton metadata
-  std::unordered_map<std::string, JettonWalletData> cache;
-  JettonWalletData jetton_master;
+  std::unordered_map<std::string, schema::JettonWalletData> cache;
+  schema::JettonWalletData jetton_master;
   jetton_master.jetton = "0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000";
   cache.emplace(std::string("0:A4EACEFAA1DBAA407FF76373BB7F18D6568517B43DC4BFAF8D6C78E30E67C6D5"), jetton_master);
 
@@ -82,7 +82,7 @@ TEST(TonDbScanner, JettonWalletDetector_parse_burn) {
     jetton_wallet_detector = td::actor::create_actor<JettonWalletDetector>("jetton_wallet_detector",
       jetton_master_detector.get(), interface_manager.get(), insert_manager, cache);
 
-    auto P = td::PromiseCreator::lambda([&transaction, &jetton_master](td::Result<JettonBurn> R) {
+    auto P = td::PromiseCreator::lambda([&transaction, &jetton_master](td::Result<schema::JettonBurn> R) {
       CHECK(R.is_ok());
       auto burn = R.move_as_ok();
       ASSERT_EQ(transaction.in_msg->source.value(), burn.owner);

@@ -45,7 +45,7 @@ public:
       }
     }
 
-    auto interfaces_it = block_->account_interfaces_.find(transaction.account);
+    auto interfaces_it = block_->account_interfaces_.find(std::get<schema::AddressStd>(transaction.account));
 
     if (interfaces_it == block_->account_interfaces_.end()) {
       return;
@@ -59,7 +59,7 @@ public:
     auto in_msg_body_cs = vm::load_cell_slice_ref(transaction.in_msg.value().body);
 
     for (auto& v : interfaces) {
-      if (auto jetton_wallet_ptr = std::get_if<JettonWalletDataV2>(&v)) {
+      if (auto jetton_wallet_ptr = std::get_if<schema::JettonWalletDataV2>(&v)) {
         if (tokens::gen::t_InternalMsgBody.check_tag(*in_msg_body_cs) == tokens::gen::InternalMsgBody::transfer_jetton) {
           auto transfer = parse_jetton_transfer(*jetton_wallet_ptr, transaction, in_msg_body_cs);
           if (transfer.is_error()) {
@@ -77,7 +77,7 @@ public:
         }
       }
 
-      if (auto nft_item_ptr = std::get_if<NFTItemDataV2>(&v)) {
+      if (auto nft_item_ptr = std::get_if<schema::NFTItemDataV2>(&v)) {
         if (tokens::gen::t_InternalMsgBody.check_tag(*in_msg_body_cs) == tokens::gen::InternalMsgBody::transfer_nft) {
           auto transfer = parse_nft_transfer(*nft_item_ptr, transaction, in_msg_body_cs);
           if (transfer.is_error()) {
@@ -90,13 +90,13 @@ public:
     }
   }
 
-  td::Result<JettonTransfer> parse_jetton_transfer(const JettonWalletDataV2& jetton_wallet, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
+  td::Result<schema::JettonTransfer> parse_jetton_transfer(const schema::JettonWalletDataV2& jetton_wallet, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
     tokens::gen::InternalMsgBody::Record_transfer_jetton transfer_record;
     if (!tlb::csr_unpack_inexact(in_msg_body_cs, transfer_record)) {
       return td::Status::Error("Failed to unpack transfer");
     }
 
-    JettonTransfer transfer;
+    schema::JettonTransfer transfer;
     transfer.trace_id = transaction.trace_id;
     transfer.transaction_hash = transaction.hash;
     transfer.transaction_lt = transaction.lt;
@@ -113,18 +113,18 @@ public:
     if (transfer.amount.is_null()) {
       return td::Status::Error("Failed to unpack transfer amount");
     }
-    if (!transaction.in_msg || !transaction.in_msg->source) {
+    if (!transaction.in_msg || !std::holds_alternative<schema::AddressStd>(transaction.in_msg->source)) {
       return td::Status::Error("Failed to unpack transfer source");
     }
-    transfer.source = transaction.in_msg->source.value();
-    transfer.jetton_wallet = convert::to_raw_address(transaction.account);
-    transfer.jetton_master = convert::to_raw_address(jetton_wallet.jetton);
-    auto destination = convert::to_raw_address(transfer_record.destination);
+    transfer.source = transaction.in_msg->source;
+    transfer.jetton_wallet = transaction.account;
+    transfer.jetton_master = jetton_wallet.jetton;
+    auto destination = convert::to_account_address(transfer_record.destination);
     if (destination.is_error()) {
       return destination.move_as_error_prefix("Failed to unpack transfer destination: ");
     }
     transfer.destination = destination.move_as_ok();
-    auto response_destination = convert::to_raw_address(transfer_record.response_destination);
+    auto response_destination = convert::to_account_address(transfer_record.response_destination);
     if (response_destination.is_error()) {
       return response_destination.move_as_error_prefix("Failed to unpack transfer response destination: ");
     }
@@ -140,13 +140,13 @@ public:
     return transfer;
   }
 
-  td::Result<JettonBurn> parse_jetton_burn(const JettonWalletDataV2& jetton_wallet, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
+  td::Result<schema::JettonBurn> parse_jetton_burn(const schema::JettonWalletDataV2& jetton_wallet, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
     tokens::gen::InternalMsgBody::Record_burn burn_record;
     if (!tlb::csr_unpack_inexact(in_msg_body_cs, burn_record)) {
       return td::Status::Error("Failed to unpack burn");
     }
 
-    JettonBurn burn;
+    schema::JettonBurn burn;
     burn.trace_id = transaction.trace_id;
     burn.transaction_hash = transaction.hash;
     burn.transaction_lt = transaction.lt;
@@ -159,17 +159,17 @@ public:
     burn.mc_seqno = transaction.mc_seqno;
 
     burn.query_id = burn_record.query_id;
-    if (!transaction.in_msg || !transaction.in_msg->source) {
+    if (!transaction.in_msg || !std::holds_alternative<schema::AddressStd>(transaction.in_msg->source)) {
       return td::Status::Error("Failed to unpack burn source");
     }
-    burn.owner = transaction.in_msg->source.value();
-    burn.jetton_wallet = convert::to_raw_address(transaction.account);
-    burn.jetton_master = convert::to_raw_address(jetton_wallet.jetton);
+    burn.owner = transaction.in_msg->source;
+    burn.jetton_wallet = transaction.account;
+    burn.jetton_master = jetton_wallet.jetton;
     burn.amount = block::tlb::t_VarUInteger_16.as_integer(burn_record.amount);
     if (burn.amount.is_null()) {
       return td::Status::Error("Failed to unpack burn amount");
     }
-    auto response_destination = convert::to_raw_address(burn_record.response_destination);
+    auto response_destination = convert::to_account_address(burn_record.response_destination);
     if (response_destination.is_error()) {
       return response_destination.move_as_error_prefix("Failed to unpack burn response destination: ");
     }
@@ -181,13 +181,13 @@ public:
     return burn;
   }
 
-  td::Result<NFTTransfer> parse_nft_transfer(const NFTItemDataV2& nft_item, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
+  td::Result<schema::NFTTransfer> parse_nft_transfer(const schema::NFTItemDataV2& nft_item, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
     tokens::gen::InternalMsgBody::Record_transfer_nft transfer_record;
     if (!tlb::csr_unpack_inexact(in_msg_body_cs, transfer_record)) {
       return td::Status::Error("Failed to unpack transfer");
     }
 
-    NFTTransfer transfer;
+    schema::NFTTransfer transfer;
     transfer.trace_id = transaction.trace_id;
     transfer.transaction_hash = transaction.hash;
     transfer.transaction_lt = transaction.lt;
@@ -202,19 +202,17 @@ public:
     transfer.query_id = transfer_record.query_id;
     transfer.nft_item = transaction.account;
     transfer.nft_item_index = nft_item.index;
-    if (nft_item.collection_address.has_value()) {
-      transfer.nft_collection = convert::to_raw_address(nft_item.collection_address.value());
-    }
-    if (!transaction.in_msg.has_value() || !transaction.in_msg.value().source) {
+    transfer.nft_collection = nft_item.collection_address;
+    if (!transaction.in_msg.has_value() || !std::holds_alternative<schema::AddressStd>(transaction.in_msg.value().source)) {
       return td::Status::Error("Failed to fetch NFT old owner address");
     }
-    transfer.old_owner = transaction.in_msg.value().source.value();
-    auto new_owner = convert::to_raw_address(transfer_record.new_owner);
+    transfer.old_owner = transaction.in_msg.value().source;
+    auto new_owner = convert::to_account_address(transfer_record.new_owner);
     if (new_owner.is_error()) {
       return new_owner.move_as_error_prefix("Failed to unpack new owner address: ");
     }
     transfer.new_owner = new_owner.move_as_ok();
-    auto response_destination = convert::to_raw_address(transfer_record.response_destination);
+    auto response_destination = convert::to_account_address(transfer_record.response_destination);
     if (response_destination.is_error()) {
       return response_destination.move_as_error_prefix("Failed to unpack response destination: ");
     }
@@ -247,8 +245,8 @@ public:
     return first_tx;
   }
 
-  td::Result<std::vector<NominatorPoolIncome>> parse_nominator_pool_incomes(const schema::Transaction &transaction) {
-    std::vector<NominatorPoolIncome> incomes;
+  td::Result<std::vector<schema::NominatorPoolIncome>> parse_nominator_pool_incomes(const schema::Transaction &transaction) {
+    std::vector<schema::NominatorPoolIncome> incomes;
 
     const std::string NOMINATOR_POOL_CODE_HASH =
         "9A3EC14BC098F6B44064C305222CAEA2800F17DDA85EE6A8198A7095EDE10DCF";
@@ -386,7 +384,7 @@ public:
     std::string pool_address = convert::to_raw_address(transaction.account);
 
     for (const auto &[addr_hash, balance] : nominators_list) {
-      NominatorPoolIncome income;
+      schema::NominatorPoolIncome income;
       income.trace_id = transaction.trace_id;
       income.transaction_hash = transaction.hash;
       income.transaction_lt = transaction.lt;
@@ -412,7 +410,7 @@ public:
   }
 };
 
-class EventProcessor : public td::actor::Actor {
+class EventProcessor: public td::actor::Actor {
 private:
   td::actor::ActorOwn<InterfaceManager> interface_manager_;
   td::actor::ActorOwn<JettonMasterDetector> jetton_master_detector_;
@@ -432,6 +430,6 @@ public:
   // void process(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise);
 
 private:
-  void process_states(const std::vector<schema::AccountState>& account_states, const MasterchainBlockDataState& blocks_ds, td::Promise<std::vector<BlockchainInterface>> &&promise);
-  void process_transactions(const std::vector<schema::Transaction>& transactions, td::Promise<std::vector<BlockchainEvent>> &&promise);
+  void process_states(const std::vector<schema::AccountState>& account_states, const schema::MasterchainBlockDataState& blocks_ds, td::Promise<std::vector<schema::BlockchainInterface>> &&promise);
+  void process_transactions(const std::vector<schema::Transaction>& transactions, td::Promise<std::vector<schema::BlockchainEvent>> &&promise);
 };

@@ -50,7 +50,7 @@ void RedisListener::alarm() {
   alarm_timestamp() = td::Timestamp::now();
 }
 
-void RedisListener::set_mc_data_state(MasterchainBlockDataState mc_data_state) {
+void RedisListener::set_mc_data_state(schema::MasterchainBlockDataState mc_data_state) {
   mc_data_state_ = std::move(mc_data_state);
 }
 
@@ -60,7 +60,7 @@ void RedisListener::trace_error(std::string task_id, std::optional<ton::BlockId>
   trace_processor_(std::move(res), td::PromiseCreator::lambda([](td::Result<td::Unit> R) {}));
 }
 
-void RedisListener::trace_received(TraceTask task, MasterchainBlockDataState mc_data_state, Trace trace) {
+void RedisListener::trace_received(TraceTask task, schema::MasterchainBlockDataState mc_data_state, Trace trace) {
   LOG(INFO) << "Emulated trace " << task.id << ": " << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
   if (task.detect_interfaces) {
     std::vector<td::Ref<vm::Cell>> shard_states;
@@ -133,7 +133,7 @@ void RedisListener::process_trace_task(TraceTask task) {
         trace_error(task.id, std::nullopt, td::Status::Error("mc block seqno is too new"));
         return;
       }
-      auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_block_seqno, task, msg_cell, ignore_chksig](td::Result<MasterchainBlockDataState> R) mutable {
+      auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_block_seqno, task, msg_cell, ignore_chksig](td::Result<schema::MasterchainBlockDataState> R) mutable {
         if (R.is_error()) {
             td::actor::send_closure(SelfId, &RedisListener::trace_error,
                 task.id, std::nullopt, R.move_as_error_prefix(PSLICE() << "failed to fetch mc block  " << mc_block_seqno << ": "));

@@ -29,7 +29,7 @@ int main(int argc, char *argv[]) {
   // options
   td::uint32 threads = 7;
   td::uint32 io_workers = 1;
-  td::int32 stats_timeout = 10;
+  td::int32 stats_timeout = 1;
   std::string db_root;
   std::string working_dir;
   td::uint32 last_known_seqno = 0;

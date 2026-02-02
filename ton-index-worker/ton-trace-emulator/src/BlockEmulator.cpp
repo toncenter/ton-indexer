@@ -116,7 +116,7 @@ public:
     }
 };
 
-McBlockEmulator::McBlockEmulator(MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>)> trace_processor, td::Promise<> promise)
+McBlockEmulator::McBlockEmulator(schema::MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>)> trace_processor, td::Promise<> promise)
         : mc_data_state_(std::move(mc_data_state)), trace_processor_(std::move(trace_processor)), promise_(std::move(promise)), 
           blocks_left_to_parse_(mc_data_state_.shard_blocks_diff_.size()) {
 }

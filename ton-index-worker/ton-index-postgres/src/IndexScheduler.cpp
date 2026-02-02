@@ -76,7 +76,7 @@ void IndexScheduler::alarm() {
                 LOG(ERROR) << "Failed to write statistics to " << path << ": " << status.error();
             }
         }, td::Timestamp::now());
-        
+
         next_statistics_flush_ = td::Timestamp::in(60.0);
     }
 
@@ -196,7 +196,7 @@ void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
     for (auto seqno = last_known_seqno_ + 1; seqno <= newest_mc_seqno; ++seqno) {
         const bool should_skip = indexed_seqnos_.count(seqno);
         const bool in_range = (from_seqno_ <= seqno) && (to_seqno_ == 0 || seqno <= to_seqno_);
-        
+
         if (should_skip) {
             skipped_count++;
         } else if (in_range) {
@@ -224,7 +224,7 @@ void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
 
     processing_seqnos_.insert(mc_seqno);
     timers_[mc_seqno] = td::Timer();
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, is_in_sync = is_in_sync_](td::Result<MasterchainBlockDataState> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, is_in_sync = is_in_sync_](td::Result<schema::MasterchainBlockDataState> R) {
         if (R.is_error()) {
             if (!is_in_sync) {
                 LOG(ERROR) << "Failed to fetch seqno " << mc_seqno << ": " << R.error();
@@ -246,7 +246,7 @@ void IndexScheduler::reschedule_seqno(std::uint32_t mc_seqno, bool silent) {
     queued_seqnos_.push_front(mc_seqno);
 }
 
-void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, MasterchainBlockDataState block_data_state) {
+void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, schema::MasterchainBlockDataState block_data_state) {
     LOG(DEBUG) << "Fetched seqno " << mc_seqno << ": blocks=" << block_data_state.shard_blocks_diff_.size() << " shards=" << block_data_state.shard_blocks_.size();
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
@@ -323,14 +323,14 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
         R.ensure();
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_queued_to_insert, mc_seqno, R.move_as_ok());
     });
-    td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, mc_seqno, std::move(parsed_block), 
+    td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, mc_seqno, std::move(parsed_block),
                                 is_in_sync_, std::move(Q), std::move(P));
 }
 
 void IndexScheduler::print_stats() {
     double eta = (last_known_seqno_ - last_indexed_seqno_) / avg_tps_;
     td::StringBuilder sb;
-    sb << last_indexed_seqno_ << " / "; 
+    sb << last_indexed_seqno_ << " / ";
     auto end_seqno = last_known_seqno_;
     if (to_seqno_ > 0) {
         end_seqno = to_seqno_;
@@ -338,9 +338,9 @@ void IndexScheduler::print_stats() {
 
     sb << end_seqno;
     sb << "\t" << td::StringBuilder::FixedDouble(avg_tps_, 2) << " mb/s (" << get_time_string(eta) << ")"
-       << "\tQ[" << cur_queue_state_.mc_blocks_ << "M, " 
-       << cur_queue_state_.blocks_ << "b, " 
-       << cur_queue_state_.txs_ << "t, " 
+       << "\tQ[" << cur_queue_state_.mc_blocks_ << "M, "
+       << cur_queue_state_.blocks_ << "b, "
+       << cur_queue_state_.txs_ << "t, "
        << cur_queue_state_.msgs_ << "m, "
        << cur_queue_state_.traces_ << "T]";
     LOG(INFO) << sb.as_cslice().str();
@@ -378,7 +378,7 @@ void IndexScheduler::schedule_next_seqnos() {
         schedule_seqno(seqno);
     }
 
-    if(to_seqno_ > 0 && last_known_seqno_ > to_seqno_ 
+    if(to_seqno_ > 0 && last_known_seqno_ > to_seqno_
        && queued_seqnos_.empty() && processing_seqnos_.empty()
        && cur_queue_state_.blocks_ == 0) {
         // stop();

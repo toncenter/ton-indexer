@@ -30,7 +30,7 @@ public:
   void set_catch_up_interval(float interval) {
     catch_up_interval_ = interval;
   }
-  void fetch_seqno(std::uint32_t mc_seqno, td::Promise<MasterchainBlockDataState> promise);
+  void fetch_seqno(std::uint32_t mc_seqno, td::Promise<schema::MasterchainBlockDataState> promise);
   void get_last_mc_seqno(td::Promise<ton::BlockSeqno> promise);
   void get_oldest_mc_seqno(td::Promise<ton::BlockSeqno> promise);
   void get_mc_block_handle(ton::BlockSeqno seqno, td::Promise<ton::validator::ConstBlockHandle> promise);

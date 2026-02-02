@@ -81,7 +81,7 @@ private:
   std::string insert_vesting(pqxx::work &txn);
   std::string insert_dedust_pools(pqxx::work &txn);
   std::string insert_stonfi_pools_v2(pqxx::work &txn);
-  void insert_contract_methods(pqxx::work &txn);
+  std::string insert_contract_methods(pqxx::work &txn);
   void insert_dedust_pools_historic(pqxx::work &txn);
   void insert_stonfi_pools_v2_historic(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);

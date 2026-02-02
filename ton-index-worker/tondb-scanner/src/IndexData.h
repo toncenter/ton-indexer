@@ -9,8 +9,11 @@
 #include "crypto/block/block-auto.h"
 #include "crypto/block/block-parse.h"
 #include "smc-interfaces/InterfacesDetector.h"
+#include "AccountAddress.h"
 
 namespace schema {
+
+using raw_bytes = std::string;
 
 struct CurrencyCollection {
   td::RefInt256 grams;
@@ -185,8 +188,8 @@ using TransactionDescr = std::variant<TransactionDescr_ord,
 struct Message {
   td::Bits256 hash;
   std::optional<td::Bits256> hash_norm;
-  std::optional<std::string> source;
-  std::optional<std::string> destination;
+  AccountAddress source;
+  AccountAddress destination;
   std::optional<CurrencyCollection> value;
   std::optional<td::RefInt256> fwd_fee;
   std::optional<td::RefInt256> ihr_fee;
@@ -200,17 +203,19 @@ struct Message {
   std::optional<td::RefInt256> import_fee;
 
   td::Ref<vm::Cell> body;
-  std::string body_boc;
+  td::Bits256 body_hash;
+  raw_bytes body_boc;
 
   td::Ref<vm::Cell> init_state;
-  std::optional<std::string> init_state_boc;
+  std::optional<td::Bits256> init_state_hash;
+  std::optional<raw_bytes> init_state_boc;
 
   td::Bits256 trace_id;
 };
 
 struct Transaction {
   td::Bits256 hash;
-  block::StdAddress account;
+  AccountAddress account;
   uint64_t lt;
   td::Bits256 prev_trans_hash;
   uint64_t prev_trans_lt;
@@ -226,10 +231,13 @@ struct Transaction {
   CurrencyCollection total_fees;
 
   td::Bits256 account_state_hash_before;
+  raw_bytes account_state_before;
   td::Bits256 account_state_hash_after;
+  raw_bytes account_state_after;
 
   td::Bits256 trace_id;
   TransactionDescr description;
+  raw_bytes description_boc;
 };
 
 struct BlockReference {
@@ -242,8 +250,8 @@ struct Block {
   int32_t workchain;
   int64_t shard;
   uint32_t seqno;
-  std::string root_hash;
-  std::string file_hash;
+  td::Bits256 root_hash;
+  td::Bits256 file_hash;
 
   std::optional<int32_t> mc_block_workchain;
   std::optional<int64_t> mc_block_shard;
@@ -268,8 +276,8 @@ struct Block {
   int32_t prev_key_block_seqno;
   int32_t vert_seqno;
   std::optional<int32_t> master_ref_seqno;
-  std::string rand_seed;
-  std::string created_by;
+  td::Bits256 rand_seed;
+  td::Bits256 created_by;
 
   std::vector<Transaction> transactions;
   std::vector<BlockReference> prev_blocks;
@@ -287,15 +295,17 @@ struct MasterchainBlockShard {
 
 struct AccountState {
   td::Bits256 hash;           // Note: hash is not unique in case account_status is "nonexist"
-  block::StdAddress account;
+  AccountAddress account;
   std::string account_friendly;  // TODO: add account friendly
   uint32_t timestamp;
   CurrencyCollection balance;
   std::string account_status; // "uninit", "frozen", "active", "nonexist"
   std::optional<td::Bits256> frozen_hash;
   td::Ref<vm::Cell> code;
+  std::optional<raw_bytes> code_boc;
   std::optional<td::Bits256> code_hash;
   td::Ref<vm::Cell> data;
+  std::optional<raw_bytes> data_boc;
   std::optional<td::Bits256> data_hash;
   td::Bits256 last_trans_hash;
   uint64_t last_trans_lt;     // in "nonexist" case it is lt of block, not tx. TODO: fix it
@@ -358,8 +368,6 @@ struct TraceAssemblerState {
   std::vector<Trace> pending_traces_;
 };
 
-}  // namespace schema
-
 struct JettonMasterData {
   std::string address;
   td::RefInt256 total_supply;
@@ -371,15 +379,15 @@ struct JettonMasterData {
   vm::CellHash code_hash;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
-  std::string code_boc;
-  std::string data_boc;
+  raw_bytes code_boc;
+  raw_bytes data_boc;
 };
 
 struct JettonMasterDataV2 {
-  block::StdAddress address;
+  AccountAddress address;
   td::RefInt256 total_supply;
   bool mintable;
-  std::optional<block::StdAddress> admin_address;
+  AccountAddress admin_address;
   std::optional<std::map<std::string, std::string>> jetton_content;
   td::Bits256 jetton_wallet_code_hash;
   td::Bits256 data_hash;
@@ -401,9 +409,9 @@ struct JettonWalletData {
 
 struct JettonWalletDataV2 {
   td::RefInt256 balance;
-  block::StdAddress address;
-  block::StdAddress owner;
-  block::StdAddress jetton;
+  AccountAddress address;
+  AccountAddress owner;
+  AccountAddress jetton;
   std::optional<bool> mintless_is_claimed;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
@@ -413,15 +421,15 @@ struct JettonWalletDataV2 {
 
 struct VestingData
 {
-  block::StdAddress address;
+  AccountAddress address;
   uint32_t vesting_start_time;
   uint32_t vesting_total_duration;
   uint32_t unlock_period;
   uint32_t cliff_duration;
   td::RefInt256 vesting_total_amount;
-  block::StdAddress vesting_sender_address;
-  block::StdAddress owner_address;
-  std::vector<block::StdAddress> whitelist;
+  AccountAddress vesting_sender_address;
+  AccountAddress owner_address;
+  std::vector<AccountAddress> whitelist;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
   td::Bits256 code_hash;
@@ -437,11 +445,11 @@ struct JettonTransfer {
   uint32_t mc_seqno;
   uint64_t query_id;
   td::RefInt256 amount;
-  std::string source;
-  std::string destination;
-  std::string jetton_wallet;
-  std::string jetton_master;  // ignore
-  std::string response_destination;
+  AccountAddress source;
+  AccountAddress destination;
+  AccountAddress jetton_wallet;
+  AccountAddress jetton_master;  // ignore
+  AccountAddress response_destination;
   td::Ref<vm::Cell> custom_payload;
   td::RefInt256 forward_ton_amount;
   td::Ref<vm::Cell> forward_payload;
@@ -455,11 +463,11 @@ struct JettonBurn {
   bool transaction_aborted;
   uint32_t mc_seqno;
   uint64_t query_id;
-  std::string owner;
-  std::string jetton_wallet;
-  std::string jetton_master;  // ignore
+  AccountAddress owner;
+  AccountAddress jetton_wallet;
+  AccountAddress jetton_master;  // ignore
   td::RefInt256 amount;
-  std::string response_destination;
+  AccountAddress response_destination;
   td::Ref<vm::Cell> custom_payload;
 };
 
@@ -469,7 +477,7 @@ struct NominatorPoolIncome {
   uint64_t transaction_lt;
   uint32_t transaction_now;
   uint32_t mc_seqno;
-  
+
   std::string pool_address;
   std::string nominator_address;
   td::RefInt256 income_amount;
@@ -490,9 +498,9 @@ struct NFTCollectionData {
 };
 
 struct NFTCollectionDataV2 {
-  block::StdAddress address;
+  AccountAddress address;
   td::RefInt256 next_item_index;
-  std::optional<block::StdAddress> owner_address;
+  AccountAddress owner_address;
   std::optional<std::map<std::string, std::string>> collection_content;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
@@ -516,17 +524,17 @@ struct NFTItemData {
 struct NFTItemDataV2 {
   struct DNSEntry {
     std::string domain;
-    std::optional<block::StdAddress> wallet;
-    std::optional<block::StdAddress> next_resolver;
+    AccountAddress wallet;
+    AccountAddress next_resolver;
     std::optional<td::Bits256> site_adnl;
     std::optional<td::Bits256> storage_bag_id;
   };
 
-  block::StdAddress address;
+  AccountAddress address;
   bool init;
   td::RefInt256 index;
-  std::optional<block::StdAddress> collection_address;
-  std::optional<block::StdAddress> owner_address;
+  AccountAddress collection_address;
+  AccountAddress owner_address;
   std::optional<std::map<std::string, std::string>> content;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
@@ -543,30 +551,30 @@ struct NFTTransfer {
   bool transaction_aborted;
   uint32_t mc_seqno;
   uint64_t query_id;
-  block::StdAddress nft_item;
+  AccountAddress nft_item;
   td::RefInt256 nft_item_index;  // ignore
-  std::string nft_collection;  // ignore
-  std::string old_owner;
-  std::string new_owner;
-  std::string response_destination;
+  AccountAddress nft_collection;  // ignore
+  AccountAddress old_owner;
+  AccountAddress new_owner;
+  AccountAddress response_destination;
   td::Ref<vm::Cell> custom_payload;
   td::RefInt256 forward_amount;
   td::Ref<vm::Cell> forward_payload;
 };
 
 struct GetGemsNftAuctionData {
-  block::StdAddress address;
+  AccountAddress address;
   bool end;
   uint32_t end_time;
-  block::StdAddress mp_addr;
-  block::StdAddress nft_addr;
-  std::optional<block::StdAddress> nft_owner;
+  AccountAddress mp_addr;
+  AccountAddress nft_addr;
+  AccountAddress nft_owner;
   td::RefInt256 last_bid;
-  std::optional<block::StdAddress> last_member;
+  AccountAddress last_member;
   uint32_t min_step;
-  block::StdAddress mp_fee_addr;
+  AccountAddress mp_fee_addr;
   uint32_t mp_fee_factor, mp_fee_base;
-  block::StdAddress royalty_fee_addr;
+  AccountAddress royalty_fee_addr;
   uint32_t royalty_fee_factor, royalty_fee_base;
   td::RefInt256 max_bid;
   td::RefInt256 min_bid;
@@ -580,16 +588,16 @@ struct GetGemsNftAuctionData {
 };
 
 struct GetGemsNftFixPriceSaleData {
-  block::StdAddress address;
+  AccountAddress address;
   bool is_complete;
   uint32_t created_at;
-  block::StdAddress marketplace_address;
-  block::StdAddress nft_address;
-  std::optional<block::StdAddress> nft_owner_address;
+  AccountAddress marketplace_address;
+  AccountAddress nft_address;
+  AccountAddress nft_owner_address;
   td::RefInt256 full_price;
-  block::StdAddress marketplace_fee_address;
+  AccountAddress marketplace_fee_address;
   td::RefInt256 marketplace_fee;
-  block::StdAddress royalty_address;
+  AccountAddress royalty_address;
   td::RefInt256 royalty_amount;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
@@ -598,11 +606,11 @@ struct GetGemsNftFixPriceSaleData {
 };
 
 struct MultisigContractData {
-  block::StdAddress address;
+  AccountAddress address;
   td::RefInt256 next_order_seqno;
   uint32_t threshold;
-  std::vector<block::StdAddress> signers;
-  std::vector<block::StdAddress> proposers;
+  std::vector<AccountAddress> signers;
+  std::vector<AccountAddress> proposers;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
   td::Bits256 code_hash;
@@ -610,8 +618,8 @@ struct MultisigContractData {
 };
 
 struct MultisigOrderData {
-  block::StdAddress address;
-  block::StdAddress multisig_address;
+  AccountAddress address;
+  AccountAddress multisig_address;
   td::RefInt256 order_seqno;
   uint32_t threshold;
   bool sent_for_execution;
@@ -619,7 +627,7 @@ struct MultisigOrderData {
   uint32_t approvals_num;
   td::RefInt256 expiration_date;
   td::Ref<vm::Cell> order;
-  std::vector<block::StdAddress> signers;
+  std::vector<AccountAddress> signers;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
   td::Bits256 code_hash;
@@ -627,9 +635,9 @@ struct MultisigOrderData {
 };
 
 struct DedustPoolData {
-  block::StdAddress address;
-  std::optional<block::StdAddress> asset_1;
-  std::optional<block::StdAddress> asset_2;
+  AccountAddress address;
+  AccountAddress asset_1;
+  AccountAddress asset_2;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
   td::RefInt256 reserve_1;
@@ -655,6 +663,27 @@ struct StonfiPoolV2Data {
 };
 
 
+using BlockchainEvent = std::variant<schema::JettonTransfer,
+                                     schema::JettonBurn,
+                                     schema::NFTTransfer, schema::NominatorPoolIncome>;
+
+using BlockchainInterface = std::variant<schema::JettonMasterData,
+                                         schema::JettonWalletData,
+                                         schema::NFTCollectionData,
+                                         schema::NFTItemData>;
+
+
+using BlockchainInterfaceV2 = std::variant<schema::JettonWalletDataV2,
+                                           schema::JettonMasterDataV2,
+                                           schema::NFTCollectionDataV2,
+                                           schema::NFTItemDataV2,
+                                           schema::GetGemsNftFixPriceSaleData,
+                                           schema::GetGemsNftAuctionData,
+                                           schema::MultisigContractData,
+                                           schema::MultisigOrderData,
+                                           schema::VestingData,
+                                           schema::DedustPoolData, schema::StonfiPoolV2Data>;
+
 //
 // Containers
 //
@@ -670,34 +699,12 @@ struct MasterchainBlockDataState {
 
   std::shared_ptr<block::ConfigInfo> config_;
 };
-
-using BlockchainEvent = std::variant<JettonTransfer, 
-                                     JettonBurn,
-                                     NFTTransfer,
-                                     NominatorPoolIncome>;
-
-using BlockchainInterface = std::variant<JettonMasterData, 
-                                         JettonWalletData, 
-                                         NFTCollectionData, 
-                                         NFTItemData>;
-
-
-using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
-                                           JettonMasterDataV2,
-                                           NFTCollectionDataV2,
-                                           NFTItemDataV2,
-                                           GetGemsNftFixPriceSaleData,
-                                           GetGemsNftAuctionData,
-                                           MultisigContractData,
-                                           MultisigOrderData,
-                                           VestingData,
-                                           DedustPoolData,
-                                           StonfiPoolV2Data>;
+}  // namespace schema
 
 namespace std {
 template <>
 struct hash<td::Bits256> {
-  auto operator()(const td::Bits256 &k) const -> size_t {
+  auto operator()(const td::Bits256 &k) const noexcept -> size_t {
     std::size_t seed = 0;
     for(const auto& el : k.as_array()) {
         seed ^= std::hash<td::uint8>{}(el) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
@@ -708,14 +715,14 @@ struct hash<td::Bits256> {
 
 template <>
 struct hash<block::StdAddress> {
-  auto operator()(const block::StdAddress &addr) const -> size_t {
+  auto operator()(const block::StdAddress &addr) const noexcept -> size_t {
     return std::hash<td::uint32>{}(addr.workchain) ^ std::hash<td::Bits256>{}(addr.addr);
   }
 };
 }  // namespace std
 
 struct ParsedBlock {
-  MasterchainBlockDataState mc_block_;
+  schema::MasterchainBlockDataState mc_block_;
   std::shared_ptr<vm::CellDbReader> cell_db_reader_;  // for loading previous states
 
   std::vector<schema::Block> blocks_;
@@ -724,11 +731,11 @@ struct ParsedBlock {
 
   std::vector<schema::Trace> traces_;
 
-  std::vector<BlockchainEvent> events_;
-  std::vector<BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
+  std::vector<schema::BlockchainEvent> events_;
+  std::vector<schema::BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
 
-  std::unordered_map<block::StdAddress, std::vector<BlockchainInterfaceV2>> account_interfaces_;
-  
+  std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
+
   template <class T>
   std::vector<T> get_events() {
     std::vector<T> result;

@@ -88,7 +88,7 @@ void ShardRangeScanner::start_up() {
 }
 
 
-ShardStateScanner::ShardStateScanner(td::Ref<vm::Cell> shard_state, MasterchainBlockDataState mc_block_ds, Options options) 
+ShardStateScanner::ShardStateScanner(td::Ref<vm::Cell> shard_state, schema::MasterchainBlockDataState mc_block_ds, Options options)
     : shard_state_(shard_state), mc_block_ds_(mc_block_ds), options_(options) {
 }
 

@@ -37,7 +37,7 @@ struct EmuRequest {
 
 class McBlockEmulator: public td::actor::Actor {
 private:
-    MasterchainBlockDataState mc_data_state_;
+    schema::MasterchainBlockDataState mc_data_state_;
     std::function<void(Trace, td::Promise<td::Unit>)> trace_processor_;
     td::Promise<> promise_;
     size_t blocks_left_to_parse_;
@@ -80,7 +80,7 @@ private:
     td::Result<block::Account> fetch_account(const block::StdAddress& addr, ton::UnixTime now);
 
 public:
-    McBlockEmulator(MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>)> trace_processor, td::Promise<> promise);
+    McBlockEmulator(schema::MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>)> trace_processor, td::Promise<> promise);
 
     virtual void start_up() override;
 };

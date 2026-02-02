@@ -26,7 +26,7 @@ using AddrRange = std::pair<td::Bits256, td::Bits256>;
 class ShardStateScanner: public td::actor::Actor {
 private:
   td::Ref<vm::Cell> shard_state_;
-  MasterchainBlockDataState mc_block_ds_;
+  schema::MasterchainBlockDataState mc_block_ds_;
 
   ShardStateDataPtr shard_state_data_;
   Options options_;
@@ -48,7 +48,7 @@ private:
   std::set<AddrRange> ranges_in_progress_;
 
 public:
-  ShardStateScanner(td::Ref<vm::Cell> shard_state, MasterchainBlockDataState mc_block_ds, Options options);
+  ShardStateScanner(td::Ref<vm::Cell> shard_state, schema::MasterchainBlockDataState mc_block_ds, Options options);
 
   void schedule_next();
   void start_up() override;

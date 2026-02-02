@@ -89,7 +89,7 @@ void RedisListener::on_new_message(td::Ref<vm::Cell> msg_cell) {
   g_statistics.record_count(EMULATE_SRC_REDIS);
 }
 
-void RedisListener::set_mc_data_state(MasterchainBlockDataState mc_data_state) {
+void RedisListener::set_mc_data_state(schema::MasterchainBlockDataState mc_data_state) {
   shard_states_.clear();
   for (const auto& shard_state : mc_data_state.shard_blocks_) {
       shard_states_.push_back(shard_state.block_state);

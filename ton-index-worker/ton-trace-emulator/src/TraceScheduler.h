@@ -25,7 +25,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     td::Timestamp next_statistics_flush_;
 
     std::unordered_set<ton::BlockSeqno> seqnos_to_fetch_;
-    std::map<ton::BlockSeqno, MasterchainBlockDataState> blocks_to_emulate_;
+    std::map<ton::BlockSeqno, schema::MasterchainBlockDataState> blocks_to_emulate_;
 
     td::actor::ActorOwn<OverlayListener> overlay_listener_;
     td::actor::ActorOwn<RedisListener> redis_listener_;
@@ -34,7 +34,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void got_last_mc_seqno(ton::BlockSeqno last_known_seqno);
     void fetch_seqnos();
     void fetch_error(std::uint32_t seqno, td::Status error);
-    void seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState mc_data_state);
+    void seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState mc_data_state);
     void emulate_blocks();
 
     void alarm();

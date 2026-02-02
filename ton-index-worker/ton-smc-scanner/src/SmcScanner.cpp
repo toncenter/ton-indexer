@@ -3,7 +3,7 @@
 #include "ShardBatchScanner.h"
 
 void SmcScanner::start_up() {
-    auto P = td::PromiseCreator::lambda([=, SelfId = actor_id(this)](td::Result<MasterchainBlockDataState> R){
+    auto P = td::PromiseCreator::lambda([=, SelfId = actor_id(this)](td::Result<schema::MasterchainBlockDataState> R){
         if (R.is_error()) {
             LOG(ERROR) << "Failed to get seqno " << options_.seqno_ << ": " << R.move_as_error();
             stop();
@@ -15,7 +15,7 @@ void SmcScanner::start_up() {
     td::actor::send_closure(db_scanner_, &DbScanner::fetch_seqno, options_.seqno_, std::move(P));
 }
 
-void SmcScanner::got_block(MasterchainBlockDataState block) {
+void SmcScanner::got_block(schema::MasterchainBlockDataState block) {
     LOG(INFO) << "Got block data state";
     for (const auto &shard_ds : block.shard_blocks_) {
         auto& shard_state = shard_ds.block_state;

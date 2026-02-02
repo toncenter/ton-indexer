@@ -42,5 +42,5 @@ public:
     db_scanner_(db_scanner), options_(options) {};
 
   void start_up() override;
-  void got_block(MasterchainBlockDataState block);
+  void got_block(schema::MasterchainBlockDataState block);
 };
