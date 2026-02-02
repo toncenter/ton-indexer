@@ -12,6 +12,7 @@ add_library(tondb-scanner STATIC
     src/parse_contract_methods.cpp
     src/convert-utils.cpp
     src/tokens-tlb.cpp
+    src/validators-tlb.cpp
     src/Statistics.cpp
     src/smc-interfaces/Tokens.cpp
     src/smc-interfaces/NftSale.cpp
@@ -34,6 +35,10 @@ set(TLB_TOKENS
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tokens-tlb.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tokens-tlb.h
 )
+set(TLB_VALIDATORS
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/validators-tlb.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/validators-tlb.h
+)
 
 add_custom_command(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -43,8 +48,18 @@ add_custom_command(
     DEPENDS tlbc src/tlb/tokens.tlb
 )
 
+add_custom_command(
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src
+    COMMAND tlbc -o validators-tlb -n validators::gen -z tlb/validators.tlb
+    COMMENT "Generate validators tlb source files"
+    OUTPUT ${TLB_VALIDATORS}
+    DEPENDS tlbc src/tlb/validators.tlb
+)
+
 add_custom_target(tlb_generate_tokens DEPENDS ${TLB_TOKENS})
-add_dependencies(tondb-scanner tlb_generate_tokens)
+add_custom_target(tlb_generate_validators DEPENDS ${TLB_VALIDATORS})
+add_dependencies(tondb-scanner tlb_generate_tokens tlb_generate_validators)
+
 
 set(TONDB_SCANNER_TEST_SOURCE
   ${CMAKE_CURRENT_SOURCE_DIR}/test/tests.cpp

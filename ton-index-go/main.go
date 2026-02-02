@@ -1913,6 +1913,256 @@ func HealthCheck(c *fiber.Ctx) error {
 	return c.Status(200).SendString("OK")
 }
 
+// GetPool godoc
+// @summary Get pool information
+// @tags staking
+// @id getPool
+// @param pool query string true "Pool address in any form"
+// @produce json
+// @success 200 {object} index.NominatorPoolInfo
+// @failure 400 {object} index.IndexError
+// @failure 404 {object} index.IndexError
+// @failure 422 {object} index.IndexError
+// @failure 500 {object} index.IndexError
+// @router /api/v3/nominators/getPool [get]
+func GetPool(c *fiber.Ctx) error {
+	poolAddr := c.Query("pool")
+
+	if poolAddr == "" {
+		return index.IndexError{Code: 422, Message: "pool parameter is required"}
+	}
+
+	// normalize address
+	addr := index.AccountAddressConverter(poolAddr)
+	if !addr.IsValid() {
+		return index.IndexError{Code: 422, Message: "invalid pool address format"}
+	}
+	normalizedAddr := addr.Interface().(index.AccountAddress)
+
+	poolInfo, err := pool.GetPool(string(normalizedAddr))
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(poolInfo)
+}
+
+// GetNominatorBookings godoc
+// @summary Get nominator bookings
+// @tags staking
+// @id getNominatorBookings
+// @param nominator query string true "Nominator address in any form"
+// @param pool query string true "Pool address in any form"
+// @param from_time query integer false "From timestamp"
+// @param to_time query integer false "To timestamp"
+// @param limit query integer false "Limit" default(100)
+// @produce json
+// @success 200 {array} index.NominatorBooking
+// @failure 422 {object} index.IndexError
+// @failure 500 {object} index.IndexError
+// @router /api/v3/nominators/getNominatorBookings [get]
+func GetNominatorBookings(c *fiber.Ctx) error {
+	nominator := c.Query("nominator")
+	poolAddr := c.Query("pool")
+
+	if nominator == "" || poolAddr == "" {
+		return index.IndexError{Code: 422, Message: "nominator and pool parameters are required"}
+	}
+
+	// normalize addresses
+	nominatorAddrVal := index.AccountAddressConverter(nominator)
+	if !nominatorAddrVal.IsValid() {
+		return index.IndexError{Code: 422, Message: "invalid nominator address format"}
+	}
+	normalizedNominator := nominatorAddrVal.Interface().(index.AccountAddress)
+
+	poolAddrVal := index.AccountAddressConverter(poolAddr)
+	if !poolAddrVal.IsValid() {
+		return index.IndexError{Code: 422, Message: "invalid pool address format"}
+	}
+	normalizedPool := poolAddrVal.Interface().(index.AccountAddress)
+
+	var fromTime, toTime *int32
+	if fromStr := c.Query("from_time"); fromStr != "" {
+		if val, err := strconv.ParseInt(fromStr, 10, 32); err == nil {
+			tmp := int32(val)
+			fromTime = &tmp
+		}
+	}
+	if toStr := c.Query("to_time"); toStr != "" {
+		if val, err := strconv.ParseInt(toStr, 10, 32); err == nil {
+			tmp := int32(val)
+			toTime = &tmp
+		}
+	}
+
+	limit := 100
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil {
+			limit = val
+		}
+	}
+
+	bookings, err := pool.GetNominatorBookings(string(normalizedNominator), string(normalizedPool), fromTime, toTime, limit)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(bookings)
+}
+
+// GetPoolBookings godoc
+// @summary Get pool bookings
+// @tags staking
+// @id getPoolBookings
+// @param pool query string true "Pool address in any form"
+// @param from_time query integer false "From timestamp"
+// @param to_time query integer false "To timestamp"
+// @param limit query integer false "Limit" default(100)
+// @produce json
+// @success 200 {array} index.PoolBooking
+// @failure 422 {object} index.IndexError
+// @failure 500 {object} index.IndexError
+// @router /api/v3/nominators/getPoolBookings [get]
+func GetPoolBookings(c *fiber.Ctx) error {
+	poolAddr := c.Query("pool")
+
+	if poolAddr == "" {
+		return index.IndexError{Code: 422, Message: "pool parameter is required"}
+	}
+
+	// normalize address
+	poolAddrVal := index.AccountAddressConverter(poolAddr)
+	if !poolAddrVal.IsValid() {
+		return index.IndexError{Code: 422, Message: "invalid pool address format"}
+	}
+	normalizedPool := poolAddrVal.Interface().(index.AccountAddress)
+
+	var fromTime, toTime *int32
+	if fromStr := c.Query("from_time"); fromStr != "" {
+		if val, err := strconv.ParseInt(fromStr, 10, 32); err == nil {
+			tmp := int32(val)
+			fromTime = &tmp
+		}
+	}
+	if toStr := c.Query("to_time"); toStr != "" {
+		if val, err := strconv.ParseInt(toStr, 10, 32); err == nil {
+			tmp := int32(val)
+			toTime = &tmp
+		}
+	}
+
+	limit := 100
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil {
+			limit = val
+		}
+	}
+
+	bookings, err := pool.GetPoolBookings(string(normalizedPool), fromTime, toTime, limit)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(bookings)
+}
+
+// GetNominator godoc
+// @summary Get all pools where nominator has balance
+// @tags staking
+// @id getNominator
+// @param nominator query string true "Nominator address in any form"
+// @produce json
+// @success 200 {array} index.NominatorInPool
+// @failure 422 {object} index.IndexError
+// @failure 500 {object} index.IndexError
+// @router /api/v3/nominators/getNominator [get]
+func GetNominator(c *fiber.Ctx) error {
+	nominator := c.Query("nominator")
+
+	if nominator == "" {
+		return index.IndexError{Code: 422, Message: "nominator parameter is required"}
+	}
+
+	// normalize address
+	nominatorAddrVal := index.AccountAddressConverter(nominator)
+	if !nominatorAddrVal.IsValid() {
+		return index.IndexError{Code: 422, Message: "invalid nominator address format"}
+	}
+	normalizedNominator := nominatorAddrVal.Interface().(index.AccountAddress)
+
+	pools, err := pool.GetNominator(string(normalizedNominator))
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(pools)
+}
+
+// GetNominatorEarnings godoc
+// @summary Get nominator earnings (incomes only)
+// @tags staking
+// @id getNominatorEarnings
+// @param nominator query string true "Nominator address in any form"
+// @param pool query string true "Pool address in any form"
+// @param from_time query integer false "From timestamp"
+// @param to_time query integer false "To timestamp"
+// @param limit query integer false "Limit" default(100)
+// @produce json
+// @success 200 {object} index.NominatorEarningsResponse
+// @failure 422 {object} index.IndexError
+// @failure 500 {object} index.IndexError
+// @router /api/v3/nominators/getNominatorEarnings [get]
+func GetNominatorEarnings(c *fiber.Ctx) error {
+	nominator := c.Query("nominator")
+	poolAddr := c.Query("pool")
+
+	if nominator == "" || poolAddr == "" {
+		return index.IndexError{Code: 422, Message: "nominator and pool parameters are required"}
+	}
+
+	// normalize addresses
+	nominatorAddrVal := index.AccountAddressConverter(nominator)
+	if !nominatorAddrVal.IsValid() {
+		return index.IndexError{Code: 422, Message: "invalid nominator address format"}
+	}
+	normalizedNominator := nominatorAddrVal.Interface().(index.AccountAddress)
+
+	poolAddrVal := index.AccountAddressConverter(poolAddr)
+	if !poolAddrVal.IsValid() {
+		return index.IndexError{Code: 422, Message: "invalid pool address format"}
+	}
+	normalizedPool := poolAddrVal.Interface().(index.AccountAddress)
+
+	var fromTime, toTime *int32
+	if fromStr := c.Query("from_time"); fromStr != "" {
+		if val, err := strconv.ParseInt(fromStr, 10, 32); err == nil {
+			tmp := int32(val)
+			fromTime = &tmp
+		}
+	}
+	if toStr := c.Query("to_time"); toStr != "" {
+		if val, err := strconv.ParseInt(toStr, 10, 32); err == nil {
+			tmp := int32(val)
+			toTime = &tmp
+		}
+	}
+
+	limit := 100
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil {
+			limit = val
+		}
+	}
+
+	earnings, err := pool.GetNominatorEarnings(string(normalizedNominator), string(normalizedPool), fromTime, toTime, limit)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(200).JSON(earnings)
+}
+
 func ExtractParam(ctx *fiber.Ctx, header string, query string) (string, bool) {
 	if val := ctx.GetReqHeaders()[header]; len(val) > 0 {
 		return val[0], true
@@ -2266,6 +2516,13 @@ func main() {
 	// utils
 	app.Get("/api/v3/decode", GetDecode)
 	app.Post("/api/v3/decode", PostDecode)
+
+	// v3/nominators compatibility endpoints
+	app.Get("/api/v3/nominators/getPool", GetPool)
+	app.Get("/api/v3/nominators/getNominatorBookings", GetNominatorBookings)
+	app.Get("/api/v3/nominators/getPoolBookings", GetPoolBookings)
+	app.Get("/api/v3/nominators/getNominator", GetNominator)
+	app.Get("/api/v3/nominators/getNominatorEarnings", GetNominatorEarnings)
 
 	// api/v2 proxied
 	app.Get("/api/v3/addressInformation", GetV2AddressInformation)

@@ -69,6 +69,7 @@ private:
   void insert_jetton_transfers(pqxx::work &txn, bool with_copy);
   void insert_jetton_burns(pqxx::work &txn, bool with_copy);
   void insert_nft_transfers(pqxx::work &txn, bool with_copy);
+  void insert_nominator_pool_incomes(pqxx::work &txn, bool with_copy);
   std::string insert_jetton_masters(pqxx::work &txn);
   std::string insert_jetton_wallets(pqxx::work &txn);
   std::string insert_nft_collections(pqxx::work &txn);
@@ -79,7 +80,10 @@ private:
   std::string insert_multisig_orders(pqxx::work &txn);
   std::string insert_vesting(pqxx::work &txn);
   std::string insert_dedust_pools(pqxx::work &txn);
+  std::string insert_stonfi_pools_v2(pqxx::work &txn);
   void insert_contract_methods(pqxx::work &txn);
+  void insert_dedust_pools_historic(pqxx::work &txn);
+  void insert_stonfi_pools_v2_historic(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
 
   bool try_acquire_leader_lock();

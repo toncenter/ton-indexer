@@ -177,3 +177,41 @@ private:
   static bool get_asset(td::Ref<vm::CellSlice> slice, std::optional<block::StdAddress>& address);
   void verify_with_factory(td::Ref<vm::Cell> factory_code, td::Ref<vm::Cell> factory_data, Result pool_data);
 };
+
+class StonfiPoolV2Detector: public td::actor::Actor {
+public:
+  struct Result {
+    std::optional<block::StdAddress> asset_1;
+    std::optional<block::StdAddress> asset_2;
+    td::RefInt256 reserve_1;
+    td::RefInt256 reserve_2;
+    std::string pool_type;
+    double fee;
+  };
+
+  StonfiPoolV2Detector(block::StdAddress address,
+                       td::Ref<vm::Cell> code_cell,
+                       td::Ref<vm::Cell> data_cell,
+                       AllShardStates shard_states,
+                       std::shared_ptr<block::ConfigInfo> config,
+                       td::Promise<Result> promise);
+
+  void start_up() override;
+
+private:
+  block::StdAddress address_;
+  td::Ref<vm::Cell> code_cell_;
+  td::Ref<vm::Cell> data_cell_;
+  AllShardStates shard_states_;
+  std::shared_ptr<block::ConfigInfo> config_;
+  td::Promise<Result> promise_;
+
+  void resolve_assets(Result pool_data, block::StdAddress token0_wallet, block::StdAddress token1_wallet);
+  void got_token0_wallet_account(Result pool_data, block::StdAddress token1_wallet, 
+                                   td::Ref<vm::Cell> token0_wallet_code, td::Ref<vm::Cell> token0_wallet_data);
+  void got_token1_wallet_account(Result pool_data, td::Ref<vm::Cell> token1_wallet_code, 
+                                   td::Ref<vm::Cell> token1_wallet_data);
+  static std::optional<block::StdAddress> get_jetton_master(td::Ref<vm::Cell> wallet_code, 
+                                                              td::Ref<vm::Cell> wallet_data,
+                                                              std::shared_ptr<block::ConfigInfo> config);
+};
