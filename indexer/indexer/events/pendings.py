@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import logging
 import json
 import time
@@ -261,9 +262,10 @@ class PendingTraceClassifierWorker(mp.Process):
                     action.trace_external_hash_norm = trace_key
                 meas.extra['action_types'] = ','.join(set(action_types))
                 meas.extra['jetton_senders'] = ','.join(set(jetton_senders))
-                # Store results in Redis
+                # Store results in Redis (msgpack + gzip compression)
                 action_data = msgpack.packb([a.to_dict() for a in result.actions])
-                await redis.client.hset(trace_key, 'actions', action_data)
+                action_data_compressed = gzip.compress(action_data, compresslevel=1)
+                await redis.client.hset(trace_key, 'actions', action_data_compressed)
 
                 # Publish completion if configured
                 if self.emulated_traces_redis_response_channel:

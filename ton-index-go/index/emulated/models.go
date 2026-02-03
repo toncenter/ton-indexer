@@ -1,9 +1,12 @@
 package emulated
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 
 	"github.com/vmihailenco/msgpack/v5"
@@ -711,6 +714,24 @@ func (h *hash) DecodeMsgpack(dec *msgpack.Decoder) error {
 	copy(h[:], bytes)
 	return nil
 }
+
+func decompressGzip(data []byte) ([]byte, error) {
+	if len(data) < 2 {
+		return data, nil // too short for gzip
+	}
+	// check if gzip, else return data unchanged
+	if data[0] == 0x1f && data[1] == 0x8b {
+		reader, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		defer reader.Close()
+		return io.ReadAll(reader)
+	} else {
+		return data, nil
+	}
+}
+
 func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 
 	queue := make([]string, 0)
@@ -766,16 +787,20 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 		}
 	}
 	if actionsBytes, exists := traceHash["actions"]; exists {
-		err := msgpack.Unmarshal([]byte(actionsBytes), &actions)
+		decompressed, err := decompressGzip([]byte(actionsBytes))
+		if err != nil {
+			return Trace{}, fmt.Errorf("failed to decompress actions: %w", err)
+		}
+		err = msgpack.Unmarshal(decompressed, &actions)
+		if err != nil {
+			return Trace{}, fmt.Errorf("failed to unmarshal actions: %w", err)
+		}
 		for i := range actions {
 			actions[i].TraceEndUtime = &endUtime
 			actions[i].TraceEndLt = &endLt
 			actions[i].TraceMcSeqnoEnd = &mcSeqnoEnd
 			actions[i].TraceExternalHash = rootNodeId
 			actions[i].TraceId = traceId
-		}
-		if err != nil {
-			return Trace{}, fmt.Errorf("failed to unmarshal actions: %w", err)
 		}
 	}
 	_, has_actions := traceHash["actions"]
