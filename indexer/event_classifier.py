@@ -22,7 +22,7 @@ from sqlalchemy.orm import sessionmaker, selectinload
 from sqlalchemy.sql import text
 
 from indexer.core import redis
-from indexer.core.database import Base, ActionAccount
+from indexer.core.database import Base, ActionAccount, TraceAccount
 from indexer.core.database import engine, Trace, Transaction, Message, Action, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
@@ -55,6 +55,8 @@ def add_on_conflict_ignore(conn, cursor, statement, parameters, context, execute
     if stipped_statement.startswith('INSERT INTO ACTIONS'):
         statement += " ON CONFLICT DO NOTHING"
     elif stipped_statement.startswith('INSERT INTO ACTION_ACCOUNTS'):
+        statement += " ON CONFLICT DO NOTHING"
+    elif stipped_statement.startswith('INSERT INTO TRACE_ACCOUNTS'):
         statement += " ON CONFLICT DO NOTHING"
 
     return statement, parameters
@@ -260,10 +262,10 @@ class EventClassifierWorker(mp.Process):
                             trace_ids_to_cleanup.extend([x[0] for x in result.fetchall()])
                 if len(trace_ids_to_cleanup) > 0:
                     stmt = delete(Action).where(Action.trace_id.in_(trace_ids_to_cleanup))
-                    # logger.info(f'stmt: {stmt}')
                     await session.execute(stmt)
                     stmt = delete(ActionAccount).where(ActionAccount.trace_id.in_(trace_ids_to_cleanup))
-                    # logger.info(f'stmt: {stmt}')
+                    await session.execute(stmt)
+                    stmt = delete(TraceAccount).where(TraceAccount.trace_id.in_(trace_ids_to_cleanup))
                     await session.execute(stmt)
 
                 # read traces
@@ -303,6 +305,8 @@ class EventClassifierWorker(mp.Process):
                 broken_traces = []
                 inserted_actions = set()
                 inserted_action_accounts = set()
+                trace_account_roles = {}
+                trace_account_meta = {}
                 for trace_id, state, actions, exc in results:
                     # # logger.error(f"query: {insert(Action).values(actions).on_conflict_do_nothing()}")
                     # if len(actions) > 0:
@@ -330,6 +334,19 @@ class EventClassifierWorker(mp.Process):
                                 inserted_action_accounts.add(account_concat_key)
                         session.add_all(action.get_action_accounts())
 
+                    # Aggregate trace-level account roles via bitwise OR
+                    for action in actions:
+                        roles = getattr(action, 'account_roles', {}) or {}
+                        for account, role in roles.items():
+                            key = (trace_id, account)
+                            if key in trace_account_roles:
+                                trace_account_roles[key] |= role
+                            else:
+                                trace_account_roles[key] = role
+                            # Track trace metadata for TraceAccount creation
+                            if key not in trace_account_meta:
+                                trace_account_meta[key] = (action.trace_end_lt, action.trace_end_utime)
+
                     if state == 'ok':
                         ok_traces.append(trace_id)
                     else:
@@ -343,6 +360,17 @@ class EventClassifierWorker(mp.Process):
                             failed_traces.append(trace_id)
                 failed = len(failed_traces)
                 broken = len(broken_traces)
+                # Create TraceAccount objects from aggregated roles
+                for (tid, account), role in trace_account_roles.items():
+                    trace_end_lt, trace_end_utime = trace_account_meta[(tid, account)]
+                    session.add(TraceAccount(
+                        trace_id=tid,
+                        account=account,
+                        trace_end_lt=trace_end_lt,
+                        trace_end_utime=trace_end_utime,
+                        role=role,
+                    ))
+
                 # finish task
                 # await session.execute(f"delete from _classifier_tasks where id = {task.id};")
                 if not is_trace_batch:

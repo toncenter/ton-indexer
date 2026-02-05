@@ -4,7 +4,7 @@ import base64
 import hashlib
 import logging
 
-from indexer.core.database import Action, Trace
+from indexer.core.database import Action, Trace, ROLE_SENDER_RECEIVER
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import (
@@ -79,6 +79,7 @@ from indexer.events.blocks.layerzero import (
     LayerZeroSendTokensBlock,
 )
 from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
+from indexer.events.blocks.utils.role_assignment import assign_roles
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,7 @@ def _base_block_to_action(block: Block, trace_id: str) -> Action:
         value_extra_currencies=dict(),
     )
     action.accounts = accounts
+    action.account_roles = {}
     return action
 
 
@@ -1273,6 +1275,7 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
     action.tx_hashes = list(extended_tx_hashes)
 
     action.accounts = list(set(a for a in action.accounts if a is not None))
+    action.account_roles = assign_roles(action)
     return action
 
 
@@ -1375,4 +1378,5 @@ def create_unknown_action(trace: Trace) -> Action:
         trace_mc_seqno_end=trace.mc_seqno_end
     )
     action.accounts = list(set([n.account for n in trace.transactions]))
+    action.account_roles = {acc: ROLE_SENDER_RECEIVER for acc in action.accounts}
     return action

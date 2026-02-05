@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 MASTERCHAIN_INDEX = -1
 MASTERCHAIN_SHARD = -9223372036854775808
 
+ROLE_SENDER = 1
+ROLE_RECEIVER = 2
+ROLE_SENDER_RECEIVER = 3
+
 settings = Settings()
 
 
@@ -223,6 +227,16 @@ class ActionAccount(Base):
     action_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     action_end_utime: int = Column(Numeric)
+    role: int = Column(Integer, nullable=True)
+
+
+class TraceAccount(Base):
+    __tablename__ = 'trace_accounts'
+    trace_id: str = Column(String, primary_key=True)
+    account: str = Column(String(70), primary_key=True)
+    trace_end_lt: int = Column(Numeric, primary_key=True)
+    trace_end_utime: int = Column(Integer, nullable=True)
+    role: int = Column(Integer, nullable=True)
 
 class Action(Base):
     __tablename__ = 'actions'
@@ -503,6 +517,7 @@ class Action(Base):
     ancestor_type: list[str] = Column(ARRAY(String), default=[])
 
     accounts: list[str]
+    account_roles: dict[str, int]
 
     def __repr__(self):
         full_repr = ""
@@ -514,6 +529,7 @@ class Action(Base):
 
     def get_action_accounts(self):
         accounts = []
+        roles = getattr(self, 'account_roles', {}) or {}
         for account in self.accounts:
             accounts.append(ActionAccount(action_id=self.action_id,
                                           trace_id=self.trace_id,
@@ -521,7 +537,8 @@ class Action(Base):
                                           action_end_lt=self.end_lt,
                                           trace_end_lt=self.trace_end_lt,
                                           trace_end_utime=self.trace_end_utime,
-                                          action_end_utime=self.end_utime))
+                                          action_end_utime=self.end_utime,
+                                          role=roles.get(account)))
         return accounts
 
 
