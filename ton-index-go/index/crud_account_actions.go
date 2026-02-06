@@ -218,26 +218,25 @@ func (db *DbClient) QueryAccountActions(
 		}
 	}
 
-	// Step 3: group actions by trace_id, preserving trace ordering
-	traceOrder := make([]string, len(traceInfos))
-	for i, ti := range traceInfos {
-		traceOrder[i] = ti.traceId
-	}
-
+	// Step 3: group actions by trace_id, preserving order from query results
+	traceOrder := []string{}
+	traceOrderSeen := map[string]bool{}
 	actionsByTrace := map[string][]Action{}
 	for _, action := range actions {
 		tid := string(*action.TraceId)
+		if !traceOrderSeen[tid] {
+			traceOrder = append(traceOrder, tid)
+			traceOrderSeen[tid] = true
+		}
 		actionsByTrace[tid] = append(actionsByTrace[tid], action)
 	}
 
 	traceActions := make([]TraceActions, 0, len(traceOrder))
 	for _, tid := range traceOrder {
-		if acts, ok := actionsByTrace[tid]; ok {
-			traceActions = append(traceActions, TraceActions{
-				TraceId: HashType(tid),
-				Actions: acts,
-			})
-		}
+		traceActions = append(traceActions, TraceActions{
+			TraceId: HashType(tid),
+			Actions: actionsByTrace[tid],
+		})
 	}
 
 	// Build address book + metadata
