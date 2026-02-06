@@ -69,7 +69,7 @@ func (db *DbClient) QueryAccountActions(
 		lateral_filters = append(lateral_filters, fmt.Sprintf("trace_end_lt >= %d", *v))
 	}
 	if v := utime_req.EndUtime; v != nil {
-		lateral_filters = append(lateral_filters, fmt.Sprintf("trace_end_utime <= %d", *v))
+		lateral_filters = append(lateral_filters, fmt.Sprintf("trace_end_utime < %d", *v))
 	}
 	if v := utime_req.StartUtime; v != nil {
 		lateral_filters = append(lateral_filters, fmt.Sprintf("trace_end_utime >= %d", *v))
