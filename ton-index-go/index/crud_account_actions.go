@@ -4,21 +4,30 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 )
 
-func roleToValues(role *RoleType) string {
+func roleToIds(role *RoleType) []int {
 	if role == nil {
-		return "(VALUES (1), (2), (3))"
+		return []int{1, 2, 3}
 	}
 	switch *role {
 	case RoleSender:
-		return "(VALUES (1), (3))"
+		return []int{1, 3}
 	case RoleReceiver:
-		return "(VALUES (2), (3))"
+		return []int{2, 3}
 	default:
-		return "(VALUES (1), (2), (3))"
+		return []int{1, 2, 3}
 	}
+}
+func roleToValues(role *RoleType) string {
+	roleIds := roleToIds(role)
+	var roles []string = make([]string, 0)
+	for _, id := range roleIds {
+		roles = append(roles, "("+strconv.Itoa(id)+")")
+	}
+	return "(VALUES " + strings.Join(roles, ", ") + ")"
 }
 
 func (db *DbClient) QueryAccountActions(
@@ -122,16 +131,27 @@ func (db *DbClient) QueryAccountActions(
 		return []TraceActions{}, AddressBook{}, Metadata{}, nil
 	}
 
-	// Step 2: get actions for those trace_ids
+	// Step 2: get actions for those trace_ids, filtered by role via action_accounts
 	traceIdValues := make([]string, len(traceInfos))
 	for i, ti := range traceInfos {
 		traceIdValues[i] = fmt.Sprintf("'%s'", ti.traceId)
 	}
 	traceIdIn := strings.Join(traceIdValues, ", ")
 
+	roleIds := roleToIds(req.Role)
+	roleStrs := make([]string, len(roleIds))
+	for i, id := range roleIds {
+		roleStrs[i] = strconv.Itoa(id)
+	}
+	roleIn := strings.Join(roleStrs, ", ")
+
+	from_query := `action_accounts as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id`
+
 	filter_list := []string{
-		fmt.Sprintf("A.trace_id IN (%s)", traceIdIn),
-		"A.end_lt IS NOT NULL",
+		fmt.Sprintf("AA.trace_id IN (%s)", traceIdIn),
+		fmt.Sprintf("AA.account = '%s'::tonaddr", req.AccountAddress),
+		fmt.Sprintf("AA.role in (%s)", roleIn),
+		"A.end_lt is not NULL",
 		"NOT(A.ancestor_type && $1::varchar[])",
 	}
 
@@ -147,16 +167,16 @@ func (db *DbClient) QueryAccountActions(
 	if v := req.ExcludeActionTypes; len(v) > 0 {
 		filter_str := filterByArray("A.type", v)
 		if len(filter_str) > 0 {
-			filter_list = append(filter_list, fmt.Sprintf("NOT (%s)", filter_str))
+			filter_list = append(filter_list, fmt.Sprintf("not (%s)", filter_str))
 		}
 	}
 
-	actionsQuery := fmt.Sprintf(
-		`SELECT %s FROM actions AS A WHERE %s ORDER BY A.trace_end_lt %s, A.trace_id %s, A.end_lt %s, A.action_id %s`,
-		actionsColumnQuery,
-		strings.Join(filter_list, " AND "),
-		sort_order, sort_order, sort_order, sort_order,
-	)
+	clmn_query := fmt.Sprintf("distinct on (AA.trace_end_lt, AA.trace_id, AA.action_end_lt, AA.action_id) %s", actionsColumnQuery)
+	orderby_query := fmt.Sprintf(" order by AA.trace_end_lt %s, AA.trace_id %s, AA.action_end_lt %s, AA.action_id %s",
+		sort_order, sort_order, sort_order, sort_order)
+	filter_query := " where " + strings.Join(filter_list, " and ")
+
+	actionsQuery := `select ` + clmn_query + ` from ` + from_query + filter_query + orderby_query
 
 	if settings.DebugRequest {
 		log.Println("Debug actions query:", actionsQuery)
