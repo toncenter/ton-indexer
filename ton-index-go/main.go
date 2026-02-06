@@ -1358,6 +1358,53 @@ func GetActions(c *fiber.Ctx) error {
 	return c.Status(200).JSON(resp)
 }
 
+func GetAccountActions(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	req := index.AccountActionsRequest{}
+	lim_req := index.LimitRequest{}
+	utime_req := index.UtimeRequest{}
+	lt_req := index.LtRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&utime_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lt_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(req.AccountAddress) == 0 {
+		return index.IndexError{Code: 422, Message: "account is required"}
+	}
+
+	if req.Role != nil && *req.Role != index.RoleSender && *req.Role != index.RoleReceiver {
+		return index.IndexError{Code: 422, Message: "role must be 'sender' or 'receiver'"}
+	}
+
+	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
+		req.SupportedActionTypes = []string{value_str}
+	}
+
+	traceActions, book, metadata, err := pool.QueryAccountActions(
+		req, utime_req, lt_req, lim_req, request_settings)
+	if err != nil {
+		return err
+	}
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+
+	resp := index.AccountActionsResponse{
+		TraceActions: traceActions,
+		AddressBook:  book,
+		Metadata:     metadata,
+	}
+	return c.Status(200).JSON(resp)
+}
+
 // @summary Get Pending Actions
 // @description Get actions by specified filter.
 // @id api_v3_get_pending_actions
@@ -2246,6 +2293,7 @@ func main() {
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)
+	app.Get("/api/v3/actions/byAccount", GetAccountActions)
 	app.Get("/api/v3/traces", GetTraces)
 	app.Get("/api/v3/events", GetTraces)
 

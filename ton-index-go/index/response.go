@@ -95,6 +95,17 @@ type ActionsResponse struct {
 	Metadata    Metadata    `json:"metadata"`
 } // @name ActionsResponse
 
+type TraceActions struct {
+	TraceId HashType `json:"trace_id"`
+	Actions []Action `json:"actions"`
+} // @name TraceActions
+
+type AccountActionsResponse struct {
+	TraceActions []TraceActions `json:"trace_actions"`
+	AddressBook  AddressBook   `json:"address_book"`
+	Metadata     Metadata      `json:"metadata"`
+} // @name AccountActionsResponse
+
 type DNSRecordsResponse struct {
 	Records     []DNSRecord `json:"records"`
 	AddressBook AddressBook `json:"address_book"`
