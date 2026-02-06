@@ -1368,18 +1368,11 @@ func GetActions(c *fiber.Ctx) error {
 // @failure		400	{object}	index.RequestError
 // @param account query string true "Account address. Can be sent in hex, base64 or base64url form."
 // @param role query string false "Filter by account role in the trace." Enums(sender, receiver)
-// @param start_utime query int32 false "Query actions for traces with `trace_end_utime >= start_utime`." minimum(0)
 // @param end_utime query int32 false "Query actions for traces with `trace_end_utime <= end_utime`." minimum(0)
-// @param start_lt query int64 false "Query actions for traces with `trace_end_lt >= start_lt`." minimum(0)
 // @param end_lt query int64 false "Query actions for traces with `trace_end_lt < end_lt`." minimum(0)
-// @param action_type query []string false "Include action types." Enums(call_contract, contract_deploy, ton_transfer, auction_bid, change_dns, dex_deposit_liquidity, dex_withdraw_liquidity, delete_dns, renew_dns, election_deposit, election_recover, jetton_burn, jetton_swap, jetton_transfer, jetton_mint, nft_mint, tick_tock, stake_deposit, stake_withdrawal, stake_withdrawal_request, subscribe, unsubscribe)
-// @param exclude_action_type query []string false "Exclude action types." Enums(call_contract, contract_deploy, ton_transfer, auction_bid, change_dns, dex_deposit_liquidity, dex_withdraw_liquidity, delete_dns, renew_dns, election_deposit, election_recover, jetton_burn, jetton_swap, jetton_transfer, jetton_mint, nft_mint, tick_tock, stake_deposit, stake_withdrawal, stake_withdrawal_request, subscribe, unsubscribe)
 // @param supported_action_types query []string false "Supported action types"
-// @param include_accounts query bool false "Include accounts array for each action in response." default(false)
-// @param include_transactions query bool false "Include `transactions_full` array with detailed transaction data for each action in response." default(false)
-// @param limit query int32 false "Limit number of traces returned. Use with *end_lt* to paginate." minimum(1) maximum(1000) default(10)
-// @param offset query int32 false "Skip first N traces." minimum(0) default(0)
-// @param sort query string false "Sort traces by lt." Enums(asc, desc) default(desc)
+// @param limit query int32 false "Limit number of traces returned. Use with *end_lt* or *end_utime* to paginate." minimum(1) maximum(1000) default(10)
+// @param sort query string false "Sort traces by lt/utime." Enums(asc, desc) default(desc)
 // @router			/api/v3/actions/byAccount [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
