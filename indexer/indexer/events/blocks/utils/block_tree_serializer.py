@@ -1016,6 +1016,185 @@ def _fill_coffee_staking_claim_rewards(block: CoffeeStakingClaimRewardsBlock, ac
     action.amount = block.data.amount.value
 
 
+def _fill_cocoon_worker_payout_action(block, action: Action):
+    # import here to avoid circular dependency
+    from indexer.events.blocks.cocoon import CocoonWorkerPayoutBlock
+
+    if not isinstance(block, CocoonWorkerPayoutBlock):
+        return
+
+    action.source = _addr(block.data.proxy_contract)
+    action.source_secondary = _addr(block.data.worker_contract)
+    action.destination = _addr(block.data.worker_owner)
+    action.amount = block.data.payout_amount.value
+    action.cocoon_worker_payout_data = {
+        'payout_type': block.data.payout_type,
+        'query_id': block.data.query_id,
+        'new_tokens': block.data.new_tokens,
+        'worker_state': block.data.worker_state,
+        'worker_tokens': block.data.worker_tokens,
+    }
+
+
+def _fill_cocoon_proxy_payout_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonProxyPayoutBlock
+
+    if not isinstance(block, CocoonProxyPayoutBlock):
+        return
+
+    action.source = _addr(block.data.proxy_contract)
+    action.destination = _addr(block.data.proxy_owner)
+    action.destination_secondary = _addr(block.data.excesses_recipient)
+    action.cocoon_proxy_payout_data = {
+        'query_id': block.data.query_id,
+    }
+
+
+def _fill_cocoon_proxy_charge_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonProxyChargeBlock
+
+    if not isinstance(block, CocoonProxyChargeBlock):
+        return
+
+    action.source = _addr(block.data.proxy_contract)
+    action.destination = _addr(block.data.client_contract)
+    action.amount = 0  # no actual transfer
+    action.cocoon_proxy_charge_data = {
+        'query_id': block.data.query_id,
+        'new_tokens_used': block.data.new_tokens_used,
+        'expected_address': block.data.expected_address,
+    }
+
+
+def _fill_cocoon_client_top_up_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonClientTopUpBlock
+
+    if not isinstance(block, CocoonClientTopUpBlock):
+        return
+
+    action.source = _addr(block.data.sender)
+    action.destination = _addr(block.data.client_contract)
+    action.destination_secondary = _addr(block.data.proxy_contract)
+    action.amount = block.data.top_up_amount.value
+    action.cocoon_client_top_up_data = {
+        'query_id': block.data.query_id,
+    }
+
+
+def _fill_cocoon_register_proxy_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonRegisterProxyBlock
+
+    if not isinstance(block, CocoonRegisterProxyBlock):
+        return
+
+    action.destination = _addr(block.data.root_contract)
+    action.cocoon_register_proxy_data = {
+        'query_id': block.data.query_id,
+    }
+
+
+def _fill_cocoon_unregister_proxy_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonUnregisterProxyBlock
+
+    if not isinstance(block, CocoonUnregisterProxyBlock):
+        return
+
+    action.destination = _addr(block.data.root_contract)
+    action.cocoon_unregister_proxy_data = {
+        'query_id': block.data.query_id,
+        'seqno': block.data.seqno,
+    }
+
+
+def _fill_cocoon_client_register_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonClientRegisterBlock
+
+    if not isinstance(block, CocoonClientRegisterBlock):
+        return
+
+    action.source = _addr(block.data.owner)
+    action.destination = _addr(block.data.client_contract)
+    action.cocoon_client_register_data = {
+        'query_id': block.data.query_id,
+        'nonce': block.data.nonce,
+    }
+
+
+def _fill_cocoon_client_change_secret_hash_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonClientChangeSecretHashBlock
+
+    if not isinstance(block, CocoonClientChangeSecretHashBlock):
+        return
+
+    action.source = _addr(block.data.owner)
+    action.destination = _addr(block.data.client_contract)
+    action.cocoon_client_change_secret_hash_data = {
+        'query_id': block.data.query_id,
+        'new_secret_hash': hex(int(block.data.new_secret_hash))[2:],
+    }
+
+
+def _fill_cocoon_client_request_refund_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonClientRequestRefundBlock
+
+    if not isinstance(block, CocoonClientRequestRefundBlock):
+        return
+
+    action.source = _addr(block.data.owner)
+    action.destination = _addr(block.data.client_contract)
+    action.cocoon_client_request_refund_data = {
+        'query_id': block.data.query_id,
+        'via_wallet': block.data.via_wallet,
+    }
+
+
+def _fill_cocoon_grant_refund_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonGrantRefundBlock
+
+    if not isinstance(block, CocoonGrantRefundBlock):
+        return
+
+    action.source = _addr(block.data.proxy_contract)
+    action.source_secondary = _addr(block.data.client_contract)
+    action.destination = _addr(block.data.refund_recipient)
+    action.amount = block.data.payout_amount.value
+    action.cocoon_grant_refund_data = {
+        'query_id': block.data.query_id,
+        'new_tokens_used': block.data.new_tokens_used,
+        'expected_address': block.data.expected_address,
+    }
+
+
+def _fill_cocoon_client_increase_stake_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonClientIncreaseStakeBlock
+
+    if not isinstance(block, CocoonClientIncreaseStakeBlock):
+        return
+
+    action.source = _addr(block.data.owner)
+    action.destination = _addr(block.data.client_contract)
+    action.amount = block.data.new_stake.value
+    action.cocoon_client_increase_stake_data = {
+        'query_id': block.data.query_id,
+        'new_stake': block.data.new_stake.value,
+    }
+
+
+def _fill_cocoon_client_withdraw_action(block, action: Action):
+    from indexer.events.blocks.cocoon import CocoonClientWithdrawBlock
+
+    if not isinstance(block, CocoonClientWithdrawBlock):
+        return
+
+    action.source = _addr(block.data.owner)
+    action.destination = _addr(block.data.client_contract)
+    action.amount = block.data.withdraw_amount.value
+    action.cocoon_client_withdraw_data = {
+        'query_id': block.data.query_id,
+        'withdraw_amount': block.data.withdraw_amount.value,
+    }
+
+
 def _fill_layerzero_send_action(data: LayerZeroSendData, action: Action):
     # use `data` instead of `block`, because thus `_fill_layerzero_send_action`
     # may be easily called from `_fill_layerzero_send_tokens_action`
@@ -1242,6 +1421,30 @@ def block_to_action(block: Block, trace_id: str, trace: Trace | None = None) -> 
             _fill_coffee_staking_withdraw(block, action)
         case 'coffee_staking_claim_rewards':
             _fill_coffee_staking_claim_rewards(block, action)
+        case 'cocoon_worker_payout':
+            _fill_cocoon_worker_payout_action(block, action)
+        case 'cocoon_proxy_payout':
+            _fill_cocoon_proxy_payout_action(block, action)
+        case 'cocoon_proxy_charge':
+            _fill_cocoon_proxy_charge_action(block, action)
+        case 'cocoon_client_top_up':
+            _fill_cocoon_client_top_up_action(block, action)
+        case 'cocoon_register_proxy':
+            _fill_cocoon_register_proxy_action(block, action)
+        case 'cocoon_unregister_proxy':
+            _fill_cocoon_unregister_proxy_action(block, action)
+        case 'cocoon_client_register':
+            _fill_cocoon_client_register_action(block, action)
+        case 'cocoon_client_change_secret_hash':
+            _fill_cocoon_client_change_secret_hash_action(block, action)
+        case 'cocoon_client_request_refund':
+            _fill_cocoon_client_request_refund_action(block, action)
+        case 'cocoon_grant_refund':
+            _fill_cocoon_grant_refund_action(block, action)
+        case 'cocoon_client_increase_stake':
+            _fill_cocoon_client_increase_stake_action(block, action)
+        case 'cocoon_client_withdraw':
+            _fill_cocoon_client_withdraw_action(block, action)
         case 'nft_purchase' | 'dns_purchase':
             _fill_nft_purchase_action(block, action)
         case 'auction_outbid':

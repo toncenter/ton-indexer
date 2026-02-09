@@ -21,6 +21,20 @@ from indexer.events.blocks.auction import (
     DnsReleaseMatcher,
     UpdateSaleMatcher
 )
+from indexer.events.blocks.cocoon import (
+    CocoonClientChangeSecretHashMatcher,
+    CocoonClientIncreaseStakeMatcher,
+    CocoonClientRegisterMatcher,
+    CocoonClientRequestRefundMatcher,
+    CocoonClientTopUpMatcher,
+    CocoonClientWithdrawMatcher,
+    CocoonGrantRefundMatcher,
+    CocoonProxyChargeMatcher,
+    CocoonProxyPayoutMatcher,
+    CocoonRegisterProxyMatcher,
+    CocoonUnregisterProxyMatcher,
+    CocoonWorkerPayoutMatcher,
+)
 from indexer.events.blocks.basic_blocks import (
     CallContractBlock,
     ContractDeploy,
@@ -272,7 +286,19 @@ matchers = [
     LayerZeroSendTokensMatcher(),
     LayerZeroReceiveMatcher(),
     LayerZeroCommitPacketMatcher(),
-    LayerZeroDvnVerifyMatcher()
+    LayerZeroDvnVerifyMatcher(),
+    CocoonWorkerPayoutMatcher(),
+    CocoonProxyPayoutMatcher(),
+    CocoonProxyChargeMatcher(),
+    CocoonClientTopUpMatcher(),
+    CocoonRegisterProxyMatcher(),
+    CocoonUnregisterProxyMatcher(),
+    CocoonClientRegisterMatcher(),
+    CocoonClientChangeSecretHashMatcher(),
+    CocoonClientRequestRefundMatcher(),
+    CocoonGrantRefundMatcher(),
+    CocoonClientIncreaseStakeMatcher(),
+    CocoonClientWithdrawMatcher(),
 ]
 
 trace_post_processors = [
