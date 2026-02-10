@@ -3,6 +3,8 @@ package index
 import (
 	"encoding/json"
 	"fmt"
+
+	emulated "github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 )
 
 type ShardId int64                 // @name ShardId
@@ -277,31 +279,32 @@ type TransactionDescr struct {
 } // @name TransactionDescr
 
 type Transaction struct {
-	Account                  AccountAddress    `json:"account"`
-	Hash                     HashType          `json:"hash"`
-	Lt                       int64             `json:"lt,string"`
-	Now                      int32             `json:"now"`
-	Workchain                int32             `json:"-"`
-	Shard                    ShardId           `json:"-"`
-	Seqno                    int32             `json:"-"`
-	McSeqno                  int32             `json:"mc_block_seqno"`
-	TraceId                  *HashType         `json:"trace_id,omitempty"`
-	TraceExternalHash        *HashType         `json:"trace_external_hash,omitempty"`
-	PrevTransHash            HashType          `json:"prev_trans_hash"`
-	PrevTransLt              int64             `json:"prev_trans_lt,string"`
-	OrigStatus               string            `json:"orig_status"`
-	EndStatus                string            `json:"end_status"`
-	TotalFees                int64             `json:"total_fees,string"`
-	TotalFeesExtraCurrencies map[string]string `json:"total_fees_extra_currencies"`
-	AccountStateHashBefore   HashType          `json:"-"`
-	AccountStateHashAfter    HashType          `json:"-"`
-	Descr                    TransactionDescr  `json:"description"`
-	BlockRef                 BlockId           `json:"block_ref"`
-	InMsg                    *Message          `json:"in_msg"`
-	OutMsgs                  []*Message        `json:"out_msgs"`
-	AccountStateBefore       *AccountState     `json:"account_state_before"`
-	AccountStateAfter        *AccountState     `json:"account_state_after"`
-	Emulated                 bool              `json:"emulated"`
+	Account                  AccountAddress         `json:"account"`
+	Hash                     HashType               `json:"hash"`
+	Lt                       int64                  `json:"lt,string"`
+	Now                      int32                  `json:"now"`
+	Workchain                int32                  `json:"-"`
+	Shard                    ShardId                `json:"-"`
+	Seqno                    int32                  `json:"-"`
+	McSeqno                  int32                  `json:"mc_block_seqno"`
+	TraceId                  *HashType              `json:"trace_id,omitempty"`
+	TraceExternalHash        *HashType              `json:"trace_external_hash,omitempty"`
+	PrevTransHash            HashType               `json:"prev_trans_hash"`
+	PrevTransLt              int64                  `json:"prev_trans_lt,string"`
+	OrigStatus               string                 `json:"orig_status"`
+	EndStatus                string                 `json:"end_status"`
+	TotalFees                int64                  `json:"total_fees,string"`
+	TotalFeesExtraCurrencies map[string]string      `json:"total_fees_extra_currencies"`
+	AccountStateHashBefore   HashType               `json:"-"`
+	AccountStateHashAfter    HashType               `json:"-"`
+	Descr                    TransactionDescr       `json:"description"`
+	BlockRef                 BlockId                `json:"block_ref"`
+	InMsg                    *Message               `json:"in_msg"`
+	OutMsgs                  []*Message             `json:"out_msgs"`
+	AccountStateBefore       *AccountState          `json:"account_state_before"`
+	AccountStateAfter        *AccountState          `json:"account_state_after"`
+	Emulated                 bool                   `json:"emulated"`
+	Finality                 emulated.FinalityState `json:"finality"`
 } // @name Transaction
 
 // nfts
@@ -602,6 +605,7 @@ type RawAction struct {
 	StakingDataTokensBurnt                               *string
 	StakingDataTokensMinted                              *string
 	Success                                              *bool
+	Finality                                             emulated.FinalityState
 	TraceExternalHash                                    *HashType
 	TraceExternalHashNorm                                *HashType
 	ExtraCurrencies                                      map[string]string
@@ -1119,25 +1123,26 @@ type ActionDetailsWithdrawStakeRequest struct {
 }
 
 type Action struct {
-	TraceId               *HashType      `json:"trace_id"`
-	ActionId              HashType       `json:"action_id"`
-	StartLt               int64          `json:"start_lt,string"`
-	EndLt                 int64          `json:"end_lt,string"`
-	StartUtime            int64          `json:"start_utime"`
-	EndUtime              int64          `json:"end_utime"`
-	TraceEndLt            int64          `json:"trace_end_lt,string"`
-	TraceEndUtime         int64          `json:"trace_end_utime"`
-	TraceMcSeqnoEnd       int32          `json:"trace_mc_seqno_end"`
-	TxHashes              []HashType     `json:"transactions"`
-	Success               *bool          `json:"success"`
-	Type                  string         `json:"type"`
-	Details               interface{}    `json:"details"`
-	RawAction             *RawAction     `json:"raw_action,omitempty" swaggerignore:"true"`
-	TraceExternalHash     *HashType      `json:"trace_external_hash,omitempty"`
-	TraceExternalHashNorm *HashType      `json:"trace_external_hash_norm,omitempty"`
-	AncestorType          []string       `json:"-"`
-	Accounts              []string       `json:"accounts,omitempty"`
-	Transactions          []*Transaction `json:"transactions_full,omitempty"`
+	TraceId               *HashType              `json:"trace_id"`
+	ActionId              HashType               `json:"action_id"`
+	StartLt               int64                  `json:"start_lt,string"`
+	EndLt                 int64                  `json:"end_lt,string"`
+	StartUtime            int64                  `json:"start_utime"`
+	EndUtime              int64                  `json:"end_utime"`
+	TraceEndLt            int64                  `json:"trace_end_lt,string"`
+	TraceEndUtime         int64                  `json:"trace_end_utime"`
+	TraceMcSeqnoEnd       int32                  `json:"trace_mc_seqno_end"`
+	TxHashes              []HashType             `json:"transactions"`
+	Success               *bool                  `json:"success"`
+	Type                  string                 `json:"type"`
+	Details               interface{}            `json:"details"`
+	RawAction             *RawAction             `json:"raw_action,omitempty" swaggerignore:"true"`
+	TraceExternalHash     *HashType              `json:"trace_external_hash,omitempty"`
+	TraceExternalHashNorm *HashType              `json:"trace_external_hash_norm,omitempty"`
+	AncestorType          []string               `json:"-"`
+	Accounts              []string               `json:"accounts,omitempty"`
+	Transactions          []*Transaction         `json:"transactions_full,omitempty"`
+	Finality              emulated.FinalityState `json:"finality"`
 } // @name Action
 
 type TraceMeta struct {

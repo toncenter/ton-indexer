@@ -1,9 +1,12 @@
 package emulated
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 
 	"github.com/vmihailenco/msgpack/v5"
@@ -550,6 +553,7 @@ type Action struct {
 	Asset2Secondary                  *string                                    `msgpack:"asset2_secondary"`
 	Opcode                           *uint32                                    `msgpack:"opcode"`
 	Success                          bool                                       `msgpack:"success"`
+	Finality                         FinalityState                              `msgpack:"finality"`
 	TonTransferData                  *actionTonTransferDetails                  `msgpack:"ton_transfer_data"`
 	AncestorType                     []string                                   `msgpack:"ancestor_type"`
 	ParentActionId                   *string                                    `msgpack:"parent_action_id"`
@@ -606,13 +610,59 @@ type Trace struct {
 	Classified   bool
 	Actions      []Action
 }
+
+type FinalityState uint8
+
+const (
+	FinalityStatePending   FinalityState = 0
+	FinalityStateConfirmed FinalityState = 1
+	FinalityStateFinalized FinalityState = 2
+)
+
+func (fs FinalityState) String() string {
+	switch fs {
+	case FinalityStatePending:
+		return "pending"
+	case FinalityStateConfirmed:
+		return "confirmed"
+	case FinalityStateFinalized:
+		return "finalized"
+	default:
+		return "unknown_" + strconv.Itoa(int(fs))
+	}
+}
+
+// marshal and unmarshal FinalityState as string
+func (fs FinalityState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(fs.String())
+}
+
+func (fs *FinalityState) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "pending":
+		*fs = FinalityStatePending
+	case "confirmed":
+		*fs = FinalityStateConfirmed
+	case "finalized":
+		*fs = FinalityStateFinalized
+	default:
+		return fmt.Errorf("unknown finality state: %s", s)
+	}
+	return nil
+}
+
 type TraceNode struct {
-	Transaction  transaction `msgpack:"transaction"`
-	Emulated     bool        `msgpack:"emulated"`
-	BlockId      blockId     `msgpack:"block_id"`
-	McBlockSeqno uint32      `msgpack:"mc_block_seqno"`
-	TraceId      *string
-	Key          string
+	Transaction   transaction   `msgpack:"transaction"`
+	Emulated      bool          `msgpack:"emulated"`
+	BlockId       blockId       `msgpack:"block_id"`
+	McBlockSeqno  uint32        `msgpack:"mc_block_seqno"`
+	FinalityState FinalityState `msgpack:"finality"`
+	TraceId       *string
+	Key           string
 }
 
 type computePhaseVar struct {
@@ -738,6 +788,24 @@ func (h *hash) DecodeMsgpack(dec *msgpack.Decoder) error {
 	copy(h[:], bytes)
 	return nil
 }
+
+func decompressGzip(data []byte) ([]byte, error) {
+	if len(data) < 2 {
+		return data, nil // too short for gzip
+	}
+	// check if gzip, else return data unchanged
+	if data[0] == 0x1f && data[1] == 0x8b {
+		reader, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		defer reader.Close()
+		return io.ReadAll(reader)
+	} else {
+		return data, nil
+	}
+}
+
 func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 
 	queue := make([]string, 0)
@@ -793,16 +861,20 @@ func ConvertHSet(traceHash map[string]string, traceKey string) (Trace, error) {
 		}
 	}
 	if actionsBytes, exists := traceHash["actions"]; exists {
-		err := msgpack.Unmarshal([]byte(actionsBytes), &actions)
+		decompressed, err := decompressGzip([]byte(actionsBytes))
+		if err != nil {
+			return Trace{}, fmt.Errorf("failed to decompress actions: %w", err)
+		}
+		err = msgpack.Unmarshal(decompressed, &actions)
+		if err != nil {
+			return Trace{}, fmt.Errorf("failed to unmarshal actions: %w", err)
+		}
 		for i := range actions {
 			actions[i].TraceEndUtime = &endUtime
 			actions[i].TraceEndLt = &endLt
 			actions[i].TraceMcSeqnoEnd = &mcSeqnoEnd
 			actions[i].TraceExternalHash = rootNodeId
 			actions[i].TraceId = traceId
-		}
-		if err != nil {
-			return Trace{}, fmt.Errorf("failed to unmarshal actions: %w", err)
 		}
 	}
 	_, has_actions := traceHash["actions"]
@@ -880,6 +952,7 @@ func (n *TraceNode) GetTransactionRow() (TransactionRow, error) {
 		Credit:                   credit,
 		CreditExtraCurrencies:    map[string]string{},
 		Emulated:                 n.Emulated,
+		Finality:                 n.FinalityState,
 	}
 	if n.Transaction.Description.ComputePh.Type == 0 {
 		txRow.ComputeSkipped = new(bool)
@@ -1084,6 +1157,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		Asset2Secondary:       a.Asset2Secondary,
 		Opcode:                a.Opcode,
 		Success:               a.Success,
+		Finality:              a.Finality,
 		TraceExternalHash:     &a.TraceExternalHash,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		ParentActionId:        a.ParentActionId,

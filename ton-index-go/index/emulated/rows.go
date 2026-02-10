@@ -79,6 +79,7 @@ type TransactionRow struct {
 	SplitInfoThisAddr        *string
 	SplitInfoSiblingAddr     *string
 	Emulated                 bool
+	Finality                 FinalityState
 }
 
 type MessageRow struct {
@@ -245,6 +246,7 @@ type ActionRow struct {
 	StakingTokensBurnt                                   *string
 	StakingTokensMinted                                  *string
 	Success                                              bool
+	Finality                                             FinalityState
 	TraceExternalHash                                    *string
 	TraceExternalHashNorm                                *string
 	ExtraCurrencies                                      map[string]string
@@ -561,6 +563,7 @@ func (t *ActionRow) getAssigns() []assign {
 		assignStringPtr(t.StakingTokensBurnt),
 		assignStringPtr(t.StakingTokensMinted),
 		assignBool(t.Success),
+		assignInt(int8(t.Finality)),
 		assignStringPtr(t.TraceExternalHash),
 		assignStringPtr(t.TraceExternalHashNorm),
 		assignMap(t.ExtraCurrencies),
@@ -748,6 +751,7 @@ func (t *TransactionRow) getAssigns() []assign {
 		assignStringPtr(t.SplitInfoThisAddr),
 		assignStringPtr(t.SplitInfoSiblingAddr),
 		assignBool(t.Emulated),
+		assignInt(int8(t.Finality)),
 	}
 }
 func (t *TransactionRow) Scan(dest ...any) error {

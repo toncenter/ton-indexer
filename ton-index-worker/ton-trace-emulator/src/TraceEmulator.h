@@ -1,14 +1,22 @@
 #pragma once
 #include <any>
+#include <cstdint>
 #include <td/actor/actor.h>
 #include <emulator/transaction-emulator.h>
 #include "DbScanner.h"
 #include "EmulationContext.h"
+#include "Measurement.h"
 
 #include "smc-interfaces/InterfacesDetector.h"
 
 using TraceId = td::Bits256;
 
+
+enum class FinalityState : uint8_t {
+    Emulated = 0,  // tx was emulated but not confirmed onchain
+    Confirmed = 1, // block is signed but not yet finalized in masterchain
+    Finalized = 2  // tx was committed to shard account and the shard account was committed to masterchain
+};
 
 struct TraceNode {
     td::Bits256 node_id; // hash of cur tx in msg
@@ -19,7 +27,7 @@ struct TraceNode {
     ton::BlockSeqno mc_block_seqno;
     ton::BlockId block_id;
 
-    bool emulated;
+    FinalityState finality_state{FinalityState::Emulated};
 
     int depth() const {
         int res = 0;
@@ -30,9 +38,34 @@ struct TraceNode {
     }
 
     int transactions_count() const {
-        int res = transaction_root.not_null() ? 1 : 0;
+        // int res = transaction_root.not_null() ? 1 : 0;
+        int res = 1;
         for (const auto& child : children) {
             res += child->transactions_count();
+        }
+        return res;
+    }
+
+    int emulated_transactions_count() const {
+        int res = finality_state == FinalityState::Emulated ? 1 : 0;
+        for (const auto& child : children) {
+            res += child->emulated_transactions_count();
+        }
+        return res;
+    }
+
+    int confirmed_transactions_count() const {
+        int res = finality_state == FinalityState::Confirmed ? 1 : 0;
+        for (const auto& child : children) {
+            res += child->confirmed_transactions_count();
+        }
+        return res;
+    }
+
+    int finalized_transactions_count() const {
+        int res = finality_state == FinalityState::Finalized ? 1 : 0;
+        for (const auto& child : children) {
+            res += child->finalized_transactions_count();
         }
         return res;
     }
@@ -57,7 +90,7 @@ struct TraceNode {
     }
 
     std::unordered_set<block::StdAddress> get_addresses(bool only_committed) const {
-        if (only_committed && emulated) {
+        if (only_committed && finality_state == FinalityState::Emulated) {
             return {};
         }
         std::unordered_set<block::StdAddress> addresses;
@@ -150,10 +183,12 @@ private:
     std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>> emulator_actors_;
     std::mutex emulator_actors_mutex_;
     std::vector<std::unique_ptr<TraceNode>> result_{};
+
+    MeasurementPtr measurement_;
 public:
     ShardBlockEmulator(ton::BlockId block_id, EmulationContext& context, std::vector<td::Ref<vm::Cell>> in_msgs,
-                    td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise)
-        : block_id_(block_id), context_(context), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)) {
+                    td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise, const MeasurementPtr& measurement)
+        : block_id_(block_id), context_(context), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)), measurement_(measurement) {
     }
 
     void start_up() override;
@@ -170,7 +205,6 @@ struct ShardIdHash {
 };
 
 class MasterchainBlockEmulator: public td::actor::Actor {
-private:
     std::shared_ptr<emulator::TransactionEmulator> emulator_;
     EmulationContext& context_;
     std::vector<td::Ref<vm::Cell>> in_msgs_;
@@ -180,10 +214,13 @@ private:
     std::unordered_map<td::Bits256, size_t> input_index_;
     std::unordered_map<block::ShardId, std::vector<std::unique_ptr<TraceNode>>, ShardIdHash> shard_results_;
 
+    MeasurementPtr measurement_;
+
 public:
     MasterchainBlockEmulator(EmulationContext& context, std::vector<td::Ref<vm::Cell>> in_msgs,
-                            td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise)
-        : context_(context), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)) {
+                            td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise,
+                            const MeasurementPtr& measurement)
+        : context_(context), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)), measurement_(measurement) {
     }
 
     void start_up() override;
@@ -203,14 +240,14 @@ private:
     bool ignore_chksig_;
     td::Promise<Trace> promise_;
     td::Bits256 rand_seed_;
+    MeasurementPtr measurement_;
 
     std::unique_ptr<EmulationContext> context_;
 
     td::Timer timer_{false};
 public:
-    TraceEmulator(MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise);
+    TraceEmulator(MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise, const MeasurementPtr& measurement);
 
     void start_up() override;
     void finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> root_r);
 };
-
