@@ -169,7 +169,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		(A.staking_data).tokens_burnt,
 		(A.staking_data).tokens_minted,
 		A.success,
-		3 as finality,
+		2 as finality,
 		A.trace_external_hash,
 		A.trace_external_hash_norm,
 		A.value_extra_currencies,
