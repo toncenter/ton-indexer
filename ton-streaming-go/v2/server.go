@@ -1428,10 +1428,11 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	for _, aa := range actionsAddresses {
 		allAddresses = append(allAddresses, aa...)
 	}
-	// For now, we emit "pending" actions and optionally a "finalized" snapshot.
+	// Fetch address_book/metadata only if at least one eligible client needs it,
+	// and only if that client will receive this event with traceFinality.
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
 		[]EventType{EventActions},
-		emulated.FinalityStatePending,
+		traceFinality,
 		allAddresses,
 	)
 	if shouldFetchAddressBook || shouldFetchMetadata {
