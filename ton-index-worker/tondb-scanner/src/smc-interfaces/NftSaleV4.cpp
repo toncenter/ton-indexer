@@ -108,7 +108,6 @@ void GetGemsNftFixPriceSaleV4::start_up() {
           stop();
           return;
         }
-        auto bd = vm::CellBuilder().append_cellslice(value_cs.write()).finalize();
         auto price = block::tlb::t_VarUInteger_16.as_integer_skip(value_cs.write());
         if (price.not_null()) {
           std::ostringstream addr_stream;

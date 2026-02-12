@@ -40,7 +40,13 @@ void TelemintContract::start_up()
   auto cell_slice = token_name_slice.get();
   tlb::SnakeString str;
   vm::CellSlice clone = cell_slice->clone();
-  data.token_name = str.load_snake_string(clone).move_as_ok();
+  auto token_name_result = str.load_snake_string(clone);
+  if (token_name_result.is_error()) {
+    promise_.set_error(token_name_result.move_as_error_prefix("load_snake_string failed: "));
+    stop();
+    return;
+  }
+  data.token_name = token_name_result.move_as_ok();
 
   // if (!tlb::csr_unpack(token_name_slice, str)) {
   //   LOG(INFO) << "Unable to parse token";

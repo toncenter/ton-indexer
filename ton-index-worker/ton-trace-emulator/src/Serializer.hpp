@@ -665,7 +665,7 @@ struct GetGemsNftAuctionSchema {
   std::optional<block::StdAddress> jetton_wallet;
   std::optional<block::StdAddress> jetton_master;
   std::optional<bool> is_broken_state;
-  std::optional<td::Bits256> public_key;
+  std::optional<td::RefInt256> public_key;
 
   MSGPACK_DEFINE(address, end, end_time, mp_addr, nft_addr, nft_owner, last_bid, last_member, min_step, mp_fee_addr, mp_fee_factor, mp_fee_base, royalty_fee_addr, royalty_fee_factor, royalty_fee_base, max_bid, min_bid, created_at, last_bid_at, is_canceled, activated, step_time, last_query_id, jetton_wallet, jetton_master, is_broken_state, public_key);
 };
