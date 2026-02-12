@@ -22,7 +22,7 @@ func (db *DbClient) QueryActionsV2(
 	act_req.SupportedActionTypes = ExpandActionTypeShortcuts(act_req.SupportedActionTypes)
 	query, args, err := buildActionsQueryV2(act_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
-		log.Println("Debug query:", query)
+		log.Println("Debug query:", query, "Args:", args)
 	}
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
@@ -382,9 +382,8 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		}
 	}
 	if v := act_req.McSeqno; v != nil {
-		filter_list = append(filter_list, `E.state = 'complete'`)
-		filter_list = append(filter_list, fmt.Sprintf("E.mc_seqno_end = %d", *v))
-		from_query = `actions as A join traces as E on A.trace_id = E.trace_id`
+		filter_list = append(filter_list, fmt.Sprintf("A.trace_mc_seqno_end = %d", *v))
+		from_query = `actions as A`
 		clmn_query = clmn_query_default
 	}
 	if v := act_req.ActionId; v != nil {
