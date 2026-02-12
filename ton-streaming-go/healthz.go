@@ -16,7 +16,7 @@ const (
 	healthKeyTTLTracker      = "health:ton-trace-ttl-tracker"
 
 	finalizedMaxAge    = 15 * time.Second
-	confirmedMaxAge    = 10 * time.Second
+	confirmedMaxAge    = 15 * time.Second
 	classifierMaxAge   = 15 * time.Second
 	ttlTrackerMaxAge   = 15 * time.Second
 	healthRedisTimeout = 2 * time.Second
