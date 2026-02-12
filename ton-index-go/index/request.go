@@ -18,6 +18,7 @@ type RequestSettings struct {
 	DebugRequest         bool
 	NoAddressBook        bool
 	NoMetadata           bool
+	UseCache             bool
 }
 
 // requests

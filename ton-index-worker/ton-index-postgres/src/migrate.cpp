@@ -985,7 +985,7 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
         "FOR EACH ROW EXECUTE FUNCTION update_nft_real_owner();"
     );
 
-    query += "alter table address_metadata add reindex_allowed boolean default true not null;\n";
+    query += "alter table address_metadata add column if not exists reindex_allowed boolean default true not null;\n";
 
     query += set_version_query({1, 2, 4});
     if (dry_run) {
@@ -1004,8 +1004,41 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.4 completed successfully.";
 }
 
-void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
-  LOG(INFO) << "Running migrations to version 1.2.5";
+void run_1_2_6_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.6";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+
+    exec_query("create type cocoon_worker_payout_details as (payout_type varchar, query_id numeric, new_tokens numeric, worker_state integer, worker_tokens numeric);");
+    exec_query("create type cocoon_proxy_payout_details as (query_id numeric);");
+    exec_query("create type cocoon_proxy_charge_details as (query_id numeric, new_tokens_used numeric, expected_address varchar);");
+    exec_query("create type cocoon_client_top_up_details as (query_id numeric);");
+    exec_query("create type cocoon_register_proxy_details as (query_id numeric);");
+    exec_query("create type cocoon_unregister_proxy_details as (query_id numeric, seqno integer);");
+    exec_query("create type cocoon_client_register_details as (query_id numeric, nonce numeric);");
+    exec_query("create type cocoon_client_change_secret_hash_details as (query_id numeric, new_secret_hash varchar);");
+    exec_query("create type cocoon_client_request_refund_details as (query_id numeric, via_wallet boolean);");
+    exec_query("create type cocoon_grant_refund_details as (query_id numeric, new_tokens_used numeric, expected_address varchar);");
+    exec_query("create type cocoon_client_increase_stake_details as (query_id numeric, new_stake numeric);");
+    exec_query("create type cocoon_client_withdraw_details as (query_id numeric, withdraw_amount numeric);");
+  }
 
   LOG(INFO) << "Updating tables...";
   try {
@@ -1014,50 +1047,25 @@ void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
 
     std::string query = "";
 
-    query += (
-      "create table if not exists telemint_nft_items ("
-      "id                   bigserial not null, "
-      "address              tonaddr not null primary key, "
-      "token_name           varchar, "
-      "bidder_address       tonaddr, "
-      "bid                  numeric, "
-      "bid_ts               integer, "
-      "min_bid              numeric, "
-      "end_time             integer, "
-      "beneficiary_address  tonaddr, "
-      "initial_min_bid      numeric, "
-      "max_bid              numeric, "
-      "min_bid_step         numeric, "
-      "min_extend_time      integer, "
-      "duration             integer, "
-      "royalty_numerator    integer, "
-      "royalty_denominator  integer, "
-      "royalty_destination  tonaddr, "
-      "last_transaction_lt  bigint, "
-      "code_hash            tonhash, "
-      "data_hash            tonhash);\n"
-    );
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_worker_payout_data cocoon_worker_payout_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_proxy_payout_data cocoon_proxy_payout_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_proxy_charge_data cocoon_proxy_charge_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_top_up_data cocoon_client_top_up_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_register_proxy_data cocoon_register_proxy_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_unregister_proxy_data cocoon_unregister_proxy_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_register_data cocoon_client_register_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_change_secret_hash_data cocoon_client_change_secret_hash_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_request_refund_data cocoon_client_request_refund_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_grant_refund_data cocoon_grant_refund_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_increase_stake_data cocoon_client_increase_stake_details;\n";
+    query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_withdraw_data cocoon_client_withdraw_details;\n";
 
-    query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_at numeric;\n";
-    query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_query_id bigint;\n";
-    query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS jetton_price_dict jsonb;\n";
-
-    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS activated boolean;\n";
-    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS step_time bigint;\n";
-    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS last_query_id bigint;\n";
-    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS jetton_wallet tonaddr;\n";
-    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS jetton_master tonaddr;\n";
-    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS is_broken_state boolean;\n";
-    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS public_key varchar;\n";
-
-    query += set_version_query({1, 2, 5});
-
+    query += set_version_query({1, 2, 6});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
 
-    LOG(DEBUG) << query;
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception &e) {
@@ -1065,7 +1073,7 @@ void run_1_2_5_migrations(const std::string& connection_string, bool dry_run) {
     std::exit(1);
   }
 
-  LOG(INFO) << "Migration to version 1.2.5 completed successfully.";
+  LOG(INFO) << "Migration to version 1.2.6 completed successfully.";
 }
 
 void create_indexes(std::string connection_string, bool dry_run) {
@@ -1268,15 +1276,15 @@ int main(int argc, char *argv[]) {
       run_1_2_3_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 3};
     }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 4})) {
+    if (migration_needed(current_version, Version{1, 2, 4})) {
       run_1_2_4_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 4};
     }
-
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 5})) {
-      run_1_2_5_migrations(pg_connection_string, dry_run);
-      current_version = Version{1, 2, 5};
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 6})) {
+      run_1_2_6_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 6};
     }
+
 
     // In future, more migrations will be added here
     // not every version must have migrations

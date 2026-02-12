@@ -1,6 +1,8 @@
 #include "RedisListener.h"
+
+#include "Measurement.h"
 #include "Statistics.h"
-  
+
 void ChannelListener::setup_subscriber() {
   sw::redis::ConnectionOptions connection_options = sw::redis::Uri(redis_dsn_).connection_options();
   connection_options.socket_timeout = std::chrono::milliseconds(100);
@@ -28,7 +30,7 @@ void ChannelListener::start_up() {
   setup_subscriber();
   alarm_timestamp() = td::Timestamp::now();
 }
- 
+
 void ChannelListener::alarm() {
   while (true) {
     try {
@@ -48,12 +50,12 @@ void ChannelListener::alarm() {
   alarm_timestamp() = td::Timestamp::now();
 }
 
-RedisListener::RedisListener(std::string redis_dsn, std::string channel_name, std::function<void(Trace, td::Promise<td::Unit>)> trace_processor)
+RedisListener::RedisListener(std::string redis_dsn, std::string channel_name, std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor)
         : redis_dsn_(redis_dsn), channel_name_(channel_name), trace_processor_(std::move(trace_processor)) {
 }
 
 void RedisListener::start_up() {
-  channel_listener_ = td::actor::create_actor<ChannelListener>("RedisChannelListener", redis_dsn_, channel_name_, 
+  channel_listener_ = td::actor::create_actor<ChannelListener>("RedisChannelListener", redis_dsn_, channel_name_,
     [SelfId = actor_id(this)](td::Ref<vm::Cell> msg_cell) {
       return td::actor::send_closure(SelfId, &RedisListener::on_new_message, msg_cell);
     }
@@ -75,16 +77,19 @@ void RedisListener::on_new_message(td::Ref<vm::Cell> msg_cell) {
   if (!inserted) {
     return;
   }
-
-  auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), msg_hash_norm](td::Result<Trace> R) mutable {
+  auto measurement = std::make_shared<Measurement>();
+  measurement->measure_step("redis_listener__got_message");
+  measurement->set_ext_msg_hash_norm(msg_hash_norm);
+  measurement->set_ext_msg_hash(msg_cell->get_hash().bits());
+  auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), measurement, msg_hash_norm](td::Result<Trace> R) mutable {
     if (R.is_error()) {
-      td::actor::send_closure(SelfId, &RedisListener::trace_error, msg_hash_norm, R.move_as_error());
+      td::actor::send_closure(SelfId, &RedisListener::trace_error, msg_hash_norm, R.move_as_error(), measurement);
     } else {
-      td::actor::send_closure(SelfId, &RedisListener::trace_received, R.move_as_ok());
+      td::actor::send_closure(SelfId, &RedisListener::trace_received, R.move_as_ok(), measurement);
     }
   });
 
-  td::actor::create_actor<TraceEmulator>("TraceEmu", mc_data_state_, msg_cell, false, std::move(P)).release();
+  td::actor::create_actor<TraceEmulator>("TraceEmu", mc_data_state_, msg_cell, false, std::move(P), measurement).release();
 
   g_statistics.record_count(EMULATE_SRC_REDIS);
 }
@@ -99,40 +104,46 @@ void RedisListener::set_mc_data_state(MasterchainBlockDataState mc_data_state) {
   known_ext_msgs_.clear();
 }
 
-void RedisListener::trace_error(td::Bits256 ext_in_msg_hash_norm, td::Status error) {
+void RedisListener::trace_error(td::Bits256 ext_in_msg_hash_norm, td::Status error, MeasurementPtr measurement) {
   LOG(ERROR) << "Failed to emulate trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << error;
+  measurement->measure_step("redis_listener__trace_error");
   known_ext_msgs_.erase(ext_in_msg_hash_norm);
 }
 
-void RedisListener::trace_received(Trace trace) {
-  LOG(INFO) << "Emulated trace from msg " << td::base64_encode(trace.ext_in_msg_hash_norm.as_slice()) << ": " 
+void RedisListener::trace_received(Trace trace, MeasurementPtr measurement) {
+  LOG(INFO) << "Emulated trace from msg " << td::base64_encode(trace.ext_in_msg_hash_norm.as_slice()) << ": "
         << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
+  measurement->measure_step("redis_listener__trace_received");
   if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm](td::Result<Trace> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), measurement, ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm](td::Result<Trace> R) {
       if (R.is_error()) {
-        td::actor::send_closure(SelfId, &RedisListener::trace_interfaces_error, ext_in_msg_hash_norm, R.move_as_error());
+        td::actor::send_closure(SelfId, &RedisListener::trace_interfaces_error, ext_in_msg_hash_norm, R.move_as_error(), measurement);
         return;
       }
-      td::actor::send_closure(SelfId, &RedisListener::finish_processing, R.move_as_ok());
+      td::actor::send_closure(SelfId, &RedisListener::finish_processing, R.move_as_ok(), measurement);
     });
 
-    td::actor::create_actor<TraceInterfaceDetector>("TraceInterfaceDetector", shard_states_, mc_data_state_.config_, std::move(trace), std::move(P)).release();
+    td::actor::create_actor<TraceInterfaceDetector>("TraceInterfaceDetector", shard_states_, mc_data_state_.config_, std::move(trace), std::move(P), measurement).release();
   } else {
-    finish_processing(std::move(trace));
+    finish_processing(std::move(trace), measurement);
   }
 }
 
-void RedisListener::trace_interfaces_error(td::Bits256 ext_in_msg_hash, td::Status error) {
-    LOG(ERROR) << "Failed to detect interfaces on trace from msg " << td::base64_encode(ext_in_msg_hash.as_slice()) << ": " << error;
+void RedisListener::trace_interfaces_error(td::Bits256 ext_in_msg_hash_norm, td::Status error, MeasurementPtr measurement) {
+  LOG(ERROR) << "Failed to detect interfaces on trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << error;
+  measurement->measure_step("redis_listener___trace_interfaces_error");
 }
 
-void RedisListener::finish_processing(Trace trace) {
-    auto P = td::PromiseCreator::lambda([ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm](td::Result<td::Unit> R) {
-      if (R.is_error()) {
-        LOG(ERROR) << "Failed to insert trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << R.move_as_error();
-        return;
-      }
-      LOG(DEBUG) << "Successfully inserted trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice());
-    });
-    trace_processor_(std::move(trace), std::move(P));
+void RedisListener::finish_processing(Trace trace, MeasurementPtr measurement) {
+  measurement->measure_step("redis_listener__finish_processing");
+
+  auto P = td::PromiseCreator::lambda([ext_in_msg_hash_norm = trace.ext_in_msg_hash_norm, measurement](td::Result<td::Unit> R) {
+    if (R.is_error()) {
+      LOG(ERROR) << "Failed to insert trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice()) << ": " << R.move_as_error();
+      return;
+    }
+    LOG(DEBUG) << "Successfully inserted trace from msg " << td::base64_encode(ext_in_msg_hash_norm.as_slice());
+    measurement->print_measurement();
+  });
+  trace_processor_(std::move(trace), std::move(P), measurement);
 }

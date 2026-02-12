@@ -16,7 +16,7 @@ import (
 )
 
 // utils
-func getAccountAddressFriendly(account string, code_hash *string, is_testnet bool) string {
+func GetAccountAddressFriendly(account string, code_hash *string, is_testnet bool) string {
 	addr, err := address.ParseRawAddr(strings.Trim(account, " "))
 	if err != nil {
 		return "addr_none"
@@ -150,7 +150,7 @@ func buildTransactionsQuery(
 	T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
 	T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 	T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
-	T.split_info_this_addr, T.split_info_sibling_addr, false as emulated from`
+	T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 3 as finality from`
 	from_query := ` transactions as T`
 	filter_list := []string{}
 	filter_query := ``
@@ -828,6 +828,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		(A.coffee_staking_withdraw_data).nft_index,
 		(A.coffee_staking_withdraw_data).points,
 		A.success,
+		2 as finality,
 		A.trace_external_hash,
 		A.trace_external_hash_norm,
 		A.value_extra_currencies`
@@ -1509,6 +1510,14 @@ func queryJettonWalletsTokenInfo(addr_list []string, conn *pgxpool.Conn, ctx con
 }
 
 func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
+	if settings.UseCache {
+		metadata, err := AddressInfoCacheClient.GetMetadata(addr_list)
+		if err != nil {
+			log.Println("Error getting metadata from cache: ", err)
+		} else {
+			return metadata, nil
+		}
+	}
 	token_info_map := map[string][]TokenInfo{}
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -1675,6 +1684,14 @@ func queryActionsAccountsImpl(actions []Action, conn *pgxpool.Conn) ([]Action, e
 }
 
 func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
+	if settings.UseCache {
+		book, err := AddressInfoCacheClient.GetAddressBook(addr_list)
+		if err != nil {
+			log.Println("Error getting address book from cache: ", err)
+		} else {
+			return book, nil
+		}
+	}
 	book := AddressBook{}
 	quote_addr_list := []string{}
 	for _, item := range addr_list {
@@ -1702,7 +1719,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 			var code_hash *string
 			var methods *[]uint32
 			if err := rows.Scan(&account, &code_hash, &methods); err == nil {
-				addr_str := getAccountAddressFriendly(account, code_hash, settings.IsTestnet)
+				addr_str := GetAccountAddressFriendly(account, code_hash, settings.IsTestnet)
 
 				// detect interfaces
 				var interfaces []string
@@ -1774,7 +1791,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		if rec, ok := book_tmp[account]; ok {
 			book[addr] = rec
 		} else {
-			addr_str := getAccountAddressFriendly(account, nil, settings.IsTestnet)
+			addr_str := GetAccountAddressFriendly(account, nil, settings.IsTestnet)
 			emptyInterfaces := []string{}
 			book[addr] = AddressBookRow{
 				UserFriendly: &addr_str,
@@ -2405,14 +2422,15 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.dex_deposit_liquidity_data).tick_upper,
 				(A.dex_deposit_liquidity_data).nft_index,
 				(A.dex_deposit_liquidity_data).nft_address,
-				(A.staking_data).provider,
-				(A.staking_data).ts_nft,
-				(A.staking_data).tokens_burnt,
-				(A.staking_data).tokens_minted,
-				A.success,
-				A.trace_external_hash,
-				A.trace_external_hash_norm,
-				A.value_extra_currencies,
+			(A.staking_data).provider,
+			(A.staking_data).ts_nft,
+			(A.staking_data).tokens_burnt,
+			(A.staking_data).tokens_minted,
+			A.success,
+			2 as finality,
+			A.trace_external_hash,
+			A.trace_external_hash_norm,
+			A.value_extra_currencies,
 				(A.multisig_create_order_data).query_id,
 				(A.multisig_create_order_data).order_seqno,
 				(A.multisig_create_order_data).is_created_by_signer,
@@ -2494,6 +2512,32 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				(A.layerzero_dvn_verify_data).proxy,
 				(A.layerzero_dvn_verify_data).uln,
 				(A.layerzero_dvn_verify_data).uln_connection,
+				(A.cocoon_worker_payout_data).payout_type,
+				(A.cocoon_worker_payout_data).query_id,
+				(A.cocoon_worker_payout_data).new_tokens,
+				(A.cocoon_worker_payout_data).worker_state,
+				(A.cocoon_worker_payout_data).worker_tokens,
+				(A.cocoon_proxy_payout_data).query_id,
+				(A.cocoon_proxy_charge_data).query_id,
+				(A.cocoon_proxy_charge_data).new_tokens_used,
+				(A.cocoon_proxy_charge_data).expected_address,
+				(A.cocoon_client_top_up_data).query_id,
+				(A.cocoon_register_proxy_data).query_id,
+				(A.cocoon_unregister_proxy_data).query_id,
+				(A.cocoon_unregister_proxy_data).seqno,
+				(A.cocoon_client_register_data).query_id,
+				(A.cocoon_client_register_data).nonce,
+				(A.cocoon_client_change_secret_hash_data).query_id,
+				(A.cocoon_client_change_secret_hash_data).new_secret_hash,
+				(A.cocoon_client_request_refund_data).query_id,
+				(A.cocoon_client_request_refund_data).via_wallet,
+				(A.cocoon_grant_refund_data).query_id,
+				(A.cocoon_grant_refund_data).new_tokens_used,
+				(A.cocoon_grant_refund_data).expected_address,
+				(A.cocoon_client_increase_stake_data).query_id,
+				(A.cocoon_client_increase_stake_data).new_stake,
+				(A.cocoon_client_withdraw_data).query_id,
+				(A.cocoon_client_withdraw_data).withdraw_amount,
 				A.ancestor_type,
 				ARRAY[]::text[] from actions as A where ` +
 				arrayFilter + typeFilter + `order by trace_id, start_lt, end_lt`
@@ -2531,7 +2575,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
 				T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 				T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
-				T.split_info_this_addr, T.split_info_sibling_addr, false as emulated from transactions as T where ` + filterByArray("T.trace_id", trace_id_list) + ` order by T.trace_id, T.lt, T.account`
+				T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 2 as finality from transactions as T where ` + filterByArray("T.trace_id", trace_id_list) + ` order by T.trace_id, T.lt, T.account`
 			txs, err := queryTransactionsImpl(query, conn, settings)
 			if err != nil {
 				return nil, nil, IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
@@ -2837,7 +2881,7 @@ func (db *DbClient) QueryAdjacentTransactions(
 		T.action_tot_actions, T.action_spec_actions, T.action_skipped_actions, T.action_msgs_created, T.action_action_list_hash, 
 		T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 		T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
-		T.split_info_this_addr, T.split_info_sibling_addr, false as emulated from transactions as T where hash in (%s) order by lt asc`, tx_hash_str)
+		T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 2 as finality from transactions as T where hash in (%s) order by lt asc`, tx_hash_str)
 	txs, err := queryTransactionsImpl(query, conn, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}

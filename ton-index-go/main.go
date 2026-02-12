@@ -38,6 +38,8 @@ type Settings struct {
 	Debug           bool
 	Request         index.RequestSettings
 	ImgProxyBaseUrl string
+	UseCache        bool
+	CacheServiceUrl string
 }
 
 func onlyOneOf(flags ...bool) bool {
@@ -56,7 +58,7 @@ var settings Settings
 var emulatedTracesRepository *emulated.EmulatedTracesRepository
 
 //	@title			TON Index (Go)
-//	@version		1.2.5
+//	@version		1.2.6
 //	@description	TON Index collects data from a full node to PostgreSQL database and provides convenient API to an indexed blockchain.
 //  @query.collection.format multi
 
@@ -1982,6 +1984,7 @@ func GetRequestSettings(c *fiber.Ctx, settings *Settings) index.RequestSettings 
 			request_settings.NoMetadata = value
 		}
 	}
+	request_settings.UseCache = settings.UseCache
 	return request_settings
 }
 
@@ -2168,10 +2171,17 @@ func main() {
 	flag.IntVar(&settings.Request.MaxLimit, "max-limit", 1000, "Maximum value for limit")
 	flag.IntVar(&settings.Request.MaxTraceTransactions, "max-trace-txs", 4000, "Maximum number of transactions in trace")
 	flag.IntVar(&settings.MaxThreads, "threads", 0, "Number of threads")
+	flag.StringVar(&settings.CacheServiceUrl, "cache-service-url", "", "Cache service url")
 	flag.StringVar(&redis_dsn, "redis", "", "Redis connection string")
 	flag.Parse()
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
-
+	if settings.CacheServiceUrl == "" {
+		settings.UseCache = false
+	} else {
+		log.Println("Metadata/AddressBook cache will be used")
+		settings.UseCache = true
+		index.InitCacheClient(settings.CacheServiceUrl)
+	}
 	if settings.MaxThreads > 0 {
 		runtime.GOMAXPROCS(settings.MaxThreads)
 	}
