@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -50,6 +51,43 @@ func onlyOneOf(flags ...bool) bool {
 		}
 	}
 	return res <= 1
+}
+
+func validateDirection(direction *string) error {
+	if direction == nil {
+		return nil
+	}
+	if *direction != "in" && *direction != "out" {
+		return index.IndexError{Code: 422, Message: "direction should be one of: in, out"}
+	}
+	return nil
+}
+
+var actionTypeFilterRegexp = regexp.MustCompile(`^[A-Za-z0-9_.]+$`)
+var nftIndexRegexp = regexp.MustCompile(`^[0-9]+$`)
+
+func validateActionTypeFilter(values []string, paramName string) error {
+	for _, value := range values {
+		if len(value) == 0 {
+			continue
+		}
+		if !actionTypeFilterRegexp.MatchString(value) {
+			return index.IndexError{Code: 422, Message: fmt.Sprintf("%s contains invalid characters", paramName)}
+		}
+	}
+	return nil
+}
+
+func validateNFTItemIndex(values []string) error {
+	for _, value := range values {
+		if len(value) == 0 {
+			continue
+		}
+		if !nftIndexRegexp.MatchString(value) {
+			return index.IndexError{Code: 422, Message: "index should contain digits only"}
+		}
+	}
+	return nil
 }
 
 var pool *index.DbClient
@@ -430,6 +468,9 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+	if err := validateDirection(msg_req.Direction); err != nil {
+		return err
+	}
 	if msg_req.BodyHash == nil && msg_req.MessageHash == nil && msg_req.Opcode == nil {
 		return index.IndexError{Code: 422, Message: "at least one of msg_hash, body_hash, opcode should be specified"}
 	}
@@ -503,6 +544,9 @@ func GetMessages(c *fiber.Ctx) error {
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateDirection(msg_req.Direction); err != nil {
+		return err
 	}
 
 	msgs, book, metadata, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, request_settings)
@@ -818,6 +862,9 @@ func GetNFTItems(c *fiber.Ctx) error {
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateNFTItemIndex(nft_req.Index); err != nil {
+		return err
 	}
 	if len(nft_req.CollectionAddress) > 1 && len(nft_req.OwnerAddress) != 1 {
 		return index.IndexError{Code: 422, Message: "exact one owner_address required for multiple collection_address"}
@@ -1341,6 +1388,12 @@ func GetActions(c *fiber.Ctx) error {
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateActionTypeFilter(act_req.IncludeActionTypes, "action_type"); err != nil {
+		return err
+	}
+	if err := validateActionTypeFilter(act_req.ExcludeActionTypes, "exclude_action_type"); err != nil {
+		return err
 	}
 
 	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
