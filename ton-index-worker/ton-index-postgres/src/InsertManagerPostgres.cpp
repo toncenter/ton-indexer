@@ -1652,6 +1652,10 @@ std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
   stream.setConflictDoUpdate({"address"}, "getgems_nft_auctions.last_transaction_lt < EXCLUDED.last_transaction_lt");
 
   for (const auto& [addr, nft_auction] : nft_auctions) {
+    std::optional<std::string> public_key;
+    if (nft_auction.public_key.has_value()) {
+      public_key = nft_auction.public_key.value()->to_hex_string();
+    }
     auto tuple = std::make_tuple(
       nft_auction.address,
       nft_auction.end,
@@ -1679,7 +1683,7 @@ std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
       nft_auction.jetton_wallet,
       nft_auction.jetton_master,
       nft_auction.is_broken_state,
-      nft_auction.public_key,
+      public_key,
       nft_auction.last_transaction_lt,
       nft_auction.code_hash,
       nft_auction.data_hash
