@@ -428,6 +428,34 @@ struct VestingData
   td::Bits256 data_hash;
 };
 
+struct TelemintData
+{
+  block::StdAddress address;
+  std::string token_name;
+  // Auction state
+  std::optional<block::StdAddress> bidder_address;
+  td::RefInt256 bid;
+  uint32_t bid_ts;
+  td::RefInt256 min_bid;
+  uint32_t end_time;
+  // Auction config
+  std::optional<block::StdAddress> beneficiary_address;
+  td::RefInt256 initial_min_bid;
+  td::RefInt256 max_bid;
+  td::RefInt256 min_bid_step;
+  uint32_t min_extend_time;
+  uint32_t duration;
+  // Royalty
+  int royalty_numerator;
+  int royalty_denominator;
+  block::StdAddress royalty_destination;
+  // Metadata
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
 struct JettonTransfer {
   td::Bits256 trace_id;
   td::Bits256 transaction_hash;
@@ -560,6 +588,13 @@ struct GetGemsNftAuctionData {
   uint32_t created_at;
   uint32_t last_bid_at;
   bool is_canceled;
+  std::optional<bool> activated;
+  std::optional<uint32_t> step_time;
+  std::optional<uint64_t> last_query_id;
+  std::optional<block::StdAddress> jetton_wallet;
+  std::optional<block::StdAddress> jetton_master;
+  std::optional<bool> is_broken_state;
+  std::optional<td::RefInt256> public_key;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
   td::Bits256 code_hash;
@@ -578,6 +613,27 @@ struct GetGemsNftFixPriceSaleData {
   td::RefInt256 marketplace_fee;
   block::StdAddress royalty_address;
   td::RefInt256 royalty_amount;
+  uint64_t last_transaction_lt;
+  uint32_t last_transaction_now;
+  td::Bits256 code_hash;
+  td::Bits256 data_hash;
+};
+
+struct GetGemsNftFixPriceSaleV4Data {
+  block::StdAddress address;
+  bool is_complete;
+  uint32_t created_at;
+  block::StdAddress marketplace_address;
+  block::StdAddress nft_address;
+  std::optional<block::StdAddress> nft_owner_address;
+  td::RefInt256 full_price;
+  block::StdAddress marketplace_fee_address;
+  td::RefInt256 marketplace_fee;
+  block::StdAddress royalty_address;
+  td::RefInt256 royalty_amount;
+  uint32_t sold_at;
+  uint64_t sold_query_id;
+  std::map<std::string, std::string> jetton_price_dict;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
   td::Bits256 code_hash;
@@ -658,10 +714,12 @@ using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
                                            NFTCollectionDataV2,
                                            NFTItemDataV2,
                                            GetGemsNftFixPriceSaleData,
+                                           GetGemsNftFixPriceSaleV4Data,
                                            GetGemsNftAuctionData,
                                            MultisigContractData,
                                            MultisigOrderData,
                                            VestingData,
+                                           TelemintData,
                                            DedustPoolData>;
 
 namespace std {

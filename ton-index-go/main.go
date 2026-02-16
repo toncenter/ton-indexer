@@ -951,6 +951,44 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+// @summary Get NFT Sales and Auctions
+// @description Get GetGems NFT sales and auctions by sale/auction contract addresses
+// @id api_v3_get_nft_sales
+// @tags nfts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.NFTSalesResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string true "Sale or auction contract address in any form. Max: 1000." collectionFormat(multi)
+// @router /api/v3/nft/sales [get]
+// @security APIKeyHeader
+// @security APIKeyQuery
+func GetNFTSales(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	var sales_req index.NFTSalesRequest
+
+	if err := c.QueryParser(&sales_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(sales_req.Address) == 0 {
+		return index.IndexError{Code: 422, Message: "at least 1 address required"}
+	}
+
+	if len(sales_req.Address) > 1000 {
+		return index.IndexError{Code: 422, Message: "maximum 1000 addresses allowed"}
+	}
+
+	sales, book, metadata, err := pool.QueryNFTSales(sales_req, request_settings)
+	if err != nil {
+		return err
+	}
+
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+	resp := index.NFTSalesResponse{Sales: sales, AddressBook: book, Metadata: metadata}
+	return c.JSON(resp)
+}
+
 // @summary Get Top Accounts By Balance
 // @description Get list of accounts sorted descending by balance.
 // @id api_v3_get_top_accounts_by_balance
@@ -2296,6 +2334,7 @@ func main() {
 	app.Get("/api/v3/nft/collections", GetNFTCollections)
 	app.Get("/api/v3/nft/items", GetNFTItems)
 	app.Get("/api/v3/nft/transfers", GetNFTTransfers)
+	app.Get("/api/v3/nft/sales", GetNFTSales)
 
 	// jettons
 	app.Get("/api/v3/jetton/masters", GetJettonMasters)

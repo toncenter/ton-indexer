@@ -53,6 +53,12 @@ type NFTTransfersResponse struct {
 	Metadata    Metadata      `json:"metadata"`
 } // @name NFTTransfersResponse
 
+type NFTSalesResponse struct {
+	Sales       []NFTSale   `json:"nft_sales"`
+	AddressBook AddressBook `json:"address_book"`
+	Metadata    Metadata    `json:"metadata"`
+} // @name NFTSalesResponse
+
 type JettonMastersResponse struct {
 	Masters     []JettonMaster `json:"jetton_masters"`
 	AddressBook AddressBook    `json:"address_book"`
