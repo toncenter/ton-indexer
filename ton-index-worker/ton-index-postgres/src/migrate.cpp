@@ -1111,12 +1111,12 @@ void run_1_2_7_migrations(const std::string& connection_string, bool dry_run) {
     );
 
     query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_at numeric;\n";
-    query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_query_id bigint;\n";
+    query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_query_id numeric;\n";
     query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS jetton_price_dict jsonb;\n";
 
     query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS activated boolean;\n";
     query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS step_time bigint;\n";
-    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS last_query_id bigint;\n";
+    query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS last_query_id numeric;\n";
     query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS jetton_wallet tonaddr;\n";
     query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS jetton_master tonaddr;\n";
     query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS is_broken_state boolean;\n";
