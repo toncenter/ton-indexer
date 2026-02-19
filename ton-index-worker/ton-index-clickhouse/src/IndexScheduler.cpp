@@ -124,7 +124,7 @@ void IndexScheduler::reschedule_seqno(std::uint32_t mc_seqno) {
 void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, schema::MasterchainBlockDataState block_data_state) {
     LOG(DEBUG) << "Fetched seqno " << mc_seqno << ": blocks=" << block_data_state.shard_blocks_diff_.size() << " shards=" << block_data_state.shard_blocks_.size();
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<DataContainerPtr> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to parse seqno " << mc_seqno << ": " << R.move_as_error();
             td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
@@ -140,21 +140,21 @@ void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, schema::MasterchainBl
     });
 }
 
-void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
+void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, DataContainerPtr data) {
     LOG(DEBUG) << "Parsed seqno " << mc_seqno;
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, parsed_block](td::Result<td::Unit> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, data](td::Result<td::Unit> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to process interfaces for  seqno " << mc_seqno << ": " << R.move_as_error();
             td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
             return;
         }
-        td::actor::send_closure(SelfId, &IndexScheduler::seqno_interfaces_processed, mc_seqno, std::move(parsed_block));
+        td::actor::send_closure(SelfId, &IndexScheduler::seqno_interfaces_processed, mc_seqno, std::move(data));
     });
-    td::actor::send_closure(event_processor_, &EventProcessor::process, std::move(parsed_block), std::move(P));
+    td::actor::send_closure(event_processor_, &EventProcessor::process, std::move(data), std::move(P));
 }
 
-void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
+void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, DataContainerPtr data) {
     LOG(DEBUG) << "Interfaces processed for seqno " << mc_seqno;
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> R) {
@@ -169,7 +169,7 @@ void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBl
         R.ensure();
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_queued_to_insert, mc_seqno, R.move_as_ok());
     });
-    td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, mc_seqno, std::move(parsed_block), 
+    td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, mc_seqno, std::move(data), 
                                 false, std::move(Q), std::move(P));
 }
 

@@ -349,8 +349,8 @@ void run_1_3_0_migrations(const std::string &connection_string, bool custom_type
     royalty_address         tonaddr,
     marketplace             varchar
 );)SQL");
-        exec_query(R"SQL(create type pool_type as enum ('stable', 'volatile');)SQL");
-        exec_query(R"SQL(create type dex_type as enum ('dedust');)SQL");
+        exec_query(R"SQL(create domain pool_type as varchar;)SQL");
+        exec_query(R"SQL(create domain dex_type as varchar;)SQL");
         exec_query(R"SQL(create type layerzero_send_details as
 (
     send_request_id numeric,
@@ -443,8 +443,6 @@ void run_1_3_0_migrations(const std::string &connection_string, bool custom_type
     query_id        numeric,
     withdraw_amount numeric
 );)SQL");
-        exec_query(R"SQL(create type pool_type_enum as enum ('stable', 'volatile');)SQL");
-        exec_query(R"SQL(create type dex_type_enum as enum ('dedust');)SQL");
     }
 
     LOG(INFO) << "Creating tables...";
@@ -1141,7 +1139,6 @@ create table if not exists dex_pools
 );
 
 create table if not exists nominator_pool_incomes (
-    tx_hash tonhash not null,
     tx_hash tonhash not null,
     tx_lt bigint not null,
     tx_now integer not null,

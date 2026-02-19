@@ -13,15 +13,15 @@ namespace convert {
 
   inline schema::AccountAddress to_account_address(const std::optional<block::StdAddress>& addr) {
     if (addr.has_value()) {
-      return addr.value();
+      return schema::AddressStd{addr.value()};
     }
     return schema::AddressNone{};
   }
 
-  inline td::Result<std::vector<schema::AccountAddress>> to_account_address_vector(const std::vector<schema::AddressStd>& vec) {
+  inline std::vector<schema::AccountAddress> to_account_address_vector(const std::vector<block::StdAddress>& vec) {
     std::vector<schema::AccountAddress> result;
     for (const auto& item : vec) {
-      result.push_back(item);
+      result.emplace_back(schema::AddressStd{item});
     }
     return result;
   }

@@ -451,8 +451,10 @@ struct JettonTransfer {
   AccountAddress jetton_master;  // ignore
   AccountAddress response_destination;
   td::Ref<vm::Cell> custom_payload;
+  std::optional<raw_bytes> custom_payload_boc;
   td::RefInt256 forward_ton_amount;
   td::Ref<vm::Cell> forward_payload;
+  std::optional<raw_bytes> forward_payload_boc;
 };
 
 struct JettonBurn {
@@ -469,6 +471,7 @@ struct JettonBurn {
   td::RefInt256 amount;
   AccountAddress response_destination;
   td::Ref<vm::Cell> custom_payload;
+  std::optional<raw_bytes> custom_payload_boc;
 };
 
 struct NominatorPoolIncome {
@@ -478,8 +481,8 @@ struct NominatorPoolIncome {
   uint32_t transaction_now;
   uint32_t mc_seqno;
 
-  std::string pool_address;
-  std::string nominator_address;
+  AccountAddress pool_address;
+  AccountAddress nominator_address;
   td::RefInt256 income_amount;
   td::RefInt256 nominator_balance;  // balance at income time
 };
@@ -493,8 +496,8 @@ struct NFTCollectionData {
   vm::CellHash code_hash;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
-  std::string code_boc;
-  std::string data_boc;
+  raw_bytes code_boc;
+  raw_bytes data_boc;
 };
 
 struct NFTCollectionDataV2 {
@@ -558,8 +561,10 @@ struct NFTTransfer {
   AccountAddress new_owner;
   AccountAddress response_destination;
   td::Ref<vm::Cell> custom_payload;
+  std::optional<raw_bytes> custom_payload_boc;
   td::RefInt256 forward_amount;
   td::Ref<vm::Cell> forward_payload;
+  std::optional<raw_bytes> forward_payload_boc;
 };
 
 struct GetGemsNftAuctionData {
@@ -649,9 +654,9 @@ struct DedustPoolData {
 };
 
 struct StonfiPoolV2Data {
-  block::StdAddress address;
-  std::optional<block::StdAddress> asset_1;
-  std::optional<block::StdAddress> asset_2;
+  AccountAddress address;
+  AccountAddress asset_1;
+  AccountAddress asset_2;
   uint64_t last_transaction_lt;
   uint32_t last_transaction_now;
   td::RefInt256 reserve_1;
@@ -665,7 +670,8 @@ struct StonfiPoolV2Data {
 
 using BlockchainEvent = std::variant<schema::JettonTransfer,
                                      schema::JettonBurn,
-                                     schema::NFTTransfer, schema::NominatorPoolIncome>;
+                                     schema::NFTTransfer,
+                                     schema::NominatorPoolIncome>;
 
 using BlockchainInterface = std::variant<schema::JettonMasterData,
                                          schema::JettonWalletData,
@@ -682,7 +688,8 @@ using BlockchainInterfaceV2 = std::variant<schema::JettonWalletDataV2,
                                            schema::MultisigContractData,
                                            schema::MultisigOrderData,
                                            schema::VestingData,
-                                           schema::DedustPoolData, schema::StonfiPoolV2Data>;
+                                           schema::DedustPoolData,
+                                           schema::StonfiPoolV2Data>;
 
 //
 // Containers
@@ -721,7 +728,9 @@ struct hash<block::StdAddress> {
 };
 }  // namespace std
 
-struct ParsedBlock {
+struct DataContainer {
+  std::int32_t mc_seqno_;
+
   schema::MasterchainBlockDataState mc_block_;
   std::shared_ptr<vm::CellDbReader> cell_db_reader_;  // for loading previous states
 
@@ -735,6 +744,37 @@ struct ParsedBlock {
   std::vector<schema::BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
 
   std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
+
+  explicit DataContainer(std::int32_t mc_seqno = 0) : mc_seqno_(mc_seqno) {
+    start_time_ = td::Timestamp::now();
+    last_time_ = start_time_;
+  }
+
+  std::map<std::string, double> timings_;
+  td::Timestamp start_time_;
+  td::Timestamp last_time_;
+
+  void update_timing(const std::string& key) {
+    auto now = td::Timestamp::now();
+    if (!start_time_) {
+      start_time_ = now;
+    }
+    timings_[key] = td::Timestamp::now() - start_time_;
+    last_time_ = now;
+  }
+
+  void print_timings() {
+    td::StringBuilder sb;
+    sb << "mc_seqno: " << mc_seqno_ << "\n";
+
+    std::vector<std::pair<std::string, double>> sorted_timings(timings_.begin(), timings_.end());
+    std::ranges::sort(sorted_timings, {}, &std::pair<std::string,double>::second); // ascending by value
+
+    for (auto const& [key, value] : sorted_timings) {
+       sb << key << ": " << value << "\n";
+    }
+    LOG(INFO) << sb.as_cslice().str();
+  }
 
   template <class T>
   std::vector<T> get_events() {
@@ -775,4 +815,4 @@ struct ParsedBlock {
   std::unordered_multimap<td::Bits256, uint64_t> contract_methods_;
 };
 
-using ParsedBlockPtr = std::shared_ptr<ParsedBlock>;
+using DataContainerPtr = std::shared_ptr<DataContainer>;

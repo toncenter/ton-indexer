@@ -1,6 +1,8 @@
 #include <td/actor/actor.h>
 #include <td/actor/MultiPromise.h>
 #include <block/block.h>
+
+#include "convert-utils.h"
 #include "IndexData.h"
 #include "Statistics.h"
 #include "parse_contract_methods.h"
@@ -15,13 +17,13 @@ using FullDetector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetec
 
 class BlockInterfaceProcessor: public td::actor::Actor {
 private:
-    ParsedBlockPtr block_;
-    td::Promise<ParsedBlockPtr> promise_;
+    DataContainerPtr block_;
+    td::Promise<DataContainerPtr> promise_;
     std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> interfaces_{};
     std::unordered_multimap<td::Bits256, uint64_t> contract_methods_{};
     td::Timer timer_{true};
 public:
-    BlockInterfaceProcessor(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise) : 
+    BlockInterfaceProcessor(DataContainerPtr block, td::Promise<DataContainerPtr> promise) : 
         block_(std::move(block)), promise_(std::move(promise)) {}
 
     void start_up() override {
@@ -86,7 +88,7 @@ public:
                 using T = std::decay_t<decltype(arg)>;
                 if constexpr (std::is_same_v<T, JettonMasterDetectorR::Result>) {
                     schema::JettonMasterDataV2 jetton_master_data;
-                    jetton_master_data.address = address;
+                    jetton_master_data.address = schema::AddressStd{address};
                     jetton_master_data.total_supply = arg.total_supply;
                     jetton_master_data.mintable = arg.mintable;
                     jetton_master_data.admin_address = convert::to_account_address(arg.admin_address);
@@ -100,9 +102,9 @@ public:
                 } else if constexpr (std::is_same_v<T, JettonWalletDetectorR::Result>) {
                     schema::JettonWalletDataV2 jetton_wallet_data;
                     jetton_wallet_data.balance = arg.balance;
-                    jetton_wallet_data.address = address;
-                    jetton_wallet_data.owner = arg.owner;
-                    jetton_wallet_data.jetton = arg.jetton;
+                    jetton_wallet_data.address = schema::AddressStd{address};
+                    jetton_wallet_data.owner = schema::AddressStd{arg.owner};
+                    jetton_wallet_data.jetton = schema::AddressStd{arg.jetton};
                     jetton_wallet_data.mintless_is_claimed = arg.mintless_is_claimed;
                     jetton_wallet_data.last_transaction_lt = last_trans_lt;
                     jetton_wallet_data.last_transaction_now = last_trans_now;
@@ -111,7 +113,7 @@ public:
                     interfaces_[address].push_back(jetton_wallet_data);
                 } else if constexpr (std::is_same_v<T, NftCollectionDetectorR::Result>) {
                     schema::NFTCollectionDataV2 nft_collection_data;
-                    nft_collection_data.address = address;
+                    nft_collection_data.address = schema::AddressStd{address};
                     nft_collection_data.next_item_index = arg.next_item_index;
                     nft_collection_data.owner_address = convert::to_account_address(arg.owner_address);
                     nft_collection_data.collection_content = arg.collection_content;
@@ -122,11 +124,11 @@ public:
                     interfaces_[address].push_back(nft_collection_data);
                 } else if constexpr (std::is_same_v<T, NftItemDetectorR::Result>) {
                     schema::NFTItemDataV2 nft_item_data;
-                    nft_item_data.address = address;
+                    nft_item_data.address = schema::AddressStd{address};
                     nft_item_data.init = arg.init;
                     nft_item_data.index = arg.index;
-                    nft_item_data.collection_address = arg.collection_address;
-                    nft_item_data.owner_address = arg.owner_address;
+                    nft_item_data.collection_address = convert::to_account_address(arg.collection_address);
+                    nft_item_data.owner_address = convert::to_account_address(arg.owner_address);
                     nft_item_data.content = arg.content;
                     nft_item_data.last_transaction_lt = last_trans_lt;
                     nft_item_data.last_transaction_now = last_trans_now;
@@ -142,19 +144,19 @@ public:
                     interfaces_[address].push_back(nft_item_data);
                 } else if constexpr (std::is_same_v<T, GetGemsNftAuction::Result>) {
                     schema::GetGemsNftAuctionData auction_data;
-                    auction_data.address = address;
+                    auction_data.address = schema::AddressStd{address};
                     auction_data.end = arg.end;
                     auction_data.end_time = arg.end_time;
-                    auction_data.mp_addr = arg.mp_addr;
-                    auction_data.nft_addr = arg.nft_addr;
+                    auction_data.mp_addr = schema::AddressStd{arg.mp_addr};
+                    auction_data.nft_addr = schema::AddressStd{arg.nft_addr};
                     auction_data.nft_owner = convert::to_account_address(arg.nft_owner);
                     auction_data.last_bid = arg.last_bid;
                     auction_data.last_member = convert::to_account_address(arg.last_member);
                     auction_data.min_step = arg.min_step;
-                    auction_data.mp_fee_addr = arg.mp_fee_addr;
+                    auction_data.mp_fee_addr = schema::AddressStd{arg.mp_fee_addr};
                     auction_data.mp_fee_factor = arg.mp_fee_factor;
                     auction_data.mp_fee_base = arg.mp_fee_base;
-                    auction_data.royalty_fee_addr = arg.royalty_fee_addr;
+                    auction_data.royalty_fee_addr = schema::AddressStd{arg.royalty_fee_addr};
                     auction_data.royalty_fee_factor = arg.royalty_fee_factor;
                     auction_data.royalty_fee_base = arg.royalty_fee_base;
                     auction_data.max_bid = arg.max_bid;
@@ -169,16 +171,16 @@ public:
                     interfaces_[address].push_back(auction_data);
                 } else if constexpr (std::is_same_v<T, GetGemsNftFixPriceSale::Result>) {
                     schema::GetGemsNftFixPriceSaleData fix_price_sale_data;
-                    fix_price_sale_data.address = address;
+                    fix_price_sale_data.address = schema::AddressStd{address};
                     fix_price_sale_data.is_complete = arg.is_complete;
                     fix_price_sale_data.created_at = arg.created_at;
-                    fix_price_sale_data.marketplace_address = arg.marketplace_address;
-                    fix_price_sale_data.nft_address = arg.nft_address;
+                    fix_price_sale_data.marketplace_address = schema::AddressStd{arg.marketplace_address};
+                    fix_price_sale_data.nft_address = schema::AddressStd{arg.nft_address};
                     fix_price_sale_data.nft_owner_address = convert::to_account_address(arg.nft_owner_address);
                     fix_price_sale_data.full_price = arg.full_price;
-                    fix_price_sale_data.marketplace_fee_address = arg.marketplace_fee_address;
+                    fix_price_sale_data.marketplace_fee_address = schema::AddressStd{arg.marketplace_fee_address};
                     fix_price_sale_data.marketplace_fee = arg.marketplace_fee;
-                    fix_price_sale_data.royalty_address = arg.royalty_address;
+                    fix_price_sale_data.royalty_address = schema::AddressStd{arg.royalty_address};
                     fix_price_sale_data.royalty_amount = arg.royalty_amount;
                     fix_price_sale_data.last_transaction_lt = last_trans_lt;
                     fix_price_sale_data.last_transaction_now = last_trans_now;
@@ -187,7 +189,7 @@ public:
                     interfaces_[address].push_back(fix_price_sale_data);
                 } else if constexpr (std::is_same_v<T, MultisigContract::Result>) {
                     schema::MultisigContractData multisig_contract_data;
-                    multisig_contract_data.address = address;
+                    multisig_contract_data.address = schema::AddressStd{address};
                     multisig_contract_data.next_order_seqno = arg.next_order_seqno;
                     multisig_contract_data.threshold = arg.threshold;
                     multisig_contract_data.signers = convert::to_account_address_vector(arg.signers);
@@ -199,8 +201,8 @@ public:
                     interfaces_[address].push_back(multisig_contract_data);
                 } else if constexpr (std::is_same_v<T, MultisigOrder::Result>) {
                     schema::MultisigOrderData multisig_order_data;
-                    multisig_order_data.address = address;
-                    multisig_order_data.multisig_address = arg.multisig_address;
+                    multisig_order_data.address = schema::AddressStd{address};
+                    multisig_order_data.multisig_address = schema::AddressStd{arg.multisig_address};
                     multisig_order_data.order_seqno = arg.order_seqno;
                     multisig_order_data.threshold = arg.threshold;
                     multisig_order_data.sent_for_execution = arg.sent_for_execution;
@@ -217,14 +219,14 @@ public:
                 } else if constexpr (std::is_same_v<T, VestingContract::Result>)
                 {
                     schema::VestingData vesting_data;
-                    vesting_data.address = address;
+                    vesting_data.address = schema::AddressStd{address};
                     vesting_data.vesting_start_time = arg.vesting_start_time;
                     vesting_data.vesting_total_duration = arg.vesting_total_duration;
                     vesting_data.unlock_period = arg.unlock_period;
                     vesting_data.cliff_duration = arg.cliff_duration;
                     vesting_data.vesting_total_amount = arg.vesting_total_amount;
-                    vesting_data.vesting_sender_address = arg.vesting_sender_address;
-                    vesting_data.owner_address = arg.owner_address;
+                    vesting_data.vesting_sender_address = schema::AddressStd{arg.vesting_sender_address};
+                    vesting_data.owner_address = schema::AddressStd{arg.owner_address};
                     vesting_data.whitelist = convert::to_account_address_vector(arg.whitelist);
                     vesting_data.last_transaction_lt = last_trans_lt;
                     vesting_data.last_transaction_now = last_trans_now;
@@ -233,7 +235,7 @@ public:
                     interfaces_[address].push_back(vesting_data);
                 } else if constexpr (std::is_same_v<T, DedustPoolDetector::Result>) {
                     schema::DedustPoolData dedust_pool_data;
-                    dedust_pool_data.address = address;
+                    dedust_pool_data.address = schema::AddressStd{address};
                     dedust_pool_data.asset_1 = convert::to_account_address(arg.asset_1);
                     dedust_pool_data.asset_2 = convert::to_account_address(arg.asset_2);
                     dedust_pool_data.last_transaction_lt = last_trans_lt;
@@ -246,10 +248,10 @@ public:
                     dedust_pool_data.fee = arg.fee;
                     interfaces_[address].push_back(dedust_pool_data);
                 } else if constexpr (std::is_same_v<T, StonfiPoolV2Detector::Result>) {
-                    StonfiPoolV2Data stonfi_pool_data;
-                    stonfi_pool_data.address = address;
-                    stonfi_pool_data.asset_1 = arg.asset_1;
-                    stonfi_pool_data.asset_2 = arg.asset_2;
+                    schema::StonfiPoolV2Data stonfi_pool_data;
+                    stonfi_pool_data.address = schema::AddressStd{address};
+                    stonfi_pool_data.asset_1 = convert::to_account_address(arg.asset_1);
+                    stonfi_pool_data.asset_2 = convert::to_account_address(arg.asset_2);
                     stonfi_pool_data.last_transaction_lt = last_trans_lt;
                     stonfi_pool_data.last_transaction_now = last_trans_now;
                     stonfi_pool_data.code_hash = code_hash;

@@ -128,7 +128,7 @@ void TraceAssembler::alarm() {
               << " Broken traces: " << broken_count_;
 }
 
-void TraceAssembler::assemble(ton::BlockSeqno seqno, ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise) {
+void TraceAssembler::assemble(ton::BlockSeqno seqno, DataContainerPtr block, td::Promise<DataContainerPtr> promise) {
     if (seqno < expected_seqno_) {
         LOG(FATAL) << "TraceAssembler received seqno " << seqno << " that is lower than expected " << expected_seqno_;
         return;
@@ -228,7 +228,7 @@ void TraceAssembler::process_queue() {
     }
 }
 
-void TraceAssembler::process_block(ton::BlockSeqno seqno, ParsedBlockPtr block) {
+void TraceAssembler::process_block(ton::BlockSeqno seqno, DataContainerPtr block) {
     // sort transactions by lt
     std::vector<std::reference_wrapper<schema::Transaction>> sorted_txs;
     for(auto& blk: block->blocks_) {
@@ -236,7 +236,7 @@ void TraceAssembler::process_block(ton::BlockSeqno seqno, ParsedBlockPtr block) 
             sorted_txs.push_back(tx);
         }
     }
-    std::sort(sorted_txs.begin(), sorted_txs.end(), [](auto& lhs, auto& rhs){
+    std::sort(sorted_txs.begin(), sorted_txs.end(), [](const auto& lhs, const auto& rhs){
         if (lhs.get().lt != rhs.get().lt) {
             return lhs.get().lt < rhs.get().lt;
         }

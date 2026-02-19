@@ -9,11 +9,11 @@
 // Detects special cases of Actions like - Jetton transfers and burns, NFT transfers
 class ActionDetector: public td::actor::Actor {
 private:
-  ParsedBlockPtr block_;
-  td::Promise<ParsedBlockPtr> promise_;
+  DataContainerPtr block_;
+  td::Promise<DataContainerPtr> promise_;
   td::Timer timer_{true};
 public:
-  ActionDetector(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise): block_(block), promise_(std::move(promise)) {
+  ActionDetector(DataContainerPtr block, td::Promise<DataContainerPtr> promise): block_(block), promise_(std::move(promise)) {
   }
 
   void start_up() override {
@@ -132,9 +132,23 @@ public:
     if (!transfer_record.custom_payload.write().fetch_maybe_ref(transfer.custom_payload)) {
       return td::Status::Error("Failed to fetch custom payload");
     }
+    if (transfer.custom_payload.not_null()) {
+      if (auto r_boc = vm::std_boc_serialize(transfer.custom_payload); r_boc.is_ok()) {
+        transfer.custom_payload_boc = r_boc.move_as_ok().as_slice().str();
+      } else {
+        LOG(ERROR) << "failed to serialize transfer.custom_payload: " << r_boc.move_as_error();
+      }
+    }
     transfer.forward_ton_amount = block::tlb::t_VarUInteger_16.as_integer(transfer_record.forward_ton_amount);
     if (!transfer_record.forward_payload.write().fetch_maybe_ref(transfer.forward_payload)) {
       return td::Status::Error("Failed to fetch forward payload");
+    }
+    if (transfer.forward_payload.not_null()) {
+      if (auto r_boc = vm::std_boc_serialize(transfer.forward_payload); r_boc.is_ok()) {
+        transfer.forward_payload_boc = r_boc.move_as_ok().as_slice().str();
+      } else {
+        LOG(ERROR) << "failed to serialize transfer.forward_payload: " << r_boc.move_as_error();
+      }
     }
 
     return transfer;
@@ -176,6 +190,13 @@ public:
     burn.response_destination = response_destination.move_as_ok();
     if (!burn_record.custom_payload.write().fetch_maybe_ref(burn.custom_payload)) {
       return td::Status::Error("Failed to fetch custom payload");
+    }
+    if (burn.custom_payload.not_null()) {
+      if (auto r_boc = vm::std_boc_serialize(burn.custom_payload); r_boc.is_ok()) {
+        burn.custom_payload_boc = r_boc.move_as_ok().as_slice().str();
+      } else {
+        LOG(ERROR) << "failed to serialize burn.custom_payload: " << r_boc.move_as_error();
+      }
     }
 
     return burn;
@@ -220,16 +241,30 @@ public:
     if (!transfer_record.custom_payload.write().fetch_maybe_ref(transfer.custom_payload)) {
       return td::Status::Error("Failed to fetch custom payload");
     }
+    if (transfer.custom_payload.not_null()) {
+      if (auto r_boc = vm::std_boc_serialize(transfer.custom_payload); r_boc.is_ok()) {
+        transfer.custom_payload_boc = r_boc.move_as_ok().as_slice().str();
+      } else {
+        LOG(ERROR) << "failed to serialize transfer.custom_payload: " << r_boc.move_as_error();
+      }
+    }
     transfer.forward_amount = block::tlb::t_VarUInteger_16.as_integer(transfer_record.forward_amount);
     if (!transfer_record.forward_payload.write().fetch_maybe_ref(transfer.forward_payload)) {
       return td::Status::Error("Failed to fetch forward payload");
+    }
+    if (transfer.forward_payload.not_null()) {
+      if (auto r_boc = vm::std_boc_serialize(transfer.forward_payload); r_boc.is_ok()) {
+        transfer.forward_payload_boc = r_boc.move_as_ok().as_slice().str();
+      } else {
+        LOG(ERROR) << "failed to serialize transfer.forward_payload: " << r_boc.move_as_error();
+      }
     }
 
     return transfer;
   }
 
   // find first transaction for account in current block by lt
-  td::optional<schema::Transaction> find_first_tx_for_account(const block::StdAddress &account) {
+  td::optional<schema::Transaction> find_first_tx_for_account(const schema::AccountAddress &account) {
     td::optional<schema::Transaction> first_tx;
     uint64_t min_lt = std::numeric_limits<uint64_t>::max();
 
@@ -273,7 +308,7 @@ public:
     }
 
     auto account_cell = account_cell_r.move_as_ok();
-    auto pool_state_r = ParseQuery::parse_account(account_cell, first_tx.now,
+    auto pool_state_r = parse_account_state(account_cell, first_tx.now,
                                                   first_tx.prev_trans_hash,
                                                   first_tx.prev_trans_lt);
     if (pool_state_r.is_error()) {
@@ -381,7 +416,7 @@ public:
     }
 
     // second pass: calculate income for each nominator
-    std::string pool_address = convert::to_raw_address(transaction.account);
+    auto& pool_address = transaction.account;
 
     for (const auto &[addr_hash, balance] : nominators_list) {
       schema::NominatorPoolIncome income;
@@ -393,10 +428,10 @@ public:
       income.pool_address = pool_address;
 
       // reconstruct nominator address from hash (workchain 0)
-      block::StdAddress nominator_addr;
+      schema::AddressStd nominator_addr;
       nominator_addr.workchain = 0;
       nominator_addr.addr = addr_hash;
-      income.nominator_address = convert::to_raw_address(nominator_addr);
+      income.nominator_address = nominator_addr;
 
       // calculate proportional income: nominators_reward * balance / total_balance
       auto income_amount = (nominators_reward * balance) / total_balance;
@@ -426,7 +461,7 @@ public:
     nft_item_detector_(td::actor::create_actor<NFTItemDetector>("nft_item_detector", interface_manager_.get(), insert_manager, nft_collection_detector_.get())) {
   }
 
-  void process(ParsedBlockPtr block, td::Promise<> &&promise);
+  void process(DataContainerPtr block, td::Promise<> &&promise);
   // void process(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise);
 
 private:

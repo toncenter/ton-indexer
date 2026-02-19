@@ -4,6 +4,7 @@ add_executable(ton-index-postgres
     src/main.cpp
     src/InsertManagerPostgres.cpp
     src/IndexScheduler.cpp
+        src/postgres_types.h
 )
 
 target_compile_features(ton-index-postgres PRIVATE cxx_std_20)

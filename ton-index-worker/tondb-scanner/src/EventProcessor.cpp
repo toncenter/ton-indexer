@@ -13,7 +13,7 @@
 
 
 // process ParsedBlock and try detect master and wallet interfaces
-void EventProcessor::process(ParsedBlockPtr block, td::Promise<> &&promise) {
+void EventProcessor::process(DataContainerPtr block, td::Promise<> &&promise) {
   auto P = td::PromiseCreator::lambda([SelfId=actor_id(this), block, promise = std::move(promise)](td::Result<std::vector<schema::BlockchainInterface>> res) mutable {
     if (res.is_error()) {
       promise.set_error(res.move_as_error_prefix("Failed to process account states for mc block " + std::to_string(block->blocks_[0].seqno) + ": "));
@@ -73,15 +73,16 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
   auto ig = mp.init_guard();
   ig.add_promise(std::move(P));
   for (const auto& account_state : account_states) {
-    auto raw_address = convert::to_raw_address(account_state.account);
-    if (raw_address == "-1:5555555555555555555555555555555555555555555555555555555555555555" || 
-        raw_address == "-1:3333333333333333333333333333333333333333333333333333333333333333") {
+    const schema::AddressStd config_address{-1, td::Bits256{std::array<uint8_t, 32>{85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85}}};
+    const schema::AddressStd elector_address{-1, td::Bits256{std::array<uint8_t, 32>{51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51}}};
+    auto& address_std = std::get<schema::AddressStd>(account_state.account);
+    if (address_std == config_address || address_std == elector_address) {
       continue;
     }
-    auto& address = account_state.account;
-    
+    block::StdAddress address{address_std.workchain, address_std.addr};
+
     auto code_cell = account_state.code;
-    auto data_cell = account_state.data; 
+    auto data_cell = account_state.data;
     if (code_cell.is_null() || data_cell.is_null()) {
       continue;
     }
@@ -167,22 +168,22 @@ void EventProcessor::process_transactions(const std::vector<schema::Transaction>
 
     auto cs = vm::load_cell_slice_ref(tx.in_msg.value().body);
     switch (tokens::gen::t_InternalMsgBody.check_tag(*cs)) {
-      case tokens::gen::InternalMsgBody::transfer_jetton: 
-        td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_transfer, tx, cs, 
+      case tokens::gen::InternalMsgBody::transfer_jetton:
+        td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_transfer, tx, cs,
           td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<schema::JettonTransfer> transfer) mutable {
             process(std::move(transfer), std::move(promise));
           })
         );
         break;
-      case tokens::gen::InternalMsgBody::burn: 
-        td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_burn, tx, cs, 
+      case tokens::gen::InternalMsgBody::burn:
+        td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_burn, tx, cs,
           td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<schema::JettonBurn> burn) mutable {
             process(std::move(burn), std::move(promise));
           })
         );
         break;
-      case tokens::gen::InternalMsgBody::transfer_nft: 
-        td::actor::send_closure(nft_item_detector_, &NFTItemDetector::parse_transfer, tx, cs, 
+      case tokens::gen::InternalMsgBody::transfer_nft:
+        td::actor::send_closure(nft_item_detector_, &NFTItemDetector::parse_transfer, tx, cs,
           td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<schema::NFTTransfer> transfer) mutable {
             process(std::move(transfer), std::move(promise));
           })

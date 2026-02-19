@@ -51,10 +51,14 @@ td::Result<schema::AccountAddress> convert::to_account_address(td::Ref<vm::CellS
         if (!tlb::csr_unpack(cs, addr)) {
           return td::Status::Error("Failed to unpack MsgAddressExt");
         }
-        LOG(ERROR) << "Detected address_extern: " << vm::std_boc_serialize(cs->get_base_cell(), 0).move_as_ok();
         schema::AddressExtern result;
         result.len = addr.len;
         result.external_address = std::move(addr.external_address);
+        td::StringBuilder sb;
+        sb << result;
+        LOG(ERROR) << "Detected address_extern: "
+          << td::base64_encode(vm::std_boc_serialize(cs->get_base_cell(), 0).move_as_ok())
+          << " repr: " << sb.as_cslice();
         return result;
       }
       default:

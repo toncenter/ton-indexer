@@ -21,7 +21,7 @@ void InsertManagerBase::start_up() {
 
 void InsertManagerBase::alarm() {
     alarm_timestamp() = td::Timestamp::in(1.0);
-    td::actor::send_closure(actor_id(this), &InsertManagerBase::schedule_next_insert_batches, false);
+    schedule_next_insert_batches(false);
 }
 
 void InsertManagerBase::print_info() {
@@ -34,7 +34,7 @@ void InsertManagerBase::print_info() {
 }
 
 
-void InsertManagerBase::insert(std::uint32_t mc_seqno, ParsedBlockPtr block_ds, bool force, td::Promise<QueueState> queued_promise, td::Promise<td::Unit> inserted_promise) {
+void InsertManagerBase::insert(std::uint32_t mc_seqno, DataContainerPtr block_ds, bool force, td::Promise<QueueState> queued_promise, td::Promise<td::Unit> inserted_promise) {
     auto task = InsertTaskStruct{mc_seqno, std::move(block_ds), std::move(inserted_promise)};
     auto status_delta = task.get_queue_state();
     insert_queue_.push(std::move(task));
@@ -52,8 +52,7 @@ void InsertManagerBase::get_insert_queue_state(td::Promise<QueueState> promise) 
 }
 
 
-bool InsertManagerBase::check_batch_size(QueueState &batch_state)
-{
+bool InsertManagerBase::check_batch_size(QueueState &batch_state) {
     return batch_state < batch_size_;
 }
 
@@ -82,11 +81,11 @@ void InsertManagerBase::schedule_next_insert_batches(bool full_batch = false)
         });
         
         ++parallel_insert_actors_;
-        LOG(INFO) << "Inserting batch[mb=" << batch_state.mc_blocks_ 
-                  << ", b=" << batch_state.blocks_ 
-                  << ", txs=" << batch_state.txs_
-                  << ", msgs=" << batch_state.msgs_ 
-                  << ", traces=" << batch_state.traces_ << "]";
+        // LOG(INFO) << "Inserting batch[mb=" << batch_state.mc_blocks_
+        //           << ", b=" << batch_state.blocks_
+        //           << ", txs=" << batch_state.txs_
+        //           << ", msgs=" << batch_state.msgs_
+        //           << ", traces=" << batch_state.traces_ << "]";
         create_insert_actor(std::move(batch), std::move(P));
     }
 }

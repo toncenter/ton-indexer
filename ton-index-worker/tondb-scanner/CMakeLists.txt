@@ -22,8 +22,7 @@ add_library(tondb-scanner STATIC
     src/smc-interfaces/FetchAccountFromShard.cpp
     src/smc-interfaces/FetchAccountFromShard.h
     src/smc-interfaces/Vesting.cpp
-        src/AccountAddress.h
-        src/AccountAddress.cpp
+    src/AccountAddress.cpp
 )
 
 target_include_directories(tondb-scanner 

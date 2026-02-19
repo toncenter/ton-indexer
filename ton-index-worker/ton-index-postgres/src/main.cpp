@@ -1,9 +1,10 @@
 #include "td/utils/port/signals.h"
 #include "td/utils/OptionParser.h"
-#include "td/utils/format.h"
 #include "td/utils/logging.h"
 #include "td/utils/check.h"
 #include "td/utils/port/path.h"
+#include "td/utils/port/rlimit.h"
+#include "td/utils/FileLog.h"
 
 #include "crypto/vm/cp0.h"
 
@@ -19,6 +20,12 @@ int main(int argc, char *argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);
   td::set_default_failure_signal_handler().ensure();
 
+  td::unique_ptr<td::LogInterface> logger_;
+  SCOPE_EXIT {
+    td::log_interface = td::default_log_interface;
+  };
+  LOG_STATUS(td::change_maximize_rlimit(td::RlimitType::nofile, 1048576));
+
   CHECK(vm::init_op_cp0());
 
   td::actor::ActorOwn<DbScanner> db_scanner_;
@@ -32,13 +39,9 @@ int main(int argc, char *argv[]) {
   td::int32 stats_timeout = 1;
   std::string db_root;
   std::string working_dir;
-  td::uint32 last_known_seqno = 0;
   td::uint32 from_seqno = 0;
   td::uint32 to_seqno = 0;
   bool force_index = false;
-  bool custom_types = false;
-  bool create_indexes = true;
-  bool run_migrations = true;
   InsertManagerPostgres::Credential credential;
   bool testnet = false;
 
@@ -69,34 +72,9 @@ int main(int argc, char *argv[]) {
   p.add_option('\0', "pg", "PostgreSQL connection string", [&](td::Slice value) { 
     credential.conn_str = value.str();
   });
-  p.add_option('h', "host", "PostgreSQL host address", [&](td::Slice value) { 
-    LOG(WARNING) << "Using --host option is deprecated, use --pg with connection string instead";
-    credential.host = value.str();
-  });
-  p.add_checked_option('p', "port", "PostgreSQL port", [&](td::Slice value) {
-    int port;
-    try{
-      port = std::stoi(value.str());
-      if (!(port >= 0 && port < 65536))
-        return td::Status::Error("Port must be a number between 0 and 65535");
-    } catch(...) {
-      return td::Status::Error(ton::ErrorCode::error, "bad value for --port: not a number");
-    }
-    LOG(WARNING) << "Using --port option is deprecated, use --pg with connection string instead";
-    credential.port = port;
-    return td::Status::OK();
-  });
-  p.add_option('u', "user", "PostgreSQL username", [&](td::Slice value) { 
-    LOG(WARNING) << "Using --user option is deprecated, use --pg with connection string instead";
-    credential.user = value.str();
-  });
-  p.add_option('P', "password", "PostgreSQL password", [&](td::Slice value) {
-    LOG(WARNING) << "Using --password option is deprecated, use --pg with connection string instead";
-    credential.password = value.str();
-  });
-  p.add_option('d', "dbname", "PostgreSQL database name", [&](td::Slice value) {
-    LOG(WARNING) << "Using --dbname option is deprecated, use --pg with connection string instead";
-    credential.dbname = value.str();
+  p.add_option('l', "logname", "log to file", [&](td::Slice fname) {
+    logger_ = td::FileLog::create(fname.str()).move_as_ok();
+    td::log_interface = logger_.get();
   });
 
   p.add_option('\0', "testnet", "Use for testnet. It is used for correct indexing of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {

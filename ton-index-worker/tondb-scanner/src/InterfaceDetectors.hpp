@@ -71,7 +71,7 @@ public:
           stop();
           return;
         case block::gen::Account::account: {
-          auto account_r = ParseQuery::parse_account(acc_info.account, sstate.gen_utime, acc_info.last_trans_hash, acc_info.last_trans_lt);
+          auto account_r = parse_account_state(acc_info.account, sstate.gen_utime, acc_info.last_trans_hash, acc_info.last_trans_lt);
           if (account_r.is_error()) {
             promise_.set_error(account_r.move_as_error());
             stop();
@@ -261,8 +261,8 @@ public:
     data.last_transaction_lt = last_tx_lt;
     data.last_transaction_now = last_tx_now;
     data.data_hash = data_cell->get_hash();
-    data.code_boc = td::base64_encode(vm::std_boc_serialize(code_cell).move_as_ok());
-    data.data_boc = td::base64_encode(vm::std_boc_serialize(data_cell).move_as_ok());
+    data.code_boc = vm::std_boc_serialize(code_cell).move_as_ok().as_slice().str();
+    data.data_boc = vm::std_boc_serialize(data_cell).move_as_ok().as_slice().str();
     
     auto jetton_content = parse_token_data(stack[3].as_cell());
     if (jetton_content.is_ok()) {
@@ -302,8 +302,8 @@ public:
   }
 
   void get_wallet_address_impl(schema::JettonMasterData data, block::StdAddress master_address, block::StdAddress owner_address, const schema::MasterchainBlockDataState& blocks_ds, td::Promise<block::StdAddress> P) {
-    auto code_cell = vm::std_boc_deserialize(td::base64_decode(data.code_boc).move_as_ok()).move_as_ok();
-    auto data_cell = vm::std_boc_deserialize(td::base64_decode(data.data_boc).move_as_ok()).move_as_ok();
+    auto code_cell = vm::std_boc_deserialize(data.code_boc).move_as_ok();
+    auto data_cell = vm::std_boc_deserialize(data.data_boc).move_as_ok();
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
 
@@ -526,10 +526,24 @@ public:
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to fetch custom payload"));
       return;
     }
+    if (transfer.custom_payload.not_null()) {
+      if (auto r_boc = vm::std_boc_serialize(transfer.custom_payload); r_boc.is_ok()) {
+        transfer.custom_payload_boc = r_boc.move_as_ok().as_slice().str();
+      } else {
+        LOG(ERROR) << "failed to serialize transfer.custom_payload: " << r_boc.move_as_error();
+      }
+    }
     transfer.forward_ton_amount = block::tlb::t_VarUInteger_16.as_integer(transfer_record.forward_ton_amount);
     if (!transfer_record.forward_payload.write().fetch_maybe_ref(transfer.forward_payload)) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to fetch forward payload"));
       return;
+    }
+    if (transfer.forward_payload.not_null()) {
+      if (auto r_boc = vm::std_boc_serialize(transfer.forward_payload); r_boc.is_ok()) {
+        transfer.forward_payload_boc = r_boc.move_as_ok().as_slice().str();
+      } else {
+        LOG(ERROR) << "failed to serialize transfer.forward_payload: " << r_boc.move_as_error();
+      }
     }
 
     promise.set_value(std::move(transfer));
@@ -591,6 +605,13 @@ public:
     if (!burn_record.custom_payload.write().fetch_maybe_ref(burn.custom_payload)) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to fetch custom payload"));
       return;
+    }
+    if (burn.custom_payload.not_null()) {
+      if (auto r_boc = vm::std_boc_serialize(burn.custom_payload); r_boc.is_ok()) {
+        burn.custom_payload_boc = r_boc.move_as_ok().as_slice().str();
+      } else {
+        LOG(ERROR) << "failed to serialize burn.custom_payload: " << r_boc.move_as_error();
+      }
     }
 
     promise.set_value(std::move(burn));
@@ -755,8 +776,8 @@ private:
     data.last_transaction_lt = last_tx_lt;
     data.last_transaction_now = last_tx_now;
     data.data_hash = data_cell->get_hash();
-    data.code_boc = td::base64_encode(vm::std_boc_serialize(code_cell).move_as_ok());
-    data.data_boc = td::base64_encode(vm::std_boc_serialize(data_cell).move_as_ok());
+    data.code_boc = vm::std_boc_serialize(code_cell).move_as_ok().as_slice().str();
+    data.data_boc = vm::std_boc_serialize(data_cell).move_as_ok().as_slice().str();
 
     auto collection_content = parse_token_data(stack[1].as_cell());
     if (collection_content.is_ok()) {
@@ -868,10 +889,24 @@ public:
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to fetch custom payload"));
       return;
     }
+    if (transfer.custom_payload.not_null()) {
+      if (auto r_boc = vm::std_boc_serialize(transfer.custom_payload); r_boc.is_ok()) {
+        transfer.custom_payload_boc = r_boc.move_as_ok().as_slice().str();
+      } else {
+        LOG(ERROR) << "failed to serialize transfer.custom_payload: " << r_boc.move_as_error();
+      }
+    }
     transfer.forward_amount = block::tlb::t_VarUInteger_16.as_integer(transfer_record.forward_amount);
     if (!transfer_record.forward_payload.write().fetch_maybe_ref(transfer.forward_payload)) {
       promise.set_error(td::Status::Error(ErrorCode::EVENT_PARSING_ERROR, "Failed to fetch forward payload"));
       return;
+    }
+    if (transfer.forward_payload.not_null()) {
+      if (auto r_boc = vm::std_boc_serialize(transfer.forward_payload); r_boc.is_ok()) {
+        transfer.forward_payload_boc = r_boc.move_as_ok().as_slice().str();
+      } else {
+        LOG(ERROR) << "failed to serialize transfer.forward_payload: " << r_boc.move_as_error();
+      }
     }
 
     promise.set_value(std::move(transfer));
@@ -1017,8 +1052,8 @@ private:
   }
 
   td::Status verify_belonging_to_collection(const schema::NFTItemData& item_data, const schema::NFTCollectionData& collection_data, const schema::MasterchainBlockDataState& blocks_ds) {
-    auto code_cell = vm::std_boc_deserialize(td::base64_decode(collection_data.code_boc).move_as_ok()).move_as_ok();
-    auto data_cell = vm::std_boc_deserialize(td::base64_decode(collection_data.data_boc).move_as_ok()).move_as_ok();
+    auto code_cell = vm::std_boc_deserialize(collection_data.code_boc).move_as_ok();
+    auto data_cell = vm::std_boc_deserialize(collection_data.data_boc).move_as_ok();
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
     args.set_libraries(vm::Dictionary(blocks_ds.config_->get_libraries_root(), 256));
@@ -1047,8 +1082,8 @@ private:
 
   td::Result<std::map<std::string, std::string>> get_content(const td::RefInt256 index, td::Ref<vm::Cell> ind_content, const schema::NFTCollectionData& collection_data,
                                         td::Ref<vm::Cell> item_code, td::Ref<vm::Cell> item_data, const schema::MasterchainBlockDataState& blocks_ds) {
-    auto code_cell = vm::std_boc_deserialize(td::base64_decode(collection_data.code_boc).move_as_ok()).move_as_ok();
-    auto data_cell = vm::std_boc_deserialize(td::base64_decode(collection_data.data_boc).move_as_ok()).move_as_ok();
+    auto code_cell = vm::std_boc_deserialize(collection_data.code_boc).move_as_ok();
+    auto data_cell = vm::std_boc_deserialize(collection_data.data_boc).move_as_ok();
     ton::SmartContract smc({code_cell, data_cell});
     ton::SmartContract::Args args;
     args.set_libraries(vm::Dictionary(blocks_ds.config_->get_libraries_root(), 256));

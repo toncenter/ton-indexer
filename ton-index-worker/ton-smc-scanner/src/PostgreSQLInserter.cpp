@@ -95,6 +95,33 @@ template<> struct string_traits<block::StdAddress>
   }
 };
 
+template<> struct nullness<schema::AddressNone, void> {
+  static constexpr bool has_null = true;
+  static constexpr bool always_null = true;
+  static bool is_null(schema::AddressNone const &) { return true; }
+  [[nodiscard]] static schema::AddressNone null() { return schema::AddressNone{}; }
+};
+
+template<> struct string_traits<schema::AddressNone> {
+  static constexpr bool converts_to_string{true};
+  static constexpr bool converts_from_string{false};
+
+  static zview to_buf(char *begin, char *end, td::Bits256 const &value) {
+    return zview{begin, static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
+  }
+
+  static char *into_buf(char *begin, char *end, td::Bits256 const &value) {
+    auto text = td::base64_encode(value.as_slice());
+    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
+      throw conversion_overrun{"Not enough buffer for td::Bits256."};
+    std::memcpy(begin, text.c_str(), std::size(text) + 1);
+    return begin + std::size(text) + 1;
+  }
+  static std::size_t size_buffer(td::Bits256 const &value) noexcept {
+    return 64;
+  }
+};
+
 template<> struct nullness<td::Bits256> : pqxx::no_null<td::Bits256> {};
 
 template<> struct string_traits<td::Bits256>
