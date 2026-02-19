@@ -301,8 +301,7 @@ void TraceAssembler::process_transaction(ton::BlockSeqno seqno, schema::Transact
                     edge.broken = false;
                 } else {
                     const auto& src = std::get<schema::AddressStd>(msg.source);
-                    if (!(src.workchain == -1 && src.addr == td::Bits256::zero())) {
-                        LOG(ERROR) << "System message!";
+                    if (src.workchain == -1 && src.addr == td::Bits256::zero()) {
                         // system
                         edge.trace_id = tx.hash;
                         edge.msg_hash = msg.hash;
