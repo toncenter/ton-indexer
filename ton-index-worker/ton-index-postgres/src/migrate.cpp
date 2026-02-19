@@ -866,7 +866,7 @@ create table if not exists nft_transfers
     foreign key (tx_hash, tx_lt) references transactions
 );
 
-create unlogged table _classifier_tasks
+create unlogged table if not exists _classifier_tasks
 (
     id          serial,
     mc_seqno    integer,
@@ -876,7 +876,7 @@ create unlogged table _classifier_tasks
     start_after timestamp
 );
 
-create unlogged table _classifier_failed_traces
+create unlogged table if not exists _classifier_failed_traces
 (
     id       serial,
     trace_id tonhash,
@@ -977,7 +977,7 @@ create table if not exists action_accounts
 )
     with (autovacuum_vacuum_scale_factor = 0.03);
 
-create unlogged table background_tasks
+create unlogged table if not exists background_tasks
 (
     id         bigint generated always as identity
         constraint background_tasks_pk
@@ -1016,7 +1016,7 @@ create table if not exists _index_state
     timestamp timestamp default CURRENT_TIMESTAMP
 );
 
-create unlogged table _reindex_metadata
+create unlogged table if not exists _reindex_metadata
 (
     id          bigserial
         primary key,
@@ -1034,7 +1034,7 @@ create table if not exists contract_methods
     methods   bigint[]
 );
 
-create unlogged table ton_indexer_leader
+create unlogged table if not exists ton_indexer_leader
 (
     id               integer                  not null
         primary key
