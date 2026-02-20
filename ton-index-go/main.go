@@ -2335,24 +2335,25 @@ func main() {
 	}
 	app.Get("/api/v3/*", swagger.New(swagger_config))
 	app.Static("/", "./static")
-	index.BackgroundTaskManager, err = index.NewBackgroundTaskManager(settings.PgDsn, settings.TaskChannelSize,
+	btm, err := index.NewBackgroundTaskManager(settings.PgDsn, settings.TaskChannelSize,
 		0, settings.MasterMaxConns)
 	if err != nil {
 		if len(settings.PgMasterDsn) == 0 {
 			log.Printf("Error creating background task manager: %s", err.Error())
 		} else {
-			index.BackgroundTaskManager, err = index.NewBackgroundTaskManager(settings.PgMasterDsn,
+			btm, err = index.NewBackgroundTaskManager(settings.PgMasterDsn,
 				settings.TaskChannelSize, 0, settings.MasterMaxConns)
 			if err != nil {
 				log.Printf("Error creating background task manager: %s", err.Error())
 			}
 		}
 	}
-	if index.BackgroundTaskManager != nil {
-		index.BackgroundTaskManager.Start(context.Background())
+	if btm != nil {
+		index.SetBackgroundTaskManager(btm)
+		btm.Start(context.Background())
 	}
 
-	index.IsTestnet = settings.Request.IsTestnet
+	index.SetIsTestnet(settings.Request.IsTestnet)
 	err = app.Listen(settings.Bind)
 	log.Fatal(err)
 }
