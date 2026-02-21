@@ -128,7 +128,7 @@ void TraceAssembler::alarm() {
               << " Broken traces: " << broken_count_;
 }
 
-void TraceAssembler::assemble(ton::BlockSeqno seqno, ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise) {
+void TraceAssembler::assemble(ton::BlockSeqno seqno, DataContainerPtr block, td::Promise<DataContainerPtr> promise) {
     if (seqno < expected_seqno_) {
         LOG(FATAL) << "TraceAssembler received seqno " << seqno << " that is lower than expected " << expected_seqno_;
         return;
@@ -228,7 +228,7 @@ void TraceAssembler::process_queue() {
     }
 }
 
-void TraceAssembler::process_block(ton::BlockSeqno seqno, ParsedBlockPtr block) {
+void TraceAssembler::process_block(ton::BlockSeqno seqno, DataContainerPtr block) {
     // sort transactions by lt
     std::vector<std::reference_wrapper<schema::Transaction>> sorted_txs;
     for(auto& blk: block->blocks_) {
@@ -236,14 +236,11 @@ void TraceAssembler::process_block(ton::BlockSeqno seqno, ParsedBlockPtr block) 
             sorted_txs.push_back(tx);
         }
     }
-    std::sort(sorted_txs.begin(), sorted_txs.end(), [](auto& lhs, auto& rhs){
+    std::sort(sorted_txs.begin(), sorted_txs.end(), [](const auto& lhs, const auto& rhs){
         if (lhs.get().lt != rhs.get().lt) {
             return lhs.get().lt < rhs.get().lt;
         }
-        if (lhs.get().account.workchain != rhs.get().account.workchain) {
-            return (lhs.get().account.workchain < rhs.get().account.workchain);
-        }
-        return (lhs.get().account.addr < rhs.get().account.addr);
+        return lhs.get().account < rhs.get().account;
     });
 
     // process transactions
@@ -292,7 +289,7 @@ void TraceAssembler::process_transaction(ton::BlockSeqno seqno, schema::Transact
             auto edge_it = pending_edges_.find(msg.hash);
             if (edge_it == pending_edges_.end()) {
                 // edge doesn't exist
-                if (!msg.source) {
+                if (!std::holds_alternative<schema::AddressStd>(msg.source)) {
                     // external
                     edge.trace_id = tx.hash;
                     edge.msg_hash = msg.hash;
@@ -302,26 +299,29 @@ void TraceAssembler::process_transaction(ton::BlockSeqno seqno, schema::Transact
                     edge.type = TraceEdgeImpl::Type::ext;
                     edge.incomplete = false;
                     edge.broken = false;
-                } else if (msg.source.value() == "-1:0000000000000000000000000000000000000000000000000000000000000000") {
-                    // system
-                    edge.trace_id = tx.hash;
-                    edge.msg_hash = msg.hash;
-                    edge.msg_lt = (msg.created_lt ? msg.created_lt.value() : 0);
-                    edge.left_tx = std::nullopt;
-                    edge.right_tx = tx.hash;
-                    edge.type = TraceEdgeImpl::Type::sys;
-                    edge.incomplete = false;
-                    edge.broken = false;
                 } else {
-                    // broken edge
-                    edge.trace_id = tx.hash;
-                    edge.msg_hash = msg.hash;
-                    edge.msg_lt = (msg.created_lt ? msg.created_lt.value() : 0);
-                    edge.left_tx = std::nullopt;
-                    edge.right_tx = tx.hash;
-                    edge.type = TraceEdgeImpl::Type::ord;
-                    edge.incomplete = true;
-                    edge.broken = true;
+                    const auto& src = std::get<schema::AddressStd>(msg.source);
+                    if (src.workchain == -1 && src.addr == td::Bits256::zero()) {
+                        // system
+                        edge.trace_id = tx.hash;
+                        edge.msg_hash = msg.hash;
+                        edge.msg_lt = (msg.created_lt ? msg.created_lt.value() : 0);
+                        edge.left_tx = std::nullopt;
+                        edge.right_tx = tx.hash;
+                        edge.type = TraceEdgeImpl::Type::sys;
+                        edge.incomplete = false;
+                        edge.broken = false;
+                    } else {
+                        // broken edge
+                        edge.trace_id = tx.hash;
+                        edge.msg_hash = msg.hash;
+                        edge.msg_lt = (msg.created_lt ? msg.created_lt.value() : 0);
+                        edge.left_tx = std::nullopt;
+                        edge.right_tx = tx.hash;
+                        edge.type = TraceEdgeImpl::Type::ord;
+                        edge.incomplete = true;
+                        edge.broken = true;
+                    }
                 }
 
                 // trace
@@ -393,7 +393,7 @@ void TraceAssembler::process_transaction(ton::BlockSeqno seqno, schema::Transact
     // out_msgs
     for(auto & msg : tx.out_msgs) {
         auto edge = TraceEdgeImpl{trace->trace_id, msg.hash, (msg.created_lt ? msg.created_lt.value() : 0), tx.hash, std::nullopt, TraceEdgeImpl::Type::ord, true, false};
-        if (!msg.destination) {
+        if (!std::holds_alternative<schema::AddressStd>(msg.destination)) {
             edge.type = TraceEdgeImpl::Type::logs;
             edge.incomplete = false;
             edge.broken = false;

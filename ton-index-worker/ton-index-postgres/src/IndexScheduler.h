@@ -66,11 +66,11 @@ private:
 
   void schedule_seqno(std::uint32_t mc_seqno);
   void reschedule_seqno(std::uint32_t mc_seqno, bool silent = false);
-  void seqno_fetched(std::uint32_t mc_seqno, MasterchainBlockDataState block_data_state);
-  void seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
-  void seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
-  void seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
-  void seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
+  void seqno_fetched(std::uint32_t mc_seqno, DataContainerPtr data);
+  void seqno_parsed(std::uint32_t mc_seqno, DataContainerPtr data);
+  void seqno_traces_assembled(std::uint32_t mc_seqno, DataContainerPtr data);
+  void seqno_interfaces_processed(std::uint32_t mc_seqno, DataContainerPtr data);
+  void seqno_actions_processed(std::uint32_t mc_seqno, DataContainerPtr data);
   void seqno_queued_to_insert(std::uint32_t mc_seqno, QueueState status);
   void seqno_inserted(std::uint32_t mc_seqno, td::Unit result);
 

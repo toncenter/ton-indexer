@@ -24,7 +24,7 @@ private:
     td::actor::ActorOwn<ton::dht::Dht> dht_;
     td::actor::ActorOwn<ton::adnl::AdnlNetworkManager> adnl_network_manager_;
 
-    MasterchainBlockDataState mc_data_state_;
+    schema::MasterchainBlockDataState mc_data_state_;
     std::unordered_set<td::Bits256> known_ext_msgs_;
     
     int traces_cnt_{0};
@@ -41,7 +41,7 @@ public:
 
     virtual void start_up() override;
 
-    void set_mc_data_state(MasterchainBlockDataState mc_data_state) {
+    void set_mc_data_state(schema::MasterchainBlockDataState mc_data_state) {
         mc_data_state_ = std::move(mc_data_state);
         known_ext_msgs_.clear();
     }

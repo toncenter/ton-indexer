@@ -36,7 +36,7 @@ void TraceTaskScheduler::fetch_seqnos() {
     for (auto it = seqnos_to_fetch_.begin(); it != seqnos_to_fetch_.end(); ) {
         auto seqno = *it;
 
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), seqno](td::Result<MasterchainBlockDataState> R) {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), seqno](td::Result<schema::MasterchainBlockDataState> R) {
             if (R.is_error()) {
                 td::actor::send_closure(SelfId, &TraceTaskScheduler::fetch_error, seqno, R.move_as_error());
                 return;
@@ -65,7 +65,7 @@ void TraceTaskScheduler::fetch_error(std::uint32_t seqno, td::Status error) {
     alarm_timestamp() = td::Timestamp::in(0.1);
 }
 
-void TraceTaskScheduler::seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState mc_data_state) {
+void TraceTaskScheduler::seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState mc_data_state) {
     LOG(INFO) << "Fetched seqno " << seqno;
 
     if (seqno > last_fetched_seqno_) {

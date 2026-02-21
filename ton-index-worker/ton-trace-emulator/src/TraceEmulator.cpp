@@ -67,7 +67,7 @@ void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress addr
     
     auto result = std::make_unique<TraceNode>();
     result->node_id = in_msg->get_hash().bits();
-    result->finality_state = FinalityState::Emulated;
+    result->emulated = true;
     result->address = address;
     result->transaction_root = emulation_success.transaction;
     result->block_id = block_id_;
@@ -289,7 +289,7 @@ void MasterchainBlockEmulator::start_up() {
                                         shard, R.move_as_ok(), std::move(promise));
             }
         });
-        td::actor::create_actor<ShardBlockEmulator>("ShardBlockEmulator", b.blkid, context_, b.msgs, std::move(P), measurement_).release();
+        td::actor::create_actor<ShardBlockEmulator>("ShardBlockEmulator", b.blkid, context_, b.msgs, std::move(P)).release();
     }
 }
 
@@ -392,7 +392,7 @@ void MasterchainBlockEmulator::all_shards_emulated() {
     context_.increase_seqno(3);
 
     td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", 
-        context_, to_emulate_in_next_mc_block, std::move(P), measurement_).release();
+        context_, to_emulate_in_next_mc_block, std::move(P)).release();
 }
 
 void MasterchainBlockEmulator::error(td::Status error) {
@@ -451,14 +451,12 @@ void MasterchainBlockEmulator::next_mc_emulated(std::vector<std::unique_ptr<Trac
     stop();
 }
 
-TraceEmulator::TraceEmulator(MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise, const MeasurementPtr& measurement)
-    : mc_data_state_(std::move(mc_data_state)), in_msg_(std::move(in_msg)), ignore_chksig_(ignore_chksig),
-      promise_(std::move(promise)), rand_seed_(td::Bits256::zero()), measurement_(measurement) {
+TraceEmulator::TraceEmulator(schema::MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise)
+    : mc_data_state_(std::move(mc_data_state)), in_msg_(std::move(in_msg)), ignore_chksig_(ignore_chksig), promise_(std::move(promise)) {
 }
 
 void TraceEmulator::start_up() {
     timer_.resume();
-    measurement_->measure_step("trace_emulator_start");
    
     context_ = std::make_unique<EmulationContext>(mc_data_state_.shard_blocks_[0].handle->id().id.seqno, mc_data_state_.config_, ignore_chksig_);
     for (const auto& shard_state : mc_data_state_.shard_blocks_) {
@@ -476,7 +474,7 @@ void TraceEmulator::start_up() {
     
     std::vector<td::Ref<vm::Cell>> in_msgs = {in_msg_};
 
-    td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", *context_.get(), std::move(in_msgs), std::move(P), measurement_).release();
+    td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", *context_.get(), std::move(in_msgs), std::move(P)).release();
 }
 
 void TraceEmulator::finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> root_r) {
@@ -506,8 +504,5 @@ void TraceEmulator::finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> r
     result.tx_limit_exceeded = context_->is_limit_exceeded();
     promise_.set_result(std::move(result));
     g_statistics.record_time(EMULATE_TRACE, timer_.elapsed() * 1e3);
-
-
-    measurement_->measure_step("trace_emulator_complete");
     stop();
 }

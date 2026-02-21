@@ -9,13 +9,13 @@ using namespace ton::validator;
 class GetBlockDataState: public td::actor::Actor {
 private:
   td::actor::ActorId<ton::validator::RootDb> db_;
-  td::Promise<BlockDataState> promise_;
+  td::Promise<schema::BlockDataState> promise_;
   ConstBlockHandle handle_;
 
   td::Ref<BlockData> block_data_;
   td::Ref<vm::Cell> block_state_root_;
 public:
-  GetBlockDataState(td::actor::ActorId<ton::validator::RootDb> db, ConstBlockHandle handle, td::Promise<BlockDataState> promise) :
+  GetBlockDataState(td::actor::ActorId<ton::validator::RootDb> db, ConstBlockHandle handle, td::Promise<schema::BlockDataState> promise) :
     db_(db),
     handle_(handle),
     promise_(std::move(promise)) {
@@ -71,7 +71,7 @@ class IndexQuery: public td::actor::Actor {
 private:
   const int mc_seqno_;
   td::actor::ActorId<ton::validator::RootDb> db_;
-  td::Promise<MasterchainBlockDataState> promise_;
+  td::Promise<DataContainerPtr> promise_;
   td::Timer timer_{true};
 
   td::Ref<BlockData> mc_block_data_;
@@ -81,18 +81,19 @@ private:
   td::Ref<MasterchainState> mc_prev_block_state_;
   int pending_{0};
 
-  std::queue<ton::BlockIdExt> blocks_queue_;
+  std::queue<ton::BlockId> blocks_queue_;
 
-  std::set<ton::BlockIdExt> current_shard_blk_ids_;
+  std::set<ton::BlockId> current_shard_blk_ids_;
   std::unordered_set<ConstBlockHandle> shard_block_handles_;
 
-  MasterchainBlockDataState result_;
+  DataContainerPtr result_;
 
 public:
-  IndexQuery(int mc_seqno, td::actor::ActorId<ton::validator::RootDb> db, td::Promise<MasterchainBlockDataState> promise) : 
+  IndexQuery(int mc_seqno, td::actor::ActorId<ton::validator::RootDb> db, td::Promise<DataContainerPtr> promise) :
     db_(db), 
     mc_seqno_(mc_seqno),
-    promise_(std::move(promise)) {
+    promise_(std::move(promise)),
+    result_(std::make_shared<DataContainer>(mc_seqno_)) {
   }
 
   void start_up() override {
@@ -151,8 +152,8 @@ public:
       return;
     }
 
-    result_.shard_blocks_.push_back({mc_block_data_, mc_block_state_, mc_block_handle_});
-    result_.shard_blocks_diff_.push_back({mc_block_data_, mc_block_state_, mc_block_handle_});
+    result_->mc_block_.shard_blocks_.push_back({mc_block_data_, mc_block_state_, mc_block_handle_});
+    result_->mc_block_.shard_blocks_diff_.push_back({mc_block_data_, mc_block_state_, mc_block_handle_});
 
     fetch_shard_blocks();
   }
@@ -168,11 +169,11 @@ public:
       return error(td::Status::Error("cannot extract shard configuration from masterchain state extra information"));
     }
 
-    for (auto& s : shards_config.get_shard_hash_ids_ext(true)) {
-      if (s.id.seqno > 0) {
+    for (auto& s : shards_config.get_shard_hash_ids(true)) {
+      if (s.seqno > 0) {
         blocks_queue_.push(s);
       } else {
-        LOG(WARNING) << "Skipping block workchain: " << s.id.workchain << " shard: " << s.id.shard << " seqno: " << s.id.seqno;
+        LOG(WARNING) << "Skipping block workchain: " << s.workchain << " shard: " << s.shard << " seqno: " << s.seqno;
       }
       current_shard_blk_ids_.insert(s);
     }
@@ -201,23 +202,19 @@ public:
       auto blk_id = blocks_queue_.front();
       blocks_queue_.pop();
 
-      auto P = td::PromiseCreator::lambda([&, SelfId = actor_id(this), mc_seqno = mc_seqno_, blk_id, current_shard_blk_ids = current_shard_blk_ids_, promise = ig.get_promise()](td::Result<BlockHandle> R) mutable {
+      auto P = td::PromiseCreator::lambda([&, SelfId = actor_id(this), mc_seqno = mc_seqno_, blk_id, current_shard_blk_ids = current_shard_blk_ids_, promise = ig.get_promise()](td::Result<ConstBlockHandle> R) mutable {
         if (R.is_error()) {
           promise.set_error(R.move_as_error_prefix(PSTRING() << blk_id.to_str() << ": "));
         } else {
           auto handle = R.move_as_ok();
-          if (!handle->inited_masterchain_ref_block()) {
-            promise.set_result(td::Status::Error(PSLICE () << "block " << handle->id().to_str() << " does not have masterchain ref block initialized"));
-            return;
-          }
-          if (handle->masterchain_ref_block() == mc_seqno || current_shard_blk_ids.count(handle->id()) > 0) {
+          if (handle->masterchain_ref_block() == mc_seqno || current_shard_blk_ids.count(handle->id().id) > 0) {
             td::actor::send_closure(SelfId, &IndexQuery::add_block_handle, std::move(handle), std::move(promise));
           } else {
             promise.set_result(td::Unit());
           }
         }
       });
-      td::actor::send_closure(db_, &RootDb::get_block_handle, blk_id, std::move(P));
+      td::actor::send_closure(db_, &RootDb::get_block_by_seqno, ton::AccountIdPrefixFull{blk_id.workchain, blk_id.shard}, blk_id.seqno, std::move(P));
     }
   }
 
@@ -230,7 +227,7 @@ public:
     shard_block_handles_.insert(handle);
     for (const auto& prev: handle->prev()) {
       if (prev.id.seqno > 0) {
-        blocks_queue_.push(prev);
+        blocks_queue_.push(prev.id);
       } else {
         LOG(WARNING) << "Skipping block workchain: " << prev.id.workchain << " shard: " << prev.id.shard << " seqno: " << prev.id.seqno;
       }
@@ -252,7 +249,7 @@ public:
     ig.add_promise(std::move(P));
 
     for (auto& handle: shard_block_handles_) {
-      auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), handle, promise = ig.get_promise()](td::Result<BlockDataState> R) mutable {
+      auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), handle, promise = ig.get_promise()](td::Result<schema::BlockDataState> R) mutable {
         if (R.is_error()) {
           promise.set_error(R.move_as_error_prefix(PSTRING() << handle->id().to_str() << ": "));
         } else {
@@ -263,12 +260,12 @@ public:
     }
   }
 
-  void got_shard_block(BlockDataState block_data_state, ConstBlockHandle handle, td::Promise<td::Unit> promise) {
-    if (current_shard_blk_ids_.count(block_data_state.block_data->block_id()) > 0) {
-      result_.shard_blocks_.push_back(block_data_state);
+  void got_shard_block(schema::BlockDataState block_data_state, ConstBlockHandle handle, td::Promise<td::Unit> promise) {
+    if (current_shard_blk_ids_.count(block_data_state.block_data->block_id().id) > 0) {
+      result_->mc_block_.shard_blocks_.push_back(block_data_state);
     }
     if (handle->masterchain_ref_block() == mc_seqno_) {
-      result_.shard_blocks_diff_.push_back(block_data_state);
+      result_->mc_block_.shard_blocks_diff_.push_back(block_data_state);
     }
     promise.set_result(td::Unit());
   }
@@ -295,6 +292,14 @@ void DbScanner::start_up() {
         ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()},
         ton::BlockIdExt{ton::masterchainId, ton::shardIdAll, 0, ton::RootHash::zero(), ton::FileHash::zero()});
   opts.write().set_max_open_archive_files(500);
+
+  if (auto val = opts->get_celldb_cache_size(); val) {
+    LOG(ERROR) << "Current cache: " << val.value();
+  } else {
+    LOG(ERROR) << "Cache not set";
+  }
+  opts.write().set_celldb_cache_size(16ull * 1024 * 1024 * 1024);
+
   if (mode_ == dbs_secondary) {
     CHECK(secondary_working_dir_.has_value());
     opts.write().set_secondary_working_dir(secondary_working_dir_.value());
@@ -321,36 +326,9 @@ void DbScanner::get_cell_db_reader(td::Promise<std::shared_ptr<vm::CellDbReader>
   td::actor::send_closure(db_, &RootDb::get_cell_db_reader, std::move(promise));
 }
 
-void DbScanner::iterate_temp_block_handles(std::function<void(const ton::validator::BlockHandleInterface&)> f) {
-  td::actor::send_closure(db_, &RootDb::iterate_temp_block_handles, std::move(f));
-}
-
-void DbScanner::fetch_block_by_id(ton::BlockIdExt block_id, td::Promise<BlockDataState> promise) {
-  auto P = td::PromiseCreator::lambda(
-      [SelfId = actor_id(this), this, promise = std::move(promise)](td::Result<ton::validator::BlockHandle> R) mutable {
-        if (R.is_error()) {
-          promise.set_error(R.move_as_error());
-          return;
-        }
-        td::actor::create_actor<GetBlockDataState>("getblockdatastate-single", db_.get(), R.move_as_ok(),
-                                                   std::move(promise))
-            .release();
-  });
-  td::actor::send_closure(db_, &RootDb::get_block_handle, block_id, std::move(P));
-}
-
-void DbScanner::request_catch_up(td::Promise<td::Unit> promise) {
-  if (mode_ == dbs_readonly || db_.empty()) {
-    promise.set_error(td::Status::Error("cannot catch up in readonly mode"));
-    return;
-  }
-  catch_up_with_primary(std::move(promise));
-}
-
-void DbScanner::catch_up_with_primary(td::Promise<td::Unit> promise) {
-  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), this, timer = td::Timer{}, p = std::move(promise)](td::Result<td::Unit> R) mutable {
+void DbScanner::catch_up_with_primary() {
+  auto R = td::PromiseCreator::lambda([SelfId = actor_id(this), this, timer = td::Timer{}](td::Result<td::Unit> R) mutable {
     R.ensure();
-    p.set_value(td::Unit());
     this->is_ready_ = true;
     timer.pause();
     g_statistics.record_time(CATCH_UP_WITH_PRIMARY, timer.elapsed() * 1e3);
@@ -358,7 +336,7 @@ void DbScanner::catch_up_with_primary(td::Promise<td::Unit> promise) {
   td::actor::send_closure(db_, &RootDb::try_catch_up_with_primary, std::move(R));
 }
 
-void DbScanner::fetch_seqno(std::uint32_t mc_seqno, td::Promise<MasterchainBlockDataState> promise) {
+void DbScanner::fetch_seqno(std::uint32_t mc_seqno, td::Promise<DataContainerPtr> promise) {
   td::actor::create_actor<IndexQuery>("indexquery", mc_seqno, db_.get(), std::move(promise)).release();
 }
 
@@ -371,9 +349,5 @@ void DbScanner::alarm() {
     return;
   }
 
-  auto P = td::PromiseCreator::lambda([](td::Result<td::Unit> R) {
-    R.ensure();
-  });
-
-  td::actor::send_closure(actor_id(this), &DbScanner::catch_up_with_primary, std::move(P));
+  td::actor::send_closure(actor_id(this), &DbScanner::catch_up_with_primary);
 }

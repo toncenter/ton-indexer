@@ -21,7 +21,7 @@ public:
                     AllShardStates shard_states,
                     std::shared_ptr<block::ConfigInfo> config,
                     td::Promise<std::vector<DetectedInterface>> promise) :
-      address_(std::move(address)), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)), 
+      address_(address), code_cell_(std::move(code_cell)), data_cell_(std::move(data_cell)),
       shard_states_(std::move(shard_states)), config_(std::move(config)), promise_(std::move(promise)) {
   found_interfaces_ = std::make_shared<std::vector<DetectedInterface>>();
 }

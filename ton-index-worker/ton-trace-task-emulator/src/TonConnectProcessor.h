@@ -60,17 +60,17 @@ enum WalletType {
 
 class TonConnectProcessor: public td::actor::Actor {
 public:
-  TonConnectProcessor(TonConnectTraceTask tonconnect_task, const MasterchainBlockDataState& mc_data_state, td::Promise<TraceTask> promise) 
+  TonConnectProcessor(TonConnectTraceTask tonconnect_task, const schema::MasterchainBlockDataState& mc_data_state, td::Promise<TraceTask> promise)
     : tonconnect_task_(std::move(tonconnect_task)), mc_data_state_(mc_data_state), promise_(std::move(promise)) {}
 
   // Convert TonConnect task to regular TraceTask
   void process_tonconnect_task(const TonConnectTraceTask& tonconnect_task, 
-                            const MasterchainBlockDataState& mc_data_state);
+                            const schema::MasterchainBlockDataState& mc_data_state);
 
   void start_up() override;
 private:
   TonConnectTraceTask tonconnect_task_;
-  MasterchainBlockDataState mc_data_state_;
+  schema::MasterchainBlockDataState mc_data_state_;
   td::Promise<TraceTask> promise_;
 
   void error(td::Status error);

@@ -13,8 +13,8 @@
 
 
 // process ParsedBlock and try detect master and wallet interfaces
-void EventProcessor::process(ParsedBlockPtr block, td::Promise<> &&promise) {
-  auto P = td::PromiseCreator::lambda([SelfId=actor_id(this), block, promise = std::move(promise)](td::Result<std::vector<BlockchainInterface>> res) mutable {
+void EventProcessor::process(DataContainerPtr block, td::Promise<> &&promise) {
+  auto P = td::PromiseCreator::lambda([SelfId=actor_id(this), block, promise = std::move(promise)](td::Result<std::vector<schema::BlockchainInterface>> res) mutable {
     if (res.is_error()) {
       promise.set_error(res.move_as_error_prefix("Failed to process account states for mc block " + std::to_string(block->blocks_[0].seqno) + ": "));
       return;
@@ -27,7 +27,7 @@ void EventProcessor::process(ParsedBlockPtr block, td::Promise<> &&promise) {
         transactions.push_back(transaction);
       }
     }
-    td::actor::send_closure(SelfId, &EventProcessor::process_transactions, std::move(transactions), promise.wrap([block](std::vector<BlockchainEvent> events) {
+    td::actor::send_closure(SelfId, &EventProcessor::process_transactions, std::move(transactions), promise.wrap([block](std::vector<schema::BlockchainEvent> events) {
       block->events_ = std::move(events);
       return td::Unit();
     }));
@@ -58,8 +58,8 @@ void EventProcessor::process(ParsedBlockPtr block, td::Promise<> &&promise) {
 // }
 
 std::mutex interfaces_mutex;
-void EventProcessor::process_states(const std::vector<schema::AccountState>& account_states, const MasterchainBlockDataState& blocks_ds, td::Promise<std::vector<BlockchainInterface>> &&promise) {
-  auto found_interfaces = std::make_shared<std::vector<BlockchainInterface>>();
+void EventProcessor::process_states(const std::vector<schema::AccountState>& account_states, const schema::MasterchainBlockDataState& blocks_ds, td::Promise<std::vector<schema::BlockchainInterface>> &&promise) {
+  auto found_interfaces = std::make_shared<std::vector<schema::BlockchainInterface>>();
 
   auto P = td::PromiseCreator::lambda([SelfId=actor_id(this), found_interfaces, promise = std::move(promise)](td::Result<td::Unit> res) mutable {
     if (res.is_error()) {
@@ -73,21 +73,22 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
   auto ig = mp.init_guard();
   ig.add_promise(std::move(P));
   for (const auto& account_state : account_states) {
-    auto raw_address = convert::to_raw_address(account_state.account);
-    if (raw_address == "-1:5555555555555555555555555555555555555555555555555555555555555555" || 
-        raw_address == "-1:3333333333333333333333333333333333333333333333333333333333333333") {
+    const schema::AddressStd config_address{-1, td::Bits256{std::array<uint8_t, 32>{85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85}}};
+    const schema::AddressStd elector_address{-1, td::Bits256{std::array<uint8_t, 32>{51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51}}};
+    auto& address_std = std::get<schema::AddressStd>(account_state.account);
+    if (address_std == config_address || address_std == elector_address) {
       continue;
     }
-    auto& address = account_state.account;
-    
+    block::StdAddress address{address_std.workchain, address_std.addr};
+
     auto code_cell = account_state.code;
-    auto data_cell = account_state.data; 
+    auto data_cell = account_state.data;
     if (code_cell.is_null() || data_cell.is_null()) {
       continue;
     }
     auto last_tx_lt = account_state.last_trans_lt;
     auto last_tx_now = account_state.timestamp;
-    auto P1 = td::PromiseCreator::lambda([this, code_cell, address, found_interfaces, promise = ig.get_promise()](td::Result<JettonMasterData> master_data) mutable {
+    auto P1 = td::PromiseCreator::lambda([this, code_cell, address, found_interfaces, promise = ig.get_promise()](td::Result<schema::JettonMasterData> master_data) mutable {
       if (master_data.is_ok()) {
         LOG(DEBUG) << "Detected interface JETTON_MASTER for " << convert::to_raw_address(address);
         std::lock_guard<std::mutex> guard(interfaces_mutex);
@@ -97,7 +98,7 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
     });
     td::actor::send_closure(jetton_master_detector_, &JettonMasterDetector::detect, address, code_cell, data_cell, last_tx_lt, last_tx_now, blocks_ds, std::move(P1));
 
-    auto P2 = td::PromiseCreator::lambda([this, code_cell, address, found_interfaces, promise = ig.get_promise()](td::Result<JettonWalletData> wallet_data) mutable {
+    auto P2 = td::PromiseCreator::lambda([this, code_cell, address, found_interfaces, promise = ig.get_promise()](td::Result<schema::JettonWalletData> wallet_data) mutable {
       if (wallet_data.is_ok()) {
         LOG(DEBUG) << "Detected interface JETTON_WALLET for " << convert::to_raw_address(address);
         std::lock_guard<std::mutex> guard(interfaces_mutex);
@@ -107,7 +108,7 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
     });
     td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::detect, address, code_cell, data_cell, last_tx_lt, last_tx_now, blocks_ds, std::move(P2));
 
-    auto P3 = td::PromiseCreator::lambda([this, code_cell, address, found_interfaces, promise = ig.get_promise()](td::Result<NFTCollectionData> nft_collection_data) mutable {
+    auto P3 = td::PromiseCreator::lambda([this, code_cell, address, found_interfaces, promise = ig.get_promise()](td::Result<schema::NFTCollectionData> nft_collection_data) mutable {
       if (nft_collection_data.is_ok()) {
         LOG(DEBUG) << "Detected interface NFT_COLLECTION for " << convert::to_raw_address(address);
         std::lock_guard<std::mutex> guard(interfaces_mutex);
@@ -117,7 +118,7 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
     });
     td::actor::send_closure(nft_collection_detector_, &NFTCollectionDetector::detect, address, code_cell, data_cell, last_tx_lt, last_tx_now, blocks_ds, std::move(P3));
 
-    auto P4 = td::PromiseCreator::lambda([this, code_cell, address, found_interfaces, promise = ig.get_promise()](td::Result<NFTItemData> nft_item_data) mutable {
+    auto P4 = td::PromiseCreator::lambda([this, code_cell, address, found_interfaces, promise = ig.get_promise()](td::Result<schema::NFTItemData> nft_item_data) mutable {
       if (nft_item_data.is_ok()) {
         LOG(DEBUG) << "Detected interface NFT_ITEM for " << convert::to_raw_address(address);
         std::lock_guard<std::mutex> guard(interfaces_mutex);
@@ -130,10 +131,10 @@ void EventProcessor::process_states(const std::vector<schema::AccountState>& acc
 }
 
 std::mutex events_mutex;
-void EventProcessor::process_transactions(const std::vector<schema::Transaction>& transactions, td::Promise<std::vector<BlockchainEvent>> &&promise) {
+void EventProcessor::process_transactions(const std::vector<schema::Transaction>& transactions, td::Promise<std::vector<schema::BlockchainEvent>> &&promise) {
   LOG(DEBUG) << "Detecting tokens transactions " << transactions.size();
 
-  auto events = std::make_shared<std::vector<BlockchainEvent>>();
+  auto events = std::make_shared<std::vector<schema::BlockchainEvent>>();
 
   auto P = td::PromiseCreator::lambda([SelfId=actor_id(this), events, promise = std::move(promise)](td::Result<td::Unit> res) mutable {
     if (res.is_error()) {
@@ -167,23 +168,23 @@ void EventProcessor::process_transactions(const std::vector<schema::Transaction>
 
     auto cs = vm::load_cell_slice_ref(tx.in_msg.value().body);
     switch (tokens::gen::t_InternalMsgBody.check_tag(*cs)) {
-      case tokens::gen::InternalMsgBody::transfer_jetton: 
-        td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_transfer, tx, cs, 
-          td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<JettonTransfer> transfer) mutable { 
+      case tokens::gen::InternalMsgBody::transfer_jetton:
+        td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_transfer, tx, cs,
+          td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<schema::JettonTransfer> transfer) mutable {
             process(std::move(transfer), std::move(promise));
           })
         );
         break;
-      case tokens::gen::InternalMsgBody::burn: 
-        td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_burn, tx, cs, 
-          td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<JettonBurn> burn) mutable { 
+      case tokens::gen::InternalMsgBody::burn:
+        td::actor::send_closure(jetton_wallet_detector_, &JettonWalletDetector::parse_burn, tx, cs,
+          td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<schema::JettonBurn> burn) mutable {
             process(std::move(burn), std::move(promise));
           })
         );
         break;
-      case tokens::gen::InternalMsgBody::transfer_nft: 
-        td::actor::send_closure(nft_item_detector_, &NFTItemDetector::parse_transfer, tx, cs, 
-          td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<NFTTransfer> transfer) mutable { 
+      case tokens::gen::InternalMsgBody::transfer_nft:
+        td::actor::send_closure(nft_item_detector_, &NFTItemDetector::parse_transfer, tx, cs,
+          td::PromiseCreator::lambda([process, promise = ig.get_promise()](td::Result<schema::NFTTransfer> transfer) mutable {
             process(std::move(transfer), std::move(promise));
           })
         );

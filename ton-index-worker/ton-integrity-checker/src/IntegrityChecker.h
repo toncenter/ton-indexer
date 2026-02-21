@@ -9,7 +9,7 @@ class IntegrityParser: public td::actor::Actor  {
   public:
     IntegrityParser() {}
 
-    void parse(int mc_seqno, MasterchainBlockDataState mc_block, td::Promise<td::Unit> promise) {
+    void parse(int mc_seqno, schema::MasterchainBlockDataState mc_block, td::Promise<td::Unit> promise) {
       promise.set_result(td::Unit());
     }
 };
@@ -33,7 +33,7 @@ class IntegrityChecker : public td::actor::Actor {
     std::unordered_set<std::uint32_t> seqnos_fetching_;
     std::unordered_set<std::uint32_t> seqnos_parsing_;
     std::set<std::uint32_t> seqnos_processed_;
-    std::queue<std::pair<std::uint32_t, MasterchainBlockDataState>> blocks_to_parse_;
+    std::queue<std::pair<std::uint32_t, schema::MasterchainBlockDataState>> blocks_to_parse_;
     std::uint32_t blocks_to_parse_queue_max_size_{1000};
 
     td::Timestamp last_tps_calc_ts_ = td::Timestamp::now();
@@ -58,7 +58,7 @@ class IntegrityChecker : public td::actor::Actor {
     void find_oldest_seqno_with_state(uint32_t min_seqno, uint32_t max_seqno);
     void fetch_next_seqnos();
     void fetch_error(std::uint32_t seqno, td::Status error);
-    void seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState state);
+    void seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState state);
     void parse_next_seqnos();
     void parse_error(std::uint32_t seqno, td::Status error);
     void seqno_parsed(std::uint32_t seqno);

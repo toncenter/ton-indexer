@@ -48,7 +48,7 @@ void FetchAccountFromShardV2::start_up()
             return;
         case block::gen::Account::account:
             {
-                auto account_r = ParseQuery::parse_account(acc_info.account, sstate.gen_utime, acc_info.last_trans_hash,
+                auto account_r = parse_account_state(acc_info.account, sstate.gen_utime, acc_info.last_trans_hash,
                                                            acc_info.last_trans_lt);
                 if (account_r.is_error())
                 {

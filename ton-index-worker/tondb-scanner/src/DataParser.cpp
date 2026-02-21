@@ -12,136 +12,10 @@
 
 using namespace ton::validator; //TODO: remove this
 
-void ParseQuery::start_up() {
-  td::Timer timer;
-  auto status = parse_impl();
-  g_statistics.record_time(PARSE_SEQNO, timer.elapsed() * 1e3);
-  
-  if(status.is_error()) {
-    promise_.set_error(status.move_as_error());
-  }
-  else {
-    promise_.set_result(std::move(result));
-  }
-  stop();
-}
-
-td::Status ParseQuery::parse_impl() {
-  td::optional<schema::Block> mc_block;
-  for (auto &block_ds : mc_block_.shard_blocks_diff_) {
-    td::Timer timer;
-    // common block info
-    block::gen::Block::Record blk;
-    block::gen::BlockInfo::Record info;
-    block::gen::BlockExtra::Record extra;
-    if (!(tlb::unpack_cell(block_ds.block_data->root_cell(), blk) && tlb::unpack_cell(blk.info, info) && tlb::unpack_cell(blk.extra, extra))) {
-        return td::Status::Error("block data info extra unpack failed");
-    }
-
-    // block details
-    auto schema_block = parse_block(block_ds.block_data->root_cell(), block_ds.block_data->block_id(), blk, info, extra, mc_block);
-    if (!mc_block) {
-        mc_block = schema_block;
-    }
-
-    // config
-    if (block_ds.block_data->block_id().is_masterchain()) {
-      td::Timer config_timer;
-      TRY_RESULT_ASSIGN(mc_block_.config_, block::ConfigInfo::extract_config(block_ds.block_state, 
-                                                        block_ds.block_data->block_id(), 
-                                                        block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries));
-      g_statistics.record_time(PARSE_CONFIG, config_timer.elapsed() * 1e6);
-    }
-
-    // transactions and messages
-    td::Timer transactions_timer;
-    std::map<td::Bits256, AccountStateShort> account_states_to_get;
-    TRY_RESULT_ASSIGN(schema_block.transactions, parse_transactions(block_ds.block_data->block_id(), blk, info, extra, account_states_to_get));
-    g_statistics.record_time(PARSE_TRANSACTION, transactions_timer.elapsed() * 1e6, schema_block.transactions.size());
-
-    td::Timer acc_states_timer;
-    TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime, account_states_to_get));
-    g_statistics.record_time(PARSE_ACCOUNT_STATE, acc_states_timer.elapsed() * 1e6, account_states_fast.size());
-    
-    for (auto &acc : account_states_fast) {
-      result->account_states_.push_back(std::move(acc));
-    }
-
-    result->blocks_.push_back(schema_block);
-    g_statistics.record_time(PARSE_BLOCK, timer.elapsed() * 1e3);
-  }
-
-  // shard details
-  for (const auto &block_ds : mc_block_.shard_blocks_) {
-    auto shard_block = parse_shard_state(mc_block.value(), block_ds.block_data->block_id());
-    result->shard_state_.push_back(std::move(shard_block));
-  }
-
-  result->mc_block_ = mc_block_;
-  return td::Status::OK();
-}
-
-schema::MasterchainBlockShard ParseQuery::parse_shard_state(const schema::Block& mc_block, const ton::BlockIdExt& shard_blk_id) {
-  return {mc_block.seqno, mc_block.start_lt, mc_block.gen_utime, shard_blk_id.id.workchain, static_cast<int64_t>(shard_blk_id.id.shard), shard_blk_id.id.seqno};
-}
-
-schema::Block ParseQuery::parse_block(const td::Ref<vm::Cell>& root_cell, const ton::BlockIdExt& blk_id, block::gen::Block::Record& blk, const block::gen::BlockInfo::Record& info, 
-                          const block::gen::BlockExtra::Record& extra, const td::optional<schema::Block> &mc_block) {
-  schema::Block block;
-  block.workchain = blk_id.id.workchain;
-  block.shard = static_cast<int64_t>(blk_id.id.shard);
-  block.seqno = blk_id.id.seqno;
-  block.root_hash = td::base64_encode(blk_id.root_hash.as_slice());
-  block.file_hash = td::base64_encode(blk_id.file_hash.as_slice());
-  if (mc_block) {
-      block.mc_block_workchain = mc_block.value().workchain;
-      block.mc_block_shard = mc_block.value().shard;
-      block.mc_block_seqno = mc_block.value().seqno;
-  }
-  else if (block.workchain == -1) {
-      block.mc_block_workchain = block.workchain;
-      block.mc_block_shard = block.shard;
-      block.mc_block_seqno = block.seqno;
-  }
-  block.global_id = blk.global_id;
-  block.version = info.version;
-  block.after_merge = info.after_merge;
-  block.before_split = info.before_split;
-  block.after_split = info.after_split;
-  block.want_merge = info.want_merge;
-  block.want_split = info.want_split;
-  block.key_block = info.key_block;
-  block.vert_seqno_incr = info.vert_seqno_incr;
-  block.flags = info.flags;
-  block.gen_utime = info.gen_utime;
-  block.start_lt = info.start_lt;
-  block.end_lt = info.end_lt;
-  block.validator_list_hash_short = info.gen_validator_list_hash_short;
-  block.gen_catchain_seqno = info.gen_catchain_seqno;
-  block.min_ref_mc_seqno = info.min_ref_mc_seqno;
-  block.key_block = info.key_block;
-  block.prev_key_block_seqno = info.prev_key_block_seqno;
-  block.vert_seqno = info.vert_seq_no;
-  block::gen::ExtBlkRef::Record mcref{};
-  if (!info.not_master || tlb::unpack_cell(info.master_ref, mcref)) {
-      block.master_ref_seqno = mcref.seq_no;
-  }
-  block.rand_seed = td::base64_encode(extra.rand_seed.as_slice());
-  block.created_by = td::base64_encode(extra.created_by.as_slice());
-
-  // prev blocks
-  std::vector<ton::BlockIdExt> prev;
-  ton::BlockIdExt mc_blkid;
-  bool after_split;
-  auto res = block::unpack_block_prev_blk_ext(root_cell, blk_id, prev, mc_blkid, after_split);
-
-  for(auto& p : prev) {
-    block.prev_blocks.push_back({p.id.workchain, static_cast<int64_t>(p.id.shard), p.id.seqno});
-  }
-  return block;
-}
-
-td::Result<schema::CurrencyCollection> ParseQuery::parse_currency_collection(td::Ref<vm::CellSlice> csr) {
+//
+// functions
+//
+td::Result<schema::CurrencyCollection> parse_currency_collection(td::Ref<vm::CellSlice> csr) {
   td::RefInt256 grams;
   std::map<uint32_t, td::RefInt256> extra_currencies;
   td::Ref<vm::Cell> extra;
@@ -183,7 +57,7 @@ td::Result<td::Bits256> ext_in_msg_get_normalized_hash(td::Ref<vm::Cell> ext_in_
   }
 
   auto cb = vm::CellBuilder();
-  bool status = 
+  bool status =
     cb.store_long_bool(2, 2) &&                 // message$_ -> info:CommonMsgInfo -> ext_in_msg_info$10
     cb.store_long_bool(0, 2) &&                 // message$_ -> info:CommonMsgInfo -> src:MsgAddressExt -> addr_none$00
     cb.append_cellslice_bool(msg_info.dest) &&  // message$_ -> info:CommonMsgInfo -> dest:MsgAddressInt
@@ -196,6 +70,252 @@ td::Result<td::Bits256> ext_in_msg_get_normalized_hash(td::Ref<vm::Cell> ext_in_
     return td::Status::Error("Failed to build normalized message");
   }
   return cb.finalize()->get_hash().bits();
+}
+
+td::Result<schema::AccountState> parse_account_state(td::Ref<vm::Cell> account_root, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt) {
+  block::gen::Account::Record_account account;
+  if (!tlb::unpack_cell(account_root, account)) {
+    return td::Status::Error("Failed to unpack Account");
+  }
+  block::gen::AccountStorage::Record storage;
+  if (!tlb::csr_unpack(account.storage, storage)) {
+    return td::Status::Error("Failed to unpack AccountStorage");
+  }
+
+  schema::AccountState schema_account;
+  schema_account.hash = account_root->get_hash().bits();
+  TRY_RESULT(account_addr, convert::to_raw_address(account.addr));
+  TRY_RESULT(std_account, block::StdAddress::parse(account_addr));
+  schema_account.account = schema::AddressStd{std_account};
+  TRY_RESULT_ASSIGN(schema_account.balance, parse_currency_collection(storage.balance));
+  schema_account.timestamp = gen_utime;
+  schema_account.last_trans_hash = last_trans_hash;
+  schema_account.last_trans_lt = last_trans_lt;
+
+  int account_state_tag = block::gen::t_AccountState.get_tag(storage.state.write());
+  switch (account_state_tag) {
+    case block::gen::AccountState::account_uninit:
+      schema_account.account_status = "uninit";
+      break;
+    case block::gen::AccountState::account_frozen: {
+      schema_account.account_status = "frozen";
+      block::gen::AccountState::Record_account_frozen frozen;
+      if (!tlb::csr_unpack(storage.state, frozen)) {
+        return td::Status::Error("Failed to unpack AccountState frozen");
+      }
+      schema_account.frozen_hash = frozen.state_hash;
+      break;
+    }
+    case block::gen::AccountState::account_active: {
+      schema_account.account_status = "active";
+      block::gen::AccountState::Record_account_active active;
+      if (!tlb::csr_unpack(storage.state, active)) {
+        return td::Status::Error("Failed to unpack AccountState active");
+      }
+      block::gen::StateInit::Record state_init;
+      if (!tlb::csr_unpack(active.x, state_init)) {
+        return td::Status::Error("Failed to unpack StateInit");
+      }
+      auto& code_cs = state_init.code.write();
+      if (code_cs.fetch_long(1) != 0) {
+        schema_account.code = code_cs.prefetch_ref();
+        schema_account.code_hash = schema_account.code->get_hash().bits();
+        if (auto r_code_boc = vm::std_boc_serialize(schema_account.code); r_code_boc.is_ok()) {
+          schema_account.code_boc = r_code_boc.move_as_ok().as_slice().str();
+        } else {
+          LOG(ERROR) << "failed to serialize account_state.code: " << r_code_boc.move_as_error();
+        }
+      }
+      auto& data_cs = state_init.data.write();
+      if (data_cs.fetch_long(1) != 0) {
+        schema_account.data = data_cs.prefetch_ref();
+        schema_account.data_hash = schema_account.data->get_hash().bits();
+        if (auto r_data_boc = vm::std_boc_serialize(schema_account.data); r_data_boc.is_ok()) {
+          schema_account.data_boc = r_data_boc.move_as_ok().as_slice().str();
+        } else {
+          LOG(ERROR) << "failed to serialize account_state.data: " << r_data_boc.move_as_error();
+        }
+      }
+      break;
+    }
+    default:
+      return td::Status::Error("Unknown account state tag");
+  }
+  return schema_account;
+}
+
+
+//
+// parsing implementation
+//
+class ParseQuery: public td::actor::Actor {
+  const int mc_seqno_;
+  DataContainerPtr data_;
+  std::shared_ptr<vm::CellDbReader> cell_db_reader_;
+  td::Promise<DataContainerPtr> promise_;
+public:
+  ParseQuery(int mc_seqno, DataContainerPtr data, std::shared_ptr<vm::CellDbReader> cell_db_reader, td::Promise<DataContainerPtr> promise)
+    : mc_seqno_(mc_seqno), data_(std::move(data)), cell_db_reader_(std::move(cell_db_reader)), promise_(std::move(promise)) {
+    data_->mc_seqno_ = mc_seqno_;
+    data_->update_timing("parsing_started");
+  }
+
+  void start_up() override;
+
+private:
+  td::Status parse_impl();
+
+  schema::Block parse_block(const td::Ref<vm::Cell>& root_cell, const ton::BlockIdExt& blk_id, block::gen::Block::Record& blk, const block::gen::BlockInfo::Record& info,
+                            const block::gen::BlockExtra::Record& extra, const td::optional<schema::Block> &mc_block);
+  schema::MasterchainBlockShard parse_shard_state(const schema::Block& mc_block, const ton::BlockIdExt& shard_blk_id);
+  td::Result<schema::Message> parse_message(td::Ref<vm::Cell> msg_cell);
+  td::Result<schema::TrStoragePhase> parse_tr_storage_phase(vm::CellSlice& cs);
+  td::Result<schema::TrCreditPhase> parse_tr_credit_phase(vm::CellSlice& cs);
+  td::Result<schema::TrComputePhase> parse_tr_compute_phase(vm::CellSlice& cs);
+  td::Result<schema::StorageUsed> parse_storage_used(vm::CellSlice& cs);
+  td::Result<schema::TrActionPhase> parse_tr_action_phase(vm::CellSlice& cs);
+  td::Result<schema::TrBouncePhase> parse_tr_bounce_phase(vm::CellSlice& cs);
+  td::Result<schema::SplitMergeInfo> parse_split_merge_info(td::Ref<vm::CellSlice>& cs);
+  td::Result<schema::TransactionDescr> process_transaction_descr(vm::CellSlice& td_cs);
+
+  struct AccountStateShort {
+    td::Bits256 account_cell_hash;
+    uint64_t last_transaction_lt;
+    td::Bits256 last_transaction_hash;
+  };
+  td::Result<std::vector<schema::Transaction>> parse_transactions(const ton::BlockIdExt& blk_id, const block::gen::Block::Record &block,
+                                const block::gen::BlockInfo::Record &info, const block::gen::BlockExtra::Record &extra,
+                                std::map<td::Bits256, AccountStateShort> &account_states);
+  td::Result<std::vector<schema::AccountState>> parse_account_states_new(ton::WorkchainId workchain_id, uint32_t gen_utime, std::map<td::Bits256, AccountStateShort> &account_states);
+  td::Result<schema::AccountState> parse_none_account(td::Ref<vm::Cell> account_root, block::StdAddress address, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt);
+};
+
+void ParseQuery::start_up() {
+  td::Timer timer;
+  auto status = parse_impl();
+  g_statistics.record_time(PARSE_SEQNO, timer.elapsed() * 1e3);
+  
+  if(status.is_error()) {
+    promise_.set_error(status.move_as_error());
+  }
+  else {
+    promise_.set_result(std::move(data_));
+  }
+  stop();
+}
+
+td::Status ParseQuery::parse_impl() {
+  td::optional<schema::Block> mc_block;
+  for (auto &block_ds : data_->mc_block_.shard_blocks_diff_) {
+    td::Timer timer;
+    // common block info
+    block::gen::Block::Record blk;
+    block::gen::BlockInfo::Record info;
+    block::gen::BlockExtra::Record extra;
+    if (!(tlb::unpack_cell(block_ds.block_data->root_cell(), blk) && tlb::unpack_cell(blk.info, info) && tlb::unpack_cell(blk.extra, extra))) {
+        return td::Status::Error("block data info extra unpack failed");
+    }
+
+    // block details
+    auto schema_block = parse_block(block_ds.block_data->root_cell(), block_ds.block_data->block_id(), blk, info, extra, mc_block);
+    if (!mc_block) {
+        mc_block = schema_block;
+    }
+
+    // config
+    if (block_ds.block_data->block_id().is_masterchain()) {
+      td::Timer config_timer;
+      TRY_RESULT_ASSIGN(data_->mc_block_.config_, block::ConfigInfo::extract_config(block_ds.block_state,
+                                                        block_ds.block_data->block_id(), 
+                                                        block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries));
+      g_statistics.record_time(PARSE_CONFIG, config_timer.elapsed() * 1e6);
+    }
+
+    // transactions and messages
+    td::Timer transactions_timer;
+    std::map<td::Bits256, AccountStateShort> account_states_to_get;
+    TRY_RESULT_ASSIGN(schema_block.transactions, parse_transactions(block_ds.block_data->block_id(), blk, info, extra, account_states_to_get));
+    g_statistics.record_time(PARSE_TRANSACTION, transactions_timer.elapsed() * 1e6, schema_block.transactions.size());
+
+    td::Timer acc_states_timer;
+    TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime, account_states_to_get));
+    g_statistics.record_time(PARSE_ACCOUNT_STATE, acc_states_timer.elapsed() * 1e6, account_states_fast.size());
+    
+    for (auto &acc : account_states_fast) {
+      data_->account_states_.push_back(std::move(acc));
+    }
+
+    data_->blocks_.push_back(schema_block);
+    g_statistics.record_time(PARSE_BLOCK, timer.elapsed() * 1e3);
+  }
+
+  // shard details
+  for (const auto &block_ds : data_->mc_block_.shard_blocks_) {
+    auto shard_block = parse_shard_state(mc_block.value(), block_ds.block_data->block_id());
+    data_->shard_state_.push_back(std::move(shard_block));
+  }
+  data_->cell_db_reader_ = cell_db_reader_;
+  return td::Status::OK();
+}
+
+schema::MasterchainBlockShard ParseQuery::parse_shard_state(const schema::Block& mc_block, const ton::BlockIdExt& shard_blk_id) {
+  return {mc_block.seqno, mc_block.start_lt, mc_block.gen_utime, shard_blk_id.id.workchain, static_cast<int64_t>(shard_blk_id.id.shard), shard_blk_id.id.seqno};
+}
+
+schema::Block ParseQuery::parse_block(const td::Ref<vm::Cell>& root_cell, const ton::BlockIdExt& blk_id, block::gen::Block::Record& blk, const block::gen::BlockInfo::Record& info, 
+                          const block::gen::BlockExtra::Record& extra, const td::optional<schema::Block> &mc_block) {
+  schema::Block block;
+  block.workchain = blk_id.id.workchain;
+  block.shard = static_cast<int64_t>(blk_id.id.shard);
+  block.seqno = blk_id.id.seqno;
+  block.root_hash = td::Bits256{blk_id.root_hash};
+  block.file_hash = td::Bits256{blk_id.file_hash};
+  if (mc_block) {
+    block.mc_block_workchain = mc_block.value().workchain;
+    block.mc_block_shard = mc_block.value().shard;
+    block.mc_block_seqno = mc_block.value().seqno;
+  }
+  else if (block.workchain == -1) {
+    block.mc_block_workchain = block.workchain;
+    block.mc_block_shard = block.shard;
+    block.mc_block_seqno = block.seqno;
+  }
+  block.global_id = blk.global_id;
+  block.version = info.version;
+  block.after_merge = info.after_merge;
+  block.before_split = info.before_split;
+  block.after_split = info.after_split;
+  block.want_merge = info.want_merge;
+  block.want_split = info.want_split;
+  block.key_block = info.key_block;
+  block.vert_seqno_incr = info.vert_seqno_incr;
+  block.flags = info.flags;
+  block.gen_utime = info.gen_utime;
+  block.start_lt = info.start_lt;
+  block.end_lt = info.end_lt;
+  block.validator_list_hash_short = info.gen_validator_list_hash_short;
+  block.gen_catchain_seqno = info.gen_catchain_seqno;
+  block.min_ref_mc_seqno = info.min_ref_mc_seqno;
+  block.key_block = info.key_block;
+  block.prev_key_block_seqno = info.prev_key_block_seqno;
+  block.vert_seqno = info.vert_seq_no;
+  block::gen::ExtBlkRef::Record mcref{};
+  if (!info.not_master || tlb::unpack_cell(info.master_ref, mcref)) {
+    block.master_ref_seqno = mcref.seq_no;
+  }
+  block.rand_seed = td::Bits256{extra.rand_seed};
+  block.created_by = td::Bits256{extra.created_by};
+
+  // prev blocks
+  std::vector<ton::BlockIdExt> prev;
+  ton::BlockIdExt mc_blkid;
+  bool after_split;
+  auto res = block::unpack_block_prev_blk_ext(root_cell, blk_id, prev, mc_blkid, after_split);
+
+  for(auto& p : prev) {
+    block.prev_blocks.push_back({p.id.workchain, static_cast<int64_t>(p.id.shard), p.id.seqno});
+  }
+  return block;
 }
 
 td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell) {
@@ -220,6 +340,7 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
   if (!body_boc) {
     return td::Status::Error("Failed to convert message body to bytes");
   }
+  msg.body_hash = msg.body->get_hash().bits();
   msg.body_boc = body_boc.value();
 
   if (body->prefetch_long(32) != vm::CellSlice::fetch_long_eof) {
@@ -240,6 +361,7 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
     if (!init_state_boc) {
       return td::Status::Error("Failed to convert message init state to bytes");
     }
+    msg.init_state_hash = msg.init_state->get_hash().bits();
     msg.init_state_boc = init_state_boc.value();
   }
       
@@ -255,10 +377,16 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
       }
 
       TRY_RESULT_ASSIGN(msg.value, parse_currency_collection(msg_info.value));
-      TRY_RESULT_ASSIGN(msg.source, convert::to_raw_address(msg_info.src));
-      TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest));
+      auto r_src = convert::to_std_address(msg_info.src);
+      if (r_src.is_ok()) {
+        msg.source = schema::AddressStd{r_src.move_as_ok()};
+      }
+      auto r_dst = convert::to_std_address(msg_info.dest);
+      if (r_dst.is_ok()) {
+        msg.destination = schema::AddressStd{r_dst.move_as_ok()};
+      }
       msg.fwd_fee = block::tlb::t_Grams.as_integer_skip(msg_info.fwd_fee.write());
-      if (mc_block_.config_->get_global_version() >= 12) {
+      if (data_->mc_block_.config_->get_global_version() >= 12) {
         msg.ihr_fee = td::RefInt256{true, 0};
         msg.extra_flags = block::tlb::t_VarUInteger_16.as_integer_skip(msg_info.extra_flags.write());
       } else {
@@ -280,7 +408,7 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
       }
       
       // msg.source = null, because it is external
-      TRY_RESULT_ASSIGN(msg.destination, convert::to_raw_address(msg_info.dest))
+      TRY_RESULT_ASSIGN(msg.destination, convert::to_account_address(msg_info.dest))
       msg.import_fee = block::tlb::t_Grams.as_integer_skip(msg_info.import_fee.write());
       TRY_RESULT_ASSIGN(msg.hash_norm, ext_in_msg_get_normalized_hash(msg_cell));
       return msg;
@@ -290,7 +418,7 @@ td::Result<schema::Message> ParseQuery::parse_message(td::Ref<vm::Cell> msg_cell
       if (!tlb::csr_unpack(message.info, msg_info)) {
         return td::Status::Error("Failed to unpack CommonMsgInfo::ext_out_msg_info");
       }
-      TRY_RESULT_ASSIGN(msg.source, convert::to_raw_address(msg_info.src));
+      TRY_RESULT_ASSIGN(msg.source, convert::to_account_address(msg_info.src));
       // msg.destination = null, because it is external
       msg.created_lt = static_cast<uint64_t>(msg_info.created_lt);
       msg.created_at = static_cast<uint32_t>(msg_info.created_at);
@@ -640,7 +768,7 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
 
         schema::Transaction schema_tx;
 
-        schema_tx.account = block::StdAddress(blk_id.id.workchain, cur_addr);
+        schema_tx.account = schema::AddressStd{blk_id.id.workchain, cur_addr};
         schema_tx.hash = tvalue->get_hash().bits();
         schema_tx.lt = trans.lt;
         schema_tx.prev_trans_hash = trans.prev_trans_hash;
@@ -674,6 +802,9 @@ td::Result<std::vector<schema::Transaction>> ParseQuery::parse_transactions(cons
         schema_tx.account_state_hash_before = state_hash_update.old_hash;
         schema_tx.account_state_hash_after = state_hash_update.new_hash;
 
+        if (auto r_descr_boc = vm::std_boc_serialize(trans.description); r_descr_boc.is_ok()) {
+          schema_tx.description_boc = r_descr_boc.move_as_ok().as_slice().str();
+        }
         auto descr_cs = vm::load_cell_slice(trans.description);
         TRY_RESULT_ASSIGN(schema_tx.description, process_transaction_descr(descr_cs));
 
@@ -698,6 +829,7 @@ td::Result<std::vector<schema::AccountState>> ParseQuery::parse_account_states_n
       continue;
     }
     auto account_cell = account_cell_r.move_as_ok();
+    TRY_RESULT(account_boc, vm::std_boc_serialize(account_cell));
     int account_tag = block::gen::t_Account.get_tag(vm::load_cell_slice(account_cell));
     switch (account_tag) {
     case block::gen::Account::account_none: {
@@ -707,7 +839,7 @@ td::Result<std::vector<schema::AccountState>> ParseQuery::parse_account_states_n
       break;
     }
     case block::gen::Account::account: {
-      TRY_RESULT(account, parse_account(std::move(account_cell), gen_utime, state_short.last_transaction_hash, state_short.last_transaction_lt));
+      TRY_RESULT(account, parse_account_state(std::move(account_cell), gen_utime, state_short.last_transaction_hash, state_short.last_transaction_lt));
       res.push_back(account);
       break;
     }
@@ -725,7 +857,7 @@ td::Result<schema::AccountState> ParseQuery::parse_none_account(td::Ref<vm::Cell
     return td::Status::Error("Failed to unpack Account none");
   }
   schema::AccountState schema_account;
-  schema_account.account = address;
+  schema_account.account = schema::AddressStd{address};
   schema_account.hash = account_root->get_hash().bits();
   schema_account.timestamp = gen_utime;
   schema_account.account_status = "nonexist";
@@ -735,63 +867,6 @@ td::Result<schema::AccountState> ParseQuery::parse_none_account(td::Ref<vm::Cell
   return schema_account;
 }
 
-td::Result<schema::AccountState> ParseQuery::parse_account(td::Ref<vm::Cell> account_root, uint32_t gen_utime, td::Bits256 last_trans_hash, uint64_t last_trans_lt) {
-  block::gen::Account::Record_account account;
-  if (!tlb::unpack_cell(account_root, account)) {
-    return td::Status::Error("Failed to unpack Account");
-  }
-  block::gen::AccountStorage::Record storage;
-  if (!tlb::csr_unpack(account.storage, storage)) {
-    return td::Status::Error("Failed to unpack AccountStorage");
-  }
-
-  schema::AccountState schema_account;
-  schema_account.hash = account_root->get_hash().bits();
-  TRY_RESULT(account_addr, convert::to_raw_address(account.addr));
-  TRY_RESULT_ASSIGN(schema_account.account, block::StdAddress::parse(account_addr));
-  TRY_RESULT_ASSIGN(schema_account.balance, parse_currency_collection(storage.balance));
-  schema_account.timestamp = gen_utime;
-  schema_account.last_trans_hash = last_trans_hash;
-  schema_account.last_trans_lt = last_trans_lt;
-  
-  int account_state_tag = block::gen::t_AccountState.get_tag(storage.state.write());
-  switch (account_state_tag) {
-    case block::gen::AccountState::account_uninit:
-      schema_account.account_status = "uninit";
-      break;
-    case block::gen::AccountState::account_frozen: {
-      schema_account.account_status = "frozen";
-      block::gen::AccountState::Record_account_frozen frozen;
-      if (!tlb::csr_unpack(storage.state, frozen)) {
-        return td::Status::Error("Failed to unpack AccountState frozen");
-      }
-      schema_account.frozen_hash = frozen.state_hash;
-      break;
-    }
-    case block::gen::AccountState::account_active: {
-      schema_account.account_status = "active";
-      block::gen::AccountState::Record_account_active active;
-      if (!tlb::csr_unpack(storage.state, active)) {
-        return td::Status::Error("Failed to unpack AccountState active");
-      }
-      block::gen::StateInit::Record state_init;
-      if (!tlb::csr_unpack(active.x, state_init)) {
-        return td::Status::Error("Failed to unpack StateInit");
-      }
-      auto& code_cs = state_init.code.write();
-      if (code_cs.fetch_long(1) != 0) {
-        schema_account.code = code_cs.prefetch_ref();
-        schema_account.code_hash = schema_account.code->get_hash().bits();
-      }
-      auto& data_cs = state_init.data.write();
-      if (data_cs.fetch_long(1) != 0) {
-        schema_account.data = data_cs.prefetch_ref();
-        schema_account.data_hash = schema_account.data->get_hash().bits();
-      }
-      break;
-    }
-    default:
-      return td::Status::Error("Unknown account state tag");
-  }
-  return schema_account;
+void ParseManager::parse(int mc_seqno, DataContainerPtr parsed_block, std::shared_ptr<vm::CellDbReader> cell_db_reader, td::Promise<DataContainerPtr> promise)  {
+  td::actor::create_actor<ParseQuery>("parsequery", mc_seqno, std::move(parsed_block), cell_db_reader, std::move(promise)).release();
 }

@@ -10,6 +10,65 @@
 #include "convert-utils.h"
 
 
+td::Result<schema::AccountAddress> convert::to_account_address(td::Ref<vm::CellSlice> cs) {
+  auto tag = block::gen::MsgAddress().get_tag(*cs);
+  switch (tag) {
+    case block::gen::MsgAddress::cons1:
+      switch (block::gen::MsgAddressInt().get_tag(*cs)) {
+      case block::gen::MsgAddressInt::addr_var:
+          LOG(ERROR) << "Detected address_var: " << vm::std_boc_serialize(cs->get_base_cell(), 0).move_as_ok();
+          return schema::AddressVar{};
+      case block::gen::MsgAddressInt::addr_std: {
+        block::gen::MsgAddressInt::Record_addr_std addr;
+        if (!tlb::csr_unpack(cs, addr)) {
+          return td::Status::Error("Failed to unpack MsgAddressInt");
+        }
+        if (addr.anycast.not_null()) {
+          if (addr.anycast->bit_at(0) == 1) {
+            auto anycast_slice = vm::CellSlice(*addr.anycast);
+            anycast_slice.advance(1); // skip maybe bit
+            block::gen::Anycast::Record anycast;
+            if (!tlb::unpack_exact(anycast_slice, anycast)) {
+              return td::Status::Error("Failed to unpack Anycast");
+            }
+            addr.address.bits().copy_from(anycast.rewrite_pfx->cbits(), anycast.depth);
+          }
+        }
+        schema::AddressStd result;
+        result.workchain = addr.workchain_id;
+        result.addr = addr.address;
+        return result;
+      }
+      default:
+          return td::Status::Error("Failed to unpack MsgAddressInt");
+      }
+    case block::gen::MsgAddress::cons2:
+      switch (block::gen::MsgAddressExt().get_tag(*cs)) {
+      case block::gen::MsgAddressExt::addr_none:
+          return schema::AddressNone{};
+      case block::gen::MsgAddressExt::addr_extern: {
+        block::gen::MsgAddressExt::Record_addr_extern addr;
+        if (!tlb::csr_unpack(cs, addr)) {
+          return td::Status::Error("Failed to unpack MsgAddressExt");
+        }
+        schema::AddressExtern result;
+        result.len = addr.len;
+        result.external_address = std::move(addr.external_address);
+        td::StringBuilder sb;
+        sb << result;
+        LOG(ERROR) << "Detected address_extern: "
+          << td::base64_encode(vm::std_boc_serialize(cs->get_base_cell(), 0).move_as_ok())
+          << " repr: " << sb.as_cslice();
+        return result;
+      }
+      default:
+          return td::Status::Error("Failed to unpack MsgAddressExt");
+      }
+    default:
+      return td::Status::Error("Failed to unpack MsgAddress");
+  }
+}
+
 td::Result<std::string> convert::to_raw_address(td::Ref<vm::CellSlice> cs) {
   auto tag = block::gen::MsgAddress().get_tag(*cs);
   switch (tag) {
@@ -96,5 +155,5 @@ td::Result<std::optional<std::string>> convert::to_bytes(td::Ref<vm::Cell> cell)
     return std::nullopt;
   }
   TRY_RESULT(boc, vm::std_boc_serialize(cell, vm::BagOfCells::Mode::WithCRC32C));
-  return td::base64_encode(boc.as_slice().str());
+  return boc.as_slice().str();
 }

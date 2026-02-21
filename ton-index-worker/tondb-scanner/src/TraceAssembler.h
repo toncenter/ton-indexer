@@ -78,8 +78,8 @@ MSGPACK_ADD_ENUM(TraceImpl::State);
 class TraceAssembler: public td::actor::Actor {
     struct Task {
         ton::BlockSeqno seqno_;
-        ParsedBlockPtr block_;
-        td::Promise<ParsedBlockPtr> promise_;
+        DataContainerPtr block_;
+        td::Promise<DataContainerPtr> promise_;
     };
 
     std::string db_path_;
@@ -93,7 +93,7 @@ class TraceAssembler: public td::actor::Actor {
 public:
     TraceAssembler(std::string db_path, size_t gc_distance);
     
-    void assemble(ton::BlockSeqno mc_seqno, ParsedBlockPtr mc_block_, td::Promise<ParsedBlockPtr> promise);
+    void assemble(ton::BlockSeqno mc_seqno, DataContainerPtr mc_block_, td::Promise<DataContainerPtr> promise);
     
     td::Result<ton::BlockSeqno> restore_state(ton::BlockSeqno expected_seqno);
     void reset_state();
@@ -102,7 +102,7 @@ public:
     void alarm() override;
 private:
     void process_queue();
-    void process_block(ton::BlockSeqno seqno, ParsedBlockPtr block);
+    void process_block(ton::BlockSeqno seqno, DataContainerPtr block);
     void process_transaction(ton::BlockSeqno seqno, schema::Transaction& tx, std::vector<TraceEdgeImpl>& edges_found_, 
         std::unordered_set<td::Bits256, Bits256Hasher>& updated_traces_, std::unordered_set<td::Bits256, Bits256Hasher>& updated_edges_);
 };
