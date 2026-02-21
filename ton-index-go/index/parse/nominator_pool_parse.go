@@ -1,17 +1,18 @@
-package index
+package parse
 
 import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"math/big"
 	"strings"
 
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
 
-// parseNominatorPoolData parses nominator pool storage from data BOC (base64 encoded)
-func parseNominatorPoolData(dataBoc []byte) (*NominatorPoolInfo, error) {
+// ParseNominatorPoolData parses nominator pool storage from data BOC (base64 encoded)
+func ParseNominatorPoolData(dataBoc []byte) (*models.NominatorPoolInfo, error) {
 	// decode from base64
 	bocBytes, err := base64.StdEncoding.DecodeString(string(dataBoc))
 	if err != nil {
@@ -72,7 +73,7 @@ func parseNominatorPoolData(dataBoc []byte) (*NominatorPoolInfo, error) {
 		return nil, fmt.Errorf("failed to load nominators dict: %w", err)
 	}
 
-	activeNominators := []ActiveNominatorInfo{}
+	activeNominators := []models.ActiveNominatorInfo{}
 
 	if nominatorsDict != nil {
 		// iterate through nominators
@@ -104,7 +105,7 @@ func parseNominatorPoolData(dataBoc []byte) (*NominatorPoolInfo, error) {
 				continue
 			}
 
-			activeNominators = append(activeNominators, ActiveNominatorInfo{
+			activeNominators = append(activeNominators, models.ActiveNominatorInfo{
 				Address:        addressStr,
 				Balance:        deposit.Int64(),
 				PendingBalance: pendingDeposit.Int64(),
@@ -112,7 +113,7 @@ func parseNominatorPoolData(dataBoc []byte) (*NominatorPoolInfo, error) {
 		}
 	}
 
-	return &NominatorPoolInfo{
+	return &models.NominatorPoolInfo{
 		StakeAmountSent:    stakeAmountSent.Int64(),
 		ValidatorAmount:    validatorAmount.Int64(),
 		NominatorsCount:    int(nominatorsCount),
