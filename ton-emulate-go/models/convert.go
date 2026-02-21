@@ -3,18 +3,19 @@ package models
 import (
 	"context"
 	"fmt"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 	"log"
 	"maps"
 	"slices"
 	"strconv"
 	"time"
 
-	"github.com/toncenter/ton-indexer/ton-index-go/index"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
-	msgpack "github.com/vmihailenco/msgpack/v5"
 )
 
-func convertHashToLocal(h *index.HashType) *Hash {
+func convertHashToLocal(h *indexModels.HashType) *Hash {
 	if h == nil {
 		return nil
 	}
@@ -26,17 +27,17 @@ func convertHashToLocal(h *index.HashType) *Hash {
 	return &hash
 }
 
-func ConvertHashToIndex(h *Hash) *index.HashType {
+func ConvertHashToIndex(h *Hash) *indexModels.HashType {
 	if h == nil {
 		return nil
 	}
-	hash := index.HashType(h.Base64())
+	hash := indexModels.HashType(h.Base64())
 	return &hash
 }
 
-func MsgPackAccountStateToIndexAccountState(accountState AccountState) index.AccountState {
+func MsgPackAccountStateToIndexAccountState(accountState AccountState) indexModels.AccountState {
 	balance := strconv.FormatUint(accountState.Balance, 10)
-	return index.AccountState{
+	return indexModels.AccountState{
 		Hash:          *ConvertHashToIndex(&accountState.Hash),
 		Balance:       &balance,
 		AccountStatus: &accountState.AccountStatus,
@@ -46,7 +47,7 @@ func MsgPackAccountStateToIndexAccountState(accountState AccountState) index.Acc
 	}
 }
 
-func convertToIndexAccountState(hash *index.HashType, accountStates map[Hash]*AccountState) *index.AccountState {
+func convertToIndexAccountState(hash *indexModels.HashType, accountStates map[Hash]*AccountState) *indexModels.AccountState {
 	if hash == nil {
 		return nil
 	}
@@ -65,9 +66,9 @@ func convertToIndexAccountState(hash *index.HashType, accountStates map[Hash]*Ac
 	return &indexAccountState
 }
 
-func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
+func TransformToAPIResponse(hset map[string]string, pool *crud.DbClient,
 	isTestnet bool, includeAddressBook bool, includeMetadata bool, supportedActionTypes []string) (*EmulateTraceResponse, error) {
-	emulatedContext := index.NewEmptyContext(true)
+	emulatedContext := crud.NewEmptyContext(true)
 	raw_traces := make(map[string]map[string]string)
 	raw_traces[hset["root_node"]] = hset
 	err := emulatedContext.FillFromRawData(raw_traces)
@@ -80,15 +81,15 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 		return nil, fmt.Errorf("more than 1 trace in the context")
 	}
 
-	trace, err := index.ScanTrace(traceRows[0])
+	trace, err := parse.ScanTrace(traceRows[0])
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan trace: %w", err)
 	}
-	txs, err := index.QueryPendingTransactionsImpl(emulatedContext, nil, index.RequestSettings{}, false)
+	txs, err := crud.QueryPendingTransactionsImpl(emulatedContext, nil, indexModels.RequestSettings{}, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get trace transactions: %w", err)
 	}
-	trace.Transactions = make(map[index.HashType]*index.Transaction)
+	trace.Transactions = make(map[indexModels.HashType]*indexModels.Transaction)
 	for idx := range txs {
 		tx := &txs[idx]
 		if v := tx.TraceExternalHash; v != nil {
@@ -97,17 +98,17 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 		}
 	}
 
-	traceRoot, err := index.AssembleTraceTxsFromMap(&trace.TransactionsOrder, &trace.Transactions)
+	traceRoot, err := parse.AssembleTraceTxsFromMap(&trace.TransactionsOrder, &trace.Transactions)
 	if err != nil {
 		log.Printf("failed to assemble trace transactions: %s", err.Error())
 	}
 	trace.Trace = traceRoot
 
-	actions := make([]*index.Action, 0)
+	actions := make([]*indexModels.Action, 0)
 	trace.Actions = &actions
-	rawActions := make([]index.RawAction, 0)
+	rawActions := make([]indexModels.RawAction, 0)
 	for _, row := range emulatedContext.GetActions(supportedActionTypes) {
-		if loc, err := index.ScanRawAction(row); err == nil {
+		if loc, err := parse.ScanRawAction(row); err == nil {
 			rawActions = append(rawActions, *loc)
 		} else {
 			return nil, fmt.Errorf("failed to scan raw action: %w", err)
@@ -116,9 +117,9 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 	addr_map := map[string]bool{}
 	for idx := range rawActions {
 		rawAction := &rawActions[idx]
-		index.CollectAddressesFromAction(&addr_map, rawAction)
+		parse.CollectAddressesFromAction(&addr_map, rawAction)
 
-		action, err := index.ParseRawAction(rawAction)
+		action, err := parse.ParseRawAction(rawAction)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse raw action: %w", err)
 		}
@@ -142,8 +143,8 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 		addr_map[string(tx.Account)] = true
 	}
 
-	var book *index.AddressBook = nil
-	var metadata *index.Metadata = nil
+	var book *indexModels.AddressBook = nil
+	var metadata *indexModels.Metadata = nil
 	if includeAddressBook || includeMetadata {
 		conn, err := pool.Pool.Acquire(context.Background())
 		if err != nil {
@@ -151,14 +152,14 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 		}
 		defer conn.Release()
 
-		settings := index.RequestSettings{
+		settings := indexModels.RequestSettings{
 			Timeout:   3 * time.Second,
 			IsTestnet: isTestnet,
 		}
 		addr_list := slices.Collect(maps.Keys(addr_map))
 
 		if includeAddressBook {
-			bookVal, err := index.QueryAddressBookImpl(addr_list, conn, settings)
+			bookVal, err := crud.QueryAddressBookImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, fmt.Errorf("failed to query address book: %w", err)
 			}
@@ -166,7 +167,7 @@ func TransformToAPIResponse(hset map[string]string, pool *index.DbClient,
 		}
 
 		if includeMetadata {
-			metadataVal, err := index.QueryMetadataImpl(addr_list, conn, settings)
+			metadataVal, err := crud.QueryMetadataImpl(addr_list, conn, settings)
 			if err != nil {
 				return nil, fmt.Errorf("failed to query metadata: %w", err)
 			}

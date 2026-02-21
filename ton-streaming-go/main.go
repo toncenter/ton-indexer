@@ -12,9 +12,10 @@ import (
 	"github.com/gofiber/websocket/v2"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/toncenter/ton-indexer/ton-index-go/index"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
+	stream
 	streamingv1 "github.com/toncenter/ton-indexer/ton-streaming-go/v1"
-	streamingv2 "github.com/toncenter/ton-indexer/ton-streaming-go/v2"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
 )
 
 var (
@@ -57,10 +58,10 @@ func main() {
 	ctx := context.Background()
 	go runRedisPoolStatLogger(ctx, rdb)
 
-	var dbClient *index.DbClient
+	var dbClient *crud.DbClient
 	if *pg != "" {
 		log.Printf("Connecting to PostgreSQL: %s", *pg)
-		dbClient, err = index.NewDbClient(*pg, 100, 0)
+		dbClient, err = crud.NewDbClient(*pg, 100, 0)
 		if err != nil {
 			log.Printf("Failed to connect to PostgreSQL: %v", err)
 			log.Printf("AddressBook and Metadata will not be available")

@@ -3,6 +3,7 @@ package index
 import (
 	"encoding/json"
 	"fmt"
+	. "gi
 	"log"
 	"math/big"
 	"net/url"

@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 	"log"
 	"sort"
 	"strconv"
@@ -20,13 +23,13 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 
 	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
-	"github.com/toncenter/ton-indexer/ton-index-go/index"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
+	
 )
 
 // Config provides runtime dependencies for v1 handlers.
 type Config struct {
-	DBClient        *index.DbClient
+	DBClient        *crud.DbClient
 	Testnet         bool
 	ImgProxyBaseURL string
 }
@@ -261,10 +264,10 @@ type SSERequest struct {
 
 // BlockchainEvent represents an event from the blockchain
 type BlockchainEvent struct {
-	Type        EventType          `json:"type"`
-	Data        any                `json:"data"`
-	AddressBook *index.AddressBook `json:"address_book,omitempty"`
-	Metadata    *index.Metadata    `json:"metadata,omitempty"`
+	Type        EventType                `json:"type"`
+	Data        any                      `json:"data"`
+	AddressBook *indexModels.AddressBook `json:"address_book,omitempty"`
+	Metadata    *indexModels.Metadata    `json:"metadata,omitempty"`
 }
 
 // Client represents a connected client
@@ -396,9 +399,9 @@ func (manager *ClientManager) Run() {
 }
 
 // fetchAddressBookAndMetadata fetches address book and metadata for a list of addresses
-func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []string, metadataAddresses []string, includeAddressBook bool, includeMetadata bool) (*index.AddressBook, *index.Metadata) {
-	var addressBook *index.AddressBook
-	var metadata *index.Metadata
+func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []string, metadataAddresses []string, includeAddressBook bool, includeMetadata bool) (*indexModels.AddressBook, *indexModels.Metadata) {
+	var addressBook *indexModels.AddressBook
+	var metadata *indexModels.Metadata
 
 	if config.DBClient == nil {
 		return nil, nil
@@ -411,13 +414,13 @@ func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []string
 	}
 	defer conn.Release()
 
-	settings := index.RequestSettings{
+	settings := indexModels.RequestSettings{
 		Timeout:   3 * time.Second,
 		IsTestnet: config.Testnet,
 	}
 
 	if includeAddressBook {
-		book, err := index.QueryAddressBookImpl(addrBookAddresses, conn, settings)
+		book, err := crud.QueryAddressBookImpl(addrBookAddresses, conn, settings)
 		if err != nil {
 			log.Printf("Error querying address book: %v", err)
 		} else {
@@ -426,13 +429,13 @@ func fetchAddressBookAndMetadata(ctx context.Context, addrBookAddresses []string
 	}
 
 	if includeMetadata {
-		meta, err := index.QueryMetadataImpl(metadataAddresses, conn, settings)
+		meta, err := crud.QueryMetadataImpl(metadataAddresses, conn, settings)
 		if err != nil {
 			log.Printf("Error querying metadata: %v", err)
 		} else {
 			// Apply imgproxy base URL if provided
 			if config.ImgProxyBaseURL != "" {
-				index.SubstituteImgproxyBaseUrl(&meta, config.ImgProxyBaseURL)
+				crud.SubstituteImgproxyBaseUrl(&meta, config.ImgProxyBaseURL)
 			}
 			metadata = &meta
 		}
@@ -461,26 +464,26 @@ func (n *TraceInvalidatedNotification) AdjustForClient(client *Client) any {
 }
 
 type ActionsNotification struct {
-	Type                  EventType          `json:"type"`
-	TraceExternalHashNorm string             `json:"trace_external_hash_norm"`
-	Actions               []*index.Action    `json:"actions"`
-	ActionAddresses       [][]string         `json:"-"` // contains all addresses mentioned in actions for addressbook, it's not same as index.Action.Accounts
-	AddressBook           *index.AddressBook `json:"address_book,omitempty"`
-	Metadata              *index.Metadata    `json:"metadata,omitempty"`
+	Type                  EventType                `json:"type"`
+	TraceExternalHashNorm string                   `json:"trace_external_hash_norm"`
+	Actions               []*indexModels.Action    `json:"actions"`
+	ActionAddresses       [][]string               `json:"-"` // contains all addresses mentioned in actions for addressbook, it's not same as indexModels.Action.Accounts
+	AddressBook           *indexModels.AddressBook `json:"address_book,omitempty"`
+	Metadata              *indexModels.Metadata    `json:"metadata,omitempty"`
 }
 
 var _ Notification = (*ActionsNotification)(nil)
 
 func (n *ActionsNotification) AdjustForClient(client *Client) any {
-	var adjustedActions []*index.Action
+	var adjustedActions []*indexModels.Action
 	var adjustedActionAddresses [][]string
-	var adjustedAddressBook *index.AddressBook
-	var adjustedMetadata *index.Metadata
+	var adjustedAddressBook *indexModels.AddressBook
+	var adjustedMetadata *indexModels.Metadata
 	if n.AddressBook != nil {
-		adjustedAddressBook = &index.AddressBook{}
+		adjustedAddressBook = &indexModels.AddressBook{}
 	}
 	if n.Metadata != nil {
-		adjustedMetadata = &index.Metadata{}
+		adjustedMetadata = &indexModels.Metadata{}
 	}
 	var allAddresses = map[string]bool{}
 	supportedActionsSet := mapset.NewSet(client.Subscription.SupportedActionTypes...)
@@ -563,7 +566,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		return
 	}
 
-	emulatedContext := index.NewEmptyContext(false)
+	emulatedContext := crud.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(raw_traces)
 	if err != nil {
 		log.Printf("Error filling context from raw data: %v, trace key: %s", err, traceExternalHashNorm)
@@ -580,7 +583,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 
 	traceIsCommited := true
 	for _, row := range emulatedContext.GetTransactions() {
-		if tx, err := index.ScanTransaction(row); err == nil {
+		if tx, err := parse.ScanTransaction(row); err == nil {
 			if tx.Emulated {
 				traceIsCommited = false
 			}
@@ -590,12 +593,12 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		}
 	}
 
-	var actions = []*index.Action{}
+	var actions = []*indexModels.Action{}
 	var actionsAddresses = [][]string{}
 
 	for _, row := range emulatedContext.GetAllActions() { // GetAllActions returns actions in ascending order
-		var rawAction *index.RawAction
-		if loc, err := index.ScanRawAction(row); err == nil {
+		var rawAction *indexModels.RawAction
+		if loc, err := parse.ScanRawAction(row); err == nil {
 			rawAction = loc
 		} else {
 			log.Printf("Error scanning raw action: %v", err)
@@ -603,9 +606,9 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		}
 
 		actionAddrMap := map[string]bool{}
-		index.CollectAddressesFromAction(&actionAddrMap, rawAction)
+		parse.CollectAddressesFromAction(&actionAddrMap, rawAction)
 
-		action, err := index.ParseRawAction(rawAction)
+		action, err := parse.ParseRawAction(rawAction)
 		if err != nil {
 			log.Printf("Error parsing raw action: %v", err)
 			continue
@@ -618,8 +621,8 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		actionsAddresses = append(actionsAddresses, actionAddresses)
 	}
 
-	var addressBook *index.AddressBook
-	var metadata *index.Metadata
+	var addressBook *indexModels.AddressBook
+	var metadata *indexModels.Metadata
 	allAddresses := []string{}
 	for _, actionAddr := range actionsAddresses {
 		allAddresses = append(allAddresses, actionAddr...)
@@ -676,24 +679,24 @@ func SubscribeToTraces(ctx context.Context, rdb *redis.Client, manager *ClientMa
 }
 
 type TransactionsNotification struct {
-	Type                  EventType           `json:"type"`
-	TraceExternalHashNorm string              `json:"trace_external_hash_norm"`
-	Transactions          []index.Transaction `json:"transactions"`
-	AddressBook           *index.AddressBook  `json:"address_book,omitempty"`
-	Metadata              *index.Metadata     `json:"metadata,omitempty"`
+	Type                  EventType                 `json:"type"`
+	TraceExternalHashNorm string                    `json:"trace_external_hash_norm"`
+	Transactions          []indexModels.Transaction `json:"transactions"`
+	AddressBook           *indexModels.AddressBook  `json:"address_book,omitempty"`
+	Metadata              *indexModels.Metadata     `json:"metadata,omitempty"`
 }
 
 var _ Notification = (*TransactionsNotification)(nil)
 
 func (n *TransactionsNotification) AdjustForClient(client *Client) any {
-	var adjustedTransactions []index.Transaction
-	var adjustedAddressBook *index.AddressBook
-	var adjustedMetadata *index.Metadata
+	var adjustedTransactions []indexModels.Transaction
+	var adjustedAddressBook *indexModels.AddressBook
+	var adjustedMetadata *indexModels.Metadata
 	if n.AddressBook != nil {
-		adjustedAddressBook = &index.AddressBook{}
+		adjustedAddressBook = &indexModels.AddressBook{}
 	}
 	if n.Metadata != nil {
-		adjustedMetadata = &index.Metadata{}
+		adjustedMetadata = &indexModels.Metadata{}
 	}
 
 	var allAddresses = map[string]bool{}
@@ -753,9 +756,9 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 }
 
 type AccountStateNotification struct {
-	Type    EventType          `json:"type"`
-	Account string             `json:"account"`
-	State   index.AccountState `json:"state"`
+	Type    EventType                `json:"type"`
+	Account string                   `json:"account"`
+	State   indexModels.AccountState `json:"state"`
 }
 
 var _ Notification = (*AccountStateNotification)(nil)
@@ -768,10 +771,10 @@ func (n *AccountStateNotification) AdjustForClient(client *Client) any {
 }
 
 type JettonsNotification struct {
-	Type        EventType          `json:"type"`
-	Jetton      index.JettonWallet `json:"jetton"`
-	AddressBook *index.AddressBook `json:"address_book,omitempty"`
-	Metadata    *index.Metadata    `json:"metadata,omitempty"`
+	Type        EventType                `json:"type"`
+	Jetton      indexModels.JettonWallet `json:"jetton"`
+	AddressBook *indexModels.AddressBook `json:"address_book,omitempty"`
+	Metadata    *indexModels.Metadata    `json:"metadata,omitempty"`
 }
 
 var _ Notification = (*JettonsNotification)(nil)
@@ -792,7 +795,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		return
 	}
 
-	emulatedContext := index.NewEmptyContext(false)
+	emulatedContext := crud.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(raw_traces)
 	if err != nil {
 		log.Printf("Error filling context from raw data: %v, trace key: %s", err, traceExternalHashNorm)
@@ -807,12 +810,12 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		return
 	}
 
-	var txs []index.Transaction
-	txs_map := map[index.HashType]int{}
+	var txs []indexModels.Transaction
+	txs_map := map[indexModels.HashType]int{}
 	{
 		rows := emulatedContext.GetTransactions()
 		for _, row := range rows {
-			if tx, err := index.ScanTransaction(row); err == nil {
+			if tx, err := parse.ScanTransaction(row); err == nil {
 				txs = append(txs, *tx)
 				txs_map[tx.Hash] = len(txs) - 1
 			} else {
@@ -829,9 +832,9 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	}
 	if len(tx_hashes) > 0 {
 		rows := emulatedContext.GetMessages(tx_hashes)
-		msgPtrs := make([]*index.Message, 0, len(rows))
+		msgPtrs := make([]*indexModels.Message, 0, len(rows))
 		for _, row := range rows {
-			msg, err := index.ScanMessageWithContent(row)
+			msg, err := parse.ScanMessageWithContent(row)
 			msgPtrs = append(msgPtrs, msg)
 			if err != nil {
 				log.Printf("Error scanning message: %v", err)
@@ -850,7 +853,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 			}
 		}
 		// mark msg bodies and opcodes
-		if err := index.MarkMessagesByPtr(msgPtrs); err != nil {
+		if err := detect.MarkMessagesByPtr(msgPtrs); err != nil {
 			hashes := make([]string, len(msgPtrs))
 			for i, msg := range msgPtrs {
 				hashes[i] = string(msg.MsgHash)
@@ -872,8 +875,8 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		})
 	}
 
-	var addressBook *index.AddressBook
-	var metadata *index.Metadata
+	var addressBook *indexModels.AddressBook
+	var metadata *indexModels.Metadata
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]EventType{PendingTransactions}, allAddresses)
 	if shouldFetchAddressBook || shouldFetchMetadata {
 		addressBook, metadata = fetchAddressBookAndMetadata(
@@ -939,7 +942,7 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 		return
 	}
 
-	emulatedContext := index.NewEmptyContext(false)
+	emulatedContext := crud.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(raw_traces)
 	if err != nil {
 		log.Printf("Error filling context from raw data: %v, trace key: %s", err, traceExternalHashNorm)
@@ -959,10 +962,10 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 		return
 	}
 
-	var txs []index.Transaction
-	txs_map := map[index.HashType]int{}
+	var txs []indexModels.Transaction
+	txs_map := map[indexModels.HashType]int{}
 	for _, row := range rows {
-		if tx, err := index.ScanTransaction(row); err == nil {
+		if tx, err := parse.ScanTransaction(row); err == nil {
 			txs = append(txs, *tx)
 			txs_map[tx.Hash] = len(txs) - 1
 		} else {
@@ -983,7 +986,7 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 	if len(tx_hashes) > 0 {
 		rows := emulatedContext.GetMessages(tx_hashes)
 		for _, row := range rows {
-			msg, err := index.ScanMessageWithContent(row)
+			msg, err := parse.ScanMessageWithContent(row)
 			if err != nil {
 				log.Printf("Error scanning message: %v", err)
 				continue
@@ -1015,8 +1018,8 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 		})
 	}
 
-	var addressBook *index.AddressBook
-	var metadata *index.Metadata
+	var addressBook *indexModels.AddressBook
+	var metadata *indexModels.Metadata
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata([]EventType{Transactions}, allAddresses)
 	if shouldFetchAddressBook || shouldFetchMetadata {
 		addressBook, metadata = fetchAddressBookAndMetadata(
@@ -1124,12 +1127,12 @@ func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addresses [
 	}
 }
 
-func MsgPackJettonWalletToModel(j models.JettonWalletInterface, lastTransLt int64, codeHash *index.HashType, dataHash *index.HashType) index.JettonWallet {
-	return index.JettonWallet{
-		Address:           index.AccountAddress(j.Address),
+func MsgPackJettonWalletToModel(j models.JettonWalletInterface, lastTransLt int64, codeHash *indexModels.HashType, dataHash *indexModels.HashType) indexModels.JettonWallet {
+	return indexModels.JettonWallet{
+		Address:           indexModels.AccountAddress(j.Address),
 		Balance:           j.Balance,
-		Owner:             index.AccountAddress(j.Owner),
-		Jetton:            index.AccountAddress(j.Jetton),
+		Owner:             indexModels.AccountAddress(j.Owner),
+		Jetton:            indexModels.AccountAddress(j.Jetton),
 		LastTransactionLt: lastTransLt,
 		CodeHash:          codeHash,
 		DataHash:          dataHash,
@@ -1232,11 +1235,11 @@ func ValidateSSERequest(req *SSERequest) (map[string][]EventType, error) {
 
 // convertAddress keeps the reflection ugliness in one place.
 func convertAddress(s string) (string, error) {
-	raw := index.AccountAddressConverter(s)
+	raw := indexModels.AccountAddressConverter(s)
 	if !raw.IsValid() {
 		return "", fmt.Errorf("invalid address: %s", s)
 	}
-	return string(raw.Interface().(index.AccountAddress)), nil
+	return string(raw.Interface().(indexModels.AccountAddress)), nil
 }
 
 // writeSSE marshals v and writes a single Server‑Sent‑Event frame.
@@ -1360,7 +1363,7 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				IncludeAddressBook:   req.IncludeAddressBook != nil && *req.IncludeAddressBook,
 				IncludeMetadata:      req.IncludeMetadata != nil && *req.IncludeMetadata,
 				ActionTypes:          req.ActionTypes,
-				SupportedActionTypes: index.ExpandActionTypeShortcuts(req.SupportedActionTypes),
+				SupportedActionTypes: indexModels.ExpandActionTypeShortcuts(req.SupportedActionTypes),
 			},
 			TracesForPotentialInvalidation: make(map[string]bool),
 			SendEvent: func(b []byte) error {
@@ -1449,7 +1452,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			Connected:   true,
 			Subscription: Subscription{
 				SubscribedAddresses:  make(AddressSubs),
-				SupportedActionTypes: index.ExpandActionTypeShortcuts(headers["X-Actions-Version"]),
+				SupportedActionTypes: indexModels.ExpandActionTypeShortcuts(headers["X-Actions-Version"]),
 				IncludeAddressBook:   false,
 				IncludeMetadata:      false,
 			},
@@ -1616,7 +1619,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 					client.Subscription.IncludeMetadata = *req.IncludeMetadata
 				}
 				if len(req.SupportedActionTypes) > 0 {
-					client.Subscription.SupportedActionTypes = index.ExpandActionTypeShortcuts(req.SupportedActionTypes)
+					client.Subscription.SupportedActionTypes = indexModels.ExpandActionTypeShortcuts(req.SupportedActionTypes)
 				}
 				if len(req.ActionTypes) > 0 {
 					client.Subscription.ActionTypes = req.ActionTypes
