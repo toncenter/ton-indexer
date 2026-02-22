@@ -1962,11 +1962,11 @@ func HealthCheck(c *fiber.Ctx) error {
 // @id getPool
 // @param pool query string true "Pool address in any form"
 // @produce json
-// @success 200 {object} index.NominatorPoolInfo
-// @failure 400 {object} index.IndexError
-// @failure 404 {object} index.IndexError
-// @failure 422 {object} index.IndexError
-// @failure 500 {object} index.IndexError
+// @success 200 {object} models.NominatorPoolInfo
+// @failure 400 {object} models.IndexError
+// @failure 404 {object} models.IndexError
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
 // @router /api/v3/nominators/getPool [get]
 func GetPool(c *fiber.Ctx) error {
 	poolAddr := c.Query("pool")
@@ -2000,9 +2000,9 @@ func GetPool(c *fiber.Ctx) error {
 // @param to_time query integer false "To timestamp"
 // @param limit query integer false "Limit" default(100)
 // @produce json
-// @success 200 {array} index.NominatorBooking
-// @failure 422 {object} index.IndexError
-// @failure 500 {object} index.IndexError
+// @success 200 {array} models.NominatorBooking
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
 // @router /api/v3/nominators/getNominatorBookings [get]
 func GetNominatorBookings(c *fiber.Ctx) error {
 	nominator := c.Query("nominator")
@@ -2063,9 +2063,9 @@ func GetNominatorBookings(c *fiber.Ctx) error {
 // @param to_time query integer false "To timestamp"
 // @param limit query integer false "Limit" default(100)
 // @produce json
-// @success 200 {array} index.PoolBooking
-// @failure 422 {object} index.IndexError
-// @failure 500 {object} index.IndexError
+// @success 200 {array} models.PoolBooking
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
 // @router /api/v3/nominators/getPoolBookings [get]
 func GetPoolBookings(c *fiber.Ctx) error {
 	poolAddr := c.Query("pool")
@@ -2116,9 +2116,9 @@ func GetPoolBookings(c *fiber.Ctx) error {
 // @id getNominator
 // @param nominator query string true "Nominator address in any form"
 // @produce json
-// @success 200 {array} index.NominatorInPool
-// @failure 422 {object} index.IndexError
-// @failure 500 {object} index.IndexError
+// @success 200 {array} models.NominatorInPool
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
 // @router /api/v3/nominators/getNominator [get]
 func GetNominator(c *fiber.Ctx) error {
 	nominator := c.Query("nominator")
@@ -2152,9 +2152,9 @@ func GetNominator(c *fiber.Ctx) error {
 // @param to_time query integer false "To timestamp"
 // @param limit query integer false "Limit" default(100)
 // @produce json
-// @success 200 {object} index.NominatorEarningsResponse
-// @failure 422 {object} index.IndexError
-// @failure 500 {object} index.IndexError
+// @success 200 {object} models.NominatorEarningsResponse
+// @failure 422 {object} models.IndexError
+// @failure 500 {object} models.IndexError
 // @router /api/v3/nominators/getNominatorEarnings [get]
 func GetNominatorEarnings(c *fiber.Ctx) error {
 	nominator := c.Query("nominator")
