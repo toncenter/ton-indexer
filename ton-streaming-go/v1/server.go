@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 	"log"
 	"sort"
@@ -24,7 +25,6 @@ import (
 
 	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
-	
 )
 
 // Config provides runtime dependencies for v1 handlers.

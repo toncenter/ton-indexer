@@ -13,9 +13,8 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
-	stream
 	streamingv1 "github.com/toncenter/ton-indexer/ton-streaming-go/v1"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
+	streamingv2 "github.com/toncenter/ton-indexer/ton-streaming-go/v2"
 )
 
 var (

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 	"log"
 	"math/rand/v2"
@@ -25,7 +26,6 @@ import (
 
 	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
-	
 )
 
 ////////////////////////////////////////////////////////////////////////////////

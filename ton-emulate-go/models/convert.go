@@ -12,7 +12,7 @@ import (
 	"time"
 
 	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
-
+	msgpack "github.com/vmihailenco/msgpack/v5"
 )
 
 func convertHashToLocal(h *indexModels.HashType) *Hash {

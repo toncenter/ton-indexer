@@ -1972,15 +1972,15 @@ func GetPool(c *fiber.Ctx) error {
 	poolAddr := c.Query("pool")
 
 	if poolAddr == "" {
-		return index.IndexError{Code: 422, Message: "pool parameter is required"}
+		return models.IndexError{Code: 422, Message: "pool parameter is required"}
 	}
 
 	// normalize address
-	addr := index.AccountAddressConverter(poolAddr)
+	addr := models.AccountAddressConverter(poolAddr)
 	if !addr.IsValid() {
-		return index.IndexError{Code: 422, Message: "invalid pool address format"}
+		return models.IndexError{Code: 422, Message: "invalid pool address format"}
 	}
-	normalizedAddr := addr.Interface().(index.AccountAddress)
+	normalizedAddr := addr.Interface().(models.AccountAddress)
 
 	poolInfo, err := pool.GetPool(string(normalizedAddr))
 	if err != nil {
@@ -2009,21 +2009,21 @@ func GetNominatorBookings(c *fiber.Ctx) error {
 	poolAddr := c.Query("pool")
 
 	if nominator == "" || poolAddr == "" {
-		return index.IndexError{Code: 422, Message: "nominator and pool parameters are required"}
+		return models.IndexError{Code: 422, Message: "nominator and pool parameters are required"}
 	}
 
 	// normalize addresses
-	nominatorAddrVal := index.AccountAddressConverter(nominator)
+	nominatorAddrVal := models.AccountAddressConverter(nominator)
 	if !nominatorAddrVal.IsValid() {
-		return index.IndexError{Code: 422, Message: "invalid nominator address format"}
+		return models.IndexError{Code: 422, Message: "invalid nominator address format"}
 	}
-	normalizedNominator := nominatorAddrVal.Interface().(index.AccountAddress)
+	normalizedNominator := nominatorAddrVal.Interface().(models.AccountAddress)
 
-	poolAddrVal := index.AccountAddressConverter(poolAddr)
+	poolAddrVal := models.AccountAddressConverter(poolAddr)
 	if !poolAddrVal.IsValid() {
-		return index.IndexError{Code: 422, Message: "invalid pool address format"}
+		return models.IndexError{Code: 422, Message: "invalid pool address format"}
 	}
-	normalizedPool := poolAddrVal.Interface().(index.AccountAddress)
+	normalizedPool := poolAddrVal.Interface().(models.AccountAddress)
 
 	var fromTime, toTime *int32
 	if fromStr := c.Query("from_time"); fromStr != "" {
@@ -2071,15 +2071,15 @@ func GetPoolBookings(c *fiber.Ctx) error {
 	poolAddr := c.Query("pool")
 
 	if poolAddr == "" {
-		return index.IndexError{Code: 422, Message: "pool parameter is required"}
+		return models.IndexError{Code: 422, Message: "pool parameter is required"}
 	}
 
 	// normalize address
-	poolAddrVal := index.AccountAddressConverter(poolAddr)
+	poolAddrVal := models.AccountAddressConverter(poolAddr)
 	if !poolAddrVal.IsValid() {
-		return index.IndexError{Code: 422, Message: "invalid pool address format"}
+		return models.IndexError{Code: 422, Message: "invalid pool address format"}
 	}
-	normalizedPool := poolAddrVal.Interface().(index.AccountAddress)
+	normalizedPool := poolAddrVal.Interface().(models.AccountAddress)
 
 	var fromTime, toTime *int32
 	if fromStr := c.Query("from_time"); fromStr != "" {
@@ -2124,15 +2124,15 @@ func GetNominator(c *fiber.Ctx) error {
 	nominator := c.Query("nominator")
 
 	if nominator == "" {
-		return index.IndexError{Code: 422, Message: "nominator parameter is required"}
+		return models.IndexError{Code: 422, Message: "nominator parameter is required"}
 	}
 
 	// normalize address
-	nominatorAddrVal := index.AccountAddressConverter(nominator)
+	nominatorAddrVal := models.AccountAddressConverter(nominator)
 	if !nominatorAddrVal.IsValid() {
-		return index.IndexError{Code: 422, Message: "invalid nominator address format"}
+		return models.IndexError{Code: 422, Message: "invalid nominator address format"}
 	}
-	normalizedNominator := nominatorAddrVal.Interface().(index.AccountAddress)
+	normalizedNominator := nominatorAddrVal.Interface().(models.AccountAddress)
 
 	pools, err := pool.GetNominator(string(normalizedNominator))
 	if err != nil {
@@ -2161,21 +2161,21 @@ func GetNominatorEarnings(c *fiber.Ctx) error {
 	poolAddr := c.Query("pool")
 
 	if nominator == "" || poolAddr == "" {
-		return index.IndexError{Code: 422, Message: "nominator and pool parameters are required"}
+		return models.IndexError{Code: 422, Message: "nominator and pool parameters are required"}
 	}
 
 	// normalize addresses
-	nominatorAddrVal := index.AccountAddressConverter(nominator)
+	nominatorAddrVal := models.AccountAddressConverter(nominator)
 	if !nominatorAddrVal.IsValid() {
-		return index.IndexError{Code: 422, Message: "invalid nominator address format"}
+		return models.IndexError{Code: 422, Message: "invalid nominator address format"}
 	}
-	normalizedNominator := nominatorAddrVal.Interface().(index.AccountAddress)
+	normalizedNominator := nominatorAddrVal.Interface().(models.AccountAddress)
 
-	poolAddrVal := index.AccountAddressConverter(poolAddr)
+	poolAddrVal := models.AccountAddressConverter(poolAddr)
 	if !poolAddrVal.IsValid() {
-		return index.IndexError{Code: 422, Message: "invalid pool address format"}
+		return models.IndexError{Code: 422, Message: "invalid pool address format"}
 	}
-	normalizedPool := poolAddrVal.Interface().(index.AccountAddress)
+	normalizedPool := poolAddrVal.Interface().(models.AccountAddress)
 
 	var fromTime, toTime *int32
 	if fromStr := c.Query("from_time"); fromStr != "" {
