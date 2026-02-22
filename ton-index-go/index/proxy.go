@@ -3,7 +3,7 @@ package index
 import (
 	"encoding/json"
 	"fmt"
-	. "gi
+	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"math/big"
 	"net/url"
