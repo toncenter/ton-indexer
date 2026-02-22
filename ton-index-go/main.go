@@ -2452,7 +2452,7 @@ func main() {
 	service_version := crud.LoadVersion(pool.Pool)
 
 	// Load marketplace cache on startup
-	if err = parse.LoadMarketplaceCaches(pool.Pool); err != nil {
+	if err = parse.LoadMarketplaceCache(pool.Pool); err != nil {
 		log.Printf("Warning: Failed to load marketplace cache: %v", err)
 	}
 	emulatedTracesRepository, err = emulated.NewRepository(redis_dsn)

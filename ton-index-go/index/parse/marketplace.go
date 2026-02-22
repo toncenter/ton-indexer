@@ -29,7 +29,7 @@ func GetMarketplaceName(marketplaceAddress *AccountAddress, collectionAddress *A
 	return false, ""
 }
 
-func LoadMarketplaceCaches(pool *pgxpool.Pool) error {
+func LoadMarketplaceCache(pool *pgxpool.Pool) error {
 	ctx := context.Background()
 	query := `SELECT address, name FROM marketplace_names`
 
