@@ -16,6 +16,7 @@ add_library(tondb-scanner STATIC
     src/Statistics.cpp
     src/smc-interfaces/Tokens.cpp
     src/smc-interfaces/NftSale.cpp
+    src/smc-interfaces/NftSaleV4.cpp
     src/smc-interfaces/execute-smc.cpp
     src/smc-interfaces/Multisig.cpp
     src/smc-interfaces/Multisig.h
@@ -23,6 +24,7 @@ add_library(tondb-scanner STATIC
     src/smc-interfaces/FetchAccountFromShard.h
     src/smc-interfaces/Vesting.cpp
     src/AccountAddress.cpp
+    src/smc-interfaces/Telemint.cpp
 )
 
 target_include_directories(tondb-scanner 
