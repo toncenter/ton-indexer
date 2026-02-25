@@ -120,21 +120,25 @@ td::Result<schema::AccountState> parse_account_state(td::Ref<vm::Cell> account_r
       if (code_cs.fetch_long(1) != 0) {
         schema_account.code = code_cs.prefetch_ref();
         schema_account.code_hash = schema_account.code->get_hash().bits();
+        td::Timer boc_serialize{false};
         if (auto r_code_boc = vm::std_boc_serialize(schema_account.code); r_code_boc.is_ok()) {
           schema_account.code_boc = r_code_boc.move_as_ok().as_slice().str();
         } else {
           LOG(ERROR) << "failed to serialize account_state.code: " << r_code_boc.move_as_error();
         }
+        LOG(WARNING) << "code of address: " << std_account << " elapsed: " << boc_serialize.elapsed();
       }
       auto& data_cs = state_init.data.write();
       if (data_cs.fetch_long(1) != 0) {
         schema_account.data = data_cs.prefetch_ref();
         schema_account.data_hash = schema_account.data->get_hash().bits();
+        td::Timer boc_serialize{false};
         if (auto r_data_boc = vm::std_boc_serialize(schema_account.data); r_data_boc.is_ok()) {
           schema_account.data_boc = r_data_boc.move_as_ok().as_slice().str();
         } else {
           LOG(ERROR) << "failed to serialize account_state.data: " << r_data_boc.move_as_error();
         }
+        LOG(WARNING) << "data of address: " << std_account << " elapsed: " << boc_serialize.elapsed();
       }
       break;
     }
@@ -238,8 +242,10 @@ td::Status ParseQuery::parse_impl() {
     g_statistics.record_time(PARSE_TRANSACTION, transactions_timer.elapsed() * 1e6, schema_block.transactions.size());
 
     td::Timer acc_states_timer;
+    LOG(WARNING) << "Started parsing account states for block " << block_ds.handle->id().to_str();
     TRY_RESULT(account_states_fast, parse_account_states_new(schema_block.workchain, schema_block.gen_utime, account_states_to_get));
     g_statistics.record_time(PARSE_ACCOUNT_STATE, acc_states_timer.elapsed() * 1e6, account_states_fast.size());
+    LOG(WARNING) << "Finished parsing account states for block " << block_ds.handle->id().to_str() << " in " << acc_states_timer.elapsed() * 1e3 << " milliseconds";
     
     for (auto &acc : account_states_fast) {
       data_->account_states_.push_back(std::move(acc));

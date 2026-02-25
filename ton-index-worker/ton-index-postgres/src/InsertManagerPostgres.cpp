@@ -487,7 +487,7 @@ void InsertBatchPostgres::do_insert() {
 
     for(auto& task : insert_tasks_) {
       task.parsed_block_->update_timing("finished");
-      // task.parsed_block_->print_timings();
+      task.parsed_block_->print_timings();
       task.promise_.set_value(td::Unit());
     }
     promise_.set_value(td::Unit());
