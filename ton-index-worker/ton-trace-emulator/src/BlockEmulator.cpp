@@ -231,7 +231,7 @@ void McBlockEmulator::process_txs(MeasurementPtr measurement) {
     emulate_traces(measurement);
 }
 
-std::unique_ptr<TraceNode> McBlockEmulator::construct_commited_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr measurement) {
+std::unique_ptr<TraceNode> McBlockEmulator::construct_commited_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr measurement, size_t depth) {
     if (measurement) {
         measurement->measure_step("mc_block_emulator__construct_commited_trace");
     }
@@ -260,7 +260,7 @@ std::unique_ptr<TraceNode> McBlockEmulator::construct_commited_trace(const Trans
                 LOG(WARNING) << "No trace ids for child tx " << child_tx.hash.to_hex();
                 child_tx.trace_ids = tx.trace_ids;
             }
-            auto child = construct_commited_trace(child_tx, reqs, nullptr);
+            auto child = construct_commited_trace(child_tx, reqs, nullptr, depth + 1);
             trace_node->children.push_back(std::move(child));
         } else {
             // remember where to attach the emulated node
@@ -269,7 +269,8 @@ std::unique_ptr<TraceNode> McBlockEmulator::construct_commited_trace(const Trans
                 trace_node.get(),
                 idx,
                 out_msg.root,
-                out_msg.hash
+                out_msg.hash,
+                depth + 1
             });
             // to "fill holes" later
             trace_node->children.push_back(nullptr);
@@ -307,9 +308,11 @@ void McBlockEmulator::emulate_traces(MeasurementPtr measurement) {
         context->increase_seqno(3);
         EmulationContext& context_ref = *context;
 
-        std::vector<td::Ref<vm::Cell>> msgs_to_emulate;
+        std::vector<EmulationMessage> msgs_to_emulate;
         msgs_to_emulate.reserve(reqs.size());
-        for (auto& r : reqs) msgs_to_emulate.push_back(r.msg);
+        for (auto& r : reqs) {
+            msgs_to_emulate.push_back(EmulationMessage{r.msg, r.depth});
+        }
 
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this),
                                             parent_node = std::move(parent_node),
@@ -520,10 +523,10 @@ void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
         context->increase_seqno(3);
         EmulationContext& context_ref = *context;
 
-        std::vector<td::Ref<vm::Cell>> msgs_to_emulate;
+        std::vector<EmulationMessage> msgs_to_emulate;
         msgs_to_emulate.reserve(reqs.size());
         for (auto& r : reqs) {
-            msgs_to_emulate.push_back(r.msg);
+            msgs_to_emulate.push_back(EmulationMessage{r.msg, r.depth});
         }
 
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this),
@@ -556,7 +559,7 @@ void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
     }
 }
 
-std::unique_ptr<TraceNode> ConfirmedBlockEmulator::construct_confirmed_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr measurement) {
+std::unique_ptr<TraceNode> ConfirmedBlockEmulator::construct_confirmed_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr measurement, size_t depth) {
     if (measurement) {
         measurement->measure_step("confirmed_block_emulator__construct_confirmed_traces");
     }
@@ -581,7 +584,7 @@ std::unique_ptr<TraceNode> ConfirmedBlockEmulator::construct_confirmed_trace(con
 
         auto it = tx_by_in_msg_hash_.find(out_msg.hash);
         if (it != tx_by_in_msg_hash_.end()) {
-            auto child = construct_confirmed_trace(it->second, reqs, nullptr);
+            auto child = construct_confirmed_trace(it->second, reqs, nullptr, depth + 1);
             trace_node->children.push_back(std::move(child));
         } else {
             size_t idx = trace_node->children.size();
@@ -589,7 +592,8 @@ std::unique_ptr<TraceNode> ConfirmedBlockEmulator::construct_confirmed_trace(con
                 trace_node.get(),
                 idx,
                 out_msg.root,
-                out_msg.hash
+                out_msg.hash,
+                depth + 1
             });
             trace_node->children.push_back(nullptr);
         }
