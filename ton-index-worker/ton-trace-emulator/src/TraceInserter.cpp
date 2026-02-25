@@ -211,28 +211,50 @@ public:
                            std::vector<std::string>& tx_keys,
                            std::vector<std::pair<std::string, std::string>>& addr_keys,
                            const RedisTraceNode* cached_node = nullptr) {
-        std::optional<RedisTraceNode> loaded_node;
-        const RedisTraceNode* node = cached_node;
-        if (!node) {
-            auto emulated_in_db = transaction_.redis().hget(trace_key_, key);
-            if (!emulated_in_db) {
-                return;
+        struct Frame {
+            std::string key;
+            std::optional<RedisTraceNode> node;
+            bool expanded{false};
+        };
+
+        std::vector<Frame> stack;
+        stack.push_back(Frame{std::move(key), std::nullopt, false});
+        if (cached_node) {
+            stack.back().node = *cached_node;
+        }
+
+        while (!stack.empty()) {
+            auto& frame = stack.back();
+
+            if (!frame.node.has_value()) {
+                auto node_raw = transaction_.redis().hget(trace_key_, frame.key);
+                if (!node_raw) {
+                    stack.pop_back();
+                    continue;
+                }
+                msgpack::unpacked result;
+                msgpack::unpack(result, node_raw->data(), node_raw->size());
+                frame.node.emplace();
+                result.get().convert(*frame.node);
             }
-            msgpack::unpacked result;
-            msgpack::unpack(result, emulated_in_db->data(), emulated_in_db->size());
-            loaded_node.emplace();
-            result.get().convert(*loaded_node);
-            node = &loaded_node.value();
-        }
 
-        for (const auto& out_msg : node->transaction.out_msgs) {
-            delete_db_subtree(td::base64_encode(out_msg.hash.as_slice()), tx_keys, addr_keys);
-        }
-        tx_keys.push_back(key);
+            if (!frame.expanded) {
+                frame.expanded = true;
+                const auto& out_msgs = frame.node->transaction.out_msgs;
+                // Reverse order keeps child processing equivalent to recursive DFS.
+                for (auto it = out_msgs.rbegin(); it != out_msgs.rend(); ++it) {
+                    stack.push_back(Frame{td::base64_encode(it->hash.as_slice()), std::nullopt, false});
+                }
+                continue;
+            }
 
-        auto addr_raw = std::to_string(node->transaction.account.workchain) + ":" + node->transaction.account.addr.to_hex();
-        auto by_addr_key = trace_key_ + ":" + td::base64_encode(node->transaction.in_msg.value().hash.as_slice());
-        addr_keys.push_back(std::make_pair(addr_raw, by_addr_key));
+            tx_keys.push_back(frame.key);
+            auto addr_raw = std::to_string(frame.node->transaction.account.workchain) + ":" + frame.node->transaction.account.addr.to_hex();
+            auto by_addr_key = trace_key_ + ":" + td::base64_encode(frame.node->transaction.in_msg.value().hash.as_slice());
+            addr_keys.push_back(std::make_pair(addr_raw, by_addr_key));
+
+            stack.pop_back();
+        }
     }
 
     std::optional<RedisTraceNode> load_existing_node(const std::string& trace_key, const std::string& node_key) {
