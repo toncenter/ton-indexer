@@ -6,6 +6,7 @@
 
 class TraceInserter: public td::actor::Actor {
 private:
+    static constexpr size_t kMaxExistingTraceFields = 1000;
     sw::redis::Transaction transaction_;
     Trace trace_;
     td::Promise<td::Unit> promise_;
@@ -27,6 +28,14 @@ public:
             std::vector<std::pair<std::string, RedisTraceNode>> flattened_trace;
 
             trace_key_ = td::base64_encode(trace_.ext_in_msg_hash_norm.as_slice());
+            auto existing_fields_count = transaction_.redis().hlen(trace_key_);
+            if (existing_fields_count > static_cast<long long>(kMaxExistingTraceFields)) {
+                LOG(WARNING) << "Skipping trace insert for " << trace_key_
+                             << ": existing trace hash is too large (" << existing_fields_count << " fields)";
+                promise_.set_value(td::Unit());
+                stop();
+                return;
+            }
 
             if (trace_.root) {
                 queue.push(trace_.root.get());
