@@ -35,6 +35,9 @@ public:
             while (!queue.empty()) {
                 TraceNode* current = queue.front();
                 queue.pop();
+                if (!current) {
+                    continue;
+                }
 
                 auto redis_node_r = parse_trace_node(*current);
                 if (redis_node_r.is_error()) {
@@ -53,7 +56,9 @@ public:
                 }
 
                 for (auto& child : current->children) {
-                    queue.push(child.get());
+                    if (child) {
+                        queue.push(child.get());
+                    }
                 }
 
                 if (redis_node.finality != FinalityState::Emulated) {
