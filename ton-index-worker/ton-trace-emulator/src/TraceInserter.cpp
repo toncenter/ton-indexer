@@ -240,10 +240,14 @@ public:
 
             if (!frame.expanded) {
                 frame.expanded = true;
-                const auto& out_msgs = frame.node->transaction.out_msgs;
+                std::vector<std::string> child_keys;
+                child_keys.reserve(frame.node->transaction.out_msgs.size());
+                for (const auto& out_msg : frame.node->transaction.out_msgs) {
+                    child_keys.push_back(td::base64_encode(out_msg.hash.as_slice()));
+                }
                 // Reverse order keeps child processing equivalent to recursive DFS.
-                for (auto it = out_msgs.rbegin(); it != out_msgs.rend(); ++it) {
-                    stack.push_back(Frame{td::base64_encode(it->hash.as_slice()), std::nullopt, false});
+                for (auto it = child_keys.rbegin(); it != child_keys.rend(); ++it) {
+                    stack.push_back(Frame{std::move(*it), std::nullopt, false});
                 }
                 continue;
             }
