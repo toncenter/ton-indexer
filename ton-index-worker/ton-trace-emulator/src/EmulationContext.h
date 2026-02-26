@@ -33,7 +33,8 @@ private:
     std::shared_ptr<block::ConfigInfo> config_;
     bool ignore_chksig_{false};
     td::Bits256 rand_seed_;
-    const size_t txs_count_limit_{1000};
+    const size_t txs_count_limit_{256};
+    const size_t trace_depth_limit_{32};
     std::atomic<size_t> txs_count_{0};
 
     const float block_rate = 0.37f;
@@ -79,6 +80,10 @@ public:
 
     bool is_limit_exceeded() const {
         return txs_count_.load() >= txs_count_limit_;
+    }
+
+    size_t trace_depth_limit() const {
+        return trace_depth_limit_;
     }
 
     void insert_account_state(block::Account accountState) {
@@ -174,4 +179,3 @@ private:
         return td::Status::Error("Account not found in shard_states");
     }
 };
-

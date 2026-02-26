@@ -34,6 +34,7 @@ struct EmuRequest {
   size_t     insert_index;       // position among parent's children
   td::Ref<vm::Cell> msg;         // message to emulate
   td::Bits256 out_msg_hash;      // for optional sanity checks
+  size_t depth;                  // depth of emulated child in trace
 };
 
 struct ShardStateSnapshot {
@@ -67,7 +68,7 @@ private:
     void block_parsed(ton::BlockId blkid, std::vector<TransactionInfo> txs, MeasurementPtr measurement);
     void process_txs(MeasurementPtr measurement);
     void emulate_traces(MeasurementPtr measurement);
-    std::unique_ptr<TraceNode> construct_commited_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr measurement);
+    std::unique_ptr<TraceNode> construct_commited_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr measurement, size_t depth = 1);
     void children_emulated(std::unique_ptr<TraceNode> parent_node,
                             std::vector<std::unique_ptr<TraceNode>> child_nodes,
                             TraceIds trace_ids,
@@ -106,7 +107,7 @@ private:
     void parse_error(td::Status error, MeasurementPtr measurement);
     void process_txs(MeasurementPtr measurement);
     void emulate_traces(MeasurementPtr measurement);
-    std::unique_ptr<TraceNode> construct_confirmed_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr measurement);
+    std::unique_ptr<TraceNode> construct_confirmed_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr measurement, size_t depth = 1);
     void children_emulated(std::unique_ptr<TraceNode> parent_node,
                            std::vector<std::unique_ptr<TraceNode>> child_nodes,
                            TraceIds trace_ids,
