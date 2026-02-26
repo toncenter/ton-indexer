@@ -6,7 +6,7 @@
 
 class TraceInserter: public td::actor::Actor {
 private:
-    static constexpr size_t kMaxExistingTraceFields = 1000;
+    static constexpr size_t kMaxExistingTraceFields = 1000; // to avoid reading and inserting into unexpectedly large trace
     sw::redis::Transaction transaction_;
     Trace trace_;
     td::Promise<td::Unit> promise_;
