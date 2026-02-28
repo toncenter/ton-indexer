@@ -3,9 +3,9 @@
 #include "ShardBatchScanner.h"
 
 void SmcScanner::start_up() {
-    auto P = td::PromiseCreator::lambda([=, SelfId = actor_id(this)](td::Result<schema::MasterchainBlockDataState> R){
+    auto P = td::PromiseCreator::lambda([this, SelfId = actor_id(this)](td::Result<DataContainerPtr> R){
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to get seqno " << options_.seqno_ << ": " << R.move_as_error();
+            LOG(ERROR) << "Failed to get seqno " << this->options_.seqno_ << ": " << R.move_as_error();
             stop();
             return;
         }
@@ -15,12 +15,12 @@ void SmcScanner::start_up() {
     td::actor::send_closure(db_scanner_, &DbScanner::fetch_seqno, options_.seqno_, std::move(P));
 }
 
-void SmcScanner::got_block(schema::MasterchainBlockDataState block) {
-    LOG(INFO) << "Got block data state";
-    for (const auto &shard_ds : block.shard_blocks_) {
+void SmcScanner::got_block(DataContainerPtr block) {
+    LOG(INFO) << "Got block data state: " << block->mc_seqno_;
+    for (const auto &shard_ds : block->mc_block_.shard_blocks_) {
         auto& shard_state = shard_ds.block_state;
         std::string actor_name = "SScanner:" + shard_ds.handle->id().shard_full().to_str();
-        td::actor::create_actor<ShardStateScanner>(actor_name, shard_state, block, options_).release();
+        td::actor::create_actor<ShardStateScanner>(actor_name, shard_state, block->mc_block_, options_).release();
     }
 }
 

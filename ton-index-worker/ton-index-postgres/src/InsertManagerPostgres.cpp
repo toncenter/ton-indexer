@@ -4,6 +4,7 @@
 #include "convert-utils.h"
 #include "Statistics.h"
 #include "version.h"
+#include "AccountAddress.h"
 #include "postgres_types.h"
 
 class InsertBatchPostgres: public td::actor::Actor {
@@ -244,7 +245,7 @@ public:
         if (is_first_row_) {
           return;
         }
-        txn_.exec0(get_str());
+        txn_.exec(get_str());
       } catch (...) {
         LOG(ERROR) << "error in finish(), table " << table_name_;
         throw;
@@ -477,7 +478,7 @@ void InsertBatchPostgres::do_insert() {
     td::Timer commit_timer{true};
     {
       std::lock_guard<std::mutex> guard(latest_account_states_update_mutex);
-      txn.exec0(insert_under_mutex_query);
+      txn.exec(insert_under_mutex_query);
       update_timings("__insert_under_mutex_query");
       states_timer.pause();
       commit_timer.resume();
@@ -487,7 +488,7 @@ void InsertBatchPostgres::do_insert() {
 
     for(auto& task : insert_tasks_) {
       task.parsed_block_->update_timing("finished");
-      task.parsed_block_->print_timings();
+      // task.parsed_block_->print_timings();
       task.promise_.set_value(td::Unit());
     }
     promise_.set_value(td::Unit());
@@ -1045,28 +1046,29 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
     std::optional<schema::raw_bytes> code_str = std::nullopt;
     std::optional<schema::raw_bytes> data_str = std::nullopt;
 
-    if (max_data_depth_ >= 0 && account_state.data.not_null() && (max_data_depth_ == 0 || account_state.data->get_depth() <= max_data_depth_)){
-      auto data_res = vm::std_boc_serialize(account_state.data);
-      if (data_res.is_ok()){
-        data_str = schema::raw_bytes{data_res.move_as_ok().as_slice().str()};
-      }
-    } else {
-      if (account_state.data.not_null()) {
-        td::StringBuilder sb;
-        sb << account_state.account;
-        LOG(DEBUG) << "Large account data: " << sb.as_cslice()
-                  << " Depth: " << account_state.data->get_depth();
+    if (account_state.data.not_null() && max_data_depth_ >= 0) {
+      if (max_data_depth_ == 0 || account_state.data->get_depth() <= max_data_depth_){
+        auto data_res = vm::std_boc_serialize(account_state.data);
+        if (data_res.is_ok()){
+          data_str = schema::raw_bytes{data_res.move_as_ok().as_slice().str()};
+        }
+      } else {
+        if (account_state.data.not_null()) {
+          LOG(DEBUG) << "Large account data: " << &account_state.account
+                    << " Depth: " << account_state.data->get_depth();
+        }
       }
     }
-    {
+    if (account_state.code.not_null()) {
       auto code_res = vm::std_boc_serialize(account_state.code);
       if (code_res.is_ok()){
         code_str = schema::raw_bytes{code_res.move_as_ok().as_slice().str()};
       }
-      if (code_str->length() > 128000) {
+      if (code_str->length() > 1024 * 1024) {
         td::StringBuilder sb;
         sb << account_state.account;
-        LOG(WARNING) << "Large account code: " << sb.as_cslice();
+        LOG(WARNING) << "account " << sb.as_cslice() << " has large code of length "
+                     << static_cast<double>(code_str->length()) / 1024 / 1024 << "MB";
       }
     }
     auto tuple = std::make_tuple(
@@ -1935,7 +1937,7 @@ std::string InsertBatchPostgres::insert_contract_methods(pqxx::work &txn) {
   stream.setConflictDoNothing(); // don't update existings
 
   for (const auto& code_hash : unique_code_hashes) {
-    // turn method_ids into PostgreSQL array string
+    // turn method_ids into a PostgreSQL array string
     std::ostringstream methods_str;
     methods_str << "{";
     bool first = true;
@@ -1996,11 +1998,6 @@ void InsertManagerPostgres::start_up() {
   }
   
   alarm_timestamp() = td::Timestamp::in(1.0);
-}
-
-void InsertManagerPostgres::set_max_data_depth(std::int32_t value) {
-  LOG(INFO) << "InsertManagerPostgres max_data_depth set to " << value; 
-  max_data_depth_ = value;
 }
 
 void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) {

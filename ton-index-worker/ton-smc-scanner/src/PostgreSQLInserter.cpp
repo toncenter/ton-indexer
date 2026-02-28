@@ -1,173 +1,33 @@
 #include "PostgreSQLInserter.h"
 #include "convert-utils.h"
 #include <pqxx/pqxx>
+#include "postgres_types.h"
+#include "td/utils/JsonBuilder.h"
 
-#define TO_SQL_BOOL(x) ((x) ? "TRUE" : "FALSE")
-#define TO_SQL_STRING(x, transaction) (transaction.quote(x))
-#define TO_SQL_OPTIONAL(x) ((x) ? std::to_string(x.value()) : "NULL")
-#define TO_SQL_OPTIONAL_STRING(x, transaction) ((x) ? transaction.quote(x.value()) : "NULL")
-#define TO_B64_HASH(x) td::base64_encode((x).as_slice())
+class PostgreSQLInserter : public td::actor::Actor {
+public:
+  PostgreSQLInserter(std::string connection_string, std::vector<InsertData> data, td::Promise<td::Unit> promise)
+    : connection_string_(connection_string), data_(std::move(data)), promise_(std::move(promise)) {}
 
-namespace pqxx
-{
+  void start_up() override;
+private:
+  void insert_latest_account_states(pqxx::work &transaction);
+  void insert_jetton_masters(pqxx::work &transaction);
+  void insert_jetton_wallets(pqxx::work &transaction);
+  void insert_nft_collections(pqxx::work &transaction);
+  void insert_nft_items(pqxx::work &transaction);
+  void insert_getgems_nft_auctions(pqxx::work &transaction);
+  void insert_getgems_nft_sales(pqxx::work &transaction);
+  void insert_multisig_contracts(pqxx::work &transaction);
+  void insert_multisig_orders(pqxx::work &transaction);
+  void insert_vesting_contracts(pqxx::work &transaction);
+  void insert_dedust_pools(pqxx::work &transaction);
+  void insert_stonfi_pools_v2(pqxx::work &transaction);
 
-template<> struct nullness<schema::BlockReference> : pqxx::no_null<schema::BlockReference> {};
-
-template<> struct string_traits<schema::BlockReference>
-{
-  static constexpr bool converts_to_string{true};
-  static constexpr bool converts_from_string{false};
-
-  static zview to_buf(char *begin, char *end, schema::BlockReference const &value) {
-    return zview{
-      begin,
-      static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
-  }
- 
-  static char *into_buf(char *begin, char *end, schema::BlockReference const &value) {
-    std::ostringstream stream;
-    stream << "(" << value.workchain << ", " << value.shard << ", " << value.seqno << ")";
-    auto text = stream.str();
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for schema::BlockReference."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
-  }
-  static std::size_t size_buffer(schema::BlockReference const &value) noexcept {
-    return 64;
-  }
+  std::string connection_string_;
+  std::vector<InsertData> data_;
+  td::Promise<td::Unit> promise_;
 };
-
-template<> struct nullness<td::RefInt256>
-{
-  static constexpr bool has_null{true};
- 
-  static constexpr bool always_null{false};
- 
-  static bool is_null(td::RefInt256 const &value) {
-    return value.is_null();
-  }
-};
-
-template<> struct string_traits<td::RefInt256>
-{
-  static constexpr bool converts_to_string{true};
-  static constexpr bool converts_from_string{false};
-
-  static zview to_buf(char *begin, char *end, td::RefInt256 const &value) {
-    return zview{begin, static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
-  }
- 
-  static char *into_buf(char *begin, char *end, td::RefInt256 const &value) {
-    auto text = value->to_dec_string();
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for td::RefInt256."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
-  }
-  static std::size_t size_buffer(td::RefInt256 const &value) noexcept {
-    return 128;
-  }
-};
-
-template<> struct nullness<block::StdAddress> : pqxx::no_null<block::StdAddress> {};
-
-template<> struct string_traits<block::StdAddress>
-{
-  static constexpr bool converts_to_string{true};
-  static constexpr bool converts_from_string{false};
-
-  static zview to_buf(char *begin, char *end, block::StdAddress const &value) {
-    return zview{begin, static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
-  }
- 
-  static char *into_buf(char *begin, char *end, block::StdAddress const &value) {
-    std::ostringstream stream;
-    stream << value.workchain << ":" << value.addr;
-    auto text = stream.str();
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for block::StdAddress."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
-  }
-  static std::size_t size_buffer(block::StdAddress const &value) noexcept {
-    return 80;
-  }
-};
-
-template<> struct nullness<schema::AddressNone, void> {
-  static constexpr bool has_null = true;
-  static constexpr bool always_null = true;
-  static bool is_null(schema::AddressNone const &) { return true; }
-  [[nodiscard]] static schema::AddressNone null() { return schema::AddressNone{}; }
-};
-
-template<> struct string_traits<schema::AddressNone> {
-  static constexpr bool converts_to_string{true};
-  static constexpr bool converts_from_string{false};
-
-  static zview to_buf(char *begin, char *end, td::Bits256 const &value) {
-    return zview{begin, static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
-  }
-
-  static char *into_buf(char *begin, char *end, td::Bits256 const &value) {
-    auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for td::Bits256."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
-  }
-  static std::size_t size_buffer(td::Bits256 const &value) noexcept {
-    return 64;
-  }
-};
-
-template<> struct nullness<td::Bits256> : pqxx::no_null<td::Bits256> {};
-
-template<> struct string_traits<td::Bits256>
-{
-  static constexpr bool converts_to_string{true};
-  static constexpr bool converts_from_string{false};
-
-  static zview to_buf(char *begin, char *end, td::Bits256 const &value) {
-    return zview{begin, static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
-  }
- 
-  static char *into_buf(char *begin, char *end, td::Bits256 const &value) {
-    auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for td::Bits256."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
-  }
-  static std::size_t size_buffer(td::Bits256 const &value) noexcept {
-    return 64;
-  }
-};
-
-template<> struct nullness<vm::CellHash> : pqxx::no_null<vm::CellHash> {};
-
-template<> struct string_traits<vm::CellHash>
-{
-  static constexpr bool converts_to_string{true};
-  static constexpr bool converts_from_string{false};
-
-  static zview to_buf(char *begin, char *end, vm::CellHash const &value) {
-    return zview{begin, static_cast<std::size_t>(into_buf(begin, end, value) - begin - 1)};
-  }
- 
-  static char *into_buf(char *begin, char *end, vm::CellHash const &value) {
-    auto text = td::base64_encode(value.as_slice());
-    if (pqxx::internal::cmp_greater_equal(std::size(text), end - begin))
-      throw conversion_overrun{"Not enough buffer for vm::CellHash."};
-    std::memcpy(begin, text.c_str(), std::size(text) + 1);
-    return begin + std::size(text) + 1;
-  }
-  static std::size_t size_buffer(vm::CellHash const &value) noexcept {
-    return 64;
-  }
-};
-}
 
 class PopulateTableStream {
 private:
@@ -379,29 +239,30 @@ void PostgreSQLInserter::start_up() {
             insert_jetton_wallets(txn);
             insert_nft_items(txn);
             insert_nft_collections(txn);
+            insert_getgems_nft_auctions(txn);
+            insert_getgems_nft_sales(txn);
             insert_multisig_contracts(txn);
             insert_multisig_orders(txn);
             insert_vesting_contracts(txn);
+            insert_dedust_pools(txn);
+            insert_stonfi_pools_v2(txn);
             txn.commit();
         }
-
         promise_.set_value(td::Unit());
     } catch (const std::exception &e) {
         promise_.set_error(td::Status::Error("Error inserting to PG: " + std::string(e.what())));
     }
-
     stop();
 }
 
 void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
   std::vector<schema::AccountState> latest_account_states;
-  std::unordered_set<std::string> accounts_set;
+  std::unordered_set<schema::AccountAddress> accounts_set;
   for (auto &data : data_) {
       if (std::holds_alternative<schema::AccountState>(data)) {
         auto account_state = std::get<schema::AccountState>(data);
-        std::string account_addr = convert::to_raw_address(account_state.account);
-        if (accounts_set.find(account_addr) == accounts_set.end()) {
-          accounts_set.insert(account_addr);
+        if (accounts_set.find(account_state.account) == accounts_set.end()) {
+          accounts_set.insert(account_state.account);
           latest_account_states.push_back(account_state);
         }
       }
@@ -415,25 +276,36 @@ void PostgreSQLInserter::insert_latest_account_states(pqxx::work &transaction) {
   stream.setConflictDoUpdate({"account"}, "latest_account_states.last_trans_lt < EXCLUDED.last_trans_lt");
 
   for (const auto& account_state : latest_account_states) {
-    std::optional<std::string> code_str = std::nullopt;
-    std::optional<std::string> data_str = std::nullopt;
+    std::optional<pqxx::bytes> code_str = std::nullopt;
+    std::optional<pqxx::bytes> data_str = std::nullopt;
     if (account_state.data.not_null()) {
       auto data_res = vm::std_boc_serialize(account_state.data);
       if (data_res.is_ok()){
-        data_str = td::base64_encode(data_res.move_as_ok());
+        auto data_slice = data_res.move_as_ok().as_slice();
+        data_str = pqxx::binary_cast(data_slice.str());
+        if (data_str->length() > 1024 * 1024) {
+          td::StringBuilder sb; sb << account_state.account;
+          LOG(WARNING) << "Large data for account " << sb.as_cslice() << " length: " << data_str->length();
+        }
       } else {
-        LOG(ERROR) << "Failed to serialize account data for " << account_state.account
+        td::StringBuilder sb; sb << account_state.account;
+        LOG(ERROR) << "Failed to serialize account data for " << sb.as_cslice()
                    << ": " << data_res.move_as_error().message();
         continue;  // Skip this account if serialization fails
       }
-    }
-    {
       auto code_res = vm::std_boc_serialize(account_state.code);
       if (code_res.is_ok()){
-        code_str = td::base64_encode(code_res.move_as_ok());
-      }
-      if (code_str->length() > 128000) {
-        LOG(WARNING) << "Large account code: " << account_state.account;
+        auto code_slice = code_res.move_as_ok().as_slice();
+        code_str = pqxx::binary_cast(code_slice.str());
+        if (code_str->length() > 1024 * 1024) {
+          td::StringBuilder sb; sb << account_state.account;
+          LOG(WARNING) << "Large code for account " << sb.as_cslice() << " length: " << code_str->length();
+        }
+      } else {
+        td::StringBuilder sb; sb << account_state.account;
+        LOG(ERROR) << "Failed to serialize account code for " << sb.as_cslice()
+                   << ": " << code_res.move_as_error().message();
+        continue;  // Skip this account if serialization fails
       }
     }
     auto tuple = std::make_tuple(
@@ -510,7 +382,7 @@ void PostgreSQLInserter::insert_jetton_wallets(pqxx::work &transaction) {
   PopulateTableStream stream(transaction, "jetton_wallets", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "jetton_wallets.last_transaction_lt < EXCLUDED.last_transaction_lt");
 
-  std::unordered_set<block::StdAddress> known_mintless_masters;
+  std::unordered_set<schema::AccountAddress> known_mintless_masters;
   for (const auto& jetton_wallet : jetton_wallets) {
     auto tuple = std::make_tuple(
       jetton_wallet.balance,
@@ -576,23 +448,53 @@ void PostgreSQLInserter::insert_nft_collections(pqxx::work &txn) {
 }
 
 void PostgreSQLInserter::insert_nft_items(pqxx::work &txn) {
-  std::vector<schema::NFTItemDataV2> nft_items;
+  std::map<std::pair<schema::AccountAddress, schema::AccountAddress>, schema::AccountAddress> sale_real_owners;
+  std::map<std::pair<schema::AccountAddress, schema::AccountAddress>, schema::AccountAddress> auction_real_owners;
+  std::unordered_map<schema::AccountAddress, schema::NFTItemDataV2> nft_items;
   for (auto& data : data_) {
     if (std::holds_alternative<schema::NFTItemDataV2>(data)) {
-      nft_items.push_back(std::get<schema::NFTItemDataV2>(data));
+      auto& schema = std::get<schema::NFTItemDataV2>(data);
+      nft_items[schema.address] = schema;
+    }
+    if (std::holds_alternative<schema::GetGemsNftFixPriceSaleData>(data)) {
+      const auto& sale = std::get<schema::GetGemsNftFixPriceSaleData>(data);
+      if (std::holds_alternative<schema::AddressStd>(sale.nft_owner_address)) {
+        sale_real_owners[{sale.address, sale.nft_address}] = sale.nft_owner_address;
+      }
+    }
+    if (std::holds_alternative<schema::GetGemsNftAuctionData>(data)) {
+      const auto& auction = std::get<schema::GetGemsNftAuctionData>(data);
+      if (std::holds_alternative<schema::AddressStd>(auction.nft_owner)) {
+        auction_real_owners[{auction.address, auction.nft_addr}] = auction.nft_owner;
+      }
     }
   }
   std::initializer_list<std::string_view> columns = {
-    "address", "init", "index", "collection_address", "owner_address", "content", "last_transaction_lt", "code_hash", "data_hash"
+    "address", "init", "index", "collection_address", "owner_address", "content", "last_transaction_lt", "code_hash", "data_hash", "real_owner"
   };
   
   PopulateTableStream stream(txn, "nft_items", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt");
 
-  for (const auto& nft_item : nft_items) {
+  for (const auto& [addr, nft_item] : nft_items) {
     std::optional<std::string> content_str = std::nullopt;
     if (nft_item.content) {
       content_str = content_to_json_string(nft_item.content.value());
+    }
+    // Calculate real_owner based on sales/auctions lookup
+    schema::AccountAddress real_owner = nft_item.owner_address;
+    if (auto nft_item_owner = std::get_if<schema::AddressStd>(&nft_item.owner_address)) {
+      auto sale_key = std::make_pair(*nft_item_owner, nft_item.address);
+      auto sale_it = sale_real_owners.find(sale_key);
+      if (sale_it != sale_real_owners.end()) {
+        real_owner = sale_it->second;
+      } else {
+        auto auction_key = std::make_pair(*nft_item_owner, nft_item.address);
+        auto auction_it = auction_real_owners.find(auction_key);
+        if (auction_it != auction_real_owners.end()) {
+          real_owner = auction_it->second;
+        }
+      }
     }
     auto tuple = std::make_tuple(
       nft_item.address,
@@ -603,7 +505,8 @@ void PostgreSQLInserter::insert_nft_items(pqxx::work &txn) {
       content_str,
       nft_item.last_transaction_lt,
       nft_item.code_hash,
-      nft_item.data_hash
+      nft_item.data_hash,
+      real_owner
     );
     stream.insert_row(std::move(tuple));
   }
@@ -615,7 +518,7 @@ void PostgreSQLInserter::insert_nft_items(pqxx::work &txn) {
   PopulateTableStream dns_stream(txn, "dns_entries", dns_columns, 1000, false);
   dns_stream.setConflictDoUpdate({"nft_item_address"}, "dns_entries.last_transaction_lt < EXCLUDED.last_transaction_lt");
 
-  for (const auto& nft_item : nft_items) {
+  for (const auto& [addr, nft_item] : nft_items) {
     if (!nft_item.dns_entry) {
       continue;
     }
@@ -634,6 +537,162 @@ void PostgreSQLInserter::insert_nft_items(pqxx::work &txn) {
   };
 
   dns_stream.finish();
+}
+
+void PostgreSQLInserter::insert_getgems_nft_sales(pqxx::work &txn) {
+  std::unordered_map<schema::AccountAddress, schema::GetGemsNftFixPriceSaleData> nft_sales;
+  for (auto& data : data_) {
+    if (std::holds_alternative<schema::GetGemsNftFixPriceSaleData>(data)) {
+      const auto& nft_sale = std::get<schema::GetGemsNftFixPriceSaleData>(data);
+      nft_sales[nft_sale.address] = nft_sale;
+    }
+  }
+
+  std::initializer_list<std::string_view> columns = {
+    "address", "is_complete", "created_at", "marketplace_address", "nft_address", "nft_owner_address", "full_price",
+    "marketplace_fee_address", "marketplace_fee", "royalty_address", "royalty_amount", "last_transaction_lt", "code_hash", "data_hash"
+  };
+  PopulateTableStream stream(txn, "getgems_nft_sales", columns, 1000, false);
+  stream.setConflictDoUpdate({"address"}, "getgems_nft_sales.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+  for (const auto& [addr, nft_sale] : nft_sales) {
+    auto tuple = std::make_tuple(
+      nft_sale.address,
+      nft_sale.is_complete,
+      nft_sale.created_at,
+      nft_sale.marketplace_address,
+      nft_sale.nft_address,
+      nft_sale.nft_owner_address,
+      nft_sale.full_price,
+      nft_sale.marketplace_fee_address,
+      nft_sale.marketplace_fee,
+      nft_sale.royalty_address,
+      nft_sale.royalty_amount,
+      nft_sale.last_transaction_lt,
+      nft_sale.code_hash,
+      nft_sale.data_hash
+    );
+    stream.insert_row(std::move(tuple));
+  }
+  stream.finish();
+}
+
+void PostgreSQLInserter::insert_getgems_nft_auctions(pqxx::work &txn) {
+  std::unordered_map<schema::AccountAddress, schema::GetGemsNftAuctionData> nft_auctions;
+  for (auto& data : data_) {
+    if (std::holds_alternative<schema::GetGemsNftAuctionData>(data)) {
+      const auto& nft_auction = std::get<schema::GetGemsNftAuctionData>(data);
+      nft_auctions[nft_auction.address] = nft_auction;
+    }
+  }
+  std::initializer_list<std::string_view> columns = {"address", "end_flag", "end_time", "mp_addr", "nft_addr", "nft_owner",
+    "last_bid", "last_member", "min_step", "mp_fee_addr", "mp_fee_factor", "mp_fee_base", "royalty_fee_addr", "royalty_fee_factor",
+    "royalty_fee_base", "max_bid", "min_bid", "created_at", "last_bid_at", "is_canceled", "last_transaction_lt", "code_hash", "data_hash"
+  };
+  PopulateTableStream stream(txn, "getgems_nft_auctions", columns, 1000, false);
+  stream.setConflictDoUpdate({"address"}, "getgems_nft_auctions.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+  for (const auto& [addr, nft_auction] : nft_auctions) {
+    auto tuple = std::make_tuple(
+      nft_auction.address,
+      nft_auction.end,
+      nft_auction.end_time,
+      nft_auction.mp_addr,
+      nft_auction.nft_addr,
+      nft_auction.nft_owner,
+      nft_auction.last_bid,
+      nft_auction.last_member,
+      nft_auction.min_step,
+      nft_auction.mp_fee_addr,
+      nft_auction.mp_fee_factor,
+      nft_auction.mp_fee_base,
+      nft_auction.royalty_fee_addr,
+      nft_auction.royalty_fee_factor,
+      nft_auction.royalty_fee_base,
+      nft_auction.max_bid,
+      nft_auction.min_bid,
+      nft_auction.created_at,
+      nft_auction.last_bid_at,
+      nft_auction.is_canceled,
+      nft_auction.last_transaction_lt,
+      nft_auction.code_hash,
+      nft_auction.data_hash
+    );
+    stream.insert_row(std::move(tuple));
+  }
+  stream.finish();
+}
+
+void PostgreSQLInserter::insert_dedust_pools(pqxx::work &txn) {
+  std::initializer_list<std::string_view> pools_column = {
+    "address", "asset_1", "asset_2", "reserve_1", "reserve_2", "pool_type", "dex", "fee", "last_transaction_lt", "code_hash", "data_hash"
+  };
+
+  std::unordered_map<schema::AccountAddress, schema::DedustPoolData> dedust_pools;
+  for (auto& data : data_) {
+    if (std::holds_alternative<schema::DedustPoolData>(data)) {
+      const auto& dedust_pool = std::get<schema::DedustPoolData>(data);
+      dedust_pools[dedust_pool.address] = dedust_pool;
+    }
+  }
+  PopulateTableStream pools_stream(txn, "dex_pools", pools_column, 1000, false);
+  pools_stream.setConflictDoUpdate({"address"}, "dex_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
+  std::string dex = "dedust";
+  for (const auto& [addr, dedust_pool] : dedust_pools) {
+    std::string pool_type = dedust_pool.is_stable ? "stable" : "volatile";
+
+    auto tuple = std::make_tuple(
+      dedust_pool.address,
+      dedust_pool.asset_1,
+      dedust_pool.asset_2,
+      dedust_pool.reserve_1,
+      dedust_pool.reserve_2,
+      pool_type,
+      dex,
+      dedust_pool.fee,
+      dedust_pool.last_transaction_lt,
+      dedust_pool.code_hash,
+      dedust_pool.data_hash
+    );
+    pools_stream.insert_row(std::move(tuple));
+  }
+
+  pools_stream.finish();
+}
+
+void PostgreSQLInserter::insert_stonfi_pools_v2(pqxx::work &txn) {
+  std::initializer_list<std::string_view> pools_column = {
+    "address", "asset_1", "asset_2", "reserve_1", "reserve_2", "pool_type", "dex", "fee", "last_transaction_lt", "code_hash", "data_hash"
+  };
+
+  std::unordered_map<schema::AccountAddress, schema::StonfiPoolV2Data> stonfi_pools;
+  for (auto& data : data_) {
+    if (std::holds_alternative<schema::StonfiPoolV2Data>(data)) {
+      const auto& stonfi_pool = std::get<schema::StonfiPoolV2Data>(data);
+      stonfi_pools[stonfi_pool.address] = stonfi_pool;
+    }
+  }
+
+  PopulateTableStream pools_stream(txn, "dex_pools", pools_column, 1000, false);
+  pools_stream.setConflictDoUpdate({"address"}, "dex_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
+  std::string dex = "stonfi-v2";
+  for (const auto& [addr, stonfi_pool] : stonfi_pools) {
+    auto tuple = std::make_tuple(
+      stonfi_pool.address,
+      stonfi_pool.asset_1,
+      stonfi_pool.asset_2,
+      stonfi_pool.reserve_1,
+      stonfi_pool.reserve_2,
+      stonfi_pool.pool_type,
+      dex,
+      stonfi_pool.fee,
+      stonfi_pool.last_transaction_lt,
+      stonfi_pool.code_hash,
+      stonfi_pool.data_hash
+    );
+    pools_stream.insert_row(std::move(tuple));
+  }
+  pools_stream.finish();
 }
 
 void PostgreSQLInserter::insert_multisig_contracts(pqxx::work &txn) {
@@ -682,11 +741,11 @@ void PostgreSQLInserter::insert_multisig_orders(pqxx::work &txn) {
   stream.setConflictDoUpdate({"address"}, "multisig_orders.last_transaction_lt < EXCLUDED.last_transaction_lt");
 
   for (const auto&multisig_order : multisig_orders) {
-    std::optional<std::string> order_boc_str = std::nullopt;
+    std::optional<pqxx::bytes> order_boc_str = std::nullopt;
     if (multisig_order.order.not_null()) {
       auto order_res = vm::std_boc_serialize(multisig_order.order);
       if (order_res.is_ok()) {
-        order_boc_str = td::base64_encode(order_res.move_as_ok());
+        order_boc_str = pqxx::binary_cast(order_res.move_as_ok().as_slice().str()).data();
       }
     }
 

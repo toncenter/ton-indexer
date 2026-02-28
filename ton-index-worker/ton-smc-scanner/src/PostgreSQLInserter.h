@@ -1,38 +1,13 @@
 #pragma once
 #include <td/actor/actor.h>
-#include <td/utils/base64.h>
-#include <td/utils/JsonBuilder.h>
-#include <crypto/vm/cells/CellHash.h>
-#include <pqxx/pqxx>
-// #include <semaphore>
 #include "IndexData.h"
 
-
-
-using InsertData = std::variant<schema::AccountState, 
-  schema::JettonMasterDataV2, schema::JettonWalletDataV2, schema::NFTItemDataV2, schema::NFTCollectionDataV2,
-  schema::MultisigContractData, schema::MultisigOrderData, schema::VestingData>;
-
-class PostgreSQLInserter : public td::actor::Actor {
-public:
-    PostgreSQLInserter(std::string connection_string, std::vector<InsertData> data, td::Promise<td::Unit> promise)
-      : connection_string_(connection_string), data_(std::move(data)), promise_(std::move(promise)) {}
-
-    void start_up() override;
-private:
-    void insert_latest_account_states(pqxx::work &transaction);
-    void insert_jetton_masters(pqxx::work &transaction);
-    void insert_jetton_wallets(pqxx::work &transaction);
-    void insert_nft_items(pqxx::work &transaction);
-    void insert_nft_collections(pqxx::work &transaction);
-    void insert_multisig_contracts(pqxx::work &transaction);
-    void insert_multisig_orders(pqxx::work &transaction);
-    void insert_vesting_contracts(pqxx::work &transaction);
-
-    std::string connection_string_;
-    std::vector<InsertData> data_;
-    td::Promise<td::Unit> promise_;
-};
+using InsertData = std::variant<schema::AccountState,
+  schema::JettonMasterDataV2, schema::JettonWalletDataV2,
+  schema::NFTItemDataV2, schema::NFTCollectionDataV2,
+  schema::GetGemsNftAuctionData, schema::GetGemsNftFixPriceSaleData,
+  schema::MultisigContractData, schema::MultisigOrderData,
+  schema::VestingData, schema::DedustPoolData, schema::StonfiPoolV2Data>;
 
 class PostgreSQLInsertManager : public td::actor::Actor {
 public:

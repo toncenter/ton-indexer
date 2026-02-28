@@ -20,14 +20,22 @@ public:
 private:
   Credential credential_;
   std::int32_t max_data_depth_{0};
+  bool insert_states_{true};
 public:
   InsertManagerPostgres(Credential  credential) :
     credential_(std::move(credential)) {}
 
   void start_up() override;
 
-  void set_max_data_depth(std::int32_t value);
+  void set_max_data_depth(std::int32_t value) {
+    LOG(INFO) << "InsertManagerPostgres max_data_depth set to " << value;
+    max_data_depth_ = value;
+  }
+  void set_insert_states(bool value) {
+    LOG(INFO) << "InsertManagerPostgres insert_states set to " << value;
+    insert_states_ = value;
+  }
 
   void create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) override;
-  void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0) override;
+  void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno) override;
 };

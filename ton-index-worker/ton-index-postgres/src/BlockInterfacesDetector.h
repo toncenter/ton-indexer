@@ -72,9 +72,7 @@ public:
                 continue;
             }
             const auto& account_address = std::get<schema::AddressStd>(account_state.account);
-            auto code_cell = vm::std_boc_deserialize(account_state.code_boc.value()).move_as_ok();
-            auto data_cell = vm::std_boc_deserialize(account_state.data_boc.value()).move_as_ok();
-            td::actor::create_actor<FullDetector>("InterfacesDetector", account_address, std::move(code_cell), std::move(data_cell), shard_states, block_->mc_block_.config_,
+            td::actor::create_actor<FullDetector>("InterfacesDetector", account_address, account_state.code, account_state.data, shard_states, block_->mc_block_.config_,
                 td::PromiseCreator::lambda([SelfId = actor_id(this), account_state, promise = ig.get_promise()](std::vector<typename FullDetector::DetectedInterface> interfaces) mutable {
                     const auto& account_address = std::get<schema::AddressStd>(account_state.account);
                     td::actor::send_closure(SelfId, &BlockInterfaceProcessor::process_address_interfaces, account_address, std::move(interfaces),

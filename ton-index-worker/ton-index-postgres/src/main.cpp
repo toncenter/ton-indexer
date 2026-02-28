@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
   SCOPE_EXIT {
     td::log_interface = td::default_log_interface;
   };
-  LOG_STATUS(td::change_maximize_rlimit(td::RlimitType::nofile, 1048576));
+  LOG_STATUS(td::change_maximize_rlimit(td::RlimitType::nofile, 1536 * 1024));
 
   CHECK(vm::init_op_cp0());
 
