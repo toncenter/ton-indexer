@@ -5,6 +5,7 @@ import logging
 from time import sleep
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
+from enum import IntEnum
 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -81,6 +82,12 @@ def init_database(create=False):
 
 # types
 AccountStatus = Enum('uninit', 'frozen', 'active', 'nonexist', name='account_status')
+
+class FinalityState(IntEnum):
+    pending = 0
+    confirmed = 1
+    signed = 2
+    finalized = 3
 
 
 def convert_numerics_to_strings(data, exclusions):
@@ -202,6 +209,23 @@ class Trace(Base):
                                                      uselist=True,
                                                      viewonly=True)
 
+    _finality_cache: FinalityState | None = None
+
+    @property
+    def finality(self) -> FinalityState:
+        """
+        Lazily compute finality across all transactions in the trace and cache the result.
+        """
+        if self._finality_cache is None:
+            min_finality = FinalityState.finalized
+            for tx in self.transactions:
+                if tx.finality < min_finality:
+                    min_finality = tx.finality
+                    if min_finality == FinalityState.pending:
+                        break
+            self._finality_cache = min_finality
+        return self._finality_cache
+
 
 class TraceEdge(Base):
     __tablename__ = 'trace_edges'
@@ -247,6 +271,7 @@ class Action(Base):
     asset2_secondary: str | None = Column(String(70))
     opcode: int | None = Column(BigInteger)
     success: bool = Column(Boolean)
+    finality: FinalityState = FinalityState.finalized
     ton_transfer_data = Column(CompositeType("ton_transfer_details", [
         Column("content", String),
         Column("encrypted", Boolean)
@@ -492,6 +517,56 @@ class Action(Base):
         Column("uln", String),
         Column("uln_connection", String),
     ]))
+    cocoon_worker_payout_data = Column(CompositeType("cocoon_worker_payout_details", [
+        Column("payout_type", String),  # "regular" or "last"
+        Column("query_id", Numeric),
+        Column("new_tokens", Numeric),
+        Column("worker_state", Integer),
+        Column("worker_tokens", Numeric),
+    ]))
+    cocoon_proxy_payout_data = Column(CompositeType("cocoon_proxy_payout_details", [
+        Column("query_id", Numeric),
+    ]))
+    cocoon_proxy_charge_data = Column(CompositeType("cocoon_proxy_charge_details", [
+        Column("query_id", Numeric),
+        Column("new_tokens_used", Numeric),
+        Column("expected_address", String),
+    ]))
+    cocoon_client_top_up_data = Column(CompositeType("cocoon_client_top_up_details", [
+        Column("query_id", Numeric),
+    ]))
+    cocoon_register_proxy_data = Column(CompositeType("cocoon_register_proxy_details", [
+        Column("query_id", Numeric),
+    ]))
+    cocoon_unregister_proxy_data = Column(CompositeType("cocoon_unregister_proxy_details", [
+        Column("query_id", Numeric),
+        Column("seqno", Integer),
+    ]))
+    cocoon_client_register_data = Column(CompositeType("cocoon_client_register_details", [
+        Column("query_id", Numeric),
+        Column("nonce", Numeric),
+    ]))
+    cocoon_client_change_secret_hash_data = Column(CompositeType("cocoon_client_change_secret_hash_details", [
+        Column("query_id", Numeric),
+        Column("new_secret_hash", String),  # uint256 as string
+    ]))
+    cocoon_client_request_refund_data = Column(CompositeType("cocoon_client_request_refund_details", [
+        Column("query_id", Numeric),
+        Column("via_wallet", Boolean),
+    ]))
+    cocoon_grant_refund_data = Column(CompositeType("cocoon_grant_refund_details", [
+        Column("query_id", Numeric),
+        Column("new_tokens_used", Numeric),
+        Column("expected_address", String),
+    ]))  # payout_amount stored in action.amount
+    cocoon_client_increase_stake_data = Column(CompositeType("cocoon_client_increase_stake_details", [
+        Column("query_id", Numeric),
+        Column("new_stake", Numeric),
+    ]))
+    cocoon_client_withdraw_data = Column(CompositeType("cocoon_client_withdraw_details", [
+        Column("query_id", Numeric),
+        Column("withdraw_amount", Numeric),
+    ]))
     trace_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     trace_external_hash: str = Column(String)
@@ -529,7 +604,7 @@ class Action(Base):
         r = self.__dict__.copy()
         r.pop('_sa_instance_state')
 
-        return convert_numerics_to_strings(r, {'start_lt', 'end_lt', 'start_utime', 'end_utime', 'opcode',
+        return convert_numerics_to_strings(r, {'start_lt', 'end_lt', 'start_utime', 'end_utime', 'opcode', 'trace_start_lt', 'finality',
                                                'trace_end_lt', 'trace_end_utime', 'mc_seqno_end', 'trace_mc_seqno_end'})
 
 class Transaction(Base):
@@ -633,6 +708,7 @@ class Transaction(Base):
     messages: List[Message] = relationship("Message", back_populates="transaction", viewonly=True)
     trace: Optional[Trace] = relationship("Trace", foreign_keys=[trace_id], primaryjoin="Transaction.trace_id == Trace.trace_id", viewonly=True)
     emulated: bool = False
+    finality: FinalityState = FinalityState.finalized
 
 class AccountState(Base):
     __tablename__ = 'account_states'

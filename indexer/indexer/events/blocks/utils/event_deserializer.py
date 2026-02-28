@@ -108,7 +108,8 @@ def unpack_messagepack_tx(data: bytes) -> Transaction:
         total_fees=tx_data['total_fees'],
         account_state_hash_before=base64.b64encode(tx_data['account_state_hash_before']).decode(),
         account_state_hash_after=base64.b64encode(tx_data['account_state_hash_after']).decode(),
-        emulated=decoded_data['emulated']
+        emulated=decoded_data['emulated'],
+        finality=decoded_data['finality']
     )
     fill_tx_description(tx, tx_data['description'])
     tx.messages = [_message_from_tuple(tx, msg, 'out') for msg in tx_data['out_msgs']] + [

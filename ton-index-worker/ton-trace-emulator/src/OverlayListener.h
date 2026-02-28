@@ -7,14 +7,16 @@
 #include <validator/impl/external-message.hpp>
 #include <emulator/transaction-emulator.h>
 #include "IndexData.h"
+#include "Measurement.h"
 #include "TraceEmulator.h"
 
 
 class OverlayListener : public td::actor::Actor {
 private:
+    using TraceProcessorFn = std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)>;
     std::string global_config_path_;
     std::string inet_addr_;
-    std::function<void(Trace, td::Promise<td::Unit>)> trace_processor_;
+    TraceProcessorFn trace_processor_;
 
     td::actor::ActorOwn<ton::overlay::Overlays> overlays_;
     td::actor::ActorOwn<ton::adnl::Adnl> adnl_;
@@ -28,13 +30,13 @@ private:
     int traces_cnt_{0};
 
     void process_external_message(td::Ref<ton::validator::ExtMessageQ> message);
-    void trace_error(td::Bits256 ext_in_msg_hash, td::Status error);
-    void trace_received(Trace trace);
-    void trace_interfaces_error(td::Bits256 ext_in_msg_hash, td::Status error);
-    void finish_processing(Trace trace);
+    void trace_error(td::Bits256 ext_in_msg_hash, td::Status error, MeasurementPtr measurement);
+    void trace_received(Trace trace, MeasurementPtr measurement);
+    void trace_interfaces_error(td::Bits256 ext_in_msg_hash, td::Status error, MeasurementPtr measurement);
+    void finish_processing(Trace trace, MeasurementPtr measurement);
 
 public:
-    OverlayListener(std::string global_config_path, std::string inet_addr, std::function<void(Trace, td::Promise<td::Unit>)> trace_processor)
+    OverlayListener(std::string global_config_path, std::string inet_addr, TraceProcessorFn trace_processor)
         : global_config_path_(std::move(global_config_path)), inet_addr_(std::move(inet_addr)), trace_processor_(std::move(trace_processor)) {};
 
     virtual void start_up() override;

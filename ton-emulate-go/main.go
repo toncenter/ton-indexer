@@ -13,7 +13,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/swagger"
-	"github.com/toncenter/ton-indexer/ton-index-go/index"
 
 	"github.com/go-redis/redis/v8"
 
@@ -21,6 +20,8 @@ import (
 
 	_ "github.com/toncenter/ton-indexer/ton-emulate-go/docs"
 	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
 type TraceTask struct {
@@ -156,7 +157,7 @@ var (
 	testnet           = flag.Bool("testnet", false, "Use testnet")
 )
 
-var pool *index.DbClient
+var pool *crud.DbClient
 
 func generateTaskID() string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -198,9 +199,9 @@ func emulateTrace(c *fiber.Ctx) error {
 	if valueStr, ok := ExtractHeader(c, "X-Actions-Version"); ok {
 		supportedActionTypes = []string{valueStr}
 	} else {
-	    supportedActionTypes = []string{"latest"}
+		supportedActionTypes = []string{"latest"}
 	}
-	supportedActionTypes = index.ExpandActionTypeShortcuts(supportedActionTypes)
+	supportedActionTypes = indexModels.ExpandActionTypeShortcuts(supportedActionTypes)
 
 	taskID := generateTaskID()
 	task := TraceTask{
@@ -289,7 +290,7 @@ func emulateTrace(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to transform result: "+err.Error())
 	}
 	if *imgProxyBaseUrl != "" && result.Metadata != nil {
-		index.SubstituteImgproxyBaseUrl(result.Metadata, *imgProxyBaseUrl)
+		crud.SubstituteImgproxyBaseUrl(result.Metadata, *imgProxyBaseUrl)
 	}
 
 	return c.Status(200).JSON(result)
@@ -321,7 +322,7 @@ func emulateTonConnect(c *fiber.Ctx) error {
 	if valueStr, ok := ExtractHeader(c, "X-Actions-Version"); ok {
 		supportedActionTypes = []string{valueStr}
 	}
-	supportedActionTypes = index.ExpandActionTypeShortcuts(supportedActionTypes)
+	supportedActionTypes = indexModels.ExpandActionTypeShortcuts(supportedActionTypes)
 
 	taskID := generateTaskID()
 	task := TonConnectTraceTask{
@@ -411,7 +412,7 @@ func emulateTonConnect(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to transform result: "+err.Error())
 	}
 	if *imgProxyBaseUrl != "" && result.Metadata != nil {
-		index.SubstituteImgproxyBaseUrl(result.Metadata, *imgProxyBaseUrl)
+		crud.SubstituteImgproxyBaseUrl(result.Metadata, *imgProxyBaseUrl)
 	}
 
 	return c.Status(200).JSON(result)
@@ -433,7 +434,7 @@ func main() {
 		log.Print("AddressBook and Metadata will not be available")
 	} else {
 		log.Print("PostgreSQL connection string: ", *pg)
-		pool, err = index.NewDbClient(*pg, 100, 0)
+		pool, err = crud.NewDbClient(*pg, 100, 0)
 		if err != nil {
 			log.Print("failed to connect to PostgreSQL: ", err)
 			log.Print("AddressBook and Metadata will not be available")
