@@ -395,7 +395,11 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		clmn_query = clmn_query_default
 	}
 	if v := act_req.TraceId; v != nil {
-		filter_str := filterByArray("A.trace_id", v)
+		prefix := "A"
+		if join_accounts {
+			prefix = "AA"
+		}
+		filter_str := filterByArray(prefix+".trace_id", v)
 		if len(filter_str) > 0 {
 			if join_accounts {
 				filter_list = append(filter_list, filter_str)
