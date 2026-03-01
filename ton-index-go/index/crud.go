@@ -3760,9 +3760,13 @@ func buildMultisigQuery(multisig_req MultisigRequest, lim_req LimitRequest, sett
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	sort_order, err := getSortOrder(*lim_req.Sort)
-	if err != nil {
-		return "", err
+	sort_order := "desc"
+	if lim_req.Sort != nil {
+		var err error
+		sort_order, err = getSortOrder(*lim_req.Sort)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	limit_query, err := limitQuery(lim_req, settings)
@@ -3803,9 +3807,13 @@ func buildMultisigOrderQuery(order_req MultisigOrderRequest, lim_req LimitReques
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	sort_order, err := getSortOrder(*lim_req.Sort)
-	if err != nil {
-		return "", err
+	sort_order := "desc"
+	if lim_req.Sort != nil {
+		var err error
+		sort_order, err = getSortOrder(*lim_req.Sort)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	limit_query, err := limitQuery(lim_req, settings)
