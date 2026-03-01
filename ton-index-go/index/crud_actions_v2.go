@@ -395,10 +395,14 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		clmn_query = clmn_query_default
 	}
 	if v := act_req.TraceId; v != nil {
-		from_query = `actions as A`
 		filter_str := filterByArray("A.trace_id", v)
 		if len(filter_str) > 0 {
-			filter_list = []string{filter_str}
+			if join_accounts {
+				filter_list = append(filter_list, filter_str)
+			} else {
+				from_query = `actions as A`
+				filter_list = []string{filter_str}
+			}
 		}
 	}
 	if strings.Contains(from_query, "action_accounts") {
