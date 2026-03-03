@@ -6,7 +6,7 @@ toolchain go1.24.11
 
 require (
 	github.com/go-redis/redis/v8 v8.11.5
-	github.com/gofiber/fiber/v2 v2.52.5
+	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/gofiber/swagger v1.1.0
 	github.com/swaggo/swag v1.16.4
 	github.com/toncenter/ton-indexer/ton-index-go v0.0.0

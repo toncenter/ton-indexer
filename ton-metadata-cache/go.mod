@@ -6,7 +6,7 @@ toolchain go1.24.10
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
-	github.com/gofiber/fiber/v2 v2.52.5
+	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/jackc/pglogrepl v0.0.0-20250509230407-a9884f6bd75a
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/k0kubun/pp/v3 v3.5.0
