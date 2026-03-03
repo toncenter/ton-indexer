@@ -2,9 +2,19 @@
 #include <pqxx/pqxx>
 
 namespace pqxx {
-  std::optional<pqxx::bytes> to_pq_bytes(const std::optional<std::string> &value) {
+  inline pqxx::bytes to_pq_bytes(const td::Slice &value) {
+    auto p = reinterpret_cast<const std::byte*>(value.data());
+    return pqxx::bytes{p, value.size()};
+  }
+
+  inline pqxx::bytes to_pq_bytes(const std::string &value) {
+    auto p = reinterpret_cast<const std::byte*>(value.data());
+    return pqxx::bytes{p, value.size()};
+  }
+
+  inline std::optional<pqxx::bytes> to_pq_bytes(const std::optional<std::string> &value) {
     if (value.has_value()) {
-      return pqxx::binary_cast(value.value()).data();
+      return to_pq_bytes(value.value());
     }
     return std::nullopt;
   }
@@ -87,11 +97,21 @@ namespace pqxx {
     }
 
     static char *into_buf(char *begin, char *end, td::Bits256 const &value) {
-      return string_traits<bytes_view>::into_buf(begin, end, pqxx::binary_cast(value.as_slice().str()));
+      auto s = value.as_slice();
+      bytes_view bv{
+        reinterpret_cast<const std::byte*>(s.data()),
+        s.size()
+      };
+      return string_traits<bytes_view>::into_buf(begin, end, bv);
     }
 
     static std::size_t size_buffer(td::Bits256 const &value) noexcept {
-      return string_traits<bytes_view>::size_buffer(pqxx::binary_cast(value.as_slice().str()));;
+      auto s = value.as_slice();
+      bytes_view bv{
+        reinterpret_cast<const std::byte*>(s.data()),
+        s.size()
+      };
+      return string_traits<bytes_view>::size_buffer(bv);
     }
   };
 
@@ -109,11 +129,21 @@ namespace pqxx {
     }
 
     static char *into_buf(char *begin, char *end, vm::CellHash const &value) {
-      return string_traits<bytes_view>::into_buf(begin, end, pqxx::binary_cast(value.as_slice().str()));
+      auto s = value.as_slice();
+      bytes_view bv{
+        reinterpret_cast<const std::byte*>(s.data()),
+        s.size()
+      };
+      return string_traits<bytes_view>::into_buf(begin, end, bv);
     }
 
     static std::size_t size_buffer(td::Bits256 const &value) noexcept {
-      return string_traits<bytes_view>::size_buffer(pqxx::binary_cast(value.as_slice().str()));;
+      auto s = value.as_slice();
+      bytes_view bv{
+        reinterpret_cast<const std::byte*>(s.data()),
+        s.size()
+      };
+      return string_traits<bytes_view>::size_buffer(bv);;
     }
   };
 

@@ -328,14 +328,13 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, DataContain
 }
 
 void IndexScheduler::print_stats() {
-    double eta = (last_known_seqno_ - last_indexed_seqno_) / avg_tps_;
     td::StringBuilder sb;
     sb << last_indexed_seqno_ << " / ";
     auto end_seqno = last_known_seqno_;
     if (to_seqno_ > 0) {
         end_seqno = to_seqno_;
     }
-
+    double eta = (end_seqno - last_indexed_seqno_) / avg_tps_;
     sb << end_seqno;
     sb << "\t" << td::StringBuilder::FixedDouble(avg_tps_, 2) << " mb/s (" << get_time_string(eta) << ")"
        << "\tQ[" << cur_queue_state_.mc_blocks_ << "M, "
