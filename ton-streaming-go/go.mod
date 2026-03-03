@@ -6,7 +6,7 @@ toolchain go1.24.11
 
 require (
 	github.com/deckarep/golang-set/v2 v2.7.0
-	github.com/gofiber/fiber/v2 v2.52.5
+	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/gofiber/websocket/v2 v2.2.1
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/toncenter/ton-indexer/ton-emulate-go v0.0.0-00010101000000-000000000000
