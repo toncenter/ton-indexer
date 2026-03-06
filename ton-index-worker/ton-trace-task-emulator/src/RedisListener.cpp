@@ -76,7 +76,8 @@ void RedisListener::trace_received(TraceTask task, schema::MasterchainBlockDataS
       td::actor::send_closure(SelfId, &RedisListener::finish_processing, task.id, std::move(mc_block_id), R.move_as_ok());
     });
 
-    td::actor::create_actor<TraceInterfaceDetector>("TraceInterfaceDetector", std::move(shard_states), mc_data_state_.config_, std::move(trace), std::move(P)).release();
+    auto measurement = std::make_shared<Measurement>();
+    td::actor::create_actor<TraceInterfaceDetector>("TraceInterfaceDetector", std::move(shard_states), mc_data_state_.config_, std::move(trace), std::move(P), measurement).release();
   } else {
     finish_processing(task.id, mc_data_state.config_->block_id.id, std::move(trace));
   }
@@ -158,7 +159,8 @@ void RedisListener::process_trace_task(TraceTask task) {
             td::actor::send_closure(SelfId, &RedisListener::trace_received, std::move(task), std::move(mc_block_ds), R.move_as_ok());
           }
         });
-        td::actor::create_actor<TraceEmulator>("TraceEmu", mc_block_ds, msg_cell, ignore_chksig, std::move(P)).release();
+      auto measurement = std::make_shared<Measurement>();
+        td::actor::create_actor<TraceEmulator>("TraceEmu", mc_block_ds, msg_cell, ignore_chksig, std::move(P), measurement).release();
 
         g_statistics.record_count(EMULATE_SRC_REDIS);
       });
@@ -171,7 +173,8 @@ void RedisListener::process_trace_task(TraceTask task) {
           td::actor::send_closure(SelfId, &RedisListener::trace_received, std::move(task), mc_data_state, R.move_as_ok());
         }
       });
-      td::actor::create_actor<TraceEmulator>("TraceEmu", mc_data_state_, msg_cell, ignore_chksig, std::move(P)).release();
+      auto measurement = std::make_shared<Measurement>();
+      td::actor::create_actor<TraceEmulator>("TraceEmu", mc_data_state_, msg_cell, ignore_chksig, std::move(P), measurement).release();
 
       g_statistics.record_count(EMULATE_SRC_REDIS);
     }

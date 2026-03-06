@@ -60,6 +60,13 @@ public:
     uint32_t created_at;
     uint32_t last_bid_at;
     bool is_canceled;
+    std::optional<bool> activated;
+    std::optional<uint32_t> step_time;
+    std::optional<uint64_t> last_query_id;
+    std::optional<block::StdAddress> jetton_wallet;
+    std::optional<block::StdAddress> jetton_master;
+    std::optional<bool> is_broken_state;
+    std::optional<td::RefInt256> public_key;
   };
 
   GetGemsNftAuction(block::StdAddress address, 

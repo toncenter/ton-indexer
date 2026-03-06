@@ -546,6 +546,13 @@ create table if not exists getgems_nft_auctions
     created_at          bigint,
     last_bid_at         bigint,
     is_canceled         boolean,
+    activated           boolean,
+    step_time           bigint,
+    last_query_id       numeric,
+    jetton_wallet       tonaddr,
+    jetton_master       tonaddr,
+    is_broken_state     boolean,
+    public_key          varchar,
     last_transaction_lt bigint,
     code_hash           tonhash,
     data_hash           tonhash
@@ -566,9 +573,37 @@ create table if not exists getgems_nft_sales
     marketplace_fee         numeric,
     royalty_address         tonaddr,
     royalty_amount          numeric,
+    sold_at                 numeric,
+    sold_query_id           numeric,
+    jetton_price_dict       jsonb,
     last_transaction_lt     bigint,
     code_hash               tonhash,
     data_hash               tonhash
+);
+
+create table if not exists telemint_nft_items
+(
+    id                  bigserial,
+    address             tonaddr not null
+        primary key,
+    token_name          varchar,
+    bidder_address      tonaddr,
+    bid                 numeric,
+    bid_ts              bigint,
+    min_bid             numeric,
+    end_time            bigint,
+    beneficiary_address tonaddr,
+    initial_min_bid     numeric,
+    max_bid             numeric,
+    min_bid_step        numeric,
+    min_extend_time     bigint,
+    duration            bigint,
+    royalty_numerator   integer,
+    royalty_denominator integer,
+    royalty_destination tonaddr,
+    last_transaction_lt bigint,
+    code_hash           tonhash,
+    data_hash           tonhash
 );
 
 create table if not exists jetton_masters

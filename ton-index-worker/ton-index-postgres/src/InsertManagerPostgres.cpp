@@ -57,6 +57,7 @@ private:
   std::string insert_multisig_contracts(pqxx::work &txn);
   std::string insert_multisig_orders(pqxx::work &txn);
   std::string insert_vesting(pqxx::work &txn);
+  std::string insert_telemint(pqxx::work &txn);
   std::string insert_dedust_pools(pqxx::work &txn);
   std::string insert_stonfi_pools_v2(pqxx::work &txn);
   std::string insert_contract_methods(pqxx::work &txn);
@@ -471,6 +472,7 @@ void InsertBatchPostgres::do_insert() {
     insert_under_mutex_query += insert_latest_account_states(txn);
     update_timings("insert_latest_account_states");
     insert_under_mutex_query += insert_vesting(txn);
+    insert_under_mutex_query += insert_telemint(txn);
     update_timings("insert_vesting");
     insert_under_mutex_query += insert_contract_methods(txn);
     update_timings("insert_contract_methods");
@@ -1247,6 +1249,12 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
         sale_real_owners[{sale.address, sale.nft_address}] = sale.nft_owner_address;
       }
     }
+    // Build V4 sale lookup: (sale_address, nft_address) -> nft_owner_address
+    for (const auto& sale_v4 : task.parsed_block_->get_accounts_v2<schema::GetGemsNftFixPriceSaleV4Data>()) {
+      if (std::holds_alternative<schema::AddressStd>(sale_v4.nft_owner_address)) {
+        sale_real_owners[{sale_v4.address, sale_v4.nft_address}] = sale_v4.nft_owner_address;
+      }
+    }
     // Build auction lookup: (auction_address, nft_addr) -> nft_owner
     for (const auto& auction : task.parsed_block_->get_accounts_v2<schema::GetGemsNftAuctionData>()) {
       if (std::holds_alternative<schema::AddressStd>(auction.nft_owner)) {
@@ -1342,28 +1350,109 @@ std::string InsertBatchPostgres::insert_nft_items(pqxx::work &txn) {
 }
 
 std::string InsertBatchPostgres::insert_getgems_nft_sales(pqxx::work &txn) {
-  std::unordered_map<schema::AccountAddress, schema::GetGemsNftFixPriceSaleData> nft_sales;
+  // Unified structure to hold both V3 and V4 sales
+  struct UnifiedSaleData {
+    schema::AccountAddress address;
+    bool is_complete;
+    uint32_t created_at;
+    schema::AccountAddress marketplace_address;
+    schema::AccountAddress nft_address;
+    schema::AccountAddress nft_owner_address;
+    td::RefInt256 full_price;
+    schema::AccountAddress marketplace_fee_address;
+    td::RefInt256 marketplace_fee;
+    schema::AccountAddress royalty_address;
+    td::RefInt256 royalty_amount;
+    std::optional<uint32_t> sold_at;
+    std::optional<uint64_t> sold_query_id;
+    std::map<std::string, std::string> jetton_price_dict;
+    uint64_t last_transaction_lt;
+    td::Bits256 code_hash;
+    td::Bits256 data_hash;
+  };
+
+  std::unordered_map<schema::AccountAddress, UnifiedSaleData> nft_sales;
+
+  // Collect V3 sales
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
     for (const auto& nft_sale : task.parsed_block_->get_accounts_v2<schema::GetGemsNftFixPriceSaleData>()) {
-      if (nft_sales.find(nft_sale.address) == nft_sales.end()) {
-        nft_sales[nft_sale.address] = nft_sale;
-      } else {
-        if (nft_sales[nft_sale.address].last_transaction_lt < nft_sale.last_transaction_lt) {
-          nft_sales[nft_sale.address] = nft_sale;
-        }
+      if (nft_sales.find(nft_sale.address) == nft_sales.end() ||
+          nft_sales[nft_sale.address].last_transaction_lt < nft_sale.last_transaction_lt) {
+        UnifiedSaleData unified;
+        unified.address = nft_sale.address;
+        unified.is_complete = nft_sale.is_complete;
+        unified.created_at = nft_sale.created_at;
+        unified.marketplace_address = nft_sale.marketplace_address;
+        unified.nft_address = nft_sale.nft_address;
+        unified.nft_owner_address = nft_sale.nft_owner_address;
+        unified.full_price = nft_sale.full_price;
+        unified.marketplace_fee_address = nft_sale.marketplace_fee_address;
+        unified.marketplace_fee = nft_sale.marketplace_fee;
+        unified.royalty_address = nft_sale.royalty_address;
+        unified.royalty_amount = nft_sale.royalty_amount;
+        unified.sold_at = std::nullopt;
+        unified.sold_query_id = std::nullopt;
+        unified.jetton_price_dict = {};
+        unified.last_transaction_lt = nft_sale.last_transaction_lt;
+        unified.code_hash = nft_sale.code_hash;
+        unified.data_hash = nft_sale.data_hash;
+        nft_sales[nft_sale.address] = unified;
+      }
+    }
+  }
+
+  // Collect V4 sales
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& nft_sale_v4 : task.parsed_block_->get_accounts_v2<schema::GetGemsNftFixPriceSaleV4Data>()) {
+      if (nft_sales.find(nft_sale_v4.address) == nft_sales.end() ||
+          nft_sales[nft_sale_v4.address].last_transaction_lt < nft_sale_v4.last_transaction_lt) {
+        UnifiedSaleData unified;
+        unified.address = nft_sale_v4.address;
+        unified.is_complete = nft_sale_v4.is_complete;
+        unified.created_at = nft_sale_v4.created_at;
+        unified.marketplace_address = nft_sale_v4.marketplace_address;
+        unified.nft_address = nft_sale_v4.nft_address;
+        unified.nft_owner_address = nft_sale_v4.nft_owner_address;
+        unified.full_price = nft_sale_v4.full_price;
+        unified.marketplace_fee_address = nft_sale_v4.marketplace_fee_address;
+        unified.marketplace_fee = nft_sale_v4.marketplace_fee;
+        unified.royalty_address = nft_sale_v4.royalty_address;
+        unified.royalty_amount = nft_sale_v4.royalty_amount;
+        unified.sold_at = nft_sale_v4.sold_at;
+        unified.sold_query_id = nft_sale_v4.sold_query_id;
+        unified.jetton_price_dict = nft_sale_v4.jetton_price_dict;
+        unified.last_transaction_lt = nft_sale_v4.last_transaction_lt;
+        unified.code_hash = nft_sale_v4.code_hash;
+        unified.data_hash = nft_sale_v4.data_hash;
+        nft_sales[nft_sale_v4.address] = unified;
       }
     }
   }
 
   std::initializer_list<std::string_view> columns = {
     "address", "is_complete", "created_at", "marketplace_address", "nft_address", "nft_owner_address", "full_price",
-    "marketplace_fee_address", "marketplace_fee", "royalty_address", "royalty_amount", "last_transaction_lt", "code_hash", "data_hash"
+    "marketplace_fee_address", "marketplace_fee", "royalty_address", "royalty_amount",
+    "sold_at", "sold_query_id", "jetton_price_dict",
+    "last_transaction_lt", "code_hash", "data_hash"
   };
   PopulateTableStream stream(txn, "getgems_nft_sales", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "getgems_nft_sales.last_transaction_lt < EXCLUDED.last_transaction_lt");
 
   for (const auto& [addr, nft_sale] : nft_sales) {
+    // Convert jetton_price_dict map to JSON string
+    std::optional<std::string> jetton_dict_json = std::nullopt;
+    if (!nft_sale.jetton_price_dict.empty()) {
+      td::JsonBuilder jb;
+      auto obj = jb.enter_object();
+      for (const auto& [key, value] : nft_sale.jetton_price_dict) {
+        obj(key, value);
+      }
+      obj.leave();
+      jetton_dict_json = jb.string_builder().as_cslice().str();
+    }
+
     auto tuple = std::make_tuple(
       nft_sale.address,
       nft_sale.is_complete,
@@ -1376,6 +1465,9 @@ std::string InsertBatchPostgres::insert_getgems_nft_sales(pqxx::work &txn) {
       nft_sale.marketplace_fee,
       nft_sale.royalty_address,
       nft_sale.royalty_amount,
+      nft_sale.sold_at,
+      nft_sale.sold_query_id,
+      jetton_dict_json,
       nft_sale.last_transaction_lt,
       nft_sale.code_hash,
       nft_sale.data_hash
@@ -1446,6 +1538,78 @@ std::string InsertBatchPostgres::insert_vesting(pqxx::work &txn) {
     return vesting_stream.get_str() + whitelist_stream.get_str();
 }
 
+std::string InsertBatchPostgres::insert_telemint(pqxx::work &txn) {
+    std::unordered_map<schema::AccountAddress, schema::TelemintData> telemint_nfts;
+    std::unordered_map<schema::AccountAddress, schema::NFTItemDataV2> nft_items;
+    for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+      const auto& task = *i;
+      for (const auto& nft_item : task.parsed_block_->get_accounts_v2<schema::NFTItemDataV2>()) {
+        if (nft_items.find(nft_item.address) == nft_items.end()) {
+          nft_items[nft_item.address] = nft_item;
+        } else {
+          if (nft_items[nft_item.address].last_transaction_lt < nft_item.last_transaction_lt) {
+            nft_items[nft_item.address] = nft_item;
+          }
+        }
+      }
+    }
+    for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+        const auto& task = *i;
+        for (const auto& telemint : task.parsed_block_->get_accounts_v2<schema::TelemintData>()) {
+            // Skip telemint if it wasn't detected as nft
+            if (nft_items.find(telemint.address) == nft_items.end()) {
+              continue;
+            }
+            if (telemint_nfts.find(telemint.address) == telemint_nfts.end()) {
+                telemint_nfts[telemint.address] = telemint;
+            } else {
+                if (telemint_nfts[telemint.address].last_transaction_lt < telemint.last_transaction_lt) {
+                    telemint_nfts[telemint.address] = telemint;
+                }
+            }
+        }
+
+    }
+
+    // Insert telemint NFT items
+    std::initializer_list<std::string_view> telemint_columns = {
+        "address", "token_name", "bidder_address", "bid", "bid_ts",
+        "min_bid", "end_time", "beneficiary_address", "initial_min_bid",
+        "max_bid", "min_bid_step", "min_extend_time", "duration",
+        "royalty_numerator", "royalty_denominator", "royalty_destination",
+        "last_transaction_lt", "code_hash", "data_hash"
+    };
+    PopulateTableStream telemint_stream(txn, "telemint_nft_items", telemint_columns, 1000, false);
+    telemint_stream.setConflictDoUpdate({"address"}, "telemint_nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt");
+
+    for (const auto& [addr, telemint] : telemint_nfts) {
+        auto tuple = std::make_tuple(
+          telemint.address,
+          telemint.token_name,
+          telemint.bidder_address,
+          telemint.bid,
+          telemint.bid_ts,
+          telemint.min_bid,
+          telemint.end_time,
+          telemint.beneficiary_address,
+          telemint.initial_min_bid,
+          telemint.max_bid,
+          telemint.min_bid_step,
+          telemint.min_extend_time,
+          telemint.duration,
+          telemint.royalty_numerator,
+          telemint.royalty_denominator,
+          telemint.royalty_destination,
+          telemint.last_transaction_lt,
+          telemint.code_hash,
+          telemint.data_hash
+        );
+        telemint_stream.insert_row(std::move(tuple));
+    }
+
+    return telemint_stream.get_str();
+}
+
 std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
   std::unordered_map<schema::AccountAddress, schema::GetGemsNftAuctionData> nft_auctions;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
@@ -1461,14 +1625,19 @@ std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
     }
   }
 
-  std::initializer_list<std::string_view> columns = {"address", "end_flag", "end_time", "mp_addr", "nft_addr", "nft_owner", 
-    "last_bid", "last_member", "min_step", "mp_fee_addr", "mp_fee_factor", "mp_fee_base", "royalty_fee_addr", "royalty_fee_factor", 
-    "royalty_fee_base", "max_bid", "min_bid", "created_at", "last_bid_at", "is_canceled", "last_transaction_lt", "code_hash", "data_hash"
+  std::initializer_list<std::string_view> columns = {"address", "end_flag", "end_time", "mp_addr", "nft_addr", "nft_owner",
+    "last_bid", "last_member", "min_step", "mp_fee_addr", "mp_fee_factor", "mp_fee_base", "royalty_fee_addr", "royalty_fee_factor",
+    "royalty_fee_base", "max_bid", "min_bid", "created_at", "last_bid_at", "is_canceled", "activated", "step_time", "last_query_id",
+    "jetton_wallet", "jetton_master", "is_broken_state", "public_key", "last_transaction_lt", "code_hash", "data_hash"
   };
   PopulateTableStream stream(txn, "getgems_nft_auctions", columns, 1000, false);
   stream.setConflictDoUpdate({"address"}, "getgems_nft_auctions.last_transaction_lt < EXCLUDED.last_transaction_lt");
 
   for (const auto& [addr, nft_auction] : nft_auctions) {
+    std::optional<std::string> public_key;
+    if (nft_auction.public_key.has_value()) {
+      public_key = nft_auction.public_key.value()->to_hex_string();
+    }
     auto tuple = std::make_tuple(
       nft_auction.address,
       nft_auction.end,
@@ -1490,6 +1659,13 @@ std::string InsertBatchPostgres::insert_getgems_nft_auctions(pqxx::work &txn) {
       nft_auction.created_at,
       nft_auction.last_bid_at,
       nft_auction.is_canceled,
+      nft_auction.activated,
+      nft_auction.step_time,
+      nft_auction.last_query_id,
+      nft_auction.jetton_wallet,
+      nft_auction.jetton_master,
+      nft_auction.is_broken_state,
+      public_key,
       nft_auction.last_transaction_lt,
       nft_auction.code_hash,
       nft_auction.data_hash

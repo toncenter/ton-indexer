@@ -3,7 +3,7 @@ package models
 import (
 	"fmt"
 
-	"github.com/toncenter/ton-indexer/ton-index-go/index"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -88,7 +88,7 @@ type AddressInterfaces struct {
 	Interfaces []GenericInterface `msgpack:"interfaces"`
 }
 
-func convertTokenDataToTokenInfo(tokenType string, content map[string]string) index.TokenInfo {
+func convertTokenDataToTokenInfo(tokenType string, content map[string]string) indexModels.TokenInfo {
 	var uri, name, description, image, image_data, symbol, decimals, amount_style, render_type *string
 	if u, ok := content["uri"]; ok {
 		uri = &u
@@ -134,7 +134,7 @@ func convertTokenDataToTokenInfo(tokenType string, content map[string]string) in
 		extra["render_type"] = *render_type
 	}
 
-	tokenInfo := index.TokenInfo{
+	tokenInfo := indexModels.TokenInfo{
 		Type:        &tokenType,
 		Name:        name,
 		Symbol:      symbol,
@@ -145,7 +145,7 @@ func convertTokenDataToTokenInfo(tokenType string, content map[string]string) in
 	return tokenInfo
 }
 
-func appendRawInterfacesDataToMetadata(addr string, interfacesRaw string, metadata *index.Metadata) error {
+func appendRawInterfacesDataToMetadata(addr string, interfacesRaw string, metadata *indexModels.Metadata) error {
 	if _, hasMetadata := (*metadata)[addr]; hasMetadata {
 		return nil
 	}
@@ -159,9 +159,9 @@ func appendRawInterfacesDataToMetadata(addr string, interfacesRaw string, metada
 		return fmt.Errorf("failed to unmarshal interfaces wrapper: %w", err)
 	}
 
-	addressMetadata := index.AddressMetadata{
+	addressMetadata := indexModels.AddressMetadata{
 		IsIndexed: false,
-		TokenInfo: []index.TokenInfo{},
+		TokenInfo: []indexModels.TokenInfo{},
 	}
 
 	for _, iface := range addrInterfaces.Interfaces {
