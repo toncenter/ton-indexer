@@ -32,6 +32,9 @@ struct TraceNode {
     int depth() const {
         int res = 0;
         for (const auto& child : children) {
+            if (!child) {
+                continue;
+            }
             res = std::max(res, child->depth());
         }
         return res + 1;
@@ -41,6 +44,9 @@ struct TraceNode {
         // int res = transaction_root.not_null() ? 1 : 0;
         int res = 1;
         for (const auto& child : children) {
+            if (!child) {
+                continue;
+            }
             res += child->transactions_count();
         }
         return res;
@@ -49,6 +55,9 @@ struct TraceNode {
     int emulated_transactions_count() const {
         int res = finality_state == FinalityState::Emulated ? 1 : 0;
         for (const auto& child : children) {
+            if (!child) {
+                continue;
+            }
             res += child->emulated_transactions_count();
         }
         return res;
@@ -57,6 +66,9 @@ struct TraceNode {
     int confirmed_transactions_count() const {
         int res = finality_state == FinalityState::Confirmed ? 1 : 0;
         for (const auto& child : children) {
+            if (!child) {
+                continue;
+            }
             res += child->confirmed_transactions_count();
         }
         return res;
@@ -65,6 +77,9 @@ struct TraceNode {
     int finalized_transactions_count() const {
         int res = finality_state == FinalityState::Finalized ? 1 : 0;
         for (const auto& child : children) {
+            if (!child) {
+                continue;
+            }
             res += child->finalized_transactions_count();
         }
         return res;
@@ -84,6 +99,9 @@ struct TraceNode {
         ss << "TX acc=" << trans.account_addr.to_hex() << " lt=" << trans.lt << " outmsg_cnt=" << trans.outmsg_cnt << " aborted=" << descr.aborted << std::endl;
 
         for (const auto& child : children) {
+            if (!child) {
+                continue;
+            }
             ss << child->to_string(tabs + 1);
         }
         return ss.str();
@@ -96,6 +114,9 @@ struct TraceNode {
         std::unordered_set<block::StdAddress> addresses;
         addresses.insert(address);
         for (const auto& child : children) {
+            if (!child) {
+                continue;
+            }
             auto child_addresses = child->get_addresses(only_committed);
             addresses.insert(child_addresses.begin(), child_addresses.end());
         }
@@ -126,23 +147,40 @@ struct Trace {
     std::unordered_map<block::StdAddress, block::Account> committed_accounts;
 
     int depth() const {
+        if (!root) {
+            return 0;
+        }
         return root->depth();
     }
 
     int transactions_count() const {
+        if (!root) {
+            return 0;
+        }
         return root->transactions_count();
     }
 
     std::string to_string() const {
+        if (!root) {
+            return {};
+        }
         return root->to_string();
     }
 
     std::unordered_set<block::StdAddress> get_addresses(bool only_committed) const {
+        if (!root) {
+            return {};
+        }
         return root->get_addresses(only_committed);
     }
 };
 
 td::Result<block::StdAddress> fetch_msg_dest_address(td::Ref<vm::Cell> msg, int& type);
+
+struct EmulationMessage {
+    td::Ref<vm::Cell> msg;
+    size_t depth{1};
+};
 
 class TraceEmulatorImpl: public td::actor::Actor {
 private:
@@ -166,7 +204,8 @@ public:
             context.set_ignore_chksig(false); // ignore chksig only on root tx
     }
 
-    void emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, ton::LogicalTime lt, td::Promise<std::unique_ptr<TraceNode>> promise);
+    void emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, ton::LogicalTime lt, size_t depth,
+                 td::Promise<std::unique_ptr<TraceNode>> promise);
 
 private:
     void child_emulated(TraceNode *parent_node_raw, std::unique_ptr<TraceNode> child, size_t ind);
@@ -177,7 +216,7 @@ class ShardBlockEmulator: public td::actor::Actor {
 private:
     ton::BlockId block_id_;
     EmulationContext& context_;
-    std::vector<td::Ref<vm::Cell>> in_msgs_; // only msgs to accounts in current shard
+    std::vector<EmulationMessage> in_msgs_; // only msgs to accounts in current shard
     td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise_;
 
     std::unordered_map<block::StdAddress, td::actor::ActorOwn<TraceEmulatorImpl>> emulator_actors_;
@@ -186,7 +225,7 @@ private:
 
     MeasurementPtr measurement_;
 public:
-    ShardBlockEmulator(ton::BlockId block_id, EmulationContext& context, std::vector<td::Ref<vm::Cell>> in_msgs,
+    ShardBlockEmulator(ton::BlockId block_id, EmulationContext& context, std::vector<EmulationMessage> in_msgs,
                     td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise, const MeasurementPtr& measurement)
         : block_id_(block_id), context_(context), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)), measurement_(measurement) {
     }
@@ -207,7 +246,7 @@ struct ShardIdHash {
 class MasterchainBlockEmulator: public td::actor::Actor {
     std::shared_ptr<emulator::TransactionEmulator> emulator_;
     EmulationContext& context_;
-    std::vector<td::Ref<vm::Cell>> in_msgs_;
+    std::vector<EmulationMessage> in_msgs_;
     td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise_;
     std::vector<std::unique_ptr<TraceNode>> result_{};
     
@@ -217,7 +256,7 @@ class MasterchainBlockEmulator: public td::actor::Actor {
     MeasurementPtr measurement_;
 
 public:
-    MasterchainBlockEmulator(EmulationContext& context, std::vector<td::Ref<vm::Cell>> in_msgs,
+    MasterchainBlockEmulator(EmulationContext& context, std::vector<EmulationMessage> in_msgs,
                             td::Promise<std::vector<std::unique_ptr<TraceNode>>> promise,
                             const MeasurementPtr& measurement)
         : context_(context), in_msgs_(std::move(in_msgs)), promise_(std::move(promise)), measurement_(measurement) {
