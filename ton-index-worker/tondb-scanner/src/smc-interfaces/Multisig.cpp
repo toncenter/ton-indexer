@@ -202,7 +202,7 @@ td::Status MultisigOrder::verify_multisig_order(block::StdAddress multisig_addre
   auto stack = stack_r.move_as_ok();
   auto order_addr_r = convert::to_std_address(stack[0].as_slice());
   if (order_addr_r.is_error()) {
-    return stack_r.move_as_error();
+    return order_addr_r.move_as_error();
   }
 
   auto order_addr = order_addr_r.move_as_ok();

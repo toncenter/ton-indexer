@@ -287,6 +287,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
+	args := []any{act_req.SupportedActionTypes}
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return "", nil, err
@@ -370,16 +371,12 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		}
 	}
 	if v := act_req.IncludeActionTypes; len(v) > 0 {
-		filter_str := filterByArray("A.type", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
+		args = append(args, v)
+		filter_list = append(filter_list, fmt.Sprintf("A.type = ANY($%d)", len(args)))
 	}
 	if v := act_req.ExcludeActionTypes; len(v) > 0 {
-		filter_str := filterByArray("A.type", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, fmt.Sprintf("not (%s)", filter_str))
-		}
+		args = append(args, v)
+		filter_list = append(filter_list, fmt.Sprintf("NOT (A.type = ANY($%d))", len(args)))
 	}
 	if v := act_req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("A.trace_mc_seqno_end = %d", *v))
@@ -446,8 +443,6 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 	query += filter_query
 	query += orderby_query
 	query += limit_query
-	var args []any
-	args = append(args, act_req.SupportedActionTypes)
 
 	//log.Println(query)
 	return query, args, nil
@@ -507,14 +502,14 @@ func queryActionsTransactionsImpl(actions []Action, conn *pgxpool.Conn, settings
 	// Build query using buildTransactionsQuery with multiple hashes
 	// Only the Hash field of TransactionRequest is needed for this query; other fields are left at their zero values intentionally.
 	tx_req := TransactionRequest{Hash: txHashes}
-	query, err := buildTransactionsQuery(
+	query, queryArgs, err := buildTransactionsQuery(
 		BlockRequest{}, tx_req, MessageRequest{},
 		UtimeRequest{}, LtRequest{}, LimitRequest{}, settings)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
-	txs, err := queryTransactionsImpl(query, conn, settings)
+	txs, err := queryTransactionsImpl(query, conn, settings, queryArgs...)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}

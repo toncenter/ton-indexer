@@ -1140,6 +1140,39 @@ void run_1_2_7_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.7 completed successfully.";
 }
 
+void run_1_2_8_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.8";
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += "ALTER TABLE telemint_nft_items ALTER COLUMN royalty_denominator TYPE bigint;\n";
+    query += "ALTER TABLE telemint_nft_items ALTER COLUMN royalty_numerator TYPE bigint;\n";
+    query += "ALTER TABLE telemint_nft_items ALTER COLUMN duration TYPE bigint;\n";
+    query += "ALTER TABLE telemint_nft_items ALTER COLUMN min_extend_time TYPE bigint;\n";
+
+    query += set_version_query({1, 2, 8});
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.8 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1348,9 +1381,13 @@ int main(int argc, char *argv[]) {
       run_1_2_6_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 6};
     }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 7})) {
+    if (migration_needed(current_version, Version{1, 2, 7})) {
       run_1_2_7_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 7};
+    }
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 8})) {
+      run_1_2_8_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 8};
     }
 
 
