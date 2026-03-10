@@ -19,6 +19,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/pprof"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/redirect"
 	"github.com/gofiber/swagger"
 	_ "github.com/toncenter/ton-indexer/ton-index-go/docs"
@@ -2266,6 +2267,7 @@ func main() {
 		ReadBufferSize: 1048576,
 	}
 	app := fiber.New(config)
+	app.Use(recover.New())
 
 	// converters
 	fiber.SetParserDecoder(fiber.ParserConfig{

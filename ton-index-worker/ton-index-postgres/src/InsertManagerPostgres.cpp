@@ -1601,9 +1601,11 @@ std::string InsertBatchPostgres::insert_telemint(pqxx::work &txn) {
     telemint_stream.setConflictDoUpdate({"address"}, "telemint_nft_items.last_transaction_lt < EXCLUDED.last_transaction_lt");
 
     for (const auto& [addr, telemint] : telemint_nfts) {
+        auto token_name = telemint.token_name;
+        token_name.erase(std::remove(token_name.begin(), token_name.end(), '\0'), token_name.end());
         auto tuple = std::make_tuple(
           telemint.address,
-          telemint.token_name,
+          token_name,
           telemint.bidder_address,
           telemint.bid,
           telemint.bid_ts,

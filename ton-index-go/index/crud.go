@@ -138,7 +138,8 @@ func buildTransactionsQuery(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) (string, error) {
+) (string, []any, error) {
+	args := []any{}
 	query := `select T.account, T.hash, T.lt, T.block_workchain, T.block_shard, T.block_seqno, T.mc_block_seqno, T.trace_id, 
 	T.prev_trans_hash, T.prev_trans_lt, T.now, T.orig_status, T.end_status, T.total_fees, T.total_fees_extra_currencies, 
 	T.account_state_hash_before, T.account_state_hash_after, T.descr, T.aborted, T.destroyed, T.credit_first, T.is_tock, 
@@ -157,14 +158,14 @@ func buildTransactionsQuery(
 	orderby_query := ``
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	sort_order := `desc`
 	if lim_req.Sort != nil {
 		sort_order, err = getSortOrder(*lim_req.Sort)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
 
@@ -234,7 +235,8 @@ func buildTransactionsQuery(
 	by_msg := false
 	if v := msg_req.Direction; v != nil {
 		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.direction = '%s'", *v))
+		args = append(args, *v)
+		filter_list = append(filter_list, fmt.Sprintf("M.direction = $%d", len(args)))
 	}
 	if v := msg_req.MessageHash; len(v) > 0 {
 		by_msg = true
@@ -270,7 +272,7 @@ func buildTransactionsQuery(
 	query += orderby_query
 	query += limit_query
 	// log.Println(query) // TODO: remove debug
-	return query, nil
+	return query, args, nil
 }
 
 func buildMessagesQuery(
@@ -279,7 +281,8 @@ func buildMessagesQuery(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) (string, error) {
+) (string, []any, error) {
+	args := []any{}
 	rest_columns := `M.trace_id, M.source, M.destination, M.value, 
 		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.extra_flags, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
 		M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm`
@@ -293,11 +296,12 @@ func buildMessagesQuery(
 	orderby_query := ``
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	if v := msg_req.Direction; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("M.direction = '%s'", *v))
+		args = append(args, *v)
+		filter_list = append(filter_list, fmt.Sprintf("M.direction = $%d", len(args)))
 	}
 	if v := msg_req.Source; v != nil {
 		if *v == "null" {
@@ -350,7 +354,7 @@ func buildMessagesQuery(
 	if lim_req.Sort != nil {
 		sort_order, err = getSortOrder(*lim_req.Sort)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
 	orderby_query = fmt.Sprintf(" order by %s %s, M.msg_hash %s", order_col, sort_order, sort_order)
@@ -365,11 +369,11 @@ func buildMessagesQuery(
 	inner_query += groupby_query
 	inner_query += orderby_query
 	inner_query += limit_query
-	query := `select MM.*, B.*, I.* from (` + inner_query + `) as MM 
+	query := `select MM.*, B.*, I.* from (` + inner_query + `) as MM
 	left join message_contents as B on MM.body_hash = B.hash
 	left join message_contents as I on MM.init_state_hash = I.hash;`
 	// log.Println(query) // TODO: remove debug
-	return query, nil
+	return query, args, nil
 }
 
 func filterByArray[T any](clmn string, values []T) string {
@@ -434,7 +438,8 @@ func buildNFTCollectionsQuery(nft_req NFTCollectionRequest, lim_req LimitRequest
 	return query, nil
 }
 
-func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings RequestSettings) (string, []any, error) {
+	args := []any{}
 	clmn_query := ` N.address, N.init, N.index, N.collection_address, N.owner_address, N.content, 
                 N.last_transaction_lt, N.code_hash, N.data_hash,
                 C.address, C.next_item_index, C.owner_address, C.collection_content, 
@@ -450,7 +455,7 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 	orderby_query := ` order by N.id asc`
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	if v := nft_req.Address; v != nil {
@@ -483,13 +488,19 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 			}
 		}
 	}
-	if v := nft_req.Index; v != nil {
+	if v := nft_req.Index; len(v) > 0 {
 		if nft_req.CollectionAddress == nil {
-			return ``, IndexError{Code: 422, Message: "index parameter is not allowed without the collection_address"}
+			return ``, nil, IndexError{Code: 422, Message: "index parameter is not allowed without the collection_address"}
 		}
-		filter_str := filterByArray("N.index", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
+		filtered := v[:0]
+		for _, s := range v {
+			if s != "" {
+				filtered = append(filtered, s)
+			}
+		}
+		if len(filtered) > 0 {
+			args = append(args, filtered)
+			filter_list = append(filter_list, fmt.Sprintf("N.index = ANY($%d)", len(args)))
 		}
 	}
 	if v := nft_req.SortByLastTransactionLt; v != nil && *v {
@@ -505,7 +516,7 @@ func buildNFTItemsQuery(nft_req NFTItemRequest, lim_req LimitRequest, settings R
 	query += filter_query
 	query += orderby_query
 	query += limit_query
-	return query, nil
+	return query, args, nil
 }
 
 func buildNFTTransfersQuery(transfer_req NFTTransferRequest, utime_req UtimeRequest,
@@ -778,7 +789,8 @@ func buildJettonTransfersQuery(transfer_req JettonTransferRequest, utime_req Uti
 	return query, nil
 }
 
-func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, []any, error) {
+	args := []any{}
 	clmn_query_default := `A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start_utime, A.end_utime, 
 		A.trace_end_lt, A.trace_end_utime, A.trace_mc_seqno_end, A.source, A.source_secondary,
 		A.destination, A.destination_secondary, A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, A.opcode, A.tx_hashes,
@@ -839,14 +851,14 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 	orderby_query := ``
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	sort_order := "desc"
 	if v := lim_req.Sort; v != nil {
 		sort_order, err = getSortOrder(*v)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
 	// time
@@ -920,16 +932,12 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 		}
 	}
 	if v := act_req.IncludeActionTypes; len(v) > 0 {
-		filter_str := filterByArray("A.type", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
+		args = append(args, v)
+		filter_list = append(filter_list, fmt.Sprintf("A.type = ANY($%d)", len(args)))
 	}
 	if v := act_req.ExcludeActionTypes; len(v) > 0 {
-		filter_str := filterByArray("A.type", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, fmt.Sprintf("not (%s)", filter_str))
-		}
+		args = append(args, v)
+		filter_list = append(filter_list, fmt.Sprintf("NOT (A.type = ANY($%d))", len(args)))
 	}
 	if v := act_req.McSeqno; v != nil {
 		filter_list = append(filter_list, `E.state = 'complete'`)
@@ -980,7 +988,7 @@ func buildActionsQuery(act_req ActionRequest, utime_req UtimeRequest, lt_req LtR
 	query += orderby_query
 	query += limit_query
 	// log.Println(query)
-	return query, nil
+	return query, args, nil
 }
 
 func buildTracesQuery(trace_req TracesRequest, utime_req UtimeRequest, lt_req LtRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
@@ -1234,12 +1242,12 @@ func queryBlocksImpl(query string, conn *pgxpool.Conn, settings RequestSettings)
 	return blks, nil
 }
 
-func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Message, error) {
+func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSettings, args ...any) ([]Message, error) {
 	msgs := []Message{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
-		rows, err := conn.Query(ctx, query)
+		rows, err := conn.Query(ctx, query, args...)
 		if err != nil {
 			return nil, IndexError{Code: 500, Message: err.Error()}
 		}
@@ -1297,14 +1305,14 @@ func queryBlockExists(seqno int32, conn *pgxpool.Conn, settings RequestSettings)
 	return len(seqnos) > 0, nil
 }
 
-func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]Transaction, error) {
+func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings, args ...any) ([]Transaction, error) {
 	// transactions
 	txs := []Transaction{}
 	txs_map := map[HashType]int{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
-		rows, err := conn.Query(ctx, query)
+		rows, err := conn.Query(ctx, query, args...)
 		if err != nil {
 			return nil, IndexError{Code: 500, Message: err.Error()}
 		}
@@ -1406,14 +1414,16 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings RequestSet
 func queryAdjacentTransactionsImpl(req AdjacentTransactionRequest, conn *pgxpool.Conn, settings RequestSettings) ([]string, error) {
 	// transactions
 	txs := []string{}
-	query := fmt.Sprintf(`select M2.tx_hash from messages as M1 join messages as M2 on M1.msg_hash = M2.msg_hash and M1.direction != M2.direction where M1.tx_hash = '%s'`, req.Hash)
+	args := []any{req.Hash}
+	query := `select M2.tx_hash from messages as M1 join messages as M2 on M1.msg_hash = M2.msg_hash and M1.direction != M2.direction where M1.tx_hash = $1`
 	if req.Direction != nil && (*req.Direction == "in" || *req.Direction == "out") {
-		query += fmt.Sprintf(" and M1.direction = '%s'", *req.Direction)
+		args = append(args, *req.Direction)
+		query += fmt.Sprintf(" and M1.direction = $%d", len(args))
 	}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
-		rows, err := conn.Query(ctx, query)
+		rows, err := conn.Query(ctx, query, args...)
 		if err != nil {
 			return nil, IndexError{Code: 500, Message: err.Error()}
 		}
@@ -1928,10 +1938,10 @@ func queryNFTCollectionsImpl(query string, conn *pgxpool.Conn, settings RequestS
 	return nfts, nil
 }
 
-func queryNFTItemsWithCollectionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings) ([]NFTItem, error) {
+func queryNFTItemsWithCollectionsImpl(query string, conn *pgxpool.Conn, settings RequestSettings, args ...any) ([]NFTItem, error) {
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
-	rows, err := conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2790,7 +2800,7 @@ func (db *DbClient) QueryTransactions(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]Transaction, AddressBook, error) {
-	query, err := buildTransactionsQuery(blk_req, tx_req, msg_req, utime_req, lt_req, lim_req, settings)
+	query, args, err := buildTransactionsQuery(blk_req, tx_req, msg_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -2816,7 +2826,7 @@ func (db *DbClient) QueryTransactions(
 		}
 	}
 
-	txs, err := queryTransactionsImpl(query, conn, settings)
+	txs, err := queryTransactionsImpl(query, conn, settings, args...)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -2920,7 +2930,7 @@ func (db *DbClient) QueryMessages(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]Message, AddressBook, Metadata, error) {
-	query, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req, settings)
+	query, args, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -2935,7 +2945,7 @@ func (db *DbClient) QueryMessages(
 	}
 	defer conn.Release()
 
-	msgs, err := queryMessagesImpl(query, conn, settings)
+	msgs, err := queryMessagesImpl(query, conn, settings, args...)
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -3025,7 +3035,7 @@ func (db *DbClient) QueryNFTItems(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]NFTItem, AddressBook, Metadata, error) {
-	query, err := buildNFTItemsQuery(nft_req, lim_req, settings)
+	query, args, err := buildNFTItemsQuery(nft_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -3040,7 +3050,7 @@ func (db *DbClient) QueryNFTItems(
 	}
 	defer conn.Release()
 
-	res, err := queryNFTItemsWithCollectionsImpl(query, conn, settings)
+	res, err := queryNFTItemsWithCollectionsImpl(query, conn, settings, args...)
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -3440,7 +3450,7 @@ func (db *DbClient) QueryActions(
 	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]Action, AddressBook, Metadata, error) {
-	query, err := buildActionsQuery(act_req, utime_req, lt_req, lim_req, settings)
+	query, args, err := buildActionsQuery(act_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -3466,7 +3476,7 @@ func (db *DbClient) QueryActions(
 		}
 	}
 
-	raw_actions, err := queryRawActionsImpl(query, conn, settings)
+	raw_actions, err := queryRawActionsImpl(query, conn, settings, args...)
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
