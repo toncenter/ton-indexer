@@ -43,7 +43,15 @@ var ActionTypeShortcuts = map[string][]string{
 		"dns_purchase", "dns_release",
 		"layerzero_send", "layerzero_send_tokens", "layerzero_receive", "layerzero_commit_packet", "layerzero_dvn_verify",
 	},
-	"latest": {"v3"},
+	"v4": {
+		"v3",
+		"cocoon_worker_payout", "cocoon_proxy_payout", "cocoon_proxy_charge",
+		"cocoon_client_top_up", "cocoon_register_proxy", "cocoon_unregister_proxy",
+		"cocoon_client_register", "cocoon_client_change_secret_hash",
+		"cocoon_client_request_refund", "cocoon_grant_refund",
+		"cocoon_client_increase_stake", "cocoon_client_withdraw",
+	},
+	"latest": {"v4"},
 	"staking": {
 		"stake_deposit", "stake_withdrawal", "stake_withdrawal_request",
 	},
@@ -90,6 +98,13 @@ var ActionTypeShortcuts = map[string][]string{
 	},
 	"layerzero": {
 		"layerzero_send", "layerzero_send_tokens", "layerzero_receive", "layerzero_commit_packet", "layerzero_dvn_verify",
+	},
+	"cocoon": {
+		"cocoon_worker_payout", "cocoon_proxy_payout", "cocoon_proxy_charge",
+		"cocoon_client_top_up", "cocoon_register_proxy", "cocoon_unregister_proxy",
+		"cocoon_client_register", "cocoon_client_change_secret_hash",
+		"cocoon_client_request_refund", "cocoon_grant_refund",
+		"cocoon_client_increase_stake", "cocoon_client_withdraw",
 	},
 }
 
