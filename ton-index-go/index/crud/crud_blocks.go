@@ -13,12 +13,13 @@ import (
 )
 
 func buildBlocksQuery(
-	blk_req BlockRequest,
-	utime_req UtimeRequest,
-	lt_req LtRequest,
-	lim_req LimitRequest,
+	req BlocksRequest,
 	settings RequestSettings,
 ) (string, error) {
+	utime_req := req.GetUtimeParams()
+	lt_req := req.GetLtParams()
+	lim_req := req.GetLimitParams()
+
 	query := `select blocks.* from blocks`
 	filter_list := []string{}
 	filter_query := ``
@@ -29,22 +30,22 @@ func buildBlocksQuery(
 	}
 
 	// filters
-	if v := blk_req.Workchain; v != nil {
+	if v := req.Workchain; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("workchain = %d", *v))
 	}
-	if v := blk_req.Shard; v != nil {
+	if v := req.Shard; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("shard = %d", *v))
 	}
-	if v := blk_req.Seqno; v != nil {
+	if v := req.Seqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("seqno = %d", *v))
 	}
-	if v := blk_req.RootHash; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("root_hash = '%s'", *v))
+	if v := req.RootHash; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("root_hash = '%s'", v.FilterString()))
 	}
-	if v := blk_req.FileHash; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("file_hash = '%s'", *v))
+	if v := req.FileHash; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("file_hash = '%s'", v.FilterString()))
 	}
-	if v := blk_req.McSeqno; v != nil {
+	if v := req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("mc_block_seqno = %d", *v))
 	}
 
@@ -66,7 +67,8 @@ func buildBlocksQuery(
 		if err != nil {
 			return "", err
 		}
-		orderby_query = fmt.Sprintf(" order by %s %s", order_col, sort_order)
+		orderby_query = fmt.Sprintf(" order by %s %s, -workchain %s, shard %s, seqno %s",
+			order_col, sort_order, sort_order, sort_order, sort_order)
 	}
 
 	// build query
@@ -157,13 +159,10 @@ func (db *DbClient) QueryMasterchainInfo(settings RequestSettings) (*Masterchain
 }
 
 func (db *DbClient) QueryBlocks(
-	blk_req BlockRequest,
-	utime_req UtimeRequest,
-	lt_req LtRequest,
-	lim_req LimitRequest,
+	req BlocksRequest,
 	settings RequestSettings,
 ) ([]Block, error) {
-	query, err := buildBlocksQuery(blk_req, utime_req, lt_req, lim_req, settings)
+	query, err := buildBlocksQuery(req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -181,13 +180,13 @@ func (db *DbClient) QueryBlocks(
 }
 
 func (db *DbClient) QueryShards(
-	seqno int,
+	req ShardsRequest,
 	settings RequestSettings,
 ) ([]Block, error) {
 	query := fmt.Sprintf(`select B.* from shard_state as S join blocks as B 
 		on S.workchain = B.workchain and S.shard = B.shard and S.seqno = B.seqno 
 		where mc_seqno = %d 
-		order by S.mc_seqno, S.workchain, S.shard, S.seqno`, seqno)
+		order by S.mc_seqno, S.workchain, S.shard, S.seqno`, req.Seqno)
 	// read data
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {

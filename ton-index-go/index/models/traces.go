@@ -19,8 +19,8 @@ type TraceNode struct {
 type Trace struct {
 	TraceId           *HashType                 `json:"trace_id"`
 	ExternalHash      *HashType                 `json:"external_hash"`
-	McSeqnoStart      HashType                  `json:"mc_seqno_start"`
-	McSeqnoEnd        HashType                  `json:"mc_seqno_end"`
+	McSeqnoStart      int32                     `json:"mc_seqno_start,string"` // TODO: change it to integer
+	McSeqnoEnd        int32                     `json:"mc_seqno_end,string"`
 	StartLt           uint64                    `json:"start_lt,string"`
 	StartUtime        uint32                    `json:"start_utime"`
 	EndLt             *uint64                   `json:"end_lt,string"`

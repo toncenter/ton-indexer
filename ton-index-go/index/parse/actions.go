@@ -2,7 +2,9 @@ package parse
 
 import (
 	"fmt"
+
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/xssnick/tonutils-go/address"
 )
 
 var EVAA_TON_ASSET_ID string = "0x1a4219fe5e60d63af2a3cc7dce6fec69b45c6b5718497a6148e7c232ac87bd8a"
@@ -33,7 +35,7 @@ var EVAA_ASSET_ID_MAP_TESTNET = map[string]string{
 	"0xc585bac25948a5feea8f2a9e052eb45995882b15dfb784b37cd271cc163f3aea": "0:5EE20B5240CC4CE51A4C60BAF8C9D358EF617C26463E89C6571B534972C8EEF1",
 }
 
-func ParseEvaaAssetId(assetId string) (*string, bool) {
+func ParseEvaaAssetId(assetId string) (*models.AccountAddress, bool) {
 	if assetId == EVAA_TON_ASSET_ID {
 		return nil, true
 	}
@@ -41,172 +43,176 @@ func ParseEvaaAssetId(assetId string) (*string, bool) {
 	if isTestnet {
 		target_asset_map = &EVAA_ASSET_ID_MAP_TESTNET
 	}
-	if address, ok := (*target_asset_map)[assetId]; ok {
-		return &address, true
+	if raw_addr, ok := (*target_asset_map)[assetId]; ok {
+		addr, err := address.ParseRawAddr(raw_addr)
+		if err != nil {
+			return nil, false
+		}
+		return new(models.AccountAddress(fmt.Sprintf("%d:%X", addr.Workchain(), addr.Data()))), true
 	}
 	return nil, false
 }
 
-func CollectAddressesFromAction(addr_list *map[string]bool, raw_action *models.RawAction) bool {
+func CollectAddressesFromAction(addr_list *map[models.AccountAddress]bool, raw_action *models.RawAction) bool {
 	success := true
 
 	if v := raw_action.Source; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.SourceSecondary; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.Destination; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.DestinationSecondary; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.Asset; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.AssetSecondary; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.Asset2; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.Asset2Secondary; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonTransferResponseDestination; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.NFTTransferResponseDestination; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapSender; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapDexIncomingTransferAsset; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapDexIncomingTransferSource; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapDexIncomingTransferDestination; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapDexIncomingTransferSourceJettonWallet; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapDexIncomingTransferDestinationJettonWallet; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapDexOutgoingTransferAsset; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapDexOutgoingTransferSource; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapDexOutgoingTransferDestination; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapDexOutgoingTransferSourceJettonWallet; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.JettonSwapDexOutgoingTransferDestinationJettonWallet; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.DexDepositLiquidityDataAsset1; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.DexDepositLiquidityDataAsset2; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.DexDepositLiquidityDataTargetAsset1; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.DexDepositLiquidityDataTargetAsset2; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.DexWithdrawLiquidityDataAsset1Out; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.DexWithdrawLiquidityDataAsset2Out; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 
 	// Multisig fields
 	if v := raw_action.DestinationSecondary; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 
 	// EVAA fields
 	if v := raw_action.EvaaSupplySenderJettonWallet; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.EvaaSupplyRecipientJettonWallet; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.EvaaSupplyMasterJettonWallet; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.EvaaSupplyMaster; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.EvaaWithdrawRecipientJettonWallet; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.EvaaWithdrawMasterJettonWallet; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.EvaaWithdrawMaster; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 
 	// JVault fields
 	if v := raw_action.JvaultStakeStakeWallet; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	for _, v := range raw_action.JvaultClaimClaimedJettons {
-		(*addr_list)[(string)(v)] = true
+		(*addr_list)[v] = true
 	}
 
 	if v := raw_action.EvaaLiquidateAssetId; v != nil {
 		if master, ok := ParseEvaaAssetId(*v); ok && master != nil {
-			(*addr_list)[(string)(*master)] = true
+			(*addr_list)[*master] = true
 		}
 	}
 	// Tonco fields
 	if v := raw_action.DexDepositLiquidityDataNFTAddress; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.DexWithdrawLiquidityDataBurnedNFTAddress; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.ToncoDeployPoolJetton1Minter; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 	if v := raw_action.ToncoDeployPoolJetton0Minter; v != nil {
-		(*addr_list)[(string)(*v)] = true
+		(*addr_list)[*v] = true
 	}
 
 	// Vesting fields
 	for _, v := range raw_action.VestingAddWhitelistAccountsAdded {
-		(*addr_list)[(string)(v)] = true
+		(*addr_list)[v] = true
 	}
 
 	return success
 }
 
-func CollectAddressesFromTransactions(addr_list *map[string]bool, tx *models.Transaction) bool {
+func CollectAddressesFromTransactions(addr_list *map[models.AccountAddress]bool, tx *models.Transaction) bool {
 	success := true
 
-	(*addr_list)[(string)(tx.Account)] = true
+	(*addr_list)[tx.Account] = true
 	if tx.InMsg != nil {
 		if v := tx.InMsg.Source; v != nil {
-			(*addr_list)[(string)(*v)] = true
+			(*addr_list)[*v] = true
 		}
 	}
 	for idx := range tx.OutMsgs {
 		if v := tx.OutMsgs[idx].Destination; v != nil {
-			(*addr_list)[(string)(*v)] = true
+			(*addr_list)[*v] = true
 		}
 	}
 	return success
@@ -668,7 +674,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 			Amount:                raw.Amount,
 		}
 	case "evaa_liquidate":
-		var asset *string
+		var asset *models.AccountAddress
 		var knownAsset bool
 		if raw.EvaaLiquidateAssetId != nil {
 			asset, knownAsset = ParseEvaaAssetId(*raw.EvaaLiquidateAssetId)
@@ -682,7 +688,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 			Collateral:       raw.Asset,
 			AssetId:          raw.EvaaLiquidateAssetId,
 			Amount:           raw.Amount,
-			Asset:            (*models.AccountAddress)(asset),
+			Asset:            asset,
 			IsKnownAsset:     knownAsset,
 		}
 	case "jvault_claim":
@@ -745,7 +751,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		details.Destination = raw.Destination
 		details.Amount = raw.Amount
 		details.Asset = raw.Asset
-		details.BitcoinTxId = (*string)(raw.AssetSecondary)
+		details.BitcoinTxId = raw.AssetSecondary.StringPtr()
 		details.DestinationWallet = raw.DestinationSecondary
 		act.Details = &details
 	case "tgbtc_burn", "tgbtc_burn_fallback":
@@ -759,7 +765,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 	case "tgbtc_new_key", "tgbtc_new_key_fallback":
 		var details models.ActionDetailsTgbtcNewKey
 		details.Source = raw.Source
-		details.Pubkey = (*string)(raw.SourceSecondary)
+		details.Pubkey = raw.SourceSecondary.StringPtr()
 		details.Coordinator = raw.Destination
 		details.Pegout = raw.DestinationSecondary
 		details.Amount = raw.Amount
@@ -768,7 +774,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 	case "tgbtc_dkg_log_fallback":
 		var details models.ActionDetailsDkgLogFallback
 		details.Coordinator = raw.Source
-		details.Pubkey = (*string)(raw.Asset)
+		details.Pubkey = raw.Asset.StringPtr()
 		details.Timestamp = raw.Value
 		act.Details = &details
 	case "tonco_deploy_pool":

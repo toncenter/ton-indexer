@@ -28,7 +28,7 @@ func (db *DbClient) QueryPendingActions(settings RequestSettings, emulatedContex
 
 	actions := []Action{}
 	book := AddressBook{}
-	addr_map := map[string]bool{}
+	addr_map := map[AccountAddress]bool{}
 	metadata := Metadata{}
 
 	for _, raw_action := range raw_actions {
@@ -41,7 +41,7 @@ func (db *DbClient) QueryPendingActions(settings RequestSettings, emulatedContex
 	}
 
 	if len(addr_map) > 0 {
-		var addr_list []string
+		var addr_list []AccountAddress
 		for k := range addr_map {
 			addr_list = append(addr_list, k)
 		}
@@ -137,17 +137,17 @@ func (db *DbClient) QueryPendingTransactions(
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
-	var addr_list []string
+	var addr_list []AccountAddress
 	for _, t := range txs {
-		addr_list = append(addr_list, string(t.Account))
+		addr_list = append(addr_list, t.Account)
 		if t.InMsg != nil {
 			if t.InMsg.Source != nil {
-				addr_list = append(addr_list, string(*t.InMsg.Source))
+				addr_list = append(addr_list, *t.InMsg.Source)
 			}
 		}
 		for _, m := range t.OutMsgs {
 			if m.Destination != nil {
-				addr_list = append(addr_list, string(*m.Destination))
+				addr_list = append(addr_list, *m.Destination)
 			}
 		}
 	}
@@ -170,7 +170,7 @@ func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
 			continue
 		}
 		external_hash_map[*trace.ExternalHash] = trace.TraceKey
-		trace_external_hashes = append(trace_external_hashes, fmt.Sprintf("'%s'", *trace.ExternalHash))
+		trace_external_hashes = append(trace_external_hashes, fmt.Sprintf("'%s'", trace.ExternalHash))
 	}
 	if len(trace_external_hashes) > 0 {
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -248,8 +248,8 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 		rows := emulatedContext.GetTransactions()
 		for _, row := range rows {
 			if tx, err := parse.ScanTransaction(row); err == nil {
-				if external_hash, ok := emulatedContext.txHashTraceExternalHash[string(tx.Hash)]; ok {
-					hash := HashType(external_hash)
+				if external_hash, ok := emulatedContext.txHashTraceExternalHash[tx.Hash.String()]; ok {
+					hash := MustParseHashType(external_hash)
 					tx.TraceExternalHash = &hash
 				}
 				txs = append(txs, *tx)
@@ -262,7 +262,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 
 	var hash_list []string
 	for _, t := range txs {
-		hash_list = append(hash_list, string(t.Hash))
+		hash_list = append(hash_list, t.Hash.String())
 	}
 	if len(txs) == 0 {
 		return txs, nil
@@ -277,9 +277,9 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 			}
 			msgPtrs = append(msgPtrs, msg)
 			if msg.Direction == "in" {
-				txs[txs_map[msg.TxHash]].InMsg = msg
+				txs[txs_map[*msg.TxHash]].InMsg = msg
 			} else {
-				txs[txs_map[msg.TxHash]].OutMsgs = append(txs[txs_map[msg.TxHash]].OutMsgs, msg)
+				txs[txs_map[*msg.TxHash]].OutMsgs = append(txs[txs_map[*msg.TxHash]].OutMsgs, msg)
 			}
 		}
 	}
@@ -287,7 +287,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 	if err := detect.MarkMessagesByPtr(msgPtrs); err != nil {
 		hashes := make([]string, len(msgPtrs))
 		for i, msg := range msgPtrs {
-			hashes[i] = string(msg.MsgHash)
+			hashes[i] = msg.MsgHash.String()
 		}
 		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
 	}
@@ -306,7 +306,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 	return txs, nil
 }
 
-func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings, request PendingTracesRequest) ([]Trace, []string, error) {
+func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpool.Conn, settings RequestSettings, request PendingTracesRequest) ([]Trace, []AccountAddress, error) {
 	var traces []Trace
 	completed_traces, err := queryCompletedEmulatedTraces(emulatedContext, conn, settings, true)
 	if err != nil {
@@ -326,7 +326,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	events_map := map[HashType]int{}
 	var trace_id_list []HashType
-	addr_map := map[string]bool{}
+	addr_map := map[AccountAddress]bool{}
 	for idx := range traces {
 		events_map[*traces[idx].ExternalHash] = idx
 		trace_id_list = append(trace_id_list, *traces[idx].ExternalHash)
@@ -366,7 +366,7 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 			}
 		}
 	}
-	var addr_list []string
+	var addr_list []AccountAddress
 	actions := make([]RawAction, 0)
 	for _, row := range emulatedContext.GetActions(request.SupportedActionTypes) {
 		if loc, err := parse.ScanRawAction(row); err == nil {

@@ -1,8 +1,9 @@
 package parse
 
 import (
-	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"strings"
+
+	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -25,8 +26,6 @@ func ScanAccountStateFull(row pgx.Row) (*AccountStateFull, error) {
 	if err != nil {
 		return nil, err
 	}
-	trimQuotes(acst.CodeBoc)
-	trimQuotes(acst.DataBoc)
 
 	if acst.ContractMethods != nil {
 		// it's temporary, soon 'll be fixed in the database

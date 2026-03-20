@@ -1,8 +1,8 @@
 package detect
 
 /*
-#cgo CPPFLAGS: -I${SRCDIR}/../../ton-index-worker/ton-marker/src
-#cgo LDFLAGS: -L${SRCDIR}/../../build/ton-index-worker/ton-marker -lton-marker-core -lton-marker -Wl,-rpath,${SRCDIR}/../../build/ton-index-worker/ton-marker
+#cgo CPPFLAGS: -I${SRCDIR}/../../../ton-index-worker/ton-marker/src
+#cgo LDFLAGS: -L${SRCDIR}/../../../build/ton-index-worker/ton-marker -lton-marker-core -lton-marker -Wl,-rpath,${SRCDIR}/../../../build/ton-index-worker/ton-marker
 
 #include "wrapper.h"
 #include <stdlib.h>
@@ -185,13 +185,13 @@ func collectJettonTransfersRefs(transfers []JettonTransfer) *messagesRefs {
 	}
 	for i := range transfers {
 		transfer := &transfers[i]
-		customPayload := transfer.CustomPayload
-		if customPayload != nil && transfer.DecodedCustomPayload == nil { // skip if already decoded
-			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &transfer.DecodedCustomPayload)
+		if transfer.CustomPayload != nil && transfer.DecodedCustomPayload == nil { // skip if already decoded
+			customPayload := transfer.CustomPayload.String()
+			refs.bodyRefs[customPayload] = append(refs.bodyRefs[customPayload], &transfer.DecodedCustomPayload)
 		}
-		forwardPayload := transfer.ForwardPayload
-		if forwardPayload != nil && transfer.DecodedForwardPayload == nil {
-			refs.bodyRefs[*forwardPayload] = append(refs.bodyRefs[*forwardPayload], &transfer.DecodedForwardPayload)
+		if transfer.ForwardPayload != nil && transfer.DecodedForwardPayload == nil {
+			forwardPayload := transfer.ForwardPayload.String()
+			refs.bodyRefs[forwardPayload] = append(refs.bodyRefs[forwardPayload], &transfer.DecodedForwardPayload)
 		}
 	}
 	return refs
@@ -241,7 +241,7 @@ func collectSingleMessageRefs(msg *Message, refs *messagesRefs) {
 	}
 	// collect message bodies
 	if msg.MessageContent != nil && msg.MessageContent.Body != nil && msg.MessageContent.Decoded == nil {
-		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], &msg.MessageContent.Decoded)
+		refs.bodyRefs[msg.MessageContent.Body.String()] = append(refs.bodyRefs[msg.MessageContent.Body.String()], &msg.MessageContent.Decoded)
 	}
 }
 

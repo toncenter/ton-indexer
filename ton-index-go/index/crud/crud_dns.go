@@ -6,7 +6,8 @@ import (
 	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
-func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest, settings RequestSettings) ([]DNSRecord, AddressBook, error) {
+func (db *DbClient) QueryDNSRecords(req DNSRecordsRequest, settings RequestSettings) ([]DNSRecord, AddressBook, error) {
+	lim_req := req.GetLimitParams()
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 	conn, err := db.Pool.Acquire(context.Background())
@@ -53,14 +54,14 @@ func (db *DbClient) QueryDNSRecords(lim_req LimitRequest, req DNSRecordsRequest,
 	}
 	book := AddressBook{}
 	if !settings.NoAddressBook {
-		addr_list := []string{}
+		addr_list := []AccountAddress{}
 		for _, r := range records {
-			addr_list = append(addr_list, string(r.NftItemAddress))
+			addr_list = append(addr_list, r.NftItemAddress)
 			if r.NftItemOwner != nil {
-				addr_list = append(addr_list, string(*r.NftItemOwner))
+				addr_list = append(addr_list, *r.NftItemOwner)
 			}
 			if r.Wallet != nil {
-				addr_list = append(addr_list, string(*r.Wallet))
+				addr_list = append(addr_list, *r.Wallet)
 			}
 		}
 		if len(addr_list) > 0 {

@@ -176,10 +176,10 @@ func (db *DbClient) QueryAccountStates(
 
 	book := AddressBook{}
 	metadata := Metadata{}
-	addr_list := []string{}
+	addr_list := []AccountAddress{}
 	for _, t := range res {
 		if t.AccountAddress != nil {
-			addr_list = append(addr_list, string(*t.AccountAddress))
+			addr_list = append(addr_list, *t.AccountAddress)
 		}
 	}
 	if len(addr_list) > 0 {
@@ -219,7 +219,8 @@ func (db *DbClient) QueryWalletStates(
 	return res, book, metadata, nil
 }
 
-func (db *DbClient) QueryTopAccountBalances(lim_req LimitRequest, settings RequestSettings) ([]AccountBalance, error) {
+func (db *DbClient) QueryTopAccountBalances(req TopAccountsByBalanceRequest, settings RequestSettings) ([]AccountBalance, error) {
+	lim_req := req.GetLimitParams()
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return nil, err

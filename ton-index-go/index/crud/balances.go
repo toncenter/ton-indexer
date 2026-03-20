@@ -12,7 +12,7 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/gofiber/fiber/v2/log"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xssnick/tonutils-go/tlb"
 	"github.com/xssnick/tonutils-go/ton/jetton"
@@ -163,9 +163,7 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 	slices.SortFunc(txs, compare)
 
 	var maxInt int32 = math.MaxInt32
-	actionsQuery, err := buildActionsQuery(ActionRequest{TraceId: []HashType{traceId}}, UtimeRequest{}, LtRequest{}, LimitRequest{
-		Limit: &maxInt,
-	}, RequestSettings{
+	actionsQuery, err := buildActionsQuery(ActionRequest{TraceId: []HashType{traceId}, LimitParams: LimitParams{Limit: &maxInt}}, RequestSettings{
 		MaxLimit: int(maxInt),
 	})
 	if err != nil {
@@ -286,11 +284,9 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 				err = tlb.LoadFromCell(&transfer, c.BeginParse())
 				destination_raw := transfer.Destination.String()
 				var destination AccountAddress
-				addr_loc := AccountAddressConverter(destination_raw)
-				if addr_loc.IsValid() {
-					if v, ok := addr_loc.Interface().(AccountAddress); ok {
-						destination = v
-					}
+				addr_loc, err := ParseAccountAddress(destination_raw)
+				if err == nil && addr_loc != nil {
+					destination = *addr_loc
 				}
 				source := *node.Msg.Source
 				var jetton_master AccountAddress

@@ -12,7 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func buildMultisigQuery(multisig_req MultisigRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+func buildMultisigQuery(multisig_req MultisigRequest, settings RequestSettings) (string, error) {
+	lim_req := multisig_req.GetLimitParams()
+
 	var conditions []string
 
 	if len(multisig_req.Address) > 0 {
@@ -22,7 +24,7 @@ func buildMultisigQuery(multisig_req MultisigRequest, lim_req LimitRequest, sett
 	if len(multisig_req.WalletAddress) > 0 {
 		var walletAddresses []string
 		for _, addr := range multisig_req.WalletAddress {
-			walletAddresses = append(walletAddresses, fmt.Sprintf("'%s'", addr))
+			walletAddresses = append(walletAddresses, fmt.Sprintf("'%s'", addr.FilterString()))
 		}
 
 		walletAddressesStr := strings.Join(walletAddresses, ",")
@@ -56,7 +58,9 @@ func buildMultisigQuery(multisig_req MultisigRequest, lim_req LimitRequest, sett
 	return query, nil
 }
 
-func buildMultisigOrderQuery(order_req MultisigOrderRequest, lim_req LimitRequest, settings RequestSettings) (string, error) {
+func buildMultisigOrderQuery(order_req MultisigOrderRequest, settings RequestSettings) (string, error) {
+	lim_req := order_req.GetLimitParams()
+
 	var conditions []string
 
 	if len(order_req.Address) > 0 {
@@ -66,7 +70,7 @@ func buildMultisigOrderQuery(order_req MultisigOrderRequest, lim_req LimitReques
 	if len(order_req.MultisigAddress) > 0 {
 		var multisigAddresses []string
 		for _, addr := range order_req.MultisigAddress {
-			multisigAddresses = append(multisigAddresses, fmt.Sprintf("'%s'", addr))
+			multisigAddresses = append(multisigAddresses, fmt.Sprintf("'%s'", addr.FilterString()))
 		}
 
 		conditions = append(conditions, fmt.Sprintf("multisig_address IN (%s)",
@@ -146,10 +150,9 @@ func queryMultisigOrderImpl(query string, conn *pgxpool.Conn, settings RequestSe
 
 func (db *DbClient) QueryMultisigs(
 	multisig_req MultisigRequest,
-	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]Multisig, AddressBook, error) {
-	query, err := buildMultisigQuery(multisig_req, lim_req, settings)
+	query, err := buildMultisigQuery(multisig_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -168,9 +171,9 @@ func (db *DbClient) QueryMultisigs(
 
 	if multisig_req.IncludeOrders == nil || *multisig_req.IncludeOrders {
 		// Fetch orders for each multisig
-		addresses := make([]string, len(multisigs))
+		addresses := make([]AccountAddress, len(multisigs))
 		for i, multisig := range multisigs {
-			addresses[i] = string(multisig.Address)
+			addresses[i] = multisig.Address
 		}
 		ordersQuery := fmt.Sprintf("SELECT " +
 			"address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask, approvals_num, expiration_date, " +
@@ -192,26 +195,26 @@ func (db *DbClient) QueryMultisigs(
 	}
 
 	// Collect addresses for address book
-	addr_set := make(map[string]bool)
+	addr_set := make(map[AccountAddress]bool)
 	for _, multisig := range multisigs {
-		addr_set[string(multisig.Address)] = true
+		addr_set[multisig.Address] = true
 		for _, signer := range multisig.Signers {
-			addr_set[string(signer)] = true
+			addr_set[signer] = true
 		}
 		for _, proposer := range multisig.Proposers {
-			addr_set[string(proposer)] = true
+			addr_set[proposer] = true
 		}
 		for _, order := range multisig.Orders {
-			addr_set[string(order.Address)] = true
+			addr_set[order.Address] = true
 			for _, signer := range order.Signers {
-				addr_set[string(signer)] = true
+				addr_set[signer] = true
 			}
 		}
 	}
 
 	book := AddressBook{}
 	if len(addr_set) > 0 && !settings.NoAddressBook {
-		addr_list := make([]string, 0, len(addr_set))
+		addr_list := make([]AccountAddress, 0, len(addr_set))
 		for addr := range addr_set {
 			addr_list = append(addr_list, addr)
 		}
@@ -226,10 +229,9 @@ func (db *DbClient) QueryMultisigs(
 
 func (db *DbClient) QueryMultisigOrders(
 	order_req MultisigOrderRequest,
-	lim_req LimitRequest,
 	settings RequestSettings,
 ) ([]MultisigOrder, AddressBook, error) {
-	query, err := buildMultisigOrderQuery(order_req, lim_req, settings)
+	query, err := buildMultisigOrderQuery(order_req, settings)
 	if err != nil {
 		return nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -260,17 +262,17 @@ func (db *DbClient) QueryMultisigOrders(
 	}
 
 	// Collect addresses for address book
-	addr_set := make(map[string]bool)
+	addr_set := make(map[AccountAddress]bool)
 	for _, order := range orders {
-		addr_set[string(order.Address)] = true
+		addr_set[order.Address] = true
 		for _, signer := range order.Signers {
-			addr_set[string(signer)] = true
+			addr_set[signer] = true
 		}
 	}
 
 	book := AddressBook{}
 	if len(addr_set) > 0 && !settings.NoAddressBook {
-		addr_list := make([]string, 0, len(addr_set))
+		addr_list := make([]AccountAddress, 0, len(addr_set))
 		for addr := range addr_set {
 			addr_list = append(addr_list, addr)
 		}

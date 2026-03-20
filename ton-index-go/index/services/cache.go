@@ -13,14 +13,14 @@ import (
 )
 
 type AddressInfoRequest struct {
-	Addresses          []string `json:"addresses"`
-	IncludeAddressBook bool     `json:"include_address_book"`
-	IncludeMetadata    bool     `json:"include_metadata"`
+	Addresses          []AccountAddress `json:"addresses"`
+	IncludeAddressBook bool             `json:"include_address_book"`
+	IncludeMetadata    bool             `json:"include_metadata"`
 }
 
 type AddressInfoResponse struct {
-	Metadata    map[string]AddressMetadata `json:"metadata,omitempty"`
-	AddressBook AddressBook                `json:"address_book,omitempty"`
+	Metadata    map[AccountAddress]AddressMetadata `json:"metadata,omitempty"`
+	AddressBook AddressBook                        `json:"address_book,omitempty"`
 }
 
 var ErrServiceUnavailable = errors.New("cache service is unavailable")
@@ -104,7 +104,7 @@ func (r *CacheClient) Stop() {
 	close(r.stopCheck)
 }
 
-func (r *CacheClient) getAddressInfo(addresses []string, includeMetadata bool, includeAddressBook bool) (*AddressInfoResponse, error) {
+func (r *CacheClient) getAddressInfo(addresses []AccountAddress, includeMetadata bool, includeAddressBook bool) (*AddressInfoResponse, error) {
 	// Fail fast if service is unhealthy
 	if !r.healthy.Load() {
 		return nil, ErrServiceUnavailable
@@ -143,7 +143,7 @@ func (r *CacheClient) getAddressInfo(addresses []string, includeMetadata bool, i
 	return &response, nil
 }
 
-func (r *CacheClient) GetMetadata(addresses []string) (Metadata, error) {
+func (r *CacheClient) GetMetadata(addresses []AccountAddress) (Metadata, error) {
 	res, err := r.getAddressInfo(addresses, true, false)
 	if err != nil {
 		return Metadata{}, err
@@ -151,7 +151,7 @@ func (r *CacheClient) GetMetadata(addresses []string) (Metadata, error) {
 	return res.Metadata, err
 }
 
-func (r *CacheClient) GetAddressBook(addresses []string) (AddressBook, error) {
+func (r *CacheClient) GetAddressBook(addresses []AccountAddress) (AddressBook, error) {
 	res, err := r.getAddressInfo(addresses, false, true)
 	if err != nil {
 		return AddressBook{}, err

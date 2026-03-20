@@ -942,7 +942,7 @@ func MarkAccountStates(states []AccountStateFull) error {
 		}
 		codeHash := ""
 		if states[i].CodeHash != nil {
-			codeHash = string(*states[i].CodeHash)
+			codeHash = states[i].CodeHash.String()
 		}
 		interfaces := DetectInterface(codeHash, methods)
 		states[i].Interfaces = &interfaces

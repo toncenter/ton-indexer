@@ -1,16 +1,33 @@
 package models
 
-import (
-	"fmt"
-	"strings"
+type FilterStringInterface interface {
+	FilterString() string
+}
+
+type ShardId int64 // @name ShardId
+
+type AddressKind int
+
+const (
+	AddressNone AddressKind = iota
+	AddressExt
+	AddressStd
+	AddressVar
 )
 
-type ShardId int64                 // @name ShardId
-type AccountAddress string         // @name AccountAddress
-type AccountAddressNullable string // @name AccountAddressNullable
-type HashType string               // @name HashType
-type HexInt int64                  // @name HexInt
-type OpcodeType int64              // @name OpcodeType
+type AccountAddressStruct struct {
+	Kind      AddressKind
+	Workchain int32
+	ExtLen    int32
+	Addr      string
+}
+
+type AccountAddress string // @name AccountAddress
+type BytesType string      // @name BytesType
+type HashType string       // @name HashType
+
+type HexInt int64     // @name HexInt
+type OpcodeType int64 // @name OpcodeType
 
 var WalletsHashMap = map[string]bool{
 	"oM/CxIruFqJx8s/AtzgtgXVs7LEBfQd/qqs7tgL2how=": true,
@@ -41,8 +58,9 @@ type AddressBookRow struct {
 	Interfaces   *[]string `json:"interfaces"`
 } // @name AddressBookRow
 
-type AddressBook map[string]AddressBookRow // @name AddressBook
-type Metadata map[string]AddressMetadata   // @name Metadata
+type GenericAddressBook map[string]AddressBookRow  // @name GenericAddressBook
+type AddressBook map[AccountAddress]AddressBookRow // @name AddressBook
+type Metadata map[AccountAddress]AddressMetadata   // @name Metadata
 
 type BackgroundTask struct {
 	Type  string
@@ -56,7 +74,7 @@ type AddressMetadata struct {
 } // @name AddressMetadata
 
 type TokenInfo struct {
-	Address     string                 `json:"-"`
+	Address     AccountAddress         `json:"-"`
 	Valid       *bool                  `json:"valid,omitempty"`
 	Indexed     bool                   `json:"-"`
 	Type        *string                `json:"type,omitempty"`
@@ -68,36 +86,14 @@ type TokenInfo struct {
 	Extra       map[string]interface{} `json:"extra,omitempty"`
 } // @name TokenInfo
 
-type JsonType map[string]interface{}
-
-func (v *ShardId) String() string {
-	return fmt.Sprintf("%X", uint64(*v))
+func (a *AccountAddress) IsAddressNone() bool {
+	return len(*a) == 0 || *a == "addr_none" || *a == "null"
 }
 
-func (v *ShardId) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
-}
-
-func (v *AccountAddress) String() string {
-	return strings.Trim(string(*v), " ")
-}
-
-func (v *AccountAddress) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
-}
-
-func (v *HexInt) String() string {
-	return fmt.Sprintf("0x%x", uint32(*v))
-}
-
-func (v *HexInt) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
-}
-
-func (v *OpcodeType) String() string {
-	return fmt.Sprintf("0x%08x", uint32(*v))
-}
-
-func (v *OpcodeType) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
+func (a *AccountAddress) IsAddressStd() bool {
+	s, err := ParseAccountAddressStruct(string(*a))
+	if err != nil {
+		return false
+	}
+	return s.Kind == AddressStd
 }

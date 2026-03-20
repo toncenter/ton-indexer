@@ -2,17 +2,17 @@ package parse
 
 import (
 	"context"
+	"log"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"log"
 )
 
 var marketplaceCache = make(map[string]string)
 
 func GetMarketplaceName(marketplaceAddress *AccountAddress, collectionAddress *AccountAddress) (bool, string) {
 	if marketplaceAddress != nil {
-		marketplaceAddr := string(*marketplaceAddress)
-		if name, exists := marketplaceCache[marketplaceAddr]; exists {
+		if name, exists := marketplaceCache[marketplaceAddress.String()]; exists {
 			return true, name
 		} else {
 			return false, ""
@@ -20,8 +20,7 @@ func GetMarketplaceName(marketplaceAddress *AccountAddress, collectionAddress *A
 	}
 
 	if collectionAddress != nil {
-		collectionAddr := string(*collectionAddress)
-		if name, exists := marketplaceCache[collectionAddr]; exists {
+		if name, exists := marketplaceCache[collectionAddress.String()]; exists {
 			return true, name
 		}
 	}

@@ -3,9 +3,10 @@ package crud
 import (
 	"context"
 	"fmt"
+	"sort"
+
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
-	"sort"
 )
 
 func (db *DbClient) GetNominatorBookings(
@@ -482,7 +483,7 @@ func (db *DbClient) GetNominator(nominatorAddr string) ([]models.NominatorInPool
 	return result, nil
 }
 
-func (db *DbClient) GetPool(poolAddr string) (*models.NominatorPoolInfo, error) {
+func (db *DbClient) GetPool(poolAddr models.AccountAddress) (*models.NominatorPoolInfo, error) {
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
@@ -497,7 +498,7 @@ func (db *DbClient) GetPool(poolAddr string) (*models.NominatorPoolInfo, error) 
 		LIMIT 1
 	`
 
-	var codeHash string
+	var codeHash models.HashType
 	var dataBoc []byte
 	err = conn.QueryRow(context.Background(), query, poolAddr).Scan(&codeHash, &dataBoc)
 	if err != nil {
@@ -505,9 +506,9 @@ func (db *DbClient) GetPool(poolAddr string) (*models.NominatorPoolInfo, error) 
 	}
 
 	// verify code hash matches nominator pool
-	expectedCodeHash := "mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8="
+	expectedCodeHash := models.MustParseHashType("mj7BS8CY9rRAZMMFIiyuooAPF92oXuaoGYpwle3hDc8=")
 	if codeHash != expectedCodeHash {
-		return nil, models.IndexError{Code: 400, Message: fmt.Sprintf("Account is not a nominator pool, code hash is %s", codeHash)}
+		return nil, models.IndexError{Code: 400, Message: fmt.Sprintf("Account is not a nominator pool, code hash is %s", codeHash.String())}
 	}
 
 	// parse pool data

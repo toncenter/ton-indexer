@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
 type DbClient struct {
@@ -76,3 +78,7 @@ func NewDbClient(dsn string, maxconns int, minconns int) (*DbClient, error) {
 	}
 	return &DbClient{pool}, nil
 }
+
+var _ pgtype.BytesScanner = (*models.BytesType)(nil)
+var _ pgtype.BytesScanner = (*models.HashType)(nil)
+var _ pgtype.BytesScanner = (*models.AccountAddress)(nil)

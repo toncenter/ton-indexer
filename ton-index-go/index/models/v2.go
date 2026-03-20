@@ -1,6 +1,8 @@
 package models
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type V2AddressInformation struct {
 	Balance             string  `json:"balance"`
@@ -62,9 +64,14 @@ func AddressInformationFromV3(state AccountStateFull) (*V2AddressInformation, er
 		return nil, IndexError{Code: 500, Message: "balance is none"}
 	}
 	info.Balance = *state.Balance
-	info.Code = state.CodeBoc
-	info.Data = state.DataBoc
-	info.LastTransactionHash = (*string)(state.LastTransactionHash)
+	if v := state.CodeBoc; v != nil {
+		info.Code = (*string)(v)
+	}
+	if v := state.DataBoc; v != nil {
+		info.Data = (*string)(v)
+	}
+	info.LastTransactionHash = new(string)
+	*info.LastTransactionHash = state.LastTransactionHash.String()
 	if state.LastTransactionLt != nil {
 		info.LastTransactionLt = new(string)
 		*info.LastTransactionLt = fmt.Sprintf("%d", *state.LastTransactionLt)
@@ -94,7 +101,7 @@ func WalletInformationFromV3(state WalletState) (*V2WalletInformation, error) {
 	if state.LastTransactionHash == nil {
 		return nil, IndexError{Code: 500, Message: "last_transaction_hash is none"}
 	}
-	info.LastTransactionHash = string(*state.LastTransactionHash)
+	info.LastTransactionHash = state.LastTransactionHash.String()
 	if state.LastTransactionLt == nil {
 		return nil, IndexError{Code: 500, Message: "last_transaction_lt is none"}
 	}

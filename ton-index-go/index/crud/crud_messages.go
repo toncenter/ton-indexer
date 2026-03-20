@@ -14,16 +14,17 @@ import (
 )
 
 func buildMessagesQuery(
-	msg_req MessageRequest,
-	utime_req UtimeRequest,
-	lt_req LtRequest,
-	lim_req LimitRequest,
+	req MessageRequest,
 	settings RequestSettings,
 ) (string, error) {
+	utime_req := req.GetUtimeParams()
+	lt_req := req.GetLtParams()
+	lim_req := req.GetLimitParams()
+
 	rest_columns := `M.trace_id, M.source, M.destination, M.value, 
 		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.extra_flags, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
 		M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm`
-	clmn_query := `'', 0, M.msg_hash, '', ` + rest_columns + `, 
+	clmn_query := `NULL, 0, M.msg_hash, '', ` + rest_columns + `, 
 		max(case when M.direction='in' then M.tx_hash else null end) as in_tx_hash, 
 		max(case when M.direction='out' then M.tx_hash else null end) as out_tx_hash`
 	from_query := ` messages as M `
@@ -36,32 +37,32 @@ func buildMessagesQuery(
 		return "", err
 	}
 
-	if v := msg_req.Direction; v != nil {
+	if v := req.Direction; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.direction = '%s'", *v))
 	}
-	if v := msg_req.Source; v != nil {
-		if *v == "null" {
+	if v := req.Source; v != nil {
+		if len(*v) == 0 || *v == "addr_none" || *v == "null" {
 			filter_list = append(filter_list, "M.source is NULL")
 		} else {
-			filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", *v))
+			filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", v.FilterString()))
 		}
 	}
-	if v := msg_req.Destination; v != nil {
-		if *v == "null" {
+	if v := req.Destination; v != nil {
+		if v.IsAddressNone() {
 			filter_list = append(filter_list, "M.destination is NULL")
 		} else {
-			filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", *v))
+			filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", v.FilterString()))
 		}
 	}
-	if v := msg_req.Opcode; v != nil {
+	if v := req.Opcode; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d", *v))
 	}
-	if v := msg_req.MessageHash; v != nil {
+	if v := req.MessageHash; v != nil {
 		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
 	}
-	if v := msg_req.BodyHash; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", *v))
+	if v := req.BodyHash; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", v.FilterString()))
 	}
 
 	order_col := "M.created_lt"
@@ -79,10 +80,10 @@ func buildMessagesQuery(
 	if v := lt_req.EndLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.created_lt <= %d", *v))
 	}
-	if v := msg_req.ExcludeExternals; v != nil && *v {
+	if v := req.ExcludeExternals; v != nil && *v {
 		filter_list = append(filter_list, order_col+" is not NULL")
 	}
-	if v := msg_req.OnlyExternals; v != nil && *v {
+	if v := req.OnlyExternals; v != nil && *v {
 		filter_list = append(filter_list, order_col+" is NULL")
 	}
 
@@ -99,7 +100,7 @@ func buildMessagesQuery(
 	if len(filter_list) > 0 {
 		filter_query = ` where ` + strings.Join(filter_list, " and ")
 	}
-	inner_query := `select` + clmn_query
+	inner_query := `select ` + clmn_query
 	inner_query += ` from ` + from_query
 	inner_query += filter_query
 	inner_query += groupby_query
@@ -144,7 +145,7 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSetting
 	if err := detect.MarkMessages(msgs); err != nil {
 		hashes := make([]string, len(msgs))
 		for i, msg := range msgs {
-			hashes[i] = string(msg.MsgHash)
+			hashes[i] = msg.MsgHash.String()
 		}
 		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
 	}
@@ -153,13 +154,10 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings RequestSetting
 }
 
 func (db *DbClient) QueryMessages(
-	msg_req MessageRequest,
-	utime_req UtimeRequest,
-	lt_req LtRequest,
-	lim_req LimitRequest,
+	req MessageRequest,
 	settings RequestSettings,
 ) ([]Message, AddressBook, Metadata, error) {
-	query, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req, settings)
+	query, err := buildMessagesQuery(req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -181,13 +179,13 @@ func (db *DbClient) QueryMessages(
 
 	book := AddressBook{}
 	metadata := Metadata{}
-	addr_list := []string{}
+	addr_list := []AccountAddress{}
 	for _, m := range msgs {
 		if m.Source != nil {
-			addr_list = append(addr_list, string(*m.Source))
+			addr_list = append(addr_list, *m.Source)
 		}
 		if m.Destination != nil {
-			addr_list = append(addr_list, string(*m.Destination))
+			addr_list = append(addr_list, *m.Destination)
 		}
 	}
 	if len(addr_list) > 0 {

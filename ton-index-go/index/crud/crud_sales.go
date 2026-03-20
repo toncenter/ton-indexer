@@ -1,21 +1,20 @@
 package crud
 
 import (
+	"github.com/jackc/pgx/v5/pgtype"
 	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 
 	"context"
-
-	"github.com/lib/pq"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Query GetGems Sales
 func queryGetgemsSalesImpl(addresses []AccountAddress, conn *pgxpool.Conn, settings RequestSettings) ([]RawNFTSale, error) {
-	addrStrings := make([]string, len(addresses))
+	addrStrings := make([]AccountAddress, len(addresses))
 	for i, a := range addresses {
-		addrStrings[i] = string(a)
+		addrStrings[i] = a
 	}
 
 	query := `
@@ -60,7 +59,7 @@ func queryGetgemsSalesImpl(addresses []AccountAddress, conn *pgxpool.Conn, setti
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 
-	rows, err := conn.Query(ctx, query, pq.Array(addrStrings))
+	rows, err := conn.Query(ctx, query, pgtype.FlatArray[AccountAddress](addrStrings))
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -119,9 +118,9 @@ func queryGetgemsSalesImpl(addresses []AccountAddress, conn *pgxpool.Conn, setti
 
 // Query GetGems Auctions
 func queryGetgemsAuctionsImpl(addresses []AccountAddress, conn *pgxpool.Conn, settings RequestSettings) ([]RawNFTSale, error) {
-	addrStrings := make([]string, len(addresses))
+	addrStrings := make([]AccountAddress, len(addresses))
 	for i, a := range addresses {
-		addrStrings[i] = string(a)
+		addrStrings[i] = a
 	}
 
 	query := `
@@ -175,7 +174,7 @@ func queryGetgemsAuctionsImpl(addresses []AccountAddress, conn *pgxpool.Conn, se
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 
-	rows, err := conn.Query(ctx, query, pq.Array(addrStrings))
+	rows, err := conn.Query(ctx, query, pgtype.FlatArray[AccountAddress](addrStrings))
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -243,9 +242,9 @@ func queryGetgemsAuctionsImpl(addresses []AccountAddress, conn *pgxpool.Conn, se
 
 // Query Telemint NFTs
 func queryTelemintImpl(addresses []AccountAddress, conn *pgxpool.Conn, settings RequestSettings) ([]RawNFTSale, error) {
-	addrStrings := make([]string, len(addresses))
+	addrStrings := make([]AccountAddress, len(addresses))
 	for i, a := range addresses {
-		addrStrings[i] = string(a)
+		addrStrings[i] = a
 	}
 
 	query := `
@@ -277,7 +276,7 @@ func queryTelemintImpl(addresses []AccountAddress, conn *pgxpool.Conn, settings 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
 
-	rows, err := conn.Query(ctx, query, pq.Array(addrStrings))
+	rows, err := conn.Query(ctx, query, pgtype.FlatArray[AccountAddress](addrStrings))
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -395,19 +394,19 @@ func (db *DbClient) QueryNFTSales(
 
 	book := AddressBook{}
 	metadata := Metadata{}
-	addr_list := []string{}
+	addr_list := []AccountAddress{}
 
 	// Collect all addresses for AddressBook and Metadata
 	for _, sale := range res {
-		addr_list = append(addr_list, string(sale.Address))
+		addr_list = append(addr_list, sale.Address)
 		if sale.NftAddress != nil {
-			addr_list = append(addr_list, string(*sale.NftAddress))
+			addr_list = append(addr_list, *sale.NftAddress)
 		}
 		if sale.NftOwnerAddress != nil {
-			addr_list = append(addr_list, string(*sale.NftOwnerAddress))
+			addr_list = append(addr_list, *sale.NftOwnerAddress)
 		}
 		if sale.MarketplaceAddress != nil {
-			addr_list = append(addr_list, string(*sale.MarketplaceAddress))
+			addr_list = append(addr_list, *sale.MarketplaceAddress)
 		}
 
 		// Collect addresses from Details based on type
@@ -415,46 +414,46 @@ func (db *DbClient) QueryNFTSales(
 		case "getgems_sale":
 			if details, ok := sale.Details.(*NFTSaleDetailsGetgemsSale); ok {
 				if details.MarketplaceFeeAddress != nil {
-					addr_list = append(addr_list, string(*details.MarketplaceFeeAddress))
+					addr_list = append(addr_list, *details.MarketplaceFeeAddress)
 				}
 				if details.RoyaltyAddress != nil {
-					addr_list = append(addr_list, string(*details.RoyaltyAddress))
+					addr_list = append(addr_list, *details.RoyaltyAddress)
 				}
 			}
 		case "getgems_auction":
 			if details, ok := sale.Details.(*NFTSaleDetailsGetgemsAuction); ok {
 				if details.LastMember != nil {
-					addr_list = append(addr_list, string(*details.LastMember))
+					addr_list = append(addr_list, *details.LastMember)
 				}
 				if details.MpFeeAddress != nil {
-					addr_list = append(addr_list, string(*details.MpFeeAddress))
+					addr_list = append(addr_list, *details.MpFeeAddress)
 				}
 				if details.RoyaltyFeeAddress != nil {
-					addr_list = append(addr_list, string(*details.RoyaltyFeeAddress))
+					addr_list = append(addr_list, *details.RoyaltyFeeAddress)
 				}
 			}
 		case "telemint":
 			if details, ok := sale.Details.(*NFTSaleDetailsTeleitem); ok {
 				if details.BidderAddress != nil {
-					addr_list = append(addr_list, string(*details.BidderAddress))
+					addr_list = append(addr_list, *details.BidderAddress)
 				}
 				if details.BeneficiaryAddress != nil {
-					addr_list = append(addr_list, string(*details.BeneficiaryAddress))
+					addr_list = append(addr_list, *details.BeneficiaryAddress)
 				}
 				if details.RoyaltyDestination != nil {
-					addr_list = append(addr_list, string(*details.RoyaltyDestination))
+					addr_list = append(addr_list, *details.RoyaltyDestination)
 				}
 			}
 		}
 
 		// Add NFT item and collection addresses
 		if sale.NftItem != nil {
-			addr_list = append(addr_list, string(sale.NftItem.Address))
+			addr_list = append(addr_list, sale.NftItem.Address)
 			if sale.NftItem.CollectionAddress != nil {
-				addr_list = append(addr_list, string(*sale.NftItem.CollectionAddress))
+				addr_list = append(addr_list, *sale.NftItem.CollectionAddress)
 			}
 			if sale.NftItem.OwnerAddress != nil {
-				addr_list = append(addr_list, string(*sale.NftItem.OwnerAddress))
+				addr_list = append(addr_list, *sale.NftItem.OwnerAddress)
 			}
 		}
 	}

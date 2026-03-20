@@ -50,10 +50,10 @@ type JettonTransfer struct {
 	TransactionNow        int64            `json:"transaction_now"`
 	TransactionAborted    bool             `json:"transaction_aborted"`
 	ResponseDestination   *AccountAddress  `json:"response_destination"`
-	CustomPayload         *string          `json:"custom_payload"`
+	CustomPayload         *BytesType       `json:"custom_payload"`
 	DecodedCustomPayload  *json.RawMessage `json:"decoded_custom_payload" swaggertype:"object"`
 	ForwardTonAmount      *string          `json:"forward_ton_amount"`
-	ForwardPayload        *string          `json:"forward_payload"`
+	ForwardPayload        *BytesType       `json:"forward_payload"`
 	DecodedForwardPayload *json.RawMessage `json:"decoded_forward_payload" swaggertype:"object"`
 	TraceId               *HashType        `json:"trace_id"`
 } // @name JettonTransfer

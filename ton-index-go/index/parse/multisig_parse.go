@@ -4,10 +4,8 @@ import (
 	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"log"
-	"strings"
 
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tlb"
@@ -722,9 +720,7 @@ func formatAddress(addr *address.Address) *AccountAddress {
 	if addr == nil {
 		return nil
 	}
-	formatted := fmt.Sprintf("%d:%s", addr.Workchain(), strings.ToUpper(hex.EncodeToString(addr.Data())))
-	accountAddress := AccountAddress(formatted)
-	return &accountAddress
+	return new(AccountAddress(fmt.Sprintf("%d:%X", addr.Workchain(), addr.Data())))
 }
 
 // formatCoins converts tlb.Coins to *string

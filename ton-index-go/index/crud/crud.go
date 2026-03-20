@@ -1,10 +1,6 @@
 package crud
 
 import (
-	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
-	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/services"
-
 	"context"
 	"fmt"
 	"log"
@@ -12,7 +8,10 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
+	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/services"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -28,7 +27,7 @@ func getSortOrder(order SortType) (string, error) {
 }
 
 // query builders
-func limitQuery(lim LimitRequest, settings RequestSettings) (string, error) {
+func limitQuery(lim LimitParams, settings RequestSettings) (string, error) {
 	query := ``
 	if lim.Limit == nil {
 		// set default value
@@ -51,11 +50,16 @@ func limitQuery(lim LimitRequest, settings RequestSettings) (string, error) {
 
 func filterByArray[T any](clmn string, values []T) string {
 	filter_list := []string{}
+	filterStringIfaceType := reflect.TypeOf((*FilterStringInterface)(nil)).Elem()
 	for _, x := range values {
-		t := reflect.ValueOf(x)
-		switch t.Kind() {
-		case reflect.String:
-			if t.Len() > 0 {
+		v := reflect.ValueOf(x)
+		t := reflect.TypeOf(x)
+		switch {
+		case t.Implements(filterStringIfaceType):
+			xx := v.Interface().(FilterStringInterface)
+			filter_list = append(filter_list, fmt.Sprintf(`'%s'`, xx.FilterString()))
+		case t.Kind() == reflect.String:
+			if len(t.String()) > 0 {
 				filter_list = append(filter_list, fmt.Sprintf("'%s'", t.String()))
 			}
 		default:
@@ -72,7 +76,7 @@ func filterByArray[T any](clmn string, values []T) string {
 	return ``
 }
 
-func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
+func QueryMetadataImpl(addr_list []AccountAddress, conn *pgxpool.Conn, settings RequestSettings) (Metadata, error) {
 	if settings.UseCache {
 		metadata, err := services.GetCacheClient().GetMetadata(addr_list)
 		if err != nil {
@@ -81,7 +85,7 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 			return metadata, nil
 		}
 	}
-	token_info_map := map[string][]TokenInfo{}
+	token_info_map := map[AccountAddress][]TokenInfo{}
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
@@ -104,7 +108,7 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 		" union all " +
 		"select j.address, m.valid, 'jetton_masters' as type, m.name, m.symbol, m.description, m.image, m.extra, null as index from jetton_masters j left join address_metadata m on j.address = m.address and m.type = 'jetton_masters'  where j.address = ANY($1)"
 
-	rows, err := conn.Query(ctx, query, pq.Array(addr_list))
+	rows, err := conn.Query(ctx, query, pgtype.FlatArray[AccountAddress](addr_list))
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
@@ -134,7 +138,7 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings RequestS
 		} else {
 			row.Indexed = true
 
-			if _, ok := token_info_map[*row.Type]; !ok {
+			if _, ok := token_info_map[row.Address]; !ok {
 				token_info_map[row.Address] = []TokenInfo{}
 			}
 			if *row.Valid {
@@ -193,7 +197,7 @@ func SubstituteImgproxyBaseUrl(metadata *Metadata, base_url string) {
 	}
 }
 
-func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
+func QueryAddressBookImpl(addr_list []AccountAddress, conn *pgxpool.Conn, settings RequestSettings) (AddressBook, error) {
 	if settings.UseCache {
 		book, err := services.GetCacheClient().GetAddressBook(addr_list)
 		if err != nil {
@@ -205,7 +209,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 	book := AddressBook{}
 	quote_addr_list := []string{}
 	for _, item := range addr_list {
-		quote_addr_list = append(quote_addr_list, fmt.Sprintf("'%s'", item))
+		quote_addr_list = append(quote_addr_list, fmt.Sprintf("'%s'", item.FilterString()))
 	}
 
 	// read address book first
@@ -225,8 +229,8 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		defer rows.Close()
 
 		for rows.Next() {
-			var account string
-			var code_hash *string
+			var account AccountAddress
+			var code_hash *HashType
 			var methods *[]uint32
 			if err := rows.Scan(&account, &code_hash, &methods); err == nil {
 				addr_str := GetAccountAddressFriendly(account, code_hash, settings.IsTestnet)
@@ -236,7 +240,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 				if code_hash != nil || methods != nil {
 					codeHashStr := ""
 					if code_hash != nil {
-						codeHashStr = *code_hash
+						codeHashStr = code_hash.String()
 					}
 					var methodIDs []uint32
 					if methods != nil {
@@ -246,7 +250,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 				}
 
 				interfacesPtr := &interfaces
-				book_tmp[strings.Trim(account, " ")] = AddressBookRow{
+				book_tmp[account] = AddressBookRow{
 					UserFriendly: &addr_str,
 					Domain:       nil,
 					Interfaces:   interfacesPtr,
@@ -275,7 +279,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 		defer rows.Close()
 
 		for rows.Next() {
-			var account string
+			var account AccountAddress
 			var domain *string
 			if err := rows.Scan(&account, &domain); err == nil {
 				if book_rec, ok := book_tmp[account]; ok {
@@ -292,16 +296,10 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 	}
 
 	for _, addr := range addr_list {
-		account := ``
-		if addr_val := AccountAddressConverter(addr); addr_val.IsValid() {
-			if addr_str, ok := addr_val.Interface().(AccountAddress); ok {
-				account = string(addr_str)
-			}
-		}
-		if rec, ok := book_tmp[account]; ok {
+		if rec, ok := book_tmp[addr]; ok {
 			book[addr] = rec
 		} else {
-			addr_str := GetAccountAddressFriendly(account, nil, settings.IsTestnet)
+			addr_str := GetAccountAddressFriendly(addr, nil, settings.IsTestnet)
 			emptyInterfaces := []string{}
 			book[addr] = AddressBookRow{
 				UserFriendly: &addr_str,
@@ -314,16 +312,14 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings Reque
 }
 
 func (db *DbClient) QueryMetadata(
-	addr_list []string,
+	address_list []string,
 	settings RequestSettings,
 ) (Metadata, error) {
-	raw_addr_list := []string{}
-	for _, addr := range addr_list {
-		addr_loc := AccountAddressConverter(addr)
-		if addr_loc.IsValid() {
-			if v, ok := addr_loc.Interface().(AccountAddress); ok {
-				raw_addr_list = append(raw_addr_list, string(v))
-			}
+	addr_list := []AccountAddress{}
+	for _, addr := range address_list {
+		addr_loc, err := ParseAccountAddress(addr)
+		if err == nil && addr_loc != nil {
+			addr_list = append(addr_list, *addr_loc)
 		}
 	}
 	conn, err := db.Pool.Acquire(context.Background())
@@ -331,24 +327,22 @@ func (db *DbClient) QueryMetadata(
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
-	return QueryMetadataImpl(raw_addr_list, conn, settings)
+	return QueryMetadataImpl(addr_list, conn, settings)
 }
 
 func (db *DbClient) QueryAddressBook(
-	addr_list []string,
+	address_list []string,
 	settings RequestSettings,
-) (AddressBook, error) {
-	raw_addr_list := []string{}
-	raw_addr_map := map[string]string{}
-	for _, addr := range addr_list {
-		addr_loc := AccountAddressConverter(addr)
-		if addr_loc.IsValid() {
-			if v, ok := addr_loc.Interface().(AccountAddress); ok {
-				raw_addr_list = append(raw_addr_list, string(v))
-				raw_addr_map[addr] = string(v)
-			}
+) (GenericAddressBook, error) {
+	addr_list := []AccountAddress{}
+	mapping := map[string]AccountAddress{}
+	for _, addr := range address_list {
+		addr_loc, err := ParseAccountAddress(addr)
+		if err == nil && addr_loc != nil {
+			addr_list = append(addr_list, *addr_loc)
+			mapping[addr] = *addr_loc
 		} else {
-			raw_addr_map[addr] = ""
+			mapping[addr] = "addr_none"
 		}
 	}
 	conn, err := db.Pool.Acquire(context.Background())
@@ -356,13 +350,13 @@ func (db *DbClient) QueryAddressBook(
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
-	book, err := QueryAddressBookImpl(raw_addr_list, conn, settings)
+	book, err := QueryAddressBookImpl(addr_list, conn, settings)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
-	new_addr_book := AddressBook{}
-	for k, v := range raw_addr_map {
+	new_addr_book := GenericAddressBook{}
+	for k, v := range mapping {
 		if vv, ok := book[v]; ok {
 			new_addr_book[k] = vv
 		} else {

@@ -2,8 +2,9 @@ package parse
 
 import (
 	b64 "encoding/base64"
-	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
+
+	. "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
@@ -92,8 +93,8 @@ var walletParsersMap = map[string]walletInfoParser{
 func ParseWalletState(state AccountStateFull) (*WalletState, error) {
 	var info WalletState
 	if state.AccountAddress != nil && state.DataBoc != nil {
-		if parser, ok := walletParsersMap[string(*state.CodeHash)]; ok {
-			if err := parser.Parse(*state.DataBoc, &info); err != nil {
+		if parser, ok := walletParsersMap[state.CodeHash.String()]; ok {
+			if err := parser.Parse(state.DataBoc.String(), &info); err != nil {
 				return nil, err
 			}
 
