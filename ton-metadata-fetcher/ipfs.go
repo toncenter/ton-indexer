@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 )
 
 var MAX_IPFS_FILESIZE int64 = 1024 * 1024
@@ -93,9 +94,9 @@ func NewRpcIpfsDownloader(ipfs_url string) (downloader *IpfsDownloader, err erro
 
 func (d *IpfsDownloader) GetFile(ctx context.Context, id string) (string, error) {
 	var prepared_id string
-	if id[:7] == "ipfs://" {
+	if strings.HasPrefix(id, "ipfs://") {
 		prepared_id = "/ipfs/" + id[7:]
-	} else if id[:6] == "/ipfs/" {
+	} else if strings.HasPrefix(id, "/ipfs/") {
 		prepared_id = id
 	} else {
 		return "", fmt.Errorf("invalid ipfs url")

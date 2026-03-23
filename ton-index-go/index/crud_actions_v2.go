@@ -22,7 +22,7 @@ func (db *DbClient) QueryActionsV2(
 	act_req.SupportedActionTypes = ExpandActionTypeShortcuts(act_req.SupportedActionTypes)
 	query, args, err := buildActionsQueryV2(act_req, utime_req, lt_req, lim_req, settings)
 	if settings.DebugRequest {
-		log.Println("Debug query:", query)
+		log.Println("Debug query:", query, "Args:", args)
 	}
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
@@ -168,6 +168,7 @@ var actionsColumnQuery = `A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start
 		(A.staking_data).tokens_burnt,
 		(A.staking_data).tokens_minted,
 		A.success,
+		2 as finality,
 		A.trace_external_hash,
 		A.trace_external_hash_norm,
 		A.value_extra_currencies,
@@ -252,6 +253,32 @@ var actionsColumnQuery = `A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start
 		(A.layerzero_dvn_verify_data).proxy,
 		(A.layerzero_dvn_verify_data).uln,
 		(A.layerzero_dvn_verify_data).uln_connection,
+		(A.cocoon_worker_payout_data).payout_type,
+		(A.cocoon_worker_payout_data).query_id,
+		(A.cocoon_worker_payout_data).new_tokens,
+		(A.cocoon_worker_payout_data).worker_state,
+		(A.cocoon_worker_payout_data).worker_tokens,
+		(A.cocoon_proxy_payout_data).query_id,
+		(A.cocoon_proxy_charge_data).query_id,
+		(A.cocoon_proxy_charge_data).new_tokens_used,
+		(A.cocoon_proxy_charge_data).expected_address,
+		(A.cocoon_client_top_up_data).query_id,
+		(A.cocoon_register_proxy_data).query_id,
+		(A.cocoon_unregister_proxy_data).query_id,
+		(A.cocoon_unregister_proxy_data).seqno,
+		(A.cocoon_client_register_data).query_id,
+		(A.cocoon_client_register_data).nonce,
+		(A.cocoon_client_change_secret_hash_data).query_id,
+		(A.cocoon_client_change_secret_hash_data).new_secret_hash,
+		(A.cocoon_client_request_refund_data).query_id,
+		(A.cocoon_client_request_refund_data).via_wallet,
+		(A.cocoon_grant_refund_data).query_id,
+		(A.cocoon_grant_refund_data).new_tokens_used,
+		(A.cocoon_grant_refund_data).expected_address,
+		(A.cocoon_client_increase_stake_data).query_id,
+		(A.cocoon_client_increase_stake_data).new_stake,
+		(A.cocoon_client_withdraw_data).query_id,
+		(A.cocoon_client_withdraw_data).withdraw_amount,
 		A.ancestor_type,
 		ARRAY[]::text[]`
 
@@ -262,6 +289,7 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
+	args := []any{act_req.SupportedActionTypes}
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return "", nil, err
@@ -345,21 +373,16 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		}
 	}
 	if v := act_req.IncludeActionTypes; len(v) > 0 {
-		filter_str := filterByArray("A.type", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
+		args = append(args, v)
+		filter_list = append(filter_list, fmt.Sprintf("A.type = ANY($%d)", len(args)))
 	}
 	if v := act_req.ExcludeActionTypes; len(v) > 0 {
-		filter_str := filterByArray("A.type", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, fmt.Sprintf("not (%s)", filter_str))
-		}
+		args = append(args, v)
+		filter_list = append(filter_list, fmt.Sprintf("NOT (A.type = ANY($%d))", len(args)))
 	}
 	if v := act_req.McSeqno; v != nil {
-		filter_list = append(filter_list, `E.state = 'complete'`)
-		filter_list = append(filter_list, fmt.Sprintf("E.mc_seqno_end = %d", *v))
-		from_query = `actions as A join traces as E on A.trace_id = E.trace_id`
+		filter_list = append(filter_list, fmt.Sprintf("A.trace_mc_seqno_end = %d", *v))
+		from_query = `actions as A`
 		clmn_query = clmn_query_default
 	}
 	if v := act_req.ActionId; v != nil {
@@ -371,10 +394,23 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 		clmn_query = clmn_query_default
 	}
 	if v := act_req.TraceId; v != nil {
-		from_query = `actions as A`
-		filter_str := filterByArray("A.trace_id", v)
-		if len(filter_str) > 0 {
-			filter_list = []string{filter_str}
+		trace_filter := filterByArray("trace_id", v)
+		if len(trace_filter) > 0 {
+			joined_accounts := strings.Contains(from_query, "action_accounts")
+			if join_accounts && joined_accounts {
+				// Limit action_accounts before join to keep account+trace_id requests fast.
+				from_query = fmt.Sprintf("(select * from action_accounts where %s) as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id", trace_filter)
+			} else {
+				filter_str := filterByArray("A.trace_id", v)
+				if len(filter_str) > 0 {
+					if join_accounts {
+						filter_list = append(filter_list, filter_str)
+					} else {
+						from_query = `actions as A`
+						filter_list = []string{filter_str}
+					}
+				}
+			}
 		}
 	}
 	if strings.Contains(from_query, "action_accounts") {
@@ -409,8 +445,6 @@ func buildActionsQueryV2(act_req ActionRequest, utime_req UtimeRequest, lt_req L
 	query += filter_query
 	query += orderby_query
 	query += limit_query
-	var args []any
-	args = append(args, act_req.SupportedActionTypes)
 
 	//log.Println(query)
 	return query, args, nil
@@ -470,14 +504,14 @@ func queryActionsTransactionsImpl(actions []Action, conn *pgxpool.Conn, settings
 	// Build query using buildTransactionsQuery with multiple hashes
 	// Only the Hash field of TransactionRequest is needed for this query; other fields are left at their zero values intentionally.
 	tx_req := TransactionRequest{Hash: txHashes}
-	query, err := buildTransactionsQuery(
+	query, queryArgs, err := buildTransactionsQuery(
 		BlockRequest{}, tx_req, MessageRequest{},
 		UtimeRequest{}, LtRequest{}, LimitRequest{}, settings)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
-	txs, err := queryTransactionsImpl(query, conn, settings)
+	txs, err := queryTransactionsImpl(query, conn, settings, queryArgs...)
 	if err != nil {
 		return nil, IndexError{Code: 500, Message: err.Error()}
 	}

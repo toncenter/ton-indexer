@@ -160,7 +160,7 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 	slices.SortFunc(txs, compare)
 
 	var maxInt int32 = math.MaxInt32
-	actionsQuery, err := buildActionsQuery(ActionRequest{TraceId: []HashType{traceId}}, UtimeRequest{}, LtRequest{}, LimitRequest{
+	actionsQuery, actionsArgs, err := buildActionsQuery(ActionRequest{TraceId: []HashType{traceId}}, UtimeRequest{}, LtRequest{}, LimitRequest{
 		Limit: &maxInt,
 	}, RequestSettings{
 		MaxLimit: int(maxInt),
@@ -170,7 +170,7 @@ func CalculateBalanceChanges(traceId HashType, conn *pgxpool.Conn) (*BalanceChan
 	}
 	actions, err := queryRawActionsImpl(actionsQuery, conn, RequestSettings{
 		Timeout: time.Second,
-	})
+	}, actionsArgs...)
 	for _, tx := range txs {
 		if _, ok := nodes[tx.Hash]; !ok {
 			nodes[tx.Hash] = &Node{

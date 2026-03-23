@@ -18,6 +18,7 @@ type RequestSettings struct {
 	DebugRequest         bool
 	NoAddressBook        bool
 	NoMetadata           bool
+	UseCache             bool
 }
 
 // requests
@@ -81,6 +82,10 @@ type NFTTransferRequest struct {
 	ItemAddress       []AccountAddress `query:"item_address"`
 	CollectionAddress *AccountAddress  `query:"collection_address"`
 	Direction         *string          `query:"direction"`
+}
+
+type NFTSalesRequest struct {
+	Address []AccountAddress `query:"address"`
 }
 
 type JettonMasterRequest struct {

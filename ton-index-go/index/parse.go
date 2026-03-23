@@ -315,6 +315,7 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 	act.TraceMcSeqnoEnd = raw.TraceMcSeqnoEnd
 	act.TxHashes = raw.TxHashes
 	act.Success = raw.Success
+	act.Finality = raw.Finality
 	act.Type = raw.Type
 	act.TraceExternalHash = raw.TraceExternalHash
 	act.TraceExternalHashNorm = raw.TraceExternalHashNorm
@@ -1108,6 +1109,95 @@ func ParseRawAction(raw *RawAction) (*Action, error) {
 			UlnConnection: raw.LayerzeroDvnVerifyUlnConnection,
 		}
 		act.Details = details
+	case "cocoon_worker_payout":
+		act.Details = ActionDetailsCocoonWorkerPayout{
+			PayoutType:   raw.CocoonWorkerPayoutPayoutType,
+			QueryId:      raw.CocoonWorkerPayoutQueryId,
+			NewTokens:    raw.CocoonWorkerPayoutNewTokens,
+			WorkerState:  raw.CocoonWorkerPayoutWorkerState,
+			WorkerTokens: raw.CocoonWorkerPayoutWorkerTokens,
+			Source:       raw.Source,
+			Destination:  raw.Destination,
+			Amount:       raw.Amount,
+		}
+	case "cocoon_proxy_payout":
+		act.Details = ActionDetailsCocoonProxyPayout{
+			QueryId:     raw.CocoonProxyPayoutQueryId,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+		}
+	case "cocoon_proxy_charge":
+		act.Details = ActionDetailsCocoonProxyCharge{
+			QueryId:         raw.CocoonProxyChargeQueryId,
+			NewTokensUsed:   raw.CocoonProxyChargeNewTokensUsed,
+			ExpectedAddress: raw.CocoonProxyChargeExpectedAddress,
+			Source:          raw.Source,
+			Destination:     raw.Destination,
+		}
+	case "cocoon_client_top_up":
+		act.Details = ActionDetailsCocoonClientTopUp{
+			QueryId:     raw.CocoonClientTopUpQueryId,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+			Amount:      raw.Amount,
+		}
+	case "cocoon_register_proxy":
+		act.Details = ActionDetailsCocoonRegisterProxy{
+			QueryId:     raw.CocoonRegisterProxyQueryId,
+			Destination: raw.Destination,
+		}
+	case "cocoon_unregister_proxy":
+		act.Details = ActionDetailsCocoonUnregisterProxy{
+			QueryId:     raw.CocoonUnregisterProxyQueryId,
+			Seqno:       raw.CocoonUnregisterProxySeqno,
+			Destination: raw.Destination,
+		}
+	case "cocoon_client_register":
+		act.Details = ActionDetailsCocoonClientRegister{
+			QueryId:     raw.CocoonClientRegisterQueryId,
+			Nonce:       raw.CocoonClientRegisterNonce,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+		}
+	case "cocoon_client_change_secret_hash":
+		act.Details = ActionDetailsCocoonClientChangeSecretHash{
+			QueryId:       raw.CocoonClientChangeSecretHashQueryId,
+			NewSecretHash: raw.CocoonClientChangeSecretHashNewSecretHash,
+			Source:        raw.Source,
+			Destination:   raw.Destination,
+		}
+	case "cocoon_client_request_refund":
+		act.Details = ActionDetailsCocoonClientRequestRefund{
+			QueryId:     raw.CocoonClientRequestRefundQueryId,
+			ViaWallet:   raw.CocoonClientRequestRefundViaWallet,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+		}
+	case "cocoon_grant_refund":
+		act.Details = ActionDetailsCocoonGrantRefund{
+			QueryId:         raw.CocoonGrantRefundQueryId,
+			NewTokensUsed:   raw.CocoonGrantRefundNewTokensUsed,
+			ExpectedAddress: raw.CocoonGrantRefundExpectedAddress,
+			Source:          raw.Source,
+			Destination:     raw.Destination,
+			Amount:          raw.Amount,
+		}
+	case "cocoon_client_increase_stake":
+		act.Details = ActionDetailsCocoonClientIncreaseStake{
+			QueryId:     raw.CocoonClientIncreaseStakeQueryId,
+			NewStake:    raw.CocoonClientIncreaseStakeNewStake,
+			Source:      raw.Source,
+			Destination: raw.Destination,
+			Amount:      raw.Amount,
+		}
+	case "cocoon_client_withdraw":
+		act.Details = ActionDetailsCocoonClientWithdraw{
+			QueryId:        raw.CocoonClientWithdrawQueryId,
+			WithdrawAmount: raw.CocoonClientWithdrawWithdrawAmount,
+			Source:         raw.Source,
+			Destination:    raw.Destination,
+			Amount:         raw.Amount,
+		}
 	default:
 		details := map[string]string{}
 		details["error"] = fmt.Sprintf("unsupported action type: '%s'", act.Type)
@@ -1174,7 +1264,7 @@ func ScanTransaction(row pgx.Row) (*Transaction, error) {
 		&ms1.Cells, &ms1.Bits,
 		&bo.Type, &ms2.Cells, &ms2.Bits,
 		&bo.ReqFwdFees, &bo.MsgFees, &bo.FwdFees,
-		&sp.CurShardPfxLen, &sp.AccSplitDepth, &sp.ThisAddr, &sp.SiblingAddr, &t.Emulated)
+		&sp.CurShardPfxLen, &sp.AccSplitDepth, &sp.ThisAddr, &sp.SiblingAddr, &t.Emulated, &t.Finality)
 
 	if err != nil {
 		return nil, err
@@ -1385,6 +1475,112 @@ func ScanNFTTransfer(row pgx.Row) (*NFTTransfer, error) {
 	return &res, nil
 }
 
+func ParseNFTSale(raw *RawNFTSale) (*NFTSale, error) {
+	var sale NFTSale
+
+	sale.Type = raw.Type
+	sale.Address = raw.Address
+	sale.NftAddress = raw.NftAddress
+	sale.NftOwnerAddress = raw.NftOwnerAddress
+	sale.MarketplaceAddress = raw.MarketplaceAddress
+	sale.CreatedAt = raw.CreatedAt
+	sale.LastTransactionLt = raw.LastTransactionLt
+	sale.CodeHash = raw.CodeHash
+	sale.DataHash = raw.DataHash
+
+	switch raw.Type {
+	case "getgems_sale":
+		var details NFTSaleDetailsGetgemsSale
+		details.IsComplete = raw.IsComplete
+		details.FullPrice = raw.FullPrice
+		details.MarketplaceFeeAddress = raw.MarketplaceFeeAddress
+		details.MarketplaceFee = raw.MarketplaceFee
+		details.RoyaltyAddress = raw.RoyaltyAddress
+		details.RoyaltyAmount = raw.RoyaltyAmount
+		sale.Details = &details
+	case "getgems_auction":
+		var details NFTSaleDetailsGetgemsAuction
+		details.EndFlag = raw.EndFlag
+		details.EndTime = raw.EndTime
+		details.LastBid = raw.LastBid
+		details.LastMember = raw.LastMember
+		details.MinStep = raw.MinStep
+		details.MpFeeAddress = raw.MpFeeAddress
+		details.MpFeeFactor = raw.MpFeeFactor
+		details.MpFeeBase = raw.MpFeeBase
+		details.RoyaltyFeeAddress = raw.RoyaltyFeeAddress
+		details.RoyaltyFeeFactor = raw.RoyaltyFeeFactor
+		details.RoyaltyFeeBase = raw.RoyaltyFeeBase
+		details.MaxBid = raw.MaxBid
+		details.MinBid = raw.MinBid
+		details.LastBidAt = raw.LastBidAt
+		details.IsCanceled = raw.IsCanceled
+		sale.Details = &details
+	case "telemint":
+		var details NFTSaleDetailsTeleitem
+		details.TokenName = raw.TokenName
+		details.BidderAddress = raw.BidderAddress
+		details.Bid = raw.Bid
+		details.BidTs = raw.BidTs
+		details.MinBid = raw.TelemintMinBid
+		details.EndTime = raw.TelemintEndTime
+		details.BeneficiaryAddress = raw.BeneficiaryAddress
+		details.InitialMinBid = raw.InitialMinBid
+		details.MaxBid = raw.TelemintMaxBid
+		details.MinBidStep = raw.MinBidStep
+		details.MinExtendTime = raw.MinExtendTime
+		details.Duration = raw.Duration
+		details.RoyaltyNumerator = raw.RoyaltyNumerator
+		details.RoyaltyDenominator = raw.RoyaltyDenominator
+		details.RoyaltyDestination = raw.RoyaltyDestination
+		sale.Details = &details
+	}
+
+	if raw.NftItemAddress != nil {
+		sale.NftItem = new(NFTItem)
+		sale.NftItem.Address = *raw.NftItemAddress
+		if raw.NftItemInit != nil {
+			sale.NftItem.Init = *raw.NftItemInit
+		}
+		if raw.NftItemIndex != nil {
+			sale.NftItem.Index = *raw.NftItemIndex
+		}
+		sale.NftItem.CollectionAddress = raw.NftItemCollectionAddress
+		sale.NftItem.OwnerAddress = raw.NftItemOwnerAddress
+		sale.NftItem.Content = raw.NftItemContent
+		if raw.NftItemLastTransactionLt != nil {
+			sale.NftItem.LastTransactionLt = *raw.NftItemLastTransactionLt
+		}
+		if raw.NftItemCodeHash != nil {
+			sale.NftItem.CodeHash = *raw.NftItemCodeHash
+		}
+		if raw.NftItemDataHash != nil {
+			sale.NftItem.DataHash = *raw.NftItemDataHash
+		}
+
+		if raw.CollectionAddress != nil {
+			sale.NftItem.Collection = new(NFTCollection)
+			sale.NftItem.Collection.Address = *raw.CollectionAddress
+			if raw.CollectionNextItemIndex != nil {
+				sale.NftItem.Collection.NextItemIndex = *raw.CollectionNextItemIndex
+			}
+			sale.NftItem.Collection.OwnerAddress = raw.CollectionOwnerAddress
+			sale.NftItem.Collection.CollectionContent = raw.CollectionContent
+			if raw.CollectionDataHash != nil {
+				sale.NftItem.Collection.DataHash = *raw.CollectionDataHash
+			}
+			if raw.CollectionCodeHash != nil {
+				sale.NftItem.Collection.CodeHash = *raw.CollectionCodeHash
+			}
+			if raw.CollectionLastTransactionLt != nil {
+				sale.NftItem.Collection.LastTransactionLt = *raw.CollectionLastTransactionLt
+			}
+		}
+	}
+
+	return &sale, nil
+}
+
 func ScanJettonMaster(row pgx.Row) (*JettonMaster, error) {
 	var res JettonMaster
 	err := row.Scan(&res.Address, &res.TotalSupply, &res.Mintable, &res.AdminAddress,
@@ -1543,6 +1739,7 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.StakingDataTokensBurnt,
 		&act.StakingDataTokensMinted,
 		&act.Success,
+		&act.Finality,
 		&act.TraceExternalHash,
 		&act.TraceExternalHashNorm,
 		&act.ExtraCurrencies,
@@ -1627,6 +1824,32 @@ func ScanRawAction(row pgx.Row) (*RawAction, error) {
 		&act.LayerzeroDvnVerifyProxy,
 		&act.LayerzeroDvnVerifyUln,
 		&act.LayerzeroDvnVerifyUlnConnection,
+		&act.CocoonWorkerPayoutPayoutType,
+		&act.CocoonWorkerPayoutQueryId,
+		&act.CocoonWorkerPayoutNewTokens,
+		&act.CocoonWorkerPayoutWorkerState,
+		&act.CocoonWorkerPayoutWorkerTokens,
+		&act.CocoonProxyPayoutQueryId,
+		&act.CocoonProxyChargeQueryId,
+		&act.CocoonProxyChargeNewTokensUsed,
+		&act.CocoonProxyChargeExpectedAddress,
+		&act.CocoonClientTopUpQueryId,
+		&act.CocoonRegisterProxyQueryId,
+		&act.CocoonUnregisterProxyQueryId,
+		&act.CocoonUnregisterProxySeqno,
+		&act.CocoonClientRegisterQueryId,
+		&act.CocoonClientRegisterNonce,
+		&act.CocoonClientChangeSecretHashQueryId,
+		&act.CocoonClientChangeSecretHashNewSecretHash,
+		&act.CocoonClientRequestRefundQueryId,
+		&act.CocoonClientRequestRefundViaWallet,
+		&act.CocoonGrantRefundQueryId,
+		&act.CocoonGrantRefundNewTokensUsed,
+		&act.CocoonGrantRefundExpectedAddress,
+		&act.CocoonClientIncreaseStakeQueryId,
+		&act.CocoonClientIncreaseStakeNewStake,
+		&act.CocoonClientWithdrawQueryId,
+		&act.CocoonClientWithdrawWithdrawAmount,
 
 		&act.AncestorType,
 		&act.Accounts,

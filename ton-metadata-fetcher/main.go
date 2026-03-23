@@ -9,7 +9,9 @@ import (
 	"io"
 	"log"
 	"math"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -26,6 +28,7 @@ var img_url_builder *ImgProxyUrlBuilder
 var ipfs_downloader *IpfsDownloader
 
 var overrideManager *OverrideManager
+var blockedNetworks []*net.IPNet
 
 var max_retries int
 var initial_backoff time.Duration
@@ -34,6 +37,46 @@ var max_backoff time.Duration
 var stalled_task_interval time.Duration
 
 var EXPIRATION_PERIOD = 7 * 24 * time.Hour // 1 week
+
+func loadBlockedNetworks(path string) ([]*net.IPNet, error) {
+	defaults := []string{
+		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+		"127.0.0.0/8", "169.254.0.0/16",
+		"::1/128", "fc00::/7", "fe80::/10",
+	}
+
+	cidrs := defaults
+	if path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read blocked networks file: %v", err)
+		}
+		var fileCidrs []string
+		if err := json.Unmarshal(data, &fileCidrs); err != nil {
+			return nil, fmt.Errorf("failed to parse blocked networks file: %v", err)
+		}
+		cidrs = fileCidrs
+	}
+
+	var networks []*net.IPNet
+	for _, cidr := range cidrs {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CIDR %q: %v", cidr, err)
+		}
+		networks = append(networks, network)
+	}
+	return networks, nil
+}
+
+func isBlockedIP(ip net.IP) bool {
+	for _, network := range blockedNetworks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
 
 type BackgroundTask struct {
 	Id    int64
@@ -280,7 +323,7 @@ func fetchHttpMetadata(url string) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("non-OK HTTP status: %s", resp.Status)
 	}
 
-	body_bytes, err := io.ReadAll(resp.Body)
+	body_bytes, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
@@ -354,6 +397,12 @@ func fetchContent(metadata map[string]interface{}) (AddressMetadata, error) {
 
 func processTask(ctx context.Context, pool *pgxpool.Pool, task FetchTask) (taskError error) {
 	defer gate.Release(1)
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Panic in processTask for %v: %v", task, r)
+			taskError = fmt.Errorf("panic: %v", r)
+		}
+	}()
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to acquire connection: %v", err)
@@ -564,6 +613,7 @@ func main() {
 	var ipfs_api_url string
 	var ipfs_server_url string
 	var overridesFilePath string
+	var blockedNetworksFile string
 
 	flag.StringVar(&pg_dsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
 	flag.IntVar(&processes, "processes", 32, "Set number of parallel queries")
@@ -578,6 +628,7 @@ func main() {
 	flag.StringVar(&ipfs_api_url, "ipfs-api-url", "", "Ipfs api url (http://127.0.0.1:5001)")
 	flag.StringVar(&ipfs_server_url, "ipfs-server-url", "https://ipfs.io/ipfs", "Ipfs gateway server url")
 	flag.StringVar(&overridesFilePath, "overrides-file", "metadata_overrides.json", "Path to metadata overrides JSON file")
+	flag.StringVar(&blockedNetworksFile, "blocked-networks-file", "", "Path to JSON file with blocked CIDR ranges")
 	flag.Parse()
 
 	key, err := hex.DecodeString(imgproxy_key)
@@ -610,8 +661,43 @@ func main() {
 	}
 
 	gate = semaphore.NewWeighted(int64(processes))
+
+	blockedNetworks, err = loadBlockedNetworks(blockedNetworksFile)
+	if err != nil {
+		log.Fatal("failed to load blocked networks: ", err)
+	}
+	log.Printf("Loaded %d blocked network ranges", len(blockedNetworks))
+
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	client = &http.Client{
 		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				host, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid address: %v", err)
+				}
+				ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+				if err != nil {
+					return nil, err
+				}
+				if len(ips) == 0 {
+					return nil, fmt.Errorf("no addresses resolved for host: %s", host)
+				}
+				for _, ip := range ips {
+					if isBlockedIP(ip.IP) {
+						return nil, fmt.Errorf("blocked request to private IP: %s", ip.IP)
+					}
+				}
+				return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+			},
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 3 {
+				return fmt.Errorf("too many redirects")
+			}
+			return nil
+		},
 	}
 	ctx := context.Background()
 	pool, err := initializeDb(ctx, pg_dsn, processes)

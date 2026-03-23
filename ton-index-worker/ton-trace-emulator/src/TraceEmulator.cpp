@@ -35,7 +35,7 @@ td::Result<block::StdAddress> fetch_msg_dest_address(td::Ref<vm::Cell> msg, int&
     }
 }
 
-void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, ton::LogicalTime lt,
+void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress address, ton::LogicalTime lt, size_t depth,
                                 td::Promise<std::unique_ptr<TraceNode>> promise) {
     auto account_r = context_.get_account_state(address);
     if (account_r.is_error()) {
@@ -67,7 +67,7 @@ void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress addr
     
     auto result = std::make_unique<TraceNode>();
     result->node_id = in_msg->get_hash().bits();
-    result->emulated = true;
+    result->finality_state = FinalityState::Emulated;
     result->address = address;
     result->transaction_root = emulation_success.transaction;
     result->block_id = block_id_;
@@ -82,7 +82,7 @@ void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress addr
         return;
     }
     size_t pending = 0;
-    if (trans.outmsg_cnt > 0 && !context_.is_limit_exceeded()) {
+    if (trans.outmsg_cnt > 0 && depth < context_.trace_depth_limit() && !context_.is_limit_exceeded()) {
         vm::Dictionary dict{trans.r1.out_msgs, 15};
         for (int ind = 0; ind < trans.outmsg_cnt; ind++) {
             auto out_msg = dict.lookup_ref(td::BitArray<15>{ind});
@@ -121,7 +121,7 @@ void TraceEmulatorImpl::emulate(td::Ref<vm::Cell> in_msg, block::StdAddress addr
                 }
                 td::actor::send_closure(SelfId, &TraceEmulatorImpl::child_emulated, trace_raw, R.move_as_ok(), child_ind);
             });
-            td::actor::send_closure(emulator_actors_[out_msg_address].get(), &TraceEmulatorImpl::emulate, out_msg, out_msg_address, lt + 1, std::move(P));
+            td::actor::send_closure(emulator_actors_[out_msg_address].get(), &TraceEmulatorImpl::emulate, out_msg, out_msg_address, lt + 1, depth + 1, std::move(P));
             pending++;
         }
         result->children.resize(pending);
@@ -171,7 +171,8 @@ void ShardBlockEmulator::start_up() {
     }
 
     size_t pending = 0;
-    for (auto& msg: in_msgs_) {
+    for (const auto& emulation_msg : in_msgs_) {
+        auto& msg = emulation_msg.msg;
         int type;
         auto out_msg_address_r = fetch_msg_dest_address(msg, type);
         if (type == block::gen::CommonMsgInfo::ext_out_msg_info) {
@@ -199,7 +200,7 @@ void ShardBlockEmulator::start_up() {
             }
             td::actor::send_closure(SelfId, &ShardBlockEmulator::child_emulated, R.move_as_ok(), child_ind);
         });
-        td::actor::send_closure(emulator_actors_[out_msg_address].get(), &TraceEmulatorImpl::emulate, msg, out_msg_address, lt, std::move(P));
+        td::actor::send_closure(emulator_actors_[out_msg_address].get(), &TraceEmulatorImpl::emulate, msg, out_msg_address, lt, emulation_msg.depth, std::move(P));
         pending++;
     }
     result_.resize(pending);
@@ -227,15 +228,16 @@ void ShardBlockEmulator::child_emulated(std::unique_ptr<TraceNode> node, size_t 
 void MasterchainBlockEmulator::start_up() {
     // remember input message order by hash
     for (int i = 0; i < in_msgs_.size(); i++) {
-        auto h = in_msgs_[i]->get_hash().bits();
+        auto h = in_msgs_[i].msg->get_hash().bits();
         input_index_[h] = i;
     }
 
-    struct Bucket { ton::BlockId blkid; std::vector<td::Ref<vm::Cell>> msgs; };
+    struct Bucket { ton::BlockId blkid; std::vector<EmulationMessage> msgs; };
     std::vector<Bucket> buckets;
     std::unordered_map<block::ShardId, size_t, ShardIdHash> bucket_idx;
 
-    for (auto& msg : in_msgs_) {
+    for (const auto& emulation_msg : in_msgs_) {
+        const auto& msg = emulation_msg.msg;
         int type;
         auto msg_dest_r = fetch_msg_dest_address(msg, type);
         if (msg_dest_r.is_error()) {
@@ -256,7 +258,7 @@ void MasterchainBlockEmulator::start_up() {
                     bucket_idx[sid] = buckets.size();
                     buckets.push_back({shard_state.blkid, {}});
                 }
-                buckets[bucket_idx[sid]].msgs.emplace_back(msg);
+                buckets[bucket_idx[sid]].msgs.push_back(emulation_msg);
                 placed = true;
                 break;
             }
@@ -289,7 +291,7 @@ void MasterchainBlockEmulator::start_up() {
                                         shard, R.move_as_ok(), std::move(promise));
             }
         });
-        td::actor::create_actor<ShardBlockEmulator>("ShardBlockEmulator", b.blkid, context_, b.msgs, std::move(P)).release();
+        td::actor::create_actor<ShardBlockEmulator>("ShardBlockEmulator", b.blkid, context_, b.msgs, std::move(P), measurement_).release();
     }
 }
 
@@ -299,13 +301,24 @@ void MasterchainBlockEmulator::shard_emulated(block::ShardId shard,
     promise.set_result(td::Unit());
 }
 
-td::Status find_out_msgs_to_emulate_next(const std::unique_ptr<TraceNode>& node, std::vector<td::Ref<vm::Cell>>& result) {
+td::Status find_out_msgs_to_emulate_next(const std::unique_ptr<TraceNode>& node, size_t depth, size_t depth_limit,
+                                         std::vector<EmulationMessage>& result) {
+    if (!node) {
+        return td::Status::OK();
+    }
+    if (depth >= depth_limit) {
+        return td::Status::OK();
+    }
+
     block::gen::Transaction::Record trans;
     if (!tlb::unpack_cell(node->transaction_root, trans)) {
         return td::Status::Error("Failed to unpack Transaction");
     }
     std::unordered_set<td::Bits256> emulated_msgs;
     for (const auto& child : node->children) {
+        if (!child) {
+            continue;
+        }
         emulated_msgs.insert(child->node_id);
     }
     if (trans.outmsg_cnt != 0) {
@@ -319,13 +332,16 @@ td::Status find_out_msgs_to_emulate_next(const std::unique_ptr<TraceNode>& node,
             }
             auto msg_hash = td::Bits256(msg->get_hash().as_bitslice().bits());
             if (emulated_msgs.find(msg_hash) == emulated_msgs.end()) {
-                result.push_back(msg);
+                result.push_back(EmulationMessage{msg, depth + 1});
             }
         }
     }
 
     for (const auto& child : node->children) {
-        TRY_STATUS(find_out_msgs_to_emulate_next(child, result));
+        if (!child) {
+            continue;
+        }
+        TRY_STATUS(find_out_msgs_to_emulate_next(child, depth + 1, depth_limit, result));
     }
     return td::Status::OK();
 }
@@ -367,9 +383,11 @@ void MasterchainBlockEmulator::all_shards_emulated() {
         return;
     }
 
-    std::vector<td::Ref<vm::Cell>> to_emulate_in_next_mc_block;
-    for (const auto& node : result_) {
-        auto r = find_out_msgs_to_emulate_next(node, to_emulate_in_next_mc_block);
+    std::vector<EmulationMessage> to_emulate_in_next_mc_block;
+    for (size_t i = 0; i < result_.size(); ++i) {
+        auto r = find_out_msgs_to_emulate_next(result_[i], in_msgs_[i].depth,
+                                               context_.trace_depth_limit(),
+                                               to_emulate_in_next_mc_block);
         if (r.is_error()) {
             error(r.move_as_error());
             return;
@@ -392,7 +410,7 @@ void MasterchainBlockEmulator::all_shards_emulated() {
     context_.increase_seqno(3);
 
     td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", 
-        context_, to_emulate_in_next_mc_block, std::move(P)).release();
+        context_, to_emulate_in_next_mc_block, std::move(P), measurement_).release();
 }
 
 void MasterchainBlockEmulator::error(td::Status error) {
@@ -451,12 +469,14 @@ void MasterchainBlockEmulator::next_mc_emulated(std::vector<std::unique_ptr<Trac
     stop();
 }
 
-TraceEmulator::TraceEmulator(MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise)
-    : mc_data_state_(std::move(mc_data_state)), in_msg_(std::move(in_msg)), ignore_chksig_(ignore_chksig), promise_(std::move(promise)) {
+TraceEmulator::TraceEmulator(MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise, const MeasurementPtr& measurement)
+    : mc_data_state_(std::move(mc_data_state)), in_msg_(std::move(in_msg)), ignore_chksig_(ignore_chksig),
+      promise_(std::move(promise)), rand_seed_(td::Bits256::zero()), measurement_(measurement) {
 }
 
 void TraceEmulator::start_up() {
     timer_.resume();
+    measurement_->measure_step("trace_emulator_start");
    
     context_ = std::make_unique<EmulationContext>(mc_data_state_.shard_blocks_[0].handle->id().id.seqno, mc_data_state_.config_, ignore_chksig_);
     for (const auto& shard_state : mc_data_state_.shard_blocks_) {
@@ -472,9 +492,9 @@ void TraceEmulator::start_up() {
         td::actor::send_closure(SelfId, &TraceEmulator::finish, std::move(R));
     });
     
-    std::vector<td::Ref<vm::Cell>> in_msgs = {in_msg_};
+    std::vector<EmulationMessage> in_msgs = {{in_msg_, 1}};
 
-    td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", *context_.get(), std::move(in_msgs), std::move(P)).release();
+    td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", *context_.get(), std::move(in_msgs), std::move(P), measurement_).release();
 }
 
 void TraceEmulator::finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> root_r) {
@@ -504,5 +524,8 @@ void TraceEmulator::finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> r
     result.tx_limit_exceeded = context_->is_limit_exceeded();
     promise_.set_result(std::move(result));
     g_statistics.record_time(EMULATE_TRACE, timer_.elapsed() * 1e3);
+
+
+    measurement_->measure_step("trace_emulator_complete");
     stop();
 }

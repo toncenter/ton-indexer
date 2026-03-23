@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/pprof"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/redirect"
 	"github.com/gofiber/swagger"
 	_ "github.com/toncenter/ton-indexer/ton-index-go/docs"
@@ -38,6 +40,8 @@ type Settings struct {
 	Debug           bool
 	Request         index.RequestSettings
 	ImgProxyBaseUrl string
+	UseCache        bool
+	CacheServiceUrl string
 }
 
 func onlyOneOf(flags ...bool) bool {
@@ -50,13 +54,50 @@ func onlyOneOf(flags ...bool) bool {
 	return res <= 1
 }
 
+func validateDirection(direction *string) error {
+	if direction == nil {
+		return nil
+	}
+	if *direction != "in" && *direction != "out" {
+		return index.IndexError{Code: 422, Message: "direction should be one of: in, out"}
+	}
+	return nil
+}
+
+var actionTypeFilterRegexp = regexp.MustCompile(`^[A-Za-z0-9_.]+$`)
+var nftIndexRegexp = regexp.MustCompile(`^[0-9]+$`)
+
+func validateActionTypeFilter(values []string, paramName string) error {
+	for _, value := range values {
+		if len(value) == 0 {
+			continue
+		}
+		if !actionTypeFilterRegexp.MatchString(value) {
+			return index.IndexError{Code: 422, Message: fmt.Sprintf("%s contains invalid characters", paramName)}
+		}
+	}
+	return nil
+}
+
+func validateNFTItemIndex(values []string) error {
+	for _, value := range values {
+		if len(value) == 0 {
+			continue
+		}
+		if !nftIndexRegexp.MatchString(value) {
+			return index.IndexError{Code: 422, Message: "index should contain digits only"}
+		}
+	}
+	return nil
+}
+
 var pool *index.DbClient
 var masterPool *index.DbClient
 var settings Settings
 var emulatedTracesRepository *emulated.EmulatedTracesRepository
 
 //	@title			TON Index (Go)
-//	@version		1.2.5
+//	@version		1.2.6
 //	@description	TON Index collects data from a full node to PostgreSQL database and provides convenient API to an indexed blockchain.
 //  @query.collection.format multi
 
@@ -428,6 +469,9 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+	if err := validateDirection(msg_req.Direction); err != nil {
+		return err
+	}
 	if msg_req.BodyHash == nil && msg_req.MessageHash == nil && msg_req.Opcode == nil {
 		return index.IndexError{Code: 422, Message: "at least one of msg_hash, body_hash, opcode should be specified"}
 	}
@@ -501,6 +545,9 @@ func GetMessages(c *fiber.Ctx) error {
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateDirection(msg_req.Direction); err != nil {
+		return err
 	}
 
 	msgs, book, metadata, err := pool.QueryMessages(msg_req, utime_req, lt_req, lim_req, request_settings)
@@ -817,6 +864,9 @@ func GetNFTItems(c *fiber.Ctx) error {
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
 	}
+	if err := validateNFTItemIndex(nft_req.Index); err != nil {
+		return err
+	}
 	if len(nft_req.CollectionAddress) > 1 && len(nft_req.OwnerAddress) != 1 {
 		return index.IndexError{Code: 422, Message: "exact one owner_address required for multiple collection_address"}
 	}
@@ -899,6 +949,44 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	resp := index.NFTTransfersResponse{Transfers: res, AddressBook: book, Metadata: metadata}
+	return c.JSON(resp)
+}
+
+// @summary Get NFT Sales and Auctions
+// @description Get GetGems NFT sales and auctions by sale/auction contract addresses
+// @id api_v3_get_nft_sales
+// @tags nfts
+// @Accept json
+// @Produce json
+// @success 200 {object} index.NFTSalesResponse
+// @failure 400 {object} index.RequestError
+// @param address query []string true "Sale or auction contract address in any form. Max: 1000." collectionFormat(multi)
+// @router /api/v3/nft/sales [get]
+// @security APIKeyHeader
+// @security APIKeyQuery
+func GetNFTSales(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	var sales_req index.NFTSalesRequest
+
+	if err := c.QueryParser(&sales_req); err != nil {
+		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(sales_req.Address) == 0 {
+		return index.IndexError{Code: 422, Message: "at least 1 address required"}
+	}
+
+	if len(sales_req.Address) > 1000 {
+		return index.IndexError{Code: 422, Message: "maximum 1000 addresses allowed"}
+	}
+
+	sales, book, metadata, err := pool.QueryNFTSales(sales_req, request_settings)
+	if err != nil {
+		return err
+	}
+
+	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+	resp := index.NFTSalesResponse{Sales: sales, AddressBook: book, Metadata: metadata}
 	return c.JSON(resp)
 }
 
@@ -1339,6 +1427,12 @@ func GetActions(c *fiber.Ctx) error {
 	}
 	if err := c.QueryParser(&lim_req); err != nil {
 		return index.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := validateActionTypeFilter(act_req.IncludeActionTypes, "action_type"); err != nil {
+		return err
+	}
+	if err := validateActionTypeFilter(act_req.ExcludeActionTypes, "exclude_action_type"); err != nil {
+		return err
 	}
 
 	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
@@ -2010,6 +2104,7 @@ func GetRequestSettings(c *fiber.Ctx, settings *Settings) index.RequestSettings 
 			request_settings.NoMetadata = value
 		}
 	}
+	request_settings.UseCache = settings.UseCache
 	return request_settings
 }
 
@@ -2196,10 +2291,17 @@ func main() {
 	flag.IntVar(&settings.Request.MaxLimit, "max-limit", 1000, "Maximum value for limit")
 	flag.IntVar(&settings.Request.MaxTraceTransactions, "max-trace-txs", 4000, "Maximum number of transactions in trace")
 	flag.IntVar(&settings.MaxThreads, "threads", 0, "Number of threads")
+	flag.StringVar(&settings.CacheServiceUrl, "cache-service-url", "", "Cache service url")
 	flag.StringVar(&redis_dsn, "redis", "", "Redis connection string")
 	flag.Parse()
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
-
+	if settings.CacheServiceUrl == "" {
+		settings.UseCache = false
+	} else {
+		log.Println("Metadata/AddressBook cache will be used")
+		settings.UseCache = true
+		index.InitCacheClient(settings.CacheServiceUrl)
+	}
 	if settings.MaxThreads > 0 {
 		runtime.GOMAXPROCS(settings.MaxThreads)
 	}
@@ -2231,6 +2333,7 @@ func main() {
 		ReadBufferSize: 1048576,
 	}
 	app := fiber.New(config)
+	app.Use(recover.New())
 
 	// converters
 	fiber.SetParserDecoder(fiber.ParserConfig{
@@ -2299,6 +2402,7 @@ func main() {
 	app.Get("/api/v3/nft/collections", GetNFTCollections)
 	app.Get("/api/v3/nft/items", GetNFTItems)
 	app.Get("/api/v3/nft/transfers", GetNFTTransfers)
+	app.Get("/api/v3/nft/sales", GetNFTSales)
 
 	// jettons
 	app.Get("/api/v3/jetton/masters", GetJettonMasters)

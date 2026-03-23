@@ -112,6 +112,9 @@ func (req TonConnectEmulateRequest) Validate() error {
 	if len(req.Messages) == 0 {
 		return fmt.Errorf("messages array cannot be empty")
 	}
+	if len(req.Messages) > 4 {
+		return fmt.Errorf("messages array cannot contain more than 4 messages")
+	}
 	for i, msg := range req.Messages {
 		if msg.Address == "" {
 			return fmt.Errorf("message at index %d cannot be empty", i)
