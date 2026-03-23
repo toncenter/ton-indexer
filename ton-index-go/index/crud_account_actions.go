@@ -8,17 +8,29 @@ import (
 	"strings"
 )
 
+// roleToIds returns the set of role values matching the requested filter.
+// 3-bit bitmask: ECON_OUT=1, ECON_IN=2, INITIATOR=4.
+// Values: 0=observer, 1=econ_out, 2=econ_in, 3=econ_both, 4=initiator, 5=init_out, 6=(trace-only), 7=init_both
 func roleToIds(role *RoleType) []int {
 	if role == nil {
-		return []int{1, 2, 3}
+		// Default: all participants including observers
+		return []int{0, 1, 2, 3, 4, 5, 6, 7}
 	}
 	switch *role {
 	case RoleSender:
-		return []int{1, 3}
+		// Outgoing: bit 0 set (value flowed out)
+		return []int{1, 3, 5, 7}
 	case RoleReceiver:
-		return []int{2, 3}
+		// Incoming: bit 1 set (value flowed in)
+		return []int{2, 3, 6, 7}
+	case RoleInitiated:
+		// Initiated by account: bit 2 set
+		return []int{4, 5, 6, 7}
+	case RoleObserver:
+		// Mentioned but no economic role
+		return []int{0}
 	default:
-		return []int{1, 2, 3}
+		return []int{0, 1, 2, 3, 4, 5, 6, 7}
 	}
 }
 func roleToValues(role *RoleType) string {
@@ -36,7 +48,7 @@ func (db *DbClient) QueryAccountActions(
 	lt_req LtRequest,
 	lim_req LimitRequest,
 	settings RequestSettings,
-) ([]TraceActions, AddressBook, Metadata, error) {
+) ([]Action, AddressBook, Metadata, error) {
 	if len(req.SupportedActionTypes) == 0 {
 		req.SupportedActionTypes = []string{"latest"}
 	}
@@ -128,7 +140,7 @@ func (db *DbClient) QueryAccountActions(
 	}
 
 	if len(traceInfos) == 0 {
-		return []TraceActions{}, AddressBook{}, Metadata{}, nil
+		return []Action{}, AddressBook{}, Metadata{}, nil
 	}
 
 	// Step 2: get actions for those trace_ids, filtered by role via action_accounts
@@ -218,27 +230,6 @@ func (db *DbClient) QueryAccountActions(
 		}
 	}
 
-	// Step 3: group actions by trace_id, preserving order from query results
-	traceOrder := []string{}
-	traceOrderSeen := map[string]bool{}
-	actionsByTrace := map[string][]Action{}
-	for _, action := range actions {
-		tid := string(*action.TraceId)
-		if !traceOrderSeen[tid] {
-			traceOrder = append(traceOrder, tid)
-			traceOrderSeen[tid] = true
-		}
-		actionsByTrace[tid] = append(actionsByTrace[tid], action)
-	}
-
-	traceActions := make([]TraceActions, 0, len(traceOrder))
-	for _, tid := range traceOrder {
-		traceActions = append(traceActions, TraceActions{
-			TraceId: HashType(tid),
-			Actions: actionsByTrace[tid],
-		})
-	}
-
 	// Build address book + metadata
 	book := AddressBook{}
 	metadata := Metadata{}
@@ -261,5 +252,5 @@ func (db *DbClient) QueryAccountActions(
 		}
 	}
 
-	return traceActions, book, metadata, nil
+	return actions, book, metadata, nil
 }

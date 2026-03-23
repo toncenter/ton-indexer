@@ -101,9 +101,9 @@ type TraceActions struct {
 } // @name TraceActions
 
 type AccountActionsResponse struct {
-	TraceActions []TraceActions `json:"trace_actions"`
-	AddressBook  AddressBook   `json:"address_book"`
-	Metadata     Metadata      `json:"metadata"`
+	Actions     []Action    `json:"actions"`
+	AddressBook AddressBook `json:"address_book"`
+	Metadata    Metadata    `json:"metadata"`
 } // @name AccountActionsResponse
 
 type DNSRecordsResponse struct {

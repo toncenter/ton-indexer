@@ -192,8 +192,10 @@ type VestingContractsRequest struct {
 type RoleType string
 
 const (
-	RoleSender   RoleType = "sender"
-	RoleReceiver RoleType = "receiver"
+	RoleSender    RoleType = "sender"    // outgoing: value flowed out (role & 1 != 0)
+	RoleReceiver  RoleType = "receiver"  // incoming: value flowed in (role & 2 != 0)
+	RoleInitiated RoleType = "initiated" // triggered by this account (role & 4 != 0)
+	RoleObserver  RoleType = "observer"  // mentioned but no economic role (role = 0)
 )
 
 type AccountActionsRequest struct {

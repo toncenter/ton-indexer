@@ -33,9 +33,21 @@ logger = logging.getLogger(__name__)
 MASTERCHAIN_INDEX = -1
 MASTERCHAIN_SHARD = -9223372036854775808
 
-ROLE_SENDER = 1
-ROLE_RECEIVER = 2
-ROLE_SENDER_RECEIVER = 3
+# 3-bit bitmask role system
+ECON_OUT = 1       # Bit 0: value flowed out
+ECON_IN = 2        # Bit 1: value flowed in
+INITIATOR = 4      # Bit 2: account triggered the action
+
+# Convenience combinations
+OBSERVER = 0
+INIT_OUT = INITIATOR | ECON_OUT       # 5: standard sender
+INIT_BOTH = INITIATOR | ECON_OUT | ECON_IN  # 7: bidirectional initiator
+ECON_BOTH = ECON_OUT | ECON_IN        # 3: bidirectional non-initiator
+
+# Backward compat aliases (used by block_tree_serializer create_unknown_action)
+ROLE_SENDER = INIT_OUT
+ROLE_RECEIVER = ECON_IN
+ROLE_SENDER_RECEIVER = ECON_BOTH
 
 settings = Settings()
 

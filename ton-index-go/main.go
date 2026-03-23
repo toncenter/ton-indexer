@@ -1400,15 +1400,16 @@ func GetAccountActions(c *fiber.Ctx) error {
 		return index.IndexError{Code: 422, Message: "account is required"}
 	}
 
-	if req.Role != nil && *req.Role != index.RoleSender && *req.Role != index.RoleReceiver {
-		return index.IndexError{Code: 422, Message: "role must be 'sender' or 'receiver'"}
+	if req.Role != nil && *req.Role != index.RoleSender && *req.Role != index.RoleReceiver &&
+		*req.Role != index.RoleInitiated && *req.Role != index.RoleObserver {
+		return index.IndexError{Code: 422, Message: "role must be 'sender', 'receiver', 'initiated', or 'observer'"}
 	}
 
 	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
 		req.SupportedActionTypes = []string{value_str}
 	}
 
-	traceActions, book, metadata, err := pool.QueryAccountActions(
+	actions, book, metadata, err := pool.QueryAccountActions(
 		req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
@@ -1416,9 +1417,9 @@ func GetAccountActions(c *fiber.Ctx) error {
 	index.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
 
 	resp := index.AccountActionsResponse{
-		TraceActions: traceActions,
-		AddressBook:  book,
-		Metadata:     metadata,
+		Actions:     actions,
+		AddressBook: book,
+		Metadata:    metadata,
 	}
 	return c.Status(200).JSON(resp)
 }
