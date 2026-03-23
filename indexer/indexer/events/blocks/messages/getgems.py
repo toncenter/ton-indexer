@@ -10,7 +10,7 @@ from indexer.events.blocks.basic_blocks import TonTransferBlock
 from indexer.events.blocks.core import Block
 
 AUCTION_VERSION_MAPPING = {
-    # "zlp4U06qps7tja/UhtB262CpsNbb+1Nnb2YmScBomVY=": "v4r1", # TODO
+    "zlp4U06qps7tja/UhtB262CpsNbb+1Nnb2YmScBomVY=": "v4r1",
     "ZmiHL6eXBUQ//UdSPo6eqfdquZ+aC1nSfej4GhwnudQ=": "v2",
     "G9nFo5v/t6DzQViLXdkrgTqEK/Ze8UEJOCIAzq+Pct8=": "v3r2",
     "u29ireD+stefqzuK6/CTCvmFU99gCTsgJ/Covxab/Ow=": "v3r3",
@@ -134,6 +134,8 @@ def get_auction_data(boc: str, code_hash_b64: str) -> Optional[NftAuctionData]:
             return parse_auction_v3r2(cs)
         elif version == "v3r3":
             return parse_auction_v3r3(cs)
+        elif version == "v4r1":
+            return parse_auction_v4r1(cs)
         return None
 
     except Exception:
@@ -215,6 +217,35 @@ def parse_auction_v3r3(cs: Slice) -> NftAuctionData:
     data.step_time = constant_cell.load_uint(32)
 
     return data
+
+def parse_auction_v4r1(cs: Slice) -> NftAuctionData:
+    data = NftAuctionData()
+    cs.load_uint(1 + 1)  # end?, is_canceled?
+    cs.load_address()  # last_member
+    cs.load_coins()  # last_bid
+    cs.load_uint(32)  # last_bid_at
+    data.end_time = cs.load_uint(32)
+    cs.load_address()  # nft_owner
+    cs.load_uint(64)  # last_query_id
+
+    fees_cell = cs.load_ref().to_slice()
+    constant_cell = cs.load_ref().to_slice()
+
+    data.mp_fee_addr = fees_cell.load_address()
+    data.royalty_fee_addr = fees_cell.load_address()
+    data.mp_fee_factor = fees_cell.load_uint(32)
+    data.mp_fee_base = fees_cell.load_uint(32)
+    data.royalty_fee_factor = fees_cell.load_uint(32)
+    data.royalty_fee_base = fees_cell.load_uint(32)
+
+    data.mp_addr = constant_cell.load_address()
+    data.min_bid = constant_cell.load_coins()
+    data.max_bid = constant_cell.load_coins()
+    data.min_step = constant_cell.load_uint(7)
+    data.step_time = constant_cell.load_uint(17)
+
+    return data
+
 
 class SaleUpdateMessage:
     opcode = 0x6c6c2080
