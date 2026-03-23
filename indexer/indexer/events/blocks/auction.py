@@ -266,7 +266,7 @@ class NftPutOnSaleBlockMatcher(BlockMatcher):
             marketplace_fee_address = AccountId(sale_data.marketplace_fee_address)
             marketplace_fee = Amount(int(sale_data.marketplace_fee)) if sale_data.marketplace_fee is not None else None
             royalty_address = AccountId(sale_data.royalty_address)
-            royalty_amount = Amount(int(sale_data.royalty_amount)) if getgems_sale.royalty_amount is not None else None
+            royalty_amount = Amount(int(sale_data.royalty_amount)) if sale_data.royalty_amount is not None else None
 
             new_block = NftPutOnSaleBlock(NftPutOnSaleBlockData(
                 nft_address=AccountId(transfer_to_sale.data['nft']['address']),
