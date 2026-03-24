@@ -1493,7 +1493,7 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
     action.tx_hashes = list(extended_tx_hashes)
 
     action.accounts = list(set(a for a in action.accounts if a is not None))
-    action.account_roles = assign_roles(action)
+    action.account_roles = assign_roles(action, trace)
 
     # NFT items should always be ECON_BOTH so they appear on the NFT's explorer page
     # in all filter modes (incoming/outgoing). asset_secondary holds the NFT item address
@@ -1607,5 +1607,5 @@ def create_unknown_action(trace: Trace) -> Action:
         trace_mc_seqno_end=trace.mc_seqno_end
     )
     action.accounts = list(set([n.account for n in trace.transactions]))
-    action.account_roles = {acc: ECON_BOTH for acc in action.accounts}
+    action.account_roles = assign_roles(action, trace)
     return action

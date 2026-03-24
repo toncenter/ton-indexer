@@ -11,7 +11,6 @@ from indexer.events.blocks.elections import elector_address
 
 def _default_role_assignment(action: Action) -> dict[str, int]:
     """Standard value transfer: source sends, destination receives, unnamed = ECON_BOTH."""
-    initiator = action.source
     out_accounts = set()
     in_accounts = set()
 
@@ -31,8 +30,6 @@ def _default_role_assignment(action: Action) -> dict[str, int]:
             role |= ECON_OUT
         if account in in_accounts:
             role |= ECON_IN
-        if account == initiator:
-            role |= INITIATOR
         if role == 0:
             role = ECON_BOTH
         roles[account] = role
@@ -40,21 +37,19 @@ def _default_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _governance_role_assignment(action: Action) -> dict[str, int]:
-    """No value flow. Initiator triggers, everything else is observer."""
+    """No value flow. Source gets ECON_OUT as marker, rest OBSERVER."""
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INITIATOR
+            roles[account] = ECON_OUT
         else:
             roles[account] = OBSERVER
     return roles
 
 
 def _swap_role_assignment(action: Action) -> dict[str, int]:
-    """Swap initiator sends and receives (7). Pools are ECON_BOTH (3). Rest OBSERVER (0)."""
-    initiator = action.source
-
-    # Named directional accounts (excluding initiator, handled separately)
+    """Swap: source sends and receives (ECON_BOTH). Pools are ECON_BOTH. Rest OBSERVER."""
+    # Named directional accounts (excluding source, handled separately)
     named_out = set()
     named_in = set()
     if action.source_secondary is not None:
@@ -77,8 +72,8 @@ def _swap_role_assignment(action: Action) -> dict[str, int]:
 
     roles = {}
     for account in action.accounts:
-        if account == initiator:
-            roles[account] = INIT_BOTH
+        if account == action.source:
+            roles[account] = ECON_BOTH
         elif account in named_out:
             roles[account] = ECON_OUT
         elif account in named_in:
@@ -92,9 +87,9 @@ def _swap_role_assignment(action: Action) -> dict[str, int]:
 
 def _staking_deposit_role_assignment(action: Action) -> dict[str, int]:
     """Staking deposit/withdrawal-request. Provider determines behavior:
-    - tonstakers/ethena: user sends assets AND receives tokens/NFT back → INIT_BOTH(7)
-    - nominator deposit: user sends TON, nothing back in same action → INIT_OUT(5)
-    - nominator withdrawal_request: pure governance, no economic flow → INITIATOR(4)
+    - tonstakers/ethena: user sends assets AND receives tokens/NFT back → ECON_BOTH(3)
+    - nominator deposit: user sends TON, nothing back in same action → ECON_OUT(1)
+    - nominator withdrawal_request: pure governance, no economic flow → ECON_OUT(1)
     """
     provider = None
     if action.staking_data:
@@ -103,7 +98,7 @@ def _staking_deposit_role_assignment(action: Action) -> dict[str, int]:
     if provider == 'nominator' and action.type == 'stake_withdrawal_request':
         return _governance_role_assignment(action)
 
-    source_role = INIT_BOTH if provider != 'nominator' else INIT_OUT
+    source_role = ECON_BOTH if provider != 'nominator' else ECON_OUT
 
     roles = {}
     for account in action.accounts:
@@ -121,11 +116,11 @@ def _staking_deposit_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _withdrawal_role_assignment(action: Action) -> dict[str, int]:
-    """User initiates and receives back (7). Counterparty pays out (1)."""
+    """User sends and receives back (ECON_BOTH). Counterparty pays out (ECON_OUT)."""
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_BOTH
+            roles[account] = ECON_BOTH
         elif account == action.source_secondary:
             roles[account] = ECON_OUT
         elif account == action.destination:
@@ -138,11 +133,11 @@ def _withdrawal_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _deposit_liquidity_role_assignment(action: Action) -> dict[str, int]:
-    """User sends assets and receives LP (7). Pool is bidirectional (3)."""
+    """User sends assets and receives LP (ECON_BOTH). Pool is bidirectional (ECON_BOTH)."""
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_BOTH
+            roles[account] = ECON_BOTH
         elif account == action.source_secondary:
             roles[account] = ECON_OUT
         elif account == action.destination:
@@ -155,11 +150,11 @@ def _deposit_liquidity_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _purchase_role_assignment(action: Action) -> dict[str, int]:
-    """Buyer (dest) = INIT_BOTH(7), Seller (src) = ECON_BOTH(3)."""
+    """Buyer (dest) = ECON_BOTH, Seller (src) = ECON_BOTH."""
     roles = {}
     for account in action.accounts:
         if account == action.destination:
-            roles[account] = INIT_BOTH
+            roles[account] = ECON_BOTH
         elif account == action.source:
             roles[account] = ECON_BOTH
         else:
@@ -171,7 +166,7 @@ def _election_deposit_role_assignment(action: Action) -> dict[str, int]:
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_OUT
+            roles[account] = ECON_OUT
         elif account == elector_address:
             roles[account] = ECON_IN
         else:
@@ -183,7 +178,7 @@ def _election_recover_role_assignment(action: Action) -> dict[str, int]:
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_BOTH
+            roles[account] = ECON_BOTH
         elif account == elector_address:
             roles[account] = ECON_OUT
         else:
@@ -195,7 +190,7 @@ def _jetton_burn_role_assignment(action: Action) -> dict[str, int]:
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_OUT
+            roles[account] = ECON_OUT
         elif account == action.source_secondary:
             roles[account] = ECON_OUT
         elif action.asset and account == action.asset:
@@ -207,17 +202,16 @@ def _jetton_burn_role_assignment(action: Action) -> dict[str, int]:
 
 def _jetton_mint_role_assignment(action: Action) -> dict[str, int]:
     """Source sends TON to master, master mints jettons to destination.
-    When source == destination (common): source gets INIT_BOTH(7)."""
+    When source == destination (common): source gets ECON_BOTH."""
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            # Source sent TON to the master to trigger the mint
             if account == action.destination:
-                roles[account] = INIT_BOTH  # self-mint: initiated + sent TON + received jettons
+                roles[account] = ECON_BOTH
             else:
-                roles[account] = INIT_OUT   # sent TON to mint for someone else
+                roles[account] = ECON_OUT
         elif action.asset and account == action.asset:
-            roles[account] = ECON_BOTH      # master: receives TON, emits jettons
+            roles[account] = ECON_BOTH
         elif account == action.destination:
             roles[account] = ECON_IN
         elif account == action.destination_secondary:
@@ -228,11 +222,11 @@ def _jetton_mint_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _nft_mint_role_assignment(action: Action) -> dict[str, int]:
-    """Deployer triggers (4), NFT item receives (2)."""
+    """Deployer triggers, NFT item receives (ECON_IN)."""
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INITIATOR
+            roles[account] = ECON_OUT
         elif account == action.destination:
             roles[account] = ECON_IN
         else:
@@ -241,11 +235,11 @@ def _nft_mint_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _evaa_withdraw_role_assignment(action: Action) -> dict[str, int]:
-    """Owner initiates + receives (7). Recipient ECON_IN (2). EVAA contract pays out (1)."""
+    """Owner sends+receives (ECON_BOTH). Recipient ECON_IN. EVAA contract pays out (ECON_OUT)."""
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_BOTH
+            roles[account] = ECON_BOTH
         elif account == action.destination:
             roles[account] = ECON_IN
         elif account == action.destination_secondary:
@@ -256,11 +250,11 @@ def _evaa_withdraw_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _evaa_liquidate_role_assignment(action: Action) -> dict[str, int]:
-    """Liquidator pays debt + receives collateral (7). Borrower loses collateral (1)."""
+    """Liquidator pays debt + receives collateral (ECON_BOTH). Borrower loses collateral (ECON_OUT)."""
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_BOTH
+            roles[account] = ECON_BOTH
         elif account in (action.destination, action.destination_secondary):
             roles[account] = ECON_OUT
         else:
@@ -269,11 +263,11 @@ def _evaa_liquidate_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _tgbtc_mint_role_assignment(action: Action) -> dict[str, int]:
-    """Source triggers (4), teleport emits (1), recipient receives (2)."""
+    """Source triggers, teleport emits (ECON_OUT), recipient receives (ECON_IN)."""
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INITIATOR
+            roles[account] = ECON_OUT
         elif account == action.source_secondary:
             roles[account] = ECON_OUT
         elif account in (action.destination, action.destination_secondary):
@@ -284,11 +278,11 @@ def _tgbtc_mint_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _tgbtc_burn_role_assignment(action: Action) -> dict[str, int]:
-    """Burner sends (5), wallet sends (1), pegout is OBSERVER (0)."""
+    """Burner sends (ECON_OUT), wallet sends (ECON_OUT), pegout is OBSERVER."""
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_OUT
+            roles[account] = ECON_OUT
         elif account == action.source_secondary:
             roles[account] = ECON_OUT
         elif account == action.destination:
@@ -303,7 +297,7 @@ def _coffee_staking_withdraw_role_assignment(action: Action) -> dict[str, int]:
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_BOTH
+            roles[account] = ECON_BOTH
         elif account == action.source_secondary:
             roles[account] = ECON_IN
         elif account == action.destination:
@@ -324,18 +318,18 @@ def _auction_outbid_role_assignment(action: Action) -> dict[str, int]:
         elif account == action.destination:
             roles[account] = ECON_IN
         elif account == action.source_secondary:
-            roles[account] = INITIATOR
+            roles[account] = ECON_OUT
         else:
             roles[account] = OBSERVER
     return roles
 
 
 def _vesting_send_role_assignment(action: Action) -> dict[str, int]:
-    """Sender -> INIT_OUT, vesting contract -> OBSERVER, message dest -> ECON_IN."""
+    """Sender -> ECON_OUT, vesting contract -> OBSERVER, message dest -> ECON_IN."""
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_OUT
+            roles[account] = ECON_OUT
         elif account == action.destination_secondary:
             roles[account] = ECON_IN
         elif account == action.destination:
@@ -346,7 +340,7 @@ def _vesting_send_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _layerzero_send_role_assignment(action: Action) -> dict[str, int]:
-    """Initiator sends. Endpoint receives from composite data."""
+    """Source sends. Endpoint receives from composite data."""
     endpoint = None
     if action.layerzero_send_data is not None:
         endpoint = action.layerzero_send_data.get('endpoint')
@@ -354,7 +348,7 @@ def _layerzero_send_role_assignment(action: Action) -> dict[str, int]:
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INIT_OUT
+            roles[account] = ECON_OUT
         elif account == action.source_secondary:
             roles[account] = ECON_OUT
         elif account in (action.destination, action.destination_secondary):
@@ -367,7 +361,7 @@ def _layerzero_send_role_assignment(action: Action) -> dict[str, int]:
 
 
 def _layerzero_infra_role_assignment(action: Action) -> dict[str, int]:
-    """LayerZero infrastructure: source and destination both INITIATOR."""
+    """LayerZero infrastructure: source and destination both ECON_OUT (governance-like)."""
     dvn = None
     if action.layerzero_dvn_verify_data is not None:
         dvn = action.layerzero_dvn_verify_data.get('dvn')
@@ -375,11 +369,11 @@ def _layerzero_infra_role_assignment(action: Action) -> dict[str, int]:
     roles = {}
     for account in action.accounts:
         if account == action.source:
-            roles[account] = INITIATOR
+            roles[account] = ECON_OUT
         elif account == action.destination:
-            roles[account] = INITIATOR
+            roles[account] = ECON_OUT
         elif dvn and account == dvn:
-            roles[account] = INITIATOR
+            roles[account] = ECON_OUT
         else:
             roles[account] = OBSERVER
     return roles
@@ -470,7 +464,23 @@ _custom_role_functions: dict[str, Callable[[Action], dict[str, int]]] = {
 }
 
 
-def assign_roles(action: Action) -> dict[str, int]:
-    """Entry point. Dispatches to custom or default handler by action.type."""
+def _get_trace_initiator(trace) -> str | None:
+    """Find the account that received the external inbound message (trace root)."""
+    if trace is None or not hasattr(trace, 'transactions') or not trace.transactions:
+        return None
+    root_tx = min(trace.transactions, key=lambda tx: tx.lt)
+    return root_tx.account
+
+
+def assign_roles(action: Action, trace=None) -> dict[str, int]:
+    """Entry point. Computes economic roles via handler, then overlays INITIATOR bit
+    on the trace initiator account (the wallet that started the trace)."""
     handler = _custom_role_functions.get(action.type, _default_role_assignment)
-    return handler(action)
+    roles = handler(action)
+
+    # Overlay INITIATOR bit on the trace initiator if they participate in this action
+    trace_initiator = _get_trace_initiator(trace)
+    if trace_initiator is not None and trace_initiator in roles:
+        roles[trace_initiator] |= INITIATOR
+
+    return roles
