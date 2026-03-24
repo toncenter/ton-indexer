@@ -1461,7 +1461,7 @@ func GetActions(c *fiber.Ctx) error {
 // @success		200	{object}	index.AccountActionsResponse
 // @failure		400	{object}	index.RequestError
 // @param account query string true "Account address. Can be sent in hex, base64 or base64url form."
-// @param role query string false "Filter by account role in the trace." Enums(sender, receiver)
+// @param role query string false "Filter by account role in the trace." Enums(sender, receiver, initiated, observer)
 // @param end_utime query int32 false "Query actions for traces with `trace_end_utime <= end_utime`." minimum(0)
 // @param end_lt query int64 false "Query actions for traces with `trace_end_lt < end_lt`." minimum(0)
 // @param supported_action_types query []string false "Supported action types"
@@ -1530,6 +1530,7 @@ func GetAccountActions(c *fiber.Ctx) error {
 // @param ext_msg_hash query []string false "Find actions by trace external hash"
 // @param supported_action_types query []string false "Supported action types"
 // @param include_transactions query bool false "Include `transactions_full` array with detailed transaction data for each action in response." default(false)
+// @param role query string false "Filter by account role in the trace." Enums(sender, receiver, initiated, observer)
 // @router			/api/v3/pendingActions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
