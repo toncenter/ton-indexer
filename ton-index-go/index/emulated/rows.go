@@ -308,7 +308,8 @@ type ActionRow struct {
 	AncestorType   []string
 	ParentActionId *string
 
-	Accounts []string
+	Accounts     []string
+	AccountRoles map[string]int
 
 	// Tonco deploy fields
 	ToncoDeployPoolJetton0RouterWallet *string

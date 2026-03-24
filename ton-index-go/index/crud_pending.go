@@ -397,7 +397,7 @@ func queryPendingActionsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpo
 	emulatedContext.RemoveTraces(completed_traces)
 
 	var raw_actions []RawAction
-	for _, actions := range emulatedContext.GetActions(request.SupportedActionTypes) {
+	for _, actions := range emulatedContext.GetActionsFiltered(request.SupportedActionTypes, request.AccountAddress, request.Role) {
 		if action, err := ScanRawAction(actions); err == nil {
 			raw_actions = append(raw_actions, *action)
 		} else {

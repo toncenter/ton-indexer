@@ -169,6 +169,7 @@ type PendingActionsRequest struct {
 	ExtMsgHash           []HashType      `query:"ext_msg_hash"`
 	SupportedActionTypes []string        `query:"supported_action_types"`
 	IncludeTransactions  *bool           `query:"include_transactions"`
+	Role                 *RoleType       `query:"role"`
 }
 
 type DNSRecordsRequest struct {
