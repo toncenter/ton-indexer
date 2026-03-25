@@ -68,49 +68,35 @@ func (db *DbClient) QueryAccountActions(
 		}
 	}
 
-	// Build positional args.
-	// $1 = supported action types, $2 = account address, then dynamic.
+	// Positional args: $1 = supported action types, $2 = account address.
 	args := []any{req.SupportedActionTypes, string(req.AccountAddress)}
 	nextArg := func(val any) string {
 		args = append(args, val)
 		return fmt.Sprintf("$%d", len(args))
 	}
 
-	// Lateral filters: always account and role.
+	// Lateral filters for trace selection.
 	lateralFilters := []string{
 		"account = $2::tonaddr",
 		"role = roles.role",
 	}
 	if v := lt_req.EndLt; v != nil {
-		if req.AfterActionId != nil {
-			// Composite cursor: exact pagination using (trace_end_lt, action_id).
-			argLt := nextArg(int64(*v))
-			argAid := nextArg(string(*req.AfterActionId))
-			lateralFilters = append(lateralFilters,
-				fmt.Sprintf("(trace_end_lt, action_id) < (%s, %s)", argLt, argAid))
-		} else {
-			// Simple cursor: trace_end_lt only (backward compatible).
-			argLt := nextArg(int64(*v))
-			lateralFilters = append(lateralFilters, "trace_end_lt < "+argLt)
-		}
+		lateralFilters = append(lateralFilters, "trace_end_lt < "+nextArg(int64(*v)))
 	}
 	if v := lt_req.StartLt; v != nil {
-		argLt := nextArg(int64(*v))
-		lateralFilters = append(lateralFilters, "trace_end_lt >= "+argLt)
+		lateralFilters = append(lateralFilters, "trace_end_lt >= "+nextArg(int64(*v)))
 	}
 	if v := utime_req.EndUtime; v != nil {
-		argUt := nextArg(int64(*v))
-		lateralFilters = append(lateralFilters, "trace_end_utime < "+argUt)
+		lateralFilters = append(lateralFilters, "trace_end_utime < "+nextArg(int64(*v)))
 	}
 	if v := utime_req.StartUtime; v != nil {
-		argUt := nextArg(int64(*v))
-		lateralFilters = append(lateralFilters, "trace_end_utime >= "+argUt)
+		lateralFilters = append(lateralFilters, "trace_end_utime >= "+nextArg(int64(*v)))
 	}
 
 	lateralWhere := strings.Join(lateralFilters, " AND ")
 	values := roleToValues(req.Role)
 
-	// Action-level filters applied after the JOIN.
+	// Action-level filters applied after joining actions for the selected traces.
 	actionFilters := []string{
 		"A.end_lt IS NOT NULL",
 		"NOT(A.ancestor_type && $1::varchar[])",
@@ -132,28 +118,38 @@ func (db *DbClient) QueryAccountActions(
 
 	actionWhere := strings.Join(actionFilters, " AND ")
 
+	// Two-level query:
+	// LATERAL on action_accounts → distinct trace_ids (LIMIT controls trace count)
+	// JOIN actions for those traces, filtered by supported types + ancestor_type
 	query := fmt.Sprintf(
-		`SELECT DISTINCT ON (aa.trace_end_lt, aa.action_id) %s
-		FROM %s AS roles(role)
-		CROSS JOIN LATERAL (
-			SELECT trace_id, action_id, trace_end_lt, action_end_lt
-			FROM action_accounts
-			WHERE %s
-			ORDER BY trace_end_lt %s, action_id %s
+		`WITH trace_page AS (
+			SELECT DISTINCT ON (aa.trace_end_lt, aa.trace_id)
+				aa.trace_end_lt, aa.trace_id
+			FROM %s AS roles(role)
+			CROSS JOIN LATERAL (
+				SELECT DISTINCT trace_id, trace_end_lt
+				FROM action_accounts
+				WHERE %s
+				ORDER BY trace_end_lt %s, trace_id
+				%s
+			) aa
+			ORDER BY aa.trace_end_lt %s, aa.trace_id
 			%s
-		) aa
-		JOIN actions A ON A.trace_id = aa.trace_id AND A.action_id = aa.action_id
+		)
+		SELECT %s
+		FROM trace_page tp
+		JOIN actions A ON A.trace_id = tp.trace_id
 		WHERE %s
-		ORDER BY aa.trace_end_lt %s, aa.action_id %s
-		%s`,
-		actionsColumnQuery,
+		ORDER BY tp.trace_end_lt %s, A.end_lt %s`,
 		values,
 		lateralWhere,
-		sort_order, sort_order,
+		sort_order,
 		limit_str,
+		sort_order,
+		limit_str,
+		actionsColumnQuery,
 		actionWhere,
 		sort_order, sort_order,
-		limit_str,
 	)
 
 	if settings.DebugRequest {

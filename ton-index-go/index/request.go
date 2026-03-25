@@ -207,7 +207,6 @@ const (
 type AccountActionsRequest struct {
 	AccountAddress       AccountAddress `query:"account"`
 	Role                 *RoleType      `query:"role"`
-	AfterActionId        *HashType      `query:"after_action_id"`
 	IncludeActionTypes   []string       `query:"action_type"`
 	ExcludeActionTypes   []string       `query:"exclude_action_type"`
 	SupportedActionTypes []string       `query:"supported_action_types"`
