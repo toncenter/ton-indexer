@@ -33,13 +33,14 @@ func roleToIds(role *RoleType) []int {
 		return []int{0, 1, 2, 3, 4, 5, 6, 7}
 	}
 }
+
 func roleToValues(role *RoleType) string {
 	roleIds := roleToIds(role)
-	var roles []string = make([]string, 0)
-	for _, id := range roleIds {
-		roles = append(roles, "("+strconv.Itoa(id)+")")
+	parts := make([]string, len(roleIds))
+	for i, id := range roleIds {
+		parts[i] = "(" + strconv.Itoa(id) + ")"
 	}
-	return "(VALUES " + strings.Join(roles, ", ") + ")"
+	return "(VALUES " + strings.Join(parts, ", ") + ")"
 }
 
 func (db *DbClient) QueryAccountActions(
@@ -54,7 +55,6 @@ func (db *DbClient) QueryAccountActions(
 	}
 	req.SupportedActionTypes = ExpandActionTypeShortcuts(req.SupportedActionTypes)
 
-	// Step 1: get trace_ids from trace_accounts
 	limit_str, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return nil, nil, nil, err
@@ -68,43 +68,97 @@ func (db *DbClient) QueryAccountActions(
 		}
 	}
 
-	values := roleToValues(req.Role)
+	// Build positional args.
+	// $1 = supported action types, $2 = account address, then dynamic.
+	args := []any{req.SupportedActionTypes, string(req.AccountAddress)}
+	nextArg := func(val any) string {
+		args = append(args, val)
+		return fmt.Sprintf("$%d", len(args))
+	}
 
-	lateral_filters := []string{
-		fmt.Sprintf("account = '%s'::tonaddr", req.AccountAddress),
+	// Lateral filters: always account and role.
+	lateralFilters := []string{
+		"account = $2::tonaddr",
 		"role = roles.role",
 	}
 	if v := lt_req.EndLt; v != nil {
-		lateral_filters = append(lateral_filters, fmt.Sprintf("trace_end_lt < %d", *v))
+		if req.AfterActionId != nil {
+			// Composite cursor: exact pagination using (trace_end_lt, action_id).
+			argLt := nextArg(int64(*v))
+			argAid := nextArg(string(*req.AfterActionId))
+			lateralFilters = append(lateralFilters,
+				fmt.Sprintf("(trace_end_lt, action_id) < (%s, %s)", argLt, argAid))
+		} else {
+			// Simple cursor: trace_end_lt only (backward compatible).
+			argLt := nextArg(int64(*v))
+			lateralFilters = append(lateralFilters, "trace_end_lt < "+argLt)
+		}
 	}
 	if v := lt_req.StartLt; v != nil {
-		lateral_filters = append(lateral_filters, fmt.Sprintf("trace_end_lt >= %d", *v))
+		argLt := nextArg(int64(*v))
+		lateralFilters = append(lateralFilters, "trace_end_lt >= "+argLt)
 	}
 	if v := utime_req.EndUtime; v != nil {
-		lateral_filters = append(lateral_filters, fmt.Sprintf("trace_end_utime < %d", *v))
+		argUt := nextArg(int64(*v))
+		lateralFilters = append(lateralFilters, "trace_end_utime < "+argUt)
 	}
 	if v := utime_req.StartUtime; v != nil {
-		lateral_filters = append(lateral_filters, fmt.Sprintf("trace_end_utime >= %d", *v))
+		argUt := nextArg(int64(*v))
+		lateralFilters = append(lateralFilters, "trace_end_utime >= "+argUt)
 	}
 
-	lateralWhere := strings.Join(lateral_filters, " AND ")
+	lateralWhere := strings.Join(lateralFilters, " AND ")
+	values := roleToValues(req.Role)
 
-	traceQuery := fmt.Sprintf(
-		`SELECT DISTINCT ON (trace_end_lt, trace_id) t.trace_id, t.trace_end_lt
+	// Action-level filters applied after the JOIN.
+	actionFilters := []string{
+		"A.end_lt IS NOT NULL",
+		"NOT(A.ancestor_type && $1::varchar[])",
+	}
+	if v := req.IncludeActionTypes; len(v) > 0 {
+		filter_str := filterByArray("A.type", v)
+		if len(filter_str) > 0 {
+			actionFilters = append(actionFilters, filter_str)
+		}
+	} else {
+		actionFilters = append(actionFilters, "A.type = ANY($1)")
+	}
+	if v := req.ExcludeActionTypes; len(v) > 0 {
+		filter_str := filterByArray("A.type", v)
+		if len(filter_str) > 0 {
+			actionFilters = append(actionFilters, "NOT ("+filter_str+")")
+		}
+	}
+
+	actionWhere := strings.Join(actionFilters, " AND ")
+
+	query := fmt.Sprintf(
+		`SELECT DISTINCT ON (aa.trace_end_lt, aa.action_id) %s
 		FROM %s AS roles(role)
 		CROSS JOIN LATERAL (
-			SELECT trace_id, trace_end_lt FROM trace_accounts
+			SELECT trace_id, action_id, trace_end_lt, action_end_lt
+			FROM action_accounts
 			WHERE %s
-			ORDER BY trace_end_lt %s
+			ORDER BY trace_end_lt %s, action_id %s
 			%s
-		) t
-		ORDER BY trace_end_lt %s, trace_id
+		) aa
+		JOIN actions A ON A.trace_id = aa.trace_id AND A.action_id = aa.action_id
+		WHERE %s
+		ORDER BY aa.trace_end_lt %s, aa.action_id %s
 		%s`,
-		values, lateralWhere, sort_order, limit_str, sort_order, limit_str,
+		actionsColumnQuery,
+		values,
+		lateralWhere,
+		sort_order, sort_order,
+		limit_str,
+		actionWhere,
+		sort_order, sort_order,
+		limit_str,
 	)
 
 	if settings.DebugRequest {
-		log.Println("Debug trace query:", traceQuery)
+		log.Println("Debug account actions query:", query)
+		log.Println("Debug account actions args:", args)
 	}
 
 	conn, err := db.Pool.Acquire(context.Background())
@@ -113,91 +167,7 @@ func (db *DbClient) QueryAccountActions(
 	}
 	defer conn.Release()
 
-	ctx, cancel := context.WithTimeout(context.Background(), settings.Timeout)
-	defer cancel()
-
-	rows, err := conn.Query(ctx, traceQuery)
-	if err != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
-	}
-
-	type traceInfo struct {
-		traceId    string
-		traceEndLt int64
-	}
-	var traceInfos []traceInfo
-	for rows.Next() {
-		var ti traceInfo
-		if err := rows.Scan(&ti.traceId, &ti.traceEndLt); err != nil {
-			rows.Close()
-			return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
-		}
-		traceInfos = append(traceInfos, ti)
-	}
-	rows.Close()
-	if rows.Err() != nil {
-		return nil, nil, nil, IndexError{Code: 500, Message: rows.Err().Error()}
-	}
-
-	if len(traceInfos) == 0 {
-		return []Action{}, AddressBook{}, Metadata{}, nil
-	}
-
-	// Step 2: get actions for those trace_ids, filtered by role via action_accounts
-	traceIdValues := make([]string, len(traceInfos))
-	for i, ti := range traceInfos {
-		traceIdValues[i] = fmt.Sprintf("'%s'", ti.traceId)
-	}
-	traceIdIn := strings.Join(traceIdValues, ", ")
-
-	roleIds := roleToIds(req.Role)
-	roleStrs := make([]string, len(roleIds))
-	for i, id := range roleIds {
-		roleStrs[i] = strconv.Itoa(id)
-	}
-	roleIn := strings.Join(roleStrs, ", ")
-
-	from_query := `action_accounts as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id`
-
-	filter_list := []string{
-		fmt.Sprintf("AA.trace_id IN (%s)", traceIdIn),
-		fmt.Sprintf("AA.account = '%s'::tonaddr", req.AccountAddress),
-		fmt.Sprintf("AA.role in (%s)", roleIn),
-		"A.end_lt is not NULL",
-		"NOT(A.ancestor_type && $1::varchar[])",
-	}
-
-	if v := req.IncludeActionTypes; len(v) > 0 {
-		filter_str := filterByArray("A.type", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, filter_str)
-		}
-	} else {
-		filter_list = append(filter_list, "A.type = ANY($1)")
-	}
-
-	if v := req.ExcludeActionTypes; len(v) > 0 {
-		filter_str := filterByArray("A.type", v)
-		if len(filter_str) > 0 {
-			filter_list = append(filter_list, fmt.Sprintf("not (%s)", filter_str))
-		}
-	}
-
-	clmn_query := fmt.Sprintf("distinct on (AA.trace_end_lt, AA.trace_id, AA.action_end_lt, AA.action_id) %s", actionsColumnQuery)
-	orderby_query := fmt.Sprintf(" order by AA.trace_end_lt %s, AA.trace_id %s, AA.action_end_lt %s, AA.action_id %s",
-		sort_order, sort_order, sort_order, sort_order)
-	filter_query := " where " + strings.Join(filter_list, " and ")
-
-	actionsQuery := `select ` + clmn_query + ` from ` + from_query + filter_query + orderby_query
-
-	if settings.DebugRequest {
-		log.Println("Debug actions query:", actionsQuery)
-	}
-
-	var args []any
-	args = append(args, req.SupportedActionTypes)
-
-	raw_actions, err := queryRawActionsImplV2(actionsQuery, args, conn, settings)
+	raw_actions, err := queryRawActionsImplV2(query, args, conn, settings)
 	if err != nil {
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
