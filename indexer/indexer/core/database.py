@@ -266,14 +266,6 @@ class ActionAccount(Base):
     role: int = Column(Integer, nullable=True)
 
 
-class TraceAccount(Base):
-    __tablename__ = 'trace_accounts'
-    trace_id: str = Column(String, primary_key=True)
-    account: str = Column(String(70), primary_key=True)
-    trace_end_lt: int = Column(Numeric, primary_key=True)
-    trace_end_utime: int = Column(Integer, nullable=True)
-    role: int = Column(Integer, nullable=True)
-
 class Action(Base):
     __tablename__ = 'actions'
 
