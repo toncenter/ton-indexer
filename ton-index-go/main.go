@@ -1453,7 +1453,7 @@ func GetActions(c *fiber.Ctx) error {
 }
 
 // @summary Get Actions by Account
-// @description Get actions grouped by trace for a specific account. Pagination controls number of traces returned.
+// @description Get actions grouped by trace for a specific account with role filtering. Pagination controls number of traces returned. Actions are ordered by trace_end_lt (descending by default), with all actions of a trace grouped together.
 // @id api_v3_get_account_actions
 // @tags actions
 // @Accept       json
@@ -1462,11 +1462,15 @@ func GetActions(c *fiber.Ctx) error {
 // @failure		400	{object}	index.RequestError
 // @param account query string true "Account address. Can be sent in hex, base64 or base64url form."
 // @param role query string false "Filter by account role in the trace." Enums(sender, receiver, initiated, observer)
-// @param end_utime query int32 false "Query actions for traces with `trace_end_utime <= end_utime`." minimum(0)
-// @param end_lt query int64 false "Query actions for traces with `trace_end_lt < end_lt`." minimum(0)
-// @param supported_action_types query []string false "Supported action types"
-// @param limit query int32 false "Limit number of traces returned. Use with *end_lt* or *end_utime* to paginate." minimum(1) maximum(1000) default(10)
-// @param sort query string false "Sort traces by lt/utime." Enums(asc, desc) default(desc)
+// @param end_utime query int32 false "Query actions for traces with `trace_end_utime < end_utime`." minimum(0)
+// @param start_utime query int32 false "Query actions for traces with `trace_end_utime >= start_utime`." minimum(0)
+// @param end_lt query int64 false "Query actions for traces with `trace_end_lt < end_lt`. Use for cursor-based pagination." minimum(0)
+// @param start_lt query int64 false "Query actions for traces with `trace_end_lt >= start_lt`." minimum(0)
+// @param supported_action_types query []string false "Supported action types. Controls which action hierarchy level is visible."
+// @param include_accounts query bool false "Include action accounts in the response."
+// @param include_transactions query bool false "Include full transaction data for each action."
+// @param limit query int32 false "Limit number of traces returned. Use with *end_lt* to paginate." minimum(1) maximum(1000) default(10)
+// @param sort query string false "Sort traces by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/actions/byAccount [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery

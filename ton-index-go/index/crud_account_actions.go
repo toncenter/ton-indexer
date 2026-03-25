@@ -43,6 +43,7 @@ func roleToValues(role *RoleType) string {
 	return "(VALUES " + strings.Join(parts, ", ") + ")"
 }
 
+// ltMargin is the safety margin for utime→lt conversion via blocks table lookup.
 const ltMargin = 5000000
 
 func (db *DbClient) QueryAccountActions(
@@ -57,7 +58,8 @@ func (db *DbClient) QueryAccountActions(
 	}
 	req.SupportedActionTypes = ExpandActionTypeShortcuts(req.SupportedActionTypes)
 
-	limit_str, err := limitQuery(lim_req, settings)
+	// No OFFSET on this endpoint — cursor-based pagination via end_lt only.
+	limit_str, err := limitQuery(LimitRequest{Limit: lim_req.Limit}, settings)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -130,21 +132,8 @@ func (db *DbClient) QueryAccountActions(
 	// Action-level filters applied after joining actions for the selected traces.
 	actionFilters := []string{
 		"A.end_lt IS NOT NULL",
+		"A.type = ANY($1)",
 		"NOT(A.ancestor_type && $1::varchar[])",
-	}
-	if v := req.IncludeActionTypes; len(v) > 0 {
-		filter_str := filterByArray("A.type", v)
-		if len(filter_str) > 0 {
-			actionFilters = append(actionFilters, filter_str)
-		}
-	} else {
-		actionFilters = append(actionFilters, "A.type = ANY($1)")
-	}
-	if v := req.ExcludeActionTypes; len(v) > 0 {
-		filter_str := filterByArray("A.type", v)
-		if len(filter_str) > 0 {
-			actionFilters = append(actionFilters, "NOT ("+filter_str+")")
-		}
 	}
 	// Exact utime post-filter on actions (removes edge rows from lt margin).
 	actionFilters = append(actionFilters, utimeActionFilters...)
