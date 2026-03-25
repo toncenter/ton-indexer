@@ -43,6 +43,8 @@ func roleToValues(role *RoleType) string {
 	return "(VALUES " + strings.Join(parts, ", ") + ")"
 }
 
+const ltMargin = 5000000
+
 func (db *DbClient) QueryAccountActions(
 	req AccountActionsRequest,
 	utime_req UtimeRequest,
@@ -75,7 +77,33 @@ func (db *DbClient) QueryAccountActions(
 		return fmt.Sprintf("$%d", len(args))
 	}
 
-	// Lateral filters for trace selection.
+	// When utime filters are provided, convert them to lt bounds via blocks table.
+	// The lt bounds go into the LATERAL for index-efficient filtering,
+	// while utime is applied as exact post-filter on the actions JOIN.
+	hasUtime := utime_req.StartUtime != nil || utime_req.EndUtime != nil
+	var ltBoundsCTE string
+	var utimeActionFilters []string
+
+	if hasUtime {
+		var ltBoundsSelects []string
+		if v := utime_req.StartUtime; v != nil {
+			argUt := nextArg(int64(*v))
+			ltBoundsSelects = append(ltBoundsSelects, fmt.Sprintf(
+				`COALESCE((SELECT start_lt - %d FROM blocks WHERE workchain = -1 AND gen_utime <= %s ORDER BY gen_utime DESC LIMIT 1), 0) AS lt_lower`,
+				ltMargin, argUt))
+			utimeActionFilters = append(utimeActionFilters, fmt.Sprintf("A.trace_end_utime >= %s", argUt))
+		}
+		if v := utime_req.EndUtime; v != nil {
+			argUt := nextArg(int64(*v))
+			ltBoundsSelects = append(ltBoundsSelects, fmt.Sprintf(
+				`COALESCE((SELECT end_lt + %d FROM blocks WHERE workchain = -1 AND gen_utime >= %s ORDER BY gen_utime ASC LIMIT 1), 9223372036854775807) AS lt_upper`,
+				ltMargin, argUt))
+			utimeActionFilters = append(utimeActionFilters, fmt.Sprintf("A.trace_end_utime < %s", argUt))
+		}
+		ltBoundsCTE = "lt_bounds AS (SELECT " + strings.Join(ltBoundsSelects, ", ") + "), "
+	}
+
+	// Lateral filters: always account + role, plus lt-based bounds.
 	lateralFilters := []string{
 		"account = $2::tonaddr",
 		"role = roles.role",
@@ -86,11 +114,14 @@ func (db *DbClient) QueryAccountActions(
 	if v := lt_req.StartLt; v != nil {
 		lateralFilters = append(lateralFilters, "trace_end_lt >= "+nextArg(int64(*v)))
 	}
-	if v := utime_req.EndUtime; v != nil {
-		lateralFilters = append(lateralFilters, "trace_end_utime < "+nextArg(int64(*v)))
-	}
-	if v := utime_req.StartUtime; v != nil {
-		lateralFilters = append(lateralFilters, "trace_end_utime >= "+nextArg(int64(*v)))
+	// Inject converted utime→lt bounds into the LATERAL.
+	if hasUtime {
+		if utime_req.StartUtime != nil {
+			lateralFilters = append(lateralFilters, "trace_end_lt >= (SELECT lt_lower FROM lt_bounds)")
+		}
+		if utime_req.EndUtime != nil {
+			lateralFilters = append(lateralFilters, "trace_end_lt <= (SELECT lt_upper FROM lt_bounds)")
+		}
 	}
 
 	lateralWhere := strings.Join(lateralFilters, " AND ")
@@ -115,14 +146,16 @@ func (db *DbClient) QueryAccountActions(
 			actionFilters = append(actionFilters, "NOT ("+filter_str+")")
 		}
 	}
+	// Exact utime post-filter on actions (removes edge rows from lt margin).
+	actionFilters = append(actionFilters, utimeActionFilters...)
 
 	actionWhere := strings.Join(actionFilters, " AND ")
 
 	// Two-level query:
-	// LATERAL on action_accounts → distinct trace_ids (LIMIT controls trace count)
-	// JOIN actions for those traces, filtered by supported types + ancestor_type
+	// convert utime→lt bounds (if needed) + LATERAL on action_accounts → distinct traces
+	// JOIN actions for those traces, filtered by supported types + ancestor_type + utime
 	query := fmt.Sprintf(
-		`WITH trace_page AS (
+		`WITH %strace_page AS (
 			SELECT DISTINCT ON (aa.trace_end_lt, aa.trace_id)
 				aa.trace_end_lt, aa.trace_id
 			FROM %s AS roles(role)
@@ -141,6 +174,7 @@ func (db *DbClient) QueryAccountActions(
 		JOIN actions A ON A.trace_id = tp.trace_id
 		WHERE %s
 		ORDER BY tp.trace_end_lt %s, A.end_lt %s`,
+		ltBoundsCTE,
 		values,
 		lateralWhere,
 		sort_order,
@@ -168,7 +202,6 @@ func (db *DbClient) QueryAccountActions(
 		return nil, nil, nil, IndexError{Code: 500, Message: err.Error()}
 	}
 
-	// Parse actions and collect addresses
 	actions := []Action{}
 	addr_map := map[string]bool{}
 	for idx := range raw_actions {
@@ -180,7 +213,6 @@ func (db *DbClient) QueryAccountActions(
 		actions = append(actions, *action)
 	}
 
-	// Optional: include accounts
 	if req.IncludeAccounts != nil && *req.IncludeAccounts {
 		actions, err = queryActionsAccountsImpl(actions, conn)
 		if err != nil {
@@ -188,7 +220,6 @@ func (db *DbClient) QueryAccountActions(
 		}
 	}
 
-	// Optional: include transactions
 	if req.IncludeTransactions != nil && *req.IncludeTransactions {
 		actions, err = queryActionsTransactionsImpl(actions, conn, settings)
 		if err != nil {
@@ -196,7 +227,6 @@ func (db *DbClient) QueryAccountActions(
 		}
 	}
 
-	// Build address book + metadata
 	book := AddressBook{}
 	metadata := Metadata{}
 	if len(addr_map) > 0 {
