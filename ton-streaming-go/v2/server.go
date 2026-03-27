@@ -5,10 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
-	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 	"log"
 	"math/rand/v2"
 	"sort"
@@ -16,6 +12,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/gofiber/fiber/v2"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/toncenter/ton-indexer/ton-emulate-go/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
+	"github.com/toncenter/ton-indexer/ton-streaming-go/observability"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,6 +59,7 @@ type Measurement struct {
 	TraceRootTxHash indexModels.HashType
 	Timings         map[string]float64
 	Extra           map[string]string
+	OtelStage       *observability.StageSpan
 }
 type MeasurementRow struct {
 	Id              int64                `json:"id"`
@@ -79,24 +82,44 @@ func NewMeasurement() *Measurement {
 }
 
 func (m *Measurement) PrintMeasurement() {
-	traceId := m.TraceRootTxHash
-	if m.Id == -1 {
-		traceId = "-"
+	if m.OtelStage != nil {
+		m.OtelStage.Emit()
 	}
-
-	for step, elapsed := range m.Timings {
-		row := MeasurementRow{
-			Id:              m.Id,
-			ExtMsgHashNorm:  m.ExtMsgHashNorm,
-			ExtMsgHash:      m.ExtMsgHash,
-			TraceRootTxHash: traceId,
-			Step:            step,
-			Time:            elapsed,
-			Extra:           &m.Extra,
+	if observability.MeasureLogsEnabled() {
+		traceId := m.TraceRootTxHash
+		if m.Id == -1 {
+			traceId = "-"
 		}
-		json_str, _ := json.Marshal(row)
-		log.Printf("[v2] MEASURE %s END", json_str)
+
+		for step, elapsed := range m.Timings {
+			row := MeasurementRow{
+				Id:              m.Id,
+				ExtMsgHashNorm:  m.ExtMsgHashNorm,
+				ExtMsgHash:      m.ExtMsgHash,
+				TraceRootTxHash: traceId,
+				Step:            step,
+				Time:            elapsed,
+				Extra:           &m.Extra,
+			}
+			jsonStr, _ := json.Marshal(row)
+			log.Printf("[v2] MEASURE %s END", jsonStr)
+		}
 	}
+}
+
+func (m *Measurement) PrepareOtelPropagationFields() map[string]string {
+	if m.OtelStage == nil {
+		return nil
+	}
+	return m.OtelStage.PreparePropagationFields()
+}
+
+func (m *Measurement) EmitOtelError(errorType, message string) {
+	if m.OtelStage == nil {
+		return
+	}
+	m.OtelStage.MarkError(errorType, message)
+	m.OtelStage.Emit()
 }
 
 func (m *Measurement) MeasureStep(step string) {
@@ -1313,15 +1336,16 @@ func SubscribeToClassifiedTraces(ctx context.Context, rdb *redis.Client, manager
 		}
 
 		traceExternalHashNorm := msg.Payload
-		go ProcessNewClassifiedTrace(ctx, rdb, traceExternalHashNorm, manager)
+		go ProcessNewClassifiedTrace(ctx, rdb, traceExternalHashNorm, manager, channel)
 	}
 }
 
-func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager) {
+func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNorm string, manager *ClientManager, channel string) {
 	m := NewMeasurement()
 	m.Extra["redis_conns"] = strconv.Itoa(int(rdb.PoolStats().TotalConns - rdb.PoolStats().IdleConns))
 	m.ExtMsgHashNorm = indexModels.HashType(traceExternalHashNorm)
 	m.MeasureStep("process_new_classified_trace__start")
+	startTimeUnix := observability.NowUnixNano()
 
 	repository := &emulated.EmulatedTracesRepository{Rdb: rdb}
 	rawTraces, err := repository.LoadRawTraces([]string{traceExternalHashNorm})
@@ -1334,20 +1358,25 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		m.Id = rand.Int64()
 	}
 	m.ExtMsgHash = indexModels.HashType(rawTraces[traceExternalHashNorm]["root_node"])
+	m.OtelStage = observability.NewStage(startTimeUnix, rawTraces[traceExternalHashNorm])
+	m.OtelStage.AddAttr("ton.redis.in.channel", channel)
 	m.MeasureStep("process_new_classified_trace__raw_traces_loaded")
 
 	emulatedContext := crud.NewEmptyContext(false)
 	err = emulatedContext.FillFromRawData(rawTraces)
 	if err != nil {
 		log.Printf("[v2] Error filling context from raw data (classified): %v, trace key: %s", err, traceExternalHashNorm)
+		m.EmitOtelError("streaming_api.fill_context_error", err.Error())
 		return
 	}
 	if emulatedContext.GetTraceCount() > 1 {
 		log.Printf("[v2] More than 1 trace in context (classified), trace key: %s", traceExternalHashNorm)
+		m.EmitOtelError("streaming_api.invalid_trace_count", "more than one trace in emulated context")
 		return
 	}
 	if emulatedContext.GetTraceCount() == 0 {
 		log.Printf("[v2] No traces in context (classified), trace key: %s", traceExternalHashNorm)
+		m.EmitOtelError("streaming_api.invalid_trace_count", "no traces in emulated context")
 		return
 	}
 
@@ -1436,6 +1465,12 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		actionsAddresses = append(actionsAddresses, actionAddresses)
 	}
 	m.MeasureStep("process_new_classified_trace__actions_parsed")
+	m.OtelStage.AddAttr("ton.actions.count", len(actions))
+	m.OtelStage.AddAttr("ton.actions.has_actions", len(actions) > 0)
+	m.OtelStage.AddAttr("ton.trace.finality", traceFinality.String())
+	if m.TraceRootTxHash != "-" {
+		m.OtelStage.AddAttr("ton.trace.root_tx_hash", string(m.TraceRootTxHash))
+	}
 
 	var addressBook *indexModels.AddressBook
 	var metadata *indexModels.Metadata
@@ -1460,7 +1495,6 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		)
 	}
 	m.MeasureStep("process_new_classified_trace__address_book_and_metadata_fetched")
-	m.PrintMeasurement()
 
 	log.Printf("[v2] Broadcasting classified trace actions for trace %s with finality %d: %d actions, addresses: %v", traceExternalHashNorm, traceFinality, len(actions), actionsAddresses)
 	// Pending actions
@@ -1477,6 +1511,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	txs, err := crud.QueryPendingTransactionsImpl(emulatedContext, nil, indexModels.RequestSettings{}, false)
 	if err != nil {
 		log.Printf("[v2] Error querying trace transactions (classified): %v", err)
+		m.EmitOtelError("streaming_api.query_transactions_error", err.Error())
 		return
 	}
 
@@ -1488,8 +1523,11 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	traceRoot, traceTxMap, err := buildTraceFromTransactions(txOrder, txs)
 	if err != nil {
 		log.Printf("[v2] Error assembling trace (classified) %s: %v", traceExternalHashNorm, err)
+		m.EmitOtelError("streaming_api.build_trace_error", err.Error())
+		return
 	}
 	if traceRoot == nil {
+		m.EmitOtelError("streaming_api.build_trace_error", "classified trace root is nil")
 		return
 	}
 
@@ -1538,6 +1576,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 		AddressBook:           traceAddressBook,
 		Metadata:              traceMetadata,
 	}
+	m.PrintMeasurement()
 }
 
 ////////////////////////////////////////////////////////////////////////////////

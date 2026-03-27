@@ -431,8 +431,7 @@ func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (*Tra
 	}
 	nodes := make(map[string]TraceNode)
 	for key, value := range traceData {
-		if key == "root_node" || key == "depth_limit_exceeded" || key == "root_account_code_hash" ||
-			strings.Contains(key, ":") || strings.Contains(key, "actions") || key == "measurement_id" {
+		if isTraceMetadataField(key) {
 			continue
 		}
 		var node TraceNode
@@ -447,6 +446,14 @@ func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (*Tra
 		Nodes:               nodes,
 		RootAccountCodeHash: rootAccountCodeHash,
 	}, nil
+}
+
+func isTraceMetadataField(key string) bool {
+	switch key {
+	case "root_node", "depth_limit_exceeded", "root_account_code_hash", "measurement_id", "otel_data":
+		return true
+	}
+	return strings.Contains(key, ":") || strings.Contains(key, "actions")
 }
 
 // handleTraceEmulationStatus checks if trace is synthetic and adds it to tracker, otherwise cleanup all synthetic traces for root tx account

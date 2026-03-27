@@ -4,6 +4,26 @@
 #include <optional>
 #include <queue>
 
+namespace {
+
+std::string finality_name(FinalityState finality) {
+    switch (finality) {
+        case FinalityState::Emulated:
+            return "pending";
+        case FinalityState::Confirmed:
+            return "confirmed";
+        case FinalityState::Finalized:
+            return "finalized";
+    }
+    return "pending";
+}
+
+std::string trace_emulator_operation(FinalityState finality) {
+    return finality == FinalityState::Emulated ? "emulate" : "read_finalized";
+}
+
+} // namespace
+
 class TraceInserter: public td::actor::Actor {
 private:
     static constexpr size_t kMaxExistingTraceFields = 1000; // to avoid reading and inserting into unexpectedly large trace
@@ -195,9 +215,17 @@ public:
                     }
                 }
             }
+            if (trace_.root) {
+                measurement_->set_finality(finality_name(trace_.root->finality_state));
+                measurement_->set_operation(trace_emulator_operation(trace_.root->finality_state));
+            }
+            measurement_->set_out_channel("new_trace");
             transaction_.hset(trace_key_, "root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
             transaction_.hset(trace_key_, "depth_limit_exceeded", trace_.tx_limit_exceeded ? "1" : "0");
             transaction_.hset(trace_key_, "measurement_id", std::to_string(measurement_->id()));
+            for (const auto& [field, value] : measurement_->otel_propagation_fields()) {
+                transaction_.hset(trace_key_, field, value);
+            }
             
             transaction_.set("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), trace_key_);
             transaction_.expire("tr_in_msg:" + td::base64_encode(trace_.ext_in_msg_hash.as_slice()), 600);

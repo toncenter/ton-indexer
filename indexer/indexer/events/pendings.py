@@ -29,6 +29,7 @@ from indexer.events.interface_repository import (
     EmulatedTransactionsInterfaceRepository, gather_interfaces,
     EmulatedRepositoryWithDbFallback, ExtraAccountRequest
 )
+from indexer.observability import otel
 from indexer.events.trace_processor import TraceProcessor
 from indexer.events.utils.lru_cache import LRUCache
 from queue import Full, Empty
@@ -65,32 +66,47 @@ async def health_heartbeat_loop(interval: int = HEALTH_HEARTBEAT_INTERVAL, ttl: 
 
 
 class Measurement:
-    id: int = 0
-    ext_msg_hash: Optional[str] = None
-    ext_msg_hash_norm: Optional[str] = None
-    trace_root_tx_hash: Optional[str] = None
-
-    timings: Dict[str, float] = dict()
-    extra: Dict[str, str] = dict()
+    def __init__(self) -> None:
+        self.id: int = 0
+        self.ext_msg_hash: Optional[str] = None
+        self.ext_msg_hash_norm: Optional[str] = None
+        self.trace_root_tx_hash: Optional[str] = None
+        self.timings: Dict[str, float] = {}
+        self.extra: Dict[str, str] = {}
+        self.otel_stage: Optional[otel.StageSpan] = None
 
     def measure_step(self, step: str, timestamp: Optional[float] = None) -> "Measurement":
         ts = datetime.now().timestamp() if timestamp is None else timestamp
         self.timings[step] = ts
         return self
 
+    def prepare_otel_propagation_fields(self) -> dict[str, str]:
+        if self.otel_stage is None:
+            return {}
+        return self.otel_stage.propagation_fields()
+
+    def emit_otel_error(self, error_type: str, message: Optional[str] = None) -> None:
+        if self.otel_stage is None:
+            return
+        self.otel_stage.mark_error(error_type, message)
+        self.otel_stage.emit()
+
     def print_measurement(self) -> "Measurement":
-        for step, ts in self.timings.items():
-            meas = {
-                'id': self.id,
-                'msg_hash_norm': self.ext_msg_hash_norm,
-                'msg_hash': self.ext_msg_hash,
-                'trace_id': self.trace_root_tx_hash,
-                'step': step,
-                'time': ts,
-                'extra': self.extra
-            }
-            meas_str = json.dumps(meas)
-            logger.error(f"MEASURE {meas_str} END")
+        if self.otel_stage is not None:
+            self.otel_stage.emit()
+        if otel.measure_logs_enabled():
+            for step, ts in self.timings.items():
+                meas = {
+                    'id': self.id,
+                    'msg_hash_norm': self.ext_msg_hash_norm,
+                    'msg_hash': self.ext_msg_hash,
+                    'trace_id': self.trace_root_tx_hash,
+                    'step': step,
+                    'time': ts,
+                    'extra': self.extra
+                }
+                meas_str = json.dumps(meas)
+                logger.error(f"MEASURE {meas_str} END")
         return self
 
     def clone(self) -> "Measurement":
@@ -102,6 +118,7 @@ class PendingTraceClassifierWorker(mp.Process):
                  id,
                  task_queue: mp.Queue,
                  use_combined_repository: bool,
+                 emulated_traces_redis_channel,
                  emulated_traces_redis_response_channel,
                  interface_cache_size: int = 1000,
                  interface_cache_ttl: int = 300):
@@ -111,6 +128,7 @@ class PendingTraceClassifierWorker(mp.Process):
         self.use_combined_repository = use_combined_repository
         self.interface_cache_size = interface_cache_size
         self.interface_cache_ttl = interface_cache_ttl
+        self.emulated_traces_redis_channel = emulated_traces_redis_channel
         self.emulated_traces_redis_response_channel = emulated_traces_redis_response_channel
 
 
@@ -173,6 +191,7 @@ class PendingTraceClassifierWorker(mp.Process):
 
         all_accounts = set()
         traces_data = {}
+        trace_start_ns: Dict[str, int] = {}
 
         await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis(
             fallback_interval=UPDATE_FALLBACK_INTERVAL
@@ -181,6 +200,7 @@ class PendingTraceClassifierWorker(mp.Process):
         raw_trace_data = {}
         for trace_key in trace_keys:
             try:
+                trace_start_ns[trace_key] = time.time_ns()
                 trace_map = await redis.client.hgetall(trace_key)
                 trace_map = dict((str(key, encoding='utf-8'), value) for key, value in trace_map.items())
 
@@ -227,6 +247,12 @@ class PendingTraceClassifierWorker(mp.Process):
             meas.ext_msg_hash_norm = trace_key
             meas.ext_msg_hash = trace.external_hash
             meas.trace_root_tx_hash = trace.trace_id
+            meas.otel_stage = otel.new_stage(
+                start_time_ns=trace_start_ns.get(trace_key, time.time_ns()),
+                trace_hash=trace_map,
+            )
+            meas.otel_stage.add_attr("ton.redis.in.channel", self.emulated_traces_redis_channel)
+            meas.otel_stage.add_attr("ton.redis.out.channel", self.emulated_traces_redis_response_channel)
 
             try:
                 # Setup repositories
@@ -262,12 +288,17 @@ class PendingTraceClassifierWorker(mp.Process):
                     action.trace_external_hash_norm = trace_key
                 meas.extra['action_types'] = ','.join(set(action_types))
                 meas.extra['jetton_senders'] = ','.join(set(jetton_senders))
+                meas.otel_stage.add_attr("ton.actions.count", len(result.actions))
+                meas.otel_stage.add_attr("ton.actions.has_actions", len(result.actions) > 0)
                 # Store results in Redis (msgpack + gzip compression)
                 action_data = msgpack.packb([a.to_dict() for a in result.actions])
                 action_data_compressed = gzip.compress(action_data, compresslevel=1)
                 await redis.client.hset(trace_key, 'actions', action_data_compressed)
 
                 # Publish completion if configured
+                otel_fields = meas.prepare_otel_propagation_fields()
+                if otel_fields:
+                    await redis.client.hset(trace_key, mapping=otel_fields)
                 if self.emulated_traces_redis_response_channel:
                     await redis.client.publish(
                         self.emulated_traces_redis_response_channel,
@@ -305,6 +336,7 @@ class PendingTraceClassifierWorker(mp.Process):
             except Exception as e:
                 logger.error(f"Failed to process emulated trace {trace_key}: {e}")
                 logger.exception(e)
+                meas.emit_otel_error("action_classifier.processing_error", str(e))
                 results.append((trace_key, False))
 
         return results
@@ -358,6 +390,7 @@ async def start_emulated_traces_processing(settings: Settings,
         worker = PendingTraceClassifierWorker(id=id,
                                               task_queue=batch_queue,
                                               use_combined_repository=use_combined,
+                                              emulated_traces_redis_channel=settings.emulated_traces_redis_channel,
                                               emulated_traces_redis_response_channel=settings.emulated_traces_redis_response_channel,
                                               interface_cache_size=settings.interfaces_cache_size,
                                               interface_cache_ttl=settings.interfaces_cache_ttl)

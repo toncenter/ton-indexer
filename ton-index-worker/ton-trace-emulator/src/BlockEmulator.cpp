@@ -157,6 +157,8 @@ McBlockEmulator::McBlockEmulator(schema::MasterchainBlockDataState mc_data_state
 void McBlockEmulator::start_up() {
     start_time_ = td::Timestamp::now();
     auto measurement = std::make_shared<Measurement>();
+    measurement->set_finality("finalized");
+    measurement->set_operation("read_finalized");
     measurement->measure_step("mc_block_emulator__start_up");
     for (const auto& shard_state : mc_data_state_.shard_blocks_) {
         shard_states_.push_back(shard_state.block_state);
@@ -382,20 +384,26 @@ void McBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent_node,
 void McBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement) {
     LOG(ERROR) << "Failed to emulate trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice()) << " from tx " << tx_hash.to_hex() << ": " << error;
     measurement->measure_step("mc_block_emulator__trace_error");
+    measurement->mark_otel_error("trace_emulator.processing_error", error.to_string());
     in_progress_cnt_--;
+    measurement->print_measurement();
 }
 
 void McBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement) {
     LOG(ERROR) << "Failed to detect interfaces on trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
     measurement->measure_step("mc_block_emulator__trace_interfaces_error");
+    measurement->mark_otel_error("trace_emulator.interface_error", error.to_string());
     in_progress_cnt_--;
+    measurement->print_measurement();
 }
 
 void McBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurement) {
     measurement->measure_step("mc_block_emulator__trace_emulated");
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_root_tx_hash = trace.root_tx_hash, measurement](td::Result<td::Unit> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to insert trace " << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << R.move_as_error();
+            auto error = R.move_as_error();
+            LOG(ERROR) << "Failed to insert trace " << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
+            measurement->mark_otel_error("trace_emulator.insert_error", error.to_string());
         } else {
             LOG(DEBUG) << "Successfully inserted trace " << td::base64_encode(trace_root_tx_hash.as_slice());
         }
@@ -421,6 +429,8 @@ void McBlockEmulator::trace_finished(td::Bits256 trace_root_tx_hash, Measurement
 void ConfirmedBlockEmulator::start_up() {
     start_time_ = td::Timestamp::now();
     auto measurement = std::make_shared<Measurement>();
+    measurement->set_finality(finality_ == FinalityState::Confirmed ? "confirmed" : "finalized");
+    measurement->set_operation("read_finalized");
     measurement->measure_step("confirmed_block_emulator__start_up");
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), measurement](td::Result<std::vector<TransactionInfo>> R) {
         if (R.is_error()) {
@@ -656,6 +666,7 @@ void ConfirmedBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_
     LOG(ERROR) << "Failed to emulate " << finality_label() << " trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice())
                << " from tx " << tx_hash.to_hex() << ": " << error;
     measurement->measure_step("confirmed_trace_emulator__trace_error");
+    measurement->mark_otel_error("trace_emulator.processing_error", error.to_string());
     trace_finished(trace_root_tx_hash, measurement);
 }
 
@@ -663,6 +674,7 @@ void ConfirmedBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_ha
     LOG(ERROR) << "Failed to detect interfaces on " << finality_label() << " trace with root tx "
                << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
     measurement->measure_step("confirmed_trace_emulator__trace_interfaces_error");
+    measurement->mark_otel_error("trace_emulator.interface_error", error.to_string());
     trace_finished(trace_root_tx_hash, measurement);
 }
 
@@ -672,7 +684,9 @@ void ConfirmedBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurem
     auto root_hash = trace.root_tx_hash;
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), root_hash, label = std::string(finality_label()), measurement](td::Result<td::Unit> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to insert " << label << " trace " << td::base64_encode(root_hash.as_slice()) << ": " << R.move_as_error();
+            auto error = R.move_as_error();
+            LOG(ERROR) << "Failed to insert " << label << " trace " << td::base64_encode(root_hash.as_slice()) << ": " << error;
+            measurement->mark_otel_error("trace_emulator.insert_error", error.to_string());
         } else {
             LOG(DEBUG) << "Inserted " << label << " trace " << td::base64_encode(root_hash.as_slice());
         }
