@@ -1058,7 +1058,7 @@ func (m *trMessage) GetMessageRow(traceId string, direction string, txLt uint64,
 			return MessageRow{}, nil, nil, err
 		}
 		initState = &MessageContentRow{
-			Hash: bodyHash,
+			Hash: h,
 			Body: m.InitStateBoc,
 		}
 	}
@@ -1125,7 +1125,7 @@ func (n *TraceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, m
 	if initState != nil {
 		initStates[*inMsgRow.InitStateHash] = *initState
 	}
-	return messages, messageContents, nil, nil
+	return messages, messageContents, initStates, nil
 }
 
 func (a *Action) GetActionRow() (ActionRow, error) {
