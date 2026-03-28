@@ -871,8 +871,8 @@ func assignBool(src bool) assign {
 		case reflect.Bool:
 			dv.SetBool(src)
 			break
-		default:
-			return fmt.Errorf("unsupported type %T for %s", dest, src)
+			default:
+				return fmt.Errorf("unsupported type %T for bool value %t", dest, src)
 
 		}
 		return nil
