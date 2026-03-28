@@ -279,6 +279,18 @@ type Client struct {
 	mu                             sync.Mutex
 }
 
+func disconnectClient(manager *ClientManager, client *Client) {
+	client.mu.Lock()
+	if !client.Connected {
+		client.mu.Unlock()
+		return
+	}
+	client.Connected = false
+	client.mu.Unlock()
+
+	manager.unregister <- client
+}
+
 func (c *Client) startSender(manager *ClientManager) {
 	go func() {
 		for msg := range c.sendChan {
@@ -290,7 +302,7 @@ func (c *Client) startSender(manager *ClientManager) {
 			err := c.SendEvent(msg)
 			c.mu.Unlock()
 			if err != nil {
-				manager.unregister <- c
+				disconnectClient(manager, c)
 				break
 			}
 		}
@@ -1255,6 +1267,13 @@ func writeSSEBytes(w *bufio.Writer, event string, payload []byte) error {
 	return w.Flush()
 }
 
+func writeSSEComment(w *bufio.Writer, comment string) error {
+	if _, err := fmt.Fprintf(w, ": %s\n\n", comment); err != nil {
+		return err
+	}
+	return w.Flush()
+}
+
 // sendWSJSONErr centralises websocket error frames.
 func writeWSMessage(c *websocket.Conn, client *Client, msg []byte) error {
 	if client == nil {
@@ -1382,6 +1401,8 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 		c.Set("Transfer-Encoding", "chunked")
 
 		c.Status(fiber.StatusOK).Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
+			defer disconnectClient(manager, client)
+
 			if err := writeSSE(w, "connected", StatusResponse{Id: req.Id, Status: "subscribed"}); err != nil {
 				log.Printf("write connected frame: %v", err)
 				return
@@ -1395,22 +1416,14 @@ func SSEHandler(manager *ClientManager) fiber.Handler {
 				select {
 				case data := <-eventCh:
 					if err := writeSSEBytes(w, "event", data); err != nil {
-						client.mu.Lock()
-						client.Connected = false
-						client.mu.Unlock()
-						manager.unregister <- client
+						log.Printf("SSE event write failed for client %s: %v", clientID, err)
 						return
 					}
-					_ = w.Flush()
 				case <-keepAlive.C:
-					if _, err := w.WriteString(": keepalive\n\n"); err != nil {
-						client.mu.Lock()
-						client.Connected = false
-						client.mu.Unlock()
-						manager.unregister <- client
+					if err := writeSSEComment(w, "keepalive"); err != nil {
+						log.Printf("SSE keepalive write failed for client %s: %v", clientID, err)
 						return
 					}
-					_ = w.Flush()
 				}
 			}
 		}))
@@ -1457,12 +1470,7 @@ func WebSocketHandler(manager *ClientManager) func(*websocket.Conn) {
 			SendEvent:                      func(b []byte) error { return c.WriteMessage(websocket.TextMessage, b) },
 		}
 		manager.register <- client
-		defer func() {
-			client.mu.Lock()
-			client.Connected = false
-			client.mu.Unlock()
-			manager.unregister <- client
-		}()
+		defer disconnectClient(manager, client)
 
 		for {
 			_, msg, err := c.ReadMessage()
