@@ -297,7 +297,11 @@ namespace pqxx {
 
     static char *into_buf(char *begin, char *end, schema::AccountAddress const &value) {
       auto data = to_bytes(value);
-      return string_traits<bytes>::into_buf(begin, end, data);
+      auto loc = string_traits<bytes>::into_buf(begin, end, data);
+      if (std::holds_alternative<schema::AddressExtern>(value)) {
+        LOG(ERROR) << "data: " << begin;
+      }
+      return loc;
     }
 
     static std::size_t size_buffer(schema::AccountAddress const &value) noexcept {

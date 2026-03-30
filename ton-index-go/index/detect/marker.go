@@ -206,7 +206,7 @@ func collectJettonBurnsRefs(burns []JettonBurn) *messagesRefs {
 		burn := &burns[i]
 		customPayload := burn.CustomPayload
 		if customPayload != nil && burn.DecodedCustomPayload == nil {
-			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &burn.DecodedCustomPayload)
+			refs.bodyRefs[customPayload.String()] = append(refs.bodyRefs[customPayload.String()], &burn.DecodedCustomPayload)
 		}
 	}
 	return refs

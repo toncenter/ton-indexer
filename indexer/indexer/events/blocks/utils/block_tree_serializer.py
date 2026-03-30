@@ -96,7 +96,7 @@ def _value(amount: Amount | None):
     return amount.value
 
 
-def _calc_action_id(block: Block) -> str:
+def _calc_action_id(block: Block) -> bytes:
     root_event_node = min(block.event_nodes, key=lambda n: n.get_lt())
     key = ""
     if root_event_node.message is not None:
@@ -105,10 +105,14 @@ def _calc_action_id(block: Block) -> str:
         key = root_event_node.get_tx_hash()
     key += block.btype
     h = hashlib.sha256(key.encode())
-    return base64.b64encode(h.digest()).decode()
+    return h.digest()
 
 
+<<<<<<< Updated upstream
 def _base_block_to_action(block: Block, trace_id: str, finality: FinalityState) -> Action:
+=======
+def _base_block_to_action(block: Block, trace_id: bytes) -> Action:
+>>>>>>> Stashed changes
     action_id = _calc_action_id(block)
     tx_hashes = list(set(n.get_tx_hash() for n in block.event_nodes))
     mc_seqno_end = max(n.get_tx().mc_block_seqno for n in block.event_nodes if n.get_tx() is not None)

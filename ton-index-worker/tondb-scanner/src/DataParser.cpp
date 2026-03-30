@@ -143,6 +143,9 @@ td::Result<schema::AccountState> parse_account_state(td::Ref<vm::Cell> account_r
     default:
       return td::Status::Error("Unknown account state tag");
   }
+  if (schema_account.account_status.empty()) {
+    LOG(ERROR) << "Why is this empty for " << account_addr;
+  }
   return schema_account;
 }
 

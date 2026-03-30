@@ -69,7 +69,7 @@ type JettonBurn struct {
 	TransactionAborted   bool             `json:"transaction_aborted"`
 	Amount               string           `json:"amount"`
 	ResponseDestination  *AccountAddress  `json:"response_destination"`
-	CustomPayload        *string          `json:"custom_payload"`
+	CustomPayload        *BytesType       `json:"custom_payload"`
 	DecodedCustomPayload *json.RawMessage `json:"decoded_custom_payload" swaggertype:"object"`
 	TraceId              *HashType        `json:"trace_id"`
 } // @name JettonBurn

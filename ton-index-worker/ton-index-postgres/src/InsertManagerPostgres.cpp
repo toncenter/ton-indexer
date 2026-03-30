@@ -246,7 +246,7 @@ public:
         if (is_first_row_) {
           return;
         }
-        txn_.exec(get_str());
+        txn_.exec0(get_str());
       } catch (...) {
         LOG(ERROR) << "error in finish(), table " << table_name_;
         throw;
@@ -480,7 +480,7 @@ void InsertBatchPostgres::do_insert() {
     td::Timer commit_timer{true};
     {
       std::lock_guard<std::mutex> guard(latest_account_states_update_mutex);
-      txn.exec(insert_under_mutex_query);
+      txn.exec0(insert_under_mutex_query);
       update_timings("__insert_under_mutex_query");
       states_timer.pause();
       commit_timer.resume();
