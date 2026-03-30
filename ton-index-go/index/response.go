@@ -110,6 +110,7 @@ type AccountActionsResponse struct {
 	Actions     []Action    `json:"actions"`
 	AddressBook AddressBook `json:"address_book"`
 	Metadata    Metadata    `json:"metadata"`
+	Cursor      string      `json:"cursor,omitempty"`
 } // @name AccountActionsResponse
 
 type DNSRecordsResponse struct {

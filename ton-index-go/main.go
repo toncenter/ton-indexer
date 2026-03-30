@@ -1464,12 +1464,13 @@ func GetActions(c *fiber.Ctx) error {
 // @param role query string false "Filter by account role in the trace." Enums(sender, receiver, initiated, observer)
 // @param end_utime query int32 false "Query actions for traces with `trace_end_utime < end_utime`." minimum(0)
 // @param start_utime query int32 false "Query actions for traces with `trace_end_utime >= start_utime`." minimum(0)
-// @param end_lt query int64 false "Query actions for traces with `trace_end_lt < end_lt`. Use for cursor-based pagination." minimum(0)
+// @param cursor query string false "Opaque pagination cursor from previous response. Takes precedence over end_lt."
+// @param end_lt query int64 false "Query actions for traces with `trace_end_lt < end_lt`. Fallback pagination if cursor not provided." minimum(0)
 // @param start_lt query int64 false "Query actions for traces with `trace_end_lt >= start_lt`." minimum(0)
 // @param supported_action_types query []string false "Supported action types. Controls which action hierarchy level is visible."
 // @param include_accounts query bool false "Include action accounts in the response."
 // @param include_transactions query bool false "Include full transaction data for each action."
-// @param limit query int32 false "Limit number of traces returned. Use with *end_lt* to paginate." minimum(1) maximum(1000) default(10)
+// @param limit query int32 false "Limit number of traces returned." minimum(1) maximum(1000) default(10)
 // @param sort query string false "Sort traces by lt." Enums(asc, desc) default(desc)
 // @router			/api/v3/actions/byAccount [get]
 // @security		APIKeyHeader
@@ -1507,7 +1508,7 @@ func GetAccountActions(c *fiber.Ctx) error {
 		req.SupportedActionTypes = []string{value_str}
 	}
 
-	actions, book, metadata, err := pool.QueryAccountActions(
+	actions, book, metadata, cursor, err := pool.QueryAccountActions(
 		req, utime_req, lt_req, lim_req, request_settings)
 	if err != nil {
 		return err
@@ -1518,6 +1519,7 @@ func GetAccountActions(c *fiber.Ctx) error {
 		Actions:     actions,
 		AddressBook: book,
 		Metadata:    metadata,
+		Cursor:      cursor,
 	}
 	return c.Status(200).JSON(resp)
 }
