@@ -165,6 +165,7 @@ void StateBatchParser::process_account_states(std::vector<schema::AccountState> 
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), account, promise = ig.get_promise()](td::Result<std::vector<Detector::DetectedInterface>> R) mutable {
             if (R.is_error()) {
                 LOG(ERROR) << "Failed to detect interfaces of account '" << account.account << "'";
+                promise.set_value(td::Unit());
                 return;
             }
             td::actor::send_closure(SelfId, &StateBatchParser::interfaces_detected, account.account, R.move_as_ok(), account.code_hash.value(), account.data_hash.value(), account.last_trans_lt, account.timestamp, std::move(promise));
