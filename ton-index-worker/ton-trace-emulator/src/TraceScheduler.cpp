@@ -111,7 +111,7 @@ void TraceEmulatorScheduler::fetch_seqnos() {
         auto seqno = *it;
         LOG(INFO) << "Fetching seqno " << seqno;
 
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), seqno](td::Result<MasterchainBlockDataState> R) {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), seqno](td::Result<schema::MasterchainBlockDataState> R) {
             if (R.is_error()) {
                 td::actor::send_closure(SelfId, &TraceEmulatorScheduler::fetch_error, seqno, R.move_as_error());
                 return;
@@ -138,7 +138,7 @@ void TraceEmulatorScheduler::fetch_error(std::uint32_t seqno, td::Status error) 
     alarm_timestamp() = td::Timestamp::in(0.1);
 }
 
-void TraceEmulatorScheduler::seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState mc_data_state) {
+void TraceEmulatorScheduler::seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState mc_data_state) {
     LOG(INFO) << "Fetched seqno " << seqno;
 
     last_finalized_mc_block_time_ = mc_data_state.shard_blocks_[0].handle->unix_time();
@@ -201,7 +201,7 @@ void TraceEmulatorScheduler::enqueue_signed_block(ton::BlockIdExt block_id) {
         return;
     }
     signed_blocks_inflight_.insert(block_id);
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<BlockDataState> R) mutable {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<schema::BlockDataState> R) mutable {
         if (R.is_error()) {
             td::actor::send_closure(SelfId, &TraceEmulatorScheduler::signed_block_error, block_id, R.move_as_error());
             return;
@@ -211,7 +211,7 @@ void TraceEmulatorScheduler::enqueue_signed_block(ton::BlockIdExt block_id) {
     td::actor::send_closure(db_scanner_, &DbScanner::fetch_block_by_id, block_id, std::move(P));
 }
 
-void TraceEmulatorScheduler::signed_block_fetched(ton::BlockIdExt block_id, BlockDataState block_data_state) {
+void TraceEmulatorScheduler::signed_block_fetched(ton::BlockIdExt block_id, schema::BlockDataState block_data_state) {
     auto time_diff = td::Clocks::system() - block_data_state.handle->unix_time();
     LOG(INFO) << "Collected signed shard block " << block_id.to_str() << " created " << td::StringBuilder::FixedDouble(time_diff, 2) << "s ago";
 
@@ -280,7 +280,7 @@ std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> TraceEmulatorS
     };
 }
 
-std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> TraceEmulatorScheduler::make_finalized_trace_processor(const MasterchainBlockDataState& mc_data_state) {
+std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> TraceEmulatorScheduler::make_finalized_trace_processor(const schema::MasterchainBlockDataState& mc_data_state) {
     std::unordered_map<ton::BlockId, ton::BlockIdExt, BlockIdHasher, BlockIdEq> shard_block_ids;
     for (const auto& shard_block : mc_data_state.shard_blocks_diff_) {
         shard_block_ids.emplace(shard_block.block_data->block_id().id, shard_block.block_data->block_id());

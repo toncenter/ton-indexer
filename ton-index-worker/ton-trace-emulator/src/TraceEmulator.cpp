@@ -469,7 +469,7 @@ void MasterchainBlockEmulator::next_mc_emulated(std::vector<std::unique_ptr<Trac
     stop();
 }
 
-TraceEmulator::TraceEmulator(MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise, const MeasurementPtr& measurement)
+TraceEmulator::TraceEmulator(schema::MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise, const MeasurementPtr& measurement)
     : mc_data_state_(std::move(mc_data_state)), in_msg_(std::move(in_msg)), ignore_chksig_(ignore_chksig),
       promise_(std::move(promise)), rand_seed_(td::Bits256::zero()), measurement_(measurement) {
 }

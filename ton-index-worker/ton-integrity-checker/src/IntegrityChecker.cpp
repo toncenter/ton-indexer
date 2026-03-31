@@ -141,7 +141,7 @@ void IntegrityChecker::fetch_next_seqnos() {
         auto seqno = queued_seqnos_.front();
         queued_seqnos_.pop();
         seqnos_fetching_.insert(seqno);
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), seqno](td::Result<MasterchainBlockDataState> R) {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), seqno](td::Result<schema::MasterchainBlockDataState> R) {
             if (R.is_error()) {
                 td::actor::send_closure(SelfId, &IntegrityChecker::fetch_error, seqno, R.move_as_error());
                 return;
@@ -157,7 +157,7 @@ void IntegrityChecker::fetch_error(std::uint32_t seqno, td::Status error) {
     std::_Exit(7);
 }
 
-void IntegrityChecker::seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState state) {
+void IntegrityChecker::seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState state) {
     LOG(DEBUG) << "Fetched seqno " << seqno;
     seqnos_fetching_.erase(seqno);
     fetch_next_seqnos();

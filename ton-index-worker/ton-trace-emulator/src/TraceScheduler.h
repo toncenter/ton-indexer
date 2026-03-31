@@ -40,10 +40,10 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     td::Timestamp next_statistics_flush_;
 
     std::unordered_set<ton::BlockSeqno> seqnos_to_fetch_;
-    std::map<ton::BlockSeqno, MasterchainBlockDataState> blocks_to_emulate_;
+    std::map<ton::BlockSeqno, schema::MasterchainBlockDataState> blocks_to_emulate_;
     std::deque<ton::BlockIdExt> signed_block_queue_;
     std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> signed_blocks_inflight_;
-    std::unordered_map<ton::BlockIdExt, BlockDataState, BlockIdExtHasher> signed_block_storage_;
+    std::unordered_map<ton::BlockIdExt, schema::BlockDataState, BlockIdExtHasher> signed_block_storage_;
     std::shared_ptr<block::ConfigInfo> latest_config_;
     std::vector<ShardStateSnapshot> latest_shard_states_;
 
@@ -62,14 +62,14 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void got_last_mc_seqno(ton::BlockSeqno last_known_seqno);
     void fetch_seqnos();
     void fetch_error(std::uint32_t seqno, td::Status error);
-    void seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState mc_data_state);
+    void seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState mc_data_state);
     void emulate_blocks();
     void enqueue_signed_block(ton::BlockIdExt block_id);
-    void signed_block_fetched(ton::BlockIdExt block_id, BlockDataState block_data_state);
+    void signed_block_fetched(ton::BlockIdExt block_id, schema::BlockDataState block_data_state);
     void signed_block_error(ton::BlockIdExt block_id, td::Status error);
     void process_signed_blocks();
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_signed_trace_processor(const ton::BlockIdExt& block_id_ext);
-    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_finalized_trace_processor(const MasterchainBlockDataState& mc_data_state);
+    std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_finalized_trace_processor(const schema::MasterchainBlockDataState& mc_data_state);
     void publish_health();
 
     void alarm() override;

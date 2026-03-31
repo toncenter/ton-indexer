@@ -6,12 +6,12 @@ td::Result<td::Bits256> ext_in_msg_get_normalized_hash(td::Ref<vm::Cell> ext_in_
 class ParseQuery: public td::actor::Actor {
 private:
   const int mc_seqno_;
-  MasterchainBlockDataState mc_block_;
+  schema::MasterchainBlockDataState mc_block_;
   std::shared_ptr<vm::CellDbReader> cell_db_reader_;
   ParsedBlockPtr result;
   td::Promise<ParsedBlockPtr> promise_;
 public:
-  ParseQuery(int mc_seqno, MasterchainBlockDataState mc_block, std::shared_ptr<vm::CellDbReader> cell_db_reader, td::Promise<ParsedBlockPtr> promise)
+  ParseQuery(int mc_seqno, schema::MasterchainBlockDataState mc_block, std::shared_ptr<vm::CellDbReader> cell_db_reader, td::Promise<ParsedBlockPtr> promise)
     : mc_seqno_(mc_seqno), mc_block_(std::move(mc_block)), cell_db_reader_(std::move(cell_db_reader)), result(std::make_shared<ParsedBlock>()), promise_(std::move(promise)) {}
 
   void start_up() override;
@@ -53,7 +53,7 @@ class ParseManager: public td::actor::Actor {
 public:
     ParseManager() {}
 
-    void parse(int mc_seqno, MasterchainBlockDataState mc_block, std::shared_ptr<vm::CellDbReader> cell_db_reader, td::Promise<ParsedBlockPtr> promise) {
+    void parse(int mc_seqno, schema::MasterchainBlockDataState mc_block, std::shared_ptr<vm::CellDbReader> cell_db_reader, td::Promise<ParsedBlockPtr> promise) {
       td::actor::create_actor<ParseQuery>("parsequery", mc_seqno, std::move(mc_block), cell_db_reader, std::move(promise)).release();
     }
 };

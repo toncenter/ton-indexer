@@ -103,7 +103,7 @@ void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
     LOG(DEBUG) << "Scheduled seqno " << mc_seqno;
 
     processing_seqnos_.insert(mc_seqno);
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<MasterchainBlockDataState> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<schema::MasterchainBlockDataState> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to fetch seqno " << mc_seqno << ": " << R.move_as_error();
             td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
@@ -121,7 +121,7 @@ void IndexScheduler::reschedule_seqno(std::uint32_t mc_seqno) {
     queued_seqnos_.push(mc_seqno);
 }
 
-void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, MasterchainBlockDataState block_data_state) {
+void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, schema::MasterchainBlockDataState block_data_state) {
     LOG(DEBUG) << "Fetched seqno " << mc_seqno << ": blocks=" << block_data_state.shard_blocks_diff_.size() << " shards=" << block_data_state.shard_blocks_.size();
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {

@@ -274,7 +274,7 @@ private:
 // Emulates whole trace, in_msg is external inbound message
 class TraceEmulator: public td::actor::Actor {
 private:
-    MasterchainBlockDataState mc_data_state_;
+    schema::MasterchainBlockDataState mc_data_state_;
     td::Ref<vm::Cell> in_msg_;
     bool ignore_chksig_;
     td::Promise<Trace> promise_;
@@ -285,7 +285,7 @@ private:
 
     td::Timer timer_{false};
 public:
-    TraceEmulator(MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise, const MeasurementPtr& measurement);
+    TraceEmulator(schema::MasterchainBlockDataState mc_data_state, td::Ref<vm::Cell> in_msg, bool ignore_chksig, td::Promise<Trace> promise, const MeasurementPtr& measurement);
 
     void start_up() override;
     void finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> root_r);

@@ -1322,11 +1322,11 @@ clickhouse::Int128 str2int128(const std::string value, const int base = 10) {
 }
 
 void InsertBatchClickhouse::insert_nfts(clickhouse::Client &client) {
-    std::map<std::string, NFTCollectionData> collections;
-    std::map<std::string, NFTItemData> items;
+    std::map<std::string, schema::NFTCollectionData> collections;
+    std::map<std::string, schema::NFTItemData> items;
 
     for (const auto& task : insert_tasks_) {
-        for(const auto& item : task.parsed_block_->get_accounts<NFTCollectionData>()) {
+        for(const auto& item : task.parsed_block_->get_accounts<schema::NFTCollectionData>()) {
             auto existing = collections.find(item.address);
             if (existing == collections.end()) {
                 collections[item.address] = item;
@@ -1336,7 +1336,7 @@ void InsertBatchClickhouse::insert_nfts(clickhouse::Client &client) {
                 }
             }
         }
-        for(const auto& item : task.parsed_block_->get_accounts<NFTItemData>()) {
+        for(const auto& item : task.parsed_block_->get_accounts<schema::NFTItemData>()) {
             auto existing = items.find(item.address);
             if (existing == items.end()) {
                 items[item.address] = item;
@@ -1466,7 +1466,7 @@ void InsertBatchClickhouse::insert_nfts(clickhouse::Client &client) {
         auto forward_payload = std::make_shared<ColumnNullableT<ColumnString>>();
 
         for (const auto& task : insert_tasks_) {
-            for (const auto& transfer : task.parsed_block_->get_events<NFTTransfer>()) {
+            for (const auto& transfer : task.parsed_block_->get_events<schema::NFTTransfer>()) {
                 auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
                 auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
@@ -1532,11 +1532,11 @@ void InsertBatchClickhouse::insert_nfts(clickhouse::Client &client) {
 }
 
 void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
-    std::map<std::string, JettonMasterData> masters;
-    std::map<std::string, JettonWalletData> wallets;
+    std::map<std::string, schema::JettonMasterData> masters;
+    std::map<std::string, schema::JettonWalletData> wallets;
 
     for (const auto& task : insert_tasks_) {
-        for(const auto& item : task.parsed_block_->get_accounts<JettonMasterData>()) {
+        for(const auto& item : task.parsed_block_->get_accounts<schema::JettonMasterData>()) {
             auto existing = masters.find(item.address);
             if (existing == masters.end()) {
                 masters[item.address] = item;
@@ -1546,7 +1546,7 @@ void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
                 }
             }
         }
-        for(const auto& item : task.parsed_block_->get_accounts<JettonWalletData>()) {
+        for(const auto& item : task.parsed_block_->get_accounts<schema::JettonWalletData>()) {
             auto existing = wallets.find(item.address);
             if (existing == wallets.end()) {
                 wallets[item.address] = item;
@@ -1666,7 +1666,7 @@ void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
         auto forward_payload = std::make_shared<ColumnNullableT<ColumnString>>();
 
         for (const auto& task : insert_tasks_) {
-            for (const auto& transfer : task.parsed_block_->get_events<JettonTransfer>()) {
+            for (const auto& transfer : task.parsed_block_->get_events<schema::JettonTransfer>()) {
                 auto custom_payload_boc_r = convert::to_bytes(transfer.custom_payload);
                 auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
@@ -1737,7 +1737,7 @@ void InsertBatchClickhouse::insert_jettons(clickhouse::Client &client) {
         auto custom_payload = std::make_shared<ColumnNullableT<ColumnString>>();
         
         for (const auto& task : insert_tasks_) {
-            for (const auto& burn : task.parsed_block_->get_events<JettonBurn>()) {
+            for (const auto& burn : task.parsed_block_->get_events<schema::JettonBurn>()) {
                 auto custom_payload_boc_r = convert::to_bytes(burn.custom_payload);
                 auto custom_payload_boc = custom_payload_boc_r.is_ok() ? custom_payload_boc_r.move_as_ok() : std::nullopt;
 
