@@ -2,7 +2,6 @@
 #include "td/actor/actor.h"
 #include "IndexData.h"
 #include "SmcScanner.h"
-#include <queue>
 #include <set>
 
 using ShardStateDataPtr = std::shared_ptr<ShardStateData>;
@@ -25,8 +24,9 @@ using AddrRange = std::pair<td::Bits256, td::Bits256>;
 
 class ShardStateScanner: public td::actor::Actor {
 private:
-  td::Ref<vm::Cell> shard_state_;
-  MasterchainBlockDataState mc_block_ds_;
+  td::actor::ActorId<DbScanner> db_scanner_;
+  std::size_t current_shard_index_;
+  ReloadShardStateContextPtr reload_context_;
 
   ShardStateDataPtr shard_state_data_;
   Options options_;
@@ -34,21 +34,19 @@ private:
   td::Bits256 next_batch_start_;
   
   ton::ShardIdFull shard_;
-  bool allow_same_{true};
-  bool finished_{false};
-  uint32_t in_progress_{0};
   uint32_t accounts_cnt_{0};
 
-  std::unordered_map<std::string, int> no_interface_count_;
-  std::unordered_set<std::string> code_hashes_to_skip_;
-  std::mutex code_hashes_to_skip_mutex_;
-
   // Parallel processing members
-  uint32_t max_parallel_batches_{4};
   std::set<AddrRange> ranges_in_progress_;
+  std::uint32_t completed_batches_since_reload_{0};
+  bool refresh_in_progress_{false};
 
 public:
-  ShardStateScanner(td::Ref<vm::Cell> shard_state, MasterchainBlockDataState mc_block_ds, Options options);
+  ShardStateScanner(td::actor::ActorId<DbScanner> db_scanner,
+                    std::size_t current_shard_index,
+                    ReloadShardStateContextPtr reload_context,
+                    ShardStateDataPtr shard_state_data,
+                    Options options);
 
   void schedule_next();
   void start_up() override;
@@ -60,5 +58,8 @@ public:
 
   void range_parsed(AddrRange range, std::vector<InsertData> results);
   void batch_inserted(AddrRange range);
+  void fail_range(AddrRange range, td::Status error);
+  void request_shard_state_reload();
+  void got_reload_cell_db_reader(td::Result<std::shared_ptr<vm::CellDbReader>> result);
   void update_checkpoint(td::Bits256 new_checkpoint);
 };

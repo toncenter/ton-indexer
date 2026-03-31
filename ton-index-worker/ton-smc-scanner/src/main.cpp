@@ -114,6 +114,21 @@ int main(int argc, char *argv[]) {
     options_.batch_size_ = v;
     return td::Status::OK();
   });
+  p.add_checked_option('\0', "reload-shard-state-every-batches",
+                       "Reload shard-state roots and config every N completed batches (default: 16, 0 disables)",
+                       [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --reload-shard-state-every-batches: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("--reload-shard-state-every-batches must be non-negative");
+    }
+    options_.reload_shard_state_every_batches_ = static_cast<std::uint32_t>(v);
+    return td::Status::OK();
+  });
   p.add_option('D', "db", "Path to TON DB folder", [&](td::Slice fname) { 
     db_root = fname.str();
   });
@@ -193,7 +208,7 @@ int main(int argc, char *argv[]) {
     options_.insert_manager_ = insert_manager.get();
     td::actor::create_actor<SmcScanner>("smcscanner", db_scanner.get(), options_).release();
   });
-  
+
   while (scheduler.run(1)) {
 #if TON_USE_JEMALLOC
     if (need_jemalloc_profile_dump.exchange(false)) {

@@ -88,31 +88,22 @@ void ShardRangeScanner::start_up() {
 }
 
 
-ShardStateScanner::ShardStateScanner(td::Ref<vm::Cell> shard_state, MasterchainBlockDataState mc_block_ds, Options options) 
-    : shard_state_(shard_state), mc_block_ds_(mc_block_ds), options_(options) {
+ShardStateScanner::ShardStateScanner(td::actor::ActorId<DbScanner> db_scanner,
+                                     std::size_t current_shard_index,
+                                     ReloadShardStateContextPtr reload_context,
+                                     ShardStateDataPtr shard_state_data,
+                                     Options options)
+    : db_scanner_(db_scanner)
+    , current_shard_index_(current_shard_index)
+    , reload_context_(std::move(reload_context))
+    , shard_state_data_(std::move(shard_state_data))
+    , options_(options) {
 }
 
 void ShardStateScanner::start_up() {
-    shard_state_data_ = std::make_shared<ShardStateData>();
-    for (const auto &shard_ds : mc_block_ds_.shard_blocks_) {
-        shard_state_data_->shard_states_.push_back(shard_ds.block_state);
-    }
-    auto config_r = block::ConfigInfo::extract_config(mc_block_ds_.shard_blocks_[0].block_state, 
-        mc_block_ds_.shard_blocks_[0].handle->id(), block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries);
-    if (config_r.is_error()) {
-        LOG(ERROR) << "Failed to extract config: " << config_r.move_as_error();
-        std::_Exit(2);
-        return;
-    }
-    shard_state_data_->config_ = config_r.move_as_ok();
-
-    if (!tlb::unpack_cell(shard_state_, shard_state_data_->sstate_)) {
-        LOG(ERROR) << "Failed to unpack ShardStateUnsplit";
-        stop();
-        return;
-    }
-
     shard_ = ton::ShardIdFull(block::ShardId(shard_state_data_->sstate_.shard_id.write()));
+    LOG(INFO) << "Shard " << shard_.to_str() << ": reload shard-state snapshot every "
+              << options_.reload_shard_state_every_batches_ << " completed batches";
 
     if (!options_.working_dir_.empty()) {
         auto path = options_.working_dir_ + "/" + std::to_string(options_.seqno_) + "_" + shard_.to_str() + ".checkpoint";
@@ -143,6 +134,9 @@ void ShardStateScanner::start_up() {
 }
 
 void ShardStateScanner::schedule_next() {
+    if (refresh_in_progress_) {
+        return;
+    }
     vm::AugmentedDictionary accounts_dict{vm::load_cell_slice_ref(shard_state_data_->sstate_.accounts), 256, block::tlb::aug_ShardAccounts};
 
     // Launch parallel scanners up to max_parallel_batches_
@@ -164,9 +158,10 @@ void ShardStateScanner::schedule_next() {
 
         // LOG(INFO) << "Scheduling range scan for " << range.first.to_hex() << " - " << range.second.to_hex();
 
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), range](td::Result<std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>>> res) {
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), range](td::Result<std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>>> res) mutable {
             if (res.is_error()) {
-                LOG(ERROR) << "Failed to scan range: " << res.move_as_error();
+                td::actor::send_closure(SelfId, &ShardStateScanner::fail_range, range,
+                                        res.move_as_error_prefix("Failed to scan range: "));
                 return;
             }
             td::actor::send_closure(SelfId, &ShardStateScanner::range_scan_completed, range, res.move_as_ok());
@@ -179,7 +174,6 @@ void ShardStateScanner::schedule_next() {
     }
 
     if (ranges_in_progress_.empty()) {
-        finished_ = true;
         LOG(INFO) << "Shard " << shard_.to_str() << " finished with " << accounts_cnt_ << " accounts";
         stop();
     }
@@ -195,9 +189,10 @@ std::string ShardStateScanner::get_checkpoint_file_path() {
 }
 
 void ShardStateScanner::range_scan_completed(AddrRange range, std::vector<std::pair<td::Bits256, block::gen::ShardAccount::Record>> results) {
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), range](td::Result<std::vector<InsertData>> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), range](td::Result<std::vector<InsertData>> R) mutable {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to process batch: " << R.move_as_error();
+            td::actor::send_closure(SelfId, &ShardStateScanner::fail_range, range,
+                                    R.move_as_error_prefix("Failed to process batch: "));
             return;
         }
         td::actor::send_closure(SelfId, &ShardStateScanner::range_parsed, range, R.move_as_ok());
@@ -216,9 +211,10 @@ void ShardStateScanner::range_parsed(AddrRange range, std::vector<InsertData> re
         return;
     }
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), cnt = results.size(), range](td::Result<td::Unit> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), cnt = results.size(), range](td::Result<td::Unit> R) mutable {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to insert data: " << R.move_as_error();
+            td::actor::send_closure(SelfId, &ShardStateScanner::fail_range, range,
+                                    R.move_as_error_prefix("Failed to insert data: "));
             return;
         }
         LOG(INFO) << "Inserted " << cnt << " accstates+interfaces for range " << range.first.to_hex() << "-" << range.second.to_hex();
@@ -239,6 +235,22 @@ void ShardStateScanner::update_checkpoint(td::Bits256 up_to_addr) {
     }
 }
 
+void ShardStateScanner::fail_range(AddrRange range, td::Status error) {
+    LOG(ERROR) << "Shard " << shard_.to_str() << " failed for range " << range.first.to_hex() << "-" << range.second.to_hex()
+               << ": " << error;
+
+    td::Bits256 new_checkpoint = range.first;
+    for (const auto &in_progress_range : ranges_in_progress_) {
+        if (in_progress_range.first < new_checkpoint) {
+            new_checkpoint = in_progress_range.first;
+        }
+    }
+    update_checkpoint(new_checkpoint);
+
+    ranges_in_progress_.erase(range);
+    stop();
+}
+
 void ShardStateScanner::batch_inserted(AddrRange range) {
     // LOG(INFO) << "Batch inserted for range " << range.first.to_hex() << " - " << range.second.to_hex();
     td::Bits256 new_checkpoint = td::Bits256::ones();
@@ -257,5 +269,105 @@ void ShardStateScanner::batch_inserted(AddrRange range) {
     }
     update_checkpoint(new_checkpoint);
 
+    completed_batches_since_reload_++;
+    if (refresh_in_progress_) {
+        return;
+    }
+    if (options_.reload_shard_state_every_batches_ != 0 &&
+        completed_batches_since_reload_ >= options_.reload_shard_state_every_batches_) {
+        request_shard_state_reload();
+        return;
+    }
+
+    schedule_next();
+}
+
+void ShardStateScanner::request_shard_state_reload() {
+    // We intentionally rebuild shard-state roots from CellDb from time to time instead of
+    // reusing the same root graph for the whole shard scan.
+    //
+    // Why this is needed:
+    // 1. The scanner keeps traversing long-lived roots:
+    //    - the shard accounts dictionary in shard_state_data_->sstate_.accounts
+    //    - the shared shard-state roots used by interface detectors
+    //    - config/libraries roots used by execute_smc_method()
+    // 2. In TON VM, loading an ExtCell materializes and stores the corresponding DataCell
+    //    under that live object graph. There is no general "unload this subtree" API that
+    //    turns those loaded cells back into lazy/pruned placeholders.
+    // 3. As scanning continues, repeated dictionary lookups and get-method execution keep
+    //    attaching more loaded cells to the same roots, so the retained live graph grows.
+    // 4. The practical way to drop that accumulated VM state is to stop using the old roots
+    //    and rebuild a fresh graph from CellDb. In-flight actors still finish on the old
+    //    ShardStateData, but once they release it, the old graph becomes collectible.
+    //
+    // Reloading is therefore a bounded-lifetime root rotation mechanism: it does not change
+    // scanner semantics, it only prevents one root object graph from accumulating loaded VM
+    // cells for the entire duration of a long scan.
+    refresh_in_progress_ = true;
+    LOG(INFO) << "Reloading shard-state snapshot for " << shard_.to_str() << " after "
+              << completed_batches_since_reload_ << " completed batches";
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<std::shared_ptr<vm::CellDbReader>> result) {
+        td::actor::send_closure(SelfId, &ShardStateScanner::got_reload_cell_db_reader, std::move(result));
+    });
+    td::actor::send_closure(db_scanner_, &DbScanner::get_cell_db_reader, std::move(P));
+}
+
+void ShardStateScanner::got_reload_cell_db_reader(td::Result<std::shared_ptr<vm::CellDbReader>> result) {
+    if (result.is_error()) {
+        refresh_in_progress_ = false;
+        LOG(ERROR) << "Failed to get CellDbReader for shard-state reload for " << shard_.to_str() << ": "
+                   << result.move_as_error_prefix("");
+        stop();
+        return;
+    }
+
+    auto reader = result.move_as_ok();
+    AllShardStates shard_states;
+    shard_states.reserve(reload_context_->state_root_hashes_.size());
+    for (const auto &state_root_hash : reload_context_->state_root_hashes_) {
+        auto state_r = reader->load_cell(state_root_hash.as_slice());
+        if (state_r.is_error()) {
+            refresh_in_progress_ = false;
+            LOG(ERROR) << "Failed to load fresh shard state for root hash " << state_root_hash.to_hex()
+                       << " while reloading " << shard_.to_str() << ": "
+                       << state_r.move_as_error_prefix("");
+            stop();
+            return;
+        }
+        shard_states.push_back(state_r.move_as_ok());
+    }
+
+    if (current_shard_index_ >= shard_states.size()) {
+        refresh_in_progress_ = false;
+        LOG(ERROR) << "Current shard index is out of range during shard-state reload for " << shard_.to_str();
+        stop();
+        return;
+    }
+
+    auto shard_state_data = std::make_shared<ShardStateData>();
+    shard_state_data->shard_states_ = std::move(shard_states);
+    if (!tlb::unpack_cell(shard_state_data->shard_states_[current_shard_index_], shard_state_data->sstate_)) {
+        refresh_in_progress_ = false;
+        LOG(ERROR) << "Failed to unpack reloaded ShardStateUnsplit for " << shard_.to_str();
+        stop();
+        return;
+    }
+
+    auto config_r = block::ConfigInfo::extract_config(
+        shard_state_data->shard_states_[0],
+        reload_context_->config_block_id_,
+        block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries);
+    if (config_r.is_error()) {
+        refresh_in_progress_ = false;
+        LOG(ERROR) << "Failed to extract config from reloaded shard state for " << shard_.to_str() << ": "
+                   << config_r.move_as_error_prefix("");
+        stop();
+        return;
+    }
+    shard_state_data->config_ = std::shared_ptr<block::ConfigInfo>(config_r.move_as_ok());
+
+    refresh_in_progress_ = false;
+    shard_state_data_ = std::move(shard_state_data);
+    completed_batches_since_reload_ = 0;
     schedule_next();
 }

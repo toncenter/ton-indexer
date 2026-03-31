@@ -13,6 +13,13 @@
 
 using Detector = InterfacesDetector<INTERFACES_DETECTOR_TYPES>;
 
+struct ReloadShardStateContext {
+  std::vector<ton::RootHash> state_root_hashes_;
+  ton::BlockIdExt config_block_id_;
+};
+
+using ReloadShardStateContextPtr = std::shared_ptr<const ReloadShardStateContext>;
+
 struct ShardStateData {
   AllShardStates shard_states_;
   block::gen::ShardStateUnsplit::Record sstate_;
@@ -26,6 +33,7 @@ struct Options {
   std::uint64_t masterchain_batch_step_ = 0x1000'0000'0000'0000ULL;
   std::uint32_t batch_size_{1000};
   int max_parallel_batches_{8};
+  std::uint32_t reload_shard_state_every_batches_{64};
   bool index_interfaces_{false};
   bool index_account_states_{false};
   std::string working_dir_;
