@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
     return td::Status::OK();
   });
   p.add_checked_option('\0', "reload-shard-state-every-batches",
-                       "Reload shard-state roots and config every N completed batches (default: 16, 0 disables)",
+                       "Reload shard-state roots and config every N completed batches (default: 64, 0 disables)",
                        [&](td::Slice value) {
     int v;
     try {
