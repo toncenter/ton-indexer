@@ -342,6 +342,7 @@ void PostgreSQLInserter::start_up() {
         pqxx::connection c(connection_string_);
         if (!c.is_open()) {
             promise_.set_error(td::Status::Error("Failed to open database"));
+            stop();
             return;
         }
 
