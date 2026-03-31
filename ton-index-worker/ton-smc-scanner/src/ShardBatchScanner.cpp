@@ -314,11 +314,8 @@ void ShardStateScanner::request_shard_state_reload() {
 
 void ShardStateScanner::got_reload_cell_db_reader(td::Result<std::shared_ptr<vm::CellDbReader>> result) {
     if (result.is_error()) {
-        refresh_in_progress_ = false;
-        LOG(ERROR) << "Failed to get CellDbReader for shard-state reload for " << shard_.to_str() << ": "
+        LOG(FATAL) << "Failed to get CellDbReader for shard-state reload for " << shard_.to_str() << ": "
                    << result.move_as_error_prefix("");
-        stop();
-        return;
     }
 
     auto reader = result.move_as_ok();
@@ -327,30 +324,21 @@ void ShardStateScanner::got_reload_cell_db_reader(td::Result<std::shared_ptr<vm:
     for (const auto &state_root_hash : reload_context_->state_root_hashes_) {
         auto state_r = reader->load_cell(state_root_hash.as_slice());
         if (state_r.is_error()) {
-            refresh_in_progress_ = false;
-            LOG(ERROR) << "Failed to load fresh shard state for root hash " << state_root_hash.to_hex()
+            LOG(FATAL) << "Failed to load fresh shard state for root hash " << state_root_hash.to_hex()
                        << " while reloading " << shard_.to_str() << ": "
                        << state_r.move_as_error_prefix("");
-            stop();
-            return;
         }
         shard_states.push_back(state_r.move_as_ok());
     }
 
     if (current_shard_index_ >= shard_states.size()) {
-        refresh_in_progress_ = false;
-        LOG(ERROR) << "Current shard index is out of range during shard-state reload for " << shard_.to_str();
-        stop();
-        return;
+        LOG(FATAL) << "Current shard index is out of range during shard-state reload for " << shard_.to_str();
     }
 
     auto shard_state_data = std::make_shared<ShardStateData>();
     shard_state_data->shard_states_ = std::move(shard_states);
     if (!tlb::unpack_cell(shard_state_data->shard_states_[current_shard_index_], shard_state_data->sstate_)) {
-        refresh_in_progress_ = false;
-        LOG(ERROR) << "Failed to unpack reloaded ShardStateUnsplit for " << shard_.to_str();
-        stop();
-        return;
+        LOG(FATAL) << "Failed to unpack reloaded ShardStateUnsplit for " << shard_.to_str();
     }
 
     auto config_r = block::ConfigInfo::extract_config(
@@ -358,11 +346,8 @@ void ShardStateScanner::got_reload_cell_db_reader(td::Result<std::shared_ptr<vm:
         reload_context_->config_block_id_,
         block::ConfigInfo::needCapabilities | block::ConfigInfo::needLibraries);
     if (config_r.is_error()) {
-        refresh_in_progress_ = false;
-        LOG(ERROR) << "Failed to extract config from reloaded shard state for " << shard_.to_str() << ": "
+        LOG(FATAL) << "Failed to extract config from reloaded shard state for " << shard_.to_str() << ": "
                    << config_r.move_as_error_prefix("");
-        stop();
-        return;
     }
     shard_state_data->config_ = std::shared_ptr<block::ConfigInfo>(config_r.move_as_ok());
 
