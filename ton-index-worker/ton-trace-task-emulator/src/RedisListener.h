@@ -22,7 +22,7 @@ private:
   td::actor::ActorId<DbScanner> db_scanner_;
   std::function<void(TraceEmulationResult, td::Promise<td::Unit>)> trace_processor_;
   
-  MasterchainBlockDataState mc_data_state_;
+  schema::MasterchainBlockDataState mc_data_state_;
   ton::BlockId current_mc_block_id_;
 
 public:
@@ -32,11 +32,11 @@ public:
   virtual void start_up() override;
 
   void alarm() override;
-  void set_mc_data_state(MasterchainBlockDataState mc_data_state);
+  void set_mc_data_state(schema::MasterchainBlockDataState mc_data_state);
 
 private:
   void trace_error(std::string task_id, std::optional<ton::BlockId> mc_block_id, td::Status error);
-  void trace_received(TraceTask task, MasterchainBlockDataState mc_data_state, Trace trace);
+  void trace_received(TraceTask task, schema::MasterchainBlockDataState mc_data_state, Trace trace);
   void trace_interfaces_error(std::string task_id, ton::BlockId mc_block_id, td::Status error);
   void finish_processing(std::string task_id, ton::BlockId mc_block_id, Trace trace);
   

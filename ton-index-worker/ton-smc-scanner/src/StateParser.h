@@ -36,7 +36,7 @@ void StateBatchParser::interfaces_detected(block::StdAddress address, std::vecto
         std::visit([&](auto&& arg) {
             using T = std::decay_t<decltype(arg)>;
             if constexpr (std::is_same_v<T, JettonMasterDetectorR::Result>) {
-                JettonMasterDataV2 jetton_master_data;
+                schema::JettonMasterDataV2 jetton_master_data;
                 jetton_master_data.address = address;
                 jetton_master_data.total_supply = arg.total_supply;
                 jetton_master_data.mintable = arg.mintable;
@@ -49,7 +49,7 @@ void StateBatchParser::interfaces_detected(block::StdAddress address, std::vecto
                 jetton_master_data.last_transaction_now = last_trans_now;
                 interfaces_[address].push_back(jetton_master_data);
             } else if constexpr (std::is_same_v<T, JettonWalletDetectorR::Result>) {
-                JettonWalletDataV2 jetton_wallet_data;
+                schema::JettonWalletDataV2 jetton_wallet_data;
                 jetton_wallet_data.balance = arg.balance;
                 jetton_wallet_data.address = address;
                 jetton_wallet_data.owner = arg.owner;
@@ -61,7 +61,7 @@ void StateBatchParser::interfaces_detected(block::StdAddress address, std::vecto
                 jetton_wallet_data.data_hash = data_hash;
                 interfaces_[address].push_back(jetton_wallet_data);
             } else if constexpr (std::is_same_v<T, NftCollectionDetectorR::Result>) {
-                NFTCollectionDataV2 nft_collection_data;
+                schema::NFTCollectionDataV2 nft_collection_data;
                 nft_collection_data.address = address;
                 nft_collection_data.next_item_index = arg.next_item_index;
                 nft_collection_data.owner_address = arg.owner_address;
@@ -72,7 +72,7 @@ void StateBatchParser::interfaces_detected(block::StdAddress address, std::vecto
                 nft_collection_data.data_hash = data_hash;
                 interfaces_[address].push_back(nft_collection_data);
             } else if constexpr (std::is_same_v<T, NftItemDetectorR::Result>) {
-                NFTItemDataV2 nft_item_data;
+                schema::NFTItemDataV2 nft_item_data;
                 nft_item_data.address = address;
                 nft_item_data.init = arg.init;
                 nft_item_data.index = arg.index;
@@ -84,7 +84,7 @@ void StateBatchParser::interfaces_detected(block::StdAddress address, std::vecto
                 nft_item_data.code_hash = code_hash;
                 nft_item_data.data_hash = data_hash;
                 if (arg.dns_entry) {
-                    nft_item_data.dns_entry = NFTItemDataV2::DNSEntry{arg.dns_entry->domain, 
+                    nft_item_data.dns_entry = schema::NFTItemDataV2::DNSEntry{arg.dns_entry->domain,
                                                                       arg.dns_entry->wallet, 
                                                                       arg.dns_entry->next_resolver, 
                                                                       arg.dns_entry->site_adnl,
@@ -92,7 +92,7 @@ void StateBatchParser::interfaces_detected(block::StdAddress address, std::vecto
                 }
                 interfaces_[address].push_back(nft_item_data);
             } else if constexpr (std::is_same_v<T, MultisigContract::Result>) {
-                MultisigContractData multisig_contract_data;
+                schema::MultisigContractData multisig_contract_data;
                 multisig_contract_data.address = address;
                 multisig_contract_data.next_order_seqno = arg.next_order_seqno;
                 multisig_contract_data.threshold = arg.threshold;
@@ -104,7 +104,7 @@ void StateBatchParser::interfaces_detected(block::StdAddress address, std::vecto
                 multisig_contract_data.data_hash = data_hash;
                 interfaces_[address].push_back(multisig_contract_data);
             } else if constexpr (std::is_same_v<T, MultisigOrder::Result>) {
-                MultisigOrderData multisig_order_data;
+                schema::MultisigOrderData multisig_order_data;
                 multisig_order_data.address = address;
                 multisig_order_data.multisig_address = arg.multisig_address;
                 multisig_order_data.order_seqno = arg.order_seqno;
@@ -121,7 +121,7 @@ void StateBatchParser::interfaces_detected(block::StdAddress address, std::vecto
                 multisig_order_data.data_hash = data_hash;
                 interfaces_[address].push_back(multisig_order_data);
             } else if constexpr (std::is_same_v<T, VestingContract::Result>) {
-                VestingData vesting_data;
+                schema::VestingData vesting_data;
                 vesting_data.address = address;
                 vesting_data.vesting_start_time = arg.vesting_start_time;
                 vesting_data.vesting_total_duration = arg.vesting_total_duration;

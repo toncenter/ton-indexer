@@ -40,7 +40,7 @@ public:
     auto in_msg_body_cs = vm::load_cell_slice_ref(transaction.in_msg.value().body);
 
     for (auto& v : interfaces) {
-      if (auto jetton_wallet_ptr = std::get_if<JettonWalletDataV2>(&v)) {
+      if (auto jetton_wallet_ptr = std::get_if<schema::JettonWalletDataV2>(&v)) {
         if (tokens::gen::t_InternalMsgBody.check_tag(*in_msg_body_cs) == tokens::gen::InternalMsgBody::transfer_jetton) {
           auto transfer = parse_jetton_transfer(*jetton_wallet_ptr, transaction, in_msg_body_cs);
           if (transfer.is_error()) {
@@ -58,7 +58,7 @@ public:
         }
       }
 
-      if (auto nft_item_ptr = std::get_if<NFTItemDataV2>(&v)) {
+      if (auto nft_item_ptr = std::get_if<schema::NFTItemDataV2>(&v)) {
         if (tokens::gen::t_InternalMsgBody.check_tag(*in_msg_body_cs) == tokens::gen::InternalMsgBody::transfer_nft) {
           auto transfer = parse_nft_transfer(*nft_item_ptr, transaction, in_msg_body_cs);
           if (transfer.is_error()) {
@@ -71,13 +71,13 @@ public:
     }
   }
 
-  td::Result<JettonTransfer> parse_jetton_transfer(const JettonWalletDataV2& jetton_wallet, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
+  td::Result<schema::JettonTransfer> parse_jetton_transfer(const schema::JettonWalletDataV2& jetton_wallet, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
     tokens::gen::InternalMsgBody::Record_transfer_jetton transfer_record;
     if (!tlb::csr_unpack_inexact(in_msg_body_cs, transfer_record)) {
       return td::Status::Error("Failed to unpack transfer");
     }
 
-    JettonTransfer transfer;
+    schema::JettonTransfer transfer;
     transfer.trace_id = transaction.trace_id;
     transfer.transaction_hash = transaction.hash;
     transfer.transaction_lt = transaction.lt;
@@ -121,13 +121,13 @@ public:
     return transfer;
   }
 
-  td::Result<JettonBurn> parse_jetton_burn(const JettonWalletDataV2& jetton_wallet, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
+  td::Result<schema::JettonBurn> parse_jetton_burn(const schema::JettonWalletDataV2& jetton_wallet, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
     tokens::gen::InternalMsgBody::Record_burn burn_record;
     if (!tlb::csr_unpack_inexact(in_msg_body_cs, burn_record)) {
       return td::Status::Error("Failed to unpack burn");
     }
 
-    JettonBurn burn;
+    schema::JettonBurn burn;
     burn.trace_id = transaction.trace_id;
     burn.transaction_hash = transaction.hash;
     burn.transaction_lt = transaction.lt;
@@ -162,13 +162,13 @@ public:
     return burn;
   }
 
-  td::Result<NFTTransfer> parse_nft_transfer(const NFTItemDataV2& nft_item, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
+  td::Result<schema::NFTTransfer> parse_nft_transfer(const schema::NFTItemDataV2& nft_item, const schema::Transaction& transaction, td::Ref<vm::CellSlice> in_msg_body_cs) {
     tokens::gen::InternalMsgBody::Record_transfer_nft transfer_record;
     if (!tlb::csr_unpack_inexact(in_msg_body_cs, transfer_record)) {
       return td::Status::Error("Failed to unpack transfer");
     }
 
-    NFTTransfer transfer;
+    schema::NFTTransfer transfer;
     transfer.trace_id = transaction.trace_id;
     transfer.transaction_hash = transaction.hash;
     transfer.transaction_lt = transaction.lt;
@@ -232,6 +232,6 @@ public:
   // void process(ParsedBlockPtr block, td::Promise<ParsedBlockPtr> promise);
 
 private:
-  void process_states(const std::vector<schema::AccountState>& account_states, const MasterchainBlockDataState& blocks_ds, td::Promise<std::vector<BlockchainInterface>> &&promise);
-  void process_transactions(const std::vector<schema::Transaction>& transactions, td::Promise<std::vector<BlockchainEvent>> &&promise);
+  void process_states(const std::vector<schema::AccountState>& account_states, const schema::MasterchainBlockDataState& blocks_ds, td::Promise<std::vector<schema::BlockchainInterface>> &&promise);
+  void process_transactions(const std::vector<schema::Transaction>& transactions, td::Promise<std::vector<schema::BlockchainEvent>> &&promise);
 };

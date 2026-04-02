@@ -29,7 +29,7 @@ class TraceTaskScheduler : public td::actor::Actor {
     void got_last_mc_seqno(ton::BlockSeqno last_known_seqno);
     void fetch_seqnos();
     void fetch_error(std::uint32_t seqno, td::Status error);
-    void seqno_fetched(std::uint32_t seqno, MasterchainBlockDataState mc_data_state);
+    void seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState mc_data_state);
 
     void alarm();
 
