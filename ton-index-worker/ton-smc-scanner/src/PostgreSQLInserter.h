@@ -1,12 +1,8 @@
 #pragma once
 #include <td/actor/actor.h>
 #include <td/utils/base64.h>
-#include <td/utils/JsonBuilder.h>
-#include <crypto/vm/cells/CellHash.h>
 #include <pqxx/pqxx>
-// #include <semaphore>
 #include "IndexData.h"
-
 
 
 using InsertData = std::variant<schema::AccountState,
