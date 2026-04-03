@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"time"
 
@@ -464,9 +465,9 @@ func (l *Loader) fetchAddressMetadataFromDBMulti(ctx context.Context, keys []Add
 
 // QueryAddressBook retrieves address book information from cache.
 // Returns account states, detected interfaces, and DNS domains for the given addresses.
-func (l *Loader) QueryAddressBook(ctx context.Context, addrList []string, isTestnet bool) (index.AddressBook, error) {
+func (l *Loader) QueryAddressBook(ctx context.Context, addrList []string, isTestnet bool) (indexModels.AddressBook, error) {
 	if len(addrList) == 0 {
-		return make(index.AddressBook), nil
+		return make(indexModels.AddressBook), nil
 	}
 
 	// Convert input addresses to raw account format
@@ -538,14 +539,14 @@ func (l *Loader) QueryAddressBook(ctx context.Context, addrList []string, isTest
 	}
 
 	// Build the address book
-	book := make(index.AddressBook, len(addrList))
+	book := make(indexModels.AddressBook, len(addrList))
 
 	for _, addr := range addrList {
 		account := accountAddressConverter(addr)
 		if account == "" {
-			addrStr := index.GetAccountAddressFriendly(account, nil, isTestnet)
+			addrStr := indexModels.GetAccountAddressFriendly(account, nil, isTestnet)
 			emptyInterfaces := []string{}
-			book[addr] = index.AddressBookRow{
+			book[addr] = indexModels.AddressBookRow{
 				UserFriendly: &addrStr,
 				Domain:       nil,
 				Interfaces:   &emptyInterfaces,
@@ -571,13 +572,13 @@ func (l *Loader) QueryAddressBook(ctx context.Context, addrList []string, isTest
 			if codeHash != nil {
 				codeHashStr = *codeHash
 			}
-			interfaces = index.DetectInterface(codeHashStr, methods)
+			interfaces = detect.DetectInterface(codeHashStr, methods)
 		} else {
 			interfaces = []string{}
 		}
 
 		// Get friendly address
-		addrStr := index.GetAccountAddressFriendly(account, codeHash, isTestnet)
+		addrStr := indexModels.GetAccountAddressFriendly(account, codeHash, isTestnet)
 
 		// Get domain if available
 		var domain *string
@@ -585,7 +586,7 @@ func (l *Loader) QueryAddressBook(ctx context.Context, addrList []string, isTest
 			domain = &d
 		}
 
-		book[addr] = index.AddressBookRow{
+		book[addr] = indexModels.AddressBookRow{
 			UserFriendly: &addrStr,
 			Domain:       domain,
 			Interfaces:   &interfaces,
@@ -597,8 +598,8 @@ func (l *Loader) QueryAddressBook(ctx context.Context, addrList []string, isTest
 
 func accountAddressConverter(addr string) string {
 	account := ``
-	if addr_val := index.AccountAddressConverter(addr); addr_val.IsValid() {
-		if addr_str, ok := addr_val.Interface().(index.AccountAddress); ok {
+	if addr_val := indexModels.AccountAddressConverter(addr); addr_val.IsValid() {
+		if addr_str, ok := addr_val.Interface().(indexModels.AccountAddress); ok {
 			account = string(addr_str)
 		}
 	}
@@ -693,8 +694,8 @@ func (l *Loader) fetchAddressDataBatch(ctx context.Context, addresses []string) 
 }
 
 // buildMetadataResponse converts cached data to API response format.
-func (l *Loader) buildMetadataResponse(cached map[string]models.AddressData, requestedAddrs []string) map[string]index.AddressMetadata {
-	result := make(map[string]index.AddressMetadata)
+func (l *Loader) buildMetadataResponse(cached map[string]models.AddressData, requestedAddrs []string) map[string]indexModels.AddressMetadata {
+	result := make(map[string]indexModels.AddressMetadata)
 
 	for _, addr := range requestedAddrs {
 		data, ok := cached[addr]
@@ -702,7 +703,7 @@ func (l *Loader) buildMetadataResponse(cached map[string]models.AddressData, req
 			continue
 		}
 
-		var tokenInfos []index.TokenInfo
+		var tokenInfos []indexModels.TokenInfo
 
 		// Jetton wallet
 		if data.JettonWallet != nil {
@@ -715,7 +716,7 @@ func (l *Loader) buildMetadataResponse(cached map[string]models.AddressData, req
 			}
 			valid := true
 			typ := "jetton_wallets"
-			tokenInfos = append(tokenInfos, index.TokenInfo{
+			tokenInfos = append(tokenInfos, indexModels.TokenInfo{
 				Address: addr,
 				Type:    &typ,
 				Extra:   extra,
@@ -744,7 +745,7 @@ func (l *Loader) buildMetadataResponse(cached map[string]models.AddressData, req
 			for _, ti := range tokenInfos {
 				indexed = indexed && ti.Indexed
 			}
-			result[addr] = index.AddressMetadata{
+			result[addr] = indexModels.AddressMetadata{
 				TokenInfo: tokenInfos,
 				IsIndexed: indexed,
 			}
@@ -755,9 +756,9 @@ func (l *Loader) buildMetadataResponse(cached map[string]models.AddressData, req
 }
 
 // buildTokenInfo creates a TokenInfo from metadata.
-func (l *Loader) buildTokenInfo(addr, typ string, metadata map[string]models.MetadataEntry, nftIndex *string) index.TokenInfo {
+func (l *Loader) buildTokenInfo(addr, typ string, metadata map[string]models.MetadataEntry, nftIndex *string) indexModels.TokenInfo {
 	typCopy := typ
-	info := index.TokenInfo{
+	info := indexModels.TokenInfo{
 		Address:  addr,
 		Type:     &typCopy,
 		NftIndex: nftIndex,
@@ -782,9 +783,9 @@ func (l *Loader) buildTokenInfo(addr, typ string, metadata map[string]models.Met
 
 // QueryMetadata retrieves metadata for the given addresses using cache with DB fallback.
 // Returns a map of address -> AddressMetadata.
-func (l *Loader) QueryMetadata(ctx context.Context, addrList []string) (map[string]index.AddressMetadata, error) {
+func (l *Loader) QueryMetadata(ctx context.Context, addrList []string) (map[string]indexModels.AddressMetadata, error) {
 	if len(addrList) == 0 {
-		return make(map[string]index.AddressMetadata), nil
+		return make(map[string]indexModels.AddressMetadata), nil
 	}
 
 	// Convert addresses to raw account format
