@@ -14,6 +14,9 @@ cases:
           accounts:
             - 0:61F9E8981E541E31DAD7D3A9CFD7CF01C5E0FA669055A5E5B2F1F7825621AAAD
             - 0:3DADD520F445F934CF15BA4008A5FD2286A3A8217ABF112637308BB49BD3732B
+        expected-roles:
+          source: 5            # INIT_OUT
+          source_secondary: 1  # ECON_OUT
   Failed jetton transfers (external, identical transfers):
     trace-id: S4XM4TRqBSWvsrGUQY_NLEbIRM7q7iS6hx-uWg4Hv14=
     expected-actions:

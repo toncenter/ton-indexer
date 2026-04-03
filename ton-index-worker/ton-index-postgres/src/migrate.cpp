@@ -1173,6 +1173,35 @@ void run_1_2_8_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.8 completed successfully.";
 }
 
+void run_1_2_9_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.9";
+
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += "ALTER TABLE action_accounts ADD COLUMN IF NOT EXISTS role smallint;\n";
+
+    query += set_version_query({1, 2, 9});
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.9 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1259,6 +1288,7 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists action_accounts_index_1 on action_accounts (action_id);\n"
       "create index if not exists action_accounts_index_2 on action_accounts (trace_id, action_id);\n"
       "create index if not exists action_accounts_index_3 on action_accounts (account, trace_end_utime, trace_id, action_end_utime, action_id);\n"
+      "create index if not exists action_accounts_index_4 on action_accounts (account, role, trace_end_lt desc);\n"
       "create index if not exists multisig_index_1 on multisig (id);\n"
       "create index if not exists multisig_index_2 on multisig using gin(signers);\n"
       "create index if not exists multisig_index_3 on multisig using gin(proposers);\n"
@@ -1385,9 +1415,13 @@ int main(int argc, char *argv[]) {
       run_1_2_7_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 7};
     }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 8})) {
+    if (migration_needed(current_version, Version{1, 2, 8})) {
       run_1_2_8_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 8};
+    }
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 9})) {
+      run_1_2_9_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 9};
     }
 
 

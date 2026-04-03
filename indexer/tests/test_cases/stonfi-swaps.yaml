@@ -119,6 +119,10 @@ cases:
               destination_jetton_wallet: null
               asset: 0:8CDC1D7640AD5EE326527FC1AD0514F468B30DC84B0173F0E155F451B4E11F7C
             peer_swaps: [ ]
+        expected-roles:
+          source: 7              # INIT_BOTH (swap initiator)
+          destination: 2         # ECON_IN (receiver)
+          source_secondary: 1    # ECON_OUT (sender wallet)
   "Stonfi Jetton -> Ton (receiver == sender)":
     trace-id: 4PNVGQkZJUWAiiPq3rIekA9O5-HLaXmYmP30iixAefA=
     expected-actions:
@@ -165,6 +169,8 @@ cases:
               destination_jetton_wallet: null
               asset: 0:8CDC1D7640AD5EE326527FC1AD0514F468B30DC84B0173F0E155F451B4E11F7C
             peer_swaps: [ ]
+        expected-roles:
+          source: 7  # INIT_BOTH (source == destination, swap initiator)
   "Stonfi Jetton -> Jetton":
     trace-id: E_ktemwUPyP4hfuuBbuf3DUnN33611NaKQhG3odLZao=
     expected-actions:

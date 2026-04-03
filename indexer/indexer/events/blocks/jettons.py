@@ -186,6 +186,9 @@ async def _get_jetton_mint_data(
         jetton_mint_info = JettonMint(block.get_body())
     internal_transfer_block = find_call_contract(blocks, JettonInternalTransfer.opcode)
 
+    # Who sent the mint message to the master
+    mint_source = block.get_message().source
+
     if not block.failed and internal_transfer_block is not None:
         internal_transfer_info = JettonInternalTransfer(internal_transfer_block.get_body())
         failed = block.failed or internal_transfer_block.failed
@@ -206,6 +209,7 @@ async def _get_jetton_mint_data(
         )
 
         data = {
+            "source": AccountId(mint_source) if mint_source else None,
             "to": AccountId(receiver_jwallet.owner),
             "to_jetton_wallet": AccountId(receiver_jwallet.address),
             "amount": Amount(internal_transfer_info.amount),
@@ -218,6 +222,7 @@ async def _get_jetton_mint_data(
         return data, failed
     else:
         data = {
+            "source": AccountId(mint_source) if mint_source else None,
             "to": AccountId(jetton_mint_info.to_address),
             "to_jetton_wallet": None,
             "asset": Asset(is_ton=False, jetton_address=block.get_message().destination),

@@ -56,7 +56,6 @@ def add_on_conflict_ignore(conn, cursor, statement, parameters, context, execute
         statement += " ON CONFLICT DO NOTHING"
     elif stipped_statement.startswith('INSERT INTO ACTION_ACCOUNTS'):
         statement += " ON CONFLICT DO NOTHING"
-
     return statement, parameters
 
 
@@ -260,10 +259,8 @@ class EventClassifierWorker(mp.Process):
                             trace_ids_to_cleanup.extend([x[0] for x in result.fetchall()])
                 if len(trace_ids_to_cleanup) > 0:
                     stmt = delete(Action).where(Action.trace_id.in_(trace_ids_to_cleanup))
-                    # logger.info(f'stmt: {stmt}')
                     await session.execute(stmt)
                     stmt = delete(ActionAccount).where(ActionAccount.trace_id.in_(trace_ids_to_cleanup))
-                    # logger.info(f'stmt: {stmt}')
                     await session.execute(stmt)
 
                 # read traces
@@ -343,6 +340,7 @@ class EventClassifierWorker(mp.Process):
                             failed_traces.append(trace_id)
                 failed = len(failed_traces)
                 broken = len(broken_traces)
+
                 # finish task
                 # await session.execute(f"delete from _classifier_tasks where id = {task.id};")
                 if not is_trace_batch:
