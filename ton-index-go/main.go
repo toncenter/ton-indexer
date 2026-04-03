@@ -119,8 +119,8 @@ var emulatedTracesRepository *emulated.EmulatedTracesRepository
 // @tags	blockchain
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.MasterchainInfo
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.MasterchainInfo
+// @failure		400	{object}	models.RequestError
 // @router			/api/v3/masterchainInfo [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -139,8 +139,8 @@ func GetMasterchainInfo(c *fiber.Ctx) error {
 // @tags blockchain
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.BlocksResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.BlocksResponse
+// @failure		400	{object}	models.RequestError
 // @param	workchain query int32 false "Block workchain."
 // @param	shard query string false "Block shard id. Must be sent with *workchain*. Example: `8000000000000000`."
 // @param	seqno query int32 false "Block block seqno. Must be sent with *workchain* and *shard*."
@@ -196,8 +196,8 @@ func GetBlocks(c *fiber.Ctx) error {
 // @tags blockchain
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.TransactionsResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.TransactionsResponse
+// @failure		400	{object}	models.RequestError
 // @param	seqno query int32 true "Masterchain block seqno."
 // @router			/api/v3/masterchainBlockShardState [get]
 // @security		APIKeyHeader
@@ -227,8 +227,8 @@ func GetShards(c *fiber.Ctx) error {
 // @tags blockchain
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.TransactionsResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.TransactionsResponse
+// @failure		400	{object}	models.RequestError
 // @param	seqno query int32 true "Masterchain block seqno."
 // @param   limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param   offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -264,8 +264,8 @@ func GetShardsDiff(c *fiber.Ctx) error {
 // @tags blockchain
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.TransactionsResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.TransactionsResponse
+// @failure		400	{object}	models.RequestError
 // @param	workchain query int32 false "Block workchain."
 // @param	shard query string false "Block shard id. Must be sent with *workchain*. Example: `8000000000000000`."
 // @param	seqno query int32 false "Block block seqno. Must be sent with *workchain* and *shard*."
@@ -325,8 +325,8 @@ func GetTransactions(c *fiber.Ctx) error {
 // @tags blockchain
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.TransactionsResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.TransactionsResponse
+// @failure		400	{object}	models.RequestError
 // @param 	account	query []string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form." collectionFormat(multi)
 // @param trace_id query []string false "Find transactions by trace id."
 // @router			/api/v3/pendingTransactions [get]
@@ -377,8 +377,8 @@ func GetPendingTransactions(c *fiber.Ctx) error {
 // @tags blockchain
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.TransactionsResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.TransactionsResponse
+// @failure		400	{object}	models.RequestError
 // @param hash query string false "Transaction hash."
 // @param direction query string false "Direction of message." Enums(in, out)
 // @router			/api/v3/adjacentTransactions [get]
@@ -409,8 +409,8 @@ func GetAdjacentTransactions(c *fiber.Ctx) error {
 // @tags blockchain
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.TransactionsResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.TransactionsResponse
+// @failure		400	{object}	models.RequestError
 // @param	seqno query int32 true "Masterchain block seqno."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
@@ -451,8 +451,8 @@ func GetTransactionsByMasterchainBlock(c *fiber.Ctx) error {
 // @tags blockchain
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.TransactionsResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.TransactionsResponse
+// @failure		400	{object}	models.RequestError
 // @param msg_hash query string false "Message hash. Acceptable in hex, base64 and base64url forms."
 // @param body_hash query string false "Hash of message body."
 // @param opcode query string false "Opcode of message in hex or signed 32-bit decimal form."
@@ -503,8 +503,8 @@ func GetTransactionsByMessage(c *fiber.Ctx) error {
 // @tags blockchain
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.MessagesResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.MessagesResponse
+// @failure		400	{object}	models.RequestError
 // @param msg_hash query []string false "Message hash. Acceptable in hex, base64 and base64url forms." collectionFormat(multi)
 // @param body_hash query string false "Hash of message body."
 // @param source query string false "The source account address. Can be sent in hex, base64 or base64url form. Use value `null` to get external messages."
@@ -576,8 +576,8 @@ func GetMessages(c *fiber.Ctx) error {
 // @tags accounts
 // @Accept json
 // @Produce json
-// @success 200 {object} index.AddressBook
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.AddressBook
+// @failure 400 {object} models.RequestError
 // @param address query []string true "List of addresses in any form to get address book. Max: 1024." collectionFormat(multi)
 // @router /api/v3/addressBook [get]
 // @security		APIKeyHeader
@@ -606,8 +606,8 @@ func GetAddressBook(c *fiber.Ctx) error {
 // @tags accounts
 // @Accept json
 // @Produce json
-// @success 200 {object} index.Metadata
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.Metadata
+// @failure 400 {object} models.RequestError
 // @param address query []string true "List of addresses in any form to get address metadata. Max: 1024." collectionFormat(multi)
 // @router /api/v3/metadata [get]
 // @security		APIKeyHeader
@@ -637,8 +637,8 @@ func GetMetadata(c *fiber.Ctx) error {
 // @tags accounts
 // @Accept json
 // @Produce json
-// @success 200 {object} index.AccountStatesResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.AccountStatesResponse
+// @failure 400 {object} models.RequestError
 // @param address query []string true "List of addresses in any form. Maximum 1000 addresses allowed." collectionFormat(multi)
 // @param include_boc query bool false "Include code and data BOCs. Default: true" default(true)
 // @router /api/v3/accountStates [get]
@@ -681,8 +681,8 @@ func GetAccountStates(c *fiber.Ctx) error {
 // @tags accounts
 // @Accept json
 // @Produce json
-// @success 200 {object} index.WalletStatesResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.WalletStatesResponse
+// @failure 400 {object} models.RequestError
 // @param address query []string true "List of addresses in any form. Maximum 1000 addresses allowed." collectionFormat(multi)
 // @router /api/v3/walletStates [get]
 // @security		APIKeyHeader
@@ -716,8 +716,8 @@ func GetWalletStates(c *fiber.Ctx) error {
 // @tags dns
 // @Accept json
 // @Produce json
-// @success 200 {object} index.DNSRecordsResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.DNSRecordsResponse
+// @failure 400 {object} models.RequestError
 // @param wallet query string false "Wallet address in any form. DNS records that contain this address in wallet category will be returned."
 // @param domain query string false "Domain name to search for. DNS records with this exact domain name will be returned."
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(100)
@@ -764,8 +764,8 @@ func GetDNSRecords(c *fiber.Ctx) error {
 // @tags vesting
 // @Accept json
 // @Produce json
-// @success 200 {object} index.VestingContractsResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.VestingContractsResponse
+// @failure 400 {object} models.RequestError
 // @param contract_address query []string false "Vesting contract address in any form. Max: 1000." collectionFormat(multi)
 // @param wallet_address query []string false "Wallet address to filter by owner or sender. Max: 1000." collectionFormat(multi)
 // @param check_whitelist query bool false "Check if wallet address is in whitelist." default(false)
@@ -803,8 +803,8 @@ func GetVestingContracts(c *fiber.Ctx) error {
 // @tags nfts
 // @Accept json
 // @Produce json
-// @success 200 {object} index.NFTCollectionsResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.NFTCollectionsResponse
+// @failure 400 {object} models.RequestError
 // @param collection_address query []string false "Collection address in any form. Max: 1024." collectionFormat(multi)
 // @param owner_address query []string false "Address of collection owner in any form. Max: 1024." collectionFormat(multi)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
@@ -845,8 +845,8 @@ func GetNFTCollections(c *fiber.Ctx) error {
 // @tags nfts
 // @Accept json
 // @Produce json
-// @success 200 {object} index.NFTItemsResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.NFTItemsResponse
+// @failure 400 {object} models.RequestError
 // @param address query []string false "NFT item address in any form. Max: 1000." collectionFormat(multi)
 // @param owner_address query []string false "Address of NFT item owner in any form. Max: 1000." collectionFormat(multi)
 // @param collection_address query []string false "Collection address in any form."
@@ -897,8 +897,8 @@ func GetNFTItems(c *fiber.Ctx) error {
 // @tags nfts
 // @Accept json
 // @Produce json
-// @success 200 {object} index.NFTTransfersResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.NFTTransfersResponse
+// @failure 400 {object} models.RequestError
 // @param owner_address query []string false "Address of NFT owner in any form. Max 1000" collectionFormat(multi)
 // @param item_address query []string false "Address of NFT item in any form. Max: 1000." collectionFormat(multi)
 // @param collection_address query string false "Collection address in any form."
@@ -963,8 +963,8 @@ func GetNFTTransfers(c *fiber.Ctx) error {
 // @tags nfts
 // @Accept json
 // @Produce json
-// @success 200 {object} index.NFTSalesResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.NFTSalesResponse
+// @failure 400 {object} models.RequestError
 // @param address query []string true "Sale or auction contract address in any form. Max: 1000." collectionFormat(multi)
 // @router /api/v3/nft/sales [get]
 // @security APIKeyHeader
@@ -1001,8 +1001,8 @@ func GetNFTSales(c *fiber.Ctx) error {
 // @tags stats
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	[]index.AccountBalance
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	[]models.AccountBalance
+// @failure		400	{object}	models.RequestError
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
 // @param offset query int32 false "Skip first N rows. Use with *limit* to batch read." minimum(0) default(0)
 // @router			/api/v3/topAccountsByBalance [get]
@@ -1031,8 +1031,8 @@ func GetTopAccountsByBalance(c *fiber.Ctx) error {
 // @tags jettons
 // @Accept json
 // @Produce json
-// @success 200 {object} index.JettonMastersResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.JettonMastersResponse
+// @failure 400 {object} models.RequestError
 // @param address query []string false "Jetton Master address in any form. Max: 1024." collectionFormat(multi)
 // @param admin_address query []string false "Address of Jetton Master's admin in any form. Max: 1024." collectionFormat(multi)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1000) default(10)
@@ -1073,8 +1073,8 @@ func GetJettonMasters(c *fiber.Ctx) error {
 // @tags jettons
 // @Accept json
 // @Produce json
-// @success 200 {object} index.JettonWalletsResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.JettonWalletsResponse
+// @failure 400 {object} models.RequestError
 // @param address query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param owner_address query []string false "Address of Jetton wallet's owner in any form. Max: 1000." collectionFormat(multi)
 // @param jetton_address query []string false "Jetton Master in any form."
@@ -1121,8 +1121,8 @@ func GetJettonWallets(c *fiber.Ctx) error {
 // @tags jettons
 // @Accept json
 // @Produce json
-// @success 200 {object} index.JettonTransfersResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.JettonTransfersResponse
+// @failure 400 {object} models.RequestError
 // @param owner_address query []string false "Address of jetton wallet owner in any form. Max 1000" collectionFormat(multi)
 // @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param jetton_master query string false "Jetton master address in any form."
@@ -1189,8 +1189,8 @@ func GetJettonTransfers(c *fiber.Ctx) error {
 // @tags jettons
 // @Accept json
 // @Produce json
-// @success 200 {object} index.JettonBurnsResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.JettonBurnsResponse
+// @failure 400 {object} models.RequestError
 // @param address query []string false "Address of jetton wallet owner in any form. Max 1000" collectionFormat(multi)
 // @param jetton_wallet query []string false "Jetton wallet address in any form. Max: 1000." collectionFormat(multi)
 // @param jetton_master query string false "Jetton master address in any form."
@@ -1251,8 +1251,8 @@ func GetJettonBurns(c *fiber.Ctx) error {
 // @tags actions
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.TracesResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.TracesResponse
+// @failure		400	{object}	models.RequestError
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
 // @param trace_id query []string false "Find trace by trace id."
 // @param tx_hash query []string false "Find trace by transaction hash."
@@ -1329,8 +1329,8 @@ func GetTraces(c *fiber.Ctx) error {
 // @tags actions
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.TracesResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.TracesResponse
+// @failure		400	{object}	models.RequestError
 // @param account query string false "List of account addresses to get transactions. Can be sent in hex, base64 or base64url form."
 // @param ext_msg_hash query []string false "Find trace by external hash"
 // @router			/api/v3/pendingTraces [get]
@@ -1388,8 +1388,8 @@ func GetPendingTraces(c *fiber.Ctx) error {
 // @tags actions
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.ActionsResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.ActionsResponse
+// @failure		400	{object}	models.RequestError
 // @param account query string false "List of account addresses to get actions. Can be sent in hex, base64 or base64url form."
 // @param tx_hash query []string false "Find actions by transaction hash."
 // @param msg_hash query []string false "Find actions by message hash."
@@ -1463,8 +1463,8 @@ func GetActions(c *fiber.Ctx) error {
 // @tags actions
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.ActionsResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.ActionsResponse
+// @failure		400	{object}	models.RequestError
 // @param account query string false "List of account addresses to get actions. Can be sent in hex, base64 or base64url form."
 // @param ext_msg_hash query []string false "Find actions by trace external hash"
 // @param supported_action_types query []string false "Supported action types"
@@ -1526,8 +1526,8 @@ func GetPendingActions(c *fiber.Ctx) error {
 // @tags multisig
 // @Accept json
 // @Produce json
-// @success 200 {object} index.MultisigResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.MultisigResponse
+// @failure 400 {object} models.RequestError
 // @param address query []string false "Multisig contract address in any form. Max: 1024." collectionFormat(multi)
 // @param wallet_address query []string false "Address of signer or proposer wallet in any form. Max: 1024." collectionFormat(multi)
 // @param limit query int32 false "Limit number of queried rows. Use with *offset* to batch read." minimum(1) maximum(1024) default(10)
@@ -1570,8 +1570,8 @@ func GetMultisigs(c *fiber.Ctx) error {
 // @tags multisig
 // @Accept json
 // @Produce json
-// @success 200 {object} index.MultisigOrderResponse
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.MultisigOrderResponse
+// @failure 400 {object} models.RequestError
 // @param address query []string false "Order address in any form. Max: 1024." collectionFormat(multi)
 // @param multisig_address query []string false "Address of corresponding multisig. Max: 1024." collectionFormat(multi)
 // @param parse_actions query bool false "Parser order actions" default(false)
@@ -1614,8 +1614,8 @@ func GetMultisigOrders(c *fiber.Ctx) error {
 // @tags api/v2
 // @Accept json
 // @Produce json
-// @success 200 {object} index.V2WalletInformation
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.V2WalletInformation
+// @failure 400 {object} models.RequestError
 // @param address query string true "Account address in any form."
 // @param use_v2 query bool false "Use method from api/v2. Not recommended" default(true)
 // @router /api/v3/walletInformation [get]
@@ -1687,8 +1687,8 @@ func GetV2WalletInformation(c *fiber.Ctx) error {
 // @tags api/v2
 // @Accept json
 // @Produce json
-// @success 200 {object} index.V2AddressInformation
-// @failure 400 {object} index.RequestError
+// @success 200 {object} models.V2AddressInformation
+// @failure 400 {object} models.RequestError
 // @param address query string true "Account address in any form."
 // @param use_v2 query bool false "Use method from api/v2. Not recommended" default(true)
 // @router /api/v3/addressInformation [get]
@@ -1749,9 +1749,9 @@ func GetV2AddressInformation(c *fiber.Ctx) error {
 // @tags api/v2
 // @Accept json
 // @Produce json
-// @success 200 {object} index.V2SendMessageResult
-// @failure 400 {object} index.RequestError
-// @param boc body index.V2SendMessageRequest true "Message in boc base64 format."
+// @success 200 {object} models.V2SendMessageResult
+// @failure 400 {object} models.RequestError
+// @param boc body models.V2SendMessageRequest true "Message in boc base64 format."
 // @router /api/v3/message [post]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -1781,9 +1781,9 @@ func PostV2SendMessage(c *fiber.Ctx) error {
 // @tags api/v2
 // @Accept json
 // @Produce json
-// @success 200 {object} index.V2EstimateFeeResult
-// @failure 400 {object} index.RequestError
-// @param request body index.V2EstimateFeeRequest true "Estimate fee request."
+// @success 200 {object} models.V2EstimateFeeResult
+// @failure 400 {object} models.RequestError
+// @param request body models.V2EstimateFeeRequest true "Estimate fee request."
 // @router /api/v3/estimateFee [post]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -1825,9 +1825,9 @@ func PostV2EstimateFee(c *fiber.Ctx) error {
 // @tags api/v2
 // @Accept json
 // @Produce json
-// @success 200 {object} index.V2RunGetMethodRequest
-// @failure 400 {object} index.RequestError
-// @param request body index.V2RunGetMethodRequest true "Run Get-method request"
+// @success 200 {object} models.V2RunGetMethodRequest
+// @failure 400 {object} models.RequestError
+// @param request body models.V2RunGetMethodRequest true "Run Get-method request"
 // @router /api/v3/runGetMethod [post]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -1861,8 +1861,8 @@ func PostV2RunGetMethod(c *fiber.Ctx) error {
 // // @tags _debug
 // // @Accept       json
 // // @Produce      json
-// // @success		200	{object}	index.MessagesResponse
-// // @failure		400	{object}	index.RequestError
+// // @success		200	{object}	models.MessagesResponse
+// // @failure		400	{object}	models.RequestError
 // // @param my_hash query []string false "Hash" collectionFormat(multi)
 // // @param my_addr query []string false "Address" collectionFormat(multi)
 // // @param my_shard query []string false "ShardId" collectionFormat(multi)
@@ -1898,8 +1898,8 @@ func GetBalanceChanges(c *fiber.Ctx) error {
 // @tags utils
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.DecodeResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.DecodeResponse
+// @failure		400	{object}	models.RequestError
 // @param opcodes query []string false "List of opcodes to decode (hex or decimal)" collectionFormat(multi)
 // @param bodies query []string false "List of message bodies to decode (base64 or hex)" collectionFormat(multi)
 // @router			/api/v3/decode [get]
@@ -1927,9 +1927,9 @@ func GetDecode(c *fiber.Ctx) error {
 // @tags utils
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.DecodeResponse
-// @failure		400	{object}	index.RequestError
-// @param request body index.DecodeRequest true "Decode request"
+// @success		200	{object}	models.DecodeResponse
+// @failure		400	{object}	models.RequestError
+// @param request body models.DecodeRequest true "Decode request"
 // @router			/api/v3/decode [post]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
