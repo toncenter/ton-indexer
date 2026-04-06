@@ -1118,9 +1118,9 @@ std::string InsertBatchPostgres::insert_latest_account_states(pqxx::work &txn) {
       auto code_res = vm::std_boc_serialize(account_state.code);
       if (code_res.is_ok()){
         code_str = td::base64_encode(code_res.move_as_ok());
-      }
-      if (code_str->length() > 128000) {
-        LOG(WARNING) << "Large account code: " << account_state.account;
+        if (code_str->length() > 128000) {
+          LOG(WARNING) << "Large account code: " << account_state.account;
+        }
       }
     }
     auto tuple = std::make_tuple(
