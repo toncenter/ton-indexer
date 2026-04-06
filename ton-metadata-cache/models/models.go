@@ -1,6 +1,8 @@
 package models
 
-import "github.com/toncenter/ton-indexer/ton-index-go/index"
+import (
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+)
 
 // DnsEntry represents a row from dns_entries table.
 // Cache key: nft_item_address
@@ -80,6 +82,6 @@ type AddressInfoRequest struct {
 // AddressInfoResponse represents the response for the /address_info endpoint.
 // Uses index.AddressMetadata and index.AddressBook from ton-index-go.
 type AddressInfoResponse struct {
-	Metadata    map[string]index.AddressMetadata `json:"metadata,omitempty"`
-	AddressBook index.AddressBook                `json:"address_book,omitempty"`
+	Metadata    map[string]models.AddressMetadata `json:"metadata,omitempty"`
+	AddressBook models.AddressBook                `json:"address_book,omitempty"`
 }
