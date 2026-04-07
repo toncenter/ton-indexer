@@ -1,10 +1,14 @@
 #pragma once
+#include <memory>
 #include <queue>
 #include <pqxx/pqxx>
 #include "InsertManagerBase.h"
 
 
 class InsertBatchPostgres;
+struct PreparedBatchPostgres;
+struct InsertBatchPostgresPrepareState;
+struct LatestAccountStatesChunkPreparedResult;
 
 class InsertManagerPostgres: public InsertManagerBase {
 public:
@@ -22,6 +26,8 @@ public:
 private:
   InsertManagerPostgres::Credential credential_;
   std::int32_t max_data_depth_{0};
+  std::int32_t latest_states_prepare_parallelism_{4};
+  std::int32_t latest_states_prepare_chunk_size_{128};
 public:
   InsertManagerPostgres(InsertManagerPostgres::Credential credential) : 
     credential_(credential) {}
@@ -29,6 +35,8 @@ public:
   void start_up() override;
 
   void set_max_data_depth(std::int32_t value);
+  void set_latest_states_prepare_parallelism(std::int32_t value);
+  void set_latest_states_prepare_chunk_size(std::int32_t value);
 
   void create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) override;
   void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0) override;
@@ -37,8 +45,10 @@ public:
 
 class InsertBatchPostgres: public td::actor::Actor {
 public:
-  InsertBatchPostgres(InsertManagerPostgres::Credential credential, std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise, std::int32_t max_data_depth = 12) :
-    credential_(std::move(credential)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth) {
+  InsertBatchPostgres(InsertManagerPostgres::Credential credential, std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise, std::int32_t max_data_depth = 12,
+                      std::int32_t latest_states_prepare_parallelism = 4, std::int32_t latest_states_prepare_chunk_size = 128) :
+    credential_(std::move(credential)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth),
+    latest_states_prepare_parallelism_(latest_states_prepare_parallelism), latest_states_prepare_chunk_size_(latest_states_prepare_chunk_size) {
       // sorting in descending seqno order for easier processing of interfaces
       std::sort(insert_tasks_.begin(), insert_tasks_.end(), [](const auto& a, const auto& b) {
         return a.mc_seqno_ > b.mc_seqno_;
@@ -53,7 +63,12 @@ private:
   std::vector<InsertTaskStruct> insert_tasks_;
   td::Promise<td::Unit> promise_;
   std::int32_t max_data_depth_;
+  std::int32_t latest_states_prepare_parallelism_;
+  std::int32_t latest_states_prepare_chunk_size_;
   bool with_copy_{true};
+  std::shared_ptr<PreparedBatchPostgres> prepared_batch_;
+  std::shared_ptr<InsertBatchPostgresPrepareState> prepare_state_;
+  std::uint64_t prepare_generation_{0};
 
   std::string stringify(schema::ComputeSkipReason compute_skip_reason);
   std::string stringify(schema::AccStatusChange acc_status_change);
@@ -64,6 +79,7 @@ private:
   void insert_shard_state(pqxx::work &txn, bool with_copy);
   void insert_transactions(pqxx::work &txn, bool with_copy);
   void insert_messages(pqxx::work &txn, bool with_copy);
+  void insert_message_contents(pqxx::work &txn);
   void insert_account_states(pqxx::work &txn, bool with_copy);
   std::string insert_latest_account_states(pqxx::work &txn);
   void insert_jetton_transfers(pqxx::work &txn, bool with_copy);
@@ -85,5 +101,14 @@ private:
 
   bool try_acquire_leader_lock();
   void do_insert();
+  void begin_prepare();
+  void spawn_next_latest_account_state_chunks();
+  void on_latest_account_state_chunk_prepared(std::uint64_t generation, std::size_t chunk_index,
+                                              td::Result<std::shared_ptr<LatestAccountStatesChunkPreparedResult>> result);
+  void maybe_commit_prepared_batch();
+  void commit_prepared_batch();
+  void reset_prepare_state(bool keep_prepared_batch = false);
+  void acquire_message_body_reservations();
+  void release_message_body_reservations();
   void ensure_inserted();
 };
