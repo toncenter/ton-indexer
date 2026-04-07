@@ -279,6 +279,11 @@ public:
       insert_stream_ << ")";
     }
 
+    template <typename Row>
+    auto insert_row(const Row& row) -> decltype(row.as_tuple(), void()) {
+      insert_row(row.as_tuple());
+    }
+
     std::string get_str() {
       if (with_copy_) {
         throw std::runtime_error("get_str not supported with COPY mode");
@@ -305,4 +310,3 @@ public:
       txn_.exec0(get_str());
     }
 };
-
