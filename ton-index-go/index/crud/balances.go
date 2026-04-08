@@ -4,17 +4,18 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"math"
+	"math/big"
+	"slices"
+	"time"
+
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/gofiber/fiber/v2/log"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/xssnick/tonutils-go/tlb"
 	"github.com/xssnick/tonutils-go/ton/jetton"
 	"github.com/xssnick/tonutils-go/tvm/cell"
-	"math"
-	"math/big"
-	"slices"
-	"time"
 )
 
 var timings = make([]time.Duration, 0)
@@ -162,9 +163,7 @@ func CalculateBalanceChanges(traceId models.HashType, conn *pgxpool.Conn, store 
 	slices.SortFunc(txs, compare)
 
 	var maxInt int32 = math.MaxInt32
-	actionsQuery, actionsArgs, err := buildActionsQuery(models.ActionRequest{TraceId: []models.HashType{traceId}}, models.UtimeRequest{}, models.LtRequest{}, models.LimitRequest{
-		Limit: &maxInt,
-	}, models.RequestSettings{
+	actionsQuery, actionsArgs, err := buildActionsQuery(models.ActionRequest{TraceId: []models.HashType{traceId}, LimitParams: models.LimitParams{Limit: &maxInt}}, models.RequestSettings{
 		MaxLimit: int(maxInt),
 	})
 	if err != nil {
@@ -285,11 +284,9 @@ func CalculateBalanceChanges(traceId models.HashType, conn *pgxpool.Conn, store 
 				err = tlb.LoadFromCell(&transfer, c.BeginParse())
 				destination_raw := transfer.Destination.String()
 				var destination models.AccountAddress
-				addr_loc := models.AccountAddressConverter(destination_raw)
-				if addr_loc.IsValid() {
-					if v, ok := addr_loc.Interface().(models.AccountAddress); ok {
-						destination = v
-					}
+				addr_loc, err := models.ParseAccountAddress(destination_raw)
+				if err == nil && addr_loc != nil {
+					destination = *addr_loc
 				}
 				source := *node.Msg.Source
 				var jetton_master models.AccountAddress

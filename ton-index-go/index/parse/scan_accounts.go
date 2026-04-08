@@ -1,9 +1,10 @@
 package parse
 
 import (
+	"strings"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"strings"
 )
 
 func ScanAccountState(row pgx.Row) (*models.AccountState, error) {
@@ -24,8 +25,8 @@ func ScanAccountStateFull(row pgx.Row) (*models.AccountStateFull, error) {
 	if err != nil {
 		return nil, err
 	}
-	trimQuotes(acst.CodeBoc)
-	trimQuotes(acst.DataBoc)
+	trimQuotes((*string)(acst.CodeBoc))
+	trimQuotes((*string)(acst.DataBoc))
 
 	if acst.ContractMethods != nil {
 		// it's temporary, soon 'll be fixed in the database

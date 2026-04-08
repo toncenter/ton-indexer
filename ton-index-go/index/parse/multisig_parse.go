@@ -4,12 +4,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log"
+	"strings"
+
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/tlb"
 	"github.com/xssnick/tonutils-go/tvm/cell"
-	"log"
-	"strings"
 )
 
 type jettonTransferBodyTlb struct {
@@ -721,8 +722,7 @@ func formatAddress(addr *address.Address) *models.AccountAddress {
 		return nil
 	}
 	formatted := fmt.Sprintf("%d:%s", addr.Workchain(), strings.ToUpper(hex.EncodeToString(addr.Data())))
-	accountAddress := models.AccountAddress(formatted)
-	return &accountAddress
+	return new(models.AccountAddress(formatted))
 }
 
 // formatCoins converts tlb.Coins to *string
