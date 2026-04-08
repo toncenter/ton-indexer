@@ -11,7 +11,9 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <unistd.h>
 
 #include "opentelemetry/baggage/baggage.h"
 #include "opentelemetry/baggage/baggage_context.h"
@@ -46,8 +48,9 @@ constexpr const char* kScopeName = "ton-indexer.observability";
 constexpr const char* kScopeVersion = "1.0.0";
 constexpr const char* kOtelDataField = "otel_data";
 
-constexpr std::array<const char*, 4> kPropagationBaggageKeys = {
+constexpr std::array<const char*, 5> kPropagationBaggageKeys = {
     "ton.trace.external_message_hash",
+    "ton.trace.external_message_hash_norm",
     "ton.trace.finality",
     "ton.processing.pass_id",
     "ton.trace.root_tx_hash",
@@ -140,16 +143,35 @@ std::string random_hex(std::size_t bytes_count) {
     return oss.str();
 }
 
+std::string hostname_or_empty() {
+    std::array<char, 256> buffer{};
+    if (gethostname(buffer.data(), buffer.size()) != 0) {
+        return {};
+    }
+
+    buffer.back() = '\0';
+    return std::string(std::string_view(buffer.data()));
+}
+
 resource_api::Resource build_resource(const std::string& service_name) {
     resource_api::ResourceAttributes attributes;
     attributes["service.namespace"] = std::string("ton");
     attributes["service.name"] = service_name;
+    if (const auto hostname = hostname_or_empty(); !hostname.empty()) {
+        attributes["service.instance.id"] = hostname;
+    }
     return resource_api::Resource::Create(attributes);
 }
 
 opentelemetry::common::SystemTimestamp system_timestamp_from_ns(std::int64_t value) {
     return opentelemetry::common::SystemTimestamp(
         std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>(
+            std::chrono::nanoseconds(value)));
+}
+
+opentelemetry::common::SteadyTimestamp steady_timestamp_from_ns(std::int64_t value) {
+    return opentelemetry::common::SteadyTimestamp(
+        std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds>(
             std::chrono::nanoseconds(value)));
 }
 
@@ -281,12 +303,21 @@ TracerRuntime& tracer_runtime(const std::string& service_name) {
 
 class OtelStageSpan::Impl {
 public:
-    Impl(std::string service_name, std::string span_name, std::string service_stage, std::int64_t start_time_ns)
+    Impl(std::string service_name,
+         std::string span_name,
+         std::string service_stage,
+         std::int64_t start_system_time_ns,
+         std::int64_t start_steady_time_ns)
         : service_name_(std::move(service_name)),
           span_name_(std::move(span_name)),
-          start_time_ns_(start_time_ns) {
+          start_system_time_ns_(start_system_time_ns),
+          start_steady_time_ns_(start_steady_time_ns) {
         attributes_["ton.processing.pipeline"] = std::string("trace_to_actions_to_stream");
         attributes_["ton.processing.service_stage"] = std::move(service_stage);
+        attributes_["transaction.type"] = std::string("processing");
+        if (const auto hostname = hostname_or_empty(); !hostname.empty()) {
+            attributes_["service.instance.id"] = hostname;
+        }
     }
 
     void set_attribute(const std::string& key, const std::string& value) {
@@ -396,8 +427,9 @@ private:
         }
 
         trace_api::StartSpanOptions options;
-        options.kind = trace_api::SpanKind::kInternal;
-        options.start_system_time = system_timestamp_from_ns(start_time_ns_);
+        options.kind = trace_api::SpanKind::kServer;
+        options.start_system_time = system_timestamp_from_ns(start_system_time_ns_);
+        options.start_steady_time = steady_timestamp_from_ns(start_steady_time_ns_);
 
         span_ = tracer->StartSpan(span_name_, options);
         apply_attributes();
@@ -406,7 +438,8 @@ private:
 
     std::string service_name_;
     std::string span_name_;
-    std::int64_t start_time_ns_;
+    std::int64_t start_system_time_ns_;
+    std::int64_t start_steady_time_ns_;
     std::map<std::string, OtelStageSpan::AttributeValue> attributes_;
     std::optional<std::string> error_type_;
     std::string error_message_;
@@ -417,9 +450,14 @@ private:
 OtelStageSpan::OtelStageSpan(std::string service_name,
                              std::string span_name,
                              std::string service_stage,
-                             std::int64_t start_time_ns)
+                             std::int64_t start_system_time_ns,
+                             std::int64_t start_steady_time_ns)
     : impl_(std::make_unique<Impl>(
-          std::move(service_name), std::move(span_name), std::move(service_stage), start_time_ns)) {}
+          std::move(service_name),
+          std::move(span_name),
+          std::move(service_stage),
+          start_system_time_ns,
+          start_steady_time_ns)) {}
 
 OtelStageSpan::~OtelStageSpan() = default;
 OtelStageSpan::OtelStageSpan(OtelStageSpan&&) noexcept = default;
@@ -461,8 +499,4 @@ void OtelStageSpan::emit() {
 
 bool OtelStageSpan::tracing_enabled() {
     return tracing_runtime_enabled();
-}
-
-bool OtelStageSpan::measure_logs_enabled() {
-    return env_flag("MEASURE_LOGS_ENABLED", false);
 }

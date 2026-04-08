@@ -39,7 +39,6 @@ public:
 
     void start_up() override {
         td::Timer timer;
-        measurement_->measure_step("trace_inserter__trace_insert_start");
         try {
             std::queue<TraceNode*> queue;
         
@@ -222,7 +221,6 @@ public:
             measurement_->set_out_channel("new_trace");
             transaction_.hset(trace_key_, "root_node", td::base64_encode(trace_.ext_in_msg_hash.as_slice()));
             transaction_.hset(trace_key_, "depth_limit_exceeded", trace_.tx_limit_exceeded ? "1" : "0");
-            transaction_.hset(trace_key_, "measurement_id", std::to_string(measurement_->id()));
             for (const auto& [field, value] : measurement_->otel_propagation_fields()) {
                 transaction_.hset(trace_key_, field, value);
             }
@@ -233,7 +231,6 @@ public:
             transaction_.publish("new_trace", trace_key_);
             
             transaction_.exec();
-            measurement_->measure_step("trace_inserter__trace_insert_complete");
 
             promise_.set_value(td::Unit());
         } catch (const vm::VmError &e) {

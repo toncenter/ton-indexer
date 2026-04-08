@@ -28,13 +28,13 @@ const (
 	scopeVersion          = "1.0.0"
 	otelDataField         = "otel_data"
 	streamingServiceName  = "ton-streaming-api"
-	streamingSpanName     = "ton.streaming_api.process"
 	streamingServiceStage = "streaming_api"
 )
 
 var (
 	propagationBaggageKeys = []string{
 		"ton.trace.external_message_hash",
+		"ton.trace.external_message_hash_norm",
 		"ton.trace.finality",
 		"ton.processing.pass_id",
 		"ton.trace.root_tx_hash",
@@ -47,6 +47,8 @@ var (
 
 	tracerOnce    sync.Once
 	processTracer trace.Tracer
+	hostnameOnce  sync.Once
+	hostnameValue string
 )
 
 type otelData struct {
@@ -79,16 +81,17 @@ func TracingEnabled() bool {
 	return strings.ToLower(strings.TrimSpace(os.Getenv("OTEL_TRACES_EXPORTER"))) != "none"
 }
 
-func MeasureLogsEnabled() bool {
-	return envFlag("MEASURE_LOGS_ENABLED", false)
-}
-
-func NewStage(startTimeUnix int64, traceHash map[string]string) *StageSpan {
+func NewStage(startTimeUnix int64, spanName string, traceHash map[string]string) *StageSpan {
 	parentContext, baggageValues, contextMissing := extractStageContext(traceHash)
+	parentSpanContext := trace.SpanContextFromContext(parentContext)
 
 	attributes := map[string]any{
 		"ton.processing.pipeline":      "trace_to_actions_to_stream",
 		"ton.processing.service_stage": streamingServiceStage,
+		"transaction.type":             "processing",
+	}
+	if serviceInstanceID := serviceInstanceID(); serviceInstanceID != "" {
+		attributes["service.instance.id"] = serviceInstanceID
 	}
 
 	for _, key := range propagationBaggageKeys {
@@ -97,12 +100,18 @@ func NewStage(startTimeUnix int64, traceHash map[string]string) *StageSpan {
 		}
 	}
 
-	if _, ok := attributes["ton.processing.pass_id"]; !ok {
-		attributes["ton.processing.pass_id"] = randomHex(16)
+	passID := normalizedPassID(asString(attributes["ton.processing.pass_id"]))
+	if parentSpanContext.IsValid() {
+		passID = parentSpanContext.TraceID().String()
 	}
+	if passID == "" {
+		passID = newPassID()
+	}
+	attributes["ton.processing.pass_id"] = passID
 
 	if contextMissing {
 		attributes["ton.processing.context_missing"] = true
+		parentContext = rootContextFromPassID(passID, parentContext)
 	}
 
 	stage := &StageSpan{
@@ -117,8 +126,8 @@ func NewStage(startTimeUnix int64, traceHash map[string]string) *StageSpan {
 
 	spanContext, span := tracer.Start(
 		parentContext,
-		streamingSpanName,
-		trace.WithSpanKind(trace.SpanKindInternal),
+		spanName,
+		trace.WithSpanKind(trace.SpanKindConsumer),
 		trace.WithTimestamp(time.Unix(0, startTimeUnix)),
 	)
 
@@ -273,10 +282,7 @@ func buildTracer() trace.Tracer {
 	}
 
 	provider := sdktrace.NewTracerProvider(
-		sdktrace.WithResource(resource.NewSchemaless(
-			attribute.String("service.namespace", "ton"),
-			attribute.String("service.name", streamingServiceName),
-		)),
+		sdktrace.WithResource(buildResource()),
 		sdktrace.WithSpanProcessor(sdktrace.NewBatchSpanProcessor(exporter)),
 	)
 
@@ -284,6 +290,17 @@ func buildTracer() trace.Tracer {
 		scopeName,
 		trace.WithInstrumentationVersion(scopeVersion),
 	)
+}
+
+func buildResource() *resource.Resource {
+	attributes := []attribute.KeyValue{
+		attribute.String("service.namespace", "ton"),
+		attribute.String("service.name", streamingServiceName),
+	}
+	if serviceInstanceID := serviceInstanceID(); serviceInstanceID != "" {
+		attributes = append(attributes, attribute.String("service.instance.id", serviceInstanceID))
+	}
+	return resource.NewSchemaless(attributes...)
 }
 
 func buildExporter() sdktrace.SpanExporter {
@@ -350,6 +367,67 @@ func randomHex(size int) string {
 		return strings.Repeat("0", size*2)
 	}
 	return hex.EncodeToString(buf)
+}
+
+func serviceInstanceID() string {
+	hostnameOnce.Do(func() {
+		hostname, err := os.Hostname()
+		if err != nil {
+			return
+		}
+		hostnameValue = strings.TrimSpace(hostname)
+	})
+	return hostnameValue
+}
+
+func newPassID() string {
+	for {
+		passID := randomHex(16)
+		if normalized := normalizedPassID(passID); normalized != "" {
+			return normalized
+		}
+	}
+}
+
+func normalizedPassID(passID string) string {
+	passID = strings.TrimSpace(strings.ToLower(passID))
+	if passID == "" {
+		return ""
+	}
+	if _, err := trace.TraceIDFromHex(passID); err == nil {
+		return passID
+	}
+	return ""
+}
+
+func newSpanIDHex() string {
+	for {
+		spanID := randomHex(8)
+		if _, err := trace.SpanIDFromHex(spanID); err == nil {
+			return spanID
+		}
+	}
+}
+
+func rootContextFromPassID(passID string, baseContext context.Context) context.Context {
+	if baseContext == nil {
+		baseContext = context.Background()
+	}
+
+	passID = normalizedPassID(passID)
+	if passID == "" {
+		passID = newPassID()
+	}
+	traceID, _ := trace.TraceIDFromHex(passID)
+
+	spanID, _ := trace.SpanIDFromHex(newSpanIDHex())
+	parent := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+		Remote:     true,
+	})
+	return trace.ContextWithRemoteSpanContext(baseContext, parent)
 }
 
 func attributesToKeyValues(attributes map[string]any) []attribute.KeyValue {

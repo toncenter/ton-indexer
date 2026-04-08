@@ -10,7 +10,11 @@ class OtelStageSpan {
 public:
     using AttributeValue = std::variant<std::string, bool, std::int64_t>;
 
-    OtelStageSpan(std::string service_name, std::string span_name, std::string service_stage, std::int64_t start_time_ns);
+    OtelStageSpan(std::string service_name,
+                  std::string span_name,
+                  std::string service_stage,
+                  std::int64_t start_system_time_ns,
+                  std::int64_t start_steady_time_ns);
     ~OtelStageSpan();
 
     OtelStageSpan(const OtelStageSpan&) = delete;
@@ -27,7 +31,6 @@ public:
     void emit();
 
     static bool tracing_enabled();
-    static bool measure_logs_enabled();
 
 private:
     class Impl;

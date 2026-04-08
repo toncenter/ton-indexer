@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import secrets
+import socket
 import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping
@@ -15,7 +16,14 @@ from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.trace import SpanKind, Status, StatusCode
+from opentelemetry.trace import (
+    NonRecordingSpan,
+    SpanContext,
+    SpanKind,
+    Status,
+    StatusCode,
+    TraceFlags,
+)
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 logger = logging.getLogger(__name__)
@@ -29,6 +37,7 @@ ACTION_CLASSIFIER_SPAN_NAME = "ton.action_classifier.process"
 ACTION_CLASSIFIER_SERVICE_STAGE = "action_classifier"
 
 PROPAGATION_BAGGAGE_KEYS = (
+    "ton.trace.external_message_hash_norm",
     "ton.trace.external_message_hash",
     "ton.trace.finality",
     "ton.processing.pass_id",
@@ -40,6 +49,7 @@ _PROPAGATOR = CompositePropagator(
     [TraceContextTextMapPropagator(), W3CBaggagePropagator()]
 )
 _TRACER = None
+_SERVICE_INSTANCE_ID = socket.gethostname().strip()
 
 
 def _flag(name: str, default: bool = False) -> bool:
@@ -58,7 +68,7 @@ def tracing_enabled() -> bool:
 
 
 def measure_logs_enabled() -> bool:
-    return _flag("MEASURE_LOGS_ENABLED")
+    return False
 
 
 def _build_exporter():
@@ -86,13 +96,15 @@ def init_tracing() -> None:
         return
 
     try:
+        resource_attributes = {
+            "service.namespace": "ton",
+            "service.name": ACTION_CLASSIFIER_SERVICE_NAME,
+        }
+        if _SERVICE_INSTANCE_ID:
+            resource_attributes["service.instance.id"] = _SERVICE_INSTANCE_ID
+
         provider = TracerProvider(
-            resource=Resource.create(
-                {
-                    "service.namespace": "ton",
-                    "service.name": ACTION_CLASSIFIER_SERVICE_NAME,
-                }
-            )
+            resource=Resource.create(resource_attributes)
         )
         provider.add_span_processor(BatchSpanProcessor(_build_exporter()))
         _TRACER = provider.get_tracer(SCOPE_NAME, SCOPE_VERSION)
@@ -105,6 +117,41 @@ def init_tracing() -> None:
 
 def new_pass_id() -> str:
     return secrets.token_hex(16)
+
+
+def _normalized_pass_id(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+
+    pass_id = value.strip().lower()
+    if len(pass_id) != 32:
+        return ""
+
+    try:
+        trace_id = int(pass_id, 16)
+    except ValueError:
+        return ""
+
+    if trace_id == 0:
+        return ""
+
+    return pass_id
+
+
+def _root_context_from_pass_id(pass_id: str, base_context: Any) -> Any:
+    normalized_pass_id = _normalized_pass_id(pass_id)
+    if not normalized_pass_id:
+        return base_context
+
+    trace_id = int(normalized_pass_id, 16)
+    span_id = secrets.randbits(64) or 1
+    span_context = SpanContext(
+        trace_id=trace_id,
+        span_id=span_id,
+        is_remote=True,
+        trace_flags=TraceFlags(0x01),
+    )
+    return trace.set_span_in_context(NonRecordingSpan(span_context), base_context)
 
 
 def _extract_stage_context(
@@ -198,20 +245,30 @@ class StageSpan:
 
 def new_stage(*, start_time_ns: int, trace_hash: Mapping[str, Any]) -> StageSpan:
     parent_context, baggage_values, context_missing = _extract_stage_context(trace_hash)
+    parent_span_context = trace.get_current_span(parent_context).get_span_context()
 
     attributes: dict[str, Any] = {
         "ton.processing.pipeline": "trace_to_actions_to_stream",
         "ton.processing.service_stage": ACTION_CLASSIFIER_SERVICE_STAGE,
+        "transaction.type": "processing",
     }
+    if _SERVICE_INSTANCE_ID:
+        attributes["service.instance.id"] = _SERVICE_INSTANCE_ID
 
     for key in PROPAGATION_BAGGAGE_KEYS:
         if value := baggage_values.get(key):
             attributes[key] = value
 
-    attributes.setdefault("ton.processing.pass_id", new_pass_id())
+    pass_id = _normalized_pass_id(attributes.get("ton.processing.pass_id"))
+    if parent_span_context.is_valid:
+        pass_id = format(parent_span_context.trace_id, "032x")
+    if not pass_id:
+        pass_id = new_pass_id()
+    attributes["ton.processing.pass_id"] = pass_id
 
     if context_missing:
         attributes["ton.processing.context_missing"] = True
+        parent_context = _root_context_from_pass_id(pass_id, parent_context)
 
     span = None
     context = parent_context
@@ -223,7 +280,7 @@ def new_stage(*, start_time_ns: int, trace_hash: Mapping[str, Any]) -> StageSpan
         span = _TRACER.start_span(
             name=ACTION_CLASSIFIER_SPAN_NAME,
             context=parent_context,
-            kind=SpanKind.INTERNAL,
+            kind=SpanKind.CONSUMER,
             start_time=start_time_ns,
         )
         context = trace.set_span_in_context(span, parent_context)

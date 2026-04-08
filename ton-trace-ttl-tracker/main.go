@@ -450,7 +450,7 @@ func (rtt *RedisTTLTracker) readTrace(ctx context.Context, hashKey string) (*Tra
 
 func isTraceMetadataField(key string) bool {
 	switch key {
-	case "root_node", "depth_limit_exceeded", "root_account_code_hash", "measurement_id", "otel_data":
+	case "root_node", "depth_limit_exceeded", "root_account_code_hash", "otel_data":
 		return true
 	}
 	return strings.Contains(key, ":") || strings.Contains(key, "actions")
