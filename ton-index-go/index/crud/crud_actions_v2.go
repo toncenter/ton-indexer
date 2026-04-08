@@ -3,26 +3,24 @@ package crud
 import (
 	"context"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 	"log"
 	"strings"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func (db *DbClient) QueryActionsV2(
-	act_req models.ActionRequest,
-	utime_req models.UtimeRequest,
-	lt_req models.LtRequest,
-	lim_req models.LimitRequest,
+	req models.ActionRequest,
 	settings models.RequestSettings,
 ) ([]models.Action, models.AddressBook, models.Metadata, error) {
-	if len(act_req.SupportedActionTypes) == 0 {
-		act_req.SupportedActionTypes = []string{"latest"}
+	if len(req.SupportedActionTypes) == 0 {
+		req.SupportedActionTypes = []string{"latest"}
 	}
-	act_req.SupportedActionTypes = models.ExpandActionTypeShortcuts(act_req.SupportedActionTypes)
-	query, args, err := buildActionsQueryV2(act_req, utime_req, lt_req, lim_req, settings)
+	req.SupportedActionTypes = models.ExpandActionTypeShortcuts(req.SupportedActionTypes)
+	query, args, err := buildActionsQueryV2(req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query, "Args:", args)
 	}
@@ -38,7 +36,7 @@ func (db *DbClient) QueryActionsV2(
 	defer conn.Release()
 
 	// check block
-	if seqno := act_req.McSeqno; seqno != nil {
+	if seqno := req.McSeqno; seqno != nil {
 		exists, err := queryBlockExists(*seqno, conn, settings)
 		if err != nil {
 			return nil, nil, nil, err
@@ -55,7 +53,7 @@ func (db *DbClient) QueryActionsV2(
 	actions := []models.Action{}
 	book := models.AddressBook{}
 	metadata := models.Metadata{}
-	addr_map := map[string]bool{}
+	addr_map := map[models.AccountAddress]bool{}
 	for idx := range raw_actions {
 		parse.CollectAddressesFromAction(&addr_map, &raw_actions[idx])
 		action, err := parse.ParseRawAction(&raw_actions[idx])
@@ -64,22 +62,22 @@ func (db *DbClient) QueryActionsV2(
 		}
 		actions = append(actions, *action)
 	}
-	if act_req.IncludeAccounts != nil && *act_req.IncludeAccounts {
+	if req.IncludeAccounts != nil && *req.IncludeAccounts {
 		actions, err = queryActionsAccountsImpl(actions, conn)
 		if err != nil {
 			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
-	if act_req.IncludeTransactions != nil && *act_req.IncludeTransactions {
+	if req.IncludeTransactions != nil && *req.IncludeTransactions {
 		actions, err = queryActionsTransactionsImpl(actions, conn, settings)
 		if err != nil {
 			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
 	}
 	if len(addr_map) > 0 {
-		addr_list := []string{}
+		addr_list := []models.AccountAddress{}
 		for k := range addr_map {
-			addr_list = append(addr_list, string(k))
+			addr_list = append(addr_list, k)
 		}
 		if !settings.NoAddressBook {
 			book, err = QueryAddressBookImpl(addr_list, conn, settings)
@@ -97,7 +95,11 @@ func (db *DbClient) QueryActionsV2(
 	return actions, book, metadata, nil
 }
 
-func buildActionsQueryV2(act_req models.ActionRequest, utime_req models.UtimeRequest, lt_req models.LtRequest, lim_req models.LimitRequest, settings models.RequestSettings) (string, []any, error) {
+func buildActionsQueryV2(req models.ActionRequest, settings models.RequestSettings) (string, []any, error) {
+	utime_req := req.GetUtimeParams()
+	lt_req := req.GetLtParams()
+	lim_req := req.GetLimitParams()
+
 	clmn_query_default := `A.trace_id, A.action_id, A.start_lt, A.end_lt, A.start_utime, A.end_utime, 
 		A.trace_end_lt, A.trace_end_utime, A.trace_mc_seqno_end, A.source, A.source_secondary,
 		A.destination, A.destination_secondary, A.asset, A.asset_secondary, A.asset2, A.asset2_secondary, A.opcode, A.tx_hashes,
@@ -289,7 +291,7 @@ func buildActionsQueryV2(act_req models.ActionRequest, utime_req models.UtimeReq
 	filter_list := []string{}
 	filter_query := ``
 	orderby_query := ``
-	args := []any{act_req.SupportedActionTypes}
+	args := []any{req.SupportedActionTypes}
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return "", nil, err
@@ -305,7 +307,7 @@ func buildActionsQueryV2(act_req models.ActionRequest, utime_req models.UtimeReq
 	// time
 	order_by_now := false
 	join_accounts := false
-	if v := act_req.AccountAddress; v != nil && len(*v) > 0 {
+	if v := req.AccountAddress; v != nil && len(*v) > 0 {
 		join_accounts = true
 	}
 	if v := utime_req.StartUtime; v != nil {
@@ -338,8 +340,8 @@ func buildActionsQueryV2(act_req models.ActionRequest, utime_req models.UtimeReq
 		}
 		filter_list = append(filter_list, fmt.Sprintf("%s <= %d", field, *v))
 	}
-	if v := act_req.AccountAddress; v != nil && len(*v) > 0 {
-		filter_str := fmt.Sprintf("AA.account = '%s'::tonaddr", *v)
+	if v := req.AccountAddress; v != nil {
+		filter_str := fmt.Sprintf("AA.account = '%s'::tonaddr", v.FilterString())
 		filter_list = append(filter_list, filter_str)
 
 		from_query = `action_accounts as AA join actions as A on A.trace_id = AA.trace_id and A.action_id = AA.action_id`
@@ -349,7 +351,7 @@ func buildActionsQueryV2(act_req models.ActionRequest, utime_req models.UtimeReq
 			clmn_query = `distinct on (AA.trace_end_lt, AA.trace_id, AA.action_end_lt, AA.action_id) ` + clmn_query_default
 		}
 	}
-	if v := act_req.TransactionHash; v != nil {
+	if v := req.TransactionHash; v != nil {
 		filter_str := filterByArray("T.hash", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
@@ -361,7 +363,7 @@ func buildActionsQueryV2(act_req models.ActionRequest, utime_req models.UtimeReq
 			clmn_query = `distinct on (A.trace_end_lt, A.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
 		}
 	}
-	if v := act_req.MessageHash; len(v) > 0 {
+	if v := req.MessageHash; len(v) > 0 {
 		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
 
@@ -372,20 +374,20 @@ func buildActionsQueryV2(act_req models.ActionRequest, utime_req models.UtimeReq
 			clmn_query = `distinct on (A.trace_end_lt, A.trace_id, A.end_lt, A.action_id) ` + clmn_query_default
 		}
 	}
-	if v := act_req.IncludeActionTypes; len(v) > 0 {
+	if v := req.IncludeActionTypes; len(v) > 0 {
 		args = append(args, v)
 		filter_list = append(filter_list, fmt.Sprintf("A.type = ANY($%d)", len(args)))
 	}
-	if v := act_req.ExcludeActionTypes; len(v) > 0 {
+	if v := req.ExcludeActionTypes; len(v) > 0 {
 		args = append(args, v)
 		filter_list = append(filter_list, fmt.Sprintf("NOT (A.type = ANY($%d))", len(args)))
 	}
-	if v := act_req.McSeqno; v != nil {
+	if v := req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("A.trace_mc_seqno_end = %d", *v))
 		from_query = `actions as A`
 		clmn_query = clmn_query_default
 	}
-	if v := act_req.ActionId; v != nil {
+	if v := req.ActionId; v != nil {
 		from_query = `actions as A`
 		filter_str := filterByArray("A.action_id", v)
 		if len(filter_str) > 0 {
@@ -393,7 +395,7 @@ func buildActionsQueryV2(act_req models.ActionRequest, utime_req models.UtimeReq
 		}
 		clmn_query = clmn_query_default
 	}
-	if v := act_req.TraceId; v != nil {
+	if v := req.TraceId; v != nil {
 		trace_filter := filterByArray("trace_id", v)
 		if len(trace_filter) > 0 {
 			joined_accounts := strings.Contains(from_query, "action_accounts")
@@ -431,7 +433,7 @@ func buildActionsQueryV2(act_req models.ActionRequest, utime_req models.UtimeReq
 		}
 	}
 	filter_list = append(filter_list, "A.end_lt is not NULL")
-	if v := act_req.IncludeActionTypes; len(v) == 0 {
+	if v := req.IncludeActionTypes; len(v) == 0 {
 		filter_list = append(filter_list, "A.type = ANY($1)")
 	}
 	filter_list = append(filter_list, "NOT(A.ancestor_type && $1::varchar[])")
@@ -503,10 +505,8 @@ func queryActionsTransactionsImpl(actions []models.Action, conn *pgxpool.Conn, s
 
 	// Build query using buildTransactionsQuery with multiple hashes
 	// Only the Hash field of TransactionRequest is needed for this query; other fields are left at their zero values intentionally.
-	tx_req := models.TransactionRequest{Hash: txHashes}
-	query, queryArgs, err := buildTransactionsQuery(
-		models.BlockRequest{}, tx_req, models.MessageRequest{},
-		models.UtimeRequest{}, models.LtRequest{}, models.LimitRequest{}, settings)
+	tx_req := models.TransactionsRequest{Hash: txHashes}
+	query, queryArgs, err := buildTransactionsQuery(tx_req, settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

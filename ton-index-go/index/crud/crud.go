@@ -3,15 +3,15 @@ package crud
 import (
 	"context"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/services"
 	"log"
 	"net/url"
 	"reflect"
 	"strings"
 
 	"github.com/lib/pq"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/services"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -27,7 +27,7 @@ func getSortOrder(order models.SortType) (string, error) {
 }
 
 // query builders
-func limitQuery(lim models.LimitRequest, settings models.RequestSettings) (string, error) {
+func limitQuery(lim models.LimitParams, settings models.RequestSettings) (string, error) {
 	query := ``
 	if lim.Limit == nil {
 		// set default value
@@ -50,11 +50,16 @@ func limitQuery(lim models.LimitRequest, settings models.RequestSettings) (strin
 
 func filterByArray[T any](clmn string, values []T) string {
 	filter_list := []string{}
+	filterStringIfaceType := reflect.TypeOf((*models.FilterStringInterface)(nil)).Elem()
 	for _, x := range values {
-		t := reflect.ValueOf(x)
-		switch t.Kind() {
-		case reflect.String:
-			if t.Len() > 0 {
+		v := reflect.ValueOf(x)
+		t := reflect.TypeOf(x)
+		switch {
+		case t.Implements(filterStringIfaceType):
+			xx := v.Interface().(models.FilterStringInterface)
+			filter_list = append(filter_list, fmt.Sprintf(`'%s'`, xx.FilterString()))
+		case t.Kind() == reflect.String:
+			if len(t.String()) > 0 {
 				filter_list = append(filter_list, fmt.Sprintf("'%s'", t.String()))
 			}
 		default:
@@ -71,7 +76,7 @@ func filterByArray[T any](clmn string, values []T) string {
 	return ``
 }
 
-func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings models.RequestSettings) (models.Metadata, error) {
+func QueryMetadataImpl(addr_list []models.AccountAddress, conn *pgxpool.Conn, settings models.RequestSettings) (models.Metadata, error) {
 	if settings.UseCache {
 		metadata, err := services.AddressInfoCacheClient.GetMetadata(addr_list)
 		if err != nil {
@@ -80,7 +85,7 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings models.R
 			return metadata, nil
 		}
 	}
-	token_info_map := map[string][]models.TokenInfo{}
+	token_info_map := map[models.AccountAddress][]models.TokenInfo{}
 
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 	defer cancel_ctx()
@@ -133,7 +138,7 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings models.R
 		} else {
 			row.Indexed = true
 
-			if _, ok := token_info_map[*row.Type]; !ok {
+			if _, ok := token_info_map[row.Address]; !ok {
 				token_info_map[row.Address] = []models.TokenInfo{}
 			}
 			if *row.Valid {
@@ -193,7 +198,7 @@ func SubstituteImgproxyBaseUrl(metadata *models.Metadata, base_url string) {
 	}
 }
 
-func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings models.RequestSettings) (models.AddressBook, error) {
+func QueryAddressBookImpl(addr_list []models.AccountAddress, conn *pgxpool.Conn, settings models.RequestSettings) (models.AddressBook, error) {
 	if settings.UseCache {
 		book, err := services.AddressInfoCacheClient.GetAddressBook(addr_list)
 		if err != nil {
@@ -205,7 +210,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings model
 	book := models.AddressBook{}
 	quote_addr_list := []string{}
 	for _, item := range addr_list {
-		quote_addr_list = append(quote_addr_list, fmt.Sprintf("'%s'", item))
+		quote_addr_list = append(quote_addr_list, fmt.Sprintf("'%s'", item.FilterString()))
 	}
 
 	// read address book first
@@ -225,8 +230,8 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings model
 		defer rows.Close()
 
 		for rows.Next() {
-			var account string
-			var code_hash *string
+			var account models.AccountAddress
+			var code_hash *models.HashType
 			var methods *[]uint32
 			if err := rows.Scan(&account, &code_hash, &methods); err == nil {
 				addr_str := models.GetAccountAddressFriendly(account, code_hash, settings.IsTestnet)
@@ -236,7 +241,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings model
 				if code_hash != nil || methods != nil {
 					codeHashStr := ""
 					if code_hash != nil {
-						codeHashStr = *code_hash
+						codeHashStr = code_hash.String()
 					}
 					var methodIDs []uint32
 					if methods != nil {
@@ -246,7 +251,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings model
 				}
 
 				interfacesPtr := &interfaces
-				book_tmp[strings.Trim(account, " ")] = models.AddressBookRow{
+				book_tmp[account] = models.AddressBookRow{
 					UserFriendly: &addr_str,
 					Domain:       nil,
 					Interfaces:   interfacesPtr,
@@ -275,7 +280,7 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings model
 		defer rows.Close()
 
 		for rows.Next() {
-			var account string
+			var account models.AccountAddress
 			var domain *string
 			if err := rows.Scan(&account, &domain); err == nil {
 				if book_rec, ok := book_tmp[account]; ok {
@@ -292,16 +297,10 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings model
 	}
 
 	for _, addr := range addr_list {
-		account := ``
-		if addr_val := models.AccountAddressConverter(addr); addr_val.IsValid() {
-			if addr_str, ok := addr_val.Interface().(models.AccountAddress); ok {
-				account = string(addr_str)
-			}
-		}
-		if rec, ok := book_tmp[account]; ok {
+		if rec, ok := book_tmp[addr]; ok {
 			book[addr] = rec
 		} else {
-			addr_str := models.GetAccountAddressFriendly(account, nil, settings.IsTestnet)
+			addr_str := models.GetAccountAddressFriendly(addr, nil, settings.IsTestnet)
 			emptyInterfaces := []string{}
 			book[addr] = models.AddressBookRow{
 				UserFriendly: &addr_str,
@@ -314,16 +313,14 @@ func QueryAddressBookImpl(addr_list []string, conn *pgxpool.Conn, settings model
 }
 
 func (db *DbClient) QueryMetadata(
-	addr_list []string,
+	address_list []string,
 	settings models.RequestSettings,
 ) (models.Metadata, error) {
-	raw_addr_list := []string{}
-	for _, addr := range addr_list {
-		addr_loc := models.AccountAddressConverter(addr)
-		if addr_loc.IsValid() {
-			if v, ok := addr_loc.Interface().(models.AccountAddress); ok {
-				raw_addr_list = append(raw_addr_list, string(v))
-			}
+	addr_list := []models.AccountAddress{}
+	for _, addr := range address_list {
+		addr_loc, err := models.ParseAccountAddress(addr)
+		if err == nil && addr_loc != nil {
+			addr_list = append(addr_list, *addr_loc)
 		}
 	}
 	conn, err := db.Pool.Acquire(context.Background())
@@ -331,24 +328,22 @@ func (db *DbClient) QueryMetadata(
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
-	return QueryMetadataImpl(raw_addr_list, conn, settings)
+	return QueryMetadataImpl(addr_list, conn, settings)
 }
 
 func (db *DbClient) QueryAddressBook(
-	addr_list []string,
+	address_list []string,
 	settings models.RequestSettings,
-) (models.AddressBook, error) {
-	raw_addr_list := []string{}
-	raw_addr_map := map[string]string{}
-	for _, addr := range addr_list {
-		addr_loc := models.AccountAddressConverter(addr)
-		if addr_loc.IsValid() {
-			if v, ok := addr_loc.Interface().(models.AccountAddress); ok {
-				raw_addr_list = append(raw_addr_list, string(v))
-				raw_addr_map[addr] = string(v)
-			}
+) (models.GenericAddressBook, error) {
+	addr_list := []models.AccountAddress{}
+	mapping := map[string]models.AccountAddress{}
+	for _, addr := range address_list {
+		addr_loc, err := models.ParseAccountAddress(addr)
+		if err == nil && addr_loc != nil {
+			addr_list = append(addr_list, *addr_loc)
+			mapping[addr] = *addr_loc
 		} else {
-			raw_addr_map[addr] = ""
+			mapping[addr] = ""
 		}
 	}
 	conn, err := db.Pool.Acquire(context.Background())
@@ -356,13 +351,13 @@ func (db *DbClient) QueryAddressBook(
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	defer conn.Release()
-	book, err := QueryAddressBookImpl(raw_addr_list, conn, settings)
+	book, err := QueryAddressBookImpl(addr_list, conn, settings)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	new_addr_book := models.AddressBook{}
-	for k, v := range raw_addr_map {
+	new_addr_book := models.GenericAddressBook{}
+	for k, v := range mapping {
 		if vv, ok := book[v]; ok {
 			new_addr_book[k] = vv
 		} else {

@@ -3,12 +3,13 @@ package crud
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
-	"log"
-	"strings"
 )
 
 func buildAccountStatesQuery(account_req models.AccountRequest, settings models.RequestSettings) (string, error) {
@@ -172,10 +173,10 @@ func (db *DbClient) QueryAccountStates(
 
 	book := models.AddressBook{}
 	metadata := models.Metadata{}
-	addr_list := []string{}
+	addr_list := []models.AccountAddress{}
 	for _, t := range res {
 		if t.AccountAddress != nil {
-			addr_list = append(addr_list, string(*t.AccountAddress))
+			addr_list = append(addr_list, *t.AccountAddress)
 		}
 	}
 	if len(addr_list) > 0 {
@@ -215,7 +216,8 @@ func (db *DbClient) QueryWalletStates(
 	return res, book, metadata, nil
 }
 
-func (db *DbClient) QueryTopAccountBalances(lim_req models.LimitRequest, settings models.RequestSettings) ([]models.AccountBalance, error) {
+func (db *DbClient) QueryTopAccountBalances(req models.TopAccountsByBalanceRequest, settings models.RequestSettings) ([]models.AccountBalance, error) {
+	lim_req := req.GetLimitParams()
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return nil, err

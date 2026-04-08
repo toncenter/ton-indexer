@@ -3,16 +3,19 @@ package crud
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lib/pq"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
-	"log"
-	"strings"
 )
 
-func buildJettonMastersQuery(jetton_req models.JettonMasterRequest, lim_req models.LimitRequest, settings models.RequestSettings) (string, error) {
+func buildJettonMastersQuery(req models.JettonMasterRequest, settings models.RequestSettings) (string, error) {
+	lim_req := req.GetLimitParams()
+
 	clmn_query := ` J.address, J.total_supply, J.mintable, J.admin_address, J.jetton_content, 
 		J.jetton_wallet_code_hash, J.code_hash, J.data_hash, J.last_transaction_lt`
 	from_query := ` jetton_masters as J`
@@ -24,14 +27,14 @@ func buildJettonMastersQuery(jetton_req models.JettonMasterRequest, lim_req mode
 		return "", err
 	}
 
-	if v := jetton_req.MasterAddress; v != nil {
+	if v := req.MasterAddress; v != nil {
 		filter_str := filterByArray("J.address", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
 		orderby_query = ``
 	}
-	if v := jetton_req.AdminAddress; v != nil {
+	if v := req.AdminAddress; v != nil {
 		filter_str := filterByArray("J.admin_address", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
@@ -50,7 +53,9 @@ func buildJettonMastersQuery(jetton_req models.JettonMasterRequest, lim_req mode
 	return query, nil
 }
 
-func buildJettonWalletsQuery(jetton_req models.JettonWalletRequest, lim_req models.LimitRequest, settings models.RequestSettings) (string, error) {
+func buildJettonWalletsQuery(req models.JettonWalletRequest, settings models.RequestSettings) (string, error) {
+	lim_req := req.GetLimitParams()
+
 	clmn_query := `J.address, J.balance, J.owner, J.jetton, J.last_transaction_lt, J.code_hash, J.data_hash, 
 		J.mintless_is_claimed, J.mintless_amount, J.mintless_start_from, J.mintless_expire_at, MJM.custom_payload_api_uri`
 	from_query := `jetton_wallets as J left join mintless_jetton_masters as MJM on J.jetton = MJM.address`
@@ -73,32 +78,32 @@ func buildJettonWalletsQuery(jetton_req models.JettonWalletRequest, lim_req mode
 	}
 	orderby_query := fmt.Sprintf(` order by %s %s`, sort_column, sort_order)
 
-	if v := jetton_req.Address; v != nil {
+	if v := req.Address; v != nil {
 		filter_str := filterByArray("J.address", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
 		orderby_query = ` order by J.address asc`
 	}
-	if v := jetton_req.OwnerAddress; v != nil {
+	if v := req.OwnerAddress; v != nil {
 		filter_str := filterByArray("J.owner", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
 		orderby_query = fmt.Sprintf(` order by J.owner, %s %s`, sort_column, sort_order)
 	}
-	if v := jetton_req.JettonAddress; v != nil {
-		if len(jetton_req.JettonAddress) == 1 {
-			filter_list = append(filter_list, fmt.Sprintf("J.jetton = '%s'", v[0]))
+	if v := req.JettonAddress; v != nil {
+		if len(req.JettonAddress) == 1 {
+			filter_list = append(filter_list, fmt.Sprintf("J.jetton = '%s'", v[0].FilterString()))
 			orderby_query = fmt.Sprintf(` order by J.jetton, %s %s`, sort_column, sort_order)
-		} else if len(jetton_req.JettonAddress) > 1 {
+		} else if len(req.JettonAddress) > 1 {
 			filter_str := filterByArray("J.jetton", v)
 			if len(filter_str) > 0 {
 				filter_list = append(filter_list, filter_str)
 			}
 		}
 	}
-	if v := jetton_req.ExcludeZeroBalance; v != nil && *v {
+	if v := req.ExcludeZeroBalance; v != nil && *v {
 		filter_list = append(filter_list, "J.balance + coalesce(mintless_amount, 0) > 0")
 	}
 
@@ -114,8 +119,11 @@ func buildJettonWalletsQuery(jetton_req models.JettonWalletRequest, lim_req mode
 	return query, nil
 }
 
-func buildJettonTransfersQuery(transfer_req models.JettonTransferRequest, utime_req models.UtimeRequest,
-	lt_req models.LtRequest, lim_req models.LimitRequest, settings models.RequestSettings) (string, error) {
+func buildJettonTransfersQuery(req models.JettonTransferRequest, settings models.RequestSettings) (string, error) {
+	utime_req := req.GetUtimeParams()
+	lt_req := req.GetLtParams()
+	lim_req := req.GetLimitParams()
+
 	clmn_query := `T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
 		T.amount, T.source, T.destination, T.jetton_wallet_address, T.jetton_master_address, T.response_destination, T.custom_payload,
 		T.forward_ton_amount, T.forward_payload, T.trace_id`
@@ -130,8 +138,8 @@ func buildJettonTransfersQuery(transfer_req models.JettonTransferRequest, utime_
 
 	filter_list = append(filter_list, "T.tx_aborted is false")
 
-	if v := transfer_req.OwnerAddress; v != nil {
-		if v1 := transfer_req.Direction; v1 != nil {
+	if v := req.OwnerAddress; v != nil {
+		if v1 := req.Direction; v1 != nil {
 			f_str := ``
 			if *v1 == "in" {
 				f_str = filterByArray("T.destination", v)
@@ -149,14 +157,14 @@ func buildJettonTransfersQuery(transfer_req models.JettonTransferRequest, utime_
 			}
 		}
 	}
-	if v := transfer_req.JettonWallet; v != nil {
+	if v := req.JettonWallet; v != nil {
 		filter_str := filterByArray("T.jetton_wallet_address", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
 	}
-	if v := transfer_req.JettonMaster; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("T.jetton_master_address = '%s'", *v))
+	if v := req.JettonMaster; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.jetton_master_address = '%s'", v.FilterString()))
 	}
 
 	order_col := "T.tx_lt"
@@ -199,8 +207,11 @@ func buildJettonTransfersQuery(transfer_req models.JettonTransferRequest, utime_
 	return query, nil
 }
 
-func buildJettonBurnsQuery(burn_req models.JettonBurnRequest, utime_req models.UtimeRequest,
-	lt_req models.LtRequest, lim_req models.LimitRequest, settings models.RequestSettings) (string, error) {
+func buildJettonBurnsQuery(req models.JettonBurnRequest, settings models.RequestSettings) (string, error) {
+	utime_req := req.GetUtimeParams()
+	lt_req := req.GetLtParams()
+	lim_req := req.GetLimitParams()
+
 	clmn_query := `T.tx_hash, T.tx_lt, T.tx_now, T.tx_aborted, T.query_id,
 		T.owner, T.jetton_wallet_address, T.jetton_master_address, T.amount, T.response_destination, T.custom_payload, T.trace_id`
 	from_query := `jetton_burns as T`
@@ -212,21 +223,21 @@ func buildJettonBurnsQuery(burn_req models.JettonBurnRequest, utime_req models.U
 		return "", err
 	}
 
-	if v := burn_req.OwnerAddress; v != nil {
+	if v := req.OwnerAddress; v != nil {
 		f_str := ``
 		f_str = filterByArray("T.owner", v)
 		if len(f_str) > 0 {
 			filter_list = append(filter_list, f_str)
 		}
 	}
-	if v := burn_req.JettonWallet; v != nil {
+	if v := req.JettonWallet; v != nil {
 		filter_str := filterByArray("T.jetton_wallet_address", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
 	}
-	if v := burn_req.JettonMaster; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("T.jetton_master_address = '%s'", *v))
+	if v := req.JettonMaster; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("T.jetton_master_address = '%s'", v.FilterString()))
 	}
 
 	order_col := "T.tx_lt"
@@ -269,9 +280,9 @@ func buildJettonBurnsQuery(burn_req models.JettonBurnRequest, utime_req models.U
 	return query, nil
 }
 
-func queryJettonWalletsTokenInfo(addr_list []string, conn *pgxpool.Conn, ctx context.Context) (map[string]models.TokenInfo, []string, error) {
+func queryJettonWalletsTokenInfo(addr_list []models.AccountAddress, conn *pgxpool.Conn, ctx context.Context) (map[models.AccountAddress]models.TokenInfo, []models.AccountAddress, error) {
 	if len(addr_list) == 0 {
-		return map[string]models.TokenInfo{}, []string{}, nil
+		return map[models.AccountAddress]models.TokenInfo{}, []models.AccountAddress{}, nil
 	}
 
 	query := `SELECT jw.address, jw.owner, jw.balance, jw.jetton 
@@ -284,9 +295,9 @@ func queryJettonWalletsTokenInfo(addr_list []string, conn *pgxpool.Conn, ctx con
 	}
 	defer rows.Close()
 
-	token_info_map := make(map[string]models.TokenInfo)
-	additional_addresses := make(map[string]bool) // Use map to avoid duplicates
-	addr_set := make(map[string]bool)
+	token_info_map := make(map[models.AccountAddress]models.TokenInfo)
+	additional_addresses := make(map[models.AccountAddress]bool) // Use map to avoid duplicates
+	addr_set := make(map[models.AccountAddress]bool)
 
 	// Convert addr_list to set for quick lookup
 	for _, addr := range addr_list {
@@ -295,7 +306,7 @@ func queryJettonWalletsTokenInfo(addr_list []string, conn *pgxpool.Conn, ctx con
 	valid := true
 	token_type := "jetton_wallets"
 	for rows.Next() {
-		var jetton_wallet_address, jetton_wallet_owner, jetton_walet_jetton string
+		var jetton_wallet_address, jetton_wallet_owner, jetton_walet_jetton models.AccountAddress
 		var balance *string
 
 		err := rows.Scan(&jetton_wallet_address, &jetton_wallet_owner, &balance, &jetton_walet_jetton)
@@ -331,7 +342,7 @@ func queryJettonWalletsTokenInfo(addr_list []string, conn *pgxpool.Conn, ctx con
 		return nil, nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 	}
 
-	additional_addr_slice := make([]string, 0, len(additional_addresses))
+	additional_addr_slice := make([]models.AccountAddress, 0, len(additional_addresses))
 	for addr := range additional_addresses {
 		additional_addr_slice = append(additional_addr_slice, addr)
 	}
@@ -424,7 +435,7 @@ func queryJettonTransfersImpl(query string, conn *pgxpool.Conn, settings models.
 	if err := detect.MarkJettonTransfers(res); err != nil {
 		hashes := make([]string, len(res))
 		for i, t := range res {
-			hashes[i] = string(t.TransactionHash)
+			hashes[i] = t.TransactionHash.String()
 		}
 		log.Printf("Error marking jetton transfers with hashes %v: %v", hashes, err)
 	}
@@ -459,7 +470,7 @@ func queryJettonBurnsImpl(query string, conn *pgxpool.Conn, settings models.Requ
 	if err := detect.MarkJettonBurns(res); err != nil {
 		hashes := make([]string, len(res))
 		for i, t := range res {
-			hashes[i] = string(t.TransactionHash)
+			hashes[i] = t.TransactionHash.String()
 		}
 		log.Printf("Error marking jetton burns with hashes %v: %v", hashes, err)
 	}
@@ -467,11 +478,10 @@ func queryJettonBurnsImpl(query string, conn *pgxpool.Conn, settings models.Requ
 }
 
 func (db *DbClient) QueryJettonMasters(
-	jetton_req models.JettonMasterRequest,
-	lim_req models.LimitRequest,
+	req models.JettonMasterRequest,
 	settings models.RequestSettings,
 ) ([]models.JettonMaster, models.AddressBook, models.Metadata, error) {
-	query, err := buildJettonMastersQuery(jetton_req, lim_req, settings)
+	query, err := buildJettonMastersQuery(req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -493,11 +503,11 @@ func (db *DbClient) QueryJettonMasters(
 
 	book := models.AddressBook{}
 	metadata := models.Metadata{}
-	addr_list := []string{}
+	addr_list := []models.AccountAddress{}
 	for _, t := range res {
-		addr_list = append(addr_list, string(t.Address))
+		addr_list = append(addr_list, t.Address)
 		if t.AdminAddress != nil {
-			addr_list = append(addr_list, string(*t.AdminAddress))
+			addr_list = append(addr_list, *t.AdminAddress)
 		}
 	}
 	if len(addr_list) > 0 {
@@ -518,11 +528,10 @@ func (db *DbClient) QueryJettonMasters(
 }
 
 func (db *DbClient) QueryJettonWallets(
-	jetton_req models.JettonWalletRequest,
-	lim_req models.LimitRequest,
+	req models.JettonWalletRequest,
 	settings models.RequestSettings,
 ) ([]models.JettonWallet, models.AddressBook, models.Metadata, error) {
-	query, err := buildJettonWalletsQuery(jetton_req, lim_req, settings)
+	query, err := buildJettonWalletsQuery(req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -545,11 +554,11 @@ func (db *DbClient) QueryJettonWallets(
 
 	book := models.AddressBook{}
 	metadata := models.Metadata{}
-	addr_list := []string{}
+	addr_list := []models.AccountAddress{}
 	for _, t := range res {
-		addr_list = append(addr_list, string(t.Address))
-		addr_list = append(addr_list, string(t.Owner))
-		addr_list = append(addr_list, string(t.Jetton))
+		addr_list = append(addr_list, t.Address)
+		addr_list = append(addr_list, t.Owner)
+		addr_list = append(addr_list, t.Jetton)
 	}
 	if len(addr_list) > 0 {
 		if !settings.NoAddressBook {
@@ -569,13 +578,10 @@ func (db *DbClient) QueryJettonWallets(
 }
 
 func (db *DbClient) QueryJettonTransfers(
-	transfer_req models.JettonTransferRequest,
-	utime_req models.UtimeRequest,
-	lt_req models.LtRequest,
-	lim_req models.LimitRequest,
+	req models.JettonTransferRequest,
 	settings models.RequestSettings,
 ) ([]models.JettonTransfer, models.AddressBook, models.Metadata, error) {
-	query, err := buildJettonTransfersQuery(transfer_req, utime_req, lt_req, lim_req, settings)
+	query, err := buildJettonTransfersQuery(req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -597,14 +603,14 @@ func (db *DbClient) QueryJettonTransfers(
 
 	book := models.AddressBook{}
 	metadata := models.Metadata{}
-	addr_list := []string{}
+	addr_list := []models.AccountAddress{}
 	for _, t := range res {
-		addr_list = append(addr_list, string(t.Source))
-		addr_list = append(addr_list, string(t.Destination))
-		addr_list = append(addr_list, string(t.SourceWallet))
-		addr_list = append(addr_list, string(t.JettonMaster))
+		addr_list = append(addr_list, t.Source)
+		addr_list = append(addr_list, t.Destination)
+		addr_list = append(addr_list, t.SourceWallet)
+		addr_list = append(addr_list, t.JettonMaster)
 		if t.ResponseDestination != nil {
-			addr_list = append(addr_list, string(*t.ResponseDestination))
+			addr_list = append(addr_list, *t.ResponseDestination)
 		}
 	}
 	if len(addr_list) > 0 {
@@ -625,13 +631,10 @@ func (db *DbClient) QueryJettonTransfers(
 }
 
 func (db *DbClient) QueryJettonBurns(
-	transfer_req models.JettonBurnRequest,
-	utime_req models.UtimeRequest,
-	lt_req models.LtRequest,
-	lim_req models.LimitRequest,
+	req models.JettonBurnRequest,
 	settings models.RequestSettings,
 ) ([]models.JettonBurn, models.AddressBook, models.Metadata, error) {
-	query, err := buildJettonBurnsQuery(transfer_req, utime_req, lt_req, lim_req, settings)
+	query, err := buildJettonBurnsQuery(req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -653,13 +656,13 @@ func (db *DbClient) QueryJettonBurns(
 
 	book := models.AddressBook{}
 	metadata := models.Metadata{}
-	addr_list := []string{}
+	addr_list := []models.AccountAddress{}
 	for _, t := range res {
-		addr_list = append(addr_list, string(t.Owner))
-		addr_list = append(addr_list, string(t.JettonWallet))
-		addr_list = append(addr_list, string(t.JettonMaster))
+		addr_list = append(addr_list, t.Owner)
+		addr_list = append(addr_list, t.JettonWallet)
+		addr_list = append(addr_list, t.JettonMaster)
 		if t.ResponseDestination != nil {
-			addr_list = append(addr_list, string(*t.ResponseDestination))
+			addr_list = append(addr_list, *t.ResponseDestination)
 		}
 	}
 	if len(addr_list) > 0 {

@@ -19,8 +19,8 @@ type TraceNode struct {
 type Trace struct {
 	TraceId           *HashType                 `json:"trace_id"`
 	ExternalHash      *HashType                 `json:"external_hash"`
-	McSeqnoStart      HashType                  `json:"mc_seqno_start"`
-	McSeqnoEnd        HashType                  `json:"mc_seqno_end"`
+	McSeqnoStart      int32                     `json:"mc_seqno_start,string"` // TODO: change it to integer
+	McSeqnoEnd        int32                     `json:"mc_seqno_end,string"`
 	StartLt           uint64                    `json:"start_lt,string"`
 	StartUtime        uint32                    `json:"start_utime"`
 	EndLt             *uint64                   `json:"end_lt,string"`
@@ -33,3 +33,9 @@ type Trace struct {
 	TransactionsOrder []HashType                `json:"transactions_order,omitempty"`
 	Transactions      map[HashType]*Transaction `json:"transactions,omitempty"`
 } // @name Trace
+
+type BalanceChangesResult struct {
+	Ton     map[AccountAddress]int64                     `json:"changes"`
+	Fees    map[AccountAddress]int64                     `json:"fees"`
+	Jettons map[AccountAddress]map[AccountAddress]string `json:"jettons"`
+}

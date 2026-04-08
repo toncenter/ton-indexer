@@ -3,25 +3,25 @@ package crud
 import (
 	"context"
 	"fmt"
+	"log"
+	"sort"
+	"strings"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lib/pq"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
-	"log"
-	"sort"
-	"strings"
 )
 
 func buildTransactionsQuery(
-	blk_req models.BlockRequest,
-	tx_req models.TransactionRequest,
-	msg_req models.MessageRequest,
-	utime_req models.UtimeRequest,
-	lt_req models.LtRequest,
-	lim_req models.LimitRequest,
+	req models.TransactionsRequest,
 	settings models.RequestSettings,
 ) (string, []any, error) {
 	args := []any{}
+	utime_req := req.GetUtimeParams()
+	lt_req := req.GetLtParams()
+	lim_req := req.GetLimitParams()
+
 	query := `select T.account, T.hash, T.lt, T.block_workchain, T.block_shard, T.block_seqno, T.mc_block_seqno, T.trace_id, 
 	T.prev_trans_hash, T.prev_trans_lt, T.now, T.orig_status, T.end_status, T.total_fees, T.total_fees_extra_currencies, 
 	T.account_state_hash_before, T.account_state_hash_after, T.descr, T.aborted, T.destroyed, T.credit_first, T.is_tock, 
@@ -73,23 +73,23 @@ func buildTransactionsQuery(
 		orderby_query = fmt.Sprintf(" order by T.lt %s, account asc", sort_order)
 	}
 
-	if v := blk_req.Workchain; v != nil {
+	if v := req.Workchain; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.block_workchain = %d", *v))
 	}
-	if v := blk_req.Shard; v != nil {
+	if v := req.Shard; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.block_shard = %d", *v))
 	}
-	if v := blk_req.Seqno; v != nil {
+	if v := req.Seqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.block_seqno = %d", *v))
 	}
-	if v := blk_req.McSeqno; v != nil {
+	if v := req.McSeqno; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.mc_block_seqno = %d", *v))
 		orderby_query = fmt.Sprintf(" order by T.lt %s, account asc", sort_order)
 	}
 
-	if v := tx_req.Account; len(v) > 0 {
+	if v := req.Account; len(v) > 0 {
 		if len(v) == 1 {
-			filter_list = append(filter_list, fmt.Sprintf("T.account = '%s'", v[0]))
+			filter_list = append(filter_list, fmt.Sprintf("T.account = '%s'", v[0].FilterString()))
 			if order_by_now {
 				orderby_query = fmt.Sprintf(" order by account asc, T.now %s, T.lt %s", sort_order, sort_order)
 			} else {
@@ -101,43 +101,43 @@ func buildTransactionsQuery(
 		}
 	}
 	// TODO: implement ExcludeAccount logic
-	if v := tx_req.Hash; len(v) > 0 {
+	if v := req.Hash; len(v) > 0 {
 		filter_str := filterByArray("T.hash", v)
 		if len(filter_str) > 0 {
 			filter_list = append(filter_list, filter_str)
 		}
 		orderby_query = fmt.Sprintf(" order by T.hash %s", sort_order)
 	}
-	if v := tx_req.Lt; v != nil {
+	if v := req.Lt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("T.lt = %d", *v))
 		orderby_query = fmt.Sprintf(" order by T.lt, account %s", sort_order)
 	}
 
 	// transaction by message
 	by_msg := false
-	if v := msg_req.Direction; v != nil {
+	if v := req.Direction; v != nil {
 		by_msg = true
 		args = append(args, *v)
 		filter_list = append(filter_list, fmt.Sprintf("M.direction = $%d", len(args)))
 	}
-	if v := msg_req.MessageHash; len(v) > 0 {
+	if v := req.MessageHash; len(v) > 0 {
 		by_msg = true
 		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
 	}
-	if v := msg_req.Source; v != nil {
+	if v := req.Source; v != nil {
 		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", *v))
+		filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", v.FilterString()))
 	}
-	if v := msg_req.Destination; v != nil {
+	if v := req.Destination; v != nil {
 		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", *v))
+		filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", v.FilterString()))
 	}
-	if v := msg_req.BodyHash; v != nil {
+	if v := req.BodyHash; v != nil {
 		by_msg = true
-		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", *v))
+		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", v.FilterString()))
 	}
-	if v := msg_req.Opcode; v != nil {
+	if v := req.Opcode; v != nil {
 		by_msg = true
 		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d and M.direction = 'in'", *v))
 	}
@@ -191,9 +191,9 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings models.Req
 	acst_list := []string{}
 	hash_list := []string{}
 	for _, t := range txs {
-		hash_list = append(hash_list, fmt.Sprintf("'%s'", t.Hash))
-		acst_list = append(acst_list, fmt.Sprintf("'%s'", t.AccountStateHashBefore))
-		acst_list = append(acst_list, fmt.Sprintf("'%s'", t.AccountStateHashAfter))
+		hash_list = append(hash_list, fmt.Sprintf("'%s'", t.Hash.FilterString()))
+		acst_list = append(acst_list, fmt.Sprintf("'%s'", t.AccountStateHashBefore.FilterString()))
+		acst_list = append(acst_list, fmt.Sprintf("'%s'", t.AccountStateHashAfter.FilterString()))
 	}
 	// account states
 	if len(txs) == 0 {
@@ -263,9 +263,9 @@ func queryTransactionsImpl(query string, conn *pgxpool.Conn, settings models.Req
 	return txs, nil
 }
 
-func queryAdjacentTransactionsImpl(req models.AdjacentTransactionRequest, conn *pgxpool.Conn, settings models.RequestSettings) ([]string, error) {
+func queryAdjacentTransactionsImpl(req models.AdjacentTransactionRequest, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.HashType, error) {
 	// transactions
-	txs := []string{}
+	txs := []models.HashType{}
 	args := []any{req.Hash}
 	query := `select M2.tx_hash from messages as M1 join messages as M2 on M1.msg_hash = M2.msg_hash and M1.direction != M2.direction where M1.tx_hash = $1`
 	if req.Direction != nil && (*req.Direction == "in" || *req.Direction == "out") {
@@ -287,7 +287,7 @@ func queryAdjacentTransactionsImpl(req models.AdjacentTransactionRequest, conn *
 		defer rows.Close()
 
 		for rows.Next() {
-			var tx string
+			var tx models.HashType
 			err := rows.Scan(&tx)
 			if err != nil {
 				return nil, err
@@ -301,33 +301,28 @@ func queryAdjacentTransactionsImpl(req models.AdjacentTransactionRequest, conn *
 	return txs, nil
 }
 
-func collectAddressesFromTransactions(addr_list *map[string]bool, tx *models.Transaction) bool {
+func collectAddressesFromTransactions(addr_list *map[models.AccountAddress]bool, tx *models.Transaction) bool {
 	success := true
 
-	(*addr_list)[(string)(tx.Account)] = true
+	(*addr_list)[tx.Account] = true
 	if tx.InMsg != nil {
 		if v := tx.InMsg.Source; v != nil {
-			(*addr_list)[(string)(*v)] = true
+			(*addr_list)[*v] = true
 		}
 	}
 	for idx := range tx.OutMsgs {
 		if v := tx.OutMsgs[idx].Destination; v != nil {
-			(*addr_list)[(string)(*v)] = true
+			(*addr_list)[*v] = true
 		}
 	}
 	return success
 }
 
 func (db *DbClient) QueryTransactions(
-	blk_req models.BlockRequest,
-	tx_req models.TransactionRequest,
-	msg_req models.MessageRequest,
-	utime_req models.UtimeRequest,
-	lt_req models.LtRequest,
-	lim_req models.LimitRequest,
+	req models.TransactionsRequest,
 	settings models.RequestSettings,
 ) ([]models.Transaction, models.AddressBook, error) {
-	query, args, err := buildTransactionsQuery(blk_req, tx_req, msg_req, utime_req, lt_req, lim_req, settings)
+	query, args, err := buildTransactionsQuery(req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -343,7 +338,7 @@ func (db *DbClient) QueryTransactions(
 	defer conn.Release()
 
 	// check block
-	if seqno := blk_req.McSeqno; seqno != nil {
+	if seqno := req.McSeqno; seqno != nil {
 		exists, err := queryBlockExists(*seqno, conn, settings)
 		if err != nil {
 			return nil, nil, err
@@ -360,17 +355,17 @@ func (db *DbClient) QueryTransactions(
 
 	book := models.AddressBook{}
 	if !settings.NoAddressBook {
-		addr_list := []string{}
+		addr_list := []models.AccountAddress{}
 		for _, t := range txs {
-			addr_list = append(addr_list, string(t.Account))
+			addr_list = append(addr_list, t.Account)
 			if t.InMsg != nil {
 				if t.InMsg.Source != nil {
-					addr_list = append(addr_list, string(*t.InMsg.Source))
+					addr_list = append(addr_list, *t.InMsg.Source)
 				}
 			}
 			for _, m := range t.OutMsgs {
 				if m.Destination != nil {
-					addr_list = append(addr_list, string(*m.Destination))
+					addr_list = append(addr_list, *m.Destination)
 				}
 			}
 		}
@@ -403,10 +398,11 @@ func (db *DbClient) QueryAdjacentTransactions(
 		return nil, nil, models.IndexError{Code: 404, Message: "adjacent transactions not found"}
 	}
 
+	tx_hash_str_list := []string{}
 	for idx := range tx_hash_list {
-		tx_hash_list[idx] = fmt.Sprintf("'%s'", tx_hash_list[idx])
+		tx_hash_str_list = append(tx_hash_str_list, fmt.Sprintf("'%s'", tx_hash_list[idx].FilterString()))
 	}
-	tx_hash_str := strings.Join(tx_hash_list, ",")
+	tx_hash_str := strings.Join(tx_hash_str_list, ",")
 	query := fmt.Sprintf(`select T.account, T.hash, T.lt, T.block_workchain, T.block_shard, T.block_seqno, T.mc_block_seqno, T.trace_id, 
 		T.prev_trans_hash, T.prev_trans_lt, T.now, T.orig_status, T.end_status, T.total_fees, T.total_fees_extra_currencies, 
 		T.account_state_hash_before, T.account_state_hash_after, T.descr, T.aborted, T.destroyed, T.credit_first, T.is_tock, 
@@ -426,17 +422,17 @@ func (db *DbClient) QueryAdjacentTransactions(
 
 	book := models.AddressBook{}
 	if !settings.NoAddressBook {
-		addr_list := []string{}
+		addr_list := []models.AccountAddress{}
 		for _, t := range txs {
-			addr_list = append(addr_list, string(t.Account))
+			addr_list = append(addr_list, t.Account)
 			if t.InMsg != nil {
 				if t.InMsg.Source != nil {
-					addr_list = append(addr_list, string(*t.InMsg.Source))
+					addr_list = append(addr_list, *t.InMsg.Source)
 				}
 			}
 			for _, m := range t.OutMsgs {
 				if m.Destination != nil {
-					addr_list = append(addr_list, string(*m.Destination))
+					addr_list = append(addr_list, *m.Destination)
 				}
 			}
 		}
