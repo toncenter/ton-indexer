@@ -382,18 +382,15 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
 
     await start_pools_background_updater(redis.client)
 
-    # counting traces
-    logger.info("Counting traces")
-    total_traces = args.expected_total
-    if total_traces == 0:
+    total_traces = None
+    if args.print_eta:
+        logger.info("Counting traces for ETA")
         with SyncSessionMaker() as session:
             query = session.query(Trace.trace_id) \
                     .filter(Trace.state == 'complete') \
                     .filter(Trace.classification_state == 'unclassified')
             total_traces = query.count()
         logger.info(f"Total unclassified traces from database: {total_traces}")
-    else:
-        logger.info(f"Total unclassified traces number is given: {total_traces}")
 
     await start_pools_background_updater(redis.client)
 
@@ -435,9 +432,12 @@ async def start_processing_events_from_db(args: argparse.Namespace, shared_names
             if (cur_time - last_time) > 2:
                 elapsed = cur_time - start_time
                 tps = processed_traces / elapsed
-                eta_sec = min(999999999, max(0, int((total_traces - processed_traces) / max(tps, 1e-9))))
-                eta = timedelta(seconds=eta_sec)
-                logger.info(f"{processed_traces} traces / {elapsed:02f} sec, traces/sec: {tps:02f} (eta: {eta}), Q: {task_queue.qsize()}, "
+                eta_part = ""
+                if total_traces is not None:
+                    eta_sec = min(999999999, max(0, int((total_traces - processed_traces) / max(tps, 1e-9))))
+                    eta = timedelta(seconds=eta_sec)
+                    eta_part = f" (eta: {eta})"
+                logger.info(f"{processed_traces} traces / {elapsed:02f} sec, traces/sec: {tps:02f}{eta_part}, Q: {task_queue.qsize()}, "
                             f"failed: {failed_traces}, broken: {broken_traces}, failed tasks: {failed_tasks} / {processed_tasks}")
                 last_time = cur_time
     except KeyboardInterrupt:
@@ -507,10 +507,9 @@ if __name__ == '__main__':
                         help='Number of workers to process traces',
                         type=int,
                         default=4)
-    parser.add_argument('--expected-total',
-                        help='Expected number of tasks',
-                        type=int,
-                        default=4)
+    parser.add_argument('--print-eta',
+                        help='Count unclassified traces on startup and print ETA in stats',
+                        action='store_true')
     parser.add_argument('--emulated-traces',
                         help='Process emulated traces',
                         action='store_true')
