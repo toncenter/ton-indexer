@@ -52,10 +52,8 @@ func InitConfig(cfg Config) {
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	pendingTraceSpanName           = "ton.streaming_api.process_pending_trace"
-	classifiedTraceSpanName        = "ton.streaming_api.process_classified_trace"
-	confirmedTraceSnapshotSpanName = "ton.streaming_api.process_confirmed_trace_snapshot"
-	finalizedTraceSnapshotSpanName = "ton.streaming_api.process_finalized_trace_snapshot"
+	classifiedTraceSpanName = "ton.streaming_api.process_classified_trace"
+	rawTraceSpanName        = "ton.streaming_api.process_raw_trace"
 )
 
 type TraceProcessingStage struct {
@@ -871,7 +869,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	}
 	stage := NewTraceProcessingStage(
 		startTimeUnix,
-		pendingTraceSpanName,
+		rawTraceSpanName,
 		rawTraces[traceExternalHashNorm],
 		traceExternalHashNorm,
 		channel,
@@ -1072,7 +1070,6 @@ func ProcessNewConfirmedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 		traceExternalHashNorm,
 		manager,
 		"confirmed",
-		confirmedTraceSnapshotSpanName,
 		channel,
 	)
 }
@@ -1084,7 +1081,6 @@ func ProcessNewFinalizedTxs(ctx context.Context, rdb *redis.Client, traceExterna
 		traceExternalHashNorm,
 		manager,
 		"finalized",
-		finalizedTraceSnapshotSpanName,
 		channel,
 	)
 }
@@ -1100,7 +1096,6 @@ func processTransactionsTraceSnapshot(
 	traceExternalHashNorm string,
 	manager *ClientManager,
 	channelHint string,
-	spanName string,
 	channel string,
 ) {
 	startTimeUnix := observability.NowUnixNano()
@@ -1112,7 +1107,7 @@ func processTransactionsTraceSnapshot(
 	}
 	stage := NewTraceProcessingStage(
 		startTimeUnix,
-		spanName,
+		rawTraceSpanName,
 		rawTraces[traceExternalHashNorm],
 		traceExternalHashNorm,
 		channel,
