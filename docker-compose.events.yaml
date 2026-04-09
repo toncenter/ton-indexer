@@ -27,7 +27,7 @@ services:
       target: classifier
     secrets:
       - postgres_password
-    command: --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 1000 --batch-size 100 --expected-total 720000000
+    command: --pool-size ${TON_INDEXER_WORKERS:-8} --prefetch-size 1000 --batch-size 100
     environment: 
       <<: *index-pg-access
       TON_INDEXER_REDIS_DSN: redis://event-cache:6379
