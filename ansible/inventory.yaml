@@ -27,4 +27,8 @@ all:
       hosts:
         pendings-01:
           host_addr: 1.2.3.4:9876 # public ip of this machine with port to be used for ton-trace-emulator
+    ton_index__index_classifier:
+      hosts:
+        classifier-01:
+          ansible_host: 192.168.69.10
         

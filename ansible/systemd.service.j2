@@ -11,10 +11,16 @@ ExecStopPost = /bin/echo "{{ service_name }} service down"
 User = {{ service.service_user | default("root") }}
 Group = {{ service.service_group | default("root") }}
 {% if service.environment is defined %}
+{% if service.environment is string %}
 Environment="{{ service.environment }}"
+{% else %}
+{% for env_var in service.environment %}
+Environment="{{ env_var }}"
+{% endfor %}
 {% endif %}
-{% if service.workdir is defined %}
-WorkingDirector={{ service.workdir }}
+{% endif %}
+{% if workdir is defined or service.workdir is defined %}
+WorkingDirectory={{ workdir | default(service.workdir) }}
 {% endif %}
 LimitNOFILE = infinity
 LimitNPROC = infinity
