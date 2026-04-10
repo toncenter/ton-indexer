@@ -1,0 +1,94 @@
+- name: Deploy index classifier services
+  hosts: "{{ stack_name }}__index_classifier"
+  become: true
+  tags: [deploy]
+  vars:
+    service_name: "{{ stack_name }}__index_classifier"
+    service: "{{ services.index_classifier }}"
+
+  tasks:
+    - name: Validate index classifier configuration exists
+      ansible.builtin.assert:
+        that:
+          - service is defined
+          - (index_classifier_redis_dsn | default('')) | length > 0
+        fail_msg: "Define services.index_classifier and index_classifier_redis_dsn"
+      no_log: true
+
+    - name: Ensure binary directory
+      ansible.builtin.file:
+        path: "{{ deploy_path }}"
+        recurse: true
+        state: directory
+
+    - name: Install requirements
+      ansible.builtin.apt:
+        name:
+          - python3-pip
+          - python3-venv
+          - dnsutils
+          - libpq-dev
+          - libsecp256k1-dev
+          - libsodium-dev
+          - libhiredis-dev
+          - redis-tools
+        state: present
+
+    - name: Install and configure Redis for event cache
+      ansible.builtin.include_role:
+        name: geerlingguy.redis
+      vars:
+        redis_bind_interface: "127.0.0.1"
+
+    - name: Start and enable service redis-server
+      ansible.builtin.systemd:
+        name: redis-server
+        state: started
+        enabled: true
+        force: true
+        daemon_reload: true
+      throttle: 1
+
+    - name: Copy python module
+      ansible.builtin.copy:
+        src: indexer
+        dest: "{{ deploy_path }}"
+
+    - name: Setup venv
+      ansible.builtin.pip:
+        requirements: "{{ deploy_path }}/indexer/requirements.txt"
+        virtualenv: "{{ deploy_path }}/venv"
+        virtualenv_command: "python3 -m venv"
+        extra_args: "--no-cache-dir"
+
+    - name: Verify Redis event cache is reachable
+      ansible.builtin.command:
+        argv:
+          - redis-cli
+          - -u
+          - "{{ index_classifier_redis_dsn }}"
+          - ping
+      register: redis_ping
+      changed_when: false
+      failed_when: redis_ping.rc != 0 or redis_ping.stdout | trim != "PONG"
+      no_log: true
+
+    - name: Setup index classifier service
+      ansible.builtin.template:
+        src: "ansible/systemd.service.j2"
+        dest: "{{ systemd_service_path }}/{{ service_name }}.service"
+        mode: "0644"
+        force: true
+      vars:
+        start_cmd: "{{ deploy_path }}/venv/bin/python3 {{ deploy_path }}/indexer/event_classifier.py {{ index_classifier_additional_args | default(service.additional_args | default('')) }}"
+        workdir: "{{ deploy_path }}/indexer"
+      no_log: true
+
+    - name: Restart and enable index classifier service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        enabled: true
+        force: true
+        daemon_reload: true
+      throttle: 1
