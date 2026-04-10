@@ -64,11 +64,11 @@ private:
 
     td::Timestamp start_time_;
 
-    void parse_error(ton::BlockId blkid, td::Status error, MeasurementPtr measurement);
-    void block_parsed(ton::BlockId blkid, std::vector<TransactionInfo> txs, MeasurementPtr measurement);
+    void parse_error(ton::BlockId blkid, td::Status error, MeasurementPtr);
+    void block_parsed(ton::BlockId, std::vector<TransactionInfo> txs, MeasurementPtr measurement);
     void process_txs(MeasurementPtr measurement);
     void emulate_traces(MeasurementPtr measurement);
-    std::unique_ptr<TraceNode> construct_commited_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr measurement, size_t depth = 1);
+    std::unique_ptr<TraceNode> construct_commited_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr, size_t depth = 1);
     void children_emulated(std::unique_ptr<TraceNode> parent_node,
                             std::vector<std::unique_ptr<TraceNode>> child_nodes,
                             TraceIds trace_ids,
@@ -78,7 +78,7 @@ private:
     void trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_emulated(Trace trace, MeasurementPtr measurement);
-    void trace_finished(td::Bits256 trace_root_tx_hash, MeasurementPtr measurement);
+    void trace_finished(td::Bits256, MeasurementPtr measurement);
 
 public:
     McBlockEmulator(schema::MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor, td::Promise<> promise);
@@ -104,10 +104,10 @@ private:
 
     void start_up() override;
     void block_parsed(std::vector<TransactionInfo> txs, MeasurementPtr measurement);
-    void parse_error(td::Status error, MeasurementPtr measurement);
+    void parse_error(td::Status error, MeasurementPtr);
     void process_txs(MeasurementPtr measurement);
     void emulate_traces(MeasurementPtr measurement);
-    std::unique_ptr<TraceNode> construct_confirmed_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr measurement, size_t depth = 1);
+    std::unique_ptr<TraceNode> construct_confirmed_trace(const TransactionInfo& tx, std::vector<EmuRequest>& reqs, MeasurementPtr, size_t depth = 1);
     void children_emulated(std::unique_ptr<TraceNode> parent_node,
                            std::vector<std::unique_ptr<TraceNode>> child_nodes,
                            TraceIds trace_ids,
@@ -117,7 +117,7 @@ private:
     void trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement);
     void trace_emulated(Trace trace, MeasurementPtr measurement);
-    void trace_finished(td::Bits256 trace_root_tx_hash, MeasurementPtr measurement);
+    void trace_finished(td::Bits256, MeasurementPtr measurement);
 
     const char* finality_label() const {
         switch (finality_) {

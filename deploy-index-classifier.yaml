@@ -11,8 +11,7 @@
       ansible.builtin.assert:
         that:
           - service is defined
-          - (index_classifier_redis_dsn | default('')) | length > 0
-        fail_msg: "Define services.index_classifier and index_classifier_redis_dsn"
+        fail_msg: "Define services.index_classifier"
       no_log: true
 
     - name: Ensure binary directory
@@ -65,8 +64,6 @@
       ansible.builtin.command:
         argv:
           - redis-cli
-          - -u
-          - "{{ index_classifier_redis_dsn }}"
           - ping
       register: redis_ping
       changed_when: false

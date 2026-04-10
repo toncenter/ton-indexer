@@ -1,25 +1,37 @@
 #pragma once
-#include <atomic>
-#include <map>
+#include <cstdint>
+#include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 
 #include "common/bitstring.h"
 #include "ton/ton-types.h"
+#include "Otel.h"
 
 class Measurement;
 
 class Measurement {
     mutable std::mutex mutex_;
-    std::int64_t measurement_id_;
+    std::int64_t start_system_time_ns_;
+    std::int64_t start_steady_time_ns_;
+    std::string pass_id_;
     std::optional<td::Bits256> ext_msg_hash_{std::nullopt};
     std::optional<td::Bits256> ext_msg_hash_norm_{std::nullopt};
     std::optional<td::Bits256> trace_root_tx_hash_{std::nullopt};
+    std::optional<std::string> finality_{std::nullopt};
+    std::optional<std::string> operation_{std::nullopt};
+    std::optional<std::string> source_{std::nullopt};
+    std::optional<std::int64_t> transactions_count_{std::nullopt};
+    std::optional<std::int64_t> emulated_transactions_count_{std::nullopt};
+    std::optional<std::string> out_channel_{std::nullopt};
+    std::optional<std::string> error_type_{std::nullopt};
+    std::optional<std::string> error_message_{std::nullopt};
+    std::unique_ptr<OtelStageSpan> otel_stage_;
 
-    std::map<std::string, double> timings_{};
-    std::map<std::string, std::string> extra_{};
+    void ensure_trace_emulator_stage_locked();
 public:
-    Measurement() : measurement_id_(get_new_id()) {}
+    Measurement();
 
     Measurement(const Measurement &other);
     Measurement &operator=(const Measurement &other);
@@ -28,20 +40,29 @@ public:
 
     ~Measurement() = default;
 
-    Measurement &remove_id();
-    std::int64_t id() const;
-
     Measurement &set_trace_root_tx_hash(const td::Bits256 &trace_root_tx_hash);
 
     Measurement &set_ext_msg_hash(const td::Bits256 &ext_msg_hash);
 
     Measurement &set_ext_msg_hash_norm(const td::Bits256 &ext_msg_hash_norm);
 
-    Measurement &measure_step(const std::string &step_name, std::optional<double> time = std::nullopt);
+    Measurement &set_finality(const std::string& finality);
 
-    Measurement &print_measurement();
+    Measurement &set_operation(const std::string& operation);
 
-    static std::int64_t get_new_id();
+    Measurement &set_source(const std::string& source);
+
+    Measurement &set_transactions_count(std::int64_t transactions_count);
+
+    Measurement &set_emulated_transactions_count(std::int64_t emulated_transactions_count);
+
+    Measurement &set_out_channel(const std::string& out_channel);
+
+    Measurement &mark_otel_error(const std::string& error_type, const std::string& error_message);
+
+    std::map<std::string, std::string> otel_propagation_fields();
+
+    Measurement &emit_otel_span();
 };
 
 using MeasurementPtr = std::shared_ptr<Measurement>;
