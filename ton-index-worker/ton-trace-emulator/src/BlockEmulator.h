@@ -46,7 +46,7 @@ struct ShardStateSnapshot {
 
 class McBlockEmulator: public td::actor::Actor {
 private:
-    MasterchainBlockDataState mc_data_state_;
+    schema::MasterchainBlockDataState mc_data_state_;
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor_;
     td::Promise<> promise_;
     size_t blocks_left_to_parse_;
@@ -81,7 +81,7 @@ private:
     void trace_finished(td::Bits256 trace_root_tx_hash, MeasurementPtr measurement);
 
 public:
-    McBlockEmulator(MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor, td::Promise<> promise);
+    McBlockEmulator(schema::MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor, td::Promise<> promise);
 
     virtual void start_up() override;
 };
@@ -89,7 +89,7 @@ public:
 class ConfirmedBlockEmulator : public td::actor::Actor {
 private:
     FinalityState finality_;
-    BlockDataState block_data_state_;
+    schema::BlockDataState block_data_state_;
     std::shared_ptr<block::ConfigInfo> config_;
     std::vector<ShardStateSnapshot> shard_states_snapshot_;
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor_;
@@ -132,7 +132,7 @@ private:
 
 public:
     ConfirmedBlockEmulator(FinalityState finality,
-                           BlockDataState block_data_state,
+                           schema::BlockDataState block_data_state,
                            std::shared_ptr<block::ConfigInfo> config,
                            std::vector<ShardStateSnapshot> shard_states_snapshot,
                            std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,

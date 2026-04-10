@@ -358,8 +358,6 @@ struct TraceAssemblerState {
   std::vector<Trace> pending_traces_;
 };
 
-}  // namespace schema
-
 struct JettonMasterData {
   std::string address;
   td::RefInt256 total_supply;
@@ -721,6 +719,7 @@ using BlockchainInterfaceV2 = std::variant<JettonWalletDataV2,
                                            VestingData,
                                            TelemintData,
                                            DedustPoolData>;
+}  // namespace schema
 
 namespace std {
 template <>
@@ -743,7 +742,7 @@ struct hash<block::StdAddress> {
 }  // namespace std
 
 struct ParsedBlock {
-  MasterchainBlockDataState mc_block_;
+  schema::MasterchainBlockDataState mc_block_;
 
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;
@@ -751,10 +750,10 @@ struct ParsedBlock {
 
   std::vector<schema::Trace> traces_;
 
-  std::vector<BlockchainEvent> events_;
-  std::vector<BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
+  std::vector<schema::BlockchainEvent> events_;
+  std::vector<schema::BlockchainInterface> interfaces_; // deprecated in favour of account_interfaces_
 
-  std::unordered_map<block::StdAddress, std::vector<BlockchainInterfaceV2>> account_interfaces_;
+  std::unordered_map<block::StdAddress, std::vector<schema::BlockchainInterfaceV2>> account_interfaces_;
   
   template <class T>
   std::vector<T> get_events() {

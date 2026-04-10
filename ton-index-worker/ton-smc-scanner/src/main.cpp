@@ -9,6 +9,58 @@
 #include "DbScanner.h"
 #include "SmcScanner.h"
 
+#include <atomic>
+#include <string>
+#include <unistd.h>
+
+#if TON_USE_JEMALLOC
+#include <jemalloc/jemalloc.h>
+#endif
+
+namespace {
+
+#if TON_USE_JEMALLOC
+std::atomic<bool> need_jemalloc_profile_dump{false};
+
+void request_jemalloc_profile_dump(int) {
+  need_jemalloc_profile_dump.store(true);
+}
+
+bool is_jemalloc_profiling_enabled() {
+  bool enabled = false;
+  size_t size = sizeof(enabled);
+  return mallctl("opt.prof", &enabled, &size, nullptr, 0) == 0 && enabled;
+}
+
+void dump_jemalloc_profile(const std::string &prefix) {
+  std::string filename = prefix;
+  filename += ".";
+  filename += std::to_string(static_cast<std::uint64_t>(td::Clocks::system()));
+  filename += ".";
+  filename += std::to_string(static_cast<std::uint64_t>(::getpid()));
+  filename += ".heap";
+
+  const char *filename_cstr = filename.c_str();
+  if (mallctl("prof.dump", nullptr, nullptr, &filename_cstr, sizeof(filename_cstr)) == 0) {
+    LOG(WARNING) << "Written jemalloc heap profile to " << filename;
+  } else {
+    LOG(ERROR) << "Failed to write jemalloc heap profile to " << filename
+               << ". Start ton-smc-scanner with MALLOC_CONF=prof:true,...";
+  }
+}
+#else
+void request_jemalloc_profile_dump(int) {
+}
+
+bool is_jemalloc_profiling_enabled() {
+  return false;
+}
+
+void dump_jemalloc_profile(const std::string &) {
+}
+#endif
+
+}  // namespace
 
 int main(int argc, char *argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);
@@ -21,6 +73,7 @@ int main(int argc, char *argv[]) {
   std::string pg_dsn;
   Options options_;
   bool is_testnet = false;
+  std::string jemalloc_profile_prefix = "/tmp/ton-smc-scanner.heap";
   
   td::OptionParser p;
   p.set_description("Scan all accounts at some seqno, detect interfaces and save them to postgres");
@@ -61,6 +114,21 @@ int main(int argc, char *argv[]) {
     options_.batch_size_ = v;
     return td::Status::OK();
   });
+  p.add_checked_option('\0', "reload-shard-state-every-batches",
+                       "Reload shard-state roots and config every N completed batches (default: 64, 0 disables)",
+                       [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error("bad value for --reload-shard-state-every-batches: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error("--reload-shard-state-every-batches must be non-negative");
+    }
+    options_.reload_shard_state_every_batches_ = static_cast<std::uint32_t>(v);
+    return td::Status::OK();
+  });
   p.add_option('D', "db", "Path to TON DB folder", [&](td::Slice fname) { 
     db_root = fname.str();
   });
@@ -78,6 +146,9 @@ int main(int argc, char *argv[]) {
   });
   p.add_option('\0', "testnet", "Use for testnet. It is used for correct indexing of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
     is_testnet = true;
+  });
+  p.add_option('\0', "jemalloc-prof-prefix", "Path prefix for jemalloc heap dumps (default: /tmp/ton-smc-scanner.heap)", [&](td::Slice value) {
+    jemalloc_profile_prefix = value.str();
   });
 
   auto S = p.run(argc, argv);
@@ -113,6 +184,17 @@ int main(int argc, char *argv[]) {
 
   NftItemDetectorR::is_testnet = is_testnet;
 
+#if TON_USE_JEMALLOC
+  td::set_signal_handler(td::SignalType::User, request_jemalloc_profile_dump).ensure();
+  LOG(INFO) << "Jemalloc heap dumps: send SIGUSR1 or SIGUSR2 to pid " << ::getpid()
+            << " to write a profile with prefix " << jemalloc_profile_prefix;
+  if (!is_jemalloc_profiling_enabled()) {
+    LOG(WARNING) << "Jemalloc heap profiling is disabled. Start ton-smc-scanner with MALLOC_CONF="
+                 << "\"prof:true,prof_active:true,prof_prefix:" << jemalloc_profile_prefix
+                 << ",lg_prof_sample:19\" to enable heap dumps";
+  }
+#endif
+
   td::actor::Scheduler scheduler({threads});
   td::actor::ActorOwn<DbScanner> db_scanner;
   td::actor::ActorOwn<PostgreSQLInsertManager> insert_manager;
@@ -126,10 +208,14 @@ int main(int argc, char *argv[]) {
     options_.insert_manager_ = insert_manager.get();
     td::actor::create_actor<SmcScanner>("smcscanner", db_scanner.get(), options_).release();
   });
-  
-  scheduler.run();
+
+  while (scheduler.run(1)) {
+#if TON_USE_JEMALLOC
+    if (need_jemalloc_profile_dump.exchange(false)) {
+      dump_jemalloc_profile(jemalloc_profile_prefix);
+    }
+#endif
+  }
   LOG(INFO) << "TON DB integrity check finished successfully";
   return 0;
 }
-
-

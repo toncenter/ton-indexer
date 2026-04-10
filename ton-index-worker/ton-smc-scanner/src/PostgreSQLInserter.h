@@ -1,17 +1,13 @@
 #pragma once
 #include <td/actor/actor.h>
 #include <td/utils/base64.h>
-#include <td/utils/JsonBuilder.h>
-#include <crypto/vm/cells/CellHash.h>
 #include <pqxx/pqxx>
-// #include <semaphore>
 #include "IndexData.h"
 
 
-
-using InsertData = std::variant<schema::AccountState, 
-  JettonMasterDataV2, JettonWalletDataV2, NFTItemDataV2, NFTCollectionDataV2,
-  MultisigContractData, MultisigOrderData, VestingData>;
+using InsertData = std::variant<schema::AccountState,
+  schema::JettonMasterDataV2, schema::JettonWalletDataV2, schema::NFTItemDataV2, schema::NFTCollectionDataV2,
+  schema::MultisigContractData, schema::MultisigOrderData, schema::VestingData>;
 
 class PostgreSQLInserter : public td::actor::Actor {
 public:

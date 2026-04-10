@@ -32,7 +32,7 @@ private:
   std::string channel_name_;
   TraceProcessorFn trace_processor_;
 
-  MasterchainBlockDataState mc_data_state_;
+  schema::MasterchainBlockDataState mc_data_state_;
   std::vector<td::Ref<vm::Cell>> shard_states_;
 
   std::unordered_set<td::Bits256> known_ext_msgs_;
@@ -42,7 +42,7 @@ private:
 public:
   RedisListener(std::string redis_dsn, std::string channel_name, TraceProcessorFn trace_processor);
   void start_up() override;
-  void set_mc_data_state(MasterchainBlockDataState mc_data_state);
+  void set_mc_data_state(schema::MasterchainBlockDataState mc_data_state);
 private:
   void on_new_message(td::Ref<vm::Cell> msg_cell);
   void trace_error(td::Bits256 ext_in_msg_hash, td::Status error, MeasurementPtr measurement);

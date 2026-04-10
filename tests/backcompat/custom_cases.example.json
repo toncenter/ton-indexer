@@ -1,0 +1,37 @@
+[
+  {
+    "id": "estimate_fee_smoke",
+    "description": "Compare estimateFee with a known-safe payload for your environment.",
+    "method": "POST",
+    "path": "/api/v3/estimateFee",
+    "body": {
+      "address": "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c",
+      "body": "",
+      "ignore_chksig": true
+    },
+    "expected_status": 200
+  },
+  {
+    "id": "run_get_method_wallet_seqno",
+    "description": "Compare runGetMethod using a wallet address and method available in both environments.",
+    "method": "POST",
+    "path": "/api/v3/runGetMethod",
+    "body": {
+      "address": "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c",
+      "method": "seqno",
+      "stack": []
+    },
+    "expected_status": 200
+  },
+  {
+    "id": "send_message_side_effect",
+    "description": "Unsafe example for POST /message. Enable it only on isolated environments.",
+    "method": "POST",
+    "path": "/api/v3/message",
+    "body": {
+      "boc": "te6ccgEBAQEAAgAAAA=="
+    },
+    "expected_status": null,
+    "unsafe": true
+  }
+]

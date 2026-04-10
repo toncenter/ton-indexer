@@ -44,12 +44,14 @@ void JettonWalletDetectorR::start_up() {
   auto owner = convert::to_std_address(stack[1].as_slice());
   if (owner.is_error()) {
     promise_.set_error(owner.move_as_error());
+    stop();
     return;
   }
   data.owner = owner.move_as_ok();
   auto jetton = convert::to_std_address(stack[2].as_slice());
   if (jetton.is_error()) {
     promise_.set_error(jetton.move_as_error());
+    stop();
     return;
   }
   data.jetton = jetton.move_as_ok();
