@@ -11,6 +11,7 @@ pg_master_user: postgres
 pg_master_password: REPLACEME
 
 pendings_redis_password: REPLACEME
+index_classifier_redis_dsn: redis://127.0.0.1:6379/0
 
 # deploy config. Adjust this also
 deploy_path: /opt/ton-index
@@ -37,8 +38,12 @@ services:
   pendings_action_classifier:
     additional_args: --emulated-traces --batch-time-window=0.2
     environment: "ton_indexer_redis_dsn=redis://:{{ pendings_redis_password }}@localhost:6379"
+  index_classifier:
+    additional_args: --pool-size 8
+    environment:
+      - "TON_INDEXER_REDIS_DSN={{ index_classifier_redis_dsn }}"
+      - "TON_INDEXER_PG_DSN=postgresql+asyncpg://{{ pg_master_user }}:{{ pg_master_password }}@{{ pg_master_host }}:5432/{{ pg_database }}?application_name={{ stack_name }}__index_classifier"
   trace_ttl_tracker:
     additional_args: --ttl 1m "--redis-dsn=redis://:{{ pendings_redis_password }}@localhost:6379" --synthetic-ttl=30s --completed-ttl=30s --enable-cleanup --cleanup-interval=1h
   streaming_api:
     additional_args: -testnet -redis "redis://:{{ pendings_redis_password }}@localhost:6379" -pg "postgresql://{{ pg_readonly_user }}:{{ pg_readonly_password }}@localhost:5432/{{ pg_database }}"
-
