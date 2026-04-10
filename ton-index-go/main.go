@@ -1458,13 +1458,13 @@ func GetActions(c *fiber.Ctx) error {
 }
 
 // @summary Get Actions by Account
-// @description Get actions grouped by trace for a specific account with role filtering. Pagination controls number of traces returned. Actions are ordered by trace_end_lt (descending by default), with all actions of a trace grouped together.
+// @description Get actions for a specific account with role filtering. Pagination controls number of traces returned
 // @id api_v3_get_account_actions
 // @tags actions
 // @Accept       json
 // @Produce      json
-// @success		200	{object}	index.AccountActionsResponse
-// @failure		400	{object}	index.RequestError
+// @success		200	{object}	models.AccountActionsResponse
+// @failure		400	{object}	models.RequestError
 // @param account query string true "Account address. Can be sent in hex, base64 or base64url form."
 // @param role query string false "Filter by account role in the trace." Enums(sender, receiver, initiated, observer)
 // @param end_utime query int32 false "Query actions for traces with `trace_end_utime < end_utime`." minimum(0)
