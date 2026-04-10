@@ -8,12 +8,10 @@ private:
     std::shared_ptr<block::ConfigInfo> config_;
     Trace trace_;
     td::Promise<Trace> promise_;
-    MeasurementPtr measurement_;
 public:
     TraceInterfaceDetector(AllShardStates shard_states, std::shared_ptr<block::ConfigInfo> config,
-                           Trace trace, td::Promise<Trace> promise, const MeasurementPtr& measurement) :
-        shard_states_(shard_states), config_(config), trace_(std::move(trace)), promise_(std::move(promise)),
-        measurement_(measurement) {}
+                           Trace trace, td::Promise<Trace> promise, const MeasurementPtr& /*measurement*/) :
+        shard_states_(shard_states), config_(config), trace_(std::move(trace)), promise_(std::move(promise)) {}
 
     void start_up() override;
 private:

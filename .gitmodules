@@ -15,3 +15,6 @@
 [submodule "external/msgpack-c"]
 	path = ton-index-worker/external/msgpack-c
 	url = https://github.com/msgpack/msgpack-c
+[submodule "ton-index-worker/external/opentelemetry-cpp"]
+	path = ton-index-worker/external/opentelemetry-cpp
+	url = https://github.com/open-telemetry/opentelemetry-cpp.git

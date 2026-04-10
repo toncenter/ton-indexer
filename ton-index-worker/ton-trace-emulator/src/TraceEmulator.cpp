@@ -476,7 +476,6 @@ TraceEmulator::TraceEmulator(schema::MasterchainBlockDataState mc_data_state, td
 
 void TraceEmulator::start_up() {
     timer_.resume();
-    measurement_->measure_step("trace_emulator_start");
    
     context_ = std::make_unique<EmulationContext>(mc_data_state_.shard_blocks_[0].handle->id().id.seqno, mc_data_state_.config_, ignore_chksig_);
     for (const auto& shard_state : mc_data_state_.shard_blocks_) {
@@ -524,8 +523,5 @@ void TraceEmulator::finish(td::Result<std::vector<std::unique_ptr<TraceNode>>> r
     result.tx_limit_exceeded = context_->is_limit_exceeded();
     promise_.set_result(std::move(result));
     g_statistics.record_time(EMULATE_TRACE, timer_.elapsed() * 1e3);
-
-
-    measurement_->measure_step("trace_emulator_complete");
     stop();
 }
