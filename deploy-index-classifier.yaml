@@ -81,6 +81,7 @@
         force: true
       vars:
         start_cmd: "{{ deploy_path }}/venv/bin/python3 {{ deploy_path }}/indexer/event_classifier.py {{ index_classifier_additional_args | default(service.additional_args | default('')) }}"
+        workdir: "{{ deploy_path }}/indexer"
       no_log: true
 
     - name: Restart and enable index classifier service

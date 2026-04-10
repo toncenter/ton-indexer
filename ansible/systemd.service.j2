@@ -19,8 +19,8 @@ Environment="{{ env_var }}"
 {% endfor %}
 {% endif %}
 {% endif %}
-{% if service.workdir is defined %}
-WorkingDirector={{ service.workdir }}
+{% if workdir is defined or service.workdir is defined %}
+WorkingDirectory={{ workdir | default(service.workdir) }}
 {% endif %}
 LimitNOFILE = infinity
 LimitNPROC = infinity
