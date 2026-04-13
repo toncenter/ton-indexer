@@ -594,29 +594,16 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	}
 
 	traceIsCommited := true
-	for _, row := range emulatedContext.GetTransactions() {
-		if tx, err := parse.ScanTransaction(row); err == nil {
-			if tx.Emulated {
-				traceIsCommited = false
-			}
-		} else {
-			log.Printf("Error scanning transaction: %v", err)
-			traceIsCommited = false // if we can't scan the transaction, we can't assume trace is committed
+	for _, tx := range emulatedContext.GetTransactions() {
+		if tx.Emulated {
+			traceIsCommited = false
 		}
 	}
 
 	var actions = []*indexModels.Action{}
 	var actionsAddresses = [][]string{}
 
-	for _, row := range emulatedContext.GetAllActions() { // GetAllActions returns actions in ascending order
-		var rawAction *indexModels.RawAction
-		if loc, err := parse.ScanRawAction(row); err == nil {
-			rawAction = loc
-		} else {
-			log.Printf("Error scanning raw action: %v", err)
-			continue
-		}
-
+	for _, rawAction := range emulatedContext.GetAllActions() { // GetAllActions returns actions in ascending order
 		actionAddrMap := map[string]bool{}
 		parse.CollectAddressesFromAction(&actionAddrMap, rawAction)
 
@@ -825,14 +812,10 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	var txs []indexModels.Transaction
 	txs_map := map[indexModels.HashType]int{}
 	{
-		rows := emulatedContext.GetTransactions()
-		for _, row := range rows {
-			if tx, err := parse.ScanTransaction(row); err == nil {
-				txs = append(txs, *tx)
-				txs_map[tx.Hash] = len(txs) - 1
-			} else {
-				log.Printf("Error scanning transaction: %v", err)
-			}
+		emulatedTxs := emulatedContext.GetTransactions()
+		for _, tx := range emulatedTxs {
+			txs = append(txs, *tx)
+			txs_map[tx.Hash] = len(txs) - 1
 		}
 	}
 
@@ -843,15 +826,10 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 		allAddresses = append(allAddresses, string(t.Account))
 	}
 	if len(tx_hashes) > 0 {
-		rows := emulatedContext.GetMessages(tx_hashes)
-		msgPtrs := make([]*indexModels.Message, 0, len(rows))
-		for _, row := range rows {
-			msg, err := parse.ScanMessageWithContent(row)
+		emulatedMsgs := emulatedContext.GetMessages(tx_hashes)
+		msgPtrs := make([]*indexModels.Message, 0, len(emulatedMsgs))
+		for _, msg := range emulatedMsgs {
 			msgPtrs = append(msgPtrs, msg)
-			if err != nil {
-				log.Printf("Error scanning message: %v", err)
-				continue
-			}
 			if msg.Direction == "in" {
 				txs[txs_map[msg.TxHash]].InMsg = msg
 				if msg.Source != nil {
@@ -976,13 +954,9 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 
 	var txs []indexModels.Transaction
 	txs_map := map[indexModels.HashType]int{}
-	for _, row := range rows {
-		if tx, err := parse.ScanTransaction(row); err == nil {
-			txs = append(txs, *tx)
-			txs_map[tx.Hash] = len(txs) - 1
-		} else {
-			log.Printf("Error scanning transaction: %v", err)
-		}
+	for _, tx := range rows {
+		txs = append(txs, *tx)
+		txs_map[tx.Hash] = len(txs) - 1
 	}
 
 	txsAddresses := []string{}
@@ -996,13 +970,8 @@ func ProcessNewCommitedTxs(ctx context.Context, rdb *redis.Client, traceExternal
 
 	allAddresses := txsAddresses
 	if len(tx_hashes) > 0 {
-		rows := emulatedContext.GetMessages(tx_hashes)
-		for _, row := range rows {
-			msg, err := parse.ScanMessageWithContent(row)
-			if err != nil {
-				log.Printf("Error scanning message: %v", err)
-				continue
-			}
+		emulatedMsgs := emulatedContext.GetMessages(tx_hashes)
+		for _, msg := range emulatedMsgs {
 			if msg.Direction == "in" {
 				txs[txs_map[msg.TxHash]].InMsg = msg
 				if msg.Source != nil {

@@ -1,7 +1,9 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -108,4 +110,47 @@ func (v *OpcodeType) String() string {
 
 func (v *OpcodeType) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"%s\"", v.String())), nil
+}
+
+type FinalityState uint8
+
+const (
+	FinalityStatePending   FinalityState = 0
+	FinalityStateConfirmed FinalityState = 1
+	FinalityStateFinalized FinalityState = 2
+)
+
+func (fs FinalityState) String() string {
+	switch fs {
+	case FinalityStatePending:
+		return "pending"
+	case FinalityStateConfirmed:
+		return "confirmed"
+	case FinalityStateFinalized:
+		return "finalized"
+	default:
+		return "unknown_" + strconv.Itoa(int(fs))
+	}
+}
+
+func (fs FinalityState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(fs.String())
+}
+
+func (fs *FinalityState) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "pending":
+		*fs = FinalityStatePending
+	case "confirmed":
+		*fs = FinalityStateConfirmed
+	case "finalized":
+		*fs = FinalityStateFinalized
+	default:
+		return fmt.Errorf("unknown finality state: %s", s)
+	}
+	return nil
 }

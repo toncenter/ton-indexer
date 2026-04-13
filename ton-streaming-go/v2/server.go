@@ -105,9 +105,9 @@ func (s *TraceProcessingStage) EmitOtelError(errorType, message string) {
 // Finality & Event types
 ////////////////////////////////////////////////////////////////////////////////
 
-func defaultMinFinality() emulated.FinalityState {
+func defaultMinFinality() indexModels.FinalityState {
 	// Safer default: only finalized events unless explicitly requested otherwise.
-	return emulated.FinalityStateFinalized
+	return indexModels.FinalityStateFinalized
 }
 
 type EventType string
@@ -240,7 +240,7 @@ type Subscription struct {
 	SupportedActionTypes []string
 	IncludeAddressBook   bool
 	IncludeMetadata      bool
-	MinFinality          emulated.FinalityState
+	MinFinality          indexModels.FinalityState
 }
 
 func makeEventSet(types []EventType) eventSet {
@@ -390,7 +390,7 @@ func NewClientManager() *ClientManager {
 // - is interested in any of the given event types for given addresses
 // - AND has IncludeAddressBook / IncludeMetadata true
 // AND will actually receive this event with given finality.
-func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []EventType, eventFinality emulated.FinalityState, addressesToNotify []string) (bool, bool) {
+func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []EventType, eventFinality indexModels.FinalityState, addressesToNotify []string) (bool, bool) {
 	shouldFetchAddressBook := false
 	shouldFetchMetadata := false
 
@@ -423,7 +423,7 @@ func (manager *ClientManager) shouldFetchAddressBookAndMetadata(eventTypes []Eve
 
 // shouldFetchAddressBookAndMetadataForTrace checks if any connected client
 // subscribed to the trace will receive this event and needs address book or metadata.
-func (manager *ClientManager) shouldFetchAddressBookAndMetadataForTrace(eventFinality emulated.FinalityState, traceExternalHashNorm string) (bool, bool) {
+func (manager *ClientManager) shouldFetchAddressBookAndMetadataForTrace(eventFinality indexModels.FinalityState, traceExternalHashNorm string) (bool, bool) {
 	shouldFetchAddressBook := false
 	shouldFetchMetadata := false
 
@@ -566,13 +566,13 @@ func (n *TraceInvalidatedNotification) AdjustForClient(client *Client) any {
 }
 
 type ActionsNotification struct {
-	Type                  EventType                `json:"type"` // always "actions"
-	Finality              emulated.FinalityState   `json:"finality,string"`
-	TraceExternalHashNorm string                   `json:"trace_external_hash_norm"`
-	Actions               []*indexModels.Action    `json:"actions"`
-	ActionAddresses       [][]string               `json:"-"` // used internally
-	AddressBook           *indexModels.AddressBook `json:"address_book,omitempty"`
-	Metadata              *indexModels.Metadata    `json:"metadata,omitempty"`
+	Type                  EventType                 `json:"type"` // always "actions"
+	Finality              indexModels.FinalityState `json:"finality,string"`
+	TraceExternalHashNorm string                    `json:"trace_external_hash_norm"`
+	Actions               []*indexModels.Action     `json:"actions"`
+	ActionAddresses       [][]string                `json:"-"` // used internally
+	AddressBook           *indexModels.AddressBook  `json:"address_book,omitempty"`
+	Metadata              *indexModels.Metadata     `json:"metadata,omitempty"`
 }
 
 var _ Notification = (*ActionsNotification)(nil)
@@ -637,7 +637,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 	}
 
 	// Manage invalidation tracking
-	if n.Finality == emulated.FinalityStateFinalized {
+	if n.Finality == indexModels.FinalityStateFinalized {
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
 	} else {
 		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
@@ -656,7 +656,7 @@ func (n *ActionsNotification) AdjustForClient(client *Client) any {
 
 type TransactionsNotification struct {
 	Type                  EventType                 `json:"type"` // always "transactions"
-	Finality              emulated.FinalityState    `json:"finality"`
+	Finality              indexModels.FinalityState `json:"finality"`
 	TraceExternalHashNorm string                    `json:"trace_external_hash_norm"`
 	Transactions          []indexModels.Transaction `json:"transactions"`
 	AddressBook           *indexModels.AddressBook  `json:"address_book,omitempty"`
@@ -717,7 +717,7 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 		}
 	}
 
-	if n.Finality == emulated.FinalityStateFinalized {
+	if n.Finality == indexModels.FinalityStateFinalized {
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
 	} else {
 		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
@@ -735,7 +735,7 @@ func (n *TransactionsNotification) AdjustForClient(client *Client) any {
 
 type TraceNotification struct {
 	Type                  EventType                                         `json:"type"` // always "trace"
-	Finality              emulated.FinalityState                            `json:"finality"`
+	Finality              indexModels.FinalityState                         `json:"finality"`
 	TraceExternalHashNorm string                                            `json:"trace_external_hash_norm"`
 	Trace                 indexModels.TraceNode                             `json:"trace"`
 	Transactions          map[indexModels.HashType]*indexModels.Transaction `json:"transactions"`
@@ -776,7 +776,7 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 		}
 	}
 
-	if n.Finality == emulated.FinalityStateFinalized {
+	if n.Finality == indexModels.FinalityStateFinalized {
 		delete(client.TracesForPotentialInvalidation, n.TraceExternalHashNorm)
 	} else {
 		client.TracesForPotentialInvalidation[n.TraceExternalHashNorm] = true
@@ -795,10 +795,10 @@ func (n *TraceNotification) AdjustForClient(client *Client) any {
 }
 
 type AccountStateNotification struct {
-	Type     EventType                `json:"type"`
-	Finality emulated.FinalityState   `json:"finality"` // confirmed / finalized
-	Account  string                   `json:"account"`
-	State    indexModels.AccountState `json:"state"`
+	Type     EventType                 `json:"type"`
+	Finality indexModels.FinalityState `json:"finality"` // confirmed / finalized
+	Account  string                    `json:"account"`
+	State    indexModels.AccountState  `json:"state"`
 }
 
 var _ Notification = (*AccountStateNotification)(nil)
@@ -817,11 +817,11 @@ func (n *AccountStateNotification) AdjustForClient(client *Client) any {
 }
 
 type JettonsNotification struct {
-	Type        EventType                `json:"type"`
-	Finality    emulated.FinalityState   `json:"finality"` // confirmed / finalized
-	Jetton      indexModels.JettonWallet `json:"jetton"`
-	AddressBook *indexModels.AddressBook `json:"address_book,omitempty"`
-	Metadata    *indexModels.Metadata    `json:"metadata,omitempty"`
+	Type        EventType                 `json:"type"`
+	Finality    indexModels.FinalityState `json:"finality"` // confirmed / finalized
+	Jetton      indexModels.JettonWallet  `json:"jetton"`
+	AddressBook *indexModels.AddressBook  `json:"address_book,omitempty"`
+	Metadata    *indexModels.Metadata     `json:"metadata,omitempty"`
 }
 
 var _ Notification = (*JettonsNotification)(nil)
@@ -896,16 +896,12 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	var txs []indexModels.Transaction
 	txsMap := map[indexModels.HashType]int{}
 	{
-		rows := emulatedContext.GetTransactions()
-		for _, row := range rows {
-			if tx, err := parse.ScanTransaction(row); err == nil {
-				txs = append(txs, *tx)
-				txsMap[tx.Hash] = len(txs) - 1
-				if stage.RootTxHash == "-" && tx.TraceId != nil {
-					stage.SetRootTxHash(*tx.TraceId)
-				}
-			} else {
-				log.Printf("[v2] Error scanning transaction (pending): %v", err)
+		emulatedTxs := emulatedContext.GetTransactions()
+		for _, tx := range emulatedTxs {
+			txs = append(txs, *tx)
+			txsMap[tx.Hash] = len(txs) - 1
+			if stage.RootTxHash == "-" && tx.TraceId != nil {
+				stage.SetRootTxHash(*tx.TraceId)
 			}
 		}
 	}
@@ -918,15 +914,10 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	}
 
 	if len(txHashes) > 0 {
-		rows := emulatedContext.GetMessages(txHashes)
-		msgPtrs := make([]*indexModels.Message, 0, len(rows))
-		for _, row := range rows {
-			msg, err := parse.ScanMessageWithContent(row)
+		emulatedMsgs := emulatedContext.GetMessages(txHashes)
+		msgPtrs := make([]*indexModels.Message, 0, len(emulatedMsgs))
+		for _, msg := range emulatedMsgs {
 			msgPtrs = append(msgPtrs, msg)
-			if err != nil {
-				log.Printf("[v2] Error scanning message (pending): %v", err)
-				continue
-			}
 			if msg.Direction == "in" {
 				txs[txsMap[msg.TxHash]].InMsg = msg
 				if msg.Source != nil {
@@ -963,7 +954,7 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	var metadata *indexModels.Metadata
 	shouldFetchAddressBook, shouldFetchMetadata := manager.shouldFetchAddressBookAndMetadata(
 		[]EventType{EventTransactions},
-		emulated.FinalityStatePending,
+		indexModels.FinalityStatePending,
 		allAddresses,
 	)
 	if shouldFetchAddressBook || shouldFetchMetadata {
@@ -980,12 +971,12 @@ func ProcessNewTrace(ctx context.Context, rdb *redis.Client, traceExternalHashNo
 	sort.Slice(txs, func(i, j int) bool {
 		return txs[i].Lt > txs[j].Lt
 	})
-	stage.Span.AddAttr("ton.trace.finality", emulated.FinalityStatePending.String())
+	stage.Span.AddAttr("ton.trace.finality", indexModels.FinalityStatePending.String())
 	stage.Span.AddAttr("ton.transactions.count", len(txs))
 
 	manager.broadcast <- &TransactionsNotification{
 		Type:                  EventTransactions,
-		Finality:              emulated.FinalityStatePending,
+		Finality:              indexModels.FinalityStatePending,
 		TraceExternalHashNorm: traceExternalHashNorm,
 		Transactions:          txs,
 		AddressBook:           addressBook,
@@ -1136,16 +1127,10 @@ func processTransactionsTraceSnapshot(
 
 	// Compute trace-level finality as min(tx.Finality).
 	// Start from the highest state.
-	traceFinality := emulated.FinalityStateFinalized
+	traceFinality := indexModels.FinalityStateFinalized
 
-	rows := emulatedContext.GetTransactions()
-	for _, row := range rows {
-		tx, scanErr := parse.ScanTransaction(row)
-		if scanErr != nil {
-			log.Printf("[v2] Error scanning transaction (%s): %v", channelHint, scanErr)
-			continue
-		}
-
+	emulatedTxs := emulatedContext.GetTransactions()
+	for _, tx := range emulatedTxs {
 		txs = append(txs, *tx)
 		txsMap[tx.Hash] = len(txs) - 1
 		if stage.RootTxHash == "-" && tx.TraceId != nil {
@@ -1174,14 +1159,8 @@ func processTransactionsTraceSnapshot(
 
 	// Attach messages for ALL transactions in snapshot.
 	if len(hashes) > 0 {
-		msgRows := emulatedContext.GetMessages(hashes)
-		for _, row := range msgRows {
-			msg, scanErr := parse.ScanMessageWithContent(row)
-			if scanErr != nil {
-				log.Printf("[v2] Error scanning message (%s): %v", channelHint, scanErr)
-				continue
-			}
-
+		emulatedMsgs := emulatedContext.GetMessages(hashes)
+		for _, msg := range emulatedMsgs {
 			txIdx, ok := txsMap[msg.TxHash]
 			if !ok {
 				log.Printf("[v2] Message for unknown transaction (%s), tx hash: %s", channelHint, msg.TxHash)
@@ -1279,18 +1258,18 @@ func SubscribeToAccountStateUpdates(ctx context.Context, rdb *redis.Client, mana
 	}
 }
 
-func parseAccountStateChannelPayload(payload string) (emulated.FinalityState, string, error) {
+func parseAccountStateChannelPayload(payload string) (indexModels.FinalityState, string, error) {
 	parts := strings.SplitN(payload, ":", 2)
 	if len(parts) != 2 {
 		return 0, "", fmt.Errorf("unexpected payload format")
 	}
 
-	var finality emulated.FinalityState
+	var finality indexModels.FinalityState
 	switch parts[0] {
 	case "account_confirmed":
-		finality = emulated.FinalityStateConfirmed
+		finality = indexModels.FinalityStateConfirmed
 	case "account_finalized":
-		finality = emulated.FinalityStateFinalized
+		finality = indexModels.FinalityStateFinalized
 	default:
 		return 0, "", fmt.Errorf("unknown prefix %q", parts[0])
 	}
@@ -1365,33 +1344,24 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 
 	// Finality of trace is the minimum finality of its txs, however,
 	// NFT and jetton transfer notifications do not affect finality if there are no outgoing messages
-	traceFinality := emulated.FinalityStateFinalized
+	traceFinality := indexModels.FinalityStateFinalized
 	{
-		txRows := emulatedContext.GetTransactions()
-		txFinality := make(map[string]emulated.FinalityState, len(txRows))
-		txHashes := make([]string, 0, len(txRows))
-		for _, row := range txRows {
-			if tx, err := parse.ScanTransaction(row); err == nil {
-				txHash := string(tx.Hash)
-				txHashes = append(txHashes, txHash)
-				txFinality[txHash] = tx.Finality
-				if stage.RootTxHash == "-" && tx.TraceId != nil {
-					stage.SetRootTxHash(*tx.TraceId)
-				}
-			} else {
-				log.Printf("[v2] Error scanning transaction (classified): %v", err)
+		emulatedTxs := emulatedContext.GetTransactions()
+		txFinality := make(map[string]indexModels.FinalityState, len(emulatedTxs))
+		txHashes := make([]string, 0, len(emulatedTxs))
+		for _, tx := range emulatedTxs {
+			txHash := string(tx.Hash)
+			txHashes = append(txHashes, txHash)
+			txFinality[txHash] = tx.Finality
+			if stage.RootTxHash == "-" && tx.TraceId != nil {
+				stage.SetRootTxHash(*tx.TraceId)
 			}
 		}
 
 		inOpcodes := make(map[string]string, len(txFinality))
 		outMsgCounts := make(map[string]int, len(txFinality))
 		if len(txHashes) > 0 {
-			for _, row := range emulatedContext.GetMessages(txHashes) {
-				msg, err := parse.ScanMessageWithContent(row)
-				if err != nil {
-					log.Printf("[v2] Error scanning message (classified): %v", err)
-					continue
-				}
+			for _, msg := range emulatedContext.GetMessages(txHashes) {
 				txHash := string(msg.TxHash)
 				if msg.Direction == "in" {
 					if msg.Opcode != nil {
@@ -1421,15 +1391,7 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 	var actions []*indexModels.Action
 	var actionsAddresses [][]string
 
-	for _, row := range emulatedContext.GetAllActions() { // ascending order
-		var rawAction *indexModels.RawAction
-		if loc, err := parse.ScanRawAction(row); err == nil {
-			rawAction = loc
-		} else {
-			log.Printf("[v2] Error scanning raw action: %v", err)
-			continue
-		}
-
+	for _, rawAction := range emulatedContext.GetAllActions() { // ascending order
 		actionAddrMap := map[string]bool{}
 		parse.CollectAddressesFromAction(&actionAddrMap, rawAction)
 
@@ -1583,12 +1545,12 @@ func SubscribeToInvalidatedTraces(ctx context.Context, rdb *redis.Client, manage
 // Account state & jettons (confirmed & finalized, no pending)
 ////////////////////////////////////////////////////////////////////////////////
 
-func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string, finality emulated.FinalityState, manager *ClientManager) {
+func ProcessNewAccountStates(ctx context.Context, rdb *redis.Client, addr string, finality indexModels.FinalityState, manager *ClientManager) {
 	var key string
 	switch finality {
-	case emulated.FinalityStateConfirmed:
+	case indexModels.FinalityStateConfirmed:
 		key = fmt.Sprintf("account_confirmed:%s", addr)
-	case emulated.FinalityStateFinalized:
+	case indexModels.FinalityStateFinalized:
 		key = fmt.Sprintf("account_finalized:%s", addr)
 	default:
 		log.Printf("[v2] Unsupported finality %d for account state processing for %s", finality, addr)
@@ -1788,13 +1750,7 @@ func collectAddressesFromTransaction(addrSet map[string]bool, tx *indexModels.Tr
 func buildActionsFromContext(emulatedContext *crud.EmulatedTracesContext) ([]*indexModels.Action, [][]string) {
 	actions := make([]*indexModels.Action, 0)
 	actionsAddresses := make([][]string, 0)
-	for _, row := range emulatedContext.GetAllActions() {
-		rawAction, err := parse.ScanRawAction(row)
-		if err != nil {
-			log.Printf("[v2] Error scanning raw action: %v", err)
-			continue
-		}
-
+	for _, rawAction := range emulatedContext.GetAllActions() {
 		actionAddrMap := map[string]bool{}
 		parse.CollectAddressesFromAction(&actionAddrMap, rawAction)
 
@@ -1905,18 +1861,18 @@ func checkAddressLimit(client *Client, newAddresses int, rateLimiter *RateLimite
 ////////////////////////////////////////////////////////////////////////////////
 
 type SSERequest struct {
-	Id                     *string                 `json:"id"`
-	Addresses              []string                `json:"addresses"`
-	TraceExternalHashNorms []string                `json:"trace_external_hash_norms,omitempty"`
-	Types                  []EventType             `json:"types"`
-	MinFinality            *emulated.FinalityState `json:"min_finality,omitempty"`
-	ActionTypes            []string                `json:"action_types"`
-	SupportedActionTypes   []string                `json:"supported_action_types"`
-	IncludeAddressBook     *bool                   `json:"include_address_book"`
-	IncludeMetadata        *bool                   `json:"include_metadata"`
+	Id                     *string                    `json:"id"`
+	Addresses              []string                   `json:"addresses"`
+	TraceExternalHashNorms []string                   `json:"trace_external_hash_norms,omitempty"`
+	Types                  []EventType                `json:"types"`
+	MinFinality            *indexModels.FinalityState `json:"min_finality,omitempty"`
+	ActionTypes            []string                   `json:"action_types"`
+	SupportedActionTypes   []string                   `json:"supported_action_types"`
+	IncludeAddressBook     *bool                      `json:"include_address_book"`
+	IncludeMetadata        *bool                      `json:"include_metadata"`
 }
 
-func ValidateSSERequest(req *SSERequest) ([]string, []string, emulated.FinalityState, error) {
+func ValidateSSERequest(req *SSERequest) ([]string, []string, indexModels.FinalityState, error) {
 	if len(req.Types) == 0 {
 		return nil, nil, defaultMinFinality(), fmt.Errorf("types are required for subscription")
 	}
@@ -2072,14 +2028,14 @@ type Envelope struct {
 }
 
 type SubscribeRequest struct {
-	Addresses              []string                `json:"addresses"`
-	TraceExternalHashNorms []string                `json:"trace_external_hash_norms,omitempty"`
-	Types                  []EventType             `json:"types"`
-	MinFinality            *emulated.FinalityState `json:"min_finality,omitempty"`
-	ActionTypes            []string                `json:"action_types,omitempty"`
-	SupportedActionTypes   []string                `json:"supported_action_types,omitempty"`
-	IncludeAddressBook     *bool                   `json:"include_address_book,omitempty"`
-	IncludeMetadata        *bool                   `json:"include_metadata,omitempty"`
+	Addresses              []string                   `json:"addresses"`
+	TraceExternalHashNorms []string                   `json:"trace_external_hash_norms,omitempty"`
+	Types                  []EventType                `json:"types"`
+	MinFinality            *indexModels.FinalityState `json:"min_finality,omitempty"`
+	ActionTypes            []string                   `json:"action_types,omitempty"`
+	SupportedActionTypes   []string                   `json:"supported_action_types,omitempty"`
+	IncludeAddressBook     *bool                      `json:"include_address_book,omitempty"`
+	IncludeMetadata        *bool                      `json:"include_metadata,omitempty"`
 }
 
 type UnsubscribeRequest struct {
