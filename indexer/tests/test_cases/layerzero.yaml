@@ -22,6 +22,9 @@ cases:
             nonce: 90
             guid: "0x46c71599bf21b54d59bd078d0bae22878154b16c1216fb6b83b0edf3a1167476"
             message: "0x000300000000000000000000000000000000000000e1320ab3ea00000000000000000000000000000000"
+        expected-roles:
+          source: 5                        # INIT_OUT (initiator)
+          layerzero_send_data.endpoint: 2  # ECON_IN (endpoint)
 
   LayerZero send usdt to eth:
     trace-id: KEbatIe0U3ZHIx6sYTg4O1tgYP9L6hMiHJ8nNnZdyBE=
@@ -51,6 +54,10 @@ cases:
             nonce: 517
             guid: "0xa0b6fa1485a8e904d1bf5c702f99936ceb8ab32730b2cd501071dc92456da7cb"
             message: "0x00020000000000000000000000000378cca455f3befef687f9f7668b13eaa03f007c000000000000270d"
+        expected-roles:
+          source: 5                        # INIT_OUT (token sender)
+          destination: 2                   # ECON_IN (oapp)
+          layerzero_send_data.endpoint: 2  # ECON_IN (endpoint receives send request)
 
   LayerZero send some test msg from ton to ton lol:
     trace-id: 0_AQj88LwG2cEpyjulN9yyJWzx8_ymJMizzoR_FfDzU=

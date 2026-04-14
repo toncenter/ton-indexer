@@ -103,6 +103,18 @@ type ActionsResponse struct {
 	Metadata    Metadata    `json:"metadata"`
 } // @name ActionsResponse
 
+type TraceActions struct {
+	TraceId HashType `json:"trace_id"`
+	Actions []Action `json:"actions"`
+} // @name TraceActions
+
+type AccountActionsResponse struct {
+	Actions     []Action    `json:"actions"`
+	AddressBook AddressBook `json:"address_book"`
+	Metadata    Metadata    `json:"metadata"`
+	Cursor      string      `json:"cursor,omitempty"`
+} // @name AccountActionsResponse
+
 type DNSRecordsResponse struct {
 	Records     []DNSRecord `json:"records"`
 	AddressBook AddressBook `json:"address_book"`

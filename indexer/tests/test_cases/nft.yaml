@@ -31,6 +31,9 @@ cases:
             real_prev_owner: 0:0D57780F9ABF651ACF690E6F37B2F8F9C61C4131A3968C5A555A18811CD2E7E4
             payout_comment: null
             marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+        expected-roles:
+          source: 5       # INIT_OUT (previous owner)
+          destination: 2  # ECON_IN (new owner)
       - type: nft_purchase
         success: true
         values:
@@ -67,6 +70,10 @@ cases:
             payout_amount: 1372369010
             payout_comment: null
             marketplace_address: 0:584EE61B2DFF0837116D0FCB5078D93964BCBE9C05FD6A141B1BFCA5D6A43E18
+        expected-roles:
+          source: 3           # ECON_BOTH (seller)
+          destination: 7      # INIT_BOTH (buyer)
+          asset_secondary: 3  # ECON_BOTH (NFT item - always visible on NFT page)
   Fragment purchase:
     trace-id: aMUaDa0Ml9lnk7KzHKpkW1UK6FPyYod2qotieVVWMd8=
     expected-actions:

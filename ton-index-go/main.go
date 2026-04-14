@@ -1457,6 +1457,78 @@ func GetActions(c *fiber.Ctx) error {
 	return c.Status(200).JSON(resp)
 }
 
+// @summary Get Actions by Account
+// @description Get actions for a specific account with role filtering. Pagination controls number of traces returned
+// @id api_v3_get_account_actions
+// @tags actions
+// @Accept       json
+// @Produce      json
+// @success		200	{object}	models.AccountActionsResponse
+// @failure		400	{object}	models.RequestError
+// @param account query string true "Account address. Can be sent in hex, base64 or base64url form."
+// @param role query string false "Filter by account role in the trace." Enums(sender, receiver, initiated, observer)
+// @param end_utime query int32 false "Query actions for traces with `trace_end_utime < end_utime`." minimum(0)
+// @param start_utime query int32 false "Query actions for traces with `trace_end_utime >= start_utime`." minimum(0)
+// @param cursor query string false "Opaque pagination cursor from previous response. Takes precedence over end_lt."
+// @param end_lt query int64 false "Query actions for traces with `trace_end_lt < end_lt`. Fallback pagination if cursor not provided." minimum(0)
+// @param start_lt query int64 false "Query actions for traces with `trace_end_lt >= start_lt`." minimum(0)
+// @param supported_action_types query []string false "Supported action types. Controls which action hierarchy level is visible."
+// @param include_accounts query bool false "Include action accounts in the response."
+// @param include_transactions query bool false "Include full transaction data for each action."
+// @param limit query int32 false "Limit number of traces returned." minimum(1) maximum(1000) default(10)
+// @param sort query string false "Sort traces by lt." Enums(asc, desc) default(desc)
+// @router			/api/v3/actions/byAccount [get]
+// @security		APIKeyHeader
+// @security		APIKeyQuery
+func GetAccountActions(c *fiber.Ctx) error {
+	request_settings := GetRequestSettings(c, &settings)
+	req := models.AccountActionsRequest{}
+	lim_req := models.LimitRequest{}
+	utime_req := models.UtimeRequest{}
+	lt_req := models.LtRequest{}
+
+	if err := c.QueryParser(&req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lim_req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&utime_req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+	if err := c.QueryParser(&lt_req); err != nil {
+		return models.IndexError{Code: 422, Message: err.Error()}
+	}
+
+	if len(req.AccountAddress) == 0 {
+		return models.IndexError{Code: 422, Message: "account is required"}
+	}
+
+	if req.Role != nil && *req.Role != models.RoleSender && *req.Role != models.RoleReceiver &&
+		*req.Role != models.RoleInitiated && *req.Role != models.RoleObserver {
+		return models.IndexError{Code: 422, Message: "role must be 'sender', 'receiver', 'initiated', or 'observer'"}
+	}
+
+	if value_str, ok := ExtractParam(c, "X-Actions-Version", ""); ok {
+		req.SupportedActionTypes = []string{value_str}
+	}
+
+	actions, book, metadata, cursor, err := pool.QueryAccountActions(
+		req, utime_req, lt_req, lim_req, request_settings)
+	if err != nil {
+		return err
+	}
+	crud.SubstituteImgproxyBaseUrl(&metadata, settings.ImgProxyBaseUrl)
+
+	resp := models.AccountActionsResponse{
+		Actions:     actions,
+		AddressBook: book,
+		Metadata:    metadata,
+		Cursor:      cursor,
+	}
+	return c.Status(200).JSON(resp)
+}
+
 // @summary Get Pending Actions
 // @description Get actions by specified filter.
 // @id api_v3_get_pending_actions
@@ -1469,6 +1541,7 @@ func GetActions(c *fiber.Ctx) error {
 // @param ext_msg_hash query []string false "Find actions by trace external hash"
 // @param supported_action_types query []string false "Supported action types"
 // @param include_transactions query bool false "Include `transactions_full` array with detailed transaction data for each action in response." default(false)
+// @param role query string false "Filter by account role in the trace." Enums(sender, receiver, initiated, observer)
 // @router			/api/v3/pendingActions [get]
 // @security		APIKeyHeader
 // @security		APIKeyQuery
@@ -2355,6 +2428,7 @@ func main() {
 
 	// actions
 	app.Get("/api/v3/actions", GetActions)
+	app.Get("/api/v3/actions/byAccount", GetAccountActions)
 	app.Get("/api/v3/traces", GetTraces)
 	app.Get("/api/v3/events", GetTraces)
 

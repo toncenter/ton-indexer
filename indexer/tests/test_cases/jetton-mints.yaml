@@ -16,6 +16,10 @@ cases:
           destination_secondary: 0:A259E2FB6509E67EF4830F728DF159C117768E605471717B95FB61588A1652D1
           asset: 0:08BF01CF8AA70279972B3EAD61EE511114432D9A3F4B6BBA9F0CF01AF3CDFA12
           amount: 1000000000
+        expected-roles:
+          destination: 7            # INIT_BOTH (self-mint: source == destination)
+          destination_secondary: 2  # ECON_IN (recipient wallet)
+          asset: 3                  # ECON_BOTH (master: receives TON, emits jettons)
   "Jetton mint(0x15) 2":
     trace-id: I8W6RKYLE-NJPAComfUWhsG7_L5VvFxNEzizt5N8AAc=
     expected-blocks:

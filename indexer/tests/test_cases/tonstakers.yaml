@@ -33,6 +33,9 @@ cases:
           staking_data:
             provider: tonstakers
             tokens_minted: 9439323796
+        expected-roles:
+          source: 7       # INIT_BOTH (depositor: sends TON + receives staking tokens)
+          destination: 2  # ECON_IN (pool)
   "TS Withdrawal request":
     trace-id: GO-NI0EjOuhj1z4YzHK-VDAAOJsLm710DvyRRRMXhoY=
     expected-blocks:

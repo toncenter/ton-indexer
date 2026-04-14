@@ -144,8 +144,20 @@ func (c *EmulatedTracesContext) GetAllActions() []pgx.Row {
 }
 
 func (c *EmulatedTracesContext) GetActions(supportedActions []string) []pgx.Row {
+	return c.GetActionsFiltered(supportedActions, nil, nil)
+}
+
+// GetActionsFiltered returns actions matching the supported types, optionally filtered
+// by account and role. When account and role are provided, only actions where the
+// account has a matching role (using bitmask) are returned.
+func (c *EmulatedTracesContext) GetActionsFiltered(supportedActions []string, account *models.AccountAddress, role *models.RoleType) []pgx.Row {
 	rows := make([]pgx.Row, 0)
 	supportedActionsSet := mapset.NewSet(supportedActions...)
+	roleIds := roleToIds(role)
+	roleSet := make(map[int]bool, len(roleIds))
+	for _, id := range roleIds {
+		roleSet[id] = true
+	}
 	for _, traceKey := range c.traceKeys {
 		if actions, ok := c.emulatedActions[traceKey]; ok {
 			sort.Slice(actions, func(i, j int) bool {
@@ -160,6 +172,13 @@ func (c *EmulatedTracesContext) GetActions(supportedActions []string) []pgx.Row 
 				}
 				if !supportedActionsSet.ContainsAny(action.Type) {
 					continue
+				}
+				// Role filter: check if the requested account has a matching role
+				if account != nil && role != nil && action.AccountRoles != nil {
+					accountRole, found := action.AccountRoles[string(*account)]
+					if !found || !roleSet[accountRole] {
+						continue
+					}
 				}
 				rows = append(rows, emulated.NewRow(action))
 			}

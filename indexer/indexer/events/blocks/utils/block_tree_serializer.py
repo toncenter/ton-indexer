@@ -4,7 +4,7 @@ import base64
 import hashlib
 import logging
 
-from indexer.core.database import Action, FinalityState, Trace
+from indexer.core.database import Action, FinalityState, Trace, ROLE_SENDER_RECEIVER, ECON_BOTH
 from indexer.events.blocks.basic_blocks import CallContractBlock, TonTransferBlock
 from indexer.events.blocks.core import Block
 from indexer.events.blocks.dns import (
@@ -79,8 +79,20 @@ from indexer.events.blocks.layerzero import (
     LayerZeroSendTokensBlock,
 )
 from indexer.events.blocks.tgbtc import TgBTCDkgLogBlock, TgBTCMintBlock, TgBTCBurnBlock, TgBTCNewKeyBlock
+from indexer.events.blocks.utils.role_assignment import assign_roles
 
 logger = logging.getLogger(__name__)
+
+# NFT action types where the NFT item contract actually participates in the call chain
+# (processes a message). For these, the NFT item gets ECON_BOTH so it shows in all
+# explorer filter modes. Excluded: auction_bid, auction_outbid, nft_update_sale -
+# the NFT is only referenced by address (from interface repo), not transacted on.
+_nft_participating_types = {
+    'nft_transfer', 'nft_purchase', 'dns_purchase', 'nft_mint',
+    'nft_put_on_sale', 'nft_put_on_auction', 'teleitem_start_auction',
+    'nft_cancel_sale', 'nft_cancel_auction', 'nft_finish_auction', 'teleitem_cancel_auction',
+    'nft_discovery', 'dns_release',
+}
 
 def _addr(addr: AccountId | Asset | None) -> str | None:
     if addr is None:
@@ -134,6 +146,7 @@ def _base_block_to_action(block: Block, trace_id: str, finality: FinalityState) 
         value_extra_currencies=dict(),
     )
     action.accounts = accounts
+    action.account_roles = {}
     return action
 
 
@@ -644,6 +657,8 @@ def _fill_dedust_deposit_liquidity_partial_action(block: DedustDepositLiquidityP
     }
 
 def _fill_jetton_mint_action(block: JettonMintBlock, action: Action):
+    if block.data.get("source"):
+        action.source = block.data["source"].as_str()
     action.destination = _addr(block.data["to"])
     action.destination_secondary = _addr(block.data["to_jetton_wallet"])
     action.asset = _addr(block.data["asset"].jetton_address)
@@ -1478,6 +1493,14 @@ def block_to_action(block: Block, trace_id: str, trace: Trace) -> Action:
     action.tx_hashes = list(extended_tx_hashes)
 
     action.accounts = list(set(a for a in action.accounts if a is not None))
+    action.account_roles = assign_roles(action, trace)
+
+    # NFT items should always be ECON_BOTH so they appear on the NFT's explorer page
+    # in all filter modes (incoming/outgoing). asset_secondary holds the NFT item address
+    # for all NFT action types.
+    if action.type in _nft_participating_types and action.asset_secondary and action.asset_secondary in action.account_roles:
+        action.account_roles[action.asset_secondary] = ECON_BOTH
+
     return action
 
 
@@ -1584,4 +1607,5 @@ def create_unknown_action(trace: Trace) -> Action:
         trace_mc_seqno_end=trace.mc_seqno_end
     )
     action.accounts = list(set([n.account for n in trace.transactions]))
+    action.account_roles = assign_roles(action, trace)
     return action

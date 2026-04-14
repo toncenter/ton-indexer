@@ -558,6 +558,7 @@ type Action struct {
 	AncestorType                     []string                                   `msgpack:"ancestor_type"`
 	ParentActionId                   *string                                    `msgpack:"parent_action_id"`
 	Accounts                         []string                                   `msgpack:"accounts"`
+	AccountRoles                     map[string]int                             `msgpack:"account_roles"`
 	JettonTransferData               *actionJettonTransferDetails               `msgpack:"jetton_transfer_data"`
 	NftTransferData                  *actionNftTransferDetails                  `msgpack:"nft_transfer_data"`
 	NftListingData                   *actionNftListingDetails                   `msgpack:"nft_listing_data"`
@@ -1163,6 +1164,7 @@ func (a *Action) GetActionRow() (ActionRow, error) {
 		ParentActionId:        a.ParentActionId,
 		AncestorType:          a.AncestorType,
 		Accounts:              a.Accounts,
+		AccountRoles:           a.AccountRoles,
 	}
 	if a.TonTransferData != nil {
 		row.TonTransferContent = a.TonTransferData.Content

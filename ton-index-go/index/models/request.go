@@ -169,6 +169,7 @@ type PendingActionsRequest struct {
 	ExtMsgHash           []HashType      `query:"ext_msg_hash"`
 	SupportedActionTypes []string        `query:"supported_action_types"`
 	IncludeTransactions  *bool           `query:"include_transactions"`
+	Role                 *RoleType       `query:"role"`
 }
 
 type DNSRecordsRequest struct {
@@ -192,6 +193,24 @@ type VestingContractsRequest struct {
 	ContractAddress []AccountAddress `query:"contract_address"`
 	WalletAddress   []AccountAddress `query:"wallet_address"`
 	CheckWhitelist  *bool            `query:"check_whitelist"`
+}
+
+type RoleType string
+
+const (
+	RoleSender    RoleType = "sender"    // outgoing: value flowed out (role & 1 != 0)
+	RoleReceiver  RoleType = "receiver"  // incoming: value flowed in (role & 2 != 0)
+	RoleInitiated RoleType = "initiated" // triggered by this account (role & 4 != 0)
+	RoleObserver  RoleType = "observer"  // mentioned but no economic role (role = 0)
+)
+
+type AccountActionsRequest struct {
+	AccountAddress       AccountAddress `query:"account"`
+	Role                 *RoleType      `query:"role"`
+	Cursor               *string        `query:"cursor"`
+	SupportedActionTypes []string       `query:"supported_action_types"`
+	IncludeAccounts      *bool          `query:"include_accounts"`
+	IncludeTransactions  *bool          `query:"include_transactions"`
 }
 
 type SortType string

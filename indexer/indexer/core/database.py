@@ -34,6 +34,22 @@ logger = logging.getLogger(__name__)
 MASTERCHAIN_INDEX = -1
 MASTERCHAIN_SHARD = -9223372036854775808
 
+# 3-bit bitmask role system
+ECON_OUT = 1       # Bit 0: value flowed out
+ECON_IN = 2        # Bit 1: value flowed in
+INITIATOR = 4      # Bit 2: account triggered the action
+
+# Convenience combinations
+OBSERVER = 0
+INIT_OUT = INITIATOR | ECON_OUT       # 5: standard sender
+INIT_BOTH = INITIATOR | ECON_OUT | ECON_IN  # 7: bidirectional initiator
+ECON_BOTH = ECON_OUT | ECON_IN        # 3: bidirectional non-initiator
+
+# Backward compat aliases (used by block_tree_serializer create_unknown_action)
+ROLE_SENDER = INIT_OUT
+ROLE_RECEIVER = ECON_IN
+ROLE_SENDER_RECEIVER = ECON_BOTH
+
 settings = Settings()
 
 
@@ -247,6 +263,8 @@ class ActionAccount(Base):
     action_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
     action_end_utime: int = Column(Numeric)
+    role: int = Column(Integer, nullable=True)
+
 
 class Action(Base):
     __tablename__ = 'actions'
@@ -578,6 +596,7 @@ class Action(Base):
     ancestor_type: list[str] = Column(ARRAY(String), default=[])
 
     accounts: list[str]
+    account_roles: dict[str, int]
 
     def __repr__(self):
         full_repr = ""
@@ -589,6 +608,7 @@ class Action(Base):
 
     def get_action_accounts(self):
         accounts = []
+        roles = getattr(self, 'account_roles', {}) or {}
         for account in self.accounts:
             accounts.append(ActionAccount(action_id=self.action_id,
                                           trace_id=self.trace_id,
@@ -596,7 +616,8 @@ class Action(Base):
                                           action_end_lt=self.end_lt,
                                           trace_end_lt=self.trace_end_lt,
                                           trace_end_utime=self.trace_end_utime,
-                                          action_end_utime=self.end_utime))
+                                          action_end_utime=self.end_utime,
+                                          role=roles.get(account)))
         return accounts
 
 
@@ -605,7 +626,7 @@ class Action(Base):
         r.pop('_sa_instance_state')
 
         return convert_numerics_to_strings(r, {'start_lt', 'end_lt', 'start_utime', 'end_utime', 'opcode', 'trace_start_lt', 'finality',
-                                               'trace_end_lt', 'trace_end_utime', 'mc_seqno_end', 'trace_mc_seqno_end'})
+                                               'trace_end_lt', 'trace_end_utime', 'mc_seqno_end', 'trace_mc_seqno_end', 'account_roles'})
 
 class Transaction(Base):
     __tablename__ = 'transactions'
