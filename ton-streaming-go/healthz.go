@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
@@ -165,6 +167,11 @@ func healthzHandler(rdb *redis.Client) fiber.Handler {
 
 		if response.OK {
 			return c.Status(fiber.StatusOK).JSON(response)
+		}
+		if payload, err := json.Marshal(response); err != nil {
+			log.Printf("healthz returned 503; failed to marshal response for logging: %v", err)
+		} else {
+			log.Printf("healthz returned 503: %s", payload)
 		}
 		return c.Status(fiber.StatusServiceUnavailable).JSON(response)
 	}
