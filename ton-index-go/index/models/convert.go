@@ -2,12 +2,9 @@ package models
 
 import (
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
-	"reflect"
 	"strconv"
 	"strings"
 
@@ -120,6 +117,14 @@ func ParseAccountAddressStruct(value string) (*AccountAddressStruct, error) {
 	return &result, nil
 }
 
+func MustParseAccountAddress(s string) AccountAddress {
+	val, err := ParseAccountAddress(s)
+	if err != nil {
+		panic(err)
+	}
+	return *val
+}
+
 func ParseHashType(s string) (*HashType, error) {
 	val, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
@@ -139,142 +144,19 @@ func MustParseHashType(s string) HashType {
 	return *val
 }
 
-// postgresql scanners
-func ScanAccountAddressStruct(v []byte) (*AccountAddressStruct, error) {
-	if len(v) == 0 {
-		return &AccountAddressStruct{Kind: AddressNone}, nil
-	}
-
-	if len(v) < 4 {
-		return nil, fmt.Errorf("invalid address: too short: %d bytes", len(v))
-	}
-	prefix := binary.BigEndian.Uint32(v[0:4])
-	if prefix == uint32(1<<31) {
-		length := int32(binary.BigEndian.Uint32(v[4:8]))
-		data := v[8:]
-		return &AccountAddressStruct{Kind: AddressExt, ExtLen: length, Addr: strings.ToUpper(hex.EncodeToString(data))}, nil
-	}
-	if len(v) != 36 {
-		return nil, fmt.Errorf("invalid address: expected 36 bytes, got %d", len(v))
-	}
-	return &AccountAddressStruct{Kind: AddressStd, Workchain: int32(prefix), Addr: strings.ToUpper(hex.EncodeToString(v[4:36]))}, nil
-}
-
-//func (a *BytesType) ScanBytes(v []byte) error {
-//	if v == nil {
-//		return fmt.Errorf("HashType: NULL is not allowed")
-//	}
-//
-//	*a = BytesType(base64.StdEncoding.EncodeToString(v))
-//	return nil
-//}
-//
-//func (h *HashType) ScanBytes(v []byte) error {
-//	if v == nil {
-//		return fmt.Errorf("HashType: NULL is not allowed")
-//	}
-//	if len(v) != 32 {
-//		return fmt.Errorf("HashType: expected 32 bytes, got %d", len(v))
-//	}
-//
-//	*h = HashType(base64.StdEncoding.EncodeToString(v))
-//	return nil
-//}
-//
-//func (a *AccountAddress) ScanBytes(v []byte) error {
-//	if v == nil {
-//		*a = ""
-//		return nil
-//	}
-//	s, err := ScanAccountAddressStruct(v)
-//	if err != nil {
-//		return err
-//	}
-//
-//	*a = AccountAddress(s.String())
-//	return nil
-//}
-
-// postgresql bytea representation
-func (a *AccountAddressStruct) BytesValue() ([]byte, error) {
-	switch a.Kind {
-	case AddressNone:
-		return nil, nil
-	case AddressExt:
-		prefix := 1 << 31
-		addr, err := hex.DecodeString(a.Addr)
-		if err != nil {
-			return nil, err
-		}
-		resLen := (a.ExtLen + 7) / 8
-		result := make([]byte, 8+resLen)
-		binary.BigEndian.PutUint32(result[:4], uint32(prefix))
-		binary.BigEndian.PutUint32(result[4:8], uint32(a.ExtLen))
-		copy(result[8:], addr)
-		return result, nil
-	case AddressStd:
-		addr, err := hex.DecodeString(a.Addr)
-		if err != nil {
-			return nil, err
-		}
-		result := make([]byte, 36)
-		binary.BigEndian.PutUint32(result[:4], uint32(a.Workchain))
-		copy(result[4:], addr)
-		return result, nil
-	case AddressVar:
-		return nil, fmt.Errorf("address_var is not supported")
-	default:
-		return nil, fmt.Errorf("unknown type of account address: %v", a.Kind)
-	}
-}
-
-func (a *BytesType) BytesValue() ([]byte, error) {
-	res, err := base64.StdEncoding.DecodeString(string(*a))
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
-func (a *HashType) BytesValue() ([]byte, error) {
-	res, err := base64.StdEncoding.DecodeString(string(*a))
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
-// postgresql representation for filters
+// types representation for filters
 func (h HashType) FilterString() string {
 	if len(h) == 0 {
 		return "NULL"
 	}
-	s, err := base64.StdEncoding.DecodeString(string(h))
-	if err != nil {
-		log.Printf("failed to encode address: %s", h.String())
-		return "NULL"
-	}
-	return fmt.Sprintf("\\x%X", s)
+	return h.String()
 }
 
 func (a AccountAddress) FilterString() string {
 	if len(a) == 0 {
 		return "NULL"
 	}
-	s, err := ParseAccountAddressStruct(string(a))
-	if err != nil {
-		log.Printf("failed to encode address: %s", a.String())
-		return "NULL"
-	}
-	if s.Kind == AddressNone || s.Kind == AddressVar {
-		return "NULL"
-	}
-	res, err := s.BytesValue()
-	if err != nil {
-		log.Printf("failed to encode address: %s", a.String())
-		return "NULL"
-	}
-	return fmt.Sprintf("\\x%x", res)
+	return a.String()
 }
 
 // marshal
@@ -443,82 +325,4 @@ func GetAccountAddressFriendly(account AccountAddress, code_hash *HashType, is_t
 	addr.SetBounce(bouncable)
 	addr.SetTestnetOnly(is_testnet)
 	return addr.String()
-}
-
-// converters
-func HashConverter(value string) reflect.Value {
-	if len(value) == 64 || len(value) == 66 && strings.HasPrefix(value, "0x") {
-		value = strings.TrimPrefix(value, "0x")
-		if res, err := hex.DecodeString(value); err == nil {
-			return reflect.ValueOf(HashType(base64.StdEncoding.EncodeToString(res)))
-		} else {
-			return reflect.Value{}
-		}
-	}
-	if len(value) == 44 {
-		if res, err := base64.StdEncoding.DecodeString(value); err == nil {
-			return reflect.ValueOf(HashType(base64.StdEncoding.EncodeToString(res)))
-		} else if res, err := base64.URLEncoding.DecodeString(value); err == nil {
-			return reflect.ValueOf(HashType(base64.StdEncoding.EncodeToString(res)))
-		} else {
-			return reflect.Value{}
-		}
-	}
-	return reflect.Value{}
-}
-
-func AccountAddressConverter(value string) reflect.Value {
-	addr, err := address.ParseAddr(value)
-	if err != nil {
-		value_url := strings.Replace(value, "+", "-", -1)
-		value_url = strings.Replace(value_url, "/", "_", -1)
-		addr, err = address.ParseAddr(value_url)
-	}
-	if err != nil {
-		addr, err = address.ParseRawAddr(value)
-	}
-	if err != nil {
-		return reflect.Value{}
-	}
-	addr_str := fmt.Sprintf("%d:%s", addr.Workchain(), strings.ToUpper(hex.EncodeToString(addr.Data())))
-	return reflect.ValueOf(AccountAddress(addr_str))
-}
-
-func AccountAddressNullableConverter(value string) reflect.Value {
-	if value == "null" {
-		return reflect.ValueOf(value)
-	}
-	return AccountAddressConverter(value)
-}
-
-func ShardIdConverter(value string) reflect.Value {
-	value = strings.TrimPrefix(value, "0x")
-	if shard, err := strconv.ParseUint(value, 16, 64); err == nil {
-		return reflect.ValueOf(ShardId(shard))
-	}
-	if shard, err := strconv.ParseInt(value, 10, 64); err == nil {
-		return reflect.ValueOf(ShardId(shard))
-	}
-	return reflect.Value{}
-}
-
-func UtimeTypeConverter(value string) reflect.Value {
-	if utime, err := strconv.ParseUint(value, 10, 32); err == nil {
-		return reflect.ValueOf(UtimeType(utime))
-	}
-	if utime, err := strconv.ParseFloat(value, 64); err == nil {
-		return reflect.ValueOf(UtimeType(uint64(utime)))
-	}
-	return reflect.Value{}
-}
-
-func OpcodeTypeConverter(value string) reflect.Value {
-	value = strings.TrimPrefix(value, "0x")
-	if res, err := strconv.ParseUint(value, 16, 32); err == nil {
-		return reflect.ValueOf(OpcodeType(res))
-	}
-	if res, err := strconv.ParseInt(value, 10, 32); err == nil {
-		return reflect.ValueOf(OpcodeType(res))
-	}
-	return reflect.Value{}
 }
