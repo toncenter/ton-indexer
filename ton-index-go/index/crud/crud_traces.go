@@ -3,14 +3,18 @@ package crud
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
-	"log"
-	"strings"
 )
 
-func buildTracesQuery(trace_req models.TracesRequest, utime_req models.UtimeRequest, lt_req models.LtRequest, lim_req models.LimitRequest, settings models.RequestSettings) (string, error) {
+func buildTracesQuery(req models.TracesRequest, settings models.RequestSettings) (string, error) {
+	utime_req := req.GetUtimeParams()
+	lt_req := req.GetLtParams()
+	lim_req := req.GetLimitParams()
 	clmn_query := `E.trace_id, E.external_hash, E.mc_seqno_start, E.mc_seqno_end, 
 				   E.start_lt, E.start_utime, E.end_lt, E.end_utime, 
 				   E.state, E.edges_, E.nodes_, E.pending_edges_, E.classification_state`
@@ -59,18 +63,18 @@ func buildTracesQuery(trace_req models.TracesRequest, utime_req models.UtimeRequ
 	// —— Filters that used to cause JOINs — now as EXISTS subqueries —— //
 
 	// account → EXISTS over transactions
-	if v := trace_req.AccountAddress; v != nil && len(*v) > 0 {
+	if v := req.AccountAddress; v != nil && v.IsAddressStd() {
 		filter_list = append(filter_list,
 			fmt.Sprintf(`EXISTS (
 				SELECT 1
 				FROM transactions AS T
 				WHERE T.trace_id = E.trace_id
 				  AND T.account = '%s'
-			)`, *v))
+			)`, v.FilterString()))
 	}
 
 	// transaction hashes → EXISTS over transactions
-	if v := trace_req.TransactionHash; v != nil {
+	if v := req.TransactionHash; v != nil {
 		if cond := filterByArray("T.hash", v); len(cond) > 0 {
 			filter_list = append(filter_list,
 				fmt.Sprintf(`EXISTS (
@@ -83,7 +87,7 @@ func buildTracesQuery(trace_req models.TracesRequest, utime_req models.UtimeRequ
 	}
 
 	// message hashes → EXISTS over messages (either raw or normalized)
-	if v := trace_req.MessageHash; len(v) > 0 {
+	if v := req.MessageHash; len(v) > 0 {
 		cond := fmt.Sprintf("(%s OR %s)",
 			filterByArray("M.msg_hash", v),
 			filterByArray("M.msg_hash_norm", v),
@@ -99,12 +103,12 @@ func buildTracesQuery(trace_req models.TracesRequest, utime_req models.UtimeRequ
 
 	// —— Filters that are native to traces —— //
 
-	if v := trace_req.TraceId; v != nil {
+	if v := req.TraceId; v != nil {
 		if cond := filterByArray("E.trace_id", v); len(cond) > 0 {
 			filter_list = append(filter_list, cond)
 		}
 	}
-	if v := trace_req.McSeqno; v != nil {
+	if v := req.McSeqno; v != nil {
 		filter_list = append(filter_list, `E.state = 'complete'`)
 		filter_list = append(filter_list, fmt.Sprintf("E.mc_seqno_end = %d", *v))
 	}
@@ -123,7 +127,7 @@ func buildTracesQuery(trace_req models.TracesRequest, utime_req models.UtimeRequ
 	return query, nil
 }
 
-func queryTracesImpl(query string, includeActions bool, supportedActionTypes []string, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.Trace, []string, error) {
+func queryTracesImpl(query string, includeActions bool, supportedActionTypes []string, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.Trace, []models.AccountAddress, error) {
 	traces := []models.Trace{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -148,7 +152,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 	}
 	traces_map := map[models.HashType]int{}
 	trace_id_list := []models.HashType{}
-	addr_map := map[string]bool{}
+	addr_map := map[models.AccountAddress]bool{}
 	for idx := range traces {
 		traces_map[*traces[idx].TraceId] = idx
 		if settings.MaxTraceTransactions > 0 && traces[idx].TraceMeta.Transactions > int64(settings.MaxTraceTransactions) {
@@ -421,7 +425,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 	}
 
 	// TODO: use .Keys method from 1.23 version
-	addr_list := []string{}
+	addr_list := []models.AccountAddress{}
 	for k := range addr_map {
 		addr_list = append(addr_list, k)
 	}
@@ -429,14 +433,13 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 	return traces, addr_list, nil
 }
 
+// Exported methods
+
 func (db *DbClient) QueryTraces(
-	trace_req models.TracesRequest,
-	utime_req models.UtimeRequest,
-	lt_req models.LtRequest,
-	lim_req models.LimitRequest,
+	req models.TracesRequest,
 	settings models.RequestSettings,
 ) ([]models.Trace, models.AddressBook, models.Metadata, error) {
-	query, err := buildTracesQuery(trace_req, utime_req, lt_req, lim_req, settings)
+	query, err := buildTracesQuery(req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -453,7 +456,7 @@ func (db *DbClient) QueryTraces(
 	defer conn.Release()
 
 	// check block
-	if seqno := trace_req.McSeqno; seqno != nil {
+	if seqno := req.McSeqno; seqno != nil {
 		exists, err := queryBlockExists(*seqno, conn, settings)
 		if err != nil {
 			return nil, nil, nil, err
@@ -463,7 +466,7 @@ func (db *DbClient) QueryTraces(
 		}
 	}
 
-	res, addr_list, err := queryTracesImpl(query, trace_req.IncludeActions, trace_req.SupportedActionTypes, conn, settings)
+	res, addr_list, err := queryTracesImpl(query, req.IncludeActions, req.SupportedActionTypes, conn, settings)
 	if err != nil {
 		log.Println(query)
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}

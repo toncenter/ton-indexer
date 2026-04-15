@@ -1,10 +1,7 @@
 package models
 
-import (
-	"fmt"
-)
+import "fmt"
 
-// responses
 type MasterchainInfo struct {
 	Last  *Block `json:"last"`
 	First *Block `json:"first"`

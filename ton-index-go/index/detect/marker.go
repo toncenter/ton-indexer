@@ -12,10 +12,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"strings"
 	"unsafe"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
 // check if library is loaded and initialized
@@ -184,13 +185,13 @@ func collectJettonTransfersRefs(transfers []models.JettonTransfer) *messagesRefs
 	}
 	for i := range transfers {
 		transfer := &transfers[i]
-		customPayload := transfer.CustomPayload
-		if customPayload != nil && transfer.DecodedCustomPayload == nil { // skip if already decoded
-			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &transfer.DecodedCustomPayload)
+		if transfer.CustomPayload != nil && transfer.DecodedCustomPayload == nil { // skip if already decoded
+			customPayload := transfer.CustomPayload.String()
+			refs.bodyRefs[customPayload] = append(refs.bodyRefs[customPayload], &transfer.DecodedCustomPayload)
 		}
-		forwardPayload := transfer.ForwardPayload
-		if forwardPayload != nil && transfer.DecodedForwardPayload == nil {
-			refs.bodyRefs[*forwardPayload] = append(refs.bodyRefs[*forwardPayload], &transfer.DecodedForwardPayload)
+		if transfer.ForwardPayload != nil && transfer.DecodedForwardPayload == nil {
+			forwardPayload := transfer.ForwardPayload.String()
+			refs.bodyRefs[forwardPayload] = append(refs.bodyRefs[forwardPayload], &transfer.DecodedForwardPayload)
 		}
 	}
 	return refs
@@ -205,7 +206,7 @@ func collectJettonBurnsRefs(burns []models.JettonBurn) *messagesRefs {
 		burn := &burns[i]
 		customPayload := burn.CustomPayload
 		if customPayload != nil && burn.DecodedCustomPayload == nil {
-			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &burn.DecodedCustomPayload)
+			refs.bodyRefs[customPayload.String()] = append(refs.bodyRefs[customPayload.String()], &burn.DecodedCustomPayload)
 		}
 	}
 	return refs
@@ -220,11 +221,11 @@ func collectNFTTransfersRefs(transfers []models.NFTTransfer) *messagesRefs {
 		transfer := &transfers[i]
 		customPayload := transfer.CustomPayload
 		if customPayload != nil && transfer.DecodedCustomPayload == nil {
-			refs.bodyRefs[*customPayload] = append(refs.bodyRefs[*customPayload], &transfer.DecodedCustomPayload)
+			refs.bodyRefs[customPayload.String()] = append(refs.bodyRefs[customPayload.String()], &transfer.DecodedCustomPayload)
 		}
 		forwardPayload := transfer.ForwardPayload
 		if forwardPayload != nil && transfer.DecodedForwardPayload == nil {
-			refs.bodyRefs[*forwardPayload] = append(refs.bodyRefs[*forwardPayload], &transfer.DecodedForwardPayload)
+			refs.bodyRefs[forwardPayload.String()] = append(refs.bodyRefs[forwardPayload.String()], &transfer.DecodedForwardPayload)
 		}
 	}
 	return refs
@@ -240,7 +241,7 @@ func collectSingleMessageRefs(msg *models.Message, refs *messagesRefs) {
 	}
 	// collect message bodies
 	if msg.MessageContent != nil && msg.MessageContent.Body != nil && msg.MessageContent.Decoded == nil {
-		refs.bodyRefs[*msg.MessageContent.Body] = append(refs.bodyRefs[*msg.MessageContent.Body], &msg.MessageContent.Decoded)
+		refs.bodyRefs[msg.MessageContent.Body.String()] = append(refs.bodyRefs[msg.MessageContent.Body.String()], &msg.MessageContent.Decoded)
 	}
 }
 

@@ -3,22 +3,22 @@ package crud
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
-	"strings"
 )
 
 func (db *DbClient) QueryVestingContracts(
-	vesting_req models.VestingContractsRequest,
-	lim_req models.LimitRequest,
+	req models.VestingContractsRequest,
 	settings models.RequestSettings,
 ) ([]models.VestingInfo, models.AddressBook, error) {
 
-	if len(vesting_req.ContractAddress) == 0 && len(vesting_req.WalletAddress) == 0 {
+	if len(req.ContractAddress) == 0 && len(req.WalletAddress) == 0 {
 		return nil, nil, models.IndexError{Code: 422, Message: "at least one of contract_address or wallet_address is required"}
 	}
 
-	if len(vesting_req.ContractAddress) > 0 && len(vesting_req.WalletAddress) > 0 {
+	if len(req.ContractAddress) > 0 && len(req.WalletAddress) > 0 {
 		return nil, nil, models.IndexError{Code: 422, Message: "only one of contract_address or wallet_address should be specified"}
 	}
 
@@ -28,7 +28,7 @@ func (db *DbClient) QueryVestingContracts(
 	}
 	defer conn.Release()
 
-	query, err := buildVestingContractsQuery(vesting_req, lim_req, settings)
+	query, err := buildVestingContractsQuery(req, settings)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -40,19 +40,19 @@ func (db *DbClient) QueryVestingContracts(
 
 	book := models.AddressBook{}
 	if !settings.NoAddressBook {
-		addr_list := []string{}
+		addr_list := []models.AccountAddress{}
 		for _, v := range vestings {
 			if v.Address != nil {
-				addr_list = append(addr_list, string(*v.Address))
+				addr_list = append(addr_list, *v.Address)
 			}
 			if v.SenderAddress != nil {
-				addr_list = append(addr_list, string(*v.SenderAddress))
+				addr_list = append(addr_list, *v.SenderAddress)
 			}
 			if v.OwnerAddress != nil {
-				addr_list = append(addr_list, string(*v.OwnerAddress))
+				addr_list = append(addr_list, *v.OwnerAddress)
 			}
 			for _, addr := range v.Whitelist {
-				addr_list = append(addr_list, string(addr))
+				addr_list = append(addr_list, addr)
 			}
 		}
 
@@ -67,7 +67,8 @@ func (db *DbClient) QueryVestingContracts(
 	return vestings, book, nil
 }
 
-func buildVestingContractsQuery(vesting_req models.VestingContractsRequest, lim_req models.LimitRequest, settings models.RequestSettings) (string, error) {
+func buildVestingContractsQuery(req models.VestingContractsRequest, settings models.RequestSettings) (string, error) {
+	lim_req := req.GetLimitParams()
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return "", err
@@ -81,20 +82,20 @@ func buildVestingContractsQuery(vesting_req models.VestingContractsRequest, lim_
 	filter_query := ``
 	orderby_query := ` ORDER BY V.id ASC`
 
-	if len(vesting_req.ContractAddress) > 0 {
-		f_str := filterByArray("V.address", vesting_req.ContractAddress)
+	if len(req.ContractAddress) > 0 {
+		f_str := filterByArray("V.address", req.ContractAddress)
 		if len(f_str) > 0 {
 			filter_list = append(filter_list, f_str)
 		}
 	}
 
-	if len(vesting_req.WalletAddress) > 0 {
+	if len(req.WalletAddress) > 0 {
 		// Build filter conditions
 		wallet_conditions := []string{}
 
 		// Always check owner and sender addresses
-		wallet_owner_filter := filterByArray("V.owner_address", vesting_req.WalletAddress)
-		wallet_sender_filter := filterByArray("V.vesting_sender_address", vesting_req.WalletAddress)
+		wallet_owner_filter := filterByArray("V.owner_address", req.WalletAddress)
+		wallet_sender_filter := filterByArray("V.vesting_sender_address", req.WalletAddress)
 
 		if len(wallet_owner_filter) > 0 {
 			wallet_conditions = append(wallet_conditions, wallet_owner_filter)
@@ -104,8 +105,8 @@ func buildVestingContractsQuery(vesting_req models.VestingContractsRequest, lim_
 		}
 
 		// If check_whitelist is true, also search in whitelist using EXISTS
-		if vesting_req.CheckWhitelist != nil && *vesting_req.CheckWhitelist {
-			whitelist_filter := filterByArray("W.wallet_address", vesting_req.WalletAddress)
+		if req.CheckWhitelist != nil && *req.CheckWhitelist {
+			whitelist_filter := filterByArray("W.wallet_address", req.WalletAddress)
 			if len(whitelist_filter) > 0 {
 				whitelist_exists := fmt.Sprintf("EXISTS (SELECT 1 FROM vesting_whitelist W WHERE W.vesting_contract_address = V.address AND %s)", whitelist_filter)
 				wallet_conditions = append(wallet_conditions, whitelist_exists)
@@ -133,7 +134,7 @@ func buildVestingContractsQuery(vesting_req models.VestingContractsRequest, lim_
 
 func queryVestingContractsImpl(query string, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.VestingInfo, error) {
 	vestings := []models.VestingInfo{}
-	contractAddresses := []string{}
+	contractAddresses := []models.AccountAddress{}
 
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -166,7 +167,7 @@ func queryVestingContractsImpl(query string, conn *pgxpool.Conn, settings models
 			vestings = append(vestings, vesting)
 
 			if vesting.Address != nil {
-				contractAddresses = append(contractAddresses, string(*vesting.Address))
+				contractAddresses = append(contractAddresses, *vesting.Address)
 			}
 		}
 		if rows.Err() != nil {
@@ -176,7 +177,7 @@ func queryVestingContractsImpl(query string, conn *pgxpool.Conn, settings models
 
 	// Fetch whitelist addresses separately if we have contracts
 	if len(contractAddresses) > 0 {
-		whitelistMap := make(map[string][]models.AccountAddress)
+		whitelistMap := make(map[models.AccountAddress][]models.AccountAddress)
 
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
 		defer cancel_ctx()
@@ -200,11 +201,11 @@ func queryVestingContractsImpl(query string, conn *pgxpool.Conn, settings models
 		defer rows.Close()
 
 		for rows.Next() {
-			var contractAddr, walletAddr string
+			var contractAddr, walletAddr models.AccountAddress
 			if err := rows.Scan(&contractAddr, &walletAddr); err != nil {
 				return nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-			whitelistMap[contractAddr] = append(whitelistMap[contractAddr], models.AccountAddress(walletAddr))
+			whitelistMap[contractAddr] = append(whitelistMap[contractAddr], walletAddr)
 		}
 
 		if rows.Err() != nil {
@@ -214,7 +215,7 @@ func queryVestingContractsImpl(query string, conn *pgxpool.Conn, settings models
 		// Assign whitelist addresses to vesting contracts
 		for i := range vestings {
 			if vestings[i].Address != nil {
-				if whitelist, exists := whitelistMap[string(*vestings[i].Address)]; exists {
+				if whitelist, exists := whitelistMap[*vestings[i].Address]; exists {
 					vestings[i].Whitelist = whitelist
 				}
 			}

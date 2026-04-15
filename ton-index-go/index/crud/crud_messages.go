@@ -3,22 +3,24 @@ package crud
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/parse"
-	"log"
-	"strings"
 )
 
 func buildMessagesQuery(
-	msg_req models.MessageRequest,
-	utime_req models.UtimeRequest,
-	lt_req models.LtRequest,
-	lim_req models.LimitRequest,
+	req models.MessageRequest,
 	settings models.RequestSettings,
 ) (string, []any, error) {
 	args := []any{}
+	utime_req := req.GetUtimeParams()
+	lt_req := req.GetLtParams()
+	lim_req := req.GetLimitParams()
+
 	rest_columns := `M.trace_id, M.source, M.destination, M.value, 
 		M.value_extra_currencies, M.fwd_fee, M.ihr_fee, M.extra_flags, M.created_lt, M.created_at, M.opcode, M.ihr_disabled, M.bounce, 
 		M.bounced, M.import_fee, M.body_hash, M.init_state_hash, M.msg_hash_norm`
@@ -35,33 +37,33 @@ func buildMessagesQuery(
 		return "", nil, err
 	}
 
-	if v := msg_req.Direction; v != nil {
+	if v := req.Direction; v != nil {
 		args = append(args, *v)
 		filter_list = append(filter_list, fmt.Sprintf("M.direction = $%d", len(args)))
 	}
-	if v := msg_req.Source; v != nil {
-		if *v == "null" {
+	if v := req.Source; v != nil {
+		if v.IsAddressNone() {
 			filter_list = append(filter_list, "M.source is NULL")
 		} else {
-			filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", *v))
+			filter_list = append(filter_list, fmt.Sprintf("M.source = '%s'", v.FilterString()))
 		}
 	}
-	if v := msg_req.Destination; v != nil {
-		if *v == "null" {
+	if v := req.Destination; v != nil {
+		if v.IsAddressNone() {
 			filter_list = append(filter_list, "M.destination is NULL")
 		} else {
-			filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", *v))
+			filter_list = append(filter_list, fmt.Sprintf("M.destination = '%s'", v.FilterString()))
 		}
 	}
-	if v := msg_req.Opcode; v != nil {
+	if v := req.Opcode; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.opcode = %d", *v))
 	}
-	if v := msg_req.MessageHash; v != nil {
+	if v := req.MessageHash; v != nil {
 		filter_str := fmt.Sprintf("(%s or %s)", filterByArray("M.msg_hash", v), filterByArray("M.msg_hash_norm", v))
 		filter_list = append(filter_list, filter_str)
 	}
-	if v := msg_req.BodyHash; v != nil {
-		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", *v))
+	if v := req.BodyHash; v != nil {
+		filter_list = append(filter_list, fmt.Sprintf("M.body_hash = '%s'", v.FilterString()))
 	}
 
 	order_col := "M.created_lt"
@@ -79,10 +81,10 @@ func buildMessagesQuery(
 	if v := lt_req.EndLt; v != nil {
 		filter_list = append(filter_list, fmt.Sprintf("M.created_lt <= %d", *v))
 	}
-	if v := msg_req.ExcludeExternals; v != nil && *v {
+	if v := req.ExcludeExternals; v != nil && *v {
 		filter_list = append(filter_list, order_col+" is not NULL")
 	}
-	if v := msg_req.OnlyExternals; v != nil && *v {
+	if v := req.OnlyExternals; v != nil && *v {
 		filter_list = append(filter_list, order_col+" is NULL")
 	}
 
@@ -99,13 +101,13 @@ func buildMessagesQuery(
 	if len(filter_list) > 0 {
 		filter_query = ` where ` + strings.Join(filter_list, " and ")
 	}
-	inner_query := `select` + clmn_query
+	inner_query := `select ` + clmn_query
 	inner_query += ` from ` + from_query
 	inner_query += filter_query
 	inner_query += groupby_query
 	inner_query += orderby_query
 	inner_query += limit_query
-	query := `select MM.*, B.*, I.* from (` + inner_query + `) as MM
+	query := `select MM.*, B.*, I.* from (` + inner_query + `) as MM 
 	left join message_contents as B on MM.body_hash = B.hash
 	left join message_contents as I on MM.init_state_hash = I.hash;`
 	// log.Println(query) // TODO: remove debug
@@ -144,7 +146,7 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.Request
 	if err := detect.MarkMessages(msgs); err != nil {
 		hashes := make([]string, len(msgs))
 		for i, msg := range msgs {
-			hashes[i] = string(msg.MsgHash)
+			hashes[i] = msg.MsgHash.String()
 		}
 		log.Printf("Error marking messages with hashes %v: %v", hashes, err)
 	}
@@ -153,13 +155,10 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.Request
 }
 
 func (db *DbClient) QueryMessages(
-	msg_req models.MessageRequest,
-	utime_req models.UtimeRequest,
-	lt_req models.LtRequest,
-	lim_req models.LimitRequest,
+	req models.MessageRequest,
 	settings models.RequestSettings,
 ) ([]models.Message, models.AddressBook, models.Metadata, error) {
-	query, args, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req, settings)
+	query, args, err := buildMessagesQuery(req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -181,13 +180,13 @@ func (db *DbClient) QueryMessages(
 
 	book := models.AddressBook{}
 	metadata := models.Metadata{}
-	addr_list := []string{}
+	addr_list := []models.AccountAddress{}
 	for _, m := range msgs {
 		if m.Source != nil {
-			addr_list = append(addr_list, string(*m.Source))
+			addr_list = append(addr_list, *m.Source)
 		}
 		if m.Destination != nil {
-			addr_list = append(addr_list, string(*m.Destination))
+			addr_list = append(addr_list, *m.Destination)
 		}
 	}
 	if len(addr_list) > 0 {
