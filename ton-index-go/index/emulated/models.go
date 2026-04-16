@@ -1150,7 +1150,7 @@ func (a *Action) ToRawAction() (*models.RawAction, error) {
 	}
 	if a.VestingAddWhitelistData != nil {
 		raw.VestingAddWhitelistQueryId = a.VestingAddWhitelistData.QueryId
-		if len(a.VestingAddWhitelistData.AccountsAdded) > 0 {
+		if a.VestingAddWhitelistData.AccountsAdded != nil {
 			accts := make([]models.AccountAddress, len(a.VestingAddWhitelistData.AccountsAdded))
 			for i, s := range a.VestingAddWhitelistData.AccountsAdded {
 				accts[i] = models.AccountAddress(s)
