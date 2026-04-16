@@ -15,7 +15,7 @@ import (
 	"ton-metadata-cache/models"
 	"ton-metadata-cache/repl"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
@@ -109,9 +109,9 @@ func main() {
 	app := fiber.New()
 
 	// POST /address_info - returns metadata and/or address book for given addresses
-	app.Post("/address_info", func(c *fiber.Ctx) error {
+	app.Post("/address_info", func(c fiber.Ctx) error {
 		var req models.AddressInfoRequest
-		if err := c.BodyParser(&req); err != nil {
+		if err := c.Bind().Body(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid request body",
 			})
@@ -189,7 +189,7 @@ func main() {
 		}
 	}()
 
-	app.Get("/health", func(c *fiber.Ctx) error {
+	app.Get("/health", func(c fiber.Ctx) error {
 		ctx = context.Background()
 		heatlh_err := pool.Ping(ctx)
 		if heatlh_err != nil {

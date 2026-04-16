@@ -1,0 +1,119 @@
+basePath: /api/emulate/
+definitions:
+  main.EmulateRequest:
+    properties:
+      boc:
+        example: te6ccgEBAQEAAgAAAA==
+        type: string
+      ignore_chksig:
+        example: false
+        type: boolean
+      include_address_book:
+        example: false
+        type: boolean
+      include_code_data:
+        example: false
+        type: boolean
+      include_metadata:
+        example: false
+        type: boolean
+      mc_block_seqno:
+        type: integer
+      with_actions:
+        example: false
+        type: boolean
+    type: object
+  main.TonConnectEmulateRequest:
+    properties:
+      from:
+        example: EQD1...
+        type: string
+      include_address_book:
+        example: false
+        type: boolean
+      include_code_data:
+        example: false
+        type: boolean
+      include_metadata:
+        example: false
+        type: boolean
+      mc_block_seqno:
+        type: integer
+      messages:
+        items:
+          $ref: '#/definitions/main.TonConnectMessage'
+        type: array
+      valid_until:
+        type: integer
+      with_actions:
+        example: false
+        type: boolean
+    type: object
+  main.TonConnectMessage:
+    properties:
+      address:
+        example: EQB3ncyBUTjZUA5EnFKR5_EnOMI9V1tTEAAPaiU71gc4TiUt
+        type: string
+      amount:
+        example: "1000000000"
+        type: string
+      payload:
+        example: te6ccgEBAQEAAgAAAA==
+        type: string
+      stateInit:
+        example: te6ccgEBAQEAAgAAAA==
+        type: string
+    type: object
+info:
+  contact: {}
+  description: TON Emulate API provides an endpoint to emulate transactions and traces
+    before committing them to the blockchain.
+  title: TON Emulate API
+  version: 0.0.1
+paths:
+  /v1/emulateTonConnect:
+    post:
+      consumes:
+      - application/json
+      description: Emulate trace by composing external message from internal messages
+        for TON Connect.
+      parameters:
+      - description: TON Connect Emulate Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.TonConnectEmulateRequest'
+      - description: Supported actions version
+        in: header
+        name: X-Actions-Version
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Emulate trace for TON Connect format
+      tags:
+      - emulate
+  /v1/emulateTrace:
+    post:
+      consumes:
+      - application/json
+      description: Emulate trace by external message.
+      parameters:
+      - description: External Message Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.EmulateRequest'
+      - description: Supported actions version
+        in: header
+        name: X-Actions-Version
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Emulate trace by external message
+      tags:
+      - emulate
+swagger: "2.0"
