@@ -3,13 +3,13 @@ package index
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"math/big"
 	"net/url"
 	"reflect"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3/client"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
 func GetV2AddressInformation(state_req models.V2AccountRequest, settings models.RequestSettings) (*models.V2AddressInformation, error) {
@@ -28,15 +28,15 @@ func GetV2AddressInformation(state_req models.V2AccountRequest, settings models.
 		params.Add("api_key", settings.V2ApiKey)
 	}
 	baseUrl.RawQuery = params.Encode()
-	agent := fiber.Get(baseUrl.String())
-	agent.Timeout(settings.Timeout)
-	_, body, errs := agent.Bytes()
-	if len(errs) > 0 {
-		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
+	agent := client.New()
+	agent.SetTimeout(settings.Timeout)
+	resp, err := agent.Get(baseUrl.String())
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
 	var jsn map[string]interface{}
-	if err = json.Unmarshal(body, &jsn); err != nil {
+	if err = json.Unmarshal(resp.Body(), &jsn); err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
@@ -98,15 +98,14 @@ func GetV2WalletInformation(state_req models.V2AccountRequest, settings models.R
 		params.Add("api_key", settings.V2ApiKey)
 	}
 	baseUrl.RawQuery = params.Encode()
-	agent := fiber.Get(baseUrl.String())
-	agent.Timeout(settings.Timeout)
-	_, body, errs := agent.Bytes()
-	if len(errs) > 0 {
-		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
+	agent := client.New()
+	agent.SetTimeout(settings.Timeout)
+	resp, err := agent.Get(baseUrl.String())
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
-
 	var jsn map[string]interface{}
-	if err = json.Unmarshal(body, &jsn); err != nil {
+	if err = json.Unmarshal(resp.Body(), &jsn); err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
@@ -170,20 +169,22 @@ func PostMessage(req models.V2SendMessageRequest, settings models.RequestSetting
 		params.Add("api_key", settings.V2ApiKey)
 	}
 	baseUrl.RawQuery = params.Encode()
-	agent := fiber.Post(baseUrl.String())
-	agent.Timeout(settings.Timeout)
 	var req_body []byte
 	if req_body, err = json.Marshal(req); err != nil {
 		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
 	}
-	agent.Add("Content-Type", "application/json")
-	agent.Body(req_body)
-	_, body, errs := agent.Bytes()
-	if len(errs) > 0 {
-		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
+
+	agent := client.New()
+	agent.SetTimeout(settings.Timeout)
+	agent.AddHeader("Content-Type", "application/json")
+	resp, err := agent.Post(baseUrl.String(), client.Config{
+		Body: req_body,
+	})
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	var jsn map[string]interface{}
-	if err = json.Unmarshal(body, &jsn); err != nil {
+	if err = json.Unmarshal(resp.Body(), &jsn); err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
@@ -227,17 +228,18 @@ func PostEstimateFee(req models.V2EstimateFeeRequest, settings models.RequestSet
 		params.Add("api_key", settings.V2ApiKey)
 	}
 	baseUrl.RawQuery = params.Encode()
-	agent := fiber.Post(baseUrl.String())
-	agent.Timeout(settings.Timeout)
 	var req_body []byte
 	if req_body, err = json.Marshal(req); err != nil {
 		return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
 	}
-	agent.Add("Content-Type", "application/json")
-	agent.Body(req_body)
-	_, body, errs := agent.Bytes()
-	if len(errs) > 0 {
-		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
+	agent := client.New()
+	agent.SetTimeout(settings.Timeout)
+	agent.AddHeader("Content-Type", "application/json")
+	resp, err := agent.Post(baseUrl.String(), client.Config{
+		Body: req_body,
+	})
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	var resp_full struct {
 		Ok     bool                       `json:"ok"`
@@ -245,7 +247,7 @@ func PostEstimateFee(req models.V2EstimateFeeRequest, settings models.RequestSet
 		Error  string                     `json:"error"`
 		Code   int                        `json:"code"`
 	}
-	if err = json.Unmarshal(body, &resp_full); err != nil {
+	if err = json.Unmarshal(resp.Body(), &resp_full); err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	if !resp_full.Ok {
@@ -269,12 +271,13 @@ func PostRunGetMethod(req models.V2RunGetMethodRequest, settings models.RequestS
 		params.Add("api_key", settings.V2ApiKey)
 	}
 	baseUrl.RawQuery = params.Encode()
-	agent := fiber.Post(baseUrl.String())
-	agent.Timeout(settings.Timeout)
-	agent.Add("Content-Type", "application/json")
+	agent := client.New()
+	agent.AddHeader("Content-Type", "application/json")
+	agent.SetTimeout(settings.Timeout)
+	var req_body []byte
 	{
 		body := make(map[string]interface{})
-		body["address"] = string(req.Address)
+		body["address"] = req.Address.String()
 		body["method"] = req.Method
 
 		stack := [][]interface{}{}
@@ -295,18 +298,18 @@ func PostRunGetMethod(req models.V2RunGetMethodRequest, settings models.RequestS
 		}
 		body["stack"] = stack
 
-		var body_json []byte
-		if body_json, err = json.Marshal(body); err != nil {
+		if req_body, err = json.Marshal(body); err != nil {
 			return nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed to send request: %s", err.Error())}
 		}
-		agent.Body(body_json)
 	}
-	_, body, errs := agent.Bytes()
-	if len(errs) > 0 {
-		return nil, models.IndexError{Code: 500, Message: errs[0].Error()}
+	resp, err := agent.Post(baseUrl.String(), client.Config{
+		Body: req_body,
+	})
+	if err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 	var jsn map[string]interface{}
-	if err = json.Unmarshal(body, &jsn); err != nil {
+	if err = json.Unmarshal(resp.Body(), &jsn); err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 

@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
-	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"time"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
 	"ton-metadata-cache/cache"
 	"ton-metadata-cache/models"
@@ -46,14 +47,14 @@ func (l *Loader) LoadContractMethods(ctx context.Context) error {
 	count := 0
 
 	for rows.Next() {
-		var codeHash string
+		var codeHash indexModels.HashType
 		var methods []uint32
 
 		if err := rows.Scan(&codeHash, &methods); err != nil {
 			return fmt.Errorf("scan row: %w", err)
 		}
 
-		batch[codeHash] = methods
+		batch[codeHash.String()] = methods
 		count++
 
 		// Flush batch every 1000 items
@@ -474,10 +475,9 @@ func (l *Loader) QueryAddressBook(ctx context.Context, addrList []string, isTest
 	accountToInputAddr := make(map[string]string, len(addrList))
 	accounts := make([]string, 0, len(addrList))
 	for _, addr := range addrList {
-		account := accountAddressConverter(addr)
-		if account != "" {
-			accountToInputAddr[account] = addr
-			accounts = append(accounts, account)
+		if account, err := accountAddressConverter(addr); err == nil {
+			accountToInputAddr[account.String()] = addr
+			accounts = append(accounts, account.String())
 		}
 	}
 
@@ -539,10 +539,10 @@ func (l *Loader) QueryAddressBook(ctx context.Context, addrList []string, isTest
 	}
 
 	// Build the address book
-	book := make(indexModels.AddressBook, len(addrList))
+	book := make(indexModels.GenericAddressBook, len(addrList))
 
 	for _, addr := range addrList {
-		account := accountAddressConverter(addr)
+		account, err := accountAddressConverter(addr)
 		if account == "" {
 			addrStr := indexModels.GetAccountAddressFriendly(account, nil, isTestnet)
 			emptyInterfaces := []string{}
@@ -596,14 +596,12 @@ func (l *Loader) QueryAddressBook(ctx context.Context, addrList []string, isTest
 	return book, nil
 }
 
-func accountAddressConverter(addr string) string {
-	account := ``
-	if addr_val := indexModels.AccountAddressConverter(addr); addr_val.IsValid() {
-		if addr_str, ok := addr_val.Interface().(indexModels.AccountAddress); ok {
-			account = string(addr_str)
-		}
+func accountAddressConverter(addr string) (*indexModels.AccountAddress, error) {
+	account := new(indexModels.AccountAddress)
+	if err := account.UnmarshalText([]byte(addr)); err != nil {
+		return nil, fmt.Errorf("unmarshal account address: %w", err)
 	}
-	return account
+	return account, nil
 }
 
 // fetchAddressDataBatch fetches complete data for multiple addresses from DB.

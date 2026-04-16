@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+
 	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 
 	"github.com/vmihailenco/msgpack/v5"
@@ -145,7 +146,7 @@ func convertTokenDataToTokenInfo(tokenType string, content map[string]string) in
 	return tokenInfo
 }
 
-func appendRawInterfacesDataToMetadata(addr string, interfacesRaw string, metadata *indexModels.Metadata) error {
+func appendRawInterfacesDataToMetadata(addr indexModels.AccountAddress, interfacesRaw string, metadata *indexModels.Metadata) error {
 	if _, hasMetadata := (*metadata)[addr]; hasMetadata {
 		return nil
 	}

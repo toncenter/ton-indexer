@@ -6,16 +6,18 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
-	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"math/rand"
 	"strconv"
 	"time"
 
+	"github.com/gofiber/fiber/v3/middleware/redirect"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/crud"
+	indexModels "github.com/toncenter/ton-indexer/ton-index-go/index/models"
+
 	"github.com/go-redis/redis/v8"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/swagger"
+	"github.com/gofiber/contrib/v3/swaggo"
+	"github.com/gofiber/fiber/v3"
 
 	"github.com/vmihailenco/msgpack/v5"
 
@@ -70,12 +72,12 @@ func encodeTonconnectTask(enc *msgpack.Encoder, t TonConnectTraceTask) error {
 type TonConnectEmulateRequest struct {
 	From               string              `json:"from" example:"EQD1..."`
 	Messages           []TonConnectMessage `json:"messages"`
-	ValidUntil         *uint64             `json:"valid_until" example:"null"`
+	ValidUntil         *uint64             `json:"valid_until"`
 	WithActions        bool                `json:"with_actions" example:"false"`
 	IncludeCodeData    bool                `json:"include_code_data" example:"false"`
 	IncludeAddressBook bool                `json:"include_address_book" example:"false"`
 	IncludeMetadata    bool                `json:"include_metadata" example:"false"`
-	McBlockSeqno       *uint32             `json:"mc_block_seqno" example:"null"`
+	McBlockSeqno       *uint32             `json:"mc_block_seqno"`
 }
 
 type EmulateRequest struct {
@@ -85,7 +87,7 @@ type EmulateRequest struct {
 	IncludeCodeData    bool    `json:"include_code_data" example:"false"`
 	IncludeAddressBook bool    `json:"include_address_book" example:"false"`
 	IncludeMetadata    bool    `json:"include_metadata" example:"false"`
-	McBlockSeqno       *uint32 `json:"mc_block_seqno" example:"null"`
+	McBlockSeqno       *uint32 `json:"mc_block_seqno"`
 }
 
 // validate function for EmulateRequest
@@ -149,7 +151,7 @@ func (req TonConnectEmulateRequest) Validate() error {
 
 // Command-line flags
 var (
-	redisAddr         = flag.String("redis", "localhost:6379", "Redis server dsn")
+	redisDsn          = flag.String("redis", "redis://localhost:6379", "Redis server dsn")
 	emulatorQueueName = flag.String("emulator-queue", "emulatorqueue", "Redis queue name")
 	classifierChannel = flag.String("classifier-channel", "classifierchannel", "Redis queue name")
 	pg                = flag.String("pg", "", "PostgreSQL connection string")
@@ -185,12 +187,12 @@ func generateTaskID() string {
 // @Param   request     body    EmulateRequest     true        "External Message Request"
 // @Param	X-Actions-Version	header	string	false	"Supported actions version"
 // @Router /v1/emulateTrace [post]
-func emulateTrace(c *fiber.Ctx) error {
+func emulateTrace(c fiber.Ctx) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	var req EmulateRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request: "+err.Error())
 	}
 	if err := req.Validate(); err != nil {
@@ -225,9 +227,12 @@ func emulateTrace(c *fiber.Ctx) error {
 	}
 
 	// Initialize Redis client
-	rdb := redis.NewClient(&redis.Options{
-		Addr: *redisAddr, // Redis server address
-	})
+	redisOpts, err := redis.ParseURL(*redisDsn)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to parse redis url: "+err.Error())
+	}
+	rdb := redis.NewClient(redisOpts)
+	defer rdb.Close()
 
 	// Subscribe to the result channel
 	pubsub := rdb.Subscribe(ctx, "emulator_channel_"+taskID)
@@ -308,12 +313,12 @@ func emulateTrace(c *fiber.Ctx) error {
 // @Param   request     body    TonConnectEmulateRequest     true        "TON Connect Emulate Request"
 // @Param	X-Actions-Version	header	string	false	"Supported actions version"
 // @Router /v1/emulateTonConnect [post]
-func emulateTonConnect(c *fiber.Ctx) error {
+func emulateTonConnect(c fiber.Ctx) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	var req TonConnectEmulateRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request: "+err.Error())
 	}
 	if err := req.Validate(); err != nil {
@@ -347,9 +352,12 @@ func emulateTonConnect(c *fiber.Ctx) error {
 	}
 
 	// Initialize Redis client
-	rdb := redis.NewClient(&redis.Options{
-		Addr: *redisAddr, // Redis server address
-	})
+	redisOpts, err := redis.ParseURL(*redisDsn)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to parse redis url: "+err.Error())
+	}
+	rdb := redis.NewClient(redisOpts)
+	defer rdb.Close()
 
 	// Subscribe to the result channel
 	pubsub := rdb.Subscribe(ctx, "emulator_channel_"+taskID)
@@ -420,7 +428,7 @@ func emulateTonConnect(c *fiber.Ctx) error {
 	return c.Status(200).JSON(result)
 }
 
-func ExtractHeader(ctx *fiber.Ctx, header string) (string, bool) {
+func ExtractHeader(ctx fiber.Ctx, header string) (string, bool) {
 	if val := ctx.GetReqHeaders()[header]; len(val) > 0 {
 		return val[0], true
 	}
@@ -446,12 +454,11 @@ func main() {
 	config := fiber.Config{
 		AppName:        "TON Index API",
 		Concurrency:    256 * 1024,
-		Prefork:        *prefork,
 		ReadBufferSize: 1048576,
 	}
 	app := fiber.New(config)
 
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		err := c.Next()
 		if err != nil {
 			// Log the error internally here if necessary
@@ -469,7 +476,7 @@ func main() {
 		return nil
 	})
 
-	app.Use("/api/emulate/", func(c *fiber.Ctx) error {
+	app.Use("/api/emulate/", func(c fiber.Ctx) error {
 		c.Accepts("application/json")
 		start := time.Now()
 		err := c.Next()
@@ -481,14 +488,23 @@ func main() {
 	app.Post("/api/emulate/v1/emulateTrace", emulateTrace)
 	app.Post("/api/emulate/v1/emulateTonConnect", emulateTonConnect)
 
-	var swagger_config = swagger.Config{
+	var swagger_config = swaggo.Config{
 		Title:           "TON Emulate API - Swagger UI",
 		Layout:          "BaseLayout",
 		DeepLinking:     true,
 		TryItOutEnabled: true,
 	}
-	app.Get("/api/emulate/*", swagger.New(swagger_config))
+	app.Get("/api/emulate/*", swaggo.New(swagger_config))
+
+	// redirect
+	app.Use(redirect.New(redirect.Config{
+		Rules: map[string]string{
+			"/": "/api/emulate/index.html",
+		},
+		StatusCode: 301,
+	}))
+
 	bind := fmt.Sprintf(":%d", *serverPort)
-	err = app.Listen(bind)
+	err = app.Listen(bind, fiber.ListenConfig{EnablePrefork: *prefork})
 	log.Fatal(err)
 }
