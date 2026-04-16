@@ -76,15 +76,12 @@ func TransformToAPIResponse(hset map[string]string, pool *crud.DbClient,
 		return nil, fmt.Errorf("failed to fill context from raw data: %w", err)
 	}
 
-	traceRows := emulatedContext.GetTraces()
-	if len(traceRows) != 1 {
+	emulatedTraces := emulatedContext.GetTraces()
+	if len(emulatedTraces) != 1 {
 		return nil, fmt.Errorf("more than 1 trace in the context")
 	}
 
-	trace, err := parse.ScanTrace(traceRows[0])
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan trace: %w", err)
-	}
+	trace := emulatedTraces[0]
 	txs, err := crud.QueryPendingTransactionsImpl(emulatedContext, nil, indexModels.RequestSettings{}, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get trace transactions: %w", err)
@@ -107,12 +104,8 @@ func TransformToAPIResponse(hset map[string]string, pool *crud.DbClient,
 	actions := make([]*indexModels.Action, 0)
 	trace.Actions = &actions
 	rawActions := make([]indexModels.RawAction, 0)
-	for _, row := range emulatedContext.GetActions(supportedActionTypes) {
-		if loc, err := parse.ScanRawAction(row); err == nil {
-			rawActions = append(rawActions, *loc)
-		} else {
-			return nil, fmt.Errorf("failed to scan raw action: %w", err)
-		}
+	for _, rawAction := range emulatedContext.GetActions(supportedActionTypes) {
+		rawActions = append(rawActions, *rawAction)
 	}
 	addr_map := map[string]bool{}
 	for idx := range rawActions {

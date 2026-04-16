@@ -9,6 +9,7 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 )
@@ -553,7 +554,7 @@ type Action struct {
 	Asset2Secondary                  *string                                    `msgpack:"asset2_secondary"`
 	Opcode                           *uint32                                    `msgpack:"opcode"`
 	Success                          bool                                       `msgpack:"success"`
-	Finality                         FinalityState                              `msgpack:"finality"`
+	Finality                         models.FinalityState                       `msgpack:"finality"`
 	TonTransferData                  *actionTonTransferDetails                  `msgpack:"ton_transfer_data"`
 	AncestorType                     []string                                   `msgpack:"ancestor_type"`
 	ParentActionId                   *string                                    `msgpack:"parent_action_id"`
@@ -611,56 +612,12 @@ type Trace struct {
 	Actions      []Action
 }
 
-type FinalityState uint8
-
-const (
-	FinalityStatePending   FinalityState = 0
-	FinalityStateConfirmed FinalityState = 1
-	FinalityStateFinalized FinalityState = 2
-)
-
-func (fs FinalityState) String() string {
-	switch fs {
-	case FinalityStatePending:
-		return "pending"
-	case FinalityStateConfirmed:
-		return "confirmed"
-	case FinalityStateFinalized:
-		return "finalized"
-	default:
-		return "unknown_" + strconv.Itoa(int(fs))
-	}
-}
-
-// marshal and unmarshal FinalityState as string
-func (fs FinalityState) MarshalJSON() ([]byte, error) {
-	return json.Marshal(fs.String())
-}
-
-func (fs *FinalityState) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	switch s {
-	case "pending":
-		*fs = FinalityStatePending
-	case "confirmed":
-		*fs = FinalityStateConfirmed
-	case "finalized":
-		*fs = FinalityStateFinalized
-	default:
-		return fmt.Errorf("unknown finality state: %s", s)
-	}
-	return nil
-}
-
 type TraceNode struct {
-	Transaction   transaction   `msgpack:"transaction"`
-	Emulated      bool          `msgpack:"emulated"`
-	BlockId       blockId       `msgpack:"block_id"`
-	McBlockSeqno  uint32        `msgpack:"mc_block_seqno"`
-	FinalityState FinalityState `msgpack:"finality"`
+	Transaction   transaction          `msgpack:"transaction"`
+	Emulated      bool                 `msgpack:"emulated"`
+	BlockId       blockId              `msgpack:"block_id"`
+	McBlockSeqno  uint32               `msgpack:"mc_block_seqno"`
+	FinalityState models.FinalityState `msgpack:"finality"`
 	TraceId       *string
 	Key           string
 }
@@ -892,139 +849,65 @@ func (h hash) Base64Ptr() *string {
 	return &str
 }
 
-func (n *TraceNode) GetTransactionRow() (TransactionRow, error) {
-	origStatus, err := n.Transaction.OrigStatus.Str()
-	if err != nil {
-		return TransactionRow{}, err
+func ptrInt64FromUint64(v *uint64) *int64 {
+	if v == nil {
+		return nil
 	}
-	endStatus, err := n.Transaction.EndStatus.Str()
-	if err != nil {
-		return TransactionRow{}, err
-	}
-	ord_val := "ord"
-	is_tock := false
-	storageStatusChange, err := n.Transaction.Description.StoragePh.StatusChange.Str()
-	if err != nil {
-		return TransactionRow{}, err
-	}
+	i := int64(*v)
+	return &i
+}
 
-	var storageFeesCollected *uint64 = nil
-	var storageFeesDue *uint64 = nil
-	if n.Transaction.Description.StoragePh != nil {
-		storageFeesCollected = &n.Transaction.Description.StoragePh.StorageFeesCollected
-		storageFeesDue = n.Transaction.Description.StoragePh.StorageFeesDue
+func ptrInt32FromUint16(v *uint16) *int32 {
+	if v == nil {
+		return nil
 	}
-	var creditDueFeesCollected *uint64 = nil
-	var credit *uint64 = nil
-	if n.Transaction.Description.CreditPh != nil {
-		creditDueFeesCollected = n.Transaction.Description.CreditPh.DueFeesCollected
-		credit = &n.Transaction.Description.CreditPh.Credit
-	}
+	i := int32(*v)
+	return &i
+}
 
-	txRow := TransactionRow{
-		Account:                  n.Transaction.Account,
-		Hash:                     *n.Transaction.Hash.Base64Ptr(),
-		Lt:                       n.Transaction.Lt,
-		BlockWorkchain:           &n.BlockId.Workchain,
-		BlockShard:               &n.BlockId.Shard,
-		BlockSeqno:               &n.BlockId.Seqno,
-		McBlockSeqno:             &n.McBlockSeqno,
-		TraceID:                  n.TraceId,
-		PrevTransHash:            n.Transaction.PrevTransHash.Base64Ptr(),
-		PrevTransLt:              &n.Transaction.PrevTransLt,
-		Now:                      &n.Transaction.Now,
-		OrigStatus:               &origStatus,
-		EndStatus:                &endStatus,
-		TotalFees:                &n.Transaction.TotalFees,
-		TotalFeesExtraCurrencies: map[string]string{},
-		AccountStateHashBefore:   n.Transaction.AccountStateHashBefore.Base64Ptr(),
-		AccountStateHashAfter:    n.Transaction.AccountStateHashAfter.Base64Ptr(),
-		Descr:                    &ord_val,
-		Aborted:                  &n.Transaction.Description.Aborted,
-		Destroyed:                &n.Transaction.Description.Destroyed,
-		CreditFirst:              &n.Transaction.Description.CreditFirst,
-		IsTock:                   &is_tock,
-		Installed:                &is_tock,
-		StorageFeesCollected:     storageFeesCollected,
-		StorageFeesDue:           storageFeesDue,
-		StorageStatusChange:      &storageStatusChange,
-		CreditDueFeesCollected:   creditDueFeesCollected,
-		Credit:                   credit,
-		CreditExtraCurrencies:    map[string]string{},
-		Emulated:                 n.Emulated,
-		Finality:                 n.FinalityState,
-	}
-	if n.Transaction.Description.ComputePh.Type == 0 {
-		txRow.ComputeSkipped = new(bool)
-		*txRow.ComputeSkipped = true
-		reason, err := n.Transaction.Description.ComputePh.Data.(trComputePhaseSkipped).Reason.Str()
-		if err != nil {
-			return TransactionRow{}, err
-		}
-		txRow.SkippedReason = &reason
-	} else {
-		txRow.ComputeSkipped = new(bool)
-		*txRow.ComputeSkipped = false
-		vm := n.Transaction.Description.ComputePh.Data.(trComputePhaseVm)
-		txRow.ComputeSuccess = &vm.Success
-		txRow.ComputeMsgStateUsed = &vm.MsgStateUsed
-		txRow.ComputeAccountActivated = &vm.AccountActivated
-		txRow.ComputeGasFees = &vm.GasFees
-		txRow.ComputeGasUsed = &vm.GasUsed
-		txRow.ComputeGasLimit = &vm.GasLimit
-		txRow.ComputeGasCredit = vm.GasCredit
-		txRow.ComputeMode = &vm.Mode
-		txRow.ComputeExitCode = &vm.ExitCode
-		txRow.ComputeExitArg = vm.ExitArg
-		txRow.ComputeVmSteps = &vm.VmSteps
-		txRow.ComputeVmInitStateHash = vm.VmInitStateHash.Base64Ptr()
-		txRow.ComputeVmFinalStateHash = vm.VmFinalStateHash.Base64Ptr()
-	}
+func ptrAccountAddress(s *string) *models.AccountAddress {
+	return (*models.AccountAddress)(s)
+}
 
-	if n.Transaction.Description.Action != nil {
-		actionStatusChange, err := n.Transaction.Description.Action.StatusChange.Str()
-		if err != nil {
-			return TransactionRow{}, err
-		}
-		txRow.ActionSuccess = &n.Transaction.Description.Action.Success
-		txRow.ActionValid = &n.Transaction.Description.Action.Valid
-		txRow.ActionNoFunds = &n.Transaction.Description.Action.NoFunds
-		txRow.ActionStatusChange = &actionStatusChange
-		txRow.ActionTotalFwdFees = n.Transaction.Description.Action.TotalFwdFees
-		txRow.ActionTotalActionFees = n.Transaction.Description.Action.TotalActionFees
-		txRow.ActionResultCode = n.Transaction.Description.Action.ResultCode
-		txRow.ActionResultArg = n.Transaction.Description.Action.ResultArg
-		txRow.ActionTotActions = n.Transaction.Description.Action.TotActions
-		txRow.ActionSpecActions = n.Transaction.Description.Action.SpecActions
-		txRow.ActionSkippedActions = n.Transaction.Description.Action.SkippedActions
-		txRow.ActionMsgsCreated = n.Transaction.Description.Action.MsgsCreated
-		txRow.ActionActionListHash = n.Transaction.Description.Action.ActionListHash.Base64Ptr()
-		txRow.ActionTotMsgSizeCells = &n.Transaction.Description.Action.TotMsgSize.Cells
-		txRow.ActionTotMsgSizeBits = &n.Transaction.Description.Action.TotMsgSize.Bits
-	}
+func ptrHashType(s *string) *models.HashType {
+	return (*models.HashType)(s)
+}
 
-	if n.Transaction.Description.Bounce != nil {
-		if n.Transaction.Description.Bounce.Type == 0 {
-			txRow.Bounce = new(string)
-			*txRow.Bounce = "negfunds"
-		} else if n.Transaction.Description.Bounce.Type == 1 {
-			txRow.Bounce = new(string)
-			*txRow.Bounce = "nofunds"
-			phase := n.Transaction.Description.Bounce.Data.(trBouncePhaseNofunds)
-			txRow.BounceMsgSizeCells = &phase.MsgSize.Cells
-			txRow.BounceMsgSizeBits = &phase.MsgSize.Bits
-			txRow.BounceReqFwdFees = &phase.ReqFwdFees
-		} else {
-			txRow.Bounce = new(string)
-			*txRow.Bounce = "ok"
-			phase := n.Transaction.Description.Bounce.Data.(trBouncePhaseOk)
-			txRow.BounceMsgSizeCells = &phase.MsgSize.Cells
-			txRow.BounceMsgSizeBits = &phase.MsgSize.Bits
-			txRow.BounceMsgFees = &phase.MsgFees
-			txRow.BounceFwdFees = &phase.FwdFees
-		}
+func ptrOpcodeFromUint32(v *uint32) *models.OpcodeType {
+	if v == nil {
+		return nil
 	}
-	return txRow, nil
+	o := models.OpcodeType(int64(*v))
+	return &o
+}
+
+func ptrOpcodeFromInt32(v *int32) *models.OpcodeType {
+	if v == nil {
+		return nil
+	}
+	o := models.OpcodeType(int64(*v))
+	return &o
+}
+
+func int64FromPtrUint64(v *uint64) int64 {
+	if v == nil {
+		return 0
+	}
+	return int64(*v)
+}
+
+func int64FromPtrUint32(v *uint32) int64 {
+	if v == nil {
+		return 0
+	}
+	return int64(*v)
+}
+
+func int32FromPtrUint32(v *uint32) int32 {
+	if v == nil {
+		return 0
+	}
+	return int32(*v)
 }
 func calcHash(boc string) (string, error) {
 	decodedBody, err := base64.StdEncoding.DecodeString(boc)
@@ -1041,441 +924,618 @@ func calcHash(boc string) (string, error) {
 	return hash_b64, nil
 }
 
-func (m *trMessage) GetMessageRow(traceId string, direction string, txLt uint64, txHash string) (row MessageRow, body *MessageContentRow, initState *MessageContentRow, err error) {
-	bodyHash, err := calcHash(m.BodyBoc)
-	if err != nil {
-		return MessageRow{}, nil, nil, err
-	}
-	body = &MessageContentRow{
-		Hash: bodyHash,
-		Body: &m.BodyBoc,
-	}
-	var initStateHash *string = nil
-	if m.InitStateBoc != nil {
-		h, err := calcHash(*m.InitStateBoc)
-		initStateHash = &h
-		if err != nil {
-			return MessageRow{}, nil, nil, err
-		}
-		initState = &MessageContentRow{
-			Hash: h,
-			Body: m.InitStateBoc,
-		}
-	}
-	var hashNorm *string = nil
-	if m.HashNorm != nil {
-		n := base64.StdEncoding.EncodeToString((*m.HashNorm)[:])
-		hashNorm = &n
-	}
-	msgRow := MessageRow{
-		TxHash:               txHash,
-		TxLt:                 txLt,
-		MsgHash:              base64.StdEncoding.EncodeToString(m.Hash[:]),
-		Direction:            direction,
-		TraceID:              &traceId,
-		Source:               m.Source,
-		Destination:          m.Destination,
-		Value:                m.Value,
-		ValueExtraCurrencies: map[string]string{},
-		FwdFee:               m.FwdFee,
-		IhrFee:               m.IhrFee,
-		ExtraFlags:           m.ExtraFlags,
-		CreatedLt:            m.CreatedLt,
-		CreatedAt:            m.CreatedAt,
-		Opcode:               m.Opcode,
-		IhrDisabled:          m.IhrDisabled,
-		Bounce:               m.Bounce,
-		Bounced:              m.Bounced,
-		ImportFee:            m.ImportFee,
-		BodyHash:             &bodyHash,
-		InitStateHash:        initStateHash,
-		MsgHashNorm:          hashNorm,
-	}
-	return msgRow, body, initState, nil
-}
-
-func (n *TraceNode) GetMessages() ([]MessageRow, map[string]MessageContentRow, map[string]MessageContentRow, error) {
-	messageContents := make(map[string]MessageContentRow)
-	initStates := make(map[string]MessageContentRow)
-	messages := make([]MessageRow, 0)
-
-	for _, outMsg := range n.Transaction.OutMsgs {
-		msgRow, body, initState, err := outMsg.GetMessageRow(n.Key, "out", n.Transaction.Lt,
-			base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		messages = append(messages, msgRow)
-		if body != nil {
-			messageContents[msgRow.MsgHash] = *body
-		}
-		if initState != nil {
-			initStates[*msgRow.InitStateHash] = *initState
-		}
-	}
-	inMsgRow, body, initState, err := n.Transaction.InMsg.GetMessageRow(n.Key, "in", n.Transaction.Lt,
-		base64.StdEncoding.EncodeToString(n.Transaction.Hash[:]))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	messages = append(messages, inMsgRow)
-	if body != nil {
-		messageContents[inMsgRow.MsgHash] = *body
-	}
-	if initState != nil {
-		initStates[*inMsgRow.InitStateHash] = *initState
-	}
-	return messages, messageContents, initStates, nil
-}
-
-func (a *Action) GetActionRow() (ActionRow, error) {
-	var traceExternalHashNorm *string = nil
+func (a *Action) ToRawAction() (*models.RawAction, error) {
+	var traceExternalHashNorm *models.HashType
 	if a.TraceExternalHashNorm != nil && *a.TraceExternalHashNorm != a.TraceExternalHash {
-		traceExternalHashNorm = a.TraceExternalHashNorm
+		traceExternalHashNorm = (*models.HashType)(a.TraceExternalHashNorm)
 	}
-	row := ActionRow{
-		ActionId:              a.ActionId,
+
+	// Convert TxHashes []string -> []models.HashType
+	txHashes := make([]models.HashType, len(a.TxHashes))
+	for i, h := range a.TxHashes {
+		txHashes[i] = models.HashType(h)
+	}
+	success := a.Success
+
+	traceExternalHash := models.HashType(a.TraceExternalHash)
+
+	raw := &models.RawAction{
+		TraceId:               ptrHashType(a.TraceId),
+		ActionId:              models.HashType(a.ActionId),
+		StartLt:               int64FromPtrUint64(a.StartLt),
+		EndLt:                 int64FromPtrUint64(a.EndLt),
+		StartUtime:            int64FromPtrUint32(a.StartUtime),
+		EndUtime:              int64FromPtrUint32(a.EndUtime),
+		TraceEndLt:            int64FromPtrUint64(a.TraceEndLt),
+		TraceEndUtime:         int64FromPtrUint32(a.TraceEndUtime),
+		TraceMcSeqnoEnd:       int32FromPtrUint32(a.TraceMcSeqnoEnd),
+		Source:                ptrAccountAddress(a.Source),
+		SourceSecondary:       ptrAccountAddress(a.SourceSecondary),
+		Destination:           ptrAccountAddress(a.Destination),
+		DestinationSecondary:  ptrAccountAddress(a.DestinationSecondary),
+		Asset:                 ptrAccountAddress(a.Asset),
+		AssetSecondary:        ptrAccountAddress(a.AssetSecondary),
+		Asset2:                ptrAccountAddress(a.Asset2),
+		Asset2Secondary:       ptrAccountAddress(a.Asset2Secondary),
+		Opcode:                ptrOpcodeFromUint32(a.Opcode),
+		TxHashes:              txHashes,
 		Type:                  a.Type,
-		TraceId:               a.TraceId,
-		TxHashes:              a.TxHashes,
 		Value:                 a.Value,
 		Amount:                a.Amount,
-		StartLt:               *a.StartLt,
-		EndLt:                 *a.EndLt,
-		TraceEndLt:            a.TraceEndLt,
-		TraceMcSeqnoEnd:       a.TraceMcSeqnoEnd,
-		TraceEndUtime:         a.TraceEndUtime,
-		StartUtime:            *a.StartUtime,
-		EndUtime:              *a.EndUtime,
-		Source:                a.Source,
-		SourceSecondary:       a.SourceSecondary,
-		Destination:           a.Destination,
-		DestinationSecondary:  a.DestinationSecondary,
-		Asset:                 a.Asset,
-		AssetSecondary:        a.AssetSecondary,
-		Asset2:                a.Asset2,
-		Asset2Secondary:       a.Asset2Secondary,
-		Opcode:                a.Opcode,
-		Success:               a.Success,
+		Success:               &success,
 		Finality:              a.Finality,
-		TraceExternalHash:     &a.TraceExternalHash,
+		TraceExternalHash:     &traceExternalHash,
 		TraceExternalHashNorm: traceExternalHashNorm,
-		ParentActionId:        a.ParentActionId,
+		ExtraCurrencies:       map[string]string{},
 		AncestorType:          a.AncestorType,
 		Accounts:              a.Accounts,
 	}
+
 	if a.TonTransferData != nil {
-		row.TonTransferContent = a.TonTransferData.Content
-		row.TonTransferEncrypted = &a.TonTransferData.Encrypted
+		raw.TonTransferContent = a.TonTransferData.Content
+		raw.TonTransferEncrypted = &a.TonTransferData.Encrypted
 	}
 	if a.JettonTransferData != nil {
-		row.JettonTransferResponseDestination = a.JettonTransferData.ResponseDestination
-		row.JettonTransferForwardAmount = a.JettonTransferData.ForwardAmount
-		row.JettonTransferQueryId = a.JettonTransferData.QueryId
-		row.JettonTransferCustomPayload = a.JettonTransferData.CustomPayload
-		row.JettonTransferForwardPayload = a.JettonTransferData.ForwardPayload
-		row.JettonTransferComment = a.JettonTransferData.Comment
-		row.JettonTransferIsEncryptedComment = a.JettonTransferData.IsEncryptedComment
+		raw.JettonTransferResponseDestination = ptrAccountAddress(a.JettonTransferData.ResponseDestination)
+		raw.JettonTransferForwardAmount = a.JettonTransferData.ForwardAmount
+		raw.JettonTransferQueryId = a.JettonTransferData.QueryId
+		raw.JettonTransferCustomPayload = a.JettonTransferData.CustomPayload
+		raw.JettonTransferForwardPayload = a.JettonTransferData.ForwardPayload
+		raw.JettonTransferComment = a.JettonTransferData.Comment
+		raw.JettonTransferIsEncryptedComment = a.JettonTransferData.IsEncryptedComment
 	}
 	if a.NftTransferData != nil {
-		row.NFTTransferIsPurchase = &a.NftTransferData.IsPurchase
-		row.NFTTransferPrice = a.NftTransferData.Price
-		row.NFTTransferQueryId = a.NftTransferData.QueryId
-		row.NFTTransferCustomPayload = a.NftTransferData.CustomPayload
-		row.NFTTransferForwardPayload = a.NftTransferData.ForwardPayload
-		row.NFTTransferForwardAmount = a.NftTransferData.ForwardAmount
-		row.NFTTransferResponseDestination = a.NftTransferData.ResponseDestination
-		row.NFTTransferNFTItemIndex = a.NftTransferData.NftItemIndex
-		row.NFTTransferMarketplace = a.NftTransferData.Marketplace
-		row.NFTTransferRealPrevOwner = a.NftTransferData.RealPrevOwner
-		row.NFTTransferMarketplaceAddress = a.NftTransferData.MarketplaceAddress
-		row.NFTTransferPayoutAmount = a.NftTransferData.PayoutAmount
-		row.NFTTransferPayoutCommentEncrypted = a.NftTransferData.PayoutCommentEncrypted
-		row.NFTTransferPayoutCommentEncoded = a.NftTransferData.PayoutCommentEncoded
-		row.NFTTransferPayoutComment = a.NftTransferData.PayoutComment
-		row.NFTTransferRoyaltyAmount = a.NftTransferData.RoyaltyAmount
+		raw.NFTTransferIsPurchase = &a.NftTransferData.IsPurchase
+		raw.NFTTransferPrice = a.NftTransferData.Price
+		raw.NFTTransferQueryId = a.NftTransferData.QueryId
+		raw.NFTTransferCustomPayload = a.NftTransferData.CustomPayload
+		raw.NFTTransferForwardPayload = a.NftTransferData.ForwardPayload
+		raw.NFTTransferForwardAmount = a.NftTransferData.ForwardAmount
+		raw.NFTTransferResponseDestination = ptrAccountAddress(a.NftTransferData.ResponseDestination)
+		raw.NFTTransferNFTItemIndex = a.NftTransferData.NftItemIndex
+		raw.NFTTransferMarketplace = a.NftTransferData.Marketplace
+		raw.NFTTransferRealPrevOwner = ptrAccountAddress(a.NftTransferData.RealPrevOwner)
+		raw.NFTTransferMarketplaceAddress = ptrAccountAddress(a.NftTransferData.MarketplaceAddress)
+		raw.NFTTransferPayoutAmount = a.NftTransferData.PayoutAmount
+		raw.NFTTransferPayoutCommentEncrypted = a.NftTransferData.PayoutCommentEncrypted
+		raw.NFTTransferPayoutCommentEncoded = a.NftTransferData.PayoutCommentEncoded
+		raw.NFTTransferPayoutComment = a.NftTransferData.PayoutComment
+		raw.NFTTransferRoyaltyAmount = a.NftTransferData.RoyaltyAmount
 	}
 	if a.NftListingData != nil {
-		row.NFTListingNFTItemIndex = a.NftListingData.NftItemIndex
-		row.NFTListingFullPrice = a.NftListingData.FullPrice
-		row.NFTListingMarketplaceFee = a.NftListingData.MarketplaceFee
-		row.NFTListingRoyaltyAmount = a.NftListingData.RoyaltyAmount
-		row.NFTListingMarketplaceFeeFactor = a.NftListingData.MarketplaceFeeFactor
-		row.NFTListingMarketplaceFeeBase = a.NftListingData.MarketplaceFeeBase
-		row.NFTListingRoyaltyFeeBase = a.NftListingData.RoyaltyFeeBase
-		row.NFTListingMaxBid = a.NftListingData.MaxBid
-		row.NFTListingMinBid = a.NftListingData.MinBid
-		row.NFTListingMarketplaceFeeAddress = a.NftListingData.MarketplaceFeeAddress
-		row.NFTListingRoyaltyAddress = a.NftListingData.RoyaltyAddress
-		row.NFTListingMarketplace = a.NftListingData.Marketplace
+		raw.NFTListingNFTItemIndex = a.NftListingData.NftItemIndex
+		raw.NFTListingFullPrice = a.NftListingData.FullPrice
+		raw.NFTListingMarketplaceFee = a.NftListingData.MarketplaceFee
+		raw.NFTListingRoyaltyAmount = a.NftListingData.RoyaltyAmount
+		raw.NFTListingMarketplaceFeeFactor = a.NftListingData.MarketplaceFeeFactor
+		raw.NFTListingMarketplaceFeeBase = a.NftListingData.MarketplaceFeeBase
+		raw.NFTListingRoyaltyFeeBase = a.NftListingData.RoyaltyFeeBase
+		raw.NFTListingMaxBid = a.NftListingData.MaxBid
+		raw.NFTListingMinBid = a.NftListingData.MinBid
+		raw.NFTListingMarketplaceFeeAddress = ptrAccountAddress(a.NftListingData.MarketplaceFeeAddress)
+		raw.NFTListingRoyaltyAddress = ptrAccountAddress(a.NftListingData.RoyaltyAddress)
+		raw.NFTListingMarketplace = a.NftListingData.Marketplace
 	}
 	if a.JettonSwapData != nil {
-		row.JettonSwapDex = a.JettonSwapData.Dex
-		row.JettonSwapSender = a.JettonSwapData.Sender
-		row.JettonSwapDexIncomingTransferAmount = a.JettonSwapData.DexIncomingTransfer.Amount
-		row.JettonSwapDexIncomingTransferAsset = a.JettonSwapData.DexIncomingTransfer.Asset
-		row.JettonSwapDexIncomingTransferSource = a.JettonSwapData.DexIncomingTransfer.Source
-		row.JettonSwapDexIncomingTransferDestination = a.JettonSwapData.DexIncomingTransfer.Destination
-		row.JettonSwapDexIncomingTransferSourceJettonWallet = a.JettonSwapData.DexIncomingTransfer.SourceJettonWallet
-		row.JettonSwapDexIncomingTransferDestinationJettonWallet = a.JettonSwapData.DexIncomingTransfer.DestinationJettonWallet
-		row.JettonSwapDexOutgoingTransferAmount = a.JettonSwapData.DexOutgoingTransfer.Amount
-		row.JettonSwapDexOutgoingTransferAsset = a.JettonSwapData.DexOutgoingTransfer.Asset
-		row.JettonSwapDexOutgoingTransferSource = a.JettonSwapData.DexOutgoingTransfer.Source
-		row.JettonSwapDexOutgoingTransferDestination = a.JettonSwapData.DexOutgoingTransfer.Destination
-		row.JettonSwapDexOutgoingTransferSourceJettonWallet = a.JettonSwapData.DexOutgoingTransfer.SourceJettonWallet
-		row.JettonSwapDexOutgoingTransferDestinationJettonWallet = a.JettonSwapData.DexOutgoingTransfer.DestinationJettonWallet
+		raw.JettonSwapDex = a.JettonSwapData.Dex
+		raw.JettonSwapSender = ptrAccountAddress(a.JettonSwapData.Sender)
+		raw.JettonSwapDexIncomingTransferAmount = a.JettonSwapData.DexIncomingTransfer.Amount
+		raw.JettonSwapDexIncomingTransferAsset = ptrAccountAddress(a.JettonSwapData.DexIncomingTransfer.Asset)
+		raw.JettonSwapDexIncomingTransferSource = ptrAccountAddress(a.JettonSwapData.DexIncomingTransfer.Source)
+		raw.JettonSwapDexIncomingTransferDestination = ptrAccountAddress(a.JettonSwapData.DexIncomingTransfer.Destination)
+		raw.JettonSwapDexIncomingTransferSourceJettonWallet = ptrAccountAddress(a.JettonSwapData.DexIncomingTransfer.SourceJettonWallet)
+		raw.JettonSwapDexIncomingTransferDestinationJettonWallet = ptrAccountAddress(a.JettonSwapData.DexIncomingTransfer.DestinationJettonWallet)
+		raw.JettonSwapDexOutgoingTransferAmount = a.JettonSwapData.DexOutgoingTransfer.Amount
+		raw.JettonSwapDexOutgoingTransferAsset = ptrAccountAddress(a.JettonSwapData.DexOutgoingTransfer.Asset)
+		raw.JettonSwapDexOutgoingTransferSource = ptrAccountAddress(a.JettonSwapData.DexOutgoingTransfer.Source)
+		raw.JettonSwapDexOutgoingTransferDestination = ptrAccountAddress(a.JettonSwapData.DexOutgoingTransfer.Destination)
+		raw.JettonSwapDexOutgoingTransferSourceJettonWallet = ptrAccountAddress(a.JettonSwapData.DexOutgoingTransfer.SourceJettonWallet)
+		raw.JettonSwapDexOutgoingTransferDestinationJettonWallet = ptrAccountAddress(a.JettonSwapData.DexOutgoingTransfer.DestinationJettonWallet)
 
-		row.JettonSwapPeerSwaps = a.JettonSwapData.PeerSwaps
-		row.JettonSwapMinOutAmount = a.JettonSwapData.MinOutAmount
+		if len(a.JettonSwapData.PeerSwaps) > 0 {
+			raw.JettonSwapPeerSwaps = make([]models.RawActionJettonSwapPeerSwap, len(a.JettonSwapData.PeerSwaps))
+			for i, ps := range a.JettonSwapData.PeerSwaps {
+				raw.JettonSwapPeerSwaps[i] = models.RawActionJettonSwapPeerSwap{
+					AssetIn:   ptrAccountAddress(ps.AssetIn),
+					AmountIn:  ps.AmountIn,
+					AssetOut:  ptrAccountAddress(ps.AssetOut),
+					AmountOut: ps.AmountOut,
+				}
+			}
+		}
+		raw.JettonSwapMinOutAmount = a.JettonSwapData.MinOutAmount
 	}
 	if a.ChangeDnsRecordData != nil {
 		var dnsRecordsFlag *int64
 		if a.ChangeDnsRecordData.Flags != nil {
 			v, err := strconv.ParseInt(*a.ChangeDnsRecordData.Flags, 10, 64)
 			if err != nil {
-				return ActionRow{}, err
+				return nil, err
 			}
 			dnsRecordsFlag = &v
 		}
-		row.ChangeDNSRecordKey = a.ChangeDnsRecordData.Key
-		row.ChangeDNSRecordValueSchema = a.ChangeDnsRecordData.ValueSchema
-		row.ChangeDNSRecordValue = a.ChangeDnsRecordData.Value
-		row.ChangeDNSRecordFlags = dnsRecordsFlag
+		raw.ChangeDNSRecordKey = a.ChangeDnsRecordData.Key
+		raw.ChangeDNSRecordValueSchema = a.ChangeDnsRecordData.ValueSchema
+		raw.ChangeDNSRecordValue = a.ChangeDnsRecordData.Value
+		raw.ChangeDNSRecordFlags = dnsRecordsFlag
 	}
 	if a.NftMintData != nil {
-		row.NFTMintNFTItemIndex = a.NftMintData.NftItemIndex
+		raw.NFTMintNFTItemIndex = a.NftMintData.NftItemIndex
 	}
 	if a.DexDepositLiquidityData != nil {
-		row.DexDepositLiquidityDataDex = a.DexDepositLiquidityData.Dex
-		row.DexDepositLiquidityDataAmount1 = a.DexDepositLiquidityData.Amount1
-		row.DexDepositLiquidityDataAmount2 = a.DexDepositLiquidityData.Amount2
-		row.DexDepositLiquidityDataAsset1 = a.DexDepositLiquidityData.Asset1
-		row.DexDepositLiquidityDataAsset2 = a.DexDepositLiquidityData.Asset2
-		row.DexDepositLiquidityDataUserJettonWallet1 = a.DexDepositLiquidityData.UserJettonWallet1
-		row.DexDepositLiquidityDataUserJettonWallet2 = a.DexDepositLiquidityData.UserJettonWallet2
-		row.DexDepositLiquidityDataLpTokensMinted = a.DexDepositLiquidityData.LpTokensMinted
-		row.DexDepositLiquidityDataTargetAsset1 = a.DexDepositLiquidityData.TargetAsset1
-		row.DexDepositLiquidityDataTargetAsset2 = a.DexDepositLiquidityData.TargetAsset2
-		row.DexDepositLiquidityDataTargetAmount1 = a.DexDepositLiquidityData.TargetAmount1
-		row.DexDepositLiquidityDataTargetAmount2 = a.DexDepositLiquidityData.TargetAmount2
-		row.DexDepositLiquidityDataVaultExcesses = a.DexDepositLiquidityData.VaultExcesses
-		row.DexDepositLiquidityDataTickLower = a.DexDepositLiquidityData.TickLower
-		row.DexDepositLiquidityDataTickUpper = a.DexDepositLiquidityData.TickUpper
-		row.DexDepositLiquidityDataNFTIndex = a.DexDepositLiquidityData.NFTIndex
-		row.DexDepositLiquidityDataNFTAddress = a.DexDepositLiquidityData.NFTAddress
+		raw.DexDepositLiquidityDataDex = a.DexDepositLiquidityData.Dex
+		raw.DexDepositLiquidityDataAmount1 = a.DexDepositLiquidityData.Amount1
+		raw.DexDepositLiquidityDataAmount2 = a.DexDepositLiquidityData.Amount2
+		raw.DexDepositLiquidityDataAsset1 = ptrAccountAddress(a.DexDepositLiquidityData.Asset1)
+		raw.DexDepositLiquidityDataAsset2 = ptrAccountAddress(a.DexDepositLiquidityData.Asset2)
+		raw.DexDepositLiquidityDataUserJettonWallet1 = ptrAccountAddress(a.DexDepositLiquidityData.UserJettonWallet1)
+		raw.DexDepositLiquidityDataUserJettonWallet2 = ptrAccountAddress(a.DexDepositLiquidityData.UserJettonWallet2)
+		raw.DexDepositLiquidityDataLpTokensMinted = a.DexDepositLiquidityData.LpTokensMinted
+		raw.DexDepositLiquidityDataTargetAsset1 = ptrAccountAddress(a.DexDepositLiquidityData.TargetAsset1)
+		raw.DexDepositLiquidityDataTargetAsset2 = ptrAccountAddress(a.DexDepositLiquidityData.TargetAsset2)
+		raw.DexDepositLiquidityDataTargetAmount1 = a.DexDepositLiquidityData.TargetAmount1
+		raw.DexDepositLiquidityDataTargetAmount2 = a.DexDepositLiquidityData.TargetAmount2
+		if len(a.DexDepositLiquidityData.VaultExcesses) > 0 {
+			raw.DexDepositLiquidityDataVaultExcesses = make([]models.RawActionVaultExcessEntry, len(a.DexDepositLiquidityData.VaultExcesses))
+			for i, ve := range a.DexDepositLiquidityData.VaultExcesses {
+				raw.DexDepositLiquidityDataVaultExcesses[i] = models.RawActionVaultExcessEntry{
+					Asset:  ptrAccountAddress(ve.Asset),
+					Amount: ve.Amount,
+				}
+			}
+		}
+		raw.DexDepositLiquidityDataTickLower = a.DexDepositLiquidityData.TickLower
+		raw.DexDepositLiquidityDataTickUpper = a.DexDepositLiquidityData.TickUpper
+		raw.DexDepositLiquidityDataNFTIndex = a.DexDepositLiquidityData.NFTIndex
+		raw.DexDepositLiquidityDataNFTAddress = ptrAccountAddress(a.DexDepositLiquidityData.NFTAddress)
 	}
 	if a.DexWithdrawLiquidityData != nil {
-		row.DexWithdrawLiquidityDataDex = a.DexWithdrawLiquidityData.Dex
-		row.DexWithdrawLiquidityDataAmount1 = a.DexWithdrawLiquidityData.Amount1
-		row.DexWithdrawLiquidityDataAmount2 = a.DexWithdrawLiquidityData.Amount2
-		row.DexWithdrawLiquidityDataAsset1Out = a.DexWithdrawLiquidityData.Asset1Out
-		row.DexWithdrawLiquidityDataAsset2Out = a.DexWithdrawLiquidityData.Asset2Out
-		row.DexWithdrawLiquidityDataUserJettonWallet1 = a.DexWithdrawLiquidityData.UserJettonWallet1
-		row.DexWithdrawLiquidityDataUserJettonWallet2 = a.DexWithdrawLiquidityData.UserJettonWallet2
-		row.DexWithdrawLiquidityDataDexJettonWallet1 = a.DexWithdrawLiquidityData.DexJettonWallet1
-		row.DexWithdrawLiquidityDataDexJettonWallet2 = a.DexWithdrawLiquidityData.DexJettonWallet2
-		row.DexWithdrawLiquidityDataLpTokensBurnt = a.DexWithdrawLiquidityData.LpTokensBurnt
-		row.DexWithdrawLiquidityDataBurnedNFTIndex = a.DexWithdrawLiquidityData.BurnedNFTIndex
-		row.DexWithdrawLiquidityDataBurnedNFTAddress = a.DexWithdrawLiquidityData.BurnedNFTAddress
-		row.DexWithdrawLiquidityDataTickLower = a.DexWithdrawLiquidityData.TickLower
-		row.DexWithdrawLiquidityDataTickUpper = a.DexWithdrawLiquidityData.TickUpper
+		raw.DexWithdrawLiquidityDataDex = a.DexWithdrawLiquidityData.Dex
+		raw.DexWithdrawLiquidityDataAmount1 = a.DexWithdrawLiquidityData.Amount1
+		raw.DexWithdrawLiquidityDataAmount2 = a.DexWithdrawLiquidityData.Amount2
+		raw.DexWithdrawLiquidityDataAsset1Out = ptrAccountAddress(a.DexWithdrawLiquidityData.Asset1Out)
+		raw.DexWithdrawLiquidityDataAsset2Out = ptrAccountAddress(a.DexWithdrawLiquidityData.Asset2Out)
+		raw.DexWithdrawLiquidityDataUserJettonWallet1 = ptrAccountAddress(a.DexWithdrawLiquidityData.UserJettonWallet1)
+		raw.DexWithdrawLiquidityDataUserJettonWallet2 = ptrAccountAddress(a.DexWithdrawLiquidityData.UserJettonWallet2)
+		raw.DexWithdrawLiquidityDataDexJettonWallet1 = ptrAccountAddress(a.DexWithdrawLiquidityData.DexJettonWallet1)
+		raw.DexWithdrawLiquidityDataDexJettonWallet2 = ptrAccountAddress(a.DexWithdrawLiquidityData.DexJettonWallet2)
+		raw.DexWithdrawLiquidityDataLpTokensBurnt = a.DexWithdrawLiquidityData.LpTokensBurnt
+		raw.DexWithdrawLiquidityDataBurnedNFTIndex = a.DexWithdrawLiquidityData.BurnedNFTIndex
+		raw.DexWithdrawLiquidityDataBurnedNFTAddress = ptrAccountAddress(a.DexWithdrawLiquidityData.BurnedNFTAddress)
+		raw.DexWithdrawLiquidityDataTickLower = a.DexWithdrawLiquidityData.TickLower
+		raw.DexWithdrawLiquidityDataTickUpper = a.DexWithdrawLiquidityData.TickUpper
 	}
 	if a.StakingData != nil {
-		row.StakingDataProvider = a.StakingData.Provider
-		row.StakingDataTsNft = a.StakingData.TsNft
-		row.StakingTokensBurnt = a.StakingData.TokensBurnt
-		row.StakingTokensMinted = a.StakingData.TokensMinted
+		raw.StakingDataProvider = a.StakingData.Provider
+		raw.StakingDataTsNft = ptrAccountAddress(a.StakingData.TsNft)
+		raw.StakingDataTokensBurnt = a.StakingData.TokensBurnt
+		raw.StakingDataTokensMinted = a.StakingData.TokensMinted
 	}
 	if a.ToncoDeployPoolData != nil {
-		row.ToncoDeployPoolJetton0RouterWallet = a.ToncoDeployPoolData.Jetton0RouterWallet
-		row.ToncoDeployPoolJetton1RouterWallet = a.ToncoDeployPoolData.Jetton1RouterWallet
-		row.ToncoDeployPoolJetton0Minter = a.ToncoDeployPoolData.Jetton0Minter
-		row.ToncoDeployPoolJetton1Minter = a.ToncoDeployPoolData.Jetton1Minter
-		row.ToncoDeployPoolInitialPriceX96 = a.ToncoDeployPoolData.InitialPriceX96
-		row.ToncoDeployPoolPoolActive = a.ToncoDeployPoolData.PoolActive
-
-		// Convert string fields to int64 for the row
-		if a.ToncoDeployPoolData.TickSpacing != nil {
-			v, err := strconv.ParseInt(*a.ToncoDeployPoolData.TickSpacing, 10, 64)
-			if err != nil {
-				return ActionRow{}, err
-			}
-			row.ToncoDeployPoolTickSpacing = &v
-		}
-		if a.ToncoDeployPoolData.ProtocolFee != nil {
-			v, err := strconv.ParseInt(*a.ToncoDeployPoolData.ProtocolFee, 10, 64)
-			if err != nil {
-				return ActionRow{}, err
-			}
-			row.ToncoDeployPoolProtocolFee = &v
-		}
-		if a.ToncoDeployPoolData.LpFeeBase != nil {
-			v, err := strconv.ParseInt(*a.ToncoDeployPoolData.LpFeeBase, 10, 64)
-			if err != nil {
-				return ActionRow{}, err
-			}
-			row.ToncoDeployPoolLpFeeBase = &v
-		}
-		if a.ToncoDeployPoolData.LpFeeCurrent != nil {
-			v, err := strconv.ParseInt(*a.ToncoDeployPoolData.LpFeeCurrent, 10, 64)
-			if err != nil {
-				return ActionRow{}, err
-			}
-			row.ToncoDeployPoolLpFeeCurrent = &v
-		}
+		raw.ToncoDeployPoolJetton0RouterWallet = ptrAccountAddress(a.ToncoDeployPoolData.Jetton0RouterWallet)
+		raw.ToncoDeployPoolJetton1RouterWallet = ptrAccountAddress(a.ToncoDeployPoolData.Jetton1RouterWallet)
+		raw.ToncoDeployPoolJetton0Minter = ptrAccountAddress(a.ToncoDeployPoolData.Jetton0Minter)
+		raw.ToncoDeployPoolJetton1Minter = ptrAccountAddress(a.ToncoDeployPoolData.Jetton1Minter)
+		raw.ToncoDeployPoolTickSpacing = a.ToncoDeployPoolData.TickSpacing
+		raw.ToncoDeployPoolInitialPriceX96 = a.ToncoDeployPoolData.InitialPriceX96
+		raw.ToncoDeployPoolProtocolFee = a.ToncoDeployPoolData.ProtocolFee
+		raw.ToncoDeployPoolLpFeeBase = a.ToncoDeployPoolData.LpFeeBase
+		raw.ToncoDeployPoolLpFeeCurrent = a.ToncoDeployPoolData.LpFeeCurrent
+		raw.ToncoDeployPoolPoolActive = a.ToncoDeployPoolData.PoolActive
 	}
 	if a.MultisigCreateOrderData != nil {
-		row.MultisigCreateOrderQueryId = a.MultisigCreateOrderData.QueryId
-		row.MultisigCreateOrderOrderSeqno = a.MultisigCreateOrderData.OrderSeqno
-		row.MultisigCreateOrderIsCreatedBySigner = a.MultisigCreateOrderData.IsCreatedBySigner
-		row.MultisigCreateOrderIsSignedByCreator = a.MultisigCreateOrderData.IsSignedByCreator
-		row.MultisigCreateOrderCreatorIndex = a.MultisigCreateOrderData.CreatorIndex
-		row.MultisigCreateOrderExpirationDate = a.MultisigCreateOrderData.ExpirationDate
-		row.MultisigCreateOrderOrderBoc = a.MultisigCreateOrderData.OrderBoc
+		raw.MultisigCreateOrderQueryId = a.MultisigCreateOrderData.QueryId
+		raw.MultisigCreateOrderOrderSeqno = a.MultisigCreateOrderData.OrderSeqno
+		raw.MultisigCreateOrderIsCreatedBySigner = a.MultisigCreateOrderData.IsCreatedBySigner
+		raw.MultisigCreateOrderIsSignedByCreator = a.MultisigCreateOrderData.IsSignedByCreator
+		raw.MultisigCreateOrderCreatorIndex = a.MultisigCreateOrderData.CreatorIndex
+		raw.MultisigCreateOrderExpirationDate = a.MultisigCreateOrderData.ExpirationDate
+		raw.MultisigCreateOrderOrderBoc = a.MultisigCreateOrderData.OrderBoc
 	}
 	if a.MultisigApproveData != nil {
-		row.MultisigApproveSignerIndex = a.MultisigApproveData.SignerIndex
-		row.MultisigApproveExitCode = a.MultisigApproveData.ExitCode
+		raw.MultisigApproveSignerIndex = a.MultisigApproveData.SignerIndex
+		raw.MultisigApproveExitCode = a.MultisigApproveData.ExitCode
 	}
 	if a.MultisigExecuteData != nil {
-		row.MultisigExecuteQueryId = a.MultisigExecuteData.QueryId
-		row.MultisigExecuteOrderSeqno = a.MultisigExecuteData.OrderSeqno
-		row.MultisigExecuteExpirationDate = a.MultisigExecuteData.ExpirationDate
-		row.MultisigExecuteApprovalsNum = a.MultisigExecuteData.ApprovalsNum
-		row.MultisigExecuteSignersHash = a.MultisigExecuteData.SignersHash
-		row.MultisigExecuteOrderBoc = a.MultisigExecuteData.OrderBoc
+		raw.MultisigExecuteQueryId = a.MultisigExecuteData.QueryId
+		raw.MultisigExecuteOrderSeqno = a.MultisigExecuteData.OrderSeqno
+		raw.MultisigExecuteExpirationDate = a.MultisigExecuteData.ExpirationDate
+		raw.MultisigExecuteApprovalsNum = a.MultisigExecuteData.ApprovalsNum
+		raw.MultisigExecuteSignersHash = a.MultisigExecuteData.SignersHash
+		raw.MultisigExecuteOrderBoc = a.MultisigExecuteData.OrderBoc
 	}
 	if a.VestingSendMessageData != nil {
-		row.VestingSendMessageQueryId = a.VestingSendMessageData.QueryId
-		row.VestingSendMessageMessageBoc = a.VestingSendMessageData.MessageBoc
+		raw.VestingSendMessageQueryId = a.VestingSendMessageData.QueryId
+		raw.VestingSendMessageMessageBoc = a.VestingSendMessageData.MessageBoc
 	}
 	if a.VestingAddWhitelistData != nil {
-		row.VestingAddWhitelistQueryId = a.VestingAddWhitelistData.QueryId
-		row.VestingAddWhitelistAccountsAdded = a.VestingAddWhitelistData.AccountsAdded
+		raw.VestingAddWhitelistQueryId = a.VestingAddWhitelistData.QueryId
+		if a.VestingAddWhitelistData.AccountsAdded != nil {
+			accts := make([]models.AccountAddress, len(a.VestingAddWhitelistData.AccountsAdded))
+			for i, s := range a.VestingAddWhitelistData.AccountsAdded {
+				accts[i] = models.AccountAddress(s)
+			}
+			raw.VestingAddWhitelistAccountsAdded = accts
+		}
 	}
 	if a.EvaaSupplyData != nil {
-		row.EvaaSupplySenderJettonWallet = a.EvaaSupplyData.SenderJettonWallet
-		row.EvaaSupplyRecipientJettonWallet = a.EvaaSupplyData.RecipientJettonWallet
-		row.EvaaSupplyMasterJettonWallet = a.EvaaSupplyData.MasterJettonWallet
-		row.EvaaSupplyMaster = a.EvaaSupplyData.Master
-		row.EvaaSupplyAssetId = a.EvaaSupplyData.AssetId
-		row.EvaaSupplyIsTon = a.EvaaSupplyData.IsTon
+		raw.EvaaSupplySenderJettonWallet = ptrAccountAddress(a.EvaaSupplyData.SenderJettonWallet)
+		raw.EvaaSupplyRecipientJettonWallet = ptrAccountAddress(a.EvaaSupplyData.RecipientJettonWallet)
+		raw.EvaaSupplyMasterJettonWallet = ptrAccountAddress(a.EvaaSupplyData.MasterJettonWallet)
+		raw.EvaaSupplyMaster = ptrAccountAddress(a.EvaaSupplyData.Master)
+		raw.EvaaSupplyAssetId = a.EvaaSupplyData.AssetId
+		raw.EvaaSupplyIsTon = a.EvaaSupplyData.IsTon
 	}
 	if a.EvaaWithdrawData != nil {
-		row.EvaaWithdrawRecipientJettonWallet = a.EvaaWithdrawData.RecipientJettonWallet
-		row.EvaaWithdrawMasterJettonWallet = a.EvaaWithdrawData.MasterJettonWallet
-		row.EvaaWithdrawMaster = a.EvaaWithdrawData.Master
-		row.EvaaWithdrawFailReason = a.EvaaWithdrawData.FailReason
-		row.EvaaWithdrawAssetId = a.EvaaWithdrawData.AssetId
+		raw.EvaaWithdrawRecipientJettonWallet = ptrAccountAddress(a.EvaaWithdrawData.RecipientJettonWallet)
+		raw.EvaaWithdrawMasterJettonWallet = ptrAccountAddress(a.EvaaWithdrawData.MasterJettonWallet)
+		raw.EvaaWithdrawMaster = ptrAccountAddress(a.EvaaWithdrawData.Master)
+		raw.EvaaWithdrawFailReason = a.EvaaWithdrawData.FailReason
+		raw.EvaaWithdrawAssetId = a.EvaaWithdrawData.AssetId
 	}
 	if a.EvaaLiquidateData != nil {
-		row.EvaaLiquidateFailReason = a.EvaaLiquidateData.FailReason
-		row.EvaaLiquidateDebtAmount = a.EvaaLiquidateData.DebtAmount
-		row.EvaaLiquidateAssetId = a.EvaaLiquidateData.AssetId
+		raw.EvaaLiquidateFailReason = a.EvaaLiquidateData.FailReason
+		raw.EvaaLiquidateDebtAmount = a.EvaaLiquidateData.DebtAmount
+		raw.EvaaLiquidateAssetId = a.EvaaLiquidateData.AssetId
 	}
 	if a.JvaultClaimData != nil {
-		row.JvaultClaimClaimedJettons = a.JvaultClaimData.ClaimedJettons
-		row.JvaultClaimClaimedAmounts = a.JvaultClaimData.ClaimedAmounts
+		if len(a.JvaultClaimData.ClaimedJettons) > 0 {
+			cj := make([]models.AccountAddress, len(a.JvaultClaimData.ClaimedJettons))
+			for i, s := range a.JvaultClaimData.ClaimedJettons {
+				cj[i] = models.AccountAddress(s)
+			}
+			raw.JvaultClaimClaimedJettons = cj
+		}
+		raw.JvaultClaimClaimedAmounts = a.JvaultClaimData.ClaimedAmounts
 	}
 	if a.JvaultStakeData != nil {
-		row.JvaultStakePeriod = a.JvaultStakeData.Period
-		row.JvaultStakeMintedStakeJettons = a.JvaultStakeData.MintedStakeJettons
-		row.JvaultStakeStakeWallet = a.JvaultStakeData.StakeWallet
+		raw.JvaultStakePeriod = a.JvaultStakeData.Period
+		raw.JvaultStakeMintedStakeJettons = a.JvaultStakeData.MintedStakeJettons
+		raw.JvaultStakeStakeWallet = ptrAccountAddress(a.JvaultStakeData.StakeWallet)
 	}
 	if a.CoffeeCreatePoolData != nil {
-		row.CoffeeCreatePoolAmount1 = a.CoffeeCreatePoolData.Amount1
-		row.CoffeeCreatePoolAmount2 = a.CoffeeCreatePoolData.Amount2
-		row.CoffeeCreatePoolInitiator1 = a.CoffeeCreatePoolData.Initiator1
-		row.CoffeeCreatePoolInitiator2 = a.CoffeeCreatePoolData.Initiator2
-		row.CoffeeCreatePoolProvidedAsset = a.CoffeeCreatePoolData.ProvidedAsset
-		row.CoffeeCreatePoolLpTokensMinted = a.CoffeeCreatePoolData.LpTokensMinted
-		row.CoffeeCreatePoolPoolCreatorContract = a.CoffeeCreatePoolData.PoolCreatorContract
+		raw.CoffeeCreatePoolAmount1 = a.CoffeeCreatePoolData.Amount1
+		raw.CoffeeCreatePoolAmount2 = a.CoffeeCreatePoolData.Amount2
+		raw.CoffeeCreatePoolInitiator1 = ptrAccountAddress(a.CoffeeCreatePoolData.Initiator1)
+		raw.CoffeeCreatePoolInitiator2 = ptrAccountAddress(a.CoffeeCreatePoolData.Initiator2)
+		raw.CoffeeCreatePoolProvidedAsset = ptrAccountAddress(a.CoffeeCreatePoolData.ProvidedAsset)
+		raw.CoffeeCreatePoolLpTokensMinted = a.CoffeeCreatePoolData.LpTokensMinted
+		raw.CoffeeCreatePoolPoolCreatorContract = ptrAccountAddress(a.CoffeeCreatePoolData.PoolCreatorContract)
 	}
 	if a.CoffeeStakingDepositData != nil {
-		row.CoffeeStakingDepositMintedItemAddress = a.CoffeeStakingDepositData.MintedItemAddress
-		row.CoffeeStakingDepositMintedItemIndex = a.CoffeeStakingDepositData.MintedItemIndex
+		raw.CoffeeStakingDepositMintedItemAddress = ptrAccountAddress(a.CoffeeStakingDepositData.MintedItemAddress)
+		raw.CoffeeStakingDepositMintedItemIndex = a.CoffeeStakingDepositData.MintedItemIndex
 	}
 	if a.CoffeeStakingWithdrawData != nil {
-		row.CoffeeStakingWithdrawNftAddress = a.CoffeeStakingWithdrawData.NftAddress
-		row.CoffeeStakingWithdrawNftIndex = a.CoffeeStakingWithdrawData.NftIndex
-		row.CoffeeStakingWithdrawPoints = a.CoffeeStakingWithdrawData.Points
+		raw.CoffeeStakingWithdrawNftAddress = ptrAccountAddress(a.CoffeeStakingWithdrawData.NftAddress)
+		raw.CoffeeStakingWithdrawNftIndex = a.CoffeeStakingWithdrawData.NftIndex
+		raw.CoffeeStakingWithdrawPoints = a.CoffeeStakingWithdrawData.Points
 	}
 	if a.LayerzeroSendData != nil {
-		row.LayerzeroSendSendRequestId = a.LayerzeroSendData.SendRequestId
-		row.LayerzeroSendMsglibManager = a.LayerzeroSendData.MsglibManager
-		row.LayerzeroSendMsglib = a.LayerzeroSendData.Msglib
-		row.LayerzeroSendUln = a.LayerzeroSendData.Uln
-		row.LayerzeroSendNativeFee = a.LayerzeroSendData.NativeFee
-		row.LayerzeroSendZroFee = a.LayerzeroSendData.ZroFee
-		row.LayerzeroSendEndpoint = a.LayerzeroSendData.Endpoint
-		row.LayerzeroSendChannel = a.LayerzeroSendData.Channel
+		raw.LayerzeroSendSendRequestId = a.LayerzeroSendData.SendRequestId
+		raw.LayerzeroSendMsglibManager = a.LayerzeroSendData.MsglibManager
+		raw.LayerzeroSendMsglib = a.LayerzeroSendData.Msglib
+		raw.LayerzeroSendUln = ptrAccountAddress(a.LayerzeroSendData.Uln)
+		raw.LayerzeroSendNativeFee = a.LayerzeroSendData.NativeFee
+		raw.LayerzeroSendZroFee = a.LayerzeroSendData.ZroFee
+		raw.LayerzeroSendEndpoint = ptrAccountAddress(a.LayerzeroSendData.Endpoint)
+		raw.LayerzeroSendChannel = ptrAccountAddress(a.LayerzeroSendData.Channel)
 	}
 	if a.LayerzeroPacketData != nil {
-		row.LayerzeroPacketSrcOapp = a.LayerzeroPacketData.SrcOapp
-		row.LayerzeroPacketDstOapp = a.LayerzeroPacketData.DstOapp
-		row.LayerzeroPacketSrcEid = a.LayerzeroPacketData.SrcEid
-		row.LayerzeroPacketDstEid = a.LayerzeroPacketData.DstEid
-		row.LayerzeroPacketNonce = a.LayerzeroPacketData.Nonce
-		row.LayerzeroPacketGuid = a.LayerzeroPacketData.Guid
-		row.LayerzeroPacketMessage = a.LayerzeroPacketData.Message
+		raw.LayerzeroPacketSrcOapp = a.LayerzeroPacketData.SrcOapp
+		raw.LayerzeroPacketDstOapp = a.LayerzeroPacketData.DstOapp
+		raw.LayerzeroPacketSrcEid = a.LayerzeroPacketData.SrcEid
+		raw.LayerzeroPacketDstEid = a.LayerzeroPacketData.DstEid
+		raw.LayerzeroPacketNonce = a.LayerzeroPacketData.Nonce
+		raw.LayerzeroPacketGuid = a.LayerzeroPacketData.Guid
+		raw.LayerzeroPacketMessage = a.LayerzeroPacketData.Message
 	}
 	if a.LayerzeroDvnVerifyData != nil {
-		row.LayerzeroDvnVerifyNonce = a.LayerzeroDvnVerifyData.Nonce
-		row.LayerzeroDvnVerifyStatus = a.LayerzeroDvnVerifyData.Status
-		row.LayerzeroDvnVerifyDvn = a.LayerzeroDvnVerifyData.Dvn
-		row.LayerzeroDvnVerifyProxy = a.LayerzeroDvnVerifyData.Proxy
-		row.LayerzeroDvnVerifyUln = a.LayerzeroDvnVerifyData.Uln
-		row.LayerzeroDvnVerifyUlnConnection = a.LayerzeroDvnVerifyData.UlnConnection
+		raw.LayerzeroDvnVerifyNonce = a.LayerzeroDvnVerifyData.Nonce
+		raw.LayerzeroDvnVerifyStatus = a.LayerzeroDvnVerifyData.Status
+		raw.LayerzeroDvnVerifyDvn = ptrAccountAddress(a.LayerzeroDvnVerifyData.Dvn)
+		raw.LayerzeroDvnVerifyProxy = ptrAccountAddress(a.LayerzeroDvnVerifyData.Proxy)
+		raw.LayerzeroDvnVerifyUln = ptrAccountAddress(a.LayerzeroDvnVerifyData.Uln)
+		raw.LayerzeroDvnVerifyUlnConnection = ptrAccountAddress(a.LayerzeroDvnVerifyData.UlnConnection)
 	}
 	if a.CocoonWorkerPayoutData != nil {
-		row.CocoonWorkerPayoutPayoutType = a.CocoonWorkerPayoutData.PayoutType
-		row.CocoonWorkerPayoutQueryId = a.CocoonWorkerPayoutData.QueryId
-		row.CocoonWorkerPayoutNewTokens = a.CocoonWorkerPayoutData.NewTokens
-		row.CocoonWorkerPayoutWorkerState = a.CocoonWorkerPayoutData.WorkerState
-		row.CocoonWorkerPayoutWorkerTokens = a.CocoonWorkerPayoutData.WorkerTokens
+		raw.CocoonWorkerPayoutPayoutType = a.CocoonWorkerPayoutData.PayoutType
+		raw.CocoonWorkerPayoutQueryId = a.CocoonWorkerPayoutData.QueryId
+		raw.CocoonWorkerPayoutNewTokens = a.CocoonWorkerPayoutData.NewTokens
+		raw.CocoonWorkerPayoutWorkerState = a.CocoonWorkerPayoutData.WorkerState
+		raw.CocoonWorkerPayoutWorkerTokens = a.CocoonWorkerPayoutData.WorkerTokens
 	}
 	if a.CocoonProxyPayoutData != nil {
-		row.CocoonProxyPayoutQueryId = a.CocoonProxyPayoutData.QueryId
+		raw.CocoonProxyPayoutQueryId = a.CocoonProxyPayoutData.QueryId
 	}
 	if a.CocoonProxyChargeData != nil {
-		row.CocoonProxyChargeQueryId = a.CocoonProxyChargeData.QueryId
-		row.CocoonProxyChargeNewTokensUsed = a.CocoonProxyChargeData.NewTokensUsed
-		row.CocoonProxyChargeExpectedAddress = a.CocoonProxyChargeData.ExpectedAddress
+		raw.CocoonProxyChargeQueryId = a.CocoonProxyChargeData.QueryId
+		raw.CocoonProxyChargeNewTokensUsed = a.CocoonProxyChargeData.NewTokensUsed
+		raw.CocoonProxyChargeExpectedAddress = a.CocoonProxyChargeData.ExpectedAddress
 	}
 	if a.CocoonClientTopUpData != nil {
-		row.CocoonClientTopUpQueryId = a.CocoonClientTopUpData.QueryId
+		raw.CocoonClientTopUpQueryId = a.CocoonClientTopUpData.QueryId
 	}
 	if a.CocoonRegisterProxyData != nil {
-		row.CocoonRegisterProxyQueryId = a.CocoonRegisterProxyData.QueryId
+		raw.CocoonRegisterProxyQueryId = a.CocoonRegisterProxyData.QueryId
 	}
 	if a.CocoonUnregisterProxyData != nil {
-		row.CocoonUnregisterProxyQueryId = a.CocoonUnregisterProxyData.QueryId
-		row.CocoonUnregisterProxySeqno = a.CocoonUnregisterProxyData.Seqno
+		raw.CocoonUnregisterProxyQueryId = a.CocoonUnregisterProxyData.QueryId
+		raw.CocoonUnregisterProxySeqno = a.CocoonUnregisterProxyData.Seqno
 	}
 	if a.CocoonClientRegisterData != nil {
-		row.CocoonClientRegisterQueryId = a.CocoonClientRegisterData.QueryId
-		row.CocoonClientRegisterNonce = a.CocoonClientRegisterData.Nonce
+		raw.CocoonClientRegisterQueryId = a.CocoonClientRegisterData.QueryId
+		raw.CocoonClientRegisterNonce = a.CocoonClientRegisterData.Nonce
 	}
 	if a.CocoonClientChangeSecretHashData != nil {
-		row.CocoonClientChangeSecretHashQueryId = a.CocoonClientChangeSecretHashData.QueryId
-		row.CocoonClientChangeSecretHashNewSecretHash = a.CocoonClientChangeSecretHashData.NewSecretHash
+		raw.CocoonClientChangeSecretHashQueryId = a.CocoonClientChangeSecretHashData.QueryId
+		raw.CocoonClientChangeSecretHashNewSecretHash = a.CocoonClientChangeSecretHashData.NewSecretHash
 	}
 	if a.CocoonClientRequestRefundData != nil {
-		row.CocoonClientRequestRefundQueryId = a.CocoonClientRequestRefundData.QueryId
-		row.CocoonClientRequestRefundViaWallet = a.CocoonClientRequestRefundData.ViaWallet
+		raw.CocoonClientRequestRefundQueryId = a.CocoonClientRequestRefundData.QueryId
+		raw.CocoonClientRequestRefundViaWallet = a.CocoonClientRequestRefundData.ViaWallet
 	}
 	if a.CocoonGrantRefundData != nil {
-		row.CocoonGrantRefundQueryId = a.CocoonGrantRefundData.QueryId
-		row.CocoonGrantRefundNewTokensUsed = a.CocoonGrantRefundData.NewTokensUsed
-		row.CocoonGrantRefundExpectedAddress = a.CocoonGrantRefundData.ExpectedAddress
+		raw.CocoonGrantRefundQueryId = a.CocoonGrantRefundData.QueryId
+		raw.CocoonGrantRefundNewTokensUsed = a.CocoonGrantRefundData.NewTokensUsed
+		raw.CocoonGrantRefundExpectedAddress = a.CocoonGrantRefundData.ExpectedAddress
 	}
 	if a.CocoonClientIncreaseStakeData != nil {
-		row.CocoonClientIncreaseStakeQueryId = a.CocoonClientIncreaseStakeData.QueryId
-		row.CocoonClientIncreaseStakeNewStake = a.CocoonClientIncreaseStakeData.NewStake
+		raw.CocoonClientIncreaseStakeQueryId = a.CocoonClientIncreaseStakeData.QueryId
+		raw.CocoonClientIncreaseStakeNewStake = a.CocoonClientIncreaseStakeData.NewStake
 	}
 	if a.CocoonClientWithdrawData != nil {
-		row.CocoonClientWithdrawQueryId = a.CocoonClientWithdrawData.QueryId
-		row.CocoonClientWithdrawWithdrawAmount = a.CocoonClientWithdrawData.WithdrawAmount
+		raw.CocoonClientWithdrawQueryId = a.CocoonClientWithdrawData.QueryId
+		raw.CocoonClientWithdrawWithdrawAmount = a.CocoonClientWithdrawData.WithdrawAmount
 	}
-	return row, nil
+	return raw, nil
+}
+
+func (n *TraceNode) ToTransaction() (*models.Transaction, error) {
+	origStatus, err := n.Transaction.OrigStatus.Str()
+	if err != nil {
+		return nil, err
+	}
+	endStatus, err := n.Transaction.EndStatus.Str()
+	if err != nil {
+		return nil, err
+	}
+
+	ordVal := "ord"
+	isTock := false
+
+	t := &models.Transaction{
+		Account:                  models.AccountAddress(n.Transaction.Account),
+		Hash:                     models.HashType(*n.Transaction.Hash.Base64Ptr()),
+		Lt:                       int64(n.Transaction.Lt),
+		Now:                      int32(n.Transaction.Now),
+		Workchain:                n.BlockId.Workchain,
+		Shard:                    models.ShardId(int64(n.BlockId.Shard)),
+		Seqno:                    int32(n.BlockId.Seqno),
+		McSeqno:                  int32(n.McBlockSeqno),
+		TraceId:                  ptrHashType(n.TraceId),
+		PrevTransHash:            models.HashType(*n.Transaction.PrevTransHash.Base64Ptr()),
+		PrevTransLt:              int64(n.Transaction.PrevTransLt),
+		OrigStatus:               origStatus,
+		EndStatus:                endStatus,
+		TotalFees:                int64(n.Transaction.TotalFees),
+		TotalFeesExtraCurrencies: map[string]string{},
+		AccountStateHashBefore:   models.HashType(*n.Transaction.AccountStateHashBefore.Base64Ptr()),
+		AccountStateHashAfter:    models.HashType(*n.Transaction.AccountStateHashAfter.Base64Ptr()),
+		Descr: models.TransactionDescr{
+			Type:        ordVal,
+			Aborted:     &n.Transaction.Description.Aborted,
+			Destroyed:   &n.Transaction.Description.Destroyed,
+			CreditFirst: &n.Transaction.Description.CreditFirst,
+			IsTock:      &isTock,
+			Installed:   &isTock,
+		},
+		OutMsgs:  []*models.Message{},
+		Emulated: n.Emulated,
+		Finality: n.FinalityState,
+	}
+
+	t.BlockRef = models.BlockId{
+		Workchain: n.BlockId.Workchain,
+		Shard:     models.ShardId(int64(n.BlockId.Shard)),
+		Seqno:     int32(n.BlockId.Seqno),
+	}
+	t.AccountStateBefore = &models.AccountState{Hash: t.AccountStateHashBefore}
+	t.AccountStateAfter = &models.AccountState{Hash: t.AccountStateHashAfter}
+
+	var st models.StoragePhase
+	if n.Transaction.Description.StoragePh != nil {
+		statusChange, err := n.Transaction.Description.StoragePh.StatusChange.Str()
+		if err != nil {
+			return nil, err
+		}
+		collected := int64(n.Transaction.Description.StoragePh.StorageFeesCollected)
+		st.StorageFeesCollected = &collected
+		st.StorageFeesDue = ptrInt64FromUint64(n.Transaction.Description.StoragePh.StorageFeesDue)
+		st.StatusChange = &statusChange
+		t.Descr.StoragePh = &st
+	}
+
+	var cr models.CreditPhase
+	if n.Transaction.Description.CreditPh != nil {
+		cr.DueFeesCollected = ptrInt64FromUint64(n.Transaction.Description.CreditPh.DueFeesCollected)
+		credit := int64(n.Transaction.Description.CreditPh.Credit)
+		cr.Credit = &credit
+		cr.CreditExtraCurrencies = map[string]string{}
+		t.Descr.CreditPh = &cr
+	}
+
+	var co models.ComputePhase
+	if n.Transaction.Description.ComputePh.Type == 0 {
+		isSkipped := true
+		co.IsSkipped = &isSkipped
+		reason, err := n.Transaction.Description.ComputePh.Data.(trComputePhaseSkipped).Reason.Str()
+		if err != nil {
+			return nil, err
+		}
+		co.Reason = &reason
+		t.Descr.ComputePh = &co
+	} else {
+		isSkipped := false
+		co.IsSkipped = &isSkipped
+		vm := n.Transaction.Description.ComputePh.Data.(trComputePhaseVm)
+		co.Success = &vm.Success
+		co.MsgStateUsed = &vm.MsgStateUsed
+		co.AccountActivated = &vm.AccountActivated
+		gasFees := int64(vm.GasFees)
+		co.GasFees = &gasFees
+		gasUsed := int64(vm.GasUsed)
+		co.GasUsed = &gasUsed
+		gasLimit := int64(vm.GasLimit)
+		co.GasLimit = &gasLimit
+		co.GasCredit = ptrInt64FromUint64(vm.GasCredit)
+		mode := int32(vm.Mode)
+		co.Mode = &mode
+		exitCode := int32(vm.ExitCode)
+		co.ExitCode = &exitCode
+		co.ExitArg = vm.ExitArg
+		vmSteps := uint32(vm.VmSteps)
+		co.VmSteps = &vmSteps
+		co.VmInitStateHash = ptrHashType(vm.VmInitStateHash.Base64Ptr())
+		co.VmFinalStateHash = ptrHashType(vm.VmFinalStateHash.Base64Ptr())
+		t.Descr.ComputePh = &co
+	}
+
+	if n.Transaction.Description.Action != nil {
+		var ap models.ActionPhase
+		statusChange, err := n.Transaction.Description.Action.StatusChange.Str()
+		if err != nil {
+			return nil, err
+		}
+		ap.Success = &n.Transaction.Description.Action.Success
+		ap.Valid = &n.Transaction.Description.Action.Valid
+		ap.NoFunds = &n.Transaction.Description.Action.NoFunds
+		ap.StatusChange = &statusChange
+		ap.TotalFwdFees = ptrInt64FromUint64(n.Transaction.Description.Action.TotalFwdFees)
+		ap.TotalActionFees = ptrInt64FromUint64(n.Transaction.Description.Action.TotalActionFees)
+		ap.ResultCode = n.Transaction.Description.Action.ResultCode
+		ap.ResultArg = n.Transaction.Description.Action.ResultArg
+		ap.TotActions = ptrInt32FromUint16(n.Transaction.Description.Action.TotActions)
+		ap.SpecActions = ptrInt32FromUint16(n.Transaction.Description.Action.SpecActions)
+		ap.SkippedActions = ptrInt32FromUint16(n.Transaction.Description.Action.SkippedActions)
+		ap.MsgsCreated = ptrInt32FromUint16(n.Transaction.Description.Action.MsgsCreated)
+		ap.ActionListHash = ptrHashType(n.Transaction.Description.Action.ActionListHash.Base64Ptr())
+		cells := int64(n.Transaction.Description.Action.TotMsgSize.Cells)
+		bits := int64(n.Transaction.Description.Action.TotMsgSize.Bits)
+		ap.TotMsgSize = &models.MsgSize{Cells: &cells, Bits: &bits}
+		t.Descr.Action = &ap
+	}
+
+	if n.Transaction.Description.Bounce != nil {
+		var bp models.BouncePhase
+		if n.Transaction.Description.Bounce.Type == 0 {
+			btype := "negfunds"
+			bp.Type = &btype
+		} else if n.Transaction.Description.Bounce.Type == 1 {
+			btype := "nofunds"
+			bp.Type = &btype
+			phase := n.Transaction.Description.Bounce.Data.(trBouncePhaseNofunds)
+			cells := int64(phase.MsgSize.Cells)
+			bits := int64(phase.MsgSize.Bits)
+			bp.MsgSize = &models.MsgSize{Cells: &cells, Bits: &bits}
+			reqFwdFees := int64(phase.ReqFwdFees)
+			bp.ReqFwdFees = &reqFwdFees
+		} else {
+			btype := "ok"
+			bp.Type = &btype
+			phase := n.Transaction.Description.Bounce.Data.(trBouncePhaseOk)
+			cells := int64(phase.MsgSize.Cells)
+			bits := int64(phase.MsgSize.Bits)
+			bp.MsgSize = &models.MsgSize{Cells: &cells, Bits: &bits}
+			msgFees := int64(phase.MsgFees)
+			bp.MsgFees = &msgFees
+			fwdFees := int64(phase.FwdFees)
+			bp.FwdFees = &fwdFees
+		}
+		t.Descr.Bounce = &bp
+	}
+
+	return t, nil
+}
+
+func (m *trMessage) toMessage(traceId string, direction string, txLt uint64, txHash string) (*models.Message, error) {
+	bodyHash, err := calcHash(m.BodyBoc)
+	if err != nil {
+		return nil, err
+	}
+
+	var initStateHash *models.HashType
+	var initStateBoc *string
+	if m.InitStateBoc != nil {
+		h, err := calcHash(*m.InitStateBoc)
+		if err != nil {
+			return nil, err
+		}
+		ht := models.HashType(h)
+		initStateHash = &ht
+		initStateBoc = m.InitStateBoc
+	}
+
+	var hashNorm *models.HashType
+	if m.HashNorm != nil {
+		n := base64.StdEncoding.EncodeToString((*m.HashNorm)[:])
+		ht := models.HashType(n)
+		hashNorm = &ht
+	}
+
+	bodyHashType := models.HashType(bodyHash)
+	traceIdHash := models.HashType(traceId)
+	msg := &models.Message{
+		TxHash:               models.HashType(txHash),
+		TxLt:                 int64(txLt),
+		MsgHash:              models.HashType(base64.StdEncoding.EncodeToString(m.Hash[:])),
+		Direction:            direction,
+		TraceId:              &traceIdHash,
+		Source:               ptrAccountAddress(m.Source),
+		Destination:          ptrAccountAddress(m.Destination),
+		Value:                ptrInt64FromUint64(m.Value),
+		ValueExtraCurrencies: map[string]string{},
+		FwdFee:               m.FwdFee,
+		IhrFee:               m.IhrFee,
+		ExtraFlags:           m.ExtraFlags,
+		CreatedLt:            m.CreatedLt,
+		CreatedAt:            m.CreatedAt,
+		Opcode:               ptrOpcodeFromInt32(m.Opcode),
+		IhrDisabled:          m.IhrDisabled,
+		Bounce:               m.Bounce,
+		Bounced:              m.Bounced,
+		ImportFee:            m.ImportFee,
+		BodyHash:             &bodyHashType,
+		MessageContent:       &models.MessageContent{Hash: &bodyHashType, Body: &m.BodyBoc},
+		InitStateHash:        initStateHash,
+		MsgHashNorm:          hashNorm,
+	}
+	if initStateBoc != nil {
+		msg.InitState = &models.MessageContent{Hash: initStateHash, Body: initStateBoc}
+	}
+
+	return msg, nil
+}
+
+func (n *TraceNode) ToMessages() ([]*models.Message, error) {
+	msgs := make([]*models.Message, 0, len(n.Transaction.OutMsgs)+1)
+	txHash := base64.StdEncoding.EncodeToString(n.Transaction.Hash[:])
+
+	for _, outMsg := range n.Transaction.OutMsgs {
+		msg, err := outMsg.toMessage(n.Key, "out", n.Transaction.Lt, txHash)
+		if err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, msg)
+	}
+
+	if n.Transaction.InMsg != nil {
+		inMsg, err := n.Transaction.InMsg.toMessage(n.Key, "in", n.Transaction.Lt, txHash)
+		if err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, inMsg)
+	}
+
+	return msgs, nil
 }

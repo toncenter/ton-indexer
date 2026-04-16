@@ -2,7 +2,6 @@ package models
 
 import (
 	"encoding/json"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/emulated"
 )
 
 type BlockId struct {
@@ -212,30 +211,30 @@ type TransactionDescr struct {
 } // @name TransactionDescr
 
 type Transaction struct {
-	Account                  AccountAddress         `json:"account"`
-	Hash                     HashType               `json:"hash"`
-	Lt                       int64                  `json:"lt,string"`
-	Now                      int32                  `json:"now"`
-	Workchain                int32                  `json:"-"`
-	Shard                    ShardId                `json:"-"`
-	Seqno                    int32                  `json:"-"`
-	McSeqno                  int32                  `json:"mc_block_seqno"`
-	TraceId                  *HashType              `json:"trace_id,omitempty"`
-	TraceExternalHash        *HashType              `json:"trace_external_hash,omitempty"`
-	PrevTransHash            HashType               `json:"prev_trans_hash"`
-	PrevTransLt              int64                  `json:"prev_trans_lt,string"`
-	OrigStatus               string                 `json:"orig_status"`
-	EndStatus                string                 `json:"end_status"`
-	TotalFees                int64                  `json:"total_fees,string"`
-	TotalFeesExtraCurrencies map[string]string      `json:"total_fees_extra_currencies"`
-	AccountStateHashBefore   HashType               `json:"-"`
-	AccountStateHashAfter    HashType               `json:"-"`
-	Descr                    TransactionDescr       `json:"description"`
-	BlockRef                 BlockId                `json:"block_ref"`
-	InMsg                    *Message               `json:"in_msg"`
-	OutMsgs                  []*Message             `json:"out_msgs"`
-	AccountStateBefore       *AccountState          `json:"account_state_before"`
-	AccountStateAfter        *AccountState          `json:"account_state_after"`
-	Emulated                 bool                   `json:"emulated"`
-	Finality                 emulated.FinalityState `json:"finality"`
+	Account                  AccountAddress    `json:"account"`
+	Hash                     HashType          `json:"hash"`
+	Lt                       int64             `json:"lt,string"`
+	Now                      int32             `json:"now"`
+	Workchain                int32             `json:"-"`
+	Shard                    ShardId           `json:"-"`
+	Seqno                    int32             `json:"-"`
+	McSeqno                  int32             `json:"mc_block_seqno"`
+	TraceId                  *HashType         `json:"trace_id,omitempty"`
+	TraceExternalHash        *HashType         `json:"trace_external_hash,omitempty"`
+	PrevTransHash            HashType          `json:"prev_trans_hash"`
+	PrevTransLt              int64             `json:"prev_trans_lt,string"`
+	OrigStatus               string            `json:"orig_status"`
+	EndStatus                string            `json:"end_status"`
+	TotalFees                int64             `json:"total_fees,string"`
+	TotalFeesExtraCurrencies map[string]string `json:"total_fees_extra_currencies"`
+	AccountStateHashBefore   HashType          `json:"-"`
+	AccountStateHashAfter    HashType          `json:"-"`
+	Descr                    TransactionDescr  `json:"description"`
+	BlockRef                 BlockId           `json:"block_ref"`
+	InMsg                    *Message          `json:"in_msg"`
+	OutMsgs                  []*Message        `json:"out_msgs"`
+	AccountStateBefore       *AccountState     `json:"account_state_before"`
+	AccountStateAfter        *AccountState     `json:"account_state_after"`
+	Emulated                 bool              `json:"emulated"`
+	Finality                 FinalityState     `json:"finality"`
 } // @name Transaction

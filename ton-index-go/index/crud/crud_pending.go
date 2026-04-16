@@ -164,11 +164,11 @@ func queryCompletedEmulatedTraces(emulatedContext *EmulatedTracesContext,
 	conn *pgxpool.Conn, settings models.RequestSettings, classified_only bool) ([]string, error) {
 	external_hash_map := make(map[string]string)
 	trace_external_hashes := make([]string, 0)
-	for _, trace := range emulatedContext.emulatedTraces {
+	for traceKey, trace := range emulatedContext.emulatedTraces {
 		if trace.ExternalHash == nil {
 			continue
 		}
-		external_hash_map[*trace.ExternalHash] = trace.TraceKey
+		external_hash_map[string(*trace.ExternalHash)] = traceKey
 		trace_external_hashes = append(trace_external_hashes, fmt.Sprintf("'%s'", *trace.ExternalHash))
 	}
 	if len(trace_external_hashes) > 0 {
@@ -213,7 +213,7 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 		msg_hash_to_tx := make(map[string]string)
 		for _, msgs := range emulatedContext.emulatedMessages {
 			for _, msg := range msgs {
-				msg_hash_to_tx[msg.MsgHash] = msg.TxHash
+				msg_hash_to_tx[string(msg.MsgHash)] = string(msg.TxHash)
 				msg_hashes = append(msg_hashes, fmt.Sprintf("'%s'", msg.MsgHash))
 			}
 		}
@@ -244,18 +244,14 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 	}
 	txs_map := map[models.HashType]int{}
 	{
-		rows := emulatedContext.GetTransactions()
-		for _, row := range rows {
-			if tx, err := parse.ScanTransaction(row); err == nil {
-				if external_hash, ok := emulatedContext.txHashTraceExternalHash[string(tx.Hash)]; ok {
-					hash := models.HashType(external_hash)
-					tx.TraceExternalHash = &hash
-				}
-				txs = append(txs, *tx)
-				txs_map[tx.Hash] = len(txs) - 1
-			} else {
-				return nil, models.IndexError{Code: 500, Message: err.Error()}
+		emulatedTxs := emulatedContext.GetTransactions()
+		for _, tx := range emulatedTxs {
+			if external_hash, ok := emulatedContext.txHashTraceExternalHash[string(tx.Hash)]; ok {
+				hash := models.HashType(external_hash)
+				tx.TraceExternalHash = &hash
 			}
+			txs = append(txs, *tx)
+			txs_map[tx.Hash] = len(txs) - 1
 		}
 	}
 
@@ -268,12 +264,8 @@ func QueryPendingTransactionsImpl(emulatedContext *EmulatedTracesContext, conn *
 	}
 	msgPtrs := []*models.Message{}
 	if len(hash_list) > 0 {
-		rows := emulatedContext.GetMessages(hash_list)
-		for _, row := range rows {
-			msg, err := parse.ScanMessageWithContent(row)
-			if err != nil {
-				return nil, models.IndexError{Code: 500, Message: err.Error()}
-			}
+		emulatedMsgs := emulatedContext.GetMessages(hash_list)
+		for _, msg := range emulatedMsgs {
 			msgPtrs = append(msgPtrs, msg)
 			if msg.Direction == "in" {
 				txs[txs_map[msg.TxHash]].InMsg = msg
@@ -312,16 +304,12 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 		return nil, nil, err
 	}
 	emulatedContext.RemoveTraces(completed_traces)
-	traceRows := emulatedContext.GetTraces()
-	for _, row := range traceRows {
-		if loc, err := parse.ScanTrace(row); err == nil {
-			loc.Transactions = make(map[models.HashType]*models.Transaction)
-			actions := make([]*models.Action, 0)
-			loc.Actions = &actions
-			traces = append(traces, *loc)
-		} else {
-			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
+	emulatedTraces := emulatedContext.GetTraces()
+	for _, loc := range emulatedTraces {
+		loc.Transactions = make(map[models.HashType]*models.Transaction)
+		actions := make([]*models.Action, 0)
+		loc.Actions = &actions
+		traces = append(traces, *loc)
 	}
 	events_map := map[models.HashType]int{}
 	var trace_id_list []models.HashType
@@ -367,12 +355,8 @@ func queryPendingTracesImpl(emulatedContext *EmulatedTracesContext, conn *pgxpoo
 	}
 	var addr_list []string
 	actions := make([]models.RawAction, 0)
-	for _, row := range emulatedContext.GetActions(request.SupportedActionTypes) {
-		if loc, err := parse.ScanRawAction(row); err == nil {
-			actions = append(actions, *loc)
-		} else {
-			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
+	for _, rawAction := range emulatedContext.GetActions(request.SupportedActionTypes) {
+		actions = append(actions, *rawAction)
 	}
 	for idx := range actions {
 		raw_action := &actions[idx]
@@ -399,13 +383,9 @@ func queryPendingActionsImpl(emulatedContext *EmulatedTracesContext, conn *pgxpo
 	}
 	emulatedContext.RemoveTraces(completed_traces)
 
-	var raw_actions []models.RawAction
-	for _, actions := range emulatedContext.GetActions(request.SupportedActionTypes) {
-		if action, err := parse.ScanRawAction(actions); err == nil {
-			raw_actions = append(raw_actions, *action)
-		} else {
-			return nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
+	raw_actions := make([]models.RawAction, 0)
+	for _, action := range emulatedContext.GetActions(request.SupportedActionTypes) {
+		raw_actions = append(raw_actions, *action)
 	}
 
 	return raw_actions, nil
