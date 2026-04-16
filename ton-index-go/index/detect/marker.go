@@ -12,10 +12,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 	"log"
 	"strings"
 	"unsafe"
+
+	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
 )
 
 // check if library is loaded and initialized
@@ -268,7 +269,8 @@ func markWithRefs(refs *messagesRefs) error {
 	for i, opcode := range opcodes {
 		if decodedValue := decodedOpcodes[i]; !strings.HasPrefix(decodedValue, "unknown") {
 			for _, ref := range refs.opcodeRefs[opcode] {
-				*ref = &decodedValue
+				v := decodedValue
+				*ref = &v
 			}
 		} else {
 			for _, ref := range refs.opcodeRefs[opcode] {
@@ -282,7 +284,7 @@ func markWithRefs(refs *messagesRefs) error {
 		decodedValue := decodedBodies[i]
 		if strings.HasPrefix(decodedValue, "unknown") {
 			for _, ref := range refs.bodyRefs[body] {
-				(*ref) = nil
+				*ref = nil
 			}
 			continue
 		}
@@ -316,7 +318,8 @@ func markWithRefs(refs *messagesRefs) error {
 				}
 			} else {
 				// for all other types, return raw JSON as is, to preserve fields order
-				*ref = &rawData
+				v := rawData
+				*ref = &v
 			}
 		}
 	}
