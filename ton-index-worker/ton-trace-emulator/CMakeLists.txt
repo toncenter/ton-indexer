@@ -6,7 +6,6 @@ add_library(ton-trace-emulator-core STATIC
     src/BlockEmulator.cpp
     src/TraceInterfaceDetector.cpp
     src/Measurement.cpp
-    src/Otel.cpp
 )
 target_include_directories(ton-trace-emulator-core
     PUBLIC ../external/ton
@@ -21,10 +20,9 @@ target_link_libraries(
     ton-trace-emulator-core
     PUBLIC
         tondb-scanner
+        ton-observability
         overlay
         emulator_static
-        opentelemetry-cpp::trace
-        opentelemetry-cpp::otlp_http_exporter
 )
 target_compile_features(ton-trace-emulator-core PRIVATE cxx_std_20)
 
@@ -36,7 +34,6 @@ add_executable(ton-trace-emulator
     src/TraceInserter.cpp
     src/RedisListener.cpp
     src/Measurement.h
-    src/Otel.h
 )
 target_include_directories(ton-trace-emulator
     PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/../external/redis-plus-plus/src

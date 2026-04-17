@@ -6,7 +6,28 @@
 #include "Statistics.h"
 #include "td/utils/filesystem.h"
 #include "common/delay.h"
+#include <chrono>
 
+namespace {
+
+const schema::Block* find_masterchain_block(const ParsedBlock& parsed_block) {
+    for (const auto& block : parsed_block.blocks_) {
+        if (block.workchain == -1) {
+            return &block;
+        }
+    }
+    return parsed_block.blocks_.empty() ? nullptr : &parsed_block.blocks_.front();
+}
+
+std::int64_t processing_lag_ms(std::int32_t gen_utime) {
+    const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::system_clock::now().time_since_epoch())
+                            .count();
+    const auto block_time_ms = static_cast<std::int64_t>(gen_utime) * 1000;
+    return std::max<std::int64_t>(0, now_ms - block_time_ms);
+}
+
+}  // namespace
 
 void IndexScheduler::start_up() {
     trace_assembler_ = td::actor::create_actor<TraceAssembler>("trace_assembler", working_dir_ + "/trace_assembler", max_queue_.mc_blocks_);
@@ -224,12 +245,16 @@ void IndexScheduler::schedule_seqno(std::uint32_t mc_seqno) {
 
     processing_seqnos_.insert(mc_seqno);
     timers_[mc_seqno] = td::Timer();
+    start_seqno_otel_trace(mc_seqno, is_in_sync_);
+    start_seqno_otel_stage(mc_seqno, "fetch_seqno");
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, is_in_sync = is_in_sync_](td::Result<schema::MasterchainBlockDataState> R) {
         if (R.is_error()) {
+            auto error = R.move_as_error();
             if (!is_in_sync) {
-                LOG(ERROR) << "Failed to fetch seqno " << mc_seqno << ": " << R.error();
+                LOG(ERROR) << "Failed to fetch seqno " << mc_seqno << ": " << error;
             }
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, is_in_sync);
+            td::actor::send_closure(SelfId, &IndexScheduler::handle_seqno_failure, mc_seqno,
+                                    std::string("index_postgres.fetch_error"), std::move(error), is_in_sync);
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_fetched, mc_seqno, R.move_as_ok());
@@ -248,11 +273,15 @@ void IndexScheduler::reschedule_seqno(std::uint32_t mc_seqno, bool silent) {
 
 void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, schema::MasterchainBlockDataState block_data_state) {
     LOG(DEBUG) << "Fetched seqno " << mc_seqno << ": blocks=" << block_data_state.shard_blocks_diff_.size() << " shards=" << block_data_state.shard_blocks_.size();
+    finish_seqno_otel_stage(mc_seqno);
+    start_seqno_otel_stage(mc_seqno, "parse_seqno");
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to parse seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, false);
+            auto error = R.move_as_error();
+            LOG(ERROR) << "Failed to parse seqno " << mc_seqno << ": " << error;
+            td::actor::send_closure(SelfId, &IndexScheduler::handle_seqno_failure, mc_seqno,
+                                    std::string("index_postgres.parse_error"), std::move(error), false);
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_parsed, mc_seqno, R.move_as_ok());
@@ -260,18 +289,29 @@ void IndexScheduler::seqno_fetched(std::uint32_t mc_seqno, schema::MasterchainBl
 
     td::actor::send_closure(db_scanner_, &DbScanner::get_cell_db_reader, 
         [SelfId = actor_id(this), parse_manager = parse_manager_, mc_seqno, block_data_state, P = std::move(P)](td::Result<std::shared_ptr<vm::CellDbReader>> cell_db_reader) mutable {
-            CHECK(cell_db_reader.is_ok());
+            if (cell_db_reader.is_error()) {
+                auto error = cell_db_reader.move_as_error();
+                LOG(ERROR) << "Failed to get cell DB reader for seqno " << mc_seqno << ": " << error;
+                td::actor::send_closure(SelfId, &IndexScheduler::handle_seqno_failure, mc_seqno,
+                                        std::string("index_postgres.cell_db_reader_error"), std::move(error), false);
+                return;
+            }
             td::actor::send_closure(parse_manager, &ParseManager::parse, mc_seqno, std::move(block_data_state), cell_db_reader.move_as_ok(), std::move(P));
     });
 }
 
 void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Parsed seqno " << mc_seqno;
+    apply_otel_processing_lag(mc_seqno, *parsed_block);
+    finish_seqno_otel_stage(mc_seqno);
+    start_seqno_otel_stage(mc_seqno, "assemble_traces");
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to asseble traces for seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, false);
+            auto error = R.move_as_error();
+            LOG(ERROR) << "Failed to asseble traces for seqno " << mc_seqno << ": " << error;
+            td::actor::send_closure(SelfId, &IndexScheduler::handle_seqno_failure, mc_seqno,
+                                    std::string("index_postgres.trace_assembly_error"), std::move(error), false);
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_traces_assembled, mc_seqno, R.move_as_ok());
@@ -281,11 +321,15 @@ void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_
 
 void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Assembled traces for seqno " << mc_seqno;
+    finish_seqno_otel_stage(mc_seqno);
+    start_seqno_otel_stage(mc_seqno, "detect_interfaces");
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to detect interfaces for seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, false);
+            auto error = R.move_as_error();
+            LOG(ERROR) << "Failed to detect interfaces for seqno " << mc_seqno << ": " << error;
+            td::actor::send_closure(SelfId, &IndexScheduler::handle_seqno_failure, mc_seqno,
+                                    std::string("index_postgres.interface_error"), std::move(error), false);
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_interfaces_processed, mc_seqno, R.move_as_ok());
@@ -295,11 +339,15 @@ void IndexScheduler::seqno_traces_assembled(std::uint32_t mc_seqno, ParsedBlockP
 
 void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Interfaces processed for seqno " << mc_seqno;
+    finish_seqno_otel_stage(mc_seqno);
+    start_seqno_otel_stage(mc_seqno, "detect_actions");
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<ParsedBlockPtr> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to detect actions for seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, false);
+            auto error = R.move_as_error();
+            LOG(ERROR) << "Failed to detect actions for seqno " << mc_seqno << ": " << error;
+            td::actor::send_closure(SelfId, &IndexScheduler::handle_seqno_failure, mc_seqno,
+                                    std::string("index_postgres.action_error"), std::move(error), false);
             return;
         }
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_actions_processed, mc_seqno, R.move_as_ok());
@@ -309,11 +357,23 @@ void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBl
 
 void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Actions processed for seqno " << mc_seqno;
+    finish_seqno_otel_stage(mc_seqno);
+    start_seqno_otel_stage(mc_seqno, "insert_seqno");
+    if (auto it = seqno_otel_traces_.find(mc_seqno); it != seqno_otel_traces_.end()) {
+        if (it->second.otel_root_span_) {
+            it->second.otel_root_span_->set_attribute("ton.indexer.insert.force", is_in_sync_);
+        }
+        if (it->second.active_otel_stage_span_) {
+            it->second.active_otel_stage_span_->set_attribute("ton.indexer.insert.force", is_in_sync_);
+        }
+    }
 
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, timer = td::Timer{}](td::Result<td::Unit> R) {
         if (R.is_error()) {
-            LOG(ERROR) << "Failed to insert seqno " << mc_seqno << ": " << R.move_as_error();
-            td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno, false);
+            auto error = R.move_as_error();
+            LOG(ERROR) << "Failed to insert seqno " << mc_seqno << ": " << error;
+            td::actor::send_closure(SelfId, &IndexScheduler::handle_seqno_failure, mc_seqno,
+                                    std::string("index_postgres.insert_error"), std::move(error), false);
             return;
         }
         g_statistics.record_time(INSERT_SEQNO, timer.elapsed() * 1e3);
@@ -348,7 +408,6 @@ void IndexScheduler::print_stats() {
 
 void IndexScheduler::seqno_queued_to_insert(std::uint32_t mc_seqno, QueueState status) {
     LOG(DEBUG) << "Seqno queued to insert " << mc_seqno;
-
     processing_seqnos_.erase(mc_seqno);
     got_insert_queue_state(status);
 }
@@ -362,12 +421,19 @@ void IndexScheduler::got_insert_queue_state(QueueState status) {
 }
 
 void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, td::Unit result) {
+    finish_seqno_otel_stage(mc_seqno);
+    finish_seqno_otel_trace(mc_seqno);
     indexed_seqnos_.insert(mc_seqno);
     if (mc_seqno > last_indexed_seqno_) {
         last_indexed_seqno_ = mc_seqno;
     }
     g_statistics.record_time(PROCESS_SEQNO, timers_[mc_seqno].elapsed() * 1e3);
     timers_.erase(mc_seqno);
+}
+
+void IndexScheduler::handle_seqno_failure(std::uint32_t mc_seqno, std::string error_type, td::Status error, bool silent) {
+    fail_seqno_otel_trace(mc_seqno, error_type, error, silent);
+    reschedule_seqno(mc_seqno, silent);
 }
 
 void IndexScheduler::schedule_next_seqnos() {
@@ -383,5 +449,124 @@ void IndexScheduler::schedule_next_seqnos() {
        && cur_queue_state_.blocks_ == 0) {
         // stop();
         return;
+    }
+}
+
+void IndexScheduler::start_seqno_otel_trace(std::uint32_t mc_seqno, bool is_in_sync) {
+    if (!OtelSpan::tracing_enabled()) {
+        return;
+    }
+
+    SeqnoOtelTraceState otel_trace_state;
+    otel_trace_state.attempt_ = ++seqno_attempts_[mc_seqno];
+    otel_trace_state.is_in_sync_ = is_in_sync;
+    otel_trace_state.otel_root_span_ = std::make_unique<OtelSpan>(OtelSpan::Options{
+        .service_name = "ton-index-postgres",
+        .span_name = "ton.index_postgres.process_seqno",
+        .pipeline = "seqno_to_postgres",
+        .service_stage = "process_seqno",
+        .kind = opentelemetry::trace::SpanKind::kInternal,
+        .parent = std::nullopt,
+        .start_system_time_ns = OtelSpan::system_now_ns(),
+        .start_steady_time_ns = OtelSpan::steady_now_ns(),
+    });
+    if (otel_trace_state.otel_root_span_) {
+        otel_trace_state.otel_root_span_->set_attribute("ton.mc_seqno", static_cast<std::int64_t>(mc_seqno));
+        otel_trace_state.otel_root_span_->set_attribute("ton.indexer.attempt", static_cast<std::int64_t>(otel_trace_state.attempt_));
+        otel_trace_state.otel_root_span_->set_attribute("ton.indexer.is_in_sync", is_in_sync);
+        otel_trace_state.otel_root_span_->set_attribute("ton.scheduler.last_known_mc_seqno", static_cast<std::int64_t>(last_known_seqno_));
+        otel_trace_state.otel_root_span_->set_attribute("ton.scheduler.last_indexed_mc_seqno", static_cast<std::int64_t>(last_indexed_seqno_));
+        otel_trace_state.otel_root_span_->set_attribute("ton.scheduler.seqno_lag", static_cast<std::int64_t>(last_known_seqno_) - static_cast<std::int64_t>(mc_seqno));
+        otel_trace_state.otel_root_span_->set_attribute("ton.scheduler.index_backlog", static_cast<std::int64_t>(last_known_seqno_) - static_cast<std::int64_t>(last_indexed_seqno_));
+        otel_trace_state.otel_root_span_->set_attribute("ton.scheduler.avg_seqnos_per_sec_x1000", static_cast<std::int64_t>(avg_tps_ * 1000.0));
+        otel_trace_state.otel_root_span_->set_attribute("ton.indexer.processing_seqnos", static_cast<std::int64_t>(processing_seqnos_.size()));
+        otel_trace_state.otel_root_span_->set_attribute("ton.indexer.queue.pending_seqnos", static_cast<std::int64_t>(queued_seqnos_.size()));
+    }
+    seqno_otel_traces_[mc_seqno] = std::move(otel_trace_state);
+}
+
+void IndexScheduler::start_seqno_otel_stage(std::uint32_t mc_seqno, const std::string& stage_name) {
+    auto it = seqno_otel_traces_.find(mc_seqno);
+    if (it == seqno_otel_traces_.end() || !it->second.otel_root_span_) {
+        return;
+    }
+
+    if (it->second.active_otel_stage_span_) {
+        it->second.active_otel_stage_span_->end();
+        it->second.active_otel_stage_span_.reset();
+    }
+
+    auto otel_parent_context = it->second.otel_root_span_->context();
+    it->second.active_otel_stage_span_ = std::make_unique<OtelSpan>(OtelSpan::Options{
+        .service_name = "ton-index-postgres",
+        .span_name = std::string("ton.index_postgres.") + stage_name,
+        .pipeline = "seqno_to_postgres",
+        .service_stage = stage_name,
+        .kind = opentelemetry::trace::SpanKind::kInternal,
+        .parent = otel_parent_context,
+        .start_system_time_ns = OtelSpan::system_now_ns(),
+        .start_steady_time_ns = OtelSpan::steady_now_ns(),
+    });
+    if (it->second.active_otel_stage_span_) {
+        it->second.active_otel_stage_span_->set_attribute("ton.mc_seqno", static_cast<std::int64_t>(mc_seqno));
+        it->second.active_otel_stage_span_->set_attribute("ton.indexer.attempt", static_cast<std::int64_t>(it->second.attempt_));
+        it->second.active_otel_stage_span_->set_attribute("ton.indexer.is_in_sync", it->second.is_in_sync_);
+    }
+}
+
+void IndexScheduler::finish_seqno_otel_stage(std::uint32_t mc_seqno) {
+    auto it = seqno_otel_traces_.find(mc_seqno);
+    if (it == seqno_otel_traces_.end() || !it->second.active_otel_stage_span_) {
+        return;
+    }
+    it->second.active_otel_stage_span_->end();
+    it->second.active_otel_stage_span_.reset();
+}
+
+void IndexScheduler::finish_seqno_otel_trace(std::uint32_t mc_seqno) {
+    auto it = seqno_otel_traces_.find(mc_seqno);
+    if (it == seqno_otel_traces_.end()) {
+        seqno_attempts_.erase(mc_seqno);
+        return;
+    }
+
+    finish_seqno_otel_stage(mc_seqno);
+    if (it->second.otel_root_span_) {
+        it->second.otel_root_span_->set_attribute("ton.indexer.outcome", "completed");
+        it->second.otel_root_span_->end();
+    }
+    seqno_otel_traces_.erase(it);
+    seqno_attempts_.erase(mc_seqno);
+}
+
+void IndexScheduler::fail_seqno_otel_trace(std::uint32_t mc_seqno, const std::string& error_type, const td::Status& error, bool silent) {
+    auto it = seqno_otel_traces_.find(mc_seqno);
+    if (it == seqno_otel_traces_.end()) {
+        return;
+    }
+
+    const auto error_message = error.to_string();
+    if (it->second.active_otel_stage_span_) {
+        it->second.active_otel_stage_span_->mark_error(error_type, error_message);
+        it->second.active_otel_stage_span_->end();
+        it->second.active_otel_stage_span_.reset();
+    }
+    if (it->second.otel_root_span_) {
+        it->second.otel_root_span_->set_attribute("ton.indexer.outcome", "rescheduled");
+        it->second.otel_root_span_->set_attribute("ton.indexer.reschedule_silent", silent);
+        it->second.otel_root_span_->mark_error(error_type, error_message);
+        it->second.otel_root_span_->end();
+    }
+    seqno_otel_traces_.erase(it);
+}
+
+void IndexScheduler::apply_otel_processing_lag(std::uint32_t mc_seqno, const ParsedBlock& parsed_block) {
+    auto it = seqno_otel_traces_.find(mc_seqno);
+    if (it == seqno_otel_traces_.end() || !it->second.otel_root_span_) {
+        return;
+    }
+
+    if (const auto* mc_block = find_masterchain_block(parsed_block); mc_block != nullptr) {
+        it->second.otel_root_span_->set_attribute("ton.block.processing_lag_ms", processing_lag_ms(mc_block->gen_utime));
     }
 }

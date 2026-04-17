@@ -7,7 +7,12 @@ add_executable(ton-index-postgres
 )
 
 target_compile_features(ton-index-postgres PRIVATE cxx_std_20)
-target_link_libraries(ton-index-postgres tondb-scanner pqxx)
+target_link_libraries(
+    ton-index-postgres
+    tondb-scanner
+    ton-observability
+    pqxx
+)
 target_link_options(ton-index-postgres PUBLIC -rdynamic)
 
 install(TARGETS ton-index-postgres RUNTIME DESTINATION bin)
