@@ -1,5 +1,7 @@
 #pragma once
+#include <memory>
 #include <queue>
+#include <unordered_map>
 #include "td/actor/actor.h"
 
 #include "IndexData.h"
@@ -9,6 +11,7 @@
 #include "InsertManager.h"
 #include "DataParser.h"
 #include "smc-interfaces/InterfacesDetector.h"
+#include "Otel.h"
 
 using Detector = InterfacesDetector<JettonWalletDetectorR, JettonMasterDetectorR,
                                       NftItemDetectorR, NftCollectionDetectorR,
@@ -49,6 +52,14 @@ private:
   td::Timestamp next_statistics_flush_;
 
   std::unordered_map<ton::BlockSeqno, td::Timer> timers_;
+  struct SeqnoOtelTraceState {
+    std::uint32_t attempt_{0};
+    bool is_in_sync_{false};
+    std::unique_ptr<OtelSpan> otel_root_span_;
+    std::unique_ptr<OtelSpan> active_otel_stage_span_;
+  };
+  std::unordered_map<std::uint32_t, SeqnoOtelTraceState> seqno_otel_traces_;
+  std::unordered_map<std::uint32_t, std::uint32_t> seqno_attempts_;
 public:
   IndexScheduler(td::actor::ActorId<DbScanner> db_scanner, td::actor::ActorId<InsertManagerInterface> insert_manager,
       td::actor::ActorId<ParseManager> parse_manager, std::string working_dir, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0, bool force_index = false,
@@ -73,6 +84,7 @@ private:
   void seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_queued_to_insert(std::uint32_t mc_seqno, QueueState status);
   void seqno_inserted(std::uint32_t mc_seqno, td::Unit result);
+  void handle_seqno_failure(std::uint32_t mc_seqno, std::string error_type, td::Status error, bool silent);
 
   void process_existing_seqnos(td::Result<std::vector<std::uint32_t>> R);
   void handle_missing_ta_state(ton::BlockSeqno next_seqno);
@@ -82,4 +94,10 @@ private:
   void got_insert_queue_state(QueueState status);
 
   void print_stats();
+  void start_seqno_otel_trace(std::uint32_t mc_seqno, bool is_in_sync);
+  void start_seqno_otel_stage(std::uint32_t mc_seqno, const std::string& stage_name);
+  void finish_seqno_otel_stage(std::uint32_t mc_seqno);
+  void finish_seqno_otel_trace(std::uint32_t mc_seqno);
+  void fail_seqno_otel_trace(std::uint32_t mc_seqno, const std::string& error_type, const td::Status& error, bool silent);
+  void apply_otel_processing_lag(std::uint32_t mc_seqno, const ParsedBlock& parsed_block);
 };
