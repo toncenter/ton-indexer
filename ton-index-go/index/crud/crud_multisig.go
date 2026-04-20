@@ -265,14 +265,7 @@ func (db *DbClient) QueryMultisigOrders(
 		}
 	}
 
-	// Collect addresses for address book
-	addr_set := make(map[string]bool)
-	for _, order := range orders {
-		addr_set[string(order.Address)] = true
-		for _, signer := range order.Signers {
-			addr_set[string(signer)] = true
-		}
-	}
+	addr_set := collectMultisigOrderAddresses(orders)
 
 	book := models.AddressBook{}
 	if len(addr_set) > 0 && !settings.NoAddressBook {
@@ -287,4 +280,64 @@ func (db *DbClient) QueryMultisigOrders(
 	}
 
 	return orders, book, nil
+}
+
+func collectMultisigOrderAddresses(orders []models.MultisigOrder) map[string]bool {
+	addrSet := make(map[string]bool)
+	addAddr := func(a *models.AccountAddress) {
+		if a != nil && len(*a) > 0 {
+			addrSet[string(*a)] = true
+		}
+	}
+	for _, order := range orders {
+		addrSet[string(order.Address)] = true
+		for _, signer := range order.Signers {
+			addrSet[string(signer)] = true
+		}
+		addAddr(&order.MultisigAddress)
+		// parse actions bodies
+		for _, action := range order.Actions {
+			addAddr(action.Destination)
+			if action.ParsedBody == nil {
+				continue
+			}
+			body := *action.ParsedBody
+			switch b := body.(type) {
+			case *models.JettonTransferBody:
+				addAddr(b.Destination)
+				addAddr(b.Response)
+				if b.StonfiSwapBody != nil {
+					if jw, ok := b.StonfiSwapBody["jetton_wallet"].(*models.AccountAddress); ok {
+						addAddr(jw)
+					}
+					if ua, ok := b.StonfiSwapBody["user_address"].(*models.AccountAddress); ok {
+						addAddr(ua)
+					}
+				}
+			case *models.NFTTransferBody:
+				addAddr(b.NewOwner)
+				addAddr(b.ResponseDestination)
+			case *models.JettonBurnBody:
+				addAddr(b.ResponseDestination)
+			case *models.JettonMinterBody:
+				addAddr(b.ToAddress)
+			case *models.JettonChangeAdminBody:
+				addAddr(b.NewAdminAddr)
+			case *models.JettonCallToBody:
+				addAddr(b.ToAddress)
+			case *models.SingleNominatorChangeValidatorBody:
+				addAddr(b.ValidatorAddress)
+			case *models.VestingInternalTransferBody:
+				addAddr(b.Destination)
+			case *models.MultisigUpdateParamsBody:
+				for _, a := range b.NewSigners {
+					addAddr(a)
+				}
+				for _, a := range b.NewProposers {
+					addAddr(a)
+				}
+			}
+		}
+	}
+	return addrSet
 }
