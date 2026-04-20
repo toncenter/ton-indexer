@@ -57,7 +57,7 @@ private:
   void seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_queued_to_insert(std::uint32_t mc_seqno, QueueState status);
-  void seqno_inserted(std::uint32_t mc_seqno, td::Unit result);
+  void seqno_inserted(std::uint32_t mc_seqno, InsertManagerInterface::InsertResult result);
 
   void got_existing_seqnos(td::Result<std::vector<std::uint32_t>> R);
   void got_last_known_seqno(std::uint32_t last_known_seqno);

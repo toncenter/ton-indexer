@@ -367,7 +367,8 @@ void InsertManagerClickhouse::start_up() {
     alarm_timestamp() = td::Timestamp::in(1.0);
 }
 
-void InsertManagerClickhouse::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) {
+void InsertManagerClickhouse::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
+                                                  td::Promise<InsertManagerInterface::InsertResult> promise) {
     td::actor::create_actor<InsertBatchClickhouse>("insert_batch_clickhouse", credential_.get_clickhouse_options(), std::move(insert_tasks), std::move(promise)).release();
 }
 
@@ -423,10 +424,11 @@ void InsertBatchClickhouse::start_up() {
         insert_blocks(client);
         
         // all done
+        InsertManagerInterface::InsertResult result;
         for(auto& task_ : insert_tasks_) {
-            task_.promise_.set_result(td::Unit());
+            task_.promise_.set_result(result);
         }
-        promise_.set_result(td::Unit());
+        promise_.set_result(result);
     } catch (const std::exception &e) {
         // something failed
         for(auto& task_ : insert_tasks_) {

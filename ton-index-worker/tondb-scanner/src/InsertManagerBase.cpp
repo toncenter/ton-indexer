@@ -34,7 +34,8 @@ void InsertManagerBase::print_info() {
 }
 
 
-void InsertManagerBase::insert(std::uint32_t mc_seqno, ParsedBlockPtr block_ds, bool force, td::Promise<QueueState> queued_promise, td::Promise<td::Unit> inserted_promise) {
+void InsertManagerBase::insert(std::uint32_t mc_seqno, ParsedBlockPtr block_ds, bool force, td::Promise<QueueState> queued_promise,
+                               td::Promise<InsertManagerInterface::InsertResult> inserted_promise) {
     auto task = InsertTaskStruct{mc_seqno, std::move(block_ds), std::move(inserted_promise)};
     auto status_delta = task.get_queue_state();
     insert_queue_.push(std::move(task));
@@ -74,7 +75,7 @@ void InsertManagerBase::schedule_next_insert_batches(bool full_batch = false)
             queue_state_ -= loc_state;
             batch.push_back(std::move(task));
         }
-        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<td::Unit> R){
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<InsertManagerInterface::InsertResult> R){
             if(R.is_error()) {
                 LOG(ERROR) << "Failed to insert batch: " << R.move_as_error();
             }

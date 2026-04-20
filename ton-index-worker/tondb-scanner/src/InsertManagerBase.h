@@ -7,7 +7,7 @@
 struct InsertTaskStruct{
     std::uint32_t mc_seqno_;
     ParsedBlockPtr parsed_block_;
-    td::Promise<td::Unit> promise_;
+    td::Promise<InsertManagerInterface::InsertResult> promise_;
 
     QueueState get_queue_state();
 };
@@ -24,10 +24,12 @@ public:
 
     void start_up() override;
     void alarm() override;
-    void insert(std::uint32_t mc_seqno, ParsedBlockPtr block_ds, bool force, td::Promise<QueueState> queued_promise, td::Promise<td::Unit> inserted_promise) override;
+    void insert(std::uint32_t mc_seqno, ParsedBlockPtr block_ds, bool force, td::Promise<QueueState> queued_promise,
+                td::Promise<InsertManagerInterface::InsertResult> inserted_promise) override;
     void get_insert_queue_state(td::Promise<QueueState> promise) override;
 
-    virtual void create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) = 0;
+    virtual void create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
+                                     td::Promise<InsertManagerInterface::InsertResult> promise) = 0;
 private:
     std::queue<InsertTaskStruct> insert_queue_;
     QueueState queue_state_{0, 0, 0, 0};

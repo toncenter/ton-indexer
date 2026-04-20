@@ -9,7 +9,8 @@
 
 class InsertBatchPostgres: public td::actor::Actor {
 public:
-  InsertBatchPostgres(InsertManagerPostgres::Credential credential, std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise, std::int32_t max_data_depth = 12) :
+  InsertBatchPostgres(InsertManagerPostgres::Credential credential, std::vector<InsertTaskStruct> insert_tasks,
+                      td::Promise<InsertManagerInterface::InsertResult> promise, std::int32_t max_data_depth = 12) :
     credential_(std::move(credential)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth) {
       // sorting in descending seqno order for easier processing of interfaces
       std::sort(insert_tasks_.begin(), insert_tasks_.end(), [](const auto& a, const auto& b) {
@@ -23,9 +24,10 @@ private:
   InsertManagerPostgres::Credential credential_;
   std::string connection_string_;
   std::vector<InsertTaskStruct> insert_tasks_;
-  td::Promise<td::Unit> promise_;
+  td::Promise<InsertManagerInterface::InsertResult> promise_;
   std::int32_t max_data_depth_;
   bool with_copy_{true};
+  bool is_leader_{false};
 
   std::string stringify(schema::ComputeSkipReason compute_skip_reason);
   std::string stringify(schema::AccStatusChange acc_status_change);
@@ -56,6 +58,7 @@ private:
   void insert_traces(pqxx::work &txn, bool with_copy);
 
   bool try_acquire_leader_lock();
+  InsertManagerInterface::InsertResult get_insert_result() const;
   void do_insert();
   void ensure_inserted();
 };
@@ -194,22 +197,30 @@ bool InsertBatchPostgres::try_acquire_leader_lock() {
   SELECT (SELECT COUNT(*) FROM grab) AS won_the_lock;
   )";
   try {
-    static std::atomic_bool is_leader = false;
+    static std::atomic_bool worker_is_leader = false;
     td::Timer timer;
     pqxx::connection c(connection_string_);
     pqxx::work txn(c);
     auto [won] = txn.exec(query, pqxx::params{get_worker_id()}).one_row().as<int>();
     txn.commit();
 
-    if (won != is_leader) {
+    is_leader_ = won == 1;
+    if (is_leader_ != worker_is_leader.load()) {
       LOG(WARNING) << "Worker " << get_worker_id() << (won ? " ACQUIRED" : " LOST") << " leader role.";
     }
-    is_leader = won == 1;
-    return is_leader;
+    worker_is_leader = is_leader_;
+    return is_leader_;
   } catch (const std::exception &e) {
     LOG(ERROR) << "Error trying to acquire SQL leader lock: " << e.what();
+    is_leader_ = false;
     return false;
   }
+}
+
+InsertManagerInterface::InsertResult InsertBatchPostgres::get_insert_result() const {
+  InsertManagerInterface::InsertResult result;
+  result.is_leader = is_leader_;
+  return result;
 }
 
 void InsertBatchPostgres::alarm() {
@@ -240,9 +251,9 @@ void InsertBatchPostgres::ensure_inserted() {
       alarm_timestamp() = td::Timestamp::in(1.0);
     } else {
       for(auto& task : insert_tasks_) {
-        task.promise_.set_value(td::Unit());
+        task.promise_.set_result(get_insert_result());
       }
-      promise_.set_value(td::Unit());
+      promise_.set_result(get_insert_result());
     }
   } catch (const std::exception &e) {
     LOG(ERROR) << "Error ensuring that leader inserted blocks batch: " << e.what();
@@ -293,9 +304,9 @@ void InsertBatchPostgres::do_insert() {
     commit_timer.pause();
 
     for(auto& task : insert_tasks_) {
-      task.promise_.set_value(td::Unit());
+      task.promise_.set_result(get_insert_result());
     }
-    promise_.set_value(td::Unit());
+    promise_.set_result(get_insert_result());
 
     g_statistics.record_time(INSERT_BATCH_CONNECT, connect_timer.elapsed() * 1e3);
     g_statistics.record_time(INSERT_BATCH_EXEC_DATA, data_timer.elapsed() * 1e3);
@@ -1930,7 +1941,8 @@ void InsertManagerPostgres::set_max_data_depth(std::int32_t value) {
   max_data_depth_ = value;
 }
 
-void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) {
+void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
+                                                td::Promise<InsertManagerInterface::InsertResult> promise) {
   td::actor::create_actor<InsertBatchPostgres>("insert_batch_postgres", credential_, std::move(insert_tasks), std::move(promise), max_data_depth_).release();
 }
 

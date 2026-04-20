@@ -83,7 +83,9 @@ private:
   void seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block);
   void seqno_queued_to_insert(std::uint32_t mc_seqno, QueueState status);
-  void seqno_inserted(std::uint32_t mc_seqno, td::Unit result);
+  void set_seqno_otel_attribute(std::uint32_t mc_seqno, const std::string& key,
+                                const OtelStageSpan::AttributeValue& value, bool include_stage = true);
+  void seqno_inserted(std::uint32_t mc_seqno);
   void handle_seqno_failure(std::uint32_t mc_seqno, std::string error_type, td::Status error, bool silent);
 
   void process_existing_seqnos(td::Result<std::vector<std::uint32_t>> R);
