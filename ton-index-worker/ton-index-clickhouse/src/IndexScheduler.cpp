@@ -157,7 +157,7 @@ void IndexScheduler::seqno_parsed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_
 void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Interfaces processed for seqno " << mc_seqno;
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<td::Unit> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<InsertManagerInterface::InsertResult> R) {
         if (R.is_error()) {
             LOG(ERROR) << "Failed to insert seqno " << mc_seqno << ": " << R.move_as_error();
             td::actor::send_closure(SelfId, &IndexScheduler::reschedule_seqno, mc_seqno);
@@ -209,7 +209,7 @@ void IndexScheduler::got_insert_queue_state(QueueState status) {
     }
 }
 
-void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, td::Unit result) {
+void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, InsertManagerInterface::InsertResult /*result*/) {
     existing_seqnos_.insert(mc_seqno);
     if (mc_seqno > last_indexed_seqno_) {
         last_indexed_seqno_ = mc_seqno;

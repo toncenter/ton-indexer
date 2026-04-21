@@ -26,14 +26,16 @@ public:
 
   void start_up() override;
 
-  void create_insert_actor(std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) override;
+  void create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
+                           td::Promise<InsertManagerInterface::InsertResult> promise) override;
   void get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0) override;
 };
 
 
 class InsertBatchClickhouse: public td::actor::Actor {
 public:
-  InsertBatchClickhouse(clickhouse::ClientOptions client_options, std::vector<InsertTaskStruct> insert_tasks, td::Promise<td::Unit> promise) 
+  InsertBatchClickhouse(clickhouse::ClientOptions client_options, std::vector<InsertTaskStruct> insert_tasks,
+                        td::Promise<InsertManagerInterface::InsertResult> promise)
     : client_options_(std::move(client_options)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)) {}
 
   void start_up() override;
@@ -41,7 +43,7 @@ private:
   InsertManagerClickhouse::Credential credential_;
   clickhouse::ClientOptions client_options_;
   std::vector<InsertTaskStruct> insert_tasks_;
-  td::Promise<td::Unit> promise_;
+  td::Promise<InsertManagerInterface::InsertResult> promise_;
 
   struct MsgBody {
     td::Bits256 hash;

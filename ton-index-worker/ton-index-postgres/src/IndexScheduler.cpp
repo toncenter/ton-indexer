@@ -359,16 +359,9 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
     LOG(DEBUG) << "Actions processed for seqno " << mc_seqno;
     finish_seqno_otel_stage(mc_seqno);
     start_seqno_otel_stage(mc_seqno, "insert_seqno");
-    if (auto it = seqno_otel_traces_.find(mc_seqno); it != seqno_otel_traces_.end()) {
-        if (it->second.otel_root_span_) {
-            it->second.otel_root_span_->set_attribute("ton.indexer.insert.force", is_in_sync_);
-        }
-        if (it->second.active_otel_stage_span_) {
-            it->second.active_otel_stage_span_->set_attribute("ton.indexer.insert.force", is_in_sync_);
-        }
-    }
+    set_seqno_otel_attribute(mc_seqno, "ton.indexer.insert.force", is_in_sync_);
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, timer = td::Timer{}](td::Result<td::Unit> R) {
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno, timer = td::Timer{}](td::Result<InsertManagerInterface::InsertResult> R) {
         if (R.is_error()) {
             auto error = R.move_as_error();
             LOG(ERROR) << "Failed to insert seqno " << mc_seqno << ": " << error;
@@ -376,8 +369,14 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
                                     std::string("index_postgres.insert_error"), std::move(error), false);
             return;
         }
+        auto result = R.move_as_ok();
+        if (result.is_leader.has_value()) {
+            td::actor::send_closure(SelfId, &IndexScheduler::set_seqno_otel_attribute, mc_seqno,
+                                    std::string("ton.indexer.insert.is_leader"),
+                                    OtelStageSpan::AttributeValue(*result.is_leader), true);
+        }
         g_statistics.record_time(INSERT_SEQNO, timer.elapsed() * 1e3);
-        td::actor::send_closure(SelfId, &IndexScheduler::seqno_inserted, mc_seqno, R.move_as_ok());
+        td::actor::send_closure(SelfId, &IndexScheduler::seqno_inserted, mc_seqno);
     });
     auto Q = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<QueueState> R){
         R.ensure();
@@ -420,7 +419,23 @@ void IndexScheduler::got_insert_queue_state(QueueState status) {
     }
 }
 
-void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno, td::Unit result) {
+void IndexScheduler::set_seqno_otel_attribute(std::uint32_t mc_seqno, const std::string& key,
+                                              const OtelStageSpan::AttributeValue& value, bool include_stage) {
+    if (auto it = seqno_otel_traces_.find(mc_seqno); it != seqno_otel_traces_.end()) {
+        if (it->second.otel_root_span_) {
+            std::visit([&](const auto& typed_value) {
+                it->second.otel_root_span_->set_attribute(key, typed_value);
+            }, value);
+        }
+        if (include_stage && it->second.active_otel_stage_span_) {
+            std::visit([&](const auto& typed_value) {
+                it->second.active_otel_stage_span_->set_attribute(key, typed_value);
+            }, value);
+        }
+    }
+}
+
+void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno) {
     finish_seqno_otel_stage(mc_seqno);
     finish_seqno_otel_trace(mc_seqno);
     indexed_seqnos_.insert(mc_seqno);
@@ -561,12 +576,7 @@ void IndexScheduler::fail_seqno_otel_trace(std::uint32_t mc_seqno, const std::st
 }
 
 void IndexScheduler::apply_otel_processing_lag(std::uint32_t mc_seqno, const ParsedBlock& parsed_block) {
-    auto it = seqno_otel_traces_.find(mc_seqno);
-    if (it == seqno_otel_traces_.end() || !it->second.otel_root_span_) {
-        return;
-    }
-
     if (const auto* mc_block = find_masterchain_block(parsed_block); mc_block != nullptr) {
-        it->second.otel_root_span_->set_attribute("ton.block.processing_lag_ms", processing_lag_ms(mc_block->gen_utime));
+        set_seqno_otel_attribute(mc_seqno, "ton.block.processing_lag_ms", processing_lag_ms(mc_block->gen_utime), false);
     }
 }
