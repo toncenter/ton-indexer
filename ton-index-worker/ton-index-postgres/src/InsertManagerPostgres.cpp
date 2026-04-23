@@ -1,4 +1,3 @@
-#include <mutex>
 #include "td/utils/JsonBuilder.h"
 #include "InsertManagerPostgres.h"
 #include "convert-utils.h"
@@ -148,11 +147,6 @@ struct std::hash<std::pair<td::Bits256, td::Bits256>>
     return seed;
   }
 };
-
-// This set is used as a synchronization mechanism to prevent multiple queries for the same message
-// Otherwise Posgres will throw an error deadlock_detected
-std::unordered_set<td::Bits256> msg_bodies_in_progress;
-std::mutex messages_in_progress_mutex;
 
 //
 // InsertBatchPostgres
@@ -730,39 +724,31 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
     );
     stream.insert_row(std::move(tuple));
   };
-  
-  // we lock the message bodies to prevent multiple parallel queries for the same message
-  // otherwise it causes deadlocks
-  std::vector<std::tuple<td::Bits256, std::string>> msg_bodies;
-  SCOPE_EXIT {
-    std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
-    for (const auto& [body_hash, body] : msg_bodies) {
-      msg_bodies_in_progress.erase(body_hash);
-    }
+
+  struct MsgBody {
+    td::Bits256 hash;
+    std::string body;
   };
-  auto lock_msg_body = [&](const td::Bits256& body_hash, const std::string& body_boc) {
-    auto [_, inserted] = msg_bodies_in_progress.insert(body_hash);
-    if (inserted) {
-      msg_bodies.emplace_back(body_hash, body_boc);
+  std::unordered_map<td::Bits256, MsgBody> msg_bodies;
+  auto add_msg_body = [&](const td::Bits256& body_hash, const std::string& body_boc) {
+    if (msg_bodies.find(body_hash) == msg_bodies.end()) {
+      msg_bodies.emplace(body_hash, MsgBody{body_hash, body_boc});
     }
   };
 
-  {
-    std::lock_guard<std::mutex> guard(messages_in_progress_mutex);
-    for (const auto& task : insert_tasks_) {
-      for (const auto &blk : task.parsed_block_->blocks_) {
-        for (const auto& transaction : blk.transactions) {
-          if (transaction.in_msg) {
-            lock_msg_body(transaction.in_msg->body->get_hash().bits(), transaction.in_msg->body_boc);
-            if (transaction.in_msg->init_state_boc) {
-              lock_msg_body(transaction.in_msg->init_state->get_hash().bits(), transaction.in_msg->init_state_boc.value());
-            }
+  for (const auto& task : insert_tasks_) {
+    for (const auto &blk : task.parsed_block_->blocks_) {
+      for (const auto& transaction : blk.transactions) {
+        if (transaction.in_msg) {
+          add_msg_body(transaction.in_msg->body->get_hash().bits(), transaction.in_msg->body_boc);
+          if (transaction.in_msg->init_state_boc) {
+            add_msg_body(transaction.in_msg->init_state->get_hash().bits(), transaction.in_msg->init_state_boc.value());
           }
-          for (const auto& msg : transaction.out_msgs) {
-            lock_msg_body(msg.body->get_hash().bits(), msg.body_boc);
-            if (msg.init_state_boc) {
-              lock_msg_body(msg.init_state->get_hash().bits(), msg.init_state_boc.value());
-            }
+        }
+        for (const auto& msg : transaction.out_msgs) {
+          add_msg_body(msg.body->get_hash().bits(), msg.body_boc);
+          if (msg.init_state_boc) {
+            add_msg_body(msg.init_state->get_hash().bits(), msg.init_state_boc.value());
           }
         }
       }
@@ -783,11 +769,16 @@ void InsertBatchPostgres::insert_messages(pqxx::work &txn, bool with_copy) {
   }
   stream.finish();
 
+  auto ordered_msg_bodies = get_ordered_map_values(msg_bodies, [](const auto& key, const auto&) {
+    return td::base64_encode(key.as_slice());
+  });
+
   PopulateTableStream bodies_stream(txn, "message_contents", {"hash", "body"}, 1000, false);
   bodies_stream.setConflictDoNothing();
 
-  for (const auto& [body_hash, body] : msg_bodies) {
-    auto tuple = std::make_tuple(body_hash, body);
+  for (const auto& [_, msg_body_ptr] : ordered_msg_bodies) {
+    const auto& msg_body = *msg_body_ptr;
+    auto tuple = std::make_tuple(msg_body.hash, msg_body.body);
     bodies_stream.insert_row(std::move(tuple));
   }
   bodies_stream.finish();
