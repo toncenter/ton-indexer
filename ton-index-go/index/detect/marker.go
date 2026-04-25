@@ -108,7 +108,8 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string) ([]string, []st
 		results := unsafe.Slice(response.opcode_results, response.opcode_count)
 		for _, res := range results {
 			if res != nil {
-				opcodeResults = append(opcodeResults, C.GoString(res))
+				v := C.GoString(res)
+				opcodeResults = append(opcodeResults, v)
 			} else {
 				opcodeResults = append(opcodeResults, "")
 			}
@@ -121,7 +122,8 @@ func MarkerRequest(opcodesList []uint32, bocBase64List []string) ([]string, []st
 		results := unsafe.Slice(response.boc_results, response.boc_count)
 		for _, res := range results {
 			if res != nil {
-				bocResults = append(bocResults, C.GoString(res))
+				v := C.GoString(res)
+				bocResults = append(bocResults, v)
 			} else {
 				bocResults = append(bocResults, "")
 			}
