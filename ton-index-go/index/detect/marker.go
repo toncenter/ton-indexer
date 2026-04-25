@@ -292,16 +292,17 @@ func markWithRefs(refs *messagesRefs) error {
 		}
 		for _, ref := range refs.bodyRefs[body] {
 			// unmarshal as JSON RawMessage to preserve order
+			val := decodedValue
 			var rawData json.RawMessage
-			if err := json.Unmarshal([]byte(decodedValue), &rawData); err != nil {
-				log.Printf("Error: failed to decode message body %s, got json %v", body, decodedValue)
+			if err := json.Unmarshal([]byte(val), &rawData); err != nil {
+				log.Printf("Error: failed to decode message body %s, got json %v", body, val)
 				continue
 			}
 
 			// unmarshal as map only to get message type and maybe process text_comment
 			var tmpResult map[string]interface{}
-			if err := json.Unmarshal([]byte(decodedValue), &tmpResult); err != nil {
-				log.Printf("Error: failed to unmarshal message body to map %s, got json %v", body, decodedValue)
+			if err := json.Unmarshal([]byte(val), &tmpResult); err != nil {
+				log.Printf("Error: failed to unmarshal message body to map %s, got json %v", body, val)
 				continue
 			}
 
