@@ -8,9 +8,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/websocket/v2"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/logger"
+	"github.com/gofiber/contrib/v3/websocket"
 	"github.com/redis/go-redis/v9"
 
 	streamingv1 "github.com/toncenter/ton-indexer/ton-streaming-go/v1"

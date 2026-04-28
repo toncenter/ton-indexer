@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -128,7 +128,7 @@ func applyEmulatorStatus(status *componentHealth, values map[string]string, now 
 }
 
 func healthzHandler(rdb *redis.Client) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		ctx, cancel := context.WithTimeout(context.Background(), healthRedisTimeout)
 		defer cancel()
 
