@@ -1173,6 +1173,60 @@ void run_1_2_8_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.8 completed successfully.";
 }
 
+void run_1_2_9_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.9";
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += (
+      "create or replace function notify_dex_pools_change() returns trigger as $$ "
+      "declare "
+      "  target_dex dex_type; "
+      "begin "
+      "  if TG_OP = 'DELETE' then "
+      "    target_dex := OLD.dex; "
+      "  else "
+      "    target_dex := NEW.dex; "
+      "  end if; "
+      "  if target_dex = 'dedust' then "
+      "    perform pg_notify('dex_pools_changes', ''); "
+      "  end if; "
+      "  return null; "
+      "end; "
+      "$$ language plpgsql;\n"
+    );
+
+    query += "drop trigger if exists dex_pools_change_trg on dex_pools;\n";
+
+    query += (
+      "create trigger dex_pools_change_trg "
+      "after insert or delete on dex_pools "
+      "for each row execute function notify_dex_pools_change();\n"
+    );
+
+    query += set_version_query({1, 2, 9});
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.9 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1385,9 +1439,13 @@ int main(int argc, char *argv[]) {
       run_1_2_7_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 7};
     }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 8})) {
+    if (migration_needed(current_version, Version{1, 2, 8})) {
       run_1_2_8_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 8};
+    }
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 9})) {
+      run_1_2_9_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 9};
     }
 
 
