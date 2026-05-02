@@ -31,7 +31,7 @@ cases:
           asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
           amount: 10000000000
           staking_data:
-            provider: tonstakers
+            provider: liquid_staking
             tokens_minted: 9439323796
   "TS Withdrawal request":
     trace-id: GO-NI0EjOuhj1z4YzHK-VDAAOJsLm710DvyRRRMXhoY=
@@ -80,7 +80,7 @@ cases:
           asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
           amount: 67599
           staking_data:
-            provider: tonstakers
+            provider: liquid_staking
             ts_nft: 0:7ABD6C4CD7E44D1E3D293C1F8324F4AF610F69F62966E009662D3442484D3025
       - type: nft_transfer
         values:
@@ -128,7 +128,7 @@ cases:
           destination: 0:F6FF877DD4CE1355B101572045F09D54C29309737EB52CA542CFA6C195F7CC5B
           asset: null
           staking_data:
-            provider: tonstakers
+            provider: liquid_staking
             ts_nft: 0:30A867E3D5D69284A96CFF30B742316CD5B514C55FCC2E9564F42D65A9A3D252
             tokens_burnt: 4170935
   "TS Immediate Withdrawal":
@@ -161,7 +161,7 @@ cases:
           destination: 0:A45B17F28409229B78360E3290420F13E4FE20F90D7E2BF8C4AC6703259E22FA
           asset: 0:BDF3FA8098D129B54B4F73B5BAC5D1E1FD91EB054169C3916DFC8CCD536D1000
           staking_data:
-            provider: tonstakers
+            provider: liquid_staking
             ts_nft: null
             tokens_burnt: 499933340
           amount: 477298994
