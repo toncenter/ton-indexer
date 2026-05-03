@@ -5,12 +5,37 @@
 #include "version.h"
 #include "postgresql_tools.h"
 
+#include <map>
+#include <tuple>
+
+
+class PostgresLeaderHeartbeat: public td::actor::Actor {
+public:
+  PostgresLeaderHeartbeat(std::string connection_string, std::string worker_id) :
+    connection_string_(std::move(connection_string)), worker_id_(std::move(worker_id)) {}
+
+  void hold();
+  void release();
+  void alarm() override;
+
+private:
+  void refresh_heartbeat();
+  void schedule_next_refresh();
+
+  std::string connection_string_;
+  std::string worker_id_;
+  std::size_t active_leader_batches_{0};
+};
 
 class InsertBatchPostgres: public td::actor::Actor {
 public:
-  InsertBatchPostgres(InsertManagerPostgres::Credential credential, std::vector<InsertTaskStruct> insert_tasks,
+  InsertBatchPostgres(InsertManagerPostgres::Credential credential,
+                      td::actor::ActorId<PostgresLeaderHeartbeat> leader_heartbeat,
+                      std::string worker_id,
+                      std::vector<InsertTaskStruct> insert_tasks,
                       td::Promise<InsertManagerInterface::InsertResult> promise, std::int32_t max_data_depth = 12) :
-    credential_(std::move(credential)), insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth) {
+    credential_(std::move(credential)), leader_heartbeat_(leader_heartbeat), worker_id_(std::move(worker_id)),
+    insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth) {
       // sorting in descending seqno order for easier processing of interfaces
       std::sort(insert_tasks_.begin(), insert_tasks_.end(), [](const auto& a, const auto& b) {
         return a.mc_seqno_ > b.mc_seqno_;
@@ -21,7 +46,9 @@ public:
   void alarm() override;
 private:
   InsertManagerPostgres::Credential credential_;
+  td::actor::ActorId<PostgresLeaderHeartbeat> leader_heartbeat_;
   std::string connection_string_;
+  std::string worker_id_;
   std::vector<InsertTaskStruct> insert_tasks_;
   td::Promise<InsertManagerInterface::InsertResult> promise_;
   std::int32_t max_data_depth_;
@@ -56,7 +83,7 @@ private:
   void insert_contract_methods(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
 
-  bool try_acquire_leader_lock();
+  bool try_acquire_leader_lock(pqxx::connection& c, const std::string& worker_id);
   InsertManagerInterface::InsertResult get_insert_result() const;
   void do_insert();
   void ensure_inserted();
@@ -87,6 +114,57 @@ std::string extra_currencies_to_json_string(const std::map<uint32_t, td::RefInt2
   return extra_currencies_json.string_builder().as_cslice().str();
 }
 
+void PostgresLeaderHeartbeat::hold() {
+  bool was_empty = active_leader_batches_ == 0;
+  ++active_leader_batches_;
+  if (was_empty) {
+    schedule_next_refresh();
+  }
+}
+
+void PostgresLeaderHeartbeat::release() {
+  if (active_leader_batches_ == 0) {
+    LOG(ERROR) << "Postgres leader heartbeat released without an active leader batch for worker " << worker_id_;
+    return;
+  }
+  --active_leader_batches_;
+  if (active_leader_batches_ == 0) {
+    alarm_timestamp() = td::Timestamp::never();
+  }
+}
+
+void PostgresLeaderHeartbeat::alarm() {
+  if (active_leader_batches_ == 0) {
+    schedule_next_refresh();
+    return;
+  }
+  refresh_heartbeat();
+  schedule_next_refresh();
+}
+
+void PostgresLeaderHeartbeat::refresh_heartbeat() {
+  try {
+    pqxx::connection c(connection_string_);
+    pqxx::work txn(c);
+    auto updated = txn.exec(R"(
+      UPDATE ton_indexer_leader
+      SET last_heartbeat = clock_timestamp()
+      WHERE id = 1 AND leader_worker_id = $1
+      RETURNING 1;
+    )", pqxx::params{worker_id_}).size();
+    txn.commit();
+    if (updated != 1) {
+      LOG(WARNING) << "Postgres leader heartbeat did not update the leader row for worker " << worker_id_;
+    }
+  } catch (const std::exception& e) {
+    LOG(ERROR) << "Error updating Postgres leader heartbeat: " << e.what();
+  }
+}
+
+void PostgresLeaderHeartbeat::schedule_next_refresh() {
+  alarm_timestamp() = active_leader_batches_ == 0 ? td::Timestamp::never() : td::Timestamp::in(5.0);
+}
+
 namespace {
 
 template <typename Map, typename KeyFn>
@@ -115,6 +193,68 @@ auto get_ordered_values(const Container& values, KeyFn key_fn) {
     return lhs.first < rhs.first;
   });
   return ordered;
+}
+
+class LeaderHeartbeatGuard {
+public:
+  LeaderHeartbeatGuard() = default;
+  explicit LeaderHeartbeatGuard(td::actor::ActorId<PostgresLeaderHeartbeat> heartbeat)
+      : heartbeat_(heartbeat) {
+    if (!heartbeat_.empty() && heartbeat_.is_alive()) {
+      td::actor::send_closure(heartbeat_, &PostgresLeaderHeartbeat::hold);
+    }
+  }
+
+  LeaderHeartbeatGuard(const LeaderHeartbeatGuard&) = delete;
+  LeaderHeartbeatGuard& operator=(const LeaderHeartbeatGuard&) = delete;
+
+  LeaderHeartbeatGuard(LeaderHeartbeatGuard&& other) noexcept : heartbeat_(other.heartbeat_) {
+    other.heartbeat_ = {};
+  }
+
+  LeaderHeartbeatGuard& operator=(LeaderHeartbeatGuard&& other) noexcept {
+    if (this != &other) {
+      reset();
+      heartbeat_ = other.heartbeat_;
+      other.heartbeat_ = {};
+    }
+    return *this;
+  }
+
+  ~LeaderHeartbeatGuard() {
+    reset();
+  }
+
+  void reset() {
+    if (heartbeat_.empty()) {
+      return;
+    }
+    if (heartbeat_.is_alive()) {
+      td::actor::send_closure(heartbeat_, &PostgresLeaderHeartbeat::release);
+    }
+    heartbeat_ = {};
+  }
+
+private:
+  td::actor::ActorId<PostgresLeaderHeartbeat> heartbeat_;
+};
+
+void ensure_still_leader(pqxx::work& txn, const std::string& worker_id) {
+  auto result = txn.exec(R"(
+    WITH ts AS (
+      SELECT clock_timestamp() AS checked_at
+    )
+    UPDATE ton_indexer_leader
+    SET last_heartbeat = ts.checked_at
+    FROM ts
+    WHERE id = 1
+      AND leader_worker_id = $1
+      AND last_heartbeat >= ts.checked_at - INTERVAL '20 seconds'
+    RETURNING 1;
+  )", pqxx::params{worker_id});
+  if (result.empty()) {
+    throw std::runtime_error("Lost Postgres leader lease before commit");
+  }
 }
 
 }  // namespace
@@ -172,7 +312,7 @@ std::string get_worker_id() {
   return worker_id;
 }
 
-bool InsertBatchPostgres::try_acquire_leader_lock() {
+bool InsertBatchPostgres::try_acquire_leader_lock(pqxx::connection& c, const std::string& worker_id) {
   auto query = R"(
   WITH grab AS (
     INSERT INTO ton_indexer_leader(id, leader_worker_id, last_heartbeat, started_at)
@@ -181,8 +321,8 @@ bool InsertBatchPostgres::try_acquire_leader_lock() {
       leader_worker_id = excluded.leader_worker_id,
       last_heartbeat = excluded.last_heartbeat,
       started_at = CASE
-        WHEN excluded.leader_worker_id = $1 THEN ton_indexer_leader.started_at
-        ELSE now()
+        WHEN ton_indexer_leader.leader_worker_id = excluded.leader_worker_id THEN ton_indexer_leader.started_at
+        ELSE excluded.started_at
       END
     WHERE ton_indexer_leader.id = 1 AND (ton_indexer_leader.last_heartbeat < NOW() - INTERVAL '20 seconds'
       OR ton_indexer_leader.leader_worker_id = $1)
@@ -193,16 +333,14 @@ bool InsertBatchPostgres::try_acquire_leader_lock() {
   try {
     static std::atomic_bool worker_is_leader = false;
     td::Timer timer;
-    pqxx::connection c(connection_string_);
     pqxx::work txn(c);
-    auto [won] = txn.exec(query, pqxx::params{get_worker_id()}).one_row().as<int>();
+    auto [won] = txn.exec(query, pqxx::params{worker_id}).one_row().as<int>();
     txn.commit();
 
     is_leader_ = won == 1;
-    if (is_leader_ != worker_is_leader.load()) {
-      LOG(WARNING) << "Worker " << get_worker_id() << (won ? " ACQUIRED" : " LOST") << " leader role.";
+    if (is_leader_ != worker_is_leader.exchange(is_leader_)) {
+      LOG(WARNING) << "Worker " << worker_id << (won ? " ACQUIRED" : " LOST") << " leader role.";
     }
-    worker_is_leader = is_leader_;
     return is_leader_;
   } catch (const std::exception &e) {
     LOG(ERROR) << "Error trying to acquire SQL leader lock: " << e.what();
@@ -218,11 +356,7 @@ InsertManagerInterface::InsertResult InsertBatchPostgres::get_insert_result() co
 }
 
 void InsertBatchPostgres::alarm() {
-  if (try_acquire_leader_lock()) {
-    do_insert();
-  } else {
-    ensure_inserted();
-  }
+  do_insert();
 }
 
 void InsertBatchPostgres::ensure_inserted() {
@@ -248,6 +382,7 @@ void InsertBatchPostgres::ensure_inserted() {
         task.promise_.set_result(get_insert_result());
       }
       promise_.set_result(get_insert_result());
+      stop();
     }
   } catch (const std::exception &e) {
     LOG(ERROR) << "Error ensuring that leader inserted blocks batch: " << e.what();
@@ -261,41 +396,52 @@ void InsertBatchPostgres::do_insert() {
     pqxx::connection c(connection_string_);
     connect_timer.pause();
 
+    if (!try_acquire_leader_lock(c, worker_id_)) {
+      ensure_inserted();
+      return;
+    }
+    auto leader_heartbeat = LeaderHeartbeatGuard(leader_heartbeat_);
+
     td::Timer data_timer;
-    pqxx::work txn(c);
-
-    insert_blocks(txn, with_copy_);
-    insert_shard_state(txn, with_copy_);
-    insert_transactions(txn, with_copy_);
-    insert_messages(txn, with_copy_);
-    insert_account_states(txn, with_copy_);
-    insert_jetton_transfers(txn, with_copy_);
-    insert_jetton_burns(txn, with_copy_);
-    insert_nft_transfers(txn, with_copy_);
-    insert_traces(txn, with_copy_);
-    insert_contract_methods(txn);
-    data_timer.pause();
-    td::Timer states_timer;
-    std::string upsert_query;
-    upsert_query += insert_jetton_masters(txn);
-    upsert_query += insert_jetton_wallets(txn);
-    upsert_query += insert_nft_collections(txn);
-    upsert_query += insert_getgems_nft_auctions(txn);
-    upsert_query += insert_getgems_nft_sales(txn);
-    upsert_query += insert_nft_items(txn);
-    upsert_query += insert_multisig_contracts(txn);
-    upsert_query += insert_multisig_orders(txn);
-    upsert_query += insert_dedust_pools(txn);
-    upsert_query += insert_latest_account_states(txn);
-    upsert_query += insert_vesting(txn);
-    upsert_query += insert_telemint(txn);
-
+    td::Timer states_timer{true};
     td::Timer commit_timer{true};
-    txn.exec0(upsert_query);
-    states_timer.pause();
-    commit_timer.resume();
-    txn.commit();
-    commit_timer.pause();
+    {
+      pqxx::work txn(c);
+
+      insert_blocks(txn, with_copy_);
+      insert_shard_state(txn, with_copy_);
+      insert_transactions(txn, with_copy_);
+      insert_messages(txn, with_copy_);
+      insert_account_states(txn, with_copy_);
+      insert_jetton_transfers(txn, with_copy_);
+      insert_jetton_burns(txn, with_copy_);
+      insert_nft_transfers(txn, with_copy_);
+      insert_traces(txn, with_copy_);
+      insert_contract_methods(txn);
+      data_timer.pause();
+      states_timer.resume();
+      std::string upsert_query;
+      upsert_query += insert_jetton_masters(txn);
+      upsert_query += insert_jetton_wallets(txn);
+      upsert_query += insert_nft_collections(txn);
+      upsert_query += insert_getgems_nft_auctions(txn);
+      upsert_query += insert_getgems_nft_sales(txn);
+      upsert_query += insert_nft_items(txn);
+      upsert_query += insert_multisig_contracts(txn);
+      upsert_query += insert_multisig_orders(txn);
+      upsert_query += insert_dedust_pools(txn);
+      upsert_query += insert_latest_account_states(txn);
+      upsert_query += insert_vesting(txn);
+      upsert_query += insert_telemint(txn);
+
+      txn.exec0(upsert_query);
+      states_timer.pause();
+      commit_timer.resume();
+      ensure_still_leader(txn, worker_id_);
+      txn.commit();
+      commit_timer.pause();
+    }
+    leader_heartbeat.reset();
 
     for(auto& task : insert_tasks_) {
       task.promise_.set_result(get_insert_result());
@@ -1924,6 +2070,9 @@ void InsertManagerPostgres::start_up() {
     std::_Exit(2);
   }
   
+  worker_id_ = get_worker_id();
+  leader_heartbeat_ = td::actor::create_actor<PostgresLeaderHeartbeat>(
+      td::actor::ActorOptions().with_name("postgres_leader_heartbeat").with_poll(), credential_.get_connection_string(), worker_id_);
   alarm_timestamp() = td::Timestamp::in(1.0);
 }
 
@@ -1934,7 +2083,13 @@ void InsertManagerPostgres::set_max_data_depth(std::int32_t value) {
 
 void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
                                                 td::Promise<InsertManagerInterface::InsertResult> promise) {
-  td::actor::create_actor<InsertBatchPostgres>("insert_batch_postgres", credential_, std::move(insert_tasks), std::move(promise), max_data_depth_).release();
+  if (leader_heartbeat_.empty() || !leader_heartbeat_.is_alive()) {
+    leader_heartbeat_ = td::actor::create_actor<PostgresLeaderHeartbeat>(
+        td::actor::ActorOptions().with_name("postgres_leader_heartbeat").with_poll(), credential_.get_connection_string(), worker_id_);
+  }
+  auto leader_heartbeat = td::actor::actor_dynamic_cast<PostgresLeaderHeartbeat>(leader_heartbeat_.get());
+  td::actor::create_actor<InsertBatchPostgres>("insert_batch_postgres", credential_, leader_heartbeat, worker_id_,
+                                               std::move(insert_tasks), std::move(promise), max_data_depth_).release();
 }
 
 void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno) {
