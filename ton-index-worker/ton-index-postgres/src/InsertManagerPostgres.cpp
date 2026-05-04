@@ -53,6 +53,9 @@ private:
   std::string insert_vesting(pqxx::work &txn);
   std::string insert_telemint(pqxx::work &txn);
   std::string insert_dedust_pools(pqxx::work &txn);
+  void insert_dedust_pools_historic(pqxx::work &txn);
+  std::string insert_stonfi_pools_v2(pqxx::work &txn);
+  void insert_stonfi_pools_v2_historic(pqxx::work &txn);
   void insert_contract_methods(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
 
@@ -274,6 +277,8 @@ void InsertBatchPostgres::do_insert() {
     insert_nft_transfers(txn, with_copy_);
     insert_traces(txn, with_copy_);
     insert_contract_methods(txn);
+    insert_dedust_pools_historic(txn);
+    insert_stonfi_pools_v2_historic(txn);
     data_timer.pause();
     td::Timer states_timer;
     std::string upsert_query;
@@ -286,6 +291,7 @@ void InsertBatchPostgres::do_insert() {
     upsert_query += insert_multisig_contracts(txn);
     upsert_query += insert_multisig_orders(txn);
     upsert_query += insert_dedust_pools(txn);
+    upsert_query += insert_stonfi_pools_v2(txn);
     upsert_query += insert_latest_account_states(txn);
     upsert_query += insert_vesting(txn);
     upsert_query += insert_telemint(txn);
@@ -1669,6 +1675,48 @@ std::string InsertBatchPostgres::insert_dedust_pools(pqxx::work &txn) {
   return pools_stream.get_str();
 }
 
+std::string InsertBatchPostgres::insert_stonfi_pools_v2(pqxx::work &txn) {
+  std::initializer_list<std::string_view> pools_column = {
+    "address", "asset_1", "asset_2", "reserve_1", "reserve_2", "pool_type", "dex", "fee", "last_transaction_lt", "code_hash", "data_hash"
+  };
+
+  std::unordered_map<block::StdAddress, schema::StonfiPoolV2Data> stonfi_pools;
+  for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
+    const auto& task = *i;
+    for (const auto& stonfi_pool : task.parsed_block_->get_accounts_v2<schema::StonfiPoolV2Data>()) {
+      if (stonfi_pools.find(stonfi_pool.address) == stonfi_pools.end()) {
+        stonfi_pools[stonfi_pool.address] = stonfi_pool;
+      } else {
+        if (stonfi_pools[stonfi_pool.address].last_transaction_lt < stonfi_pool.last_transaction_lt) {
+          stonfi_pools[stonfi_pool.address] = stonfi_pool;
+        }
+      }
+    }
+  }
+
+  PopulateTableStream pools_stream(txn, "dex_pools", pools_column, 1000, false);
+  pools_stream.setConflictDoUpdate({"address"}, "dex_pools.last_transaction_lt < EXCLUDED.last_transaction_lt");
+  std::string dex = "stonfi-v2";
+  for (const auto& [addr, stonfi_pool] : stonfi_pools) {
+    auto tuple = std::make_tuple(
+      stonfi_pool.address,
+      stonfi_pool.asset_1,
+      stonfi_pool.asset_2,
+      stonfi_pool.reserve_1,
+      stonfi_pool.reserve_2,
+      stonfi_pool.pool_type,
+      dex,
+      stonfi_pool.fee,
+      stonfi_pool.last_transaction_lt,
+      stonfi_pool.code_hash,
+      stonfi_pool.data_hash
+    );
+    pools_stream.insert_row(std::move(tuple));
+  }
+
+  return pools_stream.get_str();
+}
+
 void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn, bool with_copy) {
   std::initializer_list<std::string_view> columns = {
     "tx_hash", "tx_lt", "tx_now", "tx_aborted", "mc_seqno", "query_id", "amount", "source", "destination", "jetton_wallet_address",
@@ -1704,6 +1752,54 @@ void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn, bool with_cop
         transfer.forward_ton_amount,
         forward_payload_boc,
         transfer.trace_id
+      );
+      stream.insert_row(std::move(tuple));
+    }
+  }
+  stream.finish();
+}
+
+void InsertBatchPostgres::insert_dedust_pools_historic(pqxx::work &txn) {
+  std::initializer_list<std::string_view> columns = {
+    "mc_seqno", "timestamp", "address", "reserve_1", "reserve_2", "fee", "last_transaction_lt"
+  };
+
+  PopulateTableStream stream(txn, "dex_pools_historic", columns, 1000, false);
+
+  for (const auto& task : insert_tasks_) {
+    for (const auto& dedust_pool : task.parsed_block_->get_accounts_v2<schema::DedustPoolData>()) {
+      auto tuple = std::make_tuple(
+        task.mc_seqno_,
+        dedust_pool.last_transaction_now,
+        dedust_pool.address,
+        dedust_pool.reserve_1,
+        dedust_pool.reserve_2,
+        dedust_pool.fee,
+        dedust_pool.last_transaction_lt
+      );
+      stream.insert_row(std::move(tuple));
+    }
+  }
+  stream.finish();
+}
+
+void InsertBatchPostgres::insert_stonfi_pools_v2_historic(pqxx::work &txn) {
+  std::initializer_list<std::string_view> columns = {
+    "mc_seqno", "timestamp", "address", "reserve_1", "reserve_2", "fee", "last_transaction_lt"
+  };
+
+  PopulateTableStream stream(txn, "dex_pools_historic", columns, 1000, false);
+
+  for (const auto& task : insert_tasks_) {
+    for (const auto& stonfi_pool : task.parsed_block_->get_accounts_v2<schema::StonfiPoolV2Data>()) {
+      auto tuple = std::make_tuple(
+        task.mc_seqno_,
+        stonfi_pool.last_transaction_now,
+        stonfi_pool.address,
+        stonfi_pool.reserve_1,
+        stonfi_pool.reserve_2,
+        stonfi_pool.fee,
+        stonfi_pool.last_transaction_lt
       );
       stream.insert_row(std::move(tuple));
     }

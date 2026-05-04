@@ -1173,6 +1173,77 @@ void run_1_2_8_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.8 completed successfully.";
 }
 
+void run_1_3_0_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.3.0";
+
+  LOG(INFO) << "Altering types...";
+  {
+    auto exec_query = [&] (const std::string& query) {
+      if (dry_run) {
+        std::cout << query << std::endl;
+        return;
+      }
+
+      try {
+        pqxx::connection c(connection_string);
+        pqxx::work txn(c);
+
+        txn.exec(query).no_rows();
+        txn.commit();
+      } catch (const std::exception &e) {
+        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
+      }
+    };
+
+    // change enum types to varchar for dex_pools table
+    // to add new pool types and dexes without schema changes in future
+    exec_query("ALTER TABLE dex_pools ALTER COLUMN pool_type TYPE varchar(50) USING pool_type::text;");
+    exec_query("ALTER TABLE dex_pools ALTER COLUMN dex TYPE varchar(50) USING dex::text;");
+    exec_query("DROP TYPE IF EXISTS pool_type;");
+    exec_query("DROP TYPE IF EXISTS dex_type;");
+  }
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    // historic tables pattern: store all state changes for entities
+    // naming: {entity}_historic (e.g., jetton_wallets_historic)
+    // required columns: id, mc_seqno, timestamp, address, last_transaction_lt
+    // only mutable fields (not code_hash, data_hash)
+    query += (
+      "CREATE TABLE IF NOT EXISTS dex_pools_historic ("
+      "id bigserial PRIMARY KEY, "
+      "mc_seqno integer NOT NULL, "
+      "timestamp integer NOT NULL, "
+      "address tonaddr NOT NULL, "
+      "reserve_1 numeric, "
+      "reserve_2 numeric, "
+      "fee double precision, "
+      "last_transaction_lt bigint NOT NULL);\n"
+    );
+
+    query += set_version_query({1, 3, 0});
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.3.0 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1274,6 +1345,8 @@ void create_indexes(std::string connection_string, bool dry_run) {
       "create index if not exists nft_items_index_6 on nft_items (collection_address, last_transaction_lt);\n"
       "create index if not exists nft_items_index_7 on nft_items (real_owner, last_transaction_lt);\n"
       "create index if not exists nft_items_index_8 on nft_items (real_owner, collection_address, index);\n"
+      "create index if not exists dex_pools_historic_index_1 on dex_pools_historic (address, timestamp);\n"
+      "create index if not exists dex_pools_historic_index_2 on dex_pools_historic (mc_seqno);\n"
     );
     if (dry_run) {
       std::cout << query << std::endl;
@@ -1385,9 +1458,13 @@ int main(int argc, char *argv[]) {
       run_1_2_7_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 7};
     }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 8})) {
+    if (migration_needed(current_version, Version{1, 2, 8})) {
       run_1_2_8_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 8};
+    }
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 3, 0})) {
+      run_1_3_0_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 3, 0};
     }
 
 
