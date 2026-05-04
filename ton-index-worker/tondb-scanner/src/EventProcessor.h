@@ -247,8 +247,8 @@ public:
     return first_tx;
   }
 
-  td::Result<std::vector<NominatorPoolIncome>> parse_nominator_pool_incomes(const schema::Transaction &transaction) {
-    std::vector<NominatorPoolIncome> incomes;
+  td::Result<std::vector<schema::NominatorPoolIncome>> parse_nominator_pool_incomes(const schema::Transaction &transaction) {
+    std::vector<schema::NominatorPoolIncome> incomes;
 
     const std::string NOMINATOR_POOL_CODE_HASH =
         "9A3EC14BC098F6B44064C305222CAEA2800F17DDA85EE6A8198A7095EDE10DCF";
@@ -386,7 +386,7 @@ public:
     std::string pool_address = convert::to_raw_address(transaction.account);
 
     for (const auto &[addr_hash, balance] : nominators_list) {
-      NominatorPoolIncome income;
+      schema::NominatorPoolIncome income;
       income.trace_id = transaction.trace_id;
       income.transaction_hash = transaction.hash;
       income.transaction_lt = transaction.lt;
