@@ -489,6 +489,19 @@ struct JettonBurn {
   td::Ref<vm::Cell> custom_payload;
 };
 
+struct NominatorPoolIncome {
+  td::Bits256 trace_id;
+  td::Bits256 transaction_hash;
+  uint64_t transaction_lt;
+  uint32_t transaction_now;
+  uint32_t mc_seqno;
+  
+  std::string pool_address;
+  std::string nominator_address;
+  td::RefInt256 income_amount;
+  td::RefInt256 nominator_balance;  // balance at income time
+};
+
 struct NFTCollectionData {
   std::string address;
   td::RefInt256 next_item_index;
@@ -699,7 +712,8 @@ struct MasterchainBlockDataState {
 
 using BlockchainEvent = std::variant<JettonTransfer, 
                                      JettonBurn,
-                                     NFTTransfer>;
+                                     NFTTransfer,
+                                     NominatorPoolIncome>;
 
 using BlockchainInterface = std::variant<JettonMasterData, 
                                          JettonWalletData, 
@@ -743,6 +757,7 @@ struct hash<block::StdAddress> {
 
 struct ParsedBlock {
   schema::MasterchainBlockDataState mc_block_;
+  std::shared_ptr<vm::CellDbReader> cell_db_reader_;  // for loading previous states
 
   std::vector<schema::Block> blocks_;
   std::vector<schema::AccountState> account_states_;

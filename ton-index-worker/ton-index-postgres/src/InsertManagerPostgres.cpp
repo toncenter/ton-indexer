@@ -42,6 +42,7 @@ private:
   void insert_jetton_transfers(pqxx::work &txn, bool with_copy);
   void insert_jetton_burns(pqxx::work &txn, bool with_copy);
   void insert_nft_transfers(pqxx::work &txn, bool with_copy);
+  void insert_nominator_pool_incomes(pqxx::work &txn, bool with_copy);
   std::string insert_jetton_masters(pqxx::work &txn);
   std::string insert_jetton_wallets(pqxx::work &txn);
   std::string insert_nft_collections(pqxx::work &txn);
@@ -272,6 +273,7 @@ void InsertBatchPostgres::do_insert() {
     insert_jetton_transfers(txn, with_copy_);
     insert_jetton_burns(txn, with_copy_);
     insert_nft_transfers(txn, with_copy_);
+    insert_nominator_pool_incomes(txn, with_copy_);
     insert_traces(txn, with_copy_);
     insert_contract_methods(txn);
     data_timer.pause();
@@ -1710,6 +1712,36 @@ void InsertBatchPostgres::insert_jetton_transfers(pqxx::work &txn, bool with_cop
   }
   stream.finish();
 }
+
+void InsertBatchPostgres::insert_nominator_pool_incomes(pqxx::work &txn, bool with_copy) {
+  std::initializer_list<std::string_view> columns = {
+    "tx_hash", "tx_lt", "tx_now", "mc_seqno", "pool_address", "nominator_address",
+    "income_amount", "nominator_balance", "trace_id"
+  };
+  PopulateTableStream stream(txn, "nominator_pool_incomes", columns, 1000, with_copy);
+  if (!with_copy) {
+    stream.setConflictDoNothing();
+  }
+
+  for (const auto& task : insert_tasks_) {
+    for (const auto& income : task.parsed_block_->get_events<schema::NominatorPoolIncome>()) {
+      auto tuple = std::make_tuple(
+        income.transaction_hash,
+        income.transaction_lt,
+        income.transaction_now,
+        income.mc_seqno,
+        income.pool_address,
+        income.nominator_address,
+        income.income_amount,
+        income.nominator_balance,
+        income.trace_id
+      );
+      stream.insert_row(std::move(tuple));
+    }
+  }
+  stream.finish();
+}
+
 
 void InsertBatchPostgres::insert_jetton_burns(pqxx::work &txn, bool with_copy) {
   std::initializer_list<std::string_view> columns = {
