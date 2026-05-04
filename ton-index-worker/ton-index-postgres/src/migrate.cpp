@@ -434,31 +434,6 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
     );
 
     query += (
-      "create table if not exists nominator_pool_incomes ("
-      "tx_hash tonhash not null, "
-      "tx_lt bigint not null, "
-      "tx_now integer not null, "
-      "mc_seqno integer, "
-      "pool_address tonaddr not null, "
-      "nominator_address tonaddr not null, "
-      "income_amount numeric not null, "
-      "nominator_balance numeric not null, "
-      "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt, nominator_address), "
-      "foreign key (tx_hash, tx_lt) references transactions);\n"
-    );
-
-    query += (
-      "create index if not exists idx_nominator_pool_incomes_nominator "
-      "on nominator_pool_incomes(nominator_address, tx_now desc);\n"
-    );
-
-    query += (
-      "create index if not exists idx_nominator_pool_incomes_pool "
-      "on nominator_pool_incomes(pool_address, tx_now desc);\n"
-    );
-
-    query += (
       "create table if not exists getgems_nft_sales ("
       "id bigserial not null, "
       "address tonaddr not null primary key, "
@@ -1198,6 +1173,59 @@ void run_1_2_8_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.8 completed successfully.";
 }
 
+void run_1_3_0_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.3.0";
+
+  LOG(INFO) << "Updating tables...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += (
+      "create table if not exists nominator_pool_incomes ("
+      "tx_hash tonhash not null, "
+      "tx_lt bigint not null, "
+      "tx_now integer not null, "
+      "mc_seqno integer, "
+      "pool_address tonaddr not null, "
+      "nominator_address tonaddr not null, "
+      "income_amount numeric not null, "
+      "nominator_balance numeric not null, "
+      "trace_id tonhash, "
+      "primary key (tx_hash, tx_lt, nominator_address), "
+      "foreign key (tx_hash, tx_lt) references transactions);\n"
+    );
+
+    query += (
+      "create index if not exists idx_nominator_pool_incomes_nominator "
+      "on nominator_pool_incomes(nominator_address, tx_now desc);\n"
+    );
+
+    query += (
+      "create index if not exists idx_nominator_pool_incomes_pool "
+      "on nominator_pool_incomes(pool_address, tx_now desc);\n"
+    );
+
+    query += set_version_query({1, 3, 0});
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.3.0 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1410,9 +1438,13 @@ int main(int argc, char *argv[]) {
       run_1_2_7_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 7};
     }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 8})) {
+    if (migration_needed(current_version, Version{1, 2, 8})) {
       run_1_2_8_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 8};
+    }
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 3, 0})) {
+      run_1_3_0_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 3, 0};
     }
 
 
