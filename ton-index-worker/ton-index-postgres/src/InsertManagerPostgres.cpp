@@ -1680,10 +1680,10 @@ std::string InsertBatchPostgres::insert_stonfi_pools_v2(pqxx::work &txn) {
     "address", "asset_1", "asset_2", "reserve_1", "reserve_2", "pool_type", "dex", "fee", "last_transaction_lt", "code_hash", "data_hash"
   };
 
-  std::unordered_map<block::StdAddress, StonfiPoolV2Data> stonfi_pools;
+  std::unordered_map<block::StdAddress, schema::StonfiPoolV2Data> stonfi_pools;
   for (auto i = insert_tasks_.rbegin(); i != insert_tasks_.rend(); ++i) {
     const auto& task = *i;
-    for (const auto& stonfi_pool : task.parsed_block_->get_accounts_v2<StonfiPoolV2Data>()) {
+    for (const auto& stonfi_pool : task.parsed_block_->get_accounts_v2<schema::StonfiPoolV2Data>()) {
       if (stonfi_pools.find(stonfi_pool.address) == stonfi_pools.end()) {
         stonfi_pools[stonfi_pool.address] = stonfi_pool;
       } else {
@@ -1791,7 +1791,7 @@ void InsertBatchPostgres::insert_stonfi_pools_v2_historic(pqxx::work &txn) {
   PopulateTableStream stream(txn, "dex_pools_historic", columns, 1000, false);
 
   for (const auto& task : insert_tasks_) {
-    for (const auto& stonfi_pool : task.parsed_block_->get_accounts_v2<StonfiPoolV2Data>()) {
+    for (const auto& stonfi_pool : task.parsed_block_->get_accounts_v2<schema::StonfiPoolV2Data>()) {
       auto tuple = std::make_tuple(
         task.mc_seqno_,
         stonfi_pool.last_transaction_now,
