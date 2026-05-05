@@ -21,6 +21,8 @@ public:
   };
 private:
   Credential credential_;
+  td::actor::ActorOwn<> leader_heartbeat_;
+  std::string worker_id_;
   std::int32_t max_data_depth_{0};
 public:
   InsertManagerPostgres(Credential credential) :
