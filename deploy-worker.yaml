@@ -107,11 +107,11 @@
           loop:
             - "ton-index-worker/ton-index-postgres/ton-index-postgres"
             - "ton-index-worker/ton-index-postgres/ton-index-postgres-migrate"
-      always:
-        - name: Cleanup workspace
-          ansible.builtin.file:
-            path: "{{ builddir.path }}"
-            state: absent
+      # always:
+      #   - name: Cleanup workspace
+      #     ansible.builtin.file:
+      #       path: "{{ builddir.path }}"
+      #       state: absent
 
 - name: Run migrations and deploy ton-index-postgres service
   hosts: "{{ stack_name }}__worker_nodes"
