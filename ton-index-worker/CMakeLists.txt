@@ -43,6 +43,7 @@ function(add_ton_indexer_opentelemetry_cpp)
     set(WITH_ZIPKIN OFF)
     set(WITH_ELASTICSEARCH OFF)
     set(OPENTELEMETRY_INSTALL OFF)
+    set(Protobuf_USE_STATIC_LIBS ON CACHE BOOL "Prefer static protobuf libraries" FORCE)
     add_subdirectory(external/opentelemetry-cpp EXCLUDE_FROM_ALL)
 endfunction()
 
