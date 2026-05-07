@@ -208,7 +208,7 @@ void IndexScheduler::handle_valid_ta_state(ton::BlockSeqno last_state_seqno) {
     alarm_timestamp() = td::Timestamp::now();
 }
 
-const int IS_IN_SYNC_THRESHOLD = 3;
+const int IS_IN_SYNC_THRESHOLD = 10;
 
 void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
     if (to_seqno_ && last_known_seqno_ > to_seqno_)
