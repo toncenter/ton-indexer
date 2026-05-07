@@ -162,15 +162,11 @@ resource_api::Resource build_resource(const std::string& service_name) {
 }
 
 opentelemetry::common::SystemTimestamp system_timestamp_from_ns(std::int64_t value) {
-    return opentelemetry::common::SystemTimestamp(
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>(
-            std::chrono::nanoseconds(value)));
+    return opentelemetry::common::SystemTimestamp(std::chrono::nanoseconds(value));
 }
 
 opentelemetry::common::SteadyTimestamp steady_timestamp_from_ns(std::int64_t value) {
-    return opentelemetry::common::SteadyTimestamp(
-        std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds>(
-            std::chrono::nanoseconds(value)));
+    return opentelemetry::common::SteadyTimestamp(std::chrono::nanoseconds(value));
 }
 
 std::optional<std::string> string_attribute(
