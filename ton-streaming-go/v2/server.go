@@ -804,9 +804,6 @@ type AccountStateNotification struct {
 var _ Notification = (*AccountStateNotification)(nil)
 
 func (n *AccountStateNotification) AdjustForClient(client *Client) any {
-	if n.Account == "0:DAE153A74D894BBC32748198CD626E4F5DF4A69AD2FA56CE80FC2644B5708D20" {
-		log.Printf("[v2] AdjustForClient for special account %s with finality %d", n.Account, n.Finality)
-	}
 	if n.Finality < client.Subscription.MinFinality {
 		return nil
 	}
@@ -1433,7 +1430,6 @@ func ProcessNewClassifiedTrace(ctx context.Context, rdb *redis.Client, traceExte
 			shouldFetchMetadata,
 		)
 	}
-	log.Printf("[v2] Broadcasting classified trace actions for trace %s with finality %d: %d actions, addresses: %v", traceExternalHashNorm, traceFinality, len(actions), actionsAddresses)
 	// Pending actions
 	manager.broadcast <- &ActionsNotification{
 		Type:                  EventActions,

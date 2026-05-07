@@ -90,7 +90,6 @@ public:
                     }
                     block::gen::TransactionDescr::Record_trans_ord descr;
                     if (!tlb::unpack_cell(trans.description, descr)) {
-                        LOG(WARNING) << "Skipping non ord transaction " << tvalue->get_hash().to_hex();
                         continue;
                     }
 
