@@ -197,6 +197,19 @@
         redis_bind_interface: '0.0.0.0'
         redis_requirepass: "{{ pendings_redis_password }}"
 
+    - name: Configure Redis max clients
+      ansible.builtin.lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^\s*#?\s*maxclients\s+'
+        line: "maxclients 100000"
+      register: redis_maxclients_config
+
+    - name: Restart Redis after maxclients change
+      ansible.builtin.systemd:
+        name: redis-server
+        state: restarted
+      when: redis_maxclients_config.changed
+
     - name: Restart and enable pendings services
       ansible.builtin.systemd:
         name: "{{ service_name }}"
