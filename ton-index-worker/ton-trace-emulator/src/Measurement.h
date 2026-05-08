@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -27,9 +28,13 @@ class Measurement {
     std::optional<std::string> out_channel_{std::nullopt};
     std::optional<std::string> error_type_{std::nullopt};
     std::optional<std::string> error_message_{std::nullopt};
+    std::map<std::string, OtelStageSpan::AttributeValue> custom_attributes_;
     std::unique_ptr<OtelStageSpan> otel_stage_;
+    std::map<std::string, std::unique_ptr<OtelStageSpan>> otel_child_spans_;
 
     void ensure_trace_emulator_stage_locked();
+    void apply_common_attributes_locked(OtelStageSpan& span);
+    void set_attribute_locked(const std::string& key, const OtelStageSpan::AttributeValue& value);
 public:
     Measurement();
 
@@ -59,6 +64,14 @@ public:
     Measurement &set_out_channel(const std::string& out_channel);
 
     Measurement &mark_otel_error(const std::string& error_type, const std::string& error_message);
+
+    Measurement &set_otel_attribute(const std::string& key, const std::string& value);
+    Measurement &set_otel_attribute(const std::string& key, const char* value);
+    Measurement &set_otel_attribute(const std::string& key, bool value);
+    Measurement &set_otel_attribute(const std::string& key, std::int64_t value);
+
+    Measurement &start_otel_child_span(const std::string& service_stage);
+    Measurement &end_otel_child_span(const std::string& service_stage);
 
     std::map<std::string, std::string> otel_propagation_fields();
 

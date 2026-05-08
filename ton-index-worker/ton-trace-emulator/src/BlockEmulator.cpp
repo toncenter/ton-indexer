@@ -1,5 +1,6 @@
 #include "BlockEmulator.h"
 #include "TraceInterfaceDetector.h"
+#include <cstdint>
 #include <mutex>
 #include <unordered_map>
 
@@ -29,6 +30,31 @@ class InterblockTraceStore {
 InterblockTraceStore& interblock_trace_store() {
   static InterblockTraceStore store;
   return store;
+}
+
+void set_read_block_attribute(const std::shared_ptr<OtelStageSpan>& span,
+                              const std::string& key,
+                              std::int64_t value) {
+    if (span) {
+        span->set_attribute(key, value);
+    }
+}
+
+void finish_read_block_span(std::shared_ptr<OtelStageSpan>& span) {
+    if (!span) {
+        return;
+    }
+    span->end();
+    span.reset();
+}
+
+void fail_read_block_span(std::shared_ptr<OtelStageSpan>& span, const std::string& error_type, const td::Status& error) {
+    if (!span) {
+        return;
+    }
+    span->mark_error(error_type, error.to_string());
+    span->end();
+    span.reset();
 }
 }  // namespace
 
@@ -146,9 +172,15 @@ public:
     }
 };
 
-McBlockEmulator::McBlockEmulator(schema::MasterchainBlockDataState mc_data_state, std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor, td::Promise<> promise)
-        : mc_data_state_(std::move(mc_data_state)), trace_processor_(std::move(trace_processor)), promise_(std::move(promise)), 
-          blocks_left_to_parse_(mc_data_state_.shard_blocks_diff_.size()) {
+McBlockEmulator::McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
+                                 std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,
+                                 td::Promise<> promise,
+                                 std::shared_ptr<OtelStageSpan> read_block_span)
+    : mc_data_state_(std::move(mc_data_state)),
+      trace_processor_(std::move(trace_processor)),
+      promise_(std::move(promise)),
+      read_block_span_(std::move(read_block_span)),
+      blocks_left_to_parse_(mc_data_state_.shard_blocks_diff_.size()) {
 }
 
 void McBlockEmulator::start_up() {
@@ -177,6 +209,7 @@ void McBlockEmulator::start_up() {
 
 void McBlockEmulator::parse_error(ton::BlockId blkid, td::Status error, MeasurementPtr) {
     LOG(ERROR) << "Failed to parse block " << blkid.to_str() << ": " << error;
+    fail_read_block_span(read_block_span_, "trace_emulator.read_block_error", error);
     promise_.set_error(std::move(error));
     stop();
 }
@@ -221,9 +254,12 @@ void McBlockEmulator::process_txs(MeasurementPtr measurement) {
                 interblock_trace_store().put(out_msg.hash, tx.trace_ids.value());
             }
         }
-
         tx_by_in_msg_hash_.insert({tx.in_msg_hash, tx});
     }
+    set_read_block_attribute(read_block_span_, "ton.block.parsed_blocks_count", static_cast<std::int64_t>(mc_data_state_.shard_blocks_diff_.size()));
+    set_read_block_attribute(read_block_span_, "ton.block.shards_count", static_cast<std::int64_t>(mc_data_state_.shard_blocks_.size()));
+    set_read_block_attribute(read_block_span_, "ton.block.transactions_count", static_cast<std::int64_t>(txs_.size()));
+    finish_read_block_span(read_block_span_);
     emulate_traces(measurement);
 }
 
@@ -281,8 +317,14 @@ void McBlockEmulator::emulate_traces(MeasurementPtr measurement) {
 
         in_progress_cnt_++;
 
+        tx_measurement->set_ext_msg_hash(tx.trace_ids->ext_in_msg_hash);
+        tx_measurement->set_ext_msg_hash_norm(tx.trace_ids->ext_in_msg_hash_norm);
+        tx_measurement->set_trace_root_tx_hash(tx.trace_ids->root_tx_hash);
+        tx_measurement->start_otel_child_span("build_trace_tree");
         std::vector<EmuRequest> reqs;
         auto parent_node = construct_commited_trace(tx, reqs, tx_measurement);
+        tx_measurement->set_otel_attribute("ton.trace.tail_requests_count", static_cast<std::int64_t>(reqs.size()));
+        tx_measurement->end_otel_child_span("build_trace_tree");
 
         if (reqs.empty()) {
             children_emulated(std::move(parent_node), {}, tx.trace_ids.value(), /*reqs*/{}, nullptr, tx_measurement);
@@ -306,21 +348,21 @@ void McBlockEmulator::emulate_traces(MeasurementPtr measurement) {
             msgs_to_emulate.push_back(EmulationMessage{r.msg, r.depth});
         }
 
+        tx_measurement->start_otel_child_span("emulate_tail");
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this),
-                                            parent_node = std::move(parent_node),
-                                            tx_info = tx,
-                                            context = std::move(context),
-                                            reqs = std::move(reqs),
-                                            tx_measurement]
-            (td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
-                if (R.is_error()) {
-                    td::actor::send_closure(SelfId, &McBlockEmulator::trace_error,
-                        tx_info.hash, tx_info.trace_ids->root_tx_hash, R.move_as_error(), tx_measurement);
-                } else {
-                    td::actor::send_closure(SelfId, &McBlockEmulator::children_emulated,
-                        std::move(parent_node), R.move_as_ok(), tx_info.trace_ids.value(),
-                        std::move(reqs), std::move(context), tx_measurement);
-                }
+                                             parent_node = std::move(parent_node),
+                                             tx_info = tx,
+                                             context = std::move(context),
+                                             reqs = std::move(reqs),
+                                             tx_measurement](td::Result<std::vector<std::unique_ptr<TraceNode>>> R) mutable {
+            if (R.is_error()) {
+                td::actor::send_closure(SelfId, &McBlockEmulator::trace_error,
+                    tx_info.hash, tx_info.trace_ids->root_tx_hash, R.move_as_error(), tx_measurement);
+            } else {
+                td::actor::send_closure(SelfId, &McBlockEmulator::children_emulated,
+                    std::move(parent_node), R.move_as_ok(), tx_info.trace_ids.value(),
+                    std::move(reqs), std::move(context), tx_measurement);
+            }
         });
 
         td::actor::create_actor<MasterchainBlockEmulator>("MasterchainBlockEmulator", context_ref, std::move(msgs_to_emulate), std::move(P), tx_measurement).release();
@@ -350,12 +392,15 @@ void McBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent_node,
     measurement->set_trace_root_tx_hash(trace.root_tx_hash);
     measurement->set_transactions_count(trace.transactions_count());
     measurement->set_emulated_transactions_count(trace.root ? trace.root->emulated_transactions_count() : 0);
+    measurement->set_otel_attribute("ton.trace.depth", static_cast<std::int64_t>(trace.depth()));
 
     if (context) {
         trace.rand_seed = context->get_rand_seed();
         trace.emulated_accounts = context->release_account_states();
         trace.tx_limit_exceeded = context->is_limit_exceeded();
     }
+    measurement->set_otel_attribute("ton.trace.tx_limit_exceeded", trace.tx_limit_exceeded);
+    measurement->end_otel_child_span("emulate_tail");
 
     if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_root_tx_hash = trace.root_tx_hash, measurement](td::Result<Trace> R) {
@@ -366,6 +411,7 @@ void McBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent_node,
             td::actor::send_closure(SelfId, &McBlockEmulator::trace_emulated, R.move_as_ok(), measurement);
         });
 
+        measurement->start_otel_child_span("detect_interfaces");
         td::actor::create_actor<TraceInterfaceDetector>("TraceInterfaceDetector", shard_states_, mc_data_state_.config_, std::move(trace), std::move(P), measurement).release();
     } else {
         trace_emulated(std::move(trace), measurement);
@@ -375,6 +421,7 @@ void McBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent_node,
 void McBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement) {
     LOG(ERROR) << "Failed to emulate trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice()) << " from tx " << tx_hash.to_hex() << ": " << error;
     measurement->mark_otel_error("trace_emulator.processing_error", error.to_string());
+    measurement->end_otel_child_span("emulate_tail");
     in_progress_cnt_--;
     measurement->emit_otel_span();
 }
@@ -382,11 +429,14 @@ void McBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_root_tx
 void McBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_hash, td::Status error, MeasurementPtr measurement) {
     LOG(ERROR) << "Failed to detect interfaces on trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
     measurement->mark_otel_error("trace_emulator.interface_error", error.to_string());
+    measurement->end_otel_child_span("detect_interfaces");
     in_progress_cnt_--;
     measurement->emit_otel_span();
 }
 
 void McBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurement) {
+    measurement->end_otel_child_span("detect_interfaces");
+    measurement->start_otel_child_span("insert_trace");
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_root_tx_hash = trace.root_tx_hash, measurement](td::Result<td::Unit> R) {
         if (R.is_error()) {
             auto error = R.move_as_error();
@@ -395,6 +445,7 @@ void McBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurement) {
         } else {
             LOG(DEBUG) << "Successfully inserted trace " << td::base64_encode(trace_root_tx_hash.as_slice());
         }
+        measurement->end_otel_child_span("insert_trace");
         td::actor::send_closure(SelfId, &McBlockEmulator::trace_finished, trace_root_tx_hash, measurement);
     });
     trace_processor_(std::move(trace), std::move(P), measurement);
@@ -435,6 +486,7 @@ void ConfirmedBlockEmulator::start_up() {
 
 void ConfirmedBlockEmulator::parse_error(td::Status error, MeasurementPtr) {
     LOG(ERROR) << "Failed to parse " << finality_label() << " block " << block_data_state_.block_data->block_id().to_str() << ": " << error;
+    fail_read_block_span(read_block_span_, "trace_emulator.read_block_error", error);
     promise_.set_error(std::move(error));
     stop();
 }
@@ -475,9 +527,12 @@ void ConfirmedBlockEmulator::process_txs(MeasurementPtr measurement) {
                 interblock_trace_store().put(out_msg.hash, tx.trace_ids.value());
             }
         }
-
         tx_by_in_msg_hash_.insert({tx.in_msg_hash, tx});
     }
+    set_read_block_attribute(read_block_span_, "ton.block.parsed_blocks_count", static_cast<std::int64_t>(1));
+    set_read_block_attribute(read_block_span_, "ton.block.shards_count", static_cast<std::int64_t>(shard_states_snapshot_.size()));
+    set_read_block_attribute(read_block_span_, "ton.block.transactions_count", static_cast<std::int64_t>(txs_.size()));
+    finish_read_block_span(read_block_span_);
     emulate_traces(measurement);
 }
 
@@ -494,8 +549,14 @@ void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
 
         in_progress_cnt_++;
 
+        tx_measurement->set_ext_msg_hash(tx.trace_ids->ext_in_msg_hash);
+        tx_measurement->set_ext_msg_hash_norm(tx.trace_ids->ext_in_msg_hash_norm);
+        tx_measurement->set_trace_root_tx_hash(tx.trace_ids->root_tx_hash);
+        tx_measurement->start_otel_child_span("build_trace_tree");
         std::vector<EmuRequest> reqs;
         auto parent_node = construct_confirmed_trace(tx, reqs, tx_measurement);
+        tx_measurement->set_otel_attribute("ton.trace.tail_requests_count", static_cast<std::int64_t>(reqs.size()));
+        tx_measurement->end_otel_child_span("build_trace_tree");
 
         if (reqs.empty()) {
             children_emulated(std::move(parent_node), {}, tx.trace_ids.value(), {}, nullptr, tx_measurement);
@@ -522,6 +583,7 @@ void ConfirmedBlockEmulator::emulate_traces(MeasurementPtr measurement) {
             msgs_to_emulate.push_back(EmulationMessage{r.msg, r.depth});
         }
 
+        tx_measurement->start_otel_child_span("emulate_tail");
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this),
                                              parent_node = std::move(parent_node),
                                              tx_info = tx,
@@ -613,12 +675,15 @@ void ConfirmedBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent
     measurement->set_trace_root_tx_hash(trace.root_tx_hash);
     measurement->set_transactions_count(trace.transactions_count());
     measurement->set_emulated_transactions_count(trace.root ? trace.root->emulated_transactions_count() : 0);
+    measurement->set_otel_attribute("ton.trace.depth", static_cast<std::int64_t>(trace.depth()));
 
     if (context) {
         trace.rand_seed = context->get_rand_seed();
         trace.emulated_accounts = context->release_account_states();
         trace.tx_limit_exceeded = context->is_limit_exceeded();
     }
+    measurement->set_otel_attribute("ton.trace.tx_limit_exceeded", trace.tx_limit_exceeded);
+    measurement->end_otel_child_span("emulate_tail");
 
     if constexpr (std::variant_size_v<Trace::Detector::DetectedInterface> > 0) {
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), trace_root_tx_hash = trace.root_tx_hash, measurement](td::Result<Trace> R) {
@@ -635,6 +700,7 @@ void ConfirmedBlockEmulator::children_emulated(std::unique_ptr<TraceNode> parent
             shard_states.push_back(snapshot.state);
         }
 
+        measurement->start_otel_child_span("detect_interfaces");
         td::actor::create_actor<TraceInterfaceDetector>("ConfirmedTraceInterfaceDetector",
                                                         shard_states, config_, std::move(trace), std::move(P), measurement).release();
     } else {
@@ -646,6 +712,7 @@ void ConfirmedBlockEmulator::trace_error(td::Bits256 tx_hash, td::Bits256 trace_
     LOG(ERROR) << "Failed to emulate " << finality_label() << " trace with root tx " << td::base64_encode(trace_root_tx_hash.as_slice())
                << " from tx " << tx_hash.to_hex() << ": " << error;
     measurement->mark_otel_error("trace_emulator.processing_error", error.to_string());
+    measurement->end_otel_child_span("emulate_tail");
     trace_finished(trace_root_tx_hash, measurement);
 }
 
@@ -653,10 +720,13 @@ void ConfirmedBlockEmulator::trace_interfaces_error(td::Bits256 trace_root_tx_ha
     LOG(ERROR) << "Failed to detect interfaces on " << finality_label() << " trace with root tx "
                << td::base64_encode(trace_root_tx_hash.as_slice()) << ": " << error;
     measurement->mark_otel_error("trace_emulator.interface_error", error.to_string());
+    measurement->end_otel_child_span("detect_interfaces");
     trace_finished(trace_root_tx_hash, measurement);
 }
 
 void ConfirmedBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurement) {
+    measurement->end_otel_child_span("detect_interfaces");
+    measurement->start_otel_child_span("insert_trace");
     auto root_hash = trace.root_tx_hash;
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), root_hash, label = std::string(finality_label()), measurement](td::Result<td::Unit> R) {
         if (R.is_error()) {
@@ -666,6 +736,7 @@ void ConfirmedBlockEmulator::trace_emulated(Trace trace, MeasurementPtr measurem
         } else {
             LOG(DEBUG) << "Inserted " << label << " trace " << td::base64_encode(root_hash.as_slice());
         }
+        measurement->end_otel_child_span("insert_trace");
         td::actor::send_closure(SelfId, &ConfirmedBlockEmulator::trace_finished, root_hash, measurement);
     });
 
