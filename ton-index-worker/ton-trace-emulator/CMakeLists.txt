@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 add_library(ton-trace-emulator-core STATIC
     src/TraceEmulator.cpp
+    src/ExternalMessageAdmission.cpp
     src/OverlayListener.cpp
     src/BlockEmulator.cpp
     src/TraceInterfaceDetector.cpp

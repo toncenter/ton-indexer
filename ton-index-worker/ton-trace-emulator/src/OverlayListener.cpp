@@ -118,7 +118,19 @@ void OverlayListener::process_external_message(td::Ref<ton::validator::ExtMessag
         return;
     }
     auto msg_hash_norm = msg_hash_norm_r.move_as_ok();
-    if (!known_ext_msgs_.insert(msg_hash_norm).second) {
+
+    auto destination = block::StdAddress(message->wc(), message->addr());
+    auto admission = external_message_admission_->try_acquire(msg_hash_norm, destination);
+    if (!admission.accepted) {
+        if (admission.reject_reason == ExternalMessageAdmission::RejectReason::Duplicate) {
+            LOG(DEBUG) << "Skipping duplicate overlay external message " << td::base64_encode(msg_hash_norm.as_slice());
+        } else {
+            LOG(DEBUG) << "Rate-limited overlay external message " << td::base64_encode(msg_hash_norm.as_slice())
+                << " for destination " << destination.workchain << ":" << destination.addr.to_hex()
+                << " (" << admission.accepted_for_destination << "/"
+                << ExternalMessageAdmission::kDefaultMaxEmulationsPerDestination << " in "
+                << ExternalMessageAdmission::kDefaultWindowSeconds << "s)";
+        }
         return;
     }
 
@@ -151,10 +163,12 @@ void OverlayListener::trace_error(td::Bits256 ext_in_msg_hash_norm, td::Status e
     measurement->mark_otel_error("trace_emulator.emulation_error", error.to_string());
     measurement->end_otel_child_span("emulate_tail");
     measurement->emit_otel_span();
+    external_message_admission_->release_message(ext_in_msg_hash_norm);
 }
 
 void OverlayListener::trace_received(Trace trace, MeasurementPtr measurement) {
     measurement->end_otel_child_span("emulate_tail");
+    external_message_admission_->mark_emulated(trace.ext_in_msg_hash_norm);
     LOG(INFO) << "Emulated trace from msg " << td::base64_encode(trace.ext_in_msg_hash_norm.as_slice()) << ": "
         << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
     measurement->set_transactions_count(trace.transactions_count());

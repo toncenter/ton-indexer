@@ -52,8 +52,14 @@ void ChannelListener::alarm() {
   alarm_timestamp() = td::Timestamp::now();
 }
 
-RedisListener::RedisListener(std::string redis_dsn, std::string channel_name, std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor)
-        : redis_dsn_(redis_dsn), channel_name_(channel_name), trace_processor_(std::move(trace_processor)) {
+RedisListener::RedisListener(std::string redis_dsn, std::string channel_name,
+                             std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,
+                             std::shared_ptr<ExternalMessageAdmission> external_message_admission)
+        : redis_dsn_(redis_dsn), channel_name_(channel_name), trace_processor_(std::move(trace_processor)),
+          external_message_admission_(std::move(external_message_admission)) {
+  if (!external_message_admission_) {
+    external_message_admission_ = std::make_shared<ExternalMessageAdmission>();
+  }
 }
 
 void RedisListener::start_up() {
@@ -75,10 +81,30 @@ void RedisListener::on_new_message(td::Ref<vm::Cell> msg_cell) {
     return;
   }
   auto msg_hash_norm = msg_hash_norm_r.move_as_ok();
-  auto [x, inserted] = known_ext_msgs_.insert(msg_hash_norm);
-  if (!inserted) {
+
+  int msg_type = -1;
+  auto destination_r = fetch_msg_dest_address(msg_cell, msg_type);
+  if (destination_r.is_error() || msg_type != block::gen::CommonMsgInfo::ext_in_msg_info) {
+    LOG(ERROR) << "Failed to get destination for external message: " << td::base64_encode(msg_hash_norm.as_slice())
+               << ": " << (destination_r.is_error() ? destination_r.move_as_error().to_string() : "unexpected message type");
     return;
   }
+  auto destination = destination_r.move_as_ok();
+
+  auto admission = external_message_admission_->try_acquire(msg_hash_norm, destination);
+  if (!admission.accepted) {
+    if (admission.reject_reason == ExternalMessageAdmission::RejectReason::Duplicate) {
+      LOG(DEBUG) << "Skipping duplicate redis external message " << td::base64_encode(msg_hash_norm.as_slice());
+    } else {
+      LOG(DEBUG) << "Rate-limited redis external message " << td::base64_encode(msg_hash_norm.as_slice())
+                 << " for destination " << destination.workchain << ":" << destination.addr.to_hex()
+                 << " (" << admission.accepted_for_destination << "/"
+                 << ExternalMessageAdmission::kDefaultMaxEmulationsPerDestination << " in "
+                 << ExternalMessageAdmission::kDefaultWindowSeconds << "s)";
+    }
+    return;
+  }
+
   auto measurement = std::make_shared<Measurement>();
   measurement->set_finality("pending");
   measurement->set_operation("emulate");
@@ -108,7 +134,6 @@ void RedisListener::set_mc_data_state(schema::MasterchainBlockDataState mc_data_
   }
 
   mc_data_state_ = std::move(mc_data_state);
-  known_ext_msgs_.clear();
 }
 
 void RedisListener::trace_error(td::Bits256 ext_in_msg_hash_norm, td::Status error, MeasurementPtr measurement) {
@@ -116,11 +141,12 @@ void RedisListener::trace_error(td::Bits256 ext_in_msg_hash_norm, td::Status err
   measurement->mark_otel_error("trace_emulator.emulation_error", error.to_string());
   measurement->end_otel_child_span("emulate_tail");
   measurement->emit_otel_span();
-  known_ext_msgs_.erase(ext_in_msg_hash_norm);
+  external_message_admission_->release_message(ext_in_msg_hash_norm);
 }
 
 void RedisListener::trace_received(Trace trace, MeasurementPtr measurement) {
   measurement->end_otel_child_span("emulate_tail");
+  external_message_admission_->mark_emulated(trace.ext_in_msg_hash_norm);
   LOG(INFO) << "Emulated trace from msg " << td::base64_encode(trace.ext_in_msg_hash_norm.as_slice()) << ": "
         << trace.transactions_count() << " transactions, " << trace.depth() << " depth";
   measurement->set_transactions_count(trace.transactions_count());
