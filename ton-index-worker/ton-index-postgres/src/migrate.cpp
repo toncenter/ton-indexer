@@ -42,8 +42,8 @@ void ensure_latest_version(const std::string& connection_string, bool dry_run) {
   }
 }
 
-void run_1_2_0_migrations(const std::string& connection_string, bool custom_types, bool dry_run) {
-  LOG(INFO) << "Running migrations to version 1.2.0";
+void run_1_3_0_migrations(const std::string& connection_string, bool custom_types, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.3.0";
 
   LOG(INFO) << "Creating required types...";
   {
@@ -103,6 +103,35 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
     exec_query("create type jvault_claim_details as (claimed_jettons varchar[], claimed_amounts numeric[]);");
     exec_query("create type jvault_stake_details as (period numeric, minted_stake_jettons numeric, stake_wallet varchar);");
     exec_query("create type tonco_deploy_pool_details as (jetton0_router_wallet varchar, jetton1_router_wallet varchar, jetton0_minter varchar, jetton1_minter varchar, tick_spacing integer, initial_price_x96 numeric, protocol_fee integer, lp_fee_base integer, lp_fee_current integer, pool_active boolean);");
+    exec_query("alter type nft_transfer_details add attribute marketplace varchar;");
+    exec_query("alter type nft_transfer_details add attribute real_prev_owner tonaddr;");
+    exec_query("create type coffee_create_pool_details as (amount_1 numeric, amount_2 numeric, initiator_1 tonaddr, initiator_2 tonaddr, provided_asset tonaddr, lp_tokens_minted numeric, pool_creator_contract tonaddr);");
+    exec_query("create type coffee_staking_deposit_details as (minted_item_address tonaddr, minted_item_index numeric);");
+    exec_query("create type coffee_staking_withdraw_details as (nft_address tonaddr, nft_index numeric, points numeric);");
+    exec_query("alter type nft_transfer_details add attribute marketplace_address tonaddr;");
+    exec_query("alter type nft_transfer_details add attribute payout_amount numeric;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment_encrypted boolean;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment_encoded boolean;");
+    exec_query("alter type nft_transfer_details add attribute payout_comment text;");
+    exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
+    exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
+    exec_query("create type layerzero_send_details as (send_request_id numeric, msglib_manager varchar, msglib varchar, uln tonaddr, native_fee numeric, zro_fee numeric, endpoint tonaddr, channel tonaddr);");
+    exec_query("create type layerzero_packet_details as (src_oapp varchar, dst_oapp varchar, src_eid integer, dst_eid integer, nonce numeric, guid varchar, message varchar);");
+    exec_query("create type layerzero_dvn_verify_details as (nonce numeric, status varchar, dvn tonaddr, proxy tonaddr, uln tonaddr, uln_connection tonaddr);");
+    exec_query("create type pool_type as enum ('stable', 'volatile');");
+    exec_query("create type dex_type as enum ('dedust');");
+    exec_query("create type cocoon_worker_payout_details as (payout_type varchar, query_id numeric, new_tokens numeric, worker_state integer, worker_tokens numeric);");
+    exec_query("create type cocoon_proxy_payout_details as (query_id numeric);");
+    exec_query("create type cocoon_proxy_charge_details as (query_id numeric, new_tokens_used numeric, expected_address varchar);");
+    exec_query("create type cocoon_client_top_up_details as (query_id numeric);");
+    exec_query("create type cocoon_register_proxy_details as (query_id numeric);");
+    exec_query("create type cocoon_unregister_proxy_details as (query_id numeric, seqno integer);");
+    exec_query("create type cocoon_client_register_details as (query_id numeric, nonce numeric);");
+    exec_query("create type cocoon_client_change_secret_hash_details as (query_id numeric, new_secret_hash varchar);");
+    exec_query("create type cocoon_client_request_refund_details as (query_id numeric, via_wallet boolean);");
+    exec_query("create type cocoon_grant_refund_details as (query_id numeric, new_tokens_used numeric, expected_address varchar);");
+    exec_query("create type cocoon_client_increase_stake_details as (query_id numeric, new_stake numeric);");
+    exec_query("create type cocoon_client_withdraw_details as (query_id numeric, withdraw_amount numeric);");
   }
 
   LOG(INFO) << "Creating tables...";
@@ -695,7 +724,8 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "started_at timestamptz not null);\n"
 
       "insert into ton_indexer_leader (id, leader_worker_id, last_heartbeat, started_at)"
-      "values (1, 'none', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour');\n"
+      "values (1, 'none', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour') "
+      "on conflict (id) do nothing;\n"
     );
 
     // create required indexes
@@ -717,118 +747,11 @@ void run_1_2_0_migrations(const std::string& connection_string, bool custom_type
       "execute procedure on_new_mc_block_func();\n"
     );
 
-    query += set_version_query({1, 2, 0});
-    if (dry_run) {
-      std::cout << query << std::endl;
-      return;
-    }
-
-    txn.exec(query).no_rows();
-    txn.commit();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while migrating database: " << e.what();
-    std::exit(1);
-  }
-
-  LOG(INFO) << "Migration to version 1.2.0 completed successfully.";
-}
-
-void run_1_2_1_migrations(const std::string& connection_string, bool dry_run) {
-  LOG(INFO) << "Running migrations to version 1.2.1";
-
-  LOG(INFO) << "Altering types...";
-  {
-    auto exec_query = [&] (const std::string& query) {
-      if (dry_run) {
-        std::cout << query << std::endl;
-        return;
-      }
-
-      try {
-        pqxx::connection c(connection_string);
-        pqxx::work txn(c);
-
-        txn.exec(query).no_rows();
-        txn.commit();
-      } catch (const std::exception &e) {
-        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
-      }
-    };
-
-    exec_query("alter type nft_transfer_details add attribute marketplace varchar;");
-    exec_query("alter type nft_transfer_details add attribute real_prev_owner tonaddr;");
-    exec_query("create type coffee_create_pool_details as (amount_1 numeric, amount_2 numeric, initiator_1 tonaddr, initiator_2 tonaddr, provided_asset tonaddr, lp_tokens_minted numeric, pool_creator_contract tonaddr);");
-    exec_query("create type coffee_staking_deposit_details as (minted_item_address tonaddr, minted_item_index numeric);");
-    exec_query("create type coffee_staking_withdraw_details as (nft_address tonaddr, nft_index numeric, points numeric);");
-  }
-
-  LOG(INFO) << "Updating tables...";
-  try {
-    pqxx::connection c(connection_string);
-    pqxx::work txn(c);
-
-    std::string query = "";
-
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS trace_external_hash_norm tonhash;\n";
     query += "ALTER TABLE traces ADD COLUMN IF NOT EXISTS external_hash_norm tonhash;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_create_pool_data coffee_create_pool_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_deposit_data coffee_staking_deposit_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS coffee_staking_withdraw_data coffee_staking_withdraw_details;\n";
-
-    query += set_version_query({1, 2, 1});
-    if (dry_run) {
-      std::cout << query << std::endl;
-      return;
-    }
-
-    txn.exec(query).no_rows();
-    txn.commit();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while migrating database: " << e.what();
-    std::exit(1);
-  }
-
-  LOG(INFO) << "Migration to version 1.2.1 completed successfully.";
-}
-
-void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
-  LOG(INFO) << "Running migrations to version 1.2.2";
-
-  LOG(INFO) << "Altering types...";
-  {
-    auto exec_query = [&] (const std::string& query) {
-      if (dry_run) {
-        std::cout << query << std::endl;
-        return;
-      }
-
-      try {
-        pqxx::connection c(connection_string);
-        pqxx::work txn(c);
-
-        txn.exec(query).no_rows();
-        txn.commit();
-      } catch (const std::exception &e) {
-        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
-      }
-    };
-
-    exec_query("alter type nft_transfer_details add attribute marketplace_address tonaddr;");
-    exec_query("alter type nft_transfer_details add attribute payout_amount numeric;");
-    exec_query("alter type nft_transfer_details add attribute payout_comment_encrypted boolean;");
-    exec_query("alter type nft_transfer_details add attribute payout_comment_encoded boolean;");
-    exec_query("alter type nft_transfer_details add attribute payout_comment text;");
-    exec_query("alter type nft_transfer_details add attribute royalty_amount numeric;");
-    exec_query("create type nft_listing_details as (nft_item_index numeric, full_price numeric, marketplace_fee numeric, royalty_amount numeric, mp_fee_factor numeric, mp_fee_base numeric, royalty_fee_base numeric, max_bid numeric, min_bid numeric, marketplace_fee_address tonaddr, royalty_address tonaddr, marketplace varchar);");
-  }
-
-  LOG(INFO) << "Updating tables...";
-  try {
-    pqxx::connection c(connection_string);
-    pqxx::work txn(c);
-
-    std::string query = "";
-
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS nft_listing_data nft_listing_details;\n";
 
     query += (
@@ -837,61 +760,7 @@ void run_1_2_2_migrations(const std::string& connection_string, bool dry_run) {
       "name varchar NOT NULL);\n"
     );
 
-    query += set_version_query({1, 2, 2});
-    if (dry_run) {
-      std::cout << query << std::endl;
-      return;
-    }
-
-    txn.exec(query).no_rows();
-    txn.commit();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while migrating database: " << e.what();
-    std::exit(1);
-  }
-
-  LOG(INFO) << "Migration to version 1.2.2 completed successfully.";
-}
-
-void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
-  LOG(INFO) << "Running migrations to version 1.2.3";
-
-  LOG(INFO) << "Altering types...";
-  {
-    auto exec_query = [&] (const std::string& query) {
-      if (dry_run) {
-        std::cout << query << std::endl;
-        return;
-      }
-
-      try {
-        pqxx::connection c(connection_string);
-        pqxx::work txn(c);
-
-        txn.exec(query).no_rows();
-        txn.commit();
-      } catch (const std::exception &e) {
-        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
-      }
-    };
-
-    exec_query("create type layerzero_send_details as (send_request_id numeric, msglib_manager varchar, msglib varchar, uln tonaddr, native_fee numeric, zro_fee numeric, endpoint tonaddr, channel tonaddr);");
-    exec_query("create type layerzero_packet_details as (src_oapp varchar, dst_oapp varchar, src_eid integer, dst_eid integer, nonce numeric, guid varchar, message varchar);");
-    exec_query("create type layerzero_dvn_verify_details as (nonce numeric, status varchar, dvn tonaddr, proxy tonaddr, uln tonaddr, uln_connection tonaddr);");
-    exec_query("create type pool_type as enum ('stable', 'volatile');");
-    exec_query("create type dex_type as enum ('dedust');");
-  }
-
-  LOG(INFO) << "Updating tables...";
-  try {
-    pqxx::connection c(connection_string);
-    pqxx::work txn(c);
-
-    std::string query = "";
-
     query += "ALTER TABLE messages ADD COLUMN IF NOT EXISTS extra_flags numeric;\n";
-
-
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_send_data layerzero_send_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_packet_data layerzero_packet_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS layerzero_dvn_verify_data layerzero_dvn_verify_details;\n";
@@ -912,55 +781,7 @@ void run_1_2_3_migrations(const std::string& connection_string, bool dry_run) {
       "data_hash tonhash);\n"
     );
 
-    query += set_version_query({1, 2, 3});
-    if (dry_run) {
-      std::cout << query << std::endl;
-      return;
-    }
-
-    txn.exec(query).no_rows();
-    txn.commit();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while migrating database: " << e.what();
-    std::exit(1);
-  }
-
-  LOG(INFO) << "Migration to version 1.2.3 completed successfully.";
-}
-
-void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
-  LOG(INFO) << "Running migrations to version 1.2.4";
-
-  LOG(INFO) << "Altering types...";
-  {
-    auto exec_query = [&] (const std::string& query) {
-      if (dry_run) {
-        std::cout << query << std::endl;
-        return;
-      }
-
-      try {
-        pqxx::connection c(connection_string);
-        pqxx::work txn(c);
-
-        txn.exec(query).no_rows();
-        txn.commit();
-      } catch (const std::exception &e) {
-        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
-      }
-    };
-
-    // TODO: add new migrations
-  }
-
-  LOG(INFO) << "Updating tables...";
-  try {
-    pqxx::connection c(connection_string);
-    pqxx::work txn(c);
-
-    std::string query = "";
-
-    query += "ALTER TABLE nft_items ADD COLUMN IF NOT EXISTS real_owner tonaddr;";
+    query += "ALTER TABLE nft_items ADD COLUMN IF NOT EXISTS real_owner tonaddr;\n";
 
     query += (
         "CREATE OR REPLACE FUNCTION update_nft_real_owner() RETURNS TRIGGER AS $$ "
@@ -987,66 +808,6 @@ void run_1_2_4_migrations(const std::string& connection_string, bool dry_run) {
 
     query += "alter table address_metadata add column if not exists reindex_allowed boolean default true not null;\n";
 
-    query += set_version_query({1, 2, 4});
-    if (dry_run) {
-      std::cout << query << std::endl;
-      return;
-    }
-
-    LOG(DEBUG) << query;
-    txn.exec(query).no_rows();
-    txn.commit();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while migrating database: " << e.what();
-    std::exit(1);
-  }
-
-  LOG(INFO) << "Migration to version 1.2.4 completed successfully.";
-}
-
-void run_1_2_6_migrations(const std::string& connection_string, bool dry_run) {
-  LOG(INFO) << "Running migrations to version 1.2.6";
-
-  LOG(INFO) << "Altering types...";
-  {
-    auto exec_query = [&] (const std::string& query) {
-      if (dry_run) {
-        std::cout << query << std::endl;
-        return;
-      }
-
-      try {
-        pqxx::connection c(connection_string);
-        pqxx::work txn(c);
-
-        txn.exec(query).no_rows();
-        txn.commit();
-      } catch (const std::exception &e) {
-        LOG(INFO) << "Skipping query '" << query << "': " << e.what();
-      }
-    };
-
-    exec_query("create type cocoon_worker_payout_details as (payout_type varchar, query_id numeric, new_tokens numeric, worker_state integer, worker_tokens numeric);");
-    exec_query("create type cocoon_proxy_payout_details as (query_id numeric);");
-    exec_query("create type cocoon_proxy_charge_details as (query_id numeric, new_tokens_used numeric, expected_address varchar);");
-    exec_query("create type cocoon_client_top_up_details as (query_id numeric);");
-    exec_query("create type cocoon_register_proxy_details as (query_id numeric);");
-    exec_query("create type cocoon_unregister_proxy_details as (query_id numeric, seqno integer);");
-    exec_query("create type cocoon_client_register_details as (query_id numeric, nonce numeric);");
-    exec_query("create type cocoon_client_change_secret_hash_details as (query_id numeric, new_secret_hash varchar);");
-    exec_query("create type cocoon_client_request_refund_details as (query_id numeric, via_wallet boolean);");
-    exec_query("create type cocoon_grant_refund_details as (query_id numeric, new_tokens_used numeric, expected_address varchar);");
-    exec_query("create type cocoon_client_increase_stake_details as (query_id numeric, new_stake numeric);");
-    exec_query("create type cocoon_client_withdraw_details as (query_id numeric, withdraw_amount numeric);");
-  }
-
-  LOG(INFO) << "Updating tables...";
-  try {
-    pqxx::connection c(connection_string);
-    pqxx::work txn(c);
-
-    std::string query = "";
-
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_worker_payout_data cocoon_worker_payout_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_proxy_payout_data cocoon_proxy_payout_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_proxy_charge_data cocoon_proxy_charge_details;\n";
@@ -1059,32 +820,6 @@ void run_1_2_6_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_grant_refund_data cocoon_grant_refund_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_increase_stake_data cocoon_client_increase_stake_details;\n";
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS cocoon_client_withdraw_data cocoon_client_withdraw_details;\n";
-
-    query += set_version_query({1, 2, 6});
-    if (dry_run) {
-      std::cout << query << std::endl;
-      return;
-    }
-
-    txn.exec(query).no_rows();
-    txn.commit();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while migrating database: " << e.what();
-    std::exit(1);
-  }
-
-  LOG(INFO) << "Migration to version 1.2.6 completed successfully.";
-}
-
-void run_1_2_7_migrations(const std::string& connection_string, bool dry_run) {
-  LOG(INFO) << "Running migrations to version 1.2.7";
-
-  LOG(INFO) << "Updating tables...";
-  try {
-    pqxx::connection c(connection_string);
-    pqxx::work txn(c);
-
-    std::string query = "";
 
     query += (
       "create table if not exists telemint_nft_items ("
@@ -1113,7 +848,6 @@ void run_1_2_7_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_at numeric;\n";
     query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS sold_query_id numeric;\n";
     query += "ALTER TABLE getgems_nft_sales ADD COLUMN IF NOT EXISTS jetton_price_dict jsonb;\n";
-
     query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS activated boolean;\n";
     query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS step_time bigint;\n";
     query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS last_query_id numeric;\n";
@@ -1122,47 +856,17 @@ void run_1_2_7_migrations(const std::string& connection_string, bool dry_run) {
     query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS is_broken_state boolean;\n";
     query += "ALTER TABLE getgems_nft_auctions ADD COLUMN IF NOT EXISTS public_key varchar;\n";
 
-    query += set_version_query({1, 2, 7});
-
-    if (dry_run) {
-      std::cout << query << std::endl;
-      return;
-    }
-
-    LOG(DEBUG) << query;
-    txn.exec(query).no_rows();
-    txn.commit();
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error while migrating database: " << e.what();
-    std::exit(1);
-  }
-
-  LOG(INFO) << "Migration to version 1.2.7 completed successfully.";
-}
-
-void run_1_2_8_migrations(const std::string& connection_string, bool dry_run) {
-  LOG(INFO) << "Running migrations to version 1.2.8";
-
-  LOG(INFO) << "Updating tables...";
-  try {
-    pqxx::connection c(connection_string);
-    pqxx::work txn(c);
-
-    std::string query = "";
-
     query += "ALTER TABLE telemint_nft_items ALTER COLUMN royalty_denominator TYPE bigint;\n";
     query += "ALTER TABLE telemint_nft_items ALTER COLUMN royalty_numerator TYPE bigint;\n";
     query += "ALTER TABLE telemint_nft_items ALTER COLUMN duration TYPE bigint;\n";
     query += "ALTER TABLE telemint_nft_items ALTER COLUMN min_extend_time TYPE bigint;\n";
 
-    query += set_version_query({1, 2, 8});
-
+    query += set_version_query({1, 3, 0});
     if (dry_run) {
       std::cout << query << std::endl;
       return;
     }
 
-    LOG(DEBUG) << query;
     txn.exec(query).no_rows();
     txn.commit();
   } catch (const std::exception &e) {
@@ -1170,7 +874,7 @@ void run_1_2_8_migrations(const std::string& connection_string, bool dry_run) {
     std::exit(1);
   }
 
-  LOG(INFO) << "Migration to version 1.2.8 completed successfully.";
+  LOG(INFO) << "Migration to version 1.3.0 completed successfully.";
 }
 
 void create_indexes(std::string connection_string, bool dry_run) {
@@ -1357,47 +1061,19 @@ int main(int argc, char *argv[]) {
   if (current_version.has_value() && *current_version == latest_version && !rerun_last_migration) {
     LOG(INFO) << "Database is already at the latest version. No migrations needed.";
   } else {
-    if (!current_version.has_value()) {
-      run_1_2_0_migrations(pg_connection_string, custom_types, dry_run);
-      current_version = Version{1, 2, 0};
-    }
-    if (migration_needed(current_version, Version{1, 2, 1})) {
-      run_1_2_1_migrations(pg_connection_string, dry_run);
-      current_version = Version{1, 2, 1};
-    }
-    if (migration_needed(current_version, Version{1, 2, 2})) {
-      run_1_2_2_migrations(pg_connection_string, dry_run);
-      current_version = Version{1, 2, 2};
-    }
-    if (migration_needed(current_version, Version{1, 2, 3})) {
-      run_1_2_3_migrations(pg_connection_string, dry_run);
-      current_version = Version{1, 2, 3};
-    }
-    if (migration_needed(current_version, Version{1, 2, 4})) {
-      run_1_2_4_migrations(pg_connection_string, dry_run);
-      current_version = Version{1, 2, 4};
-    }
-    if (migration_needed(current_version, Version{1, 2, 6})) {
-      run_1_2_6_migrations(pg_connection_string, dry_run);
-      current_version = Version{1, 2, 6};
-    }
-    if (migration_needed(current_version, Version{1, 2, 7})) {
-      run_1_2_7_migrations(pg_connection_string, dry_run);
-      current_version = Version{1, 2, 7};
-    }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 8})) {
-      run_1_2_8_migrations(pg_connection_string, dry_run);
-      current_version = Version{1, 2, 8};
+    if (!current_version.has_value() || rerun_last_migration || migration_needed(current_version, Version{1, 3, 0})) {
+      run_1_3_0_migrations(pg_connection_string, custom_types, dry_run);
+      current_version = Version{1, 3, 0};
     }
 
 
     // In future, more migrations will be added here
     // not every version must have migrations
     // name of a function should have target version of migration,
-    // f.e. run_1_2_2 sets version to 1.2.2
-    // if (is_migration_needed(current_version, Version{1, 2, 2}, rerun_last_migration)) {
-    //   run_1_2_2_migrations(pg_connection_string);
-    //   current_version = Version{1, 2, 2};
+    // f.e. run_1_3_1 sets version to 1.3.1
+    // if (migration_needed(current_version, Version{1, 3, 1})) {
+    //   run_1_3_1_migrations(pg_connection_string);
+    //   current_version = Version{1, 3, 1};
     // }
     // and so on...
 

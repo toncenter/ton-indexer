@@ -1,0 +1,538 @@
+# docker-compose.yml
+# Local development Patroni cluster with PostgreSQL 18:
+# - 3-node etcd DCS
+# - 3-node Patroni/PostgreSQL cluster
+# - HAProxy endpoint:
+#   - localhost:5000 -> current primary
+#   - localhost:5001 -> replicas
+#   - localhost:7000 -> HAProxy stats
+# - 3-node Kvrocks cluster with Redis Sentinel:
+#   - localhost:6666 -> kvrocks-1
+#   - localhost:6667 -> kvrocks-2
+#   - localhost:6668 -> kvrocks-3
+#   - localhost:26379-26381 -> sentinels
+
+x-kvrocks-common: &kvrocks-common
+  image: apache/kvrocks:2.14.0
+  restart: unless-stopped
+  networks: [kvrocks-net]
+  ulimits:
+    nofile:
+      soft: 100000
+      hard: 100000
+
+x-sentinel-common: &sentinel-common
+  image: redis:7.2-alpine
+  restart: unless-stopped
+  depends_on:
+    - kvrocks-1
+    - kvrocks-2
+    - kvrocks-3
+  networks: [kvrocks-net]
+
+services:
+  etcd1:
+    image: quay.io/coreos/etcd:v3.5.17
+    container_name: etcd1
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd1
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd1:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd1:2380
+      - --initial-cluster=etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      - --initial-cluster-token=patroni-etcd
+      - --initial-cluster-state=new
+    volumes:
+      - etcd1_data:/etcd-data
+    networks: [pgnet]
+
+  etcd2:
+    image: quay.io/coreos/etcd:v3.5.17
+    container_name: etcd2
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd2
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd2:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd2:2380
+      - --initial-cluster=etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      - --initial-cluster-token=patroni-etcd
+      - --initial-cluster-state=new
+    volumes:
+      - etcd2_data:/etcd-data
+    networks: [pgnet]
+
+  etcd3:
+    image: quay.io/coreos/etcd:v3.5.17
+    container_name: etcd3
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd3
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd3:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd3:2380
+      - --initial-cluster=etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      - --initial-cluster-token=patroni-etcd
+      - --initial-cluster-state=new
+    volumes:
+      - etcd3_data:/etcd-data
+    networks: [pgnet]
+
+  patroni1:
+    <<: &patroni-common
+      build:
+        context: .
+        dockerfile_inline: |
+          FROM postgres:18
+          RUN apt-get update \
+              && apt-get install -y --no-install-recommends \
+                   python3 \
+                   python3-venv \
+                   ca-certificates \
+                   curl \
+              && rm -rf /var/lib/apt/lists/* \
+              && python3 -m venv /opt/patroni \
+              && /opt/patroni/bin/pip install --no-cache-dir --upgrade pip \
+              && /opt/patroni/bin/pip install --no-cache-dir "patroni[etcd3]" psycopg2-binary \
+              && ln -s /opt/patroni/bin/patroni /usr/local/bin/patroni \
+              && ln -s /opt/patroni/bin/patronictl /usr/local/bin/patronictl
+      image: local/patroni-postgres:18
+      entrypoint: ["/bin/bash", "-ec"]
+      command:
+        - |
+          mkdir -p "$${PATRONI_DATA_DIR}" /var/run/postgresql
+          chown -R postgres:postgres /var/lib/postgresql /var/run/postgresql
+          chmod 700 "$${PATRONI_DATA_DIR}"
+          rm -f /tmp/post_bootstrap.sh /tmp/patroni.yml
+
+          cat > /tmp/post_bootstrap.sh <<'EOF'
+          #!/bin/bash
+          set -euo pipefail
+
+          psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+          SELECT 'CREATE ROLE admin WITH LOGIN CREATEROLE CREATEDB PASSWORD ''admin'''
+          WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'admin')\gexec
+          ALTER ROLE admin WITH CREATEROLE CREATEDB PASSWORD 'admin';
+
+          SELECT 'CREATE ROLE rewind_user WITH LOGIN SUPERUSER PASSWORD ''rewind_password'''
+          WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rewind_user')\gexec
+          ALTER ROLE rewind_user WITH SUPERUSER PASSWORD 'rewind_password';
+          SQL
+          EOF
+          chown postgres:postgres /tmp/post_bootstrap.sh
+          chmod 700 /tmp/post_bootstrap.sh
+
+          cat > /tmp/patroni.yml <<EOF
+          scope: $${PATRONI_SCOPE}
+          namespace: /service/
+          name: $${PATRONI_NAME}
+
+          restapi:
+            listen: 0.0.0.0:8008
+            connect_address: $${PATRONI_NAME}:8008
+
+          etcd3:
+            hosts: etcd1:2379,etcd2:2379,etcd3:2379
+
+          bootstrap:
+            post_bootstrap: /tmp/post_bootstrap.sh
+            dcs:
+              ttl: 30
+              loop_wait: 10
+              retry_timeout: 10
+              maximum_lag_on_failover: 1048576
+              postgresql:
+                use_pg_rewind: true
+                use_slots: true
+                parameters:
+                  wal_level: logical
+                  hot_standby: "on"
+                  max_wal_senders: 20
+                  max_replication_slots: 20
+                  max_connections: 200
+                  shared_buffers: 256MB
+            initdb:
+              - encoding: UTF8
+              - data-checksums
+            pg_hba:
+              - host all all 0.0.0.0/0 scram-sha-256
+              - host replication replicator 0.0.0.0/0 scram-sha-256
+
+          postgresql:
+            listen: 0.0.0.0:5432
+            connect_address: $${PATRONI_NAME}:5432
+            data_dir: $${PATRONI_DATA_DIR}
+            bin_dir: /usr/lib/postgresql/18/bin
+            authentication:
+              superuser:
+                username: postgres
+                password: postgres
+              replication:
+                username: replicator
+                password: replicator
+              rewind:
+                username: rewind_user
+                password: rewind_password
+            parameters:
+              unix_socket_directories: /var/run/postgresql
+
+          tags:
+            nofailover: false
+            noloadbalance: false
+            clonefrom: false
+            nosync: false
+          EOF
+
+          exec gosu postgres patroni /tmp/patroni.yml
+      environment:
+        PATRONI_SCOPE: pg18-dev
+        PATRONI_DATA_DIR: /var/lib/postgresql/18/docker
+      depends_on:
+        - etcd1
+        - etcd2
+        - etcd3
+      networks: [pgnet]
+    container_name: patroni1
+    hostname: patroni1
+    environment:
+      PATRONI_SCOPE: pg18-dev
+      PATRONI_NAME: patroni1
+      PATRONI_DATA_DIR: /var/lib/postgresql/18/docker
+    volumes:
+      - patroni1_data:/var/lib/postgresql
+    ports:
+      - "8001:8008"
+      - "5433:5432"
+
+  patroni2:
+    <<: *patroni-common
+    container_name: patroni2
+    hostname: patroni2
+    environment:
+      PATRONI_SCOPE: pg18-dev
+      PATRONI_NAME: patroni2
+      PATRONI_DATA_DIR: /var/lib/postgresql/18/docker
+    volumes:
+      - patroni2_data:/var/lib/postgresql
+    ports:
+      - "8002:8008"
+      - "5434:5432"
+
+  patroni3:
+    <<: *patroni-common
+    container_name: patroni3
+    hostname: patroni3
+    environment:
+      PATRONI_SCOPE: pg18-dev
+      PATRONI_NAME: patroni3
+      PATRONI_DATA_DIR: /var/lib/postgresql/18/docker
+    volumes:
+      - patroni3_data:/var/lib/postgresql
+    ports:
+      - "8003:8008"
+      - "5435:5432"
+
+  haproxy:
+    image: haproxy:2.9
+    container_name: haproxy-pg18
+    depends_on:
+      - patroni1
+      - patroni2
+      - patroni3
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        cat > /tmp/haproxy.cfg <<'EOF'
+        global
+            maxconn 1000
+            log stdout format raw local0
+
+        defaults
+            log global
+            mode tcp
+            retries 2
+            timeout connect 5s
+            timeout client  1h
+            timeout server  1h
+
+        listen stats
+            mode http
+            bind *:7000
+            stats enable
+            stats uri /
+
+        frontend pg_primary
+            bind *:5000
+            default_backend pg_primary_backend
+
+        backend pg_primary_backend
+            option httpchk GET /primary
+            http-check expect status 200
+            default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
+            server patroni1 patroni1:5432 check port 8008
+            server patroni2 patroni2:5432 check port 8008
+            server patroni3 patroni3:5432 check port 8008
+
+        frontend pg_replicas
+            bind *:5001
+            default_backend pg_replicas_backend
+
+        backend pg_replicas_backend
+            balance roundrobin
+            option httpchk GET /replica
+            http-check expect status 200
+            default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
+            server patroni1 patroni1:5432 check port 8008
+            server patroni2 patroni2:5432 check port 8008
+            server patroni3 patroni3:5432 check port 8008
+        EOF
+
+        exec haproxy -f /tmp/haproxy.cfg
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+      - "7000:7000"
+    networks: [pgnet]
+
+  kvrocks-1:
+    <<: *kvrocks-common
+    container_name: kvrocks-1
+    networks:
+      kvrocks-net:
+        ipv4_address: 172.20.0.11
+    command:
+      - "--bind"
+      - "0.0.0.0"
+      - "--port"
+      - "6666"
+      - "--requirepass"
+      - "devpass"
+      - "--masterauth"
+      - "devpass"
+      - "--db-name"
+      - "kvrocks-ha-dev"
+      - "--dir"
+      - "/var/lib/kvrocks"
+      - "--slave-read-only"
+      - "yes"
+      - "--slave-serve-stale-data"
+      - "yes"
+      - "--slave-priority"
+      - "100"
+      - "--use-rsid-psync"
+      - "yes"
+      - "--replica-announce-ip"
+      - "172.20.0.11"
+      - "--replica-announce-port"
+      - "6666"
+    volumes:
+      - kvrocks1-data:/var/lib/kvrocks
+    ports:
+      - "6666:6666"
+
+  kvrocks-2:
+    <<: *kvrocks-common
+    container_name: kvrocks-2
+    depends_on:
+      - kvrocks-1
+    networks:
+      kvrocks-net:
+        ipv4_address: 172.20.0.12
+    command:
+      - "--bind"
+      - "0.0.0.0"
+      - "--port"
+      - "6666"
+      - "--requirepass"
+      - "devpass"
+      - "--masterauth"
+      - "devpass"
+      - "--db-name"
+      - "kvrocks-ha-dev"
+      - "--dir"
+      - "/var/lib/kvrocks"
+      - "--slaveof"
+      - "172.20.0.11 6666"
+      - "--slave-read-only"
+      - "yes"
+      - "--slave-serve-stale-data"
+      - "yes"
+      - "--slave-priority"
+      - "100"
+      - "--use-rsid-psync"
+      - "yes"
+      - "--replica-announce-ip"
+      - "172.20.0.12"
+      - "--replica-announce-port"
+      - "6666"
+    volumes:
+      - kvrocks2-data:/var/lib/kvrocks
+    ports:
+      - "6667:6666"
+
+  kvrocks-3:
+    <<: *kvrocks-common
+    container_name: kvrocks-3
+    depends_on:
+      - kvrocks-1
+    networks:
+      kvrocks-net:
+        ipv4_address: 172.20.0.13
+    command:
+      - "--bind"
+      - "0.0.0.0"
+      - "--port"
+      - "6666"
+      - "--requirepass"
+      - "devpass"
+      - "--masterauth"
+      - "devpass"
+      - "--db-name"
+      - "kvrocks-ha-dev"
+      - "--dir"
+      - "/var/lib/kvrocks"
+      - "--slaveof"
+      - "172.20.0.11 6666"
+      - "--slave-read-only"
+      - "yes"
+      - "--slave-serve-stale-data"
+      - "yes"
+      - "--slave-priority"
+      - "90"
+      - "--use-rsid-psync"
+      - "yes"
+      - "--replica-announce-ip"
+      - "172.20.0.13"
+      - "--replica-announce-port"
+      - "6666"
+    volumes:
+      - kvrocks3-data:/var/lib/kvrocks
+    ports:
+      - "6668:6666"
+
+  sentinel-1:
+    <<: *sentinel-common
+    container_name: sentinel-1
+    networks:
+      kvrocks-net:
+        ipv4_address: 172.20.0.21
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        cat > /data/sentinel.conf <<EOF
+        port 26379
+        protected-mode no
+        dir /data
+
+        sentinel resolve-hostnames no
+        sentinel announce-hostnames no
+        sentinel announce-ip 172.20.0.21
+
+        sentinel monitor kvrocks-main 172.20.0.11 6666 2
+        sentinel auth-pass kvrocks-main devpass
+        sentinel down-after-milliseconds kvrocks-main 5000
+        sentinel failover-timeout kvrocks-main 60000
+        sentinel parallel-syncs kvrocks-main 1
+        EOF
+        exec redis-server /data/sentinel.conf --sentinel
+    volumes:
+      - sentinel1-data:/data
+    ports:
+      - "26379:26379"
+
+  sentinel-2:
+    <<: *sentinel-common
+    container_name: sentinel-2
+    networks:
+      kvrocks-net:
+        ipv4_address: 172.20.0.22
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        cat > /data/sentinel.conf <<EOF
+        port 26379
+        protected-mode no
+        dir /data
+
+        sentinel resolve-hostnames no
+        sentinel announce-hostnames no
+        sentinel announce-ip 172.20.0.22
+
+        sentinel monitor kvrocks-main 172.20.0.11 6666 2
+        sentinel auth-pass kvrocks-main devpass
+        sentinel down-after-milliseconds kvrocks-main 5000
+        sentinel failover-timeout kvrocks-main 60000
+        sentinel parallel-syncs kvrocks-main 1
+        EOF
+        exec redis-server /data/sentinel.conf --sentinel
+    volumes:
+      - sentinel2-data:/data
+    ports:
+      - "26380:26379"
+
+  sentinel-3:
+    <<: *sentinel-common
+    container_name: sentinel-3
+    networks:
+      kvrocks-net:
+        ipv4_address: 172.20.0.23
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        cat > /data/sentinel.conf <<EOF
+        port 26379
+        protected-mode no
+        dir /data
+
+        sentinel resolve-hostnames no
+        sentinel announce-hostnames no
+        sentinel announce-ip 172.20.0.23
+
+        sentinel monitor kvrocks-main 172.20.0.11 6666 2
+        sentinel auth-pass kvrocks-main devpass
+        sentinel down-after-milliseconds kvrocks-main 5000
+        sentinel failover-timeout kvrocks-main 60000
+        sentinel parallel-syncs kvrocks-main 1
+        EOF
+        exec redis-server /data/sentinel.conf --sentinel
+    volumes:
+      - sentinel3-data:/data
+    ports:
+      - "26381:26379"
+
+  redis-cli:
+    image: redis:7.2-alpine
+    profiles: [tools]
+    networks: [kvrocks-net]
+    entrypoint:
+      - redis-cli
+
+networks:
+  pgnet:
+    driver: bridge
+  kvrocks-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  etcd1_data:
+  etcd2_data:
+  etcd3_data:
+  patroni1_data:
+  patroni2_data:
+  patroni3_data:
+  kvrocks1-data:
+  kvrocks2-data:
+  kvrocks3-data:
+  sentinel1-data:
+  sentinel2-data:
+  sentinel3-data:
