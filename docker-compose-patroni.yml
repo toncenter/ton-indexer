@@ -11,6 +11,10 @@
 #   - localhost:6667 -> kvrocks-2
 #   - localhost:6668 -> kvrocks-3
 #   - localhost:26379-26381 -> sentinels
+#
+# Security defaults:
+# - published ports bind to 127.0.0.1 unless PATRONI_BIND_ADDR is set
+# - database and Kvrocks passwords must be provided via environment/.env
 
 x-kvrocks-common: &kvrocks-common
   image: apache/kvrocks:2.14.0
@@ -29,6 +33,14 @@ x-sentinel-common: &sentinel-common
     - kvrocks-2
     - kvrocks-3
   networks: [kvrocks-net]
+
+x-patroni-env: &patroni-env
+  PATRONI_SCOPE: pg18-dev
+  PATRONI_DATA_DIR: /var/lib/postgresql/18/docker
+  PG_ADMIN_PASSWORD: ${PATRONI_ADMIN_PASSWORD:?Set PATRONI_ADMIN_PASSWORD in .env}
+  POSTGRES_SUPERUSER_PASSWORD: ${PATRONI_POSTGRES_PASSWORD:?Set PATRONI_POSTGRES_PASSWORD in .env}
+  POSTGRES_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:?Set PATRONI_REPLICATION_PASSWORD in .env}
+  POSTGRES_REWIND_PASSWORD: ${PATRONI_REWIND_PASSWORD:?Set PATRONI_REWIND_PASSWORD in .env}
 
 services:
   etcd1:
@@ -116,14 +128,16 @@ services:
           #!/bin/bash
           set -euo pipefail
 
-          psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
-          SELECT 'CREATE ROLE admin WITH LOGIN CREATEROLE CREATEDB PASSWORD ''admin'''
+          psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            -v admin_password="$${PG_ADMIN_PASSWORD}" \
+            -v rewind_password="$${POSTGRES_REWIND_PASSWORD}" <<'SQL'
+          SELECT format('CREATE ROLE admin WITH LOGIN CREATEROLE CREATEDB PASSWORD %L', :'admin_password')
           WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'admin')\gexec
-          ALTER ROLE admin WITH CREATEROLE CREATEDB PASSWORD 'admin';
+          ALTER ROLE admin WITH CREATEROLE CREATEDB PASSWORD :'admin_password';
 
-          SELECT 'CREATE ROLE rewind_user WITH LOGIN SUPERUSER PASSWORD ''rewind_password'''
+          SELECT format('CREATE ROLE rewind_user WITH LOGIN SUPERUSER PASSWORD %L', :'rewind_password')
           WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rewind_user')\gexec
-          ALTER ROLE rewind_user WITH SUPERUSER PASSWORD 'rewind_password';
+          ALTER ROLE rewind_user WITH SUPERUSER PASSWORD :'rewind_password';
           SQL
           EOF
           chown postgres:postgres /tmp/post_bootstrap.sh
@@ -173,13 +187,13 @@ services:
             authentication:
               superuser:
                 username: postgres
-                password: postgres
+                password: "$${POSTGRES_SUPERUSER_PASSWORD}"
               replication:
                 username: replicator
-                password: replicator
+                password: "$${POSTGRES_REPLICATION_PASSWORD}"
               rewind:
                 username: rewind_user
-                password: rewind_password
+                password: "$${POSTGRES_REWIND_PASSWORD}"
             parameters:
               unix_socket_directories: /var/run/postgresql
 
@@ -191,9 +205,6 @@ services:
           EOF
 
           exec gosu postgres patroni /tmp/patroni.yml
-      environment:
-        PATRONI_SCOPE: pg18-dev
-        PATRONI_DATA_DIR: /var/lib/postgresql/18/docker
       depends_on:
         - etcd1
         - etcd2
@@ -202,42 +213,39 @@ services:
     container_name: patroni1
     hostname: patroni1
     environment:
-      PATRONI_SCOPE: pg18-dev
+      <<: *patroni-env
       PATRONI_NAME: patroni1
-      PATRONI_DATA_DIR: /var/lib/postgresql/18/docker
     volumes:
       - patroni1_data:/var/lib/postgresql
     ports:
-      - "8001:8008"
-      - "5433:5432"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:8001:8008"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:5433:5432"
 
   patroni2:
     <<: *patroni-common
     container_name: patroni2
     hostname: patroni2
     environment:
-      PATRONI_SCOPE: pg18-dev
+      <<: *patroni-env
       PATRONI_NAME: patroni2
-      PATRONI_DATA_DIR: /var/lib/postgresql/18/docker
     volumes:
       - patroni2_data:/var/lib/postgresql
     ports:
-      - "8002:8008"
-      - "5434:5432"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:8002:8008"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:5434:5432"
 
   patroni3:
     <<: *patroni-common
     container_name: patroni3
     hostname: patroni3
     environment:
-      PATRONI_SCOPE: pg18-dev
+      <<: *patroni-env
       PATRONI_NAME: patroni3
-      PATRONI_DATA_DIR: /var/lib/postgresql/18/docker
     volumes:
       - patroni3_data:/var/lib/postgresql
     ports:
-      - "8003:8008"
-      - "5435:5432"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:8003:8008"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:5435:5432"
 
   haproxy:
     image: haproxy:2.9
@@ -296,9 +304,9 @@ services:
 
         exec haproxy -f /tmp/haproxy.cfg
     ports:
-      - "5000:5000"
-      - "5001:5001"
-      - "7000:7000"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:5000:5000"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:5001:5001"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:7000:7000"
     networks: [pgnet]
 
   kvrocks-1:
@@ -313,9 +321,9 @@ services:
       - "--port"
       - "6666"
       - "--requirepass"
-      - "devpass"
+      - "${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}"
       - "--masterauth"
-      - "devpass"
+      - "${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}"
       - "--db-name"
       - "kvrocks-ha-dev"
       - "--dir"
@@ -335,7 +343,7 @@ services:
     volumes:
       - kvrocks1-data:/var/lib/kvrocks
     ports:
-      - "6666:6666"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:6666:6666"
 
   kvrocks-2:
     <<: *kvrocks-common
@@ -351,9 +359,9 @@ services:
       - "--port"
       - "6666"
       - "--requirepass"
-      - "devpass"
+      - "${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}"
       - "--masterauth"
-      - "devpass"
+      - "${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}"
       - "--db-name"
       - "kvrocks-ha-dev"
       - "--dir"
@@ -375,7 +383,7 @@ services:
     volumes:
       - kvrocks2-data:/var/lib/kvrocks
     ports:
-      - "6667:6666"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:6667:6666"
 
   kvrocks-3:
     <<: *kvrocks-common
@@ -391,9 +399,9 @@ services:
       - "--port"
       - "6666"
       - "--requirepass"
-      - "devpass"
+      - "${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}"
       - "--masterauth"
-      - "devpass"
+      - "${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}"
       - "--db-name"
       - "kvrocks-ha-dev"
       - "--dir"
@@ -415,11 +423,13 @@ services:
     volumes:
       - kvrocks3-data:/var/lib/kvrocks
     ports:
-      - "6668:6666"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:6668:6666"
 
   sentinel-1:
     <<: *sentinel-common
     container_name: sentinel-1
+    environment:
+      KVROCKS_PASSWORD: ${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}
     networks:
       kvrocks-net:
         ipv4_address: 172.20.0.21
@@ -436,7 +446,7 @@ services:
         sentinel announce-ip 172.20.0.21
 
         sentinel monitor kvrocks-main 172.20.0.11 6666 2
-        sentinel auth-pass kvrocks-main devpass
+        sentinel auth-pass kvrocks-main $${KVROCKS_PASSWORD}
         sentinel down-after-milliseconds kvrocks-main 5000
         sentinel failover-timeout kvrocks-main 60000
         sentinel parallel-syncs kvrocks-main 1
@@ -445,11 +455,13 @@ services:
     volumes:
       - sentinel1-data:/data
     ports:
-      - "26379:26379"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:26379:26379"
 
   sentinel-2:
     <<: *sentinel-common
     container_name: sentinel-2
+    environment:
+      KVROCKS_PASSWORD: ${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}
     networks:
       kvrocks-net:
         ipv4_address: 172.20.0.22
@@ -466,7 +478,7 @@ services:
         sentinel announce-ip 172.20.0.22
 
         sentinel monitor kvrocks-main 172.20.0.11 6666 2
-        sentinel auth-pass kvrocks-main devpass
+        sentinel auth-pass kvrocks-main $${KVROCKS_PASSWORD}
         sentinel down-after-milliseconds kvrocks-main 5000
         sentinel failover-timeout kvrocks-main 60000
         sentinel parallel-syncs kvrocks-main 1
@@ -475,11 +487,13 @@ services:
     volumes:
       - sentinel2-data:/data
     ports:
-      - "26380:26379"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:26380:26379"
 
   sentinel-3:
     <<: *sentinel-common
     container_name: sentinel-3
+    environment:
+      KVROCKS_PASSWORD: ${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}
     networks:
       kvrocks-net:
         ipv4_address: 172.20.0.23
@@ -496,7 +510,7 @@ services:
         sentinel announce-ip 172.20.0.23
 
         sentinel monitor kvrocks-main 172.20.0.11 6666 2
-        sentinel auth-pass kvrocks-main devpass
+        sentinel auth-pass kvrocks-main $${KVROCKS_PASSWORD}
         sentinel down-after-milliseconds kvrocks-main 5000
         sentinel failover-timeout kvrocks-main 60000
         sentinel parallel-syncs kvrocks-main 1
@@ -505,11 +519,13 @@ services:
     volumes:
       - sentinel3-data:/data
     ports:
-      - "26381:26379"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:26381:26379"
 
   redis-cli:
     image: redis:7.2-alpine
     profiles: [tools]
+    environment:
+      REDISCLI_AUTH: ${KVROCKS_PASSWORD:?Set KVROCKS_PASSWORD in .env}
     networks: [kvrocks-net]
     entrypoint:
       - redis-cli
