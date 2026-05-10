@@ -509,7 +509,7 @@ def _fill_tonstakers_deposit_action(block: TONStakersDepositBlock, action: Actio
     action.amount = block.data.value.value
     action.asset = _addr(block.data.asset)
     action.staking_data = {
-        'provider': 'tonstakers',
+        'provider': 'liquid_staking',
         'tokens_minted': block.data.tokens_minted.value if block.data.tokens_minted else None
     }
 
@@ -526,7 +526,7 @@ def _fill_tonstakers_withdraw_request_action(block: TONStakersWithdrawRequestBlo
     action.type = 'stake_withdrawal_request'
     action.asset = _addr(block.data.asset)
     action.staking_data = {
-        'provider': 'tonstakers',
+        'provider': 'liquid_staking',
         'ts_nft': _addr(block.data.minted_nft)
     }
 
@@ -536,7 +536,7 @@ def _fill_tonstakers_withdraw_action(block: TONStakersWithdrawBlock, action: Act
     action.amount = block.data.amount.value
     action.type = 'stake_withdrawal'
     action.staking_data = {
-        'provider': 'tonstakers',
+        'provider': 'liquid_staking',
         'ts_nft': _addr(block.data.burnt_nft),
         'tokens_burnt': block.data.tokens_burnt.value if block.data.tokens_burnt is not None else None,
     }
