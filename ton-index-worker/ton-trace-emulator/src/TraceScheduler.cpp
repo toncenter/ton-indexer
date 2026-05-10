@@ -17,6 +17,7 @@ namespace {
 constexpr const char* kHealthKey = "health:ton-trace-emulator";
 constexpr auto kHealthTtl = std::chrono::seconds(20);
 constexpr double kHealthIntervalSec = 1.0;
+constexpr std::size_t kMaxSeenSignedBlocks = 65536;
 }  // namespace
 
 
@@ -37,6 +38,10 @@ void TraceEmulatorScheduler::handle_db_event(ton::tl_object_ptr<ton::ton_api::db
 
 void TraceEmulatorScheduler::handle_block_signed(ton::BlockIdExt block_id) {
     if (block_id.is_masterchain()) {
+        return;
+    }
+    if (!remember_seen_signed_block(block_id)) {
+        LOG(INFO) << "Skipping duplicate signed shard block " << block_id.to_str();
         return;
     }
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<td::Unit> R) {
@@ -271,6 +276,18 @@ void TraceEmulatorScheduler::process_signed_blocks() {
                                                         std::move(P))
             .release();
     }
+}
+
+bool TraceEmulatorScheduler::remember_seen_signed_block(ton::BlockIdExt block_id) {
+    if (!seen_signed_blocks_.insert(block_id).second) {
+        return false;
+    }
+    seen_signed_block_order_.push_back(block_id);
+    while (seen_signed_block_order_.size() > kMaxSeenSignedBlocks) {
+        seen_signed_blocks_.erase(seen_signed_block_order_.front());
+        seen_signed_block_order_.pop_front();
+    }
+    return true;
 }
 
 std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> TraceEmulatorScheduler::make_signed_trace_processor(const ton::BlockIdExt& block_id_ext) {

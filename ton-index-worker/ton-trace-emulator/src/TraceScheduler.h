@@ -42,6 +42,8 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     std::unordered_set<ton::BlockSeqno> seqnos_to_fetch_;
     std::map<ton::BlockSeqno, schema::MasterchainBlockDataState> blocks_to_emulate_;
     std::deque<ton::BlockIdExt> signed_block_queue_;
+    std::deque<ton::BlockIdExt> seen_signed_block_order_;
+    std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> seen_signed_blocks_;
     std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> signed_blocks_inflight_;
     std::unordered_map<ton::BlockIdExt, schema::BlockDataState, BlockIdExtHasher> signed_block_storage_;
     std::shared_ptr<block::ConfigInfo> latest_config_;
@@ -68,6 +70,7 @@ class TraceEmulatorScheduler : public td::actor::Actor {
     void signed_block_fetched(ton::BlockIdExt block_id, schema::BlockDataState block_data_state);
     void signed_block_error(ton::BlockIdExt block_id, td::Status error);
     void process_signed_blocks();
+    bool remember_seen_signed_block(ton::BlockIdExt block_id);
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_signed_trace_processor(const ton::BlockIdExt& block_id_ext);
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> make_finalized_trace_processor(const schema::MasterchainBlockDataState& mc_data_state);
     void publish_health();
