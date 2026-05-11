@@ -58,7 +58,7 @@ std::string get_time_string(double seconds) {
 }
 
 void IndexScheduler::alarm() {
-    alarm_timestamp() = td::Timestamp::in(is_in_sync_ ? 1.0 : 0.1);
+    alarm_timestamp() = td::Timestamp::in(is_in_sync_ ? 0.1 : 1.0);
 
     td::Timestamp now = td::Timestamp::now();
     double dt = 0.0;
