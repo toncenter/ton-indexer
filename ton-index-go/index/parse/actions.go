@@ -367,7 +367,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		details.StakeHolder = raw.Source
 		details.Amount = raw.Amount
 		details.Pool = raw.Destination
-		details.Provider = raw.StakingDataProvider
+		details.Provider = preprocessStakingProvider(raw)
 		details.TokensMinted = raw.StakingDataTokensMinted
 		details.Asset = raw.Asset
 		if details.Provider != nil && *details.Provider == "ethena" {
@@ -379,7 +379,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		details.StakeHolder = raw.Source
 		details.Amount = raw.Amount
 		details.Pool = raw.Destination
-		details.Provider = raw.StakingDataProvider
+		details.Provider = preprocessStakingProvider(raw)
 		details.PayoutNft = raw.StakingDataTsNft
 		details.TokensBurnt = raw.StakingDataTokensBurnt
 		details.Asset = raw.Asset
@@ -388,7 +388,7 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 		var details models.ActionDetailsWithdrawStakeRequest
 		details.StakeHolder = raw.Source
 		details.Pool = raw.Destination
-		details.Provider = raw.StakingDataProvider
+		details.Provider = preprocessStakingProvider(raw)
 		details.PayoutNft = raw.StakingDataTsNft
 		details.Asset = raw.Asset
 		if details.Provider != nil && *details.Provider == "tonstakers" {
@@ -943,6 +943,19 @@ func ParseRawAction(raw *models.RawAction) (*models.Action, error) {
 	return &act, nil
 }
 
+var stakingProviderAliases = map[string]string{
+	"tonstakers": "liquid_staking",
+}
+
+func preprocessStakingProvider(raw *models.RawAction) *string {
+	if raw.StakingDataProvider == nil {
+		return nil
+	}
+	if mapped, ok := stakingProviderAliases[*raw.StakingDataProvider]; ok {
+		return &mapped
+	}
+	return raw.StakingDataProvider
+}
 func ParseEvaaAssetId(assetId string) (*string, bool) {
 	if assetId == EVAA_TON_ASSET_ID {
 		return nil, true
