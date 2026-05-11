@@ -622,6 +622,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "trace_end_lt bigint not null, "
       "action_end_lt bigint not null, "
       "trace_end_utime integer, "
+      "trace_mc_seqno_end integer, "
       "action_end_utime bigint, "
       "primary key (account, trace_end_lt, trace_id, action_end_lt, action_id)"
       ") with (autovacuum_vacuum_scale_factor = 0.03);\n"

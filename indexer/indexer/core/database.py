@@ -246,6 +246,7 @@ class ActionAccount(Base):
     trace_end_lt: int = Column(Numeric)
     action_end_lt: int = Column(Numeric)
     trace_end_utime: int = Column(Numeric)
+    trace_mc_seqno_end: int = Column(Numeric)
     action_end_utime: int = Column(Numeric)
 
 class Action(Base):
@@ -596,6 +597,7 @@ class Action(Base):
                                           action_end_lt=self.end_lt,
                                           trace_end_lt=self.trace_end_lt,
                                           trace_end_utime=self.trace_end_utime,
+                                          trace_mc_seqno_end=self.trace_mc_seqno_end,
                                           action_end_utime=self.end_utime))
         return accounts
 
