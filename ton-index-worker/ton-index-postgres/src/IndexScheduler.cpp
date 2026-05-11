@@ -58,7 +58,7 @@ std::string get_time_string(double seconds) {
 }
 
 void IndexScheduler::alarm() {
-    alarm_timestamp() = td::Timestamp::in(is_in_sync_ ? 1.0 : 0.1);
+    alarm_timestamp() = td::Timestamp::in(is_in_sync_ ? 0.1 : 1.0);
 
     td::Timestamp now = td::Timestamp::now();
     double dt = 0.0;
@@ -208,7 +208,7 @@ void IndexScheduler::handle_valid_ta_state(ton::BlockSeqno last_state_seqno) {
     alarm_timestamp() = td::Timestamp::now();
 }
 
-const int IS_IN_SYNC_THRESHOLD = 10;
+const int IS_IN_SYNC_THRESHOLD = 3;
 
 void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
     if (to_seqno_ && last_known_seqno_ > to_seqno_)
