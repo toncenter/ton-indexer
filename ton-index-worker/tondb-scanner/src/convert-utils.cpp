@@ -91,6 +91,14 @@ std::string convert::to_raw_address(block::StdAddress address) {
   return std::to_string(address.workchain) + ":" + address.addr.to_hex();
 }
 
+std::optional<std::string> convert::to_raw_address(std::optional<block::StdAddress> address) {
+  if (address.has_value()) {
+    return to_raw_address(address.value());
+  }
+  return std::nullopt;
+}
+
+
 td::Result<std::optional<std::string>> convert::to_bytes(td::Ref<vm::Cell> cell) {
   if (cell.is_null()) {
     return std::nullopt;

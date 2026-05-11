@@ -7,13 +7,12 @@
 
 #include "crypto/vm/cp0.h"
 
-#include "InsertManagerPostgres.h"
+#include "../../index-engine/src/IndexScheduler.h"
 #include "DataParser.h"
 #include "DbScanner.h"
-#include "TraceAssembler.h"
 #include "EventProcessor.h"
-#include "IndexScheduler.h"
-
+#include "InsertManagerPostgres.h"
+#include "TraceAssembler.h"
 
 int main(int argc, char *argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);

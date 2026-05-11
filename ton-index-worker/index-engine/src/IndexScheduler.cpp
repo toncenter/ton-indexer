@@ -1,11 +1,10 @@
 #include "IndexScheduler.h"
-#include "td/utils/Time.h"
-#include "td/utils/StringBuilder.h"
-#include <iostream>
 #include "BlockInterfacesDetector.h"
 #include "Statistics.h"
-#include "td/utils/filesystem.h"
 #include "common/delay.h"
+#include "td/utils/StringBuilder.h"
+#include "td/utils/Time.h"
+#include "td/utils/filesystem.h"
 #include <chrono>
 
 namespace {
