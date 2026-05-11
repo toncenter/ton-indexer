@@ -13,52 +13,12 @@
 #include <errno.h>
 #include <chrono>
 #include <cstdint>
-#include <optional>
 
 namespace {
 constexpr const char* kHealthKey = "health:ton-trace-emulator";
 constexpr auto kHealthTtl = std::chrono::seconds(20);
 constexpr double kHealthIntervalSec = 1.0;
 constexpr std::size_t kMaxSeenSignedBlocks = 65536;
-
-std::shared_ptr<OtelStageSpan> make_read_block_span(const std::string& finality,
-                                                    std::optional<ton::BlockSeqno> mc_seqno = std::nullopt,
-                                                    std::optional<ton::BlockIdExt> block_id = std::nullopt) {
-    if (!OtelStageSpan::tracing_enabled()) {
-        return nullptr;
-    }
-
-    auto span = std::make_shared<OtelStageSpan>(OtelStageSpan::Options{
-        .service_name = "ton-trace-emulator",
-        .span_name = "ton.trace_emulator.read_block",
-        .pipeline = "trace_to_actions_to_stream",
-        .service_stage = "read_block",
-        .kind = opentelemetry::trace::SpanKind::kInternal,
-        .parent = std::nullopt,
-        .start_system_time_ns = OtelStageSpan::system_now_ns(),
-        .start_steady_time_ns = OtelStageSpan::steady_now_ns(),
-    });
-    span->set_attribute("ton.trace.finality", finality);
-    span->set_attribute("ton.trace_emulator.operation", "read_block");
-    span->set_attribute("ton.trace_emulator.source", "block");
-    if (mc_seqno) {
-        span->set_attribute("ton.mc_seqno", static_cast<std::int64_t>(*mc_seqno));
-    }
-    if (block_id) {
-        span->set_attribute("ton.block.workchain", static_cast<std::int64_t>(block_id->id.workchain));
-        span->set_attribute("ton.block.seqno", static_cast<std::int64_t>(block_id->id.seqno));
-    }
-    return span;
-}
-
-void fail_read_block_span(std::shared_ptr<OtelStageSpan>& span, const std::string& error_type, const td::Status& error) {
-    if (!span) {
-        return;
-    }
-    span->mark_error(error_type, error.to_string());
-    span->end();
-    span.reset();
-}
 }  // namespace
 
 
@@ -158,9 +118,6 @@ void TraceEmulatorScheduler::fetch_seqnos() {
     for (auto it = seqnos_to_fetch_.begin(); it != seqnos_to_fetch_.end(); ) {
         auto seqno = *it;
         LOG(INFO) << "Fetching seqno " << seqno;
-        if (auto span = make_read_block_span("finalized", std::optional<ton::BlockSeqno>(seqno))) {
-            finalized_read_block_spans_[seqno] = std::move(span);
-        }
 
         auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), seqno](td::Result<schema::MasterchainBlockDataState> R) {
             if (R.is_error()) {
@@ -185,20 +142,12 @@ void TraceEmulatorScheduler::fetch_seqnos() {
 
 void TraceEmulatorScheduler::fetch_error(std::uint32_t seqno, td::Status error) {
     LOG(ERROR) << "Failed to fetch seqno " << seqno << ": " << error;
-    if (auto it = finalized_read_block_spans_.find(seqno); it != finalized_read_block_spans_.end()) {
-        fail_read_block_span(it->second, "trace_emulator.read_block_error", error);
-        finalized_read_block_spans_.erase(it);
-    }
     seqnos_to_fetch_.insert(seqno);
     alarm_timestamp() = td::Timestamp::in(0.1);
 }
 
 void TraceEmulatorScheduler::seqno_fetched(std::uint32_t seqno, schema::MasterchainBlockDataState mc_data_state) {
     LOG(INFO) << "Fetched seqno " << seqno;
-    if (auto it = finalized_read_block_spans_.find(seqno); it != finalized_read_block_spans_.end() && it->second) {
-        it->second->set_attribute("ton.block.shards_count", static_cast<std::int64_t>(mc_data_state.shard_blocks_.size()));
-        it->second->set_attribute("ton.block.diff_blocks_count", static_cast<std::int64_t>(mc_data_state.shard_blocks_diff_.size()));
-    }
 
     last_finalized_mc_block_time_ = mc_data_state.shard_blocks_[0].handle->unix_time();
 
@@ -247,12 +196,7 @@ void TraceEmulatorScheduler::emulate_blocks() {
             LOG(INFO) << "Success emulating mc block " << blkid.to_str();
         });
         auto actor_name = PSLICE() << "McBlockEmulator" << last_emulated_seqno_ + 1;
-        std::shared_ptr<OtelStageSpan> read_block_span;
-        if (auto span_it = finalized_read_block_spans_.find(last_emulated_seqno_ + 1); span_it != finalized_read_block_spans_.end()) {
-            read_block_span = std::move(span_it->second);
-            finalized_read_block_spans_.erase(span_it);
-        }
-        td::actor::create_actor<McBlockEmulator>(actor_name, it->second, insert_trace_, std::move(P), std::move(read_block_span)).release();
+        td::actor::create_actor<McBlockEmulator>(actor_name, it->second, insert_trace_, std::move(P)).release();
 
         blocks_to_emulate_.erase(it);
         last_emulated_seqno_++;
@@ -265,11 +209,6 @@ void TraceEmulatorScheduler::enqueue_signed_block(ton::BlockIdExt block_id) {
         return;
     }
     signed_blocks_inflight_.insert(block_id);
-    if (auto span = make_read_block_span("confirmed",
-                                         std::nullopt,
-                                         std::optional<ton::BlockIdExt>(block_id))) {
-        signed_read_block_spans_[block_id] = std::move(span);
-    }
     auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), block_id](td::Result<schema::BlockDataState> R) mutable {
         if (R.is_error()) {
             td::actor::send_closure(SelfId, &TraceEmulatorScheduler::signed_block_error, block_id, R.move_as_error());
@@ -285,10 +224,6 @@ void TraceEmulatorScheduler::signed_block_fetched(ton::BlockIdExt block_id, sche
     LOG(INFO) << "Collected signed shard block " << block_id.to_str() << " created " << td::StringBuilder::FixedDouble(time_diff, 2) << "s ago";
 
     last_confirmed_block_time_ = block_data_state.handle->unix_time();
-    if (auto it = signed_read_block_spans_.find(block_id); it != signed_read_block_spans_.end() && it->second) {
-        it->second->set_attribute("ton.block.seqno", static_cast<std::int64_t>(block_data_state.block_data->block_id().id.seqno));
-        it->second->set_attribute("ton.block.workchain", static_cast<std::int64_t>(block_data_state.block_data->block_id().id.workchain));
-    }
 
     signed_blocks_inflight_.erase(block_id);
     td::actor::send_closure(invalidated_trace_tracker_, &InvalidatedTraceTracker::register_pending_block, block_data_state.handle->id());
@@ -301,10 +236,6 @@ void TraceEmulatorScheduler::signed_block_fetched(ton::BlockIdExt block_id, sche
 void TraceEmulatorScheduler::signed_block_error(ton::BlockIdExt block_id, td::Status error) {
     signed_blocks_inflight_.erase(block_id);
     LOG(ERROR) << "Failed to collect signed shard block " << block_id.to_str() << ": " << error;
-    if (auto it = signed_read_block_spans_.find(block_id); it != signed_read_block_spans_.end()) {
-        fail_read_block_span(it->second, "trace_emulator.read_block_error", error);
-        signed_read_block_spans_.erase(it);
-    }
     ton::delay_action([SelfId = actor_id(this), block_id]() {
         td::actor::send_closure(SelfId, &TraceEmulatorScheduler::enqueue_signed_block, block_id);
     }, td::Timestamp::in(0.1));
@@ -343,14 +274,9 @@ void TraceEmulatorScheduler::process_signed_blocks() {
         });
         auto actor_name = PSLICE() << "SignedBlockEmulator" << block_id.seqno();
         auto trace_processor = make_signed_trace_processor(block_id);
-        std::shared_ptr<OtelStageSpan> read_block_span;
-        if (auto span_it = signed_read_block_spans_.find(block_id); span_it != signed_read_block_spans_.end()) {
-            read_block_span = std::move(span_it->second);
-            signed_read_block_spans_.erase(span_it);
-        }
         td::actor::create_actor<ConfirmedBlockEmulator>(actor_name, FinalityState::Confirmed, std::move(block_data_state), latest_config_,
                                                         std::move(shard_snapshot_copy), std::move(trace_processor),
-                                                        std::move(P), std::move(read_block_span))
+                                                        std::move(P))
             .release();
     }
 }

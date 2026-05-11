@@ -42,13 +42,11 @@ class TraceEmulatorScheduler : public td::actor::Actor {
 
     std::unordered_set<ton::BlockSeqno> seqnos_to_fetch_;
     std::map<ton::BlockSeqno, schema::MasterchainBlockDataState> blocks_to_emulate_;
-    std::map<ton::BlockSeqno, std::shared_ptr<OtelStageSpan>> finalized_read_block_spans_;
     std::deque<ton::BlockIdExt> signed_block_queue_;
     std::deque<ton::BlockIdExt> seen_signed_block_order_;
     std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> seen_signed_blocks_;
     std::unordered_set<ton::BlockIdExt, BlockIdExtHasher> signed_blocks_inflight_;
     std::unordered_map<ton::BlockIdExt, schema::BlockDataState, BlockIdExtHasher> signed_block_storage_;
-    std::unordered_map<ton::BlockIdExt, std::shared_ptr<OtelStageSpan>, BlockIdExtHasher> signed_read_block_spans_;
     std::shared_ptr<block::ConfigInfo> latest_config_;
     std::vector<ShardStateSnapshot> latest_shard_states_;
 

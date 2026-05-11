@@ -31,31 +31,6 @@ InterblockTraceStore& interblock_trace_store() {
   static InterblockTraceStore store;
   return store;
 }
-
-void set_read_block_attribute(const std::shared_ptr<OtelStageSpan>& span,
-                              const std::string& key,
-                              std::int64_t value) {
-    if (span) {
-        span->set_attribute(key, value);
-    }
-}
-
-void finish_read_block_span(std::shared_ptr<OtelStageSpan>& span) {
-    if (!span) {
-        return;
-    }
-    span->end();
-    span.reset();
-}
-
-void fail_read_block_span(std::shared_ptr<OtelStageSpan>& span, const std::string& error_type, const td::Status& error) {
-    if (!span) {
-        return;
-    }
-    span->mark_error(error_type, error.to_string());
-    span->end();
-    span.reset();
-}
 }  // namespace
 
 
@@ -174,12 +149,10 @@ public:
 
 McBlockEmulator::McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
                                  std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,
-                                 td::Promise<> promise,
-                                 std::shared_ptr<OtelStageSpan> read_block_span)
+                                 td::Promise<> promise)
     : mc_data_state_(std::move(mc_data_state)),
       trace_processor_(std::move(trace_processor)),
       promise_(std::move(promise)),
-      read_block_span_(std::move(read_block_span)),
       blocks_left_to_parse_(mc_data_state_.shard_blocks_diff_.size()) {
 }
 
@@ -209,7 +182,6 @@ void McBlockEmulator::start_up() {
 
 void McBlockEmulator::parse_error(ton::BlockId blkid, td::Status error, MeasurementPtr) {
     LOG(ERROR) << "Failed to parse block " << blkid.to_str() << ": " << error;
-    fail_read_block_span(read_block_span_, "trace_emulator.read_block_error", error);
     promise_.set_error(std::move(error));
     stop();
 }
@@ -256,10 +228,6 @@ void McBlockEmulator::process_txs(MeasurementPtr measurement) {
         }
         tx_by_in_msg_hash_.insert({tx.in_msg_hash, tx});
     }
-    set_read_block_attribute(read_block_span_, "ton.block.parsed_blocks_count", static_cast<std::int64_t>(mc_data_state_.shard_blocks_diff_.size()));
-    set_read_block_attribute(read_block_span_, "ton.block.shards_count", static_cast<std::int64_t>(mc_data_state_.shard_blocks_.size()));
-    set_read_block_attribute(read_block_span_, "ton.block.transactions_count", static_cast<std::int64_t>(txs_.size()));
-    finish_read_block_span(read_block_span_);
     emulate_traces(measurement);
 }
 
@@ -486,7 +454,6 @@ void ConfirmedBlockEmulator::start_up() {
 
 void ConfirmedBlockEmulator::parse_error(td::Status error, MeasurementPtr) {
     LOG(ERROR) << "Failed to parse " << finality_label() << " block " << block_data_state_.block_data->block_id().to_str() << ": " << error;
-    fail_read_block_span(read_block_span_, "trace_emulator.read_block_error", error);
     promise_.set_error(std::move(error));
     stop();
 }
@@ -529,10 +496,6 @@ void ConfirmedBlockEmulator::process_txs(MeasurementPtr measurement) {
         }
         tx_by_in_msg_hash_.insert({tx.in_msg_hash, tx});
     }
-    set_read_block_attribute(read_block_span_, "ton.block.parsed_blocks_count", static_cast<std::int64_t>(1));
-    set_read_block_attribute(read_block_span_, "ton.block.shards_count", static_cast<std::int64_t>(shard_states_snapshot_.size()));
-    set_read_block_attribute(read_block_span_, "ton.block.transactions_count", static_cast<std::int64_t>(txs_.size()));
-    finish_read_block_span(read_block_span_);
     emulate_traces(measurement);
 }
 

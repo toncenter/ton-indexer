@@ -49,7 +49,6 @@ private:
     schema::MasterchainBlockDataState mc_data_state_;
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor_;
     td::Promise<> promise_;
-    std::shared_ptr<OtelStageSpan> read_block_span_;
     size_t blocks_left_to_parse_;
     std::vector<TransactionInfo> txs_;
 
@@ -84,8 +83,7 @@ private:
 public:
     McBlockEmulator(schema::MasterchainBlockDataState mc_data_state,
                     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,
-                    td::Promise<> promise,
-                    std::shared_ptr<OtelStageSpan> read_block_span = nullptr);
+                    td::Promise<> promise);
 
     virtual void start_up() override;
 };
@@ -98,7 +96,6 @@ private:
     std::vector<ShardStateSnapshot> shard_states_snapshot_;
     std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor_;
     td::Promise<> promise_;
-    std::shared_ptr<OtelStageSpan> read_block_span_;
     std::vector<TransactionInfo> txs_;
     std::unordered_map<td::Bits256, TransactionInfo> tx_by_in_msg_hash_;
     std::unordered_map<td::Bits256, TransactionInfo> tx_by_out_msg_hash_;
@@ -141,13 +138,11 @@ public:
                            std::shared_ptr<block::ConfigInfo> config,
                            std::vector<ShardStateSnapshot> shard_states_snapshot,
                            std::function<void(Trace, td::Promise<td::Unit>, MeasurementPtr)> trace_processor,
-                           td::Promise<> promise,
-                           std::shared_ptr<OtelStageSpan> read_block_span = nullptr)
+                           td::Promise<> promise)
         : finality_(finality),
           block_data_state_(std::move(block_data_state)),
           config_(std::move(config)),
           shard_states_snapshot_(std::move(shard_states_snapshot)),
           trace_processor_(std::move(trace_processor)),
-          promise_(std::move(promise)),
-          read_block_span_(std::move(read_block_span)) {}
+          promise_(std::move(promise)) {}
 };
