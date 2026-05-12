@@ -14,7 +14,7 @@ from sqlalchemy_utils import create_database, database_exists, CompositeType
 from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Index, Enum, Numeric
 from sqlalchemy.schema import ForeignKeyConstraint
 from sqlalchemy import ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, foreign, remote
 
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import JSONB
@@ -136,12 +136,6 @@ class ShardBlock(Base):
 
 class Block(Base):
     __tablename__ = 'blocks'
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["mc_block_workchain", "mc_block_shard", "mc_block_seqno"],
-            ["blocks.workchain", "blocks.shard", "blocks.seqno"]
-        ),
-    )
 
     workchain: int = Column(Integer, primary_key=True)
     shard: int = Column(BigInteger, primary_key=True)
@@ -149,13 +143,16 @@ class Block(Base):
     root_hash: str = Column(String(44))
     file_hash: str = Column(String(44))
 
-    mc_block_workchain: int = Column(Integer, nullable=True)
-    mc_block_shard: str = Column(BigInteger, nullable=True)
     mc_block_seqno: int = Column(Integer, nullable=True)
 
-    masterchain_block = relationship("Block",
-                                     remote_side=[workchain, shard, seqno],
-                                     backref='shard_blocks')
+    masterchain_block = relationship(
+        "Block",
+        primaryjoin=lambda: (foreign(Block.mc_block_seqno) == remote(Block.seqno)) &
+                            (remote(Block.workchain) == MASTERCHAIN_INDEX) &
+                            (remote(Block.shard) == MASTERCHAIN_SHARD),
+        uselist=False,
+        backref='shard_blocks'
+    )
 
     global_id: int = Column(Integer)
     version: int = Column(Integer)
@@ -990,10 +987,10 @@ class LatestAccountState(Base):
 
 # Indexes
 # Index("blocks_index_1", Block.workchain, Block.shard, Block.seqno)
-Index("blocks_index_2", Block.gen_utime)
-Index("blocks_index_3", Block.mc_block_workchain, Block.mc_block_shard, Block.mc_block_seqno)
-Index("blocks_index_4", Block.seqno, postgresql_where=(Block.workchain == -1))
-Index("blocks_index_5", Block.start_lt)
+Index("blocks_index_1", Block.gen_utime)
+Index("blocks_index_2", Block.mc_block_seqno)
+Index("blocks_index_3", Block.seqno, postgresql_where=(Block.workchain == -1))
+Index("blocks_index_4", Block.start_lt)
 
 Index("transactions_index_1", Transaction.block_workchain, Transaction.block_shard, Transaction.block_seqno)
 Index("transactions_index_2", Transaction.account, Transaction.lt)

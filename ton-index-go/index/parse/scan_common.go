@@ -51,10 +51,9 @@ func ParseBlockIdList(str string) ([]models.BlockId, error) {
 func ScanBlock(row pgx.Row) (*models.Block, error) {
 	var blk models.Block
 	var prev_blocks_str string
+	var mcBlockSeqno int32
 	err := row.Scan(&blk.Workchain, &blk.Shard, &blk.Seqno, &blk.RootHash,
-		&blk.FileHash, &blk.MasterchainBlockRef.Workchain,
-		&blk.MasterchainBlockRef.Shard, &blk.MasterchainBlockRef.Seqno,
-		&blk.GlobalId, &blk.Version, &blk.AfterMerge,
+		&blk.FileHash, &mcBlockSeqno, &blk.GlobalId, &blk.Version, &blk.AfterMerge,
 		&blk.BeforeSplit, &blk.AfterSplit, &blk.WantMerge, &blk.WantSplit,
 		&blk.KeyBlock, &blk.VertSeqnoIncr, &blk.Flags, &blk.GenUtime,
 		&blk.StartLt, &blk.EndLt, &blk.ValidatorListHashShort,
@@ -63,6 +62,11 @@ func ScanBlock(row pgx.Row) (*models.Block, error) {
 		&blk.TxCount, &prev_blocks_str)
 	if err != nil {
 		return nil, err
+	}
+	blk.MasterchainBlockRef = models.BlockId{
+		Workchain: -1,
+		Shard:     models.ShardId(-9223372036854775808),
+		Seqno:     mcBlockSeqno,
 	}
 
 	if prev_blocks, err := ParseBlockIdList(prev_blocks_str); err != nil {

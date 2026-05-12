@@ -147,8 +147,6 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "seqno integer not null, "
       "root_hash tonhash, "
       "file_hash tonhash, "
-      "mc_block_workchain integer, "
-      "mc_block_shard bigint, "
       "mc_block_seqno integer, "
       "global_id integer, "
       "version integer, "
@@ -173,8 +171,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "created_by tonhash, "
       "tx_count integer, "
       "prev_blocks blockid[], "
-      "primary key (workchain, shard, seqno), "
-      "foreign key (mc_block_workchain, mc_block_shard, mc_block_seqno) references blocks);\n"
+      "primary key (workchain, shard, seqno));\n"
     );
 
     query += (

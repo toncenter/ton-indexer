@@ -1989,7 +1989,7 @@ std::string InsertBatchPostgres::stringify(schema::Trace::State state) {
 
 void InsertBatchPostgres::insert_blocks(pqxx::work &txn, bool with_copy) {
   std::initializer_list<std::string_view> columns = {
-    "workchain", "shard", "seqno", "root_hash", "file_hash", "mc_block_workchain", "mc_block_shard", "mc_block_seqno",
+    "workchain", "shard", "seqno", "root_hash", "file_hash", "mc_block_seqno",
     "global_id", "version", "after_merge", "before_split", "after_split", "want_merge", "want_split", "key_block",
     "vert_seqno_incr", "flags", "gen_utime", "start_lt", "end_lt", "validator_list_hash_short", "gen_catchain_seqno",
     "min_ref_mc_seqno", "prev_key_block_seqno", "vert_seqno", "master_ref_seqno", "rand_seed", "created_by", "tx_count", "prev_blocks"
@@ -2008,8 +2008,6 @@ void InsertBatchPostgres::insert_blocks(pqxx::work &txn, bool with_copy) {
         block.seqno,
         block.root_hash,
         block.file_hash,
-        block.mc_block_workchain,
-        block.mc_block_shard,
         block.mc_block_seqno,
         block.global_id,
         block.version,

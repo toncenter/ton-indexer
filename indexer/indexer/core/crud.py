@@ -78,10 +78,7 @@ def get_masterchain_block_shards(session: Session,
     mc_block_fltr = and_(Block.workchain == MASTERCHAIN_INDEX, 
                          Block.shard == MASTERCHAIN_SHARD, 
                          Block.seqno == seqno)
-    shards_fltr = and_(Block.mc_block_workchain == MASTERCHAIN_INDEX, 
-                       Block.mc_block_shard == MASTERCHAIN_SHARD,
-                       Block.mc_block_seqno == seqno)
-    fltr = or_(mc_block_fltr, shards_fltr)
+    fltr = or_(mc_block_fltr, Block.mc_block_seqno == seqno)
     query = session.query(Block).filter(fltr)
     query = query.order_by(Block.workchain, Block.shard, Block.seqno)
     return query.all()
