@@ -4,14 +4,20 @@ add_executable(ton-index-postgres
     src/main.cpp
     src/InsertManagerPostgres.cpp
     src/IndexScheduler.cpp
+    src/KvrocksClient.cpp
 )
 
+target_include_directories(ton-index-postgres
+    PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/../external/redis-plus-plus/src
+)
 target_compile_features(ton-index-postgres PRIVATE cxx_std_20)
 target_link_libraries(
     ton-index-postgres
     tondb-scanner
     ton-observability
     pqxx
+    hiredis
+    redis++_static
 )
 target_link_options(ton-index-postgres PUBLIC -rdynamic)
 

@@ -1,7 +1,10 @@
 #pragma once
+#include <memory>
 #include <queue>
+#include <utility>
 #include <pqxx/pqxx>
 #include "InsertManagerBase.h"
+#include "KvrocksClient.h"
 
 
 class InsertBatchPostgres;
@@ -21,14 +24,16 @@ public:
   };
 private:
   Credential credential_;
+  KvrocksConfig kvrocks_config_;
+  std::shared_ptr<sw::redis::Redis> kvrocks_;
   td::actor::ActorOwn<> leader_heartbeat_;
   std::string worker_id_;
   std::int32_t max_data_depth_{0};
   std::int32_t latest_states_prepare_parallelism_{4};
   std::int32_t latest_states_prepare_chunk_size_{128};
 public:
-  InsertManagerPostgres(Credential credential) :
-    credential_(credential) {}
+  InsertManagerPostgres(Credential credential, KvrocksConfig kvrocks_config = {}) :
+    credential_(credential), kvrocks_config_(std::move(kvrocks_config)) {}
 
   void start_up() override;
 

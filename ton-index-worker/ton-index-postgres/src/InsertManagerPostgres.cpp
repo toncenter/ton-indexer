@@ -77,6 +77,7 @@ struct LatestAccountStatesChunkPreparedResult;
 class InsertBatchPostgres: public td::actor::Actor {
 public:
   InsertBatchPostgres(InsertManagerPostgres::Credential credential,
+                      std::shared_ptr<sw::redis::Redis> kvrocks,
                       td::actor::ActorId<PostgresLeaderHeartbeat> leader_heartbeat,
                       std::string worker_id,
                       std::vector<InsertTaskStruct> insert_tasks,
@@ -84,7 +85,7 @@ public:
                       std::int32_t max_data_depth = 12,
                       std::int32_t latest_states_prepare_parallelism = 4,
                       std::int32_t latest_states_prepare_chunk_size = 128) :
-    credential_(std::move(credential)), leader_heartbeat_(leader_heartbeat), worker_id_(std::move(worker_id)),
+    credential_(std::move(credential)), kvrocks_(std::move(kvrocks)), leader_heartbeat_(leader_heartbeat), worker_id_(std::move(worker_id)),
     insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth),
     latest_states_prepare_parallelism_(latest_states_prepare_parallelism),
     latest_states_prepare_chunk_size_(latest_states_prepare_chunk_size) {
@@ -98,6 +99,7 @@ public:
   void alarm() override;
 private:
   InsertManagerPostgres::Credential credential_;
+  std::shared_ptr<sw::redis::Redis> kvrocks_;
   td::actor::ActorId<PostgresLeaderHeartbeat> leader_heartbeat_;
   std::string connection_string_;
   std::string worker_id_;
@@ -2719,6 +2721,23 @@ void InsertManagerPostgres::start_up() {
     LOG(ERROR) << "Run `ton-index-postgres-migrate` to update the database schema";
     std::_Exit(2);
   }
+
+  if (kvrocks_config_.enabled) {
+    try {
+      KvrocksClient kvrocks(kvrocks_config_);
+      kvrocks_ = kvrocks.make_redis();
+      auto ping_response = kvrocks_->ping();
+      if (ping_response != "PONG") {
+        throw std::runtime_error("unexpected Kvrocks PING response: " + ping_response);
+      }
+      LOG(INFO) << "Kvrocks connection ready: " << kvrocks_config_.describe();
+    } catch (const std::exception &e) {
+      LOG(ERROR) << "Error connecting to Kvrocks: " << e.what();
+      std::_Exit(2);
+    }
+  } else {
+    LOG(INFO) << "Kvrocks connection is not configured; Postgres-only state writes remain enabled";
+  }
   
   worker_id_ = get_worker_id();
   leader_heartbeat_ = td::actor::create_actor<PostgresLeaderHeartbeat>(
@@ -2751,6 +2770,7 @@ void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> in
   td::actor::create_actor<InsertBatchPostgres>(
       "insert_batch_postgres",
       credential_,
+      kvrocks_,
       leader_heartbeat,
       worker_id_,
       std::move(insert_tasks),

@@ -40,6 +40,7 @@ int main(int argc, char *argv[]) {
   bool create_indexes = true;
   bool run_migrations = true;
   InsertManagerPostgres::Credential credential;
+  KvrocksConfig kvrocks_config;
   bool testnet = false;
 
   std::uint32_t max_active_tasks = 7;
@@ -97,6 +98,48 @@ int main(int argc, char *argv[]) {
   p.add_option('d', "dbname", "PostgreSQL database name", [&](td::Slice value) {
     LOG(WARNING) << "Using --dbname option is deprecated, use --pg with connection string instead";
     credential.dbname = value.str();
+  });
+
+  p.add_option('\0', "kvrocks", "Kvrocks direct Redis URI, e.g. tcp://127.0.0.1:6666/0", [&](td::Slice value) {
+    kvrocks_config.enabled = true;
+    kvrocks_config.uri = value.str();
+  });
+  p.add_checked_option('\0', "kvrocks-sentinels", "Comma-separated Kvrocks Sentinel nodes, e.g. 127.0.0.1:26379,127.0.0.1:26380", [&](td::Slice value) {
+    try {
+      kvrocks_config.enabled = true;
+      kvrocks_config.sentinel_nodes = parse_kvrocks_sentinel_nodes(value.str());
+    } catch (const std::exception &e) {
+      return td::Status::Error(ton::ErrorCode::error, PSLICE() << "bad value for --kvrocks-sentinels: " << e.what());
+    }
+    return td::Status::OK();
+  });
+  p.add_option('\0', "kvrocks-master", "Kvrocks Sentinel master name", [&](td::Slice value) {
+    kvrocks_config.sentinel_master_name = value.str();
+  });
+  p.add_option('\0', "kvrocks-user", "Kvrocks username", [&](td::Slice value) {
+    kvrocks_config.user = value.str();
+  });
+  p.add_option('\0', "kvrocks-password", "Kvrocks password", [&](td::Slice value) {
+    kvrocks_config.password = value.str();
+  });
+  p.add_checked_option('\0', "kvrocks-db", "Kvrocks logical database number", [&](td::Slice value) {
+    int v;
+    try {
+      v = std::stoi(value.str());
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --kvrocks-db: not a number");
+    }
+    if (v < 0) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --kvrocks-db: must be non-negative");
+    }
+    kvrocks_config.db = v;
+    return td::Status::OK();
+  });
+  p.add_option('\0', "kvrocks-sentinel-user", "Kvrocks Sentinel username", [&](td::Slice value) {
+    kvrocks_config.sentinel_user = value.str();
+  });
+  p.add_option('\0', "kvrocks-sentinel-password", "Kvrocks Sentinel password", [&](td::Slice value) {
+    kvrocks_config.sentinel_password = value.str();
   });
 
   p.add_option('\0', "testnet", "Use for testnet. It is used for correct indexing of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
@@ -283,6 +326,16 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "failed to parse options: " << S.move_as_error();
     std::_Exit(2);
   }
+  if (kvrocks_config.enabled) {
+    if (kvrocks_config.use_sentinel() && kvrocks_config.uri.size() > 0) {
+      LOG(ERROR) << "Use either --kvrocks or --kvrocks-sentinels, not both";
+      std::_Exit(2);
+    }
+    if (kvrocks_config.use_sentinel() && kvrocks_config.sentinel_master_name.empty()) {
+      LOG(ERROR) << "--kvrocks-master is required with --kvrocks-sentinels";
+      std::_Exit(2);
+    }
+  }
   if (working_dir.size() == 0) {
     LOG(ERROR) << "Please specify working directory with -W or --working-dir";
     std::_Exit(2);
@@ -312,7 +365,7 @@ int main(int argc, char *argv[]) {
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
-  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential); });
+  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential, kvrocks_config); });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir + "/secondary_logs"); });
 
