@@ -1173,6 +1173,107 @@ void run_1_2_8_migrations(const std::string& connection_string, bool dry_run) {
   LOG(INFO) << "Migration to version 1.2.8 completed successfully.";
 }
 
+void run_1_2_9_migrations(const std::string& connection_string, bool dry_run) {
+  LOG(INFO) << "Running migrations to version 1.2.9";
+
+  LOG(INFO) << "Adding classifier gating schema and triggers...";
+  try {
+    pqxx::connection c(connection_string);
+    pqxx::work txn(c);
+
+    std::string query = "";
+
+    query += (
+      "create table if not exists blocks_to_classify ("
+      "mc_seqno integer primary key);\n"
+    );
+
+    query += (
+      "create table if not exists classifier_watermark ("
+      "id integer primary key check (id = 1), "
+      "last_scheduled_mc_seqno integer not null);\n"
+    );
+
+    query += (
+      "insert into classifier_watermark(id, last_scheduled_mc_seqno) "
+      "select 1, coalesce(max(seqno), 0) + 100 "
+      "from blocks where workchain = -1 "
+      "on conflict (id) do nothing;\n"
+    );
+
+    query += (
+      "create or replace function on_new_mc_block_func() "
+      "returns trigger language plpgsql as $$ "
+      "declare "
+      "  watermark integer; "
+      "begin "
+      "  select last_scheduled_mc_seqno into watermark from classifier_watermark where id = 1; "
+      "  if NEW.seqno <= watermark then "
+      "    insert into _classifier_tasks(mc_seqno, start_after) "
+      "      values (NEW.seqno, now() + interval '1 seconds'); "
+      "  else "
+      "    insert into blocks_to_classify(mc_seqno) values (NEW.seqno) "
+      "      on conflict (mc_seqno) do nothing; "
+      "  end if; "
+      "  return null; "
+      "end; $$;\n"
+    );
+
+    query += (
+      "create or replace function drain_classifiable_prefix() "
+      "returns trigger language plpgsql as $$ "
+      "declare "
+      "  cur integer; "
+      "  watermark integer; "
+      "begin "
+      "  select last_scheduled_mc_seqno into watermark from classifier_watermark where id = 1 for update; "
+      "  cur := watermark + 1; "
+      "  loop "
+      "    exit when not exists (select 1 from blocks_to_classify where mc_seqno = cur); "
+      "    insert into _classifier_tasks(mc_seqno, start_after) "
+      "      values (cur, now() + interval '1 seconds'); "
+      "    delete from blocks_to_classify where mc_seqno = cur; "
+      "    cur := cur + 1; "
+      "  end loop; "
+      "  if cur > watermark + 1 then "
+      "    update classifier_watermark "
+      "      set last_scheduled_mc_seqno = cur - 1 "
+      "      where id = 1 and last_scheduled_mc_seqno < cur - 1; "
+      "  end if; "
+      "  return null; "
+      "end; $$;\n"
+    );
+
+    query += (
+      "create or replace trigger on_new_mc_block "
+      "after insert on blocks for each row when (new.workchain = '-1'::integer) "
+      "execute procedure on_new_mc_block_func();\n"
+    );
+
+    query += (
+      "create or replace trigger on_block_buffered "
+      "after insert on blocks_to_classify for each row "
+      "execute procedure drain_classifiable_prefix();\n"
+    );
+
+    query += set_version_query({1, 2, 9});
+
+    if (dry_run) {
+      std::cout << query << std::endl;
+      return;
+    }
+
+    LOG(DEBUG) << query;
+    txn.exec(query).no_rows();
+    txn.commit();
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error while migrating database: " << e.what();
+    std::exit(1);
+  }
+
+  LOG(INFO) << "Migration to version 1.2.9 completed successfully.";
+}
+
 void create_indexes(std::string connection_string, bool dry_run) {
   try {
     pqxx::connection c(connection_string);
@@ -1385,9 +1486,13 @@ int main(int argc, char *argv[]) {
       run_1_2_7_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 7};
     }
-    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 8})) {
+    if (migration_needed(current_version, Version{1, 2, 8})) {
       run_1_2_8_migrations(pg_connection_string, dry_run);
       current_version = Version{1, 2, 8};
+    }
+    if (rerun_last_migration || migration_needed(current_version, Version{1, 2, 9})) {
+      run_1_2_9_migrations(pg_connection_string, dry_run);
+      current_version = Version{1, 2, 9};
     }
 
 
