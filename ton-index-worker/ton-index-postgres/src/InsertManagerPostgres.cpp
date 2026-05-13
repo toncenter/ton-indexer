@@ -1,13 +1,17 @@
 #include "td/utils/JsonBuilder.h"
+#include "td/utils/crypto.h"
+#include "td/utils/misc.h"
 #include "InsertManagerPostgres.h"
 #include "convert-utils.h"
 #include "Statistics.h"
 #include "version.h"
 #include "postgresql_tools.h"
 
+#include <array>
 #include <map>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <tuple>
 #include <unordered_set>
 
@@ -143,6 +147,7 @@ private:
   std::string insert_dedust_pools(pqxx::work &txn);
   void insert_contract_methods(pqxx::work &txn);
   void insert_traces(pqxx::work &txn, bool with_copy);
+  void insert_kvrocks();
 
   bool try_acquire_leader_lock(pqxx::connection& c, const std::string& worker_id);
   InsertManagerInterface::InsertResult get_insert_result() const;
@@ -293,8 +298,21 @@ void ensure_still_leader(pqxx::work& txn, const std::string& worker_id) {
 struct PreparedMessageContentRow {
   td::Bits256 hash;
   std::string body;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(hash, body);
+};
+
+struct PreparedAccountStateRow {
+  td::Bits256 hash;
+  block::StdAddress account;
+  td::RefInt256 balance;
+  std::string balance_extra_currencies;
+  std::string account_status;
+  std::optional<td::Bits256> frozen_hash;
+  std::optional<td::Bits256> code_hash;
+  std::optional<td::Bits256> data_hash;
+  std::uint32_t source_mc_seqno;
 };
 
 struct PreparedLatestAccountStateRow {
@@ -312,6 +330,7 @@ struct PreparedLatestAccountStateRow {
   std::optional<td::Bits256> code_hash;
   std::optional<std::string> data_boc;
   std::optional<std::string> code_boc;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(account, account_friendly, hash, balance, balance_extra_currencies, account_status,
                         timestamp, last_trans_hash, last_trans_lt, frozen_hash, data_hash, code_hash,
@@ -328,6 +347,7 @@ struct PreparedJettonMasterRow {
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, total_supply, mintable, admin_address, jetton_content, jetton_wallet_code_hash,
                         last_transaction_lt, code_hash, data_hash);
@@ -342,6 +362,7 @@ struct PreparedJettonWalletRow {
   td::Bits256 code_hash;
   td::Bits256 data_hash;
   std::optional<bool> mintless_is_claimed;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(balance, address, owner, jetton, last_transaction_lt, code_hash, data_hash,
                         mintless_is_claimed);
@@ -350,6 +371,7 @@ struct PreparedJettonWalletRow {
 struct PreparedMintlessMasterRow {
   block::StdAddress address;
   bool is_indexed;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, is_indexed);
 };
@@ -362,6 +384,7 @@ struct PreparedNftCollectionRow {
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, next_item_index, owner_address, collection_content, last_transaction_lt,
                         code_hash, data_hash);
@@ -378,6 +401,7 @@ struct PreparedNftItemRow {
   td::Bits256 code_hash;
   td::Bits256 data_hash;
   std::optional<block::StdAddress> real_owner;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, init, index, collection_address, owner_address, content, last_transaction_lt,
                         code_hash, data_hash, real_owner);
@@ -392,6 +416,7 @@ struct PreparedDnsEntryRow {
   std::optional<td::Bits256> dns_site_adnl;
   std::optional<td::Bits256> dns_storage_bag_id;
   uint64_t last_transaction_lt;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(nft_item_address, nft_item_owner, domain, dns_next_resolver, dns_wallet,
                         dns_site_adnl, dns_storage_bag_id, last_transaction_lt);
@@ -415,6 +440,7 @@ struct PreparedGetgemsSaleRow {
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, is_complete, created_at, marketplace_address, nft_address, nft_owner_address,
                         full_price, marketplace_fee_address, marketplace_fee, royalty_address, royalty_amount,
@@ -452,6 +478,7 @@ struct PreparedGetgemsAuctionRow {
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, end_flag, end_time, mp_addr, nft_addr, nft_owner, last_bid, last_member,
                         min_step, mp_fee_addr, mp_fee_factor, mp_fee_base, royalty_fee_addr, royalty_fee_factor,
@@ -469,6 +496,7 @@ struct PreparedMultisigContractRow {
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, next_order_seqno, threshold, signers, proposers, last_transaction_lt,
                         code_hash, data_hash);
@@ -488,6 +516,7 @@ struct PreparedMultisigOrderRow {
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, multisig_address, order_seqno, threshold, sent_for_execution, approvals_mask,
                         approvals_num, expiration_date, order_boc, signers, last_transaction_lt, code_hash,
@@ -506,6 +535,7 @@ struct PreparedDedustPoolRow {
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, asset_1, asset_2, reserve_1, reserve_2, pool_type, dex, fee,
                         last_transaction_lt, code_hash, data_hash);
@@ -523,6 +553,7 @@ struct PreparedVestingContractRow {
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, vesting_start_time, vesting_total_duration, unlock_period, cliff_duration,
                         vesting_total_amount, vesting_sender_address, owner_address, last_transaction_lt,
@@ -532,6 +563,7 @@ struct PreparedVestingContractRow {
 struct PreparedVestingWhitelistRow {
   block::StdAddress vesting_contract_address;
   block::StdAddress wallet_address;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(vesting_contract_address, wallet_address);
 };
@@ -556,6 +588,7 @@ struct PreparedTelemintRow {
   uint64_t last_transaction_lt;
   td::Bits256 code_hash;
   td::Bits256 data_hash;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(address, token_name, bidder_address, bid, bid_ts, min_bid, end_time,
                         beneficiary_address, initial_min_bid, max_bid, min_bid_step, min_extend_time,
@@ -650,6 +683,7 @@ struct PreparedTraceRow {
 struct PreparedContractMethodsRow {
   td::Bits256 code_hash;
   std::string methods;
+  std::uint32_t source_mc_seqno;
 
   PREPARED_ROW_AS_TUPLE(code_hash, methods);
 };
@@ -659,6 +693,7 @@ struct PreparedContractMethodsRow {
 struct LatestAccountStateSourceRow {
   schema::AccountState account_state;
   std::string raw_account;
+  std::uint32_t source_mc_seqno;
 };
 
 struct LatestAccountStatesChunkPreparedResult {
@@ -667,6 +702,7 @@ struct LatestAccountStatesChunkPreparedResult {
 
 struct PreparedBatchPostgres {
   std::vector<PreparedMessageContentRow> message_contents;
+  std::vector<PreparedAccountStateRow> account_states;
 
   std::vector<PreparedLatestAccountStateRow> latest_account_states;
   std::vector<PreparedJettonMasterRow> jetton_masters;
@@ -747,6 +783,7 @@ PreparedLatestAccountStateRow prepare_latest_account_state_row(const LatestAccou
     .code_hash = account_state.code_hash,
     .data_boc = std::move(data_str),
     .code_boc = std::move(code_str),
+    .source_mc_seqno = source.source_mc_seqno,
   };
 }
 
@@ -777,29 +814,649 @@ class PrepareLatestAccountStatesChunkActor final : public td::actor::Actor {
   td::Promise<std::shared_ptr<LatestAccountStatesChunkPreparedResult>> promise_;
 };
 
+constexpr std::size_t KVROCKS_PIPELINE_FLUSH_SIZE = 1000;
+
+const std::string& kvrocks_set_once_script() {
+  static const std::string script = R"(
+local exists = redis.call('EXISTS', KEYS[1])
+if exists == 0 then
+  redis.call('HSET', KEYS[1],
+    'source_mc_seqno', ARGV[1],
+    'payload', ARGV[2])
+  return 1
+end
+return 0
+)";
+  return script;
+}
+
+const std::string& kvrocks_set_current_script() {
+  static const std::string script = R"(
+local current = redis.call('HGET', KEYS[1], 'source_mc_seqno')
+if (not current) or tonumber(current) <= tonumber(ARGV[1]) then
+  redis.call('HSET', KEYS[1],
+    'source_mc_seqno', ARGV[1],
+    'payload', ARGV[2])
+  return 1
+end
+return 0
+)";
+  return script;
+}
+
+std::string redis_script_sha1(const std::string& script) {
+  std::array<unsigned char, 20> digest{};
+  td::sha1(td::Slice(script.data(), script.size()), digest.data());
+  return td::hex_encode(td::Slice(reinterpret_cast<const char*>(digest.data()), digest.size()));
+}
+
+const std::string& kvrocks_set_once_script_sha() {
+  static const std::string sha = redis_script_sha1(kvrocks_set_once_script());
+  return sha;
+}
+
+const std::string& kvrocks_set_current_script_sha() {
+  static const std::string sha = redis_script_sha1(kvrocks_set_current_script());
+  return sha;
+}
+
+void load_kvrocks_scripts(sw::redis::Redis& redis) {
+  auto set_once_sha = redis.script_load(kvrocks_set_once_script());
+  auto set_current_sha = redis.script_load(kvrocks_set_current_script());
+  if (set_once_sha != kvrocks_set_once_script_sha() || set_current_sha != kvrocks_set_current_script_sha()) {
+    throw std::runtime_error("Kvrocks returned an unexpected script SHA");
+  }
+}
+
+bool is_kvrocks_no_script_error(const std::exception& e) {
+  const std::string message = e.what();
+  return message.find("NOSCRIPT") != std::string::npos || message.find("No matching script") != std::string::npos;
+}
+
+std::string kvrocks_key(const std::string& table, const std::string& id) {
+  return "ton-index:v1:" + table + ":" + id;
+}
+
+std::string address_key(const block::StdAddress& address) {
+  return convert::to_raw_address(address);
+}
+
+std::string hash_key(const td::Bits256& hash) {
+  return to_bits256_base64(hash);
+}
+
+void json_put_null(td::JsonObjectScope& obj, td::Slice field) {
+  obj(field, td::JsonNull());
+}
+
+void json_put_bool(td::JsonObjectScope& obj, td::Slice field, bool value) {
+  obj(field, td::JsonBool(value));
+}
+
+void json_put_i64(td::JsonObjectScope& obj, td::Slice field, std::int64_t value) {
+  obj(field, td::JsonLong(value));
+}
+
+void json_put_u64_string(td::JsonObjectScope& obj, td::Slice field, std::uint64_t value) {
+  obj(field, std::to_string(value));
+}
+
+void json_put_string(td::JsonObjectScope& obj, td::Slice field, const std::string& value) {
+  obj(field, value);
+}
+
+void json_put_raw_json(td::JsonObjectScope& obj, td::Slice field, const std::string& value) {
+  obj(field, td::JsonRaw(value));
+}
+
+void json_put_int256(td::JsonObjectScope& obj, td::Slice field, const td::RefInt256& value) {
+  obj(field, value->to_dec_string());
+}
+
+void json_put_hash(td::JsonObjectScope& obj, td::Slice field, const td::Bits256& value) {
+  obj(field, hash_key(value));
+}
+
+void json_put_optional_hash(td::JsonObjectScope& obj, td::Slice field, const std::optional<td::Bits256>& value) {
+  if (value) {
+    json_put_hash(obj, field, *value);
+  } else {
+    json_put_null(obj, field);
+  }
+}
+
+void json_put_address(td::JsonObjectScope& obj, td::Slice field, const block::StdAddress& value) {
+  obj(field, address_key(value));
+}
+
+void json_put_optional_address(td::JsonObjectScope& obj, td::Slice field, const std::optional<block::StdAddress>& value) {
+  if (value) {
+    json_put_address(obj, field, *value);
+  } else {
+    json_put_null(obj, field);
+  }
+}
+
+void json_put_optional_string(td::JsonObjectScope& obj, td::Slice field, const std::optional<std::string>& value) {
+  if (value) {
+    json_put_string(obj, field, *value);
+  } else {
+    json_put_null(obj, field);
+  }
+}
+
+void json_put_optional_bool(td::JsonObjectScope& obj, td::Slice field, const std::optional<bool>& value) {
+  if (value) {
+    json_put_bool(obj, field, *value);
+  } else {
+    json_put_null(obj, field);
+  }
+}
+
+void json_put_optional_u32(td::JsonObjectScope& obj, td::Slice field, const std::optional<std::uint32_t>& value) {
+  if (value) {
+    json_put_i64(obj, field, *value);
+  } else {
+    json_put_null(obj, field);
+  }
+}
+
+void json_put_optional_u64_string(td::JsonObjectScope& obj, td::Slice field, const std::optional<std::uint64_t>& value) {
+  if (value) {
+    json_put_u64_string(obj, field, *value);
+  } else {
+    json_put_null(obj, field);
+  }
+}
+
+void json_put_optional_raw_json(td::JsonObjectScope& obj, td::Slice field, const std::optional<std::string>& value) {
+  if (value) {
+    json_put_raw_json(obj, field, *value);
+  } else {
+    json_put_null(obj, field);
+  }
+}
+
+std::string address_array_json(const std::vector<block::StdAddress>& addresses) {
+  td::JsonBuilder jb;
+  auto arr = jb.enter_array();
+  for (const auto& address : addresses) {
+    arr(address_key(address));
+  }
+  arr.leave();
+  return jb.string_builder().as_cslice().str();
+}
+
+void json_put_common(td::JsonObjectScope& obj, std::uint32_t source_mc_seqno) {
+  json_put_i64(obj, "schema_version", 1);
+  json_put_i64(obj, "source_mc_seqno", source_mc_seqno);
+}
+
+template <typename Fn>
+std::string build_json_payload(Fn fn) {
+  td::JsonBuilder jb;
+  auto obj = jb.enter_object();
+  fn(obj);
+  obj.leave();
+  return jb.string_builder().as_cslice().str();
+}
+
+std::string build_payload(const PreparedMessageContentRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_hash(obj, "hash", row.hash);
+    json_put_string(obj, "body", row.body);
+  });
+}
+
+std::string build_payload(const PreparedAccountStateRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_hash(obj, "hash", row.hash);
+    json_put_address(obj, "account", row.account);
+    json_put_int256(obj, "balance", row.balance);
+    json_put_raw_json(obj, "balance_extra_currencies", row.balance_extra_currencies);
+    json_put_string(obj, "account_status", row.account_status);
+    json_put_optional_hash(obj, "frozen_hash", row.frozen_hash);
+    json_put_optional_hash(obj, "code_hash", row.code_hash);
+    json_put_optional_hash(obj, "data_hash", row.data_hash);
+  });
+}
+
+std::string build_payload(const PreparedLatestAccountStateRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "account", row.account);
+    json_put_optional_address(obj, "account_friendly", row.account_friendly);
+    json_put_hash(obj, "hash", row.hash);
+    json_put_int256(obj, "balance", row.balance);
+    json_put_raw_json(obj, "balance_extra_currencies", row.balance_extra_currencies);
+    json_put_string(obj, "account_status", row.account_status);
+    json_put_i64(obj, "timestamp", row.timestamp);
+    json_put_hash(obj, "last_trans_hash", row.last_trans_hash);
+    json_put_u64_string(obj, "last_trans_lt", row.last_trans_lt);
+    json_put_optional_hash(obj, "frozen_hash", row.frozen_hash);
+    json_put_optional_hash(obj, "data_hash", row.data_hash);
+    json_put_optional_hash(obj, "code_hash", row.code_hash);
+    json_put_optional_string(obj, "data_boc", row.data_boc);
+    json_put_optional_string(obj, "code_boc", row.code_boc);
+  });
+}
+
+std::string build_payload(const PreparedJettonMasterRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_int256(obj, "total_supply", row.total_supply);
+    json_put_bool(obj, "mintable", row.mintable);
+    json_put_optional_address(obj, "admin_address", row.admin_address);
+    json_put_optional_raw_json(obj, "jetton_content", row.jetton_content);
+    json_put_hash(obj, "jetton_wallet_code_hash", row.jetton_wallet_code_hash);
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+  });
+}
+
+std::string build_payload(const PreparedJettonWalletRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_int256(obj, "balance", row.balance);
+    json_put_address(obj, "address", row.address);
+    json_put_address(obj, "owner", row.owner);
+    json_put_address(obj, "jetton", row.jetton);
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+    json_put_optional_bool(obj, "mintless_is_claimed", row.mintless_is_claimed);
+  });
+}
+
+std::string build_payload(const PreparedMintlessMasterRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_bool(obj, "is_indexed", row.is_indexed);
+    json_put_null(obj, "custom_payload_api_uri");
+  });
+}
+
+std::string build_payload(const PreparedNftCollectionRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_int256(obj, "next_item_index", row.next_item_index);
+    json_put_optional_address(obj, "owner_address", row.owner_address);
+    json_put_optional_raw_json(obj, "collection_content", row.collection_content);
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+  });
+}
+
+std::string build_payload(const PreparedNftItemRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_bool(obj, "init", row.init);
+    json_put_int256(obj, "index", row.index);
+    json_put_optional_address(obj, "collection_address", row.collection_address);
+    json_put_optional_address(obj, "owner_address", row.owner_address);
+    json_put_optional_raw_json(obj, "content", row.content);
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+    json_put_optional_address(obj, "real_owner", row.real_owner);
+  });
+}
+
+std::string build_payload(const PreparedDnsEntryRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "nft_item_address", row.nft_item_address);
+    json_put_optional_address(obj, "nft_item_owner", row.nft_item_owner);
+    json_put_string(obj, "domain", row.domain);
+    json_put_optional_address(obj, "dns_next_resolver", row.dns_next_resolver);
+    json_put_optional_address(obj, "dns_wallet", row.dns_wallet);
+    json_put_optional_hash(obj, "dns_site_adnl", row.dns_site_adnl);
+    json_put_optional_hash(obj, "dns_storage_bag_id", row.dns_storage_bag_id);
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+  });
+}
+
+std::string build_payload(const PreparedGetgemsSaleRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_bool(obj, "is_complete", row.is_complete);
+    json_put_i64(obj, "created_at", row.created_at);
+    json_put_address(obj, "marketplace_address", row.marketplace_address);
+    json_put_address(obj, "nft_address", row.nft_address);
+    json_put_optional_address(obj, "nft_owner_address", row.nft_owner_address);
+    json_put_int256(obj, "full_price", row.full_price);
+    json_put_address(obj, "marketplace_fee_address", row.marketplace_fee_address);
+    json_put_int256(obj, "marketplace_fee", row.marketplace_fee);
+    json_put_address(obj, "royalty_address", row.royalty_address);
+    json_put_int256(obj, "royalty_amount", row.royalty_amount);
+    json_put_optional_u32(obj, "sold_at", row.sold_at);
+    json_put_optional_u64_string(obj, "sold_query_id", row.sold_query_id);
+    json_put_optional_raw_json(obj, "jetton_price_dict", row.jetton_price_dict);
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+  });
+}
+
+std::string build_payload(const PreparedGetgemsAuctionRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_bool(obj, "end_flag", row.end_flag);
+    json_put_i64(obj, "end_time", row.end_time);
+    json_put_address(obj, "mp_addr", row.mp_addr);
+    json_put_address(obj, "nft_addr", row.nft_addr);
+    json_put_optional_address(obj, "nft_owner", row.nft_owner);
+    json_put_int256(obj, "last_bid", row.last_bid);
+    json_put_optional_address(obj, "last_member", row.last_member);
+    json_put_i64(obj, "min_step", row.min_step);
+    json_put_address(obj, "mp_fee_addr", row.mp_fee_addr);
+    json_put_i64(obj, "mp_fee_factor", row.mp_fee_factor);
+    json_put_i64(obj, "mp_fee_base", row.mp_fee_base);
+    json_put_address(obj, "royalty_fee_addr", row.royalty_fee_addr);
+    json_put_i64(obj, "royalty_fee_factor", row.royalty_fee_factor);
+    json_put_i64(obj, "royalty_fee_base", row.royalty_fee_base);
+    json_put_int256(obj, "max_bid", row.max_bid);
+    json_put_int256(obj, "min_bid", row.min_bid);
+    json_put_i64(obj, "created_at", row.created_at);
+    json_put_i64(obj, "last_bid_at", row.last_bid_at);
+    json_put_bool(obj, "is_canceled", row.is_canceled);
+    json_put_optional_bool(obj, "activated", row.activated);
+    json_put_optional_u32(obj, "step_time", row.step_time);
+    json_put_optional_u64_string(obj, "last_query_id", row.last_query_id);
+    json_put_optional_address(obj, "jetton_wallet", row.jetton_wallet);
+    json_put_optional_address(obj, "jetton_master", row.jetton_master);
+    json_put_optional_bool(obj, "is_broken_state", row.is_broken_state);
+    json_put_optional_string(obj, "public_key", row.public_key);
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+  });
+}
+
+std::string build_payload(const PreparedMultisigContractRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_int256(obj, "next_order_seqno", row.next_order_seqno);
+    json_put_i64(obj, "threshold", row.threshold);
+    json_put_raw_json(obj, "signers", address_array_json(row.signers));
+    json_put_raw_json(obj, "proposers", address_array_json(row.proposers));
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+  });
+}
+
+std::string build_payload(const PreparedMultisigOrderRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_address(obj, "multisig_address", row.multisig_address);
+    json_put_int256(obj, "order_seqno", row.order_seqno);
+    json_put_i64(obj, "threshold", row.threshold);
+    json_put_bool(obj, "sent_for_execution", row.sent_for_execution);
+    json_put_int256(obj, "approvals_mask", row.approvals_mask);
+    json_put_i64(obj, "approvals_num", row.approvals_num);
+    json_put_int256(obj, "expiration_date", row.expiration_date);
+    json_put_optional_string(obj, "order_boc", row.order_boc);
+    json_put_raw_json(obj, "signers", address_array_json(row.signers));
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+  });
+}
+
+std::string build_payload(const PreparedDedustPoolRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_optional_address(obj, "asset_1", row.asset_1);
+    json_put_optional_address(obj, "asset_2", row.asset_2);
+    json_put_int256(obj, "reserve_1", row.reserve_1);
+    json_put_int256(obj, "reserve_2", row.reserve_2);
+    json_put_string(obj, "pool_type", row.pool_type);
+    json_put_string(obj, "dex", row.dex);
+    obj("fee", td::JsonFloat(row.fee));
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+  });
+}
+
+std::string build_payload(const PreparedVestingContractRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_i64(obj, "vesting_start_time", row.vesting_start_time);
+    json_put_i64(obj, "vesting_total_duration", row.vesting_total_duration);
+    json_put_i64(obj, "unlock_period", row.unlock_period);
+    json_put_i64(obj, "cliff_duration", row.cliff_duration);
+    json_put_int256(obj, "vesting_total_amount", row.vesting_total_amount);
+    json_put_address(obj, "vesting_sender_address", row.vesting_sender_address);
+    json_put_address(obj, "owner_address", row.owner_address);
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+  });
+}
+
+std::string build_payload(const PreparedVestingWhitelistRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "vesting_contract_address", row.vesting_contract_address);
+    json_put_address(obj, "wallet_address", row.wallet_address);
+  });
+}
+
+std::string build_payload(const PreparedTelemintRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_address(obj, "address", row.address);
+    json_put_string(obj, "token_name", row.token_name);
+    json_put_optional_address(obj, "bidder_address", row.bidder_address);
+    json_put_int256(obj, "bid", row.bid);
+    json_put_i64(obj, "bid_ts", row.bid_ts);
+    json_put_int256(obj, "min_bid", row.min_bid);
+    json_put_i64(obj, "end_time", row.end_time);
+    json_put_optional_address(obj, "beneficiary_address", row.beneficiary_address);
+    json_put_int256(obj, "initial_min_bid", row.initial_min_bid);
+    json_put_int256(obj, "max_bid", row.max_bid);
+    json_put_int256(obj, "min_bid_step", row.min_bid_step);
+    json_put_i64(obj, "min_extend_time", row.min_extend_time);
+    json_put_i64(obj, "duration", row.duration);
+    json_put_i64(obj, "royalty_numerator", row.royalty_numerator);
+    json_put_i64(obj, "royalty_denominator", row.royalty_denominator);
+    json_put_address(obj, "royalty_destination", row.royalty_destination);
+    json_put_u64_string(obj, "last_transaction_lt", row.last_transaction_lt);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_hash(obj, "data_hash", row.data_hash);
+  });
+}
+
+std::string build_payload(const PreparedContractMethodsRow& row) {
+  return build_json_payload([&](td::JsonObjectScope& obj) {
+    json_put_common(obj, row.source_mc_seqno);
+    json_put_hash(obj, "code_hash", row.code_hash);
+    json_put_string(obj, "methods", row.methods);
+  });
+}
+
+class KvrocksBatchWriter {
+ public:
+  KvrocksBatchWriter(sw::redis::Redis& redis, const PreparedBatchPostgres& batch)
+      : redis_(redis), pipeline_(redis.pipeline(false)), batch_(batch) {
+  }
+
+  void write() {
+    for (const auto& row : batch_.message_contents) {
+      queue_set_once("message_contents", hash_key(row.hash), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.account_states) {
+      queue_set_once("account_states", hash_key(row.hash), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.contract_methods) {
+      queue_set_once("contract_methods", hash_key(row.code_hash), row.source_mc_seqno, build_payload(row));
+    }
+
+    for (const auto& row : batch_.latest_account_states) {
+      queue_set_current("latest_account_states", address_key(row.account), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.jetton_masters) {
+      queue_set_current("jetton_masters", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.jetton_wallets) {
+      queue_set_current("jetton_wallets", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.mintless_jetton_masters) {
+      queue_set_once("mintless_jetton_masters", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.nft_collections) {
+      queue_set_current("nft_collections", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.nft_items) {
+      queue_set_current("nft_items", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.dns_entries) {
+      queue_set_current("dns_entries", address_key(row.nft_item_address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.getgems_nft_sales) {
+      queue_set_current("getgems_nft_sales", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.getgems_nft_auctions) {
+      queue_set_current("getgems_nft_auctions", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.multisig_contracts) {
+      queue_set_current("multisig", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.multisig_orders) {
+      queue_set_current("multisig_orders", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.vesting_contracts) {
+      queue_set_current("vesting_contracts", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.vesting_whitelist) {
+      queue_set_once("vesting_whitelist", address_key(row.vesting_contract_address) + ":" + address_key(row.wallet_address),
+                     row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.telemint_nft_items) {
+      queue_set_current("telemint_nft_items", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+    for (const auto& row : batch_.dedust_pools) {
+      queue_set_current("dex_pools", address_key(row.address), row.source_mc_seqno, build_payload(row));
+    }
+
+    flush();
+    if (queued_ > 0) {
+      LOG(INFO) << "Inserted " << queued_ << " point-state rows into Kvrocks";
+    }
+  }
+
+  double exec_elapsed_millis() const {
+    return exec_elapsed_millis_;
+  }
+
+ private:
+  void queue_set_once(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
+                      const std::string& payload) {
+    const auto key = kvrocks_key(table, id);
+    const auto source = std::to_string(source_mc_seqno);
+    pipeline_.evalsha(kvrocks_set_once_script_sha(), {key}, {source, payload});
+    ++pending_;
+    ++queued_;
+    flush_if_needed();
+  }
+
+  void queue_set_current(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
+                         const std::string& payload) {
+    const auto key = kvrocks_key(table, id);
+    const auto source = std::to_string(source_mc_seqno);
+    pipeline_.evalsha(kvrocks_set_current_script_sha(), {key}, {source, payload});
+    ++pending_;
+    ++queued_;
+    flush_if_needed();
+  }
+
+  void flush_if_needed() {
+    if (pending_ >= KVROCKS_PIPELINE_FLUSH_SIZE) {
+      flush();
+    }
+  }
+
+  void flush() {
+    if (pending_ == 0) {
+      return;
+    }
+
+    td::Timer exec_timer;
+    auto replies = pipeline_.exec();
+    if (replies.size() != pending_) {
+      throw std::runtime_error("Kvrocks pipeline reply count mismatch");
+    }
+    for (std::size_t i = 0; i < replies.size(); ++i) {
+      replies.get<long long>(i);
+    }
+    exec_timer.pause();
+    exec_elapsed_millis_ += exec_timer.elapsed() * 1e3;
+    pending_ = 0;
+  }
+
+  sw::redis::Redis& redis_;
+  sw::redis::Pipeline pipeline_;
+  const PreparedBatchPostgres& batch_;
+  std::size_t pending_{0};
+  std::size_t queued_{0};
+  double exec_elapsed_millis_{0.0};
+};
+
 void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_tasks, PreparedBatchPostgres& prepared_batch,
                                     std::vector<LatestAccountStateSourceRow>& latest_account_state_sources) {
   {
-    std::unordered_map<td::Bits256, std::string> unique_message_contents;
+    struct MessageContentValue {
+      std::string body;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<td::Bits256, MessageContentValue> unique_message_contents;
     for (const auto& task : insert_tasks) {
       for (const auto& blk : task.parsed_block_->blocks_) {
         for (const auto& transaction : blk.transactions) {
           if (transaction.in_msg) {
-            unique_message_contents.emplace(transaction.in_msg->body->get_hash().bits(), transaction.in_msg->body_boc);
+            unique_message_contents.emplace(transaction.in_msg->body->get_hash().bits(), MessageContentValue{
+              .body = transaction.in_msg->body_boc,
+              .source_mc_seqno = task.mc_seqno_,
+            });
             if (transaction.in_msg->init_state_boc) {
-              unique_message_contents.emplace(transaction.in_msg->init_state->get_hash().bits(), transaction.in_msg->init_state_boc.value());
+              unique_message_contents.emplace(transaction.in_msg->init_state->get_hash().bits(), MessageContentValue{
+                .body = transaction.in_msg->init_state_boc.value(),
+                .source_mc_seqno = task.mc_seqno_,
+              });
             }
           }
           for (const auto& msg : transaction.out_msgs) {
-            unique_message_contents.emplace(msg.body->get_hash().bits(), msg.body_boc);
+            unique_message_contents.emplace(msg.body->get_hash().bits(), MessageContentValue{
+              .body = msg.body_boc,
+              .source_mc_seqno = task.mc_seqno_,
+            });
             if (msg.init_state_boc) {
-              unique_message_contents.emplace(msg.init_state->get_hash().bits(), msg.init_state_boc.value());
+              unique_message_contents.emplace(msg.init_state->get_hash().bits(), MessageContentValue{
+                .body = msg.init_state_boc.value(),
+                .source_mc_seqno = task.mc_seqno_,
+              });
             }
           }
         }
       }
     }
-    std::vector<std::pair<std::string, const std::pair<const td::Bits256, std::string>*>> ordered_message_contents;
+    std::vector<std::pair<std::string, const std::pair<const td::Bits256, MessageContentValue>*>> ordered_message_contents;
     ordered_message_contents.reserve(unique_message_contents.size());
     for (const auto& entry : unique_message_contents) {
       ordered_message_contents.emplace_back(to_bits256_base64(entry.first), &entry);
@@ -811,8 +1468,30 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     for (const auto& [_, entry_ptr] : ordered_message_contents) {
       prepared_batch.message_contents.push_back(PreparedMessageContentRow{
         .hash = entry_ptr->first,
-        .body = entry_ptr->second,
+        .body = entry_ptr->second.body,
+        .source_mc_seqno = entry_ptr->second.source_mc_seqno,
       });
+    }
+  }
+
+  {
+    for (const auto& task : insert_tasks) {
+      for (const auto& account_state : task.parsed_block_->account_states_) {
+        if (account_state.account_status == "nonexist") {
+          continue;
+        }
+        prepared_batch.account_states.push_back(PreparedAccountStateRow{
+          .hash = account_state.hash,
+          .account = account_state.account,
+          .balance = account_state.balance.grams,
+          .balance_extra_currencies = extra_currencies_to_json_string(account_state.balance.extra_currencies),
+          .account_status = account_state.account_status,
+          .frozen_hash = account_state.frozen_hash,
+          .code_hash = account_state.code_hash,
+          .data_hash = account_state.data_hash,
+          .source_mc_seqno = task.mc_seqno_,
+        });
+      }
     }
   }
 
@@ -942,6 +1621,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
   {
     std::unordered_multimap<td::Bits256, uint64_t> contract_methods;
     std::unordered_set<td::Bits256> unique_code_hashes;
+    std::unordered_map<td::Bits256, std::uint32_t> contract_method_sources;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (auto it = task.parsed_block_->contract_methods_.begin(); it != task.parsed_block_->contract_methods_.end();) {
@@ -951,6 +1631,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
           continue;
         }
         unique_code_hashes.insert(code_hash);
+        contract_method_sources[code_hash] = task.mc_seqno_;
 
         auto range = task.parsed_block_->contract_methods_.equal_range(code_hash);
         for (auto vit = range.first; vit != range.second; ++vit) {
@@ -988,18 +1669,26 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       prepared_batch.contract_methods.push_back(PreparedContractMethodsRow{
         .code_hash = code_hash,
         .methods = methods_str.str(),
+        .source_mc_seqno = contract_method_sources[code_hash],
       });
     }
   }
 
   {
-    std::unordered_map<std::string, schema::AccountState> latest_account_states;
+    struct AccountStateWithSource {
+      schema::AccountState account_state;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<std::string, AccountStateWithSource> latest_account_states;
     for (const auto& task : insert_tasks) {
       for (const auto& account_state : task.parsed_block_->account_states_) {
         auto account_addr = convert::to_raw_address(account_state.account);
         auto it = latest_account_states.find(account_addr);
-        if (it == latest_account_states.end() || it->second.last_trans_lt < account_state.last_trans_lt) {
-          latest_account_states[account_addr] = account_state;
+        if (it == latest_account_states.end() || it->second.account_state.last_trans_lt < account_state.last_trans_lt) {
+          latest_account_states[account_addr] = AccountStateWithSource{
+            .account_state = account_state,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1007,19 +1696,30 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return key;
     });
     latest_account_state_sources.reserve(ordered_latest_account_states.size());
-    for (const auto& [raw_account, account_state_ptr] : ordered_latest_account_states) {
-      latest_account_state_sources.push_back({*account_state_ptr, raw_account});
+    for (const auto& [raw_account, account_state_with_source_ptr] : ordered_latest_account_states) {
+      latest_account_state_sources.push_back({
+        .account_state = account_state_with_source_ptr->account_state,
+        .raw_account = raw_account,
+        .source_mc_seqno = account_state_with_source_ptr->source_mc_seqno,
+      });
     }
   }
 
   {
-    std::unordered_map<block::StdAddress, schema::JettonMasterDataV2> jetton_masters;
+    struct JettonMasterWithSource {
+      schema::JettonMasterDataV2 value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, JettonMasterWithSource> jetton_masters;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& jetton_master : task.parsed_block_->get_accounts_v2<schema::JettonMasterDataV2>()) {
         auto it = jetton_masters.find(jetton_master.address);
-        if (it == jetton_masters.end() || it->second.last_transaction_lt < jetton_master.last_transaction_lt) {
-          jetton_masters[jetton_master.address] = jetton_master;
+        if (it == jetton_masters.end() || it->second.value.last_transaction_lt < jetton_master.last_transaction_lt) {
+          jetton_masters[jetton_master.address] = JettonMasterWithSource{
+            .value = jetton_master,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1027,8 +1727,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return convert::to_raw_address(key);
     });
     prepared_batch.jetton_masters.reserve(ordered_jetton_masters.size());
-    for (const auto& [_, jetton_master_ptr] : ordered_jetton_masters) {
-      const auto& jetton_master = *jetton_master_ptr;
+    for (const auto& [_, jetton_master_with_source_ptr] : ordered_jetton_masters) {
+      const auto& jetton_master = jetton_master_with_source_ptr->value;
       std::optional<std::string> jetton_content_str = std::nullopt;
       if (jetton_master.jetton_content) {
         jetton_content_str = content_to_json_string(jetton_master.jetton_content.value());
@@ -1043,19 +1743,27 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .last_transaction_lt = jetton_master.last_transaction_lt,
         .code_hash = jetton_master.code_hash,
         .data_hash = jetton_master.data_hash,
+        .source_mc_seqno = jetton_master_with_source_ptr->source_mc_seqno,
       });
     }
   }
 
   {
-    std::unordered_map<block::StdAddress, schema::JettonWalletDataV2> jetton_wallets;
-    std::unordered_set<block::StdAddress> known_mintless_masters;
+    struct JettonWalletWithSource {
+      schema::JettonWalletDataV2 value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, JettonWalletWithSource> jetton_wallets;
+    std::unordered_map<block::StdAddress, std::uint32_t> known_mintless_masters;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& jetton_wallet : task.parsed_block_->get_accounts_v2<schema::JettonWalletDataV2>()) {
         auto it = jetton_wallets.find(jetton_wallet.address);
-        if (it == jetton_wallets.end() || it->second.last_transaction_lt < jetton_wallet.last_transaction_lt) {
-          jetton_wallets[jetton_wallet.address] = jetton_wallet;
+        if (it == jetton_wallets.end() || it->second.value.last_transaction_lt < jetton_wallet.last_transaction_lt) {
+          jetton_wallets[jetton_wallet.address] = JettonWalletWithSource{
+            .value = jetton_wallet,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1063,8 +1771,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return convert::to_raw_address(key);
     });
     prepared_batch.jetton_wallets.reserve(ordered_jetton_wallets.size());
-    for (const auto& [_, jetton_wallet_ptr] : ordered_jetton_wallets) {
-      const auto& jetton_wallet = *jetton_wallet_ptr;
+    for (const auto& [_, jetton_wallet_with_source_ptr] : ordered_jetton_wallets) {
+      const auto& jetton_wallet = jetton_wallet_with_source_ptr->value;
       prepared_batch.jetton_wallets.push_back(PreparedJettonWalletRow{
         .balance = jetton_wallet.balance,
         .address = jetton_wallet.address,
@@ -1074,31 +1782,45 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .code_hash = jetton_wallet.code_hash,
         .data_hash = jetton_wallet.data_hash,
         .mintless_is_claimed = jetton_wallet.mintless_is_claimed,
+        .source_mc_seqno = jetton_wallet_with_source_ptr->source_mc_seqno,
       });
       if (jetton_wallet.mintless_is_claimed.has_value()) {
-        known_mintless_masters.insert(jetton_wallet.jetton);
+        known_mintless_masters.emplace(jetton_wallet.jetton, jetton_wallet_with_source_ptr->source_mc_seqno);
       }
     }
-    auto ordered_mintless_masters = get_ordered_values(known_mintless_masters, [](const auto& address) {
-      return convert::to_raw_address(address);
+    std::vector<std::pair<std::string, const std::pair<const block::StdAddress, std::uint32_t>*>> ordered_mintless_masters;
+    ordered_mintless_masters.reserve(known_mintless_masters.size());
+    for (const auto& entry : known_mintless_masters) {
+      ordered_mintless_masters.emplace_back(convert::to_raw_address(entry.first), &entry);
+    }
+    std::sort(ordered_mintless_masters.begin(), ordered_mintless_masters.end(), [](const auto& lhs, const auto& rhs) {
+      return lhs.first < rhs.first;
     });
     prepared_batch.mintless_jetton_masters.reserve(ordered_mintless_masters.size());
-    for (const auto& [_, addr_ptr] : ordered_mintless_masters) {
+    for (const auto& [_, mintless_entry_ptr] : ordered_mintless_masters) {
       prepared_batch.mintless_jetton_masters.push_back(PreparedMintlessMasterRow{
-        .address = *addr_ptr,
+        .address = mintless_entry_ptr->first,
         .is_indexed = false,
+        .source_mc_seqno = mintless_entry_ptr->second,
       });
     }
   }
 
   {
-    std::unordered_map<block::StdAddress, schema::NFTCollectionDataV2> nft_collections;
+    struct NftCollectionWithSource {
+      schema::NFTCollectionDataV2 value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, NftCollectionWithSource> nft_collections;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& nft_collection : task.parsed_block_->get_accounts_v2<schema::NFTCollectionDataV2>()) {
         auto it = nft_collections.find(nft_collection.address);
-        if (it == nft_collections.end() || it->second.last_transaction_lt < nft_collection.last_transaction_lt) {
-          nft_collections[nft_collection.address] = nft_collection;
+        if (it == nft_collections.end() || it->second.value.last_transaction_lt < nft_collection.last_transaction_lt) {
+          nft_collections[nft_collection.address] = NftCollectionWithSource{
+            .value = nft_collection,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1106,8 +1828,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return convert::to_raw_address(key);
     });
     prepared_batch.nft_collections.reserve(ordered_nft_collections.size());
-    for (const auto& [_, nft_collection_ptr] : ordered_nft_collections) {
-      const auto& nft_collection = *nft_collection_ptr;
+    for (const auto& [_, nft_collection_with_source_ptr] : ordered_nft_collections) {
+      const auto& nft_collection = nft_collection_with_source_ptr->value;
       std::optional<std::string> collection_content_str = std::nullopt;
       if (nft_collection.collection_content) {
         collection_content_str = content_to_json_string(nft_collection.collection_content.value());
@@ -1120,6 +1842,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .last_transaction_lt = nft_collection.last_transaction_lt,
         .code_hash = nft_collection.code_hash,
         .data_hash = nft_collection.data_hash,
+        .source_mc_seqno = nft_collection_with_source_ptr->source_mc_seqno,
       });
     }
   }
@@ -1143,6 +1866,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       uint64_t last_transaction_lt;
       td::Bits256 code_hash;
       td::Bits256 data_hash;
+      std::uint32_t source_mc_seqno;
     };
 
     std::unordered_map<block::StdAddress, UnifiedSaleData> nft_sales;
@@ -1169,7 +1893,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
             {},
             nft_sale.last_transaction_lt,
             nft_sale.code_hash,
-            nft_sale.data_hash
+            nft_sale.data_hash,
+            task.mc_seqno_
           };
         }
       }
@@ -1197,7 +1922,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
             nft_sale_v4.jetton_price_dict,
             nft_sale_v4.last_transaction_lt,
             nft_sale_v4.code_hash,
-            nft_sale_v4.data_hash
+            nft_sale_v4.data_hash,
+            task.mc_seqno_
           };
         }
       }
@@ -1237,18 +1963,26 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .last_transaction_lt = nft_sale.last_transaction_lt,
         .code_hash = nft_sale.code_hash,
         .data_hash = nft_sale.data_hash,
+        .source_mc_seqno = nft_sale.source_mc_seqno,
       });
     }
   }
 
   {
-    std::unordered_map<block::StdAddress, schema::GetGemsNftAuctionData> nft_auctions;
+    struct NftAuctionWithSource {
+      schema::GetGemsNftAuctionData value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, NftAuctionWithSource> nft_auctions;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& nft_auction : task.parsed_block_->get_accounts_v2<schema::GetGemsNftAuctionData>()) {
         auto it = nft_auctions.find(nft_auction.address);
-        if (it == nft_auctions.end() || it->second.last_transaction_lt < nft_auction.last_transaction_lt) {
-          nft_auctions[nft_auction.address] = nft_auction;
+        if (it == nft_auctions.end() || it->second.value.last_transaction_lt < nft_auction.last_transaction_lt) {
+          nft_auctions[nft_auction.address] = NftAuctionWithSource{
+            .value = nft_auction,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1256,8 +1990,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return convert::to_raw_address(key);
     });
     prepared_batch.getgems_nft_auctions.reserve(ordered_nft_auctions.size());
-    for (const auto& [_, nft_auction_ptr] : ordered_nft_auctions) {
-      const auto& nft_auction = *nft_auction_ptr;
+    for (const auto& [_, nft_auction_with_source_ptr] : ordered_nft_auctions) {
+      const auto& nft_auction = nft_auction_with_source_ptr->value;
       std::optional<std::string> public_key;
       if (nft_auction.public_key.has_value()) {
         public_key = nft_auction.public_key.value()->to_hex_string();
@@ -1293,6 +2027,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .last_transaction_lt = nft_auction.last_transaction_lt,
         .code_hash = nft_auction.code_hash,
         .data_hash = nft_auction.data_hash,
+        .source_mc_seqno = nft_auction_with_source_ptr->source_mc_seqno,
       });
     }
   }
@@ -1319,13 +2054,20 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       }
     }
 
-    std::unordered_map<block::StdAddress, schema::NFTItemDataV2> nft_items;
+    struct NftItemWithSource {
+      schema::NFTItemDataV2 value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, NftItemWithSource> nft_items;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& nft_item : task.parsed_block_->get_accounts_v2<schema::NFTItemDataV2>()) {
         auto it = nft_items.find(nft_item.address);
-        if (it == nft_items.end() || it->second.last_transaction_lt < nft_item.last_transaction_lt) {
-          nft_items[nft_item.address] = nft_item;
+        if (it == nft_items.end() || it->second.value.last_transaction_lt < nft_item.last_transaction_lt) {
+          nft_items[nft_item.address] = NftItemWithSource{
+            .value = nft_item,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1334,8 +2076,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return convert::to_raw_address(key);
     });
     prepared_batch.nft_items.reserve(ordered_nft_items.size());
-    for (const auto& [_, nft_item_ptr] : ordered_nft_items) {
-      const auto& nft_item = *nft_item_ptr;
+    for (const auto& [_, nft_item_with_source_ptr] : ordered_nft_items) {
+      const auto& nft_item = nft_item_with_source_ptr->value;
       std::optional<std::string> content_str = std::nullopt;
       if (nft_item.content) {
         content_str = content_to_json_string(nft_item.content.value());
@@ -1367,6 +2109,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .code_hash = nft_item.code_hash,
         .data_hash = nft_item.data_hash,
         .real_owner = real_owner,
+        .source_mc_seqno = nft_item_with_source_ptr->source_mc_seqno,
       });
 
       if (nft_item.dns_entry) {
@@ -1379,19 +2122,27 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
           .dns_site_adnl = nft_item.dns_entry->site_adnl,
           .dns_storage_bag_id = nft_item.dns_entry->storage_bag_id,
           .last_transaction_lt = nft_item.last_transaction_lt,
+          .source_mc_seqno = nft_item_with_source_ptr->source_mc_seqno,
         });
       }
     }
   }
 
   {
-    std::unordered_map<block::StdAddress, schema::MultisigContractData> multisig_contracts;
+    struct MultisigContractWithSource {
+      schema::MultisigContractData value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, MultisigContractWithSource> multisig_contracts;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& multisig_contract : task.parsed_block_->get_accounts_v2<schema::MultisigContractData>()) {
         auto it = multisig_contracts.find(multisig_contract.address);
-        if (it == multisig_contracts.end() || it->second.last_transaction_lt < multisig_contract.last_transaction_lt) {
-          multisig_contracts[multisig_contract.address] = multisig_contract;
+        if (it == multisig_contracts.end() || it->second.value.last_transaction_lt < multisig_contract.last_transaction_lt) {
+          multisig_contracts[multisig_contract.address] = MultisigContractWithSource{
+            .value = multisig_contract,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1399,8 +2150,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return convert::to_raw_address(key);
     });
     prepared_batch.multisig_contracts.reserve(ordered_multisig_contracts.size());
-    for (const auto& [_, multisig_contract_ptr] : ordered_multisig_contracts) {
-      const auto& multisig_contract = *multisig_contract_ptr;
+    for (const auto& [_, multisig_contract_with_source_ptr] : ordered_multisig_contracts) {
+      const auto& multisig_contract = multisig_contract_with_source_ptr->value;
       prepared_batch.multisig_contracts.push_back(PreparedMultisigContractRow{
         .address = multisig_contract.address,
         .next_order_seqno = multisig_contract.next_order_seqno,
@@ -1410,18 +2161,26 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .last_transaction_lt = multisig_contract.last_transaction_lt,
         .code_hash = multisig_contract.code_hash,
         .data_hash = multisig_contract.data_hash,
+        .source_mc_seqno = multisig_contract_with_source_ptr->source_mc_seqno,
       });
     }
   }
 
   {
-    std::unordered_map<block::StdAddress, schema::MultisigOrderData> multisig_orders;
+    struct MultisigOrderWithSource {
+      schema::MultisigOrderData value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, MultisigOrderWithSource> multisig_orders;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& multisig_order : task.parsed_block_->get_accounts_v2<schema::MultisigOrderData>()) {
         auto it = multisig_orders.find(multisig_order.address);
-        if (it == multisig_orders.end() || it->second.last_transaction_lt < multisig_order.last_transaction_lt) {
-          multisig_orders[multisig_order.address] = multisig_order;
+        if (it == multisig_orders.end() || it->second.value.last_transaction_lt < multisig_order.last_transaction_lt) {
+          multisig_orders[multisig_order.address] = MultisigOrderWithSource{
+            .value = multisig_order,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1429,8 +2188,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return convert::to_raw_address(key);
     });
     prepared_batch.multisig_orders.reserve(ordered_multisig_orders.size());
-    for (const auto& [_, multisig_order_ptr] : ordered_multisig_orders) {
-      const auto& multisig_order = *multisig_order_ptr;
+    for (const auto& [_, multisig_order_with_source_ptr] : ordered_multisig_orders) {
+      const auto& multisig_order = multisig_order_with_source_ptr->value;
       std::optional<std::string> order_boc_str = std::nullopt;
       if (multisig_order.order.not_null()) {
         order_boc_str = serialize_cell_to_base64(multisig_order.order);
@@ -1449,18 +2208,26 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .last_transaction_lt = multisig_order.last_transaction_lt,
         .code_hash = multisig_order.code_hash,
         .data_hash = multisig_order.data_hash,
+        .source_mc_seqno = multisig_order_with_source_ptr->source_mc_seqno,
       });
     }
   }
 
   {
-    std::unordered_map<block::StdAddress, schema::DedustPoolData> dedust_pools;
+    struct DedustPoolWithSource {
+      schema::DedustPoolData value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, DedustPoolWithSource> dedust_pools;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& dedust_pool : task.parsed_block_->get_accounts_v2<schema::DedustPoolData>()) {
         auto it = dedust_pools.find(dedust_pool.address);
-        if (it == dedust_pools.end() || it->second.last_transaction_lt < dedust_pool.last_transaction_lt) {
-          dedust_pools[dedust_pool.address] = dedust_pool;
+        if (it == dedust_pools.end() || it->second.value.last_transaction_lt < dedust_pool.last_transaction_lt) {
+          dedust_pools[dedust_pool.address] = DedustPoolWithSource{
+            .value = dedust_pool,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1469,8 +2236,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
     });
     prepared_batch.dedust_pools.reserve(ordered_dedust_pools.size());
     std::string dex = "dedust";
-    for (const auto& [_, dedust_pool_ptr] : ordered_dedust_pools) {
-      const auto& dedust_pool = *dedust_pool_ptr;
+    for (const auto& [_, dedust_pool_with_source_ptr] : ordered_dedust_pools) {
+      const auto& dedust_pool = dedust_pool_with_source_ptr->value;
       std::string pool_type = dedust_pool.is_stable ? "stable" : "volatile";
       prepared_batch.dedust_pools.push_back(PreparedDedustPoolRow{
         .address = dedust_pool.address,
@@ -1484,18 +2251,26 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .last_transaction_lt = dedust_pool.last_transaction_lt,
         .code_hash = dedust_pool.code_hash,
         .data_hash = dedust_pool.data_hash,
+        .source_mc_seqno = dedust_pool_with_source_ptr->source_mc_seqno,
       });
     }
   }
 
   {
-    std::unordered_map<block::StdAddress, schema::VestingData> vesting_contracts;
+    struct VestingWithSource {
+      schema::VestingData value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, VestingWithSource> vesting_contracts;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
       for (const auto& vesting : task.parsed_block_->get_accounts_v2<schema::VestingData>()) {
         auto it = vesting_contracts.find(vesting.address);
-        if (it == vesting_contracts.end() || it->second.last_transaction_lt < vesting.last_transaction_lt) {
-          vesting_contracts[vesting.address] = vesting;
+        if (it == vesting_contracts.end() || it->second.value.last_transaction_lt < vesting.last_transaction_lt) {
+          vesting_contracts[vesting.address] = VestingWithSource{
+            .value = vesting,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1503,8 +2278,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return convert::to_raw_address(key);
     });
     prepared_batch.vesting_contracts.reserve(ordered_vesting_contracts.size());
-    for (const auto& [_, vesting_ptr] : ordered_vesting_contracts) {
-      const auto& vesting = *vesting_ptr;
+    for (const auto& [_, vesting_with_source_ptr] : ordered_vesting_contracts) {
+      const auto& vesting = vesting_with_source_ptr->value;
       prepared_batch.vesting_contracts.push_back(PreparedVestingContractRow{
         .address = vesting.address,
         .vesting_start_time = vesting.vesting_start_time,
@@ -1517,6 +2292,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .last_transaction_lt = vesting.last_transaction_lt,
         .code_hash = vesting.code_hash,
         .data_hash = vesting.data_hash,
+        .source_mc_seqno = vesting_with_source_ptr->source_mc_seqno,
       });
       auto ordered_wallets = get_ordered_values(vesting.whitelist, [](const auto& address) {
         return convert::to_raw_address(address);
@@ -1525,13 +2301,18 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         prepared_batch.vesting_whitelist.push_back(PreparedVestingWhitelistRow{
           .vesting_contract_address = vesting.address,
           .wallet_address = *wallet_addr_ptr,
+          .source_mc_seqno = vesting_with_source_ptr->source_mc_seqno,
         });
       }
     }
   }
 
   {
-    std::unordered_map<block::StdAddress, schema::TelemintData> telemint_nfts;
+    struct TelemintWithSource {
+      schema::TelemintData value;
+      std::uint32_t source_mc_seqno;
+    };
+    std::unordered_map<block::StdAddress, TelemintWithSource> telemint_nfts;
     std::unordered_map<block::StdAddress, schema::NFTItemDataV2> nft_items;
     for (auto i = insert_tasks.rbegin(); i != insert_tasks.rend(); ++i) {
       const auto& task = *i;
@@ -1549,8 +2330,11 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
           continue;
         }
         auto it = telemint_nfts.find(telemint.address);
-        if (it == telemint_nfts.end() || it->second.last_transaction_lt < telemint.last_transaction_lt) {
-          telemint_nfts[telemint.address] = telemint;
+        if (it == telemint_nfts.end() || it->second.value.last_transaction_lt < telemint.last_transaction_lt) {
+          telemint_nfts[telemint.address] = TelemintWithSource{
+            .value = telemint,
+            .source_mc_seqno = task.mc_seqno_,
+          };
         }
       }
     }
@@ -1559,8 +2343,8 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
       return convert::to_raw_address(key);
     });
     prepared_batch.telemint_nft_items.reserve(ordered_telemint_nfts.size());
-    for (const auto& [_, telemint_ptr] : ordered_telemint_nfts) {
-      const auto& telemint = *telemint_ptr;
+    for (const auto& [_, telemint_with_source_ptr] : ordered_telemint_nfts) {
+      const auto& telemint = telemint_with_source_ptr->value;
       auto token_name = telemint.token_name;
       token_name.erase(std::remove(token_name.begin(), token_name.end(), '\0'), token_name.end());
       prepared_batch.telemint_nft_items.push_back(PreparedTelemintRow{
@@ -1583,6 +2367,7 @@ void collect_and_prepare_batch_rows(const std::vector<InsertTaskStruct>& insert_
         .last_transaction_lt = telemint.last_transaction_lt,
         .code_hash = telemint.code_hash,
         .data_hash = telemint.data_hash,
+        .source_mc_seqno = telemint_with_source_ptr->source_mc_seqno,
       });
     }
   }
@@ -1756,7 +2541,7 @@ void InsertBatchPostgres::do_insert() {
       reset_prepare_state();
       LOG(ERROR) << "Error preparing PG batch: " << e.what();
     } else {
-      LOG(ERROR) << "Error inserting to PG: " << e.what();
+      LOG(ERROR) << "Error inserting batch: " << e.what();
     }
     alarm_timestamp() = td::Timestamp::in(1.0);
   }
@@ -1865,7 +2650,7 @@ void InsertBatchPostgres::maybe_commit_prepared_batch() {
     g_statistics.record_count(INSERT_CONFLICT);
     alarm_timestamp() = td::Timestamp::now();
   } catch (const std::exception &e) {
-    LOG(ERROR) << "Error inserting to PG: " << e.what();
+    LOG(ERROR) << "Error inserting batch: " << e.what();
     alarm_timestamp() = td::Timestamp::in(1.0);
   }
 }
@@ -1874,6 +2659,10 @@ void InsertBatchPostgres::commit_prepared_batch() {
   SCOPE_EXIT {
     release_leader_heartbeat();
   };
+
+  // Keep Postgres as the durable progress source without holding a Postgres
+  // transaction open while Kvrocks performs network writes.
+  insert_kvrocks();
 
   td::Timer connect_timer;
   pqxx::connection c(connection_string_);
@@ -1915,6 +2704,7 @@ void InsertBatchPostgres::commit_prepared_batch() {
     txn.exec0(upsert_query);
   }
   states_timer.pause();
+
   commit_timer.resume();
   ensure_still_leader(txn, worker_id_);
   txn.commit();
@@ -1931,6 +2721,44 @@ void InsertBatchPostgres::commit_prepared_batch() {
   g_statistics.record_time(INSERT_BATCH_COMMIT, commit_timer.elapsed() * 1e3);
 
   stop();
+}
+
+void InsertBatchPostgres::insert_kvrocks() {
+  if (!kvrocks_) {
+    return;
+  }
+  if (!prepared_batch_) {
+    throw std::runtime_error("Kvrocks insert requested without a prepared batch");
+  }
+
+  td::Timer kvrocks_timer;
+  double exec_elapsed_millis = 0.0;
+  try {
+    KvrocksBatchWriter writer(*kvrocks_, *prepared_batch_);
+    writer.write();
+    exec_elapsed_millis = writer.exec_elapsed_millis();
+  } catch (const sw::redis::Error& e) {
+    if (!is_kvrocks_no_script_error(e)) {
+      throw;
+    }
+
+    LOG(WARNING) << "Kvrocks script cache is missing, reloading scripts and retrying batch: " << e.what();
+    td::Timer script_load_timer;
+    load_kvrocks_scripts(*kvrocks_);
+    script_load_timer.pause();
+
+    KvrocksBatchWriter writer(*kvrocks_, *prepared_batch_);
+    writer.write();
+    exec_elapsed_millis = script_load_timer.elapsed() * 1e3 + writer.exec_elapsed_millis();
+  }
+  kvrocks_timer.pause();
+
+  auto total_ms = static_cast<std::uint64_t>(kvrocks_timer.elapsed() * 1e3);
+  auto exec_ms = static_cast<std::uint64_t>(exec_elapsed_millis);
+  auto prepare_ms = total_ms > exec_ms ? total_ms - exec_ms : 0;
+  g_statistics.record_time(INSERT_BATCH_KVROCKS, total_ms);
+  g_statistics.record_time(INSERT_BATCH_KVROCKS_PREPARE, prepare_ms);
+  g_statistics.record_time(INSERT_BATCH_KVROCKS_EXEC, exec_ms);
 }
 
 void InsertBatchPostgres::reset_prepare_state(bool keep_prepared_batch) {
@@ -2730,6 +3558,7 @@ void InsertManagerPostgres::start_up() {
       if (ping_response != "PONG") {
         throw std::runtime_error("unexpected Kvrocks PING response: " + ping_response);
       }
+      load_kvrocks_scripts(*kvrocks_);
       LOG(INFO) << "Kvrocks connection ready: " << kvrocks_config_.describe();
     } catch (const std::exception &e) {
       LOG(ERROR) << "Error connecting to Kvrocks: " << e.what();

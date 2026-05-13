@@ -326,13 +326,6 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
     );
 
     query += (
-      "create table if not exists address_book ("
-      "address tonaddr not null primary key, "
-      "code_hash tonhash, "
-      "domain varchar);\n"
-    );
-
-    query += (
       "create table if not exists nft_collections ("
       "id bigserial not null, "
       "address tonaddr not null primary key, "
