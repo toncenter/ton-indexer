@@ -81,16 +81,23 @@ func (db *DbClient) QueryActionsV2(
 		for k := range addr_map {
 			addr_list = append(addr_list, string(k))
 		}
-		if !settings.NoAddressBook {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if db.Kvrocks != nil {
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-		if !settings.NoMetadata {
-			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		} else {
+			if !settings.NoAddressBook {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+			if !settings.NoMetadata {
+				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
 			}
 		}
 	}

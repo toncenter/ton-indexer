@@ -44,16 +44,23 @@ func (db *DbClient) QueryPendingActions(settings models.RequestSettings, emulate
 		for k := range addr_map {
 			addr_list = append(addr_list, k)
 		}
-		if !settings.NoAddressBook {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if db.Kvrocks != nil {
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-		if !settings.NoMetadata {
-			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		} else {
+			if !settings.NoAddressBook {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+			if !settings.NoMetadata {
+				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
 			}
 		}
 	}
@@ -99,16 +106,23 @@ func (db *DbClient) QueryPendingTraces(settings models.RequestSettings, emulated
 	metadata := models.Metadata{}
 
 	if len(addr_list) > 0 {
-		if !settings.NoAddressBook {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if db.Kvrocks != nil {
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-		if !settings.NoMetadata {
-			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		} else {
+			if !settings.NoAddressBook {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+			if !settings.NoMetadata {
+				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
 			}
 		}
 	}
@@ -152,7 +166,11 @@ func (db *DbClient) QueryPendingTransactions(
 	}
 	book := models.AddressBook{}
 	if len(addr_list) > 0 {
-		book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if db.Kvrocks != nil {
+			book, err = QueryAddressBookImplKvrocks(addr_list, db.Kvrocks, settings)
+		} else {
+			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		}
 		if err != nil {
 			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}

@@ -471,6 +471,27 @@ func (db *DbClient) QueryJettonMasters(
 	lim_req models.LimitRequest,
 	settings models.RequestSettings,
 ) ([]models.JettonMaster, models.AddressBook, models.Metadata, error) {
+	if db.Kvrocks != nil {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		res, err := db.Kvrocks.QueryJettonMasters(ctx, jetton_req, lim_req, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		addr_list := []string{}
+		for _, t := range res {
+			addr_list = append(addr_list, string(t.Address))
+			if t.AdminAddress != nil {
+				addr_list = append(addr_list, string(*t.AdminAddress))
+			}
+		}
+		book, metadata, err := db.queryKvrocksEnrichment(addr_list, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return res, book, metadata, nil
+	}
+
 	query, err := buildJettonMastersQuery(jetton_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
@@ -501,16 +522,23 @@ func (db *DbClient) QueryJettonMasters(
 		}
 	}
 	if len(addr_list) > 0 {
-		if !settings.NoAddressBook {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if db.Kvrocks != nil {
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-		if !settings.NoMetadata {
-			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		} else {
+			if !settings.NoAddressBook {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+			if !settings.NoMetadata {
+				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
 			}
 		}
 	}
@@ -522,6 +550,26 @@ func (db *DbClient) QueryJettonWallets(
 	lim_req models.LimitRequest,
 	settings models.RequestSettings,
 ) ([]models.JettonWallet, models.AddressBook, models.Metadata, error) {
+	if db.Kvrocks != nil {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		res, err := db.Kvrocks.QueryJettonWallets(ctx, jetton_req, lim_req, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		addr_list := []string{}
+		for _, t := range res {
+			addr_list = append(addr_list, string(t.Address))
+			addr_list = append(addr_list, string(t.Owner))
+			addr_list = append(addr_list, string(t.Jetton))
+		}
+		book, metadata, err := db.queryKvrocksEnrichment(addr_list, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return res, book, metadata, nil
+	}
+
 	query, err := buildJettonWalletsQuery(jetton_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
@@ -552,16 +600,23 @@ func (db *DbClient) QueryJettonWallets(
 		addr_list = append(addr_list, string(t.Jetton))
 	}
 	if len(addr_list) > 0 {
-		if !settings.NoAddressBook {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if db.Kvrocks != nil {
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-		if !settings.NoMetadata {
-			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		} else {
+			if !settings.NoAddressBook {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+			if !settings.NoMetadata {
+				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
 			}
 		}
 	}
@@ -608,16 +663,23 @@ func (db *DbClient) QueryJettonTransfers(
 		}
 	}
 	if len(addr_list) > 0 {
-		if !settings.NoAddressBook {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if db.Kvrocks != nil {
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-		if !settings.NoMetadata {
-			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		} else {
+			if !settings.NoAddressBook {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+			if !settings.NoMetadata {
+				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
 			}
 		}
 	}
@@ -663,16 +725,23 @@ func (db *DbClient) QueryJettonBurns(
 		}
 	}
 	if len(addr_list) > 0 {
-		if !settings.NoAddressBook {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if db.Kvrocks != nil {
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-		if !settings.NoMetadata {
-			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		} else {
+			if !settings.NoAddressBook {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+			if !settings.NoMetadata {
+				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
 			}
 		}
 	}

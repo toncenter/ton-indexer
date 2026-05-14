@@ -22,6 +22,35 @@ func (db *DbClient) QueryVestingContracts(
 		return nil, nil, models.IndexError{Code: 422, Message: "only one of contract_address or wallet_address should be specified"}
 	}
 
+	if db.Kvrocks != nil {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		vestings, err := db.Kvrocks.QueryVestingContracts(ctx, vesting_req, lim_req, settings)
+		if err != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		addr_list := []string{}
+		for _, v := range vestings {
+			if v.Address != nil {
+				addr_list = append(addr_list, string(*v.Address))
+			}
+			if v.SenderAddress != nil {
+				addr_list = append(addr_list, string(*v.SenderAddress))
+			}
+			if v.OwnerAddress != nil {
+				addr_list = append(addr_list, string(*v.OwnerAddress))
+			}
+			for _, addr := range v.Whitelist {
+				addr_list = append(addr_list, string(addr))
+			}
+		}
+		book, err := db.queryKvrocksAddressBook(addr_list, settings)
+		if err != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return vestings, book, nil
+	}
+
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}

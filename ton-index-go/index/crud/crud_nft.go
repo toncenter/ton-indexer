@@ -312,6 +312,27 @@ func (db *DbClient) QueryNFTCollections(
 	lim_req models.LimitRequest,
 	settings models.RequestSettings,
 ) ([]models.NFTCollection, models.AddressBook, models.Metadata, error) {
+	if db.Kvrocks != nil {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		res, err := db.Kvrocks.QueryNFTCollections(ctx, nft_req, lim_req, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		addr_list := []string{}
+		for _, t := range res {
+			addr_list = append(addr_list, string(t.Address))
+			if t.OwnerAddress != nil {
+				addr_list = append(addr_list, string(*t.OwnerAddress))
+			}
+		}
+		book, metadata, err := db.queryKvrocksEnrichment(addr_list, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return res, book, metadata, nil
+	}
+
 	query, err := buildNFTCollectionsQuery(nft_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
@@ -342,16 +363,23 @@ func (db *DbClient) QueryNFTCollections(
 		}
 	}
 	if len(addr_list) > 0 {
-		if !settings.NoAddressBook {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if db.Kvrocks != nil {
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-		if !settings.NoMetadata {
-			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		} else {
+			if !settings.NoAddressBook {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+			if !settings.NoMetadata {
+				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
 			}
 		}
 	}
@@ -363,6 +391,39 @@ func (db *DbClient) QueryNFTItems(
 	lim_req models.LimitRequest,
 	settings models.RequestSettings,
 ) ([]models.NFTItem, models.AddressBook, models.Metadata, error) {
+	if db.Kvrocks != nil {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		res, err := db.Kvrocks.QueryNFTItems(ctx, nft_req, lim_req, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		addr_list := []string{}
+		for _, t := range res {
+			addr_list = append(addr_list, string(t.Address))
+			if t.CollectionAddress != nil {
+				addr_list = append(addr_list, string(*t.CollectionAddress))
+			}
+			if t.OwnerAddress != nil {
+				addr_list = append(addr_list, string(*t.OwnerAddress))
+			}
+			if t.RealOwner != nil {
+				addr_list = append(addr_list, string(*t.RealOwner))
+			}
+			if t.SaleContractAddress != nil {
+				addr_list = append(addr_list, string(*t.SaleContractAddress))
+			}
+			if t.AuctionContractAddress != nil {
+				addr_list = append(addr_list, string(*t.AuctionContractAddress))
+			}
+		}
+		book, metadata, err := db.queryKvrocksEnrichment(addr_list, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return res, book, metadata, nil
+	}
+
 	query, args, err := buildNFTItemsQuery(nft_req, lim_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
@@ -452,16 +513,23 @@ func (db *DbClient) QueryNFTTransfers(
 		}
 	}
 	if len(addr_list) > 0 {
-		if !settings.NoAddressBook {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+		if db.Kvrocks != nil {
+			book, metadata, err = db.queryKvrocksEnrichment(addr_list, settings, conn)
 			if err != nil {
 				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
-		}
-		if !settings.NoMetadata {
-			metadata, err = QueryMetadataImpl(addr_list, conn, settings)
-			if err != nil {
-				return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		} else {
+			if !settings.NoAddressBook {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
+			}
+			if !settings.NoMetadata {
+				metadata, err = QueryMetadataImpl(addr_list, conn, settings)
+				if err != nil {
+					return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+				}
 			}
 		}
 	}

@@ -150,6 +150,26 @@ func (db *DbClient) QueryAccountStates(
 	account_req models.AccountRequest,
 	settings models.RequestSettings,
 ) ([]models.AccountStateFull, models.AddressBook, models.Metadata, error) {
+	if db.Kvrocks != nil {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		res, err := db.Kvrocks.QueryAccountStates(ctx, account_req, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		addr_list := []string{}
+		for _, t := range res {
+			if t.AccountAddress != nil {
+				addr_list = append(addr_list, string(*t.AccountAddress))
+			}
+		}
+		book, metadata, err := db.queryKvrocksEnrichment(addr_list, settings)
+		if err != nil {
+			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return res, book, metadata, nil
+	}
+
 	query, err := buildAccountStatesQuery(account_req, settings)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
@@ -216,6 +236,16 @@ func (db *DbClient) QueryWalletStates(
 }
 
 func (db *DbClient) QueryTopAccountBalances(lim_req models.LimitRequest, settings models.RequestSettings) ([]models.AccountBalance, error) {
+	if db.Kvrocks != nil {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		res, err := db.Kvrocks.QueryTopAccountBalances(ctx, lim_req, settings)
+		if err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return res, nil
+	}
+
 	limit_query, err := limitQuery(lim_req, settings)
 	if err != nil {
 		return nil, err

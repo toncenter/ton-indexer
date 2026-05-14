@@ -405,7 +405,11 @@ func (db *DbClient) QueryTransactions(
 			}
 		}
 		if len(addr_list) > 0 {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+			if db.Kvrocks != nil {
+				book, err = QueryAddressBookImplKvrocks(addr_list, db.Kvrocks, settings)
+			} else {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+			}
 			if err != nil {
 				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}
@@ -471,7 +475,11 @@ func (db *DbClient) QueryAdjacentTransactions(
 			}
 		}
 		if len(addr_list) > 0 {
-			book, err = QueryAddressBookImpl(addr_list, conn, settings)
+			if db.Kvrocks != nil {
+				book, err = QueryAddressBookImplKvrocks(addr_list, db.Kvrocks, settings)
+			} else {
+				book, err = QueryAddressBookImpl(addr_list, conn, settings)
+			}
 			if err != nil {
 				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 			}

@@ -169,6 +169,45 @@ func QueryMetadataImpl(addr_list []string, conn *pgxpool.Conn, settings models.R
 	return metadata, nil
 }
 
+func (db *DbClient) queryKvrocksEnrichment(addrList []string, settings models.RequestSettings, existingConn ...*pgxpool.Conn) (models.AddressBook, models.Metadata, error) {
+	book := models.AddressBook{}
+	metadata := models.Metadata{}
+	var err error
+	if len(addrList) == 0 {
+		return book, metadata, nil
+	}
+	if !settings.NoAddressBook {
+		book, err = QueryAddressBookImplKvrocks(addrList, db.Kvrocks, settings)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if !settings.NoMetadata {
+		var conn *pgxpool.Conn
+		if len(existingConn) > 0 && existingConn[0] != nil {
+			conn = existingConn[0]
+		} else {
+			conn, err = db.Pool.Acquire(context.Background())
+			if err != nil {
+				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+			}
+			defer conn.Release()
+		}
+		metadata, err = QueryMetadataImplKvrocks(addrList, conn, settings, db.Kvrocks)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return book, metadata, nil
+}
+
+func (db *DbClient) queryKvrocksAddressBook(addrList []string, settings models.RequestSettings) (models.AddressBook, error) {
+	if len(addrList) == 0 || settings.NoAddressBook {
+		return models.AddressBook{}, nil
+	}
+	return QueryAddressBookImplKvrocks(addrList, db.Kvrocks, settings)
+}
+
 func SubstituteImgproxyBaseUrl(metadata *models.Metadata, base_url string) {
 	proxied_fields := []string{"_image_small", "_image_medium", "_image_big"}
 
@@ -326,6 +365,14 @@ func (db *DbClient) QueryMetadata(
 			}
 		}
 	}
+	if db.Kvrocks != nil {
+		conn, err := db.Pool.Acquire(context.Background())
+		if err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		defer conn.Release()
+		return QueryMetadataImplKvrocks(raw_addr_list, conn, settings, db.Kvrocks)
+	}
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
@@ -350,6 +397,27 @@ func (db *DbClient) QueryAddressBook(
 		} else {
 			raw_addr_map[addr] = ""
 		}
+	}
+	if db.Kvrocks != nil {
+		book, err := QueryAddressBookImplKvrocks(raw_addr_list, db.Kvrocks, settings)
+		if err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+
+		new_addr_book := models.AddressBook{}
+		for k, v := range raw_addr_map {
+			if vv, ok := book[v]; ok {
+				new_addr_book[k] = vv
+			} else {
+				emptyInterfaces := []string{}
+				new_addr_book[k] = models.AddressBookRow{
+					UserFriendly: nil,
+					Domain:       nil,
+					Interfaces:   &emptyInterfaces,
+				}
+			}
+		}
+		return new_addr_book, nil
 	}
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {

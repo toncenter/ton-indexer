@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
+	"github.com/toncenter/ton-indexer/ton-index-go/index/services"
 )
 
 const kvrocksKeyPrefix = "ton-index:v1"
@@ -127,6 +133,382 @@ func (s *KvrocksStore) getPayloads(ctx context.Context, table string, ids []stri
 	return payloads, nil
 }
 
+func (s *KvrocksStore) indexKey(table string, name string) string {
+	return kvrocksKeyPrefix + ":idx:" + table + ":" + name
+}
+
+func kvrocksLimitOffset(lim models.LimitRequest, settings models.RequestSettings) (int64, int64, error) {
+	limit := int32(settings.DefaultLimit)
+	if lim.Limit != nil {
+		limit = *lim.Limit
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > int32(settings.MaxLimit) {
+		return 0, 0, models.IndexError{Code: 422, Message: fmt.Sprintf("limit is not allowed: %d > %d", limit, settings.MaxLimit)}
+	}
+
+	offset := int32(0)
+	if lim.Offset != nil {
+		offset = *lim.Offset
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return int64(limit), int64(offset), nil
+}
+
+func kvrocksSortDesc(lim models.LimitRequest, defaultDesc bool) (bool, error) {
+	if lim.Sort == nil {
+		return defaultDesc, nil
+	}
+	sortOrder, err := getSortOrder(*lim.Sort)
+	if err != nil {
+		return false, err
+	}
+	return sortOrder == "desc", nil
+}
+
+func (s *KvrocksStore) rangeByID(ctx context.Context, table string, indexName string, limit int64, offset int64, desc bool) ([]string, error) {
+	if s == nil || s.client == nil || limit <= 0 {
+		return []string{}, nil
+	}
+	start := offset
+	stop := offset + limit - 1
+	key := s.indexKey(table, indexName)
+	if desc {
+		return s.client.ZRevRange(ctx, key, start, stop).Result()
+	}
+	return s.client.ZRange(ctx, key, start, stop).Result()
+}
+
+func (s *KvrocksStore) rangeByLex(ctx context.Context, table string, indexName string, limit int64, offset int64, desc bool) ([]string, error) {
+	if s == nil || s.client == nil || limit <= 0 {
+		return []string{}, nil
+	}
+	key := s.indexKey(table, indexName)
+	opt := &redis.ZRangeBy{Min: "-", Max: "+", Offset: offset, Count: limit}
+	if desc {
+		return s.client.ZRevRangeByLex(ctx, key, opt).Result()
+	}
+	return s.client.ZRangeByLex(ctx, key, opt).Result()
+}
+
+func (s *KvrocksStore) rangeByLexBounds(ctx context.Context, table string, indexName string, min string, max string, limit int64, offset int64, desc bool) ([]string, error) {
+	if s == nil || s.client == nil || limit <= 0 {
+		return []string{}, nil
+	}
+	key := s.indexKey(table, indexName)
+	opt := &redis.ZRangeBy{Min: min, Max: max, Offset: offset, Count: limit}
+	if desc {
+		return s.client.ZRevRangeByLex(ctx, key, opt).Result()
+	}
+	return s.client.ZRangeByLex(ctx, key, opt).Result()
+}
+
+func (s *KvrocksStore) rangeByIDWithScores(ctx context.Context, table string, indexName string, limit int64, offset int64, desc bool) ([]redis.Z, error) {
+	if s == nil || s.client == nil || limit <= 0 {
+		return []redis.Z{}, nil
+	}
+	start := offset
+	stop := offset + limit - 1
+	key := s.indexKey(table, indexName)
+	if desc {
+		return s.client.ZRevRangeWithScores(ctx, key, start, stop).Result()
+	}
+	return s.client.ZRangeWithScores(ctx, key, start, stop).Result()
+}
+
+func appendUniqueString(dst []string, seen map[string]struct{}, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return dst
+	}
+	if _, ok := seen[value]; ok {
+		return dst
+	}
+	seen[value] = struct{}{}
+	return append(dst, value)
+}
+
+func redisMemberString(member any) string {
+	switch v := member.(type) {
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+type kvrocksLexIndexRange struct {
+	indexName  string
+	min        string
+	max        string
+	sortPrefix string
+}
+
+func allLexIndexRange(indexName string) kvrocksLexIndexRange {
+	return kvrocksLexIndexRange{indexName: indexName, min: "-", max: "+"}
+}
+
+func prefixLexIndexRange(indexName string, prefix string) kvrocksLexIndexRange {
+	return kvrocksLexIndexRange{indexName: indexName, min: "[" + prefix, max: "[" + prefix + "\xff"}
+}
+
+func prefixLexIndexRangeWithSortPrefix(indexName string, prefix string, sortPrefix string) kvrocksLexIndexRange {
+	return kvrocksLexIndexRange{
+		indexName:  indexName,
+		min:        "[" + prefix,
+		max:        "[" + prefix + "\xff",
+		sortPrefix: sortPrefix,
+	}
+}
+
+func allLexIndexRangeWithSortPrefix(indexName string, sortPrefix string) kvrocksLexIndexRange {
+	return kvrocksLexIndexRange{indexName: indexName, min: "-", max: "+", sortPrefix: sortPrefix}
+}
+
+type kvrocksLexMember struct {
+	sortValue string
+	id        string
+}
+
+func (s *KvrocksStore) mergedLexIndexIDs(ctx context.Context, table string, ranges []kvrocksLexIndexRange, limit int64, offset int64, desc bool) ([]string, error) {
+	need := limit + offset
+	if need <= 0 || len(ranges) == 0 {
+		return []string{}, nil
+	}
+	members := make([]kvrocksLexMember, 0, need*int64(len(ranges)))
+	for _, indexRange := range ranges {
+		indexMembers, err := s.rangeByLexBounds(ctx, table, indexRange.indexName, indexRange.min, indexRange.max, need, 0, desc)
+		if err != nil {
+			return nil, err
+		}
+		for _, member := range indexMembers {
+			members = append(members, kvrocksLexMember{
+				sortValue: indexRange.sortPrefix + member,
+				id:        addressSuffixFromLexMember(member),
+			})
+		}
+	}
+	sort.Slice(members, func(i, j int) bool {
+		return members[i].sortValue < members[j].sortValue
+	})
+	if desc {
+		for i, j := 0, len(members)-1; i < j; i, j = i+1, j-1 {
+			members[i], members[j] = members[j], members[i]
+		}
+	}
+
+	seen := map[string]struct{}{}
+	ids := make([]string, 0, need)
+	for _, member := range members {
+		ids = appendUniqueString(ids, seen, member.id)
+		if int64(len(ids)) >= need {
+			break
+		}
+	}
+	if offset >= int64(len(ids)) {
+		return []string{}, nil
+	}
+	end := offset + limit
+	if end > int64(len(ids)) {
+		end = int64(len(ids))
+	}
+	return ids[offset:end], nil
+}
+
+type kvrocksScoredID struct {
+	id    string
+	score float64
+}
+
+func (s *KvrocksStore) mergedIDIndexIDs(ctx context.Context, table string, indexes []string, limit int64, offset int64, desc bool) ([]string, error) {
+	need := limit + offset
+	if need <= 0 || len(indexes) == 0 {
+		return []string{}, nil
+	}
+	byID := map[string]kvrocksScoredID{}
+	for _, indexName := range indexes {
+		rows, err := s.rangeByIDWithScores(ctx, table, indexName, need, 0, desc)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			id := redisMemberString(row.Member)
+			if id == "" {
+				continue
+			}
+			old, ok := byID[id]
+			if !ok || (!desc && row.Score < old.score) || (desc && row.Score > old.score) {
+				byID[id] = kvrocksScoredID{id: id, score: row.Score}
+			}
+		}
+	}
+	rows := make([]kvrocksScoredID, 0, len(byID))
+	for _, row := range byID {
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].score == rows[j].score {
+			if desc {
+				return rows[i].id > rows[j].id
+			}
+			return rows[i].id < rows[j].id
+		}
+		if desc {
+			return rows[i].score > rows[j].score
+		}
+		return rows[i].score < rows[j].score
+	})
+	if offset >= int64(len(rows)) {
+		return []string{}, nil
+	}
+	end := offset + limit
+	if end > int64(len(rows)) {
+		end = int64(len(rows))
+	}
+	ids := make([]string, 0, end-offset)
+	for _, row := range rows[offset:end] {
+		ids = append(ids, row.id)
+	}
+	return ids, nil
+}
+
+func addressesToIDs(addresses []models.AccountAddress) []string {
+	ids := make([]string, 0, len(addresses))
+	for _, address := range addresses {
+		ids = append(ids, string(address))
+	}
+	return ids
+}
+
+func stringsToAddresses(ids []string) []models.AccountAddress {
+	addresses := make([]models.AccountAddress, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			addresses = append(addresses, models.AccountAddress(id))
+		}
+	}
+	return addresses
+}
+
+func addressSuffixFromLexMember(member string) string {
+	if len(member) < 66 {
+		return member
+	}
+	hashColon := len(member) - 65
+	if hashColon < 0 || hashColon >= len(member) || member[hashColon] != ':' {
+		return member
+	}
+	start := hashColon - 1
+	for start >= 0 && member[start] != ':' {
+		start--
+	}
+	return member[start+1:]
+}
+
+func addressIDsFromLexMembers(members []string) []string {
+	ids := make([]string, 0, len(members))
+	seen := make(map[string]struct{}, len(members))
+	for _, member := range members {
+		ids = appendUniqueString(ids, seen, addressSuffixFromLexMember(member))
+	}
+	return ids
+}
+
+func padDecimalString(value string, width int) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= width {
+		return value
+	}
+	return strings.Repeat("0", width-len(value)) + value
+}
+
+func (s *KvrocksStore) orderedJettonMasters(ctx context.Context, ids []string) ([]models.JettonMaster, error) {
+	payloads, err := s.getPayloads(ctx, "jetton_masters", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.JettonMaster, 0, len(ids))
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		var row models.JettonMaster
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode jetton_masters %s: %w", id, err)
+		}
+		res = append(res, row)
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) orderedJettonWallets(ctx context.Context, ids []string) ([]models.JettonWallet, error) {
+	payloads, err := s.getPayloads(ctx, "jetton_wallets", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.JettonWallet, 0, len(ids))
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		row, err := decodeJettonWalletPayload(id, payload)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, row)
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) orderedNFTCollections(ctx context.Context, ids []string) ([]models.NFTCollection, error) {
+	payloads, err := s.getPayloads(ctx, "nft_collections", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.NFTCollection, 0, len(ids))
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		var row models.NFTCollection
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode nft_collections %s: %w", id, err)
+		}
+		res = append(res, row)
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) orderedNFTItems(ctx context.Context, ids []string) ([]models.NFTItem, error) {
+	payloads, err := s.getPayloads(ctx, "nft_items", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.NFTItem, 0, len(ids))
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		var row models.NFTItem
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode nft_items %s: %w", id, err)
+		}
+		res = append(res, row)
+	}
+	return res, nil
+}
+
 func (s *KvrocksStore) GetMessageContents(ctx context.Context, hashes []models.HashType) (map[models.HashType]*models.MessageContent, error) {
 	ids := make([]string, 0, len(hashes))
 	for _, hash := range hashes {
@@ -191,6 +573,237 @@ func (s *KvrocksStore) GetAccountStates(ctx context.Context, hashes []models.Has
 	return res, nil
 }
 
+type kvLatestAccountStatePayload struct {
+	Account                models.AccountAddress `json:"account"`
+	Hash                   models.HashType       `json:"hash"`
+	Balance                *string               `json:"balance"`
+	BalanceExtraCurrencies map[string]string     `json:"balance_extra_currencies"`
+	AccountStatus          *string               `json:"account_status"`
+	LastTransHash          *models.HashType      `json:"last_trans_hash"`
+	LastTransLt            *jsonInt64            `json:"last_trans_lt"`
+	FrozenHash             *models.HashType      `json:"frozen_hash"`
+	DataHash               *models.HashType      `json:"data_hash"`
+	CodeHash               *models.HashType      `json:"code_hash"`
+	DataBoc                *string               `json:"data_boc"`
+	CodeBoc                *string               `json:"code_boc"`
+	ContractMethods        *[]uint32             `json:"-"`
+}
+
+func (p kvLatestAccountStatePayload) accountStateFull(includeBOC bool) models.AccountStateFull {
+	account := p.Account
+	dataBoc := p.DataBoc
+	codeBoc := p.CodeBoc
+	if !includeBOC {
+		dataBoc = nil
+		codeBoc = nil
+	}
+	return models.AccountStateFull{
+		AccountAddress:         &account,
+		Hash:                   p.Hash,
+		Balance:                p.Balance,
+		BalanceExtraCurrencies: p.BalanceExtraCurrencies,
+		AccountStatus:          p.AccountStatus,
+		FrozenHash:             p.FrozenHash,
+		LastTransactionHash:    p.LastTransHash,
+		LastTransactionLt:      p.LastTransLt.ptr(),
+		DataHash:               p.DataHash,
+		CodeHash:               p.CodeHash,
+		DataBoc:                dataBoc,
+		CodeBoc:                codeBoc,
+		ContractMethods:        p.ContractMethods,
+	}
+}
+
+func parseContractMethods(value string) ([]uint32, error) {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "{")
+	value = strings.TrimSuffix(value, "}")
+	if value == "" {
+		return []uint32{}, nil
+	}
+	parts := strings.Split(value, ",")
+	methods := make([]uint32, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		n, err := strconv.ParseUint(part, 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		methods = append(methods, uint32(n))
+	}
+	return methods, nil
+}
+
+func (s *KvrocksStore) GetContractMethods(ctx context.Context, codeHashes []models.HashType) (map[models.HashType][]uint32, error) {
+	ids := make([]string, 0, len(codeHashes))
+	seen := map[string]struct{}{}
+	for _, hash := range codeHashes {
+		ids = appendUniqueString(ids, seen, string(hash))
+	}
+	payloads, err := s.getPayloads(ctx, "contract_methods", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[models.HashType][]uint32, len(payloads))
+	for id, payload := range payloads {
+		var row struct {
+			CodeHash models.HashType `json:"code_hash"`
+			Methods  string          `json:"methods"`
+		}
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode contract_methods %s: %w", id, err)
+		}
+		methods, err := parseContractMethods(row.Methods)
+		if err != nil {
+			return nil, fmt.Errorf("decode contract_methods %s: %w", id, err)
+		}
+		res[row.CodeHash] = methods
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) getLatestAccountStatesByIDs(ctx context.Context, ids []string, includeBOC bool) ([]models.AccountStateFull, error) {
+	payloads, err := s.getPayloads(ctx, "latest_account_states", ids)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]kvLatestAccountStatePayload, 0, len(ids))
+	codeHashes := make([]models.HashType, 0, len(ids))
+	seenCodeHashes := map[string]struct{}{}
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		var row kvLatestAccountStatePayload
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode latest_account_states %s: %w", id, err)
+		}
+		if row.CodeHash != nil {
+			if _, ok := seenCodeHashes[string(*row.CodeHash)]; !ok {
+				seenCodeHashes[string(*row.CodeHash)] = struct{}{}
+				codeHashes = append(codeHashes, *row.CodeHash)
+			}
+		}
+		rows = append(rows, row)
+	}
+
+	methodsByCodeHash, err := s.GetContractMethods(ctx, codeHashes)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.AccountStateFull, 0, len(rows))
+	for _, row := range rows {
+		if row.CodeHash != nil {
+			if methods, ok := methodsByCodeHash[*row.CodeHash]; ok {
+				methodsCopy := append([]uint32(nil), methods...)
+				row.ContractMethods = &methodsCopy
+			}
+		}
+		res = append(res, row.accountStateFull(includeBOC))
+	}
+	if err := detect.MarkAccountStates(res); err != nil {
+		log.Printf("Error marking account states from kvrocks: %v", err)
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) GetLatestAccountStates(ctx context.Context, addresses []models.AccountAddress, includeBOC bool) (map[models.AccountAddress]*models.AccountStateFull, error) {
+	ids := addressesToIDs(addresses)
+	states, err := s.getLatestAccountStatesByIDs(ctx, ids, includeBOC)
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[models.AccountAddress]*models.AccountStateFull, len(states))
+	for i := range states {
+		if states[i].AccountAddress == nil {
+			continue
+		}
+		res[*states[i].AccountAddress] = &states[i]
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) QueryAccountStates(ctx context.Context, accountReq models.AccountRequest, settings models.RequestSettings) ([]models.AccountStateFull, error) {
+	includeBOC := true
+	if accountReq.IncludeBOC != nil {
+		includeBOC = *accountReq.IncludeBOC
+	}
+
+	ids := []string{}
+	seen := map[string]struct{}{}
+	if len(accountReq.AccountAddress) > 0 {
+		for _, address := range accountReq.AccountAddress {
+			ids = appendUniqueString(ids, seen, string(address))
+		}
+	} else if len(accountReq.CodeHash) > 0 {
+		indexNames := make([]string, 0, len(accountReq.CodeHash))
+		for _, codeHash := range accountReq.CodeHash {
+			indexNames = append(indexNames, "code_hash:"+string(codeHash)+":by_account")
+		}
+		var err error
+		ids, err = s.mergedIDIndexIDs(ctx, "latest_account_states", indexNames, 1000, 0, false)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		var err error
+		ids, err = s.rangeByID(ctx, "latest_account_states", "all:by_account", 1000, 0, false)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	states, err := s.getLatestAccountStatesByIDs(ctx, ids, includeBOC)
+	if err != nil {
+		return nil, err
+	}
+	if len(accountReq.CodeHash) > 0 && len(accountReq.AccountAddress) > 0 {
+		allowed := map[models.HashType]struct{}{}
+		for _, hash := range accountReq.CodeHash {
+			allowed[hash] = struct{}{}
+		}
+		filtered := states[:0]
+		for _, state := range states {
+			if state.CodeHash == nil {
+				continue
+			}
+			if _, ok := allowed[*state.CodeHash]; ok {
+				filtered = append(filtered, state)
+			}
+		}
+		states = filtered
+	}
+	return states, nil
+}
+
+func (s *KvrocksStore) QueryTopAccountBalances(ctx context.Context, limReq models.LimitRequest, settings models.RequestSettings) ([]models.AccountBalance, error) {
+	limit, offset, err := kvrocksLimitOffset(limReq, settings)
+	if err != nil {
+		return nil, err
+	}
+	members, err := s.rangeByLex(ctx, "latest_account_states", "balance", limit, offset, true)
+	if err != nil {
+		return nil, err
+	}
+	ids := addressIDsFromLexMembers(members)
+	states, err := s.getLatestAccountStatesByIDs(ctx, ids, false)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.AccountBalance, 0, len(states))
+	for _, state := range states {
+		if state.AccountAddress == nil || state.Balance == nil {
+			continue
+		}
+		res = append(res, models.AccountBalance{Account: *state.AccountAddress, Balance: *state.Balance})
+	}
+	return res, nil
+}
+
 func (s *KvrocksStore) GetJettonWallets(ctx context.Context, addresses []models.AccountAddress) (map[models.AccountAddress]*models.JettonWallet, error) {
 	ids := make([]string, 0, len(addresses))
 	for _, address := range addresses {
@@ -203,13 +816,247 @@ func (s *KvrocksStore) GetJettonWallets(ctx context.Context, addresses []models.
 
 	res := make(map[models.AccountAddress]*models.JettonWallet, len(payloads))
 	for id, payload := range payloads {
-		var row models.JettonWallet
-		if err := json.Unmarshal([]byte(payload), &row); err != nil {
-			return nil, fmt.Errorf("decode jetton_wallets %s: %w", id, err)
+		row, err := decodeJettonWalletPayload(id, payload)
+		if err != nil {
+			return nil, err
 		}
 		res[row.Address] = &row
 	}
 	return res, nil
+}
+
+func decodeJettonWalletPayload(id string, payload string) (models.JettonWallet, error) {
+	var row struct {
+		Address           models.AccountAddress `json:"address"`
+		Balance           string                `json:"balance"`
+		Owner             models.AccountAddress `json:"owner"`
+		Jetton            models.AccountAddress `json:"jetton"`
+		LastTransactionLt int64                 `json:"last_transaction_lt,string"`
+		CodeHash          *models.HashType      `json:"code_hash"`
+		DataHash          *models.HashType      `json:"data_hash"`
+		MintlessIsClaimed *bool                 `json:"mintless_is_claimed"`
+		MintlessAmount    *string               `json:"mintless_amount"`
+		MintlessStartFrom *int64                `json:"mintless_start_from"`
+		MintlessExpireAt  *int64                `json:"mintless_expire_at"`
+		CustomPayloadURI  []string              `json:"custom_payload_api_uri"`
+	}
+	if err := json.Unmarshal([]byte(payload), &row); err != nil {
+		return models.JettonWallet{}, fmt.Errorf("decode jetton_wallets %s: %w", id, err)
+	}
+	res := models.JettonWallet{
+		Address:           row.Address,
+		Balance:           row.Balance,
+		Owner:             row.Owner,
+		Jetton:            row.Jetton,
+		LastTransactionLt: row.LastTransactionLt,
+		CodeHash:          row.CodeHash,
+		DataHash:          row.DataHash,
+	}
+	if row.MintlessIsClaimed != nil && !*row.MintlessIsClaimed && row.MintlessAmount != nil {
+		res.MintlessInfo = &models.JettonWalletMintlessInfo{
+			IsClaimed:           row.MintlessIsClaimed,
+			Amount:              row.MintlessAmount,
+			StartFrom:           row.MintlessStartFrom,
+			ExpireAt:            row.MintlessExpireAt,
+			CustomPayloadApiUri: row.CustomPayloadURI,
+		}
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) GetJettonMasters(ctx context.Context, addresses []models.AccountAddress) (map[models.AccountAddress]*models.JettonMaster, error) {
+	payloads, err := s.getPayloads(ctx, "jetton_masters", addressesToIDs(addresses))
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[models.AccountAddress]*models.JettonMaster, len(payloads))
+	for id, payload := range payloads {
+		var row models.JettonMaster
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode jetton_masters %s: %w", id, err)
+		}
+		res[row.Address] = &row
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) QueryJettonMasters(ctx context.Context, req models.JettonMasterRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.JettonMaster, error) {
+	limit, offset, err := kvrocksLimitOffset(limReq, settings)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := []string{}
+	seen := map[string]struct{}{}
+	if len(req.MasterAddress) > 0 {
+		for _, address := range req.MasterAddress {
+			ids = appendUniqueString(ids, seen, string(address))
+		}
+		sort.Strings(ids)
+	} else if len(req.AdminAddress) > 0 {
+		indexNames := make([]string, 0, len(req.AdminAddress))
+		for _, admin := range req.AdminAddress {
+			indexNames = append(indexNames, "admin:"+string(admin)+":by_id")
+		}
+		ids, err = s.mergedIDIndexIDs(ctx, "jetton_masters", indexNames, limit, offset, false)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		ids, err = s.rangeByID(ctx, "jetton_masters", "all:by_id", limit, offset, false)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	masters, err := s.orderedJettonMasters(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	if len(req.AdminAddress) > 0 && len(req.MasterAddress) > 0 {
+		allowed := map[models.AccountAddress]struct{}{}
+		for _, admin := range req.AdminAddress {
+			allowed[admin] = struct{}{}
+		}
+		filtered := masters[:0]
+		for _, master := range masters {
+			if master.AdminAddress == nil {
+				continue
+			}
+			if _, ok := allowed[*master.AdminAddress]; ok {
+				filtered = append(filtered, master)
+			}
+		}
+		masters = filtered
+	}
+	if len(req.MasterAddress) > 0 {
+		if offset >= int64(len(masters)) {
+			return []models.JettonMaster{}, nil
+		}
+		end := offset + limit
+		if end > int64(len(masters)) {
+			end = int64(len(masters))
+		}
+		masters = masters[offset:end]
+	}
+	return masters, nil
+}
+
+func (s *KvrocksStore) QueryJettonWallets(ctx context.Context, req models.JettonWalletRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.JettonWallet, error) {
+	limit, offset, err := kvrocksLimitOffset(limReq, settings)
+	if err != nil {
+		return nil, err
+	}
+	desc, err := kvrocksSortDesc(limReq, false)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := []string{}
+	if len(req.Address) > 0 {
+		seen := map[string]struct{}{}
+		for _, address := range req.Address {
+			ids = appendUniqueString(ids, seen, string(address))
+		}
+		sort.Strings(ids)
+	} else {
+		prefixes := []string{}
+		owners := req.OwnerAddress
+		jettons := req.JettonAddress
+		if len(owners) == 0 && len(jettons) == 0 {
+			prefixes = append(prefixes, "all")
+		} else if len(owners) > 0 && len(jettons) > 0 {
+			for _, owner := range owners {
+				for _, jetton := range jettons {
+					prefixes = append(prefixes, "owner:"+string(owner)+":jetton:"+string(jetton))
+				}
+			}
+		} else if len(owners) > 0 {
+			for _, owner := range owners {
+				prefixes = append(prefixes, "owner:"+string(owner))
+			}
+		} else {
+			for _, jetton := range jettons {
+				prefixes = append(prefixes, "jetton:"+string(jetton))
+			}
+		}
+
+		excludeZero := req.ExcludeZeroBalance != nil && *req.ExcludeZeroBalance
+		useBalance := limReq.Sort != nil
+		indexNames := make([]string, 0, len(prefixes))
+		for _, prefix := range prefixes {
+			indexName := prefix
+			if excludeZero {
+				indexName += ":nonzero"
+			}
+			if useBalance {
+				indexName += ":by_balance"
+			} else {
+				indexName += ":by_id"
+			}
+			indexNames = append(indexNames, indexName)
+		}
+
+		if useBalance {
+			ranges := make([]kvrocksLexIndexRange, 0, len(indexNames))
+			for _, indexName := range indexNames {
+				ranges = append(ranges, allLexIndexRange(indexName))
+			}
+			ids, err = s.mergedLexIndexIDs(ctx, "jetton_wallets", ranges, limit, offset, desc)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			ids, err = s.mergedIDIndexIDs(ctx, "jetton_wallets", indexNames, limit, offset, false)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	wallets, err := s.orderedJettonWallets(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	if len(req.Address) > 0 && (len(req.OwnerAddress) > 0 || len(req.JettonAddress) > 0 || (req.ExcludeZeroBalance != nil && *req.ExcludeZeroBalance)) {
+		ownerAllowed := map[models.AccountAddress]struct{}{}
+		jettonAllowed := map[models.AccountAddress]struct{}{}
+		for _, owner := range req.OwnerAddress {
+			ownerAllowed[owner] = struct{}{}
+		}
+		for _, jetton := range req.JettonAddress {
+			jettonAllowed[jetton] = struct{}{}
+		}
+		filtered := wallets[:0]
+		for _, wallet := range wallets {
+			if len(ownerAllowed) > 0 {
+				if _, ok := ownerAllowed[wallet.Owner]; !ok {
+					continue
+				}
+			}
+			if len(jettonAllowed) > 0 {
+				if _, ok := jettonAllowed[wallet.Jetton]; !ok {
+					continue
+				}
+			}
+			if req.ExcludeZeroBalance != nil && *req.ExcludeZeroBalance && wallet.Balance == "0" {
+				continue
+			}
+			filtered = append(filtered, wallet)
+		}
+		wallets = filtered
+	}
+	if len(req.Address) > 0 {
+		if offset >= int64(len(wallets)) {
+			return []models.JettonWallet{}, nil
+		}
+		end := offset + limit
+		if end > int64(len(wallets)) {
+			end = int64(len(wallets))
+		}
+		wallets = wallets[offset:end]
+	}
+	return wallets, nil
 }
 
 func (s *KvrocksStore) GetNFTItems(ctx context.Context, addresses []models.AccountAddress) (map[models.AccountAddress]*models.NFTItem, error) {
@@ -252,6 +1099,371 @@ func (s *KvrocksStore) GetNFTCollections(ctx context.Context, addresses []models
 		res[row.Address] = &row
 	}
 	return res, nil
+}
+
+func (s *KvrocksStore) QueryNFTCollections(ctx context.Context, req models.NFTCollectionRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.NFTCollection, error) {
+	limit, offset, err := kvrocksLimitOffset(limReq, settings)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := []string{}
+	seen := map[string]struct{}{}
+	idsArePaged := false
+	if len(req.CollectionAddress) > 0 {
+		for _, address := range req.CollectionAddress {
+			ids = appendUniqueString(ids, seen, string(address))
+		}
+		sort.Strings(ids)
+	} else if len(req.OwnerAddress) > 0 {
+		indexNames := make([]string, 0, len(req.OwnerAddress))
+		for _, owner := range req.OwnerAddress {
+			indexNames = append(indexNames, "owner:"+string(owner)+":by_id")
+		}
+		ids, err = s.mergedIDIndexIDs(ctx, "nft_collections", indexNames, limit, offset, false)
+		if err != nil {
+			return nil, err
+		}
+		idsArePaged = true
+	} else {
+		ids, err = s.rangeByID(ctx, "nft_collections", "all:by_id", limit, offset, false)
+		if err != nil {
+			return nil, err
+		}
+		return s.orderedNFTCollections(ctx, ids)
+	}
+
+	collections, err := s.orderedNFTCollections(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	if len(req.OwnerAddress) > 0 && len(req.CollectionAddress) > 0 {
+		allowed := map[models.AccountAddress]struct{}{}
+		for _, owner := range req.OwnerAddress {
+			allowed[owner] = struct{}{}
+		}
+		filtered := collections[:0]
+		for _, collection := range collections {
+			if collection.OwnerAddress == nil {
+				continue
+			}
+			if _, ok := allowed[*collection.OwnerAddress]; ok {
+				filtered = append(filtered, collection)
+			}
+		}
+		collections = filtered
+	}
+	if !idsArePaged {
+		if offset >= int64(len(collections)) {
+			return []models.NFTCollection{}, nil
+		}
+		end := offset + limit
+		if end > int64(len(collections)) {
+			end = int64(len(collections))
+		}
+		collections = collections[offset:end]
+	}
+	return collections, nil
+}
+
+func (s *KvrocksStore) attachNFTItemDetails(ctx context.Context, items []models.NFTItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	collectionIDs := []models.AccountAddress{}
+	collectionSeen := map[string]struct{}{}
+	ownerIDs := []models.AccountAddress{}
+	ownerSeen := map[string]struct{}{}
+	for _, item := range items {
+		if item.CollectionAddress != nil {
+			id := string(*item.CollectionAddress)
+			if _, ok := collectionSeen[id]; !ok {
+				collectionSeen[id] = struct{}{}
+				collectionIDs = append(collectionIDs, *item.CollectionAddress)
+			}
+		}
+		if item.OwnerAddress != nil {
+			id := string(*item.OwnerAddress)
+			if _, ok := ownerSeen[id]; !ok {
+				ownerSeen[id] = struct{}{}
+				ownerIDs = append(ownerIDs, *item.OwnerAddress)
+			}
+		}
+	}
+
+	collections, err := s.GetNFTCollections(ctx, collectionIDs)
+	if err != nil {
+		return err
+	}
+	sales, err := s.GetNFTSales(ctx, ownerIDs)
+	if err != nil {
+		return err
+	}
+	salesByOwner := make(map[models.AccountAddress][]models.RawNFTSale)
+	for _, sale := range sales {
+		salesByOwner[sale.Address] = append(salesByOwner[sale.Address], sale)
+	}
+
+	for i := range items {
+		if items[i].CollectionAddress != nil {
+			if collection, ok := collections[*items[i].CollectionAddress]; ok {
+				items[i].Collection = collection
+			}
+		}
+		if items[i].OwnerAddress == nil {
+			continue
+		}
+		for _, sale := range salesByOwner[*items[i].OwnerAddress] {
+			if sale.NftAddress == nil || *sale.NftAddress != items[i].Address {
+				continue
+			}
+			switch sale.Type {
+			case "getgems_sale":
+				address := sale.Address
+				items[i].OnSale = true
+				items[i].SaleContractAddress = &address
+				items[i].RealOwner = sale.NftOwnerAddress
+			case "getgems_auction":
+				address := sale.Address
+				items[i].OnSale = true
+				items[i].AuctionContractAddress = &address
+				items[i].RealOwner = sale.NftOwnerAddress
+			}
+		}
+	}
+	return nil
+}
+
+func (s *KvrocksStore) QueryNFTItems(ctx context.Context, req models.NFTItemRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.NFTItem, error) {
+	if len(req.Index) > 0 && len(req.CollectionAddress) == 0 {
+		return nil, models.IndexError{Code: 422, Message: "index parameter is not allowed without the collection_address"}
+	}
+	limit, offset, err := kvrocksLimitOffset(limReq, settings)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := []string{}
+	seen := map[string]struct{}{}
+	if len(req.Address) > 0 {
+		for _, address := range req.Address {
+			ids = appendUniqueString(ids, seen, string(address))
+		}
+		sort.Strings(ids)
+	} else if len(req.Index) > 0 {
+		ranges := []kvrocksLexIndexRange{}
+		for _, collection := range req.CollectionAddress {
+			for _, index := range req.Index {
+				index = strings.TrimSpace(index)
+				if index == "" {
+					continue
+				}
+				ranges = append(ranges, prefixLexIndexRangeWithSortPrefix(
+					"collection:"+string(collection)+":by_index",
+					padDecimalString(index, 80)+":",
+					string(collection)+":",
+				))
+			}
+		}
+		ids, err = s.mergedLexIndexIDs(ctx, "nft_items", ranges, limit+offset, 0, false)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		sortByLt := req.SortByLastTransactionLt != nil && *req.SortByLastTransactionLt
+		need := limit + offset
+		if len(req.OwnerAddress) > 0 {
+			ownerPrefix := "owner"
+			if req.IncludeOnSale != nil && *req.IncludeOnSale {
+				ownerPrefix = "real_owner"
+			}
+			ranges := []kvrocksLexIndexRange{}
+			for _, owner := range req.OwnerAddress {
+				if len(req.CollectionAddress) > 0 {
+					for _, collection := range req.CollectionAddress {
+						indexName := ownerPrefix + ":" + string(owner) + ":collection:" + string(collection)
+						if sortByLt {
+							indexName += ":by_last_transaction_lt"
+						} else {
+							indexName += ":by_index"
+						}
+						ranges = append(ranges, allLexIndexRange(indexName))
+					}
+					continue
+				}
+				indexName := ownerPrefix + ":" + string(owner)
+				if sortByLt {
+					indexName += ":by_last_transaction_lt"
+				} else {
+					indexName += ":by_collection_index"
+				}
+				ranges = append(ranges, allLexIndexRange(indexName))
+			}
+			ids, err = s.mergedLexIndexIDs(ctx, "nft_items", ranges, need, 0, sortByLt)
+			if err != nil {
+				return nil, err
+			}
+		} else if len(req.CollectionAddress) > 0 {
+			ranges := []kvrocksLexIndexRange{}
+			for _, collection := range req.CollectionAddress {
+				indexName := "collection:" + string(collection)
+				if sortByLt {
+					indexName += ":by_last_transaction_lt"
+					ranges = append(ranges, allLexIndexRange(indexName))
+				} else {
+					indexName += ":by_index"
+					ranges = append(ranges, allLexIndexRangeWithSortPrefix(indexName, string(collection)+":"))
+				}
+			}
+			ids, err = s.mergedLexIndexIDs(ctx, "nft_items", ranges, need, 0, sortByLt)
+			if err != nil {
+				return nil, err
+			}
+		} else if sortByLt {
+			members, err := s.rangeByLex(ctx, "nft_items", "all:by_last_transaction_lt", need, 0, true)
+			if err != nil {
+				return nil, err
+			}
+			ids = addressIDsFromLexMembers(members)
+		} else {
+			ids, err = s.rangeByID(ctx, "nft_items", "all:by_id", limit, offset, false)
+			if err != nil {
+				return nil, err
+			}
+			items, err := s.orderedNFTItems(ctx, ids)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.attachNFTItemDetails(ctx, items); err != nil {
+				return nil, err
+			}
+			return items, nil
+		}
+	}
+
+	items, err := s.orderedNFTItems(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	items = filterNFTItems(items, req)
+	if offset >= int64(len(items)) {
+		return []models.NFTItem{}, nil
+	}
+	end := offset + limit
+	if end > int64(len(items)) {
+		end = int64(len(items))
+	}
+	items = items[offset:end]
+	if err := s.attachNFTItemDetails(ctx, items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func filterNFTItems(items []models.NFTItem, req models.NFTItemRequest) []models.NFTItem {
+	if len(req.Address) == 0 && len(req.OwnerAddress) == 0 && len(req.CollectionAddress) == 0 && len(req.Index) == 0 {
+		return items
+	}
+	addressAllowed := map[models.AccountAddress]struct{}{}
+	ownerAllowed := map[models.AccountAddress]struct{}{}
+	collectionAllowed := map[models.AccountAddress]struct{}{}
+	indexAllowed := map[string]struct{}{}
+	for _, address := range req.Address {
+		addressAllowed[address] = struct{}{}
+	}
+	for _, owner := range req.OwnerAddress {
+		ownerAllowed[owner] = struct{}{}
+	}
+	for _, collection := range req.CollectionAddress {
+		collectionAllowed[collection] = struct{}{}
+	}
+	for _, index := range req.Index {
+		indexAllowed[strings.TrimSpace(index)] = struct{}{}
+	}
+	useRealOwner := req.IncludeOnSale != nil && *req.IncludeOnSale
+	filtered := items[:0]
+	for _, item := range items {
+		if len(addressAllowed) > 0 {
+			if _, ok := addressAllowed[item.Address]; !ok {
+				continue
+			}
+		}
+		if len(ownerAllowed) > 0 {
+			var owner *models.AccountAddress
+			if useRealOwner {
+				owner = item.RealOwner
+			} else {
+				owner = item.OwnerAddress
+			}
+			if owner == nil {
+				continue
+			}
+			if _, ok := ownerAllowed[*owner]; !ok {
+				continue
+			}
+		}
+		if len(collectionAllowed) > 0 {
+			if item.CollectionAddress == nil {
+				continue
+			}
+			if _, ok := collectionAllowed[*item.CollectionAddress]; !ok {
+				continue
+			}
+		}
+		if len(indexAllowed) > 0 {
+			if _, ok := indexAllowed[item.Index]; !ok {
+				continue
+			}
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
+}
+
+func (s *KvrocksStore) orderedDNSRecords(ctx context.Context, ids []string) ([]models.DNSRecord, error) {
+	payloads, err := s.getPayloads(ctx, "dns_entries", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.DNSRecord, 0, len(ids))
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		var row models.DNSRecord
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode dns_entries %s: %w", id, err)
+		}
+		res = append(res, row)
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) QueryDNSRecords(ctx context.Context, limReq models.LimitRequest, req models.DNSRecordsRequest, settings models.RequestSettings) ([]models.DNSRecord, error) {
+	limit, offset, err := kvrocksLimitOffset(limReq, settings)
+	if err != nil {
+		return nil, err
+	}
+	if req.WalletAddress == nil && req.Domain == nil {
+		return nil, models.IndexError{Code: 422, Message: "wallet or domain is required"}
+	}
+
+	ids := []string{}
+	if req.WalletAddress != nil {
+		members, err := s.rangeByLex(ctx, "dns_entries", "wallet:"+string(*req.WalletAddress)+":by_domain", limit, offset, false)
+		if err != nil {
+			return nil, err
+		}
+		ids = addressIDsFromLexMembers(members)
+	} else {
+		ids, err = s.rangeByID(ctx, "dns_entries", "domain:"+*req.Domain+":by_id", limit, offset, false)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return s.orderedDNSRecords(ctx, ids)
 }
 
 func (s *KvrocksStore) GetNFTSales(ctx context.Context, addresses []models.AccountAddress) ([]models.RawNFTSale, error) {
@@ -619,4 +1831,693 @@ func applyNFTCollectionToRawSale(raw *models.RawNFTSale, collection *models.NFTC
 	raw.CollectionDataHash = &collection.DataHash
 	raw.CollectionCodeHash = &collection.CodeHash
 	raw.CollectionLastTransactionLt = &collection.LastTransactionLt
+}
+
+func (s *KvrocksStore) GetMultisigs(ctx context.Context, addresses []models.AccountAddress) (map[models.AccountAddress]*models.Multisig, error) {
+	payloads, err := s.getPayloads(ctx, "multisig", addressesToIDs(addresses))
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[models.AccountAddress]*models.Multisig, len(payloads))
+	for id, payload := range payloads {
+		var row models.Multisig
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode multisig %s: %w", id, err)
+		}
+		res[row.Address] = &row
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) orderedMultisigs(ctx context.Context, ids []string) ([]models.Multisig, error) {
+	payloads, err := s.getPayloads(ctx, "multisig", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.Multisig, 0, len(ids))
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		var row models.Multisig
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode multisig %s: %w", id, err)
+		}
+		res = append(res, row)
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) GetMultisigOrders(ctx context.Context, addresses []models.AccountAddress) (map[models.AccountAddress]*models.MultisigOrder, error) {
+	payloads, err := s.getPayloads(ctx, "multisig_orders", addressesToIDs(addresses))
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[models.AccountAddress]*models.MultisigOrder, len(payloads))
+	for id, payload := range payloads {
+		row, err := decodeMultisigOrderPayload(id, payload)
+		if err != nil {
+			return nil, err
+		}
+		res[row.Address] = &row
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) orderedMultisigOrders(ctx context.Context, ids []string) ([]models.MultisigOrder, error) {
+	payloads, err := s.getPayloads(ctx, "multisig_orders", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.MultisigOrder, 0, len(ids))
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		row, err := decodeMultisigOrderPayload(id, payload)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, row)
+	}
+	return res, nil
+}
+
+func decodeMultisigOrderPayload(id string, payload string) (models.MultisigOrder, error) {
+	var row struct {
+		Address           models.AccountAddress   `json:"address"`
+		MultisigAddress   models.AccountAddress   `json:"multisig_address"`
+		OrderSeqno        *string                 `json:"order_seqno"`
+		Threshold         *int32                  `json:"threshold"`
+		SentForExecution  *bool                   `json:"sent_for_execution"`
+		ApprovalsMask     *string                 `json:"approvals_mask"`
+		ApprovalsNum      *int32                  `json:"approvals_num"`
+		ExpirationDate    *jsonString             `json:"expiration_date"`
+		OrderBoc          *string                 `json:"order_boc"`
+		Signers           []models.AccountAddress `json:"signers"`
+		LastTransactionLt int64                   `json:"last_transaction_lt,string"`
+		CodeHash          *models.HashType        `json:"code_hash"`
+		DataHash          *models.HashType        `json:"data_hash"`
+	}
+	if err := json.Unmarshal([]byte(payload), &row); err != nil {
+		return models.MultisigOrder{}, fmt.Errorf("decode multisig_orders %s: %w", id, err)
+	}
+	var expiration *uint64
+	if row.ExpirationDate != nil {
+		value, err := strconv.ParseUint(string(*row.ExpirationDate), 10, 64)
+		if err != nil {
+			return models.MultisigOrder{}, fmt.Errorf("decode multisig_orders %s expiration_date: %w", id, err)
+		}
+		expiration = &value
+	}
+	return models.MultisigOrder{
+		Address:           row.Address,
+		MultisigAddress:   row.MultisigAddress,
+		OrderSeqno:        row.OrderSeqno,
+		Threshold:         row.Threshold,
+		SentForExecution:  row.SentForExecution,
+		ApprovalsMask:     row.ApprovalsMask,
+		ApprovalsNum:      row.ApprovalsNum,
+		ExpirationDate:    expiration,
+		OrderBoc:          row.OrderBoc,
+		Signers:           row.Signers,
+		LastTransactionLt: row.LastTransactionLt,
+		CodeHash:          row.CodeHash,
+		DataHash:          row.DataHash,
+	}, nil
+}
+
+func (s *KvrocksStore) QueryMultisigs(ctx context.Context, req models.MultisigRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.Multisig, error) {
+	limit, offset, err := kvrocksLimitOffset(limReq, settings)
+	if err != nil {
+		return nil, err
+	}
+	desc, err := kvrocksSortDesc(limReq, true)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := []string{}
+	seen := map[string]struct{}{}
+	idsArePaged := false
+	if len(req.Address) > 0 {
+		for _, address := range req.Address {
+			ids = appendUniqueString(ids, seen, string(address))
+		}
+		sort.Strings(ids)
+	} else if len(req.WalletAddress) > 0 {
+		indexes := make([]string, 0, len(req.WalletAddress))
+		for _, wallet := range req.WalletAddress {
+			indexes = append(indexes, "wallet:"+string(wallet)+":by_id")
+		}
+		ids, err = s.mergedIDIndexIDs(ctx, "multisig", indexes, limit, offset, desc)
+		if err != nil {
+			return nil, err
+		}
+		idsArePaged = true
+	} else {
+		ids, err = s.rangeByID(ctx, "multisig", "all:by_id", limit, offset, desc)
+		if err != nil {
+			return nil, err
+		}
+		multisigs, err := s.orderedMultisigs(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		if req.IncludeOrders == nil || *req.IncludeOrders {
+			if err := s.attachMultisigOrders(ctx, multisigs); err != nil {
+				return nil, err
+			}
+		}
+		return multisigs, nil
+	}
+
+	multisigs, err := s.orderedMultisigs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	if len(req.WalletAddress) > 0 && len(req.Address) > 0 {
+		allowed := map[models.AccountAddress]struct{}{}
+		for _, wallet := range req.WalletAddress {
+			allowed[wallet] = struct{}{}
+		}
+		filtered := multisigs[:0]
+		for _, multisig := range multisigs {
+			matched := false
+			for _, signer := range multisig.Signers {
+				if _, ok := allowed[signer]; ok {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				for _, proposer := range multisig.Proposers {
+					if _, ok := allowed[proposer]; ok {
+						matched = true
+						break
+					}
+				}
+			}
+			if matched {
+				filtered = append(filtered, multisig)
+			}
+		}
+		multisigs = filtered
+	}
+	if !idsArePaged {
+		if offset >= int64(len(multisigs)) {
+			return []models.Multisig{}, nil
+		}
+		end := offset + limit
+		if end > int64(len(multisigs)) {
+			end = int64(len(multisigs))
+		}
+		multisigs = multisigs[offset:end]
+	}
+	if req.IncludeOrders == nil || *req.IncludeOrders {
+		if err := s.attachMultisigOrders(ctx, multisigs); err != nil {
+			return nil, err
+		}
+	}
+	return multisigs, nil
+}
+
+func (s *KvrocksStore) attachMultisigOrders(ctx context.Context, multisigs []models.Multisig) error {
+	for i := range multisigs {
+		ids, err := s.rangeByID(ctx, "multisig_orders", "multisig:"+string(multisigs[i].Address)+":by_id", 10000, 0, false)
+		if err != nil {
+			return err
+		}
+		orders, err := s.orderedMultisigOrders(ctx, ids)
+		if err != nil {
+			return err
+		}
+		multisigs[i].Orders = orders
+	}
+	return nil
+}
+
+func (s *KvrocksStore) QueryMultisigOrders(ctx context.Context, req models.MultisigOrderRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.MultisigOrder, error) {
+	limit, offset, err := kvrocksLimitOffset(limReq, settings)
+	if err != nil {
+		return nil, err
+	}
+	desc, err := kvrocksSortDesc(limReq, true)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := []string{}
+	seen := map[string]struct{}{}
+	idsArePaged := false
+	if len(req.Address) > 0 {
+		for _, address := range req.Address {
+			ids = appendUniqueString(ids, seen, string(address))
+		}
+		sort.Strings(ids)
+	} else if len(req.MultisigAddress) > 0 {
+		indexes := make([]string, 0, len(req.MultisigAddress))
+		for _, multisig := range req.MultisigAddress {
+			indexes = append(indexes, "multisig:"+string(multisig)+":by_id")
+		}
+		ids, err = s.mergedIDIndexIDs(ctx, "multisig_orders", indexes, limit, offset, desc)
+		if err != nil {
+			return nil, err
+		}
+		idsArePaged = true
+	} else {
+		ids, err = s.rangeByID(ctx, "multisig_orders", "all:by_id", limit, offset, desc)
+		if err != nil {
+			return nil, err
+		}
+		return s.orderedMultisigOrders(ctx, ids)
+	}
+
+	orders, err := s.orderedMultisigOrders(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	if len(req.MultisigAddress) > 0 && len(req.Address) > 0 {
+		allowed := map[models.AccountAddress]struct{}{}
+		for _, multisig := range req.MultisigAddress {
+			allowed[multisig] = struct{}{}
+		}
+		filtered := orders[:0]
+		for _, order := range orders {
+			if _, ok := allowed[order.MultisigAddress]; ok {
+				filtered = append(filtered, order)
+			}
+		}
+		orders = filtered
+	}
+	if !idsArePaged {
+		if offset >= int64(len(orders)) {
+			return []models.MultisigOrder{}, nil
+		}
+		end := offset + limit
+		if end > int64(len(orders)) {
+			end = int64(len(orders))
+		}
+		orders = orders[offset:end]
+	}
+	return orders, nil
+}
+
+type kvVestingContractPayload struct {
+	Address       models.AccountAddress `json:"address"`
+	StartTime     *int64                `json:"vesting_start_time"`
+	TotalDuration *int64                `json:"vesting_total_duration"`
+	UnlockPeriod  *int64                `json:"unlock_period"`
+	CliffDuration *int64                `json:"cliff_duration"`
+	SenderAddress models.AccountAddress `json:"vesting_sender_address"`
+	OwnerAddress  models.AccountAddress `json:"owner_address"`
+	TotalAmount   *string               `json:"vesting_total_amount"`
+}
+
+func (p kvVestingContractPayload) vestingInfo() models.VestingInfo {
+	address := p.Address
+	sender := p.SenderAddress
+	owner := p.OwnerAddress
+	return models.VestingInfo{
+		Address:       &address,
+		StartTime:     p.StartTime,
+		TotalDuration: p.TotalDuration,
+		UnlockPeriod:  p.UnlockPeriod,
+		CliffDuration: p.CliffDuration,
+		SenderAddress: &sender,
+		OwnerAddress:  &owner,
+		TotalAmount:   p.TotalAmount,
+		Whitelist:     []models.AccountAddress{},
+	}
+}
+
+func (s *KvrocksStore) orderedVestingContracts(ctx context.Context, ids []string) ([]models.VestingInfo, error) {
+	payloads, err := s.getPayloads(ctx, "vesting_contracts", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]models.VestingInfo, 0, len(ids))
+	for _, id := range ids {
+		payload, ok := payloads[id]
+		if !ok {
+			continue
+		}
+		var row kvVestingContractPayload
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode vesting_contracts %s: %w", id, err)
+		}
+		res = append(res, row.vestingInfo())
+	}
+	if err := s.attachVestingWhitelist(ctx, res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *KvrocksStore) attachVestingWhitelist(ctx context.Context, vestings []models.VestingInfo) error {
+	for i := range vestings {
+		if vestings[i].Address == nil {
+			continue
+		}
+		members, err := s.rangeByLex(ctx, "vesting_whitelist", "contract:"+string(*vestings[i].Address)+":by_wallet", 100000, 0, false)
+		if err != nil {
+			return err
+		}
+		vestings[i].Whitelist = stringsToAddresses(addressIDsFromLexMembers(members))
+	}
+	return nil
+}
+
+func (s *KvrocksStore) QueryVestingContracts(ctx context.Context, req models.VestingContractsRequest, limReq models.LimitRequest, settings models.RequestSettings) ([]models.VestingInfo, error) {
+	if len(req.ContractAddress) == 0 && len(req.WalletAddress) == 0 {
+		return nil, models.IndexError{Code: 422, Message: "at least one of contract_address or wallet_address is required"}
+	}
+	if len(req.ContractAddress) > 0 && len(req.WalletAddress) > 0 {
+		return nil, models.IndexError{Code: 422, Message: "only one of contract_address or wallet_address should be specified"}
+	}
+	limit, offset, err := kvrocksLimitOffset(limReq, settings)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := []string{}
+	seen := map[string]struct{}{}
+	idsArePaged := false
+	if len(req.ContractAddress) > 0 {
+		for _, address := range req.ContractAddress {
+			ids = appendUniqueString(ids, seen, string(address))
+		}
+		sort.Strings(ids)
+	} else {
+		indexes := make([]string, 0, len(req.WalletAddress)*2)
+		for _, wallet := range req.WalletAddress {
+			indexes = append(indexes, "wallet:"+string(wallet)+":by_id")
+			if req.CheckWhitelist != nil && *req.CheckWhitelist {
+				indexes = append(indexes, "wallet_whitelist:"+string(wallet)+":by_id")
+			}
+		}
+		ids, err = s.mergedIDIndexIDs(ctx, "vesting_contracts", indexes, limit, offset, false)
+		if err != nil {
+			return nil, err
+		}
+		idsArePaged = true
+	}
+	if !idsArePaged {
+		if offset >= int64(len(ids)) {
+			return []models.VestingInfo{}, nil
+		}
+		end := offset + limit
+		if end > int64(len(ids)) {
+			end = int64(len(ids))
+		}
+		ids = ids[offset:end]
+	}
+	return s.orderedVestingContracts(ctx, ids)
+}
+
+func QueryAddressBookImplKvrocks(addrList []string, store *KvrocksStore, settings models.RequestSettings) (models.AddressBook, error) {
+	if settings.UseCache {
+		book, err := services.AddressInfoCacheClient.GetAddressBook(addrList)
+		if err != nil {
+			log.Println("Error getting address book from cache: ", err)
+		} else {
+			return book, nil
+		}
+	}
+	book := models.AddressBook{}
+	if store == nil {
+		return book, nil
+	}
+
+	rawToOriginal := map[models.AccountAddress][]string{}
+	rawAddresses := []models.AccountAddress{}
+	for _, addr := range addrList {
+		addrVal := models.AccountAddressConverter(addr)
+		if addrVal.IsValid() {
+			if raw, ok := addrVal.Interface().(models.AccountAddress); ok {
+				rawToOriginal[raw] = append(rawToOriginal[raw], addr)
+				rawAddresses = append(rawAddresses, raw)
+				continue
+			}
+		}
+		emptyInterfaces := []string{}
+		book[addr] = models.AddressBookRow{UserFriendly: nil, Domain: nil, Interfaces: &emptyInterfaces}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel()
+	states, err := store.GetLatestAccountStates(ctx, rawAddresses, false)
+	if err != nil {
+		return nil, err
+	}
+	domains := map[models.AccountAddress]*string{}
+	for raw := range rawToOriginal {
+		members, err := store.rangeByLex(ctx, "dns_entries", "owner_wallet:"+string(raw)+":by_domain", 1, 0, false)
+		if err != nil {
+			return nil, err
+		}
+		ids := addressIDsFromLexMembers(members)
+		records, err := store.orderedDNSRecords(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		if len(records) > 0 {
+			domain := records[0].Domain
+			domains[raw] = &domain
+		}
+	}
+
+	for raw, originals := range rawToOriginal {
+		state := states[raw]
+		var codeHash *string
+		interfaces := []string{}
+		if state != nil {
+			if state.CodeHash != nil {
+				codeHashValue := string(*state.CodeHash)
+				codeHash = &codeHashValue
+			}
+			if state.Interfaces != nil {
+				interfaces = *state.Interfaces
+			} else {
+				methods := []uint32{}
+				if state.ContractMethods != nil {
+					methods = *state.ContractMethods
+				}
+				codeHashStr := ""
+				if state.CodeHash != nil {
+					codeHashStr = string(*state.CodeHash)
+				}
+				interfaces = detect.DetectInterface(codeHashStr, methods)
+			}
+		}
+		friendly := models.GetAccountAddressFriendly(string(raw), codeHash, settings.IsTestnet)
+		for _, original := range originals {
+			interfacesCopy := append([]string(nil), interfaces...)
+			book[original] = models.AddressBookRow{
+				UserFriendly: &friendly,
+				Domain:       domains[raw],
+				Interfaces:   &interfacesCopy,
+			}
+		}
+	}
+	return book, nil
+}
+
+func (s *KvrocksStore) queryJettonWalletsTokenInfo(ctx context.Context, addrList []string) (map[string]models.TokenInfo, []string, error) {
+	if len(addrList) == 0 {
+		return map[string]models.TokenInfo{}, []string{}, nil
+	}
+	addresses := make([]models.AccountAddress, 0, len(addrList))
+	addrSet := map[string]bool{}
+	for _, addr := range addrList {
+		addrSet[addr] = true
+		addresses = append(addresses, models.AccountAddress(addr))
+	}
+	wallets, err := s.GetJettonWallets(ctx, addresses)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	tokenInfoMap := make(map[string]models.TokenInfo)
+	additionalAddresses := map[string]bool{}
+	valid := true
+	tokenType := "jetton_wallets"
+	for _, wallet := range wallets {
+		extra := map[string]interface{}{
+			"owner":  string(wallet.Owner),
+			"jetton": string(wallet.Jetton),
+		}
+		if wallet.Balance != "" {
+			extra["balance"] = wallet.Balance
+		}
+		tokenInfoMap[string(wallet.Address)] = models.TokenInfo{
+			Address: string(wallet.Address),
+			Type:    &tokenType,
+			Extra:   extra,
+			Indexed: true,
+			Valid:   &valid,
+		}
+		if !addrSet[string(wallet.Jetton)] {
+			additionalAddresses[string(wallet.Jetton)] = true
+		}
+	}
+
+	additional := make([]string, 0, len(additionalAddresses))
+	for addr := range additionalAddresses {
+		additional = append(additional, addr)
+	}
+	return tokenInfoMap, additional, nil
+}
+
+type metadataKey struct {
+	address string
+	typ     string
+}
+
+func QueryMetadataImplKvrocks(addrList []string, conn *pgxpool.Conn, settings models.RequestSettings, store *KvrocksStore) (models.Metadata, error) {
+	if settings.UseCache {
+		metadata, err := services.AddressInfoCacheClient.GetMetadata(addrList)
+		if err != nil {
+			log.Println("Error getting metadata from cache: ", err)
+		} else {
+			return metadata, nil
+		}
+	}
+	if store == nil {
+		return models.Metadata{}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel()
+
+	tokenInfoMap := map[string][]models.TokenInfo{}
+	jettonWalletInfos, additionalAddrs, err := store.queryJettonWalletsTokenInfo(ctx, addrList)
+	if err != nil {
+		return nil, err
+	}
+	for addr, info := range jettonWalletInfos {
+		tokenInfoMap[addr] = append(tokenInfoMap[addr], info)
+	}
+	if len(additionalAddrs) > 0 {
+		addrList = append(addrList, additionalAddrs...)
+	}
+
+	addresses := stringsToAddresses(addrList)
+	nftItems, err := store.GetNFTItems(ctx, addresses)
+	if err != nil {
+		return nil, err
+	}
+	nftCollections, err := store.GetNFTCollections(ctx, addresses)
+	if err != nil {
+		return nil, err
+	}
+	jettonMasters, err := store.GetJettonMasters(ctx, addresses)
+	if err != nil {
+		return nil, err
+	}
+
+	known := map[metadataKey]models.TokenInfo{}
+	addKnown := func(addr models.AccountAddress, typ string, nftIndex *string) {
+		typeCopy := typ
+		address := string(addr)
+		known[metadataKey{address: address, typ: typ}] = models.TokenInfo{
+			Address:  address,
+			Type:     &typeCopy,
+			NftIndex: nftIndex,
+			Indexed:  false,
+		}
+	}
+	for _, item := range nftItems {
+		index := item.Index
+		addKnown(item.Address, "nft_items", &index)
+	}
+	for _, collection := range nftCollections {
+		addKnown(collection.Address, "nft_collections", nil)
+	}
+	for _, master := range jettonMasters {
+		addKnown(master.Address, "jetton_masters", nil)
+	}
+
+	metadataRows := map[metadataKey]models.TokenInfo{}
+	if len(known) > 0 {
+		queryAddrs := make([]string, 0, len(known))
+		queryTypes := make([]string, 0, 3)
+		addrSeen := map[string]struct{}{}
+		typeSeen := map[string]struct{}{}
+		for key := range known {
+			queryAddrs = appendUniqueString(queryAddrs, addrSeen, key.address)
+			queryTypes = appendUniqueString(queryTypes, typeSeen, key.typ)
+		}
+		rows, err := conn.Query(ctx, `SELECT address, valid, type, name, symbol, description, image, extra
+			FROM address_metadata
+			WHERE address = ANY($1) AND type = ANY($2)`, pq.Array(queryAddrs), pq.Array(queryTypes))
+		if err != nil {
+			return nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var row models.TokenInfo
+			if err := rows.Scan(&row.Address, &row.Valid, &row.Type, &row.Name, &row.Symbol, &row.Description, &row.Image, &row.Extra); err != nil {
+				return nil, models.IndexError{Code: 500, Message: err.Error()}
+			}
+			if row.Type == nil {
+				continue
+			}
+			key := metadataKey{address: row.Address, typ: *row.Type}
+			if knownInfo, ok := known[key]; ok {
+				row.NftIndex = knownInfo.NftIndex
+			}
+			row.Indexed = true
+			metadataRows[key] = row
+		}
+		if rows.Err() != nil {
+			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
+		}
+	}
+
+	tasks := []models.BackgroundTask{}
+	for key, info := range known {
+		if row, ok := metadataRows[key]; ok {
+			if row.Valid != nil && *row.Valid {
+				tokenInfoMap[key.address] = append(tokenInfoMap[key.address], row)
+			} else {
+				tokenInfoMap[key.address] = append(tokenInfoMap[key.address], models.TokenInfo{
+					Address:  key.address,
+					Indexed:  true,
+					Valid:    row.Valid,
+					Type:     row.Type,
+					NftIndex: row.NftIndex,
+				})
+			}
+			continue
+		}
+		tasks = append(tasks, models.BackgroundTask{
+			Type: "fetch_metadata",
+			Data: map[string]interface{}{
+				"address": key.address,
+				"type":    key.typ,
+			},
+		})
+		tokenInfoMap[key.address] = append(tokenInfoMap[key.address], info)
+	}
+
+	metadata := models.Metadata{}
+	for addr, infos := range tokenInfoMap {
+		indexed := true
+		for _, info := range infos {
+			indexed = indexed && info.Indexed
+		}
+		metadata[addr] = models.AddressMetadata{
+			TokenInfo: infos,
+			IsIndexed: indexed,
+		}
+	}
+
+	backgroundTaskManager := services.GetBackgroundTaskManager()
+	if len(tasks) > 0 && backgroundTaskManager != nil {
+		backgroundTaskManager.EnqueueTasksIfPossible(tasks)
+	}
+	return metadata, nil
 }

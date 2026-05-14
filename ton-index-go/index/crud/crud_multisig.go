@@ -155,6 +155,40 @@ func (db *DbClient) QueryMultisigs(
 	lim_req models.LimitRequest,
 	settings models.RequestSettings,
 ) ([]models.Multisig, models.AddressBook, error) {
+	if db.Kvrocks != nil {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		multisigs, err := db.Kvrocks.QueryMultisigs(ctx, multisig_req, lim_req, settings)
+		if err != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		addr_set := make(map[string]bool)
+		for _, multisig := range multisigs {
+			addr_set[string(multisig.Address)] = true
+			for _, signer := range multisig.Signers {
+				addr_set[string(signer)] = true
+			}
+			for _, proposer := range multisig.Proposers {
+				addr_set[string(proposer)] = true
+			}
+			for _, order := range multisig.Orders {
+				addr_set[string(order.Address)] = true
+				for _, signer := range order.Signers {
+					addr_set[string(signer)] = true
+				}
+			}
+		}
+		addr_list := make([]string, 0, len(addr_set))
+		for addr := range addr_set {
+			addr_list = append(addr_list, addr)
+		}
+		book, err := db.queryKvrocksAddressBook(addr_list, settings)
+		if err != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return multisigs, book, nil
+	}
+
 	query, err := buildMultisigQuery(multisig_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
@@ -235,6 +269,37 @@ func (db *DbClient) QueryMultisigOrders(
 	lim_req models.LimitRequest,
 	settings models.RequestSettings,
 ) ([]models.MultisigOrder, models.AddressBook, error) {
+	if db.Kvrocks != nil {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		orders, err := db.Kvrocks.QueryMultisigOrders(ctx, order_req, lim_req, settings)
+		if err != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		if order_req.ParseActions != nil && *order_req.ParseActions {
+			for i := range orders {
+				if orders[i].OrderBoc != nil {
+					orderActions, err := parse.ParseOrder(*orders[i].OrderBoc)
+					if err != nil {
+						log.Println("Failed to parse multisig order", orders[i].Address, err)
+						orders[i].Actions = nil
+					}
+					orders[i].Actions = orderActions
+				}
+			}
+		}
+		addr_set := collectMultisigOrderAddresses(orders)
+		addr_list := make([]string, 0, len(addr_set))
+		for addr := range addr_set {
+			addr_list = append(addr_list, addr)
+		}
+		book, err := db.queryKvrocksAddressBook(addr_list, settings)
+		if err != nil {
+			return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
+		}
+		return orders, book, nil
+	}
+
 	query, err := buildMultisigOrderQuery(order_req, lim_req, settings)
 	if err != nil {
 		return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
