@@ -22,6 +22,7 @@ var timings = make([]time.Duration, 0)
 type ShortMessage struct {
 	Hash            *models.HashType
 	TransactionHash *models.HashType
+	BodyHash        *models.HashType
 	Source          *models.AccountAddress
 	Destination     *models.AccountAddress
 	Opcode          *models.OpcodeType
@@ -144,8 +145,8 @@ func compare(t1 *ShortTransaction, t2 *ShortTransaction) int {
 	return 0
 }
 
-func CalculateBalanceChanges(traceId models.HashType, conn *pgxpool.Conn) (*BalanceChanges, map[models.HashType]*BalanceChanges, error) {
-	tx_map, err := fetchTrace(traceId, conn)
+func CalculateBalanceChanges(traceId models.HashType, conn *pgxpool.Conn, store *KvrocksStore) (*BalanceChanges, map[models.HashType]*BalanceChanges, error) {
+	tx_map, err := fetchTrace(traceId, conn, store)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -252,7 +253,7 @@ func CalculateBalanceChanges(traceId models.HashType, conn *pgxpool.Conn) (*Bala
 		}
 	}
 
-	wallet_infos, err := checkJettonWallets(jetton_wallet_candidates, conn)
+	wallet_infos, err := checkJettonWallets(jetton_wallet_candidates, conn, store)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -359,7 +360,23 @@ func (v *walletInfo) Equals(other *walletInfo) bool {
 	return v.address == other.address && v.owner == other.owner && v.jettonMaster == other.jettonMaster
 }
 
-func checkJettonWallets(jetton_wallet_candidates mapset.Set[models.AccountAddress], conn *pgxpool.Conn) (mapset.Set[walletInfo], error) {
+func checkJettonWallets(jetton_wallet_candidates mapset.Set[models.AccountAddress], conn *pgxpool.Conn, store *KvrocksStore) (mapset.Set[walletInfo], error) {
+	if store != nil {
+		wallets, err := store.GetJettonWallets(context.Background(), jetton_wallet_candidates.ToSlice())
+		if err != nil {
+			return nil, err
+		}
+		jetton_wallets := mapset.NewSet[walletInfo]()
+		for _, wallet := range wallets {
+			jetton_wallets.Add(walletInfo{
+				address:      wallet.Address,
+				owner:        wallet.Owner,
+				jettonMaster: wallet.Jetton,
+			})
+		}
+		return jetton_wallets, nil
+	}
+
 	var query = `
 		SELECT address, owner, jetton
 		FROM jetton_wallets
@@ -387,8 +404,18 @@ func checkJettonWallets(jetton_wallet_candidates mapset.Set[models.AccountAddres
 	return jetton_wallets, nil
 }
 
-func fetchTrace(trace_id models.HashType, conn *pgxpool.Conn) (map[models.HashType]*ShortTransaction, error) {
-	var query = `
+func fetchTrace(trace_id models.HashType, conn *pgxpool.Conn, store *KvrocksStore) (map[models.HashType]*ShortTransaction, error) {
+	var query string
+	if store != nil {
+		query = `
+		SELECT T.trace_id, Tx.hash, Tx.account, Tx.lt, Tx.total_fees, M.msg_hash, M.tx_hash,
+		M.source, M.destination, M.opcode, M.value, M.direction, M.fwd_fee, M.body_hash
+		FROM traces T
+		JOIN transactions Tx ON T.trace_id = Tx.trace_id
+		LEFT JOIN messages M ON Tx.hash = M.tx_hash
+		WHERE T.trace_id = $1`
+	} else {
+		query = `
 		SELECT T.trace_id, Tx.hash, Tx.account, Tx.lt, Tx.total_fees, M.msg_hash, M.tx_hash,
 		M.source, M.destination, M.opcode, M.value, M.direction, M.fwd_fee, MC.body
 		FROM traces T
@@ -396,6 +423,7 @@ func fetchTrace(trace_id models.HashType, conn *pgxpool.Conn) (map[models.HashTy
 		LEFT JOIN messages M ON Tx.hash = M.tx_hash
 		LEFT JOIN message_contents MC ON M.body_hash = MC.hash
 		WHERE T.trace_id = $1`
+	}
 	rows, err := conn.Query(context.Background(), query, trace_id)
 	if err != nil {
 		return nil, err
@@ -403,30 +431,58 @@ func fetchTrace(trace_id models.HashType, conn *pgxpool.Conn) (map[models.HashTy
 	defer rows.Close()
 
 	var (
-		txs  = make(map[models.HashType]*ShortTransaction)
-		msgs = make(map[models.HashType]*ShortMessage)
+		txs      = make(map[models.HashType]*ShortTransaction)
+		messages []*ShortMessage
 	)
 	for rows.Next() {
 		var (
 			t = ShortTransaction{}
 			m = ShortMessage{}
 		)
-		if err := rows.Scan(&trace_id, &t.Hash, &t.Account, &t.Lt, &t.TotalFees, &m.Hash, &m.TransactionHash,
-			&m.Source, &m.Destination, &m.Opcode, &m.Value, &m.Direction, &m.FwdFee, &m.Body); err != nil {
-			return nil, err
+		if store != nil {
+			if err := rows.Scan(&trace_id, &t.Hash, &t.Account, &t.Lt, &t.TotalFees, &m.Hash, &m.TransactionHash,
+				&m.Source, &m.Destination, &m.Opcode, &m.Value, &m.Direction, &m.FwdFee, &m.BodyHash); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := rows.Scan(&trace_id, &t.Hash, &t.Account, &t.Lt, &t.TotalFees, &m.Hash, &m.TransactionHash,
+				&m.Source, &m.Destination, &m.Opcode, &m.Value, &m.Direction, &m.FwdFee, &m.Body); err != nil {
+				return nil, err
+			}
 		}
 		if _, ok := txs[t.Hash]; !ok {
 			txs[t.Hash] = &t
 		}
 		if m.Hash != nil {
 			tx := txs[*m.TransactionHash]
-			msgs[*m.Hash] = &m
+			msg := &m
 			if *m.Direction == "out" {
-				tx.OutMsgs = append(tx.OutMsgs, &m)
+				tx.OutMsgs = append(tx.OutMsgs, msg)
 			} else {
-				tx.InMsg = &m
+				tx.InMsg = msg
 			}
-			m.Transaction = tx
+			msg.Transaction = tx
+			messages = append(messages, msg)
+		}
+	}
+	if store != nil && len(messages) > 0 {
+		hashes := make([]models.HashType, 0, len(messages))
+		for _, msg := range messages {
+			if msg.BodyHash != nil {
+				hashes = append(hashes, *msg.BodyHash)
+			}
+		}
+		contents, err := store.GetMessageContents(context.Background(), hashes)
+		if err != nil {
+			return nil, err
+		}
+		for _, msg := range messages {
+			if msg.BodyHash == nil {
+				continue
+			}
+			if content, ok := contents[*msg.BodyHash]; ok {
+				msg.Body = content.Body
+			}
 		}
 	}
 	return txs, nil

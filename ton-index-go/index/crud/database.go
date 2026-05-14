@@ -11,7 +11,8 @@ import (
 )
 
 type DbClient struct {
-	Pool *pgxpool.Pool
+	Pool    *pgxpool.Pool
+	Kvrocks *KvrocksStore
 }
 
 func afterConnectRegisterTypes(ctx context.Context, conn *pgx.Conn) error {
@@ -53,7 +54,7 @@ func LoadVersion(pool *pgxpool.Pool) ServiceVersion {
 	return version
 }
 
-func NewDbClient(dsn string, maxconns int, minconns int) (*DbClient, error) {
+func NewDbClient(dsn string, maxconns int, minconns int, kvrocks *KvrocksStore) (*DbClient, error) {
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
@@ -74,5 +75,5 @@ func NewDbClient(dsn string, maxconns int, minconns int) (*DbClient, error) {
 	if err = pool.Ping(context.Background()); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %v", err)
 	}
-	return &DbClient{pool}, nil
+	return &DbClient{Pool: pool, Kvrocks: kvrocks}, nil
 }

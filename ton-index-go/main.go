@@ -2211,6 +2211,12 @@ func main() {
 	test()
 	var timeout_ms int
 	var redis_dsn string
+	var kvrocks_addr string
+	var kvrocks_sentinels string
+	var kvrocks_sentinel_master string
+	var kvrocks_user string
+	var kvrocks_password string
+	var kvrocks_db int
 	flag.StringVar(&settings.PgDsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
 	flag.StringVar(&settings.PgMasterDsn, "pg-master", "", "PostgreSQL connection string with write access")
 	flag.StringVar(&settings.Request.V2Endpoint, "v2", "", "TON HTTP API endpoint for proxied methods")
@@ -2232,6 +2238,12 @@ func main() {
 	flag.IntVar(&settings.MaxThreads, "threads", 0, "Number of threads")
 	flag.StringVar(&settings.CacheServiceUrl, "cache-service-url", "", "Cache service url")
 	flag.StringVar(&redis_dsn, "redis", "", "Redis connection string")
+	flag.StringVar(&kvrocks_addr, "kvrocks", "", "Kvrocks address or Redis URL for point-state reads")
+	flag.StringVar(&kvrocks_sentinels, "kvrocks-sentinels", "", "Comma-separated Kvrocks Sentinel addresses")
+	flag.StringVar(&kvrocks_sentinel_master, "kvrocks-sentinel-master", "", "Kvrocks Sentinel master name")
+	flag.StringVar(&kvrocks_user, "kvrocks-user", "", "Kvrocks username")
+	flag.StringVar(&kvrocks_password, "kvrocks-password", "", "Kvrocks password")
+	flag.IntVar(&kvrocks_db, "kvrocks-db", 0, "Kvrocks database number")
 	flag.Parse()
 	settings.Request.Timeout = time.Duration(timeout_ms) * time.Millisecond
 	if settings.CacheServiceUrl == "" {
@@ -2246,7 +2258,32 @@ func main() {
 	}
 
 	var err error
-	pool, err = crud.NewDbClient(settings.PgDsn, settings.MaxConns, settings.MinConns)
+	var kvrocks_store *crud.KvrocksStore
+	if kvrocks_addr != "" || kvrocks_sentinels != "" {
+		sentinel_addrs := []string{}
+		for _, addr := range strings.Split(kvrocks_sentinels, ",") {
+			addr = strings.TrimSpace(addr)
+			if addr != "" {
+				sentinel_addrs = append(sentinel_addrs, addr)
+			}
+		}
+		kvrocks_store, err = crud.NewKvrocksStore(crud.KvrocksConfig{
+			Addr:               kvrocks_addr,
+			SentinelAddrs:      sentinel_addrs,
+			SentinelMasterName: kvrocks_sentinel_master,
+			Username:           kvrocks_user,
+			Password:           kvrocks_password,
+			DB:                 kvrocks_db,
+		})
+		if err != nil {
+			log.Fatal(err)
+			os.Exit(63)
+		}
+		defer kvrocks_store.Close()
+		log.Println("Kvrocks point-state reads enabled")
+	}
+
+	pool, err = crud.NewDbClient(settings.PgDsn, settings.MaxConns, settings.MinConns, kvrocks_store)
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(63)

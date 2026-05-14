@@ -823,6 +823,7 @@ if exists == 0 then
   redis.call('HSET', KEYS[1],
     'source_mc_seqno', ARGV[1],
     'payload', ARGV[2])
+  redis.call('SET', KEYS[2], ARGV[2])
   return 1
 end
 return 0
@@ -837,6 +838,7 @@ if (not current) or tonumber(current) <= tonumber(ARGV[1]) then
   redis.call('HSET', KEYS[1],
     'source_mc_seqno', ARGV[1],
     'payload', ARGV[2])
+  redis.call('SET', KEYS[2], ARGV[2])
   return 1
 end
 return 0
@@ -875,6 +877,10 @@ bool is_kvrocks_no_script_error(const std::exception& e) {
 
 std::string kvrocks_key(const std::string& table, const std::string& id) {
   return "ton-index:v1:" + table + ":" + id;
+}
+
+std::string kvrocks_payload_key(const std::string& table, const std::string& id) {
+  return kvrocks_key(table, id) + ":payload";
 }
 
 std::string address_key(const block::StdAddress& address) {
@@ -1369,8 +1375,9 @@ class KvrocksBatchWriter {
   void queue_set_once(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                       const std::string& payload) {
     const auto key = kvrocks_key(table, id);
+    const auto payload_key = kvrocks_payload_key(table, id);
     const auto source = std::to_string(source_mc_seqno);
-    pipeline_.evalsha(kvrocks_set_once_script_sha(), {key}, {source, payload});
+    pipeline_.evalsha(kvrocks_set_once_script_sha(), {key, payload_key}, {source, payload});
     ++pending_;
     ++queued_;
     flush_if_needed();
@@ -1379,8 +1386,9 @@ class KvrocksBatchWriter {
   void queue_set_current(const std::string& table, const std::string& id, std::uint32_t source_mc_seqno,
                          const std::string& payload) {
     const auto key = kvrocks_key(table, id);
+    const auto payload_key = kvrocks_payload_key(table, id);
     const auto source = std::to_string(source_mc_seqno);
-    pipeline_.evalsha(kvrocks_set_current_script_sha(), {key}, {source, payload});
+    pipeline_.evalsha(kvrocks_set_current_script_sha(), {key, payload_key}, {source, payload});
     ++pending_;
     ++queued_;
     flush_if_needed();

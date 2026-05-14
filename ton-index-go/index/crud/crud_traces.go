@@ -123,7 +123,7 @@ func buildTracesQuery(trace_req models.TracesRequest, utime_req models.UtimeRequ
 	return query, nil
 }
 
-func queryTracesImpl(query string, includeActions bool, supportedActionTypes []string, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.Trace, []string, error) {
+func queryTracesImpl(query string, includeActions bool, supportedActionTypes []string, conn *pgxpool.Conn, settings models.RequestSettings, store *KvrocksStore) ([]models.Trace, []string, error) {
 	traces := []models.Trace{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -387,7 +387,7 @@ func queryTracesImpl(query string, includeActions bool, supportedActionTypes []s
 				T.action_tot_msg_size_cells, T.action_tot_msg_size_bits, T.bounce, T.bounce_msg_size_cells, T.bounce_msg_size_bits, 
 				T.bounce_req_fwd_fees, T.bounce_msg_fees, T.bounce_fwd_fees, T.split_info_cur_shard_pfx_len, T.split_info_acc_split_depth, 
 				T.split_info_this_addr, T.split_info_sibling_addr, false as emulated, 2 as finality from transactions as T where ` + filterByArray("T.trace_id", trace_id_list) + ` order by T.trace_id, T.lt, T.account`
-			txs, err := queryTransactionsImpl(query, conn, settings)
+			txs, err := queryTransactionsImpl(query, conn, settings, store)
 			if err != nil {
 				return nil, nil, models.IndexError{Code: 500, Message: fmt.Sprintf("failed query transactions: %s", err.Error())}
 			}
@@ -463,7 +463,7 @@ func (db *DbClient) QueryTraces(
 		}
 	}
 
-	res, addr_list, err := queryTracesImpl(query, trace_req.IncludeActions, trace_req.SupportedActionTypes, conn, settings)
+	res, addr_list, err := queryTracesImpl(query, trace_req.IncludeActions, trace_req.SupportedActionTypes, conn, settings, db.Kvrocks)
 	if err != nil {
 		log.Println(query)
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}

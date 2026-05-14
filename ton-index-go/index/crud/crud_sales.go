@@ -335,26 +335,37 @@ func queryTelemintImpl(addresses []models.AccountAddress, conn *pgxpool.Conn, se
 	return results, nil
 }
 
-func queryNFTSalesImpl(addresses []models.AccountAddress, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.NFTSale, error) {
-	// Query all three sources
-	sales, err := queryGetgemsSalesImpl(addresses, conn, settings)
-	if err != nil {
-		return nil, err
-	}
+func queryNFTSalesImpl(addresses []models.AccountAddress, conn *pgxpool.Conn, settings models.RequestSettings, store *KvrocksStore) ([]models.NFTSale, error) {
+	allRaw := []models.RawNFTSale{}
+	if store != nil {
+		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+		defer cancel_ctx()
+		var err error
+		allRaw, err = store.GetNFTSales(ctx, addresses)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Query all three sources
+		sales, err := queryGetgemsSalesImpl(addresses, conn, settings)
+		if err != nil {
+			return nil, err
+		}
 
-	auctions, err := queryGetgemsAuctionsImpl(addresses, conn, settings)
-	if err != nil {
-		return nil, err
-	}
+		auctions, err := queryGetgemsAuctionsImpl(addresses, conn, settings)
+		if err != nil {
+			return nil, err
+		}
 
-	telemint, err := queryTelemintImpl(addresses, conn, settings)
-	if err != nil {
-		return nil, err
-	}
+		telemint, err := queryTelemintImpl(addresses, conn, settings)
+		if err != nil {
+			return nil, err
+		}
 
-	// Combine all results
-	allRaw := append(sales, auctions...)
-	allRaw = append(allRaw, telemint...)
+		// Combine all results
+		allRaw = append(sales, auctions...)
+		allRaw = append(allRaw, telemint...)
+	}
 
 	// Parse to NFTSale
 	results := []models.NFTSale{}
@@ -387,7 +398,7 @@ func (db *DbClient) QueryNFTSales(
 	}
 	defer conn.Release()
 
-	res, err := queryNFTSalesImpl(sales_req.Address, conn, settings)
+	res, err := queryNFTSalesImpl(sales_req.Address, conn, settings, db.Kvrocks)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

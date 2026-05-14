@@ -71,7 +71,7 @@ func (db *DbClient) QueryActionsV2(
 		}
 	}
 	if act_req.IncludeTransactions != nil && *act_req.IncludeTransactions {
-		actions, err = queryActionsTransactionsImpl(actions, conn, settings)
+		actions, err = queryActionsTransactionsImpl(actions, conn, settings, db.Kvrocks)
 		if err != nil {
 			return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 		}
@@ -478,7 +478,7 @@ func queryRawActionsImplV2(query string, args []any, conn *pgxpool.Conn, setting
 	return res, nil
 }
 
-func queryActionsTransactionsImpl(actions []models.Action, conn *pgxpool.Conn, settings models.RequestSettings) ([]models.Action, error) {
+func queryActionsTransactionsImpl(actions []models.Action, conn *pgxpool.Conn, settings models.RequestSettings, store *KvrocksStore) ([]models.Action, error) {
 	if len(actions) == 0 {
 		return actions, nil
 	}
@@ -511,7 +511,7 @@ func queryActionsTransactionsImpl(actions []models.Action, conn *pgxpool.Conn, s
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}
 
-	txs, err := queryTransactionsImpl(query, conn, settings, queryArgs...)
+	txs, err := queryTransactionsImpl(query, conn, settings, store, queryArgs...)
 	if err != nil {
 		return nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

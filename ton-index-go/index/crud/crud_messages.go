@@ -17,6 +17,7 @@ func buildMessagesQuery(
 	lt_req models.LtRequest,
 	lim_req models.LimitRequest,
 	settings models.RequestSettings,
+	useKvrocks bool,
 ) (string, []any, error) {
 	args := []any{}
 	rest_columns := `M.trace_id, M.source, M.destination, M.value, 
@@ -105,14 +106,61 @@ func buildMessagesQuery(
 	inner_query += groupby_query
 	inner_query += orderby_query
 	inner_query += limit_query
-	query := `select MM.*, B.*, I.* from (` + inner_query + `) as MM
+	var query string
+	if useKvrocks {
+		query = `select MM.*, NULL::tonhash, NULL::text, NULL::tonhash, NULL::text from (` + inner_query + `) as MM;`
+	} else {
+		query = `select MM.*, B.*, I.* from (` + inner_query + `) as MM
 	left join message_contents as B on MM.body_hash = B.hash
 	left join message_contents as I on MM.init_state_hash = I.hash;`
+	}
 	// log.Println(query) // TODO: remove debug
 	return query, args, nil
 }
 
-func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.RequestSettings, args ...any) ([]models.Message, error) {
+func attachMessageContentsFromKvrocks(msgs []models.Message, store *KvrocksStore, settings models.RequestSettings) error {
+	if store == nil || len(msgs) == 0 {
+		return nil
+	}
+
+	hashes := make([]models.HashType, 0, len(msgs)*2)
+	for _, msg := range msgs {
+		if msg.BodyHash != nil {
+			hashes = append(hashes, *msg.BodyHash)
+		}
+		if msg.InitStateHash != nil {
+			hashes = append(hashes, *msg.InitStateHash)
+		}
+	}
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
+	defer cancel_ctx()
+	contents, err := store.GetMessageContents(ctx, hashes)
+	if err != nil {
+		return err
+	}
+
+	for idx := range msgs {
+		if msgs[idx].BodyHash != nil {
+			if content, ok := contents[*msgs[idx].BodyHash]; ok {
+				loc := *content
+				msgs[idx].MessageContent = &loc
+			}
+		}
+		if msgs[idx].InitStateHash != nil {
+			if content, ok := contents[*msgs[idx].InitStateHash]; ok {
+				loc := *content
+				msgs[idx].InitState = &loc
+			}
+		}
+	}
+	return nil
+}
+
+func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.RequestSettings, store *KvrocksStore, args ...any) ([]models.Message, error) {
 	msgs := []models.Message{}
 	{
 		ctx, cancel_ctx := context.WithTimeout(context.Background(), settings.Timeout)
@@ -140,6 +188,10 @@ func queryMessagesImpl(query string, conn *pgxpool.Conn, settings models.Request
 		}
 	}
 
+	if err := attachMessageContentsFromKvrocks(msgs, store, settings); err != nil {
+		return nil, models.IndexError{Code: 500, Message: err.Error()}
+	}
+
 	// decode opcodes and bodies
 	if err := detect.MarkMessages(msgs); err != nil {
 		hashes := make([]string, len(msgs))
@@ -159,7 +211,7 @@ func (db *DbClient) QueryMessages(
 	lim_req models.LimitRequest,
 	settings models.RequestSettings,
 ) ([]models.Message, models.AddressBook, models.Metadata, error) {
-	query, args, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req, settings)
+	query, args, err := buildMessagesQuery(msg_req, utime_req, lt_req, lim_req, settings, db.Kvrocks != nil)
 	if settings.DebugRequest {
 		log.Println("Debug query:", query)
 	}
@@ -174,7 +226,7 @@ func (db *DbClient) QueryMessages(
 	}
 	defer conn.Release()
 
-	msgs, err := queryMessagesImpl(query, conn, settings, args...)
+	msgs, err := queryMessagesImpl(query, conn, settings, db.Kvrocks, args...)
 	if err != nil {
 		return nil, nil, nil, models.IndexError{Code: 500, Message: err.Error()}
 	}

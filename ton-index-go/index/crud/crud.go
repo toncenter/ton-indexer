@@ -407,7 +407,7 @@ func (db *DbClient) QueryBalanceChanges(
 		return models.BalanceChangesResult{}, models.IndexError{Code: 400, Message: "trace_id is required"}
 	}
 
-	trace_changes, actions_changes, err := CalculateBalanceChanges(models.HashType(*trace_id), conn)
+	trace_changes, actions_changes, err := CalculateBalanceChanges(models.HashType(*trace_id), conn, db.Kvrocks)
 	if err != nil {
 		return models.BalanceChangesResult{}, models.IndexError{Code: 500, Message: err.Error()}
 	}
