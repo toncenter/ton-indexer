@@ -247,6 +247,25 @@ func getMetadata(ctx context.Context, tx pgx.Tx, task FetchTask) (map[string]int
 	return nil, fmt.Errorf("unsupported task type: %s", task.Type)
 }
 
+func getMetadataWithStore(ctx context.Context, tx pgx.Tx, kvrocks *KvrocksStore, task FetchTask) (map[string]interface{}, error) {
+	if task.MetadataOverride != nil && len(task.MetadataOverride) != 0 {
+		return task.MetadataOverride, nil
+	}
+	if kvrocks != nil {
+		metadata, err := kvrocks.GetMetadata(ctx, task)
+		if err != nil {
+			return nil, err
+		}
+		if override, exists := overrideManager.GetContentOverride(task.Type, task.Address); exists {
+			log.Printf("Applying content override for %s address %s", task.Type, task.Address)
+			metadata = override
+			metadata["_type"] = task.Type
+		}
+		return metadata, nil
+	}
+	return getMetadata(ctx, tx, task)
+}
+
 // extractURL extracts the 'url' or 'uri' from the metadata.
 func extractURL(metadata map[string]interface{}) (string, error) {
 	if url, ok := metadata["url"].(string); ok {
@@ -395,7 +414,7 @@ func fetchContent(metadata map[string]interface{}) (AddressMetadata, error) {
 	return offchain_metadata, nil
 }
 
-func processTask(ctx context.Context, pool *pgxpool.Pool, task FetchTask) (taskError error) {
+func processTask(ctx context.Context, pool *pgxpool.Pool, kvrocks *KvrocksStore, task FetchTask) (taskError error) {
 	defer gate.Release(1)
 	defer func() {
 		if r := recover(); r != nil {
@@ -422,16 +441,16 @@ func processTask(ctx context.Context, pool *pgxpool.Pool, task FetchTask) (taskE
 	}()
 
 	// Process the task within the transaction
-	metadata, err := getMetadata(ctx, tx, task)
+	metadata, err := getMetadataWithStore(ctx, tx, kvrocks, task)
 	if err != nil {
 		log.Printf("Error getting metadata for task %v: %v", task, err)
-		return handleTaskFailure(ctx, tx, task, err)
+		return handleTaskFailure(ctx, tx, kvrocks, task, err)
 	}
 
 	content, err := fetchContent(metadata)
 	if err != nil {
 		log.Printf("Error fetching content for task %v: %v", task, err)
-		return handleTaskFailure(ctx, tx, task, err)
+		return handleTaskFailure(ctx, tx, kvrocks, task, err)
 	}
 
 	// Enrich metadata with proxied images
@@ -446,23 +465,43 @@ func processTask(ctx context.Context, pool *pgxpool.Pool, task FetchTask) (taskE
 
 	reindexAllowed := !(task.MetadataOverride != nil && len(task.MetadataOverride) > 0)
 
-	_, err = tx.Exec(ctx, `INSERT INTO address_metadata (address, type, valid, name, description, image, symbol, extra, updated_at, expires_at, reindex_allowed)
+	now := time.Now()
+	if kvrocks != nil {
+		if err := kvrocks.SetAddressMetadata(ctx, addressMetadataPayload{
+			Address:        task.Address,
+			Type:           task.Type,
+			Valid:          true,
+			Name:           content.Name,
+			Description:    content.Description,
+			Image:          content.Image,
+			Symbol:         content.Symbol,
+			Extra:          content.Extra,
+			UpdatedAt:      now.Unix(),
+			ExpiresAt:      now.Add(EXPIRATION_PERIOD).Unix(),
+			ReindexAllowed: &reindexAllowed,
+		}); err != nil {
+			log.Printf("Error inserting metadata for task %v: %v", task, err)
+			return handleTaskFailure(ctx, tx, kvrocks, task, err)
+		}
+	} else {
+		_, err = tx.Exec(ctx, `INSERT INTO address_metadata (address, type, valid, name, description, image, symbol, extra, updated_at, expires_at, reindex_allowed)
     							VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (address, type) DO UPDATE SET 
     							valid = $3, name = $4, description = $5, image = $6, symbol = $7, extra = $8, updated_at = $9, expires_at = $10, reindex_allowed = $11`,
-		task.Address, task.Type, true, content.Name, content.Description, content.Image, content.Symbol, content.Extra,
-		time.Now().Unix(), time.Now().Add(EXPIRATION_PERIOD).Unix(), reindexAllowed)
-	if err != nil {
-		log.Printf("Error inserting metadata for task %v: %v", task, err)
-		return handleTaskFailure(ctx, tx, task, err)
+			task.Address, task.Type, true, content.Name, content.Description, content.Image, content.Symbol, content.Extra,
+			now.Unix(), now.Add(EXPIRATION_PERIOD).Unix(), reindexAllowed)
+		if err != nil {
+			log.Printf("Error inserting metadata for task %v: %v", task, err)
+			return handleTaskFailure(ctx, tx, kvrocks, task, err)
+		}
 	}
 	if err := completeTask(ctx, tx, task); err != nil {
 		log.Printf("Error completing task %v: %v", task, err)
-		return handleTaskFailure(ctx, tx, task, err)
+		return handleTaskFailure(ctx, tx, kvrocks, task, err)
 	}
 	return nil
 }
 
-func handleTaskFailure(ctx context.Context, tx pgx.Tx, task FetchTask, taskErr error) error {
+func handleTaskFailure(ctx context.Context, tx pgx.Tx, kvrocks *KvrocksStore, task FetchTask, taskErr error) error {
 	delay := calculateBackoffDelay(task.Retry)
 
 	if task.Retry < max_retries {
@@ -493,10 +532,27 @@ func handleTaskFailure(ctx context.Context, tx pgx.Tx, task FetchTask, taskErr e
 	}
 	extra_json, _ := json.Marshal(extra)
 
+	now := time.Now()
+	if kvrocks != nil {
+		err := kvrocks.SetAddressMetadata(ctx, addressMetadataPayload{
+			Address:   task.Address,
+			Type:      task.Type,
+			Valid:     false,
+			Extra:     extra,
+			UpdatedAt: now.Unix(),
+			ExpiresAt: now.Add(EXPIRATION_PERIOD).Unix(),
+		})
+		if err != nil {
+			log.Printf("Error inserting metadata for failed task %v: %v", task, err)
+			return err
+		}
+		return nil
+	}
+
 	_, err := tx.Exec(ctx, `INSERT INTO address_metadata (address, type, valid, name, description, image, symbol, extra, updated_at, expires_at)
 				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (address, type) DO UPDATE SET valid = $3, updated_at = $9, expires_at = $10`,
-		task.Address, task.Type, false, nil, nil, nil, nil, extra_json, time.Now().Unix(),
-		time.Now().Add(EXPIRATION_PERIOD).Unix())
+		task.Address, task.Type, false, nil, nil, nil, nil, extra_json, now.Unix(),
+		now.Add(EXPIRATION_PERIOD).Unix())
 	if err != nil {
 		log.Printf("Error inserting metadata for failed task %v: %v", task, err)
 		return err
@@ -512,7 +568,7 @@ func calculateBackoffDelay(retry int) time.Duration {
 	return delay
 }
 
-func createTables(ctx context.Context, pool *pgxpool.Pool) error {
+func createTables(ctx context.Context, pool *pgxpool.Pool, createAddressMetadata bool) error {
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to acquire connection: %v", err)
@@ -536,6 +592,10 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 
 	if err != nil {
 		return fmt.Errorf("failed to create background_tasks table: %v", err)
+	}
+
+	if !createAddressMetadata {
+		return nil
 	}
 
 	_, err = conn.Exec(ctx, `
@@ -562,7 +622,7 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-func initializeDb(ctx context.Context, pgDsn string, processes int) (*pgxpool.Pool, error) {
+func initializeDb(ctx context.Context, pgDsn string, processes int, createAddressMetadata bool) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(pgDsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse connection string: %v", err)
@@ -574,7 +634,7 @@ func initializeDb(ctx context.Context, pgDsn string, processes int) (*pgxpool.Po
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %v", err)
 	}
-	err = createTables(ctx, pool)
+	err = createTables(ctx, pool, createAddressMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -614,6 +674,12 @@ func main() {
 	var ipfs_server_url string
 	var overridesFilePath string
 	var blockedNetworksFile string
+	var kvrocks_addr string
+	var kvrocks_sentinels string
+	var kvrocks_sentinel_master string
+	var kvrocks_user string
+	var kvrocks_password string
+	var kvrocks_db int
 
 	flag.StringVar(&pg_dsn, "pg", "postgresql://localhost:5432", "PostgreSQL connection string")
 	flag.IntVar(&processes, "processes", 32, "Set number of parallel queries")
@@ -629,6 +695,12 @@ func main() {
 	flag.StringVar(&ipfs_server_url, "ipfs-server-url", "https://ipfs.io/ipfs", "Ipfs gateway server url")
 	flag.StringVar(&overridesFilePath, "overrides-file", "metadata_overrides.json", "Path to metadata overrides JSON file")
 	flag.StringVar(&blockedNetworksFile, "blocked-networks-file", "", "Path to JSON file with blocked CIDR ranges")
+	flag.StringVar(&kvrocks_addr, "kvrocks", "", "Kvrocks address or Redis URL for metadata/source reads and metadata writes")
+	flag.StringVar(&kvrocks_sentinels, "kvrocks-sentinels", "", "Comma-separated Kvrocks Sentinel addresses")
+	flag.StringVar(&kvrocks_sentinel_master, "kvrocks-sentinel-master", "", "Kvrocks Sentinel master name")
+	flag.StringVar(&kvrocks_user, "kvrocks-user", "", "Kvrocks username")
+	flag.StringVar(&kvrocks_password, "kvrocks-password", "", "Kvrocks password")
+	flag.IntVar(&kvrocks_db, "kvrocks-db", 0, "Kvrocks database number")
 	flag.Parse()
 
 	key, err := hex.DecodeString(imgproxy_key)
@@ -700,7 +772,31 @@ func main() {
 		},
 	}
 	ctx := context.Background()
-	pool, err := initializeDb(ctx, pg_dsn, processes)
+	var kvrocks_store *KvrocksStore
+	if kvrocks_addr != "" || kvrocks_sentinels != "" {
+		sentinel_addrs := []string{}
+		for _, addr := range strings.Split(kvrocks_sentinels, ",") {
+			addr = strings.TrimSpace(addr)
+			if addr != "" {
+				sentinel_addrs = append(sentinel_addrs, addr)
+			}
+		}
+		kvrocks_store, err = NewKvrocksStore(KvrocksConfig{
+			Addr:               kvrocks_addr,
+			SentinelAddrs:      sentinel_addrs,
+			SentinelMasterName: kvrocks_sentinel_master,
+			Username:           kvrocks_user,
+			Password:           kvrocks_password,
+			DB:                 kvrocks_db,
+		})
+		if err != nil {
+			log.Fatal("Error initializing kvrocks connection: ", err)
+		}
+		defer kvrocks_store.Close()
+		log.Println("Kvrocks metadata mode enabled")
+	}
+
+	pool, err := initializeDb(ctx, pg_dsn, processes, kvrocks_store == nil)
 
 	if err != nil {
 		log.Fatal("Error initializing database connection: ", err)
@@ -732,7 +828,7 @@ func main() {
 				continue
 			}
 
-			go processTask(ctx, pool, task)
+			go processTask(ctx, pool, kvrocks_store, task)
 		}
 		time.Sleep(time.Second)
 	}

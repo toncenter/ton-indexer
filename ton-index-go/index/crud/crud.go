@@ -183,17 +183,7 @@ func (db *DbClient) queryKvrocksEnrichment(addrList []string, settings models.Re
 		}
 	}
 	if !settings.NoMetadata {
-		var conn *pgxpool.Conn
-		if len(existingConn) > 0 && existingConn[0] != nil {
-			conn = existingConn[0]
-		} else {
-			conn, err = db.Pool.Acquire(context.Background())
-			if err != nil {
-				return nil, nil, models.IndexError{Code: 500, Message: err.Error()}
-			}
-			defer conn.Release()
-		}
-		metadata, err = QueryMetadataImplKvrocks(addrList, conn, settings, db.Kvrocks)
+		metadata, err = QueryMetadataImplKvrocks(addrList, settings, db.Kvrocks)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -366,12 +356,7 @@ func (db *DbClient) QueryMetadata(
 		}
 	}
 	if db.Kvrocks != nil {
-		conn, err := db.Pool.Acquire(context.Background())
-		if err != nil {
-			return nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
-		defer conn.Release()
-		return QueryMetadataImplKvrocks(raw_addr_list, conn, settings, db.Kvrocks)
+		return QueryMetadataImplKvrocks(raw_addr_list, settings, db.Kvrocks)
 	}
 	conn, err := db.Pool.Acquire(context.Background())
 	if err != nil {

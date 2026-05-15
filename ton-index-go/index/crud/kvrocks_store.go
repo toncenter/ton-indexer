@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/detect"
 	"github.com/toncenter/ton-indexer/ton-index-go/index/models"
@@ -2376,15 +2374,65 @@ type metadataKey struct {
 	typ     string
 }
 
-func QueryMetadataImplKvrocks(addrList []string, conn *pgxpool.Conn, settings models.RequestSettings, store *KvrocksStore) (models.Metadata, error) {
-	if settings.UseCache {
-		metadata, err := services.AddressInfoCacheClient.GetMetadata(addrList)
-		if err != nil {
-			log.Println("Error getting metadata from cache: ", err)
-		} else {
-			return metadata, nil
+func addressMetadataID(address string, typ string) string {
+	return strings.TrimSpace(address) + ":" + strings.TrimSpace(typ)
+}
+
+func (s *KvrocksStore) GetAddressMetadata(ctx context.Context, keys []metadataKey) (map[metadataKey]models.TokenInfo, error) {
+	ids := make([]string, 0, len(keys))
+	idToKey := make(map[string]metadataKey, len(keys))
+	seen := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		id := addressMetadataID(key.address, key.typ)
+		if id == ":" {
+			continue
+		}
+		ids = appendUniqueString(ids, seen, id)
+		idToKey[id] = key
+	}
+	payloads, err := s.getPayloads(ctx, "address_metadata", ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[metadataKey]models.TokenInfo, len(payloads))
+	for id, payload := range payloads {
+		key := idToKey[id]
+		var row struct {
+			Address     string                 `json:"address"`
+			Type        *string                `json:"type"`
+			Valid       *bool                  `json:"valid"`
+			Name        *string                `json:"name"`
+			Symbol      *string                `json:"symbol"`
+			Description *string                `json:"description"`
+			Image       *string                `json:"image"`
+			Extra       map[string]interface{} `json:"extra"`
+		}
+		if err := json.Unmarshal([]byte(payload), &row); err != nil {
+			return nil, fmt.Errorf("decode address_metadata %s: %w", id, err)
+		}
+		if row.Address == "" {
+			row.Address = key.address
+		}
+		if row.Type == nil {
+			typ := key.typ
+			row.Type = &typ
+		}
+		res[key] = models.TokenInfo{
+			Address:     row.Address,
+			Valid:       row.Valid,
+			Indexed:     true,
+			Type:        row.Type,
+			Name:        row.Name,
+			Symbol:      row.Symbol,
+			Description: row.Description,
+			Image:       row.Image,
+			Extra:       row.Extra,
 		}
 	}
+	return res, nil
+}
+
+func QueryMetadataImplKvrocks(addrList []string, settings models.RequestSettings, store *KvrocksStore) (models.Metadata, error) {
 	if store == nil {
 		return models.Metadata{}, nil
 	}
@@ -2440,40 +2488,18 @@ func QueryMetadataImplKvrocks(addrList []string, conn *pgxpool.Conn, settings mo
 		addKnown(master.Address, "jetton_masters", nil)
 	}
 
-	metadataRows := map[metadataKey]models.TokenInfo{}
-	if len(known) > 0 {
-		queryAddrs := make([]string, 0, len(known))
-		queryTypes := make([]string, 0, 3)
-		addrSeen := map[string]struct{}{}
-		typeSeen := map[string]struct{}{}
-		for key := range known {
-			queryAddrs = appendUniqueString(queryAddrs, addrSeen, key.address)
-			queryTypes = appendUniqueString(queryTypes, typeSeen, key.typ)
-		}
-		rows, err := conn.Query(ctx, `SELECT address, valid, type, name, symbol, description, image, extra
-			FROM address_metadata
-			WHERE address = ANY($1) AND type = ANY($2)`, pq.Array(queryAddrs), pq.Array(queryTypes))
-		if err != nil {
-			return nil, models.IndexError{Code: 500, Message: err.Error()}
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var row models.TokenInfo
-			if err := rows.Scan(&row.Address, &row.Valid, &row.Type, &row.Name, &row.Symbol, &row.Description, &row.Image, &row.Extra); err != nil {
-				return nil, models.IndexError{Code: 500, Message: err.Error()}
-			}
-			if row.Type == nil {
-				continue
-			}
-			key := metadataKey{address: row.Address, typ: *row.Type}
-			if knownInfo, ok := known[key]; ok {
-				row.NftIndex = knownInfo.NftIndex
-			}
-			row.Indexed = true
+	knownKeys := make([]metadataKey, 0, len(known))
+	for key := range known {
+		knownKeys = append(knownKeys, key)
+	}
+	metadataRows, err := store.GetAddressMetadata(ctx, knownKeys)
+	if err != nil {
+		return nil, err
+	}
+	for key, row := range metadataRows {
+		if knownInfo, ok := known[key]; ok {
+			row.NftIndex = knownInfo.NftIndex
 			metadataRows[key] = row
-		}
-		if rows.Err() != nil {
-			return nil, models.IndexError{Code: 500, Message: rows.Err().Error()}
 		}
 	}
 
