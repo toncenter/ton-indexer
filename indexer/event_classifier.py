@@ -19,11 +19,13 @@ from sqlalchemy import Column, Integer, String, Boolean, event, delete
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.sql import text
 
 from indexer.core import redis
+from indexer.core import kvrocks
 from indexer.core.database import Base, ActionAccount
-from indexer.core.database import engine, Trace, Transaction, Message, Action, SyncSessionMaker
+from indexer.core.database import engine, Trace, Transaction, Message, MessageContent, Action, SyncSessionMaker
 from indexer.core.settings import Settings
 from indexer.events import context
 from indexer.events.blocks.utils.address_selectors import extract_accounts_from_trace
@@ -37,7 +39,7 @@ from indexer.events.event_processing import (
 )
 from indexer.events.interface_repository import (
     EmulatedTransactionsInterfaceRepository, gather_interfaces,
-    RedisInterfaceRepository
+    gather_interfaces_from_kvrocks, KvRocksRepository
 )
 from indexer.events.pendings import start_emulated_traces_processing
 from indexer.events.trace_processor import TraceProcessor
@@ -48,6 +50,39 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = Settings()
 interface_cache: LRUCache | None = None
+
+
+async def hydrate_message_contents_from_kvrocks(traces: list[Trace]):
+    body_hashes = set()
+    init_state_hashes = set()
+    for trace in traces:
+        for tx in trace.transactions:
+            for msg in tx.messages:
+                if msg.body_hash:
+                    body_hashes.add(msg.body_hash)
+                if msg.init_state_hash:
+                    init_state_hashes.add(msg.init_state_hash)
+
+    hashes = list(body_hashes | init_state_hashes)
+    payloads = await kvrocks.get_payloads("message_contents", hashes)
+
+    for trace in traces:
+        for tx in trace.transactions:
+            for msg in tx.messages:
+                if msg.body_hash in payloads:
+                    payload = payloads[msg.body_hash]
+                    set_committed_value(
+                        msg,
+                        "message_content",
+                        MessageContent(hash=payload.get("hash") or msg.body_hash, body=payload.get("body")),
+                    )
+                if msg.init_state_hash in payloads:
+                    payload = payloads[msg.init_state_hash]
+                    set_committed_value(
+                        msg,
+                        "init_state",
+                        MessageContent(hash=payload.get("hash") or msg.init_state_hash, body=payload.get("body")),
+                    )
 
 
 def add_on_conflict_ignore(conn, cursor, statement, parameters, context, executemany):
@@ -274,14 +309,19 @@ class EventClassifierWorker(mp.Process):
                     fltr = and_(Trace.mc_seqno_end.in_(mc_seqnos),
                                 Trace.nodes_ <= self.big_traces_threshold)
                 query = select(Trace).filter(fltr)
-                tx_join = selectinload(Trace.transactions).selectinload(Transaction.messages).selectinload(Message.message_content)
-                init_state_join = selectinload(Trace.transactions).selectinload(Transaction.messages).selectinload(
-                    Message.init_state)
-                query = query.options(tx_join, init_state_join)
+                msg_join = selectinload(Trace.transactions).selectinload(Transaction.messages)
+                if kvrocks.is_enabled():
+                    query = query.options(msg_join)
+                else:
+                    tx_join = msg_join.selectinload(Message.message_content)
+                    init_state_join = msg_join.selectinload(Message.init_state)
+                    query = query.options(tx_join, init_state_join)
 
                 result = await session.execute(query)
                 traces = result.scalars().unique().all()
                 processed = len(traces)
+                if kvrocks.is_enabled():
+                    await hydrate_message_contents_from_kvrocks(traces)
 
                 # Gather interfaces for each account
                 accounts = set()
@@ -291,9 +331,11 @@ class EventClassifierWorker(mp.Process):
                     accounts.update(accs)
                     extra_data_requests.update(req)
                 await get_pools_manager(redis.client).fetch_and_update_context_pools_from_redis()
-                interfaces = await gather_interfaces(accounts, session, extra_requests=extra_data_requests)
-                repository = RedisInterfaceRepository(redis.sync_client)
-                await repository.put_interfaces(interfaces)
+                if kvrocks.is_enabled():
+                    interfaces = await gather_interfaces_from_kvrocks(accounts, extra_requests=extra_data_requests)
+                else:
+                    interfaces = await gather_interfaces(accounts, session, extra_requests=extra_data_requests)
+                repository = KvRocksRepository(interfaces)
                 context.interface_repository.set(repository)
 
                 # Process traces and save actions
@@ -535,12 +577,53 @@ if __name__ == '__main__':
                         help='Maximum number of enqueued emulated traces for processing',
                         default=100,
                         type=int)
+    parser.add_argument('--kvrocks',
+                        help='Kvrocks address or redis:// URL for point-state reads',
+                        default=settings.kvrocks,
+                        type=str)
+    parser.add_argument('--kvrocks-sentinels',
+                        help='Comma-separated Kvrocks Sentinel addresses',
+                        default=settings.kvrocks_sentinels,
+                        type=str)
+    parser.add_argument('--kvrocks-sentinel-master',
+                        help='Kvrocks Sentinel master name',
+                        default=settings.kvrocks_sentinel_master,
+                        type=str)
+    parser.add_argument('--kvrocks-sentinel-user',
+                        help='Kvrocks Sentinel username',
+                        default=settings.kvrocks_sentinel_user,
+                        type=str)
+    parser.add_argument('--kvrocks-sentinel-password',
+                        help='Kvrocks Sentinel password',
+                        default=settings.kvrocks_sentinel_password,
+                        type=str)
+    parser.add_argument('--kvrocks-user',
+                        help='Kvrocks username',
+                        default=settings.kvrocks_user,
+                        type=str)
+    parser.add_argument('--kvrocks-password',
+                        help='Kvrocks password',
+                        default=settings.kvrocks_password,
+                        type=str)
+    parser.add_argument('--kvrocks-db',
+                        help='Kvrocks DB index',
+                        default=settings.kvrocks_db,
+                        type=int)
     args = parser.parse_args()
 
     settings.emulated_traces_redis_channel = args.emulated_traces_redis_channel
     settings.emulated_traces_redis_response_channel = args.emulated_traces_redis_response_channel
     settings.emulated_traces = args.emulated_traces
     settings.use_combined_repository = args.use_combined_repository
+    settings.kvrocks = args.kvrocks
+    settings.kvrocks_sentinels = args.kvrocks_sentinels
+    settings.kvrocks_sentinel_master = args.kvrocks_sentinel_master
+    settings.kvrocks_sentinel_user = args.kvrocks_sentinel_user
+    settings.kvrocks_sentinel_password = args.kvrocks_sentinel_password
+    settings.kvrocks_user = args.kvrocks_user
+    settings.kvrocks_password = args.kvrocks_password
+    settings.kvrocks_db = args.kvrocks_db
+    kvrocks.configure_from_settings(settings)
 
     if redis.client is None:
         logger.error("Redis client not initialized. Aborting...")

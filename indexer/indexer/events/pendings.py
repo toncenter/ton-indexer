@@ -16,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 import multiprocessing as mp
 
 from indexer.core import redis
+from indexer.core import kvrocks
 from indexer.core.database import engine, FinalityState
 from indexer.core.settings import Settings
 from indexer.events import context
@@ -26,7 +27,7 @@ from indexer.events.blocks.utils.event_deserializer import deserialize_event
 from indexer.events.event_processing import process_event_async_with_postprocessing, try_classify_unknown_trace
 from indexer.events.interface_repository import (
     EmulatedTransactionsInterfaceRepository, gather_interfaces,
-    EmulatedRepositoryWithDbFallback, ExtraAccountRequest
+    gather_interfaces_from_kvrocks, EmulatedRepositoryWithDbFallback, ExtraAccountRequest
 )
 from indexer.observability import otel
 from indexer.events.trace_processor import TraceProcessor
@@ -140,6 +141,7 @@ class PendingTraceClassifierWorker(mp.Process):
         results = []
 
         all_accounts = set()
+        extra_data_requests = set()
         traces_data = {}
         trace_start_ns: Dict[str, int] = {}
 
@@ -167,7 +169,9 @@ class PendingTraceClassifierWorker(mp.Process):
                 trace = deserialize_event(trace_key, trace_map)
                 traces_data[trace_key] = (trace, trace_map)
 
-                all_accounts, extra_data_requests = extract_accounts_from_trace(trace)
+                accounts, requests = extract_accounts_from_trace(trace)
+                all_accounts.update(accounts)
+                extra_data_requests.update(requests)
             except Exception as e:
                 logger.error(f"Failed to extract accounts from trace {trace_key}: {e}")
                 results.append((trace_key, False))
@@ -288,8 +292,11 @@ class PendingTraceClassifierWorker(mp.Process):
 
         # Fetch interfaces for accounts not in cache
         if accounts_to_fetch:
-            logger.debug(f"Fetching interfaces for {len(accounts_to_fetch)} accounts from DB")
-            db_interfaces = await gather_interfaces(accounts_to_fetch, session, extra_requests=extra_requests)
+            logger.debug(f"Fetching interfaces for {len(accounts_to_fetch)} accounts")
+            if kvrocks.is_enabled():
+                db_interfaces = await gather_interfaces_from_kvrocks(accounts_to_fetch, extra_requests=extra_requests)
+            else:
+                db_interfaces = await gather_interfaces(accounts_to_fetch, session, extra_requests=extra_requests)
 
             # Update cache with new interfaces
             for account, interfaces in db_interfaces.items():

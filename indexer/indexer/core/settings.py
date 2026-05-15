@@ -17,5 +17,14 @@ class Settings(BaseSettings):
     interfaces_cache_ttl: int = 300
     use_combined_repository: bool = False
 
+    kvrocks: str = ''
+    kvrocks_sentinels: str = ''
+    kvrocks_sentinel_master: str = ''
+    kvrocks_user: str = ''
+    kvrocks_password: str = ''
+    kvrocks_sentinel_user: str = ''
+    kvrocks_sentinel_password: str = ''
+    kvrocks_db: int = 0
+
     class Config:
         env_prefix = 'ton_indexer_'
