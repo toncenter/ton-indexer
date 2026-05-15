@@ -6,6 +6,13 @@
 #   - localhost:5000 -> current primary
 #   - localhost:5001 -> replicas
 #   - localhost:7000 -> HAProxy stats
+# - 3-node cold Patroni/PostgreSQL cluster:
+#   - localhost:5010 -> current cold primary
+#   - localhost:5011 -> cold replicas
+#   - localhost:7010 -> cold HAProxy stats
+# - Hot-to-cold logical replication bootstrap:
+#   - creates publication/subscription after both schemas exist
+#   - keeps hot synchronized_standby_slots aligned with active hot replicas
 # - 3-node Kvrocks cluster with Redis Sentinel:
 #   - localhost:6666 -> kvrocks-1
 #   - localhost:6667 -> kvrocks-2
@@ -168,8 +175,14 @@ services:
                 parameters:
                   wal_level: logical
                   hot_standby: "on"
+                  hot_standby_feedback: "on"
+                  sync_replication_slots: "on"
                   max_wal_senders: 20
                   max_replication_slots: 20
+                  max_worker_processes: 32
+                  max_logical_replication_workers: 16
+                  max_sync_workers_per_subscription: 8
+                  max_active_replication_origins: 20
                   max_connections: 200
                   shared_buffers: 256MB
             initdb:
@@ -196,6 +209,16 @@ services:
                 password: "$${POSTGRES_REWIND_PASSWORD}"
             parameters:
               unix_socket_directories: /var/run/postgresql
+              wal_level: logical
+              hot_standby: "on"
+              hot_standby_feedback: "on"
+              sync_replication_slots: "on"
+              max_wal_senders: 20
+              max_replication_slots: 20
+              max_worker_processes: 32
+              max_logical_replication_workers: 16
+              max_sync_workers_per_subscription: 8
+              max_active_replication_origins: 20
 
           tags:
             nofailover: false
@@ -308,6 +331,254 @@ services:
       - "${PATRONI_BIND_ADDR:-127.0.0.1}:5001:5001"
       - "${PATRONI_BIND_ADDR:-127.0.0.1}:7000:7000"
     networks: [pgnet]
+
+  patroni-cold1:
+    <<: *patroni-common
+    container_name: patroni-cold1
+    hostname: patroni-cold1
+    environment:
+      <<: *patroni-env
+      PATRONI_SCOPE: pg18-cold-dev
+      PATRONI_NAME: patroni-cold1
+    volumes:
+      - patroni-cold1_data:/var/lib/postgresql
+    ports:
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:8011:8008"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:5443:5432"
+
+  patroni-cold2:
+    <<: *patroni-common
+    container_name: patroni-cold2
+    hostname: patroni-cold2
+    environment:
+      <<: *patroni-env
+      PATRONI_SCOPE: pg18-cold-dev
+      PATRONI_NAME: patroni-cold2
+    volumes:
+      - patroni-cold2_data:/var/lib/postgresql
+    ports:
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:8012:8008"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:5444:5432"
+
+  patroni-cold3:
+    <<: *patroni-common
+    container_name: patroni-cold3
+    hostname: patroni-cold3
+    environment:
+      <<: *patroni-env
+      PATRONI_SCOPE: pg18-cold-dev
+      PATRONI_NAME: patroni-cold3
+    volumes:
+      - patroni-cold3_data:/var/lib/postgresql
+    ports:
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:8013:8008"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:5445:5432"
+
+  haproxy-cold:
+    image: haproxy:2.9
+    container_name: haproxy-pg18-cold
+    depends_on:
+      - patroni-cold1
+      - patroni-cold2
+      - patroni-cold3
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        cat > /tmp/haproxy.cfg <<'EOF'
+        global
+            maxconn 1000
+            log stdout format raw local0
+
+        defaults
+            log global
+            mode tcp
+            retries 2
+            timeout connect 5s
+            timeout client  1h
+            timeout server  1h
+
+        listen stats
+            mode http
+            bind *:7000
+            stats enable
+            stats uri /
+
+        frontend pg_primary
+            bind *:5000
+            default_backend pg_primary_backend
+
+        backend pg_primary_backend
+            option httpchk GET /primary
+            http-check expect status 200
+            default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
+            server patroni-cold1 patroni-cold1:5432 check port 8008
+            server patroni-cold2 patroni-cold2:5432 check port 8008
+            server patroni-cold3 patroni-cold3:5432 check port 8008
+
+        frontend pg_replicas
+            bind *:5001
+            default_backend pg_replicas_backend
+
+        backend pg_replicas_backend
+            balance roundrobin
+            option httpchk GET /replica
+            http-check expect status 200
+            default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
+            server patroni-cold1 patroni-cold1:5432 check port 8008
+            server patroni-cold2 patroni-cold2:5432 check port 8008
+            server patroni-cold3 patroni-cold3:5432 check port 8008
+        EOF
+
+        exec haproxy -f /tmp/haproxy.cfg
+    ports:
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:5010:5000"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:5011:5001"
+      - "${PATRONI_BIND_ADDR:-127.0.0.1}:7010:7000"
+    networks: [pgnet]
+
+  pg-hot-cold-logical-replication:
+    image: postgres:18
+    container_name: pg-hot-cold-logical-replication
+    restart: unless-stopped
+    depends_on:
+      - haproxy
+      - haproxy-cold
+    environment:
+      POSTGRES_SUPERUSER_PASSWORD: ${PATRONI_POSTGRES_PASSWORD:?Set PATRONI_POSTGRES_PASSWORD in .env}
+      LOGICAL_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:?Set PATRONI_REPLICATION_PASSWORD in .env}
+      LOGICAL_REPLICATION_DB: ${POSTGRES_DB:-ton_index}
+    networks: [pgnet]
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        HOT_HOST=haproxy
+        HOT_PORT=5000
+        COLD_HOST=haproxy-cold
+        COLD_PORT=5000
+        DB_NAME="$${LOGICAL_REPLICATION_DB:-ton_index}"
+        SUPERUSER=postgres
+        REPLICATION_USER=logical_repl
+        PUBLICATION=ton_hot_to_cold_pub
+        SUBSCRIPTION=ton_hot_to_cold_sub
+        SUBSCRIPTION_SLOT=ton_hot_to_cold
+        TABLES="blocks shard_state transactions messages jetton_transfers jetton_burns nft_transfers traces actions action_accounts"
+        TABLES_CSV="blocks, shard_state, transactions, messages, jetton_transfers, jetton_burns, nft_transfers, traces, actions, action_accounts"
+        TABLES_VALUES="('blocks'),('shard_state'),('transactions'),('messages'),('jetton_transfers'),('jetton_burns'),('nft_transfers'),('traces'),('actions'),('action_accounts')"
+        REQUIRED_TABLES=10
+
+        psql_hot() {
+          PGPASSWORD="$${POSTGRES_SUPERUSER_PASSWORD}" psql -v ON_ERROR_STOP=1 \
+            -h "$${HOT_HOST}" -p "$${HOT_PORT}" -U "$${SUPERUSER}" -d "$${DB_NAME}" "$${@}"
+        }
+
+        psql_cold() {
+          PGPASSWORD="$${POSTGRES_SUPERUSER_PASSWORD}" psql -v ON_ERROR_STOP=1 \
+            -h "$${COLD_HOST}" -p "$${COLD_PORT}" -U "$${SUPERUSER}" -d "$${DB_NAME}" "$${@}"
+        }
+
+        wait_for_primary() {
+          local name="$$1"
+          local host="$$2"
+          local port="$$3"
+          until PGPASSWORD="$${POSTGRES_SUPERUSER_PASSWORD}" pg_isready \
+              -h "$${host}" -p "$${port}" -U "$${SUPERUSER}" -d "$${DB_NAME}" >/dev/null 2>&1; do
+            echo "Waiting for $${name} primary at $${host}:$${port}..."
+            sleep 2
+          done
+        }
+
+        existing_table_count() {
+          local side="$$1"
+          if [ "$${side}" = "hot" ]; then
+            psql_hot -Atc "SELECT count(*) FROM (VALUES $${TABLES_VALUES}) AS t(name) WHERE to_regclass('public.' || name) IS NOT NULL;"
+          else
+            psql_cold -Atc "SELECT count(*) FROM (VALUES $${TABLES_VALUES}) AS t(name) WHERE to_regclass('public.' || name) IS NOT NULL;"
+          fi
+        }
+
+        wait_for_schemas() {
+          while true; do
+            hot_count="$$(existing_table_count hot || echo 0)"
+            cold_count="$$(existing_table_count cold || echo 0)"
+            if [ "$${hot_count}" = "$${REQUIRED_TABLES}" ] && [ "$${cold_count}" = "$${REQUIRED_TABLES}" ]; then
+              return
+            fi
+            echo "Waiting for hot/cold schemas before logical replication setup: hot=$${hot_count}/$${REQUIRED_TABLES}, cold=$${cold_count}/$${REQUIRED_TABLES}"
+            sleep 5
+          done
+        }
+
+        configure_hot_slots_guard() {
+          desired="$$(psql_hot -Atc "SELECT COALESCE(string_agg(quote_ident(slot_name), ',' ORDER BY slot_name), '') FROM pg_replication_slots WHERE slot_type = 'physical' AND active AND NOT temporary;" || true)"
+          current="$$(psql_hot -Atc "SHOW synchronized_standby_slots;" || true)"
+
+          if [ "$${desired}" = "$${current}" ]; then
+            return
+          fi
+
+          if [ -n "$${desired}" ]; then
+            echo "Setting hot synchronized_standby_slots to $${desired}"
+            psql_hot -v slots="$${desired}" <<'SQL'
+        SELECT format('ALTER SYSTEM SET synchronized_standby_slots = %L', :'slots')\gexec
+        SELECT pg_reload_conf();
+        SQL
+          else
+            echo "Resetting hot synchronized_standby_slots because no active hot physical slots are visible"
+            psql_hot <<'SQL'
+        ALTER SYSTEM RESET synchronized_standby_slots;
+        SELECT pg_reload_conf();
+        SQL
+          fi
+        }
+
+        configure_hot_publication() {
+          psql_hot -v repl_password="$${LOGICAL_REPLICATION_PASSWORD}" <<SQL
+        SELECT format('CREATE ROLE $${REPLICATION_USER} WITH LOGIN REPLICATION PASSWORD %L', :'repl_password')
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$${REPLICATION_USER}')\gexec
+        ALTER ROLE $${REPLICATION_USER} WITH LOGIN REPLICATION PASSWORD :'repl_password';
+        GRANT USAGE ON SCHEMA public TO $${REPLICATION_USER};
+        GRANT SELECT ON ALL TABLES IN SCHEMA public TO $${REPLICATION_USER};
+        ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON TABLES TO $${REPLICATION_USER};
+        ALTER DEFAULT PRIVILEGES FOR ROLE admin IN SCHEMA public GRANT SELECT ON TABLES TO $${REPLICATION_USER};
+
+        SELECT 'CREATE PUBLICATION $${PUBLICATION} FOR TABLE $${TABLES_CSV} WITH (publish_via_partition_root = true)'
+        WHERE NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = '$${PUBLICATION}')\gexec
+        ALTER PUBLICATION $${PUBLICATION} SET TABLE $${TABLES_CSV};
+        ALTER PUBLICATION $${PUBLICATION} SET (publish_via_partition_root = true);
+        SQL
+        }
+
+        configure_cold_subscription() {
+          subscription_exists="$$(psql_cold -Atc "SELECT 1 FROM pg_subscription WHERE subname = '$${SUBSCRIPTION}';")"
+          if [ "$${subscription_exists}" = "1" ]; then
+            psql_cold <<SQL
+        ALTER SUBSCRIPTION $${SUBSCRIPTION} ENABLE;
+        ALTER SUBSCRIPTION $${SUBSCRIPTION} REFRESH PUBLICATION WITH (copy_data = false);
+        SQL
+            return
+          fi
+
+          psql_cold -v repl_password="$${LOGICAL_REPLICATION_PASSWORD}" <<SQL
+        SELECT format(
+          'CREATE SUBSCRIPTION $${SUBSCRIPTION} CONNECTION %L PUBLICATION $${PUBLICATION} WITH (slot_name = %L, create_slot = true, enabled = true, copy_data = true, failover = true)',
+          'host=$${HOT_HOST} port=$${HOT_PORT} dbname=$${DB_NAME} user=$${REPLICATION_USER} password=' || :'repl_password',
+          '$${SUBSCRIPTION_SLOT}'
+        )\gexec
+        SQL
+        }
+
+        while true; do
+          wait_for_primary hot "$${HOT_HOST}" "$${HOT_PORT}"
+          wait_for_primary cold "$${COLD_HOST}" "$${COLD_PORT}"
+
+          configure_hot_slots_guard || true
+          wait_for_schemas
+          configure_hot_publication
+          configure_cold_subscription
+
+          echo "Hot-to-cold logical replication is configured. Rechecking HA slot guard in 30s."
+          sleep 30
+        done
 
   kvrocks-1:
     <<: *kvrocks-common
@@ -546,6 +817,9 @@ volumes:
   patroni1_data:
   patroni2_data:
   patroni3_data:
+  patroni-cold1_data:
+  patroni-cold2_data:
+  patroni-cold3_data:
   kvrocks1-data:
   kvrocks2-data:
   kvrocks3-data:

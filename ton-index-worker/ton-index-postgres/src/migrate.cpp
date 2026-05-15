@@ -140,6 +140,10 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
     pqxx::work txn(c);
 
     std::string query = "";
+    auto add_default_partition = [&](const std::string& table_name) {
+      query += "create table if not exists " + table_name + "_default partition of " + table_name + " default;\n";
+    };
+
     query += (
       "create table if not exists blocks ("
       "workchain integer not null, "
@@ -147,7 +151,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "seqno integer not null, "
       "root_hash tonhash, "
       "file_hash tonhash, "
-      "mc_block_seqno integer, "
+      "mc_block_seqno integer not null, "
       "global_id integer, "
       "version integer, "
       "after_merge boolean, "
@@ -171,8 +175,9 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "created_by tonhash, "
       "tx_count integer, "
       "prev_blocks blockid[], "
-      "primary key (workchain, shard, seqno));\n"
+      "primary key (workchain, shard, seqno, mc_block_seqno)) partition by range (mc_block_seqno);\n"
     );
+    add_default_partition("blocks");
 
     query += (
       "create table if not exists shard_state ("
@@ -180,8 +185,9 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "workchain integer not null, "
       "shard bigint not null, "
       "seqno integer not null, "
-      "primary key (mc_seqno, workchain, shard, seqno));"
+      "primary key (workchain, shard, seqno, mc_seqno)) partition by range (mc_seqno);\n"
     );
+    add_default_partition("shard_state");
 
     query += (
       "create table if not exists transactions ("
@@ -191,7 +197,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "block_workchain integer, "
       "block_shard bigint, "
       "block_seqno integer, "
-      "mc_block_seqno integer, "
+      "mc_block_seqno integer not null, "
       "trace_id tonhash, "
       "prev_trans_hash tonhash, "
       "prev_trans_lt bigint, "
@@ -254,15 +260,17 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "split_info_acc_split_depth int, "
       "split_info_this_addr tonaddr, "
       "split_info_sibling_addr tonaddr, "
-      "primary key (hash, lt), "
-      "foreign key (block_workchain, block_shard, block_seqno) references blocks);\n"
+      "primary key (hash, lt, mc_block_seqno), "
+      "foreign key (block_workchain, block_shard, block_seqno, mc_block_seqno) "
+      "references blocks(workchain, shard, seqno, mc_block_seqno)) partition by range (mc_block_seqno);\n"
     );
+    add_default_partition("transactions");
 
     query += (
       "create table if not exists messages ("
       "tx_hash tonhash, "
       "tx_lt bigint, "
-      "mc_seqno integer, "
+      "mc_seqno integer not null, "
       "msg_hash tonhash, "
       "msg_hash_norm tonhash, "
       "direction msg_direction, "
@@ -283,9 +291,11 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "import_fee bigint, "
       "body_hash tonhash, "
       "init_state_hash tonhash, "
-      "primary key (tx_hash, tx_lt, msg_hash, direction), "
-      "foreign key (tx_hash, tx_lt) references transactions);\n"
+      "primary key (tx_hash, tx_lt, msg_hash, direction, mc_seqno), "
+      "foreign key (tx_hash, tx_lt, mc_seqno) references transactions(hash, lt, mc_block_seqno)) "
+      "partition by range (mc_seqno);\n"
     );
+    add_default_partition("messages");
 
     query += (
       "create table if not exists message_contents ("
@@ -357,7 +367,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "tx_lt bigint not null, "
       "tx_now integer not null, "
       "tx_aborted boolean not null, "
-      "mc_seqno integer, "
+      "mc_seqno integer not null, "
       "query_id numeric, "
       "nft_item_address tonaddr, "
       "nft_item_index numeric, "
@@ -369,9 +379,11 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "forward_amount numeric, "
       "forward_payload text, "
       "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt), "
-      "foreign key (tx_hash, tx_lt) references transactions);\n"
+      "primary key (tx_hash, tx_lt, mc_seqno), "
+      "foreign key (tx_hash, tx_lt, mc_seqno) references transactions(hash, lt, mc_block_seqno)) "
+      "partition by range (mc_seqno);\n"
     );
+    add_default_partition("nft_transfers");
 
     query += (
       "create table if not exists jetton_masters ("
@@ -417,7 +429,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "tx_lt bigint not null, "
       "tx_now integer not null, "
       "tx_aborted boolean not null, "
-      "mc_seqno integer, "
+      "mc_seqno integer not null, "
       "query_id numeric, "
       "owner tonaddr, "
       "jetton_wallet_address tonaddr, "
@@ -426,9 +438,11 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "response_destination tonaddr, "
       "custom_payload text, "
       "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt), "
-      "foreign key (tx_hash, tx_lt) references transactions);\n"
+      "primary key (tx_hash, tx_lt, mc_seqno), "
+      "foreign key (tx_hash, tx_lt, mc_seqno) references transactions(hash, lt, mc_block_seqno)) "
+      "partition by range (mc_seqno);\n"
     );
+    add_default_partition("jetton_burns");
 
     query += (
       "create table if not exists jetton_transfers ("
@@ -436,7 +450,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "tx_lt bigint not null, "
       "tx_now integer not null, "
       "tx_aborted boolean not null, "
-      "mc_seqno integer, "
+      "mc_seqno integer not null, "
       "query_id numeric, "
       "amount numeric, "
       "source tonaddr, "
@@ -448,9 +462,11 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "forward_ton_amount numeric, "
       "forward_payload text, "
       "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt), "
-      "foreign key (tx_hash, tx_lt) references transactions);\n"
+      "primary key (tx_hash, tx_lt, mc_seqno), "
+      "foreign key (tx_hash, tx_lt, mc_seqno) references transactions(hash, lt, mc_block_seqno)) "
+      "partition by range (mc_seqno);\n"
     );
+    add_default_partition("jetton_transfers");
 
     query += (
       "create table if not exists getgems_nft_sales ("
@@ -532,11 +548,11 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
 
     query += (
       "create table if not exists traces ("
-      "trace_id tonhash not null primary key, "
+      "trace_id tonhash not null, "
       "external_hash tonhash, "
       "external_hash_norm tonhash, "
       "mc_seqno_start integer, "
-      "mc_seqno_end integer, "
+      "mc_seqno_end integer not null, "
       "start_lt bigint, "
       "start_utime integer, "
       "end_lt bigint, "
@@ -545,9 +561,11 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "pending_edges_ bigint, "
       "edges_ bigint, "
       "nodes_ bigint, "
-      "classification_state trace_classification_state default 'unclassified'"
-      ");\n"
+      "classification_state trace_classification_state default 'unclassified', "
+      "primary key (trace_id, mc_seqno_end)"
+      ") partition by range (mc_seqno_end);\n"
     );
+    add_default_partition("traces");
     
     query += (
       "create table if not exists actions ("
@@ -586,7 +604,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "trace_external_hash_norm tonhash, "
       "trace_end_utime integer, "
       "mc_seqno_end integer, "
-      "trace_mc_seqno_end integer, "
+      "trace_mc_seqno_end integer not null, "
       "multisig_create_order_data multisig_create_order_details, "
       "multisig_approve_data multisig_approve_details, "
       "multisig_execute_data multisig_execute_details, "
@@ -600,9 +618,10 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "parent_action_id varchar, "
       "ancestor_type varchar[] default '{}', "
       "value_extra_currencies jsonb default '{}'::jsonb, "
-      "primary key (trace_id, action_id)"
-      ") with (autovacuum_vacuum_scale_factor = 0.03);\n"
+      "primary key (trace_id, action_id, trace_mc_seqno_end)"
+      ") partition by range (trace_mc_seqno_end);\n"
     );
+    add_default_partition("actions");
 
     query += (
       "create table if not exists action_accounts ("
@@ -612,11 +631,12 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "trace_end_lt bigint not null, "
       "action_end_lt bigint not null, "
       "trace_end_utime integer, "
-      "trace_mc_seqno_end integer, "
+      "trace_mc_seqno_end integer not null, "
       "action_end_utime bigint, "
-      "primary key (account, trace_end_lt, trace_id, action_end_lt, action_id)"
-      ") with (autovacuum_vacuum_scale_factor = 0.03);\n"
+      "primary key (account, trace_end_lt, trace_id, action_end_lt, action_id, trace_mc_seqno_end)"
+      ") partition by range (trace_mc_seqno_end);\n"
     );
+    add_default_partition("action_accounts");
 
     query += (
       "create table if not exists dns_entries ("

@@ -3845,7 +3845,7 @@ void InsertBatchPostgres::insert_traces(pqxx::work &txn, bool with_copy) {
 
   PopulateTableStream stream(txn, "traces", columns, 1000, with_copy);
   if (!with_copy) {
-    stream.setConflictDoUpdate({"trace_id"}, "traces.end_lt < EXCLUDED.end_lt");
+    stream.setConflictDoUpdate({"trace_id", "mc_seqno_end"}, "traces.end_lt < EXCLUDED.end_lt");
   }
 
   for (const auto& row : prepared_batch_->traces) {
