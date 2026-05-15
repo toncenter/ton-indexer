@@ -454,15 +454,20 @@ void InsertManagerClickhouse::Credential::set_conn_str(const std::string& conn_s
   }
   auto pos4 = host_port.find('/');
   if (pos4 != std::string::npos) {
-    dbname = host_port.substr(pos4 + 1);
+    auto db = host_port.substr(pos4 + 1);
+    if (!db.empty()) {
+        dbname = std::move(db);
+    } else {
+        dbname = "default";
+    }
     host_port = host_port.substr(0, pos4);
-  } else {
-    dbname = "default";
   }
   auto pos5 = host_port.find(':');
   if (pos5 != std::string::npos) {
     host = host_port.substr(0, pos5);
     port = std::stoi(host_port.substr(pos5 + 1));
+  } else {
+      host = std::move(host_port);
   }
   LOG(ERROR) << "Parsed Clickhouse connection string: host=" << host
              << ", port=" << port << ", user=" << user
