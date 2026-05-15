@@ -2,10 +2,10 @@
 #include <memory>
 #include <queue>
 #include <utility>
-#include <pqxx/pqxx>
+#include <cstdint>
 #include "InsertManagerBase.h"
 #include "KvrocksClient.h"
-
+#include "PartitionManagerPostgres.h"
 
 class InsertBatchPostgres;
 
@@ -25,6 +25,7 @@ public:
 private:
   Credential credential_;
   KvrocksConfig kvrocks_config_;
+  PartitionManagerConfig partition_config_;
   std::shared_ptr<sw::redis::Redis> kvrocks_;
   td::actor::ActorOwn<> leader_heartbeat_;
   std::string worker_id_;
@@ -32,8 +33,8 @@ private:
   std::int32_t latest_states_prepare_parallelism_{4};
   std::int32_t latest_states_prepare_chunk_size_{128};
 public:
-  InsertManagerPostgres(Credential credential, KvrocksConfig kvrocks_config = {}) :
-    credential_(credential), kvrocks_config_(std::move(kvrocks_config)) {}
+  InsertManagerPostgres(Credential credential, KvrocksConfig kvrocks_config = {}, PartitionManagerConfig partition_config = {}) :
+    credential_(credential), kvrocks_config_(std::move(kvrocks_config)), partition_config_(partition_config) {}
 
   void start_up() override;
 

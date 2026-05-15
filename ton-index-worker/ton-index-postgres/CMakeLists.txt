@@ -5,6 +5,7 @@ add_executable(ton-index-postgres
     src/InsertManagerPostgres.cpp
     src/IndexScheduler.cpp
     src/KvrocksClient.cpp
+    src/PartitionManagerPostgres.cpp
 )
 
 target_include_directories(ton-index-postgres

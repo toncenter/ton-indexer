@@ -7,13 +7,17 @@
 #include "version.h"
 #include "postgresql_tools.h"
 
+#include <algorithm>
 #include <array>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <string_view>
 #include <tuple>
 #include <unordered_set>
+#include <vector>
 
 
 class PostgresLeaderHeartbeat: public td::actor::Actor {
@@ -88,11 +92,13 @@ public:
                       td::Promise<InsertManagerInterface::InsertResult> promise,
                       std::int32_t max_data_depth = 12,
                       std::int32_t latest_states_prepare_parallelism = 4,
-                      std::int32_t latest_states_prepare_chunk_size = 128) :
+                      std::int32_t latest_states_prepare_chunk_size = 128,
+                      PartitionManagerConfig partition_config = {}) :
     credential_(std::move(credential)), kvrocks_(std::move(kvrocks)), leader_heartbeat_(leader_heartbeat), worker_id_(std::move(worker_id)),
     insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth),
     latest_states_prepare_parallelism_(latest_states_prepare_parallelism),
-    latest_states_prepare_chunk_size_(latest_states_prepare_chunk_size) {
+    latest_states_prepare_chunk_size_(latest_states_prepare_chunk_size),
+    partition_config_(partition_config) {
       // sorting in descending seqno order for easier processing of interfaces
       std::sort(insert_tasks_.begin(), insert_tasks_.end(), [](const auto& a, const auto& b) {
         return a.mc_seqno_ > b.mc_seqno_;
@@ -112,6 +118,7 @@ private:
   std::int32_t max_data_depth_;
   std::int32_t latest_states_prepare_parallelism_;
   std::int32_t latest_states_prepare_chunk_size_;
+  PartitionManagerConfig partition_config_;
   bool with_copy_{true};
   bool is_leader_{false};
   std::optional<LeaderHeartbeatGuard> leader_heartbeat_guard_;
@@ -162,6 +169,9 @@ private:
   void acquire_leader_heartbeat();
   void release_leader_heartbeat();
   void ensure_inserted();
+  std::optional<std::pair<std::uint32_t, std::uint32_t>> get_batch_seqno_range() const;
+  void ensure_batch_partitions(pqxx::connection& c);
+  void drop_old_partitions_after_commit(pqxx::connection& c);
 };
 
 std::string content_to_json_string(const std::map<std::string, std::string> &content) {
@@ -2848,6 +2858,49 @@ void InsertBatchPostgres::ensure_inserted() {
   }
 }
 
+std::optional<std::pair<std::uint32_t, std::uint32_t>> InsertBatchPostgres::get_batch_seqno_range() const {
+  if (insert_tasks_.empty()) {
+    return std::nullopt;
+  }
+
+  std::uint32_t min_seqno = insert_tasks_.front().mc_seqno_;
+  std::uint32_t max_seqno = insert_tasks_.front().mc_seqno_;
+  for (const auto& task : insert_tasks_) {
+    min_seqno = std::min(min_seqno, task.mc_seqno_);
+    max_seqno = std::max(max_seqno, task.mc_seqno_);
+  }
+  return std::make_pair(min_seqno, max_seqno);
+}
+
+void InsertBatchPostgres::ensure_batch_partitions(pqxx::connection& c) {
+  if (!partition_config_.enabled) {
+    return;
+  }
+  auto seqno_range = get_batch_seqno_range();
+  if (!seqno_range.has_value()) {
+    return;
+  }
+  PartitionManagerPostgres partition_manager(partition_config_);
+  partition_manager.ensure_partitions(c, seqno_range->first, seqno_range->second);
+}
+
+void InsertBatchPostgres::drop_old_partitions_after_commit(pqxx::connection& c) {
+  if (!partition_config_.enabled || partition_config_.retention_mc_seqnos == 0) {
+    return;
+  }
+  auto seqno_range = get_batch_seqno_range();
+  if (!seqno_range.has_value()) {
+    return;
+  }
+
+  try {
+    PartitionManagerPostgres partition_manager(partition_config_);
+    partition_manager.drop_old_partitions(c, seqno_range->second);
+  } catch (const std::exception& e) {
+    LOG(WARNING) << "Failed to drop old Postgres hot partitions: " << e.what();
+  }
+}
+
 void InsertBatchPostgres::do_insert() {
   bool preparing = false;
   try {
@@ -2859,6 +2912,7 @@ void InsertBatchPostgres::do_insert() {
       return;
     }
     acquire_leader_heartbeat();
+    ensure_batch_partitions(c);
 
     if (!prepared_batch_) {
       preparing = true;
@@ -3050,6 +3104,8 @@ void InsertBatchPostgres::commit_prepared_batch() {
   ensure_still_leader(txn, worker_id_);
   txn.commit();
   commit_timer.pause();
+
+  drop_old_partitions_after_commit(c);
 
   for (auto& task : insert_tasks_) {
     task.promise_.set_result(get_insert_result());
@@ -3908,6 +3964,13 @@ void InsertManagerPostgres::start_up() {
   } else {
     LOG(INFO) << "Kvrocks connection is not configured; Postgres-only state writes remain enabled";
   }
+
+  if (partition_config_.enabled) {
+    LOG(INFO) << "Postgres hot partition management enabled: partition_size_mc_seqnos="
+              << partition_config_.partition_size_mc_seqnos
+              << ", retention_mc_seqnos=" << partition_config_.retention_mc_seqnos
+              << ", precreate_count=" << partition_config_.precreate_count;
+  }
   
   worker_id_ = get_worker_id();
   leader_heartbeat_ = td::actor::create_actor<PostgresLeaderHeartbeat>(
@@ -3947,7 +4010,8 @@ void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> in
       std::move(promise),
       max_data_depth_,
       latest_states_prepare_parallelism_,
-      latest_states_prepare_chunk_size_).release();
+      latest_states_prepare_chunk_size_,
+      partition_config_).release();
 }
 
 void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno) {

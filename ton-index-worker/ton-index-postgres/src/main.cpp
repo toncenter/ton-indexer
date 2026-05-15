@@ -14,6 +14,7 @@
 #include "EventProcessor.h"
 #include "IndexScheduler.h"
 
+#include <limits>
 
 int main(int argc, char *argv[]) {
   SET_VERBOSITY_LEVEL(verbosity_INFO);
@@ -41,6 +42,7 @@ int main(int argc, char *argv[]) {
   bool run_migrations = true;
   InsertManagerPostgres::Credential credential;
   KvrocksConfig kvrocks_config;
+  PartitionManagerConfig partition_config;
   bool testnet = false;
 
   std::uint32_t max_active_tasks = 7;
@@ -140,6 +142,73 @@ int main(int argc, char *argv[]) {
   });
   p.add_option('\0', "kvrocks-sentinel-password", "Kvrocks Sentinel password", [&](td::Slice value) {
     kvrocks_config.sentinel_password = value.str();
+  });
+
+  p.add_option('\0', "pg-manage-partitions", "Manage hot PostgreSQL range partitions for historical tables", [&]() {
+    partition_config.enabled = true;
+  });
+  p.add_checked_option('\0', "pg-partition-size-mc-seqnos", "PostgreSQL partition size in masterchain seqnos", [&](td::Slice value) {
+    std::uint64_t v;
+    std::size_t parsed = 0;
+    auto raw = value.str();
+    if (raw.empty() || raw[0] == '-') {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-size-mc-seqnos: must be positive");
+    }
+    try {
+      v = std::stoull(raw, &parsed);
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-size-mc-seqnos: not a number");
+    }
+    if (parsed != raw.size()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-size-mc-seqnos: not a number");
+    }
+    if (v == 0 || v > std::numeric_limits<std::uint32_t>::max()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-size-mc-seqnos: must be between 1 and uint32 max");
+    }
+    partition_config.partition_size_mc_seqnos = static_cast<std::uint32_t>(v);
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "pg-partition-retention-mc-seqnos", "PostgreSQL hot partition retention in masterchain seqnos; 0 disables dropping", [&](td::Slice value) {
+    std::uint64_t v;
+    std::size_t parsed = 0;
+    auto raw = value.str();
+    if (raw.empty() || raw[0] == '-') {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-retention-mc-seqnos: must be non-negative");
+    }
+    try {
+      v = std::stoull(raw, &parsed);
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-retention-mc-seqnos: not a number");
+    }
+    if (parsed != raw.size()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-retention-mc-seqnos: not a number");
+    }
+    if (v > std::numeric_limits<std::uint32_t>::max()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-retention-mc-seqnos: must fit uint32");
+    }
+    partition_config.retention_mc_seqnos = static_cast<std::uint32_t>(v);
+    return td::Status::OK();
+  });
+  p.add_checked_option('\0', "pg-partition-precreate-count", "Number of future PostgreSQL partitions to precreate", [&](td::Slice value) {
+    std::uint64_t v;
+    std::size_t parsed = 0;
+    auto raw = value.str();
+    if (raw.empty() || raw[0] == '-') {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-precreate-count: must be non-negative");
+    }
+    try {
+      v = std::stoull(raw, &parsed);
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-precreate-count: not a number");
+    }
+    if (parsed != raw.size()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-precreate-count: not a number");
+    }
+    if (v > std::numeric_limits<std::uint32_t>::max()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --pg-partition-precreate-count: must fit uint32");
+    }
+    partition_config.precreate_count = static_cast<std::uint32_t>(v);
+    return td::Status::OK();
   });
 
   p.add_option('\0', "testnet", "Use for testnet. It is used for correct indexing of .ton DNS entries (in testnet .ton collection has a different address)", [&]() {
@@ -365,7 +434,9 @@ int main(int argc, char *argv[]) {
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
-  scheduler.run_in_context([&] { insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential, kvrocks_config); });
+  scheduler.run_in_context([&] {
+    insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential, kvrocks_config, partition_config);
+  });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir + "/secondary_logs"); });
 

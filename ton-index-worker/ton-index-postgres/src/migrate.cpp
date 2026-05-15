@@ -260,9 +260,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "split_info_acc_split_depth int, "
       "split_info_this_addr tonaddr, "
       "split_info_sibling_addr tonaddr, "
-      "primary key (hash, lt, mc_block_seqno), "
-      "foreign key (block_workchain, block_shard, block_seqno, mc_block_seqno) "
-      "references blocks(workchain, shard, seqno, mc_block_seqno)) partition by range (mc_block_seqno);\n"
+      "primary key (hash, lt, mc_block_seqno)) partition by range (mc_block_seqno);\n"
     );
     add_default_partition("transactions");
 
@@ -291,8 +289,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "import_fee bigint, "
       "body_hash tonhash, "
       "init_state_hash tonhash, "
-      "primary key (tx_hash, tx_lt, msg_hash, direction, mc_seqno), "
-      "foreign key (tx_hash, tx_lt, mc_seqno) references transactions(hash, lt, mc_block_seqno)) "
+      "primary key (tx_hash, tx_lt, msg_hash, direction, mc_seqno)) "
       "partition by range (mc_seqno);\n"
     );
     add_default_partition("messages");
@@ -379,8 +376,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "forward_amount numeric, "
       "forward_payload text, "
       "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt, mc_seqno), "
-      "foreign key (tx_hash, tx_lt, mc_seqno) references transactions(hash, lt, mc_block_seqno)) "
+      "primary key (tx_hash, tx_lt, mc_seqno)) "
       "partition by range (mc_seqno);\n"
     );
     add_default_partition("nft_transfers");
@@ -438,8 +434,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "response_destination tonaddr, "
       "custom_payload text, "
       "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt, mc_seqno), "
-      "foreign key (tx_hash, tx_lt, mc_seqno) references transactions(hash, lt, mc_block_seqno)) "
+      "primary key (tx_hash, tx_lt, mc_seqno)) "
       "partition by range (mc_seqno);\n"
     );
     add_default_partition("jetton_burns");
@@ -462,8 +457,7 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "forward_ton_amount numeric, "
       "forward_payload text, "
       "trace_id tonhash, "
-      "primary key (tx_hash, tx_lt, mc_seqno), "
-      "foreign key (tx_hash, tx_lt, mc_seqno) references transactions(hash, lt, mc_block_seqno)) "
+      "primary key (tx_hash, tx_lt, mc_seqno)) "
       "partition by range (mc_seqno);\n"
     );
     add_default_partition("jetton_transfers");
