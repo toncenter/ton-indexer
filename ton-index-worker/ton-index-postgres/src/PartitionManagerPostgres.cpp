@@ -29,6 +29,14 @@ struct PartitionRange {
   std::uint64_t end;
 };
 
+struct PartitionToDrop {
+  std::string name;
+  PartitionRange range;
+};
+
+constexpr int partition_manager_lock_namespace = 0x544f4e;  // "TON"
+constexpr int partition_manager_lock_id = 0x50415254;        // "PART"
+
 constexpr std::array<TableSpec, 10> create_order{{
     {"blocks", "mc_block_seqno"},
     {"shard_state", "mc_seqno"},
@@ -43,16 +51,16 @@ constexpr std::array<TableSpec, 10> create_order{{
 }};
 
 constexpr std::array<TableSpec, 10> drop_order{{
+    {"blocks", "mc_block_seqno"},
+    {"shard_state", "mc_seqno"},
+    {"transactions", "mc_block_seqno"},
     {"messages", "mc_seqno"},
     {"jetton_transfers", "mc_seqno"},
     {"jetton_burns", "mc_seqno"},
     {"nft_transfers", "mc_seqno"},
-    {"transactions", "mc_block_seqno"},
-    {"blocks", "mc_block_seqno"},
-    {"shard_state", "mc_seqno"},
-    {"action_accounts", "trace_mc_seqno_end"},
-    {"actions", "trace_mc_seqno_end"},
     {"traces", "mc_seqno_end"},
+    {"actions", "trace_mc_seqno_end"},
+    {"action_accounts", "trace_mc_seqno_end"},
 }};
 
 std::string qualified_name(std::string_view name) {
@@ -179,6 +187,22 @@ std::unordered_set<std::string> get_existing_partitions(pqxx::work& txn, std::st
   return result;
 }
 
+void acquire_partition_manager_lock(pqxx::work& txn) {
+  auto result = txn.exec(
+      "SELECT pg_advisory_xact_lock($1::integer, $2::integer)",
+      pqxx::params{partition_manager_lock_namespace, partition_manager_lock_id});
+  if (result.empty()) {
+    throw std::runtime_error("Failed to acquire Postgres partition manager advisory lock");
+  }
+}
+
+bool try_acquire_partition_manager_lock(pqxx::work& txn) {
+  auto [locked] = txn.exec(
+      "SELECT pg_try_advisory_xact_lock($1::integer, $2::integer)",
+      pqxx::params{partition_manager_lock_namespace, partition_manager_lock_id}).one_row().as<bool>();
+  return locked;
+}
+
 }  // namespace
 
 void PartitionManagerPostgres::ensure_partitions(pqxx::connection& c, std::uint32_t min_seqno,
@@ -200,6 +224,8 @@ void PartitionManagerPostgres::ensure_partitions(pqxx::connection& c, std::uint3
   const std::uint64_t last_start = last_batch_start + partition_size * future_partitions;
 
   pqxx::work txn(c);
+  acquire_partition_manager_lock(txn);
+
   std::stringstream query;
   std::size_t created_count = 0;
   std::size_t skipped_count = 0;
@@ -262,10 +288,18 @@ void PartitionManagerPostgres::drop_old_partitions(pqxx::connection& c, std::uin
 
   const auto drop_before = static_cast<std::uint64_t>(current_seqno) - config_.retention_mc_seqnos;
   pqxx::work txn(c);
+  if (!try_acquire_partition_manager_lock(txn)) {
+    LOG(INFO) << "Skipping old Postgres hot partition drop because another partition manager is active";
+    txn.commit();
+    return;
+  }
+  txn.exec("SET LOCAL lock_timeout = '250ms'").no_rows();
+
   std::stringstream query;
   std::size_t dropped_count = 0;
   for (const auto& table : drop_order) {
     auto existing = get_existing_partitions(txn, table.name);
+    std::vector<PartitionToDrop> partitions_to_drop;
     for (const auto& name : existing) {
       auto range = parse_partition_name(table.name, name);
       if (!range.has_value()) {
@@ -274,7 +308,16 @@ void PartitionManagerPostgres::drop_old_partitions(pqxx::connection& c, std::uin
       if (range->second > drop_before) {
         continue;
       }
-      query << "DROP TABLE IF EXISTS " << qualified_name(name) << ";\n";
+      partitions_to_drop.push_back({
+          .name = name,
+          .range = {.start = range->first, .end = range->second},
+      });
+    }
+    std::sort(partitions_to_drop.begin(), partitions_to_drop.end(), [](const auto& lhs, const auto& rhs) {
+      return std::tie(lhs.range.start, lhs.range.end, lhs.name) < std::tie(rhs.range.start, rhs.range.end, rhs.name);
+    });
+    for (const auto& partition : partitions_to_drop) {
+      query << "DROP TABLE IF EXISTS " << qualified_name(partition.name) << ";\n";
       ++dropped_count;
     }
   }
