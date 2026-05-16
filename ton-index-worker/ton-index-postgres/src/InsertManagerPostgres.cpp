@@ -2888,14 +2888,10 @@ void InsertBatchPostgres::drop_old_partitions_after_commit(pqxx::connection& c) 
   if (!partition_config_.enabled || partition_config_.retention_mc_seqnos == 0) {
     return;
   }
-  auto seqno_range = get_batch_seqno_range();
-  if (!seqno_range.has_value()) {
-    return;
-  }
 
   try {
     PartitionManagerPostgres partition_manager(partition_config_);
-    partition_manager.drop_old_partitions(c, seqno_range->second);
+    partition_manager.drop_old_partitions(c);
   } catch (const std::exception& e) {
     LOG(WARNING) << "Failed to drop old Postgres hot partitions: " << e.what();
   }
@@ -4034,5 +4030,79 @@ void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uin
     promise.set_result(std::move(existing_mc_seqnos));
   } catch (const std::exception &e) {
     promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error selecting from PG: " << e.what()));
+  }
+}
+
+void InsertManagerPostgres::ensure_resume_state_initialized(td::Promise<bool> promise, std::int32_t from_seqno) {
+  LOG(INFO) << "Ensuring Postgres resume state is initialized";
+  try {
+    pqxx::connection c(credential_.get_connection_string());
+    pqxx::work txn(c);
+    constexpr std::int32_t first_indexable_mc_seqno = 1;
+    const auto initial_from_seqno = from_seqno >= first_indexable_mc_seqno ? from_seqno : first_indexable_mc_seqno;
+    const auto initial_finalized_seqno = initial_from_seqno - 1;
+    auto inserted = txn.exec(
+        "INSERT INTO ton_indexer_progress(id, finalized_mc_seqno, updated_at) "
+        "VALUES (1, $1, NOW()) "
+        "ON CONFLICT (id) DO NOTHING "
+        "RETURNING id",
+        pqxx::params{initial_finalized_seqno});
+    txn.commit();
+
+    const auto initialized = !inserted.empty();
+    if (initialized) {
+      LOG(INFO) << "Initialized Postgres resume state with finalized_mc_seqno " << initial_finalized_seqno;
+    }
+    promise.set_result(initialized);
+  } catch (const std::exception &e) {
+    promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error initializing Postgres resume state: " << e.what()));
+  }
+}
+
+// Returns the next seqno for normal indexing. The first process that sees an
+// empty ton_indexer_progress table seeds it from --from; later restarts always
+// resume from the persisted finalized_mc_seqno + 1 and do not trust --from.
+void InsertManagerPostgres::get_resume_seqno(td::Promise<InsertManagerInterface::ResumeState> promise,
+                                             std::int32_t from_seqno, std::int32_t to_seqno) {
+  LOG(INFO) << "Reading Postgres resume seqno";
+  try {
+    pqxx::connection c(credential_.get_connection_string());
+    pqxx::work txn(c);
+    constexpr std::int32_t first_indexable_mc_seqno = 1;
+    const auto initial_from_seqno = from_seqno >= first_indexable_mc_seqno ? from_seqno : first_indexable_mc_seqno;
+    const auto initial_finalized_seqno = initial_from_seqno - 1;
+    auto inserted = txn.exec(
+        "INSERT INTO ton_indexer_progress(id, finalized_mc_seqno, updated_at) "
+        "VALUES (1, $1, NOW()) "
+        "ON CONFLICT (id) DO NOTHING "
+        "RETURNING finalized_mc_seqno",
+        pqxx::params{initial_finalized_seqno});
+
+    std::int32_t finalized_seqno = initial_finalized_seqno;
+    const auto initialized_from_cli = !inserted.empty();
+    if (initialized_from_cli) {
+      finalized_seqno = inserted[0][0].as<std::int32_t>();
+    } else {
+      auto rows = txn.exec("SELECT finalized_mc_seqno FROM ton_indexer_progress WHERE id = 1");
+      if (rows.empty()) {
+        throw std::runtime_error("ton_indexer_progress row is missing");
+      }
+      finalized_seqno = rows[0][0].as<std::int32_t>();
+    }
+    txn.commit();
+
+    const auto resume_seqno = finalized_seqno < first_indexable_mc_seqno
+        ? static_cast<std::uint32_t>(first_indexable_mc_seqno)
+        : static_cast<std::uint32_t>(finalized_seqno + 1);
+    if (to_seqno > 0 && resume_seqno > static_cast<std::uint32_t>(to_seqno)) {
+      LOG(INFO) << "Postgres resume seqno " << resume_seqno << " is above --to " << to_seqno;
+    } else if (initialized_from_cli) {
+      LOG(INFO) << "Initialized Postgres resume seqno from --from " << from_seqno;
+    } else if (from_seqno > 0 && resume_seqno != static_cast<std::uint32_t>(from_seqno)) {
+      LOG(INFO) << "Using Postgres resume seqno " << resume_seqno << " instead of --from " << from_seqno;
+    }
+    promise.set_result(InsertManagerInterface::ResumeState{resume_seqno, initialized_from_cli});
+  } catch (const std::exception &e) {
+    promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error reading Postgres resume seqno: " << e.what()));
   }
 }

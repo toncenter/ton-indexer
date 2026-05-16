@@ -88,9 +88,9 @@ private:
   void seqno_inserted(std::uint32_t mc_seqno);
   void handle_seqno_failure(std::uint32_t mc_seqno, std::string error_type, td::Status error, bool silent);
 
-  void process_existing_seqnos(td::Result<std::vector<std::uint32_t>> R);
-  void handle_missing_ta_state(ton::BlockSeqno next_seqno);
-  void handle_valid_ta_state(ton::BlockSeqno last_state_seqno);
+  void process_force_resume_state_initialized(td::Result<bool> R, ton::BlockSeqno start_seqno);
+  void process_resume_seqno(td::Result<InsertManagerInterface::ResumeState> R);
+  void start_from_seqno(ton::BlockSeqno seqno, bool reset_trace_assembler);
   void got_newest_mc_seqno(std::uint32_t newest_mc_seqno);
 
   void got_insert_queue_state(QueueState status);

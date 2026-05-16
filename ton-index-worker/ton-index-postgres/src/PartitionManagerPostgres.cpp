@@ -281,12 +281,11 @@ void PartitionManagerPostgres::ensure_partitions(pqxx::connection& c, std::uint3
   txn.commit();
 }
 
-void PartitionManagerPostgres::drop_old_partitions(pqxx::connection& c, std::uint32_t current_seqno) const {
-  if (!config_.enabled || config_.retention_mc_seqnos == 0 || current_seqno <= config_.retention_mc_seqnos) {
+void PartitionManagerPostgres::drop_old_partitions(pqxx::connection& c) const {
+  if (!config_.enabled || config_.retention_mc_seqnos == 0) {
     return;
   }
 
-  const auto drop_before = static_cast<std::uint64_t>(current_seqno) - config_.retention_mc_seqnos;
   pqxx::work txn(c);
   if (!try_acquire_partition_manager_lock(txn)) {
     LOG(INFO) << "Skipping old Postgres hot partition drop because another partition manager is active";
@@ -295,6 +294,18 @@ void PartitionManagerPostgres::drop_old_partitions(pqxx::connection& c, std::uin
   }
   txn.exec("SET LOCAL lock_timeout = '250ms'").no_rows();
 
+  auto progress = txn.exec("SELECT finalized_mc_seqno FROM ton_indexer_progress WHERE id = 1");
+  if (progress.empty()) {
+    txn.commit();
+    return;
+  }
+  const auto finalized_seqno = progress[0][0].as<std::int32_t>();
+  if (finalized_seqno <= 0 || static_cast<std::uint64_t>(finalized_seqno) <= config_.retention_mc_seqnos) {
+    txn.commit();
+    return;
+  }
+
+  const auto drop_before = static_cast<std::uint64_t>(finalized_seqno) - config_.retention_mc_seqnos;
   std::stringstream query;
   std::size_t dropped_count = 0;
   for (const auto& table : drop_order) {

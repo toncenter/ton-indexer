@@ -8,6 +8,8 @@
 
 #include "convert-utils.h"
 
+#include <algorithm>
+
 
 void InsertManagerClickhouse::start_up() {
     LOG(INFO) << "Clickhouse start_up";
@@ -398,6 +400,51 @@ void InsertManagerClickhouse::get_existing_seqnos(td::Promise<std::vector<std::u
        promise.set_error(td::Status::Error(DB_ERROR, PSLICE() << "Failed to fetch existing seqnos: " << e.what()));
     }
     return;
+}
+
+void InsertManagerClickhouse::ensure_resume_state_initialized(td::Promise<bool> promise, std::int32_t from_seqno) {
+    (void)from_seqno;
+    promise.set_result(false);
+}
+
+void InsertManagerClickhouse::get_resume_seqno(td::Promise<InsertManagerInterface::ResumeState> promise,
+                                               std::int32_t from_seqno, std::int32_t to_seqno) {
+    LOG(INFO) << "Clickhouse get_resume_seqno";
+    try {
+        auto options = credential_.get_clickhouse_options();
+        clickhouse::Client client(options);
+
+        std::vector<std::uint32_t> existing_seqnos;
+        td::StringBuilder sb;
+        sb << "select seqno from blocks where workchain = -1";
+        if (from_seqno > 0) {
+            sb << " and seqno >= " << from_seqno;
+        }
+        if (to_seqno > 0) {
+            sb << " and seqno <= " << to_seqno;
+        }
+        client.Select(sb.as_cslice().str(), [&existing_seqnos](const clickhouse::Block& block) {
+            for (size_t i = 0; i < block.GetRowCount(); ++i) {
+                existing_seqnos.push_back(block[0]->As<clickhouse::ColumnInt32>()->At(i));
+            }
+        });
+
+        std::sort(existing_seqnos.begin(), existing_seqnos.end());
+        constexpr std::uint32_t first_indexable_mc_seqno = 1;
+        std::uint32_t next_seqno = from_seqno >= static_cast<std::int32_t>(first_indexable_mc_seqno)
+            ? static_cast<std::uint32_t>(from_seqno)
+            : first_indexable_mc_seqno;
+        for (auto seqno : existing_seqnos) {
+            if (seqno == next_seqno) {
+                ++next_seqno;
+            } else if (seqno > next_seqno) {
+                break;
+            }
+        }
+        promise.set_result(InsertManagerInterface::ResumeState{next_seqno, false});
+    } catch (std::exception& e) {
+       promise.set_error(td::Status::Error(DB_ERROR, PSLICE() << "Failed to fetch resume seqno: " << e.what()));
+    }
 }
 
 clickhouse::ClientOptions InsertManagerClickhouse::Credential::get_clickhouse_options()

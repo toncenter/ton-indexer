@@ -18,7 +18,7 @@ public:
   explicit PartitionManagerPostgres(PartitionManagerConfig config) : config_(config) {}
 
   void ensure_partitions(pqxx::connection& c, std::uint32_t min_seqno, std::uint32_t max_seqno) const;
-  void drop_old_partitions(pqxx::connection& c, std::uint32_t current_seqno) const;
+  void drop_old_partitions(pqxx::connection& c) const;
 
 private:
   PartitionManagerConfig config_;

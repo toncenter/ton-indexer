@@ -117,94 +117,119 @@ void IndexScheduler::alarm() {
     td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
 }
 
+const int TRACE_BACKTRACK_LIMIT = 50;
+const ton::BlockSeqno FIRST_INDEXABLE_MC_SEQNO = 1;
+
+// Startup policy:
+// - Normal mode uses ton_indexer_progress as the durable source of truth.
+//   If the row is missing, it is initialized from --from and indexing starts
+//   exactly there. Once the row exists, --from is only a deployment default and
+//   is ignored on restart.
+// - Forced mode still starts from CLI --from, but first ensures that the
+//   progress row exists so the Postgres trigger can keep advancing it.
+// - Masterchain seqno 0 is not readable from the node DB, so all starts are
+//   clamped to FIRST_INDEXABLE_MC_SEQNO.
+// - On restart, TraceAssembler state may move the start point backwards, but
+//   only within TRACE_BACKTRACK_LIMIT blocks. If no suitable state exists, the
+//   assembler is reset and the same bounded fallback is used.
 void IndexScheduler::run() {
     if (force_index_) {
         LOG(WARNING) << "Force reindexing enabled";
-        td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, from_seqno_);
-        last_known_seqno_ = from_seqno_ - 1;
-        alarm_timestamp() = td::Timestamp::now();
+        const auto start_seqno = from_seqno_ > 0 ? static_cast<ton::BlockSeqno>(from_seqno_) : FIRST_INDEXABLE_MC_SEQNO;
+        auto P = td::PromiseCreator::lambda(
+            [SelfId = actor_id(this), start_seqno](td::Result<bool> R) {
+                td::actor::send_closure(
+                    SelfId, &IndexScheduler::process_force_resume_state_initialized, std::move(R), start_seqno);
+            });
+        td::actor::send_closure(
+            insert_manager_, &InsertManagerInterface::ensure_resume_state_initialized, std::move(P), start_seqno);
         return;
     }
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<std::vector<std::uint32_t>> R) {
-        td::actor::send_closure(SelfId, &IndexScheduler::process_existing_seqnos, std::move(R));
+    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<InsertManagerInterface::ResumeState> R) {
+        td::actor::send_closure(SelfId, &IndexScheduler::process_resume_seqno, std::move(R));
     });
-    td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_existing_seqnos, std::move(P), from_seqno_, to_seqno_);
+    td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_resume_seqno, std::move(P), from_seqno_, to_seqno_);
 }
 
-void IndexScheduler::process_existing_seqnos(td::Result<std::vector<std::uint32_t>> R) {
+void IndexScheduler::process_force_resume_state_initialized(td::Result<bool> R, ton::BlockSeqno start_seqno) {
     if (R.is_error()) {
-        LOG(ERROR) << "Error reading existing seqnos: " << R.move_as_error();
+        LOG(ERROR) << "Error initializing resume state for forced indexing: " << R.move_as_error();
+        return;
+    }
+    if (R.move_as_ok()) {
+        LOG(INFO) << "Initialized indexer progress before forced indexing";
+    }
+    start_from_seqno(start_seqno, true);
+}
+
+void IndexScheduler::process_resume_seqno(td::Result<InsertManagerInterface::ResumeState> R) {
+    if (R.is_error()) {
+        LOG(ERROR) << "Error reading resume seqno: " << R.move_as_error();
         return;
     }
 
-    auto existing_db_seqnos = R.move_as_ok();
-    std::sort(existing_db_seqnos.begin(), existing_db_seqnos.end());
+    auto resume_state = R.move_as_ok();
+    auto next_seqno = resume_state.next_seqno;
+    if (next_seqno < FIRST_INDEXABLE_MC_SEQNO) {
+        LOG(WARNING) << "Resume seqno " << next_seqno << " is below first indexable masterchain seqno "
+                     << FIRST_INDEXABLE_MC_SEQNO << "; starting from " << FIRST_INDEXABLE_MC_SEQNO;
+        next_seqno = FIRST_INDEXABLE_MC_SEQNO;
+    }
+    LOG(INFO) << "Next seqno from indexer progress: " << next_seqno;
 
-    // Find first gap in continuous sequence from current from_seqno_
-    ton::BlockSeqno next_seqno = from_seqno_;
-    for (auto seqno : existing_db_seqnos) {
-        if (seqno == next_seqno) {
-            ++next_seqno;
-        } else {
-            break;
-        }
+    if (resume_state.initialized_from_cli) {
+        LOG(INFO) << "Initialized indexer progress from --from; starting exactly from " << next_seqno;
+        start_from_seqno(next_seqno, true);
+        return;
     }
 
-    LOG(INFO) << "Found continuous sequence up to " << (next_seqno - 1) 
-              << " in DB (" << (next_seqno - from_seqno_) << " blocks)";
+    if (from_seqno_ > 0 && from_seqno_ != static_cast<std::int32_t>(next_seqno)) {
+        LOG(INFO) << "Ignoring --from " << from_seqno_ << " because persisted indexer progress resumes from "
+                  << next_seqno;
+    }
 
-    LOG(INFO) << "Accepted " << next_seqno - from_seqno_ << " of " << existing_db_seqnos.size() 
-              << " existing seqnos in DB (continuous increasing sequence)";
-    LOG(INFO) << "Next seqno: " << next_seqno;
+    if (next_seqno == FIRST_INDEXABLE_MC_SEQNO) {
+        start_from_seqno(next_seqno, true);
+        return;
+    }
 
-    auto P = td::PromiseCreator::lambda([SelfId = actor_id(this), next_seqno](td::Result<ton::BlockSeqno> R) {
+    const auto fallback_seqno = next_seqno > FIRST_INDEXABLE_MC_SEQNO + TRACE_BACKTRACK_LIMIT
+        ? next_seqno - TRACE_BACKTRACK_LIMIT
+        : FIRST_INDEXABLE_MC_SEQNO;
+    auto P = td::PromiseCreator::lambda(
+        [SelfId = actor_id(this), next_seqno, fallback_seqno](td::Result<ton::BlockSeqno> R) {
         if (R.is_error()) {
             LOG(WARNING) << "TraceAssembler state not found for seqno " << (next_seqno - 1);
-            td::actor::send_closure(SelfId, &IndexScheduler::handle_missing_ta_state, next_seqno);
+            td::actor::send_closure(SelfId, &IndexScheduler::start_from_seqno, fallback_seqno, true);
         } else {
-            LOG(INFO) << "Restored TraceAssembler state for seqno " << R.ok();
-            td::actor::send_closure(SelfId, &IndexScheduler::handle_valid_ta_state, R.move_as_ok());
+            auto restored_seqno = R.move_as_ok();
+            LOG(INFO) << "Restored TraceAssembler state for seqno " << restored_seqno;
+            if (restored_seqno + 1 < fallback_seqno) {
+                LOG(WARNING) << "TraceAssembler state " << restored_seqno << " is older than restart fallback "
+                             << fallback_seqno << "; resetting state";
+                td::actor::send_closure(SelfId, &IndexScheduler::start_from_seqno, fallback_seqno, true);
+                return;
+            }
+            td::actor::send_closure(SelfId, &IndexScheduler::start_from_seqno, restored_seqno + 1, false);
         }
     });
 
     td::actor::send_closure(trace_assembler_, &TraceAssembler::restore_state, next_seqno - 1, std::move(P));
 }
 
-const int TRACE_BACKTRACK_LIMIT = 50;
-
-void IndexScheduler::handle_missing_ta_state(ton::BlockSeqno next_seqno) {
-    LOG(WARNING) << "Trace assembler state missing for seqno " << (next_seqno - 1);
-
-    ton::BlockSeqno backtrack_point;
-    if (from_seqno_ >= static_cast<int32_t>(next_seqno) - TRACE_BACKTRACK_LIMIT) {
-        backtrack_point = from_seqno_;
-    } else {
-        backtrack_point = static_cast<int32_t>(next_seqno) - TRACE_BACKTRACK_LIMIT;
-        LOG(WARNING) << "Backtracking " << TRACE_BACKTRACK_LIMIT 
-                     << " blocks to capture potential ongoing traces";
+void IndexScheduler::start_from_seqno(ton::BlockSeqno seqno, bool reset_trace_assembler) {
+    if (seqno < FIRST_INDEXABLE_MC_SEQNO) {
+        seqno = FIRST_INDEXABLE_MC_SEQNO;
     }
-
-    from_seqno_ = backtrack_point;
-    last_known_seqno_ = from_seqno_ - 1;
-    LOG(INFO) << "Resetting indexing start point to " << from_seqno_;
-
-    td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, from_seqno_);
-    alarm_timestamp() = td::Timestamp::now();
-}
-
-void IndexScheduler::handle_valid_ta_state(ton::BlockSeqno last_state_seqno) {
-    if (last_state_seqno < from_seqno_) {
-        LOG(WARNING) << "Trace assembler state " << last_state_seqno << " is lower than --from " << from_seqno_;
+    if (reset_trace_assembler) {
         td::actor::send_closure(trace_assembler_, &TraceAssembler::reset_state);
-        last_known_seqno_ = from_seqno_ - 1;
-    } else {
-        last_known_seqno_ = last_state_seqno;
-        from_seqno_ = last_state_seqno + 1;
     }
+    from_seqno_ = static_cast<std::int32_t>(seqno);
+    last_known_seqno_ = from_seqno_ - 1;
     LOG(INFO) << "Starting indexing from seqno: " << from_seqno_;
 
-    td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, from_seqno_);
+    td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, seqno);
     alarm_timestamp() = td::Timestamp::now();
 }
 

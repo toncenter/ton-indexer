@@ -733,6 +733,13 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "on conflict (id) do nothing;\n"
     );
 
+    query += (
+      "create table if not exists ton_indexer_progress ("
+      "id integer primary key check (id = 1),"
+      "finalized_mc_seqno integer not null,"
+      "updated_at timestamptz not null default now());\n"
+    );
+
     // create required indexes
     query += (
       "create index if not exists trace_unclassified_index on traces (state, start_lt) include (trace_id, nodes_) where (classification_state = 'unclassified'::trace_classification_state);\n"
@@ -750,6 +757,31 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "create or replace trigger on_new_mc_block "
       "after insert on blocks for each row when (new.workchain = '-1'::integer) "
       "execute procedure on_new_mc_block_func();\n"
+    );
+
+    query += (
+      "create or replace function advance_ton_indexer_progress_func() "
+      "returns trigger language plpgsql as $$ "
+      "declare "
+      "next_seqno integer; "
+      "begin "
+      "if NEW.workchain <> '-1'::integer then "
+      "return null; "
+      "end if; "
+      "perform 1 from ton_indexer_progress where id = 1 for update; "
+      "if not found then "
+      "return null; "
+      "end if; "
+      "loop "
+      "select finalized_mc_seqno + 1 into next_seqno from ton_indexer_progress where id = 1; "
+      "exit when not exists (select 1 from blocks where workchain = '-1'::integer and seqno = next_seqno); "
+      "update ton_indexer_progress set finalized_mc_seqno = next_seqno, updated_at = now() where id = 1; "
+      "end loop; "
+      "return null; "
+      "end; $$;\n"
+      "create or replace trigger advance_ton_indexer_progress "
+      "after insert on blocks for each row when (new.workchain = '-1'::integer) "
+      "execute procedure advance_ton_indexer_progress_func();\n"
     );
 
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS trace_external_hash_norm tonhash;\n";
