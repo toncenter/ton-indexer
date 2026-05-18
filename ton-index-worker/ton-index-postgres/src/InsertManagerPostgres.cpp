@@ -93,12 +93,16 @@ public:
                       std::int32_t max_data_depth = 12,
                       std::int32_t latest_states_prepare_parallelism = 4,
                       std::int32_t latest_states_prepare_chunk_size = 128,
-                      PartitionManagerConfig partition_config = {}) :
+                      PartitionManagerConfig partition_config = {},
+                      bool no_leader = false,
+                      bool disable_progress_advance = false) :
     credential_(std::move(credential)), kvrocks_(std::move(kvrocks)), leader_heartbeat_(leader_heartbeat), worker_id_(std::move(worker_id)),
     insert_tasks_(std::move(insert_tasks)), promise_(std::move(promise)), max_data_depth_(max_data_depth),
     latest_states_prepare_parallelism_(latest_states_prepare_parallelism),
     latest_states_prepare_chunk_size_(latest_states_prepare_chunk_size),
-    partition_config_(partition_config) {
+    partition_config_(partition_config),
+    no_leader_(no_leader),
+    disable_progress_advance_(disable_progress_advance) {
       // sorting in descending seqno order for easier processing of interfaces
       std::sort(insert_tasks_.begin(), insert_tasks_.end(), [](const auto& a, const auto& b) {
         return a.mc_seqno_ > b.mc_seqno_;
@@ -119,6 +123,8 @@ private:
   std::int32_t latest_states_prepare_parallelism_;
   std::int32_t latest_states_prepare_chunk_size_;
   PartitionManagerConfig partition_config_;
+  bool no_leader_;
+  bool disable_progress_advance_;
   bool with_copy_{true};
   bool is_leader_{false};
   std::optional<LeaderHeartbeatGuard> leader_heartbeat_guard_;
@@ -2186,7 +2192,9 @@ bool InsertBatchPostgres::try_acquire_leader_lock(pqxx::connection& c, const std
 
 InsertManagerInterface::InsertResult InsertBatchPostgres::get_insert_result() const {
   InsertManagerInterface::InsertResult result;
-  result.is_leader = is_leader_;
+  if (!no_leader_) {
+    result.is_leader = is_leader_;
+  }
   return result;
 }
 
@@ -2269,13 +2277,17 @@ void InsertBatchPostgres::do_insert() {
   bool preparing = false;
   try {
     pqxx::connection c(connection_string_);
-    if (!try_acquire_leader_lock(c, worker_id_)) {
-      reset_prepare_state();
-      release_leader_heartbeat();
-      ensure_inserted();
-      return;
+    if (!no_leader_) {
+      if (!try_acquire_leader_lock(c, worker_id_)) {
+        reset_prepare_state();
+        release_leader_heartbeat();
+        ensure_inserted();
+        return;
+      }
+      acquire_leader_heartbeat();
+    } else {
+      is_leader_ = true;
     }
-    acquire_leader_heartbeat();
     ensure_batch_partitions(c);
 
     if (!prepared_batch_) {
@@ -2429,6 +2441,9 @@ void InsertBatchPostgres::commit_prepared_batch() {
 
   td::Timer data_timer;
   pqxx::work txn(c);
+  if (disable_progress_advance_) {
+    txn.exec0("SET LOCAL ton_indexer.advance_progress = 'off'");
+  }
 
   insert_blocks(txn, with_copy_);
   insert_shard_state(txn, with_copy_);
@@ -2465,7 +2480,9 @@ void InsertBatchPostgres::commit_prepared_batch() {
   states_timer.pause();
 
   commit_timer.resume();
-  ensure_still_leader(txn, worker_id_);
+  if (!no_leader_) {
+    ensure_still_leader(txn, worker_id_);
+  }
   txn.commit();
   commit_timer.pause();
 
@@ -3336,10 +3353,17 @@ void InsertManagerPostgres::start_up() {
               << ", retention_mc_seqnos=" << partition_config_.retention_mc_seqnos
               << ", precreate_count=" << partition_config_.precreate_count;
   }
+  if (disable_progress_advance_) {
+    LOG(INFO) << "Postgres indexer progress advancement is disabled for this writer";
+  }
   
   worker_id_ = get_worker_id();
-  leader_heartbeat_ = td::actor::create_actor<PostgresLeaderHeartbeat>(
-      td::actor::ActorOptions().with_name("postgres_leader_heartbeat").with_poll(), credential_.get_connection_string(), worker_id_);
+  if (no_leader_) {
+    LOG(WARNING) << "Postgres leader/standby coordination is disabled";
+  } else {
+    leader_heartbeat_ = td::actor::create_actor<PostgresLeaderHeartbeat>(
+        td::actor::ActorOptions().with_name("postgres_leader_heartbeat").with_poll(), credential_.get_connection_string(), worker_id_);
+  }
   alarm_timestamp() = td::Timestamp::in(1.0);
 }
 
@@ -3360,11 +3384,14 @@ void InsertManagerPostgres::set_latest_states_prepare_chunk_size(std::int32_t va
 
 void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> insert_tasks,
                                                 td::Promise<InsertManagerInterface::InsertResult> promise) {
-  if (leader_heartbeat_.empty() || !leader_heartbeat_.is_alive()) {
-    leader_heartbeat_ = td::actor::create_actor<PostgresLeaderHeartbeat>(
-        td::actor::ActorOptions().with_name("postgres_leader_heartbeat").with_poll(), credential_.get_connection_string(), worker_id_);
+  td::actor::ActorId<PostgresLeaderHeartbeat> leader_heartbeat;
+  if (!no_leader_) {
+    if (leader_heartbeat_.empty() || !leader_heartbeat_.is_alive()) {
+      leader_heartbeat_ = td::actor::create_actor<PostgresLeaderHeartbeat>(
+          td::actor::ActorOptions().with_name("postgres_leader_heartbeat").with_poll(), credential_.get_connection_string(), worker_id_);
+    }
+    leader_heartbeat = td::actor::actor_dynamic_cast<PostgresLeaderHeartbeat>(leader_heartbeat_.get());
   }
-  auto leader_heartbeat = td::actor::actor_dynamic_cast<PostgresLeaderHeartbeat>(leader_heartbeat_.get());
   td::actor::create_actor<InsertBatchPostgres>(
       "insert_batch_postgres",
       credential_,
@@ -3376,7 +3403,9 @@ void InsertManagerPostgres::create_insert_actor(std::vector<InsertTaskStruct> in
       max_data_depth_,
       latest_states_prepare_parallelism_,
       latest_states_prepare_chunk_size_,
-      partition_config_).release();
+      partition_config_,
+      no_leader_,
+      disable_progress_advance_).release();
 }
 
 void InsertManagerPostgres::get_existing_seqnos(td::Promise<std::vector<std::uint32_t>> promise, std::int32_t from_seqno, std::int32_t to_seqno) {
@@ -3429,8 +3458,9 @@ void InsertManagerPostgres::ensure_resume_state_initialized(td::Promise<bool> pr
 }
 
 // Returns the next seqno for normal indexing. The first process that sees an
-// empty ton_indexer_progress table seeds it from --from; later restarts always
-// resume from the persisted finalized_mc_seqno + 1 and do not trust --from.
+// empty ton_indexer_progress table seeds it from --from, then fast-forwards it
+// through the already present contiguous masterchain blocks. Later restarts
+// always resume from persisted finalized_mc_seqno + 1 and do not trust --from.
 void InsertManagerPostgres::get_resume_seqno(td::Promise<InsertManagerInterface::ResumeState> promise,
                                              std::int32_t from_seqno, std::int32_t to_seqno) {
   LOG(INFO) << "Reading Postgres resume seqno";
@@ -3458,6 +3488,13 @@ void InsertManagerPostgres::get_resume_seqno(td::Promise<InsertManagerInterface:
       }
       finalized_seqno = rows[0][0].as<std::int32_t>();
     }
+
+    const auto finalized_before_fast_forward = finalized_seqno;
+    auto advanced = txn.exec("SELECT advance_ton_indexer_progress()");
+    if (advanced.empty() || advanced[0][0].is_null()) {
+      throw std::runtime_error("advance_ton_indexer_progress returned no finalized seqno");
+    }
+    finalized_seqno = advanced[0][0].as<std::int32_t>();
     txn.commit();
 
     const auto resume_seqno = finalized_seqno < first_indexable_mc_seqno
@@ -3465,12 +3502,19 @@ void InsertManagerPostgres::get_resume_seqno(td::Promise<InsertManagerInterface:
         : static_cast<std::uint32_t>(finalized_seqno + 1);
     if (to_seqno > 0 && resume_seqno > static_cast<std::uint32_t>(to_seqno)) {
       LOG(INFO) << "Postgres resume seqno " << resume_seqno << " is above --to " << to_seqno;
+    } else if (initialized_from_cli && finalized_seqno > finalized_before_fast_forward) {
+      LOG(INFO) << "Initialized Postgres resume seqno from --from " << from_seqno
+                << " and fast-forwarded through existing blocks to " << resume_seqno;
     } else if (initialized_from_cli) {
       LOG(INFO) << "Initialized Postgres resume seqno from --from " << from_seqno;
+    } else if (finalized_seqno > finalized_before_fast_forward) {
+      LOG(INFO) << "Fast-forwarded Postgres resume seqno through existing blocks from "
+                << (finalized_before_fast_forward + 1) << " to " << resume_seqno;
     } else if (from_seqno > 0 && resume_seqno != static_cast<std::uint32_t>(from_seqno)) {
       LOG(INFO) << "Using Postgres resume seqno " << resume_seqno << " instead of --from " << from_seqno;
     }
-    promise.set_result(InsertManagerInterface::ResumeState{resume_seqno, initialized_from_cli});
+    const auto starts_exactly_from_cli = initialized_from_cli && finalized_seqno == finalized_before_fast_forward;
+    promise.set_result(InsertManagerInterface::ResumeState{resume_seqno, starts_exactly_from_cli});
   } catch (const std::exception &e) {
     promise.set_error(td::Status::Error(ErrorCode::DB_ERROR, PSLICE() << "Error reading Postgres resume seqno: " << e.what()));
   }

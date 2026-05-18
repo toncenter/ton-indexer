@@ -746,43 +746,83 @@ void run_1_3_0_migrations(const std::string& connection_string, bool custom_type
       "create index if not exists _classifier_tasks_mc_seqno_idx on _classifier_tasks (mc_seqno desc);\n"
     );
 
-    query += (
-      "create or replace function on_new_mc_block_func() "
-      "returns trigger language plpgsql as $$ "
-      "begin\n"
-      "insert into _classifier_tasks(mc_seqno, start_after)\n"
-      "values (NEW.seqno, now() + interval '1 seconds');\n"
-      "return null; \n"
-      "end; $$;\n"
-      "create or replace trigger on_new_mc_block "
-      "after insert on blocks for each row when (new.workchain = '-1'::integer) "
-      "execute procedure on_new_mc_block_func();\n"
+    query += R"SQL(
+create or replace function on_new_mc_block_func()
+returns trigger language plpgsql as $$
+begin
+  insert into _classifier_tasks(mc_seqno, start_after)
+  values (NEW.seqno, now() + interval '1 seconds');
+  return null;
+end;
+$$;
+
+create or replace trigger on_new_mc_block
+after insert on blocks
+for each row when (new.workchain = '-1'::integer)
+execute procedure on_new_mc_block_func();
+)SQL";
+
+    query += R"SQL(
+create or replace function advance_ton_indexer_progress()
+returns integer language plpgsql as $$
+declare
+  next_seqno integer;
+  finalized_seqno integer;
+begin
+  perform 1 from ton_indexer_progress where id = 1 for update;
+  if not found then
+    return null;
+  end if;
+
+  loop
+    select finalized_mc_seqno + 1
+    into next_seqno
+    from ton_indexer_progress
+    where id = 1;
+
+    exit when not exists (
+      select 1
+      from blocks
+      where workchain = '-1'::integer
+        and seqno = next_seqno
     );
 
-    query += (
-      "create or replace function advance_ton_indexer_progress_func() "
-      "returns trigger language plpgsql as $$ "
-      "declare "
-      "next_seqno integer; "
-      "begin "
-      "if NEW.workchain <> '-1'::integer then "
-      "return null; "
-      "end if; "
-      "perform 1 from ton_indexer_progress where id = 1 for update; "
-      "if not found then "
-      "return null; "
-      "end if; "
-      "loop "
-      "select finalized_mc_seqno + 1 into next_seqno from ton_indexer_progress where id = 1; "
-      "exit when not exists (select 1 from blocks where workchain = '-1'::integer and seqno = next_seqno); "
-      "update ton_indexer_progress set finalized_mc_seqno = next_seqno, updated_at = now() where id = 1; "
-      "end loop; "
-      "return null; "
-      "end; $$;\n"
-      "create or replace trigger advance_ton_indexer_progress "
-      "after insert on blocks for each row when (new.workchain = '-1'::integer) "
-      "execute procedure advance_ton_indexer_progress_func();\n"
-    );
+    update ton_indexer_progress
+    set finalized_mc_seqno = next_seqno,
+        updated_at = now()
+    where id = 1;
+  end loop;
+
+  select finalized_mc_seqno
+  into finalized_seqno
+  from ton_indexer_progress
+  where id = 1;
+
+  return finalized_seqno;
+end;
+$$;
+
+create or replace function advance_ton_indexer_progress_func()
+returns trigger language plpgsql as $$
+begin
+  if NEW.workchain <> '-1'::integer then
+    return null;
+  end if;
+
+  if coalesce(current_setting('ton_indexer.advance_progress', true), 'on') = 'off' then
+    return null;
+  end if;
+
+  perform advance_ton_indexer_progress();
+  return null;
+end;
+$$;
+
+create or replace trigger advance_ton_indexer_progress
+after insert on blocks
+for each row when (new.workchain = '-1'::integer)
+execute procedure advance_ton_indexer_progress_func();
+)SQL";
 
     query += "ALTER TABLE actions ADD COLUMN IF NOT EXISTS trace_external_hash_norm tonhash;\n";
     query += "ALTER TABLE traces ADD COLUMN IF NOT EXISTS external_hash_norm tonhash;\n";

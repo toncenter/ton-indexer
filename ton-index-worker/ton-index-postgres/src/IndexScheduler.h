@@ -2,6 +2,7 @@
 #include <memory>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include "td/actor/actor.h"
 
 #include "IndexData.h"
@@ -22,7 +23,9 @@ class IndexScheduler: public td::actor::Actor {
 private:
   std::deque<std::uint32_t> queued_seqnos_;
   std::set<std::uint32_t> processing_seqnos_;
+  std::set<std::uint32_t> inserting_seqnos_;
   std::set<std::uint32_t> indexed_seqnos_;
+  std::unordered_set<std::uint32_t> skip_insert_seqnos_;
 
   td::actor::ActorId<DbScanner> db_scanner_;
   td::actor::ActorId<InsertManagerInterface> insert_manager_;
@@ -36,8 +39,10 @@ private:
   std::int32_t last_known_seqno_{0};
   std::int32_t last_indexed_seqno_{0};
   std::int32_t from_seqno_{0};
+  std::int32_t read_from_seqno_{0};
   std::int32_t to_seqno_{0};
   bool force_index_{false};
+  std::uint32_t prewarm_count_{50};
   bool is_in_sync_{false};
 
   td::Timestamp last_alarm_timestamp_;
@@ -64,10 +69,10 @@ public:
   IndexScheduler(td::actor::ActorId<DbScanner> db_scanner, td::actor::ActorId<InsertManagerInterface> insert_manager,
       td::actor::ActorId<ParseManager> parse_manager, std::string working_dir, std::int32_t from_seqno = 0, std::int32_t to_seqno = 0, bool force_index = false,
       std::uint32_t max_active_tasks = 32, QueueState max_queue = QueueState{30000, 30000, 500000, 500000}, std::int32_t stats_timeout = 10,
-      std::shared_ptr<td::Destructor> watcher = nullptr)
+      std::shared_ptr<td::Destructor> watcher = nullptr, std::uint32_t prewarm_count = 50)
     : db_scanner_(db_scanner), insert_manager_(insert_manager), parse_manager_(parse_manager), working_dir_(std::move(working_dir)),
       from_seqno_(from_seqno), to_seqno_(to_seqno), force_index_(force_index), max_active_tasks_(max_active_tasks),
-      max_queue_(std::move(max_queue)), stats_timeout_(stats_timeout), watcher_(watcher) {};
+      prewarm_count_(prewarm_count), max_queue_(std::move(max_queue)), stats_timeout_(stats_timeout), watcher_(watcher) {};
 
   void start_up() override;
   void alarm() override;
@@ -90,8 +95,14 @@ private:
 
   void process_force_resume_state_initialized(td::Result<bool> R, ton::BlockSeqno start_seqno);
   void process_resume_seqno(td::Result<InsertManagerInterface::ResumeState> R);
+  void process_archive_existing_seqnos(td::Result<std::vector<std::uint32_t>> R);
   void start_from_seqno(ton::BlockSeqno seqno, bool reset_trace_assembler);
   void got_newest_mc_seqno(std::uint32_t newest_mc_seqno);
+  bool is_bounded_archive_range() const;
+  bool should_insert_seqno(std::uint32_t mc_seqno) const;
+  ton::BlockSeqno prewarm_start_seqno(ton::BlockSeqno seqno) const;
+  void seqno_processed_without_insert(std::uint32_t mc_seqno, const char* reason);
+  void maybe_finish_bounded_range();
 
   void got_insert_queue_state(QueueState status);
 

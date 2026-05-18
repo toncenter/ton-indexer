@@ -117,10 +117,14 @@ void IndexScheduler::alarm() {
     td::actor::send_closure(db_scanner_, &DbScanner::get_last_mc_seqno, std::move(P));
 }
 
-const int TRACE_BACKTRACK_LIMIT = 50;
 const ton::BlockSeqno FIRST_INDEXABLE_MC_SEQNO = 1;
 
 // Startup policy:
+// - Bounded archive mode is selected by --from + --to. It does not use
+//   ton_indexer_progress: without --force it reads existing masterchain seqnos
+//   from blocks and only writes missing ones; with --force it writes the whole
+//   range. In both cases --prewarm only extends the read/TraceAssembler start,
+//   not the insert range.
 // - Normal mode uses ton_indexer_progress as the durable source of truth.
 //   If the row is missing, it is initialized from --from and indexing starts
 //   exactly there. Once the row exists, --from is only a deployment default and
@@ -129,10 +133,26 @@ const ton::BlockSeqno FIRST_INDEXABLE_MC_SEQNO = 1;
 //   progress row exists so the Postgres trigger can keep advancing it.
 // - Masterchain seqno 0 is not readable from the node DB, so all starts are
 //   clamped to FIRST_INDEXABLE_MC_SEQNO.
-// - On restart, TraceAssembler state may move the start point backwards, but
-//   only within TRACE_BACKTRACK_LIMIT blocks. If no suitable state exists, the
-//   assembler is reset and the same bounded fallback is used.
+// - On restart, --prewarm controls how far TraceAssembler may move the start
+//   point backwards. If no suitable state exists, the assembler is reset and
+//   the same bounded fallback is used.
 void IndexScheduler::run() {
+    if (is_bounded_archive_range()) {
+        LOG(INFO) << "Bounded archive indexing enabled: from=" << from_seqno_
+                  << ", to=" << to_seqno_ << ", prewarm=" << prewarm_count_;
+        if (force_index_) {
+            LOG(WARNING) << "Force reindexing enabled for bounded archive range";
+            start_from_seqno(prewarm_start_seqno(static_cast<ton::BlockSeqno>(from_seqno_)), true);
+            return;
+        }
+
+        auto P = td::PromiseCreator::lambda([SelfId = actor_id(this)](td::Result<std::vector<std::uint32_t>> R) {
+            td::actor::send_closure(SelfId, &IndexScheduler::process_archive_existing_seqnos, std::move(R));
+        });
+        td::actor::send_closure(insert_manager_, &InsertManagerInterface::get_existing_seqnos, std::move(P), from_seqno_, to_seqno_);
+        return;
+    }
+
     if (force_index_) {
         LOG(WARNING) << "Force reindexing enabled";
         const auto start_seqno = from_seqno_ > 0 ? static_cast<ton::BlockSeqno>(from_seqno_) : FIRST_INDEXABLE_MC_SEQNO;
@@ -194,9 +214,7 @@ void IndexScheduler::process_resume_seqno(td::Result<InsertManagerInterface::Res
         return;
     }
 
-    const auto fallback_seqno = next_seqno > FIRST_INDEXABLE_MC_SEQNO + TRACE_BACKTRACK_LIMIT
-        ? next_seqno - TRACE_BACKTRACK_LIMIT
-        : FIRST_INDEXABLE_MC_SEQNO;
+    const auto fallback_seqno = prewarm_start_seqno(next_seqno);
     auto P = td::PromiseCreator::lambda(
         [SelfId = actor_id(this), next_seqno, fallback_seqno](td::Result<ton::BlockSeqno> R) {
         if (R.is_error()) {
@@ -218,6 +236,43 @@ void IndexScheduler::process_resume_seqno(td::Result<InsertManagerInterface::Res
     td::actor::send_closure(trace_assembler_, &TraceAssembler::restore_state, next_seqno - 1, std::move(P));
 }
 
+void IndexScheduler::process_archive_existing_seqnos(td::Result<std::vector<std::uint32_t>> R) {
+    if (R.is_error()) {
+        LOG(ERROR) << "Error reading existing archive seqnos: " << R.move_as_error();
+        return;
+    }
+
+    skip_insert_seqnos_.clear();
+    auto existing_seqnos = R.move_as_ok();
+    skip_insert_seqnos_.reserve(existing_seqnos.size());
+    for (auto seqno : existing_seqnos) {
+        if (seqno >= static_cast<std::uint32_t>(from_seqno_) && seqno <= static_cast<std::uint32_t>(to_seqno_)) {
+            skip_insert_seqnos_.insert(seqno);
+        }
+    }
+
+    std::uint32_t first_missing_seqno = 0;
+    for (auto seqno = static_cast<std::uint32_t>(from_seqno_); seqno <= static_cast<std::uint32_t>(to_seqno_); ++seqno) {
+        if (skip_insert_seqnos_.count(seqno) == 0) {
+            first_missing_seqno = seqno;
+            break;
+        }
+    }
+
+    if (first_missing_seqno == 0) {
+        LOG(INFO) << "Bounded archive range " << from_seqno_ << ".." << to_seqno_
+                  << " is already fully present in Postgres";
+        watcher_.reset();
+        stop();
+        return;
+    }
+
+    const auto start_seqno = prewarm_start_seqno(first_missing_seqno);
+    LOG(INFO) << "First missing archive seqno: " << first_missing_seqno
+              << "; starting read pipeline from " << start_seqno;
+    start_from_seqno(start_seqno, true);
+}
+
 void IndexScheduler::start_from_seqno(ton::BlockSeqno seqno, bool reset_trace_assembler) {
     if (seqno < FIRST_INDEXABLE_MC_SEQNO) {
         seqno = FIRST_INDEXABLE_MC_SEQNO;
@@ -225,9 +280,9 @@ void IndexScheduler::start_from_seqno(ton::BlockSeqno seqno, bool reset_trace_as
     if (reset_trace_assembler) {
         td::actor::send_closure(trace_assembler_, &TraceAssembler::reset_state);
     }
-    from_seqno_ = static_cast<std::int32_t>(seqno);
-    last_known_seqno_ = from_seqno_ - 1;
-    LOG(INFO) << "Starting indexing from seqno: " << from_seqno_;
+    read_from_seqno_ = static_cast<std::int32_t>(seqno);
+    last_known_seqno_ = read_from_seqno_ - 1;
+    LOG(INFO) << "Starting indexing from seqno: " << read_from_seqno_;
 
     td::actor::send_closure(trace_assembler_, &TraceAssembler::set_expected_seqno, seqno);
     alarm_timestamp() = td::Timestamp::now();
@@ -236,12 +291,22 @@ void IndexScheduler::start_from_seqno(ton::BlockSeqno seqno, bool reset_trace_as
 const int IS_IN_SYNC_THRESHOLD = 3;
 
 void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
-    if (to_seqno_ && last_known_seqno_ > to_seqno_)
+    auto effective_newest_seqno = newest_mc_seqno;
+    if (to_seqno_ > 0 && effective_newest_seqno > static_cast<std::uint32_t>(to_seqno_)) {
+        effective_newest_seqno = static_cast<std::uint32_t>(to_seqno_);
+    }
+    if (to_seqno_ > 0 && last_known_seqno_ >= to_seqno_) {
+        maybe_finish_bounded_range();
         return;
+    }
+    if (last_known_seqno_ >= static_cast<std::int32_t>(effective_newest_seqno)) {
+        return;
+    }
+
     int skipped_count = 0;
-    for (auto seqno = last_known_seqno_ + 1; seqno <= newest_mc_seqno; ++seqno) {
+    for (auto seqno = last_known_seqno_ + 1; seqno <= static_cast<std::int32_t>(effective_newest_seqno); ++seqno) {
         const bool should_skip = indexed_seqnos_.count(seqno);
-        const bool in_range = (from_seqno_ <= seqno) && (to_seqno_ == 0 || seqno <= to_seqno_);
+        const bool in_range = (read_from_seqno_ <= seqno) && (to_seqno_ == 0 || seqno <= to_seqno_);
         
         if (should_skip) {
             skipped_count++;
@@ -252,7 +317,7 @@ void IndexScheduler::got_newest_mc_seqno(std::uint32_t newest_mc_seqno) {
     if (skipped_count > 0) {
         LOG(INFO) << "Skipped " << skipped_count << " existing seqnos";
     }
-    last_known_seqno_ = newest_mc_seqno;
+    last_known_seqno_ = static_cast<std::int32_t>(effective_newest_seqno);
 
     if (!is_in_sync_ && (last_known_seqno_ - last_indexed_seqno_ <= IS_IN_SYNC_THRESHOLD)) {
         LOG(INFO) << "Indexer is in sync with TON node";
@@ -383,6 +448,11 @@ void IndexScheduler::seqno_interfaces_processed(std::uint32_t mc_seqno, ParsedBl
 void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlockPtr parsed_block) {
     LOG(DEBUG) << "Actions processed for seqno " << mc_seqno;
     finish_seqno_otel_stage(mc_seqno);
+    if (!should_insert_seqno(mc_seqno)) {
+        seqno_processed_without_insert(mc_seqno, mc_seqno < static_cast<std::uint32_t>(from_seqno_) ? "prewarm" : "already_present");
+        return;
+    }
+
     start_seqno_otel_stage(mc_seqno, "insert_seqno");
     set_seqno_otel_attribute(mc_seqno, "ton.indexer.insert.force", is_in_sync_);
 
@@ -403,12 +473,65 @@ void IndexScheduler::seqno_actions_processed(std::uint32_t mc_seqno, ParsedBlock
         g_statistics.record_time(INSERT_SEQNO, timer.elapsed() * 1e3);
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_inserted, mc_seqno);
     });
+    inserting_seqnos_.insert(mc_seqno);
     auto Q = td::PromiseCreator::lambda([SelfId = actor_id(this), mc_seqno](td::Result<QueueState> R){
         R.ensure();
         td::actor::send_closure(SelfId, &IndexScheduler::seqno_queued_to_insert, mc_seqno, R.move_as_ok());
     });
     td::actor::send_closure(insert_manager_, &InsertManagerInterface::insert, mc_seqno, std::move(parsed_block), 
                                 is_in_sync_, std::move(Q), std::move(P));
+}
+
+void IndexScheduler::seqno_processed_without_insert(std::uint32_t mc_seqno, const char* reason) {
+    LOG(DEBUG) << "Processed seqno " << mc_seqno << " without insert: " << reason;
+    set_seqno_otel_attribute(mc_seqno, "ton.indexer.insert.skipped", true, true);
+    set_seqno_otel_attribute(mc_seqno, "ton.indexer.insert.skip_reason", std::string(reason), true);
+    finish_seqno_otel_trace(mc_seqno);
+    processing_seqnos_.erase(mc_seqno);
+    indexed_seqnos_.insert(mc_seqno);
+    if (mc_seqno > static_cast<std::uint32_t>(last_indexed_seqno_)) {
+        last_indexed_seqno_ = static_cast<std::int32_t>(mc_seqno);
+    }
+    g_statistics.record_time(PROCESS_SEQNO, timers_[mc_seqno].elapsed() * 1e3);
+    timers_.erase(mc_seqno);
+    schedule_next_seqnos();
+}
+
+bool IndexScheduler::is_bounded_archive_range() const {
+    return from_seqno_ > 0 && to_seqno_ > 0;
+}
+
+bool IndexScheduler::should_insert_seqno(std::uint32_t mc_seqno) const {
+    if (!is_bounded_archive_range()) {
+        return true;
+    }
+    if (mc_seqno < static_cast<std::uint32_t>(from_seqno_) || mc_seqno > static_cast<std::uint32_t>(to_seqno_)) {
+        return false;
+    }
+    if (!force_index_ && skip_insert_seqnos_.count(mc_seqno) > 0) {
+        return false;
+    }
+    return true;
+}
+
+ton::BlockSeqno IndexScheduler::prewarm_start_seqno(ton::BlockSeqno seqno) const {
+    if (seqno <= FIRST_INDEXABLE_MC_SEQNO || seqno - FIRST_INDEXABLE_MC_SEQNO <= prewarm_count_) {
+        return FIRST_INDEXABLE_MC_SEQNO;
+    }
+    return seqno - prewarm_count_;
+}
+
+void IndexScheduler::maybe_finish_bounded_range() {
+    if (!is_bounded_archive_range()) {
+        return;
+    }
+    if (last_known_seqno_ < to_seqno_ || !queued_seqnos_.empty() || !processing_seqnos_.empty() || !inserting_seqnos_.empty()
+        || cur_queue_state_.blocks_ != 0) {
+        return;
+    }
+    LOG(INFO) << "Finished bounded archive range " << from_seqno_ << ".." << to_seqno_;
+    watcher_.reset();
+    stop();
 }
 
 void IndexScheduler::print_stats() {
@@ -463,16 +586,19 @@ void IndexScheduler::set_seqno_otel_attribute(std::uint32_t mc_seqno, const std:
 void IndexScheduler::seqno_inserted(std::uint32_t mc_seqno) {
     finish_seqno_otel_stage(mc_seqno);
     finish_seqno_otel_trace(mc_seqno);
+    inserting_seqnos_.erase(mc_seqno);
     indexed_seqnos_.insert(mc_seqno);
     if (mc_seqno > last_indexed_seqno_) {
         last_indexed_seqno_ = mc_seqno;
     }
     g_statistics.record_time(PROCESS_SEQNO, timers_[mc_seqno].elapsed() * 1e3);
     timers_.erase(mc_seqno);
+    maybe_finish_bounded_range();
 }
 
 void IndexScheduler::handle_seqno_failure(std::uint32_t mc_seqno, std::string error_type, td::Status error, bool silent) {
     fail_seqno_otel_trace(mc_seqno, error_type, error, silent);
+    inserting_seqnos_.erase(mc_seqno);
     reschedule_seqno(mc_seqno, silent);
 }
 
@@ -484,12 +610,7 @@ void IndexScheduler::schedule_next_seqnos() {
         schedule_seqno(seqno);
     }
 
-    if(to_seqno_ > 0 && last_known_seqno_ > to_seqno_ 
-       && queued_seqnos_.empty() && processing_seqnos_.empty()
-       && cur_queue_state_.blocks_ == 0) {
-        // stop();
-        return;
-    }
+    maybe_finish_bounded_range();
 }
 
 void IndexScheduler::start_seqno_otel_trace(std::uint32_t mc_seqno, bool is_in_sync) {

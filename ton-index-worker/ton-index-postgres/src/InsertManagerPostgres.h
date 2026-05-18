@@ -32,9 +32,13 @@ private:
   std::int32_t max_data_depth_{0};
   std::int32_t latest_states_prepare_parallelism_{4};
   std::int32_t latest_states_prepare_chunk_size_{128};
+  bool no_leader_{false};
+  bool disable_progress_advance_{false};
 public:
-  InsertManagerPostgres(Credential credential, KvrocksConfig kvrocks_config = {}, PartitionManagerConfig partition_config = {}) :
-    credential_(credential), kvrocks_config_(std::move(kvrocks_config)), partition_config_(partition_config) {}
+  InsertManagerPostgres(Credential credential, KvrocksConfig kvrocks_config = {}, PartitionManagerConfig partition_config = {},
+                        bool no_leader = false, bool disable_progress_advance = false) :
+    credential_(credential), kvrocks_config_(std::move(kvrocks_config)), partition_config_(partition_config),
+    no_leader_(no_leader), disable_progress_advance_(disable_progress_advance) {}
 
   void start_up() override;
 

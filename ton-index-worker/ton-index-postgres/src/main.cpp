@@ -14,6 +14,7 @@
 #include "EventProcessor.h"
 #include "IndexScheduler.h"
 
+#include <atomic>
 #include <limits>
 
 int main(int argc, char *argv[]) {
@@ -36,7 +37,9 @@ int main(int argc, char *argv[]) {
   td::uint32 last_known_seqno = 0;
   td::uint32 from_seqno = 0;
   td::uint32 to_seqno = 0;
+  td::uint32 prewarm_count = 50;
   bool force_index = false;
+  bool no_leader = false;
   bool custom_types = false;
   bool create_indexes = true;
   bool run_migrations = true;
@@ -222,6 +225,9 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --from: not a number");
     }
+    if (v < 0) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --from: must be non-negative");
+    }
     from_seqno = v;
     return td::Status::OK();
   });
@@ -232,12 +238,39 @@ int main(int argc, char *argv[]) {
     } catch (...) {
       return td::Status::Error(ton::ErrorCode::error, "bad value for --to: not a number");
     }
+    if (v < 0) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --to: must be non-negative");
+    }
     to_seqno = v;
     return td::Status::OK();
   });
   p.add_option('\0', "force", "Ignore existing seqnos and force reindex", [&]() {
     force_index = true;
     LOG(WARNING) << "Force reindexing enabled";
+  });
+  p.add_option('\0', "no-leader", "Disable Postgres leader/standby coordination; only valid with --from and --to", [&]() {
+    no_leader = true;
+  });
+  p.add_checked_option('\0', "prewarm", "Number of masterchain blocks used for TraceAssembler warmup/backtrack", [&](td::Slice value) {
+    std::uint64_t v;
+    std::size_t parsed = 0;
+    auto raw = value.str();
+    if (raw.empty() || raw[0] == '-') {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --prewarm: must be non-negative");
+    }
+    try {
+      v = std::stoull(raw, &parsed);
+    } catch (...) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --prewarm: not a number");
+    }
+    if (parsed != raw.size()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --prewarm: not a number");
+    }
+    if (v > std::numeric_limits<std::uint32_t>::max()) {
+      return td::Status::Error(ton::ErrorCode::error, "bad value for --prewarm: must fit uint32");
+    }
+    prewarm_count = static_cast<td::uint32>(v);
+    return td::Status::OK();
   });
 
   p.add_checked_option('\0', "max-data-depth", "Max data cell depth to store in latest account states", [&](td::Slice value) { 
@@ -409,6 +442,24 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "Please specify working directory with -W or --working-dir";
     std::_Exit(2);
   }
+  const bool bounded_archive_range = from_seqno > 0 && to_seqno > 0;
+  if (from_seqno > static_cast<td::uint32>(std::numeric_limits<td::int32>::max()) ||
+      to_seqno > static_cast<td::uint32>(std::numeric_limits<td::int32>::max())) {
+    LOG(ERROR) << "--from and --to must fit int32";
+    std::_Exit(2);
+  }
+  if (bounded_archive_range && from_seqno > to_seqno) {
+    LOG(ERROR) << "--from must be less than or equal to --to";
+    std::_Exit(2);
+  }
+  if (no_leader && !bounded_archive_range) {
+    LOG(ERROR) << "--no-leader is only valid when both --from and --to are specified";
+    std::_Exit(2);
+  }
+  if (bounded_archive_range && partition_config.enabled) {
+    LOG(ERROR) << "--pg-manage-partitions cannot be used with bounded archive indexing (--from and --to)";
+    std::_Exit(2);
+  }
   td::mkdir(working_dir).ensure();
 
   if (max_queue_size > 0) {
@@ -429,19 +480,21 @@ int main(int argc, char *argv[]) {
 
   NftItemDetectorR::is_testnet = testnet;
 
-  auto watcher = td::create_shared_destructor([] {
-    td::actor::SchedulerContext::get()->stop();
+  auto finish_requested = std::make_shared<std::atomic_bool>(false);
+  auto watcher = td::create_shared_destructor([finish_requested] {
+    finish_requested->store(true);
   });
 
   td::actor::Scheduler scheduler({td::actor::Scheduler::NodeInfo{threads, io_workers}});
   scheduler.run_in_context([&] {
-    insert_manager_ = td::actor::create_actor<InsertManagerPostgres>("insertmanager", credential, kvrocks_config, partition_config);
+    insert_manager_ = td::actor::create_actor<InsertManagerPostgres>(
+        "insertmanager", credential, kvrocks_config, partition_config, no_leader, bounded_archive_range);
   });
   scheduler.run_in_context([&] { parse_manager_ = td::actor::create_actor<ParseManager>("parsemanager"); });
   scheduler.run_in_context([&] { db_scanner_ = td::actor::create_actor<DbScanner>("scanner", db_root, dbs_secondary, working_dir + "/secondary_logs"); });
 
   scheduler.run_in_context([&, watcher = std::move(watcher)] { index_scheduler_ = td::actor::create_actor<IndexScheduler>("indexscheduler", db_scanner_.get(), 
-    insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher); 
+    insert_manager_.get(), parse_manager_.get(), working_dir, from_seqno, to_seqno, force_index, max_active_tasks, max_queue, stats_timeout, watcher, prewarm_count);
   });
   scheduler.run_in_context([&] { 
     td::actor::send_closure(insert_manager_, &InsertManagerPostgres::set_parallel_inserts_actors, max_insert_actors);
@@ -451,8 +504,18 @@ int main(int argc, char *argv[]) {
   });
   scheduler.run_in_context([&] { td::actor::send_closure(index_scheduler_, &IndexScheduler::run); });
   
-  while(scheduler.run(1)) {
+  while(!finish_requested->load() && scheduler.run(1)) {
     // do something
+  }
+  if (finish_requested->load()) {
+    scheduler.run_in_context([&] {
+      index_scheduler_.reset();
+      insert_manager_.reset();
+      parse_manager_.reset();
+      db_scanner_.reset();
+      td::actor::SchedulerContext::get()->stop();
+    });
+    scheduler.run();
   }
   LOG(INFO) << "Done!";
   return 0;
